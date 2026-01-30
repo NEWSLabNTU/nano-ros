@@ -27,6 +27,7 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+mod cdr;
 mod constants;
 mod error;
 mod executor;
@@ -39,6 +40,7 @@ mod support;
 mod timer;
 
 // Re-export all public C API items
+pub use cdr::*;
 pub use constants::*;
 pub use error::*;
 pub use executor::*;

@@ -795,6 +795,231 @@ extern const struct nano_ros_qos_t NANO_ROS_QOS_SENSOR_DATA;
 extern const struct nano_ros_qos_t NANO_ROS_QOS_SERVICES;
 
 /**
+ * Write a boolean value to the buffer.
+ *
+ * # Safety
+ * - `ptr` must point to a valid mutable pointer to a buffer
+ * - The buffer must have sufficient space
+ */
+
+int32_t nano_ros_cdr_write_bool(uint8_t **ptr,
+                                const uint8_t *end,
+                                bool value)
+;
+
+/**
+ * Write a u8 value to the buffer.
+ */
+
+int32_t nano_ros_cdr_write_u8(uint8_t **ptr,
+                              const uint8_t *end,
+                              uint8_t value)
+;
+
+/**
+ * Write an i8 value to the buffer.
+ */
+
+int32_t nano_ros_cdr_write_i8(uint8_t **ptr,
+                              const uint8_t *end,
+                              int8_t value)
+;
+
+/**
+ * Write a u16 value to the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_write_u16(uint8_t **ptr,
+                               const uint8_t *end,
+                               uint16_t value)
+;
+
+/**
+ * Write an i16 value to the buffer.
+ */
+
+int32_t nano_ros_cdr_write_i16(uint8_t **ptr,
+                               const uint8_t *end,
+                               int16_t value)
+;
+
+/**
+ * Write a u32 value to the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_write_u32(uint8_t **ptr,
+                               const uint8_t *end,
+                               uint32_t value)
+;
+
+/**
+ * Write an i32 value to the buffer.
+ */
+
+int32_t nano_ros_cdr_write_i32(uint8_t **ptr,
+                               const uint8_t *end,
+                               int32_t value)
+;
+
+/**
+ * Write a u64 value to the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_write_u64(uint8_t **ptr,
+                               const uint8_t *end,
+                               uint64_t value)
+;
+
+/**
+ * Write an i64 value to the buffer.
+ */
+
+int32_t nano_ros_cdr_write_i64(uint8_t **ptr,
+                               const uint8_t *end,
+                               int64_t value)
+;
+
+/**
+ * Write a f32 value to the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_write_f32(uint8_t **ptr,
+                               const uint8_t *end,
+                               float value)
+;
+
+/**
+ * Write a f64 value to the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_write_f64(uint8_t **ptr,
+                               const uint8_t *end,
+                               double value)
+;
+
+/**
+ * Write a string to the buffer (length-prefixed).
+ *
+ * CDR strings are encoded as: u32 length (including null terminator) + bytes + null terminator
+ */
+
+int32_t nano_ros_cdr_write_string(uint8_t **ptr,
+                                  const uint8_t *end,
+                                  const char *value)
+;
+
+/**
+ * Read a boolean value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_bool(const uint8_t **ptr,
+                               const uint8_t *end,
+                               bool *value)
+;
+
+/**
+ * Read a u8 value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_u8(const uint8_t **ptr,
+                             const uint8_t *end,
+                             uint8_t *value)
+;
+
+/**
+ * Read an i8 value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_i8(const uint8_t **ptr,
+                             const uint8_t *end,
+                             int8_t *value)
+;
+
+/**
+ * Read a u16 value from the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_read_u16(const uint8_t **ptr,
+                              const uint8_t *end,
+                              uint16_t *value)
+;
+
+/**
+ * Read an i16 value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_i16(const uint8_t **ptr,
+                              const uint8_t *end,
+                              int16_t *value)
+;
+
+/**
+ * Read a u32 value from the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_read_u32(const uint8_t **ptr,
+                              const uint8_t *end,
+                              uint32_t *value)
+;
+
+/**
+ * Read an i32 value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_i32(const uint8_t **ptr,
+                              const uint8_t *end,
+                              int32_t *value)
+;
+
+/**
+ * Read a u64 value from the buffer (with alignment).
+ */
+
+int32_t nano_ros_cdr_read_u64(const uint8_t **ptr,
+                              const uint8_t *end,
+                              uint64_t *value)
+;
+
+/**
+ * Read an i64 value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_i64(const uint8_t **ptr,
+                              const uint8_t *end,
+                              int64_t *value)
+;
+
+/**
+ * Read a f32 value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_f32(const uint8_t **ptr,
+                              const uint8_t *end,
+                              float *value)
+;
+
+/**
+ * Read a f64 value from the buffer.
+ */
+
+int32_t nano_ros_cdr_read_f64(const uint8_t **ptr,
+                              const uint8_t *end,
+                              double *value)
+;
+
+/**
+ * Read a string from the buffer into a fixed-size buffer.
+ *
+ * CDR strings are encoded as: u32 length (including null terminator) + bytes + null terminator
+ */
+
+int32_t nano_ros_cdr_read_string(const uint8_t **ptr,
+                                 const uint8_t *end,
+                                 char *value,
+                                 uintptr_t max_len)
+;
+
+/**
  * Get a zero-initialized executor.
  */
 
