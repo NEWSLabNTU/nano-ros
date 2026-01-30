@@ -1,0 +1,31 @@
+[package]
+name = "nano-ros-c"
+version = "0.1.0"
+edition = "2021"
+description = "C API for nano-ros - rclc-compatible interface for embedded systems"
+license = "Apache-2.0"
+keywords = ["ros", "ros2", "embedded", "c", "ffi"]
+categories = ["embedded", "robotics", "api-bindings"]
+
+[lib]
+crate-type = ["staticlib", "cdylib"]
+
+[features]
+default = ["std"]
+std = ["nano-ros/std", "nano-ros-transport/std"]
+alloc = ["nano-ros/alloc", "nano-ros-transport/alloc"]
+
+# Transport backends
+shim-posix = ["nano-ros/shim-posix", "nano-ros-transport/shim-posix"]
+shim-zephyr = ["nano-ros/shim-zephyr", "nano-ros-transport/shim-zephyr"]
+
+[dependencies]
+nano-ros = { path = "../nano-ros", default-features = false, features = ["zenoh"] }
+nano-ros-transport = { path = "../nano-ros-transport", default-features = false, features = ["zenoh"] }
+nano-ros-core = { path = "../nano-ros-core", default-features = false }
+
+[build-dependencies]
+cbindgen = "0.26"
+
+[package.metadata.docs.rs]
+all-features = true

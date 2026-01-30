@@ -46,7 +46,8 @@ quality:
 
     echo ""
     echo "=== Clippy (workspace, no_std) ==="
-    cargo clippy --workspace --no-default-features -- {{CLIPPY_LINTS}}
+    cargo clippy --workspace --no-default-features \
+        --exclude nano-ros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
         echo "[FAIL] Clippy (workspace) FAILED"
         failed=1
@@ -58,7 +59,8 @@ quality:
     echo "=== Clippy (embedded target) ==="
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zenoh-pico-shim-sys \
-        --exclude nano-ros-tests -- {{CLIPPY_LINTS}}
+        --exclude nano-ros-tests \
+        --exclude nano-ros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
         echo "[FAIL] Clippy (embedded) FAILED"
         failed=1
@@ -106,34 +108,40 @@ ci: check test
 # =============================================================================
 
 # Build workspace (no_std, native)
+# Excludes nano-ros-c which currently requires std
 build-workspace:
-    cargo build --workspace --no-default-features
+    cargo build --workspace --no-default-features --exclude nano-ros-c
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zenoh-pico-shim-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
+# Excludes nano-ros-c which currently requires std
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zenoh-pico-shim-sys \
-        --exclude nano-ros-tests
+        --exclude nano-ros-tests \
+        --exclude nano-ros-c
 
 # Format workspace code
 format-workspace:
     cargo +nightly fmt
 
 # Check workspace: formatting and clippy (no_std, native)
+# Excludes nano-ros-c which currently requires std
 check-workspace:
     cargo +nightly fmt --check
-    cargo clippy --workspace --no-default-features -- {{CLIPPY_LINTS}}
+    cargo clippy --workspace --no-default-features --exclude nano-ros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zenoh-pico-shim-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
+# Excludes nano-ros-c which currently requires std
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zenoh-pico-shim-sys \
-        --exclude nano-ros-tests -- {{CLIPPY_LINTS}}
+        --exclude nano-ros-tests \
+        --exclude nano-ros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace with various feature combinations
 check-workspace-features:

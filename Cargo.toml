@@ -14,6 +14,8 @@ members = [
     "crates/zenoh-pico-shim",
     # Integration tests
     "crates/nano-ros-tests",
+    # C API for embedded systems
+    "crates/nano-ros-c",
 ]
 
 # Examples are excluded from workspace - they are standalone packages
