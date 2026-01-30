@@ -277,7 +277,7 @@ clean-examples-qemu:
     @echo "QEMU example build artifacts cleaned"
 
 # Clean all example build artifacts
-clean-examples: clean-examples-native clean-examples-embedded clean-examples-qemu clean-examples-cpp
+clean-examples: clean-examples-native clean-examples-embedded clean-examples-qemu clean-examples-cpp clean-examples-c
     @echo "All example build artifacts cleaned"
 
 # =============================================================================
@@ -554,6 +554,33 @@ test-rust-zephyr-full: build-zephyr
 # Run Rust tests via wrapper script (with nice output)
 test-rust-full:
     ./tests/rust-tests.sh
+
+# =============================================================================
+# C Integration Tests
+# =============================================================================
+
+# Run C integration tests (native-c-talker/listener)
+test-c:
+    ./tests/c-tests.sh
+
+# Run C integration tests with verbose output
+test-c-verbose:
+    ./tests/c-tests.sh --verbose
+
+# Build C examples only (no tests)
+build-examples-c:
+    @echo "Building nano-ros-c library..."
+    cargo build -p nano-ros-c --release
+    @echo "Building native-c-talker..."
+    cd examples/native-c-talker && rm -rf build && mkdir -p build && cd build && cmake .. && make
+    @echo "Building native-c-listener..."
+    cd examples/native-c-listener && rm -rf build && mkdir -p build && cd build && cmake .. && make
+    @echo "C examples built!"
+
+# Clean C examples build
+clean-examples-c:
+    rm -rf examples/native-c-talker/build examples/native-c-listener/build
+    @echo "C examples build cleaned"
 
 # =============================================================================
 # Message Bindings
