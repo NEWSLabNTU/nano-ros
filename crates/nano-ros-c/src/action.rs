@@ -91,16 +91,10 @@ pub struct nano_ros_action_type_t {
 
 /// Goal UUID structure (16 bytes).
 #[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct nano_ros_goal_uuid_t {
     /// UUID bytes
     pub uuid: [u8; 16],
-}
-
-impl Default for nano_ros_goal_uuid_t {
-    fn default() -> Self {
-        Self { uuid: [0u8; 16] }
-    }
 }
 
 // ============================================================================
@@ -1081,26 +1075,12 @@ pub unsafe extern "C" fn nano_ros_goal_uuid_equal(
 #[no_mangle]
 pub extern "C" fn nano_ros_goal_status_to_string(status: nano_ros_goal_status_t) -> *const c_char {
     match status {
-        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_UNKNOWN => {
-            b"UNKNOWN\0".as_ptr() as *const c_char
-        }
-        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_ACCEPTED => {
-            b"ACCEPTED\0".as_ptr() as *const c_char
-        }
-        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_EXECUTING => {
-            b"EXECUTING\0".as_ptr() as *const c_char
-        }
-        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_CANCELING => {
-            b"CANCELING\0".as_ptr() as *const c_char
-        }
-        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_SUCCEEDED => {
-            b"SUCCEEDED\0".as_ptr() as *const c_char
-        }
-        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_CANCELED => {
-            b"CANCELED\0".as_ptr() as *const c_char
-        }
-        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_ABORTED => {
-            b"ABORTED\0".as_ptr() as *const c_char
-        }
+        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_UNKNOWN => c"UNKNOWN".as_ptr(),
+        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_ACCEPTED => c"ACCEPTED".as_ptr(),
+        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_EXECUTING => c"EXECUTING".as_ptr(),
+        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_CANCELING => c"CANCELING".as_ptr(),
+        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_SUCCEEDED => c"SUCCEEDED".as_ptr(),
+        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_CANCELED => c"CANCELED".as_ptr(),
+        nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_ABORTED => c"ABORTED".as_ptr(),
     }
 }

@@ -36,6 +36,7 @@ mod executor;
 mod guard_condition;
 mod node;
 mod parameter;
+mod platform;
 mod publisher;
 mod qos;
 mod service;

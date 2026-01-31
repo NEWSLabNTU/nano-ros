@@ -565,18 +565,8 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    // Get current time
-    #[cfg(feature = "std")]
-    let current_time_ns = {
-        use std::time::{SystemTime, UNIX_EPOCH};
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_nanos() as u64)
-            .unwrap_or(0)
-    };
-
-    #[cfg(not(feature = "std"))]
-    let current_time_ns = 0u64;
+    // Get current time from platform
+    let current_time_ns = crate::platform::get_time_ns();
 
     let mut any_executed = false;
 
@@ -598,10 +588,8 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                 #[cfg(feature = "std")]
                 {
                     let subscription = handle.handle as *mut nano_ros_subscription_t;
-                    if !subscription.is_null() {
-                        if process_subscription(subscription) {
-                            any_executed = true;
-                        }
+                    if !subscription.is_null() && process_subscription(subscription) {
+                        any_executed = true;
                     }
                 }
             }
@@ -609,11 +597,9 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                 #[cfg(feature = "std")]
                 {
                     let service = handle.handle as *mut nano_ros_service_t;
-                    if !service.is_null() {
-                        // Try to receive and process a request
-                        if process_service_request(service) {
-                            any_executed = true;
-                        }
+                    // Try to receive and process a request
+                    if !service.is_null() && process_service_request(service) {
+                        any_executed = true;
                     }
                 }
             }
@@ -639,12 +625,8 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
 
     // If nothing executed and we have a timeout, wait
     if !any_executed && timeout_ns > 0 {
-        #[cfg(feature = "std")]
-        {
-            use std::time::Duration;
-            std::thread::sleep(Duration::from_nanos(timeout_ns.min(10_000_000)));
-            // Max 10ms sleep
-        }
+        // Max 10ms sleep to avoid blocking too long
+        crate::platform::sleep_ns(timeout_ns.min(10_000_000));
         return NANO_ROS_RET_TIMEOUT;
     }
 
@@ -721,30 +703,17 @@ pub unsafe extern "C" fn nano_ros_executor_spin_period(
 
     executor_ref.state = nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING;
 
-    #[cfg(feature = "std")]
-    {
-        use std::time::{Duration, Instant};
+    // Spin with period using platform time functions
+    while executor_ref.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING {
+        let start = crate::platform::get_time_ns();
 
-        while executor_ref.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING {
-            let start = Instant::now();
+        // Process callbacks
+        let _ = nano_ros_executor_spin_some(executor, 0);
 
-            // Process callbacks
-            let _ = nano_ros_executor_spin_some(executor, 0);
-
-            // Sleep for remaining time in period
-            let elapsed = start.elapsed();
-            let period = Duration::from_nanos(period_ns);
-            if elapsed < period {
-                std::thread::sleep(period - elapsed);
-            }
-        }
-    }
-
-    #[cfg(not(feature = "std"))]
-    {
-        // For no_std, just spin without timing
-        while executor_ref.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING {
-            let _ = nano_ros_executor_spin_some(executor, 0);
+        // Sleep for remaining time in period
+        let elapsed = crate::platform::get_time_ns().saturating_sub(start);
+        if elapsed < period_ns {
+            crate::platform::sleep_ns(period_ns - elapsed);
         }
     }
 

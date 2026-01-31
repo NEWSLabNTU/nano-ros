@@ -85,46 +85,19 @@ impl Default for nano_ros_clock_t {
 // Platform-specific time functions
 // ============================================================================
 
+use crate::platform;
+
 /// Nanoseconds per second constant
 const NANOS_PER_SEC: u64 = 1_000_000_000;
 
 /// Get system time in nanoseconds since Unix epoch.
-#[cfg(feature = "std")]
 fn get_system_time_ns() -> i64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-
-    match SystemTime::now().duration_since(UNIX_EPOCH) {
-        Ok(duration) => duration.as_nanos() as i64,
-        Err(_) => 0, // Before Unix epoch, return 0
-    }
-}
-
-/// Get system time in nanoseconds since Unix epoch (no_std stub).
-#[cfg(not(feature = "std"))]
-fn get_system_time_ns() -> i64 {
-    // In no_std environments, we would need platform-specific code
-    // For now, return 0 (platforms should override this)
-    0
+    platform::get_system_time_ns()
 }
 
 /// Get steady (monotonic) time in nanoseconds.
-#[cfg(feature = "std")]
 fn get_steady_time_ns() -> u64 {
-    use std::time::Instant;
-
-    // Use a static reference point for steady time
-    // Note: This is a simple approach; a more sophisticated implementation
-    // would use atomic operations or thread-local storage
-    static EPOCH: std::sync::OnceLock<Instant> = std::sync::OnceLock::new();
-    let epoch = EPOCH.get_or_init(Instant::now);
-    Instant::now().duration_since(*epoch).as_nanos() as u64
-}
-
-/// Get steady (monotonic) time in nanoseconds (no_std stub).
-#[cfg(not(feature = "std"))]
-fn get_steady_time_ns() -> u64 {
-    // In no_std environments, we would need platform-specific code
-    0
+    platform::get_time_ns()
 }
 
 // ============================================================================

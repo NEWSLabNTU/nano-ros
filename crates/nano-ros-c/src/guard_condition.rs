@@ -157,20 +157,8 @@ pub unsafe extern "C" fn nano_ros_guard_condition_trigger(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    // Use atomic operation for thread-safety
-    #[cfg(feature = "std")]
-    {
-        use core::sync::atomic::{AtomicBool, Ordering};
-        // Cast the triggered field to atomic and store
-        let triggered_ptr = &guard.triggered as *const bool as *const AtomicBool;
-        (*triggered_ptr).store(true, Ordering::Release);
-    }
-
-    #[cfg(not(feature = "std"))]
-    {
-        // For no_std without atomics, use volatile write
-        core::ptr::write_volatile(&mut guard.triggered, true);
-    }
+    // Use platform atomic operation for thread-safety
+    crate::platform::atomic_store_bool(&mut guard.triggered as *mut bool, true);
 
     NANO_ROS_RET_OK
 }
@@ -190,17 +178,8 @@ pub unsafe extern "C" fn nano_ros_guard_condition_is_triggered(
         return false;
     }
 
-    #[cfg(feature = "std")]
-    {
-        use core::sync::atomic::{AtomicBool, Ordering};
-        let triggered_ptr = &guard.triggered as *const bool as *const AtomicBool;
-        (*triggered_ptr).load(Ordering::Acquire)
-    }
-
-    #[cfg(not(feature = "std"))]
-    {
-        core::ptr::read_volatile(&guard.triggered)
-    }
+    // Use platform atomic operation for thread-safety
+    crate::platform::atomic_load_bool(&guard.triggered as *const bool)
 }
 
 /// Clear the triggered flag.
@@ -214,17 +193,8 @@ pub unsafe extern "C" fn nano_ros_guard_condition_clear(
 
     let guard = &mut *guard;
 
-    #[cfg(feature = "std")]
-    {
-        use core::sync::atomic::{AtomicBool, Ordering};
-        let triggered_ptr = &guard.triggered as *const bool as *const AtomicBool;
-        (*triggered_ptr).store(false, Ordering::Release);
-    }
-
-    #[cfg(not(feature = "std"))]
-    {
-        core::ptr::write_volatile(&mut guard.triggered, false);
-    }
+    // Use platform atomic operation for thread-safety
+    crate::platform::atomic_store_bool(&mut guard.triggered as *mut bool, false);
 
     NANO_ROS_RET_OK
 }

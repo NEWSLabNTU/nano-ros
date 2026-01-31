@@ -16,6 +16,7 @@
 #include <stddef.h>
 
 #include "nano_ros/visibility.h"
+#include "nano_ros/platform.h"
 
 #ifdef __cplusplus
 extern "C" {
