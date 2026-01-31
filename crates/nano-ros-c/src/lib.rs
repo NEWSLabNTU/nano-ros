@@ -28,6 +28,7 @@ extern crate std;
 extern crate alloc;
 
 mod cdr;
+mod clock;
 mod constants;
 mod error;
 mod executor;
@@ -41,6 +42,7 @@ mod timer;
 
 // Re-export all public C API items
 pub use cdr::*;
+pub use clock::*;
 pub use constants::*;
 pub use error::*;
 pub use executor::*;

@@ -12,6 +12,7 @@
 #include <nano_ros/publisher.h>
 #include <nano_ros/timer.h>
 #include <nano_ros/executor.h>
+#include <nano_ros/clock.h>
 
 // ----------------------------------------------------------------------------
 // std_msgs/Int32 message support (manual definition for this example)
@@ -127,6 +128,17 @@ int main(int argc, char** argv) {
 
     printf("Locator: %s\n", locator);
     printf("Domain ID: %d\n", domain_id);
+
+    // Demo: Initialize and use clock API
+    nano_ros_clock_t clock = nano_ros_clock_get_zero_initialized();
+    nano_ros_ret_t clock_ret = nano_ros_clock_init(&clock, NANO_ROS_CLOCK_SYSTEM_TIME);
+    if (clock_ret == NANO_ROS_RET_OK) {
+        nano_ros_time_t now;
+        if (nano_ros_clock_get_now(&clock, &now) == NANO_ROS_RET_OK) {
+            printf("System time: %d.%09u sec\n", now.sec, now.nanosec);
+        }
+        (void)nano_ros_clock_fini(&clock);
+    }
 
     // Initialize support context
     nano_ros_support_t support = nano_ros_support_get_zero_initialized();
