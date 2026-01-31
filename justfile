@@ -559,6 +559,18 @@ test-rust-full:
 # C Integration Tests
 # =============================================================================
 
+# Run C message generation tests (full integration: build + generate + compile + run)
+test-c-msg-gen:
+    ./tests/c-msg-gen-tests.sh
+
+# Run C codegen Rust unit tests (in cargo-nano-ros)
+test-rust-c-codegen:
+    cd colcon-nano-ros/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture
+
+# Run all C codegen tests (unit + integration)
+test-c-codegen: test-rust-c-codegen test-c-msg-gen
+    @echo "All C codegen tests passed!"
+
 # Run C integration tests (native-c-talker/listener)
 test-c:
     ./tests/c-tests.sh
