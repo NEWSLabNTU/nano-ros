@@ -42,6 +42,9 @@ just test-rust-platform
 # ROS 2 rmw_zenoh interop tests (requires ROS 2 + rmw_zenoh_cpp)
 just test-rust-rmw-interop
 
+# C API integration tests (native-c-talker/listener)
+./tests/c-tests.sh
+
 # Zephyr native_sim tests (requires west workspace + TAP network)
 just test-zephyr
 ```
@@ -62,7 +65,8 @@ just test-zephyr
 ```
 tests/
 ├── README.md           # This file
-├── rust-tests.sh       # Optional wrapper script for nice output
+├── rust-tests.sh       # Optional wrapper script for Rust tests
+├── c-tests.sh          # C API integration tests (CMake-based)
 ├── zephyr/             # Zephyr native_sim tests (shell-based)
 │   └── run.sh          # Requires west workspace + TAP network
 └── simple-workspace/   # Standalone build verification
@@ -136,6 +140,24 @@ sudo ./scripts/setup-zephyr-network.sh
 
 # Run tests
 just test-zephyr
+```
+
+### c (shell-based)
+Tests C API integration using CMake-built examples:
+- C talker → C listener pub/sub communication
+- Verifies nano-ros-c FFI bindings work correctly
+
+**Requirements:** `cmake`, `zenohd`, Rust toolchain
+
+```bash
+# Run C tests
+./tests/c-tests.sh
+
+# Verbose output
+./tests/c-tests.sh --verbose
+
+# Skip rebuild (use existing binaries)
+./tests/c-tests.sh --skip-build
 ```
 
 ## Requirements
