@@ -6,7 +6,12 @@
 #include <string.h>
 #include <signal.h>
 
-#include <nano_ros.h>
+// nano-ros modular includes (rclc-style)
+#include <nano_ros/init.h>
+#include <nano_ros/node.h>
+#include <nano_ros/publisher.h>
+#include <nano_ros/timer.h>
+#include <nano_ros/executor.h>
 
 // ----------------------------------------------------------------------------
 // std_msgs/Int32 message support (manual definition for this example)

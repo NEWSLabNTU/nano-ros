@@ -49,9 +49,9 @@ if(NOT DEFINED NANO_ROS_C_BUILD_TYPE)
   set(NANO_ROS_C_BUILD_TYPE "release")
 endif()
 
-# Find include directory
+# Find include directory (look for modular header structure)
 find_path(NanoRosC_INCLUDE_DIR
-  NAMES nano_ros.h
+  NAMES nano_ros/types.h
   HINTS
     "${NANO_ROS_ROOT}/crates/nano-ros-c/include"
     "${CMAKE_INSTALL_PREFIX}/include"

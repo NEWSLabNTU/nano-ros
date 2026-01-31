@@ -24,8 +24,5 @@ nano-ros = { path = "../nano-ros", default-features = false, features = ["zenoh"
 nano-ros-transport = { path = "../nano-ros-transport", default-features = false, features = ["zenoh"] }
 nano-ros-core = { path = "../nano-ros-core", default-features = false }
 
-[build-dependencies]
-cbindgen = "0.26"
-
 [package.metadata.docs.rs]
 all-features = true
