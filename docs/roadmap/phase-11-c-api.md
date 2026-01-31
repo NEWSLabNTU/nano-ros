@@ -36,8 +36,8 @@ microcontrollers.
 | 11.9 Examples                | Complete        | Native C talker/listener                    |
 | 11.10 Zephyr Integration     | Partial         | Uses zenoh_shim directly                    |
 | 11.11 rclc Header Compat     | Complete        | Modular headers matching rclc structure     |
-| 11.12 Clock API              | Not Started     | ROS/steady/system time                      |
-| 11.13 Parameters             | Not Started     | Parameter server                            |
+| 11.12 Clock API              | Complete        | ROS/steady/system time                      |
+| 11.13 Parameters             | Complete        | Parameter server with callbacks             |
 | 11.14 Actions                | Not Started     | Action server/client                        |
 | 11.15 Guard Conditions       | Not Started     | Executor wake-up triggers                   |
 | 11.16 no_std Support         | Not Started     | Full embedded support                       |
@@ -694,83 +694,166 @@ crates/nano-ros-c/include/nano_ros/
 
 ### 11.12 Clock API
 
-**Status: NOT STARTED**
+**Status: COMPLETE**
 
 #### Work Items
-- [ ] Implement `nano_ros_clock_t` structure
-- [ ] Implement ROS time source
-- [ ] Implement steady time source
-- [ ] Implement system time source
-- [ ] Add clock to support context
-- [ ] Support time override for simulation
+- [x] Implement `nano_ros_clock_t` structure
+- [x] Implement ROS time source (currently same as system time)
+- [x] Implement steady time source (monotonic)
+- [x] Implement system time source (wall clock)
+- [x] Implement `nano_ros_time_t` and `nano_ros_duration_t` types
+- [x] Implement time utility functions (add, sub, compare)
+- [ ] Support time override for simulation (future: /clock topic subscription)
 
-#### API Design
+#### Deliverables
+- `crates/nano-ros-c/include/nano_ros/clock.h`
+- `crates/nano-ros-c/src/clock.rs`
+
+#### API
 ```c
-typedef enum {
-    NANO_ROS_CLOCK_ROS_TIME,
-    NANO_ROS_CLOCK_SYSTEM_TIME,
-    NANO_ROS_CLOCK_STEADY_TIME
+#include <nano_ros/clock.h>
+
+// Time types (compatible with builtin_interfaces)
+typedef struct nano_ros_time_t {
+    int32_t sec;
+    uint32_t nanosec;
+} nano_ros_time_t;
+
+typedef struct nano_ros_duration_t {
+    int32_t sec;
+    uint32_t nanosec;
+} nano_ros_duration_t;
+
+// Clock types
+typedef enum nano_ros_clock_type_t {
+    NANO_ROS_CLOCK_UNINITIALIZED = 0,
+    NANO_ROS_CLOCK_ROS_TIME = 1,      // Follows /clock if available
+    NANO_ROS_CLOCK_SYSTEM_TIME = 2,   // Wall clock time
+    NANO_ROS_CLOCK_STEADY_TIME = 3,   // Monotonic clock
 } nano_ros_clock_type_t;
 
-typedef struct {
-    nano_ros_clock_type_t type;
-    // internal state
-} nano_ros_clock_t;
-
-nano_ros_ret_t nano_ros_clock_init(
-    nano_ros_clock_t *clock,
-    nano_ros_clock_type_t type);
-
-nano_ros_ret_t nano_ros_clock_get_now(
-    nano_ros_clock_t *clock,
-    int64_t *nanoseconds);
-
+// Clock functions
+nano_ros_clock_t nano_ros_clock_get_zero_initialized(void);
+nano_ros_ret_t nano_ros_clock_init(nano_ros_clock_t *clock, nano_ros_clock_type_t type);
+nano_ros_ret_t nano_ros_clock_get_now(const nano_ros_clock_t *clock, nano_ros_time_t *time_out);
+nano_ros_ret_t nano_ros_clock_get_now_ns(const nano_ros_clock_t *clock, int64_t *nanoseconds);
+bool nano_ros_clock_is_valid(const nano_ros_clock_t *clock);
+nano_ros_clock_type_t nano_ros_clock_get_type(const nano_ros_clock_t *clock);
 nano_ros_ret_t nano_ros_clock_fini(nano_ros_clock_t *clock);
+
+// Time utilities
+nano_ros_time_t nano_ros_time_from_nanoseconds(int64_t nanoseconds);
+int64_t nano_ros_time_to_nanoseconds(const nano_ros_time_t *time);
+nano_ros_time_t nano_ros_time_add(nano_ros_time_t time, nano_ros_duration_t duration);
+nano_ros_time_t nano_ros_time_sub(nano_ros_time_t time, nano_ros_duration_t duration);
+int nano_ros_time_compare(nano_ros_time_t a, nano_ros_time_t b);
 ```
+
+#### Usage Example
+```c
+#include <nano_ros/clock.h>
+
+// Initialize a system clock
+nano_ros_clock_t clock = nano_ros_clock_get_zero_initialized();
+nano_ros_clock_init(&clock, NANO_ROS_CLOCK_SYSTEM_TIME);
+
+// Get current time
+nano_ros_time_t now;
+nano_ros_clock_get_now(&clock, &now);
+printf("Time: %d.%09u sec\n", now.sec, now.nanosec);
+
+// Clean up
+nano_ros_clock_fini(&clock);
+```
+
+#### Notes
+- ROS time currently returns system time; full /clock topic support requires subscription integration
+- Steady time uses a monotonic source, suitable for measuring elapsed time
+- All time types are compatible with `builtin_interfaces/msg/Time` and `Duration`
 
 ### 11.13 Parameters
 
-**Status: NOT STARTED**
+**Status: COMPLETE**
 
 #### Work Items
-- [ ] Implement `nano_ros_parameter_t` structure
-- [ ] Implement parameter types (bool, int, double, string, arrays)
-- [ ] Implement parameter server
-- [ ] Implement parameter client
-- [ ] Add parameter change callbacks
-- [ ] Support parameter events topic
+- [x] Implement `nano_ros_parameter_t` structure
+- [x] Implement parameter types (bool, int64, double, string)
+- [x] Implement parameter server with static allocation
+- [x] Add parameter change callbacks
+- [ ] Support parameter events topic (future: ROS 2 network integration)
+- [ ] Array parameter types (future)
 
-#### API Design
+#### Deliverables
+- `crates/nano-ros-c/include/nano_ros/parameter.h`
+- `crates/nano-ros-c/src/parameter.rs`
+
+#### API
 ```c
-typedef enum {
-    NANO_ROS_PARAMETER_NOT_SET,
-    NANO_ROS_PARAMETER_BOOL,
-    NANO_ROS_PARAMETER_INTEGER,
-    NANO_ROS_PARAMETER_DOUBLE,
-    NANO_ROS_PARAMETER_STRING,
-    NANO_ROS_PARAMETER_BYTE_ARRAY,
-    NANO_ROS_PARAMETER_BOOL_ARRAY,
-    NANO_ROS_PARAMETER_INTEGER_ARRAY,
-    NANO_ROS_PARAMETER_DOUBLE_ARRAY,
-    NANO_ROS_PARAMETER_STRING_ARRAY
+#include <nano_ros/parameter.h>
+
+// Parameter types (compatible with rcl_interfaces/msg/ParameterType)
+typedef enum nano_ros_parameter_type_t {
+    NANO_ROS_PARAMETER_NOT_SET = 0,
+    NANO_ROS_PARAMETER_BOOL = 1,
+    NANO_ROS_PARAMETER_INTEGER = 2,
+    NANO_ROS_PARAMETER_DOUBLE = 3,
+    NANO_ROS_PARAMETER_STRING = 4,
+    // Array types defined but not yet implemented
 } nano_ros_parameter_type_t;
 
-nano_ros_ret_t nano_ros_node_declare_parameter(
-    nano_ros_node_t *node,
-    const char *name,
-    nano_ros_parameter_type_t type,
-    const void *default_value);
+// Parameter server (uses static allocation)
+nano_ros_param_server_t nano_ros_param_server_get_zero_initialized(void);
+nano_ros_ret_t nano_ros_param_server_init(
+    nano_ros_param_server_t *server,
+    nano_ros_parameter_t *storage,  // User-provided storage array
+    size_t capacity);
 
-nano_ros_ret_t nano_ros_node_get_parameter(
-    nano_ros_node_t *node,
-    const char *name,
-    void *value);
+// Declare parameters with default values
+nano_ros_ret_t nano_ros_param_declare_bool(server, name, default_value);
+nano_ros_ret_t nano_ros_param_declare_integer(server, name, default_value);
+nano_ros_ret_t nano_ros_param_declare_double(server, name, default_value);
+nano_ros_ret_t nano_ros_param_declare_string(server, name, default_value);
 
-nano_ros_ret_t nano_ros_node_set_parameter(
-    nano_ros_node_t *node,
-    const char *name,
-    const void *value);
+// Get/set parameter values
+nano_ros_ret_t nano_ros_param_get_bool(server, name, &value);
+nano_ros_ret_t nano_ros_param_set_bool(server, name, value);
+// ... similar for integer, double, string
+
+// Query and callback
+bool nano_ros_param_has(server, name);
+nano_ros_parameter_type_t nano_ros_param_get_type(server, name);
+nano_ros_ret_t nano_ros_param_server_set_callback(server, callback, context);
 ```
+
+#### Usage Example
+```c
+#include <nano_ros/parameter.h>
+
+// Allocate storage for parameters
+nano_ros_parameter_t param_storage[8];
+nano_ros_param_server_t params = nano_ros_param_server_get_zero_initialized();
+nano_ros_param_server_init(&params, param_storage, 8);
+
+// Declare parameters with defaults
+nano_ros_param_declare_bool(&params, "verbose", false);
+nano_ros_param_declare_integer(&params, "rate_hz", 10);
+nano_ros_param_declare_double(&params, "gain", 1.5);
+nano_ros_param_declare_string(&params, "topic", "/data");
+
+// Read and modify
+int64_t rate;
+nano_ros_param_get_integer(&params, "rate_hz", &rate);
+nano_ros_param_set_integer(&params, "rate_hz", 20);
+
+// Clean up
+nano_ros_param_server_fini(&params);
+```
+
+#### Design Notes
+- **Static allocation**: User provides parameter storage array (no malloc)
+- **Type safety**: Separate get/set functions per type with validation
+- **Callbacks**: Optional callback invoked before parameter changes (can reject)
+- **Embedded-friendly**: Fixed-size name (64 bytes) and string value (128 bytes)
 
 ### 11.14 Actions
 

@@ -13,6 +13,7 @@
 #include <nano_ros/timer.h>
 #include <nano_ros/executor.h>
 #include <nano_ros/clock.h>
+#include <nano_ros/parameter.h>
 
 // ----------------------------------------------------------------------------
 // std_msgs/Int32 message support (manual definition for this example)
@@ -138,6 +139,39 @@ int main(int argc, char** argv) {
             printf("System time: %d.%09u sec\n", now.sec, now.nanosec);
         }
         (void)nano_ros_clock_fini(&clock);
+    }
+
+    // Demo: Initialize and use parameter server
+    nano_ros_parameter_t param_storage[8];  // Storage for up to 8 parameters
+    nano_ros_param_server_t params = nano_ros_param_server_get_zero_initialized();
+    if (nano_ros_param_server_init(&params, param_storage, 8) == NANO_ROS_RET_OK) {
+        // Declare parameters with default values
+        nano_ros_param_declare_bool(&params, "verbose", false);
+        nano_ros_param_declare_integer(&params, "publish_rate_hz", 1);
+        nano_ros_param_declare_double(&params, "scale_factor", 1.0);
+        nano_ros_param_declare_string(&params, "topic_name", "/chatter");
+
+        // Read back and display parameter values
+        bool verbose = false;
+        int64_t rate_hz = 0;
+        double scale = 0.0;
+        char topic[64] = {0};
+
+        nano_ros_param_get_bool(&params, "verbose", &verbose);
+        nano_ros_param_get_integer(&params, "publish_rate_hz", &rate_hz);
+        nano_ros_param_get_double(&params, "scale_factor", &scale);
+        nano_ros_param_get_string(&params, "topic_name", topic, sizeof(topic));
+
+        printf("Parameters: verbose=%s, rate=%lld Hz, scale=%.2f, topic=%s\n",
+               verbose ? "true" : "false", (long long)rate_hz, scale, topic);
+
+        // Demonstrate parameter modification
+        nano_ros_param_set_bool(&params, "verbose", true);
+        nano_ros_param_get_bool(&params, "verbose", &verbose);
+        printf("After set: verbose=%s\n", verbose ? "true" : "false");
+
+        // Clean up (parameters are local demo only)
+        (void)nano_ros_param_server_fini(&params);
     }
 
     // Initialize support context
