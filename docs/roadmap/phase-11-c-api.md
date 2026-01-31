@@ -23,24 +23,24 @@ microcontrollers.
 
 ## Progress Summary
 
-| Task | Status | Description |
-|------|--------|-------------|
-| 11.1 Project Setup | Complete | Crate structure, cbindgen, CMake |
-| 11.2 Core Types | Complete | Support, Node, Error codes, QoS |
-| 11.3 Publisher | Complete | Raw publish, QoS support |
-| 11.4 Subscription | Complete | Callback dispatch, executor polling |
-| 11.5 Executor | Complete | spin, spin_some, spin_period |
-| 11.6 Timer | Complete | Periodic callbacks, cancel/reset |
-| 11.7 Services | Complete | Server and client (sync) |
-| 11.8 Message Generation | Complete | C templates + CDR helpers |
-| 11.9 Examples | Complete | Native C talker/listener |
-| 11.10 Zephyr Integration | Partial | Uses zenoh_shim directly |
-| **11.11 rclc Header Compat** | **Not Started** | **Match rclc include structure (PRIORITY)** |
-| 11.12 Clock API | Not Started | ROS/steady/system time |
-| 11.13 Parameters | Not Started | Parameter server |
-| 11.14 Actions | Not Started | Action server/client |
-| 11.15 Guard Conditions | Not Started | Executor wake-up triggers |
-| 11.16 no_std Support | Not Started | Full embedded support |
+| Task                         | Status          | Description                                 |
+|------------------------------|-----------------|---------------------------------------------|
+| 11.1 Project Setup           | Complete        | Crate structure, CMake integration          |
+| 11.2 Core Types              | Complete        | Support, Node, Error codes, QoS             |
+| 11.3 Publisher               | Complete        | Raw publish, QoS support                    |
+| 11.4 Subscription            | Complete        | Callback dispatch, executor polling         |
+| 11.5 Executor                | Complete        | spin, spin_some, spin_period                |
+| 11.6 Timer                   | Complete        | Periodic callbacks, cancel/reset            |
+| 11.7 Services                | Complete        | Server and client (sync)                    |
+| 11.8 Message Generation      | Complete        | C templates + CDR helpers                   |
+| 11.9 Examples                | Complete        | Native C talker/listener                    |
+| 11.10 Zephyr Integration     | Partial         | Uses zenoh_shim directly                    |
+| 11.11 rclc Header Compat     | Complete        | Modular headers matching rclc structure     |
+| 11.12 Clock API              | Not Started     | ROS/steady/system time                      |
+| 11.13 Parameters             | Not Started     | Parameter server                            |
+| 11.14 Actions                | Not Started     | Action server/client                        |
+| 11.15 Guard Conditions       | Not Started     | Executor wake-up triggers                   |
+| 11.16 no_std Support         | Not Started     | Full embedded support                       |
 
 ## Architecture
 
@@ -48,14 +48,15 @@ microcontrollers.
 ┌─────────────────────────────────────────────────────────────────┐
 │                     User Application (C)                        │
 ├─────────────────────────────────────────────────────────────────┤
-│                      nano_ros.h (C API)                         │
+│                  nano_ros/ (Modular C Headers)                  │
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
-│  │  Node    │ │Publisher │ │Subscriber│ │ Executor │           │
+│  │ node.h   │ │publisher.│ │subscript.│ │executor.h│           │
+│  │ init.h   │ │   h      │ │   h      │ │ timer.h  │           │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
 ├─────────────────────────────────────────────────────────────────┤
 │                    nano_ros_impl.rs (Rust FFI)                  │
 │  - Thin wrapper exposing Rust types to C                        │
-│  - cbindgen-generated headers                                   │
+│  - Manually maintained headers (no cbindgen at build time)      │
 ├─────────────────────────────────────────────────────────────────┤
 │                      nano-ros (Rust core)                       │
 │  - nano-ros-node, nano-ros-transport, nano-ros-core             │
@@ -345,7 +346,7 @@ Messages are generated using the existing `cargo nano-ros generate` tool with C 
 #ifndef STD_MSGS__MSG__INT32_H_
 #define STD_MSGS__MSG__INT32_H_
 
-#include <nano_ros.h>
+#include <nano_ros/types.h>
 
 typedef struct {
     int32_t data;
@@ -371,7 +372,11 @@ bool std_msgs__msg__Int32__deserialize(
 ### Usage Example
 
 ```c
-#include <nano_ros.h>
+#include <nano_ros/init.h>
+#include <nano_ros/node.h>
+#include <nano_ros/publisher.h>
+#include <nano_ros/subscription.h>
+#include <nano_ros/executor.h>
 #include <std_msgs/msg/Int32.h>
 
 // Callback for subscription
@@ -434,15 +439,14 @@ int main(void) {
 
 #### Work Items
 - [x] Create `crates/nano-ros-c/` crate structure
-- [x] Setup cbindgen for header generation
+- [x] Create manually maintained C headers (cbindgen removed from build)
 - [x] Create CMake build integration
 - [x] Setup cross-compilation for ARM targets
 
 #### Deliverables
 - `crates/nano-ros-c/Cargo.toml`
 - `crates/nano-ros-c/src/lib.rs`
-- `crates/nano-ros-c/include/nano_ros.h` (generated)
-- `crates/nano-ros-c/cbindgen.toml`
+- `crates/nano-ros-c/include/nano_ros/` (modular headers)
 
 ### 11.2 Core Types and Initialization
 
@@ -556,7 +560,7 @@ types, strings, and nested messages.
 - [x] Implement CDR helper functions in nano-ros-c
 
 #### CDR Helper Functions
-Implemented in `crates/nano-ros-c/src/cdr.rs` and exported in `nano_ros.h`:
+Implemented in `crates/nano-ros-c/src/cdr.rs` and exported in `nano_ros/cdr.h`:
 ```c
 // Write functions (all return 0 on success, -1 on buffer overflow)
 int32_t nano_ros_cdr_write_bool(uint8_t** ptr, const uint8_t* end, bool value);
@@ -634,69 +638,59 @@ int32_t nano_ros_cdr_read_string(const uint8_t** ptr, const uint8_t* end, char* 
 Current Zephyr examples use `zenoh_shim` directly as an interim solution. Full integration
 requires no_std transport support in nano-ros-c.
 
-### 11.11 rclc Header Compatibility (PRIORITY)
+### 11.11 rclc Header Compatibility
 
-**Status: NOT STARTED**
-
-This task should be completed before other remaining tasks to establish the proper API structure.
+**Status: COMPLETE**
 
 #### Work Items
-- [ ] Refactor single `nano_ros.h` into modular headers matching rclc structure
-- [ ] Create `nano_ros/init.h` - Initialization functions
-- [ ] Create `nano_ros/node.h` - Node API
-- [ ] Create `nano_ros/publisher.h` - Publisher API
-- [ ] Create `nano_ros/subscription.h` - Subscription API
-- [ ] Create `nano_ros/service.h` - Service server API
-- [ ] Create `nano_ros/client.h` - Service client API
-- [ ] Create `nano_ros/timer.h` - Timer API
-- [ ] Create `nano_ros/executor.h` - Executor API
-- [ ] Create `nano_ros/types.h` - Common types and return codes
-- [ ] Create `nano_ros/visibility.h` - Export macros
-- [ ] Update cbindgen.toml to generate modular headers
-- [ ] Create umbrella `nano_ros.h` that includes all sub-headers
-- [ ] Update examples to use modular includes
+- [x] Refactor into modular headers matching rclc structure
+- [x] Create `nano_ros/init.h` - Initialization functions
+- [x] Create `nano_ros/node.h` - Node API
+- [x] Create `nano_ros/publisher.h` - Publisher API
+- [x] Create `nano_ros/subscription.h` - Subscription API
+- [x] Create `nano_ros/service.h` - Service server API
+- [x] Create `nano_ros/client.h` - Service client API
+- [x] Create `nano_ros/timer.h` - Timer API
+- [x] Create `nano_ros/executor.h` - Executor API
+- [x] Create `nano_ros/types.h` - Common types and return codes
+- [x] Create `nano_ros/visibility.h` - Export macros
+- [x] Create `nano_ros/cdr.h` - CDR serialization helpers
+- [x] Update examples to use modular includes
+- [x] Update message generation templates for modular includes
+- [x] Remove cbindgen from build-time (headers are manually maintained)
 
-#### Target Structure
+#### Final Structure
 ```
-crates/nano-ros-c/include/
-├── nano_ros.h              # Umbrella header (includes all)
-└── nano_ros/
-    ├── init.h              # nano_ros_support_init/fini
-    ├── node.h              # nano_ros_node_*
-    ├── publisher.h         # nano_ros_publisher_*, nano_ros_publish_*
-    ├── subscription.h      # nano_ros_subscription_*
-    ├── service.h           # nano_ros_service_*
-    ├── client.h            # nano_ros_client_*
-    ├── timer.h             # nano_ros_timer_*
-    ├── executor.h          # nano_ros_executor_*
-    ├── types.h             # Return codes, common types
-    ├── visibility.h        # NANO_ROS_PUBLIC, etc.
-    └── action.h            # (future) nano_ros_action_*
+crates/nano-ros-c/include/nano_ros/
+├── init.h              # nano_ros_support_init/fini
+├── node.h              # nano_ros_node_*
+├── publisher.h         # nano_ros_publisher_*, nano_ros_publish_*
+├── subscription.h      # nano_ros_subscription_*
+├── service.h           # nano_ros_service_*
+├── client.h            # nano_ros_client_*
+├── timer.h             # nano_ros_timer_*
+├── executor.h          # nano_ros_executor_*
+├── types.h             # Return codes, QoS, message_type_t
+├── visibility.h        # NANO_ROS_PUBLIC, NANO_ROS_WARN_UNUSED
+└── cdr.h               # CDR read/write helpers
 ```
 
-#### rclc Reference Structure
-```
-external/rclc/rclc/include/rclc/
-├── rclc.h                  # Umbrella header
-├── init.h
-├── node.h
-├── publisher.h
-├── subscription.h
-├── service.h
-├── client.h
-├── timer.h
-├── executor.h
-├── executor_handle.h
-├── types.h
-├── visibility_control.h
-└── action_*.h
+#### Usage Pattern (rclc-style)
+```c
+// Include only what you need
+#include <nano_ros/init.h>
+#include <nano_ros/node.h>
+#include <nano_ros/publisher.h>
+#include <nano_ros/executor.h>
 ```
 
 #### Notes
-The current monolithic `nano_ros.h` (generated by cbindgen) should be split to:
-- Improve compile times for users who only need specific features
-- Match rclc include patterns for easier migration
-- Enable conditional inclusion based on features
+- **No umbrella header**: Unlike rclc, we don't provide a `nano_ros.h` umbrella header.
+  Users must include specific headers they need (matches rclc best practices).
+- **Manually maintained**: Headers are manually maintained, not cbindgen-generated.
+  This allows for cleaner API design and avoids build-time generation issues.
+- **No build-time code generation**: Headers can be installed to system directories
+  without any issues since nothing is generated during compilation.
 
 ### 11.12 Clock API
 
