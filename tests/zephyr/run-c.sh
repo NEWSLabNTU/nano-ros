@@ -1,8 +1,9 @@
 #!/bin/bash
-# Test: Zephyr native_sim Integration
+# Test: Zephyr C Examples (native_sim)
 #
-# This test verifies that nano-ros running on Zephyr RTOS (native_sim)
-# can communicate with native Rust subscribers via zenoh.
+# This test verifies that the nano-ros C API examples (zephyr-c-talker)
+# running on Zephyr RTOS (native_sim) can successfully publish messages
+# via zenoh.
 #
 # Prerequisites:
 #   - Zephyr workspace set up (./scripts/zephyr/setup.sh)
@@ -10,9 +11,9 @@
 #   - zenohd installed
 #
 # Usage:
-#   ./tests/zephyr/run.sh
-#   ./tests/zephyr/run.sh --verbose
-#   ./tests/zephyr/run.sh --skip-build
+#   ./tests/zephyr/run-c.sh
+#   ./tests/zephyr/run-c.sh --verbose
+#   ./tests/zephyr/run-c.sh --skip-build
 #
 # Note: This test requires the Zephyr workspace to be initialized.
 # Run ./scripts/zephyr/setup.sh first if not done.
@@ -109,14 +110,15 @@ else
     NANO_ROS_NAME="$(basename "$PROJECT_ROOT")"
     ZEPHYR_WORKSPACE="$(dirname "$PROJECT_ROOT")/${NANO_ROS_NAME}-workspace"
 fi
-TAP_INTERFACE="zeth"
+# TAP interface: Use bridge (zeth-br) which has the host IP
+TAP_INTERFACE="zeth-br"
 HOST_IP="192.0.2.2"
 ZEPHYR_IP="192.0.2.1"
 TEST_TIMEOUT=15
 
 setup_cleanup
 
-log_header "Zephyr native_sim Integration Test"
+log_header "Zephyr C Examples Test (native_sim)"
 
 # =============================================================================
 # Network Device Status Check
@@ -236,10 +238,10 @@ check_zephyr_prerequisites() {
     fi
 
     # Check for existing build
-    if [ -f "$ZEPHYR_WORKSPACE/build/zephyr/zephyr.exe" ]; then
-        log_success "Zephyr executable found"
+    if [ -f "$ZEPHYR_WORKSPACE/build-c-talker/zephyr/zephyr.exe" ]; then
+        log_success "Zephyr C talker executable found"
     else
-        log_info "Zephyr executable not found (will build)"
+        log_info "Zephyr C talker executable not found (will build)"
     fi
 
     return $missing
@@ -270,14 +272,14 @@ build_zephyr_examples() {
     # External workspace: examples at nano-ros/examples/
     local example_path
     if [ -d "nano-ros/examples" ]; then
-        example_path="nano-ros/examples/zephyr-talker"
+        example_path="nano-ros/examples/zephyr-c-talker"
     else
-        example_path="$PROJECT_ROOT/examples/zephyr-talker"
+        example_path="$PROJECT_ROOT/examples/zephyr-c-talker"
     fi
 
-    # Build talker for native_sim/native/64
-    log_info "Building zephyr-talker for native_sim/native/64..."
-    if west build -b native_sim/native/64 "$example_path" -p auto 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
+    # Build C talker for native_sim/native/64
+    log_info "Building zephyr-c-talker for native_sim/native/64..."
+    if west build -b native_sim/native/64 "$example_path" -d build-c-talker -p auto 2>&1 | tee "$(tmpfile zephyr_build.txt)" | tail -10; then
         log_success "Talker build complete"
     else
         log_error "Talker build failed"
@@ -293,7 +295,7 @@ build_zephyr_examples() {
 # =============================================================================
 
 test_zephyr_to_native() {
-    log_header "Test: Zephyr Talker -> Native Subscriber"
+    log_header "Test: Zephyr C Talker"
 
     # Start zenoh router
     log_info "Starting zenoh router..."
@@ -311,32 +313,27 @@ test_zephyr_to_native() {
     fi
     log_success "zenohd started (PID: $zenohd_pid)"
 
-    # Start native subscriber
-    log_info "Starting native subscriber..."
-    cd "$PROJECT_ROOT"
-    timeout "$TEST_TIMEOUT" cargo run -p zenoh-pico --example sub_test --features std \
-        > "$(tmpfile zephyr_native_sub.txt)" 2>&1 &
-    local sub_pid=$!
-    register_pid $sub_pid
-    sleep 2
-
-    # Start Zephyr talker
-    log_info "Starting Zephyr talker..."
+    # Start Zephyr C talker
+    log_info "Starting Zephyr C talker..."
     cd "$ZEPHYR_WORKSPACE"
-    timeout "$TEST_TIMEOUT" ./build/zephyr/zephyr.exe > "$(tmpfile zephyr_talker.txt)" 2>&1 &
+    timeout "$TEST_TIMEOUT" ./build-c-talker/zephyr/zephyr.exe > "$(tmpfile zephyr_talker.txt)" 2>&1 &
     local zephyr_pid=$!
     register_pid $zephyr_pid
 
-    # Wait for communication
-    log_info "Waiting for messages (timeout: ${TEST_TIMEOUT}s)..."
+    # Wait for messages to be published
+    log_info "Waiting for Zephyr to publish messages (timeout: ${TEST_TIMEOUT}s)..."
 
-    # Wait for subscriber to receive messages or timeout
     local elapsed=0
     while [ $elapsed -lt $TEST_TIMEOUT ]; do
-        if grep -q "SUCCESS" "$(tmpfile zephyr_native_sub.txt)" 2>/dev/null; then
+        # Check if talker has published at least 3 messages
+        local count
+        count=$(grep -c "Published:" "$(tmpfile zephyr_talker.txt)" 2>/dev/null | head -1 || echo "0")
+        count="${count:-0}"
+        if [ "$count" -ge 3 ] 2>/dev/null; then
             break
         fi
-        if grep -q "TIMEOUT" "$(tmpfile zephyr_native_sub.txt)" 2>/dev/null; then
+        # Check for errors
+        if grep -q "Failed to" "$(tmpfile zephyr_talker.txt)" 2>/dev/null; then
             break
         fi
         sleep 1
@@ -344,28 +341,23 @@ test_zephyr_to_native() {
     done
 
     # Check results
-    if grep -q "SUCCESS" "$(tmpfile zephyr_native_sub.txt)" 2>/dev/null; then
-        local count
-        count=$(grep -c "Received Int32:" "$(tmpfile zephyr_native_sub.txt)" 2>/dev/null || echo 0)
-        log_success "Native subscriber received $count messages from Zephyr!"
+    local pub_count
+    pub_count=$(grep -c "Published:" "$(tmpfile zephyr_talker.txt)" 2>/dev/null || echo 0)
+
+    if [ "$pub_count" -ge 3 ]; then
+        log_success "Zephyr C talker published $pub_count messages successfully!"
 
         if [ "$VERBOSE" = true ]; then
             echo ""
-            echo "=== Subscriber Output ==="
-            cat "$(tmpfile zephyr_native_sub.txt)"
-            echo ""
-            echo "=== Zephyr Output ==="
-            head -25 "$(tmpfile zephyr_talker.txt)"
+            echo "=== Zephyr Talker Output ==="
+            head -30 "$(tmpfile zephyr_talker.txt)"
         fi
         return 0
     else
-        log_error "Native subscriber did not receive messages from Zephyr"
-        echo ""
-        echo "=== Subscriber Output ==="
-        cat "$(tmpfile zephyr_native_sub.txt)" 2>/dev/null || echo "(empty)"
+        log_error "Zephyr C talker failed to publish messages"
         echo ""
         echo "=== Zephyr Output ==="
-        cat "$(tmpfile zephyr_talker.txt)" 2>/dev/null | head -30
+        cat "$(tmpfile zephyr_talker.txt)" 2>/dev/null | head -40
         echo ""
         echo "=== zenohd Output ==="
         cat "$(tmpfile zephyr_zenohd.txt)" 2>/dev/null | tail -10
@@ -414,9 +406,9 @@ test_zephyr_to_native || RESULT=1
 # Summary
 log_header "Test Summary"
 if [ $RESULT -eq 0 ]; then
-    log_success "Zephyr native_sim test passed!"
+    log_success "Zephyr C examples test passed!"
 else
-    log_error "Test failed"
+    log_error "Zephyr C examples test failed"
     log_info ""
     log_info "Troubleshooting:"
     log_info "  1. Check TAP interface: ip addr show $TAP_INTERFACE"

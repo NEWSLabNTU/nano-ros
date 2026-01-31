@@ -514,9 +514,9 @@ test-zenoh-shim:
 test-integration:
     cargo test -p nano-ros-tests --tests -- --nocapture
 
-# Run Zephyr native_sim tests (requires west workspace + TAP network)
-test-zephyr:
-    ./tests/zephyr/run.sh
+# Run Zephyr C examples test (requires west workspace + TAP network)
+test-zephyr-c:
+    ./tests/zephyr/run-c.sh
 
 # =============================================================================
 # Rust Integration Tests (crates/nano-ros-tests)
