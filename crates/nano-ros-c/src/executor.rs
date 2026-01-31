@@ -7,6 +7,7 @@ use core::ffi::c_int;
 use core::ptr;
 
 use crate::error::*;
+use crate::guard_condition::{nano_ros_guard_condition_state_t, nano_ros_guard_condition_t};
 use crate::service::{nano_ros_service_state_t, nano_ros_service_t};
 use crate::subscription::{nano_ros_subscription_state_t, nano_ros_subscription_t};
 use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
@@ -39,6 +40,8 @@ pub enum nano_ros_executor_handle_type_t {
     NANO_ROS_EXECUTOR_HANDLE_SERVICE = 3,
     /// Client handle
     NANO_ROS_EXECUTOR_HANDLE_CLIENT = 4,
+    /// Guard condition handle
+    NANO_ROS_EXECUTOR_HANDLE_GUARD_CONDITION = 5,
 }
 
 /// Executor handle (union-like structure)
@@ -367,6 +370,62 @@ pub unsafe extern "C" fn nano_ros_executor_add_service(
     NANO_ROS_RET_OK
 }
 
+/// Add a guard condition to the executor.
+///
+/// # Parameters
+/// * `executor` - Pointer to an initialized executor
+/// * `guard` - Pointer to an initialized guard condition
+///
+/// # Returns
+/// * `NANO_ROS_RET_OK` on success
+/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL
+/// * `NANO_ROS_RET_FULL` if executor is full
+/// * `NANO_ROS_RET_NOT_INIT` if not initialized
+///
+/// # Safety
+/// * All pointers must be valid and point to initialized objects
+#[no_mangle]
+pub unsafe extern "C" fn nano_ros_executor_add_guard_condition(
+    executor: *mut nano_ros_executor_t,
+    guard: *mut nano_ros_guard_condition_t,
+) -> nano_ros_ret_t {
+    if executor.is_null() || guard.is_null() {
+        return NANO_ROS_RET_INVALID_ARGUMENT;
+    }
+
+    let executor = &mut *executor;
+    let guard_ref = &*guard;
+
+    // Check executor state
+    if executor.state != nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_INITIALIZED {
+        return NANO_ROS_RET_NOT_INIT;
+    }
+
+    // Check guard condition state
+    if guard_ref.state
+        != nano_ros_guard_condition_state_t::NANO_ROS_GUARD_CONDITION_STATE_INITIALIZED
+    {
+        return NANO_ROS_RET_NOT_INIT;
+    }
+
+    // Check if full
+    if executor.handle_count >= executor.max_handles {
+        return NANO_ROS_RET_FULL;
+    }
+
+    // Add handle
+    let idx = executor.handle_count;
+    executor.handles[idx] = nano_ros_executor_handle_t {
+        handle_type: nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_GUARD_CONDITION,
+        invocation: nano_ros_executor_invocation_t::NANO_ROS_EXECUTOR_ON_NEW_DATA,
+        handle: guard as *mut _,
+        data_ready: false,
+    };
+    executor.handle_count += 1;
+
+    NANO_ROS_RET_OK
+}
+
 /// Maximum buffer size for subscription/service data
 const MESSAGE_BUFFER_SIZE: usize = 4096;
 
@@ -555,6 +614,22 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                         if process_service_request(service) {
                             any_executed = true;
                         }
+                    }
+                }
+            }
+            nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
+                let guard = handle.handle as *mut nano_ros_guard_condition_t;
+                if !guard.is_null() {
+                    let guard_ref = &mut *guard;
+                    // Check if triggered
+                    if crate::guard_condition::nano_ros_guard_condition_is_triggered(guard) {
+                        // Clear the triggered flag
+                        let _ = crate::guard_condition::nano_ros_guard_condition_clear(guard);
+                        // Invoke callback if set
+                        if let Some(callback) = guard_ref.get_callback() {
+                            callback(guard_ref.get_context());
+                        }
+                        any_executed = true;
                     }
                 }
             }

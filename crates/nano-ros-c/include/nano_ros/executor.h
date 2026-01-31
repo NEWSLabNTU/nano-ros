@@ -16,6 +16,7 @@
 #include "nano_ros/subscription.h"
 #include "nano_ros/timer.h"
 #include "nano_ros/service.h"
+#include "nano_ros/guard_condition.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -56,6 +57,8 @@ typedef enum nano_ros_executor_handle_type_t {
     NANO_ROS_EXECUTOR_HANDLE_SERVICE = 3,
     /** Client handle */
     NANO_ROS_EXECUTOR_HANDLE_CLIENT = 4,
+    /** Guard condition handle */
+    NANO_ROS_EXECUTOR_HANDLE_GUARD_CONDITION = 5,
 } nano_ros_executor_handle_type_t;
 
 /** Callback invocation mode */
@@ -196,6 +199,25 @@ NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_executor_add_service(
     nano_ros_executor_t *executor,
     nano_ros_service_t *service);
+
+/**
+ * Add a guard condition to the executor.
+ *
+ * Guard conditions allow other threads to wake up the executor.
+ * When triggered, the callback (if set) will be executed.
+ *
+ * @param executor Pointer to an initialized executor
+ * @param guard Pointer to an initialized guard condition
+ *
+ * @return NANO_ROS_RET_OK on success
+ * @return NANO_ROS_RET_INVALID_ARGUMENT if any pointer is NULL
+ * @return NANO_ROS_RET_FULL if executor is full
+ * @return NANO_ROS_RET_NOT_INIT if not initialized
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_executor_add_guard_condition(
+    nano_ros_executor_t *executor,
+    nano_ros_guard_condition_t *guard);
 
 /**
  * Spin the executor once.

@@ -39,7 +39,7 @@ microcontrollers.
 | 11.12 Clock API              | Complete        | ROS/steady/system time                      |
 | 11.13 Parameters             | Complete        | Parameter server with callbacks             |
 | 11.14 Actions                | Complete        | Action server/client with goal handling     |
-| 11.15 Guard Conditions       | Not Started     | Executor wake-up triggers                   |
+| 11.15 Guard Conditions       | Complete        | Executor wake-up triggers, thread-safe      |
 | 11.16 no_std Support         | Not Started     | Full embedded support                       |
 
 ## Architecture
@@ -1006,34 +1006,107 @@ const char *nano_ros_goal_status_to_string(nano_ros_goal_status_t status);
 
 ### 11.15 Guard Conditions
 
-**Status: NOT STARTED**
+**Status: COMPLETE**
 
 #### Work Items
-- [ ] Implement `nano_ros_guard_condition_t` structure
-- [ ] Implement trigger mechanism
-- [ ] Integrate with executor for wake-up
-- [ ] Support multi-threaded trigger
+- [x] Implement `nano_ros_guard_condition_t` structure
+- [x] Implement trigger mechanism (thread-safe)
+- [x] Integrate with executor for wake-up
+- [x] Support multi-threaded trigger via atomic operations
 
-#### API Design
+#### Files
+- **Header**: `crates/nano-ros-c/include/nano_ros/guard_condition.h`
+- **Implementation**: `crates/nano-ros-c/src/guard_condition.rs`
+- **Executor integration**: Updated `executor.rs` and `executor.h`
+
+#### API Overview
+
 ```c
-typedef struct nano_ros_guard_condition_t nano_ros_guard_condition_t;
+#include <nano_ros/guard_condition.h>
+
+// Guard condition structure
+typedef struct nano_ros_guard_condition_t {
+    nano_ros_guard_condition_state_t state;
+    volatile bool triggered;  // Atomic for thread-safety
+    nano_ros_guard_condition_callback_t callback;
+    void *context;
+    void *_support;
+} nano_ros_guard_condition_t;
+
+// Callback type
+typedef void (*nano_ros_guard_condition_callback_t)(void *context);
+
+// Lifecycle functions
+nano_ros_guard_condition_t nano_ros_guard_condition_get_zero_initialized(void);
 
 nano_ros_ret_t nano_ros_guard_condition_init(
     nano_ros_guard_condition_t *guard,
     nano_ros_support_t *support);
 
-nano_ros_ret_t nano_ros_guard_condition_trigger(
-    nano_ros_guard_condition_t *guard);
-
-nano_ros_ret_t nano_ros_executor_add_guard_condition(
-    nano_ros_executor_t *executor,
+nano_ros_ret_t nano_ros_guard_condition_set_callback(
     nano_ros_guard_condition_t *guard,
-    void (*callback)(void *context),
+    nano_ros_guard_condition_callback_t callback,
     void *context);
 
 nano_ros_ret_t nano_ros_guard_condition_fini(
     nano_ros_guard_condition_t *guard);
+
+// Trigger functions (thread-safe)
+nano_ros_ret_t nano_ros_guard_condition_trigger(
+    nano_ros_guard_condition_t *guard);
+
+bool nano_ros_guard_condition_is_triggered(
+    const nano_ros_guard_condition_t *guard);
+
+nano_ros_ret_t nano_ros_guard_condition_clear(
+    nano_ros_guard_condition_t *guard);
+
+// Executor integration
+nano_ros_ret_t nano_ros_executor_add_guard_condition(
+    nano_ros_executor_t *executor,
+    nano_ros_guard_condition_t *guard);
 ```
+
+#### Usage Example
+
+```c
+#include <nano_ros/guard_condition.h>
+#include <nano_ros/executor.h>
+
+// Callback invoked when guard condition is triggered
+void shutdown_callback(void *context) {
+    bool *running = (bool *)context;
+    *running = false;
+}
+
+int main(void) {
+    static bool running = true;
+
+    // Initialize guard condition
+    nano_ros_guard_condition_t guard = nano_ros_guard_condition_get_zero_initialized();
+    nano_ros_guard_condition_init(&guard, &support);
+    nano_ros_guard_condition_set_callback(&guard, shutdown_callback, &running);
+
+    // Add to executor
+    nano_ros_executor_add_guard_condition(&executor, &guard);
+
+    // From another thread: trigger shutdown
+    // nano_ros_guard_condition_trigger(&guard);
+
+    // Executor will invoke callback when triggered
+    while (running) {
+        nano_ros_executor_spin_some(&executor, 100000000);
+    }
+
+    nano_ros_guard_condition_fini(&guard);
+}
+```
+
+#### Design Notes
+- **Thread-safe trigger**: Uses atomic operations for cross-thread signaling
+- **Callback optional**: Guard condition works without callback (just wake-up)
+- **Executor integration**: Processed in each spin cycle like other handles
+- **Zero-copy**: No memory allocation, all state in user-provided structure
 
 ### 11.16 no_std Support
 
