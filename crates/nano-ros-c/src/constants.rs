@@ -18,6 +18,9 @@ pub const MAX_TOPIC_LEN: usize = 256;
 /// Maximum length of a service name
 pub const MAX_SERVICE_NAME_LEN: usize = 256;
 
+/// Maximum length of an action name
+pub const MAX_ACTION_NAME_LEN: usize = 256;
+
 /// Maximum length of a type name (e.g., "std_msgs::msg::dds_::Int32_")
 pub const MAX_TYPE_NAME_LEN: usize = 256;
 

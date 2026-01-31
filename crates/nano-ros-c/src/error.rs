@@ -42,3 +42,9 @@ pub const NANO_ROS_RET_PUBLISH_FAILED: nano_ros_ret_t = -10;
 
 /// Subscription failed
 pub const NANO_ROS_RET_SUBSCRIPTION_FAILED: nano_ros_ret_t = -11;
+
+/// Operation not allowed (e.g., goal not in correct state)
+pub const NANO_ROS_RET_NOT_ALLOWED: nano_ros_ret_t = -12;
+
+/// Request was rejected (e.g., goal rejected by server)
+pub const NANO_ROS_RET_REJECTED: nano_ros_ret_t = -13;

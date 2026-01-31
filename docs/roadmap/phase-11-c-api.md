@@ -38,7 +38,7 @@ microcontrollers.
 | 11.11 rclc Header Compat     | Complete        | Modular headers matching rclc structure     |
 | 11.12 Clock API              | Complete        | ROS/steady/system time                      |
 | 11.13 Parameters             | Complete        | Parameter server with callbacks             |
-| 11.14 Actions                | Not Started     | Action server/client                        |
+| 11.14 Actions                | Complete        | Action server/client with goal handling     |
 | 11.15 Guard Conditions       | Not Started     | Executor wake-up triggers                   |
 | 11.16 no_std Support         | Not Started     | Full embedded support                       |
 
@@ -52,6 +52,8 @@ microcontrollers.
 │  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐           │
 │  │ node.h   │ │publisher.│ │subscript.│ │executor.h│           │
 │  │ init.h   │ │   h      │ │   h      │ │ timer.h  │           │
+│  ├──────────┤ ├──────────┤ ├──────────┤ ├──────────┤           │
+│  │ clock.h  │ │parameter.│ │ action.h │ │service.h │           │
 │  └──────────┘ └──────────┘ └──────────┘ └──────────┘           │
 ├─────────────────────────────────────────────────────────────────┤
 │                    nano_ros_impl.rs (Rust FFI)                  │
@@ -857,30 +859,66 @@ nano_ros_param_server_fini(&params);
 
 ### 11.14 Actions
 
-**Status: NOT STARTED**
+**Status: COMPLETE**
 
 #### Work Items
-- [ ] Implement `nano_ros_action_server_t` structure
-- [ ] Implement `nano_ros_action_client_t` structure
-- [ ] Implement goal handling (send, accept, reject)
-- [ ] Implement feedback publishing
-- [ ] Implement result handling
-- [ ] Implement cancellation
-- [ ] Integrate with executor
+- [x] Implement `nano_ros_action_server_t` structure
+- [x] Implement `nano_ros_action_client_t` structure
+- [x] Implement goal handling (send, accept, reject)
+- [x] Implement feedback publishing
+- [x] Implement result handling
+- [x] Implement cancellation
+- [x] Goal state machine (accepted → executing → succeeded/canceled/aborted)
 
-#### API Design
+#### Files
+- **Header**: `crates/nano-ros-c/include/nano_ros/action.h`
+- **Implementation**: `crates/nano-ros-c/src/action.rs`
+
+#### API Overview
+
 ```c
-typedef struct nano_ros_action_server_t nano_ros_action_server_t;
-typedef struct nano_ros_action_client_t nano_ros_action_client_t;
-typedef struct nano_ros_goal_handle_t nano_ros_goal_handle_t;
+#include <nano_ros/action.h>
 
-// Action server callbacks
+// Goal status (compatible with action_msgs/msg/GoalStatus)
+typedef enum nano_ros_goal_status_t {
+    NANO_ROS_GOAL_STATUS_UNKNOWN = 0,
+    NANO_ROS_GOAL_STATUS_ACCEPTED = 1,
+    NANO_ROS_GOAL_STATUS_EXECUTING = 2,
+    NANO_ROS_GOAL_STATUS_CANCELING = 3,
+    NANO_ROS_GOAL_STATUS_SUCCEEDED = 4,
+    NANO_ROS_GOAL_STATUS_CANCELED = 5,
+    NANO_ROS_GOAL_STATUS_ABORTED = 6,
+} nano_ros_goal_status_t;
+
+// Goal response codes
+typedef enum nano_ros_goal_response_t {
+    NANO_ROS_GOAL_REJECT = 0,
+    NANO_ROS_GOAL_ACCEPT_AND_EXECUTE = 1,
+    NANO_ROS_GOAL_ACCEPT_AND_DEFER = 2,
+} nano_ros_goal_response_t;
+
+// Goal UUID (16-byte identifier)
+typedef struct nano_ros_goal_uuid_t {
+    uint8_t uuid[16];
+} nano_ros_goal_uuid_t;
+
+// Action type information
+typedef struct nano_ros_action_type_t {
+    const char *type_name;
+    const char *type_hash;
+    size_t goal_serialized_size_max;
+    size_t result_serialized_size_max;
+    size_t feedback_serialized_size_max;
+} nano_ros_action_type_t;
+
+// Callbacks
 typedef nano_ros_goal_response_t (*nano_ros_goal_callback_t)(
+    const nano_ros_goal_uuid_t *goal_uuid,
     const uint8_t *goal_request,
     size_t goal_len,
     void *context);
 
-typedef void (*nano_ros_cancel_callback_t)(
+typedef nano_ros_cancel_response_t (*nano_ros_cancel_callback_t)(
     nano_ros_goal_handle_t *goal,
     void *context);
 
@@ -888,7 +926,9 @@ typedef void (*nano_ros_accepted_callback_t)(
     nano_ros_goal_handle_t *goal,
     void *context);
 
-// Action server API
+// Action Server API
+nano_ros_action_server_t nano_ros_action_server_get_zero_initialized(void);
+
 nano_ros_ret_t nano_ros_action_server_init(
     nano_ros_action_server_t *server,
     nano_ros_node_t *node,
@@ -909,7 +949,23 @@ nano_ros_ret_t nano_ros_action_succeed(
     const uint8_t *result,
     size_t result_len);
 
-// Action client API
+nano_ros_ret_t nano_ros_action_abort(
+    nano_ros_goal_handle_t *goal,
+    const uint8_t *result,
+    size_t result_len);
+
+nano_ros_ret_t nano_ros_action_canceled(
+    nano_ros_goal_handle_t *goal,
+    const uint8_t *result,
+    size_t result_len);
+
+nano_ros_ret_t nano_ros_action_execute(nano_ros_goal_handle_t *goal);
+
+nano_ros_ret_t nano_ros_action_server_fini(nano_ros_action_server_t *server);
+
+// Action Client API
+nano_ros_action_client_t nano_ros_action_client_get_zero_initialized(void);
+
 nano_ros_ret_t nano_ros_action_client_init(
     nano_ros_action_client_t *client,
     nano_ros_node_t *node,
@@ -920,8 +976,33 @@ nano_ros_ret_t nano_ros_action_send_goal(
     nano_ros_action_client_t *client,
     const uint8_t *goal,
     size_t goal_len,
-    nano_ros_goal_handle_t *goal_handle);
+    nano_ros_goal_uuid_t *goal_uuid);
+
+nano_ros_ret_t nano_ros_action_cancel_goal(
+    nano_ros_action_client_t *client,
+    const nano_ros_goal_uuid_t *goal_uuid);
+
+nano_ros_ret_t nano_ros_action_get_result(
+    nano_ros_action_client_t *client,
+    const nano_ros_goal_uuid_t *goal_uuid,
+    nano_ros_goal_status_t *status,
+    uint8_t *result,
+    size_t result_capacity,
+    size_t *result_len);
+
+nano_ros_ret_t nano_ros_action_client_fini(nano_ros_action_client_t *client);
+
+// Utility functions
+nano_ros_ret_t nano_ros_goal_uuid_generate(nano_ros_goal_uuid_t *uuid);
+bool nano_ros_goal_uuid_equal(const nano_ros_goal_uuid_t *a, const nano_ros_goal_uuid_t *b);
+const char *nano_ros_goal_status_to_string(nano_ros_goal_status_t status);
 ```
+
+#### Design Notes
+- **Static allocation**: Supports up to `NANO_ROS_MAX_CONCURRENT_GOALS` (4) concurrent goals per server
+- **Goal state machine**: Proper transitions between accepted, executing, canceling, and terminal states
+- **UUID generation**: Uses system time + counter for unique goal identifiers
+- **Compatible with action_msgs**: Goal status values match ROS 2 standard
 
 ### 11.15 Guard Conditions
 

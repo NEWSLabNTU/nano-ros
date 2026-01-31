@@ -102,6 +102,12 @@ typedef int nano_ros_ret_t;
 /** Subscription failed */
 #define NANO_ROS_RET_SUBSCRIPTION_FAILED (-11)
 
+/** Operation not allowed (e.g., goal not in correct state) */
+#define NANO_ROS_RET_NOT_ALLOWED (-12)
+
+/** Request was rejected (e.g., goal rejected by server) */
+#define NANO_ROS_RET_REJECTED (-13)
+
 // ============================================================================
 // QoS Types
 // ============================================================================
