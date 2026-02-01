@@ -27,6 +27,10 @@ nano-ros/
 ├── scripts/zephyr/            # Zephyr setup scripts
 │   ├── setup.sh               # Initialize workspace
 │   └── setup-network.sh       # Configure TAP interface
+├── docker/                    # Docker development environment
+│   ├── Dockerfile.qemu-arm    # QEMU 7.2 + ARM toolchain
+│   └── docker-compose.yml     # Container orchestration
+├── external/                  # Reference projects (git-ignored)
 ├── tests/                     # Test scripts and docs
 ├── docs/                      # Detailed documentation
 ├── zephyr-workspace -> ../nano-ros-workspace/  # Symlink to Zephyr workspace
@@ -138,6 +142,7 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 8 | Embedded networking | Complete |
 | 9 | Test infrastructure | In Progress |
 | 10 | C++ bindings (rclcpp) | Planning |
+| 12 | QEMU bare-metal tests | In Progress |
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
@@ -155,6 +160,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | WCET analysis | [docs/wcet-analysis.md](docs/wcet-analysis.md) |
 | Schedulability | [docs/schedulability-analysis.md](docs/schedulability-analysis.md) |
 | Real-time lints | [docs/realtime-lint-guide.md](docs/realtime-lint-guide.md) |
+| QEMU/physical devices | [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) |
 | Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
 
 ## Quick Reference
@@ -199,3 +205,21 @@ ln -sfn /path/to/custom-workspace zephyr-workspace
 ```
 
 See [docs/zephyr-setup.md](docs/zephyr-setup.md) for details.
+
+### Docker Development Environment
+
+Docker provides QEMU 7.2 (from Debian bookworm) which fixes TAP networking issues present in Ubuntu 22.04's QEMU 6.2.
+
+```bash
+# One-time setup: add yourself to docker group
+sudo usermod -aG docker $USER
+# Log out and back in, or run: newgrp docker
+
+# Build and use Docker environment
+just docker-build              # Build nano-ros-qemu image
+just docker-shell              # Interactive shell
+just docker-test-qemu          # Run QEMU tests in container
+just docker-help               # Show all Docker commands
+```
+
+See [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) for QEMU/physical device analysis.
