@@ -40,6 +40,9 @@ exclude = [
     "examples/stm32f4-rs-polling",
     "examples/stm32f4-rs-smoltcp",
     "examples/qemu-rs-lan9118",
+    "examples/qemu-rs-common",
+    "examples/qemu-rs-talker",
+    "examples/qemu-rs-listener",
 ]
 
 [workspace.package]
