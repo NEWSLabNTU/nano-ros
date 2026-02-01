@@ -63,8 +63,17 @@ RUN rustup target add \
     thumbv8m.main-none-eabihf
 
 # Install cargo tools
-RUN cargo install cargo-binutils && \
+RUN cargo install cargo-binutils just && \
     rustup component add llvm-tools-preview
+
+# Install zenohd for networked testing
+RUN curl -L "https://github.com/eclipse-zenoh/zenoh/releases/download/1.2.0/zenoh-1.2.0-x86_64-unknown-linux-gnu-standalone.zip" -o /tmp/zenoh.zip && \
+    apt-get update && apt-get install -y --no-install-recommends unzip && \
+    unzip /tmp/zenoh.zip -d /usr/local/bin && \
+    rm /tmp/zenoh.zip && \
+    chmod +x /usr/local/bin/zenohd && \
+    apt-get remove -y unzip && apt-get autoremove -y && \
+    rm -rf /var/lib/apt/lists/*
 
 # Set working directory
 WORKDIR /work
