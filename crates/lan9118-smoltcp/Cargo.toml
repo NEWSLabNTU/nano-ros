@@ -1,0 +1,25 @@
+[package]
+name = "lan9118-smoltcp"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+description = "LAN9118/SMSC911x Ethernet driver for smoltcp"
+readme = "README.md"
+keywords = ["embedded", "ethernet", "smoltcp", "no_std", "arm"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[dependencies]
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-udp",
+    "socket-tcp",
+] }
+log = { version = "0.4", default-features = false, optional = true }
+
+[features]
+default = []
+defmt = []  # Future: defmt logging support
+
+[dev-dependencies]
+# Tests run on host, not bare-metal

@@ -16,6 +16,8 @@ members = [
     "crates/nano-ros-tests",
     # C API for embedded systems
     "crates/nano-ros-c",
+    # LAN9118 Ethernet driver for smoltcp
+    "crates/lan9118-smoltcp",
 ]
 
 # Examples are excluded from workspace - they are standalone packages
@@ -37,6 +39,7 @@ exclude = [
     "examples/stm32f4-rs-embassy",
     "examples/stm32f4-rs-polling",
     "examples/stm32f4-rs-smoltcp",
+    "examples/qemu-rs-lan9118",
 ]
 
 [workspace.package]

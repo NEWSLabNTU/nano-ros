@@ -92,6 +92,18 @@ quality:
     fi
 
     echo ""
+    echo "=== QEMU Examples ==="
+    qemu_failed=0
+    (cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    if [ $qemu_failed -ne 0 ]; then
+        echo "[FAIL] QEMU examples FAILED"
+        failed=1
+    else
+        echo "[OK] QEMU examples passed"
+    fi
+
+    echo ""
     if [ $failed -ne 0 ]; then
         echo "[FAIL] Quality checks FAILED - see errors above"
         exit 1
@@ -274,6 +286,7 @@ clean-examples-native:
 # Clean QEMU example build artifacts
 clean-examples-qemu:
     rm -rf examples/qemu-rs-test/target
+    rm -rf examples/qemu-rs-lan9118/target
     @echo "QEMU example build artifacts cleaned"
 
 # Clean all example build artifacts
@@ -319,29 +332,47 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU test
+# Build QEMU examples
 build-examples-qemu:
-    @echo "Building QEMU test..."
+    @echo "Building QEMU examples..."
     cd examples/qemu-rs-test && cargo build --release
+    cd examples/qemu-rs-lan9118 && cargo build --release
 
-# Format QEMU test
+# Format QEMU examples
 format-examples-qemu:
-    @echo "Formatting QEMU test..."
+    @echo "Formatting QEMU examples..."
     cd examples/qemu-rs-test && cargo +nightly fmt
+    cd examples/qemu-rs-lan9118 && cargo +nightly fmt
 
-# Check QEMU test
+# Check QEMU examples
 check-examples-qemu:
-    @echo "Checking QEMU test..."
+    @echo "Checking QEMU examples..."
     cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
 
-# Run QEMU test
-test-qemu: build-examples-qemu
+# Run all QEMU tests
+test-qemu: test-qemu-basic test-qemu-lan9118
+    @echo "All QEMU tests passed!"
+
+# Run basic QEMU test (nano-ros serialization on Cortex-M3)
+test-qemu-basic: build-examples-qemu
+    @echo "Running QEMU basic test (lm3s6965evb)..."
     qemu-system-arm \
         -cpu cortex-m3 \
         -machine lm3s6965evb \
         -nographic \
         -semihosting-config enable=on,target=native \
         -kernel examples/qemu-rs-test/target/thumbv7m-none-eabi/release/qemu-rs-test
+
+# Run LAN9118 Ethernet driver test (mps2-an385)
+test-qemu-lan9118: build-examples-qemu
+    @echo "Running QEMU LAN9118 test (mps2-an385)..."
+    qemu-system-arm \
+        -cpu cortex-m3 \
+        -machine mps2-an385 \
+        -nographic \
+        -semihosting-config enable=on,target=native \
+        -kernel examples/qemu-rs-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Check if QEMU is installed
 check-qemu:
