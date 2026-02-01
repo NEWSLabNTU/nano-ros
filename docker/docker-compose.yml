@@ -1,0 +1,57 @@
+# nano-ros Docker Compose Configuration
+#
+# Usage:
+#   docker compose -f docker/docker-compose.yml up -d qemu
+#   docker compose -f docker/docker-compose.yml exec qemu bash
+#
+# Or use the just recipes:
+#   just docker-build
+#   just docker-shell
+
+services:
+  # QEMU ARM development environment
+  qemu:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.qemu-arm
+    image: nano-ros-qemu:latest
+    container_name: nano-ros-qemu
+    hostname: nano-ros-qemu
+
+    # Mount the repository
+    volumes:
+      - ..:/work
+      # Cache cargo registry for faster rebuilds
+      - cargo-registry:/root/.cargo/registry
+      - cargo-git:/root/.cargo/git
+
+    # Enable TAP networking (requires --privileged or specific capabilities)
+    # Uncomment for networking tests:
+    # cap_add:
+    #   - NET_ADMIN
+    # devices:
+    #   - /dev/net/tun
+
+    # Keep container running
+    stdin_open: true
+    tty: true
+
+    working_dir: /work
+
+    # Set environment
+    environment:
+      - TERM=xterm-256color
+      - RUST_BACKTRACE=1
+
+  # Zenoh router for testing (optional)
+  zenohd:
+    image: eclipse/zenoh:latest
+    container_name: nano-ros-zenohd
+    hostname: zenohd
+    ports:
+      - "7447:7447"
+    command: ["--listen", "tcp/0.0.0.0:7447"]
+
+volumes:
+  cargo-registry:
+  cargo-git:
