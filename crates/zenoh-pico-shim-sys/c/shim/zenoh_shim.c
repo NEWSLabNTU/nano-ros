@@ -224,9 +224,10 @@ int32_t zenoh_shim_open(void) {
         return ZENOH_SHIM_ERR_SESSION;
     }
 
-    // Start background tasks
-    // For single-threaded platforms (Z_FEATURE_MULTI_THREAD=0), these are no-ops
-    // For threaded platforms, they start background read/lease threads
+    // Start background tasks only in multi-threaded mode
+    // In single-threaded mode (Z_FEATURE_MULTI_THREAD=0), polling is done
+    // explicitly via zenoh_shim_poll() / zenoh_shim_spin_once()
+#if Z_FEATURE_MULTI_THREAD == 1
     if (zp_start_read_task(z_session_loan_mut(&g_session), NULL) < 0) {
         z_close(z_session_loan_mut(&g_session), NULL);
         return ZENOH_SHIM_ERR_TASK;
@@ -237,6 +238,7 @@ int32_t zenoh_shim_open(void) {
         z_close(z_session_loan_mut(&g_session), NULL);
         return ZENOH_SHIM_ERR_TASK;
     }
+#endif
 
     g_session_open = true;
     return ZENOH_SHIM_OK;
@@ -285,9 +287,11 @@ void zenoh_shim_close(void) {
 
     // Close session
     if (g_session_open) {
-        // Stop background tasks (no-op for single-threaded platforms)
+#if Z_FEATURE_MULTI_THREAD == 1
+        // Stop background tasks (only in multi-threaded mode)
         zp_stop_read_task(z_session_loan_mut(&g_session));
         zp_stop_lease_task(z_session_loan_mut(&g_session));
+#endif
         z_close(z_session_loan_mut(&g_session), NULL);
         g_session_open = false;
     }
