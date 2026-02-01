@@ -94,6 +94,7 @@ quality:
     echo ""
     echo "=== QEMU Examples ==="
     qemu_failed=0
+    (cd examples/qemu-rs-common && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     (cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     (cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     (cd examples/qemu-rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
@@ -287,6 +288,7 @@ clean-examples-native:
 
 # Clean QEMU example build artifacts
 clean-examples-qemu:
+    rm -rf examples/qemu-rs-common/target
     rm -rf examples/qemu-rs-test/target
     rm -rf examples/qemu-rs-lan9118/target
     rm -rf examples/qemu-rs-talker/target
@@ -339,6 +341,7 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Build QEMU examples
 build-examples-qemu:
     @echo "Building QEMU examples..."
+    cd examples/qemu-rs-common && cargo build --release
     cd examples/qemu-rs-test && cargo build --release
     cd examples/qemu-rs-lan9118 && cargo build --release
     cd examples/qemu-rs-talker && cargo build --release
@@ -347,6 +350,7 @@ build-examples-qemu:
 # Format QEMU examples
 format-examples-qemu:
     @echo "Formatting QEMU examples..."
+    cd examples/qemu-rs-common && cargo +nightly fmt
     cd examples/qemu-rs-test && cargo +nightly fmt
     cd examples/qemu-rs-lan9118 && cargo +nightly fmt
     cd examples/qemu-rs-talker && cargo +nightly fmt
@@ -355,6 +359,7 @@ format-examples-qemu:
 # Check QEMU examples
 check-examples-qemu:
     @echo "Checking QEMU examples..."
+    cd examples/qemu-rs-common && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
     cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
     cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
     cd examples/qemu-rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
@@ -856,6 +861,17 @@ docker-test-qemu: docker-build
         nano-ros-qemu \
         bash -c "cd /work && just test-qemu-basic"
 
+# Run networked QEMU talker/listener test in Docker (requires privileged networking)
+docker-test-qemu-networked: docker-build build-zenoh-pico-arm build-examples-qemu
+    @echo "Running networked QEMU test inside Docker..."
+    @echo "(This requires Docker with networking capabilities)"
+    docker run --rm \
+        --cap-add=NET_ADMIN \
+        --device=/dev/net/tun \
+        -v $(pwd):/work \
+        nano-ros-qemu \
+        bash -c "cd /work && ./scripts/qemu/docker-networked-test.sh"
+
 # Run QEMU build inside Docker container
 docker-build-qemu: docker-build
     @echo "Building QEMU examples inside Docker..."
@@ -891,8 +907,9 @@ docker-help:
     @echo "  just docker-shell-network # Start with TAP networking support"
     @echo ""
     @echo "Run commands in Docker:"
-    @echo "  just docker-test-qemu     # Run QEMU tests in Docker"
-    @echo "  just docker-build-qemu    # Build QEMU examples in Docker"
+    @echo "  just docker-test-qemu           # Run basic QEMU tests in Docker"
+    @echo "  just docker-test-qemu-networked # Run talker/listener test (requires --cap-add=NET_ADMIN)"
+    @echo "  just docker-build-qemu          # Build QEMU examples in Docker"
     @echo ""
     @echo "Docker Compose (QEMU + zenohd):"
     @echo "  just docker-up            # Start services"
