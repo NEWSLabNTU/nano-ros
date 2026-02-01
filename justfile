@@ -96,6 +96,8 @@ quality:
     qemu_failed=0
     (cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     (cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/qemu-rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/qemu-rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     if [ $qemu_failed -ne 0 ]; then
         echo "[FAIL] QEMU examples FAILED"
         failed=1
@@ -287,6 +289,8 @@ clean-examples-native:
 clean-examples-qemu:
     rm -rf examples/qemu-rs-test/target
     rm -rf examples/qemu-rs-lan9118/target
+    rm -rf examples/qemu-rs-talker/target
+    rm -rf examples/qemu-rs-listener/target
     @echo "QEMU example build artifacts cleaned"
 
 # Clean all example build artifacts
@@ -337,22 +341,38 @@ build-examples-qemu:
     @echo "Building QEMU examples..."
     cd examples/qemu-rs-test && cargo build --release
     cd examples/qemu-rs-lan9118 && cargo build --release
+    cd examples/qemu-rs-talker && cargo build --release
+    cd examples/qemu-rs-listener && cargo build --release
 
 # Format QEMU examples
 format-examples-qemu:
     @echo "Formatting QEMU examples..."
     cd examples/qemu-rs-test && cargo +nightly fmt
     cd examples/qemu-rs-lan9118 && cargo +nightly fmt
+    cd examples/qemu-rs-talker && cargo +nightly fmt
+    cd examples/qemu-rs-listener && cargo +nightly fmt
 
 # Check QEMU examples
 check-examples-qemu:
     @echo "Checking QEMU examples..."
     cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
     cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu-rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu-rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
 
-# Run all QEMU tests
+# Run all QEMU tests (non-networked)
 test-qemu: test-qemu-basic test-qemu-lan9118
     @echo "All QEMU tests passed!"
+
+# Build zenoh-pico for ARM Cortex-M3 (required for qemu-rs-talker/listener)
+build-zenoh-pico-arm:
+    @echo "Building zenoh-pico for ARM Cortex-M3..."
+    ./scripts/qemu/build-zenoh-pico.sh
+    @echo "zenoh-pico built at: build/qemu-zenoh-pico/libzenohpico.a"
+
+# Clean zenoh-pico ARM build
+clean-zenoh-pico-arm:
+    ./scripts/qemu/build-zenoh-pico.sh --clean
 
 # Run basic QEMU test (nano-ros serialization on Cortex-M3)
 test-qemu-basic: build-examples-qemu
@@ -378,6 +398,84 @@ test-qemu-lan9118: build-examples-qemu
 check-qemu:
     @which qemu-system-arm > /dev/null || (echo "Error: qemu-system-arm not found. Install with: sudo apt install qemu-system-arm" && exit 1)
     @echo "QEMU ARM is installed"
+
+# Setup QEMU TAP network bridge (requires sudo)
+setup-qemu-network:
+    sudo ./scripts/qemu/setup-network.sh
+
+# Teardown QEMU TAP network bridge (requires sudo)
+teardown-qemu-network:
+    sudo ./scripts/qemu/setup-network.sh --down
+
+# Show QEMU network status
+status-qemu-network:
+    ./scripts/qemu/setup-network.sh --status
+
+# Test QEMU zenoh-pico communication (requires zenohd + TAP network)
+# This runs qemu-rs-talker and qemu-rs-listener via zenohd
+test-qemu-zenoh: build-zenoh-pico-arm build-examples-qemu
+    #!/usr/bin/env bash
+    set -e
+    echo "============================================"
+    echo "  QEMU zenoh-pico Communication Test"
+    echo "============================================"
+    echo ""
+    echo "Prerequisites:"
+    echo "  1. TAP network: sudo ./scripts/qemu/setup-network.sh"
+    echo "  2. zenohd running: zenohd --listen tcp/0.0.0.0:7447"
+    echo ""
+    echo "This test requires QEMU 7.0+ for reliable TAP networking."
+    echo "Ubuntu 22.04 ships QEMU 6.2.0 which has TAP issues."
+    echo ""
+    echo "Current QEMU version:"
+    qemu-system-arm --version | head -1
+    echo ""
+    echo "To run manually:"
+    echo "  Terminal 1: zenohd --listen tcp/0.0.0.0:7447"
+    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
+    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
+    echo ""
+    echo "Binaries built at:"
+    echo "  examples/qemu-rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
+    echo "  examples/qemu-rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
+    echo ""
+    echo "Note: Automated test not yet implemented (requires QEMU 7.0+)"
+    echo "============================================"
+
+# Launch QEMU mps2-an385 with networking (example)
+run-qemu-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
+    ./scripts/qemu/launch-mps2-an385.sh --tap {{TAP}} --ip {{IP}} --binary {{BINARY}}
+
+# Show QEMU help
+qemu-help:
+    @echo "QEMU Bare-Metal Testing"
+    @echo "======================="
+    @echo ""
+    @echo "Prerequisites:"
+    @echo "  1. Install QEMU: sudo apt install qemu-system-arm"
+    @echo "  2. Set up network: sudo ./scripts/qemu/setup-network.sh"
+    @echo ""
+    @echo "Build & Test (non-networked):"
+    @echo "  just build-examples-qemu     # Build all QEMU examples"
+    @echo "  just test-qemu               # Run all QEMU tests (no network)"
+    @echo "  just test-qemu-basic         # Run basic serialization test"
+    @echo "  just test-qemu-lan9118       # Run LAN9118 driver test"
+    @echo ""
+    @echo "Zenoh-pico (networked):"
+    @echo "  just build-zenoh-pico-arm    # Build zenoh-pico for ARM Cortex-M3"
+    @echo "  just test-qemu-zenoh         # Show zenoh test instructions"
+    @echo ""
+    @echo "Network Setup:"
+    @echo "  just setup-qemu-network      # Create TAP bridge (requires sudo)"
+    @echo "  just teardown-qemu-network   # Remove TAP bridge (requires sudo)"
+    @echo "  just status-qemu-network     # Show network status"
+    @echo ""
+    @echo "Manual QEMU Launch:"
+    @echo "  ./scripts/qemu/launch-mps2-an385.sh --binary app.elf"
+    @echo "  ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary app.elf"
+    @echo "  ./scripts/qemu/launch-mps2-an385.sh --gdb --binary app.elf"
+    @echo ""
+    @echo "For more details: ./scripts/qemu/launch-mps2-an385.sh --help"
 
 # Run multi-node test (QEMU + native)
 test-multi-node:
@@ -675,13 +773,19 @@ setup:
     @which clang-tidy > /dev/null 2>&1 || (echo "WARNING: clang-tidy not found." && echo "For C++ linting, install with: sudo apt install clang-tidy" && echo "")
     @echo "Setup complete!"
 
-# Setup QEMU network bridge (requires sudo)
+# Setup all network bridges (QEMU + Zephyr, requires sudo)
 setup-network:
-    sudo ./scripts/setup-qemu-network.sh
+    @echo "Setting up network bridges..."
+    sudo ./scripts/qemu/setup-network.sh
+    sudo ./scripts/zephyr/setup-network.sh
+    @echo "All network bridges configured!"
 
-# Teardown QEMU network bridge (requires sudo)
+# Teardown all network bridges (requires sudo)
 teardown-network:
-    sudo ./scripts/teardown-qemu-network.sh
+    @echo "Tearing down network bridges..."
+    sudo ./scripts/qemu/setup-network.sh --down
+    sudo ./scripts/zephyr/setup-network.sh --down
+    @echo "All network bridges removed!"
 
 # Generate documentation
 doc:
@@ -713,3 +817,89 @@ zephyr-help:
     @echo "Manual build (from Zephyr workspace):"
     @echo "  west build -b native_sim/native/64 -d build-talker nano-ros/examples/zephyr-rs-talker"
     @echo "  west build -b native_sim/native/64 -d build-listener nano-ros/examples/zephyr-rs-listener"
+
+# =============================================================================
+# Docker
+# =============================================================================
+
+# Build Docker image for QEMU ARM development
+docker-build:
+    @echo "Building Docker image..."
+    docker build -t nano-ros-qemu -f docker/Dockerfile.qemu-arm .
+    @echo "Docker image 'nano-ros-qemu' built successfully!"
+
+# Start Docker container with interactive shell
+docker-shell:
+    @echo "Starting Docker container..."
+    docker run -it --rm \
+        -v $(pwd):/work \
+        -v nano-ros-cargo-registry:/root/.cargo/registry \
+        -v nano-ros-cargo-git:/root/.cargo/git \
+        nano-ros-qemu
+
+# Start Docker container with TAP networking support
+docker-shell-network:
+    @echo "Starting Docker container with networking support..."
+    docker run -it --rm \
+        --cap-add=NET_ADMIN \
+        --device=/dev/net/tun \
+        -v $(pwd):/work \
+        -v nano-ros-cargo-registry:/root/.cargo/registry \
+        -v nano-ros-cargo-git:/root/.cargo/git \
+        nano-ros-qemu
+
+# Run QEMU test inside Docker container
+docker-test-qemu: docker-build
+    @echo "Running QEMU test inside Docker..."
+    docker run --rm \
+        -v $(pwd):/work \
+        nano-ros-qemu \
+        bash -c "cd /work && just test-qemu-basic"
+
+# Run QEMU build inside Docker container
+docker-build-qemu: docker-build
+    @echo "Building QEMU examples inside Docker..."
+    docker run --rm \
+        -v $(pwd):/work \
+        -v nano-ros-cargo-registry:/root/.cargo/registry \
+        -v nano-ros-cargo-git:/root/.cargo/git \
+        nano-ros-qemu \
+        bash -c "cd /work && just build-examples-qemu"
+
+# Start Docker Compose services (QEMU + zenohd)
+docker-up:
+    docker compose -f docker/docker-compose.yml up -d
+
+# Stop Docker Compose services
+docker-down:
+    docker compose -f docker/docker-compose.yml down
+
+# Execute command in running Docker container
+docker-exec CMD="bash":
+    docker compose -f docker/docker-compose.yml exec qemu {{CMD}}
+
+# Show Docker help
+docker-help:
+    @echo "Docker Development Environment"
+    @echo "==============================="
+    @echo ""
+    @echo "Build Docker image:"
+    @echo "  just docker-build         # Build nano-ros-qemu image"
+    @echo ""
+    @echo "Interactive shell:"
+    @echo "  just docker-shell         # Start container with shell"
+    @echo "  just docker-shell-network # Start with TAP networking support"
+    @echo ""
+    @echo "Run commands in Docker:"
+    @echo "  just docker-test-qemu     # Run QEMU tests in Docker"
+    @echo "  just docker-build-qemu    # Build QEMU examples in Docker"
+    @echo ""
+    @echo "Docker Compose (QEMU + zenohd):"
+    @echo "  just docker-up            # Start services"
+    @echo "  just docker-down          # Stop services"
+    @echo "  just docker-exec          # Execute command in container"
+    @echo ""
+    @echo "Benefits:"
+    @echo "  - QEMU 7.2 (Debian bookworm) - fixes TAP networking issues"
+    @echo "  - Consistent environment across platforms"
+    @echo "  - All ARM toolchain and Rust targets pre-installed"
