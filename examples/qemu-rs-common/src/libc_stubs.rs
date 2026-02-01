@@ -2,6 +2,17 @@
 //!
 //! These functions are required by zenoh-pico but not available in no_std.
 //! They provide minimal implementations sufficient for embedded use.
+//!
+//! # Safety
+//!
+//! All functions in this module are `unsafe` FFI functions that follow C conventions.
+//! Callers must ensure:
+//! - All pointers are valid and properly aligned
+//! - String pointers point to null-terminated C strings where expected
+//! - Buffer sizes are accurate and buffers have sufficient capacity
+//! - Memory regions do not overlap for memcpy (use memmove for overlapping regions)
+
+#![allow(clippy::missing_safety_doc)]
 
 use core::ffi::{c_char, c_int, c_ulong, c_void};
 
@@ -194,7 +205,8 @@ static mut ERRNO: c_int = 0;
 /// __errno - get errno pointer (for newlib compatibility)
 #[no_mangle]
 pub unsafe extern "C" fn __errno() -> *mut c_int {
-    &mut ERRNO as *mut c_int
+    // Use raw pointer to avoid creating mutable reference to static
+    &raw mut ERRNO
 }
 
 /// __assert_func - assertion failure handler

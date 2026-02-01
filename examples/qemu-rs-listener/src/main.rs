@@ -131,6 +131,14 @@ static mut IFACE_PTR: *mut Interface = ptr::null_mut();
 static mut SOCKETS_PTR: *mut SocketSet<'static> = ptr::null_mut();
 static mut ETH_PTR: *mut Lan9118 = ptr::null_mut();
 
+// Debug: poll counter
+static mut POLL_COUNT: u32 = 0;
+
+/// Get the poll count for debugging
+pub fn get_poll_count() -> u32 {
+    unsafe { POLL_COUNT }
+}
+
 /// Poll callback called by zenoh-pico to drive the network stack
 ///
 /// # Safety
@@ -140,6 +148,8 @@ static mut ETH_PTR: *mut Lan9118 = ptr::null_mut();
 /// mutable statics and must not be called concurrently.
 #[no_mangle]
 pub unsafe extern "C" fn smoltcp_network_poll() {
+    POLL_COUNT += 1;
+
     if IFACE_PTR.is_null() || SOCKETS_PTR.is_null() || ETH_PTR.is_null() {
         return;
     }
@@ -252,24 +262,48 @@ fn main() -> ! {
     hprintln!("  IP: {}", IP_ADDRESS);
     hprintln!("  Gateway: {}", GATEWAY);
 
+    // Initialize the zenoh-pico bridge BEFORE registering sockets
+    hprintln!("");
+    hprintln!("Initializing zenoh-pico bridge...");
+    SmoltcpZenohBridge::init();
+
+    // Seed the RNG with a unique value based on IP address to avoid zenoh ID collisions
+    extern "C" {
+        fn smoltcp_seed_random(seed: u32);
+    }
+    let ip_seed = u32::from_be_bytes(IP_ADDRESS.octets());
+    unsafe { smoltcp_seed_random(ip_seed) };
+
     // Create socket set with pre-allocated TCP sockets
     #[allow(static_mut_refs)]
     let mut sockets = unsafe { SocketSet::new(&mut SOCKET_STORAGE[..]) };
 
-    // Create TCP sockets for zenoh-pico
+    // Register socket function from bridge
+    extern "C" {
+        fn smoltcp_register_socket(handle: usize) -> i32;
+    }
+
+    // Create TCP sockets for zenoh-pico and register them with the bridge
     #[allow(static_mut_refs)]
     unsafe {
         let tcp0 = TcpSocket::new(
             TcpSocketBuffer::new(&mut TCP_RX_BUFFER_0[..]),
             TcpSocketBuffer::new(&mut TCP_TX_BUFFER_0[..]),
         );
-        sockets.add(tcp0);
+        let handle0 = sockets.add(tcp0);
+        // Convert SocketHandle to usize (they have the same layout)
+        smoltcp_register_socket(core::mem::transmute::<smoltcp::iface::SocketHandle, usize>(
+            handle0,
+        ));
 
         let tcp1 = TcpSocket::new(
             TcpSocketBuffer::new(&mut TCP_RX_BUFFER_1[..]),
             TcpSocketBuffer::new(&mut TCP_TX_BUFFER_1[..]),
         );
-        sockets.add(tcp1);
+        let handle1 = sockets.add(tcp1);
+        smoltcp_register_socket(core::mem::transmute::<smoltcp::iface::SocketHandle, usize>(
+            handle1,
+        ));
     }
 
     // Store pointers for poll callback
@@ -278,11 +312,6 @@ fn main() -> ! {
         SOCKETS_PTR = &mut sockets as *mut _;
         ETH_PTR = &mut eth as *mut _;
     }
-
-    // Initialize the zenoh-pico bridge
-    hprintln!("");
-    hprintln!("Initializing zenoh-pico bridge...");
-    SmoltcpZenohBridge::init();
 
     // Register our poll callback
     extern "C" {
@@ -296,15 +325,52 @@ fn main() -> ! {
     hprintln!("");
     hprintln!("Connecting to zenoh router at tcp/192.0.2.1:7447...");
 
+    // Debug: Check pointer state
+    unsafe {
+        hprintln!("  IFACE_PTR null: {}", IFACE_PTR.is_null());
+        hprintln!("  SOCKETS_PTR null: {}", SOCKETS_PTR.is_null());
+        hprintln!("  ETH_PTR null: {}", ETH_PTR.is_null());
+    }
+
     let ret = unsafe { zenoh_shim_init(ZENOH_LOCATOR.as_ptr() as *const i8) };
     if ret != ZENOH_SHIM_OK {
         hprintln!("zenoh_shim_init failed: {}", ret);
         exit_failure();
     }
+    hprintln!("  zenoh_shim_init OK");
 
+    // Debug: Check if poll callback is registered
+    extern "C" {
+        fn smoltcp_has_poll_callback() -> i32;
+        fn smoltcp_get_poll_count() -> u32;
+        fn smoltcp_get_socket_open_count() -> u32;
+        fn smoltcp_get_socket_connect_count() -> u32;
+    }
+    hprintln!("  Callback registered: {}", unsafe {
+        smoltcp_has_poll_callback()
+    });
+    hprintln!("  Socket open count: {}", unsafe {
+        smoltcp_get_socket_open_count()
+    });
+    hprintln!("  Socket connect count: {}", unsafe {
+        smoltcp_get_socket_connect_count()
+    });
+
+    hprintln!("  Calling zenoh_shim_open...");
     let ret = unsafe { zenoh_shim_open() };
     if ret != ZENOH_SHIM_OK {
         hprintln!("zenoh_shim_open failed: {}", ret);
+        hprintln!("  App poll count: {}", get_poll_count());
+        hprintln!("  Bridge poll count: {}", unsafe {
+            smoltcp_get_poll_count()
+        });
+        hprintln!("  Socket open count: {}", unsafe {
+            smoltcp_get_socket_open_count()
+        });
+        hprintln!("  Socket connect count: {}", unsafe {
+            smoltcp_get_socket_connect_count()
+        });
+        hprintln!("  Clock: {} ms", clock::clock_ms());
         exit_failure();
     }
 

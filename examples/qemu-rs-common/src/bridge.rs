@@ -43,10 +43,11 @@ static mut NEXT_EPHEMERAL_PORT: u16 = 49152;
 /// State for a single socket
 #[derive(Clone, Copy)]
 struct SocketEntry {
-    /// Socket is allocated
+    /// Socket is allocated to zenoh-pico
     allocated: bool,
-    /// smoltcp socket handle
-    handle: Option<SocketHandle>,
+    /// smoltcp socket handle (raw index, converted to SocketHandle when used)
+    /// usize::MAX means no handle assigned
+    handle_raw: usize,
     /// Remote IP address
     remote_ip: [u8; 4],
     /// Remote port
@@ -63,11 +64,25 @@ struct SocketEntry {
     tx_len: usize,
 }
 
+impl SocketEntry {
+    /// Check if this entry has a valid socket handle
+    fn has_handle(&self) -> bool {
+        self.handle_raw != usize::MAX
+    }
+
+    /// Get the socket handle (panics if no handle assigned)
+    fn handle(&self) -> SocketHandle {
+        debug_assert!(self.has_handle());
+        // Safe: SocketHandle is a newtype wrapper around usize with same layout
+        unsafe { core::mem::transmute(self.handle_raw) }
+    }
+}
+
 impl Default for SocketEntry {
     fn default() -> Self {
         Self {
             allocated: false,
-            handle: None,
+            handle_raw: usize::MAX,
             remote_ip: [0; 4],
             remote_port: 0,
             local_port: 0,
@@ -83,7 +98,7 @@ impl Default for SocketEntry {
 /// Global socket table
 static mut SOCKET_TABLE: [SocketEntry; MAX_SOCKETS] = [SocketEntry {
     allocated: false,
-    handle: None,
+    handle_raw: usize::MAX,
     remote_ip: [0; 4],
     remote_port: 0,
     local_port: 0,
@@ -128,8 +143,10 @@ impl SmoltcpZenohBridge {
     pub fn init() {
         unsafe {
             // Reset socket table
-            for entry in SOCKET_TABLE.iter_mut() {
-                *entry = SocketEntry::default();
+            // Use raw pointer to avoid creating mutable reference to static
+            let table = &raw mut SOCKET_TABLE;
+            for i in 0..MAX_SOCKETS {
+                (*table)[i] = SocketEntry::default();
             }
             BRIDGE_STATE.initialized = true;
         }
@@ -149,16 +166,48 @@ impl SmoltcpZenohBridge {
         let activity = iface.poll(timestamp, device, sockets);
 
         // Process each active socket
+        // Use raw pointer to avoid creating mutable reference to static
         unsafe {
-            for (idx, entry) in SOCKET_TABLE.iter_mut().enumerate() {
+            let table = &raw mut SOCKET_TABLE;
+            for idx in 0..MAX_SOCKETS {
+                let entry = &mut (*table)[idx];
                 if !entry.allocated {
                     continue;
                 }
 
-                if let Some(handle) = entry.handle {
+                if entry.has_handle() {
+                    let handle = entry.handle();
                     let socket = sockets.get_mut::<TcpSocket>(handle);
 
-                    // Update connection state
+                    // Check if we need to initiate a connection
+                    if entry.remote_port > 0 && !entry.connected {
+                        match socket.state() {
+                            TcpState::Closed => {
+                                // Initiate connection
+                                let remote = IpEndpoint::new(
+                                    IpAddress::Ipv4(Ipv4Address::new(
+                                        entry.remote_ip[0],
+                                        entry.remote_ip[1],
+                                        entry.remote_ip[2],
+                                        entry.remote_ip[3],
+                                    )),
+                                    entry.remote_port,
+                                );
+                                let _ = socket.connect(iface.context(), remote, entry.local_port);
+                            }
+                            TcpState::Established => {
+                                entry.connected = true;
+                            }
+                            TcpState::SynSent | TcpState::SynReceived => {
+                                // Connection in progress - nothing to do
+                            }
+                            _ => {
+                                // Connection failed or in unexpected state
+                            }
+                        }
+                    }
+
+                    // Update connection state and transfer data
                     match socket.state() {
                         TcpState::Established => {
                             entry.connected = true;
@@ -169,6 +218,8 @@ impl SmoltcpZenohBridge {
                                 let data = &tx_buf[entry.tx_pos..entry.tx_len];
                                 if let Ok(sent) = socket.send_slice(data) {
                                     entry.tx_pos += sent;
+                                    SMOLTCP_TX_COUNT += 1;
+                                    SMOLTCP_TX_BYTES += sent as u32;
                                     if entry.tx_pos >= entry.tx_len {
                                         entry.tx_pos = 0;
                                         entry.tx_len = 0;
@@ -195,6 +246,8 @@ impl SmoltcpZenohBridge {
                                         socket.recv_slice(&mut rx_buf[entry.rx_len..])
                                     {
                                         entry.rx_len += received;
+                                        SMOLTCP_RX_COUNT += 1;
+                                        SMOLTCP_RX_BYTES += received as u32;
                                     }
                                 }
                             }
@@ -215,12 +268,18 @@ impl SmoltcpZenohBridge {
     /// Create a TCP socket in the socket set
     ///
     /// Returns the socket handle index (0-3) or -1 on error.
-    pub fn create_socket(sockets: &mut SocketSet, rx_buffer: &'static mut [u8], tx_buffer: &'static mut [u8]) -> i32 {
+    pub fn create_socket(
+        sockets: &mut SocketSet,
+        rx_buffer: &'static mut [u8],
+        tx_buffer: &'static mut [u8],
+    ) -> i32 {
         use smoltcp::socket::tcp::SocketBuffer;
 
         // Find free slot
+        // Use raw pointer to avoid creating reference to mutable static
         let idx = unsafe {
-            SOCKET_TABLE.iter().position(|e| !e.allocated)
+            let table = &raw const SOCKET_TABLE;
+            (0..MAX_SOCKETS).find(|&i| !(*table)[i].allocated)
         };
 
         let idx = match idx {
@@ -238,7 +297,8 @@ impl SmoltcpZenohBridge {
         unsafe {
             let entry = &mut SOCKET_TABLE[idx];
             entry.allocated = true;
-            entry.handle = Some(handle);
+            // Convert SocketHandle to raw usize (they have the same layout)
+            entry.handle_raw = core::mem::transmute::<smoltcp::iface::SocketHandle, usize>(handle);
             entry.connected = false;
             entry.rx_pos = 0;
             entry.rx_len = 0;
@@ -257,7 +317,13 @@ impl SmoltcpZenohBridge {
     }
 
     /// Connect a socket to a remote endpoint
-    pub fn connect_socket(sockets: &mut SocketSet, iface: &mut Interface, idx: i32, ip: [u8; 4], port: u16) -> i32 {
+    pub fn connect_socket(
+        sockets: &mut SocketSet,
+        iface: &mut Interface,
+        idx: i32,
+        ip: [u8; 4],
+        port: u16,
+    ) -> i32 {
         if idx < 0 || idx >= MAX_SOCKETS as i32 {
             return -1;
         }
@@ -268,7 +334,8 @@ impl SmoltcpZenohBridge {
                 return -1;
             }
 
-            if let Some(handle) = entry.handle {
+            if entry.has_handle() {
+                let handle = entry.handle();
                 let socket = sockets.get_mut::<TcpSocket>(handle);
 
                 // Store remote address
@@ -281,7 +348,10 @@ impl SmoltcpZenohBridge {
                     port,
                 );
 
-                if socket.connect(iface.context(), remote, entry.local_port).is_ok() {
+                if socket
+                    .connect(iface.context(), remote, entry.local_port)
+                    .is_ok()
+                {
                     return 0;
                 }
             }
@@ -295,9 +365,15 @@ impl SmoltcpZenohBridge {
 // FFI Exports for zenoh-pico platform layer
 // ============================================================================
 
-/// Initialize the platform
+/// Initialize the platform (idempotent - only runs once)
 #[no_mangle]
 pub extern "C" fn smoltcp_init() -> i32 {
+    unsafe {
+        // Only initialize once - don't reset if already initialized
+        if BRIDGE_STATE.initialized {
+            return 0;
+        }
+    }
     SmoltcpZenohBridge::init();
     0
 }
@@ -308,14 +384,20 @@ pub extern "C" fn smoltcp_cleanup() {
     // Nothing to cleanup for static allocations
 }
 
-/// Allocate a new socket
+/// Register a pre-created smoltcp socket with the bridge
+///
+/// This must be called for each TCP socket after adding it to the SocketSet.
+/// The socket will then be available for use by zenoh-pico.
 #[no_mangle]
-pub extern "C" fn smoltcp_socket_open() -> i32 {
+pub extern "C" fn smoltcp_register_socket(handle: usize) -> i32 {
     unsafe {
-        // Find free slot
-        for (i, entry) in SOCKET_TABLE.iter_mut().enumerate() {
-            if !entry.allocated {
-                entry.allocated = true;
+        let table = &raw mut SOCKET_TABLE;
+        for i in 0..MAX_SOCKETS {
+            let entry = &mut (*table)[i];
+            // Find an entry without a handle assigned
+            if !entry.has_handle() {
+                entry.allocated = false; // Not allocated to zenoh-pico yet
+                entry.handle_raw = handle;
                 entry.connected = false;
                 entry.local_port = NEXT_EPHEMERAL_PORT;
                 NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
@@ -333,9 +415,113 @@ pub extern "C" fn smoltcp_socket_open() -> i32 {
     }
 }
 
+/// Debug: track socket_open calls
+static mut SOCKET_OPEN_COUNT: u32 = 0;
+
+/// Get the socket_open count (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_get_socket_open_count() -> u32 {
+    unsafe { SOCKET_OPEN_COUNT }
+}
+
+/// Allocate a new socket
+#[no_mangle]
+pub extern "C" fn smoltcp_socket_open() -> i32 {
+    unsafe {
+        SOCKET_OPEN_COUNT += 1;
+
+        // Find a pre-registered socket that isn't currently allocated to zenoh-pico
+        let table = &raw mut SOCKET_TABLE;
+        for i in 0..MAX_SOCKETS {
+            let entry = &mut (*table)[i];
+            // Look for entry with a socket handle that isn't allocated
+            if !entry.allocated && entry.has_handle() {
+                entry.allocated = true;
+                entry.connected = false;
+                entry.remote_ip = [0; 4];
+                entry.remote_port = 0;
+                entry.rx_pos = 0;
+                entry.rx_len = 0;
+                entry.tx_pos = 0;
+                entry.tx_len = 0;
+                return i as i32;
+            }
+        }
+        -1
+    }
+}
+
+/// Debug: track socket_connect calls
+static mut SOCKET_CONNECT_COUNT: u32 = 0;
+
+/// Debug: track send/recv activity
+static mut SOCKET_SEND_COUNT: u32 = 0;
+static mut SOCKET_RECV_COUNT: u32 = 0;
+static mut SOCKET_BYTES_SENT: u32 = 0;
+static mut SOCKET_BYTES_RECV: u32 = 0;
+
+/// Debug: track smoltcp socket activity
+static mut SMOLTCP_TX_COUNT: u32 = 0;
+static mut SMOLTCP_RX_COUNT: u32 = 0;
+static mut SMOLTCP_TX_BYTES: u32 = 0;
+static mut SMOLTCP_RX_BYTES: u32 = 0;
+
+/// Get smoltcp transfer counts (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_get_tcp_tx_count() -> u32 {
+    unsafe { SMOLTCP_TX_COUNT }
+}
+
+#[no_mangle]
+pub extern "C" fn smoltcp_get_tcp_rx_count() -> u32 {
+    unsafe { SMOLTCP_RX_COUNT }
+}
+
+#[no_mangle]
+pub extern "C" fn smoltcp_get_tcp_tx_bytes() -> u32 {
+    unsafe { SMOLTCP_TX_BYTES }
+}
+
+#[no_mangle]
+pub extern "C" fn smoltcp_get_tcp_rx_bytes() -> u32 {
+    unsafe { SMOLTCP_RX_BYTES }
+}
+
+/// Get send/recv counts (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_get_send_count() -> u32 {
+    unsafe { SOCKET_SEND_COUNT }
+}
+
+#[no_mangle]
+pub extern "C" fn smoltcp_get_recv_count() -> u32 {
+    unsafe { SOCKET_RECV_COUNT }
+}
+
+#[no_mangle]
+pub extern "C" fn smoltcp_get_bytes_sent() -> u32 {
+    unsafe { SOCKET_BYTES_SENT }
+}
+
+#[no_mangle]
+pub extern "C" fn smoltcp_get_bytes_recv() -> u32 {
+    unsafe { SOCKET_BYTES_RECV }
+}
+
+/// Get the socket_connect count (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_get_socket_connect_count() -> u32 {
+    unsafe { SOCKET_CONNECT_COUNT }
+}
+
 /// Initiate a TCP connection
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_connect(handle: i32, ip: *const u8, port: u16) -> i32 {
+    unsafe {
+        SOCKET_CONNECT_COUNT += 1;
+    }
+
     if handle < 0 || handle >= MAX_SOCKETS as i32 || ip.is_null() {
         return -1;
     }
@@ -355,9 +541,29 @@ pub extern "C" fn smoltcp_socket_connect(handle: i32, ip: *const u8, port: u16) 
     }
 }
 
+/// Debug: track is_connected checks
+static mut IS_CONNECTED_CHECK_COUNT: u32 = 0;
+static mut IS_CONNECTED_TRUE_COUNT: u32 = 0;
+
+/// Get is_connected check count (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_get_is_connected_check_count() -> u32 {
+    unsafe { IS_CONNECTED_CHECK_COUNT }
+}
+
+/// Get is_connected true count (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_get_is_connected_true_count() -> u32 {
+    unsafe { IS_CONNECTED_TRUE_COUNT }
+}
+
 /// Check if socket is connected
 #[no_mangle]
 pub extern "C" fn smoltcp_socket_is_connected(handle: i32) -> i32 {
+    unsafe {
+        IS_CONNECTED_CHECK_COUNT += 1;
+    }
+
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return 0;
     }
@@ -365,6 +571,7 @@ pub extern "C" fn smoltcp_socket_is_connected(handle: i32) -> i32 {
     unsafe {
         let entry = &SOCKET_TABLE[handle as usize];
         if entry.allocated && entry.connected {
+            IS_CONNECTED_TRUE_COUNT += 1;
             1
         } else {
             0
@@ -383,7 +590,9 @@ pub extern "C" fn smoltcp_socket_close(handle: i32) -> i32 {
         let entry = &mut SOCKET_TABLE[handle as usize];
         entry.allocated = false;
         entry.connected = false;
-        entry.handle = None;
+        // Don't clear the handle - keep it registered for reuse
+        entry.remote_ip = [0; 4];
+        entry.remote_port = 0;
         0
     }
 }
@@ -424,12 +633,15 @@ pub extern "C" fn smoltcp_socket_can_send(handle: i32) -> i32 {
 
 /// Receive data from socket
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_recv(handle: i32, buf: *mut u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || len == 0 {
         return -1;
     }
 
     unsafe {
+        SOCKET_RECV_COUNT += 1;
+
         let entry = &mut SOCKET_TABLE[handle as usize];
         if !entry.allocated {
             return -1;
@@ -445,6 +657,8 @@ pub extern "C" fn smoltcp_socket_recv(handle: i32, buf: *mut u8, len: usize) -> 
         ptr::copy_nonoverlapping(rx_buf[entry.rx_pos..].as_ptr(), buf, to_copy);
         entry.rx_pos += to_copy;
 
+        SOCKET_BYTES_RECV += to_copy as u32;
+
         // Reset buffer if fully consumed
         if entry.rx_pos >= entry.rx_len {
             entry.rx_pos = 0;
@@ -457,12 +671,15 @@ pub extern "C" fn smoltcp_socket_recv(handle: i32, buf: *mut u8, len: usize) -> 
 
 /// Send data to socket
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_send(handle: i32, buf: *const u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || len == 0 {
         return -1;
     }
 
     unsafe {
+        SOCKET_SEND_COUNT += 1;
+
         let entry = &mut SOCKET_TABLE[handle as usize];
         if !entry.allocated || !entry.connected {
             return -1;
@@ -478,12 +695,15 @@ pub extern "C" fn smoltcp_socket_send(handle: i32, buf: *const u8, len: usize) -
         ptr::copy_nonoverlapping(buf, tx_buf[entry.tx_len..].as_mut_ptr(), to_copy);
         entry.tx_len += to_copy;
 
+        SOCKET_BYTES_SENT += to_copy as u32;
+
         to_copy as i32
     }
 }
 
 /// Get socket remote address
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_get_remote(handle: i32, ip: *mut u8, port: *mut u16) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return -1;
@@ -518,6 +738,7 @@ pub extern "C" fn smoltcp_socket_set_connected(handle: i32, connected: bool) {
 
 /// Push received data into socket RX buffer
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_push_rx(handle: i32, data: *const u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || data.is_null() || len == 0 {
         return -1;
@@ -554,6 +775,7 @@ pub extern "C" fn smoltcp_socket_push_rx(handle: i32, data: *const u8, len: usiz
 
 /// Pop pending data from socket TX buffer
 #[no_mangle]
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_pop_tx(handle: i32, buf: *mut u8, max_len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || max_len == 0 {
         return -1;
@@ -619,7 +841,10 @@ pub extern "C" fn smoltcp_alloc(size: usize) -> *mut core::ffi::c_void {
 
 /// Reallocate memory (simple: always allocate new block)
 #[no_mangle]
-pub extern "C" fn smoltcp_realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_void {
+pub extern "C" fn smoltcp_realloc(
+    ptr: *mut core::ffi::c_void,
+    size: usize,
+) -> *mut core::ffi::c_void {
     if ptr.is_null() {
         return smoltcp_alloc(size);
     }
@@ -642,6 +867,19 @@ pub extern "C" fn smoltcp_free(_ptr: *mut core::ffi::c_void) {
 
 /// Simple xorshift32 PRNG state
 static mut RNG_STATE: u32 = 0x12345678;
+
+/// Seed the random number generator
+///
+/// Call this with a unique value (e.g., based on MAC address or IP) to ensure
+/// each instance generates different random numbers. This is critical for
+/// avoiding zenoh ID collisions when multiple instances connect to the same router.
+#[no_mangle]
+pub extern "C" fn smoltcp_seed_random(seed: u32) {
+    unsafe {
+        // Ensure seed is non-zero (xorshift requires non-zero state)
+        RNG_STATE = if seed == 0 { 0x12345678 } else { seed };
+    }
+}
 
 /// Generate a random u32
 #[no_mangle]
@@ -666,6 +904,9 @@ pub type PollCallbackFn = Option<unsafe extern "C" fn()>;
 /// Poll callback (set by application)
 static mut POLL_CALLBACK: PollCallbackFn = None;
 
+/// Debug: Counter for smoltcp_poll calls
+static mut SMOLTCP_POLL_COUNT: u32 = 0;
+
 /// Set the network poll callback
 #[no_mangle]
 pub extern "C" fn smoltcp_set_poll_callback(callback: PollCallbackFn) {
@@ -674,10 +915,30 @@ pub extern "C" fn smoltcp_set_poll_callback(callback: PollCallbackFn) {
     }
 }
 
+/// Check if poll callback is set (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_has_poll_callback() -> i32 {
+    unsafe {
+        let cb = &raw const POLL_CALLBACK;
+        if (*cb).is_some() {
+            1
+        } else {
+            0
+        }
+    }
+}
+
+/// Get the smoltcp_poll call count (for debugging)
+#[no_mangle]
+pub extern "C" fn smoltcp_get_poll_count() -> u32 {
+    unsafe { SMOLTCP_POLL_COUNT }
+}
+
 /// Poll the network stack (calls registered callback)
 #[no_mangle]
 pub extern "C" fn smoltcp_poll() -> i32 {
     unsafe {
+        SMOLTCP_POLL_COUNT += 1;
         if let Some(callback) = POLL_CALLBACK {
             callback();
             0
