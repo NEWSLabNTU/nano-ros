@@ -98,7 +98,21 @@ QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
 - Rename to `_name` with a comment explaining why
 - Use `#[allow(dead_code)]` for test struct fields
 
+### Temporary Scripts
+- Create temporary scripts in `$project/tmp/` directory (not `/tmp`)
+- Use Write/Edit tools to create files (avoid cat + heredoc patterns)
+- The `tmp/` directory is git-ignored and can be cleaned freely
+
 ## Key Design Patterns
+
+### Rust Edition 2024
+All crates use Rust edition 2024. Key syntax changes from edition 2021:
+
+- **Extern blocks require `unsafe`**: `unsafe extern "C" { ... }`
+- **no_mangle requires `unsafe`**: `#[unsafe(no_mangle)]`
+- **Unsafe fn bodies require explicit blocks**: Unsafe operations inside `unsafe fn` need `unsafe { ... }` blocks
+
+The `nano-ros-c` crate keeps `#![allow(unsafe_op_in_unsafe_fn)]` because it's a pure C FFI wrapper with 420+ unsafe operations where adding explicit blocks would add verbosity without safety improvement.
 
 ### `no_std` Support
 All core crates support `#![no_std]` with optional `std`/`alloc` features.
@@ -146,7 +160,8 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 8 | Embedded networking | Complete |
 | 9 | Test infrastructure | In Progress |
 | 10 | C++ bindings (rclcpp) | Planning |
-| 12 | QEMU bare-metal tests | In Progress |
+| 12 | QEMU bare-metal tests | Complete |
+| 13 | Bare-metal API simplification | Complete |
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
