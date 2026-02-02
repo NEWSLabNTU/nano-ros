@@ -1,0 +1,45 @@
+# SPDX-License-Identifier: Apache-2.0
+# nano-ros Zephyr Action Client Example (Rust)
+#
+# A ROS 2 compatible action client running on Zephyr RTOS.
+
+[package]
+# Name must be "rustapp" for zephyr-lang-rust integration
+name = "rustapp"
+version = "0.1.0"
+edition = "2021"
+description = "nano-ros action client for Zephyr RTOS"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Zephyr support from zephyr-lang-rust module
+zephyr = "0.1.0"
+log = "0.4"
+
+# no_std collections
+heapless = "0.8"
+
+# nano-ros crates (patched to local via .cargo/config.toml)
+nano-ros-core = { version = "*", default-features = false }
+nano-ros-serdes = { version = "*", default-features = false }
+
+# zenoh-pico shim (patched to local via .cargo/config.toml)
+# Zephyr feature: FFI declarations only, C code compiled by Zephyr's build system
+zenoh-pico-shim = { version = "*", default-features = false, features = ["zephyr"] }
+
+# Generated message types (patched to local via .cargo/config.toml)
+example_interfaces = { version = "*", default-features = false }
+action_msgs = { version = "*", default-features = false }
+unique_identifier_msgs = { version = "*", default-features = false }
+builtin_interfaces = { version = "*", default-features = false }
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

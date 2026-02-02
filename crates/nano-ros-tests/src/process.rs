@@ -138,6 +138,75 @@ impl ManagedProcess {
         let _ = self.handle.kill();
         let _ = self.handle.wait();
     }
+
+    /// Wait for output with timeout, capturing both stdout and stderr
+    ///
+    /// Similar to wait_for_output but also captures stderr (useful for env_logger output).
+    /// The process is killed when the timeout is reached.
+    pub fn wait_for_all_output(&mut self, timeout: Duration) -> Result<String, TestError> {
+        use std::io::Read;
+
+        let start = std::time::Instant::now();
+        let mut output = String::new();
+
+        // Take both stdout and stderr
+        let mut stdout = self.handle.stdout.take();
+        let mut stderr = self.handle.stderr.take();
+
+        let mut stdout_buf = [0u8; 4096];
+        let mut stderr_buf = [0u8; 4096];
+
+        loop {
+            if start.elapsed() > timeout {
+                let _ = self.handle.kill();
+                if output.is_empty() {
+                    return Err(TestError::Timeout);
+                }
+                break;
+            }
+
+            match self.handle.try_wait() {
+                Ok(Some(_)) => {
+                    // Process exited, read remaining output
+                    if let Some(ref mut out) = stdout {
+                        let _ = out.read_to_string(&mut output);
+                    }
+                    if let Some(ref mut err) = stderr {
+                        let _ = err.read_to_string(&mut output);
+                    }
+                    break;
+                }
+                Ok(None) => {
+                    // Read from stdout
+                    if let Some(ref mut out) = stdout {
+                        match out.read(&mut stdout_buf) {
+                            Ok(0) => {}
+                            Ok(n) => {
+                                output.push_str(&String::from_utf8_lossy(&stdout_buf[..n]));
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                            Err(_) => {}
+                        }
+                    }
+                    // Read from stderr
+                    if let Some(ref mut err) = stderr {
+                        match err.read(&mut stderr_buf) {
+                            Ok(0) => {}
+                            Ok(n) => {
+                                output.push_str(&String::from_utf8_lossy(&stderr_buf[..n]));
+                            }
+                            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {}
+                            Err(_) => {}
+                        }
+                    }
+                    std::thread::sleep(Duration::from_millis(50));
+                }
+                Err(_) => break,
+            }
+        }
+
+        Ok(output)
+    }
 }
 
 impl Drop for ManagedProcess {

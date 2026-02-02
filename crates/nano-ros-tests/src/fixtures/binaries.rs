@@ -16,6 +16,12 @@ static NATIVE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-listener binary
 static NATIVE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native-rs-action-server binary
+static NATIVE_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native-rs-action-client binary
+static NATIVE_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build the qemu-test example and return its path
 ///
 /// Uses OnceLock to cache the build, so subsequent calls are fast.
@@ -169,6 +175,50 @@ pub fn talker_binary() -> PathBuf {
 pub fn listener_binary() -> PathBuf {
     build_native_listener()
         .expect("Failed to build native-rs-listener")
+        .to_path_buf()
+}
+
+/// Build native-rs-action-server with zenoh feature (cached)
+pub fn build_native_action_server() -> TestResult<&'static Path> {
+    NATIVE_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native-rs-action-server",
+                "native-rs-action-server",
+                Some(&["zenoh"]),
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native-rs-action-client with zenoh feature (cached)
+pub fn build_native_action_client() -> TestResult<&'static Path> {
+    NATIVE_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native-rs-action-client",
+                "native-rs-action-client",
+                Some(&["zenoh"]),
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the native-rs-action-server binary path
+#[rstest::fixture]
+pub fn action_server_binary() -> PathBuf {
+    build_native_action_server()
+        .expect("Failed to build native-rs-action-server")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the native-rs-action-client binary path
+#[rstest::fixture]
+pub fn action_client_binary() -> PathBuf {
+    build_native_action_client()
+        .expect("Failed to build native-rs-action-client")
         .to_path_buf()
 }
 

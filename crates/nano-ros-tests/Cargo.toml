@@ -50,3 +50,7 @@ path = "tests/rmw_interop.rs"
 [[test]]
 name = "zephyr"
 path = "tests/zephyr.rs"
+
+[[test]]
+name = "actions"
+path = "tests/actions.rs"
