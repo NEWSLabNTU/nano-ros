@@ -162,6 +162,7 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 10 | C++ bindings (rclcpp) | Planning |
 | 12 | QEMU bare-metal tests | Complete |
 | 13 | Bare-metal API simplification | Complete |
+| 14 | Platform BSP libraries | Planning |
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
