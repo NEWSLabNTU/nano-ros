@@ -142,7 +142,7 @@ extern "C" fn on_int32_message(data: *const u8, len: usize, _ctx: *mut c_void) {
 // =============================================================================
 
 /// Entry point for Zephyr (called by zephyr-lang-rust)
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn rust_main() {
     // Initialize logging
     unsafe {

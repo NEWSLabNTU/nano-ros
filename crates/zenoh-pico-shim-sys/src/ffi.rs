@@ -111,7 +111,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_init(_locator: *const c_char) -> i32 {
         0
     }
@@ -120,7 +120,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_open() -> i32 {
         0
     }
@@ -129,13 +129,13 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Non-zero if open, 0 if closed.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_is_open() -> i32 {
         0
     }
 
     /// Close the session and clean up all resources.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_close() {}
 
     /// Declare a publisher for the given key expression.
@@ -145,7 +145,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Publisher handle (>= 0) on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_declare_publisher(_keyexpr: *const c_char) -> i32 {
         0
     }
@@ -159,7 +159,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_publish(_handle: i32, _data: *const u8, _len: usize) -> i32 {
         0
     }
@@ -171,7 +171,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_undeclare_publisher(_handle: i32) -> i32 {
         0
     }
@@ -185,7 +185,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Subscriber handle (>= 0) on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_declare_subscriber(
         _keyexpr: *const c_char,
         _callback: ShimCallback,
@@ -201,7 +201,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_undeclare_subscriber(_handle: i32) -> i32 {
         0
     }
@@ -219,7 +219,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Number of events processed, or negative on error.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_poll(_timeout_ms: u32) -> i32 {
         0
     }
@@ -236,7 +236,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Number of events processed, or negative on error.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_spin_once(_timeout_ms: u32) -> i32 {
         0
     }
@@ -245,7 +245,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// true if polling required (smoltcp), false if threaded (Zephyr, POSIX).
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_uses_polling() -> bool {
         false
     }
@@ -261,7 +261,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_get_zid(_zid_out: *mut u8) -> i32 {
         0
     }
@@ -277,7 +277,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Liveliness handle (>= 0) on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_declare_liveliness(_keyexpr: *const c_char) -> i32 {
         0
     }
@@ -289,7 +289,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_undeclare_liveliness(_handle: i32) -> i32 {
         0
     }
@@ -309,7 +309,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_publish_with_attachment(
         _handle: i32,
         _data: *const u8,
@@ -333,7 +333,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Queryable handle (>= 0) on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_declare_queryable(
         _keyexpr: *const c_char,
         _callback: ShimQueryCallback,
@@ -349,7 +349,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_undeclare_queryable(_handle: i32) -> i32 {
         0
     }
@@ -365,7 +365,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// 0 on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_query_reply(
         _keyexpr: *const c_char,
         _data: *const u8,
@@ -388,7 +388,7 @@ mod cbindgen_stubs {
     ///
     /// # Returns
     /// Number of bytes in reply on success, negative error code on failure.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_get(
         _keyexpr: *const c_char,
         _payload: *const u8,
@@ -408,7 +408,7 @@ mod cbindgen_stubs {
     // ========================================================================
 
     /// Allocate memory
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_alloc(_size: usize) -> *mut c_void {
         core::ptr::null_mut()
     }
@@ -417,17 +417,17 @@ mod cbindgen_stubs {
     ///
     /// Note: This is a simplified implementation that allocates new memory
     /// and copies the data. The old memory is "leaked" (not reused).
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_realloc(_ptr: *mut c_void, _size: usize) -> *mut c_void {
         core::ptr::null_mut()
     }
 
     /// Free memory (no-op for bump allocator)
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_free(_ptr: *mut c_void) {}
 
     /// Generate a random u32 using xorshift32
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_random_u32() -> u32 {
         0
     }
@@ -435,11 +435,11 @@ mod cbindgen_stubs {
     /// Set the current monotonic time in milliseconds
     ///
     /// Call this from your timer interrupt or monotonic update.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_set_clock_ms(_ms: u64) {}
 
     /// Get the current monotonic time in milliseconds
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
         0
     }
@@ -447,29 +447,29 @@ mod cbindgen_stubs {
     /// Set the network poll callback
     ///
     /// This callback should poll the smoltcp interface and update socket buffers.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_set_poll_callback(_callback: PollCallback) {}
 
     /// Poll the network stack
     ///
     /// Calls the registered poll callback if set.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_poll() -> i32 {
         0
     }
 
     /// Initialize the platform
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_init() -> i32 {
         0
     }
 
     /// Cleanup the platform
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_cleanup() {}
 
     /// Allocate a new socket
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_open() -> i32 {
         0
     }
@@ -478,43 +478,43 @@ mod cbindgen_stubs {
     ///
     /// This stores the connection parameters. The actual connection is established
     /// when the poll callback drives the smoltcp state machine.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_connect(_handle: i32, _ip: *const u8, _port: u16) -> i32 {
         0
     }
 
     /// Check if socket is connected
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_is_connected(_handle: i32) -> i32 {
         0
     }
 
     /// Close a socket
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_close(_handle: i32) -> i32 {
         0
     }
 
     /// Check if socket can receive data
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_can_recv(_handle: i32) -> i32 {
         0
     }
 
     /// Check if socket can send data
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_can_send(_handle: i32) -> i32 {
         0
     }
 
     /// Receive data from socket
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_recv(_handle: i32, _buf: *mut u8, _len: usize) -> i32 {
         0
     }
 
     /// Send data to socket
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_send(_handle: i32, _buf: *const u8, _len: usize) -> i32 {
         0
     }
@@ -522,7 +522,7 @@ mod cbindgen_stubs {
     /// Push received data into a socket's RX buffer
     ///
     /// Called by the smoltcp integration layer when data is received.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_push_rx(_handle: i32, _data: *const u8, _len: usize) -> i32 {
         0
     }
@@ -530,13 +530,13 @@ mod cbindgen_stubs {
     /// Pop pending data from a socket's TX buffer
     ///
     /// Called by the smoltcp integration layer when ready to send.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_pop_tx(_handle: i32, _buf: *mut u8, _max_len: usize) -> i32 {
         0
     }
 
     /// Get socket connection parameters
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_get_remote(
         _handle: i32,
         _ip: *mut u8,
@@ -548,6 +548,6 @@ mod cbindgen_stubs {
     /// Set socket as connected
     ///
     /// Called by the smoltcp integration layer when connection is established.
-    #[no_mangle]
+    #[unsafe(no_mangle)]
     pub extern "C" fn smoltcp_socket_set_connected(_handle: i32, _connected: bool) {}
 }

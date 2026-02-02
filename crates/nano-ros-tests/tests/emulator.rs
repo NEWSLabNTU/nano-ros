@@ -4,7 +4,7 @@
 //! These verify CDR serialization, Node API, and type metadata work on embedded targets.
 
 use nano_ros_tests::fixtures::{
-    is_arm_toolchain_available, is_qemu_available, parse_test_results, qemu_binary, QemuProcess,
+    QemuProcess, is_arm_toolchain_available, is_qemu_available, parse_test_results, qemu_binary,
 };
 use nano_ros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
 use rstest::rstest;

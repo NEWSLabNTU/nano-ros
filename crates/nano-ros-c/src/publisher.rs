@@ -77,7 +77,7 @@ impl Default for nano_ros_publisher_t {
 }
 
 /// Get a zero-initialized publisher.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_publisher_get_zero_initialized() -> nano_ros_publisher_t {
     nano_ros_publisher_t::default()
 }
@@ -99,7 +99,7 @@ pub extern "C" fn nano_ros_publisher_get_zero_initialized() -> nano_ros_publishe
 /// # Safety
 /// * All pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_publisher_init(
     publisher: *mut nano_ros_publisher_t,
     node: *const nano_ros_node_t,
@@ -127,7 +127,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init(
 /// # Safety
 /// * All required pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
     publisher: *mut nano_ros_publisher_t,
     node: *const nano_ros_node_t,
@@ -284,7 +284,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
 /// # Safety
 /// * `publisher` must be a valid pointer to an initialized publisher
 /// * `data` must be a valid pointer to `len` bytes
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_publish_raw(
     publisher: *const nano_ros_publisher_t,
     data: *const u8,
@@ -335,7 +335,7 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
 ///
 /// # Safety
 /// * `publisher` must be a valid pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_publisher_fini(
     publisher: *mut nano_ros_publisher_t,
 ) -> nano_ros_ret_t {
@@ -373,7 +373,7 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
 ///
 /// # Returns
 /// * Pointer to topic name (null-terminated), or NULL if invalid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_publisher_get_topic_name(
     publisher: *const nano_ros_publisher_t,
 ) -> *const c_char {
@@ -396,7 +396,7 @@ pub unsafe extern "C" fn nano_ros_publisher_get_topic_name(
 ///
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_publisher_is_valid(
     publisher: *const nano_ros_publisher_t,
 ) -> c_int {

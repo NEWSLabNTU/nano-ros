@@ -60,7 +60,7 @@ pub mod platform_smoltcp;
     not(cbindgen)
 ))]
 #[allow(improper_ctypes)]
-extern "C" {
+unsafe extern "C" {
     // Session lifecycle
     pub fn zenoh_shim_init(locator: *const core::ffi::c_char) -> i32;
     pub fn zenoh_shim_open() -> i32;

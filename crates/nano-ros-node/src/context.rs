@@ -38,7 +38,7 @@ use crate::ConnectedNode;
 use nano_ros_transport::{SessionMode, TransportConfig};
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
-use crate::executor::{PollingExecutor, DEFAULT_MAX_NODES};
+use crate::executor::{DEFAULT_MAX_NODES, PollingExecutor};
 
 #[cfg(all(feature = "zenoh", feature = "std"))]
 use crate::executor::BasicExecutor;

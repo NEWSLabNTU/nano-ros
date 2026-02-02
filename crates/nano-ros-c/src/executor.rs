@@ -117,7 +117,7 @@ impl Default for nano_ros_executor_t {
 }
 
 /// Get a zero-initialized executor.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_executor_get_zero_initialized() -> nano_ros_executor_t {
     nano_ros_executor_t::default()
 }
@@ -136,7 +136,7 @@ pub extern "C" fn nano_ros_executor_get_zero_initialized() -> nano_ros_executor_
 ///
 /// # Safety
 /// * All pointers must be valid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_init(
     executor: *mut nano_ros_executor_t,
     support: *const nano_ros_support_t,
@@ -183,7 +183,7 @@ pub unsafe extern "C" fn nano_ros_executor_init(
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if executor is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_set_timeout(
     executor: *mut nano_ros_executor_t,
     timeout_ns: u64,
@@ -219,7 +219,7 @@ pub unsafe extern "C" fn nano_ros_executor_set_timeout(
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_add_subscription(
     executor: *mut nano_ros_executor_t,
     subscription: *mut nano_ros_subscription_t,
@@ -276,7 +276,7 @@ pub unsafe extern "C" fn nano_ros_executor_add_subscription(
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_add_timer(
     executor: *mut nano_ros_executor_t,
     timer: *mut nano_ros_timer_t,
@@ -330,7 +330,7 @@ pub unsafe extern "C" fn nano_ros_executor_add_timer(
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_add_service(
     executor: *mut nano_ros_executor_t,
     service: *mut nano_ros_service_t,
@@ -384,7 +384,7 @@ pub unsafe extern "C" fn nano_ros_executor_add_service(
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_add_guard_condition(
     executor: *mut nano_ros_executor_t,
     guard: *mut nano_ros_guard_condition_t,
@@ -546,7 +546,7 @@ unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_spin_some(
     executor: *mut nano_ros_executor_t,
     timeout_ns: u64,
@@ -647,7 +647,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_spin(
     executor: *mut nano_ros_executor_t,
 ) -> nano_ros_ret_t {
@@ -686,7 +686,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin(
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_spin_period(
     executor: *mut nano_ros_executor_t,
     period_ns: u64,
@@ -728,7 +728,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_period(
 /// # Returns
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if executor is NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_stop(
     executor: *mut nano_ros_executor_t,
 ) -> nano_ros_ret_t {
@@ -757,7 +757,7 @@ pub unsafe extern "C" fn nano_ros_executor_stop(
 ///
 /// # Safety
 /// * `executor` must be a valid pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_fini(
     executor: *mut nano_ros_executor_t,
 ) -> nano_ros_ret_t {
@@ -784,7 +784,7 @@ pub unsafe extern "C" fn nano_ros_executor_fini(
 }
 
 /// Get the number of handles in the executor.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_get_handle_count(
     executor: *const nano_ros_executor_t,
 ) -> c_int {
@@ -797,7 +797,7 @@ pub unsafe extern "C" fn nano_ros_executor_get_handle_count(
 }
 
 /// Check if executor is valid (initialized).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_executor_is_valid(executor: *const nano_ros_executor_t) -> c_int {
     if executor.is_null() {
         return 0;

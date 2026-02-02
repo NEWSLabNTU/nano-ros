@@ -68,8 +68,8 @@ use crate::timer::TimerDuration;
 #[cfg(feature = "zenoh")]
 use crate::{
     ConnectedNode, ConnectedPublisher, ConnectedServiceServer, ConnectedSubscriber,
-    IntoNodeOptions, NodeConfig, DEFAULT_MAX_TIMERS, DEFAULT_MAX_TOKENS, DEFAULT_REPLY_BUFFER_SIZE,
-    DEFAULT_REQ_BUFFER_SIZE, DEFAULT_RX_BUFFER_SIZE,
+    DEFAULT_MAX_TIMERS, DEFAULT_MAX_TOKENS, DEFAULT_REPLY_BUFFER_SIZE, DEFAULT_REQ_BUFFER_SIZE,
+    DEFAULT_RX_BUFFER_SIZE, IntoNodeOptions, NodeConfig,
 };
 
 #[cfg(feature = "zenoh")]
@@ -273,11 +273,11 @@ pub(crate) struct ServiceEntry<
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
 impl<
-        S: RosService + Send,
-        const REQ_BUF: usize,
-        const REPLY_BUF: usize,
-        C: ServiceCallback<S> + Send,
-    > ErasedServiceCallback for ServiceEntry<S, REQ_BUF, REPLY_BUF, C>
+    S: RosService + Send,
+    const REQ_BUF: usize,
+    const REPLY_BUF: usize,
+    C: ServiceCallback<S> + Send,
+> ErasedServiceCallback for ServiceEntry<S, REQ_BUF, REPLY_BUF, C>
 {
     fn try_handle(&mut self) -> Result<bool, RclrsError> {
         self.server

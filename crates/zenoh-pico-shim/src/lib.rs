@@ -149,10 +149,22 @@ impl ShimZenohId {
         // zenoh uses LSB-first (reversed) byte order for ID strings
         format!(
             "{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}",
-            self.id[15], self.id[14], self.id[13], self.id[12],
-            self.id[11], self.id[10], self.id[9], self.id[8],
-            self.id[7], self.id[6], self.id[5], self.id[4],
-            self.id[3], self.id[2], self.id[1], self.id[0]
+            self.id[15],
+            self.id[14],
+            self.id[13],
+            self.id[12],
+            self.id[11],
+            self.id[10],
+            self.id[9],
+            self.id[8],
+            self.id[7],
+            self.id[6],
+            self.id[5],
+            self.id[4],
+            self.id[3],
+            self.id[2],
+            self.id[1],
+            self.id[0]
         )
     }
 
@@ -336,7 +348,8 @@ impl ShimContext {
         callback: ShimCallback,
         ctx: *mut c_void,
     ) -> Result<ShimSubscriber<'a>> {
-        let handle = zenoh_shim_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx);
+        let handle =
+            unsafe { zenoh_shim_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
             return Err(ShimError::from_code(handle));
         }
@@ -439,7 +452,8 @@ impl ShimContext {
         callback: ShimQueryCallback,
         ctx: *mut c_void,
     ) -> Result<ShimQueryable> {
-        let handle = zenoh_shim_declare_queryable(keyexpr.as_ptr().cast(), callback, ctx);
+        let handle =
+            unsafe { zenoh_shim_declare_queryable(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
             return Err(ShimError::from_code(handle));
         }

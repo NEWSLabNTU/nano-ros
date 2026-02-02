@@ -2,7 +2,7 @@
 //!
 //! Provides functions to build test binaries with caching support.
 
-use crate::{project_root, TestError, TestResult};
+use crate::{TestError, TestResult, project_root};
 use duct::cmd;
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};

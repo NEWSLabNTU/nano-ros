@@ -78,13 +78,13 @@ impl nano_ros_guard_condition_t {
 // ============================================================================
 
 /// Get a zero-initialized guard condition.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_guard_condition_get_zero_initialized() -> nano_ros_guard_condition_t {
     nano_ros_guard_condition_t::default()
 }
 
 /// Initialize a guard condition.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_guard_condition_init(
     guard: *mut nano_ros_guard_condition_t,
     support: *const nano_ros_support_t,
@@ -117,7 +117,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_init(
 }
 
 /// Set the guard condition callback.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_guard_condition_set_callback(
     guard: *mut nano_ros_guard_condition_t,
     callback: nano_ros_guard_condition_callback_t,
@@ -143,7 +143,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_set_callback(
 ///
 /// This function is designed to be thread-safe. It sets the triggered flag
 /// which will be checked by the executor during its next spin cycle.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_guard_condition_trigger(
     guard: *mut nano_ros_guard_condition_t,
 ) -> nano_ros_ret_t {
@@ -164,7 +164,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_trigger(
 }
 
 /// Check if the guard condition is triggered.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_guard_condition_is_triggered(
     guard: *const nano_ros_guard_condition_t,
 ) -> bool {
@@ -183,7 +183,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_is_triggered(
 }
 
 /// Clear the triggered flag.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_guard_condition_clear(
     guard: *mut nano_ros_guard_condition_t,
 ) -> nano_ros_ret_t {
@@ -200,7 +200,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_clear(
 }
 
 /// Check if guard condition is valid (initialized).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_guard_condition_is_valid(
     guard: *const nano_ros_guard_condition_t,
 ) -> c_int {
@@ -218,7 +218,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_is_valid(
 }
 
 /// Finalize a guard condition.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_guard_condition_fini(
     guard: *mut nano_ros_guard_condition_t,
 ) -> nano_ros_ret_t {

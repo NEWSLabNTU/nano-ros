@@ -366,7 +366,7 @@ impl SmoltcpZenohBridge {
 // ============================================================================
 
 /// Initialize the platform (idempotent - only runs once)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_init() -> i32 {
     unsafe {
         // Only initialize once - don't reset if already initialized
@@ -379,7 +379,7 @@ pub extern "C" fn smoltcp_init() -> i32 {
 }
 
 /// Cleanup the platform
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_cleanup() {
     // Nothing to cleanup for static allocations
 }
@@ -388,7 +388,7 @@ pub extern "C" fn smoltcp_cleanup() {
 ///
 /// This must be called for each TCP socket after adding it to the SocketSet.
 /// The socket will then be available for use by zenoh-pico.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_register_socket(handle: usize) -> i32 {
     unsafe {
         let table = &raw mut SOCKET_TABLE;
@@ -419,13 +419,13 @@ pub extern "C" fn smoltcp_register_socket(handle: usize) -> i32 {
 static mut SOCKET_OPEN_COUNT: u32 = 0;
 
 /// Get the socket_open count (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_socket_open_count() -> u32 {
     unsafe { SOCKET_OPEN_COUNT }
 }
 
 /// Allocate a new socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_open() -> i32 {
     unsafe {
         SOCKET_OPEN_COUNT += 1;
@@ -467,55 +467,55 @@ static mut SMOLTCP_TX_BYTES: u32 = 0;
 static mut SMOLTCP_RX_BYTES: u32 = 0;
 
 /// Get smoltcp transfer counts (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_tcp_tx_count() -> u32 {
     unsafe { SMOLTCP_TX_COUNT }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_tcp_rx_count() -> u32 {
     unsafe { SMOLTCP_RX_COUNT }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_tcp_tx_bytes() -> u32 {
     unsafe { SMOLTCP_TX_BYTES }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_tcp_rx_bytes() -> u32 {
     unsafe { SMOLTCP_RX_BYTES }
 }
 
 /// Get send/recv counts (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_send_count() -> u32 {
     unsafe { SOCKET_SEND_COUNT }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_recv_count() -> u32 {
     unsafe { SOCKET_RECV_COUNT }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_bytes_sent() -> u32 {
     unsafe { SOCKET_BYTES_SENT }
 }
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_bytes_recv() -> u32 {
     unsafe { SOCKET_BYTES_RECV }
 }
 
 /// Get the socket_connect count (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_socket_connect_count() -> u32 {
     unsafe { SOCKET_CONNECT_COUNT }
 }
 
 /// Initiate a TCP connection
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_connect(handle: i32, ip: *const u8, port: u16) -> i32 {
     unsafe {
@@ -546,19 +546,19 @@ static mut IS_CONNECTED_CHECK_COUNT: u32 = 0;
 static mut IS_CONNECTED_TRUE_COUNT: u32 = 0;
 
 /// Get is_connected check count (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_is_connected_check_count() -> u32 {
     unsafe { IS_CONNECTED_CHECK_COUNT }
 }
 
 /// Get is_connected true count (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_is_connected_true_count() -> u32 {
     unsafe { IS_CONNECTED_TRUE_COUNT }
 }
 
 /// Check if socket is connected
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_is_connected(handle: i32) -> i32 {
     unsafe {
         IS_CONNECTED_CHECK_COUNT += 1;
@@ -580,7 +580,7 @@ pub extern "C" fn smoltcp_socket_is_connected(handle: i32) -> i32 {
 }
 
 /// Close a socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_close(handle: i32) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return -1;
@@ -598,7 +598,7 @@ pub extern "C" fn smoltcp_socket_close(handle: i32) -> i32 {
 }
 
 /// Check if socket can receive data
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_can_recv(handle: i32) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return 0;
@@ -615,7 +615,7 @@ pub extern "C" fn smoltcp_socket_can_recv(handle: i32) -> i32 {
 }
 
 /// Check if socket can send data
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_can_send(handle: i32) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return 0;
@@ -632,7 +632,7 @@ pub extern "C" fn smoltcp_socket_can_send(handle: i32) -> i32 {
 }
 
 /// Receive data from socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_recv(handle: i32, buf: *mut u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || len == 0 {
@@ -670,7 +670,7 @@ pub extern "C" fn smoltcp_socket_recv(handle: i32, buf: *mut u8, len: usize) -> 
 }
 
 /// Send data to socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_send(handle: i32, buf: *const u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || len == 0 {
@@ -702,7 +702,7 @@ pub extern "C" fn smoltcp_socket_send(handle: i32, buf: *const u8, len: usize) -
 }
 
 /// Get socket remote address
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_get_remote(handle: i32, ip: *mut u8, port: *mut u16) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
@@ -727,7 +727,7 @@ pub extern "C" fn smoltcp_socket_get_remote(handle: i32, ip: *mut u8, port: *mut
 }
 
 /// Set socket connected state
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_set_connected(handle: i32, connected: bool) {
     if handle >= 0 && (handle as usize) < MAX_SOCKETS {
         unsafe {
@@ -737,7 +737,7 @@ pub extern "C" fn smoltcp_socket_set_connected(handle: i32, connected: bool) {
 }
 
 /// Push received data into socket RX buffer
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_push_rx(handle: i32, data: *const u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || data.is_null() || len == 0 {
@@ -774,7 +774,7 @@ pub extern "C" fn smoltcp_socket_push_rx(handle: i32, data: *const u8, len: usiz
 }
 
 /// Pop pending data from socket TX buffer
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 pub extern "C" fn smoltcp_socket_pop_tx(handle: i32, buf: *mut u8, max_len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || max_len == 0 {
@@ -823,7 +823,7 @@ static mut HEAP_MEM: [u8; HEAP_SIZE] = [0u8; HEAP_SIZE];
 static mut HEAP_POS: usize = 0;
 
 /// Allocate memory
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_alloc(size: usize) -> *mut core::ffi::c_void {
     unsafe {
         // Align to 8 bytes
@@ -840,7 +840,7 @@ pub extern "C" fn smoltcp_alloc(size: usize) -> *mut core::ffi::c_void {
 }
 
 /// Reallocate memory (simple: always allocate new block)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_realloc(
     ptr: *mut core::ffi::c_void,
     size: usize,
@@ -856,7 +856,7 @@ pub extern "C" fn smoltcp_realloc(
 }
 
 /// Free memory (no-op for bump allocator)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_free(_ptr: *mut core::ffi::c_void) {
     // No-op: bump allocator doesn't support deallocation
 }
@@ -873,7 +873,7 @@ static mut RNG_STATE: u32 = 0x12345678;
 /// Call this with a unique value (e.g., based on MAC address or IP) to ensure
 /// each instance generates different random numbers. This is critical for
 /// avoiding zenoh ID collisions when multiple instances connect to the same router.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_seed_random(seed: u32) {
     unsafe {
         // Ensure seed is non-zero (xorshift requires non-zero state)
@@ -882,7 +882,7 @@ pub extern "C" fn smoltcp_seed_random(seed: u32) {
 }
 
 /// Generate a random u32
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_random_u32() -> u32 {
     unsafe {
         let mut x = RNG_STATE;
@@ -908,7 +908,7 @@ static mut POLL_CALLBACK: PollCallbackFn = None;
 static mut SMOLTCP_POLL_COUNT: u32 = 0;
 
 /// Set the network poll callback
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_set_poll_callback(callback: PollCallbackFn) {
     unsafe {
         POLL_CALLBACK = callback;
@@ -916,26 +916,22 @@ pub extern "C" fn smoltcp_set_poll_callback(callback: PollCallbackFn) {
 }
 
 /// Check if poll callback is set (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_has_poll_callback() -> i32 {
     unsafe {
         let cb = &raw const POLL_CALLBACK;
-        if (*cb).is_some() {
-            1
-        } else {
-            0
-        }
+        if (*cb).is_some() { 1 } else { 0 }
     }
 }
 
 /// Get the smoltcp_poll call count (for debugging)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_get_poll_count() -> u32 {
     unsafe { SMOLTCP_POLL_COUNT }
 }
 
 /// Poll the network stack (calls registered callback)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_poll() -> i32 {
     unsafe {
         SMOLTCP_POLL_COUNT += 1;

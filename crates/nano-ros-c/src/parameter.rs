@@ -200,13 +200,13 @@ unsafe fn cstr_eq_buffer(cstr: *const c_char, buffer: &[u8]) -> bool {
 // ============================================================================
 
 /// Get a zero-initialized parameter server.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_param_server_get_zero_initialized() -> nano_ros_param_server_t {
     nano_ros_param_server_t::default()
 }
 
 /// Initialize a parameter server with user-provided storage.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_server_init(
     server: *mut nano_ros_param_server_t,
     storage: *mut nano_ros_parameter_t,
@@ -238,7 +238,7 @@ pub unsafe extern "C" fn nano_ros_param_server_init(
 }
 
 /// Set a parameter change callback.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_server_set_callback(
     server: *mut nano_ros_param_server_t,
     callback: nano_ros_param_callback_t,
@@ -314,7 +314,7 @@ unsafe fn declare_parameter_internal(
 }
 
 /// Declare a boolean parameter.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_declare_bool(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -332,7 +332,7 @@ pub unsafe extern "C" fn nano_ros_param_declare_bool(
 }
 
 /// Declare an integer parameter.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_declare_integer(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -350,7 +350,7 @@ pub unsafe extern "C" fn nano_ros_param_declare_integer(
 }
 
 /// Declare a double parameter.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_declare_double(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -368,7 +368,7 @@ pub unsafe extern "C" fn nano_ros_param_declare_double(
 }
 
 /// Declare a string parameter.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_declare_string(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -392,7 +392,7 @@ pub unsafe extern "C" fn nano_ros_param_declare_string(
 }
 
 /// Get a boolean parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_get_bool(
     server: *const nano_ros_param_server_t,
     name: *const c_char,
@@ -422,7 +422,7 @@ pub unsafe extern "C" fn nano_ros_param_get_bool(
 }
 
 /// Get an integer parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_get_integer(
     server: *const nano_ros_param_server_t,
     name: *const c_char,
@@ -452,7 +452,7 @@ pub unsafe extern "C" fn nano_ros_param_get_integer(
 }
 
 /// Get a double parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_get_double(
     server: *const nano_ros_param_server_t,
     name: *const c_char,
@@ -482,7 +482,7 @@ pub unsafe extern "C" fn nano_ros_param_get_double(
 }
 
 /// Get a string parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_get_string(
     server: *const nano_ros_param_server_t,
     name: *const c_char,
@@ -578,7 +578,7 @@ unsafe fn set_parameter_internal(
 }
 
 /// Set a boolean parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_set_bool(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -594,7 +594,7 @@ pub unsafe extern "C" fn nano_ros_param_set_bool(
 }
 
 /// Set an integer parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_set_integer(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -612,7 +612,7 @@ pub unsafe extern "C" fn nano_ros_param_set_integer(
 }
 
 /// Set a double parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_set_double(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -630,7 +630,7 @@ pub unsafe extern "C" fn nano_ros_param_set_double(
 }
 
 /// Set a string parameter value.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_set_string(
     server: *mut nano_ros_param_server_t,
     name: *const c_char,
@@ -654,7 +654,7 @@ pub unsafe extern "C" fn nano_ros_param_set_string(
 }
 
 /// Check if a parameter exists.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_has(
     server: *const nano_ros_param_server_t,
     name: *const c_char,
@@ -673,7 +673,7 @@ pub unsafe extern "C" fn nano_ros_param_has(
 }
 
 /// Get the type of a parameter.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_get_type(
     server: *const nano_ros_param_server_t,
     name: *const c_char,
@@ -695,7 +695,7 @@ pub unsafe extern "C" fn nano_ros_param_get_type(
 }
 
 /// Get the number of declared parameters.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_server_get_count(
     server: *const nano_ros_param_server_t,
 ) -> usize {
@@ -713,7 +713,7 @@ pub unsafe extern "C" fn nano_ros_param_server_get_count(
 }
 
 /// Finalize a parameter server.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_server_fini(
     server: *mut nano_ros_param_server_t,
 ) -> nano_ros_ret_t {

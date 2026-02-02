@@ -6,7 +6,7 @@
 use core::ffi::c_char;
 use core::ptr;
 
-use crate::constants::{MAX_NAMESPACE_LEN, MAX_NAME_LEN};
+use crate::constants::{MAX_NAME_LEN, MAX_NAMESPACE_LEN};
 use crate::error::*;
 use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
 
@@ -61,7 +61,7 @@ impl Default for nano_ros_node_t {
 ///
 /// # Safety
 /// Returns a stack-allocated struct that must be initialized before use.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_node_get_zero_initialized() -> nano_ros_node_t {
     nano_ros_node_t::default()
 }
@@ -83,7 +83,7 @@ pub extern "C" fn nano_ros_node_get_zero_initialized() -> nano_ros_node_t {
 /// # Safety
 /// * All pointers must be valid
 /// * `name` and `namespace_` must be valid null-terminated strings
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_node_init(
     node: *mut nano_ros_node_t,
     support: *const nano_ros_support_t,
@@ -162,7 +162,7 @@ pub unsafe extern "C" fn nano_ros_node_init(
 ///
 /// # Safety
 /// * `node` must be a valid pointer to an initialized nano_ros_node_t
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_node_fini(node: *mut nano_ros_node_t) -> nano_ros_ret_t {
     if node.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -196,7 +196,7 @@ pub unsafe extern "C" fn nano_ros_node_fini(node: *mut nano_ros_node_t) -> nano_
 ///
 /// # Safety
 /// * `node` must be a valid pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_node_get_name(node: *const nano_ros_node_t) -> *const c_char {
     if node.is_null() {
         return ptr::null();
@@ -220,7 +220,7 @@ pub unsafe extern "C" fn nano_ros_node_get_name(node: *const nano_ros_node_t) ->
 ///
 /// # Safety
 /// * `node` must be a valid pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_node_get_namespace(
     node: *const nano_ros_node_t,
 ) -> *const c_char {

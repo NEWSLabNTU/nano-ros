@@ -43,13 +43,13 @@ pub mod typed;
 pub mod types;
 
 // Re-export main types
-pub use server::{LegacyParameterBuilder, ParameterServer, MAX_PARAMETERS};
+pub use server::{LegacyParameterBuilder, MAX_PARAMETERS, ParameterServer};
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, ReadOnlyParameter,
     UndeclaredParameters,
 };
 pub use types::{
-    FloatingPointRange, IntegerRange, Parameter, ParameterDescriptor, ParameterRange,
-    ParameterType, ParameterValue, ParameterVariant, SetParameterResult, MAX_ARRAY_LEN,
-    MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN, MAX_STRING_VALUE_LEN,
+    FloatingPointRange, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN,
+    MAX_STRING_VALUE_LEN, Parameter, ParameterDescriptor, ParameterRange, ParameterType,
+    ParameterValue, ParameterVariant, SetParameterResult,
 };

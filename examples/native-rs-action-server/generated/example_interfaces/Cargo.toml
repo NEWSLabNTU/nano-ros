@@ -1,7 +1,7 @@
 [package]
 name = "example_interfaces"
 version = "0.9.3"
-edition = "2021"
+edition = "2024"
 
 [features]
 default = []

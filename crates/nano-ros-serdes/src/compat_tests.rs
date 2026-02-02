@@ -5,7 +5,7 @@
 
 #[cfg(test)]
 mod tests {
-    use crate::{CdrReader, CdrWriter, Deserialize, Serialize, CDR_LE_HEADER};
+    use crate::{CDR_LE_HEADER, CdrReader, CdrWriter, Deserialize, Serialize};
 
     /// Test that our CDR header matches Pico-ROS/Micro-CDR
     /// Pico-ROS uses: `*((uint32_t*)pBUF) = 0x0100;` which is [0x00, 0x01, 0x00, 0x00]

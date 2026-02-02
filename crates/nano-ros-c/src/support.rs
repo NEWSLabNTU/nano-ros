@@ -56,7 +56,7 @@ impl Default for nano_ros_support_t {
 ///
 /// # Safety
 /// Returns a stack-allocated struct that must be initialized before use.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_support_get_zero_initialized() -> nano_ros_support_t {
     nano_ros_support_t::default()
 }
@@ -79,7 +79,7 @@ pub extern "C" fn nano_ros_support_get_zero_initialized() -> nano_ros_support_t 
 /// # Safety
 /// * `support` must be a valid pointer to a zero-initialized nano_ros_support_t
 /// * `locator` must be a valid null-terminated string or NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_support_init(
     support: *mut nano_ros_support_t,
     locator: *const c_char,
@@ -169,7 +169,7 @@ pub unsafe extern "C" fn nano_ros_support_init(
 ///
 /// # Safety
 /// * `support` must be a valid pointer to an initialized nano_ros_support_t
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t) -> nano_ros_ret_t {
     if support.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -204,7 +204,7 @@ pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t)
 ///
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_support_is_valid(support: *const nano_ros_support_t) -> c_int {
     if support.is_null() {
         return 0;

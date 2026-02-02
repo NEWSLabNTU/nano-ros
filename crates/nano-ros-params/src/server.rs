@@ -4,8 +4,8 @@
 //! Parameters are stored in a fixed-size array with compile-time capacity.
 
 use crate::types::{
-    Parameter, ParameterDescriptor, ParameterType, ParameterValue, SetParameterResult,
-    MAX_PARAM_NAME_LEN,
+    MAX_PARAM_NAME_LEN, Parameter, ParameterDescriptor, ParameterType, ParameterValue,
+    SetParameterResult,
 };
 use heapless::String;
 
@@ -209,10 +209,10 @@ impl ParameterServer {
         };
 
         // Check if read-only
-        if let Some(ref desc) = entry.descriptor {
-            if desc.read_only {
-                return SetParameterResult::ReadOnly;
-            }
+        if let Some(ref desc) = entry.descriptor
+            && desc.read_only
+        {
+            return SetParameterResult::ReadOnly;
         }
 
         entry.param.value = ParameterValue::NotSet;

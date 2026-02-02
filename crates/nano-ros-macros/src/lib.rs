@@ -4,7 +4,7 @@
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, DeriveInput, Fields, LitStr};
+use syn::{DeriveInput, Fields, LitStr, parse_macro_input};
 
 /// Derive macro for ROS message types
 ///
@@ -74,13 +74,13 @@ pub fn derive_ros_message(input: TokenStream) -> TokenStream {
             _ => {
                 return syn::Error::new_spanned(&input, "RosMessage only supports named fields")
                     .to_compile_error()
-                    .into()
+                    .into();
             }
         },
         _ => {
             return syn::Error::new_spanned(&input, "RosMessage can only be derived for structs")
                 .to_compile_error()
-                .into()
+                .into();
         }
     };
 
@@ -222,9 +222,12 @@ pub fn derive_ros_service(input: TokenStream) -> TokenStream {
     let request_type = match request_type {
         Some(t) => t,
         None => {
-            return syn::Error::new_spanned(&input, "RosService requires #[ros(request = \"...\")]")
-                .to_compile_error()
-                .into()
+            return syn::Error::new_spanned(
+                &input,
+                "RosService requires #[ros(request = \"...\")]",
+            )
+            .to_compile_error()
+            .into();
         }
     };
 
@@ -233,7 +236,7 @@ pub fn derive_ros_service(input: TokenStream) -> TokenStream {
         None => {
             return syn::Error::new_spanned(&input, "RosService requires #[ros(reply = \"...\")]")
                 .to_compile_error()
-                .into()
+                .into();
         }
     };
 

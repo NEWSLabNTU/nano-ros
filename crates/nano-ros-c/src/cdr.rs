@@ -10,7 +10,7 @@ use core::ffi::c_char;
 /// # Safety
 /// - `ptr` must point to a valid mutable pointer to a buffer
 /// - The buffer must have sufficient space
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_bool(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -29,7 +29,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_bool(
 }
 
 /// Write a u8 value to the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_u8(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -48,7 +48,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u8(
 }
 
 /// Write an i8 value to the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_i8(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -74,7 +74,7 @@ unsafe fn align_ptr(ptr: *mut *mut u8, end: *const u8, align: usize) -> i32 {
 }
 
 /// Write a u16 value to the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_u16(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -98,7 +98,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u16(
 }
 
 /// Write an i16 value to the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_i16(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -108,7 +108,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_i16(
 }
 
 /// Write a u32 value to the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_u32(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -134,7 +134,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u32(
 }
 
 /// Write an i32 value to the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_i32(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -144,7 +144,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_i32(
 }
 
 /// Write a u64 value to the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_u64(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -169,7 +169,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u64(
 }
 
 /// Write an i64 value to the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_i64(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -179,7 +179,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_i64(
 }
 
 /// Write a f32 value to the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_f32(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -189,7 +189,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_f32(
 }
 
 /// Write a f64 value to the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_f64(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -201,7 +201,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_f64(
 /// Write a string to the buffer (length-prefixed).
 ///
 /// CDR strings are encoded as: u32 length (including null terminator) + bytes + null terminator
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_string(
     ptr: *mut *mut u8,
     end: *const u8,
@@ -259,7 +259,7 @@ unsafe fn align_read_ptr(ptr: *mut *const u8, end: *const u8, align: usize) -> i
 }
 
 /// Read a boolean value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_bool(
     ptr: *mut *const u8,
     end: *const u8,
@@ -278,7 +278,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_bool(
 }
 
 /// Read a u8 value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_u8(
     ptr: *mut *const u8,
     end: *const u8,
@@ -297,7 +297,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u8(
 }
 
 /// Read an i8 value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_i8(
     ptr: *mut *const u8,
     end: *const u8,
@@ -307,7 +307,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i8(
 }
 
 /// Read a u16 value from the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_u16(
     ptr: *mut *const u8,
     end: *const u8,
@@ -330,7 +330,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u16(
 }
 
 /// Read an i16 value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_i16(
     ptr: *mut *const u8,
     end: *const u8,
@@ -340,7 +340,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i16(
 }
 
 /// Read a u32 value from the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_u32(
     ptr: *mut *const u8,
     end: *const u8,
@@ -366,7 +366,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u32(
 }
 
 /// Read an i32 value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_i32(
     ptr: *mut *const u8,
     end: *const u8,
@@ -376,7 +376,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i32(
 }
 
 /// Read a u64 value from the buffer (with alignment).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_u64(
     ptr: *mut *const u8,
     end: *const u8,
@@ -403,7 +403,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u64(
 }
 
 /// Read an i64 value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_i64(
     ptr: *mut *const u8,
     end: *const u8,
@@ -413,7 +413,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i64(
 }
 
 /// Read a f32 value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_f32(
     ptr: *mut *const u8,
     end: *const u8,
@@ -431,7 +431,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_f32(
 }
 
 /// Read a f64 value from the buffer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_f64(
     ptr: *mut *const u8,
     end: *const u8,
@@ -451,7 +451,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_f64(
 /// Read a string from the buffer into a fixed-size buffer.
 ///
 /// CDR strings are encoded as: u32 length (including null terminator) + bytes + null terminator
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_read_string(
     ptr: *mut *const u8,
     end: *const u8,

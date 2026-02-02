@@ -14,7 +14,7 @@ use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
 
 use nano_ros_baremetal::platform::qemu_mps2::{self, exit_failure, exit_success};
-use nano_ros_baremetal::{create_interface, create_socket_set, BaremetalNode, NodeConfig};
+use nano_ros_baremetal::{BaremetalNode, NodeConfig, create_interface, create_socket_set};
 
 // ============================================================================
 // Network Configuration

@@ -30,7 +30,9 @@
 
 // Compile-time check: zenoh requires alloc (zenoh implies shim-posix which works with alloc)
 #[cfg(all(feature = "zenoh", not(feature = "alloc")))]
-compile_error!("The `zenoh` feature requires `alloc`. Enable the `alloc` feature or use `zenoh` feature which implies `alloc`.");
+compile_error!(
+    "The `zenoh` feature requires `alloc`. Enable the `alloc` feature or use `zenoh` feature which implies `alloc`."
+);
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -54,9 +56,9 @@ pub use traits::{
 // Re-export shim types when shim feature is enabled
 #[cfg(feature = "shim")]
 pub use shim::{
-    RmwAttachment as ShimRmwAttachment, Ros2Liveliness as ShimRos2Liveliness, ShimPublisher,
-    ShimServiceClient, ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport,
-    ZenohId as ShimZenohId, RMW_GID_SIZE as SHIM_RMW_GID_SIZE,
+    RMW_GID_SIZE as SHIM_RMW_GID_SIZE, RmwAttachment as ShimRmwAttachment,
+    Ros2Liveliness as ShimRos2Liveliness, ShimPublisher, ShimServiceClient, ShimServiceServer,
+    ShimSession, ShimSubscriber, ShimTransport, ZenohId as ShimZenohId,
 };
 
 // Re-export zenoh-pico-shim types for liveliness support
@@ -67,10 +69,10 @@ pub use zenoh_pico_shim::ShimLivelinessToken;
 // This allows existing code using ZenohTransport, ZenohSession, etc. to continue working
 #[cfg(feature = "zenoh")]
 pub use shim::{
-    RmwAttachment, Ros2Liveliness, ShimPublisher as ZenohPublisher,
+    RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, ShimPublisher as ZenohPublisher,
     ShimServiceClient as ZenohServiceClient, ShimServiceServer as ZenohServiceServer,
     ShimSession as ZenohSession, ShimSubscriber as ZenohSubscriber,
-    ShimTransport as ZenohTransport, ZenohId, RMW_GID_SIZE,
+    ShimTransport as ZenohTransport, ZenohId,
 };
 
 // Re-export liveliness token with backward-compatible name

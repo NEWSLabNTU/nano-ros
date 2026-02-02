@@ -4,8 +4,8 @@
 
 use nano_ros_tests::count_pattern;
 use nano_ros_tests::fixtures::{
-    is_rmw_zenoh_available, is_ros2_available, listener_binary, talker_binary, zenohd_unique,
-    ManagedProcess, Ros2Process, ZenohRouter, DEFAULT_ROS_DISTRO,
+    DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, is_rmw_zenoh_available,
+    is_ros2_available, listener_binary, talker_binary, zenohd_unique,
 };
 use rstest::rstest;
 use std::path::{Path, PathBuf};

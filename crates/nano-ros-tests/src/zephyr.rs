@@ -2,7 +2,7 @@
 //!
 //! Provides managed Zephyr processes for testing native_sim and QEMU targets.
 
-use crate::{project_root, TestError, TestResult};
+use crate::{TestError, TestResult, project_root};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
@@ -231,12 +231,11 @@ pub fn zephyr_workspace_path() -> Option<PathBuf> {
 
     // 2. zephyr-workspace symlink
     let symlink = root.join("zephyr-workspace");
-    if symlink.is_symlink() || symlink.is_dir() {
-        if let Ok(resolved) = std::fs::canonicalize(&symlink) {
-            if resolved.exists() {
-                return Some(resolved);
-            }
-        }
+    if (symlink.is_symlink() || symlink.is_dir())
+        && let Ok(resolved) = std::fs::canonicalize(&symlink)
+        && resolved.exists()
+    {
+        return Some(resolved);
     }
 
     // 3. Sibling workspace

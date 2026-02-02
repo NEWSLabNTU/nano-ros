@@ -185,19 +185,19 @@ fn post_process_header(header: &str) -> String {
         }
 
         // Check for duplicate typedef declarations
-        if trimmed.starts_with("typedef ") {
-            if let Some(name) = extract_typedef_name(trimmed) {
-                if seen_declarations.contains(&name) {
-                    // Duplicate typedef - skip it and any pending doc comments
-                    pending_lines.clear();
-                    // Skip until semicolon for multiline typedefs
-                    if !trimmed.ends_with(';') {
-                        skip_until_semicolon = true;
-                    }
-                    continue;
+        if trimmed.starts_with("typedef ")
+            && let Some(name) = extract_typedef_name(trimmed)
+        {
+            if seen_declarations.contains(&name) {
+                // Duplicate typedef - skip it and any pending doc comments
+                pending_lines.clear();
+                // Skip until semicolon for multiline typedefs
+                if !trimmed.ends_with(';') {
+                    skip_until_semicolon = true;
                 }
-                seen_declarations.insert(name);
+                continue;
             }
+            seen_declarations.insert(name);
         }
 
         // Check for duplicate function declarations
@@ -208,19 +208,18 @@ fn post_process_header(header: &str) -> String {
             || trimmed.starts_with("uint64_t ")
             || trimmed.starts_with("bool "))
             && trimmed.contains('(')
+            && let Some(name) = extract_function_name(trimmed)
         {
-            if let Some(name) = extract_function_name(trimmed) {
-                if seen_declarations.contains(&name) {
-                    // Duplicate function - skip it and any pending doc comments
-                    pending_lines.clear();
-                    // Skip until semicolon for multiline functions
-                    if !trimmed.ends_with(';') {
-                        skip_until_semicolon = true;
-                    }
-                    continue;
+            if seen_declarations.contains(&name) {
+                // Duplicate function - skip it and any pending doc comments
+                pending_lines.clear();
+                // Skip until semicolon for multiline functions
+                if !trimmed.ends_with(';') {
+                    skip_until_semicolon = true;
                 }
-                seen_declarations.insert(name);
+                continue;
             }
+            seen_declarations.insert(name);
         }
 
         // Flush pending lines (doc comments)
@@ -334,12 +333,11 @@ fn copy_source_tree(src: &Path, dst: &Path) {
         if dst_cmake.exists() {
             let src_meta = std::fs::metadata(&src_cmake).ok();
             let dst_meta = std::fs::metadata(&dst_cmake).ok();
-            if let (Some(s), Some(d)) = (src_meta, dst_meta) {
-                if let (Ok(st), Ok(dt)) = (s.modified(), d.modified()) {
-                    if dt >= st {
-                        return; // Already up to date
-                    }
-                }
+            if let (Some(s), Some(d)) = (src_meta, dst_meta)
+                && let (Ok(st), Ok(dt)) = (s.modified(), d.modified())
+                && dt >= st
+            {
+                return; // Already up to date
             }
         }
         let _ = std::fs::remove_dir_all(dst);

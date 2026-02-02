@@ -69,13 +69,13 @@ pub fn delay_ms(ms: u32) {
 // ============================================================================
 
 /// Get current time in milliseconds (called by C platform layer)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
     clock_ms()
 }
 
 /// Set current time in milliseconds (called by C platform layer)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_set_clock_ms(ms: u64) {
     set_clock_ms(ms);
 }

@@ -79,7 +79,7 @@ impl Default for nano_ros_subscription_t {
 }
 
 /// Get a zero-initialized subscription.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_subscription_get_zero_initialized() -> nano_ros_subscription_t {
     nano_ros_subscription_t::default()
 }
@@ -104,7 +104,7 @@ pub extern "C" fn nano_ros_subscription_get_zero_initialized() -> nano_ros_subsc
 /// * All required pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
 /// * `callback` must be a valid function pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_subscription_init(
     subscription: *mut nano_ros_subscription_t,
     node: *const nano_ros_node_t,
@@ -128,7 +128,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init(
 ///
 /// # Safety
 /// See `nano_ros_subscription_init` for safety requirements.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
     subscription: *mut nano_ros_subscription_t,
     node: *const nano_ros_node_t,
@@ -291,7 +291,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
 ///
 /// # Safety
 /// * `subscription` must be a valid pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_subscription_fini(
     subscription: *mut nano_ros_subscription_t,
 ) -> nano_ros_ret_t {
@@ -332,7 +332,7 @@ pub unsafe extern "C" fn nano_ros_subscription_fini(
 ///
 /// # Returns
 /// * Pointer to topic name (null-terminated), or NULL if invalid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_subscription_get_topic_name(
     subscription: *const nano_ros_subscription_t,
 ) -> *const c_char {
@@ -356,7 +356,7 @@ pub unsafe extern "C" fn nano_ros_subscription_get_topic_name(
 ///
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_subscription_is_valid(
     subscription: *const nano_ros_subscription_t,
 ) -> c_int {

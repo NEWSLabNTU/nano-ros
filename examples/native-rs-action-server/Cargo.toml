@@ -1,7 +1,7 @@
 [package]
 name = "native-rs-action-server"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Example ROS 2 action server using nano-ros"
 
 [features]

@@ -26,7 +26,7 @@ use nano_ros_core::{
 };
 
 use crate::timer::{
-    TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState, DEFAULT_MAX_TIMERS,
+    DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
 use nano_ros_transport::{
     ActionInfo, Publisher as PublisherTrait, QosSettings, ServiceClientTrait, ServiceInfo,
@@ -42,8 +42,8 @@ use nano_ros_transport::{
     ZenohServiceServer, ZenohSession, ZenohSubscriber, ZenohTransport,
 };
 
-use crate::options::{PublisherOptions, SubscriberOptions};
 use crate::NodeConfig;
+use crate::options::{PublisherOptions, SubscriberOptions};
 
 /// Default receive buffer size for subscribers
 pub const DEFAULT_RX_BUFFER_SIZE: usize = 1024;
@@ -1438,12 +1438,12 @@ pub struct ConnectedActionServer<
 
 #[cfg(feature = "zenoh")]
 impl<
-        A: RosAction,
-        const GOAL_BUF: usize,
-        const RESULT_BUF: usize,
-        const FEEDBACK_BUF: usize,
-        const MAX_GOALS: usize,
-    > ConnectedActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
+    A: RosAction,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+    const MAX_GOALS: usize,
+> ConnectedActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
 {
     /// Try to receive and handle a goal request
     ///

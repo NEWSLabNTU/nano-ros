@@ -58,7 +58,7 @@ impl Default for nano_ros_qos_t {
 }
 
 /// Default QoS profile
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static NANO_ROS_QOS_DEFAULT: nano_ros_qos_t = nano_ros_qos_t {
     reliability: nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_RELIABLE,
     durability: nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE,
@@ -67,7 +67,7 @@ pub static NANO_ROS_QOS_DEFAULT: nano_ros_qos_t = nano_ros_qos_t {
 };
 
 /// Sensor data QoS profile (best effort, small depth)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static NANO_ROS_QOS_SENSOR_DATA: nano_ros_qos_t = nano_ros_qos_t {
     reliability: nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_BEST_EFFORT,
     durability: nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE,
@@ -76,7 +76,7 @@ pub static NANO_ROS_QOS_SENSOR_DATA: nano_ros_qos_t = nano_ros_qos_t {
 };
 
 /// Services QoS profile (reliable)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub static NANO_ROS_QOS_SERVICES: nano_ros_qos_t = nano_ros_qos_t {
     reliability: nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_RELIABLE,
     durability: nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE,

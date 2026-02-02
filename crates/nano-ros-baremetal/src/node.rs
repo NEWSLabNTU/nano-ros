@@ -22,7 +22,7 @@ use zenoh_pico_shim_sys::{
 };
 
 // smoltcp bridge FFI (from qemu-rs-common)
-extern "C" {
+unsafe extern "C" {
     fn smoltcp_seed_random(seed: u32);
     fn smoltcp_register_socket(handle: usize) -> i32;
     fn smoltcp_set_poll_callback(cb: Option<unsafe extern "C" fn()>);
@@ -42,14 +42,16 @@ static mut GLOBAL_DEVICE: *mut () = ptr::null_mut();
 static mut GLOBAL_POLL_FN: Option<fn(*mut (), *mut Interface, *mut SocketSet<'static>)> = None;
 
 /// Network poll callback called by zenoh-pico
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn smoltcp_network_poll() {
-    if GLOBAL_IFACE.is_null() || GLOBAL_SOCKETS.is_null() || GLOBAL_DEVICE.is_null() {
-        return;
-    }
+    unsafe {
+        if GLOBAL_IFACE.is_null() || GLOBAL_SOCKETS.is_null() || GLOBAL_DEVICE.is_null() {
+            return;
+        }
 
-    if let Some(poll_fn) = GLOBAL_POLL_FN {
-        poll_fn(GLOBAL_DEVICE, GLOBAL_IFACE, GLOBAL_SOCKETS);
+        if let Some(poll_fn) = GLOBAL_POLL_FN {
+            poll_fn(GLOBAL_DEVICE, GLOBAL_IFACE, GLOBAL_SOCKETS);
+        }
     }
 }
 
@@ -224,11 +226,13 @@ impl<'a, D: EthernetDevice + 'static> BaremetalNode<'a, D> {
             None => return Err(Error::SubscriberDeclare),
         };
 
-        let handle = zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, cb, context);
+        let handle = unsafe {
+            zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, cb, context)
+        };
         if handle < 0 {
             return Err(Error::SubscriberDeclare);
         }
-        Ok(Subscriber::from_handle(handle))
+        Ok(unsafe { Subscriber::from_handle(handle) })
     }
 
     /// Process network events and zenoh callbacks
@@ -295,7 +299,7 @@ pub fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
 /// This function should only be called once, as it uses static buffers.
 #[allow(static_mut_refs)]
 pub unsafe fn create_socket_set() -> SocketSet<'static> {
-    SocketSet::new(&mut buffers::SOCKET_STORAGE[..])
+    unsafe { SocketSet::new(&mut buffers::SOCKET_STORAGE[..]) }
 }
 
 // Platform-specific poll functions

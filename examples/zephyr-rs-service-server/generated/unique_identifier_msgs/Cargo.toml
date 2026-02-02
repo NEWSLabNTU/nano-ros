@@ -1,7 +1,7 @@
 [package]
 name = "unique_identifier_msgs"
 version = "2.2.1"
-edition = "2021"
+edition = "2024"
 
 [features]
 default = []

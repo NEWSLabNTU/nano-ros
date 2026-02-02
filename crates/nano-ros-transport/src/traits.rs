@@ -673,7 +673,7 @@ mod tests {
         let key: heapless::String<128> = topic.to_key();
         assert!(key.contains("42"));
         assert!(key.contains("chatter")); // Leading slash stripped
-                                          // For Humble, data keyexprs use TypeHashNotSupported (liveliness uses RIHS01_ prefix)
+        // For Humble, data keyexprs use TypeHashNotSupported (liveliness uses RIHS01_ prefix)
         assert!(key.contains("TypeHashNotSupported"));
     }
 

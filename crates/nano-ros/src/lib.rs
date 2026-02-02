@@ -63,7 +63,7 @@ pub use nano_ros_node::{
 
 // Re-export timer types
 pub use nano_ros_node::{
-    TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState, DEFAULT_MAX_TIMERS,
+    DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
 
 // Re-export connected node types (with zenoh feature)
@@ -110,8 +110,8 @@ pub use nano_ros_transport::{
     feature = "shim-smoltcp"
 ))]
 pub use nano_ros_transport::{
-    ShimPublisher, ShimRmwAttachment, ShimRos2Liveliness, ShimServiceClient, ShimServiceServer,
-    ShimSession, ShimSubscriber, ShimTransport, ShimZenohId, SHIM_RMW_GID_SIZE,
+    SHIM_RMW_GID_SIZE, ShimPublisher, ShimRmwAttachment, ShimRos2Liveliness, ShimServiceClient,
+    ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport, ShimZenohId,
 };
 
 // Re-export liveliness token for shim platforms

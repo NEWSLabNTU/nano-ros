@@ -254,13 +254,13 @@ impl Default for nano_ros_action_server_t {
 }
 
 /// Get a zero-initialized action server.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_action_server_get_zero_initialized() -> nano_ros_action_server_t {
     nano_ros_action_server_t::default()
 }
 
 /// Initialize an action server.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_server_init(
     server: *mut nano_ros_action_server_t,
     node: *const nano_ros_node_t,
@@ -392,7 +392,7 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
 }
 
 /// Publish feedback for an executing goal.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_publish_feedback(
     goal: *mut nano_ros_goal_handle_t,
     feedback: *const u8,
@@ -428,7 +428,7 @@ pub unsafe extern "C" fn nano_ros_action_publish_feedback(
 }
 
 /// Mark a goal as succeeded with a result.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_succeed(
     goal: *mut nano_ros_goal_handle_t,
     result: *const u8,
@@ -477,7 +477,7 @@ pub unsafe extern "C" fn nano_ros_action_succeed(
 }
 
 /// Mark a goal as aborted with an optional result.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_abort(
     goal: *mut nano_ros_goal_handle_t,
     result: *const u8,
@@ -527,7 +527,7 @@ pub unsafe extern "C" fn nano_ros_action_abort(
 }
 
 /// Mark a goal as canceled with an optional result.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_canceled(
     goal: *mut nano_ros_goal_handle_t,
     result: *const u8,
@@ -575,7 +575,7 @@ pub unsafe extern "C" fn nano_ros_action_canceled(
 }
 
 /// Execute a goal (transition from accepted to executing).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_execute(
     goal: *mut nano_ros_goal_handle_t,
 ) -> nano_ros_ret_t {
@@ -599,7 +599,7 @@ pub unsafe extern "C" fn nano_ros_action_execute(
 }
 
 /// Get the number of active goals.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_server_get_active_goal_count(
     server: *const nano_ros_action_server_t,
 ) -> usize {
@@ -612,7 +612,7 @@ pub unsafe extern "C" fn nano_ros_action_server_get_active_goal_count(
 }
 
 /// Finalize an action server.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_server_fini(
     server: *mut nano_ros_action_server_t,
 ) -> nano_ros_ret_t {
@@ -717,13 +717,13 @@ impl Default for nano_ros_action_client_t {
 }
 
 /// Get a zero-initialized action client.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_action_client_get_zero_initialized() -> nano_ros_action_client_t {
     nano_ros_action_client_t::default()
 }
 
 /// Initialize an action client.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_client_init(
     client: *mut nano_ros_action_client_t,
     node: *const nano_ros_node_t,
@@ -827,7 +827,7 @@ pub unsafe extern "C" fn nano_ros_action_client_init(
 }
 
 /// Set feedback callback.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_client_set_feedback_callback(
     client: *mut nano_ros_action_client_t,
     callback: nano_ros_feedback_callback_t,
@@ -845,7 +845,7 @@ pub unsafe extern "C" fn nano_ros_action_client_set_feedback_callback(
 }
 
 /// Set result callback.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_client_set_result_callback(
     client: *mut nano_ros_action_client_t,
     callback: nano_ros_result_callback_t,
@@ -863,7 +863,7 @@ pub unsafe extern "C" fn nano_ros_action_client_set_result_callback(
 }
 
 /// Send a goal request.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_send_goal(
     client: *mut nano_ros_action_client_t,
     goal: *const u8,
@@ -900,7 +900,7 @@ pub unsafe extern "C" fn nano_ros_action_send_goal(
 }
 
 /// Request cancellation of a goal.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_cancel_goal(
     client: *mut nano_ros_action_client_t,
     goal_uuid: *const nano_ros_goal_uuid_t,
@@ -929,7 +929,7 @@ pub unsafe extern "C" fn nano_ros_action_cancel_goal(
 }
 
 /// Request result of a goal (blocking).
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_get_result(
     client: *mut nano_ros_action_client_t,
     goal_uuid: *const nano_ros_goal_uuid_t,
@@ -970,7 +970,7 @@ pub unsafe extern "C" fn nano_ros_action_get_result(
 }
 
 /// Finalize an action client.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_action_client_fini(
     client: *mut nano_ros_action_client_t,
 ) -> nano_ros_ret_t {
@@ -1006,7 +1006,7 @@ pub unsafe extern "C" fn nano_ros_action_client_fini(
 // ============================================================================
 
 /// Generate a new random goal UUID.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_goal_uuid_generate(
     uuid: *mut nano_ros_goal_uuid_t,
 ) -> nano_ros_ret_t {
@@ -1056,7 +1056,7 @@ pub unsafe extern "C" fn nano_ros_goal_uuid_generate(
 }
 
 /// Compare two goal UUIDs.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_goal_uuid_equal(
     a: *const nano_ros_goal_uuid_t,
     b: *const nano_ros_goal_uuid_t,
@@ -1072,7 +1072,7 @@ pub unsafe extern "C" fn nano_ros_goal_uuid_equal(
 }
 
 /// Get status name as string.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_goal_status_to_string(status: nano_ros_goal_status_t) -> *const c_char {
     match status {
         nano_ros_goal_status_t::NANO_ROS_GOAL_STATUS_UNKNOWN => c"UNKNOWN".as_ptr(),

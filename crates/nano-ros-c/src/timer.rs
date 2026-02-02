@@ -61,7 +61,7 @@ impl Default for nano_ros_timer_t {
 }
 
 /// Get a zero-initialized timer.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_timer_get_zero_initialized() -> nano_ros_timer_t {
     nano_ros_timer_t::default()
 }
@@ -83,7 +83,7 @@ pub extern "C" fn nano_ros_timer_get_zero_initialized() -> nano_ros_timer_t {
 /// # Safety
 /// * All required pointers must be valid
 /// * `callback` must be a valid function pointer
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_init(
     timer: *mut nano_ros_timer_t,
     support: *const nano_ros_support_t,
@@ -134,7 +134,7 @@ pub unsafe extern "C" fn nano_ros_timer_init(
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_cancel(timer: *mut nano_ros_timer_t) -> nano_ros_ret_t {
     if timer.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -167,7 +167,7 @@ pub unsafe extern "C" fn nano_ros_timer_cancel(timer: *mut nano_ros_timer_t) -> 
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_reset(timer: *mut nano_ros_timer_t) -> nano_ros_ret_t {
     if timer.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -195,7 +195,7 @@ pub unsafe extern "C" fn nano_ros_timer_reset(timer: *mut nano_ros_timer_t) -> n
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_fini(timer: *mut nano_ros_timer_t) -> nano_ros_ret_t {
     if timer.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -225,7 +225,7 @@ pub unsafe extern "C" fn nano_ros_timer_fini(timer: *mut nano_ros_timer_t) -> na
 ///
 /// # Returns
 /// * Non-zero if timer is ready, 0 otherwise
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_is_ready(
     timer: *const nano_ros_timer_t,
     current_time_ns: u64,
@@ -241,11 +241,7 @@ pub unsafe extern "C" fn nano_ros_timer_is_ready(
     }
 
     let elapsed = current_time_ns.saturating_sub(timer.last_call_time_ns);
-    if elapsed >= timer.period_ns {
-        1
-    } else {
-        0
-    }
+    if elapsed >= timer.period_ns { 1 } else { 0 }
 }
 
 /// Call the timer callback and update last call time.
@@ -260,7 +256,7 @@ pub unsafe extern "C" fn nano_ros_timer_is_ready(
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized or not running
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_call(
     timer: *mut nano_ros_timer_t,
     current_time_ns: u64,
@@ -293,7 +289,7 @@ pub unsafe extern "C" fn nano_ros_timer_call(
 ///
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_is_valid(timer: *const nano_ros_timer_t) -> c_int {
     if timer.is_null() {
         return 0;
@@ -314,7 +310,7 @@ pub unsafe extern "C" fn nano_ros_timer_is_valid(timer: *const nano_ros_timer_t)
 ///
 /// # Returns
 /// * Period in nanoseconds, or 0 if invalid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_get_period(timer: *const nano_ros_timer_t) -> u64 {
     if timer.is_null() {
         return 0;
@@ -332,7 +328,7 @@ pub unsafe extern "C" fn nano_ros_timer_get_period(timer: *const nano_ros_timer_
 ///
 /// # Returns
 /// * Time until next firing in nanoseconds, or 0 if ready now or invalid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_timer_get_time_until_next_call(
     timer: *const nano_ros_timer_t,
     current_time_ns: u64,

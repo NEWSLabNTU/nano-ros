@@ -115,7 +115,7 @@ impl nano_ros_service_t {
 }
 
 /// Get a zero-initialized service server.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_service_get_zero_initialized() -> nano_ros_service_t {
     nano_ros_service_t::default()
 }
@@ -135,7 +135,7 @@ pub extern "C" fn nano_ros_service_get_zero_initialized() -> nano_ros_service_t 
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
 /// * `NANO_ROS_RET_ERROR` on initialization failure
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_service_init(
     service: *mut nano_ros_service_t,
     node: *const nano_ros_node_t,
@@ -284,7 +284,7 @@ pub unsafe extern "C" fn nano_ros_service_init(
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if service is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t) -> nano_ros_ret_t {
     if service.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -329,7 +329,7 @@ pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t)
 /// * `NANO_ROS_RET_TIMEOUT` if no request is available
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_service_take_request(
     service: *mut nano_ros_service_t,
     request_data: *mut u8,
@@ -394,7 +394,7 @@ pub unsafe extern "C" fn nano_ros_service_take_request(
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
 /// * `NANO_ROS_RET_ERROR` on send failure
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_service_send_response(
     service: *mut nano_ros_service_t,
     sequence_number: i64,
@@ -441,7 +441,7 @@ pub unsafe extern "C" fn nano_ros_service_send_response(
 ///
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if invalid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_service_get_service_name(
     service: *const nano_ros_service_t,
 ) -> *const c_char {
@@ -464,7 +464,7 @@ pub unsafe extern "C" fn nano_ros_service_get_service_name(
 ///
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_service_is_valid(service: *const nano_ros_service_t) -> c_int {
     if service.is_null() {
         return 0;
@@ -534,7 +534,7 @@ impl Default for nano_ros_client_t {
 }
 
 /// Get a zero-initialized client.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_client_get_zero_initialized() -> nano_ros_client_t {
     nano_ros_client_t::default()
 }
@@ -552,7 +552,7 @@ pub extern "C" fn nano_ros_client_get_zero_initialized() -> nano_ros_client_t {
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
 /// * `NANO_ROS_RET_ERROR` on initialization failure
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_client_init(
     client: *mut nano_ros_client_t,
     node: *const nano_ros_node_t,
@@ -693,7 +693,7 @@ pub unsafe extern "C" fn nano_ros_client_init(
 /// * `NANO_ROS_RET_OK` on success
 /// * `NANO_ROS_RET_INVALID_ARGUMENT` if client is NULL
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) -> nano_ros_ret_t {
     if client.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -742,7 +742,7 @@ pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) ->
 /// * `NANO_ROS_RET_NOT_INIT` if not initialized
 /// * `NANO_ROS_RET_TIMEOUT` if no response within timeout
 /// * `NANO_ROS_RET_ERROR` on call failure
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_client_call(
     client: *mut nano_ros_client_t,
     request_data: *const u8,
@@ -800,7 +800,7 @@ pub unsafe extern "C" fn nano_ros_client_call(
 ///
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if invalid
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_client_get_service_name(
     client: *const nano_ros_client_t,
 ) -> *const c_char {
@@ -823,7 +823,7 @@ pub unsafe extern "C" fn nano_ros_client_get_service_name(
 ///
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_client_is_valid(client: *const nano_ros_client_t) -> c_int {
     if client.is_null() {
         return 0;

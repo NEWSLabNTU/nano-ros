@@ -105,13 +105,13 @@ fn get_steady_time_ns() -> u64 {
 // ============================================================================
 
 /// Get a zero-initialized clock.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_clock_get_zero_initialized() -> nano_ros_clock_t {
     nano_ros_clock_t::default()
 }
 
 /// Initialize a clock.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_clock_init(
     clock: *mut nano_ros_clock_t,
     clock_type: nano_ros_clock_type_t,
@@ -147,7 +147,7 @@ pub unsafe extern "C" fn nano_ros_clock_init(
 }
 
 /// Get the current time from a clock.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_clock_get_now(
     clock: *const nano_ros_clock_t,
     time_out: *mut nano_ros_time_t,
@@ -181,7 +181,7 @@ pub unsafe extern "C" fn nano_ros_clock_get_now(
 }
 
 /// Get the current time from a clock as nanoseconds.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_clock_get_now_ns(
     clock: *const nano_ros_clock_t,
     nanoseconds: *mut i64,
@@ -208,7 +208,7 @@ pub unsafe extern "C" fn nano_ros_clock_get_now_ns(
 }
 
 /// Check if a clock is valid.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_clock_is_valid(clock: *const nano_ros_clock_t) -> bool {
     if clock.is_null() {
         return false;
@@ -219,7 +219,7 @@ pub unsafe extern "C" fn nano_ros_clock_is_valid(clock: *const nano_ros_clock_t)
 }
 
 /// Get the clock type.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_clock_get_type(
     clock: *const nano_ros_clock_t,
 ) -> nano_ros_clock_type_t {
@@ -231,7 +231,7 @@ pub unsafe extern "C" fn nano_ros_clock_get_type(
 }
 
 /// Finalize a clock.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_clock_fini(clock: *mut nano_ros_clock_t) -> nano_ros_ret_t {
     if clock.is_null() {
         return NANO_ROS_RET_INVALID_ARGUMENT;
@@ -255,7 +255,7 @@ pub unsafe extern "C" fn nano_ros_clock_fini(clock: *mut nano_ros_clock_t) -> na
 // ============================================================================
 
 /// Convert nanoseconds to a nano_ros_time_t structure.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_time_from_nanoseconds(nanoseconds: i64) -> nano_ros_time_t {
     let sec = (nanoseconds / NANOS_PER_SEC as i64) as i32;
     let nanosec = (nanoseconds.unsigned_abs() % NANOS_PER_SEC) as u32;
@@ -264,7 +264,7 @@ pub extern "C" fn nano_ros_time_from_nanoseconds(nanoseconds: i64) -> nano_ros_t
 }
 
 /// Convert a nano_ros_time_t structure to nanoseconds.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_time_to_nanoseconds(time: *const nano_ros_time_t) -> i64 {
     if time.is_null() {
         return 0;
@@ -275,7 +275,7 @@ pub unsafe extern "C" fn nano_ros_time_to_nanoseconds(time: *const nano_ros_time
 }
 
 /// Add a duration to a time.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_time_add(
     time: nano_ros_time_t,
     duration: nano_ros_duration_t,
@@ -287,7 +287,7 @@ pub extern "C" fn nano_ros_time_add(
 }
 
 /// Subtract a duration from a time.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_time_sub(
     time: nano_ros_time_t,
     duration: nano_ros_duration_t,
@@ -299,7 +299,7 @@ pub extern "C" fn nano_ros_time_sub(
 }
 
 /// Compare two times.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn nano_ros_time_compare(a: nano_ros_time_t, b: nano_ros_time_t) -> c_int {
     if a.sec < b.sec {
         -1

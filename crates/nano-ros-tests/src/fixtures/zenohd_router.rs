@@ -2,7 +2,7 @@
 //!
 //! Provides automatic startup and cleanup of the zenoh router daemon.
 
-use crate::{wait_for_port, TestError, TestResult};
+use crate::{TestError, TestResult, wait_for_port};
 use duct::cmd;
 use std::process::Child;
 use std::sync::atomic::{AtomicU16, Ordering};

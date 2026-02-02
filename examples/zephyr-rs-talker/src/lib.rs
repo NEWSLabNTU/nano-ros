@@ -123,7 +123,7 @@ impl<M: RosMessage + Serialize> ZephyrPublisher<'_, M> {
 // =============================================================================
 
 /// Entry point for Zephyr (called by zephyr-lang-rust)
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn rust_main() {
     // Initialize logging
     unsafe {

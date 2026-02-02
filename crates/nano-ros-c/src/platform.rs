@@ -16,7 +16,7 @@
 // ============================================================================
 
 #[cfg(not(feature = "std"))]
-extern "C" {
+unsafe extern "C" {
     /// Get current monotonic time in nanoseconds.
     pub fn nano_ros_platform_time_ns() -> u64;
 

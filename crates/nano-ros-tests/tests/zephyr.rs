@@ -20,10 +20,10 @@
 //! ```
 
 use nano_ros_tests::count_pattern;
-use nano_ros_tests::fixtures::{build_native_listener, ZenohRouter};
+use nano_ros_tests::fixtures::{ZenohRouter, build_native_listener};
 use nano_ros_tests::zephyr::{
-    get_or_build_zephyr_example, is_bridge_network_available, is_zephyr_available,
-    require_bridge_network, require_zephyr, zephyr_workspace_path, ZephyrPlatform, ZephyrProcess,
+    ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_bridge_network_available,
+    is_zephyr_available, require_bridge_network, require_zephyr, zephyr_workspace_path,
 };
 use std::path::PathBuf;
 use std::time::Duration;

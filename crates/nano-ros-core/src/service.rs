@@ -3,8 +3,8 @@
 //! Services provide synchronous request/response communication.
 //! A service client sends a request and waits for a response from a service server.
 
-use crate::types::RosService;
 use crate::Error;
+use crate::types::RosService;
 
 /// Service server handle
 ///

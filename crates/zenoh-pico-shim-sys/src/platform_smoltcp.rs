@@ -77,9 +77,11 @@ mod bump_alloc {
 
         /// Initialize the allocator with a memory region
         pub unsafe fn init(&self, heap_start: *mut u8, heap_size: usize) {
-            *self.heap_start.get() = heap_start;
-            *self.heap_end.get() = heap_start.add(heap_size);
-            self.next.store(heap_start as usize, Ordering::Release);
+            unsafe {
+                *self.heap_start.get() = heap_start;
+                *self.heap_end.get() = heap_start.add(heap_size);
+                self.next.store(heap_start as usize, Ordering::Release);
+            }
         }
 
         /// Allocate memory with alignment
@@ -124,14 +126,16 @@ static ALLOCATOR: bump_alloc::BumpAllocator = bump_alloc::BumpAllocator::new();
 /// Initialize the heap allocator
 #[allow(static_mut_refs)]
 unsafe fn init_heap() {
-    if !HEAP_INITIALIZED {
-        ALLOCATOR.init(HEAP_MEM.as_mut_ptr() as *mut u8, HEAP_SIZE);
-        HEAP_INITIALIZED = true;
+    unsafe {
+        if !HEAP_INITIALIZED {
+            ALLOCATOR.init(HEAP_MEM.as_mut_ptr() as *mut u8, HEAP_SIZE);
+            HEAP_INITIALIZED = true;
+        }
     }
 }
 
 /// Allocate memory
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_alloc(size: usize) -> *mut c_void {
     unsafe {
         init_heap();
@@ -155,7 +159,7 @@ pub extern "C" fn smoltcp_alloc(size: usize) -> *mut c_void {
 /// For zenoh-pico, this should be acceptable because:
 /// - zenoh-pico manages its own data copying when needed
 /// - The bump allocator is designed for short-lived embedded systems
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_realloc(ptr: *mut c_void, size: usize) -> *mut c_void {
     if ptr.is_null() {
         return smoltcp_alloc(size);
@@ -172,7 +176,7 @@ pub extern "C" fn smoltcp_realloc(ptr: *mut c_void, size: usize) -> *mut c_void 
 }
 
 /// Free memory (no-op for bump allocator)
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_free(_ptr: *mut c_void) {
     // No-op: bump allocator doesn't support deallocation
 }
@@ -186,11 +190,13 @@ static mut RNG_STATE: u32 = 0x12345678;
 
 /// Seed the RNG with a value
 unsafe fn seed_rng(seed: u32) {
-    RNG_STATE = if seed == 0 { 0x12345678 } else { seed };
+    unsafe {
+        RNG_STATE = if seed == 0 { 0x12345678 } else { seed };
+    }
 }
 
 /// Generate a random u32 using xorshift32
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_random_u32() -> u32 {
     unsafe {
         // xorshift32 algorithm
@@ -214,7 +220,7 @@ static mut CLOCK_MS: u64 = 0;
 /// Set the current monotonic time in milliseconds
 ///
 /// Call this from your timer interrupt or monotonic update.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_set_clock_ms(ms: u64) {
     unsafe {
         CLOCK_MS = ms;
@@ -222,7 +228,7 @@ pub extern "C" fn smoltcp_set_clock_ms(ms: u64) {
 }
 
 /// Get the current monotonic time in milliseconds
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
     unsafe { CLOCK_MS }
 }
@@ -290,7 +296,7 @@ static mut POLL_CALLBACK: PollCallbackFn = None;
 /// Set the network poll callback
 ///
 /// This callback should poll the smoltcp interface and update socket buffers.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_set_poll_callback(callback: PollCallbackFn) {
     unsafe {
         POLL_CALLBACK = callback;
@@ -300,7 +306,7 @@ pub extern "C" fn smoltcp_set_poll_callback(callback: PollCallbackFn) {
 /// Poll the network stack
 ///
 /// Calls the registered poll callback if set.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_poll() -> i32 {
     #[allow(static_mut_refs)]
     unsafe {
@@ -314,7 +320,7 @@ pub extern "C" fn smoltcp_poll() -> i32 {
 }
 
 /// Initialize the platform
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub extern "C" fn smoltcp_init() -> i32 {
     unsafe {
@@ -334,7 +340,7 @@ pub extern "C" fn smoltcp_init() -> i32 {
 }
 
 /// Cleanup the platform
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_cleanup() {
     // Nothing to cleanup for static allocations
 }
@@ -344,7 +350,7 @@ pub extern "C" fn smoltcp_cleanup() {
 // ============================================================================
 
 /// Allocate a new socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 #[allow(static_mut_refs)]
 pub extern "C" fn smoltcp_socket_open() -> i32 {
     unsafe {
@@ -373,7 +379,7 @@ pub extern "C" fn smoltcp_socket_open() -> i32 {
 ///
 /// This stores the connection parameters. The actual connection is established
 /// when the poll callback drives the smoltcp state machine.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_connect(handle: i32, ip: *const u8, port: u16) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || ip.is_null() {
         return -1;
@@ -399,7 +405,7 @@ pub extern "C" fn smoltcp_socket_connect(handle: i32, ip: *const u8, port: u16) 
 }
 
 /// Check if socket is connected
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_is_connected(handle: i32) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return 0;
@@ -416,7 +422,7 @@ pub extern "C" fn smoltcp_socket_is_connected(handle: i32) -> i32 {
 }
 
 /// Close a socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_close(handle: i32) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return -1;
@@ -431,7 +437,7 @@ pub extern "C" fn smoltcp_socket_close(handle: i32) -> i32 {
 }
 
 /// Check if socket can receive data
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_can_recv(handle: i32) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return 0;
@@ -448,7 +454,7 @@ pub extern "C" fn smoltcp_socket_can_recv(handle: i32) -> i32 {
 }
 
 /// Check if socket can send data
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_can_send(handle: i32) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return 0;
@@ -465,7 +471,7 @@ pub extern "C" fn smoltcp_socket_can_send(handle: i32) -> i32 {
 }
 
 /// Receive data from socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_recv(handle: i32, buf: *mut u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || len == 0 {
         return -1;
@@ -498,7 +504,7 @@ pub extern "C" fn smoltcp_socket_recv(handle: i32, buf: *mut u8, len: usize) -> 
 }
 
 /// Send data to socket
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_send(handle: i32, buf: *const u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || len == 0 {
         return -1;
@@ -531,7 +537,7 @@ pub extern "C" fn smoltcp_socket_send(handle: i32, buf: *const u8, len: usize) -
 /// Push received data into a socket's RX buffer
 ///
 /// Called by the smoltcp integration layer when data is received.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_push_rx(handle: i32, data: *const u8, len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || data.is_null() || len == 0 {
         return -1;
@@ -573,7 +579,7 @@ pub extern "C" fn smoltcp_socket_push_rx(handle: i32, data: *const u8, len: usiz
 /// Pop pending data from a socket's TX buffer
 ///
 /// Called by the smoltcp integration layer when ready to send.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_pop_tx(handle: i32, buf: *mut u8, max_len: usize) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 || buf.is_null() || max_len == 0 {
         return -1;
@@ -608,7 +614,7 @@ pub extern "C" fn smoltcp_socket_pop_tx(handle: i32, buf: *mut u8, max_len: usiz
 }
 
 /// Get socket connection parameters
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_get_remote(handle: i32, ip: *mut u8, port: *mut u16) -> i32 {
     if handle < 0 || handle >= MAX_SOCKETS as i32 {
         return -1;
@@ -634,7 +640,7 @@ pub extern "C" fn smoltcp_socket_get_remote(handle: i32, ip: *mut u8, port: *mut
 /// Set socket as connected
 ///
 /// Called by the smoltcp integration layer when connection is established.
-#[no_mangle]
+#[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_socket_set_connected(handle: i32, connected: bool) {
     if handle >= 0 && (handle as usize) < MAX_SOCKETS {
         unsafe {

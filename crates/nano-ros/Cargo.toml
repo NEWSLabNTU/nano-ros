@@ -1,7 +1,7 @@
 [package]
 name = "nano-ros"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 description = "Unified ROS 2 client library for embedded systems"
 license = "Apache-2.0"
 keywords = ["ros", "ros2", "embedded", "no_std"]

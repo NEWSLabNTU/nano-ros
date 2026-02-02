@@ -135,7 +135,6 @@ pub use connected::{
     ConnectedServiceClient,
     ConnectedServiceServer,
     ConnectedSubscriber,
-    GoalHandle,
     // Buffer size constants
     DEFAULT_CANCEL_BUFFER_SIZE,
     DEFAULT_FEEDBACK_BUFFER_SIZE,
@@ -147,6 +146,7 @@ pub use connected::{
     DEFAULT_RESULT_BUFFER_SIZE,
     DEFAULT_RX_BUFFER_SIZE,
     DEFAULT_STATUS_BUFFER_SIZE,
+    GoalHandle,
 };
 
 // Re-export context types when zenoh feature is enabled (rclrs-style API)
@@ -158,8 +158,8 @@ pub use context::{
 // Re-export executor types
 #[cfg(feature = "zenoh")]
 pub use executor::{
-    Executor, ExecutorTimerCallback, SpinOnceResult, SpinOptions, SubscriptionCallback,
-    SubscriptionHandle, DEFAULT_MAX_NODES, DEFAULT_MAX_SUBSCRIPTIONS,
+    DEFAULT_MAX_NODES, DEFAULT_MAX_SUBSCRIPTIONS, Executor, ExecutorTimerCallback, SpinOnceResult,
+    SpinOptions, SubscriptionCallback, SubscriptionHandle,
 };
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
@@ -184,7 +184,7 @@ pub use nano_ros_transport::SessionMode;
 
 // Re-export timer types
 pub use timer::{
-    TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState, DEFAULT_MAX_TIMERS,
+    DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
 
 // Re-export shim types when shim feature is enabled

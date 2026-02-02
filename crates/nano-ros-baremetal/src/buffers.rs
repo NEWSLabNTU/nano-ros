@@ -35,11 +35,13 @@ pub static mut TCP_TX_BUFFER_3: [u8; TCP_BUFFER_SIZE] = [0u8; TCP_BUFFER_SIZE];
 /// Panics if index >= MAX_SOCKETS
 #[allow(static_mut_refs)]
 pub unsafe fn get_tcp_buffers(index: usize) -> (&'static mut [u8], &'static mut [u8]) {
-    match index {
-        0 => (&mut TCP_RX_BUFFER_0, &mut TCP_TX_BUFFER_0),
-        1 => (&mut TCP_RX_BUFFER_1, &mut TCP_TX_BUFFER_1),
-        2 => (&mut TCP_RX_BUFFER_2, &mut TCP_TX_BUFFER_2),
-        3 => (&mut TCP_RX_BUFFER_3, &mut TCP_TX_BUFFER_3),
-        _ => panic!("Socket index out of range"),
+    unsafe {
+        match index {
+            0 => (&mut TCP_RX_BUFFER_0, &mut TCP_TX_BUFFER_0),
+            1 => (&mut TCP_RX_BUFFER_1, &mut TCP_TX_BUFFER_1),
+            2 => (&mut TCP_RX_BUFFER_2, &mut TCP_TX_BUFFER_2),
+            3 => (&mut TCP_RX_BUFFER_3, &mut TCP_TX_BUFFER_3),
+            _ => panic!("Socket index out of range"),
+        }
     }
 }

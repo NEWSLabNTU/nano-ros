@@ -18,6 +18,11 @@
 #![allow(clippy::missing_safety_doc)]
 // Dead code warnings for internal helpers that may be used later
 #![allow(dead_code)]
+// Edition 2024: This crate is a pure C FFI wrapper with 420+ unsafe operations in
+// unsafe extern "C" functions. Adding explicit unsafe blocks would add significant
+// verbosity without meaningful safety improvement, since all callers already need
+// to provide the necessary safety guarantees.
+#![allow(unsafe_op_in_unsafe_fn)]
 // Executor spin loops depend on external state changes (e.g., from another thread calling stop)
 #![allow(clippy::while_immutable_condition)]
 

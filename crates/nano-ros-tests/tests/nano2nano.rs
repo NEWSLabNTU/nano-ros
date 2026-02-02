@@ -3,8 +3,8 @@
 //! Tests communication between native nano-ros binaries via zenoh.
 
 use nano_ros_tests::fixtures::{
-    is_zenohd_available, listener_binary, require_zenohd, talker_binary, zenohd_unique,
-    ManagedProcess, ZenohRouter,
+    ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, require_zenohd,
+    talker_binary, zenohd_unique,
 };
 use rstest::rstest;
 use std::path::PathBuf;
