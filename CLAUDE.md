@@ -23,7 +23,10 @@ nano-ros/
 │   ├── native-rs-listener/       # Sub example
 │   ├── native-service-*/      # Service examples
 │   ├── zephyr-rs-talker/         # Zephyr pub example
-│   └── zephyr-rs-listener/       # Zephyr sub example
+│   ├── zephyr-rs-listener/       # Zephyr sub example
+│   ├── qemu-rs-common/        # Shared code for QEMU examples
+│   ├── qemu-rs-talker/        # QEMU bare-metal pub example
+│   └── qemu-rs-listener/      # QEMU bare-metal sub example
 ├── scripts/zephyr/            # Zephyr setup scripts
 │   ├── setup.sh               # Initialize workspace
 │   └── setup-network.sh       # Configure TAP interface
@@ -223,3 +226,58 @@ just docker-help               # Show all Docker commands
 ```
 
 See [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) for QEMU/physical device analysis.
+
+### QEMU Bare-Metal Testing
+
+Run bare-metal Cortex-M3 examples on QEMU (MPS2-AN385 machine with LAN9118 Ethernet).
+
+```bash
+# Build prerequisites
+just build-zenoh-pico-arm     # Build zenoh-pico for ARM Cortex-M3
+just build-examples-qemu      # Build all QEMU examples
+
+# Non-networked tests (no setup required)
+just test-qemu-basic          # Run serialization test
+just test-qemu-lan9118        # Run Ethernet driver test
+
+# Networked talker/listener test (Docker Compose - recommended)
+just docker-qemu-test         # Runs zenohd, talker, listener in separate containers
+```
+
+**Docker Compose Architecture:**
+```
+┌─────────────────────────────────────────────────────────────┐
+│              Docker Network: 172.20.0.0/24                  │
+│                                                             │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
+│  │   zenohd    │  │   talker    │  │      listener       │  │
+│  │ 172.20.0.2  │  │ 172.20.0.10 │  │    172.20.0.11      │  │
+│  │             │  │  ┌───────┐  │  │  ┌───────────────┐  │  │
+│  │             │  │  │ QEMU  │  │  │  │     QEMU      │  │  │
+│  │             │  │  │ ARM   │──┼──┼──│     ARM       │  │  │
+│  │             │  │  │ TAP   │  │  │  │     TAP       │  │  │
+│  │             │  │  └───────┘  │  │  └───────────────┘  │  │
+│  └──────▲──────┘  └──────┼──────┘  └─────────┼───────────┘  │
+│         └────────────────┴───────────────────┘              │
+│                    NAT to zenohd                            │
+└─────────────────────────────────────────────────────────────┘
+```
+
+Each container has isolated TAP networking with NAT to reach zenohd.
+
+**Manual networked test (3 terminals, requires host TAP setup):**
+```bash
+# Terminal 1: Setup network + start router
+just setup-qemu-network                    # Requires sudo
+zenohd --listen tcp/0.0.0.0:7447
+
+# Terminal 2: Talker (192.0.2.10)
+./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \
+    --binary examples/qemu-rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker
+
+# Terminal 3: Listener (192.0.2.11)
+./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 \
+    --binary examples/qemu-rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener
+```
+
+Run `just qemu-help` for more options.

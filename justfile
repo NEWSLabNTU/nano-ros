@@ -830,7 +830,7 @@ zephyr-help:
 # Build Docker image for QEMU ARM development
 docker-build:
     @echo "Building Docker image..."
-    docker build -t nano-ros-qemu -f docker/Dockerfile.qemu-arm .
+    docker build -t nano-ros-qemu -f tests/qemu-baremetal/Dockerfile .
     @echo "Docker image 'nano-ros-qemu' built successfully!"
 
 # Start Docker container with interactive shell
@@ -853,24 +853,15 @@ docker-shell-network:
         -v nano-ros-cargo-git:/root/.cargo/git \
         nano-ros-qemu
 
-# Run QEMU test inside Docker container
-docker-test-qemu: docker-build
-    @echo "Running QEMU test inside Docker..."
-    docker run --rm \
-        -v $(pwd):/work \
-        nano-ros-qemu \
-        bash -c "cd /work && just test-qemu-basic"
-
-# Run networked QEMU talker/listener test in Docker (requires privileged networking)
-docker-test-qemu-networked: docker-build build-zenoh-pico-arm build-examples-qemu
-    @echo "Running networked QEMU test inside Docker..."
-    @echo "(This requires Docker with networking capabilities)"
-    docker run --rm \
-        --cap-add=NET_ADMIN \
-        --device=/dev/net/tun \
-        -v $(pwd):/work \
-        nano-ros-qemu \
-        bash -c "cd /work && ./scripts/qemu/docker-networked-test.sh"
+# Run bare-metal QEMU talker/listener test using Docker Compose
+# Uses separate containers for zenohd, talker, and listener with isolated networking
+# Each container creates its own TAP/bridge and NATs to the Docker network
+test-rust-qemu-baremetal: docker-build build-zenoh-pico-arm
+    @echo "Running bare-metal QEMU talker/listener test..."
+    @echo "This starts 3 containers: zenohd, talker, and listener"
+    @echo ""
+    docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
+    @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run QEMU build inside Docker container
 docker-build-qemu: docker-build
@@ -907,13 +898,12 @@ docker-help:
     @echo "  just docker-shell-network # Start with TAP networking support"
     @echo ""
     @echo "Run commands in Docker:"
-    @echo "  just docker-test-qemu           # Run basic QEMU tests in Docker"
-    @echo "  just docker-test-qemu-networked # Run talker/listener test (requires --cap-add=NET_ADMIN)"
-    @echo "  just docker-build-qemu          # Build QEMU examples in Docker"
+    @echo "  just test-rust-qemu-baremetal  # Run QEMU talker/listener test (Docker Compose)"
+    @echo "  just docker-build-qemu         # Build QEMU examples in Docker"
     @echo ""
-    @echo "Docker Compose (QEMU + zenohd):"
-    @echo "  just docker-up            # Start services"
-    @echo "  just docker-down          # Stop services"
+    @echo "Docker Compose:"
+    @echo "  just docker-up            # Start development services"
+    @echo "  just docker-down          # Stop development services"
     @echo "  just docker-exec          # Execute command in container"
     @echo ""
     @echo "Benefits:"

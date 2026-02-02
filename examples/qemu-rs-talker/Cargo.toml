@@ -10,6 +10,11 @@ name = "qemu-rs-talker"
 test = false
 bench = false
 
+[features]
+default = []
+# Use Docker network configuration (different IPs for container-based testing)
+docker = []
+
 [dependencies]
 # Shared QEMU networking infrastructure
 qemu-rs-common = { path = "../qemu-rs-common" }

@@ -1,0 +1,106 @@
+# Docker Compose for QEMU Bare-Metal Testing
+#
+# Runs zenohd, talker, and listener in separate containers with isolated
+# TAP networking. Each QEMU container creates its own internal bridge and
+# NAT, routing traffic through the Docker network.
+#
+# Usage:
+#   just test-rust-qemu-baremetal
+#
+# Or directly:
+#   docker compose -f tests/qemu-baremetal/docker-compose.yml up --build
+
+services:
+  # Zenoh router
+  zenohd:
+    image: eclipse/zenoh:latest
+    container_name: qemu-test-zenohd
+    hostname: zenohd
+    networks:
+      qemu-test-net:
+        ipv4_address: 172.20.0.2
+    command: ["--listen", "tcp/0.0.0.0:7447", "--no-multicast-scouting"]
+    # Simple startup delay instead of healthcheck (zenoh image is minimal)
+    healthcheck:
+      test: ["CMD-SHELL", "true"]
+      interval: 1s
+      timeout: 1s
+      retries: 1
+      start_period: 3s
+
+  # QEMU Talker
+  talker:
+    build:
+      context: ../..
+      dockerfile: tests/qemu-baremetal/Dockerfile
+    image: nano-ros-qemu:latest
+    container_name: qemu-test-talker
+    hostname: talker
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      qemu-test-net:
+        ipv4_address: 172.20.0.10
+    volumes:
+      - ../..:/work
+      - cargo-registry:/root/.cargo/registry
+      - cargo-git:/root/.cargo/git
+    environment:
+      - ZENOH_ROUTER_IP=172.20.0.2
+      - QEMU_ROLE=talker
+      - QEMU_MAC=02:00:00:00:00:00
+      - QEMU_GUEST_IP=192.168.100.10
+    working_dir: /work
+    entrypoint: ["/work/tests/qemu-baremetal/entrypoint.sh"]
+    depends_on:
+      zenohd:
+        condition: service_healthy
+      listener:
+        condition: service_started
+
+  # QEMU Listener (starts before talker so subscriber is ready)
+  listener:
+    build:
+      context: ../..
+      dockerfile: tests/qemu-baremetal/Dockerfile
+    image: nano-ros-qemu:latest
+    container_name: qemu-test-listener
+    hostname: listener
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    sysctls:
+      - net.ipv4.ip_forward=1
+    networks:
+      qemu-test-net:
+        ipv4_address: 172.20.0.11
+    volumes:
+      - ../..:/work
+      - cargo-registry:/root/.cargo/registry
+      - cargo-git:/root/.cargo/git
+    environment:
+      - ZENOH_ROUTER_IP=172.20.0.2
+      - QEMU_ROLE=listener
+      - QEMU_MAC=02:00:00:00:00:01
+    working_dir: /work
+    entrypoint: ["/work/tests/qemu-baremetal/entrypoint.sh"]
+    depends_on:
+      zenohd:
+        condition: service_healthy
+
+networks:
+  qemu-test-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/24
+          gateway: 172.20.0.1
+
+volumes:
+  cargo-registry:
+  cargo-git:

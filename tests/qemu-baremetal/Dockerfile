@@ -41,10 +41,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
     ca-certificates \
     git \
-    # Networking tools (for TAP setup)
+    # Networking tools (for TAP setup and NAT)
     iproute2 \
+    iptables \
     iputils-ping \
     net-tools \
+    netcat-openbsd \
+    tcpdump \
     # Debug tools
     gdb-multiarch \
     && rm -rf /var/lib/apt/lists/*

@@ -49,7 +49,7 @@ use qemu_rs_common::{clock, SmoltcpZenohBridge};
 use smoltcp::{
     iface::{Config as IfaceConfig, Interface, SocketSet},
     socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer},
-    wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
+    wire::{EthernetAddress, IpAddress, IpCidr},
 };
 
 // ============================================================================
@@ -77,17 +77,35 @@ extern "C" {
 /// Device MAC address (locally administered)
 const MAC_ADDRESS: [u8; 6] = [0x02, 0x00, 0x00, 0x00, 0x00, 0x00];
 
-/// Device IP address (static)
-const IP_ADDRESS: Ipv4Address = Ipv4Address::new(192, 0, 2, 10);
+// Docker mode: QEMU runs inside container with NAT to Docker network
+#[cfg(feature = "docker")]
+mod net_config {
+    use smoltcp::wire::Ipv4Address;
+    /// Device IP address (static) - internal container network
+    pub const IP_ADDRESS: Ipv4Address = Ipv4Address::new(192, 168, 100, 10);
+    /// Network prefix length
+    pub const IP_PREFIX: u8 = 24;
+    /// Default gateway (container bridge with NAT)
+    pub const GATEWAY: Ipv4Address = Ipv4Address::new(192, 168, 100, 1);
+    /// Zenoh router locator (zenohd container on Docker network)
+    pub const ZENOH_LOCATOR: &[u8] = b"tcp/172.20.0.2:7447\0";
+}
 
-/// Network prefix length
-const IP_PREFIX: u8 = 24;
+// Manual mode: QEMU connects directly to host TAP bridge
+#[cfg(not(feature = "docker"))]
+mod net_config {
+    use smoltcp::wire::Ipv4Address;
+    /// Device IP address (static)
+    pub const IP_ADDRESS: Ipv4Address = Ipv4Address::new(192, 0, 2, 10);
+    /// Network prefix length
+    pub const IP_PREFIX: u8 = 24;
+    /// Default gateway (host bridge)
+    pub const GATEWAY: Ipv4Address = Ipv4Address::new(192, 0, 2, 1);
+    /// Zenoh router locator (zenohd on host)
+    pub const ZENOH_LOCATOR: &[u8] = b"tcp/192.0.2.1:7447\0";
+}
 
-/// Default gateway (host bridge)
-const GATEWAY: Ipv4Address = Ipv4Address::new(192, 0, 2, 1);
-
-/// Zenoh router locator (null-terminated C string)
-const ZENOH_LOCATOR: &[u8] = b"tcp/192.0.2.1:7447\0";
+use net_config::{GATEWAY, IP_ADDRESS, IP_PREFIX, ZENOH_LOCATOR};
 
 /// Topic to publish on (null-terminated C string)
 const TOPIC: &[u8] = b"demo/qemu\0";
@@ -272,7 +290,10 @@ fn main() -> ! {
 
     // Initialize zenoh session
     hprintln!("");
-    hprintln!("Connecting to zenoh router at tcp/192.0.2.1:7447...");
+    // Print zenoh locator (strip null terminator for display)
+    let locator_str =
+        core::str::from_utf8(&ZENOH_LOCATOR[..ZENOH_LOCATOR.len() - 1]).unwrap_or("?");
+    hprintln!("Connecting to zenoh router at {}...", locator_str);
 
     // Debug: Check poll callback and socket registration
     extern "C" {

@@ -13,7 +13,7 @@ services:
   qemu:
     build:
       context: ..
-      dockerfile: docker/Dockerfile.qemu-arm
+      dockerfile: tests/qemu-baremetal/Dockerfile
     image: nano-ros-qemu:latest
     container_name: nano-ros-qemu
     hostname: nano-ros-qemu
