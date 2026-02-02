@@ -55,3 +55,6 @@ pub use error::{Error, Result};
 pub use node::{create_interface, create_socket_set, BaremetalNode, EthernetDevice};
 pub use publisher::Publisher;
 pub use subscriber::Subscriber;
+
+// Re-export callback type for subscribers
+pub use zenoh_pico_shim_sys::ShimCallback;

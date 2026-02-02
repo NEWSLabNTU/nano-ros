@@ -21,6 +21,9 @@ smoltcp = { version = "0.12", default-features = false, features = [
 cortex-m = "0.7"
 cortex-m-semihosting = "0.5"
 
+# zenoh-pico FFI declarations
+zenoh-pico-shim-sys = { path = "../zenoh-pico-shim-sys", features = ["smoltcp"] }
+
 # Platform drivers (optional, enabled by feature)
 lan9118-smoltcp = { path = "../lan9118-smoltcp", optional = true }
 

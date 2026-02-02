@@ -1,9 +1,7 @@
 //! Subscriber handle for receiving messages
 
-// FFI declarations for zenoh-pico shim
-extern "C" {
-    fn zenoh_shim_undeclare_subscriber(handle: i32) -> i32;
-}
+// Use FFI from zenoh-pico-shim-sys
+use zenoh_pico_shim_sys::zenoh_shim_undeclare_subscriber;
 
 /// Subscriber for receiving messages from a topic
 ///

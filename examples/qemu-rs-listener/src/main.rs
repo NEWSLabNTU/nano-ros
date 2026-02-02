@@ -65,11 +65,13 @@ static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Subscriber callback - called when a message is received
 #[allow(static_mut_refs)]
-unsafe extern "C" fn subscriber_callback(data: *const u8, len: usize, _ctx: *mut c_void) {
-    // Copy message to buffer
-    let copy_len = len.min(MSG_BUFFER_SIZE);
-    ptr::copy_nonoverlapping(data, MSG_BUFFER.as_mut_ptr(), copy_len);
-    MSG_LEN = copy_len;
+extern "C" fn subscriber_callback(data: *const u8, len: usize, _ctx: *mut c_void) {
+    // Copy message to buffer (using unsafe block for static mut access)
+    unsafe {
+        let copy_len = len.min(MSG_BUFFER_SIZE);
+        ptr::copy_nonoverlapping(data, MSG_BUFFER.as_mut_ptr(), copy_len);
+        MSG_LEN = copy_len;
+    }
 
     // Increment message count
     MSG_COUNT.fetch_add(1, Ordering::SeqCst);

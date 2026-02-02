@@ -15,6 +15,7 @@ nano-ros/
 │   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
 │   ├── nano-ros-node/         # High-level node API
 │   ├── nano-ros-tests/        # Integration test crate
+│   ├── nano-ros-baremetal/    # High-level bare-metal API (smoltcp + zenoh-pico)
 │   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
 │   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
 ├── colcon-nano-ros/           # Message binding generator (cargo nano-ros)

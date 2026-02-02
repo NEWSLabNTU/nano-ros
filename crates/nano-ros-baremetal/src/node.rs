@@ -1,6 +1,6 @@
 //! BaremetalNode - High-level API for bare-metal ROS nodes
 
-use core::ffi::c_void;
+use core::ffi::{c_char, c_void};
 use core::marker::PhantomData;
 use core::ptr;
 
@@ -15,22 +15,13 @@ use crate::error::{Error, Result};
 use crate::publisher::Publisher;
 use crate::subscriber::Subscriber;
 
-// FFI declarations for zenoh-pico shim
-extern "C" {
-    fn zenoh_shim_init(locator: *const i8) -> i32;
-    fn zenoh_shim_open() -> i32;
-    fn zenoh_shim_close() -> i32;
-    fn zenoh_shim_is_open() -> i32;
-    fn zenoh_shim_declare_publisher(keyexpr: *const i8) -> i32;
-    fn zenoh_shim_declare_subscriber(
-        keyexpr: *const i8,
-        callback: Option<unsafe extern "C" fn(*const u8, usize, *mut c_void)>,
-        context: *mut c_void,
-    ) -> i32;
-    fn zenoh_shim_spin_once(timeout_ms: u32) -> i32;
-}
+// Use FFI from zenoh-pico-shim-sys
+use zenoh_pico_shim_sys::{
+    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
+    zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once, ShimCallback,
+};
 
-// FFI for smoltcp bridge
+// smoltcp bridge FFI (from qemu-rs-common)
 extern "C" {
     fn smoltcp_seed_random(seed: u32);
     fn smoltcp_register_socket(handle: usize) -> i32;
@@ -169,7 +160,7 @@ impl<'a, D: EthernetDevice + 'static> BaremetalNode<'a, D> {
         }
 
         // Initialize zenoh session
-        let ret = unsafe { zenoh_shim_init(config.zenoh_locator.as_ptr() as *const i8) };
+        let ret = unsafe { zenoh_shim_init(config.zenoh_locator.as_ptr() as *const c_char) };
         if ret < 0 {
             return Err(Error::ZenohInit);
         }
@@ -199,7 +190,7 @@ impl<'a, D: EthernetDevice + 'static> BaremetalNode<'a, D> {
     ///
     /// Returns `Error::PublisherDeclare` if publisher creation fails.
     pub fn create_publisher(&mut self, topic: &[u8]) -> Result<Publisher> {
-        let handle = unsafe { zenoh_shim_declare_publisher(topic.as_ptr() as *const i8) };
+        let handle = unsafe { zenoh_shim_declare_publisher(topic.as_ptr() as *const c_char) };
         if handle < 0 {
             return Err(Error::PublisherDeclare);
         }
@@ -224,10 +215,16 @@ impl<'a, D: EthernetDevice + 'static> BaremetalNode<'a, D> {
     pub unsafe fn create_subscriber_raw(
         &mut self,
         topic: &[u8],
-        callback: Option<unsafe extern "C" fn(*const u8, usize, *mut c_void)>,
+        callback: Option<ShimCallback>,
         context: *mut c_void,
     ) -> Result<Subscriber> {
-        let handle = zenoh_shim_declare_subscriber(topic.as_ptr() as *const i8, callback, context);
+        // Convert Option<ShimCallback> to ShimCallback (use a no-op if None)
+        let cb = match callback {
+            Some(f) => f,
+            None => return Err(Error::SubscriberDeclare),
+        };
+
+        let handle = zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, cb, context);
         if handle < 0 {
             return Err(Error::SubscriberDeclare);
         }
