@@ -25,6 +25,7 @@ members = [
 # nano-ros-cpp is excluded because it's built via CMake/Corrosion
 exclude = [
     "crates/nano-ros-cpp",
+    "crates/nano-ros-baremetal",
     "examples/zephyr-rs-talker",
     "examples/zephyr-rs-listener",
     "examples/qemu-rs-test",

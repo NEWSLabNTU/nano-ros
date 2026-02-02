@@ -1,0 +1,37 @@
+[package]
+name = "nano-ros-baremetal"
+version = "0.1.0"
+edition = "2021"
+authors = ["nano-ros contributors"]
+description = "High-level bare-metal API for nano-ros, abstracting smoltcp and zenoh-pico"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/example/nano-ros"
+categories = ["embedded", "no-std"]
+keywords = ["ros", "embedded", "bare-metal", "smoltcp"]
+
+[dependencies]
+# TCP/IP stack
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-tcp",
+] }
+
+# Arm Cortex-M support
+cortex-m = "0.7"
+cortex-m-semihosting = "0.5"
+
+# Platform drivers (optional, enabled by feature)
+lan9118-smoltcp = { path = "../lan9118-smoltcp", optional = true }
+
+# Shared bridge code (re-exports smoltcp FFI)
+qemu-rs-common = { path = "../../examples/qemu-rs-common", optional = true }
+
+[features]
+default = []
+
+# Platform support
+qemu-mps2 = ["dep:lan9118-smoltcp", "dep:qemu-rs-common"]
+# stm32f4 = ["dep:stm32-eth", "dep:stm32f4xx-hal"]  # Future
+
+[lib]

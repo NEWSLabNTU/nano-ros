@@ -2,7 +2,24 @@
 
 **Goal**: Create a high-level `nano-ros-baremetal` crate that abstracts smoltcp and zenoh-pico details, enabling simple ~50-line examples instead of the current ~500-line boilerplate.
 
-**Status**: Not Started
+**Status**: In Progress (Phase 13.2-13.4 Complete)
+
+## Progress
+
+- [x] **Phase 13.2**: Created `nano-ros-baremetal` crate with high-level API
+  - `BaremetalNode`, `Publisher`, `Subscriber` types
+  - `NodeConfig` for network configuration
+  - `create_interface()` and `create_socket_set()` helpers
+  - Static buffer management
+- [x] **Phase 13.3**: Created platform modules
+  - `platform::qemu_mps2` with `create_ethernet()` and `EthernetDevice` impl
+  - Exit helpers (`exit_success`, `exit_failure`)
+- [x] **Phase 13.4**: Simplified examples
+  - `qemu-rs-talker`: Reduced from ~510 lines to ~217 lines (57% reduction)
+  - `qemu-rs-listener`: Reduced from ~499 lines to ~214 lines (57% reduction)
+  - Docker tests passing with simplified examples
+- [ ] **Phase 13.1**: Move FFI to zenoh-pico-shim (deferred - not blocking)
+- [ ] **Phase 13.5**: Documentation and cleanup
 
 ## Motivation
 

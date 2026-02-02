@@ -16,14 +16,8 @@ default = []
 docker = []
 
 [dependencies]
-# Shared QEMU networking infrastructure
-qemu-rs-common = { path = "../qemu-rs-common" }
-lan9118-smoltcp = { path = "../../crates/lan9118-smoltcp" }
-smoltcp = { version = "0.12", default-features = false, features = [
-    "medium-ethernet",
-    "proto-ipv4",
-    "socket-tcp",
-] }
+# High-level bare-metal API
+nano-ros-baremetal = { path = "../../crates/nano-ros-baremetal", features = ["qemu-mps2"] }
 
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
