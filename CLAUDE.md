@@ -15,19 +15,34 @@ nano-ros/
 │   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
 │   ├── nano-ros-node/         # High-level node API
 │   ├── nano-ros-tests/        # Integration test crate
-│   ├── nano-ros-baremetal/    # High-level bare-metal API (smoltcp + zenoh-pico)
+│   ├── nano-ros-baremetal/    # Low-level bare-metal API (smoltcp + zenoh-pico)
+│   ├── nano-ros-bsp-qemu/     # QEMU MPS2-AN385 Board Support Package
+│   ├── nano-ros-bsp-stm32f4/  # STM32F4 Board Support Package
+│   ├── nano-ros-bsp-zephyr/   # Zephyr RTOS Board Support Package (C)
 │   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
 │   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
 ├── colcon-nano-ros/           # Message binding generator (cargo nano-ros)
-├── examples/                  # Standalone example packages
-│   ├── native-rs-talker/         # Pub example
-│   ├── native-rs-listener/       # Sub example
-│   ├── native-service-*/      # Service examples
-│   ├── zephyr-rs-talker/         # Zephyr pub example
-│   ├── zephyr-rs-listener/       # Zephyr sub example
-│   ├── qemu-rs-common/        # Shared code for QEMU examples
-│   ├── qemu-rs-talker/        # QEMU bare-metal pub example
-│   └── qemu-rs-listener/      # QEMU bare-metal sub example
+├── examples/                  # Standalone example packages (see examples/README.md)
+│   ├── native/                # Desktop/Linux examples
+│   │   ├── rs-talker/            # Rust publisher
+│   │   ├── rs-listener/          # Rust subscriber
+│   │   ├── rs-service-*/         # Rust service examples
+│   │   ├── rs-action-*/          # Rust action examples
+│   │   ├── c-*/                  # C language examples
+│   │   └── cpp-*/                # C++ language examples
+│   ├── qemu/                  # QEMU bare-metal ARM (uses bsp-qemu)
+│   │   ├── bsp-talker/           # Simplified BSP publisher
+│   │   ├── bsp-listener/         # Simplified BSP subscriber
+│   │   └── rs-*/                 # Full Rust examples
+│   ├── stm32f4/               # STM32F4 microcontrollers (uses bsp-stm32f4)
+│   │   └── bsp-talker/           # Simplified BSP publisher
+│   ├── zephyr/                # Zephyr RTOS (uses bsp-zephyr)
+│   │   ├── c-talker/             # C BSP publisher
+│   │   ├── c-listener/           # C BSP subscriber
+│   │   └── rs-*/                 # Rust examples
+│   └── platform-integration/  # Low-level reference implementations
+│       ├── qemu-smoltcp-bridge/  # smoltcp bridge library
+│       └── stm32f4-*/            # STM32F4 networking examples
 ├── scripts/zephyr/            # Zephyr setup scripts
 │   ├── setup.sh               # Initialize workspace
 │   └── setup-network.sh       # Configure TAP interface

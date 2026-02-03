@@ -24,7 +24,7 @@ ZENOH_ROUTER_IP="${ZENOH_ROUTER_IP:-172.20.0.2}"
 QEMU_ROLE="${QEMU_ROLE:-talker}"
 QEMU_MAC="${QEMU_MAC:-02:00:00:00:00:00}"
 
-BINARY="/work/examples/qemu-rs-${QEMU_ROLE}/target/thumbv7m-none-eabi/release/qemu-rs-${QEMU_ROLE}"
+BINARY="/work/examples/qemu/rs-${QEMU_ROLE}/target/thumbv7m-none-eabi/release/qemu-rs-${QEMU_ROLE}"
 
 echo "============================================"
 echo "  QEMU Container: ${QEMU_ROLE}"
@@ -43,7 +43,7 @@ if [ ! -f "$BINARY" ]; then
     echo "Building examples with Docker network configuration..."
 
     # Build with docker feature
-    cd /work/examples/qemu-rs-${QEMU_ROLE}
+    cd /work/examples/qemu/rs-${QEMU_ROLE}
     cargo build --release --features docker
 
     if [ ! -f "$BINARY" ]; then

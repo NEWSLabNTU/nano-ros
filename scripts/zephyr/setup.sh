@@ -25,7 +25,7 @@
 #   ./scripts/zephyr/setup.sh
 #   source ../nano-ros-workspace/env.sh
 #   cd ../nano-ros-workspace
-#   west build -b native_sim/native/64 nano-ros/examples/zephyr-talker
+#   west build -b native_sim/native/64 nano-ros/examples/zephyr/rs-talker
 
 set -e
 
@@ -280,7 +280,7 @@ echo "  NANO_ROS_ROOT: \$NANO_ROS_ROOT"
 echo ""
 echo "Build example:"
 echo "  cd \$WORKSPACE"
-echo "  west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr-talker"
+echo "  west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr/rs-talker"
 ENVEOF
     chmod +x "$WORKSPACE_DIR/env.sh"
 }
@@ -308,7 +308,7 @@ if [ -d "$WORKSPACE_DIR/.west" ]; then
         echo "Usage:"
         echo "  source $WORKSPACE_DIR/env.sh"
         echo "  cd $WORKSPACE_DIR"
-        echo "  west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr-talker"
+        echo "  west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr/rs-talker"
         exit 0
     fi
 fi
@@ -369,7 +369,7 @@ echo "     source $WORKSPACE_DIR/env.sh"
 echo ""
 echo "  2. Build an example:"
 echo "     cd $WORKSPACE_DIR"
-echo "     west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr-talker"
+echo "     west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr/rs-talker"
 echo ""
 echo "  3. Run:"
 echo "     ./build/zephyr/zephyr.exe"

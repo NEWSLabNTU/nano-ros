@@ -189,9 +189,9 @@ build_c_examples() {
 
     local failed=0
 
-    # Build native-c-talker
-    log_info "Building native-c-talker..."
-    local talker_dir="$PROJECT_ROOT/examples/native-c-talker"
+    # Build native/c-talker
+    log_info "Building native/c-talker..."
+    local talker_dir="$PROJECT_ROOT/examples/native/c-talker"
     local talker_build="$talker_dir/build"
 
     rm -rf "$talker_build"
@@ -200,16 +200,16 @@ build_c_examples() {
 
     if cmake .. > "$(tmpfile talker_cmake.txt)" 2>&1 && \
        make > "$(tmpfile talker_make.txt)" 2>&1; then
-        log_success "native-c-talker built"
+        log_success "native/c-talker built"
     else
-        log_error "native-c-talker build failed"
+        log_error "native/c-talker build failed"
         [ "$VERBOSE" = true ] && cat "$(tmpfile talker_cmake.txt)" "$(tmpfile talker_make.txt)"
         failed=1
     fi
 
-    # Build native-c-listener
-    log_info "Building native-c-listener..."
-    local listener_dir="$PROJECT_ROOT/examples/native-c-listener"
+    # Build native/c-listener
+    log_info "Building native/c-listener..."
+    local listener_dir="$PROJECT_ROOT/examples/native/c-listener"
     local listener_build="$listener_dir/build"
 
     rm -rf "$listener_build"
@@ -218,9 +218,9 @@ build_c_examples() {
 
     if cmake .. > "$(tmpfile listener_cmake.txt)" 2>&1 && \
        make > "$(tmpfile listener_make.txt)" 2>&1; then
-        log_success "native-c-listener built"
+        log_success "native/c-listener built"
     else
-        log_error "native-c-listener build failed"
+        log_error "native/c-listener build failed"
         [ "$VERBOSE" = true ] && cat "$(tmpfile listener_cmake.txt)" "$(tmpfile listener_make.txt)"
         failed=1
     fi
@@ -235,8 +235,8 @@ build_c_examples() {
 test_c_pubsub() {
     log_section "Test: C Talker -> C Listener"
 
-    local talker_bin="$PROJECT_ROOT/examples/native-c-talker/build/c_talker"
-    local listener_bin="$PROJECT_ROOT/examples/native-c-listener/build/c_listener"
+    local talker_bin="$PROJECT_ROOT/examples/native/c-talker/build/c_talker"
+    local listener_bin="$PROJECT_ROOT/examples/native/c-listener/build/c_listener"
 
     # Verify binaries exist
     if [ ! -x "$talker_bin" ]; then

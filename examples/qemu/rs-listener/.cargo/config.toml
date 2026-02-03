@@ -1,0 +1,11 @@
+[build]
+target = "thumbv7m-none-eabi"
+
+[target.thumbv7m-none-eabi]
+# MPS2-AN385 with LAN9118 Ethernet and TAP networking
+# Note: For networking tests, use launch-mps2-an385.sh instead
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+
+rustflags = [
+    "-C", "link-arg=-Tlink.x",
+]

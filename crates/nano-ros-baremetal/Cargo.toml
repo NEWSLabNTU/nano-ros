@@ -28,7 +28,7 @@ zenoh-pico-shim-sys = { path = "../zenoh-pico-shim-sys", features = ["smoltcp"] 
 lan9118-smoltcp = { path = "../lan9118-smoltcp", optional = true }
 
 # Shared bridge code (re-exports smoltcp FFI)
-qemu-rs-common = { path = "../../examples/qemu-rs-common", optional = true }
+qemu-rs-common = { path = "../../examples/platform-integration/qemu-smoltcp-bridge", optional = true }
 
 [features]
 default = []

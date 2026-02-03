@@ -24,28 +24,39 @@ members = [
 # that generate their own bindings via `cargo nano-ros generate`
 # nano-ros-cpp is excluded because it's built via CMake/Corrosion
 exclude = [
+    # Embedded crates (require cross-compilation)
     "crates/nano-ros-cpp",
     "crates/nano-ros-baremetal",
-    "examples/zephyr-rs-talker",
-    "examples/zephyr-rs-listener",
-    "examples/qemu-rs-test",
-    "examples/native-rs-talker",
-    "examples/native-rs-listener",
-    "examples/native-rs-custom-msg",
-    "examples/native-rs-service-server",
-    "examples/native-rs-service-client",
-    "examples/native-rs-action-server",
-    "examples/native-rs-action-client",
-    "examples/stm32f4-rs-rtic",
-    "examples/stm32f4-rs-embassy",
-    "examples/stm32f4-rs-polling",
-    "examples/stm32f4-rs-smoltcp",
-    "examples/qemu-rs-lan9118",
-    "examples/qemu-rs-common",
-    "examples/qemu-rs-talker",
-    "examples/qemu-rs-listener",
     "crates/nano-ros-bsp-qemu",
     "crates/nano-ros-bsp-stm32f4",
+    # Native examples (desktop/Linux)
+    "examples/native/rs-talker",
+    "examples/native/rs-listener",
+    "examples/native/rs-custom-msg",
+    "examples/native/rs-service-server",
+    "examples/native/rs-service-client",
+    "examples/native/rs-action-server",
+    "examples/native/rs-action-client",
+    # QEMU examples (bare-metal ARM)
+    "examples/qemu/rs-talker",
+    "examples/qemu/rs-listener",
+    "examples/qemu/rs-test",
+    "examples/qemu/bsp-talker",
+    "examples/qemu/bsp-listener",
+    # STM32F4 examples
+    "examples/stm32f4/bsp-talker",
+    # Zephyr examples
+    "examples/zephyr/rs-talker",
+    "examples/zephyr/rs-listener",
+    "examples/zephyr/rs-service-server",
+    "examples/zephyr/rs-service-client",
+    # Platform integration (low-level reference implementations)
+    "examples/platform-integration/qemu-smoltcp-bridge",
+    "examples/platform-integration/qemu-lan9118",
+    "examples/platform-integration/stm32f4-smoltcp",
+    "examples/platform-integration/stm32f4-rtic",
+    "examples/platform-integration/stm32f4-polling",
+    "examples/platform-integration/stm32f4-embassy",
 ]
 
 [workspace.package]

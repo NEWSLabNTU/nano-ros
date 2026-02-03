@@ -1,0 +1,24 @@
+[package]
+name = "qemu-bsp-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Simple listener example using nano-ros-bsp-qemu"
+
+[[bin]]
+name = "qemu-bsp-listener"
+test = false
+bench = false
+
+[features]
+default = []
+# Use Docker network configuration (different IPs for container-based testing)
+docker = ["nano-ros-bsp-qemu/docker"]
+
+[dependencies]
+# Board Support Package - all you need for QEMU bare-metal
+nano-ros-bsp-qemu = { path = "../../../crates/nano-ros-bsp-qemu" }
+
+# Panic handler (required for no_std)
+panic-semihosting = { version = "0.6", features = ["exit"] }

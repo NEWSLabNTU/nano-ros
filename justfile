@@ -94,11 +94,11 @@ quality:
     echo ""
     echo "=== QEMU Examples ==="
     qemu_failed=0
-    (cd examples/qemu-rs-common && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/qemu-rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/qemu-rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/platform-integration/qemu-smoltcp-bridge && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/qemu/rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/qemu/rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    (cd examples/qemu/rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     if [ $qemu_failed -ne 0 ]; then
         echo "[FAIL] QEMU examples FAILED"
         failed=1
@@ -203,32 +203,32 @@ check-examples: check-examples-native check-examples-embedded check-examples-qem
 # Build native examples
 build-examples-native:
     @echo "Building native examples..."
-    cd examples/native-rs-talker && cargo build
-    cd examples/native-rs-listener && cargo build
-    cd examples/native-rs-service-server && cargo build
-    cd examples/native-rs-service-client && cargo build
-    cd examples/native-rs-action-server && cargo build
-    cd examples/native-rs-action-client && cargo build
+    cd examples/native/rs-talker && cargo build
+    cd examples/native/rs-listener && cargo build
+    cd examples/native/rs-service-server && cargo build
+    cd examples/native/rs-service-client && cargo build
+    cd examples/native/rs-action-server && cargo build
+    cd examples/native/rs-action-client && cargo build
 
 # Format native examples
 format-examples-native:
     @echo "Formatting native examples..."
-    cd examples/native-rs-talker && cargo +nightly fmt
-    cd examples/native-rs-listener && cargo +nightly fmt
-    cd examples/native-rs-service-server && cargo +nightly fmt
-    cd examples/native-rs-service-client && cargo +nightly fmt
-    cd examples/native-rs-action-server && cargo +nightly fmt
-    cd examples/native-rs-action-client && cargo +nightly fmt
+    cd examples/native/rs-talker && cargo +nightly fmt
+    cd examples/native/rs-listener && cargo +nightly fmt
+    cd examples/native/rs-service-server && cargo +nightly fmt
+    cd examples/native/rs-service-client && cargo +nightly fmt
+    cd examples/native/rs-action-server && cargo +nightly fmt
+    cd examples/native/rs-action-client && cargo +nightly fmt
 
 # Check native examples
 check-examples-native:
     @echo "Checking native examples..."
-    cd examples/native-rs-talker && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native-rs-listener && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native-rs-service-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native-rs-service-client && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native-rs-action-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native-rs-action-client && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    cd examples/native/rs-talker && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    cd examples/native/rs-listener && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    cd examples/native/rs-service-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    cd examples/native/rs-service-client && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    cd examples/native/rs-action-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    cd examples/native/rs-action-client && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
 
 # =============================================================================
 # Examples - Embedded (STM32F4)
@@ -237,62 +237,62 @@ check-examples-native:
 # Build embedded examples
 build-examples-embedded:
     @echo "Building embedded examples..."
-    cd examples/stm32f4-rs-rtic && cargo build --release
-    cd examples/stm32f4-rs-embassy && cargo build --release
-    cd examples/stm32f4-rs-polling && cargo build --release
-    cd examples/stm32f4-rs-smoltcp && cargo build --release
+    cd examples/platform-integration/stm32f4-rtic && cargo build --release
+    cd examples/platform-integration/stm32f4-embassy && cargo build --release
+    cd examples/platform-integration/stm32f4-polling && cargo build --release
+    cd examples/platform-integration/stm32f4-smoltcp && cargo build --release
 
 # Format embedded examples
 format-examples-embedded:
     @echo "Formatting embedded examples..."
-    cd examples/stm32f4-rs-rtic && cargo +nightly fmt
-    cd examples/stm32f4-rs-embassy && cargo +nightly fmt
-    cd examples/stm32f4-rs-polling && cargo +nightly fmt
-    cd examples/stm32f4-rs-smoltcp && cargo +nightly fmt
+    cd examples/platform-integration/stm32f4-rtic && cargo +nightly fmt
+    cd examples/platform-integration/stm32f4-embassy && cargo +nightly fmt
+    cd examples/platform-integration/stm32f4-polling && cargo +nightly fmt
+    cd examples/platform-integration/stm32f4-smoltcp && cargo +nightly fmt
 
 # Check embedded examples
 check-examples-embedded:
     @echo "Checking embedded examples..."
-    cd examples/stm32f4-rs-rtic && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/stm32f4-rs-embassy && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/stm32f4-rs-polling && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/stm32f4-rs-smoltcp && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/platform-integration/stm32f4-rtic && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/platform-integration/stm32f4-embassy && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/platform-integration/stm32f4-polling && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/platform-integration/stm32f4-smoltcp && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
 
 # Show embedded example binary sizes
 size-examples-embedded: build-examples-embedded
     @echo ""
     @echo "Binary sizes (release):"
     @echo "======================="
-    @size examples/stm32f4-rs-rtic/target/thumbv7em-none-eabihf/release/stm32f4-rs-rtic-example 2>/dev/null || echo "RTIC: build failed"
-    @size examples/stm32f4-rs-embassy/target/thumbv7em-none-eabihf/release/stm32f4-rs-embassy-example 2>/dev/null || echo "Embassy: build failed"
-    @size examples/stm32f4-rs-polling/target/thumbv7em-none-eabihf/release/stm32f4-rs-polling-example 2>/dev/null || echo "Polling: build failed"
-    @size examples/stm32f4-rs-smoltcp/target/thumbv7em-none-eabihf/release/stm32f4-rs-smoltcp 2>/dev/null || echo "stm32f4-rs-smoltcp: build failed"
+    @size examples/platform-integration/stm32f4-rtic/target/thumbv7em-none-eabihf/release/stm32f4-rtic-example 2>/dev/null || echo "RTIC: build failed"
+    @size examples/platform-integration/stm32f4-embassy/target/thumbv7em-none-eabihf/release/stm32f4-embassy-example 2>/dev/null || echo "Embassy: build failed"
+    @size examples/platform-integration/stm32f4-polling/target/thumbv7em-none-eabihf/release/stm32f4-polling-example 2>/dev/null || echo "Polling: build failed"
+    @size examples/platform-integration/stm32f4-smoltcp/target/thumbv7em-none-eabihf/release/stm32f4-smoltcp 2>/dev/null || echo "stm32f4-smoltcp: build failed"
 
 # Clean embedded example build artifacts
 clean-examples-embedded:
-    rm -rf examples/stm32f4-rs-rtic/target
-    rm -rf examples/stm32f4-rs-embassy/target
-    rm -rf examples/stm32f4-rs-polling/target
-    rm -rf examples/stm32f4-rs-smoltcp/target
+    rm -rf examples/platform-integration/stm32f4-rtic/target
+    rm -rf examples/platform-integration/stm32f4-embassy/target
+    rm -rf examples/platform-integration/stm32f4-polling/target
+    rm -rf examples/platform-integration/stm32f4-smoltcp/target
     @echo "Embedded example build artifacts cleaned"
 
 # Clean native example build artifacts
 clean-examples-native:
-    rm -rf examples/native-rs-talker/target
-    rm -rf examples/native-rs-listener/target
-    rm -rf examples/native-rs-service-server/target
-    rm -rf examples/native-rs-service-client/target
-    rm -rf examples/native-rs-action-server/target
-    rm -rf examples/native-rs-action-client/target
+    rm -rf examples/native/rs-talker/target
+    rm -rf examples/native/rs-listener/target
+    rm -rf examples/native/rs-service-server/target
+    rm -rf examples/native/rs-service-client/target
+    rm -rf examples/native/rs-action-server/target
+    rm -rf examples/native/rs-action-client/target
     @echo "Native example build artifacts cleaned"
 
 # Clean QEMU example build artifacts
 clean-examples-qemu:
-    rm -rf examples/qemu-rs-common/target
-    rm -rf examples/qemu-rs-test/target
-    rm -rf examples/qemu-rs-lan9118/target
-    rm -rf examples/qemu-rs-talker/target
-    rm -rf examples/qemu-rs-listener/target
+    rm -rf examples/platform-integration/qemu-smoltcp-bridge/target
+    rm -rf examples/qemu/rs-test/target
+    rm -rf examples/platform-integration/qemu-lan9118/target
+    rm -rf examples/qemu/rs-talker/target
+    rm -rf examples/qemu/rs-listener/target
     @echo "QEMU example build artifacts cleaned"
 
 # Clean all example build artifacts
@@ -318,10 +318,10 @@ build-zephyr:
     fi
     echo "Building Zephyr examples in $WORKSPACE..."
     cd "$WORKSPACE"
-    echo "  Building zephyr-rs-talker -> build-talker/"
-    west build -b native_sim/native/64 -d build-talker -p auto nano-ros/examples/zephyr-rs-talker
-    echo "  Building zephyr-rs-listener -> build-listener/"
-    west build -b native_sim/native/64 -d build-listener -p auto nano-ros/examples/zephyr-rs-listener
+    echo "  Building zephyr/rs-talker -> build-talker/"
+    west build -b native_sim/native/64 -d build-talker -p auto nano-ros/examples/zephyr/rs-talker
+    echo "  Building zephyr/rs-listener -> build-listener/"
+    west build -b native_sim/native/64 -d build-listener -p auto nano-ros/examples/zephyr/rs-listener
     echo "Zephyr examples built successfully!"
 
 # Clean Zephyr build directories
@@ -341,29 +341,29 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Build QEMU examples
 build-examples-qemu:
     @echo "Building QEMU examples..."
-    cd examples/qemu-rs-common && cargo build --release
-    cd examples/qemu-rs-test && cargo build --release
-    cd examples/qemu-rs-lan9118 && cargo build --release
-    cd examples/qemu-rs-talker && cargo build --release
-    cd examples/qemu-rs-listener && cargo build --release
+    cd examples/platform-integration/qemu-smoltcp-bridge && cargo build --release
+    cd examples/qemu/rs-test && cargo build --release
+    cd examples/platform-integration/qemu-lan9118 && cargo build --release
+    cd examples/qemu/rs-talker && cargo build --release
+    cd examples/qemu/rs-listener && cargo build --release
 
 # Format QEMU examples
 format-examples-qemu:
     @echo "Formatting QEMU examples..."
-    cd examples/qemu-rs-common && cargo +nightly fmt
-    cd examples/qemu-rs-test && cargo +nightly fmt
-    cd examples/qemu-rs-lan9118 && cargo +nightly fmt
-    cd examples/qemu-rs-talker && cargo +nightly fmt
-    cd examples/qemu-rs-listener && cargo +nightly fmt
+    cd examples/platform-integration/qemu-smoltcp-bridge && cargo +nightly fmt
+    cd examples/qemu/rs-test && cargo +nightly fmt
+    cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt
+    cd examples/qemu/rs-talker && cargo +nightly fmt
+    cd examples/qemu/rs-listener && cargo +nightly fmt
 
 # Check QEMU examples
 check-examples-qemu:
     @echo "Checking QEMU examples..."
-    cd examples/qemu-rs-common && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu-rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu-rs-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu-rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu-rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/platform-integration/qemu-smoltcp-bridge && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu/rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu/rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu/rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
 
 # Run all QEMU tests (non-networked)
 test-qemu: test-qemu-basic test-qemu-lan9118
@@ -387,7 +387,7 @@ test-qemu-basic: build-examples-qemu
         -machine lm3s6965evb \
         -nographic \
         -semihosting-config enable=on,target=native \
-        -kernel examples/qemu-rs-test/target/thumbv7m-none-eabi/release/qemu-rs-test
+        -kernel examples/qemu/rs-test/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
 test-qemu-lan9118: build-examples-qemu
@@ -397,7 +397,7 @@ test-qemu-lan9118: build-examples-qemu
         -machine mps2-an385 \
         -nographic \
         -semihosting-config enable=on,target=native \
-        -kernel examples/qemu-rs-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+        -kernel examples/platform-integration/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-lan9118
 
 # Check if QEMU is installed
 check-qemu:
@@ -437,12 +437,12 @@ test-qemu-zenoh: build-zenoh-pico-arm build-examples-qemu
     echo ""
     echo "To run manually:"
     echo "  Terminal 1: zenohd --listen tcp/0.0.0.0:7447"
-    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
-    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
+    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
+    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
     echo ""
     echo "Binaries built at:"
-    echo "  examples/qemu-rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
-    echo "  examples/qemu-rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
+    echo "  examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
+    echo "  examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
     echo ""
     echo "Note: Automated test not yet implemented (requires QEMU 7.0+)"
     echo "============================================"
@@ -493,12 +493,12 @@ test-multi-node:
 # Analyze stack usage (requires nightly)
 analyze-stack:
     @echo "Analyzing stack usage for RTIC example..."
-    cd examples/stm32f4-rs-rtic && \
+    cd examples/platform-integration/stm32f4-rtic && \
         RUSTFLAGS="-Z emit-stack-sizes" cargo +nightly build --release 2>&1 | head -20
     @echo ""
     @echo "Note: For full call graph analysis, install cargo-call-stack:"
     @echo "  cargo +nightly install cargo-call-stack"
-    @echo "  cd examples/stm32f4-rs-rtic && cargo +nightly call-stack --release"
+    @echo "  cd examples/platform-integration/stm32f4-rtic && cargo +nightly call-stack --release"
 
 # Run all static analysis checks (Miri UB detection)
 static-analysis: test-miri
@@ -562,60 +562,60 @@ clean-cpp:
 # Build C++ examples
 build-examples-cpp: build-cpp
     @echo "Building C++ examples..."
-    cd examples/native-cpp-talker && cmake -B build && cmake --build build
-    cd examples/native-cpp-listener && cmake -B build && cmake --build build
-    cd examples/native-cpp-custom-msg && cmake -B build && cmake --build build
-    cd examples/native-cpp-service-server && cmake -B build && cmake --build build
-    cd examples/native-cpp-service-client && cmake -B build && cmake --build build
+    cd examples/native/cpp-talker && cmake -B build && cmake --build build
+    cd examples/native/cpp-listener && cmake -B build && cmake --build build
+    cd examples/native/cpp-custom-msg && cmake -B build && cmake --build build
+    cd examples/native/cpp-service-server && cmake -B build && cmake --build build
+    cd examples/native/cpp-service-client && cmake -B build && cmake --build build
 
 # Format C++ examples
 format-examples-cpp:
     @echo "Formatting C++ examples..."
     @which clang-format > /dev/null || (echo "Error: clang-format not found." && exit 1)
-    find examples/native-cpp-talker/src examples/native-cpp-listener/src examples/native-cpp-custom-msg/src \
-        examples/native-cpp-service-server/src examples/native-cpp-service-client/src -name '*.cpp' | \
+    find examples/native/cpp-talker/src examples/native/cpp-listener/src examples/native/cpp-custom-msg/src \
+        examples/native/cpp-service-server/src examples/native/cpp-service-client/src -name '*.cpp' | \
         xargs clang-format -i --style=file:crates/nano-ros-cpp/.clang-format
 
 # Check C++ examples
 check-examples-cpp:
     @echo "Checking C++ examples..."
     @which clang-format > /dev/null || (echo "Error: clang-format not found." && exit 1)
-    find examples/native-cpp-talker/src examples/native-cpp-listener/src examples/native-cpp-custom-msg/src \
-        examples/native-cpp-service-server/src examples/native-cpp-service-client/src -name '*.cpp' | \
+    find examples/native/cpp-talker/src examples/native/cpp-listener/src examples/native/cpp-custom-msg/src \
+        examples/native/cpp-service-server/src examples/native/cpp-service-client/src -name '*.cpp' | \
         xargs clang-format --dry-run --Werror --style=file:crates/nano-ros-cpp/.clang-format
 
 # Clean C++ examples build
 clean-examples-cpp:
-    rm -rf examples/native-cpp-talker/build examples/native-cpp-listener/build examples/native-cpp-custom-msg/build \
-        examples/native-cpp-service-server/build examples/native-cpp-service-client/build
+    rm -rf examples/native/cpp-talker/build examples/native/cpp-listener/build examples/native/cpp-custom-msg/build \
+        examples/native/cpp-service-server/build examples/native/cpp-service-client/build
     @echo "C++ examples build cleaned"
 
 # Run C++ talker (requires zenohd)
 run-native-cpp-talker:
     @echo "Running C++ talker (requires zenohd)..."
-    examples/native-cpp-talker/build/cpp_talker
+    examples/native/cpp-talker/build/cpp_talker
 
 # Run C++ listener (requires zenohd)
 run-native-cpp-listener:
     @echo "Running C++ listener (requires zenohd)..."
-    examples/native-cpp-listener/build/cpp_listener
+    examples/native/cpp-listener/build/cpp_listener
 
 # Run C++ custom message example (requires zenohd)
 run-native-cpp-custom-msg:
     @echo "Running C++ custom message example (requires zenohd)..."
-    examples/native-cpp-custom-msg/build/cpp_custom_msg
+    examples/native/cpp-custom-msg/build/cpp_custom_msg
 
 # Run C++ service server (requires zenohd)
 run-native-cpp-service-server:
     @echo "Running C++ service server (requires zenohd)..."
-    examples/native-cpp-service-server/build/cpp_service_server
+    examples/native/cpp-service-server/build/cpp_service_server
 
 # Run C++ service client (requires zenohd + service server)
 # NOTE: Service client is not yet supported in transport layer
 run-native-cpp-service-client:
     @echo "Running C++ service client (requires zenohd + service server)..."
     @echo "NOTE: Service client creation will fail - not yet implemented in transport layer"
-    examples/native-cpp-service-client/build/cpp_service_client
+    examples/native/cpp-service-client/build/cpp_service_client
 
 # =============================================================================
 # Zenoh
@@ -717,15 +717,15 @@ test-c-verbose:
 build-examples-c:
     @echo "Building nano-ros-c library..."
     cargo build -p nano-ros-c --release
-    @echo "Building native-c-talker..."
-    cd examples/native-c-talker && rm -rf build && mkdir -p build && cd build && cmake .. && make
-    @echo "Building native-c-listener..."
-    cd examples/native-c-listener && rm -rf build && mkdir -p build && cd build && cmake .. && make
+    @echo "Building native/c-talker..."
+    cd examples/native/c-talker && rm -rf build && mkdir -p build && cd build && cmake .. && make
+    @echo "Building native/c-listener..."
+    cd examples/native/c-listener && rm -rf build && mkdir -p build && cd build && cmake .. && make
     @echo "C examples built!"
 
 # Clean C examples build
 clean-examples-c:
-    rm -rf examples/native-c-talker/build examples/native-c-listener/build
+    rm -rf examples/native/c-talker/build examples/native/c-listener/build
     @echo "C examples build cleaned"
 
 # =============================================================================
@@ -741,15 +741,15 @@ install-cargo-nano-ros:
 generate-bindings:
     @echo "Regenerating bindings in all examples..."
     @echo "Note: Requires ROS 2 environment sourced and cargo-nano-ros installed"
-    cd examples/native-rs-talker && cargo nano-ros generate
-    cd examples/native-rs-listener && cargo nano-ros generate
-    cd examples/native-rs-service-server && cargo nano-ros generate
-    cd examples/native-rs-service-client && cargo nano-ros generate
-    cd examples/native-rs-action-server && cargo nano-ros generate
-    cd examples/native-rs-action-client && cargo nano-ros generate
-    cd examples/qemu-rs-test && cargo nano-ros generate
-    cd examples/zephyr-rs-talker && cargo nano-ros generate
-    cd examples/zephyr-rs-listener && cargo nano-ros generate
+    cd examples/native/rs-talker && cargo nano-ros generate
+    cd examples/native/rs-listener && cargo nano-ros generate
+    cd examples/native/rs-service-server && cargo nano-ros generate
+    cd examples/native/rs-service-client && cargo nano-ros generate
+    cd examples/native/rs-action-server && cargo nano-ros generate
+    cd examples/native/rs-action-client && cargo nano-ros generate
+    cd examples/qemu/rs-test && cargo nano-ros generate
+    cd examples/zephyr/rs-talker && cargo nano-ros generate
+    cd examples/zephyr/rs-listener && cargo nano-ros generate
     @echo "All bindings regenerated!"
 
 # =============================================================================
@@ -820,8 +820,8 @@ zephyr-help:
     @echo "  just test-rust-zephyr-full # Rebuild and run tests"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
-    @echo "  west build -b native_sim/native/64 -d build-talker nano-ros/examples/zephyr-rs-talker"
-    @echo "  west build -b native_sim/native/64 -d build-listener nano-ros/examples/zephyr-rs-listener"
+    @echo "  west build -b native_sim/native/64 -d build-talker nano-ros/examples/zephyr/rs-talker"
+    @echo "  west build -b native_sim/native/64 -d build-listener nano-ros/examples/zephyr/rs-listener"
 
 # =============================================================================
 # Docker

@@ -272,9 +272,9 @@ build_zephyr_examples() {
     # External workspace: examples at nano-ros/examples/
     local example_path
     if [ -d "nano-ros/examples" ]; then
-        example_path="nano-ros/examples/zephyr-c-talker"
+        example_path="nano-ros/examples/zephyr/c-talker"
     else
-        example_path="$PROJECT_ROOT/examples/zephyr-c-talker"
+        example_path="$PROJECT_ROOT/examples/zephyr/c-talker"
     fi
 
     # Build C talker for native_sim/native/64
