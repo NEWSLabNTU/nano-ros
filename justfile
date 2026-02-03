@@ -678,12 +678,16 @@ test-rust-rmw-interop:
 
 # Run Rust Zephyr tests (requires west workspace + bridge network)
 # Use test-rust-zephyr-full to force rebuild before testing
+# Note: --test-threads=1 required because tests share TAP interfaces (zeth0, zeth1)
 test-rust-zephyr:
-    cargo test -p nano-ros-tests --test zephyr -- --nocapture
+    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
 
 # Run Rust Zephyr tests with rebuild
 test-rust-zephyr-full: build-zephyr
-    cargo test -p nano-ros-tests --test zephyr -- --nocapture
+    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
+
+# Alias for test-rust-zephyr
+test-zephyr-rs: test-rust-zephyr
 
 # Run Rust tests via wrapper script (with nice output)
 test-rust-full:
