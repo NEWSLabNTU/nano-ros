@@ -143,14 +143,14 @@ pub fn build_example(
 /// Build native-rs-talker with zenoh feature (cached)
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
-        .get_or_try_init(|| build_example("native-rs-talker", "talker", Some(&["zenoh"]), None))
+        .get_or_try_init(|| build_example("native/rs-talker", "talker", Some(&["zenoh"]), None))
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-listener with zenoh feature (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
-        .get_or_try_init(|| build_example("native-rs-listener", "listener", Some(&["zenoh"]), None))
+        .get_or_try_init(|| build_example("native/rs-listener", "listener", Some(&["zenoh"]), None))
         .map(|p| p.as_path())
 }
 
@@ -183,7 +183,7 @@ pub fn build_native_action_server() -> TestResult<&'static Path> {
     NATIVE_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native-rs-action-server",
+                "native/rs-action-server",
                 "native-rs-action-server",
                 Some(&["zenoh"]),
                 None,
@@ -197,7 +197,7 @@ pub fn build_native_action_client() -> TestResult<&'static Path> {
     NATIVE_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native-rs-action-client",
+                "native/rs-action-client",
                 "native-rs-action-client",
                 Some(&["zenoh"]),
                 None,

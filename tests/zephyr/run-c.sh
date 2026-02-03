@@ -268,13 +268,17 @@ build_zephyr_examples() {
     export ZEPHYR_BASE="$ZEPHYR_WORKSPACE/zephyr"
 
     # Determine example path based on workspace type
-    # In-tree workspace: examples at ../examples/
-    # External workspace: examples at nano-ros/examples/
+    # In-tree workspace: examples at nano-ros/examples/
+    # External workspace: examples at $PROJECT_ROOT/examples/
     local example_path
-    if [ -d "nano-ros/examples" ]; then
+    if [ -d "nano-ros/examples/zephyr/c-talker" ]; then
         example_path="nano-ros/examples/zephyr/c-talker"
-    else
+    elif [ -d "$PROJECT_ROOT/examples/zephyr/c-talker" ]; then
         example_path="$PROJECT_ROOT/examples/zephyr/c-talker"
+    else
+        log_error "Could not find c-talker example"
+        log_info "Expected at: nano-ros/examples/zephyr/c-talker or $PROJECT_ROOT/examples/zephyr/c-talker"
+        return 1
     fi
 
     # Build C talker for native_sim/native/64

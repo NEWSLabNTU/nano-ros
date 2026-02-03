@@ -381,9 +381,24 @@ static ZEPHYR_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Returns a unique build directory to allow simultaneous builds of talker and listener.
 fn build_dir_for_example(example_name: &str) -> &'static str {
     match example_name {
-        "zephyr-rs-talker" => "build-talker",
-        "zephyr-rs-listener" => "build-listener",
+        "zephyr-rs-talker" | "rs-talker" => "build-talker",
+        "zephyr-rs-listener" | "rs-listener" => "build-listener",
         _ => "build",
+    }
+}
+
+/// Convert example name to the actual path under examples/
+///
+/// Handles both legacy names (zephyr-rs-talker) and new names (rs-talker).
+/// Returns path relative to examples/ directory.
+fn example_path_for_name(example_name: &str) -> String {
+    match example_name {
+        "zephyr-rs-talker" | "rs-talker" => "zephyr/rs-talker".to_string(),
+        "zephyr-rs-listener" | "rs-listener" => "zephyr/rs-listener".to_string(),
+        "zephyr-c-talker" | "c-talker" => "zephyr/c-talker".to_string(),
+        "zephyr-c-listener" | "c-listener" => "zephyr/c-listener".to_string(),
+        // For any other name, assume it's a path relative to examples/
+        _ => example_name.to_string(),
     }
 }
 
@@ -461,7 +476,8 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         .ok_or_else(|| TestError::BuildFailed("Zephyr workspace not found".to_string()))?;
 
     let root = project_root();
-    let example_path = root.join(format!("examples/{}", example_name));
+    let example_rel_path = example_path_for_name(example_name);
+    let example_path = root.join("examples").join(&example_rel_path);
 
     if !example_path.exists() {
         return Err(TestError::BuildFailed(format!(
