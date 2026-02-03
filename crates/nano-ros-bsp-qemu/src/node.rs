@@ -85,12 +85,14 @@ impl<'a, D: EthernetDevice + 'static> InnerNode<'a, D> {
                 .ok();
         });
 
-        // Set default gateway
-        let gw = Ipv4Address::new(gateway[0], gateway[1], gateway[2], gateway[3]);
-        iface
-            .routes_mut()
-            .add_default_ipv4_route(gw)
-            .map_err(|_| Error::Route)?;
+        // Set default gateway (skip if 0.0.0.0, which indicates link-local mode)
+        if gateway != [0, 0, 0, 0] {
+            let gw = Ipv4Address::new(gateway[0], gateway[1], gateway[2], gateway[3]);
+            iface
+                .routes_mut()
+                .add_default_ipv4_route(gw)
+                .map_err(|_| Error::Route)?;
+        }
 
         // Initialize the zenoh-pico bridge
         SmoltcpZenohBridge::init();

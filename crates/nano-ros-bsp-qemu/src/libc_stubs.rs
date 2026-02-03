@@ -165,16 +165,16 @@ pub unsafe extern "C" fn strtoul(
         let mut ptr = nptr;
         let mut result: c_ulong = 0;
 
-        // Skip whitespace
-        while *ptr == b' ' as c_char || *ptr == b'\t' as c_char {
+        // Skip whitespace (cast to u8 for byte comparisons)
+        while *ptr as u8 == b' ' || *ptr as u8 == b'\t' {
             ptr = ptr.add(1);
         }
 
         // Determine base
         let radix = if base == 0 {
-            if *ptr == b'0' as c_char {
+            if *ptr as u8 == b'0' {
                 ptr = ptr.add(1);
-                if *ptr == b'x' as c_char || *ptr == b'X' as c_char {
+                if *ptr as u8 == b'x' || *ptr as u8 == b'X' {
                     ptr = ptr.add(1);
                     16
                 } else {
@@ -183,9 +183,9 @@ pub unsafe extern "C" fn strtoul(
             } else {
                 10
             }
-        } else if base == 16 && *ptr == b'0' as c_char {
+        } else if base == 16 && *ptr as u8 == b'0' {
             ptr = ptr.add(1);
-            if *ptr == b'x' as c_char || *ptr == b'X' as c_char {
+            if *ptr as u8 == b'x' || *ptr as u8 == b'X' {
                 ptr = ptr.add(1);
             }
             16
@@ -195,7 +195,8 @@ pub unsafe extern "C" fn strtoul(
 
         // Parse digits
         loop {
-            let c = *ptr;
+            // Cast to u8 for byte comparisons (c_char may be i8 on some platforms)
+            let c = *ptr as u8;
             let digit = match c {
                 b'0'..=b'9' => (c - b'0') as c_ulong,
                 b'a'..=b'z' => (c - b'a' + 10) as c_ulong,
