@@ -5,10 +5,14 @@
 # NAT, routing traffic through the Docker network.
 #
 # Usage:
-#   just test-rust-qemu-baremetal
+#   just test-rust-qemu-baremetal           # Run rs-* examples (default)
+#   just test-rust-qemu-baremetal-bsp       # Run bsp-* examples
 #
 # Or directly:
 #   docker compose -f tests/qemu-baremetal/docker-compose.yml up --build
+#
+# To run BSP examples, set QEMU_EXAMPLE=bsp:
+#   QEMU_EXAMPLE=bsp docker compose -f tests/qemu-baremetal/docker-compose.yml up --build
 
 services:
   # Zenoh router
@@ -54,6 +58,7 @@ services:
       - QEMU_ROLE=talker
       - QEMU_MAC=02:00:00:00:00:00
       - QEMU_GUEST_IP=192.168.100.10
+      - QEMU_EXAMPLE=${QEMU_EXAMPLE:-rs}
     working_dir: /work
     entrypoint: ["/work/tests/qemu-baremetal/entrypoint.sh"]
     depends_on:
@@ -87,6 +92,7 @@ services:
       - ZENOH_ROUTER_IP=172.20.0.2
       - QEMU_ROLE=listener
       - QEMU_MAC=02:00:00:00:00:01
+      - QEMU_EXAMPLE=${QEMU_EXAMPLE:-rs}
     working_dir: /work
     entrypoint: ["/work/tests/qemu-baremetal/entrypoint.sh"]
     depends_on:

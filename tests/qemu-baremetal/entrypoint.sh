@@ -11,6 +11,7 @@
 #   ZENOH_ROUTER_IP - IP of zenohd container (default: 172.20.0.2)
 #   QEMU_ROLE       - "talker" or "listener"
 #   QEMU_MAC        - MAC address for QEMU NIC
+#   QEMU_EXAMPLE    - Example type: "rs" (default), "bsp"
 
 set -e
 
@@ -23,33 +24,45 @@ TAP_NAME="tap0"
 ZENOH_ROUTER_IP="${ZENOH_ROUTER_IP:-172.20.0.2}"
 QEMU_ROLE="${QEMU_ROLE:-talker}"
 QEMU_MAC="${QEMU_MAC:-02:00:00:00:00:00}"
+QEMU_EXAMPLE="${QEMU_EXAMPLE:-rs}"
 
-BINARY="/work/examples/qemu/rs-${QEMU_ROLE}/target/thumbv7m-none-eabi/release/qemu-rs-${QEMU_ROLE}"
+# Determine binary path based on example type
+if [ "$QEMU_EXAMPLE" = "bsp" ]; then
+    EXAMPLE_DIR="bsp-${QEMU_ROLE}"
+    BINARY_NAME="qemu-bsp-${QEMU_ROLE}"
+else
+    EXAMPLE_DIR="rs-${QEMU_ROLE}"
+    BINARY_NAME="qemu-rs-${QEMU_ROLE}"
+fi
+
+BINARY="/work/examples/qemu/${EXAMPLE_DIR}/target/thumbv7m-none-eabi/release/${BINARY_NAME}"
 
 echo "============================================"
-echo "  QEMU Container: ${QEMU_ROLE}"
+echo "  QEMU Container: ${QEMU_ROLE} (${QEMU_EXAMPLE})"
 echo "============================================"
 echo ""
 echo "Configuration:"
 echo "  Zenoh router: ${ZENOH_ROUTER_IP}:7447"
 echo "  QEMU MAC: ${QEMU_MAC}"
+echo "  Example: ${QEMU_EXAMPLE}-${QEMU_ROLE}"
 echo "  Binary: ${BINARY}"
 echo ""
 
-# Check binary exists
+# Check binary exists, build if necessary
 if [ ! -f "$BINARY" ]; then
-    echo "Error: Binary not found: $BINARY"
+    echo "Binary not found: $BINARY"
     echo ""
-    echo "Building examples with Docker network configuration..."
+    echo "Building example with Docker network configuration..."
 
     # Build with docker feature
-    cd /work/examples/qemu/rs-${QEMU_ROLE}
+    cd "/work/examples/qemu/${EXAMPLE_DIR}"
     cargo build --release --features docker
 
     if [ ! -f "$BINARY" ]; then
         echo "Error: Build failed"
         exit 1
     fi
+    echo "Build successful!"
 fi
 
 echo "Step 1: Setting up internal network..."
@@ -95,17 +108,9 @@ iptables -A FORWARD -i "$BRIDGE_NAME" -o "$MAIN_IF" -j ACCEPT || echo "  Warning
 iptables -A FORWARD -i "$MAIN_IF" -o "$BRIDGE_NAME" -m state --state RELATED,ESTABLISHED -j ACCEPT || echo "  Warning: FORWARD (in) rule failed"
 
 echo "  NAT configured for outgoing traffic"
-echo "  POSTROUTING chain:"
-iptables -t nat -L POSTROUTING -n -v 2>/dev/null || echo "  (iptables failed)"
 
 echo ""
 echo "Step 2: Testing connectivity to zenohd..."
-
-# Show routing and iptables for debugging
-echo "  Routes:"
-ip route
-echo "  NAT rules:"
-iptables -t nat -L -n 2>/dev/null | head -10
 
 # Wait for zenohd to be reachable
 MAX_WAIT=30

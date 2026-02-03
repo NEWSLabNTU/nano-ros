@@ -853,14 +853,23 @@ docker-shell-network:
         -v nano-ros-cargo-git:/root/.cargo/git \
         nano-ros-qemu
 
-# Run bare-metal QEMU talker/listener test using Docker Compose
+# Run bare-metal QEMU talker/listener test using Docker Compose (rs-* examples)
 # Uses separate containers for zenohd, talker, and listener with isolated networking
 # Each container creates its own TAP/bridge and NATs to the Docker network
 test-rust-qemu-baremetal: docker-build build-zenoh-pico-arm
-    @echo "Running bare-metal QEMU talker/listener test..."
+    @echo "Running bare-metal QEMU talker/listener test (rs-* examples)..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
-    docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
+    QEMU_EXAMPLE=rs docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
+    @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
+
+# Run bare-metal QEMU talker/listener test using BSP examples
+# Same as test-rust-qemu-baremetal but uses the simplified bsp-* examples
+test-rust-qemu-baremetal-bsp: docker-build build-zenoh-pico-arm
+    @echo "Running bare-metal QEMU talker/listener test (bsp-* examples)..."
+    @echo "This starts 3 containers: zenohd, talker, and listener"
+    @echo ""
+    QEMU_EXAMPLE=bsp docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
     @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run QEMU build inside Docker container
