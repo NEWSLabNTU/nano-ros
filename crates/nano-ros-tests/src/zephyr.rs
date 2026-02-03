@@ -49,6 +49,9 @@ pub struct ZephyrProcess {
     platform: ZephyrPlatform,
 }
 
+/// Atomic counter for generating unique seeds for each Zephyr process
+static SEED_COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(12345);
+
 impl ZephyrProcess {
     /// Start a Zephyr application
     ///
@@ -69,7 +72,11 @@ impl ZephyrProcess {
         let handle = match platform {
             ZephyrPlatform::NativeSim => {
                 // native_sim runs directly
+                // Each process needs a unique --seed to prevent ephemeral port conflicts
+                // (the test entropy source produces identical random numbers without different seeds)
+                let seed = SEED_COUNTER.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
                 Command::new(binary)
+                    .arg(format!("--seed={}", seed))
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .spawn()?
