@@ -185,6 +185,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | Topic | Location |
 |-------|----------|
 | Testing | [tests/README.md](tests/README.md) |
+| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Message generation | [docs/message-generation.md](docs/message-generation.md) |
 | Zephyr setup | [docs/zephyr-setup.md](docs/zephyr-setup.md) |
 | ROS 2 interop protocol | [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md) |
