@@ -6,9 +6,9 @@
 # communicate with ROS 2 nodes on the host.
 #
 # Network Configuration:
-#   Bridge (host gateway): 192.0.2.2
-#   Zephyr talker:        192.0.2.1
-#   Zephyr listener:      192.0.2.3
+#   Bridge (host gateway): 192.0.3.2
+#   Zephyr talker:        192.0.3.1
+#   Zephyr listener:      192.0.3.3
 #
 # Run with: sudo ./scripts/qemu/setup-qemu-network.sh
 #
@@ -18,8 +18,8 @@ set -e
 
 BRIDGE="br-nano"
 TAP="tap-qemu"
-BRIDGE_IP="192.0.2.2"
-SUBNET="192.0.2.0/24"
+BRIDGE_IP="192.0.3.2"
+SUBNET="192.0.3.0/24"
 
 echo ""
 echo "=========================================="
@@ -102,8 +102,8 @@ echo "  TAP:        $TAP"
 echo "  Subnet:     $SUBNET"
 echo ""
 echo "Zephyr node IPs:"
-echo "  Talker:     192.0.2.1"
-echo "  Listener:   192.0.2.3"
+echo "  Talker:     192.0.3.1"
+echo "  Listener:   192.0.3.3"
 echo ""
 echo "Usage:"
 echo "  1. Start zenoh router on host:"

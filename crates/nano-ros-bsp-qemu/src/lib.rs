@@ -33,9 +33,9 @@
 //! # Network Configuration
 //!
 //! By default, the BSP assumes direct TAP networking to the host:
-//! - IP: 192.0.2.10/24
-//! - Gateway: 192.0.2.1
-//! - Zenoh router: tcp/192.0.2.1:7447
+//! - IP: 192.0.3.10/24
+//! - Gateway: 192.0.3.1
+//! - Zenoh router: tcp/192.0.3.1:7447
 //!
 //! For Docker mode (enable `docker` feature):
 //! - IP: 192.168.100.10/24

@@ -42,9 +42,9 @@ fn main() -> ! {
 
 Direct connection to host via TAP interface:
 
-- IP: 192.0.2.10/24
-- Gateway: 192.0.2.1
-- Zenoh router: tcp/192.0.2.1:7447
+- IP: 192.0.3.10/24
+- Gateway: 192.0.3.1
+- Zenoh router: tcp/192.0.3.1:7447
 
 ### Docker mode
 
@@ -72,7 +72,7 @@ run_node(config, |node| {
 
 ```bash
 # Start zenoh router
-zenohd --listen tcp/192.0.2.1:7447
+zenohd --listen tcp/192.0.3.1:7447
 
 # Run the example (from example directory)
 qemu-system-arm \

@@ -10,7 +10,7 @@ set -e
 
 BRIDGE="br-nano"
 TAP="tap-qemu"
-SUBNET="192.0.2.0/24"
+SUBNET="192.0.3.0/24"
 
 echo ""
 echo "=========================================="

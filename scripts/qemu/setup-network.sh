@@ -5,15 +5,15 @@
 # allowing multiple QEMU mps2-an385 instances to communicate via zenoh.
 #
 # Network topology:
-#   QEMU talker (192.0.2.10/tap-qemu0) --+
-#                                        |-- Bridge (qemu-br, 192.0.2.1) -- Host
-#   QEMU listener (192.0.2.11/tap-qemu1) +
+#   QEMU talker (192.0.3.10/tap-qemu0) --+
+#                                        |-- Bridge (qemu-br, 192.0.3.1) -- Host
+#   QEMU listener (192.0.3.11/tap-qemu1) +
 #
 # IP Allocation:
-#   192.0.2.1   - Host (bridge interface, zenohd)
-#   192.0.2.10  - QEMU node 0 (talker)
-#   192.0.2.11  - QEMU node 1 (listener)
-#   192.0.2.12+ - Additional QEMU nodes
+#   192.0.3.1   - Host (bridge interface, zenohd)
+#   192.0.3.10  - QEMU node 0 (talker)
+#   192.0.3.11  - QEMU node 1 (listener)
+#   192.0.3.12+ - Additional QEMU nodes
 #
 # Usage:
 #   sudo ./scripts/qemu/setup-network.sh [OPTIONS] [USERNAME]
@@ -40,7 +40,7 @@ set -e
 
 BRIDGE_NAME="qemu-br"
 TAP_PREFIX="tap-qemu"
-HOST_IP="192.0.2.1"
+HOST_IP="192.0.3.1"
 NETMASK="24"
 NUM_TAPS=2
 
@@ -171,7 +171,7 @@ echo ""
 echo "Creating TAP interfaces..."
 for i in $(seq 0 $((NUM_TAPS - 1))); do
     tap="${TAP_PREFIX}${i}"
-    guest_ip="192.0.2.$((10 + i))"
+    guest_ip="192.0.3.$((10 + i))"
 
     echo "  Creating $tap (QEMU guest IP: $guest_ip)..."
     ip tuntap add dev "$tap" mode tap user "$TAP_USER"
@@ -194,7 +194,7 @@ echo ""
 echo "TAP interfaces:"
 for i in $(seq 0 $((NUM_TAPS - 1))); do
     tap="${TAP_PREFIX}${i}"
-    guest_ip="192.0.2.$((10 + i))"
+    guest_ip="192.0.3.$((10 + i))"
     echo "  - $tap: QEMU guest IP $guest_ip"
 done
 echo ""

@@ -29,9 +29,9 @@
 /// # Default Configuration (Talker)
 ///
 /// - **TAP mode** (default): Connects directly to host TAP interface
-///   - IP: 192.0.2.10/24
-///   - Gateway: 192.0.2.1
-///   - Zenoh: tcp/192.0.2.1:7447
+///   - IP: 192.0.3.10/24
+///   - Gateway: 192.0.3.1
+///   - Zenoh: tcp/192.0.3.1:7447
 ///
 /// - **Docker mode** (`docker` feature): Container with NAT networking
 ///   - IP: 192.168.100.10/24
@@ -41,7 +41,7 @@
 /// # Listener Configuration
 ///
 /// Use `Config::listener()` for a second node on the same network:
-/// - TAP mode: IP 192.0.2.11
+/// - TAP mode: IP 192.0.3.11
 /// - Docker mode: IP 192.168.100.11
 #[derive(Clone)]
 pub struct Config {
@@ -74,10 +74,10 @@ impl Default for Config {
         {
             Self {
                 mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x00],
-                ip: [192, 0, 2, 10],
+                ip: [192, 0, 3, 10],
                 prefix: 24,
-                gateway: [192, 0, 2, 1],
-                zenoh_locator: b"tcp/192.0.2.1:7447\0",
+                gateway: [192, 0, 3, 1],
+                zenoh_locator: b"tcp/192.0.3.1:7447\0",
             }
         }
     }
@@ -100,7 +100,7 @@ impl Config {
     /// Uses a different IP and MAC address than the default to avoid
     /// conflicts when running multiple nodes on the same network.
     ///
-    /// - TAP mode: IP 192.0.2.11, MAC 02:00:00:00:00:01
+    /// - TAP mode: IP 192.0.3.11, MAC 02:00:00:00:00:01
     /// - Docker mode: IP 192.168.100.11, MAC 02:00:00:00:00:01
     pub fn listener() -> Self {
         #[cfg(feature = "docker")]
@@ -118,10 +118,10 @@ impl Config {
         {
             Self {
                 mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
-                ip: [192, 0, 2, 11],
+                ip: [192, 0, 3, 11],
                 prefix: 24,
-                gateway: [192, 0, 2, 1],
-                zenoh_locator: b"tcp/192.0.2.1:7447\0",
+                gateway: [192, 0, 3, 1],
+                zenoh_locator: b"tcp/192.0.3.1:7447\0",
             }
         }
     }
@@ -211,7 +211,7 @@ impl Config {
         let zenoh_locator: &'static [u8] = b"tcp/172.20.0.2:7447\0";
 
         #[cfg(not(feature = "docker"))]
-        let zenoh_locator: &'static [u8] = b"tcp/192.0.2.1:7447\0";
+        let zenoh_locator: &'static [u8] = b"tcp/192.0.3.1:7447\0";
 
         Self {
             mac,

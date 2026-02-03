@@ -10,7 +10,7 @@
 # Options:
 #   --binary FILE     ELF binary to run (required)
 #   --tap IFACE       TAP interface for networking (e.g., tap-qemu0)
-#   --ip IP           Guest IP address (default: 192.0.2.10)
+#   --ip IP           Guest IP address (default: 192.0.3.10)
 #   --mac MAC         MAC address (default: 02:00:00:00:00:XX based on TAP)
 #   --no-network      Disable networking (default if --tap not specified)
 #   --gdb             Enable GDB server on port 1234
@@ -22,7 +22,7 @@
 #   ./scripts/qemu/launch-mps2-an385.sh --binary target/thumbv7m-none-eabi/release/app
 #
 #   # Run with TAP networking
-#   ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --ip 192.0.2.10 --binary app.elf
+#   ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --ip 192.0.3.10 --binary app.elf
 #
 #   # Debug with GDB
 #   ./scripts/qemu/launch-mps2-an385.sh --gdb --binary app.elf
@@ -37,7 +37,7 @@ set -e
 # Default values
 BINARY=""
 TAP_IFACE=""
-GUEST_IP="192.0.2.10"
+GUEST_IP="192.0.3.10"
 MAC_ADDR=""
 ENABLE_GDB=false
 DEBUG_MODE=false
