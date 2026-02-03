@@ -94,9 +94,9 @@ const TCP_TX_BUFFER_SIZE: usize = 2048;
 const MAX_SOCKETS: usize = 2;
 
 // Ethernet DMA descriptors - must be in normal RAM (not CCM)
-#[link_section = ".ethram"]
+#[unsafe(link_section = ".ethram")]
 static mut RX_RING: [RxRingEntry; RX_DESC_COUNT] = [RxRingEntry::INIT; RX_DESC_COUNT];
-#[link_section = ".ethram"]
+#[unsafe(link_section = ".ethram")]
 static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_COUNT];
 
 // TCP socket buffers

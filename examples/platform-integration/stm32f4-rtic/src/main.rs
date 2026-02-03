@@ -111,9 +111,9 @@ const POLL_INTERVAL_MS: u32 = 10;
 const PUBLISH_INTERVAL_MS: u32 = 1000;
 
 // Ethernet DMA descriptors - must be in normal RAM (not CCM)
-#[link_section = ".ethram"]
+#[unsafe(link_section = ".ethram")]
 static mut RX_RING: [RxRingEntry; RX_DESC_COUNT] = [RxRingEntry::INIT; RX_DESC_COUNT];
-#[link_section = ".ethram"]
+#[unsafe(link_section = ".ethram")]
 static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_COUNT];
 
 // TCP socket buffers for zenoh
