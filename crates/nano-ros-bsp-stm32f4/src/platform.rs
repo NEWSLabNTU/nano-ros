@@ -8,11 +8,12 @@
 //! - DWT cycle counter for timing
 
 use crate::config::Config;
+use crate::phy;
 use crate::{Error, Result};
 
 use stm32_eth::{
-    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
     EthPins, Parts, PartsIn,
+    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
 };
 use stm32f4xx_hal::{gpio::GpioExt, pac, prelude::*, rcc::RccExt};
 
@@ -267,7 +268,7 @@ pub unsafe fn init(config: &Config) -> Result<Platform> {
         ptp: dp.ETHERNET_PTP,
     };
 
-    let Parts { mut dma, .. } = unsafe {
+    let Parts { mut dma, mac, .. } = unsafe {
         stm32_eth::new_with_mii(
             eth_parts_in,
             &mut RX_RING,
@@ -281,6 +282,23 @@ pub unsafe fn init(config: &Config) -> Result<Platform> {
     };
 
     defmt::info!("Ethernet initialized");
+
+    // PHY detection using SMI (Station Management Interface)
+    // The EthernetMACWithMii type implements read/write for PHY register access
+    let detected_phy = {
+        let mut mac_ref = mac;
+        // Scan for PHY on common addresses
+        phy::scan_for_phy(|addr, reg| mac_ref.read(addr, reg))
+    };
+
+    match detected_phy {
+        Some((addr, phy_type)) => {
+            defmt::info!("Detected {} PHY at address {}", phy_type.name(), addr);
+        }
+        None => {
+            defmt::warn!("No PHY detected, assuming LAN8742A at address 0");
+        }
+    }
 
     // Create smoltcp interface
     defmt::info!("Creating smoltcp interface...");

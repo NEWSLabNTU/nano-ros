@@ -10,8 +10,8 @@ use crate::platform::Platform;
 use crate::{Error, Publisher, Result, Subscriber, SubscriberCallback};
 
 use zenoh_pico_shim_sys::{
-    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
-    zenoh_shim_init, zenoh_shim_open, zenoh_shim_spin_once,
+    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber, zenoh_shim_init,
+    zenoh_shim_open, zenoh_shim_spin_once,
 };
 
 /// High-level node handle for pub/sub operations

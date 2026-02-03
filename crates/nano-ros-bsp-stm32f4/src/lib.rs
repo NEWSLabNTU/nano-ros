@@ -39,6 +39,7 @@
 
 pub mod config;
 pub mod node;
+pub mod phy;
 pub mod pins;
 pub mod platform;
 
@@ -46,7 +47,7 @@ pub mod platform;
 pub use config::Config;
 pub use cortex_m_rt::entry;
 pub use defmt;
-pub use node::{run_node, Node};
+pub use node::{Node, run_node};
 
 /// Result type for BSP operations
 pub type Result<T> = core::result::Result<T, Error>;
@@ -77,7 +78,8 @@ pub enum Error {
 /// Convenient prelude module
 pub mod prelude {
     pub use crate::config::Config;
-    pub use crate::node::{run_node, Node};
+    pub use crate::node::{Node, run_node};
+    pub use crate::phy::PhyType;
     pub use crate::pins::PinConfig;
     pub use crate::{Error, Result};
     pub use cortex_m_rt::entry;
@@ -96,19 +98,17 @@ impl Publisher {
         let ret = unsafe {
             zenoh_pico_shim_sys::zenoh_shim_publish(self.handle, data.as_ptr(), data.len())
         };
-        if ret < 0 {
-            Err(Error::Publish)
-        } else {
-            Ok(())
-        }
+        if ret < 0 { Err(Error::Publish) } else { Ok(()) }
     }
 }
 
 /// Subscriber callback type
-pub type SubscriberCallback = extern "C" fn(data: *const u8, len: usize, ctx: *mut core::ffi::c_void);
+pub type SubscriberCallback =
+    extern "C" fn(data: *const u8, len: usize, ctx: *mut core::ffi::c_void);
 
 /// Subscriber handle for receiving messages
 #[derive(Debug)]
 pub struct Subscriber {
+    #[allow(dead_code)] // Handle kept for future use (e.g., undeclare)
     handle: i32,
 }
