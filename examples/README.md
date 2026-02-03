@@ -97,6 +97,8 @@ Zephyr RTOS examples using `nano-ros-bsp-zephyr` (C) or the Rust API.
 | `rs-listener` | Rust | Subscriber using Rust API on Zephyr |
 | `rs-service-server` | Rust | Service server on Zephyr |
 | `rs-service-client` | Rust | Service client on Zephyr |
+| `rs-action-server` | Rust | Action server on Zephyr |
+| `rs-action-client` | Rust | Action client on Zephyr |
 
 **Running Zephyr examples:**
 ```bash

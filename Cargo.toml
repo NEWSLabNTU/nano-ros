@@ -50,6 +50,8 @@ exclude = [
     "examples/zephyr/rs-listener",
     "examples/zephyr/rs-service-server",
     "examples/zephyr/rs-service-client",
+    "examples/zephyr/rs-action-server",
+    "examples/zephyr/rs-action-client",
     # Platform integration (low-level reference implementations)
     "examples/platform-integration/qemu-smoltcp-bridge",
     "examples/platform-integration/qemu-lan9118",
