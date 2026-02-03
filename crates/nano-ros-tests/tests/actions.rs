@@ -3,8 +3,8 @@
 //! Tests for ROS 2 action communication between nano-ros nodes.
 
 use nano_ros_tests::fixtures::{
-    action_client_binary, action_server_binary, require_zenohd, zenohd_unique, ManagedProcess,
-    ZenohRouter,
+    ManagedProcess, ZenohRouter, action_client_binary, action_server_binary, require_zenohd,
+    zenohd_unique,
 };
 use rstest::rstest;
 use std::path::PathBuf;

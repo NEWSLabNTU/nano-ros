@@ -17,7 +17,9 @@ fn main() {
     // Use shared linker script from qemu-rs-common
     File::create(out.join("memory.x"))
         .unwrap()
-        .write_all(include_bytes!("../../platform-integration/qemu-smoltcp-bridge/mps2-an385.x"))
+        .write_all(include_bytes!(
+            "../../platform-integration/qemu-smoltcp-bridge/mps2-an385.x"
+        ))
         .unwrap();
 
     println!("cargo:rustc-link-search={}", out.display());

@@ -52,8 +52,8 @@ use panic_probe as _;
 use stm32f4xx_hal::{gpio::GpioExt, prelude::*, rcc::RccExt};
 
 use stm32_eth::{
-    dma::{RxRingEntry, TxRingEntry},
     EthPins, Parts, PartsIn,
+    dma::{RxRingEntry, TxRingEntry},
 };
 
 use smoltcp::{

@@ -47,8 +47,8 @@ use rtic_monotonics::systick::prelude::*;
 use stm32f4xx_hal::{gpio::GpioExt, prelude::*, rcc::RccExt};
 
 use stm32_eth::{
-    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
     EthPins, Parts, PartsIn,
+    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
 };
 
 use smoltcp::{
