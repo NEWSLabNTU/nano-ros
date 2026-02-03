@@ -50,9 +50,25 @@ let dst = cmake::Config::new(&zenoh_pico_build)
     .build();
 ```
 
-**Zephyr builds** (CMakeLists.txt):
-```cmake
-zephyr_compile_definitions(Z_FEATURE_INTEREST=0 Z_FEATURE_MATCHING=0)
+**Zephyr builds**: The `scripts/zephyr/setup.sh` script automatically patches zenoh-pico's `config.h` to disable these features. If you set up the workspace manually or the patch wasn't applied, run:
+```bash
+./scripts/zephyr/setup.sh  # Updates and patches existing workspace
+```
+
+Or manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:
+```c
+// Change from:
+#define Z_FEATURE_INTEREST 1
+#define Z_FEATURE_MATCHING 1
+
+// To:
+#define Z_FEATURE_INTEREST 0
+#define Z_FEATURE_MATCHING 0
+```
+
+Then rebuild with `--pristine`:
+```bash
+west build -b native_sim/native/64 nano-ros/examples/zephyr/rs-talker -d build-talker --pristine
 ```
 
 Note: `Z_FEATURE_MATCHING` depends on `Z_FEATURE_INTEREST`, so both must be disabled.
@@ -62,6 +78,40 @@ Note: `Z_FEATURE_MATCHING` depends on `Z_FEATURE_INTEREST`, so both must be disa
 - [rmw_zenoh_pico](https://github.com/micro-ROS/rmw_zenoh_pico) disables this feature by default
 - zenoh-pico filtering code: `src/net/filtering.c`
 - zenoh-pico interest protocol: `src/session/interest.c`
+
+---
+
+## zenoh-pico Version Compatibility
+
+### Symptoms
+
+Publisher works but `z_publisher_put` fails immediately:
+```
+zenoh_shim: z_publisher_put failed: -100
+<err> rust: rustapp: Publish failed: PublishFailed(-1)
+zenoh_shim: z_publisher_put failed: -73
+```
+
+Error codes:
+- `-100`: `_Z_ERR_TRANSPORT_TX_FAILED` - Transport transmission failed
+- `-73`: `_Z_ERR_SESSION_CLOSED` - Session closed after first failure
+
+### Root Cause
+
+Version mismatch between zenoh-pico and zenohd:
+- **zenoh-pico**: 1.5.1 (in west.yml)
+- **zenohd**: 1.7.x (installed via cargo)
+
+The zenoh protocol may have changed, causing transport-level incompatibilities.
+
+### Solution
+
+Upgrade zenoh-pico to match zenohd version. See [docs/roadmap/phase-15-zenoh-pico-upgrade.md](roadmap/phase-15-zenoh-pico-upgrade.md) for the upgrade plan.
+
+**Temporary workaround**: Install an older zenohd version:
+```bash
+cargo install zenoh --version 1.5.1 --features=zenohd
+```
 
 ---
 
