@@ -15,7 +15,6 @@ nano-ros/
 │   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
 │   ├── nano-ros-node/         # High-level node API
 │   ├── nano-ros-tests/        # Integration test crate
-│   ├── nano-ros-baremetal/    # Low-level bare-metal API (smoltcp + zenoh-pico)
 │   ├── nano-ros-bsp-qemu/     # QEMU MPS2-AN385 Board Support Package
 │   ├── nano-ros-bsp-stm32f4/  # STM32F4 Board Support Package
 │   ├── nano-ros-bsp-zephyr/   # Zephyr RTOS Board Support Package (C)

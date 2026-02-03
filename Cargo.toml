@@ -26,7 +26,6 @@ members = [
 exclude = [
     # Embedded crates (require cross-compilation)
     "crates/nano-ros-cpp",
-    "crates/nano-ros-baremetal",
     "crates/nano-ros-bsp-qemu",
     "crates/nano-ros-bsp-stm32f4",
     # Native examples (desktop/Linux)

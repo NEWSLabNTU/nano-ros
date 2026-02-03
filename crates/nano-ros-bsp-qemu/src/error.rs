@@ -1,8 +1,8 @@
-//! Error types for nano-ros-baremetal
+//! Error types for nano-ros-bsp-qemu
 
 use core::fmt;
 
-/// Error type for bare-metal node operations
+/// Error type for BSP operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// Ethernet driver initialization failed
@@ -47,5 +47,5 @@ impl fmt::Display for Error {
     }
 }
 
-/// Result type for bare-metal node operations
+/// Result type for BSP operations
 pub type Result<T> = core::result::Result<T, Error>;

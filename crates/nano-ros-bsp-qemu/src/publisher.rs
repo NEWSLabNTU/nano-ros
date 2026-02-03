@@ -7,7 +7,7 @@ use zenoh_pico_shim_sys::{zenoh_shim_publish, zenoh_shim_undeclare_publisher};
 
 /// Publisher for sending messages to a topic
 ///
-/// Created via `BaremetalNode::create_publisher()`.
+/// Created via `Node::create_publisher()`.
 /// Automatically undeclared when dropped.
 pub struct Publisher {
     handle: i32,

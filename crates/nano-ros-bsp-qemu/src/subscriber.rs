@@ -5,7 +5,7 @@ use zenoh_pico_shim_sys::zenoh_shim_undeclare_subscriber;
 
 /// Subscriber for receiving messages from a topic
 ///
-/// Created via `BaremetalNode::create_subscriber()`.
+/// Created via `Node::create_subscriber()`.
 /// Automatically undeclared when dropped.
 ///
 /// Note: Messages are delivered via callback registered during creation.

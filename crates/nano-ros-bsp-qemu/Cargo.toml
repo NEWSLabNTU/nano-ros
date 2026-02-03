@@ -10,9 +10,7 @@ readme = "README.md"
 name = "nano_ros_bsp_qemu"
 
 [dependencies]
-# Core dependencies
-nano-ros-baremetal = { path = "../nano-ros-baremetal", features = ["qemu-mps2"] }
-qemu-rs-common = { path = "../../examples/platform-integration/qemu-smoltcp-bridge" }
+# Zenoh FFI bindings for smoltcp platform
 zenoh-pico-shim-sys = { path = "../zenoh-pico-shim-sys", features = ["smoltcp"] }
 lan9118-smoltcp = { path = "../lan9118-smoltcp" }
 

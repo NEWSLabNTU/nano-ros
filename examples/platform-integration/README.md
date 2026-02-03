@@ -81,4 +81,3 @@ cargo run --release
 
 - [crates/nano-ros-bsp-qemu/](../../crates/nano-ros-bsp-qemu/) - QEMU BSP source
 - [crates/nano-ros-bsp-stm32f4/](../../crates/nano-ros-bsp-stm32f4/) - STM32F4 BSP source
-- [crates/nano-ros-baremetal/](../../crates/nano-ros-baremetal/) - Low-level bare-metal API

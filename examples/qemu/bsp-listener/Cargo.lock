@@ -344,18 +344,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 
 [[package]]
-name = "nano-ros-baremetal"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-semihosting",
- "lan9118-smoltcp",
- "qemu-rs-common",
- "smoltcp",
- "zenoh-pico-shim-sys",
-]
-
-[[package]]
 name = "nano-ros-bsp-qemu"
 version = "0.1.0"
 dependencies = [
@@ -363,9 +351,7 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "lan9118-smoltcp",
- "nano-ros-baremetal",
  "panic-semihosting",
- "qemu-rs-common",
  "smoltcp",
  "zenoh-pico-shim-sys",
 ]
@@ -422,15 +408,6 @@ version = "0.1.0"
 dependencies = [
  "nano-ros-bsp-qemu",
  "panic-semihosting",
-]
-
-[[package]]
-name = "qemu-rs-common"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "lan9118-smoltcp",
- "smoltcp",
 ]
 
 [[package]]
