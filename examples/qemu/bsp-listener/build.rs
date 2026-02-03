@@ -12,7 +12,14 @@ use std::path::PathBuf;
 fn main() {
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
-    let repo_root = manifest_dir.parent().unwrap().parent().unwrap();
+    // examples/qemu/bsp-listener -> examples/qemu -> examples -> repo_root
+    let repo_root = manifest_dir
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap();
 
     // Use shared linker script from qemu-rs-common
     File::create(out.join("memory.x"))
