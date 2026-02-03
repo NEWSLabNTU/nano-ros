@@ -44,6 +44,8 @@ exclude = [
     "examples/qemu-rs-common",
     "examples/qemu-rs-talker",
     "examples/qemu-rs-listener",
+    "crates/nano-ros-bsp-qemu",
+    "crates/nano-ros-bsp-stm32f4",
 ]
 
 [workspace.package]

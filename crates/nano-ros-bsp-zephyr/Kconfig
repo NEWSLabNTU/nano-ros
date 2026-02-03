@@ -1,0 +1,57 @@
+# nano-ros BSP for Zephyr
+# Copyright (c) 2024 nano-ros contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+menuconfig NANO_ROS_BSP
+    bool "nano-ros Board Support Package"
+    depends on ZENOH_PICO
+    help
+      Enable nano-ros BSP for simplified ROS 2 node development.
+      This provides a high-level API that hides zenoh-pico details.
+
+if NANO_ROS_BSP
+
+config NANO_ROS_DOMAIN_ID
+    int "ROS 2 Domain ID"
+    default 0
+    help
+      ROS 2 domain ID for topic isolation.
+
+config NANO_ROS_ZENOH_LOCATOR
+    string "Zenoh router locator"
+    default "tcp/192.0.2.2:7447"
+    help
+      Zenoh router address in the format "tcp/IP:PORT".
+
+config NANO_ROS_NODE_NAME
+    string "Default node name"
+    default "nano_ros_node"
+    help
+      Default name for the ROS 2 node.
+
+config NANO_ROS_MAX_PUBLISHERS
+    int "Maximum number of publishers"
+    default 4
+    help
+      Maximum number of publishers per node.
+
+config NANO_ROS_MAX_SUBSCRIBERS
+    int "Maximum number of subscribers"
+    default 4
+    help
+      Maximum number of subscribers per node.
+
+config NANO_ROS_INIT_DELAY_MS
+    int "Initialization delay (ms)"
+    default 2000
+    help
+      Delay before initializing zenoh to allow network to settle.
+
+config NANO_ROS_AUTO_INIT
+    bool "Automatic initialization"
+    default n
+    help
+      Automatically initialize nano-ros BSP at boot.
+      If disabled, call nano_ros_bsp_init() manually.
+
+endif # NANO_ROS_BSP
