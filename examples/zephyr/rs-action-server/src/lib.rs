@@ -25,20 +25,22 @@
 #![no_std]
 
 use core::ffi::c_void;
+use core::ptr;
 use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 use log::{error, info};
 
 // nano-ros CDR serialization
-use nano_ros_core::{Deserialize, RosMessage, Serialize};
+use nano_ros_core::{Deserialize, Serialize};
 use nano_ros_serdes::{CdrReader, CdrWriter};
 
 // zenoh-pico shim crate
-use zenoh_pico_shim::{ShimContext, ShimError, ShimPublisher, ShimQueryable};
+use zenoh_pico_shim::{ShimContext, ShimError, ShimPublisher};
 
 // Generated action types
 use example_interfaces::action::{FibonacciFeedback, FibonacciGoal, FibonacciResult};
-use unique_identifier_msgs::msg::Uuid;
+// Uuid type not currently used - goal_id handled as raw bytes
+// use unique_identifier_msgs::msg::Uuid;
 
 // =============================================================================
 // Constants
@@ -229,18 +231,20 @@ extern "C" fn on_send_goal(
     );
 
     // Try to accept the goal
+    // SAFETY: Callback runs in interrupt context, protected by single-writer pattern
     let accepted = unsafe {
         let mut accepted = false;
+        let goals = ptr::addr_of_mut!(ACTIVE_GOALS);
         for i in 0..MAX_GOALS {
-            if !ACTIVE_GOALS[i].active {
-                ACTIVE_GOALS[i] = ActiveGoal {
+            if !(*goals)[i].active {
+                (*goals)[i] = ActiveGoal {
                     goal_id,
                     order: goal.order,
                     status: GoalStatus::Accepted,
                     result: None,
                     active: true,
                 };
-                NEW_GOAL_INDEX = Some(i);
+                *ptr::addr_of_mut!(NEW_GOAL_INDEX) = Some(i);
                 HAS_NEW_GOAL.store(true, Ordering::SeqCst);
                 accepted = true;
                 info!("[{}] Goal accepted (slot {})", count, i);
@@ -269,8 +273,9 @@ extern "C" fn on_send_goal(
     let response_len = writer.position();
 
     // Send reply
+    // SAFETY: SHIM_CTX is initialized before callbacks are registered
     unsafe {
-        if let Some(ctx_ptr) = SHIM_CTX {
+        if let Some(ctx_ptr) = *ptr::addr_of!(SHIM_CTX) {
             let ctx = &*ctx_ptr;
             if let Err(e) = ctx.query_reply(SEND_GOAL_KEYEXPR, &response_buf[..response_len], None)
             {
@@ -330,13 +335,15 @@ extern "C" fn on_cancel_goal(
     let mut return_code: i8 = 2; // ERROR_UNKNOWN_GOAL_ID
     let mut canceling_goal_id: Option<[u8; 16]> = None;
 
+    // SAFETY: Callback access protected by single-writer pattern
     unsafe {
+        let goals = ptr::addr_of_mut!(ACTIVE_GOALS);
         for i in 0..MAX_GOALS {
-            if ACTIVE_GOALS[i].active && ACTIVE_GOALS[i].goal_id == goal_id {
-                if ACTIVE_GOALS[i].status == GoalStatus::Executing
-                    || ACTIVE_GOALS[i].status == GoalStatus::Accepted
+            if (*goals)[i].active && (*goals)[i].goal_id == goal_id {
+                if (*goals)[i].status == GoalStatus::Executing
+                    || (*goals)[i].status == GoalStatus::Accepted
                 {
-                    ACTIVE_GOALS[i].status = GoalStatus::Canceling;
+                    (*goals)[i].status = GoalStatus::Canceling;
                     return_code = 0; // ERROR_NONE
                     canceling_goal_id = Some(goal_id);
                     info!("[{}] Goal marked for cancellation", count);
@@ -386,8 +393,9 @@ extern "C" fn on_cancel_goal(
     let response_len = writer.position();
 
     // Send reply
+    // SAFETY: SHIM_CTX is initialized before callbacks are registered
     unsafe {
-        if let Some(ctx_ptr) = SHIM_CTX {
+        if let Some(ctx_ptr) = *ptr::addr_of!(SHIM_CTX) {
             let ctx = &*ctx_ptr;
             if let Err(e) =
                 ctx.query_reply(CANCEL_GOAL_KEYEXPR, &response_buf[..response_len], None)
@@ -451,11 +459,13 @@ extern "C" fn on_get_result(
     let mut status: i8 = 0; // Unknown
     let mut result = FibonacciResult::default();
 
+    // SAFETY: Callback read access to ACTIVE_GOALS
     unsafe {
+        let goals = ptr::addr_of!(ACTIVE_GOALS);
         for i in 0..MAX_GOALS {
-            if ACTIVE_GOALS[i].active && ACTIVE_GOALS[i].goal_id == goal_id {
-                status = ACTIVE_GOALS[i].status as i8;
-                if let Some(ref r) = ACTIVE_GOALS[i].result {
+            if (*goals)[i].active && (*goals)[i].goal_id == goal_id {
+                status = (*goals)[i].status as i8;
+                if let Some(ref r) = (*goals)[i].result {
                     result = r.clone();
                 }
                 info!("[{}] Found goal with status={}", count, status);
@@ -483,8 +493,9 @@ extern "C" fn on_get_result(
     let response_len = writer.position();
 
     // Send reply
+    // SAFETY: SHIM_CTX is initialized before callbacks are registered
     unsafe {
-        if let Some(ctx_ptr) = SHIM_CTX {
+        if let Some(ctx_ptr) = *ptr::addr_of!(SHIM_CTX) {
             let ctx = &*ctx_ptr;
             if let Err(e) =
                 ctx.query_reply(GET_RESULT_KEYEXPR, &response_buf[..response_len], None)
@@ -536,7 +547,7 @@ fn publish_feedback(
 // Main Entry Point
 // =============================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn rust_main() {
     // Initialize logging
     unsafe {
@@ -562,8 +573,9 @@ extern "C" fn rust_main() {
     info!("Session opened");
 
     // Store context pointer for callbacks
+    // SAFETY: SHIM_CTX is written once before any callbacks are registered
     unsafe {
-        SHIM_CTX = Some(&ctx as *const ShimContext);
+        *ptr::addr_of_mut!(SHIM_CTX) = Some(&ctx as *const ShimContext);
     }
 
     // Create queryables for action services
@@ -641,17 +653,22 @@ extern "C" fn rust_main() {
         if HAS_NEW_GOAL.load(Ordering::SeqCst) {
             HAS_NEW_GOAL.store(false, Ordering::SeqCst);
 
-            if let Some(index) = unsafe { NEW_GOAL_INDEX.take() } {
+            // SAFETY: Single-threaded access to NEW_GOAL_INDEX protected by HAS_NEW_GOAL atomic
+            if let Some(index) = unsafe { (*ptr::addr_of_mut!(NEW_GOAL_INDEX)).take() } {
                 // Get goal data
+                // SAFETY: Single-threaded main loop, callbacks only write to different fields
                 let (goal_id, order) = unsafe {
-                    (ACTIVE_GOALS[index].goal_id, ACTIVE_GOALS[index].order)
+                    let goals = ptr::addr_of!(ACTIVE_GOALS);
+                    ((*goals)[index].goal_id, (*goals)[index].order)
                 };
 
                 info!("Executing goal: order={}", order);
 
                 // Set status to executing
+                // SAFETY: Single-threaded main loop
                 unsafe {
-                    ACTIVE_GOALS[index].status = GoalStatus::Executing;
+                    let goals = ptr::addr_of_mut!(ACTIVE_GOALS);
+                    (*goals)[index].status = GoalStatus::Executing;
                 }
 
                 // Compute Fibonacci sequence with feedback
@@ -659,12 +676,18 @@ extern "C" fn rust_main() {
 
                 for i in 0..=order {
                     // Check for cancellation
-                    let cancelled = unsafe { ACTIVE_GOALS[index].status == GoalStatus::Canceling };
+                    // SAFETY: Reading status field, callbacks may update it
+                    let cancelled = unsafe {
+                        let goals = ptr::addr_of!(ACTIVE_GOALS);
+                        (*goals)[index].status == GoalStatus::Canceling
+                    };
                     if cancelled {
                         info!("Goal cancelled at step {}", i);
+                        // SAFETY: Single-threaded main loop
                         unsafe {
-                            ACTIVE_GOALS[index].status = GoalStatus::Canceled;
-                            ACTIVE_GOALS[index].result = Some(FibonacciResult {
+                            let goals = ptr::addr_of_mut!(ACTIVE_GOALS);
+                            (*goals)[index].status = GoalStatus::Canceled;
+                            (*goals)[index].result = Some(FibonacciResult {
                                 sequence: sequence.clone(),
                             });
                         }
@@ -698,15 +721,21 @@ extern "C" fn rust_main() {
                 }
 
                 // Check final status
-                let status = unsafe { ACTIVE_GOALS[index].status };
+                // SAFETY: Reading status field
+                let status = unsafe {
+                    let goals = ptr::addr_of!(ACTIVE_GOALS);
+                    (*goals)[index].status
+                };
                 if status == GoalStatus::Executing {
                     // Goal completed successfully
                     let result = FibonacciResult { sequence };
                     info!("Goal completed: {:?}", result.sequence);
 
+                    // SAFETY: Single-threaded main loop
                     unsafe {
-                        ACTIVE_GOALS[index].status = GoalStatus::Succeeded;
-                        ACTIVE_GOALS[index].result = Some(result);
+                        let goals = ptr::addr_of_mut!(ACTIVE_GOALS);
+                        (*goals)[index].status = GoalStatus::Succeeded;
+                        (*goals)[index].result = Some(result);
                     }
                 }
             }

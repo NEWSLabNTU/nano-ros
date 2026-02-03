@@ -22,6 +22,7 @@
 #![no_std]
 
 use core::ffi::c_void;
+use core::ptr;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use log::{error, info, warn};
@@ -68,9 +69,8 @@ static FEEDBACK_COUNT: AtomicU32 = AtomicU32::new(0);
 static mut EXPECTED_GOAL_ID: [u8; 16] = [0u8; 16];
 
 /// Callback for feedback messages
+/// Signature matches ShimCallback: fn(data: *const u8, len: usize, ctx: *mut c_void)
 extern "C" fn on_feedback(
-    _keyexpr: *const i8,
-    _keyexpr_len: usize,
     payload: *const u8,
     payload_len: usize,
     _ctx: *mut c_void,
@@ -111,7 +111,8 @@ extern "C" fn on_feedback(
     }
 
     // Check if this feedback is for our goal
-    let matches = unsafe { goal_id == EXPECTED_GOAL_ID };
+    // SAFETY: Reading from EXPECTED_GOAL_ID, set once at startup
+    let matches = unsafe { goal_id == *ptr::addr_of!(EXPECTED_GOAL_ID) };
     if !matches {
         info!("[FB {}] Feedback for different goal, ignoring", count);
         return;
@@ -133,8 +134,9 @@ extern "C" fn on_feedback(
     );
 
     // Store feedback
+    // SAFETY: Single writer in callback context
     unsafe {
-        LAST_FEEDBACK = Some(feedback);
+        *ptr::addr_of_mut!(LAST_FEEDBACK) = Some(feedback);
     }
 }
 
@@ -216,7 +218,7 @@ fn send_goal(
 // Main Entry Point
 // =============================================================================
 
-#[no_mangle]
+#[unsafe(no_mangle)]
 extern "C" fn rust_main() {
     // Initialize logging
     unsafe {
@@ -262,8 +264,9 @@ extern "C" fn rust_main() {
 
     // Generate a goal ID
     let goal_id = generate_goal_id(12345);
+    // SAFETY: Set once before subscribing, read only in callback
     unsafe {
-        EXPECTED_GOAL_ID = goal_id;
+        *ptr::addr_of_mut!(EXPECTED_GOAL_ID) = goal_id;
     }
 
     // Create goal - compute Fibonacci sequence up to order 10
@@ -312,7 +315,8 @@ extern "C" fn rust_main() {
             no_feedback_cycles = 0;
 
             // Check if we have all feedback (order + 1 values)
-            let feedback = unsafe { LAST_FEEDBACK.as_ref() };
+            // SAFETY: Reading from LAST_FEEDBACK which may be written by callback
+            let feedback = unsafe { (*ptr::addr_of!(LAST_FEEDBACK)).as_ref() };
             if let Some(f) = feedback {
                 if f.sequence.len() as i32 > goal.order {
                     info!("Received all feedback, action completed!");
