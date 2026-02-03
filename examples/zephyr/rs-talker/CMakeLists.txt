@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # nano-ros Zephyr Talker Example (Rust)
 #
-# A ROS 2 compatible publisher running on Zephyr RTOS using nano-ros.
+# A ROS 2 compatible publisher running on Zephyr RTOS using nano-ros BSP.
 #
 # Build:
 #   source ~/nano-ros-workspace/env.sh
-#   west build -b native_sim/native/64 nano-ros/examples/zephyr-talker
+#   west build -b native_sim/native/64 nano-ros/examples/zephyr/rs-talker
 #
 # Run:
 #   ./build/zephyr/zephyr.exe
@@ -15,9 +15,13 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nano_ros_talker_rs)
 
-# Use shared C shim from zenoh-pico-shim-sys
-# This provides the zenoh_shim_* API used by the Rust crate
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../crates/zenoh-pico-shim-sys/c)
+# Include nano-ros BSP for Zephyr
+set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/nano-ros-bsp-zephyr)
+target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
+target_include_directories(app PRIVATE ${BSP_DIR}/include)
+
+# Include zenoh shim (required by BSP)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/zenoh-pico-shim-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

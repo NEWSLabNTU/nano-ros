@@ -1,20 +1,21 @@
 //! nano-ros Zephyr Listener Example (Rust)
 //!
 //! This example demonstrates a ROS 2 compatible subscriber running on
-//! Zephyr RTOS using the zenoh-pico-shim crate.
+//! Zephyr RTOS using the nano-ros BSP.
 //!
 //! Architecture:
 //! ```text
 //! Rust Application (this file)
-//!     └── zenoh-pico-shim (Rust wrapper)
-//!         └── zenoh_shim.c (C shim, compiled by Zephyr)
+//!     └── nano-ros-bsp-zephyr (C BSP)
+//!         └── zenoh_shim.c (C shim)
 //!             └── zenoh-pico (C library)
 //!                 └── Zephyr network stack
 //! ```
 
 #![no_std]
 
-use core::ffi::c_void;
+use core::ffi::{c_char, c_void};
+use core::marker::PhantomData;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use log::{error, info};
@@ -23,89 +24,236 @@ use log::{error, info};
 use nano_ros_core::{Deserialize, RosMessage};
 use nano_ros_serdes::CdrReader;
 
-// zenoh-pico shim crate
-use zenoh_pico_shim::{ShimCallback, ShimContext, ShimError, ShimSubscriber};
-
 // Generated message types
 use std_msgs::msg::Int32;
 
 // =============================================================================
-// Zephyr Node API (high-level wrapper over shim)
+// FFI bindings to nano-ros-bsp-zephyr
 // =============================================================================
 
-/// Error type for Zephyr operations
+/// BSP error codes
+pub const NANO_ROS_BSP_OK: i32 = 0;
+
+/// Zephyr timeout type (opaque, we just pass k_timeout_t values)
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct KTimeout {
+    ticks: i64,
+}
+
+impl KTimeout {
+    /// Create a timeout in seconds
+    pub const fn secs(s: i64) -> Self {
+        // k_ms_to_ticks_ceil64 approximation: assume 1000 ticks/sec for native_sim
+        Self { ticks: s * 1000 }
+    }
+}
+
+/// Subscriber callback type
+pub type NanoRosSubscriberCallback = extern "C" fn(*const u8, usize, *mut c_void);
+
+#[repr(C)]
+pub struct NanoRosBspContext {
+    initialized: bool,
+    session_open: bool,
+}
+
+#[repr(C)]
+pub struct NanoRosNode {
+    ctx: *mut NanoRosBspContext,
+    name: *const c_char,
+    domain_id: i32,
+}
+
+#[repr(C)]
+pub struct NanoRosSubscriber {
+    node: *mut NanoRosNode,
+    handle: i32,
+    keyexpr: [u8; 256],
+    callback: Option<NanoRosSubscriberCallback>,
+    user_data: *mut c_void,
+}
+
+unsafe extern "C" {
+    fn nano_ros_bsp_init(ctx: *mut NanoRosBspContext) -> i32;
+    fn nano_ros_bsp_init_with_locator(ctx: *mut NanoRosBspContext, locator: *const c_char) -> i32;
+    fn nano_ros_bsp_shutdown(ctx: *mut NanoRosBspContext);
+    fn nano_ros_bsp_is_ready(ctx: *const NanoRosBspContext) -> bool;
+
+    fn nano_ros_bsp_create_node(
+        ctx: *mut NanoRosBspContext,
+        node: *mut NanoRosNode,
+        name: *const c_char,
+    ) -> i32;
+
+    fn nano_ros_bsp_create_subscriber(
+        node: *mut NanoRosNode,
+        sub: *mut NanoRosSubscriber,
+        topic: *const c_char,
+        type_name: *const c_char,
+        callback: NanoRosSubscriberCallback,
+        user_data: *mut c_void,
+    ) -> i32;
+
+    fn nano_ros_bsp_destroy_subscriber(sub: *mut NanoRosSubscriber);
+
+    fn nano_ros_bsp_spin_once(ctx: *mut NanoRosBspContext, timeout: KTimeout) -> i32;
+    fn nano_ros_bsp_spin(ctx: *mut NanoRosBspContext) -> i32;
+}
+
+// =============================================================================
+// High-level Rust API wrapping BSP
+// =============================================================================
+
+/// Error type for Zephyr BSP operations
 #[derive(Debug, Clone, Copy)]
-pub enum ZephyrError {
-    /// Shim error
-    Shim(ShimError),
-    /// Deserialization error
-    DeserializationError,
+pub enum BspError {
+    /// BSP initialization failed
+    InitFailed(i32),
+    /// Node creation failed
+    NodeFailed(i32),
+    /// Subscriber creation failed
+    SubscriberFailed(i32),
     /// Topic name too long
     TopicTooLong,
 }
 
-impl From<ShimError> for ZephyrError {
-    fn from(err: ShimError) -> Self {
-        ZephyrError::Shim(err)
+/// BSP context wrapper
+pub struct BspContext {
+    ctx: NanoRosBspContext,
+}
+
+impl BspContext {
+    /// Initialize BSP with custom locator
+    pub fn new(locator: &[u8]) -> Result<Self, BspError> {
+        let mut ctx = NanoRosBspContext {
+            initialized: false,
+            session_open: false,
+        };
+
+        let ret = unsafe { nano_ros_bsp_init_with_locator(&mut ctx, locator.as_ptr() as *const c_char) };
+        if ret != NANO_ROS_BSP_OK {
+            return Err(BspError::InitFailed(ret));
+        }
+
+        Ok(Self { ctx })
     }
-}
 
-/// Zephyr node that provides a high-level API for subscribers
-///
-/// This wraps the ShimContext and provides node naming support.
-pub struct ZephyrNode<'a> {
-    ctx: &'a ShimContext,
-    #[allow(dead_code)] // Used for logging/diagnostics
-    name: &'a str,
-    #[allow(dead_code)] // Used for logging/diagnostics
-    namespace: &'a str,
-}
+    /// Check if BSP is ready
+    pub fn is_ready(&self) -> bool {
+        unsafe { nano_ros_bsp_is_ready(&self.ctx) }
+    }
 
-impl<'a> ZephyrNode<'a> {
-    /// Create a new node with the given context
-    pub fn new(ctx: &'a ShimContext, name: &'a str, namespace: &'a str) -> Self {
-        info!("Created node: {}/{}", namespace, name);
-        Self {
-            ctx,
-            name,
-            namespace,
+    /// Spin once with timeout
+    pub fn spin_once(&mut self, timeout: KTimeout) {
+        unsafe {
+            nano_ros_bsp_spin_once(&mut self.ctx, timeout);
         }
     }
 
-    /// Create a subscriber for the given topic with a raw callback
+    /// Spin forever (blocking)
+    pub fn spin(&mut self) {
+        unsafe {
+            nano_ros_bsp_spin(&mut self.ctx);
+        }
+    }
+}
+
+impl Drop for BspContext {
+    fn drop(&mut self) {
+        unsafe {
+            nano_ros_bsp_shutdown(&mut self.ctx);
+        }
+    }
+}
+
+/// BSP Node wrapper
+pub struct BspNode<'a> {
+    node: NanoRosNode,
+    _ctx: PhantomData<&'a mut BspContext>,
+}
+
+impl<'a> BspNode<'a> {
+    /// Create a new node
+    pub fn new(ctx: &'a mut BspContext, name: &[u8]) -> Result<Self, BspError> {
+        let mut node = NanoRosNode {
+            ctx: &mut ctx.ctx,
+            name: core::ptr::null(),
+            domain_id: 0,
+        };
+
+        let ret = unsafe {
+            nano_ros_bsp_create_node(&mut ctx.ctx, &mut node, name.as_ptr() as *const c_char)
+        };
+        if ret != NANO_ROS_BSP_OK {
+            return Err(BspError::NodeFailed(ret));
+        }
+
+        Ok(Self {
+            node,
+            _ctx: PhantomData,
+        })
+    }
+
+    /// Create a subscriber with raw callback
     ///
     /// # Safety
     ///
-    /// The callback and context must remain valid for the lifetime of the subscriber.
-    pub unsafe fn create_subscriber_raw(
-        &self,
-        topic: &str,
-        callback: ShimCallback,
-        ctx: *mut c_void,
-    ) -> Result<ZephyrSubscriber<'a>, ZephyrError> {
-        // Create null-terminated topic string
-        let mut topic_buf = [0u8; 128];
-        let topic_bytes = topic.as_bytes();
-        if topic_bytes.len() >= topic_buf.len() {
-            return Err(ZephyrError::TopicTooLong);
+    /// The callback and user_data must remain valid for the subscriber's lifetime.
+    pub unsafe fn create_subscriber<M: RosMessage>(
+        &mut self,
+        topic: &[u8],
+        callback: NanoRosSubscriberCallback,
+        user_data: *mut c_void,
+    ) -> Result<BspSubscriber<'a, M>, BspError> {
+        let mut sub = NanoRosSubscriber {
+            node: &mut self.node,
+            handle: -1,
+            keyexpr: [0; 256],
+            callback: Some(callback),
+            user_data,
+        };
+
+        let type_name = M::TYPE_NAME.as_bytes();
+        let mut type_name_buf = [0u8; 128];
+        if type_name.len() >= type_name_buf.len() {
+            return Err(BspError::TopicTooLong);
         }
-        topic_buf[..topic_bytes.len()].copy_from_slice(topic_bytes);
-        topic_buf[topic_bytes.len()] = 0;
+        type_name_buf[..type_name.len()].copy_from_slice(type_name);
 
-        let subscriber = self
-            .ctx
-            .declare_subscriber_raw(&topic_buf[..=topic_bytes.len()], callback, ctx)?;
+        let ret = unsafe {
+            nano_ros_bsp_create_subscriber(
+                &mut self.node,
+                &mut sub,
+                topic.as_ptr() as *const c_char,
+                type_name_buf.as_ptr() as *const c_char,
+                callback,
+                user_data,
+            )
+        };
+        if ret != NANO_ROS_BSP_OK {
+            return Err(BspError::SubscriberFailed(ret));
+        }
 
-        info!("Declared subscriber for '{}'", topic);
-
-        Ok(ZephyrSubscriber { subscriber })
+        Ok(BspSubscriber {
+            sub,
+            _phantom: PhantomData,
+        })
     }
 }
 
-/// Zephyr subscriber handle
-pub struct ZephyrSubscriber<'a> {
-    #[allow(dead_code)] // Subscriber is kept alive for RAII drop
-    subscriber: ShimSubscriber<'a>,
+/// BSP Subscriber wrapper
+pub struct BspSubscriber<'a, M> {
+    sub: NanoRosSubscriber,
+    _phantom: PhantomData<&'a M>,
+}
+
+impl<M> Drop for BspSubscriber<'_, M> {
+    fn drop(&mut self) {
+        unsafe {
+            nano_ros_bsp_destroy_subscriber(&mut self.sub);
+        }
+    }
 }
 
 // =============================================================================
@@ -119,7 +267,7 @@ static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 extern "C" fn on_int32_message(data: *const u8, len: usize, _ctx: *mut c_void) {
     let count = MSG_COUNT.fetch_add(1, Ordering::Relaxed);
 
-    // Safety: data is valid for len bytes, provided by C shim
+    // Safety: data is valid for len bytes, provided by C BSP
     let payload = unsafe { core::slice::from_raw_parts(data, len) };
 
     // Deserialize the Int32 message
@@ -149,45 +297,49 @@ extern "C" fn rust_main() {
         zephyr::set_logger().ok();
     }
 
-    info!("nano-ros Zephyr Listener Starting");
+    info!("nano-ros Zephyr Listener (BSP)");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
 
     // Connection parameters (for QEMU/native_sim, connect to host at 192.0.2.2)
     let locator = b"tcp/192.0.2.2:7447\0";
 
-    info!("Connecting to zenoh router at tcp/192.0.2.2:7447");
+    info!("Connecting to zenoh router...");
 
-    // Create ShimContext (connects to zenoh)
-    let ctx = match ShimContext::new(locator) {
+    // Initialize BSP
+    let mut ctx = match BspContext::new(locator) {
         Ok(ctx) => ctx,
         Err(e) => {
-            error!("Failed to create context: {}", e);
+            error!("BSP init failed: {:?}", e);
             return;
         }
     };
     info!("Session opened");
 
-    // Create node (high-level wrapper)
-    let node = ZephyrNode::new(&ctx, "listener", "/demo");
-
-    // Create subscriber for Int32 messages
-    // Note: zenoh key expressions cannot start with '/', so we use 'demo/chatter'
-    let _subscriber = match unsafe {
-        node.create_subscriber_raw("demo/chatter", on_int32_message, core::ptr::null_mut())
-    } {
-        Ok(s) => s,
+    // Create node
+    let mut node = match BspNode::new(&mut ctx, b"listener\0") {
+        Ok(n) => n,
         Err(e) => {
-            error!("Failed to create subscriber: {:?}", e);
+            error!("Node creation failed: {:?}", e);
             return;
         }
     };
 
-    info!("Waiting for messages on demo/chatter...");
+    // Create subscriber for Int32 messages
+    let _subscriber: BspSubscriber<Int32> = match unsafe {
+        node.create_subscriber(b"/chatter\0", on_int32_message, core::ptr::null_mut())
+    } {
+        Ok(s) => s,
+        Err(e) => {
+            error!("Subscriber creation failed: {:?}", e);
+            return;
+        }
+    };
 
-    // Main loop - callbacks run in background threads on Zephyr
+    info!("Waiting for messages on /chatter...");
+
+    // Main loop - use spin_once to process events
     loop {
-        // Sleep and report status periodically
-        zephyr::time::sleep(zephyr::time::Duration::secs(10));
+        ctx.spin_once(KTimeout::secs(10));
         let count = MSG_COUNT.load(Ordering::Relaxed);
         info!("Total messages received: {}", count);
     }
