@@ -195,6 +195,15 @@ impl<'a> BspNode<'a> {
         })
     }
 
+    /// Spin once with timeout
+    ///
+    /// This processes network events and callbacks.
+    pub fn spin_once(&mut self, timeout: KTimeout) {
+        unsafe {
+            nano_ros_bsp_spin_once(self.node.ctx, timeout);
+        }
+    }
+
     /// Create a subscriber with raw callback
     ///
     /// # Safety
@@ -339,7 +348,7 @@ extern "C" fn rust_main() {
 
     // Main loop - use spin_once to process events
     loop {
-        ctx.spin_once(KTimeout::secs(10));
+        node.spin_once(KTimeout::secs(10));
         let count = MSG_COUNT.load(Ordering::Relaxed);
         info!("Total messages received: {}", count);
     }

@@ -14,7 +14,7 @@
 
 #![no_std]
 
-use core::ffi::{c_char, c_void};
+use core::ffi::c_char;
 use core::marker::PhantomData;
 
 use log::{error, info};
@@ -185,6 +185,15 @@ impl<'a> BspNode<'a> {
         })
     }
 
+    /// Spin once with timeout
+    ///
+    /// This processes network events and callbacks.
+    pub fn spin_once(&mut self, timeout: KTimeout) {
+        unsafe {
+            nano_ros_bsp_spin_once(self.node.ctx, timeout);
+        }
+    }
+
     /// Create a publisher
     pub fn create_publisher<M: RosMessage>(
         &mut self,
@@ -324,6 +333,6 @@ extern "C" fn rust_main() {
         counter = counter.wrapping_add(1);
 
         // Sleep 1 second
-        ctx.spin_once(KTimeout::secs(1));
+        node.spin_once(KTimeout::secs(1));
     }
 }
