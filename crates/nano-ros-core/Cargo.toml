@@ -11,4 +11,5 @@ std = ["nano-ros-serdes/std"]
 alloc = ["nano-ros-serdes/alloc"]
 
 [dependencies]
+log = { version = "0.4", default-features = false }
 nano-ros-serdes = { workspace = true, default-features = false }

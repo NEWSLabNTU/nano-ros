@@ -51,7 +51,7 @@ extern crate alloc;
 
 // Re-export core types
 pub use nano_ros_core::{
-    CdrReader, CdrWriter, Clock, ClockType, Deserialize, Duration, RosMessage, RosService,
+    CdrReader, CdrWriter, Clock, ClockType, Deserialize, Duration, Logger, RosMessage, RosService,
     Serialize, Time,
 };
 
@@ -145,7 +145,7 @@ pub use nano_ros_params::{
 /// ```
 pub mod prelude {
     pub use crate::{
-        CdrReader, CdrWriter, Deserialize, NodeConfig, PublisherHandle, PublisherOptions,
+        CdrReader, CdrWriter, Deserialize, Logger, NodeConfig, PublisherHandle, PublisherOptions,
         QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, RosMessage,
         RosService, Serialize, StandaloneNode, SubscriberHandle, SubscriberOptions, TopicInfo,
         TransportConfig,

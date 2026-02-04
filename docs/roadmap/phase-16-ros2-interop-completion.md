@@ -124,17 +124,17 @@ impl NodeState {
 
 **Tasks**:
 - [x] ~~Rename to `NodeState`, create `type Node = Arc<NodeState>`~~ **N/A for embedded** - keep `NodeHandle` with direct ownership
-- [ ] Add `name()`, `namespace()`, `fully_qualified_name()` methods
-- [ ] Add `get_clock()` returning `Clock` type
-- [ ] Add `logger()` returning `Logger` type
-- [ ] Update `create_publisher()` to accept `impl Into<String>` for topic
-- [ ] Update `create_subscription()` to accept flexible callback types
-- [ ] Add `declare_parameter()` returning `ParameterBuilder<T>`
+- [x] Add `name()`, `namespace()`, `fully_qualified_name()` methods
+- [x] Add `get_clock()` returning `Clock` type
+- [x] Add `logger()` returning `Logger` type
+- [x] Update `create_publisher()` to accept `impl IntoPublisherOptions` for topic
+- [x] Update `create_subscription()` to accept `impl IntoSubscriberOptions` for topic
+- [x] Add `declare_parameter()` returning `ParameterBuilder<T>`
 
 **Passing Criteria**:
-- [ ] `node.name()` returns correct node name
-- [ ] `node.fully_qualified_name()` returns `/<namespace>/<name>` format
-- [ ] `node.create_publisher::<Int32>("topic")` compiles (string coercion)
+- [x] `node.name()` returns correct node name
+- [x] `node.fully_qualified_name()` returns `/<namespace>/<name>` format
+- [x] `node.create_publisher::<Int32>("/topic")` compiles (string coercion)
 - [x] ~~Multiple references to same node via `Arc::clone()`~~ **N/A for embedded** - single owner pattern
 
 ---

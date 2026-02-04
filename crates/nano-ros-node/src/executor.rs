@@ -62,7 +62,8 @@ impl<T> MaybeSend for T {}
 use nano_ros_core::{Deserialize, RosMessage, Time};
 
 use crate::context::RclrsError;
-use crate::options::{PublisherOptions, SubscriberOptions};
+#[cfg(feature = "zenoh")]
+use crate::options::{IntoPublisherOptions, IntoSubscriberOptions};
 use crate::timer::TimerDuration;
 
 #[cfg(feature = "zenoh")]
@@ -495,14 +496,41 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
         self.node.inner.now()
     }
 
+    /// Get a logger for this node
+    ///
+    /// The logger includes the node name in log output for context.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let logger = node.logger();
+    /// logger.info("Node started");
+    /// logger.warn("Low battery");
+    /// ```
+    pub fn logger(&self) -> nano_ros_core::Logger<'_> {
+        nano_ros_core::Logger::new(self.node.inner.name())
+    }
+
     /// Create a publisher for the given topic
-    pub fn create_publisher<M: RosMessage>(
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Simple: topic string only (uses default QoS)
+    /// let pub1 = node.create_publisher::<Int32>("/chatter")?;
+    ///
+    /// // Fluent: topic with QoS options
+    /// let pub2 = node.create_publisher::<Int32>(
+    ///     PublisherOptions::new("/chatter").reliable().keep_last(10)
+    /// )?;
+    /// ```
+    pub fn create_publisher<'b, M: RosMessage>(
         &mut self,
-        options: PublisherOptions,
+        options: impl IntoPublisherOptions<'b>,
     ) -> Result<ConnectedPublisher<M>, RclrsError> {
         self.node
             .inner
-            .create_publisher::<M>(options)
+            .create_publisher::<M>(options.into_publisher_options())
             .map_err(|_| RclrsError::PublisherCreationFailed)
     }
 
@@ -513,21 +541,21 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
     /// # Example
     ///
     /// ```ignore
-    /// // Function pointer (no_std compatible)
-    /// fn handle_msg(msg: &Int32) {
-    ///     println!("Received: {}", msg.data);
-    /// }
-    /// node.create_subscription::<Int32>("/topic", handle_msg)?;
-    ///
-    /// // Closure (requires alloc)
-    /// node.create_subscription::<Int32>("/topic", |msg| {
+    /// // Simple: topic string only (uses default QoS)
+    /// node.create_subscription::<Int32, _>("/topic", |msg| {
     ///     println!("Received: {}", msg.data);
     /// })?;
+    ///
+    /// // Fluent: topic with QoS options
+    /// node.create_subscription::<Int32, _>(
+    ///     SubscriberOptions::new("/topic").reliable().keep_last(10),
+    ///     |msg| { println!("Received: {}", msg.data); }
+    /// )?;
     /// ```
     #[cfg(feature = "alloc")]
-    pub fn create_subscription<M, C>(
+    pub fn create_subscription<'b, M, C>(
         &mut self,
-        options: SubscriberOptions,
+        options: impl IntoSubscriberOptions<'b>,
         callback: C,
     ) -> Result<SubscriptionHandle, RclrsError>
     where
@@ -537,7 +565,7 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
         let subscriber = self
             .node
             .inner
-            .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(options)
+            .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(options.into_subscriber_options())
             .map_err(|_| RclrsError::SubscriberCreationFailed)?;
 
         let entry = SubscriptionEntry {

@@ -19,6 +19,7 @@ extern crate alloc;
 pub mod action;
 pub mod clock;
 pub mod error;
+pub mod logger;
 pub mod service;
 pub mod time;
 pub mod types;
@@ -29,6 +30,7 @@ pub use action::{
 };
 pub use clock::{Clock, ClockType};
 pub use error::Error;
+pub use logger::Logger;
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};
 pub use time::{Duration, Time};
 pub use types::{RosMessage, RosService};
