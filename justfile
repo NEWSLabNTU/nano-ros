@@ -324,11 +324,33 @@ build-zephyr:
     west build -b native_sim/native/64 -d build-listener -p auto nano-ros/examples/zephyr/rs-listener
     echo "Zephyr examples built successfully!"
 
+# Build Zephyr action examples (server and client to separate directories)
+build-zephyr-actions:
+    #!/usr/bin/env bash
+    set -e
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if [ ! -d "$WORKSPACE/zephyr" ]; then
+        echo "Error: Zephyr workspace not found at $WORKSPACE"
+        echo "Run: ./scripts/zephyr/setup.sh"
+        exit 1
+    fi
+    echo "Building Zephyr action examples in $WORKSPACE..."
+    cd "$WORKSPACE"
+    echo "  Building zephyr/rs-action-server -> build-action-server/"
+    west build -b native_sim/native/64 -d build-action-server -p auto nano-ros/examples/zephyr/rs-action-server
+    echo "  Building zephyr/rs-action-client -> build-action-client/"
+    west build -b native_sim/native/64 -d build-action-client -p auto nano-ros/examples/zephyr/rs-action-client
+    echo "Zephyr action examples built successfully!"
+
+# Build all Zephyr examples (talker, listener, action server, action client)
+build-zephyr-all: build-zephyr build-zephyr-actions
+    @echo "All Zephyr examples built!"
+
 # Clean Zephyr build directories
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -689,6 +711,14 @@ test-rust-zephyr-full: build-zephyr
 # Alias for test-rust-zephyr
 test-zephyr-rs: test-rust-zephyr
 
+# Run Rust Zephyr action tests only (requires west workspace + bridge network)
+test-rust-zephyr-actions:
+    cargo test -p nano-ros-tests --test zephyr test_zephyr_action -- --nocapture
+
+# Run Rust Zephyr action tests with rebuild
+test-rust-zephyr-actions-full: build-zephyr-actions
+    cargo test -p nano-ros-tests --test zephyr test_zephyr_action -- --nocapture
+
 # Run Rust tests via wrapper script (with nice output)
 test-rust-full:
     ./tests/rust-tests.sh
@@ -815,17 +845,26 @@ zephyr-help:
     @echo "  2. Set up bridge network:   sudo ./scripts/zephyr/setup-network.sh"
     @echo ""
     @echo "Build examples:"
-    @echo "  just build-zephyr       # Build talker and listener"
-    @echo "  just rebuild-zephyr     # Clean and rebuild"
-    @echo "  just clean-zephyr       # Remove build directories"
+    @echo "  just build-zephyr           # Build talker and listener"
+    @echo "  just build-zephyr-actions   # Build action server and client"
+    @echo "  just build-zephyr-all       # Build all Zephyr examples"
+    @echo "  just rebuild-zephyr         # Clean and rebuild talker/listener"
+    @echo "  just clean-zephyr           # Remove all build directories"
     @echo ""
     @echo "Run tests:"
-    @echo "  just test-rust-zephyr      # Run tests (uses existing binaries)"
-    @echo "  just test-rust-zephyr-full # Rebuild and run tests"
+    @echo "  just test-rust-zephyr            # Run talker/listener tests"
+    @echo "  just test-rust-zephyr-full       # Rebuild and run talker/listener tests"
+    @echo "  just test-rust-zephyr-actions    # Run action tests only"
+    @echo "  just test-rust-zephyr-actions-full # Rebuild and run action tests"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
     @echo "  west build -b native_sim/native/64 -d build-talker nano-ros/examples/zephyr/rs-talker"
     @echo "  west build -b native_sim/native/64 -d build-listener nano-ros/examples/zephyr/rs-listener"
+    @echo "  west build -b native_sim/native/64 -d build-action-server nano-ros/examples/zephyr/rs-action-server"
+    @echo "  west build -b native_sim/native/64 -d build-action-client nano-ros/examples/zephyr/rs-action-client"
+    @echo ""
+    @echo "NOTE: Running both Zephyr action server and client simultaneously has a known"
+    @echo "zenoh-pico limitation where the second client may fail to subscribe."
 
 # =============================================================================
 # Docker

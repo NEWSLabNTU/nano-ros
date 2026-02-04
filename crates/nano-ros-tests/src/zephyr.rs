@@ -390,6 +390,8 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
     match example_name {
         "zephyr-rs-talker" | "rs-talker" => "build-talker",
         "zephyr-rs-listener" | "rs-listener" => "build-listener",
+        "zephyr-rs-action-server" | "rs-action-server" => "build-action-server",
+        "zephyr-rs-action-client" | "rs-action-client" => "build-action-client",
         _ => "build",
     }
 }
@@ -402,6 +404,8 @@ fn example_path_for_name(example_name: &str) -> String {
     match example_name {
         "zephyr-rs-talker" | "rs-talker" => "zephyr/rs-talker".to_string(),
         "zephyr-rs-listener" | "rs-listener" => "zephyr/rs-listener".to_string(),
+        "zephyr-rs-action-server" | "rs-action-server" => "zephyr/rs-action-server".to_string(),
+        "zephyr-rs-action-client" | "rs-action-client" => "zephyr/rs-action-client".to_string(),
         "zephyr-c-talker" | "c-talker" => "zephyr/c-talker".to_string(),
         "zephyr-c-listener" | "c-listener" => "zephyr/c-listener".to_string(),
         // For any other name, assume it's a path relative to examples/
