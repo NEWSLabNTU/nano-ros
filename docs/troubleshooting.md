@@ -115,6 +115,29 @@ cargo install zenoh --version 1.5.1 --features=zenohd
 
 ---
 
+## Multiple Zephyr Instance Issues
+
+### Ephemeral Port Conflict
+
+**Symptom**: When running multiple Zephyr native_sim instances (e.g., talker and listener), both sessions fail to establish or one gets `-100` (`_Z_ERR_TRANSPORT_TX_FAILED`) errors.
+
+**Root Cause**: Zephyr native_sim uses a test entropy source that produces identical random number sequences unless seeded differently. This causes both instances to select the same ephemeral TCP port when connecting to the router, causing a port conflict.
+
+**Solution**: Pass different `--seed` values to each native_sim instance:
+```bash
+# Start listener with one seed
+./build-listener/zephyr/zephyr.exe --seed=12345
+
+# Start talker with a different seed
+./build-talker/zephyr/zephyr.exe --seed=67890
+```
+
+The `--seed` parameter initializes the test entropy source with a different value, producing different random numbers and thus different ephemeral ports.
+
+**For automated tests**: The test framework (`crates/nano-ros-tests`) automatically assigns unique seeds to each process.
+
+---
+
 ## Network Configuration Issues
 
 ### Zephyr and QEMU Subnet Conflicts
