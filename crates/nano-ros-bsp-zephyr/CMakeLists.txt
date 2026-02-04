@@ -15,7 +15,7 @@ zephyr_include_directories(include)
 # Include zenoh shim headers
 zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../zenoh-pico-shim-sys/c/include)
 
-# Disable Z_FEATURE_INTEREST to avoid write filter issues with multiple clients
-zephyr_compile_definitions(Z_FEATURE_INTEREST=0 Z_FEATURE_MATCHING=0)
+# Enable Z_FEATURE_INTEREST for proper message routing between clients on different networks
+zephyr_compile_definitions(Z_FEATURE_INTEREST=1 Z_FEATURE_MATCHING=1)
 
 endif()

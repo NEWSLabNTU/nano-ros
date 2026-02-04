@@ -300,17 +300,18 @@ fn build_zenoh_pico_native(zenoh_pico_src: &Path, out_dir: &Path) -> PathBuf {
     generate_version_header(&zenoh_pico_build);
 
     // Build via CMake
-    // Note: Z_FEATURE_INTEREST is disabled to allow multiple clients to coexist.
-    // The interest protocol causes write filter creation to fail when multiple
-    // clients connect to the same router. See rmw_zenoh_pico for reference.
+    // Note: Z_FEATURE_INTEREST must be enabled for proper message routing between
+    // clients on different networks (e.g., Zephyr on TAP vs native on localhost).
+    // Both clients must have matching INTEREST settings for the router to route properly.
     let dst = cmake::Config::new(&zenoh_pico_build)
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_EXAMPLES", "OFF")
         .define("BUILD_TESTING", "OFF")
         .define("BUILD_TOOLS", "OFF")
         .define("ZENOH_DEBUG", "0")
-        .define("Z_FEATURE_LOCAL_SUBSCRIBER", "1")
-        .define("Z_FEATURE_INTEREST", "0")
+        .define("Z_FEATURE_LOCAL_SUBSCRIBER", "0")
+        .define("Z_FEATURE_INTEREST", "1")
+        .define("Z_FEATURE_MATCHING", "1")
         .build();
 
     // Link the static library
