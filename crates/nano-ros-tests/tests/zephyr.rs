@@ -130,13 +130,15 @@ fn test_zephyr_talker_to_listener_e2e() {
     // Check talker status
     let talker_published = talker_output.contains("Published:") || talker_output.contains("data=");
     let talker_connected = !talker_output.contains("session error");
-    let talker_created_pub = talker_output.contains("Declared publisher");
+    let talker_created_pub =
+        talker_output.contains("Declared publisher") || talker_output.contains("Publisher created");
 
     // Check listener status
     let listener_received =
         listener_output.contains("Received:") || listener_output.contains("data=");
     let listener_connected = !listener_output.contains("session error");
-    let listener_created_sub = listener_output.contains("Declared subscriber");
+    let listener_created_sub = listener_output.contains("Declared subscriber")
+        || listener_output.contains("Subscriber created");
     let listener_failed_sub = listener_output.contains("Failed to create subscriber");
 
     if !talker_connected {
