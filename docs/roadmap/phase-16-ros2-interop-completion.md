@@ -15,6 +15,42 @@ Reference implementations are available at:
 - `external/rclrs/` - rclrs v0.7.0
 - `external/rclc/` - rclc (latest)
 
+### Embedded Constraints: Intentional Divergences from rclrs
+
+nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_std` support. This requires intentional divergences from rclrs patterns that assume `std` features:
+
+| rclrs Pattern       | nano-ros Pattern                     | Reason                                    |
+|---------------------|--------------------------------------|-------------------------------------------|
+| `Arc<NodeState>`    | `&mut NodeHandle` / direct ownership | Arc requires heap allocation + atomic ops |
+| `Arc<Publisher<T>>` | `PublisherHandle` / direct ownership | Same - no heap on bare-metal              |
+| `Send + Sync` types | `!Send` types allowed                | Single-threaded RTOS patterns             |
+| `spin_async()`      | `spin()` / `spin_once()` only        | zenoh-pico not thread-safe                |
+| Dynamic allocation  | Static buffers via const generics    | Predictable memory usage                  |
+
+**Key Design Decisions:**
+
+1. **Ownership Model**: nano-ros uses **direct ownership by executor** with **borrowed handles** for nodes/publishers/subscriptions. This matches rclc patterns exactly and is correct for embedded:
+   ```rust
+   // nano-ros (embedded-friendly)
+   let mut executor = context.create_basic_executor();
+   let mut node = executor.create_node("my_node")?;  // Returns NodeHandle (borrowed)
+
+   // rclrs (std-only)
+   let node: Arc<Node> = executor.create_node("my_node")?;  // Returns Arc (heap-allocated)
+   ```
+
+2. **Thread Safety**: zenoh-pico types are intentionally `!Send` via `PhantomData<*const ()>` marker. This is correct because:
+   - zenoh-pico C library is not thread-safe by design
+   - Embedded patterns use single-threaded executors (RTIC, rclc)
+   - `PollingExecutor` handles all I/O in one thread
+
+3. **No `spin_async()`**: async runtime integration requires `Send` futures. Since zenoh-pico types are `!Send`, async spinning is blocked. Use `spin_once()` in RTIC/Embassy tasks instead.
+
+**API Compatibility Approach:**
+- **Method signatures** match rclrs where possible
+- **Ownership semantics** follow rclc (direct ownership, no Arc)
+- **Embedded features** use const generics for static allocation
+
 ### Current State
 
 | Feature    | nano-ros → nano-ros | nano-ros → ROS 2 | ROS 2 → nano-ros |
@@ -50,29 +86,29 @@ executor.spin()?;
 ```
 
 **Tasks**:
-- [ ] Add `Context` type wrapping domain ID, command line args, allocator config
-- [ ] Add `Context::default()`, `default_from_env()`, `from_env()` constructors
-- [ ] Add `Executor` type with node creation and spinning
-- [ ] Add `Executor::create_node()` returning `Arc<Node>`
-- [ ] Add `Executor::spin()` and `spin_once()` methods
-- [ ] Add `Executor::spin_async()` for async runtime integration
-- [ ] Deprecate direct `ConnectedNode` construction in favor of executor
+- [x] Add `Context` type wrapping domain ID, command line args, allocator config
+- [x] Add `Context::default()`, `default_from_env()`, `from_env()` constructors
+- [x] Add `Executor` type with node creation and spinning
+- [x] ~~Add `Executor::create_node()` returning `Arc<Node>`~~ **N/A for embedded** - uses `NodeHandle` (borrowed reference)
+- [x] Add `Executor::spin()` and `spin_once()` methods
+- [x] ~~Add `Executor::spin_async()`~~ **N/A for embedded** - zenoh-pico types are `!Send` by design; use `spin_once()` in RTIC/Embassy tasks
+- [x] Deprecate direct `ConnectedNode` construction in favor of executor
 
 **Passing Criteria**:
-- [ ] `Context::default_from_env()` compiles and returns valid context
-- [ ] `executor.create_node("test")` creates node with correct name
-- [ ] `executor.spin()` processes callbacks until shutdown
-- [ ] Example `examples/native/rs-talker` works with new API
+- [x] `Context::default_from_env()` compiles and returns valid context
+- [x] `executor.create_node("test")` creates node with correct name
+- [x] `executor.spin()` processes callbacks until shutdown (returns `Result<(), RclrsError>`)
+- [x] Example `examples/native/rs-talker` works with new API
 
 ---
 
 ### A.2 Node API Enhancement (HIGH)
 
-**Goal**: Match rclrs `Node` / `NodeState` patterns with `Arc` wrapping.
+**Goal**: Match rclrs `Node` / `NodeState` method signatures (ownership follows rclc patterns).
 
 **rclrs Reference** (`external/rclrs/rclrs/src/node.rs`):
 ```rust
-pub type Node = Arc<NodeState>;
+pub type Node = Arc<NodeState>;  // N/A for embedded - nano-ros uses NodeHandle
 
 impl NodeState {
     pub fn name(&self) -> &str;
@@ -87,7 +123,7 @@ impl NodeState {
 ```
 
 **Tasks**:
-- [ ] Rename `ConnectedNode` to `NodeState`, create `type Node = Arc<NodeState>`
+- [x] ~~Rename to `NodeState`, create `type Node = Arc<NodeState>`~~ **N/A for embedded** - keep `NodeHandle` with direct ownership
 - [ ] Add `name()`, `namespace()`, `fully_qualified_name()` methods
 - [ ] Add `get_clock()` returning `Clock` type
 - [ ] Add `logger()` returning `Logger` type
@@ -99,17 +135,17 @@ impl NodeState {
 - [ ] `node.name()` returns correct node name
 - [ ] `node.fully_qualified_name()` returns `/<namespace>/<name>` format
 - [ ] `node.create_publisher::<Int32>("topic")` compiles (string coercion)
-- [ ] Multiple references to same node via `Arc::clone()` work correctly
+- [x] ~~Multiple references to same node via `Arc::clone()`~~ **N/A for embedded** - single owner pattern
 
 ---
 
 ### A.3 Publisher API Enhancement (HIGH)
 
-**Goal**: Match rclrs `Publisher<T>` patterns.
+**Goal**: Match rclrs `Publisher<T>` method signatures (ownership follows rclc patterns).
 
 **rclrs Reference** (`external/rclrs/rclrs/src/publisher.rs`):
 ```rust
-pub type Publisher<T> = Arc<PublisherState<T>>;
+pub type Publisher<T> = Arc<PublisherState<T>>;  // N/A for embedded - nano-ros uses PublisherHandle
 
 impl<T: Message> PublisherState<T> {
     pub fn publish(&self, message: impl MessageCow<'_, T>) -> Result<()>;
@@ -119,7 +155,7 @@ impl<T: Message> PublisherState<T> {
 ```
 
 **Tasks**:
-- [ ] Wrap publisher in `Arc<PublisherState<T>>`
+- [x] ~~Wrap publisher in `Arc<PublisherState<T>>`~~ **N/A for embedded** - keep `PublisherHandle` with direct ownership
 - [ ] Add `MessageCow` trait for accepting owned or borrowed messages
 - [ ] Add `topic_name()` method
 - [ ] Add `get_subscription_count()` method (if transport supports)
@@ -129,65 +165,67 @@ impl<T: Message> PublisherState<T> {
 - [ ] `publisher.publish(msg.clone())` works (owned)
 - [ ] `publisher.publish(&msg)` works (borrowed)
 - [ ] `publisher.topic_name()` returns correct topic
-- [ ] Publisher is `Send + Sync` (can be shared across threads)
+- [x] ~~Publisher is `Send + Sync`~~ **N/A for embedded** - zenoh-pico types are `!Send` by design
 
 ---
 
 ### A.4 Subscription API Enhancement (HIGH)
 
-**Goal**: Match rclrs `Subscription<T>` with flexible callbacks.
+**Goal**: Match rclrs `Subscription<T>` callback patterns (ownership follows rclc patterns).
 
 **rclrs Reference** (`external/rclrs/rclrs/src/subscription.rs`):
 ```rust
-pub type Subscription<T> = Arc<SubscriptionState<T>>;
+pub type Subscription<T> = Arc<SubscriptionState<T>>;  // N/A for embedded - nano-ros uses SubscriptionHandle
 
 // Callback can be:
 // - FnMut(T)
 // - FnMut(T, MessageInfo)
 // - FnMut(&Node, T)
-// - async fn(T)
+// - async fn(T)  // N/A for embedded - requires Send
 ```
 
 **Tasks**:
-- [ ] Wrap subscription in `Arc<SubscriptionState<T>>`
+- [x] ~~Wrap subscription in `Arc<SubscriptionState<T>>`~~ **N/A for embedded** - keep `SubscriptionHandle` with direct ownership
 - [ ] Add `SubscriptionCallback` trait for flexible callback signatures
 - [ ] Support `FnMut(T)` - message only
 - [ ] Support `FnMut(T, MessageInfo)` - message with metadata
 - [ ] Add `topic_name()` and `qos()` methods
 - [ ] Add `MessageInfo` type with timestamp and source GID
+- [x] ~~Support `async fn(T)`~~ **N/A for embedded** - requires `Send` futures
 
 **Passing Criteria**:
 - [ ] `node.create_subscription("topic", |msg: Int32| { ... })` compiles
 - [ ] `node.create_subscription("topic", |msg, info| { ... })` compiles
 - [ ] `MessageInfo` contains valid timestamp and GID
-- [ ] Subscription is `Send` (can be moved to another thread)
+- [x] ~~Subscription is `Send`~~ **N/A for embedded** - zenoh-pico types are `!Send` by design
 
 ---
 
 ### A.5 Service Client/Server API Enhancement (HIGH)
 
-**Goal**: Match rclrs `Service<T>` and `Client<T>` patterns.
+**Goal**: Match rclrs `Service<T>` and `Client<T>` method signatures (ownership follows rclc patterns).
 
 **rclrs Reference** (`external/rclrs/rclrs/src/service.rs`, `client.rs`):
 ```rust
-pub type Service<T> = Arc<ServiceState<T>>;
-pub type Client<T> = Arc<ClientState<T>>;
+pub type Service<T> = Arc<ServiceState<T>>;  // N/A for embedded - nano-ros uses ServiceHandle
+pub type Client<T> = Arc<ClientState<T>>;    // N/A for embedded - nano-ros uses ClientHandle
 
 impl<T: ServiceIDL> ClientState<T> {
-    pub fn call(&self, request: T::Request) -> Promise<T::Response>;
+    pub fn call(&self, request: T::Request) -> Promise<T::Response>;  // Async - N/A for embedded
 }
 ```
 
 **Tasks**:
-- [ ] Wrap service/client in `Arc<ServiceState<T>>` / `Arc<ClientState<T>>`
-- [ ] Add `Promise<T>` type (futures oneshot receiver)
-- [ ] Add `Client::call()` returning `Promise<Response>`
+- [x] ~~Wrap service/client in `Arc<...>`~~ **N/A for embedded** - keep direct ownership handles
+- [ ] Add `Promise<T>` type (for `std` feature only)
+- [ ] Add `Client::call()` returning `Promise<Response>` (for `std` feature)
+- [ ] Add `Client::call_sync()` for embedded (blocking with timeout)
 - [ ] Add `service_name()` method to both types
-- [ ] Support async service calls via `call().await`
+- [x] ~~Support async service calls via `call().await`~~ **N/A for embedded** - requires `Send` futures
 
 **Passing Criteria**:
-- [ ] `client.call(request)` returns `Promise<Response>`
-- [ ] `client.call(request).await` resolves to response
+- [ ] `client.call(request)` returns `Promise<Response>` (std feature)
+- [ ] `client.call_sync(request, timeout)` returns `Result<Response>` (embedded)
 - [ ] Service callback receives request and returns response
 - [ ] `service.service_name()` returns correct name
 
@@ -195,11 +233,11 @@ impl<T: ServiceIDL> ClientState<T> {
 
 ### A.6 Timer API (MEDIUM)
 
-**Goal**: Match rclrs `Timer` patterns.
+**Goal**: Match rclrs `Timer` method signatures (ownership follows rclc patterns).
 
 **rclrs Reference** (`external/rclrs/rclrs/src/timer.rs`):
 ```rust
-pub type Timer = Arc<TimerState>;
+pub type Timer = Arc<TimerState>;  // N/A for embedded - nano-ros uses TimerHandle
 
 impl Node {
     pub fn create_timer_repeating(&self, period: Duration, callback: impl FnMut()) -> Result<Timer>;
@@ -215,7 +253,7 @@ impl TimerState {
 ```
 
 **Tasks**:
-- [ ] Add `Timer` type with `Arc` wrapping
+- [x] ~~Add `Timer` type with `Arc` wrapping~~ **N/A for embedded** - keep `TimerHandle` with direct ownership
 - [ ] Add `Node::create_timer_repeating()` method
 - [ ] Add `Node::create_timer_oneshot()` method
 - [ ] Add `Timer::cancel()`, `reset()`, `period()`, `is_ready()` methods

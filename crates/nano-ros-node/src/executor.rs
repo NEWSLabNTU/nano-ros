@@ -744,7 +744,12 @@ pub trait Executor {
 #[cfg(all(feature = "zenoh", feature = "std"))]
 pub trait SpinExecutor: Executor {
     /// Blocking spin loop
-    fn spin(&mut self, opts: SpinOptions);
+    ///
+    /// Runs until completion (halt, timeout, or max callbacks reached).
+    ///
+    /// # Returns
+    /// `Ok(())` on normal completion, `Err` if an error occurred during spinning.
+    fn spin(&mut self, opts: SpinOptions) -> Result<(), RclrsError>;
 
     // TODO: Re-enable spin_async once underlying zenoh-pico types are Send.
     // /// Async spin (runs on background thread)
@@ -992,7 +997,24 @@ impl BasicExecutor {
     ///
     /// # Arguments
     /// * `opts` - Options controlling spin behavior
-    pub fn spin(&mut self, opts: SpinOptions) {
+    ///
+    /// # Returns
+    /// `Ok(())` on normal completion, `Err` if an error occurred during spinning.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let ctx = Context::default_from_env()?;
+    /// let mut executor = ctx.create_basic_executor();
+    /// let node = executor.create_node("my_node")?;
+    ///
+    /// // Spin until halt() is called
+    /// executor.spin(SpinOptions::default())?;
+    ///
+    /// // Spin with timeout
+    /// executor.spin(SpinOptions::new().timeout_ms(5000))?;
+    /// ```
+    pub fn spin(&mut self, opts: SpinOptions) -> Result<(), RclrsError> {
         use std::time::{Duration, Instant};
 
         const POLL_INTERVAL_MS: u64 = 10;
@@ -1011,10 +1033,8 @@ impl BasicExecutor {
             }
 
             // Check timeout
-            if let Some(timeout) = timeout {
-                if start.elapsed() >= timeout {
-                    break;
-                }
+            if timeout.is_some_and(|t| start.elapsed() >= t) {
+                break;
             }
 
             // Spin once
@@ -1022,10 +1042,8 @@ impl BasicExecutor {
             total_callbacks += result.total();
 
             // Check max callbacks
-            if let Some(max) = opts.max_callbacks {
-                if total_callbacks >= max {
-                    break;
-                }
+            if opts.max_callbacks.is_some_and(|max| total_callbacks >= max) {
+                break;
             }
 
             // Single iteration mode
@@ -1036,6 +1054,8 @@ impl BasicExecutor {
             // Sleep between iterations
             std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
         }
+
+        Ok(())
     }
 
     /// Request the executor to stop spinning
@@ -1065,13 +1085,14 @@ impl Executor for BasicExecutor {
     }
 }
 
-#[cfg(all(feature = "zenoh", feature = "std", feature = "async"))]
+#[cfg(all(feature = "zenoh", feature = "std"))]
 impl SpinExecutor for BasicExecutor {
-    fn spin(&mut self, opts: SpinOptions) {
+    fn spin(&mut self, opts: SpinOptions) -> Result<(), RclrsError> {
         BasicExecutor::spin(self, opts)
     }
 
     // TODO: Re-enable spin_async once underlying zenoh-pico types are Send.
+    // #[cfg(feature = "async")]
     // fn spin_async(
     //     mut self,
     //     opts: SpinOptions,

@@ -91,7 +91,9 @@ fn main() {
     info!("(Press Ctrl+C to exit)");
 
     // Run the executor - callbacks will be invoked automatically
-    executor.spin(SpinOptions::default());
+    if let Err(e) = executor.spin(SpinOptions::default()) {
+        error!("Spin error: {:?}", e);
+    }
 }
 
 #[cfg(not(feature = "zenoh"))]

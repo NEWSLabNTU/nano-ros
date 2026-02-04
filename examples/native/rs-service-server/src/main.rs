@@ -79,7 +79,9 @@ fn main() {
     info!("(Run native-rs-service-client in another terminal)");
 
     // Run the executor - service callbacks will be invoked automatically
-    executor.spin(SpinOptions::default());
+    if let Err(e) = executor.spin(SpinOptions::default()) {
+        error!("Spin error: {:?}", e);
+    }
 }
 
 #[cfg(not(feature = "zenoh"))]
