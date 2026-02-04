@@ -195,6 +195,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | WCET analysis | [docs/wcet-analysis.md](docs/wcet-analysis.md) |
 | Schedulability | [docs/schedulability-analysis.md](docs/schedulability-analysis.md) |
 | Real-time lints | [docs/realtime-lint-guide.md](docs/realtime-lint-guide.md) |
+| Actions API | [docs/roadmap/phase-6-actions.md](docs/roadmap/phase-6-actions.md) |
 | QEMU/physical devices | [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) |
 | Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
 
@@ -225,6 +226,28 @@ source /opt/ros/humble/setup.bash
 export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
+
+### Actions
+ROS 2 actions support long-running tasks with feedback and cancellation.
+
+```bash
+# Terminal 1: Router
+zenohd --listen tcp/127.0.0.1:7447
+
+# Terminal 2: Action server (Fibonacci example)
+cd examples/native/rs-action-server && cargo run
+
+# Terminal 3: Action client
+cd examples/native/rs-action-client && cargo run
+```
+
+**Zephyr action tests:**
+```bash
+just build-zephyr-actions      # Build server and client
+just test-rust-zephyr-actions  # Run E2E tests (requires TAP setup)
+```
+
+See [docs/roadmap/phase-6-actions.md](docs/roadmap/phase-6-actions.md) for API details.
 
 ### Zephyr Setup
 ```bash

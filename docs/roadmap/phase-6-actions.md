@@ -451,9 +451,9 @@ The following dependency chain must be completed to enable Zephyr action example
 - [x] Implement ZephyrActionClient wrapper over zenoh-pico-shim
   - [x] Use `ShimContext::get()` for service calls
   - [x] Use `ShimSubscriber` for feedback, status topics
-- [ ] Test on native_sim/native/64 target (requires Zephyr workspace)
-- [ ] Test Zephyr server ↔ native client (requires Zephyr workspace)
-- [ ] Test native server ↔ Zephyr client (requires Zephyr workspace)
+- [x] Test on native_sim/native/64 target (Zephyr server ↔ Zephyr client verified)
+- [ ] Test Zephyr server ↔ native client
+- [ ] Test native server ↔ Zephyr client
 - [ ] Test on real hardware (NUCLEO-F429ZI)
 
 **Prerequisites (all COMPLETE):**
@@ -465,6 +465,7 @@ The following dependency chain must be completed to enable Zephyr action example
 ### 4.7 Integration Tests
 
 - [x] nano-ros server ↔ nano-ros client (test_action_server_client_communication: 11 feedback, full sequence)
+- [x] Zephyr server ↔ Zephyr client (native_sim E2E test: 11 feedback, Fibonacci order=10 verified)
 - [ ] nano-ros server ↔ ROS 2 client (`ros2 action send_goal`) - requires ROS 2 with rmw_zenoh
 - [ ] ROS 2 server ↔ nano-ros client - requires ROS 2 with rmw_zenoh
 - [ ] Test goal cancellation - requires client modification
@@ -473,7 +474,7 @@ The following dependency chain must be completed to enable Zephyr action example
 
 ### 4.8 Documentation
 
-- [ ] Add action section to CLAUDE.md
+- [x] Add action section to CLAUDE.md
 - [ ] Document action API in rustdoc
 - [ ] Add action examples to user guide
 - [ ] Document limitations vs rclcpp/rclpy
@@ -615,6 +616,7 @@ For `MAX_GOALS = 4` with typical messages: ~500 bytes to 2KB total.
 
 ### Integration Tests Complete When:
 - [x] nano-ros server ↔ nano-ros client (4 tests passing)
+- [x] Zephyr server ↔ Zephyr client (5 tests passing on native_sim)
 - [ ] nano-ros server ↔ ROS 2 client (requires ROS 2 environment)
 - [ ] ROS 2 server ↔ nano-ros client (requires ROS 2 environment)
 

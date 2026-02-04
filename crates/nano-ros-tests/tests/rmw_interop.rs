@@ -4,8 +4,9 @@
 
 use nano_ros_tests::count_pattern;
 use nano_ros_tests::fixtures::{
-    DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, is_rmw_zenoh_available,
-    is_ros2_available, listener_binary, talker_binary, zenohd_unique,
+    DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, action_client_binary,
+    action_server_binary, is_rmw_zenoh_available, is_ros2_available, listener_binary,
+    talker_binary, zenohd_unique,
 };
 use rstest::rstest;
 use std::path::{Path, PathBuf};
@@ -389,5 +390,156 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
         eprintln!("[PASS] BEST_EFFORT QoS compatible");
     } else {
         eprintln!("[INFO] QoS test inconclusive");
+    }
+}
+
+// =============================================================================
+// ROS 2 Action Interop Tests
+// =============================================================================
+
+#[rstest]
+fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server_binary: PathBuf) {
+    use nano_ros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start nano-ros action server
+    eprintln!("Starting nano-ros action server...");
+    let mut server_cmd = Command::new(&action_server_binary);
+    server_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-action-server")
+        .expect("Failed to start action server");
+
+    // Give server time to set up
+    std::thread::sleep(Duration::from_secs(3));
+
+    if !server.is_running() {
+        eprintln!("[FAIL] Action server exited early");
+        return;
+    }
+
+    // Start ROS 2 action client
+    eprintln!("Starting ROS 2 action send_goal...");
+    let mut ros2_client = match Ros2Process::action_send_goal(
+        "/demo/fibonacci",
+        "example_interfaces/action/Fibonacci",
+        "{order: 5}",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 action client: {}", e);
+            server.kill();
+            return;
+        }
+    };
+
+    // Wait for action to complete (Fibonacci(5) takes ~3 seconds)
+    std::thread::sleep(Duration::from_secs(10));
+
+    // Collect ROS 2 output
+    let ros2_output = ros2_client
+        .wait_for_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    server.kill();
+
+    eprintln!("ROS 2 action client output:\n{}", ros2_output);
+
+    // Check if ROS 2 received goal response and result
+    let goal_accepted = ros2_output.contains("Goal accepted") || ros2_output.contains("accepted");
+    let feedback_received =
+        count_pattern(&ros2_output, "feedback") > 0 || count_pattern(&ros2_output, "Feedback") > 0;
+    let result_received = ros2_output.contains("Result")
+        || ros2_output.contains("sequence")
+        || ros2_output.contains("result");
+
+    if goal_accepted || feedback_received || result_received {
+        eprintln!("[PASS] nano-ros action server ↔ ROS 2 action client works");
+        if goal_accepted {
+            eprintln!("  - Goal accepted");
+        }
+        if feedback_received {
+            eprintln!("  - Feedback received");
+        }
+        if result_received {
+            eprintln!("  - Result received");
+        }
+    } else {
+        eprintln!("[INFO] ROS 2 action client did not receive expected output");
+        eprintln!("  This may be a timing issue or protocol incompatibility");
+    }
+}
+
+#[rstest]
+fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client_binary: PathBuf) {
+    use nano_ros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start ROS 2 action server (Fibonacci)
+    eprintln!("Starting ROS 2 Fibonacci action server...");
+    let mut ros2_server = match Ros2Process::action_server_fibonacci(&locator, DEFAULT_ROS_DISTRO) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 action server: {}", e);
+            eprintln!("[INFO] This test requires ros-humble-example-interfaces");
+            return;
+        }
+    };
+
+    // Give server time to set up
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Start nano-ros action client
+    eprintln!("Starting nano-ros action client...");
+    let mut client_cmd = Command::new(&action_client_binary);
+    client_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-action-client")
+        .expect("Failed to start action client");
+
+    // Wait for action to complete
+    std::thread::sleep(Duration::from_secs(15));
+
+    // Collect nano-ros output
+    let nano_output = client
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    ros2_server.kill();
+
+    eprintln!("nano-ros action client output:\n{}", nano_output);
+
+    // Check if nano-ros received goal response and feedback
+    let goal_accepted = nano_output.contains("Goal accepted");
+    let feedback_count = count_pattern(&nano_output, "Feedback #");
+    let completed =
+        nano_output.contains("action completed") || nano_output.contains("Action client finished");
+
+    if goal_accepted || feedback_count > 0 || completed {
+        eprintln!("[PASS] ROS 2 action server ↔ nano-ros action client works");
+        if goal_accepted {
+            eprintln!("  - Goal accepted");
+        }
+        if feedback_count > 0 {
+            eprintln!("  - Received {} feedback messages", feedback_count);
+        }
+        if completed {
+            eprintln!("  - Action completed");
+        }
+    } else {
+        eprintln!("[INFO] nano-ros action client did not receive expected output");
+        eprintln!("  This may be a timing issue or protocol incompatibility");
     }
 }

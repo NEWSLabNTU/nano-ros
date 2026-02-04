@@ -35,12 +35,17 @@ pub fn is_rmw_zenoh_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Get ROS 2 environment setup command
+/// Get ROS 2 environment setup command with default locator
 pub fn ros2_env_setup(distro: &str) -> String {
+    ros2_env_setup_with_locator(distro, "tcp/127.0.0.1:7447")
+}
+
+/// Get ROS 2 environment setup command with custom locator
+pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> String {
     format!(
         "source /opt/ros/{distro}/setup.bash && \
          export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
-         export ZENOH_CONFIG_OVERRIDE='mode=\"client\";connect/endpoints=[\"tcp/127.0.0.1:7447\"]'"
+         export ZENOH_CONFIG_OVERRIDE='mode=\"client\";connect/endpoints=[\"{locator}\"]'"
     )
 }
 
@@ -78,6 +83,76 @@ impl Ros2Process {
         Ok(Self {
             handle,
             name: format!("ros2 topic echo {topic}"),
+        })
+    }
+
+    /// Start a ROS 2 action send_goal command
+    ///
+    /// # Arguments
+    /// * `action_name` - Action name (e.g., "/demo/fibonacci")
+    /// * `action_type` - Action type (e.g., "example_interfaces/action/Fibonacci")
+    /// * `goal` - Goal data as YAML (e.g., "{order: 5}")
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn action_send_goal(
+        action_name: &str,
+        action_type: &str,
+        goal: &str,
+        locator: &str,
+        distro: &str,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let cmd = format!(
+            "{env_setup} && timeout 30 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
+        );
+
+        let handle = Command::new("bash")
+            .args(["-c", &cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                TestError::ProcessFailed(format!("Failed to start ros2 action send_goal: {e}"))
+            })?;
+
+        Ok(Self {
+            handle,
+            name: format!("ros2 action send_goal {action_name}"),
+        })
+    }
+
+    /// Start a ROS 2 Fibonacci action server
+    ///
+    /// Uses the example_interfaces Fibonacci action server.
+    /// Requires ros-humble-example-interfaces package.
+    ///
+    /// # Arguments
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn action_server_fibonacci(locator: &str, distro: &str) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        // Use ros2 run to start the action server from example_interfaces
+        // Note: The standard action server example is in rclpy_action_server or similar
+        // For testing, we use a simple Python one-liner that creates a Fibonacci server
+        let cmd = format!(
+            "{env_setup} && timeout 60 ros2 run action_tutorials_py fibonacci_action_server"
+        );
+
+        let handle = Command::new("bash")
+            .args(["-c", &cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                TestError::ProcessFailed(format!(
+                    "Failed to start ROS 2 Fibonacci action server: {e}. \
+                     Install with: sudo apt install ros-{distro}-action-tutorials-py"
+                ))
+            })?;
+
+        Ok(Self {
+            handle,
+            name: "ros2 fibonacci_action_server".to_string(),
         })
     }
 

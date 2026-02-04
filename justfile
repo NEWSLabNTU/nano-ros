@@ -698,6 +698,14 @@ test-rust-platform:
 test-rust-rmw-interop:
     cargo test -p nano-ros-tests --test rmw_interop -- --nocapture
 
+# Run Rust native action tests (nano-ros server ↔ nano-ros client)
+test-rust-actions:
+    cargo test -p nano-ros-tests --test actions -- --nocapture
+
+# Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
+test-rust-actions-rmw-interop:
+    cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture
+
 # Run Rust Zephyr tests (requires west workspace + bridge network)
 # Use test-rust-zephyr-full to force rebuild before testing
 # Note: --test-threads=1 required because tests share TAP interfaces (zeth0, zeth1)
