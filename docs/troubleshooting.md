@@ -259,6 +259,79 @@ ip addr show zeth-br
 
 ---
 
+## Rust/C FFI Issues
+
+### Subscriber Callback Crashes
+
+**Symptom**: When a Zephyr listener receives a message, the application crashes with a segfault or produces garbage values when accessing struct fields. Debug output may show valid pointers but invalid field values:
+```
+bsp_zephyr: sub->callback=0x60, sub->user_data=0x4  # These should be valid addresses!
+```
+
+**Root Cause**: The C BSP stores a pointer to the `nano_ros_subscriber_t` struct when you call `nano_ros_bsp_create_subscriber()`. If the Rust code moves the struct after this call (e.g., when returning it from a function), the C code's pointer becomes dangling.
+
+In Rust, values are moved by default:
+```rust
+// WRONG - struct will move when returned
+pub fn create_subscriber(...) -> Result<BspSubscriber<M>, Error> {
+    let mut sub = NanoRosSubscriber { ... };
+    nano_ros_bsp_create_subscriber(&mut sub, ...);  // C stores pointer to `sub`
+    Ok(BspSubscriber { sub, ... })  // `sub` MOVES here - old address is invalid!
+}
+```
+
+**Solution**: Use static storage or ensure the struct has a stable address before passing it to C:
+
+```rust
+use core::mem::MaybeUninit;
+use core::ptr::addr_of_mut;
+
+// Wrapper to make static storage Sync
+struct StaticSubscriber(MaybeUninit<NanoRosSubscriber>);
+unsafe impl Sync for StaticSubscriber {}
+
+static mut SUBSCRIBER_STORAGE: StaticSubscriber =
+    StaticSubscriber(MaybeUninit::uninit());
+
+fn main() {
+    let sub_ptr = unsafe {
+        let storage_ptr = addr_of_mut!(SUBSCRIBER_STORAGE);
+        let sub = (*storage_ptr).0.as_mut_ptr();
+        // Initialize fields...
+        sub
+    };
+
+    // Now the pointer is stable
+    nano_ros_bsp_create_subscriber(sub_ptr, ...);
+}
+```
+
+Alternative approaches:
+- Use `Box::new()` (requires `alloc`) for heap allocation with stable address
+- Use `Pin` to prevent moves
+- Have the C code use indices instead of pointers
+
+**Why this happens**: Unlike C where variables have fixed addresses, Rust moves values during assignment and return. When the C code stores a pointer during initialization, it doesn't know the Rust struct will be moved later.
+
+### Function Pointer ABI Mismatch
+
+**Symptom**: Callbacks passed between Rust and C crash or receive garbage arguments.
+
+**Solution**: Ensure function pointers use `extern "C"`:
+```rust
+// CORRECT - uses C calling convention
+extern "C" fn my_callback(data: *const u8, len: usize, ctx: *mut c_void) {
+    // ...
+}
+
+// WRONG - uses Rust calling convention (incompatible with C)
+fn my_callback(data: *const u8, len: usize, ctx: *mut c_void) {
+    // ...
+}
+```
+
+---
+
 ## zenoh-pico Error Codes
 
 | Code | Name                           | Description                                      |
