@@ -747,6 +747,30 @@ test-rust-c-codegen:
 test-c-codegen: test-rust-c-codegen test-c-msg-gen
     @echo "All C codegen tests passed!"
 
+# =============================================================================
+# ROS 2 Interop Tests (shell scripts - requires ROS 2 + rmw_zenoh_cpp)
+# =============================================================================
+
+# Run all ROS 2 interop tests (shell script)
+test-ros2-interop:
+    ./tests/ros2-interop.sh
+
+# Run ROS 2 pub/sub interop tests only
+test-ros2-interop-pubsub:
+    ./tests/ros2-interop.sh pubsub
+
+# Run ROS 2 action interop tests only
+test-ros2-interop-actions:
+    ./tests/ros2-interop.sh actions
+
+# Run ROS 2 discovery tests only
+test-ros2-interop-discovery:
+    ./tests/ros2-interop.sh discovery
+
+# =============================================================================
+# C Integration Tests
+# =============================================================================
+
 # Run C integration tests (native-c-talker/listener)
 test-c:
     ./tests/c-tests.sh
