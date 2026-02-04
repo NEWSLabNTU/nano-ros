@@ -215,12 +215,18 @@ impl<'a> BspNode<'a> {
         callback: NanoRosSubscriberCallback,
         user_data: *mut c_void,
     ) -> Result<BspSubscriber<'a, M>, BspError> {
-        let mut sub = NanoRosSubscriber {
-            node: &mut self.node,
-            handle: -1,
-            keyexpr: [0; 256],
-            callback: Some(callback),
-            user_data,
+        // Create the BspSubscriber first with uninitialized sub field.
+        // This ensures the sub struct has a stable address that won't change
+        // when we return it. The C code stores this address as ctx for callbacks.
+        let mut subscriber = BspSubscriber {
+            sub: NanoRosSubscriber {
+                node: &mut self.node,
+                handle: -1,
+                keyexpr: [0; 256],
+                callback: Some(callback),
+                user_data,
+            },
+            _phantom: PhantomData,
         };
 
         let type_name = M::TYPE_NAME.as_bytes();
@@ -233,7 +239,7 @@ impl<'a> BspNode<'a> {
         let ret = unsafe {
             nano_ros_bsp_create_subscriber(
                 &mut self.node,
-                &mut sub,
+                &mut subscriber.sub,  // Now uses the address inside BspSubscriber
                 topic.as_ptr() as *const c_char,
                 type_name_buf.as_ptr() as *const c_char,
                 callback,
@@ -244,10 +250,7 @@ impl<'a> BspNode<'a> {
             return Err(BspError::SubscriberFailed(ret));
         }
 
-        Ok(BspSubscriber {
-            sub,
-            _phantom: PhantomData,
-        })
+        Ok(subscriber)
     }
 }
 
@@ -273,6 +276,8 @@ impl<M> Drop for BspSubscriber<'_, M> {
 static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Callback invoked when a message is received
+///
+/// Note: This must be `extern "C"` to match the C function pointer ABI.
 extern "C" fn on_int32_message(data: *const u8, len: usize, _ctx: *mut c_void) {
     let count = MSG_COUNT.fetch_add(1, Ordering::Relaxed);
 
@@ -293,6 +298,32 @@ extern "C" fn on_int32_message(data: *const u8, len: usize, _ctx: *mut c_void) {
         }
     }
 }
+
+// =============================================================================
+// Static storage for subscriber
+// =============================================================================
+
+use core::mem::MaybeUninit;
+use core::ptr::addr_of_mut;
+
+/// A wrapper to make MaybeUninit safe to use in a static.
+/// Safety: We ensure single-threaded access via SUBSCRIBER_INITIALIZED flag.
+struct StaticSubscriber(MaybeUninit<NanoRosSubscriber>);
+
+// Safety: Zephyr runs on single core and we use proper synchronization
+unsafe impl Sync for StaticSubscriber {}
+
+/// Static storage for the subscriber struct.
+///
+/// The C BSP stores a pointer to this struct in its internal callback table.
+/// We must use static storage to ensure the address remains stable throughout
+/// the program's lifetime. Stack-allocated structs would be invalidated when
+/// the function returns or when Rust moves values.
+static mut SUBSCRIBER_STORAGE: StaticSubscriber =
+    StaticSubscriber(MaybeUninit::uninit());
+
+/// Flag to track if subscriber storage is initialized
+static SUBSCRIBER_INITIALIZED: AtomicU32 = AtomicU32::new(0);
 
 // =============================================================================
 // Main entry point
@@ -333,17 +364,46 @@ extern "C" fn rust_main() {
         }
     };
 
-    // Create subscriber for Int32 messages
-    let _subscriber: BspSubscriber<Int32> = match unsafe {
-        node.create_subscriber(b"/chatter\0", on_int32_message, core::ptr::null_mut())
-    } {
-        Ok(s) => s,
-        Err(e) => {
-            error!("Subscriber creation failed: {:?}", e);
-            return;
-        }
+    // Initialize subscriber in static storage to ensure stable address.
+    // The C code stores a pointer to this struct for callbacks.
+    let sub_ptr: *mut NanoRosSubscriber = unsafe {
+        // Use addr_of_mut! to avoid creating a mutable reference to a static mut
+        let storage_ptr = addr_of_mut!(SUBSCRIBER_STORAGE);
+        let sub = (*storage_ptr).0.as_mut_ptr();
+
+        // Initialize the struct fields
+        (*sub).node = &mut node.node;
+        (*sub).handle = -1;
+        (*sub).keyexpr = [0; 256];
+        (*sub).callback = Some(on_int32_message);
+        (*sub).user_data = core::ptr::null_mut();
+
+        sub
     };
 
+    // Get type name for Int32
+    let type_name = Int32::TYPE_NAME.as_bytes();
+    let mut type_name_buf = [0u8; 128];
+    type_name_buf[..type_name.len()].copy_from_slice(type_name);
+
+    // Create subscriber using C BSP
+    let ret = unsafe {
+        nano_ros_bsp_create_subscriber(
+            &mut node.node,
+            sub_ptr,
+            b"/chatter\0".as_ptr() as *const c_char,
+            type_name_buf.as_ptr() as *const c_char,
+            on_int32_message,
+            core::ptr::null_mut(),
+        )
+    };
+
+    if ret != NANO_ROS_BSP_OK {
+        error!("Subscriber creation failed: {}", ret);
+        return;
+    }
+
+    SUBSCRIBER_INITIALIZED.store(1, Ordering::Release);
     info!("Waiting for messages on /chatter...");
 
     // Main loop - use spin_once to process events
