@@ -460,8 +460,14 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             let _ = self._entity_tokens.push(token);
         }
 
+        // Store topic name for later access
+        let mut topic_name = heapless::String::new();
+        // Ignore error if topic name is too long (truncate silently)
+        let _ = topic_name.push_str(options.topic);
+
         Ok(ConnectedPublisher {
             publisher,
+            topic_name,
             _marker: core::marker::PhantomData,
         })
     }
@@ -1154,27 +1160,48 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 #[cfg(feature = "zenoh")]
 pub struct ConnectedPublisher<M> {
     publisher: ZenohPublisher,
+    /// Topic name for this publisher
+    topic_name: heapless::String<256>,
     _marker: core::marker::PhantomData<M>,
 }
 
 #[cfg(feature = "zenoh")]
 impl<M: RosMessage> ConnectedPublisher<M> {
+    /// Get the topic name for this publisher
+    pub fn topic_name(&self) -> &str {
+        self.topic_name.as_str()
+    }
+
     /// Publish a message
     ///
-    /// Serializes the message and sends it via the transport.
-    pub fn publish(&self, msg: &M) -> Result<(), ConnectedNodeError> {
+    /// Accepts both owned and borrowed messages via `Borrow<M>`.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// // Publish borrowed message
+    /// publisher.publish(&msg)?;
+    ///
+    /// // Publish owned message
+    /// publisher.publish(msg)?;
+    /// ```
+    pub fn publish(&self, msg: impl core::borrow::Borrow<M>) -> Result<(), ConnectedNodeError> {
         let mut buf = [0u8; 1024];
         self.publisher
-            .publish(msg, &mut buf)
+            .publish(msg.borrow(), &mut buf)
             .map_err(|_| ConnectedNodeError::PublishFailed)
     }
 
     /// Publish with a custom buffer
     ///
     /// Use this when you need a larger buffer for big messages.
-    pub fn publish_with_buffer(&self, msg: &M, buf: &mut [u8]) -> Result<(), ConnectedNodeError> {
+    pub fn publish_with_buffer(
+        &self,
+        msg: impl core::borrow::Borrow<M>,
+        buf: &mut [u8],
+    ) -> Result<(), ConnectedNodeError> {
         self.publisher
-            .publish(msg, buf)
+            .publish(msg.borrow(), buf)
             .map_err(|_| ConnectedNodeError::PublishFailed)
     }
 

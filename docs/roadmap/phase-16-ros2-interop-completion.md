@@ -156,15 +156,14 @@ impl<T: Message> PublisherState<T> {
 
 **Tasks**:
 - [x] ~~Wrap publisher in `Arc<PublisherState<T>>`~~ **N/A for embedded** - keep `PublisherHandle` with direct ownership
-- [ ] Add `MessageCow` trait for accepting owned or borrowed messages
-- [ ] Add `topic_name()` method
-- [ ] Add `get_subscription_count()` method (if transport supports)
-- [ ] Support `publish(msg)` and `publish(&msg)` via `MessageCow`
+- [x] Support `publish(msg)` and `publish(&msg)` via `impl Borrow<M>` (simpler than `MessageCow` for no_std)
+- [x] Add `topic_name()` method
+- [x] ~~Add `get_subscription_count()` method~~ **N/A** - zenoh-pico shim doesn't support matching status
 
 **Passing Criteria**:
-- [ ] `publisher.publish(msg.clone())` works (owned)
-- [ ] `publisher.publish(&msg)` works (borrowed)
-- [ ] `publisher.topic_name()` returns correct topic
+- [x] `publisher.publish(msg)` works (owned)
+- [x] `publisher.publish(&msg)` works (borrowed)
+- [x] `publisher.topic_name()` returns correct topic
 - [x] ~~Publisher is `Send + Sync`~~ **N/A for embedded** - zenoh-pico types are `!Send` by design
 
 ---
