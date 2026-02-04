@@ -426,7 +426,7 @@ fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server
     // Start ROS 2 action client
     eprintln!("Starting ROS 2 action send_goal...");
     let mut ros2_client = match Ros2Process::action_send_goal(
-        "/demo/fibonacci",
+        "/fibonacci",
         "example_interfaces/action/Fibonacci",
         "{order: 5}",
         &locator,
