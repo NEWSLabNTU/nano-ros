@@ -374,11 +374,6 @@ pip3 install --user -r "$WORKSPACE_DIR/zephyr/scripts/requirements.txt"
 # Create environment script
 create_env_script
 
-# Create symlink from nano-ros to workspace (for scripts to find it)
-WORKSPACE_SYMLINK="$NANO_ROS_ROOT/zephyr-workspace"
-log_info "Creating workspace symlink: $WORKSPACE_SYMLINK -> $WORKSPACE_DIR"
-ln -sfn "$WORKSPACE_DIR" "$WORKSPACE_SYMLINK"
-
 # =============================================================================
 # Summary
 # =============================================================================
@@ -389,7 +384,6 @@ log_success "  Workspace setup complete!"
 log_success "========================================"
 echo ""
 echo "Workspace: $WORKSPACE_DIR"
-echo "Symlink:   $WORKSPACE_SYMLINK"
 echo "SDK:       $SDK_PATH"
 echo ""
 echo "Structure:"
@@ -399,16 +393,19 @@ echo "  modules/         - Zephyr modules (lang/rust, zenoh-pico, HALs)"
 echo ""
 echo "Next steps:"
 echo ""
-echo "  1. Source the environment:"
+echo "  1. Create symlink (if not exists):"
+echo "     ln -sfn $WORKSPACE_DIR $NANO_ROS_ROOT/zephyr-workspace"
+echo ""
+echo "  2. Source the environment:"
 echo "     source $WORKSPACE_DIR/env.sh"
 echo ""
-echo "  2. Build an example:"
+echo "  3. Build an example:"
 echo "     cd $WORKSPACE_DIR"
 echo "     west build -b native_sim/native/64 $NANO_ROS_NAME/examples/zephyr/rs-talker"
 echo ""
-echo "  3. Run:"
+echo "  4. Run:"
 echo "     ./build/zephyr/zephyr.exe"
 echo ""
-echo "  4. For networking tests, configure TAP interface:"
+echo "  5. For networking tests, configure TAP interface:"
 echo "     sudo $NANO_ROS_ROOT/scripts/zephyr/setup-network.sh"
 echo ""
