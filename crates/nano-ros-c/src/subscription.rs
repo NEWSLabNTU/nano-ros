@@ -84,7 +84,10 @@ pub extern "C" fn nano_ros_subscription_get_zero_initialized() -> nano_ros_subsc
     nano_ros_subscription_t::default()
 }
 
-/// Initialize a subscription with default QoS.
+/// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
+///
+/// This is the recommended initialization function for most use cases.
+/// Uses `QOS_PROFILE_DEFAULT` which provides reliable delivery.
 ///
 /// # Parameters
 /// * `subscription` - Pointer to a zero-initialized subscription
@@ -121,6 +124,75 @@ pub unsafe extern "C" fn nano_ros_subscription_init(
         callback,
         context,
         ptr::null(),
+    )
+}
+
+/// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
+///
+/// Alias for `nano_ros_subscription_init()` for rclc API compatibility.
+///
+/// # Safety
+/// See `nano_ros_subscription_init()` for safety requirements.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_subscription_init_default(
+    subscription: *mut nano_ros_subscription_t,
+    node: *const nano_ros_node_t,
+    type_info: *const nano_ros_message_type_t,
+    topic_name: *const c_char,
+    callback: nano_ros_subscription_callback_t,
+    context: *mut c_void,
+) -> nano_ros_ret_t {
+    nano_ros_subscription_init_with_qos(
+        subscription,
+        node,
+        type_info,
+        topic_name,
+        callback,
+        context,
+        ptr::null(),
+    )
+}
+
+/// Initialize a subscription with best-effort QoS (BEST_EFFORT, VOLATILE).
+///
+/// Use this for sensor data or high-frequency topics where occasional
+/// message loss is acceptable but low latency is preferred.
+///
+/// # Parameters
+/// * `subscription` - Pointer to a zero-initialized subscription
+/// * `node` - Pointer to an initialized node
+/// * `type_info` - Pointer to message type information
+/// * `topic_name` - Topic name (null-terminated string)
+/// * `callback` - Callback function to invoke when messages arrive
+/// * `context` - User context pointer passed to callback (can be NULL)
+///
+/// # Returns
+/// * `NANO_ROS_RET_OK` on success
+/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
+/// * `NANO_ROS_RET_ERROR` on initialization failure
+///
+/// # Safety
+/// * All required pointers must be valid
+/// * `topic_name` must be a valid null-terminated string
+/// * `callback` must be a valid function pointer
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_subscription_init_best_effort(
+    subscription: *mut nano_ros_subscription_t,
+    node: *const nano_ros_node_t,
+    type_info: *const nano_ros_message_type_t,
+    topic_name: *const c_char,
+    callback: nano_ros_subscription_callback_t,
+    context: *mut c_void,
+) -> nano_ros_ret_t {
+    nano_ros_subscription_init_with_qos(
+        subscription,
+        node,
+        type_info,
+        topic_name,
+        callback,
+        context,
+        &crate::qos::NANO_ROS_QOS_SENSOR_DATA,
     )
 }
 

@@ -26,6 +26,23 @@ pub enum nano_ros_executor_invocation_t {
     NANO_ROS_EXECUTOR_ALWAYS = 1,
 }
 
+/// Executor data communication semantics
+///
+/// Defines when data is taken from DDS during spin operations.
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum nano_ros_executor_semantics_t {
+    /// RCLCPP executor semantics: Data is taken from DDS just before
+    /// the corresponding callback is called.
+    NANO_ROS_SEMANTICS_RCLCPP_EXECUTOR = 0,
+    /// Logical Execution Time (LET) semantics: At one sampling point,
+    /// new data of all ready subscriptions are taken from DDS.
+    /// During sequential processing, the data from that sampling point
+    /// is used. New data arriving after the sampling point is not
+    /// considered until the next spin iteration.
+    NANO_ROS_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
+}
+
 /// Handle type for executor
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -99,6 +116,8 @@ pub struct nano_ros_executor_t {
     max_handles: usize,
     /// Timeout in nanoseconds for spin_some
     pub timeout_ns: u64,
+    /// Data communication semantics
+    pub semantics: nano_ros_executor_semantics_t,
     /// Pointer to support context
     support: *const nano_ros_support_t,
 }
@@ -111,6 +130,7 @@ impl Default for nano_ros_executor_t {
             handle_count: 0,
             max_handles: NANO_ROS_EXECUTOR_MAX_HANDLES,
             timeout_ns: 100_000_000, // 100ms default
+            semantics: nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_RCLCPP_EXECUTOR,
             support: ptr::null(),
         }
     }
@@ -201,6 +221,42 @@ pub unsafe extern "C" fn nano_ros_executor_set_timeout(
     }
 
     executor.timeout_ns = timeout_ns;
+    NANO_ROS_RET_OK
+}
+
+/// Set data communication semantics.
+///
+/// Controls when data is taken from DDS during spin operations.
+///
+/// # Parameters
+/// * `executor` - Pointer to an initialized executor
+/// * `semantics` - The data communication semantics to use
+///
+/// # Returns
+/// * `NANO_ROS_RET_OK` on success
+/// * `NANO_ROS_RET_INVALID_ARGUMENT` if executor is NULL
+/// * `NANO_ROS_RET_NOT_INIT` if executor is not initialized
+///
+/// # Safety
+/// * `executor` must be a valid pointer to an initialized executor
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_set_semantics(
+    executor: *mut nano_ros_executor_t,
+    semantics: nano_ros_executor_semantics_t,
+) -> nano_ros_ret_t {
+    if executor.is_null() {
+        return NANO_ROS_RET_INVALID_ARGUMENT;
+    }
+
+    let executor = &mut *executor;
+
+    if executor.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NANO_ROS_RET_NOT_INIT;
+    }
+
+    executor.semantics = semantics;
     NANO_ROS_RET_OK
 }
 

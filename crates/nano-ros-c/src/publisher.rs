@@ -82,7 +82,10 @@ pub extern "C" fn nano_ros_publisher_get_zero_initialized() -> nano_ros_publishe
     nano_ros_publisher_t::default()
 }
 
-/// Initialize a publisher with default QoS.
+/// Initialize a publisher with default QoS (RELIABLE, KEEP_LAST(10)).
+///
+/// This is the recommended initialization function for most use cases.
+/// Uses `QOS_PROFILE_DEFAULT` which provides reliable delivery.
 ///
 /// # Parameters
 /// * `publisher` - Pointer to a zero-initialized publisher
@@ -107,6 +110,58 @@ pub unsafe extern "C" fn nano_ros_publisher_init(
     topic_name: *const c_char,
 ) -> nano_ros_ret_t {
     nano_ros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
+}
+
+/// Initialize a publisher with default QoS (RELIABLE, KEEP_LAST(10)).
+///
+/// Alias for `nano_ros_publisher_init()` for rclc API compatibility.
+///
+/// # Safety
+/// See `nano_ros_publisher_init()` for safety requirements.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_publisher_init_default(
+    publisher: *mut nano_ros_publisher_t,
+    node: *const nano_ros_node_t,
+    type_info: *const nano_ros_message_type_t,
+    topic_name: *const c_char,
+) -> nano_ros_ret_t {
+    nano_ros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
+}
+
+/// Initialize a publisher with best-effort QoS (BEST_EFFORT, VOLATILE).
+///
+/// Use this for sensor data or high-frequency topics where occasional
+/// message loss is acceptable but low latency is preferred.
+///
+/// # Parameters
+/// * `publisher` - Pointer to a zero-initialized publisher
+/// * `node` - Pointer to an initialized node
+/// * `type_info` - Pointer to message type information
+/// * `topic_name` - Topic name (null-terminated string)
+///
+/// # Returns
+/// * `NANO_ROS_RET_OK` on success
+/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL
+/// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
+/// * `NANO_ROS_RET_ERROR` on initialization failure
+///
+/// # Safety
+/// * All pointers must be valid
+/// * `topic_name` must be a valid null-terminated string
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_publisher_init_best_effort(
+    publisher: *mut nano_ros_publisher_t,
+    node: *const nano_ros_node_t,
+    type_info: *const nano_ros_message_type_t,
+    topic_name: *const c_char,
+) -> nano_ros_ret_t {
+    nano_ros_publisher_init_with_qos(
+        publisher,
+        node,
+        type_info,
+        topic_name,
+        &crate::qos::NANO_ROS_QOS_SENSOR_DATA,
+    )
 }
 
 /// Initialize a publisher with custom QoS.
