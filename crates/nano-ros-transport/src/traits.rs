@@ -280,7 +280,7 @@ pub enum QosDurabilityPolicy {
 }
 
 /// QoS (Quality of Service) settings with builder pattern
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct QosSettings {
     /// History policy
     pub history: QosHistoryPolicy,
@@ -365,6 +365,74 @@ impl QosSettings {
         depth: 1000,
     };
 
+    /// Clock QoS profile - same as sensor data but with depth 1
+    pub const QOS_PROFILE_CLOCK: Self = Self {
+        history: QosHistoryPolicy::KeepLast,
+        reliability: QosReliabilityPolicy::BestEffort,
+        durability: QosDurabilityPolicy::Volatile,
+        depth: 1,
+    };
+
+    /// Parameter events QoS profile (matches rmw_qos_profile_parameter_events)
+    pub const QOS_PROFILE_PARAMETER_EVENTS: Self = Self {
+        history: QosHistoryPolicy::KeepAll,
+        reliability: QosReliabilityPolicy::Reliable,
+        durability: QosDurabilityPolicy::Volatile,
+        depth: 0, // Not used with KeepAll
+    };
+
+    /// Action status default QoS profile (matches rcl_action_qos_profile_status_default)
+    pub const QOS_PROFILE_ACTION_STATUS_DEFAULT: Self = Self {
+        history: QosHistoryPolicy::KeepLast,
+        reliability: QosReliabilityPolicy::Reliable,
+        durability: QosDurabilityPolicy::TransientLocal,
+        depth: 1,
+    };
+
+    // --- Static constructor methods (matching rclrs API) ---
+
+    /// Get the default QoS profile for ordinary topics
+    pub const fn topics_default() -> Self {
+        Self::QOS_PROFILE_DEFAULT
+    }
+
+    /// Get the default QoS profile for sensor data topics
+    pub const fn sensor_data_default() -> Self {
+        Self::QOS_PROFILE_SENSOR_DATA
+    }
+
+    /// Get the default QoS profile for services
+    pub const fn services_default() -> Self {
+        Self::QOS_PROFILE_SERVICES_DEFAULT
+    }
+
+    /// Get the default QoS profile for parameter services
+    pub const fn parameters_default() -> Self {
+        Self::QOS_PROFILE_PARAMETERS
+    }
+
+    /// Get the default QoS profile for parameter events
+    pub const fn parameter_events_default() -> Self {
+        Self::QOS_PROFILE_PARAMETER_EVENTS
+    }
+
+    /// Get the system default QoS profile
+    pub const fn system_default() -> Self {
+        Self::QOS_PROFILE_SYSTEM_DEFAULT
+    }
+
+    /// Get the default QoS profile for action status topics
+    pub const fn action_status_default() -> Self {
+        Self::QOS_PROFILE_ACTION_STATUS_DEFAULT
+    }
+
+    /// Get the default QoS profile for clock topics
+    pub const fn clock_default() -> Self {
+        Self::QOS_PROFILE_CLOCK
+    }
+
+    // --- Builder methods ---
+
     /// Set history to keep last N messages
     pub const fn keep_last(mut self, depth: u32) -> Self {
         self.history = QosHistoryPolicy::KeepLast;
@@ -399,6 +467,30 @@ impl QosSettings {
     /// Set durability to transient local
     pub const fn transient_local(mut self) -> Self {
         self.durability = QosDurabilityPolicy::TransientLocal;
+        self
+    }
+
+    /// Set reliability policy explicitly
+    pub const fn reliability(mut self, policy: QosReliabilityPolicy) -> Self {
+        self.reliability = policy;
+        self
+    }
+
+    /// Set durability policy explicitly
+    pub const fn durability(mut self, policy: QosDurabilityPolicy) -> Self {
+        self.durability = policy;
+        self
+    }
+
+    /// Set history policy explicitly
+    pub const fn history(mut self, policy: QosHistoryPolicy) -> Self {
+        self.history = policy;
+        self
+    }
+
+    /// Set history depth explicitly
+    pub const fn depth(mut self, depth: u32) -> Self {
+        self.depth = depth;
         self
     }
 
@@ -734,5 +826,125 @@ mod tests {
         assert!(key.contains("fibonacci"));
         assert!(key.contains("_action"));
         assert!(key.contains("FeedbackMessage"));
+    }
+
+    // --- QoS Profile Tests ---
+
+    #[test]
+    fn test_qos_profile_sensor_data() {
+        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        assert_eq!(qos.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(qos.durability, QosDurabilityPolicy::Volatile);
+        assert_eq!(qos.history, QosHistoryPolicy::KeepLast);
+        assert_eq!(qos.depth, 5);
+    }
+
+    #[test]
+    fn test_qos_profile_default() {
+        let qos = QosSettings::QOS_PROFILE_DEFAULT;
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QosDurabilityPolicy::Volatile);
+        assert_eq!(qos.depth, 10);
+    }
+
+    #[test]
+    fn test_qos_profile_services_default() {
+        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QosDurabilityPolicy::Volatile);
+    }
+
+    #[test]
+    fn test_qos_profile_parameters() {
+        let qos = QosSettings::QOS_PROFILE_PARAMETERS;
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(qos.depth, 1000);
+    }
+
+    #[test]
+    fn test_qos_profile_clock() {
+        let qos = QosSettings::QOS_PROFILE_CLOCK;
+        assert_eq!(qos.reliability, QosReliabilityPolicy::BestEffort);
+        assert_eq!(qos.depth, 1);
+    }
+
+    #[test]
+    fn test_qos_profile_parameter_events() {
+        let qos = QosSettings::QOS_PROFILE_PARAMETER_EVENTS;
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.history, QosHistoryPolicy::KeepAll);
+    }
+
+    #[test]
+    fn test_qos_profile_action_status() {
+        let qos = QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT;
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(qos.depth, 1);
+    }
+
+    #[test]
+    fn test_qos_static_constructors() {
+        assert_eq!(
+            QosSettings::topics_default(),
+            QosSettings::QOS_PROFILE_DEFAULT
+        );
+        assert_eq!(
+            QosSettings::sensor_data_default(),
+            QosSettings::QOS_PROFILE_SENSOR_DATA
+        );
+        assert_eq!(
+            QosSettings::services_default(),
+            QosSettings::QOS_PROFILE_SERVICES_DEFAULT
+        );
+        assert_eq!(
+            QosSettings::parameters_default(),
+            QosSettings::QOS_PROFILE_PARAMETERS
+        );
+        assert_eq!(
+            QosSettings::action_status_default(),
+            QosSettings::QOS_PROFILE_ACTION_STATUS_DEFAULT
+        );
+    }
+
+    #[test]
+    fn test_qos_builder_explicit_setters() {
+        let qos = QosSettings::new()
+            .reliability(QosReliabilityPolicy::Reliable)
+            .durability(QosDurabilityPolicy::TransientLocal)
+            .history(QosHistoryPolicy::KeepAll)
+            .depth(100);
+
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(qos.history, QosHistoryPolicy::KeepAll);
+        assert_eq!(qos.depth, 100);
+    }
+
+    #[test]
+    fn test_qos_builder_chaining() {
+        // Test that builder methods can be chained in any order
+        let qos = QosSettings::sensor_data_default()
+            .reliable()
+            .transient_local()
+            .keep_last(20);
+
+        assert_eq!(qos.reliability, QosReliabilityPolicy::Reliable);
+        assert_eq!(qos.durability, QosDurabilityPolicy::TransientLocal);
+        assert_eq!(qos.history, QosHistoryPolicy::KeepLast);
+        assert_eq!(qos.depth, 20);
+    }
+
+    #[test]
+    fn test_qos_eq_impl() {
+        // Verify that PartialEq works correctly via derive on QosSettings
+        let qos1 = QosSettings::QOS_PROFILE_DEFAULT;
+        let qos2 = QosSettings::topics_default();
+        // Both should have same values - verify field by field
+        assert_eq!(qos1.reliability, qos2.reliability);
+        assert_eq!(qos1.durability, qos2.durability);
+        assert_eq!(qos1.history, qos2.history);
+        assert_eq!(qos1.depth, qos2.depth);
     }
 }

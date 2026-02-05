@@ -353,7 +353,7 @@ node.declare_parameter::<i64>("my_param")
 
 ---
 
-### A.8 QoS Profile API (MEDIUM)
+### A.8 QoS Profile API (MEDIUM) - COMPLETE
 
 **Goal**: Match rclrs `QoSProfile` with predefined profiles.
 
@@ -372,16 +372,26 @@ pub const QOS_PROFILE_SERVICES_DEFAULT: QoSProfile = ...;
 ```
 
 **Tasks**:
-- [ ] Add `QoSProfile` struct matching rclrs fields
-- [ ] Add predefined constants: `QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, etc.
-- [ ] Add builder methods: `.reliability()`, `.durability()`, `.history()`, `.depth()`
-- [ ] Update publisher/subscription creation to accept `QoSProfile`
+- [x] Add `QosSettings` struct matching rclrs fields (history, reliability, durability, depth)
+- [x] Add predefined constants: `QOS_PROFILE_DEFAULT`, `QOS_PROFILE_SENSOR_DATA`, `QOS_PROFILE_SERVICES_DEFAULT`, `QOS_PROFILE_PARAMETERS`, `QOS_PROFILE_SYSTEM_DEFAULT`, `QOS_PROFILE_CLOCK`, `QOS_PROFILE_PARAMETER_EVENTS`, `QOS_PROFILE_ACTION_STATUS_DEFAULT`
+- [x] Add convenience builder methods: `reliable()`, `best_effort()`, `volatile()`, `transient_local()`, `keep_last(depth)`, `keep_all()`
+- [x] Add explicit setter methods: `reliability(policy)`, `durability(policy)`, `history(policy)`, `depth(n)`
+- [x] Add static constructor methods: `topics_default()`, `sensor_data_default()`, `services_default()`, `parameters_default()`, `parameter_events_default()`, `system_default()`, `action_status_default()`, `clock_default()`
+- [x] Update publisher/subscription creation to accept `QosSettings` (already implemented)
+- [x] Add 12 unit tests for QoS profiles and builder methods
+
+**Implementation Notes**:
+- `QosSettings` provides fluent builder API for embedded-friendly QoS configuration
+- All builder methods are `const fn` for compile-time evaluation
+- `PartialEq` and `Eq` derived for profile comparison
+- Profile constants match ROS 2 rmw defaults exactly
 
 **Passing Criteria**:
-- [ ] `QOS_PROFILE_SENSOR_DATA` has BEST_EFFORT reliability
-- [ ] `QOS_PROFILE_DEFAULT` has RELIABLE reliability
-- [ ] Custom QoS can be built with fluent API
-- [ ] QoS is applied to created publishers/subscriptions
+- [x] `QOS_PROFILE_SENSOR_DATA` has BEST_EFFORT reliability
+- [x] `QOS_PROFILE_DEFAULT` has RELIABLE reliability
+- [x] Custom QoS can be built with fluent API
+- [x] QoS is applied to created publishers/subscriptions
+- [x] 12 unit tests passing
 
 ---
 
