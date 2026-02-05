@@ -682,7 +682,7 @@ rcl_ret_t rclc_executor_set_timeout(rclc_executor_t * e, uint64_t timeout_ns);
 - [x] Add `nano_ros_executor_set_semantics()` function
 - [x] Add `nano_ros_executor_set_timeout()` function
 - [x] Default to RCLCPP_EXECUTOR semantics
-- [ ] TODO: Implement LET semantics behavior in spin functions
+- [x] Implement LET semantics behavior in spin functions
 
 **Implementation Notes**:
 - `nano_ros_executor_semantics_t`:
@@ -690,11 +690,15 @@ rcl_ret_t rclc_executor_set_timeout(rclc_executor_t * e, uint64_t timeout_ns);
   - `NANO_ROS_SEMANTICS_LOGICAL_EXECUTION_TIME = 1` - take all data at sampling point
 - `semantics` field added to `nano_ros_executor_t` struct
 - Default timeout is 100ms (`timeout_ns = 100_000_000`)
-- LET semantics behavioral implementation is TODO (API is in place)
+- LET buffers: `LET_BUFFER_SIZE = 512` bytes per handle, total 8KB for 16 handles
+- `sample_all_handles_for_let()` - samples all subscriptions at start of spin cycle
+- `process_subscription_from_let()` - processes callback with pre-sampled data
+- Services are NOT pre-sampled (require request-reply semantics)
+- 5 unit tests for LET semantics
 
 **Passing Criteria**:
 - [x] RCLCPP semantics configured (default behavior)
-- [ ] LET semantics takes all data at start of spin cycle (TODO: behavioral)
+- [x] LET semantics takes all data at start of spin cycle
 - [x] Timeout controls maximum wait time in spin_some
 
 ---

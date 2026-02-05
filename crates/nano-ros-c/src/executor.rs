@@ -16,6 +16,11 @@ use crate::timer::{nano_ros_timer_state_t, nano_ros_timer_t};
 /// Maximum number of handles in an executor
 pub const NANO_ROS_EXECUTOR_MAX_HANDLES: usize = 16;
 
+/// Buffer size for LET (Logical Execution Time) semantics per handle
+/// This is the maximum message size that can be sampled in LET mode.
+/// Larger messages will be truncated.
+pub const LET_BUFFER_SIZE: usize = 512;
+
 /// Trigger function type for executor.
 ///
 /// A trigger function receives a boolean array indicating which handles have
@@ -142,6 +147,12 @@ pub struct nano_ros_executor_t {
     pub trigger: nano_ros_executor_trigger_t,
     /// User context for trigger function
     pub trigger_context: *mut core::ffi::c_void,
+    /// LET buffers for storing sampled data (one per handle)
+    let_buffers: [[u8; LET_BUFFER_SIZE]; NANO_ROS_EXECUTOR_MAX_HANDLES],
+    /// Length of sampled data in each LET buffer
+    let_buffer_lens: [usize; NANO_ROS_EXECUTOR_MAX_HANDLES],
+    /// Flags indicating which handles have sampled data in LET mode
+    let_data_available: [bool; NANO_ROS_EXECUTOR_MAX_HANDLES],
 }
 
 impl Default for nano_ros_executor_t {
@@ -156,6 +167,9 @@ impl Default for nano_ros_executor_t {
             support: ptr::null(),
             trigger: None,
             trigger_context: ptr::null_mut(),
+            let_buffers: [[0u8; LET_BUFFER_SIZE]; NANO_ROS_EXECUTOR_MAX_HANDLES],
+            let_buffer_lens: [0usize; NANO_ROS_EXECUTOR_MAX_HANDLES],
+            let_data_available: [false; NANO_ROS_EXECUTOR_MAX_HANDLES],
         }
     }
 }
@@ -731,6 +745,110 @@ unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
     true
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// LET (LOGICAL EXECUTION TIME) SEMANTICS HELPERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Sample a subscription's data into the LET buffer.
+///
+/// Returns true if data was sampled, false otherwise.
+#[cfg(feature = "std")]
+unsafe fn sample_subscription_for_let(
+    subscription: *mut nano_ros_subscription_t,
+    buffer: &mut [u8],
+) -> Option<usize> {
+    use nano_ros_transport::{Subscriber, ZenohSubscriber};
+
+    let subscription_ref = &*subscription;
+
+    // Check if subscription is initialized
+    if subscription_ref.state
+        != nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED
+    {
+        return None;
+    }
+
+    // Get the internal subscriber handle
+    let internal = subscription_ref.get_internal();
+    if internal.is_null() {
+        return None;
+    }
+    let subscriber = &mut *(internal as *mut ZenohSubscriber);
+
+    // Try to receive a message into the LET buffer
+    match subscriber.try_recv_raw(buffer) {
+        Ok(Some(len)) => Some(len),
+        Ok(None) => None,
+        Err(_) => None,
+    }
+}
+
+/// Process a subscription callback using pre-sampled LET data.
+///
+/// Returns true if the callback was invoked, false otherwise.
+#[cfg(feature = "std")]
+unsafe fn process_subscription_from_let(
+    subscription: *mut nano_ros_subscription_t,
+    data: &[u8],
+    len: usize,
+) -> bool {
+    let subscription_ref = &*subscription;
+
+    // Check if subscription is initialized
+    if subscription_ref.state
+        != nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED
+    {
+        return false;
+    }
+
+    // Get the callback
+    let callback = match subscription_ref.get_callback() {
+        Some(cb) => cb,
+        None => return false,
+    };
+
+    // Invoke the user callback with the pre-sampled data
+    callback(data.as_ptr(), len, subscription_ref.get_context());
+    true
+}
+
+/// Sample all handles at the start of a LET spin cycle.
+///
+/// This function takes data from all ready subscriptions and stores it
+/// in the executor's LET buffers. Services are not pre-sampled since
+/// they need request-reply semantics.
+#[cfg(feature = "std")]
+unsafe fn sample_all_handles_for_let(executor: &mut nano_ros_executor_t) {
+    // Clear previous LET data
+    for i in 0..executor.handle_count {
+        executor.let_data_available[i] = false;
+        executor.let_buffer_lens[i] = 0;
+    }
+
+    // Sample all subscriptions
+    for i in 0..executor.handle_count {
+        let handle = &executor.handles[i];
+
+        if handle.handle_type
+            == nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SUBSCRIPTION
+        {
+            let subscription = handle.handle as *mut nano_ros_subscription_t;
+            if !subscription.is_null() {
+                // Sample into LET buffer
+                if let Some(len) =
+                    sample_subscription_for_let(subscription, &mut executor.let_buffers[i])
+                {
+                    executor.let_buffer_lens[i] = len;
+                    executor.let_data_available[i] = true;
+                }
+            }
+        }
+        // Note: Services are NOT pre-sampled in LET mode because they
+        // require request-reply semantics with sequence numbers.
+        // Services are processed immediately as in RCLCPP mode.
+    }
+}
+
 /// Spin the executor once.
 ///
 /// This function checks for ready handles and processes them once.
@@ -769,6 +887,16 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
     // Get current time from platform
     let current_time_ns = crate::platform::get_time_ns();
 
+    // LET semantics: Sample all data at the start of the spin cycle
+    #[cfg(feature = "std")]
+    let use_let = executor.semantics
+        == nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_LOGICAL_EXECUTION_TIME;
+
+    #[cfg(feature = "std")]
+    if use_let {
+        sample_all_handles_for_let(executor);
+    }
+
     // If a trigger is set, collect the ready mask and check it
     if let Some(trigger_fn) = executor.trigger {
         let mut ready_mask = [false; NANO_ROS_EXECUTOR_MAX_HANDLES];
@@ -777,9 +905,22 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
             let handle = &executor.handles[i];
             ready_mask[i] = match handle.handle_type {
                 nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
-                    handle.data_ready
+                    // In LET mode, use the pre-sampled data availability
+                    #[cfg(feature = "std")]
+                    {
+                        if use_let {
+                            executor.let_data_available[i]
+                        } else {
+                            handle.data_ready
+                        }
+                    }
+                    #[cfg(not(feature = "std"))]
+                    {
+                        handle.data_ready
+                    }
                 }
                 nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SERVICE => {
+                    // Services always use immediate checking (not pre-sampled)
                     handle.data_ready
                 }
                 nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_TIMER => {
@@ -844,8 +985,31 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                 #[cfg(feature = "std")]
                 {
                     let subscription = handle.handle as *mut nano_ros_subscription_t;
-                    if !subscription.is_null() && process_subscription(subscription) {
-                        any_executed = true;
+                    if !subscription.is_null() {
+                        if use_let {
+                            // LET mode: Use pre-sampled data from the sampling point
+                            if executor.let_data_available[i] {
+                                let len = executor.let_buffer_lens[i];
+                                if process_subscription_from_let(
+                                    subscription,
+                                    &executor.let_buffers[i],
+                                    len,
+                                ) {
+                                    any_executed = true;
+                                }
+                            } else if handle.invocation
+                                == nano_ros_executor_invocation_t::NANO_ROS_EXECUTOR_ALWAYS
+                            {
+                                // ALWAYS invocation: call with empty data even if not sampled
+                                let _ = process_subscription_from_let(subscription, &[], 0);
+                                any_executed = true;
+                            }
+                        } else {
+                            // RCLCPP mode: Take data immediately before callback
+                            if process_subscription(subscription) {
+                                any_executed = true;
+                            }
+                        }
                     }
                 }
             }
@@ -1064,5 +1228,258 @@ pub unsafe extern "C" fn nano_ros_executor_is_valid(executor: *const nano_ros_ex
         nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_INITIALIZED
         | nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING => 1,
         _ => 0,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::support::{nano_ros_support_get_zero_initialized, nano_ros_support_state_t};
+
+    #[test]
+    fn test_trigger_any_matches_behavior() {
+        unsafe {
+            let ready = [true, false, true];
+            assert!(nano_ros_executor_trigger_any(
+                ready.as_ptr(),
+                ready.len(),
+                ptr::null_mut()
+            ));
+
+            let ready = [false, false, false];
+            assert!(!nano_ros_executor_trigger_any(
+                ready.as_ptr(),
+                ready.len(),
+                ptr::null_mut()
+            ));
+
+            assert!(!nano_ros_executor_trigger_any(
+                [].as_ptr(),
+                0,
+                ptr::null_mut()
+            ));
+        }
+    }
+
+    #[test]
+    fn test_trigger_all_matches_behavior() {
+        unsafe {
+            let ready = [true, true, true];
+            assert!(nano_ros_executor_trigger_all(
+                ready.as_ptr(),
+                ready.len(),
+                ptr::null_mut()
+            ));
+
+            let ready = [true, false, true];
+            assert!(!nano_ros_executor_trigger_all(
+                ready.as_ptr(),
+                ready.len(),
+                ptr::null_mut()
+            ));
+
+            let ready = [false, false, false];
+            assert!(!nano_ros_executor_trigger_all(
+                ready.as_ptr(),
+                ready.len(),
+                ptr::null_mut()
+            ));
+
+            assert!(!nano_ros_executor_trigger_all(
+                [].as_ptr(),
+                0,
+                ptr::null_mut()
+            ));
+        }
+    }
+
+    #[test]
+    fn test_trigger_always_matches_behavior() {
+        unsafe {
+            assert!(nano_ros_executor_trigger_always(
+                [].as_ptr(),
+                0,
+                ptr::null_mut()
+            ));
+
+            let ready = [false, false];
+            assert!(nano_ros_executor_trigger_always(
+                ready.as_ptr(),
+                ready.len(),
+                ptr::null_mut()
+            ));
+        }
+    }
+
+    #[test]
+    fn test_trigger_one_matches_behavior() {
+        unsafe {
+            let ready = [false, true, false];
+
+            assert!(nano_ros_executor_trigger_one(
+                ready.as_ptr(),
+                ready.len(),
+                1usize as *mut core::ffi::c_void,
+            ));
+
+            assert!(!nano_ros_executor_trigger_one(
+                ready.as_ptr(),
+                ready.len(),
+                0usize as *mut core::ffi::c_void,
+            ));
+
+            assert!(!nano_ros_executor_trigger_one(
+                ready.as_ptr(),
+                ready.len(),
+                10usize as *mut core::ffi::c_void,
+            ));
+        }
+    }
+
+    #[test]
+    fn test_trigger_all_matches_rust_behavior() {
+        // Verify C trigger_all has identical semantics to Rust TriggerCondition::All:
+        // - All true → true
+        // - Any false → false
+        // - Empty → false
+        let test_cases: &[(&[bool], bool)] = &[
+            (&[true, true, true], true),
+            (&[true, false, true], false),
+            (&[false, false, false], false),
+            (&[true], true),
+            (&[false], false),
+            (&[], false),
+        ];
+
+        for (case, expected) in test_cases {
+            let c_result = unsafe {
+                nano_ros_executor_trigger_all(case.as_ptr(), case.len(), ptr::null_mut())
+            };
+            assert_eq!(
+                c_result, *expected,
+                "trigger_all mismatch for {:?}: got {}, expected {}",
+                case, c_result, expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_set_trigger_requires_init() {
+        unsafe {
+            let mut executor = nano_ros_executor_get_zero_initialized();
+
+            let ret = nano_ros_executor_set_trigger(
+                &mut executor,
+                Some(nano_ros_executor_trigger_all),
+                ptr::null_mut(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_NOT_INIT);
+        }
+    }
+
+    #[test]
+    fn test_set_trigger_null_executor() {
+        unsafe {
+            let ret = nano_ros_executor_set_trigger(
+                ptr::null_mut(),
+                Some(nano_ros_executor_trigger_all),
+                ptr::null_mut(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // LET SEMANTICS TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_set_semantics_rclcpp() {
+        unsafe {
+            let mut support = nano_ros_support_get_zero_initialized();
+            let mut executor = nano_ros_executor_get_zero_initialized();
+
+            support.state = nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED;
+
+            let ret = nano_ros_executor_init(&mut executor, &support, 4);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            // Default should be RCLCPP semantics
+            assert_eq!(
+                executor.semantics,
+                nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_RCLCPP_EXECUTOR
+            );
+
+            // Setting RCLCPP semantics should succeed
+            let ret = nano_ros_executor_set_semantics(
+                &mut executor,
+                nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_RCLCPP_EXECUTOR,
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(
+                executor.semantics,
+                nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_RCLCPP_EXECUTOR
+            );
+        }
+    }
+
+    #[test]
+    fn test_set_semantics_let() {
+        unsafe {
+            let mut support = nano_ros_support_get_zero_initialized();
+            let mut executor = nano_ros_executor_get_zero_initialized();
+
+            support.state = nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED;
+
+            let ret = nano_ros_executor_init(&mut executor, &support, 4);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            // Setting LET semantics should succeed
+            let ret = nano_ros_executor_set_semantics(
+                &mut executor,
+                nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(
+                executor.semantics,
+                nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_LOGICAL_EXECUTION_TIME
+            );
+        }
+    }
+
+    #[test]
+    fn test_set_semantics_requires_init() {
+        unsafe {
+            let mut executor = nano_ros_executor_get_zero_initialized();
+
+            let ret = nano_ros_executor_set_semantics(
+                &mut executor,
+                nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
+            );
+            assert_eq!(ret, NANO_ROS_RET_NOT_INIT);
+        }
+    }
+
+    #[test]
+    fn test_let_buffer_initialization() {
+        let executor = nano_ros_executor_get_zero_initialized();
+
+        // LET buffers should be zero-initialized
+        for i in 0..NANO_ROS_EXECUTOR_MAX_HANDLES {
+            assert!(!executor.let_data_available[i]);
+            assert_eq!(executor.let_buffer_lens[i], 0);
+            assert!(executor.let_buffers[i].iter().all(|&b| b == 0));
+        }
+    }
+
+    #[test]
+    fn test_let_buffer_size_constant() {
+        // LET buffer should be 512 bytes
+        assert_eq!(LET_BUFFER_SIZE, 512);
+
+        // Total LET buffer memory should be reasonable for embedded
+        // 512 bytes × 16 handles = 8KB
+        let total_let_memory = LET_BUFFER_SIZE * NANO_ROS_EXECUTOR_MAX_HANDLES;
+        assert_eq!(total_let_memory, 8192);
     }
 }
