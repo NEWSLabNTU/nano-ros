@@ -22,6 +22,7 @@ This document provides a comprehensive overview of test coverage across all plat
 | Pub/Sub            | `nano2nano.rs`   | 9     | Basic talker/listener communication |
 | Services           | `services.rs`    | 8     | Service server/client (AddTwoInts)  |
 | Actions            | `actions.rs`     | 7     | Action server/client (Fibonacci)    |
+| Custom Messages    | `custom_msg.rs`  | 7     | Serialization, pub/sub, error handling |
 | ROS 2 Interop      | `rmw_interop.rs` | 19    | rmw_zenoh_cpp compatibility         |
 | Platform Detection | `platform.rs`    | 10    | Tool/environment detection          |
 
@@ -29,6 +30,7 @@ This document provides a comprehensive overview of test coverage across all plat
 - `just test-rust-nano2nano` - Native pub/sub tests
 - `just test-rust-services` - Native service tests
 - `just test-rust-actions` - Action communication tests
+- `just test-rust-custom-msg` - Custom message tests
 - `just test-rust-rmw-interop` - ROS 2 interoperability
 - `just test-rust-platform` - Platform detection
 
@@ -41,7 +43,7 @@ This document provides a comprehensive overview of test coverage across all plat
 | `native/rs-service-client` | Yes     | services.rs            |
 | `native/rs-action-server`  | Yes     | actions.rs             |
 | `native/rs-action-client`  | Yes     | actions.rs             |
-| `native/rs-custom-msg`     | **NO**  | Missing tests          |
+| `native/rs-custom-msg`     | Yes     | custom_msg.rs          |
 | `native/c-talker`          | Partial | c-tests.sh only        |
 | `native/c-listener`        | Partial | c-tests.sh only        |
 | `native/cpp-*`             | **NO**  | Missing tests          |

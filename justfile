@@ -706,6 +706,10 @@ test-rust-actions:
 test-rust-services:
     cargo test -p nano-ros-tests --test services -- --nocapture
 
+# Run Rust custom message tests (serialization, pub/sub)
+test-rust-custom-msg:
+    cargo test -p nano-ros-tests --test custom_msg -- --nocapture
+
 # Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
 test-rust-actions-rmw-interop:
     cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture

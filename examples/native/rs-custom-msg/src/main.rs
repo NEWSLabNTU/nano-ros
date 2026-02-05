@@ -223,27 +223,33 @@ fn main() {
         };
         info!("Context created, domain_id: {}", context.domain_id());
 
-        let node = context
+        // Create executor
+        let mut executor = context.create_basic_executor();
+
+        // Create node through executor
+        let mut node = executor
             .create_node("custom_msg_node")
             .expect("create node");
-        info!("Node created: {}", node.fully_qualified_name());
+        info!("Node created: {}/{}", node.namespace(), node.name());
 
         // Create publisher for SensorReading
         let publisher = node
-            .create_publisher::<SensorReading>("/sensor_data")
+            .create_publisher::<SensorReading>(PublisherOptions::new("/sensor_data"))
             .expect("create publisher");
         info!("Publisher created for: /sensor_data");
 
         // Create subscriber for SensorReading
-        let _subscriber = node
-            .create_subscriber::<SensorReading, _>("/sensor_data", move |msg: SensorReading| {
+        node.create_subscription::<SensorReading, _>(
+            SubscriberOptions::new("/sensor_data"),
+            move |msg: &SensorReading| {
                 MSG_COUNT.fetch_add(1, Ordering::SeqCst);
                 println!(
                     "  Received: sensor_id={}, temp={:.1}, humidity={:.1}",
                     msg.sensor_id, msg.temperature, msg.humidity
                 );
-            })
-            .expect("create subscriber");
+            },
+        )
+        .expect("create subscriber");
         info!("Subscriber created for: /sensor_data");
 
         println!();
@@ -266,12 +272,15 @@ fn main() {
                 reading.sensor_id, reading.temperature, reading.humidity
             );
 
+            // Process callbacks
+            let _ = executor.spin_once(100);
+
             // Give time for message to be received
             std::thread::sleep(Duration::from_millis(100));
         }
 
-        // Wait a bit more for any remaining messages
-        std::thread::sleep(Duration::from_millis(500));
+        // Process any remaining callbacks
+        let _ = executor.spin_once(500);
 
         let received = MSG_COUNT.load(Ordering::SeqCst);
         println!();

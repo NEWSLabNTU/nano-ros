@@ -28,6 +28,9 @@ static NATIVE_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-service-client binary
 static NATIVE_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native-rs-custom-msg binary
+static NATIVE_CUSTOM_MSG_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build the qemu-test example and return its path
 ///
 /// Uses OnceLock to cache the build, so subsequent calls are fast.
@@ -269,6 +272,28 @@ pub fn service_server_binary() -> PathBuf {
 pub fn service_client_binary() -> PathBuf {
     build_native_service_client()
         .expect("Failed to build native-rs-service-client")
+        .to_path_buf()
+}
+
+/// Build native-rs-custom-msg with zenoh feature (cached)
+pub fn build_native_custom_msg() -> TestResult<&'static Path> {
+    NATIVE_CUSTOM_MSG_BINARY
+        .get_or_try_init(|| {
+            build_example("native/rs-custom-msg", "custom_msg", Some(&["zenoh"]), None)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native-rs-custom-msg without zenoh feature (for serialization tests)
+pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
+    build_example("native/rs-custom-msg", "custom_msg", None, None)
+}
+
+/// rstest fixture that provides the native-rs-custom-msg binary path (with zenoh)
+#[rstest::fixture]
+pub fn custom_msg_binary() -> PathBuf {
+    build_native_custom_msg()
+        .expect("Failed to build native-rs-custom-msg")
         .to_path_buf()
 }
 
