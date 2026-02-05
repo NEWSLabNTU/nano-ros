@@ -110,6 +110,9 @@ pub mod rtic;
 #[cfg(feature = "shim")]
 pub mod shim;
 
+#[cfg(feature = "param-services")]
+pub mod parameter_services;
+
 // Export standalone node (without transport)
 pub use node::{Node as StandaloneNode, NodeConfig, NodeError};
 

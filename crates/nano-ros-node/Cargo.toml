@@ -24,6 +24,9 @@ rtic = ["nano-ros-transport/rtic"]    # RTIC executor - no background threads
 polling = ["nano-ros-transport/polling"]  # Manual polling mode
 async = ["dep:futures"]
 
+# Parameter services (ros2 param CLI support)
+param-services = ["dep:rcl_interfaces", "zenoh"]
+
 [dependencies]
 nano-ros-core = { workspace = true, default-features = false }
 nano-ros-transport = { workspace = true, default-features = false }
@@ -31,3 +34,4 @@ nano-ros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 log = { workspace = true, optional = true }
 futures = { version = "0.3", optional = true, default-features = false, features = ["alloc"] }
+rcl_interfaces = { path = "../rcl-interfaces/generated/rcl_interfaces", default-features = false, optional = true }

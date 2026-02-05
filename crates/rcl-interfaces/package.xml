@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>rcl_interfaces</name>
+  <version>0.1.0</version>
+  <description>Generated rcl_interfaces bindings for nano-ros parameter services</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>Apache-2.0</license>
+
+  <!-- ROS interface dependencies -->
+  <depend>rcl_interfaces</depend>
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

@@ -18,6 +18,9 @@ members = [
     "crates/nano-ros-c",
     # LAN9118 Ethernet driver for smoltcp
     "crates/lan9118-smoltcp",
+    # Generated ROS 2 interface types for parameter services
+    "crates/rcl-interfaces/generated/builtin_interfaces",
+    "crates/rcl-interfaces/generated/rcl_interfaces",
 ]
 
 # Examples are excluded from workspace - they are standalone packages
@@ -118,3 +121,8 @@ panic = "abort"      # Smaller binary, no unwinding
 
 [profile.dev]
 opt-level = 1        # Some optimization even in dev for embedded
+
+# Patches for generated crates that use version = "*"
+[patch.crates-io]
+nano-ros-core = { path = "crates/nano-ros-core" }
+nano-ros-serdes = { path = "crates/nano-ros-serdes" }
