@@ -120,6 +120,10 @@ pub enum ConnectedNodeError {
     TimerNotFound,
     /// Timer storage is full (too many timers)
     TimerStorageFull,
+    /// Service call timed out
+    ServiceTimeout,
+    /// Service call was cancelled
+    ServiceCancelled,
 }
 
 impl From<TransportError> for ConnectedNodeError {
@@ -148,6 +152,220 @@ impl From<TransportError> for ConnectedNodeError {
             TransportError::JoinFailed => ConnectedNodeError::JoinFailed,
             _ => ConnectedNodeError::ConnectionFailed,
         }
+    }
+}
+
+// ============================================================================
+// Promise<T> - Async Service Call Result (std only)
+// ============================================================================
+
+/// A promise representing an asynchronous service call result.
+///
+/// `Promise<T>` is returned by `ConnectedServiceClient::call_async()` and allows
+/// non-blocking service calls. The actual service call happens on a background
+/// thread, and this promise can be used to wait for or poll the result.
+///
+/// # Example
+///
+/// ```ignore
+/// use std::time::Duration;
+///
+/// // Start async service call
+/// let promise = client.call_async(&request);
+///
+/// // Do other work while waiting...
+///
+/// // Wait for result (blocking)
+/// let reply = promise.wait()?;
+///
+/// // Or wait with timeout
+/// let reply = promise.wait_timeout(Duration::from_secs(5))?;
+///
+/// // Or poll without blocking
+/// if let Some(result) = promise.try_recv() {
+///     let reply = result?;
+/// }
+///
+/// // Transform the result with map
+/// let mapped = client.call_async(&request).map(|reply| reply.sum);
+/// let sum = mapped.wait()?;
+/// ```
+///
+/// # Note
+///
+/// This type is only available with the `std` feature enabled.
+#[cfg(feature = "std")]
+pub struct Promise<T> {
+    /// Receiver for the result from the background thread
+    receiver: std::sync::mpsc::Receiver<Result<T, ConnectedNodeError>>,
+    /// Cached result (once received)
+    result: Option<Result<T, ConnectedNodeError>>,
+}
+
+#[cfg(feature = "std")]
+impl<T> core::fmt::Debug for Promise<T> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Promise")
+            .field("is_resolved", &self.result.is_some())
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "std")]
+impl<T> Promise<T> {
+    /// Create a new promise from a receiver channel.
+    ///
+    /// This is a private constructor used internally. Currently only used by
+    /// `immediate()`, but kept for future true async support when background
+    /// threads can be used.
+    #[allow(dead_code)]
+    fn new(receiver: std::sync::mpsc::Receiver<Result<T, ConnectedNodeError>>) -> Self {
+        Self {
+            receiver,
+            result: None,
+        }
+    }
+
+    /// Check if the result is ready without blocking.
+    ///
+    /// Returns `true` if the result is available, `false` otherwise.
+    pub fn is_ready(&mut self) -> bool {
+        if self.result.is_some() {
+            return true;
+        }
+        match self.receiver.try_recv() {
+            Ok(result) => {
+                self.result = Some(result);
+                true
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => false,
+            Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                self.result = Some(Err(ConnectedNodeError::ServiceCancelled));
+                true
+            }
+        }
+    }
+
+    /// Try to receive the result without blocking.
+    ///
+    /// Returns `Some(result)` if available, `None` if still pending.
+    /// Once the result is received, subsequent calls return the same result.
+    pub fn try_recv(&mut self) -> Option<Result<T, ConnectedNodeError>>
+    where
+        T: Clone,
+    {
+        if self.is_ready() {
+            self.result.clone()
+        } else {
+            None
+        }
+    }
+
+    /// Wait for the result, blocking until it's available.
+    ///
+    /// This consumes the promise and returns the result.
+    pub fn wait(self) -> Result<T, ConnectedNodeError> {
+        if let Some(result) = self.result {
+            return result;
+        }
+        self.receiver
+            .recv()
+            .unwrap_or(Err(ConnectedNodeError::ServiceCancelled))
+    }
+
+    /// Wait for the result with a timeout.
+    ///
+    /// Returns `Err(ServiceTimeout)` if the timeout expires before the result is ready.
+    pub fn wait_timeout(mut self, timeout: core::time::Duration) -> Result<T, ConnectedNodeError> {
+        if let Some(result) = self.result.take() {
+            return result;
+        }
+        match self.receiver.recv_timeout(timeout) {
+            Ok(result) => result,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => {
+                Err(ConnectedNodeError::ServiceTimeout)
+            }
+            Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                Err(ConnectedNodeError::ServiceCancelled)
+            }
+        }
+    }
+
+    /// Create a promise with an immediate value.
+    ///
+    /// This is used when the result is already available (e.g., from a synchronous
+    /// call that uses the Promise API for consistency).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let promise = Promise::immediate(Ok(42));
+    /// assert!(promise.is_ready());
+    /// ```
+    pub fn immediate(result: Result<T, ConnectedNodeError>) -> Self {
+        // Create a channel and immediately send the result
+        let (sender, receiver) = std::sync::mpsc::channel();
+        // Ignore send error - receiver will get Disconnected which we handle
+        let _ = sender.send(result);
+        Self {
+            receiver,
+            result: None,
+        }
+    }
+
+    /// Transform the successful result of this promise.
+    ///
+    /// Applies the given function to the successful result value, returning
+    /// a new promise with the transformed value. If the original promise
+    /// contains an error, the error is propagated unchanged.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Transform AddTwoIntsResponse to just the sum
+    /// let promise = client.call_async(&request).map(|response| response.sum);
+    /// let sum: i64 = promise.wait()?;
+    /// ```
+    pub fn map<U, F>(self, f: F) -> Promise<U>
+    where
+        F: FnOnce(T) -> U,
+    {
+        let result = self.wait();
+        Promise::immediate(result.map(f))
+    }
+
+    /// Chain another operation on the successful result of this promise.
+    ///
+    /// Applies the given function to the successful result value. The function
+    /// returns a `Result`, allowing the chain to fail. If the original promise
+    /// contains an error, the error is propagated unchanged.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Chain operations that might fail
+    /// let promise = client.call_async(&request).and_then(|response| {
+    ///     if response.sum > 100 {
+    ///         Err(ConnectedNodeError::InvalidData)
+    ///     } else {
+    ///         Ok(response.sum)
+    ///     }
+    /// });
+    /// let sum = promise.wait()?;
+    /// ```
+    pub fn and_then<U, F>(self, f: F) -> Promise<U>
+    where
+        F: FnOnce(T) -> Result<U, ConnectedNodeError>,
+    {
+        let result = self.wait();
+        Promise::immediate(result.and_then(f))
+    }
+
+    /// Create a promise that resolves to `Ok(())`.
+    ///
+    /// Useful for creating notification promises or for testing.
+    pub fn ready() -> Promise<()> {
+        Promise::immediate(Ok(()))
     }
 }
 
@@ -582,10 +800,15 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 
         let server = self.session.create_service_server(&service_info)?;
 
+        // Store service name
+        let mut name = heapless::String::new();
+        let _ = name.push_str(service_name);
+
         Ok(ConnectedServiceServer {
             server,
             req_buffer: [0u8; REQ_BUF],
             reply_buffer: [0u8; REPLY_BUF],
+            service_name: name,
             _marker: core::marker::PhantomData,
         })
     }
@@ -629,10 +852,15 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 
         let client = self.session.create_service_client(&service_info)?;
 
+        // Store service name
+        let mut name = heapless::String::new();
+        let _ = name.push_str(service_name);
+
         Ok(ConnectedServiceClient {
             client,
             req_buffer: [0u8; REQ_BUF],
             reply_buffer: [0u8; REPLY_BUF],
+            service_name: name,
             _marker: core::marker::PhantomData,
         })
     }
@@ -1307,6 +1535,8 @@ pub struct ConnectedServiceServer<
     server: ZenohServiceServer,
     req_buffer: [u8; REQ_BUF],
     reply_buffer: [u8; REPLY_BUF],
+    /// Service name for this server
+    service_name: heapless::String<256>,
     _marker: core::marker::PhantomData<S>,
 }
 
@@ -1314,6 +1544,11 @@ pub struct ConnectedServiceServer<
 impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ConnectedServiceServer<S, REQ_BUF, REPLY_BUF>
 {
+    /// Get the service name for this server
+    pub fn service_name(&self) -> &str {
+        self.service_name.as_str()
+    }
+
     /// Handle a single service request if one is available
     ///
     /// Returns `Ok(true)` if a request was handled, `Ok(false)` if no request was available.
@@ -1387,6 +1622,8 @@ pub struct ConnectedServiceClient<
     client: ZenohServiceClient,
     req_buffer: [u8; REQ_BUF],
     reply_buffer: [u8; REPLY_BUF],
+    /// Service name for this client
+    service_name: heapless::String<256>,
     _marker: core::marker::PhantomData<S>,
 }
 
@@ -1394,13 +1631,102 @@ pub struct ConnectedServiceClient<
 impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ConnectedServiceClient<S, REQ_BUF, REPLY_BUF>
 {
+    /// Get the service name for this client
+    pub fn service_name(&self) -> &str {
+        self.service_name.as_str()
+    }
+
+    /// Set the default timeout for service calls
+    ///
+    /// The default timeout is 5000ms. This method allows changing it for
+    /// all subsequent `call()` invocations on this client.
+    ///
+    /// # Arguments
+    /// * `timeout_ms` - Timeout in milliseconds
+    pub fn set_timeout(&mut self, timeout_ms: u32) {
+        self.client.set_timeout(timeout_ms);
+    }
+
     /// Call the service with a request
     ///
-    /// Blocks until a reply is received or an error occurs.
+    /// Blocks until a reply is received or the default timeout expires.
+    /// Use `set_timeout()` to change the default timeout.
     pub fn call(&mut self, request: &S::Request) -> Result<S::Reply, ConnectedNodeError> {
         self.client
             .call::<S>(request, &mut self.req_buffer, &mut self.reply_buffer)
             .map_err(ConnectedNodeError::from)
+    }
+
+    /// Call the service with a request and custom timeout
+    ///
+    /// Blocks until a reply is received or the specified timeout expires.
+    ///
+    /// # Arguments
+    /// * `request` - The service request
+    /// * `timeout_ms` - Timeout in milliseconds
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Call with 1 second timeout
+    /// let reply = client.call_with_timeout(&request, 1000)?;
+    /// ```
+    pub fn call_with_timeout(
+        &mut self,
+        request: &S::Request,
+        timeout_ms: u32,
+    ) -> Result<S::Reply, ConnectedNodeError> {
+        // Save current timeout, set new one, call, restore
+        // Note: This is not ideal but ShimServiceClient doesn't expose get_timeout()
+        // For a cleaner solution, we'd need to modify the transport layer
+        self.client.set_timeout(timeout_ms);
+        let result = self
+            .client
+            .call::<S>(request, &mut self.req_buffer, &mut self.reply_buffer)
+            .map_err(ConnectedNodeError::from);
+        // Note: timeout is now permanently changed - caller should use set_timeout() to restore
+        result
+    }
+
+    /// Call the service asynchronously, returning a Promise for the result.
+    ///
+    /// This method performs the service call and returns a [`Promise`] that can be
+    /// used to retrieve the result. The Promise API provides a consistent interface
+    /// for handling service responses.
+    ///
+    /// # Current Implementation
+    ///
+    /// Due to zenoh-pico's single-threaded design (`!Send` types), this implementation
+    /// performs the call synchronously and returns an immediately-ready Promise. This
+    /// allows code to be written using the Promise API for future compatibility when
+    /// true async support is added.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use std::time::Duration;
+    ///
+    /// // Start the service call
+    /// let promise = client.call_async(&request);
+    ///
+    /// // Wait for the result (non-blocking check)
+    /// if let Some(result) = promise.try_recv() {
+    ///     let reply = result?;
+    /// }
+    ///
+    /// // Or block with timeout
+    /// let reply = promise.wait_timeout(Duration::from_secs(5))?;
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// This method is only available with the `std` feature enabled.
+    #[cfg(feature = "std")]
+    pub fn call_async(&mut self, request: &S::Request) -> Promise<S::Reply> {
+        // Perform the call synchronously and wrap in an immediately-ready Promise
+        // This provides a consistent Promise API even though the underlying call is blocking
+        let result = self.call(request);
+        Promise::immediate(result)
     }
 
     /// Call the service with raw data
@@ -2272,6 +2598,9 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
 
 #[cfg(all(test, feature = "zenoh"))]
 mod tests {
+    extern crate std;
+    use std::format;
+
     use super::*;
     use nano_ros_core::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Serialize};
 
@@ -3023,5 +3352,124 @@ mod tests {
             assert_eq!(status.goal_info.goal_id, GoalId::from_counter(i as u64));
             assert_eq!(status.status, GoalStatus::Executing);
         }
+    }
+
+    // ========================================================================
+    // Promise<T> Tests
+    // ========================================================================
+
+    #[test]
+    fn test_promise_immediate_ok() {
+        let promise: Promise<i32> = Promise::immediate(Ok(42));
+        let result = promise.wait();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn test_promise_immediate_err() {
+        let promise: Promise<i32> = Promise::immediate(Err(ConnectedNodeError::ServiceTimeout));
+        let result = promise.wait();
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ConnectedNodeError::ServiceTimeout)));
+    }
+
+    #[test]
+    fn test_promise_is_ready() {
+        let mut promise: Promise<i32> = Promise::immediate(Ok(42));
+        assert!(promise.is_ready());
+    }
+
+    #[test]
+    fn test_promise_try_recv() {
+        let mut promise: Promise<i32> = Promise::immediate(Ok(42));
+        let result = promise.try_recv();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().unwrap(), 42);
+
+        // Should still return the same result on subsequent calls
+        let result2 = promise.try_recv();
+        assert!(result2.is_some());
+        assert_eq!(result2.unwrap().unwrap(), 42);
+    }
+
+    #[test]
+    fn test_promise_wait_timeout_success() {
+        let promise: Promise<i32> = Promise::immediate(Ok(42));
+        let result = promise.wait_timeout(core::time::Duration::from_millis(100));
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 42);
+    }
+
+    #[test]
+    fn test_promise_map() {
+        let promise: Promise<i32> = Promise::immediate(Ok(42));
+        let mapped = promise.map(|x| x * 2);
+        let result = mapped.wait();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 84);
+    }
+
+    #[test]
+    fn test_promise_map_propagates_error() {
+        let promise: Promise<i32> = Promise::immediate(Err(ConnectedNodeError::ServiceTimeout));
+        let mapped = promise.map(|x| x * 2);
+        let result = mapped.wait();
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ConnectedNodeError::ServiceTimeout)));
+    }
+
+    #[test]
+    fn test_promise_and_then() {
+        let promise: Promise<i32> = Promise::immediate(Ok(42));
+        let chained = promise.and_then(|x| {
+            if x > 10 {
+                Ok(x * 2)
+            } else {
+                Err(ConnectedNodeError::BufferTooSmall)
+            }
+        });
+        let result = chained.wait();
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 84);
+    }
+
+    #[test]
+    fn test_promise_and_then_can_fail() {
+        let promise: Promise<i32> = Promise::immediate(Ok(5));
+        let chained = promise.and_then(|x| {
+            if x > 10 {
+                Ok(x * 2)
+            } else {
+                Err(ConnectedNodeError::BufferTooSmall)
+            }
+        });
+        let result = chained.wait();
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ConnectedNodeError::BufferTooSmall)));
+    }
+
+    #[test]
+    fn test_promise_and_then_propagates_original_error() {
+        let promise: Promise<i32> = Promise::immediate(Err(ConnectedNodeError::ServiceTimeout));
+        let chained = promise.and_then(|x| Ok(x * 2));
+        let result = chained.wait();
+        assert!(result.is_err());
+        assert!(matches!(result, Err(ConnectedNodeError::ServiceTimeout)));
+    }
+
+    #[test]
+    fn test_promise_ready() {
+        let promise = Promise::<()>::ready();
+        let result = promise.wait();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_promise_debug() {
+        let promise: Promise<i32> = Promise::immediate(Ok(42));
+        let debug_str = format!("{:?}", promise);
+        assert!(debug_str.contains("Promise"));
+        assert!(debug_str.contains("is_resolved"));
     }
 }

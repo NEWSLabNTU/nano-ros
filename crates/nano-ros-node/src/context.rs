@@ -563,6 +563,10 @@ pub enum RclrsError {
     TimerStorageFull,
     /// Executor is full (too many nodes)
     ExecutorFull,
+    /// Service call timed out
+    ServiceTimeout,
+    /// Service call was cancelled
+    ServiceCancelled,
 }
 
 impl RclrsError {
@@ -611,6 +615,8 @@ impl From<crate::ConnectedNodeError> for RclrsError {
             ConnectedNodeError::TimerCreationFailed => RclrsError::TimerCreationFailed,
             ConnectedNodeError::TimerNotFound => RclrsError::TimerNotFound,
             ConnectedNodeError::TimerStorageFull => RclrsError::TimerStorageFull,
+            ConnectedNodeError::ServiceTimeout => RclrsError::ServiceTimeout,
+            ConnectedNodeError::ServiceCancelled => RclrsError::ServiceCancelled,
         }
     }
 }

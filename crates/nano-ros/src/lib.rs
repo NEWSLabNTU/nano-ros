@@ -87,9 +87,9 @@ pub use nano_ros_node::{
     SubscriptionCallback, SubscriptionCallbackWithInfo,
 };
 
-// Re-export BasicExecutor (with zenoh and std features)
+// Re-export BasicExecutor and Promise (with zenoh and std features)
 #[cfg(all(feature = "zenoh", feature = "std"))]
-pub use nano_ros_node::BasicExecutor;
+pub use nano_ros_node::{BasicExecutor, Promise};
 
 // Re-export transport types
 pub use nano_ros_transport::{
@@ -172,9 +172,9 @@ pub mod prelude {
         SubscriptionCallbackWithInfo,
     };
 
-    // Re-export BasicExecutor
+    // Re-export BasicExecutor and Promise
     #[cfg(all(feature = "zenoh", feature = "std"))]
-    pub use crate::BasicExecutor;
+    pub use crate::{BasicExecutor, Promise};
 
     // Re-export parameter types
     pub use crate::{ParameterServer, ParameterType, ParameterValue};

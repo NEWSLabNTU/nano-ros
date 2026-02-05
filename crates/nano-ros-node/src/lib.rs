@@ -149,6 +149,10 @@ pub use connected::{
     GoalHandle,
 };
 
+// Re-export Promise type when zenoh and std features are enabled
+#[cfg(all(feature = "zenoh", feature = "std"))]
+pub use connected::Promise;
+
 // Re-export context types when zenoh feature is enabled (rclrs-style API)
 #[cfg(feature = "zenoh")]
 pub use context::{
