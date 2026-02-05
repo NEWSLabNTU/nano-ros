@@ -719,6 +719,10 @@ test-rust-zephyr-full: build-zephyr
 # Alias for test-rust-zephyr
 test-zephyr-rs: test-rust-zephyr
 
+# Run specific Zephyr to native E2E test (Zephyr talker → native listener)
+test-rust-zephyr-to-native:
+    cargo test -p nano-ros-tests --test zephyr test_zephyr_to_native_e2e -- --nocapture
+
 # Run Rust Zephyr action tests only (requires west workspace + bridge network)
 test-rust-zephyr-actions:
     cargo test -p nano-ros-tests --test zephyr test_zephyr_action -- --nocapture
