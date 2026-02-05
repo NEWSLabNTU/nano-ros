@@ -502,6 +502,63 @@ impl QosSettings {
             self.depth as u8
         }
     }
+
+    /// Convert QoS settings to rmw_zenoh liveliness token format string.
+    ///
+    /// Format: `reliability:durability:history,depth:deadline:lifespan:liveliness,lease:avoid_ros_namespace_conventions`
+    ///
+    /// rmw_zenoh encoding:
+    /// - reliability: RELIABLE=1, BEST_EFFORT=2
+    /// - durability: TRANSIENT_LOCAL=1, VOLATILE=2
+    /// - history: KEEP_LAST=1, KEEP_ALL=2
+    /// - depth: numeric value
+    /// - deadline, lifespan, liveliness, lease, avoid_ros_namespace_conventions: empty (not used)
+    ///
+    /// # Example
+    /// ```
+    /// use nano_ros_transport::QosSettings;
+    ///
+    /// let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+    /// let s: heapless::String<32> = qos.to_qos_string();
+    /// assert_eq!(s.as_str(), "2:2:1,5:,:,:,,");
+    ///
+    /// let qos = QosSettings::QOS_PROFILE_DEFAULT;
+    /// let s: heapless::String<32> = qos.to_qos_string();
+    /// assert_eq!(s.as_str(), "1:2:1,10:,:,:,,");
+    /// ```
+    pub fn to_qos_string<const N: usize>(&self) -> heapless::String<N> {
+        let mut s = heapless::String::new();
+
+        // Reliability: RELIABLE=1, BEST_EFFORT=2
+        let reliability = match self.reliability {
+            QosReliabilityPolicy::Reliable => 1,
+            QosReliabilityPolicy::BestEffort => 2,
+        };
+
+        // Durability: TRANSIENT_LOCAL=1, VOLATILE=2
+        let durability = match self.durability {
+            QosDurabilityPolicy::TransientLocal => 1,
+            QosDurabilityPolicy::Volatile => 2,
+        };
+
+        // History: KEEP_LAST=1, KEEP_ALL=2
+        let history = match self.history {
+            QosHistoryPolicy::KeepLast => 1,
+            QosHistoryPolicy::KeepAll => 2,
+        };
+
+        // Format: reliability:durability:history,depth:deadline:lifespan:liveliness,lease:avoid_ros_namespace_conventions
+        // Empty values for deadline, lifespan, liveliness, lease, avoid_ros_namespace_conventions
+        let _ = core::fmt::write(
+            &mut s,
+            format_args!(
+                "{}:{}:{},{}:,:,:,,",
+                reliability, durability, history, self.depth
+            ),
+        );
+
+        s
+    }
 }
 
 /// Transport session configuration
@@ -946,5 +1003,51 @@ mod tests {
         assert_eq!(qos1.durability, qos2.durability);
         assert_eq!(qos1.history, qos2.history);
         assert_eq!(qos1.depth, qos2.depth);
+    }
+
+    // --- to_qos_string() tests ---
+
+    #[test]
+    fn test_qos_string_sensor_data() {
+        // BEST_EFFORT=2, VOLATILE=2, KEEP_LAST=1, depth=5
+        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let s: heapless::String<32> = qos.to_qos_string();
+        assert_eq!(s.as_str(), "2:2:1,5:,:,:,,");
+    }
+
+    #[test]
+    fn test_qos_string_default() {
+        // RELIABLE=1, VOLATILE=2, KEEP_LAST=1, depth=10
+        let qos = QosSettings::QOS_PROFILE_DEFAULT;
+        let s: heapless::String<32> = qos.to_qos_string();
+        assert_eq!(s.as_str(), "1:2:1,10:,:,:,,");
+    }
+
+    #[test]
+    fn test_qos_string_transient_local() {
+        // RELIABLE=1, TRANSIENT_LOCAL=1, KEEP_LAST=1, depth=1000
+        let qos = QosSettings::QOS_PROFILE_PARAMETERS;
+        let s: heapless::String<32> = qos.to_qos_string();
+        assert_eq!(s.as_str(), "1:1:1,1000:,:,:,,");
+    }
+
+    #[test]
+    fn test_qos_string_keep_all() {
+        // RELIABLE=1, VOLATILE=2, KEEP_ALL=2, depth=0
+        let qos = QosSettings::QOS_PROFILE_PARAMETER_EVENTS;
+        let s: heapless::String<32> = qos.to_qos_string();
+        assert_eq!(s.as_str(), "1:2:2,0:,:,:,,");
+    }
+
+    #[test]
+    fn test_qos_string_custom() {
+        // Custom: BEST_EFFORT=2, TRANSIENT_LOCAL=1, KEEP_ALL=2, depth=42
+        let qos = QosSettings::new()
+            .best_effort()
+            .transient_local()
+            .keep_all()
+            .depth(42);
+        let s: heapless::String<32> = qos.to_qos_string();
+        assert_eq!(s.as_str(), "2:1:2,42:,:,:,,");
     }
 }

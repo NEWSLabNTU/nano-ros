@@ -662,8 +662,13 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let publisher = self.session.create_publisher(&topic_info, options.qos)?;
 
         // Declare publisher liveliness token for ROS 2 discovery
-        let pub_keyexpr: heapless::String<256> =
-            Ros2Liveliness::publisher_keyexpr(self.domain_id, &self.zid, &self.name, &topic_info);
+        let pub_keyexpr: heapless::String<256> = Ros2Liveliness::publisher_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &topic_info,
+            &options.qos,
+        );
         #[cfg(feature = "log")]
         log::debug!("Publisher liveliness keyexpr: {}", pub_keyexpr);
         // Create null-terminated keyexpr buffer for C API
@@ -729,8 +734,13 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let subscriber = self.session.create_subscriber(&topic_info, options.qos)?;
 
         // Declare subscriber liveliness token for ROS 2 discovery
-        let sub_keyexpr: heapless::String<256> =
-            Ros2Liveliness::subscriber_keyexpr(self.domain_id, &self.zid, &self.name, &topic_info);
+        let sub_keyexpr: heapless::String<256> = Ros2Liveliness::subscriber_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &topic_info,
+            &options.qos,
+        );
         // Create null-terminated keyexpr buffer for C API
         let mut keyexpr_buf = [0u8; 257];
         let bytes = sub_keyexpr.as_bytes();

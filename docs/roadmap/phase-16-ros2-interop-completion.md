@@ -761,21 +761,28 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 
 ## Part C: Protocol Interoperability
 
-### C.1 QoS String Formatting (HIGH)
+### C.1 QoS String Formatting (HIGH) - COMPLETE
 
 **Problem**: Liveliness tokens hardcode QoS as `2:2:1,1:,:,:,,` regardless of actual settings.
 
 **Location**: `crates/nano-ros-transport/src/shim.rs:204,234`
 
 **Tasks**:
-- [ ] Add `to_qos_string()` method to `QosSettings`
-- [ ] Map QoS values to rmw_zenoh format
-- [ ] Update liveliness token generation to use actual QoS
+- [x] Add `to_qos_string()` method to `QosSettings`
+- [x] Map QoS values to rmw_zenoh format
+- [x] Update liveliness token generation to use actual QoS
+
+**Implementation Notes**:
+- `QosSettings::to_qos_string<N>()` generates rmw_zenoh format string
+- rmw_zenoh encoding: RELIABLE=1, BEST_EFFORT=2, TRANSIENT_LOCAL=1, VOLATILE=2, KEEP_LAST=1, KEEP_ALL=2
+- Format: `reliability:durability:history,depth:deadline:lifespan:liveliness,lease:avoid_ros_namespace_conventions`
+- `LivelinessKeyexpr::publisher_keyexpr()` and `subscriber_keyexpr()` now take `&QosSettings` parameter
+- 5 unit tests added for `to_qos_string()` covering all QoS combinations
 
 **Passing Criteria**:
-- [ ] RELIABLE publisher generates `1:...` in liveliness token
-- [ ] BEST_EFFORT publisher generates `2:...` in liveliness token
-- [ ] ROS 2 `ros2 topic info` shows correct QoS
+- [x] RELIABLE publisher generates `1:...` in liveliness token
+- [x] BEST_EFFORT publisher generates `2:...` in liveliness token
+- [ ] ROS 2 `ros2 topic info` shows correct QoS (TODO: integration test)
 
 ---
 

@@ -191,6 +191,7 @@ impl Ros2Liveliness {
         zid: &ShimZenohId,
         node_name: &str,
         topic: &TopicInfo,
+        qos: &QosSettings,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let mut zid_hex = [0u8; 32];
@@ -198,16 +199,18 @@ impl Ros2Liveliness {
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
         // Mangle topic name: replace slashes with percent signs
         let topic_mangled = Self::mangle_topic_name::<64>(topic.name);
+        let qos_string: heapless::String<32> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/MP/%/%/{}/{}/{}/{}/2:2:1,1:,:,:,,",
+                "@ros2_lv/{}/{}/0/11/MP/%/%/{}/{}/{}/{}/{}",
                 domain_id,
                 zid_str,
                 node_name,
                 topic_mangled.as_str(),
                 topic.type_name,
-                topic.type_hash
+                topic.type_hash,
+                qos_string.as_str()
             ),
         );
         key
@@ -222,22 +225,25 @@ impl Ros2Liveliness {
         zid: &ShimZenohId,
         node_name: &str,
         topic: &TopicInfo,
+        qos: &QosSettings,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let mut zid_hex = [0u8; 32];
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
         let topic_mangled = Self::mangle_topic_name::<64>(topic.name);
+        let qos_string: heapless::String<32> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/MS/%/%/{}/{}/{}/{}/2:2:1,1:,:,:,,",
+                "@ros2_lv/{}/{}/0/11/MS/%/%/{}/{}/{}/{}/{}",
                 domain_id,
                 zid_str,
                 node_name,
                 topic_mangled.as_str(),
                 topic.type_name,
-                topic.type_hash
+                topic.type_hash,
+                qos_string.as_str()
             ),
         );
         key
