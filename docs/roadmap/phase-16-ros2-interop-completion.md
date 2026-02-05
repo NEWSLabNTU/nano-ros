@@ -189,18 +189,20 @@ pub type Subscription<T> = Arc<SubscriptionState<T>>;  // N/A for embedded - nan
 - [x] Support `FnMut(&T)` - message only (via `create_subscription()`)
 - [x] Support `FnMut(&T, &MessageInfo)` - message with metadata (via `create_subscription_with_info()`)
 - [x] Add `topic_name()` method
-- [ ] Add `qos()` method (pending QoS struct implementation in A.8)
+- [x] Add `qos()` method
 - [x] Add `MessageInfo` type with timestamp and source GID
 - [x] ~~Support `async fn(T)`~~ **N/A for embedded** - requires `Send` futures
 
 **Implementation Notes**:
-- `MessageInfo` currently returns default values as transport layer doesn't yet extract RMW attachment data on receive
-- TODO: Wire up proper MessageInfo from transport layer (requires transport layer changes)
+- `ConnectedSubscriber::qos()` returns reference to the subscriber's `QosSettings`
+- `try_recv_with_info()` uses transport layer's `ShimSubscriber::try_recv_with_info()` to get attachment data
+- `MessageInfo` populated from RMW attachment: timestamp_ns, sequence_number, publisher_gid (16 bytes)
+- Transport layer extracts attachment via C shim's `z_sample_attachment()` callback
 
 **Passing Criteria**:
 - [x] `node.create_subscription("topic", |msg: &Int32| { ... })` compiles
 - [x] `node.create_subscription_with_info("topic", |msg, info| { ... })` compiles
-- [ ] `MessageInfo` contains valid timestamp and GID (pending transport layer integration)
+- [x] `MessageInfo` contains valid timestamp and GID from transport layer
 - [x] ~~Subscription is `Send`~~ **N/A for embedded** - zenoh-pico types are `!Send` by design
 
 ---

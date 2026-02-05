@@ -762,6 +762,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             subscriber,
             rx_buffer: [0u8; RX_BUF],
             topic_name,
+            qos: options.qos,
             _marker: core::marker::PhantomData,
         })
     }
@@ -1653,6 +1654,8 @@ pub struct ConnectedSubscriber<M, const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE> 
     rx_buffer: [u8; RX_BUF],
     /// Topic name for this subscriber
     topic_name: heapless::String<256>,
+    /// QoS settings for this subscriber
+    qos: QosSettings,
     _marker: core::marker::PhantomData<M>,
 }
 
@@ -1661,6 +1664,11 @@ impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
     /// Get the topic name for this subscriber
     pub fn topic_name(&self) -> &str {
         self.topic_name.as_str()
+    }
+
+    /// Get the QoS settings for this subscriber
+    pub fn qos(&self) -> &QosSettings {
+        &self.qos
     }
 
     /// Try to receive a message (non-blocking)
@@ -1689,18 +1697,40 @@ impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
     /// `Ok(None)` if no message is available,
     /// or `Err` on deserialization failure.
     ///
-    /// # Note
-    ///
-    /// Currently returns default MessageInfo as the transport layer
-    /// doesn't yet extract RMW attachment data on receive.
-    /// TODO: Wire up proper MessageInfo from transport layer.
+    /// The `MessageInfo` contains:
+    /// - `source_timestamp`: Timestamp when the message was published
+    /// - `publication_sequence_number`: Sequence number from the publisher
+    /// - `publisher_gid`: Global identifier of the publisher
     pub fn try_recv_with_info(
         &mut self,
     ) -> Result<Option<(M, nano_ros_core::MessageInfo)>, ConnectedNodeError> {
-        match self.try_recv()? {
-            Some(msg) => {
-                // TODO: Extract actual MessageInfo from transport layer attachment
-                let info = nano_ros_core::MessageInfo::new();
+        use nano_ros_core::{CdrReader, Time};
+
+        // Use transport layer's try_recv_with_info to get both data and attachment
+        match self
+            .subscriber
+            .try_recv_with_info(&mut self.rx_buffer)
+            .map_err(|_| ConnectedNodeError::DeserializationFailed)?
+        {
+            Some((len, transport_info)) => {
+                // Deserialize the message from the buffer using CdrReader
+                let mut reader = CdrReader::new_with_header(&self.rx_buffer[..len])
+                    .map_err(|_| ConnectedNodeError::DeserializationFailed)?;
+                let msg = M::deserialize(&mut reader)
+                    .map_err(|_| ConnectedNodeError::DeserializationFailed)?;
+
+                // Convert transport MessageInfo to nano_ros_core MessageInfo
+                let mut info = nano_ros_core::MessageInfo::new();
+                if let Some(transport_msg_info) = transport_info {
+                    // Convert timestamp from nanoseconds to Time
+                    let timestamp_ns = transport_msg_info.timestamp_ns;
+                    let secs = (timestamp_ns / 1_000_000_000) as i32;
+                    let nsecs = (timestamp_ns % 1_000_000_000) as u32;
+                    info.set_source_timestamp(Time::new(secs, nsecs));
+                    info.set_publication_sequence_number(transport_msg_info.sequence_number);
+                    info.set_publisher_gid(transport_msg_info.publisher_gid);
+                }
+
                 Ok(Some((msg, info)))
             }
             None => Ok(None),
