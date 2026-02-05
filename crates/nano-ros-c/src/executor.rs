@@ -16,6 +16,24 @@ use crate::timer::{nano_ros_timer_state_t, nano_ros_timer_t};
 /// Maximum number of handles in an executor
 pub const NANO_ROS_EXECUTOR_MAX_HANDLES: usize = 16;
 
+/// Trigger function type for executor.
+///
+/// A trigger function receives a boolean array indicating which handles have
+/// data ready, along with the count of handles. It returns true if the executor
+/// should process callbacks.
+///
+/// # Parameters
+/// * `ready` - Pointer to boolean array (one per handle)
+/// * `count` - Number of elements in the array
+/// * `context` - User-provided context pointer
+///
+/// # Returns
+/// * `true` if executor should process callbacks
+/// * `false` if executor should skip processing
+pub type nano_ros_executor_trigger_t = Option<
+    unsafe extern "C" fn(ready: *const bool, count: usize, context: *mut core::ffi::c_void) -> bool,
+>;
+
 /// Callback invocation mode
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -120,6 +138,10 @@ pub struct nano_ros_executor_t {
     pub semantics: nano_ros_executor_semantics_t,
     /// Pointer to support context
     support: *const nano_ros_support_t,
+    /// Trigger function (NULL = default "any" trigger)
+    pub trigger: nano_ros_executor_trigger_t,
+    /// User context for trigger function
+    pub trigger_context: *mut core::ffi::c_void,
 }
 
 impl Default for nano_ros_executor_t {
@@ -132,6 +154,8 @@ impl Default for nano_ros_executor_t {
             timeout_ns: 100_000_000, // 100ms default
             semantics: nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_RCLCPP_EXECUTOR,
             support: ptr::null(),
+            trigger: None,
+            trigger_context: ptr::null_mut(),
         }
     }
 }
@@ -258,6 +282,127 @@ pub unsafe extern "C" fn nano_ros_executor_set_semantics(
 
     executor.semantics = semantics;
     NANO_ROS_RET_OK
+}
+
+/// Set the trigger condition for the executor.
+///
+/// The trigger controls when `spin_some` processes callbacks.
+/// Pass NULL for the trigger function to use the default "any" behavior.
+///
+/// # Parameters
+/// * `executor` - Pointer to an initialized executor
+/// * `trigger` - Trigger function (NULL for default "any" behavior)
+/// * `context` - User context passed to trigger function (may be NULL)
+///
+/// # Returns
+/// * `NANO_ROS_RET_OK` on success
+/// * `NANO_ROS_RET_INVALID_ARGUMENT` if executor is NULL
+/// * `NANO_ROS_RET_NOT_INIT` if not initialized
+///
+/// # Safety
+/// * `executor` must be a valid pointer to an initialized executor
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_set_trigger(
+    executor: *mut nano_ros_executor_t,
+    trigger: nano_ros_executor_trigger_t,
+    context: *mut core::ffi::c_void,
+) -> nano_ros_ret_t {
+    if executor.is_null() {
+        return NANO_ROS_RET_INVALID_ARGUMENT;
+    }
+
+    let executor = &mut *executor;
+
+    if executor.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SHUTDOWN
+    {
+        return NANO_ROS_RET_NOT_INIT;
+    }
+
+    executor.trigger = trigger;
+    executor.trigger_context = context;
+    NANO_ROS_RET_OK
+}
+
+/// Built-in trigger: fire when ANY handle has data ready.
+///
+/// This is the default behavior. Use with `nano_ros_executor_set_trigger`.
+///
+/// # Safety
+/// * `ready` must point to a valid array of at least `count` booleans
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_trigger_any(
+    ready: *const bool,
+    count: usize,
+    _context: *mut core::ffi::c_void,
+) -> bool {
+    for i in 0..count {
+        if *ready.add(i) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Built-in trigger: fire when ALL handles have data ready.
+///
+/// # Safety
+/// * `ready` must point to a valid array of at least `count` booleans
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_trigger_all(
+    ready: *const bool,
+    count: usize,
+    _context: *mut core::ffi::c_void,
+) -> bool {
+    if count == 0 {
+        return false;
+    }
+    for i in 0..count {
+        if !*ready.add(i) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Built-in trigger: always fire (unconditionally).
+///
+/// # Safety
+/// * `ready` and `count` are unused
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_trigger_always(
+    _ready: *const bool,
+    _count: usize,
+    _context: *mut core::ffi::c_void,
+) -> bool {
+    true
+}
+
+/// Built-in trigger: fire when the handle at the index stored in context has data.
+///
+/// Pass the handle index (cast to `void*`) as the context parameter.
+///
+/// # Example
+/// ```c
+/// // Trigger when handle 2 has data
+/// nano_ros_executor_set_trigger(&executor, nano_ros_executor_trigger_one, (void*)2);
+/// ```
+///
+/// # Safety
+/// * `ready` must point to a valid array of at least `count` booleans
+/// * `context` is interpreted as a `usize` index
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_trigger_one(
+    ready: *const bool,
+    count: usize,
+    context: *mut core::ffi::c_void,
+) -> bool {
+    let index = context as usize;
+    if index < count {
+        *ready.add(index)
+    } else {
+        false
+    }
 }
 
 /// Add a subscription to the executor.
@@ -623,6 +768,61 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
 
     // Get current time from platform
     let current_time_ns = crate::platform::get_time_ns();
+
+    // If a trigger is set, collect the ready mask and check it
+    if let Some(trigger_fn) = executor.trigger {
+        let mut ready_mask = [false; NANO_ROS_EXECUTOR_MAX_HANDLES];
+
+        for i in 0..executor.handle_count {
+            let handle = &executor.handles[i];
+            ready_mask[i] = match handle.handle_type {
+                nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
+                    handle.data_ready
+                }
+                nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SERVICE => {
+                    handle.data_ready
+                }
+                nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_TIMER => {
+                    let timer = handle.handle as *mut nano_ros_timer_t;
+                    !timer.is_null()
+                        && crate::timer::nano_ros_timer_is_ready(timer, current_time_ns) != 0
+                }
+                nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
+                    let guard = handle.handle as *mut nano_ros_guard_condition_t;
+                    !guard.is_null()
+                        && crate::guard_condition::nano_ros_guard_condition_is_triggered(guard)
+                }
+                _ => false,
+            };
+        }
+
+        if !trigger_fn(
+            ready_mask.as_ptr(),
+            executor.handle_count,
+            executor.trigger_context,
+        ) {
+            // Trigger not satisfied — still process timers
+            for i in 0..executor.handle_count {
+                let handle = &mut executor.handles[i];
+                if handle.handle_type
+                    == nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_TIMER
+                {
+                    let timer = handle.handle as *mut nano_ros_timer_t;
+                    if !timer.is_null()
+                        && crate::timer::nano_ros_timer_is_ready(timer, current_time_ns) != 0
+                    {
+                        crate::timer::nano_ros_timer_call(timer, current_time_ns);
+                    }
+                }
+            }
+
+            if timeout_ns > 0 {
+                crate::platform::sleep_ns(timeout_ns.min(10_000_000));
+                return NANO_ROS_RET_TIMEOUT;
+            }
+            return NANO_ROS_RET_TIMEOUT;
+        }
+    }
 
     let mut any_executed = false;
 

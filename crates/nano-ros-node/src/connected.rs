@@ -1737,6 +1737,14 @@ impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
         }
     }
 
+    /// Check if data is available without consuming it
+    ///
+    /// Returns true if the subscriber has data ready to be received.
+    /// This is a non-destructive check useful for trigger conditions.
+    pub fn has_data(&self) -> bool {
+        self.subscriber.has_data()
+    }
+
     /// Get the buffer size
     pub const fn buffer_size(&self) -> usize {
         RX_BUF
@@ -1771,6 +1779,14 @@ impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     /// Get the service name for this server
     pub fn service_name(&self) -> &str {
         self.service_name.as_str()
+    }
+
+    /// Check if a request is available without consuming it
+    ///
+    /// Returns true if the service server has a pending request.
+    /// This is a non-destructive check useful for trigger conditions.
+    pub fn has_request(&self) -> bool {
+        self.server.has_request()
     }
 
     /// Handle a single service request if one is available

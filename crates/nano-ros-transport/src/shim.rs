@@ -904,6 +904,12 @@ impl ShimSubscriber {
 impl Subscriber for ShimSubscriber {
     type Error = TransportError;
 
+    fn has_data(&self) -> bool {
+        // Safety: We own this buffer index and access is atomic
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+        buffer.has_data.load(Ordering::Acquire)
+    }
+
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
         // Safety: We own this buffer index and access is atomic
         let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
@@ -1095,6 +1101,12 @@ impl ShimServiceServer {
 
 impl ServiceServerTrait for ShimServiceServer {
     type Error = TransportError;
+
+    fn has_request(&self) -> bool {
+        // Safety: We own this buffer index and access is atomic
+        let buffer = unsafe { &SERVICE_BUFFERS[self.buffer_index] };
+        buffer.has_request.load(Ordering::Acquire)
+    }
 
     fn try_recv_request<'a>(
         &mut self,

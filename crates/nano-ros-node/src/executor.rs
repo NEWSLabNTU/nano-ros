@@ -65,6 +65,7 @@ use crate::context::RclrsError;
 #[cfg(feature = "zenoh")]
 use crate::options::{IntoPublisherOptions, IntoSubscriberOptions};
 use crate::timer::TimerDuration;
+use crate::trigger::{Trigger, TriggerCondition, TriggerFn};
 
 #[cfg(feature = "zenoh")]
 use crate::{
@@ -290,6 +291,8 @@ impl<S: RosService, F: FnMut(&S::Request) -> S::Reply + Send> ServiceCallback<S>
 /// Type-erased service callback for storing in executor
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
 pub(crate) trait ErasedServiceCallback: MaybeSend {
+    /// Check if a request is available without consuming it
+    fn has_data(&self) -> bool;
     /// Try to receive and handle a service request, returns true if handled
     fn try_handle(&mut self) -> Result<bool, RclrsError>;
 }
@@ -314,6 +317,10 @@ impl<
     C: ServiceCallback<S> + Send,
 > ErasedServiceCallback for ServiceEntry<S, REQ_BUF, REPLY_BUF, C>
 {
+    fn has_data(&self) -> bool {
+        self.server.has_request()
+    }
+
     fn try_handle(&mut self) -> Result<bool, RclrsError> {
         self.server
             .handle_request(|req| self.callback.call(req))
@@ -347,6 +354,8 @@ impl ServiceHandle {
 /// Type-erased subscription callback for storing in executor
 #[cfg(feature = "zenoh")]
 pub(crate) trait ErasedCallback: MaybeSend {
+    /// Check if data is available without consuming it
+    fn has_data(&self) -> bool;
     /// Try to receive and process a message, returns true if message was processed
     fn try_process(&mut self) -> Result<bool, RclrsError>;
 }
@@ -366,6 +375,10 @@ pub(crate) struct SubscriptionEntry<
 impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallback<M>>
     ErasedCallback for SubscriptionEntry<M, RX_BUF, C>
 {
+    fn has_data(&self) -> bool {
+        self.subscriber.has_data()
+    }
+
     fn try_process(&mut self) -> Result<bool, RclrsError> {
         match self.subscriber.try_recv() {
             Ok(Some(msg)) => {
@@ -393,6 +406,10 @@ pub(crate) struct SubscriptionEntryWithInfo<
 impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallbackWithInfo<M>>
     ErasedCallback for SubscriptionEntryWithInfo<M, RX_BUF, C>
 {
+    fn has_data(&self) -> bool {
+        self.subscriber.has_data()
+    }
+
     fn try_process(&mut self) -> Result<bool, RclrsError> {
         match self.subscriber.try_recv_with_info() {
             Ok(Some((msg, info))) => {
@@ -934,6 +951,8 @@ pub struct PollingExecutor<const MAX_NODES: usize = DEFAULT_MAX_NODES> {
     transport_config: TransportConfig<'static>,
     /// Nodes owned by this executor
     nodes: heapless::Vec<NodeState, MAX_NODES>,
+    /// Trigger condition controlling when callbacks are processed
+    trigger: Trigger,
 }
 
 #[cfg(feature = "zenoh")]
@@ -944,6 +963,7 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
             domain_id,
             transport_config,
             nodes: heapless::Vec::new(),
+            trigger: Trigger::default(),
         }
     }
 
@@ -981,6 +1001,22 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
         self.nodes.len()
     }
 
+    /// Set the trigger condition for this executor
+    ///
+    /// The trigger controls when `spin_once()` processes callbacks.
+    /// Default is `TriggerCondition::Any` (process when any handle has data).
+    pub fn set_trigger(&mut self, condition: TriggerCondition) {
+        self.trigger = Trigger::Builtin(condition);
+    }
+
+    /// Set a custom trigger function for this executor
+    ///
+    /// The function receives a slice of booleans (one per handle) indicating
+    /// which handles have data ready, and returns true if callbacks should be processed.
+    pub fn set_custom_trigger(&mut self, trigger: TriggerFn) {
+        self.trigger = Trigger::Custom(trigger);
+    }
+
     /// Process one iteration of all nodes
     ///
     /// Call this from your RTIC task or main loop. Typically every 10ms.
@@ -990,11 +1026,37 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
     pub fn spin_once(&mut self, delta_ms: u64) -> SpinOnceResult {
         let mut result = SpinOnceResult::new();
 
+        // Poll for incoming data (if using rtic/polling mode)
+        #[cfg(any(feature = "rtic", feature = "polling"))]
         for node in &mut self.nodes {
-            // Poll for incoming data (if using rtic/polling mode)
-            #[cfg(any(feature = "rtic", feature = "polling"))]
             let _ = node.poll_read();
+        }
 
+        // Collect ready mask and evaluate trigger
+        #[cfg(feature = "alloc")]
+        {
+            let mut ready_mask: heapless::Vec<bool, 64> = heapless::Vec::new();
+
+            for node in &self.nodes {
+                for sub in &node.subscriptions {
+                    let _ = ready_mask.push(sub.has_data());
+                }
+                for srv in &node.services {
+                    let _ = ready_mask.push(srv.has_data());
+                }
+            }
+            // Timers are always evaluated (not gated by trigger)
+            // Check trigger condition for subscriptions and services
+            if !self.trigger.evaluate(&ready_mask) {
+                // Trigger not satisfied — still process timers
+                for node in &mut self.nodes {
+                    result.timers_fired += node.process_timers(delta_ms);
+                }
+                return result;
+            }
+        }
+
+        for node in &mut self.nodes {
             // Process subscriptions
             #[cfg(feature = "alloc")]
             if let Ok(count) = node.process_subscriptions() {
@@ -1054,6 +1116,8 @@ pub struct BasicExecutor {
     nodes: std::vec::Vec<NodeState>,
     /// Flag to request halt
     halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    /// Trigger condition controlling when callbacks are processed
+    trigger: Trigger,
 }
 
 #[cfg(all(feature = "zenoh", feature = "std"))]
@@ -1065,6 +1129,7 @@ impl BasicExecutor {
             transport_config,
             nodes: std::vec::Vec::new(),
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            trigger: Trigger::default(),
         }
     }
 
@@ -1097,9 +1162,54 @@ impl BasicExecutor {
         self.nodes.len()
     }
 
+    /// Set the trigger condition for this executor
+    ///
+    /// The trigger controls when `spin_once()` processes callbacks.
+    /// Default is `TriggerCondition::Any` (process when any handle has data).
+    pub fn set_trigger(&mut self, condition: TriggerCondition) {
+        self.trigger = Trigger::Builtin(condition);
+    }
+
+    /// Set a custom trigger function for this executor
+    ///
+    /// The function receives a slice of booleans (one per handle) indicating
+    /// which handles have data ready, and returns true if callbacks should be processed.
+    pub fn set_custom_trigger(&mut self, trigger: TriggerFn) {
+        self.trigger = Trigger::Custom(trigger);
+    }
+
+    /// Set a boxed closure as trigger (std only)
+    ///
+    /// Like `set_custom_trigger` but accepts a closure that can capture state.
+    pub fn set_trigger_fn(&mut self, trigger: impl Fn(&[bool]) -> bool + Send + 'static) {
+        self.trigger = Trigger::Boxed(alloc::boxed::Box::new(trigger));
+    }
+
     /// Process one iteration of all nodes
     pub fn spin_once(&mut self, delta_ms: u64) -> SpinOnceResult {
         let mut result = SpinOnceResult::new();
+
+        // Collect ready mask and evaluate trigger
+        {
+            let mut ready_mask: std::vec::Vec<bool> = std::vec::Vec::new();
+
+            for node in &self.nodes {
+                for sub in &node.subscriptions {
+                    ready_mask.push(sub.has_data());
+                }
+                for srv in &node.services {
+                    ready_mask.push(srv.has_data());
+                }
+            }
+
+            if !self.trigger.evaluate(&ready_mask) {
+                // Trigger not satisfied — still process timers
+                for node in &mut self.nodes {
+                    result.timers_fired += node.process_timers(delta_ms);
+                }
+                return result;
+            }
+        }
 
         for node in &mut self.nodes {
             // Process subscriptions

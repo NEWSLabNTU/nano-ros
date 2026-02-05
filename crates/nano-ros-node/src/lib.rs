@@ -99,6 +99,8 @@ mod context;
 #[cfg(feature = "zenoh")]
 mod options;
 
+pub mod trigger;
+
 #[cfg(feature = "zenoh")]
 pub mod executor;
 
@@ -190,6 +192,9 @@ pub use nano_ros_transport::SessionMode;
 pub use timer::{
     DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
+
+// Re-export trigger types
+pub use trigger::{Trigger, TriggerCondition, TriggerFn};
 
 // Re-export shim types when shim feature is enabled
 #[cfg(feature = "shim")]

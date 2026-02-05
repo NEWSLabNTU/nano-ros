@@ -663,6 +663,15 @@ pub trait Subscriber {
     /// Error type for receive operations
     type Error;
 
+    /// Check if data is available without consuming it
+    ///
+    /// Returns true if the subscriber has data ready to be received.
+    /// This is a non-destructive check that does not consume the message.
+    /// Conservative default returns true (always assume data may be available).
+    fn has_data(&self) -> bool {
+        true
+    }
+
     /// Try to receive a raw message (non-blocking)
     /// Returns None if no message is available
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
@@ -698,6 +707,15 @@ pub struct ServiceRequest<'a> {
 pub trait ServiceServerTrait {
     /// Error type for service operations
     type Error;
+
+    /// Check if a request is available without consuming it
+    ///
+    /// Returns true if the service server has a pending request.
+    /// This is a non-destructive check that does not consume the request.
+    /// Conservative default returns true (always assume a request may be available).
+    fn has_request(&self) -> bool {
+        true
+    }
 
     /// Try to receive a service request (non-blocking)
     /// The returned ServiceRequest references data in the provided buffer

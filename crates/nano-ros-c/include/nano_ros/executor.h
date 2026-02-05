@@ -70,6 +70,26 @@ typedef enum nano_ros_executor_invocation_t {
 } nano_ros_executor_invocation_t;
 
 // ============================================================================
+// Trigger Types
+// ============================================================================
+
+/**
+ * Trigger function type for executor.
+ *
+ * A trigger function receives a boolean array indicating which handles have
+ * data ready, along with the count. Returns true if the executor should process.
+ *
+ * @param ready Pointer to boolean array (one per handle)
+ * @param count Number of elements in the array
+ * @param context User-provided context pointer
+ * @return true if executor should process callbacks
+ */
+typedef bool (*nano_ros_executor_trigger_t)(
+    const bool *ready,
+    size_t count,
+    void *context);
+
+// ============================================================================
 // Executor Structures
 // ============================================================================
 
@@ -102,8 +122,14 @@ typedef struct nano_ros_executor_t {
     size_t max_handles;
     /** Timeout in nanoseconds for spin_some */
     uint64_t timeout_ns;
+    /** Data communication semantics */
+    int semantics;
     /** Pointer to support context */
     const nano_ros_support_t *support;
+    /** Trigger function (NULL = default "any" trigger) */
+    nano_ros_executor_trigger_t trigger;
+    /** User context for trigger function */
+    void *trigger_context;
 } nano_ros_executor_t;
 
 // ============================================================================
@@ -310,6 +336,49 @@ int nano_ros_executor_get_handle_count(const nano_ros_executor_t *executor);
  */
 NANO_ROS_PUBLIC
 int nano_ros_executor_is_valid(const nano_ros_executor_t *executor);
+
+// ============================================================================
+// Trigger Functions
+// ============================================================================
+
+/**
+ * Set the trigger condition for the executor.
+ *
+ * The trigger controls when spin_some processes callbacks.
+ * Pass NULL for the trigger function to use the default "any" behavior.
+ *
+ * @param executor Pointer to an initialized executor
+ * @param trigger Trigger function (NULL for default "any" behavior)
+ * @param context User context passed to trigger function (may be NULL)
+ *
+ * @return NANO_ROS_RET_OK on success
+ * @return NANO_ROS_RET_INVALID_ARGUMENT if executor is NULL
+ * @return NANO_ROS_RET_NOT_INIT if not initialized
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_executor_set_trigger(
+    nano_ros_executor_t *executor,
+    nano_ros_executor_trigger_t trigger,
+    void *context);
+
+/** Built-in trigger: fire when ANY handle has data ready (default). */
+NANO_ROS_PUBLIC
+bool nano_ros_executor_trigger_any(const bool *ready, size_t count, void *context);
+
+/** Built-in trigger: fire when ALL handles have data ready. */
+NANO_ROS_PUBLIC
+bool nano_ros_executor_trigger_all(const bool *ready, size_t count, void *context);
+
+/** Built-in trigger: always fire (unconditionally). */
+NANO_ROS_PUBLIC
+bool nano_ros_executor_trigger_always(const bool *ready, size_t count, void *context);
+
+/**
+ * Built-in trigger: fire when handle at a specific index has data.
+ * Pass the handle index (cast to void*) as the context parameter.
+ */
+NANO_ROS_PUBLIC
+bool nano_ros_executor_trigger_one(const bool *ready, size_t count, void *context);
 
 #ifdef __cplusplus
 }

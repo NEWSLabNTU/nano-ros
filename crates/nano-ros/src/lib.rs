@@ -131,6 +131,9 @@ pub use nano_ros_core::{
     GoalStatusStamped, RosAction,
 };
 
+// Re-export trigger types
+pub use nano_ros_node::{Trigger, TriggerCondition, TriggerFn};
+
 // Re-export parameter types
 pub use nano_ros_params::{
     Parameter, ParameterDescriptor, ParameterServer, ParameterType, ParameterValue,
@@ -171,6 +174,9 @@ pub mod prelude {
         Executor, PollingExecutor, SpinOnceResult, SpinOptions, SubscriptionCallback,
         SubscriptionCallbackWithInfo,
     };
+
+    // Re-export trigger types
+    pub use crate::{Trigger, TriggerCondition, TriggerFn};
 
     // Re-export BasicExecutor and Promise
     #[cfg(all(feature = "zenoh", feature = "std"))]
