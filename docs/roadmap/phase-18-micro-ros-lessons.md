@@ -1,6 +1,6 @@
 # Phase 18: Micro-ROS Lessons — Executor, Lifecycle & Transport Improvements
 
-**Status**: IN PROGRESS (18.1 complete)
+**Status**: IN PROGRESS (18.1, 18.2 complete)
 **Priority**: MEDIUM-HIGH
 **Goal**: Adopt high-impact patterns from micro-ROS (rclc) to improve nano-ros executor determinism, add lifecycle node support, and expand transport options
 
@@ -219,8 +219,8 @@ rcl_ret_t rclc_executor_spin_one_period(rclc_executor_t *executor, const uint64_
 
 ### 18.2.1 Rust API — BasicExecutor
 
-- [ ] Add `spin_period()` to `BasicExecutor`
-- [ ] Add `spin_one_period()` for single-iteration variant (useful for testing)
+- [x] Add `spin_period()` to `BasicExecutor`
+- [x] Add `spin_one_period()` for single-iteration variant (useful for testing)
 
 ```rust
 impl BasicExecutor {
@@ -250,8 +250,8 @@ pub struct SpinPeriodResult {
 
 ### 18.2.2 Rust API — PollingExecutor (no_std)
 
-- [ ] Add `spin_one_period()` to `PollingExecutor`
-- [ ] For `no_std`: caller provides elapsed time, executor returns remaining sleep time
+- [x] Add `spin_one_period()` to `PollingExecutor`
+- [x] For `no_std`: caller provides elapsed time, executor returns remaining sleep time
 
 ```rust
 impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
@@ -289,8 +289,8 @@ pub struct SpinPeriodPollingResult {
 
 The C API already implements `nano_ros_executor_spin_period()`. Remaining work:
 
-- [ ] Add `nano_ros_executor_spin_one_period()` (single iteration, matches rclc)
-- [ ] Improve drift compensation to match rclc's accumulating invocation_time pattern
+- [x] Add `nano_ros_executor_spin_one_period()` (single iteration, matches rclc)
+- [x] Improve drift compensation to match rclc's accumulating invocation_time pattern
 
 ```c
 /// Already implemented in nano-ros-c/src/executor.rs:
@@ -317,11 +317,11 @@ while (running) {
 
 ### 18.2.4 Tests
 
-- [ ] Unit test: `spin_period` maintains target rate within 10% tolerance
-- [ ] Unit test: `spin_one_period` returns correct remaining time / overrun flag
-- [ ] Unit test: drift compensation over 100+ iterations
-- [ ] C API test: `nano_ros_executor_spin_one_period` single iteration
-- [ ] Example: fixed 100Hz control loop (Rust + C)
+- [x] Unit test: `spin_period` maintains target rate within 10% tolerance
+- [x] Unit test: `spin_one_period` returns correct remaining time / overrun flag
+- [x] Unit test: drift compensation over 100+ iterations
+- [x] C API test: `nano_ros_executor_spin_one_period` single iteration
+- [ ] Example: fixed 100Hz control loop (Rust + C) (deferred to examples)
 
 ---
 

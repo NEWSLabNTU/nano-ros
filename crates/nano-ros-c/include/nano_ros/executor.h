@@ -295,6 +295,24 @@ nano_ros_ret_t nano_ros_executor_spin_period(
     uint64_t period_ns);
 
 /**
+ * Spin the executor for one period.
+ *
+ * This function processes callbacks once and sleeps for the remainder
+ * of the period. Matches rclc's rclc_executor_spin_one_period().
+ *
+ * @param executor Pointer to an initialized executor
+ * @param period_ns Period in nanoseconds
+ *
+ * @return NANO_ROS_RET_OK on success
+ * @return NANO_ROS_RET_INVALID_ARGUMENT if executor is NULL or period is 0
+ * @return NANO_ROS_RET_NOT_INIT if not initialized
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_executor_spin_one_period(
+    nano_ros_executor_t *executor,
+    uint64_t period_ns);
+
+/**
  * Stop a spinning executor.
  *
  * @param executor Pointer to a spinning executor

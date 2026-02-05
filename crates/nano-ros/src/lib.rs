@@ -84,12 +84,12 @@ pub use nano_ros_node::{
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
 pub use nano_ros_node::{
     Executor, NodeHandle, NodeState, PollingExecutor, SpinOnceResult, SpinOptions,
-    SubscriptionCallback, SubscriptionCallbackWithInfo,
+    SpinPeriodPollingResult, SubscriptionCallback, SubscriptionCallbackWithInfo,
 };
 
-// Re-export BasicExecutor and Promise (with zenoh and std features)
+// Re-export BasicExecutor, SpinPeriodResult, and Promise (with zenoh and std features)
 #[cfg(all(feature = "zenoh", feature = "std"))]
-pub use nano_ros_node::{BasicExecutor, Promise};
+pub use nano_ros_node::{BasicExecutor, Promise, SpinPeriodResult};
 
 // Re-export transport types
 pub use nano_ros_transport::{
@@ -171,16 +171,16 @@ pub mod prelude {
     // Re-export executor types
     #[cfg(all(feature = "zenoh", feature = "alloc"))]
     pub use crate::{
-        Executor, PollingExecutor, SpinOnceResult, SpinOptions, SubscriptionCallback,
-        SubscriptionCallbackWithInfo,
+        Executor, PollingExecutor, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
+        SubscriptionCallback, SubscriptionCallbackWithInfo,
     };
 
     // Re-export trigger types
     pub use crate::{Trigger, TriggerCondition, TriggerFn};
 
-    // Re-export BasicExecutor and Promise
+    // Re-export BasicExecutor, SpinPeriodResult, and Promise
     #[cfg(all(feature = "zenoh", feature = "std"))]
-    pub use crate::{BasicExecutor, Promise};
+    pub use crate::{BasicExecutor, Promise, SpinPeriodResult};
 
     // Re-export parameter types
     pub use crate::{ParameterServer, ParameterType, ParameterValue};

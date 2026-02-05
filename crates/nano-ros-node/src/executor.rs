@@ -115,6 +115,34 @@ impl SpinOnceResult {
     }
 }
 
+/// Result from a single period of execution (std only)
+///
+/// Contains the work performed during the period, whether the processing
+/// exceeded the period (overrun), and the actual processing time.
+#[cfg(feature = "std")]
+#[derive(Debug, Clone)]
+pub struct SpinPeriodResult {
+    /// Work performed during this period
+    pub work: SpinOnceResult,
+    /// Whether processing exceeded the period (overrun)
+    pub overrun: bool,
+    /// Actual processing time
+    pub elapsed: std::time::Duration,
+}
+
+/// Result from a single period of polling execution (no_std compatible)
+///
+/// Contains the work performed during the period and the remaining time
+/// in milliseconds that the caller should sleep. This is no_std compatible —
+/// the caller is responsible for the actual delay.
+#[derive(Debug, Clone, Copy)]
+pub struct SpinPeriodPollingResult {
+    /// Work performed during this period
+    pub work: SpinOnceResult,
+    /// Remaining time in ms that the caller should sleep
+    pub remaining_ms: u64,
+}
+
 /// Options controlling spin behavior (for BasicExecutor)
 #[derive(Debug, Clone, Default)]
 pub struct SpinOptions {
@@ -902,6 +930,11 @@ pub trait SpinExecutor: Executor {
     /// `Ok(())` on normal completion, `Err` if an error occurred during spinning.
     fn spin(&mut self, opts: SpinOptions) -> Result<(), RclrsError>;
 
+    /// Spin at a fixed rate, compensating for processing time.
+    ///
+    /// Blocks until halted. Uses wall-clock time to maintain the target rate.
+    fn spin_period(&mut self, period: std::time::Duration) -> Result<(), RclrsError>;
+
     // TODO: Re-enable spin_async once underlying zenoh-pico types are Send.
     // /// Async spin (runs on background thread)
     // #[cfg(feature = "async")]
@@ -1015,6 +1048,36 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
     /// which handles have data ready, and returns true if callbacks should be processed.
     pub fn set_custom_trigger(&mut self, trigger: TriggerFn) {
         self.trigger = Trigger::Custom(trigger);
+    }
+
+    /// Process one period. Returns remaining time in ms that the caller should sleep.
+    ///
+    /// This is no_std compatible — the caller is responsible for the actual delay.
+    /// The `elapsed_ms` parameter is the time elapsed since the last call, used for
+    /// timer processing. The `period_ms` parameter is the target period.
+    ///
+    /// # Arguments
+    /// * `period_ms` - Target period in milliseconds
+    /// * `elapsed_ms` - Time elapsed since last call in milliseconds
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// loop {
+    ///     let start = platform_time_ms();
+    ///     let result = executor.spin_one_period(10, elapsed_ms);
+    ///     if result.remaining_ms > 0 {
+    ///         platform_sleep_ms(result.remaining_ms);
+    ///     }
+    ///     elapsed_ms = platform_time_ms() - start;
+    /// }
+    /// ```
+    pub fn spin_one_period(&mut self, period_ms: u64, elapsed_ms: u64) -> SpinPeriodPollingResult {
+        let result = self.spin_once(elapsed_ms);
+        SpinPeriodPollingResult {
+            work: result,
+            remaining_ms: period_ms.saturating_sub(elapsed_ms),
+        }
     }
 
     /// Process one iteration of all nodes
@@ -1302,10 +1365,86 @@ impl BasicExecutor {
         Ok(())
     }
 
+    /// Execute one period: spin_once + sleep for remainder of period.
+    ///
+    /// Returns the spin result, whether the period was exceeded (overrun),
+    /// and the actual processing time.
+    ///
+    /// # Arguments
+    /// * `period` - Target period duration
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // 100Hz control loop with overrun detection
+    /// let period = std::time::Duration::from_millis(10);
+    /// let result = executor.spin_one_period(period);
+    /// if result.overrun {
+    ///     log::warn!("Period overrun: {:?}", result.elapsed);
+    /// }
+    /// ```
+    pub fn spin_one_period(&mut self, period: std::time::Duration) -> SpinPeriodResult {
+        let start = std::time::Instant::now();
+        let period_ms = period.as_millis() as u64;
+        let result = self.spin_once(period_ms.max(1));
+        let elapsed = start.elapsed();
+        let overrun = elapsed > period;
+        if !overrun {
+            std::thread::sleep(period - elapsed);
+        }
+        SpinPeriodResult {
+            work: result,
+            overrun,
+            elapsed,
+        }
+    }
+
+    /// Spin at a fixed rate, compensating for processing time.
+    ///
+    /// Blocks until `halt()` is called. Uses wall-clock time to maintain the
+    /// target rate, compensating for callback processing time. The next
+    /// invocation time is accumulated (not reset to now + period) to prevent
+    /// cumulative drift, matching rclc's `rclc_executor_spin_period()` pattern.
+    ///
+    /// # Arguments
+    /// * `period` - Target period duration
+    ///
+    /// # Returns
+    /// `Ok(())` when halted.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // 100Hz control loop
+    /// executor.spin_period(std::time::Duration::from_millis(10))?;
+    /// ```
+    pub fn spin_period(&mut self, period: std::time::Duration) -> Result<(), RclrsError> {
+        self.halt_flag
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut next_invocation = std::time::Instant::now() + period;
+
+        loop {
+            if self.halt_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
+            let period_ms = period.as_millis() as u64;
+            self.spin_once(period_ms.max(1));
+
+            let now = std::time::Instant::now();
+            if now < next_invocation {
+                std::thread::sleep(next_invocation - now);
+            }
+            // Accumulate to prevent drift (not = now + period)
+            next_invocation += period;
+        }
+        Ok(())
+    }
+
     /// Request the executor to stop spinning
     ///
-    /// This sets a flag that will cause `spin()` to exit on its next iteration.
-    /// Safe to call from another thread.
+    /// This sets a flag that will cause `spin()` or `spin_period()` to exit
+    /// on its next iteration. Safe to call from another thread.
     pub fn halt(&self) {
         self.halt_flag
             .store(true, std::sync::atomic::Ordering::SeqCst);
@@ -1333,6 +1472,10 @@ impl Executor for BasicExecutor {
 impl SpinExecutor for BasicExecutor {
     fn spin(&mut self, opts: SpinOptions) -> Result<(), RclrsError> {
         BasicExecutor::spin(self, opts)
+    }
+
+    fn spin_period(&mut self, period: std::time::Duration) -> Result<(), RclrsError> {
+        BasicExecutor::spin_period(self, period)
     }
 
     // TODO: Re-enable spin_async once underlying zenoh-pico types are Send.
@@ -1401,5 +1544,45 @@ mod tests {
     fn test_subscription_handle() {
         let handle = SubscriptionHandle::new(42);
         assert_eq!(handle.index(), 42);
+    }
+
+    #[test]
+    fn test_spin_period_result() {
+        let result = SpinPeriodResult {
+            work: SpinOnceResult {
+                subscriptions_processed: 1,
+                timers_fired: 2,
+                services_handled: 0,
+            },
+            overrun: false,
+            elapsed: std::time::Duration::from_millis(5),
+        };
+        assert!(result.work.any_work());
+        assert!(!result.overrun);
+        assert_eq!(result.elapsed.as_millis(), 5);
+
+        let overrun_result = SpinPeriodResult {
+            work: SpinOnceResult::new(),
+            overrun: true,
+            elapsed: std::time::Duration::from_millis(15),
+        };
+        assert!(overrun_result.overrun);
+    }
+
+    #[test]
+    fn test_spin_period_polling_result() {
+        // No overrun: remaining_ms = period - elapsed
+        let result = SpinPeriodPollingResult {
+            work: SpinOnceResult::new(),
+            remaining_ms: 7,
+        };
+        assert_eq!(result.remaining_ms, 7);
+        assert!(!result.work.any_work());
+
+        // Overrun: remaining_ms saturates to 0
+        let period_ms: u64 = 10;
+        let elapsed_ms: u64 = 15;
+        let remaining = period_ms.saturating_sub(elapsed_ms);
+        assert_eq!(remaining, 0);
     }
 }

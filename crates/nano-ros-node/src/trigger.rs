@@ -54,6 +54,7 @@ pub enum Trigger {
     Custom(TriggerFn),
     /// A boxed closure trigger (std only)
     #[cfg(feature = "std")]
+    #[allow(clippy::type_complexity)]
     Boxed(alloc::boxed::Box<dyn Fn(&[bool]) -> bool + Send>),
 }
 

@@ -172,10 +172,10 @@ pub use executor::{
 };
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
-pub use executor::{NodeHandle, NodeState, PollingExecutor};
+pub use executor::{NodeHandle, NodeState, PollingExecutor, SpinPeriodPollingResult};
 
 #[cfg(all(feature = "zenoh", feature = "std"))]
-pub use executor::BasicExecutor;
+pub use executor::{BasicExecutor, SpinPeriodResult};
 
 // Re-export options types when zenoh feature is enabled
 #[cfg(feature = "zenoh")]

@@ -153,6 +153,8 @@ pub struct nano_ros_executor_t {
     let_buffer_lens: [usize; NANO_ROS_EXECUTOR_MAX_HANDLES],
     /// Flags indicating which handles have sampled data in LET mode
     let_data_available: [bool; NANO_ROS_EXECUTOR_MAX_HANDLES],
+    /// Next invocation time in nanoseconds for drift-compensated spin_period
+    invocation_time_ns: u64,
 }
 
 impl Default for nano_ros_executor_t {
@@ -170,6 +172,7 @@ impl Default for nano_ros_executor_t {
             let_buffers: [[0u8; LET_BUFFER_SIZE]; NANO_ROS_EXECUTOR_MAX_HANDLES],
             let_buffer_lens: [0usize; NANO_ROS_EXECUTOR_MAX_HANDLES],
             let_data_available: [false; NANO_ROS_EXECUTOR_MAX_HANDLES],
+            invocation_time_ns: 0,
         }
     }
 }
@@ -1093,7 +1096,9 @@ pub unsafe extern "C" fn nano_ros_executor_spin(
 
 /// Spin the executor with a fixed period.
 ///
-/// This function processes callbacks at a fixed rate.
+/// This function processes callbacks at a fixed rate with drift compensation.
+/// The next invocation time is accumulated (not reset to now + period) to
+/// prevent cumulative drift, matching rclc's `rclc_executor_spin_period()`.
 ///
 /// # Parameters
 /// * `executor` - Pointer to an initialized executor
@@ -1123,18 +1128,66 @@ pub unsafe extern "C" fn nano_ros_executor_spin_period(
 
     executor_ref.state = nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING;
 
-    // Spin with period using platform time functions
-    while executor_ref.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING {
-        let start = crate::platform::get_time_ns();
+    // Initialize invocation time on first call
+    executor_ref.invocation_time_ns = crate::platform::get_time_ns();
 
+    while executor_ref.state == nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING {
         // Process callbacks
         let _ = nano_ros_executor_spin_some(executor, 0);
 
-        // Sleep for remaining time in period
-        let elapsed = crate::platform::get_time_ns().saturating_sub(start);
-        if elapsed < period_ns {
-            crate::platform::sleep_ns(period_ns - elapsed);
+        // Accumulate next invocation time to prevent drift
+        executor_ref.invocation_time_ns += period_ns;
+        let now = crate::platform::get_time_ns();
+        if executor_ref.invocation_time_ns > now {
+            crate::platform::sleep_ns(executor_ref.invocation_time_ns - now);
         }
+    }
+
+    NANO_ROS_RET_OK
+}
+
+/// Spin the executor for one period.
+///
+/// This function processes callbacks once and sleeps for the remainder
+/// of the period. Matches rclc's `rclc_executor_spin_one_period()`.
+///
+/// # Parameters
+/// * `executor` - Pointer to an initialized executor
+/// * `period_ns` - Period in nanoseconds
+///
+/// # Returns
+/// * `NANO_ROS_RET_OK` on success
+/// * `NANO_ROS_RET_INVALID_ARGUMENT` if executor is NULL or period is 0
+/// * `NANO_ROS_RET_NOT_INIT` if not initialized
+///
+/// # Safety
+/// * `executor` must be a valid pointer to an initialized executor
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_spin_one_period(
+    executor: *mut nano_ros_executor_t,
+    period_ns: u64,
+) -> nano_ros_ret_t {
+    if executor.is_null() || period_ns == 0 {
+        return NANO_ROS_RET_INVALID_ARGUMENT;
+    }
+
+    let executor_ref = &mut *executor;
+
+    if executor_ref.state != nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_INITIALIZED
+        && executor_ref.state != nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_SPINNING
+    {
+        return NANO_ROS_RET_NOT_INIT;
+    }
+
+    let start = crate::platform::get_time_ns();
+
+    // Process callbacks
+    let _ = nano_ros_executor_spin_some(executor, 0);
+
+    // Sleep for remaining time in period
+    let elapsed = crate::platform::get_time_ns().saturating_sub(start);
+    if elapsed < period_ns {
+        crate::platform::sleep_ns(period_ns - elapsed);
     }
 
     NANO_ROS_RET_OK
@@ -1481,5 +1534,58 @@ mod tests {
         // 512 bytes × 16 handles = 8KB
         let total_let_memory = LET_BUFFER_SIZE * NANO_ROS_EXECUTOR_MAX_HANDLES;
         assert_eq!(total_let_memory, 8192);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // SPIN_ONE_PERIOD TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_spin_one_period_null() {
+        unsafe {
+            let ret = nano_ros_executor_spin_one_period(ptr::null_mut(), 10_000_000);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    #[test]
+    fn test_spin_one_period_zero_period() {
+        unsafe {
+            let mut executor = nano_ros_executor_get_zero_initialized();
+            let ret = nano_ros_executor_spin_one_period(&mut executor, 0);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    #[test]
+    fn test_spin_one_period_not_init() {
+        unsafe {
+            let mut executor = nano_ros_executor_get_zero_initialized();
+            let ret = nano_ros_executor_spin_one_period(&mut executor, 10_000_000);
+            assert_eq!(ret, NANO_ROS_RET_NOT_INIT);
+        }
+    }
+
+    #[test]
+    fn test_spin_period_null() {
+        unsafe {
+            let ret = nano_ros_executor_spin_period(ptr::null_mut(), 10_000_000);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    #[test]
+    fn test_spin_period_zero_period() {
+        unsafe {
+            let mut executor = nano_ros_executor_get_zero_initialized();
+            let ret = nano_ros_executor_spin_period(&mut executor, 0);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    #[test]
+    fn test_invocation_time_ns_initialized() {
+        let executor = nano_ros_executor_get_zero_initialized();
+        assert_eq!(executor.invocation_time_ns, 0);
     }
 }
