@@ -390,3 +390,56 @@ Client 1 responses: 0, Client 2 responses: 4
 **Workaround:** Ensure service clients connect sequentially rather than simultaneously.
 
 **Tracking:** Investigate in Phase 16 (ROS 2 Interoperability)
+
+### Zephyr spin_once Timeout Ignored
+
+**Test:** `test_bidirectional_native_zephyr_e2e`, `test_zephyr_to_native_e2e`
+**Status:** Bug - timeout parameter not implemented
+
+**Description:** The `zenoh_shim_spin_once()` function ignores the timeout parameter:
+```c
+int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
+    (void)timeout_ms;  // Timeout handled by socket layer  <-- IGNORED!
+    int ret = zp_read(z_session_loan_mut(&g_session), NULL);
+    ...
+}
+```
+
+**Symptoms:**
+- Zephyr talker with 1-second delay actually blocks for ~10 seconds between publishes
+- `spin_once(KTimeout::secs(1))` blocks for socket-level timeout (~10s on native_sim)
+- Multiple Zephyr processes show significantly reduced message throughput
+
+**Impact:**
+- Zephyr talker publishes ~2-3 messages per 15 seconds instead of ~15
+- Bidirectional tests show asymmetric message counts
+- Single-direction tests (Native → Zephyr) work correctly since native uses proper timing
+
+**Root Cause:** `zenoh-pico-shim-sys/c/shim/zenoh_shim.c:548` - timeout not passed to socket layer
+
+**Location:** `crates/zenoh-pico-shim-sys/c/shim/zenoh_shim.c`
+
+**Root Cause Analysis:**
+1. `zenoh_shim_spin_once()` ignores the timeout parameter (line 548)
+2. `zp_read()` has no timeout parameter - relies on socket-level `SO_RCVTIMEO`
+3. In `zenoh-pico/src/system/zephyr/network.c:167-170`, `SO_RCVTIMEO` **consistently fails** on Zephyr:
+   ```c
+   // FIXME: setting the setsockopt is consistently failing. Commenting it
+   // until further inspection. ret = _Z_ERR_GENERIC;
+   ```
+4. Without `SO_RCVTIMEO`, `recv()` blocks indefinitely (or until platform default ~10s)
+
+**Recommended Fix - Use `poll()` before `zp_read()`:**
+```c
+int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
+    // Get socket FD from session internals
+    // Use poll() or select() with timeout_ms
+    // Only call zp_read() if data ready or timeout reached
+}
+```
+
+This mirrors zenoh-pico's multi-threaded approach in `_z_socket_wait_event()` which uses `select()`.
+
+**Workaround:** Use native processes for talkers (they use proper `std::thread::sleep`).
+
+**Tracking:** Fix requires accessing session internals to get socket FD. See `zenoh-pico/src/system/zephyr/network.c:90-128` for reference implementation.

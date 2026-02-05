@@ -195,12 +195,26 @@ The bidirectional test shows asymmetric message counts:
 - Zephyr → Native: 12 messages
 - Native → Zephyr: 3 messages
 
-This asymmetry may be due to:
-1. TAP interface contention between multiple Zephyr processes
-2. zenoh-pico timing/initialization differences
-3. Process startup ordering
+**Root Cause Identified:** The Zephyr talker's `spin_once()` timeout is ignored.
+
+In `zenoh_shim_spin_once()` (crates/zenoh-pico-shim-sys/c/shim/zenoh_shim.c:548):
+```c
+(void)timeout_ms;  // Timeout handled by socket layer  <-- BUG: Ignored!
+```
+
+The `zp_read()` call blocks until the socket-level timeout (~10s on native_sim), causing:
+- Zephyr talker with 1-second intended delay actually publishes every ~10 seconds
+- Only 2-3 messages sent during the 15-second test window
+
+**Why Native → Zephyr works correctly:**
+- Native talker uses standard Rust sleep (not zenoh spin_once)
+- Zephyr listener's spin_once blocking doesn't affect receive timing
+
+**Tracking:** This bug is documented in `docs/test-coverage.md` under "Known Issues".
+The fix requires implementing proper timeout handling in `zenoh_shim_spin_once()`.
 
 Both directions work, confirming full cross-platform communication capability.
+The message throughput issue is a known limitation pending a zenoh-pico-shim fix.
 
 ### Remaining Work Items
 
