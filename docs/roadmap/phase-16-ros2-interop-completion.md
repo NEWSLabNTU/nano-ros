@@ -645,6 +645,134 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 
 ---
 
+### C.5 RMW Attachment / MessageInfo Integration (HIGH)
+
+**Problem**: `MessageInfo` in subscriptions returns default values. The transport layer doesn't extract RMW attachment data on receive.
+
+**Background**: rmw_zenoh publishes messages with an attachment containing:
+- `sequence_number` (i64) - incrementing per-publisher sequence
+- `timestamp` (i64) - nanoseconds since epoch
+- `gid` (16 bytes) - publisher Global Identifier
+
+Currently nano-ros serializes this attachment when publishing but doesn't deserialize it on receive.
+
+**Location**:
+- `crates/nano-ros-transport/src/shim.rs` - ShimSubscriber callback
+- `crates/nano-ros-transport/src/traits.rs` - Subscriber trait
+- `crates/nano-ros-node/src/connected.rs` - ConnectedSubscriber::try_recv_with_info()
+
+**Tasks**:
+- [ ] Extend zenoh-pico-shim C callback to pass attachment data alongside payload
+- [ ] Update `SubscriberBuffer` to store attachment (33 bytes: 8+8+1+16)
+- [ ] Add `try_recv_raw_with_attachment()` to `Subscriber` trait
+- [ ] Parse RMW attachment format in transport layer (VLE-encoded GID length)
+- [ ] Populate `MessageInfo` fields from parsed attachment in `try_recv_with_info()`
+- [ ] Add unit tests for attachment parsing
+
+**Passing Criteria**:
+- [ ] `info.source_timestamp()` returns actual publisher timestamp
+- [ ] `info.publication_sequence_number()` returns incrementing sequence
+- [ ] `info.publisher_gid()` returns 16-byte GID matching publisher
+- [ ] MessageInfo works for both nano-ros → nano-ros and ROS 2 → nano-ros
+
+---
+
+### C.6 RMW Zenoh Protocol Verification (HIGH)
+
+**Problem**: Need comprehensive verification that nano-ros protocol implementation matches rmw_zenoh_cpp exactly.
+
+**Reference**: `docs/rmw_zenoh_interop.md`, rmw_zenoh_cpp source
+
+**Tasks**:
+
+**Data Key Expression Format**:
+- [ ] Verify format: `<domain>/<topic>/<type>/<hash>` matches rmw_zenoh
+- [ ] Test with various topic names (namespaced, nested)
+- [ ] Verify type name encoding (double colons, `dds_::` suffix)
+- [ ] Test Humble format (`TypeHashNotSupported`) works bidirectionally
+
+**Liveliness Token Format**:
+- [ ] Verify node token: `@ros2_lv/<domain>/<zid>/0/0/NN/%/%/<node>`
+- [ ] Verify publisher token: `@ros2_lv/<domain>/<zid>/0/11/MP/%/%/<node>/%<topic>/<type>/RIHS01_<hash>/<qos>`
+- [ ] Verify subscriber token: `@ros2_lv/<domain>/<zid>/0/11/MS/%/%/<node>/%<topic>/<type>/RIHS01_<hash>/<qos>`
+- [ ] Verify service server token format
+- [ ] Verify service client token format
+- [ ] Test ZenohId is LSB-first hex format
+- [ ] Test topic names use `%` prefix correctly
+
+**RMW Attachment Format**:
+- [ ] Verify attachment serialization matches rmw_zenoh zenoh serializer format
+- [ ] Test sequence_number little-endian encoding (8 bytes)
+- [ ] Test timestamp little-endian encoding (8 bytes)
+- [ ] Test VLE-encoded GID length (1 byte for 16)
+- [ ] Test GID bytes (16 bytes)
+- [ ] Verify total attachment size is 33 bytes
+
+**Service Protocol**:
+- [ ] Verify service request key expression format
+- [ ] Verify service reply key expression format
+- [ ] Test request/reply sequence number matching
+- [ ] Verify service attachment format
+
+**QoS Encoding**:
+- [ ] Map reliability: RELIABLE=1, BEST_EFFORT=2
+- [ ] Map durability: VOLATILE=2, TRANSIENT_LOCAL=1
+- [ ] Map history: KEEP_LAST=1, KEEP_ALL=2
+- [ ] Verify QoS string format: `reliability:durability:history,depth:deadline:lifespan:liveliness,lease:avoid_ros_namespace_conventions`
+
+**Passing Criteria**:
+- [ ] `ros2 topic list` shows nano-ros publishers with correct names
+- [ ] `ros2 topic info <topic> -v` shows correct QoS settings
+- [ ] `ros2 node list` shows nano-ros nodes
+- [ ] `ros2 node info <node>` shows correct publishers/subscribers
+- [ ] Bidirectional pub/sub works at all QoS combinations
+- [ ] Services work bidirectionally
+- [ ] Discovery is reliable (no missing nodes/topics)
+
+---
+
+### C.7 End-to-End Interop Test Suite (HIGH)
+
+**Problem**: Need automated tests to catch protocol regressions.
+
+**Tasks**:
+- [ ] Create `tests/ros2-interop/` test directory
+- [ ] Add test script `run-interop-tests.sh` that:
+  - Starts zenohd router
+  - Launches nano-ros publisher, verifies ROS 2 subscriber receives
+  - Launches ROS 2 publisher, verifies nano-ros subscriber receives
+  - Tests service call in both directions
+  - Reports pass/fail for each test case
+- [ ] Add CI job to run interop tests (requires ROS 2 + rmw_zenoh in CI)
+- [ ] Create test fixtures for common message types (Int32, String, custom)
+- [ ] Add latency and throughput benchmarks
+
+**Test Cases**:
+```
+pub-sub/nano-to-ros2-int32
+pub-sub/nano-to-ros2-string
+pub-sub/nano-to-ros2-custom-msg
+pub-sub/ros2-to-nano-int32
+pub-sub/ros2-to-nano-string
+pub-sub/ros2-to-nano-custom-msg
+service/nano-server-ros2-client
+service/ros2-server-nano-client
+discovery/nano-node-visible-to-ros2
+discovery/nano-pub-visible-to-ros2
+discovery/nano-sub-visible-to-ros2
+qos/reliable-to-reliable
+qos/best-effort-to-best-effort
+qos/reliable-to-best-effort (should work)
+qos/best-effort-to-reliable (should fail gracefully)
+```
+
+**Passing Criteria**:
+- [ ] All test cases pass consistently
+- [ ] Tests complete within reasonable timeout (30s per test)
+- [ ] CI catches protocol regressions before merge
+
+---
+
 ## Test Matrix
 
 ### Protocol Tests
@@ -662,6 +790,33 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 | nano-ros client calls ROS 2 action server       | ⬜     |
 | `ros2 param list` shows nano-ros parameters     | ⬜     |
 | `ros2 param get/set` works with nano-ros        | ⬜     |
+
+### MessageInfo / Attachment Tests
+
+| Test                                                  | Status |
+|-------------------------------------------------------|--------|
+| Attachment parsing extracts sequence_number correctly | ⬜     |
+| Attachment parsing extracts timestamp correctly       | ⬜     |
+| Attachment parsing extracts GID correctly             | ⬜     |
+| MessageInfo populated from nano-ros publisher         | ⬜     |
+| MessageInfo populated from ROS 2 publisher            | ⬜     |
+| Sequence numbers increment correctly per-publisher    | ⬜     |
+| GID is consistent across messages from same publisher | ⬜     |
+
+### Protocol Format Tests
+
+| Test                                                    | Status |
+|---------------------------------------------------------|--------|
+| Data keyexpr format matches rmw_zenoh                   | ⬜     |
+| Node liveliness token format correct                    | ⬜     |
+| Publisher liveliness token format correct               | ⬜     |
+| Subscriber liveliness token format correct              | ⬜     |
+| Service server liveliness token format correct          | ⬜     |
+| Service client liveliness token format correct          | ⬜     |
+| QoS string encoding matches rmw_zenoh                   | ⬜     |
+| ZenohId LSB-first hex encoding correct                  | ⬜     |
+| RMW attachment 33-byte format correct                   | ⬜     |
+| Service request/reply keyexpr format correct            | ⬜     |
 
 ### API Compatibility Tests
 
@@ -735,7 +890,13 @@ C.2 Parameter Services ──────┤
                              │
 C.3 Action Interop ──────────┤
                              │
-C.4 Type Hash ───────────────┘
+C.4 Type Hash ───────────────┤
+                             │
+C.5 MessageInfo/Attachment ──┼──→ Enables A.4 MessageInfo population
+                             │
+C.6 Protocol Verification ───┤
+                             │
+C.7 Interop Test Suite ──────┘──→ CI validation
 ```
 
 ---
