@@ -249,6 +249,72 @@ impl Ros2Liveliness {
         key
     }
 
+    /// Build a service server liveliness key expression
+    ///
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SS/%/%/<node_name>/<service>/<type>/<hash>/<qos>`
+    /// Note: type_hash already includes the `RIHS01_` prefix from generated code
+    pub fn service_server_keyexpr<const N: usize>(
+        domain_id: u32,
+        zid: &ShimZenohId,
+        node_name: &str,
+        service: &ServiceInfo,
+        qos: &QosSettings,
+    ) -> heapless::String<N> {
+        let mut key = heapless::String::new();
+        let mut zid_hex = [0u8; 32];
+        zid.to_hex_bytes(&mut zid_hex);
+        let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
+        let service_mangled = Self::mangle_topic_name::<64>(service.name);
+        let qos_string: heapless::String<32> = qos.to_qos_string();
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "@ros2_lv/{}/{}/0/11/SS/%/%/{}/{}/{}/{}/{}",
+                domain_id,
+                zid_str,
+                node_name,
+                service_mangled.as_str(),
+                service.type_name,
+                service.type_hash,
+                qos_string.as_str()
+            ),
+        );
+        key
+    }
+
+    /// Build a service client liveliness key expression
+    ///
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SC/%/%/<node_name>/<service>/<type>/<hash>/<qos>`
+    /// Note: type_hash already includes the `RIHS01_` prefix from generated code
+    pub fn service_client_keyexpr<const N: usize>(
+        domain_id: u32,
+        zid: &ShimZenohId,
+        node_name: &str,
+        service: &ServiceInfo,
+        qos: &QosSettings,
+    ) -> heapless::String<N> {
+        let mut key = heapless::String::new();
+        let mut zid_hex = [0u8; 32];
+        zid.to_hex_bytes(&mut zid_hex);
+        let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
+        let service_mangled = Self::mangle_topic_name::<64>(service.name);
+        let qos_string: heapless::String<32> = qos.to_qos_string();
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "@ros2_lv/{}/{}/0/11/SC/%/%/{}/{}/{}/{}/{}",
+                domain_id,
+                zid_str,
+                node_name,
+                service_mangled.as_str(),
+                service.type_name,
+                service.type_hash,
+                qos_string.as_str()
+            ),
+        );
+        key
+    }
+
     /// Mangle a topic name by replacing '/' with '%'
     fn mangle_topic_name<const N: usize>(topic: &str) -> heapless::String<N> {
         let mut mangled = heapless::String::new();
@@ -647,6 +713,8 @@ impl ShimSubscriber {
 
         // Generate the topic key with wildcard for type hash
         let key: heapless::String<256> = topic.to_key_wildcard();
+
+        #[cfg(feature = "std")]
         log::debug!("Subscriber data keyexpr: {}", key.as_str());
 
         // Create null-terminated keyexpr

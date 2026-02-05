@@ -810,6 +810,30 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 
         let server = self.session.create_service_server(&service_info)?;
 
+        // Declare service server liveliness token for ROS 2 discovery
+        // Services use RELIABLE QoS by default
+        let qos = QosSettings::RELIABLE;
+        let srv_keyexpr: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &service_info,
+            &qos,
+        );
+        #[cfg(feature = "log")]
+        log::debug!("Service server liveliness keyexpr: {}", srv_keyexpr);
+        // Create null-terminated keyexpr buffer for C API
+        let mut keyexpr_buf = [0u8; 257];
+        let bytes = srv_keyexpr.as_bytes();
+        keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
+        if let Ok(token) = self
+            .session
+            .declare_liveliness(&keyexpr_buf[..=bytes.len()])
+        {
+            // Silently ignore if token storage is full (MAX_TOKENS exceeded)
+            let _ = self._entity_tokens.push(token);
+        }
+
         // Store service name
         let mut name = heapless::String::new();
         let _ = name.push_str(service_name);
@@ -861,6 +885,30 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             .with_domain(self.domain_id);
 
         let client = self.session.create_service_client(&service_info)?;
+
+        // Declare service client liveliness token for ROS 2 discovery
+        // Services use RELIABLE QoS by default
+        let qos = QosSettings::RELIABLE;
+        let srv_keyexpr: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &service_info,
+            &qos,
+        );
+        #[cfg(feature = "log")]
+        log::debug!("Service client liveliness keyexpr: {}", srv_keyexpr);
+        // Create null-terminated keyexpr buffer for C API
+        let mut keyexpr_buf = [0u8; 257];
+        let bytes = srv_keyexpr.as_bytes();
+        keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
+        if let Ok(token) = self
+            .session
+            .declare_liveliness(&keyexpr_buf[..=bytes.len()])
+        {
+            // Silently ignore if token storage is full (MAX_TOKENS exceeded)
+            let _ = self._entity_tokens.push(token);
+        }
 
         // Store service name
         let mut name = heapless::String::new();
@@ -979,6 +1027,74 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| ConnectedNodeError::ActionServerCreationFailed)?;
 
+        // Declare liveliness tokens for all action server components
+        // Services use RELIABLE QoS, topics use BEST_EFFORT for action feedback/status
+        let service_qos = QosSettings::RELIABLE;
+        let topic_qos = QosSettings::BEST_EFFORT;
+
+        // Helper closure to declare liveliness token
+        let declare_liveliness =
+            |session: &mut <ZenohTransport as Transport>::Session,
+             tokens: &mut heapless::Vec<_, MAX_TOKENS>,
+             keyexpr: &heapless::String<256>| {
+                let mut keyexpr_buf = [0u8; 257];
+                let bytes = keyexpr.as_bytes();
+                keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
+                if let Ok(token) = session.declare_liveliness(&keyexpr_buf[..=bytes.len()]) {
+                    let _ = tokens.push(token);
+                }
+            };
+
+        // send_goal service server liveliness
+        let send_goal_lv: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &send_goal_info,
+            &service_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &send_goal_lv);
+
+        // cancel_goal service server liveliness
+        let cancel_goal_lv: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &cancel_goal_info,
+            &service_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &cancel_goal_lv);
+
+        // get_result service server liveliness
+        let get_result_lv: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &get_result_info,
+            &service_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &get_result_lv);
+
+        // feedback publisher liveliness
+        let feedback_lv: heapless::String<256> = Ros2Liveliness::publisher_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &feedback_topic,
+            &topic_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &feedback_lv);
+
+        // status publisher liveliness
+        let status_lv: heapless::String<256> = Ros2Liveliness::publisher_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &status_topic,
+            &topic_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &status_lv);
+
         Ok(ConnectedActionServer {
             send_goal_server,
             cancel_goal_server,
@@ -1093,6 +1209,74 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             .session
             .create_subscriber(&status_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| ConnectedNodeError::ActionClientCreationFailed)?;
+
+        // Declare liveliness tokens for all action client components
+        // Services use RELIABLE QoS, topics use BEST_EFFORT for action feedback/status
+        let service_qos = QosSettings::RELIABLE;
+        let topic_qos = QosSettings::BEST_EFFORT;
+
+        // Helper closure to declare liveliness token
+        let declare_liveliness =
+            |session: &mut <ZenohTransport as Transport>::Session,
+             tokens: &mut heapless::Vec<_, MAX_TOKENS>,
+             keyexpr: &heapless::String<256>| {
+                let mut keyexpr_buf = [0u8; 257];
+                let bytes = keyexpr.as_bytes();
+                keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
+                if let Ok(token) = session.declare_liveliness(&keyexpr_buf[..=bytes.len()]) {
+                    let _ = tokens.push(token);
+                }
+            };
+
+        // send_goal service client liveliness
+        let send_goal_lv: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &send_goal_info,
+            &service_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &send_goal_lv);
+
+        // cancel_goal service client liveliness
+        let cancel_goal_lv: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &cancel_goal_info,
+            &service_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &cancel_goal_lv);
+
+        // get_result service client liveliness
+        let get_result_lv: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &get_result_info,
+            &service_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &get_result_lv);
+
+        // feedback subscriber liveliness
+        let feedback_lv: heapless::String<256> = Ros2Liveliness::subscriber_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &feedback_topic,
+            &topic_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &feedback_lv);
+
+        // status subscriber liveliness
+        let status_lv: heapless::String<256> = Ros2Liveliness::subscriber_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.name,
+            &status_topic,
+            &topic_qos,
+        );
+        declare_liveliness(&mut self.session, &mut self._entity_tokens, &status_lv);
 
         Ok(ConnectedActionClient {
             send_goal_client,
@@ -1689,13 +1873,11 @@ impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         // Save current timeout, set new one, call, restore
         // Note: This is not ideal but ShimServiceClient doesn't expose get_timeout()
         // For a cleaner solution, we'd need to modify the transport layer
-        self.client.set_timeout(timeout_ms);
-        let result = self
-            .client
-            .call::<S>(request, &mut self.req_buffer, &mut self.reply_buffer)
-            .map_err(ConnectedNodeError::from);
         // Note: timeout is now permanently changed - caller should use set_timeout() to restore
-        result
+        self.client.set_timeout(timeout_ms);
+        self.client
+            .call::<S>(request, &mut self.req_buffer, &mut self.reply_buffer)
+            .map_err(ConnectedNodeError::from)
     }
 
     /// Call the service asynchronously, returning a Promise for the result.

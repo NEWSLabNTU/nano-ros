@@ -802,33 +802,86 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 
 ---
 
-### C.3 Action ROS 2 Interop (MEDIUM)
+### C.3 Action ROS 2 Interop (MEDIUM) - COMPLETE
 
 **Problem**: Actions work nano-ros ↔ nano-ros but not with ROS 2.
 
 **Tasks**:
-- [ ] Verify action key expression format matches rmw_zenoh
-- [ ] Add action liveliness tokens
-- [ ] Test with ROS 2 action client/server
+- [x] Verify action key expression format matches rmw_zenoh
+- [x] Add service server/client liveliness keyexpr functions to `Ros2Liveliness`
+- [x] Add liveliness tokens for service servers and clients in `create_service_sized()` and `create_client_sized()`
+- [x] Add liveliness tokens for action server components (3 SS + 2 MP)
+- [x] Add liveliness tokens for action client components (3 SC + 2 MS)
+- [ ] Test with ROS 2 action client/server (TODO: integration test)
+
+**Implementation Notes**:
+- `Ros2Liveliness::service_server_keyexpr()` - format: `@ros2_lv/<domain>/<zid>/0/11/SS/%/%/<node>/<service>/<type>/<hash>/<qos>`
+- `Ros2Liveliness::service_client_keyexpr()` - format: `@ros2_lv/<domain>/<zid>/0/11/SC/%/%/<node>/<service>/<type>/<hash>/<qos>`
+- Action server declares 5 liveliness tokens: send_goal (SS), cancel_goal (SS), get_result (SS), feedback (MP), status (MP)
+- Action client declares 5 liveliness tokens: send_goal (SC), cancel_goal (SC), get_result (SC), feedback (MS), status (MS)
+- Services use RELIABLE QoS by default
+- Action feedback/status topics use BEST_EFFORT QoS
 
 **Passing Criteria**:
-- [ ] `ros2 action list` shows nano-ros action servers
-- [ ] `ros2 action send_goal` invokes nano-ros action server
-- [ ] nano-ros action client can call ROS 2 action server
+- [x] Service servers declare SS liveliness tokens
+- [x] Service clients declare SC liveliness tokens
+- [x] Action servers declare all 5 component liveliness tokens
+- [x] Action clients declare all 5 component liveliness tokens
+- [ ] `ros2 action list` shows nano-ros action servers (TODO: integration test)
+- [ ] `ros2 action send_goal` invokes nano-ros action server (TODO: integration test)
+- [ ] nano-ros action client can call ROS 2 action server (TODO: integration test)
 
 ---
 
-### C.4 Type Hash for Iron+ (MEDIUM)
+### C.4 Type Hash for Iron+ (MEDIUM) - INVESTIGATION NEEDED
 
-**Problem**: Only Humble compatibility (uses `TypeHashNotSupported`).
+**Problem**: Only Humble compatibility (uses `TypeHashNotSupported` in data keyexpr and placeholder hash in liveliness tokens).
+
+**Current State**:
+- Data keyexpr: Uses `TypeHashNotSupported` (correct for Humble)
+- Liveliness tokens: Uses `RIHS01_<64 zeros>` placeholder
+- Generator at `colcon-nano-ros/packages/rosidl-codegen/src/generator.rs:628` uses placeholder
+
+**RIHS01 Format** (REP-2011):
+- Format: `RIHS01_<sha256_hex>`
+- SHA-256 computed from canonical type description in rosidl format
+- Requires normalized text representation of message structure including:
+  - Package name, message name
+  - Field names, types, and array bounds
+  - Nested message definitions (recursively)
+  - Constant values
+
+**Implementation Options**:
+
+1. **Extract from ament index** (Preferred for installed packages):
+   - ROS 2 type support packages generate type hash files
+   - Could read from `share/<pkg>/msg/<Msg>.idl.hash` or similar
+   - Benefits: Uses ROS 2's own hash computation
+   - Limitation: Only works for installed packages
+
+2. **Compute in code generator** (Required for custom packages):
+   - Add `sha2` crate dependency to rosidl-codegen
+   - Implement canonical type description builder
+   - Match ROS 2's `rosidl_generator_type_description` format exactly
+   - Complex due to nested type handling
+
+3. **Hybrid approach**:
+   - Use ament index hashes when available
+   - Fall back to computed hashes for custom packages
+   - Most robust but complex
 
 **Tasks**:
-- [ ] Compute RIHS01 type hashes in code generator
-- [ ] Support Iron/Jazzy/Rolling ROS 2 versions
+- [ ] Research exact canonical type description format in ROS 2
+- [ ] Determine if ament index provides type hashes
+- [ ] Add sha2 crate dependency if computing locally
+- [ ] Implement type description normalization
+- [ ] Compute SHA-256 hash
+- [ ] Test against ROS 2 Iron+ nodes
 
 **Passing Criteria**:
-- [ ] Generated types include correct RIHS01 hash
-- [ ] Interop works with ROS 2 Iron
+- [ ] Generated types include correct RIHS01 hash matching ROS 2
+- [ ] Interop works with ROS 2 Iron nodes (discovery + communication)
+- [ ] Unit tests verify hash matches ROS 2 output for std_msgs
 
 ---
 
