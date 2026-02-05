@@ -45,8 +45,8 @@ pub mod types;
 // Re-export main types
 pub use server::{LegacyParameterBuilder, MAX_PARAMETERS, ParameterServer};
 pub use typed::{
-    MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, ReadOnlyParameter,
-    UndeclaredParameters,
+    MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,
+    ReadOnlyParameter, UndeclaredParameters,
 };
 pub use types::{
     FloatingPointRange, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN,

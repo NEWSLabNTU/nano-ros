@@ -258,7 +258,7 @@ impl<T: ServiceIDL> ClientState<T> {
 
 ---
 
-### A.6 Timer API (MEDIUM)
+### A.6 Timer API (MEDIUM) - COMPLETE
 
 **Goal**: Match rclrs `Timer` method signatures (ownership follows rclc patterns).
 
@@ -281,20 +281,33 @@ impl TimerState {
 
 **Tasks**:
 - [x] ~~Add `Timer` type with `Arc` wrapping~~ **N/A for embedded** - keep `TimerHandle` with direct ownership
-- [ ] Add `Node::create_timer_repeating()` method
-- [ ] Add `Node::create_timer_oneshot()` method
-- [ ] Add `Timer::cancel()`, `reset()`, `period()`, `is_ready()` methods
-- [ ] Integrate timer callbacks with executor spin
+- [x] Add `Node::create_timer_repeating()` method
+- [x] Add `Node::create_timer_oneshot()` method
+- [x] Add `Timer::cancel()`, `reset()`, `period()`, `is_ready()` methods
+- [x] Integrate timer callbacks with executor spin
+- [x] Add `create_timer_inert()` for placeholder timers
+- [x] Add `create_timer_repeating_boxed()` and `create_timer_oneshot_boxed()` for closures (alloc)
+- [x] Add `time_until_next_call()`, `time_since_last_call()` helper methods
+
+**Implementation Notes**:
+- `TimerHandle` - lightweight index-based handle (no heap)
+- `TimerState` - internal timer state with period, mode, elapsed tracking
+- `TimerDuration` - millisecond-based duration for `no_std` compatibility
+- Timer modes: `Repeating`, `OneShot`, `Inert`
+- Function pointer callbacks (`TimerCallbackFn`) - no heap required
+- Boxed callbacks (`TimerCallback`) - requires `alloc` feature
+- `process_timers(delta_ms)` called in executor `spin_once()`
+- 8 unit tests covering timer state, modes, cancel/reset
 
 **Passing Criteria**:
-- [ ] Timer callback fires at specified period
-- [ ] `timer.cancel()` stops future callbacks
-- [ ] `timer.reset()` restarts the timer
-- [ ] One-shot timer fires exactly once
+- [x] Timer callback fires at specified period
+- [x] `timer.cancel()` stops future callbacks
+- [x] `timer.reset()` restarts the timer
+- [x] One-shot timer fires exactly once
 
 ---
 
-### A.7 Parameter API Enhancement (MEDIUM)
+### A.7 Parameter API Enhancement (MEDIUM) - COMPLETE
 
 **Goal**: Match rclrs `ParameterBuilder` and typed parameter patterns.
 
@@ -310,17 +323,33 @@ node.declare_parameter::<i64>("my_param")
 ```
 
 **Tasks**:
-- [ ] Add `ParameterBuilder<T>` with fluent API
-- [ ] Add `.default()`, `.range()`, `.description()`, `.constraints()` methods
-- [ ] Add terminal methods: `.mandatory()`, `.optional()`, `.read_only()`
-- [ ] Add `MandatoryParameter<T>`, `OptionalParameter<T>`, `ReadOnlyParameter<T>` types
-- [ ] Implement `get()` and `set()` methods on parameter types
+- [x] Add `ParameterBuilder<T>` with fluent API
+- [x] Add `.default()`, `.range()`, `.description()` methods
+- [x] Add `integer_range()` and `float_range()` for explicit range control
+- [x] Add ergonomic `range(0..=100)` using `RangeInclusive` (via `RangeConvertible` trait)
+- [x] Add terminal methods: `.mandatory()`, `.optional()`, `.read_only()`
+- [x] Add `MandatoryParameter<T>`, `OptionalParameter<T>`, `ReadOnlyParameter<T>` types
+- [x] Implement `get()` and `set()` methods on parameter types
+- [x] Add `UndeclaredParameters` for dynamic parameter access
+- [x] Add 14 unit tests for typed parameter API
+
+**Implementation Notes**:
+- `ParameterBuilder<T>` - fluent builder for typed parameters
+- `range(0..=100)` - ergonomic range constraint using `RangeInclusive`
+- `integer_range(min, max, step)` - explicit integer range with step control
+- `float_range(min, max, step)` - explicit float range with step control
+- `read_only()` - requires a default value, returns `ReadOnlyParameter<T>`
+- `RangeConvertible` trait - enables `range()` for i64 and f64 types
+- `UndeclaredParameters` - provides access to parameters without explicit declaration
 
 **Passing Criteria**:
-- [ ] `node.declare_parameter::<i64>("p").default(0).mandatory()` compiles
-- [ ] `param.get()` returns current value
-- [ ] `param.set(value)` updates value (except ReadOnly)
-- [ ] Range constraints are enforced on set
+- [x] `ParameterBuilder::<i64>::new(server, "p").default(0).mandatory()` compiles
+- [x] `param.get()` returns current value
+- [x] `param.set(value)` updates value (except ReadOnly)
+- [x] Range constraints are enforced on set
+- [x] `range(0..=100)` works for i64 parameters
+- [x] `range(0.0..=1.0)` works for f64 parameters
+- [x] 14 unit tests passing
 
 ---
 

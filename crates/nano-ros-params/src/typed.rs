@@ -43,6 +43,40 @@ impl From<SetParameterResult> for ParameterError {
     }
 }
 
+/// Trait for types that can be converted to a parameter range from `RangeInclusive`
+pub trait RangeConvertible: ParameterVariant + Clone {
+    /// Convert a `RangeInclusive<Self>` to a `ParameterRange`
+    fn to_parameter_range(
+        range: core::ops::RangeInclusive<Self>,
+    ) -> Result<ParameterRange, ParameterError>;
+}
+
+impl RangeConvertible for i64 {
+    fn to_parameter_range(
+        range: core::ops::RangeInclusive<Self>,
+    ) -> Result<ParameterRange, ParameterError> {
+        Ok(ParameterRange::Integer(crate::IntegerRange::new(
+            *range.start(),
+            *range.end(),
+            1, // Default step of 1
+        )))
+    }
+}
+
+impl RangeConvertible for f64 {
+    fn to_parameter_range(
+        range: core::ops::RangeInclusive<Self>,
+    ) -> Result<ParameterRange, ParameterError> {
+        Ok(ParameterRange::FloatingPoint(
+            crate::FloatingPointRange::new(
+                *range.start(),
+                *range.end(),
+                0.0, // No step constraint (any value in range is valid)
+            ),
+        ))
+    }
+}
+
 /// Builder for declaring a typed parameter
 pub struct ParameterBuilder<'a, T: ParameterVariant> {
     /// Reference to the parameter server
@@ -109,10 +143,51 @@ impl<'a, T: ParameterVariant> ParameterBuilder<'a, T> {
         Ok(self)
     }
 
-    /// Mark the parameter as read-only
-    pub fn read_only(mut self) -> Self {
-        self.read_only = true;
-        self
+    /// Set range constraints using an inclusive range
+    ///
+    /// This is a convenience method that works with `RangeInclusive`:
+    /// - For `i64` parameters: `range(0..=100)` sets an integer range with step 1
+    /// - For `f64` parameters: `range(0.0..=1.0)` sets a floating point range with step 0.0
+    ///
+    /// For more control (e.g., custom step), use `integer_range()` or `float_range()`.
+    pub fn range(mut self, range: core::ops::RangeInclusive<T>) -> Result<Self, ParameterError>
+    where
+        T: RangeConvertible,
+    {
+        self.range = Some(T::to_parameter_range(range)?);
+        Ok(self)
+    }
+
+    /// Declare a read-only parameter
+    ///
+    /// Read-only parameters cannot be changed after declaration.
+    /// A default value must be provided.
+    pub fn read_only(self) -> Result<ReadOnlyParameter<'a, T>, ParameterError> {
+        // Must have a default value for read-only parameters
+        let default_value = self
+            .default
+            .as_ref()
+            .ok_or(ParameterError::NotFound)?
+            .clone();
+
+        let mut descriptor = ParameterDescriptor::new(self.name, T::parameter_type())
+            .ok_or(ParameterError::StorageFull)?;
+        descriptor.description.clear();
+        if let Some(desc) = self.description {
+            descriptor
+                .description
+                .push_str(desc)
+                .map_err(|_| ParameterError::StringConversion)?;
+        }
+        descriptor.read_only = true;
+        descriptor.range = self.range.unwrap_or_default();
+
+        let param_value = default_value.to_parameter_value();
+
+        self.server
+            .declare_parameter(descriptor, Some(&param_value))?;
+
+        Ok(ReadOnlyParameter::new(self.server, self.name))
     }
 
     /// Declare a mandatory parameter
@@ -248,7 +323,6 @@ pub struct ReadOnlyParameter<'a, T: ParameterVariant> {
 }
 
 impl<'a, T: ParameterVariant> ReadOnlyParameter<'a, T> {
-    #[allow(dead_code)]
     pub(crate) fn new(server: &'a mut ParameterServer, name: &'a str) -> Self {
         let mut n = String::new();
         n.push_str(name).unwrap();
@@ -299,5 +373,192 @@ impl<'a> UndeclaredParameters<'a> {
     /// Try to get the value of an undeclared string parameter
     pub fn get_string(&self, name: &str) -> Option<&str> {
         self.server.get_string(name)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mandatory_parameter_with_default() {
+        let mut server = ParameterServer::new();
+        let param = ParameterBuilder::<i64>::new(&mut server, "test_param")
+            .default(42)
+            .description("A test parameter")
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        assert_eq!(param.get(), 42);
+    }
+
+    #[test]
+    fn test_mandatory_parameter_set() {
+        let mut server = ParameterServer::new();
+        let mut param = ParameterBuilder::<i64>::new(&mut server, "test_param")
+            .default(0)
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        param.set(100).expect("Failed to set parameter");
+        assert_eq!(param.get(), 100);
+    }
+
+    #[test]
+    fn test_optional_parameter_none() {
+        let mut server = ParameterServer::new();
+        let param = ParameterBuilder::<i64>::new(&mut server, "test_param")
+            .optional()
+            .expect("Failed to declare parameter");
+
+        assert_eq!(param.get(), None);
+    }
+
+    #[test]
+    fn test_optional_parameter_with_default() {
+        let mut server = ParameterServer::new();
+        let param = ParameterBuilder::<i64>::new(&mut server, "test_param")
+            .default(42)
+            .optional()
+            .expect("Failed to declare parameter");
+
+        assert_eq!(param.get(), Some(42));
+    }
+
+    #[test]
+    fn test_optional_parameter_set() {
+        let mut server = ParameterServer::new();
+        let mut param = ParameterBuilder::<i64>::new(&mut server, "test_param")
+            .optional()
+            .expect("Failed to declare parameter");
+
+        param.set(Some(100)).expect("Failed to set parameter");
+        assert_eq!(param.get(), Some(100));
+    }
+
+    #[test]
+    fn test_read_only_parameter() {
+        let mut server = ParameterServer::new();
+        let param = ParameterBuilder::<i64>::new(&mut server, "readonly_param")
+            .default(42)
+            .description("A read-only parameter")
+            .read_only()
+            .expect("Failed to declare parameter");
+
+        assert_eq!(param.get(), 42);
+    }
+
+    #[test]
+    fn test_read_only_parameter_requires_default() {
+        let mut server = ParameterServer::new();
+        let result = ParameterBuilder::<i64>::new(&mut server, "readonly_param").read_only();
+
+        assert_eq!(result.err(), Some(ParameterError::NotFound));
+    }
+
+    #[test]
+    fn test_integer_range_constraint() {
+        let mut server = ParameterServer::new();
+        let mut param = ParameterBuilder::<i64>::new(&mut server, "ranged_param")
+            .default(50)
+            .integer_range(0, 100, 1)
+            .expect("Failed to set range")
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        // Valid value within range
+        param.set(75).expect("Failed to set valid value");
+        assert_eq!(param.get(), 75);
+    }
+
+    #[test]
+    fn test_float_range_constraint() {
+        let mut server = ParameterServer::new();
+        let mut param = ParameterBuilder::<f64>::new(&mut server, "float_param")
+            .default(0.5)
+            .float_range(0.0, 1.0, 0.0)
+            .expect("Failed to set range")
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        // Valid value within range
+        param.set(0.75).expect("Failed to set valid value");
+        assert_eq!(param.get(), 0.75);
+    }
+
+    #[test]
+    fn test_range_convenience_integer() {
+        let mut server = ParameterServer::new();
+        let param = ParameterBuilder::<i64>::new(&mut server, "ranged_param")
+            .default(50)
+            .range(0..=100)
+            .expect("Failed to set range")
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        assert_eq!(param.get(), 50);
+    }
+
+    #[test]
+    fn test_range_convenience_float() {
+        let mut server = ParameterServer::new();
+        let param = ParameterBuilder::<f64>::new(&mut server, "float_param")
+            .default(0.5)
+            .range(0.0..=1.0)
+            .expect("Failed to set range")
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        assert_eq!(param.get(), 0.5);
+    }
+
+    #[test]
+    fn test_parameter_description() {
+        let mut server = ParameterServer::new();
+        let _param = ParameterBuilder::<i64>::new(&mut server, "described_param")
+            .default(42)
+            .description("This is a test description")
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        // Verify description was set in the server
+        let desc = server.get_descriptor("described_param");
+        assert!(desc.is_some());
+        assert_eq!(
+            desc.unwrap().description.as_str(),
+            "This is a test description"
+        );
+    }
+
+    #[test]
+    fn test_bool_parameter() {
+        let mut server = ParameterServer::new();
+        let mut param = ParameterBuilder::<bool>::new(&mut server, "bool_param")
+            .default(false)
+            .mandatory()
+            .expect("Failed to declare parameter");
+
+        assert!(!param.get());
+        param.set(true).expect("Failed to set parameter");
+        assert!(param.get());
+    }
+
+    #[test]
+    fn test_undeclared_parameters() {
+        use crate::ParameterValue;
+
+        let mut server = ParameterServer::new();
+
+        // Set some values using set_or_declare (simulating external parameter loading)
+        server.set_or_declare("flag", ParameterValue::Bool(true));
+        server.set_or_declare("count", ParameterValue::Integer(42));
+        server.set_or_declare("ratio", ParameterValue::Double(0.5));
+
+        let undeclared = UndeclaredParameters::new(&mut server);
+
+        assert_eq!(undeclared.get_bool("flag"), Some(true));
+        assert_eq!(undeclared.get_integer("count"), Some(42));
+        assert_eq!(undeclared.get_double("ratio"), Some(0.5));
+        assert_eq!(undeclared.get_string("nonexistent"), None);
     }
 }
