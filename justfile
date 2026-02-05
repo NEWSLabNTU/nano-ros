@@ -727,6 +727,14 @@ test-zephyr-rs: test-rust-zephyr
 test-rust-zephyr-to-native:
     cargo test -p nano-ros-tests --test zephyr test_zephyr_to_native_e2e -- --nocapture
 
+# Run specific native to Zephyr E2E test (native talker → Zephyr listener)
+test-rust-native-to-zephyr:
+    cargo test -p nano-ros-tests --test zephyr test_native_to_zephyr_e2e -- --nocapture
+
+# Run bidirectional Native ↔ Zephyr E2E test
+test-rust-bidirectional-zephyr:
+    cargo test -p nano-ros-tests --test zephyr test_bidirectional_native_zephyr_e2e -- --nocapture
+
 # Run Rust Zephyr action tests only (requires west workspace + bridge network)
 test-rust-zephyr-actions:
     cargo test -p nano-ros-tests --test zephyr test_zephyr_action -- --nocapture

@@ -50,28 +50,32 @@ This document provides a comprehensive overview of test coverage across all plat
 
 | Test Suite         | File        | Tests | Coverage                |
 |--------------------|-------------|-------|-------------------------|
-| Zephyr Integration | `zephyr.rs` | 12    | Build, smoke, E2E tests |
+| Zephyr Integration | `zephyr.rs` | 14    | Build, smoke, E2E tests |
 
 **Test Breakdown:**
-| Test                                 | Type      | Description              |
-|--------------------------------------|-----------|--------------------------|
-| `test_zephyr_availability_checks`    | Detection | Verify workspace/network |
-| `test_zephyr_talker_build`           | Build     | Build rs-talker          |
-| `test_zephyr_listener_build`         | Build     | Build rs-listener        |
-| `test_zephyr_talker_smoke`           | Smoke     | Boot without crash       |
-| `test_zephyr_listener_smoke`         | Smoke     | Boot without crash       |
-| `test_zephyr_talker_to_listener_e2e` | E2E       | Zephyr ↔ Zephyr          |
-| `test_zephyr_to_native_e2e`          | E2E       | Zephyr → Native          |
-| `test_zephyr_action_server_build`    | Build     | Build action server      |
-| `test_zephyr_action_client_build`    | Build     | Build action client      |
-| `test_zephyr_action_server_smoke`    | Smoke     | Boot without crash       |
-| `test_zephyr_action_client_smoke`    | Smoke     | Boot without crash       |
-| `test_zephyr_action_e2e`             | E2E       | Action communication     |
+| Test                                   | Type      | Description                |
+|----------------------------------------|-----------|----------------------------|
+| `test_zephyr_availability_checks`      | Detection | Verify workspace/network   |
+| `test_zephyr_talker_build`             | Build     | Build rs-talker            |
+| `test_zephyr_listener_build`           | Build     | Build rs-listener          |
+| `test_zephyr_talker_smoke`             | Smoke     | Boot without crash         |
+| `test_zephyr_listener_smoke`           | Smoke     | Boot without crash         |
+| `test_zephyr_talker_to_listener_e2e`   | E2E       | Zephyr ↔ Zephyr            |
+| `test_zephyr_to_native_e2e`            | E2E       | Zephyr → Native            |
+| `test_native_to_zephyr_e2e`            | E2E       | Native → Zephyr            |
+| `test_bidirectional_native_zephyr_e2e` | E2E       | Both directions at once    |
+| `test_zephyr_action_server_build`      | Build     | Build action server        |
+| `test_zephyr_action_client_build`      | Build     | Build action client        |
+| `test_zephyr_action_server_smoke`      | Smoke     | Boot without crash         |
+| `test_zephyr_action_client_smoke`      | Smoke     | Boot without crash         |
+| `test_zephyr_action_e2e`               | E2E       | Action communication       |
 
 **Justfile Recipes:**
 - `just test-rust-zephyr` - All Zephyr tests
 - `just test-rust-zephyr-full` - Rebuild + test
-- `just test-rust-zephyr-to-native` - Specific E2E test
+- `just test-rust-zephyr-to-native` - Zephyr talker → Native listener
+- `just test-rust-native-to-zephyr` - Native talker → Zephyr listener
+- `just test-rust-bidirectional-zephyr` - Both directions simultaneously
 - `just test-rust-zephyr-actions` - Action tests only
 - `just test-zephyr-c` - C examples on Zephyr
 
@@ -193,13 +197,13 @@ This document provides a comprehensive overview of test coverage across all plat
 
 **Run:** `just test-rust-services`
 
-#### 2. Native → Zephyr E2E Test
-```
-zephyr.rs (ADD)
-- test_native_to_zephyr_e2e  # Native talker → Zephyr listener
-```
+#### 2. Native → Zephyr E2E Test ✓ COMPLETE
 
-**Why:** Only Zephyr→Native is tested, not the reverse direction.
+Implemented in Phase 17.2:
+- `test_native_to_zephyr_e2e` - Native talker → Zephyr listener
+- `test_bidirectional_native_zephyr_e2e` - Both directions simultaneously
+
+**Run:** `just test-rust-native-to-zephyr` or `just test-rust-bidirectional-zephyr`
 
 #### 3. Custom Message Tests
 ```
@@ -315,7 +319,7 @@ tests/platform_integration.rs (NEW)
 | Area | Current | Missing | Priority |
 |------|---------|---------|----------|
 | **Services** | 8 tests (native) | Zephyr, ROS 2 interop | High |
-| **Native→Zephyr** | 0 tests | E2E test | High |
+| **Native↔Zephyr** | 2 tests ✓ | Cross-platform services | Complete (pub/sub) |
 | **Custom Messages** | 0 tests | Serialization, pub/sub | High |
 | **QEMU Communication** | 0 tests | BSP E2E | High |
 | **C++ Bindings** | 0 tests | Full suite | Medium |
