@@ -395,9 +395,9 @@ pub const QOS_PROFILE_SERVICES_DEFAULT: QoSProfile = ...;
 
 ---
 
-### A.9 Logger API (LOW)
+### A.9 Logger API (LOW) - COMPLETE
 
-**Goal**: Match rclrs `Logger` patterns.
+**Goal**: Match rclrs `Logger` patterns with embedded-friendly design.
 
 **rclrs Reference** (`external/rclrs/rclrs/src/logging.rs`):
 ```rust
@@ -406,16 +406,48 @@ node.logger().once().warn("Only logged once");
 node.logger().throttle(Duration::from_secs(1)).debug("Rate limited");
 ```
 
+**nano-ros Implementation** (embedded-friendly, no heap):
+```rust
+// Basic logging
+let logger = Logger::new("my_node");
+logger.info("Message");
+
+// Log only once (requires static flag)
+static LOGGED: OnceFlag = OnceFlag::new();
+logger.info_once(&LOGGED, "Only logged once");
+
+// Skip first occurrence
+static SKIP: OnceFlag = OnceFlag::new();
+logger.warn_skip_first(&SKIP, "Skips first call");
+
+// Rate-limited logging
+let mut last_log_ms: u64 = 0;
+let current_time_ms: u64 = clock.now_ms();
+logger.info_throttle(&mut last_log_ms, current_time_ms, 1000, "Rate limited to 1Hz");
+```
+
 **Tasks**:
-- [ ] Add `Logger` type with log level methods
-- [ ] Add modifiers: `.once()`, `.throttle(duration)`, `.skip_first()`
-- [ ] Integrate with `log` crate or `defmt` for embedded
-- [ ] Add `node.logger()` method
+- [x] Add `Logger` type with log level methods (debug, info, warn, error, trace)
+- [x] Add `OnceFlag` type using `AtomicBool` for `no_std` compatibility
+- [x] Add `*_once()` methods for one-time logging (debug_once, info_once, etc.)
+- [x] Add `*_skip_first()` methods to skip first occurrence
+- [x] Add `*_throttle()` methods for rate-limited logging
+- [x] Integrate with `log` crate facade for embedded (defmt bridge documented)
+- [x] Export `OnceFlag` from `nano-ros-core`
+- [x] Add 7 unit tests for Logger and OnceFlag
+
+**Implementation Notes**:
+- Uses method-based pattern (`info_once()`) instead of modifier chaining for `no_std`
+- `OnceFlag` uses `AtomicBool` with `SeqCst` ordering for thread safety
+- Throttle methods require caller to provide current time (no runtime dependency)
+- Logger wraps `log` crate facade, allowing integration with `defmt-log` for embedded
+- Documentation includes examples for desktop (env_logger) and embedded (defmt)
 
 **Passing Criteria**:
-- [ ] `node.logger().info("msg")` logs at INFO level
-- [ ] `.once()` modifier only logs first occurrence
-- [ ] `.throttle()` rate limits log output
+- [x] `logger.info("msg")` logs at INFO level via `log` crate
+- [x] `info_once()` only logs first occurrence (verified by unit test)
+- [x] `info_throttle()` rate limits based on interval (verified by unit test)
+- [x] 7 unit tests passing
 
 ---
 

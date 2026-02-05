@@ -31,7 +31,7 @@ pub use action::{
 };
 pub use clock::{Clock, ClockType};
 pub use error::Error;
-pub use logger::Logger;
+pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};
 pub use time::{Duration, Time};
