@@ -88,6 +88,11 @@ unsafe extern "C" {
         callback: ShimCallback,
         ctx: *mut c_void,
     ) -> i32;
+    pub fn zenoh_shim_declare_subscriber_with_attachment(
+        keyexpr: *const core::ffi::c_char,
+        callback: ShimCallbackWithAttachment,
+        ctx: *mut c_void,
+    ) -> i32;
     pub fn zenoh_shim_undeclare_subscriber(handle: i32) -> i32;
 
     // Liveliness

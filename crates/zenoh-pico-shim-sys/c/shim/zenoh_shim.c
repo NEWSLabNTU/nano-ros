@@ -32,12 +32,16 @@ extern void smoltcp_cleanup(void);
 // Internal Data Structures
 // ============================================================================
 
-// Subscriber entry with callback
+// Subscriber entry with callback (supports both legacy and attachment callbacks)
 typedef struct {
     z_owned_subscriber_t subscriber;
-    ShimCallback callback;
+    union {
+        ShimCallback callback;                     // Legacy callback (payload only)
+        ShimCallbackWithAttachment callback_ext;   // Extended callback (with attachment)
+    };
     void *ctx;
     bool active;
+    bool with_attachment;  // true = use callback_ext, false = use callback
 } subscriber_entry_t;
 
 // Publisher entry
@@ -158,21 +162,54 @@ static void shim_sample_handler(z_loaned_sample_t *sample, void *arg) {
     }
 
     subscriber_entry_t *entry = &g_subscribers[idx];
-    if (!entry->active || entry->callback == NULL) {
+    if (!entry->active) {
         return;
     }
 
     // Get payload
     const z_loaned_bytes_t *payload = z_sample_payload(sample);
 
-    // Copy bytes to slice
-    z_owned_slice_t slice;
-    if (z_bytes_to_slice(payload, &slice) == 0) {
-        const uint8_t *data = z_slice_data(z_slice_loan(&slice));
-        size_t len = z_slice_len(z_slice_loan(&slice));
-        entry->callback(data, len, entry->ctx);
-        z_slice_drop(z_slice_move(&slice));
+    // Copy payload bytes to slice
+    z_owned_slice_t payload_slice;
+    if (z_bytes_to_slice(payload, &payload_slice) != 0) {
+        return;  // Failed to get payload
     }
+
+    const uint8_t *data = z_slice_data(z_slice_loan(&payload_slice));
+    size_t len = z_slice_len(z_slice_loan(&payload_slice));
+
+    if (entry->with_attachment) {
+        // Extended callback with attachment
+        if (entry->callback_ext == NULL) {
+            z_slice_drop(z_slice_move(&payload_slice));
+            return;
+        }
+
+        // Get attachment
+        const z_loaned_bytes_t *attachment = z_sample_attachment(sample);
+        if (attachment != NULL) {
+            z_owned_slice_t attachment_slice;
+            if (z_bytes_to_slice(attachment, &attachment_slice) == 0) {
+                const uint8_t *att_data = z_slice_data(z_slice_loan(&attachment_slice));
+                size_t att_len = z_slice_len(z_slice_loan(&attachment_slice));
+                entry->callback_ext(data, len, att_data, att_len, entry->ctx);
+                z_slice_drop(z_slice_move(&attachment_slice));
+            } else {
+                // Attachment exists but failed to convert - call with NULL attachment
+                entry->callback_ext(data, len, NULL, 0, entry->ctx);
+            }
+        } else {
+            // No attachment
+            entry->callback_ext(data, len, NULL, 0, entry->ctx);
+        }
+    } else {
+        // Legacy callback (payload only)
+        if (entry->callback != NULL) {
+            entry->callback(data, len, entry->ctx);
+        }
+    }
+
+    z_slice_drop(z_slice_move(&payload_slice));
 }
 
 // ============================================================================
@@ -400,6 +437,7 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
 
     g_subscribers[idx].callback = callback;
     g_subscribers[idx].ctx = ctx;
+    g_subscribers[idx].with_attachment = false;  // Legacy mode
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -425,6 +463,53 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
     return idx;
 }
 
+int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
+                                                       ShimCallbackWithAttachment callback,
+                                                       void *ctx) {
+    if (!g_session_open) {
+        return ZENOH_SHIM_ERR_SESSION;
+    }
+
+    // Find free slot
+    int idx = -1;
+    for (int i = 0; i < ZENOH_SHIM_MAX_SUBSCRIBERS; i++) {
+        if (!g_subscribers[i].active) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0) {
+        return ZENOH_SHIM_ERR_FULL;
+    }
+
+    g_subscribers[idx].callback_ext = callback;
+    g_subscribers[idx].ctx = ctx;
+    g_subscribers[idx].with_attachment = true;  // Extended mode with attachment
+
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        g_subscribers[idx].callback_ext = NULL;
+        g_subscribers[idx].ctx = NULL;
+        return ZENOH_SHIM_ERR_KEYEXPR;
+    }
+
+    // Create closure for callback, passing index as context
+    z_owned_closure_sample_t closure;
+    z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
+
+    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    if (sub_ret < 0) {
+        printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
+        g_subscribers[idx].callback_ext = NULL;
+        g_subscribers[idx].ctx = NULL;
+        return ZENOH_SHIM_ERR_GENERIC;
+    }
+
+    g_subscribers[idx].active = true;
+    return idx;
+}
+
 int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
     if (handle < 0 || handle >= ZENOH_SHIM_MAX_SUBSCRIBERS || !g_subscribers[handle].active) {
         return ZENOH_SHIM_ERR_INVALID;
@@ -434,6 +519,7 @@ int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
     g_subscribers[handle].active = false;
     g_subscribers[handle].callback = NULL;
     g_subscribers[handle].ctx = NULL;
+    g_subscribers[handle].with_attachment = false;
     return ZENOH_SHIM_OK;
 }
 

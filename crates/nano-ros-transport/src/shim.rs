@@ -150,6 +150,76 @@ impl Default for RmwAttachment {
     }
 }
 
+impl RmwAttachment {
+    /// Deserialize attachment from raw bytes received from RMW
+    ///
+    /// Format:
+    /// - int64: sequence_number (little-endian, 8 bytes)
+    /// - int64: timestamp (little-endian, 8 bytes)
+    /// - VLE length (1 byte for length 16)
+    /// - 16 x uint8: GID
+    ///
+    /// Returns None if the buffer is too small or malformed.
+    pub fn deserialize(buf: &[u8]) -> Option<Self> {
+        if buf.len() < RMW_ATTACHMENT_SIZE {
+            return None;
+        }
+
+        // Parse sequence number (little-endian)
+        let sequence_number = i64::from_le_bytes([
+            buf[0], buf[1], buf[2], buf[3], buf[4], buf[5], buf[6], buf[7],
+        ]);
+
+        // Parse timestamp (little-endian)
+        let timestamp = i64::from_le_bytes([
+            buf[8], buf[9], buf[10], buf[11], buf[12], buf[13], buf[14], buf[15],
+        ]);
+
+        // Parse VLE length (should be 16)
+        let gid_len = buf[16] as usize;
+        if gid_len != RMW_GID_SIZE {
+            return None;
+        }
+
+        // Parse GID
+        let mut rmw_gid = [0u8; RMW_GID_SIZE];
+        rmw_gid.copy_from_slice(&buf[17..33]);
+
+        Some(Self {
+            sequence_number,
+            timestamp,
+            rmw_gid,
+        })
+    }
+}
+
+/// Message information parsed from RMW attachment
+///
+/// This struct contains metadata about a received message, extracted
+/// from the rmw_zenoh attachment.
+#[derive(Debug, Clone, Copy)]
+pub struct MessageInfo {
+    /// Message sequence number from the publisher
+    pub sequence_number: i64,
+    /// Timestamp in nanoseconds (source time)
+    pub timestamp_ns: i64,
+    /// Publisher's Global Identifier
+    pub publisher_gid: [u8; RMW_GID_SIZE],
+}
+
+impl MessageInfo {
+    /// Parse MessageInfo from raw attachment data
+    ///
+    /// Returns None if no attachment or if parsing fails.
+    pub fn from_attachment(attachment: &[u8]) -> Option<Self> {
+        RmwAttachment::deserialize(attachment).map(|att| Self {
+            sequence_number: att.sequence_number,
+            timestamp_ns: att.timestamp,
+            publisher_gid: att.rmw_gid,
+        })
+    }
+}
+
 // ============================================================================
 // Ros2Liveliness Helper
 // ============================================================================
@@ -634,23 +704,30 @@ impl Publisher for ShimPublisher {
 
 /// Shared buffer for subscriber callbacks
 ///
-/// This buffer stores the most recent message received by the subscriber.
+/// This buffer stores the most recent message received by the subscriber,
+/// including the RMW attachment data for MessageInfo support.
 /// The callback writes to this buffer, and `try_recv_raw` reads from it.
 struct SubscriberBuffer {
-    /// Buffer for received data (statically allocated)
+    /// Buffer for received payload data (statically allocated)
     data: [u8; 1024],
+    /// Buffer for received attachment data (RMW attachment is 33 bytes)
+    attachment: [u8; RMW_ATTACHMENT_SIZE],
     /// Flag indicating new data is available
     has_data: AtomicBool,
-    /// Length of valid data
+    /// Length of valid payload data
     len: AtomicUsize,
+    /// Length of valid attachment data
+    attachment_len: AtomicUsize,
 }
 
 impl SubscriberBuffer {
     const fn new() -> Self {
         Self {
             data: [0u8; 1024],
+            attachment: [0u8; RMW_ATTACHMENT_SIZE],
             has_data: AtomicBool::new(false),
             len: AtomicUsize::new(0),
+            attachment_len: AtomicUsize::new(0),
         }
     }
 }
@@ -673,8 +750,14 @@ static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; 8] = [
 /// Next available buffer index
 static NEXT_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
 
-/// Callback function invoked by the C shim when data arrives
-extern "C" fn subscriber_callback(data: *const u8, len: usize, ctx: *mut core::ffi::c_void) {
+/// Callback function invoked by the C shim when data arrives (with attachment)
+extern "C" fn subscriber_callback_with_attachment(
+    data: *const u8,
+    len: usize,
+    attachment: *const u8,
+    attachment_len: usize,
+    ctx: *mut core::ffi::c_void,
+) {
     let buffer_index = ctx as usize;
     if buffer_index >= 8 {
         return;
@@ -683,9 +766,25 @@ extern "C" fn subscriber_callback(data: *const u8, len: usize, ctx: *mut core::f
     // Safety: We control access to SUBSCRIBER_BUFFERS and the callback is single-threaded
     unsafe {
         let buffer = &mut SUBSCRIBER_BUFFERS[buffer_index];
+
+        // Copy payload data
         let copy_len = len.min(buffer.data.len());
         core::ptr::copy_nonoverlapping(data, buffer.data.as_mut_ptr(), copy_len);
         buffer.len.store(copy_len, Ordering::Release);
+
+        // Copy attachment data if present
+        if !attachment.is_null() && attachment_len > 0 {
+            let att_copy_len = attachment_len.min(buffer.attachment.len());
+            core::ptr::copy_nonoverlapping(
+                attachment,
+                buffer.attachment.as_mut_ptr(),
+                att_copy_len,
+            );
+            buffer.attachment_len.store(att_copy_len, Ordering::Release);
+        } else {
+            buffer.attachment_len.store(0, Ordering::Release);
+        }
+
         buffer.has_data.store(true, Ordering::Release);
     }
 }
@@ -726,12 +825,12 @@ impl ShimSubscriber {
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
 
-        // Create subscriber with callback
+        // Create subscriber with callback (using attachment-enabled callback for RMW support)
         // Safety: Similar to publisher, we transmute lifetime for storage
         let subscriber = unsafe {
-            let sub_result = context.declare_subscriber_raw(
+            let sub_result = context.declare_subscriber_with_attachment_raw(
                 &keyexpr_buf,
-                subscriber_callback,
+                subscriber_callback_with_attachment,
                 buffer_index as *mut core::ffi::c_void,
             );
             match sub_result {
@@ -748,6 +847,57 @@ impl ShimSubscriber {
             buffer_index,
             _phantom: PhantomData,
         })
+    }
+}
+
+impl ShimSubscriber {
+    /// Try to receive raw data along with message info from attachment
+    ///
+    /// Returns `Ok(Some((len, info)))` if data is available, where:
+    /// - `len` is the number of bytes written to the buffer
+    /// - `info` is the parsed message info (if attachment was present)
+    ///
+    /// Returns `Ok(None)` if no data is available.
+    pub fn try_recv_with_info(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
+        // Safety: We own this buffer index and access is atomic
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+
+        if !buffer.has_data.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+
+        let len = buffer.len.load(Ordering::Acquire);
+        if len > buf.len() {
+            return Err(TransportError::BufferTooSmall);
+        }
+
+        // Copy payload data
+        // Safety: Data is valid up to len bytes
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                SUBSCRIBER_BUFFERS[self.buffer_index].data.as_ptr(),
+                buf.as_mut_ptr(),
+                len,
+            );
+        }
+
+        // Parse attachment if present
+        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        let message_info = if attachment_len > 0 {
+            // Safety: attachment is valid up to attachment_len bytes
+            let attachment_slice =
+                unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].attachment[..attachment_len] };
+            MessageInfo::from_attachment(attachment_slice)
+        } else {
+            None
+        };
+
+        buffer.has_data.store(false, Ordering::Release);
+
+        Ok(Some((len, message_info)))
     }
 }
 
@@ -1098,6 +1248,10 @@ impl ServiceClientTrait for ShimServiceClient {
 mod tests {
     use super::*;
 
+    // ========================================================================
+    // Error Conversion Tests
+    // ========================================================================
+
     #[test]
     fn test_error_conversion() {
         assert_eq!(
@@ -1109,6 +1263,14 @@ mod tests {
             TransportError::PublishFailed
         );
     }
+
+    // ========================================================================
+    // C.6 RMW Zenoh Protocol Verification Tests
+    // ========================================================================
+
+    // ------------------------------------------------------------------------
+    // RMW Attachment Format Tests
+    // ------------------------------------------------------------------------
 
     #[test]
     fn test_rmw_attachment_serialization() {
@@ -1130,11 +1292,278 @@ mod tests {
     }
 
     #[test]
+    fn test_rmw_attachment_deserialization() {
+        // Create known attachment bytes
+        let mut buf = [0u8; RMW_ATTACHMENT_SIZE];
+        // Sequence number: 123
+        buf[0..8].copy_from_slice(&123i64.to_le_bytes());
+        // Timestamp: 456789
+        buf[8..16].copy_from_slice(&456789i64.to_le_bytes());
+        // VLE length: 16
+        buf[16] = 16;
+        // GID: 0x01, 0x02, ..., 0x10
+        for i in 0..16 {
+            buf[17 + i] = (i + 1) as u8;
+        }
+
+        let parsed = RmwAttachment::deserialize(&buf);
+        assert!(parsed.is_some());
+        let att = parsed.unwrap();
+
+        assert_eq!(att.sequence_number, 123);
+        assert_eq!(att.timestamp, 456789);
+        for i in 0..16 {
+            assert_eq!(att.rmw_gid[i], (i + 1) as u8);
+        }
+    }
+
+    #[test]
+    fn test_rmw_attachment_roundtrip() {
+        let original = RmwAttachment {
+            sequence_number: 999,
+            timestamp: 1234567890,
+            rmw_gid: [
+                0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF, 0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
+                0x88, 0x99,
+            ],
+        };
+
+        let mut buf = [0u8; RMW_ATTACHMENT_SIZE];
+        original.serialize(&mut buf);
+
+        let parsed = RmwAttachment::deserialize(&buf).expect("Failed to deserialize");
+        assert_eq!(parsed.sequence_number, original.sequence_number);
+        assert_eq!(parsed.timestamp, original.timestamp);
+        assert_eq!(parsed.rmw_gid, original.rmw_gid);
+    }
+
+    #[test]
+    fn test_rmw_attachment_deserialize_too_short() {
+        let buf = [0u8; 10]; // Too short
+        assert!(RmwAttachment::deserialize(&buf).is_none());
+    }
+
+    #[test]
+    fn test_rmw_attachment_deserialize_wrong_gid_length() {
+        let mut buf = [0u8; RMW_ATTACHMENT_SIZE];
+        buf[16] = 8; // Wrong GID length (should be 16)
+        assert!(RmwAttachment::deserialize(&buf).is_none());
+    }
+
+    #[test]
+    fn test_message_info_from_attachment() {
+        let mut buf = [0u8; RMW_ATTACHMENT_SIZE];
+        buf[0..8].copy_from_slice(&42i64.to_le_bytes());
+        buf[8..16].copy_from_slice(&1000000i64.to_le_bytes());
+        buf[16] = 16;
+
+        let info = MessageInfo::from_attachment(&buf);
+        assert!(info.is_some());
+        let info = info.unwrap();
+        assert_eq!(info.sequence_number, 42);
+        assert_eq!(info.timestamp_ns, 1000000);
+    }
+
+    // ------------------------------------------------------------------------
+    // Liveliness Token Format Tests
+    // ------------------------------------------------------------------------
+
+    #[test]
     fn test_ros2_liveliness_mangle() {
         let mangled = Ros2Liveliness::mangle_topic_name::<64>("/chatter");
         assert_eq!(mangled.as_str(), "%chatter");
 
         let mangled2 = Ros2Liveliness::mangle_topic_name::<64>("/foo/bar/baz");
         assert_eq!(mangled2.as_str(), "%foo%bar%baz");
+    }
+
+    #[test]
+    fn test_ros2_liveliness_node_keyexpr() {
+        let zid = ShimZenohId::from_bytes([
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10,
+        ]);
+        let keyexpr = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/my_node");
+
+        // Format: @ros2_lv/<domain_id>/<zid>/0/0/NN/%/%/<node_name>
+        // ZID is in LSB-first order
+        assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
+        assert!(keyexpr.as_str().contains("/0/0/NN/%/%/"));
+        assert!(keyexpr.as_str().ends_with("/my_node"));
+    }
+
+    #[test]
+    fn test_ros2_liveliness_publisher_keyexpr() {
+        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let topic = TopicInfo {
+            name: "/chatter",
+            type_name: "std_msgs::msg::dds_::String_",
+            type_hash: "RIHS01_abc123",
+            domain_id: 0,
+        };
+        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let keyexpr = Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/my_node", &topic, &qos);
+
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/MP/%/%/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
+        assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
+        assert!(keyexpr.as_str().contains("/0/11/MP/%/%/"));
+        assert!(keyexpr.as_str().contains("/my_node/"));
+        assert!(keyexpr.as_str().contains("%chatter/"));
+        assert!(keyexpr.as_str().contains("std_msgs::msg::dds_::String_"));
+        assert!(keyexpr.as_str().contains("RIHS01_abc123"));
+    }
+
+    #[test]
+    fn test_ros2_liveliness_subscriber_keyexpr() {
+        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let topic = TopicInfo {
+            name: "/chatter",
+            type_name: "std_msgs::msg::dds_::Int32_",
+            type_hash: "RIHS01_def456",
+            domain_id: 0,
+        };
+        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let keyexpr = Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, "/my_node", &topic, &qos);
+
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/MS/%/%/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
+        assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
+        assert!(keyexpr.as_str().contains("/0/11/MS/%/%/"));
+        assert!(keyexpr.as_str().contains("/my_node/"));
+        assert!(keyexpr.as_str().contains("%chatter/"));
+    }
+
+    #[test]
+    fn test_ros2_liveliness_service_server_keyexpr() {
+        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let service = ServiceInfo {
+            name: "/add_two_ints",
+            type_name: "example_interfaces::srv::dds_::AddTwoInts",
+            type_hash: "RIHS01_abc123",
+            domain_id: 0,
+        };
+        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
+        let keyexpr =
+            Ros2Liveliness::service_server_keyexpr::<256>(0, &zid, "/my_node", &service, &qos);
+
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/SS/%/%/<node_name>/<mangled_service>/<type>/<hash>/<qos>
+        assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
+        assert!(keyexpr.as_str().contains("/0/11/SS/%/%/"));
+        assert!(keyexpr.as_str().contains("/my_node/"));
+        assert!(keyexpr.as_str().contains("%add_two_ints/"));
+    }
+
+    #[test]
+    fn test_ros2_liveliness_service_client_keyexpr() {
+        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let service = ServiceInfo {
+            name: "/add_two_ints",
+            type_name: "example_interfaces::srv::dds_::AddTwoInts",
+            type_hash: "RIHS01_abc123",
+            domain_id: 0,
+        };
+        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
+        let keyexpr =
+            Ros2Liveliness::service_client_keyexpr::<256>(0, &zid, "/my_node", &service, &qos);
+
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/SC/%/%/<node_name>/<mangled_service>/<type>/<hash>/<qos>
+        assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
+        assert!(keyexpr.as_str().contains("/0/11/SC/%/%/"));
+        assert!(keyexpr.as_str().contains("/my_node/"));
+        assert!(keyexpr.as_str().contains("%add_two_ints/"));
+    }
+
+    // ------------------------------------------------------------------------
+    // Data KeyExpr Format Tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_topic_info_to_key_humble() {
+        let topic = TopicInfo {
+            name: "/chatter",
+            type_name: "std_msgs::msg::dds_::Int32_",
+            type_hash: "TypeHashNotSupported",
+            domain_id: 0,
+        };
+
+        let key: heapless::String<128> = topic.to_key();
+        // Format: <domain_id>/<topic_name>/<type_name>/<type_hash>
+        assert_eq!(
+            key.as_str(),
+            "0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported"
+        );
+    }
+
+    #[test]
+    fn test_topic_info_to_key_wildcard() {
+        let topic = TopicInfo {
+            name: "/chatter",
+            type_name: "std_msgs::msg::dds_::Int32_",
+            type_hash: "TypeHashNotSupported",
+            domain_id: 0,
+        };
+
+        let key: heapless::String<128> = topic.to_key_wildcard();
+        // Format: <domain_id>/<topic_name>/<type_name>/*
+        assert_eq!(key.as_str(), "0/chatter/std_msgs::msg::dds_::Int32_/*");
+    }
+
+    // ------------------------------------------------------------------------
+    // Service KeyExpr Format Tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_service_info_format() {
+        let service = ServiceInfo {
+            name: "/add_two_ints",
+            type_name: "example_interfaces::srv::dds_::AddTwoInts",
+            type_hash: "TypeHashNotSupported",
+            domain_id: 0,
+        };
+
+        // Verify service info fields are correct
+        assert_eq!(service.name, "/add_two_ints");
+        assert_eq!(
+            service.type_name,
+            "example_interfaces::srv::dds_::AddTwoInts"
+        );
+        assert_eq!(service.domain_id, 0);
+    }
+
+    // ------------------------------------------------------------------------
+    // QoS String Encoding Tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_qos_best_effort_volatile() {
+        // BEST_EFFORT reliability (2), VOLATILE durability (2), KEEP_LAST history with depth 1
+        let qos = "2:2:1,1:,:,:,,";
+        assert!(qos.starts_with("2:")); // BEST_EFFORT
+        assert!(qos.contains(":2:")); // VOLATILE
+    }
+
+    #[test]
+    fn test_qos_reliable_transient_local() {
+        // RELIABLE reliability (1), TRANSIENT_LOCAL durability (1)
+        let qos = "1:1:1,1:,:,:,,";
+        assert!(qos.starts_with("1:")); // RELIABLE
+    }
+
+    // ------------------------------------------------------------------------
+    // ZenohId Format Tests
+    // ------------------------------------------------------------------------
+
+    #[test]
+    fn test_zenoh_id_to_hex_lsb_first() {
+        // Test that ZenohId is formatted in LSB-first order
+        let zid = ShimZenohId::from_bytes([
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+            0x0f, 0x10,
+        ]);
+        let mut buf = [0u8; 32];
+        zid.to_hex_bytes(&mut buf);
+        let hex = core::str::from_utf8(&buf).unwrap();
+
+        // LSB-first: byte 15 first, byte 0 last
+        assert_eq!(hex, "100f0e0d0c0b0a090807060504030201");
     }
 }

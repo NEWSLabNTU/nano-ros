@@ -35,11 +35,12 @@ use core::marker::PhantomData;
 
 // Re-export FFI types and constants from sys crate
 pub use zenoh_pico_shim_sys::{
-    PollCallback, ShimCallback, ShimQueryCallback, ZENOH_SHIM_ERR_CONFIG, ZENOH_SHIM_ERR_FULL,
-    ZENOH_SHIM_ERR_GENERIC, ZENOH_SHIM_ERR_INVALID, ZENOH_SHIM_ERR_KEYEXPR, ZENOH_SHIM_ERR_PUBLISH,
-    ZENOH_SHIM_ERR_SESSION, ZENOH_SHIM_ERR_TASK, ZENOH_SHIM_ERR_TIMEOUT, ZENOH_SHIM_MAX_LIVELINESS,
-    ZENOH_SHIM_MAX_PUBLISHERS, ZENOH_SHIM_MAX_QUERYABLES, ZENOH_SHIM_MAX_SUBSCRIBERS,
-    ZENOH_SHIM_OK, ZENOH_SHIM_RMW_GID_SIZE, ZENOH_SHIM_ZID_SIZE,
+    PollCallback, ShimCallback, ShimCallbackWithAttachment, ShimQueryCallback,
+    ZENOH_SHIM_ERR_CONFIG, ZENOH_SHIM_ERR_FULL, ZENOH_SHIM_ERR_GENERIC, ZENOH_SHIM_ERR_INVALID,
+    ZENOH_SHIM_ERR_KEYEXPR, ZENOH_SHIM_ERR_PUBLISH, ZENOH_SHIM_ERR_SESSION, ZENOH_SHIM_ERR_TASK,
+    ZENOH_SHIM_ERR_TIMEOUT, ZENOH_SHIM_MAX_LIVELINESS, ZENOH_SHIM_MAX_PUBLISHERS,
+    ZENOH_SHIM_MAX_QUERYABLES, ZENOH_SHIM_MAX_SUBSCRIBERS, ZENOH_SHIM_OK, ZENOH_SHIM_RMW_GID_SIZE,
+    ZENOH_SHIM_ZID_SIZE,
 };
 
 // Re-export platform module for smoltcp
@@ -50,10 +51,11 @@ pub use zenoh_pico_shim_sys::platform_smoltcp;
 #[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
 use zenoh_pico_shim_sys::{
     zenoh_shim_close, zenoh_shim_declare_liveliness, zenoh_shim_declare_publisher,
-    zenoh_shim_declare_queryable, zenoh_shim_declare_subscriber, zenoh_shim_get,
-    zenoh_shim_get_zid, zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_poll,
-    zenoh_shim_publish, zenoh_shim_publish_with_attachment, zenoh_shim_query_reply,
-    zenoh_shim_spin_once, zenoh_shim_undeclare_liveliness, zenoh_shim_undeclare_publisher,
+    zenoh_shim_declare_queryable, zenoh_shim_declare_subscriber,
+    zenoh_shim_declare_subscriber_with_attachment, zenoh_shim_get, zenoh_shim_get_zid,
+    zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_poll, zenoh_shim_publish,
+    zenoh_shim_publish_with_attachment, zenoh_shim_query_reply, zenoh_shim_spin_once,
+    zenoh_shim_undeclare_liveliness, zenoh_shim_undeclare_publisher,
     zenoh_shim_undeclare_queryable, zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
 };
 
@@ -350,6 +352,39 @@ impl ShimContext {
     ) -> Result<ShimSubscriber<'a>> {
         let handle =
             unsafe { zenoh_shim_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx) };
+        if handle < 0 {
+            return Err(ShimError::from_code(handle));
+        }
+
+        Ok(ShimSubscriber {
+            handle,
+            _ctx: PhantomData,
+        })
+    }
+
+    /// Declare a subscriber with attachment support for RMW compatibility
+    ///
+    /// The key expression should be a null-terminated string like `b"demo/topic\0"`.
+    /// The callback will be invoked when samples arrive, with attachment data if present.
+    ///
+    /// # Safety
+    ///
+    /// The callback and context must remain valid for the lifetime of the subscriber.
+    /// The context pointer must be valid for the callback to dereference.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the session is not open, the key expression is invalid,
+    /// or the maximum number of subscribers has been reached.
+    pub unsafe fn declare_subscriber_with_attachment_raw<'a>(
+        &'a self,
+        keyexpr: &[u8],
+        callback: ShimCallbackWithAttachment,
+        ctx: *mut c_void,
+    ) -> Result<ShimSubscriber<'a>> {
+        let handle = unsafe {
+            zenoh_shim_declare_subscriber_with_attachment(keyexpr.as_ptr().cast(), callback, ctx)
+        };
         if handle < 0 {
             return Err(ShimError::from_code(handle));
         }

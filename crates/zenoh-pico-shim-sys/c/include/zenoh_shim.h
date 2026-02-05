@@ -102,7 +102,7 @@
 #define ZENOH_SHIM_ERR_TIMEOUT -9
 
 /**
- * Callback function type for receiving samples.
+ * Callback function type for receiving samples (legacy, payload only).
  *
  * # Parameters
  * * `data` - Pointer to received data buffer
@@ -110,6 +110,22 @@
  * * `ctx` - User-provided context pointer
  */
 typedef void (*ShimCallback)(const uint8_t *data, uintptr_t len, void *ctx);
+
+/**
+ * Callback function type for receiving samples with attachment (RMW compatible).
+ *
+ * # Parameters
+ * * `data` - Pointer to received data buffer
+ * * `len` - Length of data in bytes
+ * * `attachment` - Pointer to attachment buffer (may be NULL)
+ * * `attachment_len` - Length of attachment in bytes
+ * * `ctx` - User-provided context pointer
+ */
+typedef void (*ShimCallbackWithAttachment)(const uint8_t *data,
+                                           uintptr_t len,
+                                           const uint8_t *attachment,
+                                           uintptr_t attachment_len,
+                                           void *ctx);
 
 /**
  * Callback function type for receiving queries (service requests).
@@ -217,6 +233,21 @@ int32_t zenoh_shim_undeclare_publisher(int32_t _handle);
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
 int32_t zenoh_shim_declare_subscriber(const char *_keyexpr, ShimCallback _callback, void *_ctx);
+
+/**
+ * Declare a subscriber with attachment support for RMW compatibility.
+ *
+ * # Parameters
+ * * `keyexpr` - Key expression string (e.g., "demo/topic"), null-terminated.
+ * * `callback` - Callback function to invoke when samples arrive (includes attachment)
+ * * `ctx` - User context pointer passed to callback
+ *
+ * # Returns
+ * Subscriber handle (>= 0) on success, negative error code on failure.
+ */
+int32_t zenoh_shim_declare_subscriber_with_attachment(const char *_keyexpr,
+                                                      ShimCallbackWithAttachment _callback,
+                                                      void *_ctx);
 
 /**
  * Undeclare a subscriber.

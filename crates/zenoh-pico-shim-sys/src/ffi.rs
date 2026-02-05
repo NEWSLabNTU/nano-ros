@@ -65,13 +65,29 @@ pub const ZENOH_SHIM_ERR_TIMEOUT: i32 = -9;
 // Callback Types
 // ============================================================================
 
-/// Callback function type for receiving samples.
+/// Callback function type for receiving samples (legacy, payload only).
 ///
 /// # Parameters
 /// * `data` - Pointer to received data buffer
 /// * `len` - Length of data in bytes
 /// * `ctx` - User-provided context pointer
 pub type ShimCallback = extern "C" fn(data: *const u8, len: usize, ctx: *mut c_void);
+
+/// Callback function type for receiving samples with attachment (RMW compatible).
+///
+/// # Parameters
+/// * `data` - Pointer to received data buffer
+/// * `len` - Length of data in bytes
+/// * `attachment` - Pointer to attachment buffer (may be NULL)
+/// * `attachment_len` - Length of attachment in bytes
+/// * `ctx` - User-provided context pointer
+pub type ShimCallbackWithAttachment = extern "C" fn(
+    data: *const u8,
+    len: usize,
+    attachment: *const u8,
+    attachment_len: usize,
+    ctx: *mut c_void,
+);
 
 /// Callback function type for receiving queries (service requests).
 ///
@@ -189,6 +205,24 @@ mod cbindgen_stubs {
     pub extern "C" fn zenoh_shim_declare_subscriber(
         _keyexpr: *const c_char,
         _callback: ShimCallback,
+        _ctx: *mut c_void,
+    ) -> i32 {
+        0
+    }
+
+    /// Declare a subscriber with attachment support for RMW compatibility.
+    ///
+    /// # Parameters
+    /// * `keyexpr` - Key expression string (e.g., "demo/topic"), null-terminated.
+    /// * `callback` - Callback function to invoke when samples arrive (includes attachment)
+    /// * `ctx` - User context pointer passed to callback
+    ///
+    /// # Returns
+    /// Subscriber handle (>= 0) on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zenoh_shim_declare_subscriber_with_attachment(
+        _keyexpr: *const c_char,
+        _callback: ShimCallbackWithAttachment,
         _ctx: *mut c_void,
     ) -> i32 {
         0
