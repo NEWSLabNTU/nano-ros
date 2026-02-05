@@ -1,6 +1,6 @@
 # Phase 18: Micro-ROS Lessons — Executor, Lifecycle & Transport Improvements
 
-**Status**: PLANNING
+**Status**: IN PROGRESS (18.1 complete)
 **Priority**: MEDIUM-HIGH
 **Goal**: Adopt high-impact patterns from micro-ROS (rclc) to improve nano-ros executor determinism, add lifecycle node support, and expand transport options
 
@@ -58,10 +58,10 @@ rclc provides configurable trigger conditions that control *when* the executor p
 
 ### 18.1.1 Trigger Types
 
-- [ ] Define trigger condition types in `nano-ros-node/src/trigger.rs`
-- [ ] Add `TriggerCondition` enum for built-in modes
-- [ ] Add `TriggerFn` type alias for custom predicates (`no_std` compatible)
-- [ ] Re-export from `nano-ros` unified crate
+- [x] Define trigger condition types in `nano-ros-node/src/trigger.rs`
+- [x] Add `TriggerCondition` enum for built-in modes
+- [x] Add `TriggerFn` type alias for custom predicates (`no_std` compatible)
+- [x] Re-export from `nano-ros` unified crate
 
 ```rust
 /// Built-in trigger conditions (matches rclc trigger modes)
@@ -98,10 +98,10 @@ pub enum Trigger {
 
 ### 18.1.2 Rust API
 
-- [ ] Add `set_trigger()` method to `PollingExecutor`
-- [ ] Add `set_trigger()` method to `BasicExecutor`
-- [ ] Modify `spin_once()` to check trigger condition before processing callbacks
-- [ ] Implement ready-mask collection (scan handles without invoking callbacks)
+- [x] Add `set_trigger()` method to `PollingExecutor`
+- [x] Add `set_trigger()` method to `BasicExecutor`
+- [x] Modify `spin_once()` to check trigger condition before processing callbacks
+- [x] Implement ready-mask collection (scan handles without invoking callbacks)
 
 **PollingExecutor (no_std):**
 ```rust
@@ -145,9 +145,9 @@ executor.spin(SpinOptions::new())?;
 
 ### 18.1.3 C API
 
-- [ ] Add `nano_ros_executor_set_trigger()` matching rclc signature
-- [ ] Add built-in trigger functions matching rclc naming
-- [ ] Add trigger function pointer typedef
+- [x] Add `nano_ros_executor_set_trigger()` matching rclc signature
+- [x] Add built-in trigger functions matching rclc naming
+- [x] Add trigger function pointer typedef
 
 ```c
 /// Trigger function pointer type (matches rclc_executor_trigger_t)
@@ -189,12 +189,12 @@ nano_ros_executor_set_trigger(&executor,
 
 ### 18.1.4 Tests
 
-- [ ] Unit test: `TriggerCondition::All` blocks until all subscriptions have data
-- [ ] Unit test: `TriggerCondition::One` only fires when target handle is ready
-- [ ] Unit test: custom `TriggerFn` with user predicate
-- [ ] Unit test: `TriggerCondition::Always` fires even with no data
-- [ ] C API test: `nano_ros_executor_trigger_all` matches behavior
-- [ ] Integration test: sensor fusion scenario (two synchronized topics)
+- [x] Unit test: `TriggerCondition::All` blocks until all subscriptions have data
+- [x] Unit test: `TriggerCondition::One` only fires when target handle is ready
+- [x] Unit test: custom `TriggerFn` with user predicate
+- [x] Unit test: `TriggerCondition::Always` fires even with no data
+- [x] C API test: `nano_ros_executor_trigger_all` matches behavior
+- [x] Integration test: sensor fusion scenario (two synchronized topics)
 
 ---
 

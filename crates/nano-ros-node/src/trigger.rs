@@ -172,4 +172,58 @@ mod tests {
         assert!(trigger.evaluate(&[true, false]));
         assert!(!trigger.evaluate(&[false, false]));
     }
+
+    /// Sensor fusion scenario: two subscriptions (IMU + LIDAR) must both have
+    /// data before the executor should process callbacks.
+    #[test]
+    fn test_sensor_fusion_scenario() {
+        let trigger = Trigger::Builtin(TriggerCondition::All);
+
+        // ready_mask[0] = IMU subscription, ready_mask[1] = LIDAR subscription
+
+        // Neither sensor has data → don't process
+        assert!(!trigger.evaluate(&[false, false]));
+
+        // Only IMU has data → don't process (waiting for LIDAR)
+        assert!(!trigger.evaluate(&[true, false]));
+
+        // Only LIDAR has data → don't process (waiting for IMU)
+        assert!(!trigger.evaluate(&[false, true]));
+
+        // Both sensors have data → process!
+        assert!(trigger.evaluate(&[true, true]));
+    }
+
+    /// Sensor fusion with a custom trigger: process when at least 2 out of 3
+    /// sensors have data (majority voting).
+    #[test]
+    fn test_sensor_fusion_majority_voting() {
+        fn majority(ready: &[bool]) -> bool {
+            ready.iter().filter(|&&r| r).count() >= 2
+        }
+
+        let trigger = Trigger::Custom(majority);
+
+        // ready_mask: [IMU, LIDAR, GPS]
+        assert!(!trigger.evaluate(&[false, false, false]));
+        assert!(!trigger.evaluate(&[true, false, false]));
+        assert!(trigger.evaluate(&[true, true, false]));
+        assert!(trigger.evaluate(&[true, false, true]));
+        assert!(trigger.evaluate(&[true, true, true]));
+    }
+
+    /// Trigger::One used for priority-based processing: only process
+    /// when the critical sensor (e.g. emergency stop) has data.
+    #[test]
+    fn test_priority_sensor_trigger() {
+        // Handle 0 = emergency stop, Handle 1 = navigation, Handle 2 = diagnostics
+        let trigger = Trigger::Builtin(TriggerCondition::One(0));
+
+        // Emergency stop not ready → skip
+        assert!(!trigger.evaluate(&[false, true, true]));
+
+        // Emergency stop ready → process
+        assert!(trigger.evaluate(&[true, false, false]));
+        assert!(trigger.evaluate(&[true, true, true]));
+    }
 }
