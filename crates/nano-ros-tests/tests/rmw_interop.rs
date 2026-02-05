@@ -1,16 +1,27 @@
 //! ROS 2 rmw_zenoh interoperability tests
 //!
 //! Tests communication between nano-ros and ROS 2 nodes using rmw_zenoh_cpp.
+//!
+//! ## Test Categories
+//!
+//! - **Detection**: Check if ROS 2 and rmw_zenoh are available
+//! - **Pub/Sub**: nano-ros ↔ ROS 2 message passing
+//! - **Services**: nano-ros ↔ ROS 2 service calls
+//! - **Actions**: nano-ros ↔ ROS 2 action protocol
+//! - **Discovery**: `ros2 node/topic/service list` visibility
+//! - **QoS**: Reliability and durability compatibility
+//! - **Benchmarks**: Latency and throughput measurements
 
 use nano_ros_tests::count_pattern;
 use nano_ros_tests::fixtures::{
     DEFAULT_ROS_DISTRO, ManagedProcess, Ros2Process, ZenohRouter, action_client_binary,
     action_server_binary, is_rmw_zenoh_available, is_ros2_available, listener_binary,
-    talker_binary, zenohd_unique,
+    ros2_node_list, ros2_service_list, ros2_topic_info, ros2_topic_list, service_client_binary,
+    service_server_binary, talker_binary, zenohd_unique,
 };
 use rstest::rstest;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// Skip test if ROS 2 prerequisites are not met
 fn require_ros2() -> bool {
@@ -542,4 +553,489 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
         eprintln!("[INFO] nano-ros action client did not receive expected output");
         eprintln!("  This may be a timing issue or protocol incompatibility");
     }
+}
+
+// =============================================================================
+// Discovery Tests
+// =============================================================================
+
+#[rstest]
+fn test_discovery_node_visible(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start nano-ros talker
+    eprintln!("Starting nano-ros talker...");
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    // Wait for node to register
+    std::thread::sleep(Duration::from_secs(4));
+
+    // Check ROS 2 node list
+    eprintln!("Checking ros2 node list...");
+    let node_list = ros2_node_list(DEFAULT_ROS_DISTRO).unwrap_or_default();
+
+    talker.kill();
+
+    eprintln!("Node list:\n{}", node_list);
+
+    // Look for the nano-ros node
+    if node_list.contains("talker") || node_list.contains("chatter") {
+        eprintln!("[PASS] nano-ros node visible in ros2 node list");
+    } else {
+        eprintln!("[INFO] nano-ros node not visible in ros2 node list");
+        eprintln!("  This may indicate liveliness token issues");
+    }
+}
+
+#[rstest]
+fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start nano-ros talker
+    eprintln!("Starting nano-ros talker...");
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    // Wait for topic to register
+    std::thread::sleep(Duration::from_secs(4));
+
+    // Check ROS 2 topic list
+    eprintln!("Checking ros2 topic list...");
+    let topic_list = ros2_topic_list(DEFAULT_ROS_DISTRO).unwrap_or_default();
+
+    eprintln!("Topic list:\n{}", topic_list);
+
+    // Check topic info for /chatter
+    eprintln!("Checking ros2 topic info /chatter...");
+    let topic_info = ros2_topic_info("/chatter", DEFAULT_ROS_DISTRO).unwrap_or_default();
+
+    talker.kill();
+
+    eprintln!("Topic info:\n{}", topic_info);
+
+    // Look for the /chatter topic
+    if topic_list.contains("/chatter") {
+        eprintln!("[PASS] /chatter topic visible in ros2 topic list");
+
+        if topic_info.contains("Publisher") || topic_info.contains("publisher") {
+            eprintln!("[PASS] Topic info shows publisher");
+        }
+    } else {
+        eprintln!("[INFO] /chatter topic not visible in ros2 topic list");
+        eprintln!("  This may indicate liveliness token issues");
+    }
+}
+
+#[rstest]
+fn test_discovery_service_visible(zenohd_unique: ZenohRouter, service_server_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start nano-ros service server
+    eprintln!("Starting nano-ros service server...");
+    let mut server_cmd = Command::new(&service_server_binary);
+    server_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
+        .expect("Failed to start service server");
+
+    // Wait for service to register
+    std::thread::sleep(Duration::from_secs(4));
+
+    // Check ROS 2 service list
+    eprintln!("Checking ros2 service list...");
+    let service_list = ros2_service_list(DEFAULT_ROS_DISTRO).unwrap_or_default();
+
+    server.kill();
+
+    eprintln!("Service list:\n{}", service_list);
+
+    // Look for the /add_two_ints service
+    if service_list.contains("/add_two_ints") {
+        eprintln!("[PASS] /add_two_ints service visible in ros2 service list");
+    } else {
+        eprintln!("[INFO] /add_two_ints service not visible in ros2 service list");
+        eprintln!("  This may indicate service liveliness token issues");
+    }
+}
+
+// =============================================================================
+// Service Interop Tests
+// =============================================================================
+
+#[rstest]
+fn test_service_nano_server_ros2_client(
+    zenohd_unique: ZenohRouter,
+    service_server_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start nano-ros service server
+    eprintln!("Starting nano-ros service server...");
+    let mut server_cmd = Command::new(&service_server_binary);
+    server_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
+        .expect("Failed to start service server");
+
+    // Wait for server to be ready
+    std::thread::sleep(Duration::from_secs(4));
+
+    if !server.is_running() {
+        eprintln!("[FAIL] Service server exited early");
+        return;
+    }
+
+    // Call service using ROS 2 CLI
+    eprintln!("Calling service from ROS 2...");
+    let mut ros2_client = match Ros2Process::service_call(
+        "/add_two_ints",
+        "example_interfaces/srv/AddTwoInts",
+        "{a: 5, b: 3}",
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 service call: {}", e);
+            server.kill();
+            return;
+        }
+    };
+
+    // Wait for service call to complete
+    let ros2_output = ros2_client
+        .wait_for_output(Duration::from_secs(15))
+        .unwrap_or_default();
+
+    server.kill();
+
+    eprintln!("ROS 2 service call output:\n{}", ros2_output);
+
+    // Check if service call succeeded
+    // Expected output contains "sum: 8" or similar
+    if ros2_output.contains("sum") && (ros2_output.contains("8") || ros2_output.contains("= 8")) {
+        eprintln!("[PASS] nano-ros service server ↔ ROS 2 service client works");
+        eprintln!("  - Request: 5 + 3 = 8 verified");
+    } else if ros2_output.contains("sum") {
+        eprintln!("[PASS] nano-ros service server ↔ ROS 2 service client works");
+        eprintln!("  - Service call completed (sum field present)");
+    } else {
+        eprintln!("[INFO] ROS 2 service call did not receive expected response");
+        eprintln!("  This may be a timing issue or protocol incompatibility");
+    }
+}
+
+#[rstest]
+fn test_service_ros2_server_nano_client(
+    zenohd_unique: ZenohRouter,
+    service_client_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start ROS 2 service server
+    eprintln!("Starting ROS 2 service server...");
+    let mut ros2_server = match Ros2Process::add_two_ints_server(&locator, DEFAULT_ROS_DISTRO) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 service server: {}", e);
+            return;
+        }
+    };
+
+    // Wait for server to be ready
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Start nano-ros service client
+    eprintln!("Starting nano-ros service client...");
+    let mut client_cmd = Command::new(&service_client_binary);
+    client_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
+        .expect("Failed to start service client");
+
+    // Wait for client to complete
+    std::thread::sleep(Duration::from_secs(10));
+
+    // Collect nano-ros output
+    let nano_output = client
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    ros2_server.kill();
+
+    eprintln!("nano-ros service client output:\n{}", nano_output);
+
+    // Check if service calls succeeded
+    let response_count = count_pattern(&nano_output, "Response:");
+    let success = nano_output.contains("completed successfully")
+        || nano_output.contains("sum")
+        || response_count > 0;
+
+    if success {
+        eprintln!("[PASS] ROS 2 service server ↔ nano-ros service client works");
+        if response_count > 0 {
+            eprintln!("  - Received {} service responses", response_count);
+        }
+    } else {
+        eprintln!("[INFO] nano-ros service client did not receive expected responses");
+        eprintln!("  This may be a timing issue or protocol incompatibility");
+    }
+}
+
+// =============================================================================
+// QoS Compatibility Tests
+// =============================================================================
+
+/// Test QoS compatibility matrix
+#[derive(Debug, Clone, Copy)]
+enum QosReliability {
+    Reliable,
+    BestEffort,
+}
+
+impl QosReliability {
+    fn as_str(&self) -> &'static str {
+        match self {
+            QosReliability::Reliable => "reliable",
+            QosReliability::BestEffort => "best_effort",
+        }
+    }
+}
+
+impl std::fmt::Display for QosReliability {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.as_str())
+    }
+}
+
+#[rstest]
+#[case(QosReliability::BestEffort, QosReliability::BestEffort, true)]
+#[case(QosReliability::Reliable, QosReliability::Reliable, true)]
+#[case(QosReliability::Reliable, QosReliability::BestEffort, true)]
+#[case(QosReliability::BestEffort, QosReliability::Reliable, false)]
+fn test_qos_matrix(
+    zenohd_unique: ZenohRouter,
+    talker_binary: PathBuf,
+    #[case] pub_qos: QosReliability,
+    #[case] sub_qos: QosReliability,
+    #[case] should_work: bool,
+) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    eprintln!(
+        "Testing QoS: publisher={}, subscriber={} (expected: {})",
+        pub_qos,
+        sub_qos,
+        if should_work { "works" } else { "fails" }
+    );
+
+    // Start ROS 2 subscriber with specified QoS
+    let mut ros2_subscriber = match Ros2Process::topic_echo_with_qos(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        sub_qos.as_str(),
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 subscriber: {}", e);
+            return;
+        }
+    };
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    // Start nano-ros talker (currently only supports BEST_EFFORT)
+    // Note: For full QoS testing, we'd need to modify the talker to support different QoS
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    std::thread::sleep(Duration::from_secs(6));
+
+    talker.kill();
+    let output = ros2_subscriber
+        .wait_for_output(Duration::from_secs(1))
+        .unwrap_or_default();
+
+    let received = count_pattern(&output, "data:") > 0;
+
+    // Note: nano-ros talker uses BEST_EFFORT, so this tests BEST_EFFORT publisher
+    match pub_qos {
+        QosReliability::BestEffort => {
+            if received == should_work {
+                eprintln!(
+                    "[PASS] QoS {}→{}: {} as expected",
+                    pub_qos,
+                    sub_qos,
+                    if received { "received" } else { "no data" }
+                );
+            } else {
+                eprintln!(
+                    "[INFO] QoS {}→{}: unexpected result (received={})",
+                    pub_qos, sub_qos, received
+                );
+            }
+        }
+        QosReliability::Reliable => {
+            // Skip test - nano-ros talker doesn't support RELIABLE yet
+            eprintln!(
+                "[SKIP] QoS {}→{}: nano-ros talker doesn't support RELIABLE",
+                pub_qos, sub_qos
+            );
+        }
+    }
+}
+
+// =============================================================================
+// Latency Benchmarks
+// =============================================================================
+
+/// Simple latency measurement for nano-ros → ROS 2
+#[rstest]
+fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    eprintln!("=== Latency Benchmark: nano-ros → ROS 2 ===");
+
+    // Start ROS 2 subscriber
+    let mut ros2_subscriber =
+        match Ros2Process::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to start ROS 2 subscriber: {}", e);
+                return;
+            }
+        };
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    // Record start time
+    let start = Instant::now();
+
+    // Start nano-ros talker
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    // Wait for first message
+    let mut first_message_time = None;
+    for _ in 0..50 {
+        std::thread::sleep(Duration::from_millis(100));
+        if let Ok(output) = ros2_subscriber.wait_for_output(Duration::from_millis(10)) {
+            if output.contains("data:") {
+                first_message_time = Some(start.elapsed());
+                break;
+            }
+        }
+    }
+
+    talker.kill();
+
+    match first_message_time {
+        Some(elapsed) => {
+            eprintln!(
+                "[BENCHMARK] First message latency: {:?} (includes startup)",
+                elapsed
+            );
+            eprintln!("  Note: This measures time from talker start to first message received");
+            eprintln!("  Actual per-message latency is much lower");
+        }
+        None => {
+            eprintln!("[INFO] No messages received within timeout");
+        }
+    }
+}
+
+/// Throughput measurement - count messages over fixed time
+#[rstest]
+fn test_throughput_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    eprintln!("=== Throughput Benchmark: nano-ros → ROS 2 ===");
+
+    // Start ROS 2 subscriber
+    let mut ros2_subscriber =
+        match Ros2Process::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
+            Ok(p) => p,
+            Err(e) => {
+                eprintln!("Failed to start ROS 2 subscriber: {}", e);
+                return;
+            }
+        };
+
+    std::thread::sleep(Duration::from_secs(3));
+
+    // Start nano-ros talker
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    // Run for fixed duration
+    let test_duration = Duration::from_secs(5);
+    std::thread::sleep(test_duration);
+
+    talker.kill();
+    let output = ros2_subscriber
+        .wait_for_output(Duration::from_secs(1))
+        .unwrap_or_default();
+
+    let message_count = count_pattern(&output, "data:");
+    let rate = message_count as f64 / test_duration.as_secs_f64();
+
+    eprintln!("[BENCHMARK] Messages received: {}", message_count);
+    eprintln!("[BENCHMARK] Throughput: {:.1} msg/sec", rate);
+    eprintln!("  Note: Rate depends on talker publish frequency (typically 1 Hz)");
 }

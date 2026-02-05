@@ -259,6 +259,235 @@ pub fn collect_ros2_output(process: &mut Ros2Process, timeout: Duration) -> Stri
     process.wait_for_output(timeout).unwrap_or_default()
 }
 
+// =============================================================================
+// Discovery Helpers
+// =============================================================================
+
+/// Run `ros2 node list` and return the output
+pub fn ros2_node_list(distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup(distro);
+    let cmd = format!("{env_setup} && timeout 10 ros2 node list 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 node list: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run `ros2 topic list` and return the output
+pub fn ros2_topic_list(distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup(distro);
+    let cmd = format!("{env_setup} && timeout 10 ros2 topic list 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 topic list: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run `ros2 service list` and return the output
+pub fn ros2_service_list(distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup(distro);
+    let cmd = format!("{env_setup} && timeout 10 ros2 service list 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 service list: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run `ros2 node info` for a specific node
+pub fn ros2_node_info(node_name: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup(distro);
+    let cmd = format!("{env_setup} && timeout 10 ros2 node info {node_name} 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 node info: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run `ros2 topic info` for a specific topic
+pub fn ros2_topic_info(topic: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup(distro);
+    let cmd = format!("{env_setup} && timeout 10 ros2 topic info {topic} 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 topic info: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+// =============================================================================
+// Service Helpers
+// =============================================================================
+
+impl Ros2Process {
+    /// Start a ROS 2 service call
+    ///
+    /// # Arguments
+    /// * `service_name` - Service name (e.g., "/add_two_ints")
+    /// * `service_type` - Service type (e.g., "example_interfaces/srv/AddTwoInts")
+    /// * `request` - Request data as YAML (e.g., "{a: 5, b: 3}")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn service_call(
+        service_name: &str,
+        service_type: &str,
+        request: &str,
+        distro: &str,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup(distro);
+        let cmd = format!(
+            "{env_setup} && timeout 30 ros2 service call {service_name} {service_type} \"{request}\""
+        );
+
+        let handle = Command::new("bash")
+            .args(["-c", &cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                TestError::ProcessFailed(format!("Failed to start ros2 service call: {e}"))
+            })?;
+
+        Ok(Self {
+            handle,
+            name: format!("ros2 service call {service_name}"),
+        })
+    }
+
+    /// Start a ROS 2 service server (example_interfaces AddTwoInts)
+    ///
+    /// Uses a Python script to create a simple service server.
+    /// The server responds with a + b for the AddTwoInts service.
+    ///
+    /// # Arguments
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn add_two_ints_server(locator: &str, distro: &str) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        // Use a Python one-liner to create a simple service server
+        let python_script = r#"
+import rclpy
+from rclpy.node import Node
+from example_interfaces.srv import AddTwoInts
+
+class Server(Node):
+    def __init__(self):
+        super().__init__('add_two_ints_server')
+        self.srv = self.create_service(AddTwoInts, '/add_two_ints', self.callback)
+        self.get_logger().info('Service server ready')
+    def callback(self, request, response):
+        response.sum = request.a + request.b
+        self.get_logger().info(f'Request: {request.a} + {request.b} = {response.sum}')
+        return response
+
+rclpy.init()
+node = Server()
+rclpy.spin(node)
+"#;
+
+        let cmd = format!(
+            "{env_setup} && timeout 60 python3 -c '{}'",
+            python_script.replace('\n', "\\n").replace('\'', "\\'")
+        );
+
+        let handle = Command::new("bash")
+            .args(["-c", &cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                TestError::ProcessFailed(format!("Failed to start ROS 2 AddTwoInts server: {e}"))
+            })?;
+
+        Ok(Self {
+            handle,
+            name: "ros2 add_two_ints_server".to_string(),
+        })
+    }
+
+    /// Start a ROS 2 topic echo subscriber with custom QoS
+    ///
+    /// # Arguments
+    /// * `topic` - Topic name (e.g., "/chatter")
+    /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
+    /// * `reliability` - QoS reliability ("reliable" or "best_effort")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn topic_echo_with_qos(
+        topic: &str,
+        msg_type: &str,
+        reliability: &str,
+        distro: &str,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup(distro);
+        let cmd = format!(
+            "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
+        );
+
+        let handle = Command::new("bash")
+            .args(["-c", &cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                TestError::ProcessFailed(format!("Failed to start ros2 topic echo: {e}"))
+            })?;
+
+        Ok(Self {
+            handle,
+            name: format!("ros2 topic echo {topic} ({})", reliability),
+        })
+    }
+
+    /// Start a ROS 2 topic pub publisher with custom QoS
+    ///
+    /// # Arguments
+    /// * `topic` - Topic name (e.g., "/chatter")
+    /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
+    /// * `data` - Message data as YAML (e.g., "{data: 42}")
+    /// * `rate` - Publishing rate in Hz
+    /// * `reliability` - QoS reliability ("reliable" or "best_effort")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn topic_pub_with_qos(
+        topic: &str,
+        msg_type: &str,
+        data: &str,
+        rate: u32,
+        reliability: &str,
+        distro: &str,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup(distro);
+        let cmd = format!(
+            "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
+        );
+
+        let handle = Command::new("bash")
+            .args(["-c", &cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| {
+                TestError::ProcessFailed(format!("Failed to start ros2 topic pub: {e}"))
+            })?;
+
+        Ok(Self {
+            handle,
+            name: format!("ros2 topic pub {topic} ({})", reliability),
+        })
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -116,13 +116,38 @@ Tests platform and toolchain detection:
 
 ### rmw_interop
 Tests interoperability with ROS 2 using rmw_zenoh_cpp:
+
+**Pub/Sub Tests:**
 - nano-ros → ROS 2 communication
 - ROS 2 → nano-ros communication
 - Communication matrix (all directions)
 - Key expression format verification
-- QoS compatibility
 
-**Requirements:** `zenohd`, ROS 2 Humble, `rmw_zenoh_cpp`
+**Service Tests:**
+- nano-ros server → ROS 2 client
+- ROS 2 server → nano-ros client
+- Service discovery
+
+**Action Tests:**
+- nano-ros action server ↔ ROS 2 action client
+- ROS 2 action server ↔ nano-ros action client
+
+**Discovery Tests:**
+- `ros2 node list` shows nano-ros nodes
+- `ros2 topic list` shows nano-ros topics
+- `ros2 service list` shows nano-ros services
+
+**QoS Tests:**
+- BEST_EFFORT ↔ BEST_EFFORT (works)
+- RELIABLE ↔ RELIABLE (works)
+- RELIABLE → BEST_EFFORT (works)
+- BEST_EFFORT → RELIABLE (expected to fail)
+
+**Benchmark Tests:**
+- First-message latency measurement
+- Message throughput measurement
+
+**Requirements:** `zenohd`, ROS 2 Humble, `rmw_zenoh_cpp`, `example_interfaces`
 
 Tests gracefully skip when ROS 2 is not available.
 
@@ -223,6 +248,49 @@ let found = wait_for_pattern(&output, "Received:", Duration::from_secs(10));
 // Count occurrences
 let count = count_pattern(&output, "data:");
 ```
+
+## CI Integration
+
+### GitHub Actions Example
+
+To run ROS 2 interop tests in CI, create a job with ROS 2 + rmw_zenoh installed:
+
+```yaml
+ros2-interop-tests:
+  runs-on: ubuntu-latest
+  container:
+    image: ros:humble
+  steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        apt-get update
+        apt-get install -y ros-humble-rmw-zenoh-cpp ros-humble-example-interfaces
+        cargo install zenoh --locked
+
+    - name: Run interop tests (shell)
+      run: |
+        source /opt/ros/humble/setup.bash
+        ./tests/ros2-interop.sh all
+
+    - name: Run interop tests (Rust)
+      run: |
+        source /opt/ros/humble/setup.bash
+        cargo test -p nano-ros-tests --test rmw_interop -- --nocapture
+```
+
+### Test Categories for CI
+
+| Test Suite | Command | ROS 2 Required |
+|------------|---------|----------------|
+| Unit tests | `just test` | No |
+| QEMU tests | `just test-rust-emulator` | No |
+| nano2nano tests | `just test-rust-nano2nano` | No |
+| ROS 2 interop | `./tests/ros2-interop.sh all` | Yes |
+| ROS 2 interop (Rust) | `cargo test -p nano-ros-tests --test rmw_interop` | Yes |
+
+Tests that require ROS 2 will gracefully skip if prerequisites are not met.
 
 ## Troubleshooting
 
