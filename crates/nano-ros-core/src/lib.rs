@@ -30,7 +30,9 @@ pub use action::{
     GoalStatusStamped, RosAction,
 };
 pub use clock::{Clock, ClockType};
-pub use error::Error;
+pub use error::{
+    ErrorContext, NanoRosError, NanoRosErrorFilter, NestedError, RclReturnCode, TakeFailedAsNone,
+};
 pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};

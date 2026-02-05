@@ -3,7 +3,7 @@
 //! Services provide synchronous request/response communication.
 //! A service client sends a request and waits for a response from a service server.
 
-use crate::Error;
+use crate::NanoRosError;
 use crate::types::RosService;
 
 /// Service server handle
@@ -87,7 +87,7 @@ pub struct ServiceRequest<'a, S: RosService> {
 }
 
 /// Result type for service calls
-pub type ServiceResult<T> = Result<T, Error>;
+pub type ServiceResult<T> = Result<T, NanoRosError>;
 
 /// Callback type for service handlers
 ///
