@@ -241,7 +241,9 @@ impl<M: RosMessage + Serialize> BspPublisher<'_, M> {
     /// Publish a message
     pub fn publish(&mut self, msg: &M) -> Result<(), BspError> {
         let mut buf = [0u8; 256];
-        let mut writer = CdrWriter::new(&mut buf);
+        // Use CdrWriter::new_with_header to include CDR header for ROS 2 compatibility
+        let mut writer =
+            CdrWriter::new_with_header(&mut buf).map_err(|_| BspError::SerializationError)?;
 
         msg.serialize(&mut writer)
             .map_err(|_| BspError::SerializationError)?;

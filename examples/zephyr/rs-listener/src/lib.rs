@@ -284,15 +284,23 @@ extern "C" fn on_int32_message(data: *const u8, len: usize, _ctx: *mut c_void) {
     // Safety: data is valid for len bytes, provided by C BSP
     let payload = unsafe { core::slice::from_raw_parts(data, len) };
 
-    // Deserialize the Int32 message
-    let mut reader = CdrReader::new(payload);
-    match Int32::deserialize(&mut reader) {
-        Ok(msg) => {
-            info!("[{}] Received: data={} ({} bytes)", count, msg.data, len);
-        }
+    // Deserialize the Int32 message (with CDR header for ROS 2 compatibility)
+    let reader_result = CdrReader::new_with_header(payload);
+    match reader_result {
+        Ok(mut reader) => match Int32::deserialize(&mut reader) {
+            Ok(msg) => {
+                info!("[{}] Received: data={} ({} bytes)", count, msg.data, len);
+            }
+            Err(_) => {
+                info!(
+                    "[{}] Received {} bytes (deserialization failed)",
+                    count, len
+                );
+            }
+        },
         Err(_) => {
             info!(
-                "[{}] Received {} bytes (deserialization failed)",
+                "[{}] Received {} bytes (invalid CDR header)",
                 count, len
             );
         }
