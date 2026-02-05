@@ -641,6 +641,7 @@ impl ShimSubscriber {
 
         // Generate the topic key with wildcard for type hash
         let key: heapless::String<256> = topic.to_key_wildcard();
+        log::debug!("Subscriber data keyexpr: {}", key.as_str());
 
         // Create null-terminated keyexpr
         let mut keyexpr_buf = [0u8; 257];

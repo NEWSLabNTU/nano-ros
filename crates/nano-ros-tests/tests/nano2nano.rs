@@ -85,7 +85,9 @@ fn test_talker_listener_communication(
 
     // Start listener first with ZENOH_LOCATOR env var
     let mut listener_cmd = Command::new(&listener_binary);
-    listener_cmd.env("ZENOH_LOCATOR", &locator);
+    listener_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "info"); // Enable env_logger output
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
@@ -104,9 +106,9 @@ fn test_talker_listener_communication(
     // Kill talker first
     talker.kill();
 
-    // Collect listener output
+    // Collect listener output (use wait_for_all_output to capture stderr where env_logger logs)
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(2))
+        .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
 
     eprintln!("Listener output:\n{}", listener_output);
@@ -174,9 +176,9 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
     // Kill talker first
     talker.kill();
 
-    // Collect listener output
+    // Collect listener output (use wait_for_all_output to capture stderr where env_logger logs)
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(2))
+        .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
 
     eprintln!("Listener output:\n{}", listener_output);

@@ -220,6 +220,7 @@ fn test_zephyr_to_native_e2e() {
     // Start zenohd on the bridge network
     eprintln!("Starting zenohd router...");
     let router = ZenohRouter::start(7447).expect("Failed to start zenohd");
+    eprintln!("zenohd locator: {}", router.locator());
 
     // Give zenohd time to start
     std::thread::sleep(Duration::from_millis(500));
@@ -236,7 +237,11 @@ fn test_zephyr_to_native_e2e() {
     use std::process::Command;
 
     let mut listener_cmd = Command::new(&listener_path);
-    listener_cmd.env("ZENOH_LOCATOR", "tcp/192.0.2.2:7447");
+    // Connect via bridge IP (same as Zephyr) to ensure both are on same network segment
+    // Connect via bridge IP (same as Zephyr)
+    listener_cmd
+        .env("ZENOH_LOCATOR", "tcp/192.0.2.2:7447")
+        .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
@@ -251,9 +256,9 @@ fn test_zephyr_to_native_e2e() {
     // Wait for communication
     eprintln!("Waiting for Zephyr → Native communication...");
 
-    // Wait for listener output
+    // Wait for listener output (use wait_for_all_output to capture stderr where env_logger logs)
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(15))
+        .wait_for_all_output(Duration::from_secs(15))
         .expect("Listener timed out");
 
     // Get Zephyr output for debugging

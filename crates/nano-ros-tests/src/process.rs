@@ -90,6 +90,8 @@ impl ManagedProcess {
     /// The process is killed when the timeout is reached.
     pub fn wait_for_output(&mut self, timeout: Duration) -> Result<String, TestError> {
         use std::io::Read;
+        #[cfg(unix)]
+        use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
         let mut output = String::new();
@@ -99,6 +101,16 @@ impl ManagedProcess {
             .stdout
             .take()
             .ok_or_else(|| TestError::ProcessFailed(format!("No stdout for {}", self.name)))?;
+
+        // Set non-blocking mode on stdout
+        #[cfg(unix)]
+        {
+            let fd = stdout.as_raw_fd();
+            unsafe {
+                let flags = libc::fcntl(fd, libc::F_GETFL);
+                libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            }
+        }
 
         let mut buffer = [0u8; 4096];
         loop {
@@ -145,6 +157,8 @@ impl ManagedProcess {
     /// The process is killed when the timeout is reached.
     pub fn wait_for_all_output(&mut self, timeout: Duration) -> Result<String, TestError> {
         use std::io::Read;
+        #[cfg(unix)]
+        use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
         let mut output = String::new();
@@ -152,6 +166,25 @@ impl ManagedProcess {
         // Take both stdout and stderr
         let mut stdout = self.handle.stdout.take();
         let mut stderr = self.handle.stderr.take();
+
+        // Set non-blocking mode on stdout and stderr
+        #[cfg(unix)]
+        {
+            if let Some(ref out) = stdout {
+                let fd = out.as_raw_fd();
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+            if let Some(ref err) = stderr {
+                let fd = err.as_raw_fd();
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+        }
 
         let mut stdout_buf = [0u8; 4096];
         let mut stderr_buf = [0u8; 4096];
