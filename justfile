@@ -702,6 +702,10 @@ test-rust-rmw-interop:
 test-rust-actions:
     cargo test -p nano-ros-tests --test actions -- --nocapture
 
+# Run Rust native service tests (nano-ros server ↔ nano-ros client)
+test-rust-services:
+    cargo test -p nano-ros-tests --test services -- --nocapture
+
 # Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
 test-rust-actions-rmw-interop:
     cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture

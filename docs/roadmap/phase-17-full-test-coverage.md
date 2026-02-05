@@ -2,7 +2,7 @@
 
 **Goal**: Achieve comprehensive test coverage across all platforms, examples, and features. Close the gaps identified in `docs/test-coverage.md`.
 
-**Status**: Not Started
+**Status**: In Progress
 
 ## Overview
 
@@ -21,14 +21,41 @@ This phase implements missing integration tests to achieve full coverage:
 
 ## Phase 17.1: Service Integration Tests
 
-**Status**: Not Started
+**Status**: Complete (Native)
 **Priority**: **High**
 
 Services are implemented but have zero integration tests.
 
-### Work Items
+### Completed
 
-- [ ] **17.1.1** Create `tests/services.rs`
+- [x] **17.1.1** Create `tests/services.rs` - 8 native service tests implemented
+- [x] **17.1.2** Add service binary fixtures - `service_server_binary`, `service_client_binary`
+- [x] Add justfile recipe `test-rust-services`
+
+### Test Results (8/8 passing)
+
+| Test | Status | Notes |
+|------|--------|-------|
+| `test_service_server_builds` | PASS | Binary builds successfully |
+| `test_service_client_builds` | PASS | Binary builds successfully |
+| `test_service_server_starts` | PASS | Server stays running |
+| `test_service_client_starts_without_server` | PASS | Reports ConnectionFailed correctly |
+| `test_service_client_timeout` | PASS | Handles missing server |
+| `test_service_request_response` | PASS | 4/4 responses, all correct |
+| `test_service_multiple_sequential_calls` | PASS | 8 responses across 2 runs |
+| `test_service_server_multiple_clients` | PASS | Partial - see finding below |
+
+### Finding: Concurrent Client Issue
+
+When two clients connect simultaneously to the same server:
+- Client 1: 0 responses (ConnectionFailed)
+- Client 2: 4 responses (all successful)
+
+This may indicate a limitation in zenoh-pico service handling where concurrent client connections conflict. Worth investigating in Phase 16.
+
+### Remaining Work Items
+
+- [ ] **17.1.3** Add Zephyr service tests
   ```rust
   //! Service communication integration tests
 

@@ -22,6 +22,12 @@ static NATIVE_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-action-client binary
 static NATIVE_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native-rs-service-server binary
+static NATIVE_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native-rs-service-client binary
+static NATIVE_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build the qemu-test example and return its path
 ///
 /// Uses OnceLock to cache the build, so subsequent calls are fast.
@@ -219,6 +225,50 @@ pub fn action_server_binary() -> PathBuf {
 pub fn action_client_binary() -> PathBuf {
     build_native_action_client()
         .expect("Failed to build native-rs-action-client")
+        .to_path_buf()
+}
+
+/// Build native-rs-service-server with zenoh feature (cached)
+pub fn build_native_service_server() -> TestResult<&'static Path> {
+    NATIVE_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rs-service-server",
+                "native-rs-service-server",
+                Some(&["zenoh"]),
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native-rs-service-client with zenoh feature (cached)
+pub fn build_native_service_client() -> TestResult<&'static Path> {
+    NATIVE_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rs-service-client",
+                "native-rs-service-client",
+                Some(&["zenoh"]),
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the native-rs-service-server binary path
+#[rstest::fixture]
+pub fn service_server_binary() -> PathBuf {
+    build_native_service_server()
+        .expect("Failed to build native-rs-service-server")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the native-rs-service-client binary path
+#[rstest::fixture]
+pub fn service_client_binary() -> PathBuf {
+    build_native_service_client()
+        .expect("Failed to build native-rs-service-client")
         .to_path_buf()
 }
 
