@@ -392,6 +392,8 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         "zephyr-rs-listener" | "rs-listener" => "build-listener",
         "zephyr-rs-action-server" | "rs-action-server" => "build-action-server",
         "zephyr-rs-action-client" | "rs-action-client" => "build-action-client",
+        "zephyr-rs-service-server" | "rs-service-server" => "build-service-server",
+        "zephyr-rs-service-client" | "rs-service-client" => "build-service-client",
         _ => "build",
     }
 }
@@ -406,6 +408,8 @@ fn example_path_for_name(example_name: &str) -> String {
         "zephyr-rs-listener" | "rs-listener" => "zephyr/rs-listener".to_string(),
         "zephyr-rs-action-server" | "rs-action-server" => "zephyr/rs-action-server".to_string(),
         "zephyr-rs-action-client" | "rs-action-client" => "zephyr/rs-action-client".to_string(),
+        "zephyr-rs-service-server" | "rs-service-server" => "zephyr/rs-service-server".to_string(),
+        "zephyr-rs-service-client" | "rs-service-client" => "zephyr/rs-service-client".to_string(),
         "zephyr-c-talker" | "c-talker" => "zephyr/c-talker".to_string(),
         "zephyr-c-listener" | "c-listener" => "zephyr/c-listener".to_string(),
         // For any other name, assume it's a path relative to examples/

@@ -15,9 +15,13 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nano_ros_service_client_rs)
 
-# Use shared C shim from zenoh-pico-shim-sys
-# This provides the zenoh_shim_* API used by the Rust crate
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../crates/zenoh-pico-shim-sys/c)
+# Include nano-ros BSP for Zephyr
+set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/nano-ros-bsp-zephyr)
+target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
+target_include_directories(app PRIVATE ${BSP_DIR}/include)
+
+# Include zenoh shim (required by BSP)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/zenoh-pico-shim-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

@@ -743,6 +743,18 @@ test-rust-zephyr-actions:
 test-rust-zephyr-actions-full: build-zephyr-actions
     cargo test -p nano-ros-tests --test zephyr test_zephyr_action -- --nocapture
 
+# Run Rust Zephyr service tests only (requires west workspace + bridge network)
+test-rust-zephyr-services:
+    cargo test -p nano-ros-tests --test zephyr test_zephyr_service -- --nocapture --test-threads=1
+
+# Run cross-platform service tests (native server + Zephyr client)
+test-rust-native-server-zephyr-client:
+    cargo test -p nano-ros-tests --test zephyr test_native_server_zephyr_client -- --nocapture
+
+# Run cross-platform service tests (Zephyr server + native client)
+test-rust-zephyr-server-native-client:
+    cargo test -p nano-ros-tests --test zephyr test_zephyr_server_native_client -- --nocapture
+
 # Run Rust tests via wrapper script (with nice output)
 test-rust-full:
     ./tests/rust-tests.sh

@@ -100,7 +100,10 @@ impl<'a> ZephyrNode<'a> {
 
         info!("Declared service server for '{}'", service_name);
 
-        Ok(ZephyrServiceServer { queryable })
+        Ok(ZephyrServiceServer {
+            queryable,
+            _phantom: core::marker::PhantomData,
+        })
     }
 }
 

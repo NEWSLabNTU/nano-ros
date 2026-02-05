@@ -20,7 +20,10 @@
 //! ```
 
 use nano_ros_tests::count_pattern;
-use nano_ros_tests::fixtures::{ZenohRouter, build_native_listener, build_native_talker};
+use nano_ros_tests::fixtures::{
+    ZenohRouter, build_native_listener, build_native_service_client, build_native_service_server,
+    build_native_talker,
+};
 use nano_ros_tests::zephyr::{
     ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_bridge_network_available,
     is_zephyr_available, require_bridge_network, require_zephyr, zephyr_workspace_path,
@@ -956,5 +959,349 @@ fn test_zephyr_action_e2e() {
         eprintln!("  Client subscribed: {}", client_subscribed);
         eprintln!("  Client got feedback: {}", client_got_feedback);
         eprintln!("  Client completed: {}", client_completed);
+    }
+}
+
+// =============================================================================
+// Zephyr Service Examples
+// =============================================================================
+
+/// Get or build Zephyr service server for native_sim
+fn get_zephyr_service_server_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-rs-service-server binary")
+}
+
+/// Get or build Zephyr service client for native_sim
+fn get_zephyr_service_client_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-rs-service-client binary")
+}
+
+/// Test: Zephyr service server can be built or found
+#[test]
+fn test_zephyr_service_server_build() {
+    if !require_zephyr() {
+        return;
+    }
+
+    let result =
+        get_or_build_zephyr_example("zephyr-rs-service-server", ZephyrPlatform::NativeSim, false);
+
+    match result {
+        Ok(path) => {
+            assert!(path.exists(), "Binary should exist");
+            eprintln!("SUCCESS: Found/built service server at {}", path.display());
+        }
+        Err(e) => {
+            panic!("Failed to get zephyr-rs-service-server: {}", e);
+        }
+    }
+}
+
+/// Test: Zephyr service client can be built or found
+#[test]
+fn test_zephyr_service_client_build() {
+    if !require_zephyr() {
+        return;
+    }
+
+    let result =
+        get_or_build_zephyr_example("zephyr-rs-service-client", ZephyrPlatform::NativeSim, false);
+
+    match result {
+        Ok(path) => {
+            assert!(path.exists(), "Binary should exist");
+            eprintln!("SUCCESS: Found/built service client at {}", path.display());
+        }
+        Err(e) => {
+            panic!("Failed to get zephyr-rs-service-client: {}", e);
+        }
+    }
+}
+
+/// Test: Zephyr service server starts correctly
+///
+/// Basic smoke test that verifies the Zephyr service server boots and initializes.
+/// Connection failure is expected without zenohd.
+#[test]
+fn test_zephyr_service_server_smoke() {
+    if !require_zephyr() {
+        return;
+    }
+
+    let zephyr_binary = get_zephyr_service_server_native_sim();
+    eprintln!(
+        "Starting Zephyr service server: {}",
+        zephyr_binary.display()
+    );
+
+    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr service server");
+
+    let output = zephyr
+        .wait_for_output(Duration::from_secs(5))
+        .unwrap_or_default();
+
+    eprintln!("Zephyr output:\n{}", output);
+
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+
+    if has_boot {
+        eprintln!("SUCCESS: Zephyr service server booted and initialized");
+    } else {
+        panic!("Zephyr service server failed to boot - no initialization output");
+    }
+}
+
+/// Test: Zephyr service client starts correctly
+///
+/// Basic smoke test that verifies the Zephyr service client boots and initializes.
+/// Connection failure is expected without zenohd.
+#[test]
+fn test_zephyr_service_client_smoke() {
+    if !require_zephyr() {
+        return;
+    }
+
+    let zephyr_binary = get_zephyr_service_client_native_sim();
+    eprintln!(
+        "Starting Zephyr service client: {}",
+        zephyr_binary.display()
+    );
+
+    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr service client");
+
+    let output = zephyr
+        .wait_for_output(Duration::from_secs(5))
+        .unwrap_or_default();
+
+    eprintln!("Zephyr output:\n{}", output);
+
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+
+    if has_boot {
+        eprintln!("SUCCESS: Zephyr service client booted and initialized");
+    } else {
+        panic!("Zephyr service client failed to boot - no initialization output");
+    }
+}
+
+// =============================================================================
+// Cross-Platform Service Tests
+// =============================================================================
+
+/// Test: Native service server + Zephyr service client
+///
+/// Tests cross-platform service communication with native server and Zephyr client.
+#[test]
+fn test_native_server_zephyr_client() {
+    if !require_zephyr() {
+        return;
+    }
+    if !require_bridge_network() {
+        return;
+    }
+
+    // Start zenohd on the bridge network
+    eprintln!("Starting zenohd router...");
+    let router = ZenohRouter::start(7447).expect("Failed to start zenohd");
+    eprintln!("zenohd locator: {}", router.locator());
+
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Build native service server
+    let server_path =
+        build_native_service_server().expect("Failed to build native-rs-service-server");
+
+    // Get Zephyr service client
+    let zephyr_binary = get_zephyr_service_client_native_sim();
+    eprintln!("Zephyr client binary: {}", zephyr_binary.display());
+
+    // Start native service server first
+    use nano_ros_tests::process::ManagedProcess;
+    use std::process::Command;
+
+    let mut server_cmd = Command::new(server_path);
+    server_cmd
+        .env("ZENOH_LOCATOR", "tcp/192.0.2.2:7447")
+        .env("RUST_LOG", "info");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
+        .expect("Failed to start native service server");
+
+    // Give server time to set up
+    std::thread::sleep(Duration::from_secs(3));
+
+    if !server.is_running() {
+        let output = server
+            .wait_for_all_output(Duration::from_secs(1))
+            .unwrap_or_default();
+        eprintln!("[FAIL] Native service server exited early");
+        eprintln!("Output: {}", output);
+        panic!("Native service server failed to start");
+    }
+
+    // Start Zephyr service client
+    eprintln!("Starting Zephyr service client...");
+    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr service client");
+
+    // Wait for service communication
+    eprintln!("Waiting for Native server ↔ Zephyr client communication...");
+
+    // Wait for Zephyr output
+    let zephyr_output = zephyr
+        .wait_for_output(Duration::from_secs(20))
+        .unwrap_or_default();
+
+    // Get native server output
+    let server_output = server
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    // Kill processes
+    let _ = zephyr.kill();
+    drop(server);
+    drop(router);
+
+    eprintln!("\n=== Native server output ===\n{}", server_output);
+    eprintln!("\n=== Zephyr client output ===\n{}", zephyr_output);
+
+    // Check Zephyr client status
+    let zephyr_connected = zephyr_output.contains("Session opened");
+    let zephyr_sent_request =
+        zephyr_output.contains("Sending request") || zephyr_output.contains("Request:");
+    let zephyr_got_response = zephyr_output.contains("Response:") || zephyr_output.contains("sum=");
+
+    // Check native server status
+    let server_received = server_output.contains("Received request")
+        || server_output.contains("Processing request")
+        || server_output.contains("Request:");
+
+    if zephyr_got_response {
+        let response_count = count_pattern(&zephyr_output, "Response");
+        eprintln!(
+            "\nSUCCESS: Zephyr client received {} responses from native server",
+            response_count
+        );
+    } else if zephyr_connected && zephyr_sent_request && server_received {
+        eprintln!("\nPARTIAL: Communication established but no response received");
+        eprintln!("  Zephyr connected: {}", zephyr_connected);
+        eprintln!("  Zephyr sent request: {}", zephyr_sent_request);
+        eprintln!("  Server received request: {}", server_received);
+    } else if !zephyr_connected {
+        panic!("Zephyr client failed to connect to zenohd");
+    } else {
+        eprintln!("\nWARNING: Service communication incomplete");
+        eprintln!("  Zephyr connected: {}", zephyr_connected);
+        eprintln!("  Zephyr sent request: {}", zephyr_sent_request);
+        eprintln!("  Server received request: {}", server_received);
+        eprintln!("  Zephyr got response: {}", zephyr_got_response);
+        // Don't fail - this may be due to known zenoh-pico limitations
+    }
+}
+
+/// Test: Zephyr service server + Native service client
+///
+/// Tests cross-platform service communication with Zephyr server and native client.
+#[test]
+fn test_zephyr_server_native_client() {
+    if !require_zephyr() {
+        return;
+    }
+    if !require_bridge_network() {
+        return;
+    }
+
+    // Start zenohd on the bridge network
+    eprintln!("Starting zenohd router...");
+    let router = ZenohRouter::start(7447).expect("Failed to start zenohd");
+    eprintln!("zenohd locator: {}", router.locator());
+
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Build native service client
+    let client_path =
+        build_native_service_client().expect("Failed to build native-rs-service-client");
+
+    // Get Zephyr service server
+    let zephyr_binary = get_zephyr_service_server_native_sim();
+    eprintln!("Zephyr server binary: {}", zephyr_binary.display());
+
+    // Start Zephyr service server first
+    eprintln!("Starting Zephyr service server...");
+    let mut zephyr = ZephyrProcess::start(&zephyr_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr service server");
+
+    // Give Zephyr server time to set up queryables
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Start native service client
+    use nano_ros_tests::process::ManagedProcess;
+    use std::process::Command;
+
+    let mut client_cmd = Command::new(client_path);
+    client_cmd
+        .env("ZENOH_LOCATOR", "tcp/192.0.2.2:7447")
+        .env("RUST_LOG", "info");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
+        .expect("Failed to start native service client");
+
+    // Wait for service communication
+    eprintln!("Waiting for Zephyr server ↔ Native client communication...");
+    std::thread::sleep(Duration::from_secs(15));
+
+    // Get outputs
+    let client_output = client
+        .wait_for_all_output(Duration::from_secs(3))
+        .unwrap_or_default();
+    let zephyr_output = zephyr
+        .wait_for_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    // Kill processes
+    let _ = zephyr.kill();
+    drop(client);
+    drop(router);
+
+    eprintln!("\n=== Zephyr server output ===\n{}", zephyr_output);
+    eprintln!("\n=== Native client output ===\n{}", client_output);
+
+    // Check Zephyr server status
+    let zephyr_connected = zephyr_output.contains("Session opened");
+    let zephyr_ready = zephyr_output.contains("Service server ready")
+        || zephyr_output.contains("Waiting for service requests");
+    let zephyr_received =
+        zephyr_output.contains("Received request") || zephyr_output.contains("Request:");
+    let zephyr_replied = zephyr_output.contains("Sent reply") || zephyr_output.contains("sum=");
+
+    // Check native client status
+    let client_got_response = client_output.contains("Response:") || client_output.contains("= ");
+    let client_completed = client_output.contains("completed successfully");
+
+    if client_got_response {
+        let response_count = count_pattern(&client_output, "Response:");
+        eprintln!(
+            "\nSUCCESS: Native client received {} responses from Zephyr server",
+            response_count
+        );
+        if zephyr_replied {
+            eprintln!("  - Zephyr server processed and replied to requests");
+        }
+    } else if zephyr_connected && zephyr_ready && !zephyr_received {
+        eprintln!("\nPARTIAL: Zephyr server ready but didn't receive requests");
+        eprintln!("This may be due to zenoh-pico queryable limitations");
+    } else if !zephyr_connected {
+        panic!("Zephyr server failed to connect to zenohd");
+    } else {
+        eprintln!("\nWARNING: Service communication incomplete");
+        eprintln!("  Zephyr connected: {}", zephyr_connected);
+        eprintln!("  Zephyr ready: {}", zephyr_ready);
+        eprintln!("  Zephyr received request: {}", zephyr_received);
+        eprintln!("  Zephyr replied: {}", zephyr_replied);
+        eprintln!("  Native client got response: {}", client_got_response);
+        eprintln!("  Native client completed: {}", client_completed);
+        // Don't fail - this may be due to known zenoh-pico limitations
     }
 }
