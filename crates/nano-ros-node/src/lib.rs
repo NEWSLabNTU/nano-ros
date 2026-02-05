@@ -159,7 +159,7 @@ pub use context::{
 #[cfg(feature = "zenoh")]
 pub use executor::{
     DEFAULT_MAX_NODES, DEFAULT_MAX_SUBSCRIPTIONS, Executor, ExecutorTimerCallback, SpinOnceResult,
-    SpinOptions, SubscriptionCallback, SubscriptionHandle,
+    SpinOptions, SubscriptionCallback, SubscriptionCallbackWithInfo, SubscriptionHandle,
 };
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]

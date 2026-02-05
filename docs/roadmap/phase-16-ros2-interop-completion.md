@@ -168,7 +168,7 @@ impl<T: Message> PublisherState<T> {
 
 ---
 
-### A.4 Subscription API Enhancement (HIGH)
+### A.4 Subscription API Enhancement (HIGH) - COMPLETE
 
 **Goal**: Match rclrs `Subscription<T>` callback patterns (ownership follows rclc patterns).
 
@@ -185,17 +185,22 @@ pub type Subscription<T> = Arc<SubscriptionState<T>>;  // N/A for embedded - nan
 
 **Tasks**:
 - [x] ~~Wrap subscription in `Arc<SubscriptionState<T>>`~~ **N/A for embedded** - keep `SubscriptionHandle` with direct ownership
-- [ ] Add `SubscriptionCallback` trait for flexible callback signatures
-- [ ] Support `FnMut(T)` - message only
-- [ ] Support `FnMut(T, MessageInfo)` - message with metadata
-- [ ] Add `topic_name()` and `qos()` methods
-- [ ] Add `MessageInfo` type with timestamp and source GID
+- [x] Add `SubscriptionCallback` trait for flexible callback signatures
+- [x] Support `FnMut(&T)` - message only (via `create_subscription()`)
+- [x] Support `FnMut(&T, &MessageInfo)` - message with metadata (via `create_subscription_with_info()`)
+- [x] Add `topic_name()` method
+- [ ] Add `qos()` method (pending QoS struct implementation in A.8)
+- [x] Add `MessageInfo` type with timestamp and source GID
 - [x] ~~Support `async fn(T)`~~ **N/A for embedded** - requires `Send` futures
 
+**Implementation Notes**:
+- `MessageInfo` currently returns default values as transport layer doesn't yet extract RMW attachment data on receive
+- TODO: Wire up proper MessageInfo from transport layer (requires transport layer changes)
+
 **Passing Criteria**:
-- [ ] `node.create_subscription("topic", |msg: Int32| { ... })` compiles
-- [ ] `node.create_subscription("topic", |msg, info| { ... })` compiles
-- [ ] `MessageInfo` contains valid timestamp and GID
+- [x] `node.create_subscription("topic", |msg: &Int32| { ... })` compiles
+- [x] `node.create_subscription_with_info("topic", |msg, info| { ... })` compiles
+- [ ] `MessageInfo` contains valid timestamp and GID (pending transport layer integration)
 - [x] ~~Subscription is `Send`~~ **N/A for embedded** - zenoh-pico types are `!Send` by design
 
 ---

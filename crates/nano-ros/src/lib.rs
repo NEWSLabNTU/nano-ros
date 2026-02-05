@@ -51,8 +51,8 @@ extern crate alloc;
 
 // Re-export core types
 pub use nano_ros_core::{
-    CdrReader, CdrWriter, Clock, ClockType, Deserialize, Duration, Logger, RosMessage, RosService,
-    Serialize, Time,
+    CdrReader, CdrWriter, Clock, ClockType, Deserialize, Duration, Logger, MessageInfo,
+    PUBLISHER_GID_SIZE, RosMessage, RosService, Serialize, Time,
 };
 
 // Re-export node types
@@ -84,7 +84,7 @@ pub use nano_ros_node::{
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
 pub use nano_ros_node::{
     Executor, NodeHandle, NodeState, PollingExecutor, SpinOnceResult, SpinOptions,
-    SubscriptionCallback,
+    SubscriptionCallback, SubscriptionCallbackWithInfo,
 };
 
 // Re-export BasicExecutor (with zenoh and std features)
@@ -145,10 +145,10 @@ pub use nano_ros_params::{
 /// ```
 pub mod prelude {
     pub use crate::{
-        CdrReader, CdrWriter, Deserialize, Logger, NodeConfig, PublisherHandle, PublisherOptions,
-        QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, RosMessage,
-        RosService, Serialize, StandaloneNode, SubscriberHandle, SubscriberOptions, TopicInfo,
-        TransportConfig,
+        CdrReader, CdrWriter, Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle,
+        PublisherOptions, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings,
+        RosMessage, RosService, Serialize, StandaloneNode, SubscriberHandle, SubscriberOptions,
+        TopicInfo, TransportConfig,
     };
 
     #[cfg(feature = "zenoh")]
@@ -167,7 +167,10 @@ pub mod prelude {
 
     // Re-export executor types
     #[cfg(all(feature = "zenoh", feature = "alloc"))]
-    pub use crate::{Executor, PollingExecutor, SpinOnceResult, SpinOptions, SubscriptionCallback};
+    pub use crate::{
+        Executor, PollingExecutor, SpinOnceResult, SpinOptions, SubscriptionCallback,
+        SubscriptionCallbackWithInfo,
+    };
 
     // Re-export BasicExecutor
     #[cfg(all(feature = "zenoh", feature = "std"))]

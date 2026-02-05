@@ -20,6 +20,7 @@ pub mod action;
 pub mod clock;
 pub mod error;
 pub mod logger;
+pub mod message_info;
 pub mod service;
 pub mod time;
 pub mod types;
@@ -31,6 +32,7 @@ pub use action::{
 pub use clock::{Clock, ClockType};
 pub use error::Error;
 pub use logger::Logger;
+pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};
 pub use time::{Duration, Time};
 pub use types::{RosMessage, RosService};

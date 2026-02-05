@@ -59,7 +59,7 @@ pub trait MaybeSend {}
 #[cfg(not(feature = "async"))]
 impl<T> MaybeSend for T {}
 
-use nano_ros_core::{Deserialize, RosMessage, Time};
+use nano_ros_core::{Deserialize, MessageInfo, RosMessage, Time};
 
 use crate::context::RclrsError;
 #[cfg(feature = "zenoh")]
@@ -184,6 +184,40 @@ impl<M: RosMessage, F: FnMut(&M) + Send> SubscriptionCallback<M> for F {
 impl<M: RosMessage> SubscriptionCallback<M> for fn(&M) {
     fn call(&mut self, msg: &M) {
         (self)(msg)
+    }
+}
+
+/// Trait for subscription callbacks that also receive message metadata
+///
+/// Implemented for:
+/// - Function pointers `fn(&M, &MessageInfo)` (no_std compatible, when alloc is disabled)
+/// - Any `FnMut(&M, &MessageInfo) + Send` (includes fn pointers and closures, requires alloc)
+///
+/// # Example
+///
+/// ```ignore
+/// node.create_subscription_with_info::<Int32, _>("/topic", |msg, info| {
+///     println!("Received {} at {:?}", msg.data, info.source_timestamp());
+/// })?;
+/// ```
+pub trait SubscriptionCallbackWithInfo<M: RosMessage>: Send {
+    /// Invoke the callback with a message and its metadata
+    fn call(&mut self, msg: &M, info: &MessageInfo);
+}
+
+// When alloc is enabled: use blanket impl for FnMut
+#[cfg(feature = "alloc")]
+impl<M: RosMessage, F: FnMut(&M, &MessageInfo) + Send> SubscriptionCallbackWithInfo<M> for F {
+    fn call(&mut self, msg: &M, info: &MessageInfo) {
+        (self)(msg, info)
+    }
+}
+
+// When alloc is disabled: only support function pointers
+#[cfg(not(feature = "alloc"))]
+impl<M: RosMessage> SubscriptionCallbackWithInfo<M> for fn(&M, &MessageInfo) {
+    fn call(&mut self, msg: &M, info: &MessageInfo) {
+        (self)(msg, info)
     }
 }
 
@@ -336,6 +370,33 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
         match self.subscriber.try_recv() {
             Ok(Some(msg)) => {
                 self.callback.call(&msg);
+                Ok(true)
+            }
+            Ok(None) => Ok(false),
+            Err(_) => Err(RclrsError::DeserializationFailed),
+        }
+    }
+}
+
+/// Subscription entry combining subscriber and callback with MessageInfo
+#[cfg(feature = "zenoh")]
+pub(crate) struct SubscriptionEntryWithInfo<
+    M: RosMessage,
+    const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE,
+    C: SubscriptionCallbackWithInfo<M> = fn(&M, &MessageInfo),
+> {
+    pub subscriber: ConnectedSubscriber<M, RX_BUF>,
+    pub callback: C,
+}
+
+#[cfg(feature = "zenoh")]
+impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallbackWithInfo<M>>
+    ErasedCallback for SubscriptionEntryWithInfo<M, RX_BUF, C>
+{
+    fn try_process(&mut self) -> Result<bool, RclrsError> {
+        match self.subscriber.try_recv_with_info() {
+            Ok(Some((msg, info))) => {
+                self.callback.call(&msg, &info);
                 Ok(true)
             }
             Ok(None) => Ok(false),
@@ -569,6 +630,51 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
             .map_err(|_| RclrsError::SubscriberCreationFailed)?;
 
         let entry = SubscriptionEntry {
+            subscriber,
+            callback,
+        };
+
+        let index = self.node.subscriptions.len();
+        self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+
+        Ok(SubscriptionHandle::new(index))
+    }
+
+    /// Create a subscription with a callback that also receives message metadata
+    ///
+    /// The callback will be invoked during `executor.spin_once()` when messages arrive.
+    /// The callback receives both the message and `MessageInfo` containing metadata
+    /// such as timestamps and publisher GID.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// node.create_subscription_with_info::<Int32, _>("/topic", |msg, info| {
+    ///     println!("Received {} at {:?}", msg.data, info.source_timestamp());
+    /// })?;
+    /// ```
+    ///
+    /// # Note
+    ///
+    /// Currently MessageInfo contains default values as the transport layer
+    /// doesn't yet extract RMW attachment data on receive.
+    #[cfg(feature = "alloc")]
+    pub fn create_subscription_with_info<'b, M, C>(
+        &mut self,
+        options: impl IntoSubscriberOptions<'b>,
+        callback: C,
+    ) -> Result<SubscriptionHandle, RclrsError>
+    where
+        M: RosMessage + Deserialize + Send + 'static,
+        C: SubscriptionCallbackWithInfo<M> + 'static,
+    {
+        let subscriber = self
+            .node
+            .inner
+            .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(options.into_subscriber_options())
+            .map_err(|_| RclrsError::SubscriberCreationFailed)?;
+
+        let entry = SubscriptionEntryWithInfo {
             subscriber,
             callback,
         };

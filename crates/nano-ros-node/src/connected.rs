@@ -525,9 +525,15 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             let _ = self._entity_tokens.push(token);
         }
 
+        // Store topic name for later access
+        let mut topic_name = heapless::String::new();
+        // Ignore error if topic name is too long (truncate silently)
+        let _ = topic_name.push_str(options.topic);
+
         Ok(ConnectedSubscriber {
             subscriber,
             rx_buffer: [0u8; RX_BUF],
+            topic_name,
             _marker: core::marker::PhantomData,
         })
     }
@@ -1223,11 +1229,18 @@ impl<M: RosMessage> ConnectedPublisher<M> {
 pub struct ConnectedSubscriber<M, const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE> {
     subscriber: ZenohSubscriber,
     rx_buffer: [u8; RX_BUF],
+    /// Topic name for this subscriber
+    topic_name: heapless::String<256>,
     _marker: core::marker::PhantomData<M>,
 }
 
 #[cfg(feature = "zenoh")]
 impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
+    /// Get the topic name for this subscriber
+    pub fn topic_name(&self) -> &str {
+        self.topic_name.as_str()
+    }
+
     /// Try to receive a message (non-blocking)
     ///
     /// Returns `Ok(Some(msg))` if a message was received,
@@ -1246,6 +1259,30 @@ impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
         self.subscriber
             .try_recv_raw(buf)
             .map_err(|_| ConnectedNodeError::DeserializationFailed)
+    }
+
+    /// Try to receive a message with metadata (non-blocking)
+    ///
+    /// Returns `Ok(Some((msg, info)))` if a message was received,
+    /// `Ok(None)` if no message is available,
+    /// or `Err` on deserialization failure.
+    ///
+    /// # Note
+    ///
+    /// Currently returns default MessageInfo as the transport layer
+    /// doesn't yet extract RMW attachment data on receive.
+    /// TODO: Wire up proper MessageInfo from transport layer.
+    pub fn try_recv_with_info(
+        &mut self,
+    ) -> Result<Option<(M, nano_ros_core::MessageInfo)>, ConnectedNodeError> {
+        match self.try_recv()? {
+            Some(msg) => {
+                // TODO: Extract actual MessageInfo from transport layer attachment
+                let info = nano_ros_core::MessageInfo::new();
+                Ok(Some((msg, info)))
+            }
+            None => Ok(None),
+        }
     }
 
     /// Get the buffer size
