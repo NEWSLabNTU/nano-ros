@@ -27,8 +27,7 @@ nano-ros/
 │   │   ├── rs-listener/          # Rust subscriber
 │   │   ├── rs-service-*/         # Rust service examples
 │   │   ├── rs-action-*/          # Rust action examples
-│   │   ├── c-*/                  # C language examples
-│   │   └── cpp-*/                # C++ language examples
+│   │   └── c-*/                  # C language examples
 │   ├── qemu/                  # QEMU bare-metal ARM (uses bsp-qemu)
 │   │   ├── bsp-talker/           # Simplified BSP publisher
 │   │   ├── bsp-listener/         # Simplified BSP subscriber
@@ -173,7 +172,6 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 7 | API alignment (rclrs) | Complete |
 | 8 | Embedded networking | Complete |
 | 9 | Test infrastructure | In Progress |
-| 10 | C++ bindings (rclcpp) | Planning |
 | 12 | QEMU bare-metal tests | Complete |
 | 13 | Bare-metal API simplification | Complete |
 | 14 | Platform BSP libraries | Planning |

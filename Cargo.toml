@@ -25,10 +25,8 @@ members = [
 
 # Examples are excluded from workspace - they are standalone packages
 # that generate their own bindings via `cargo nano-ros generate`
-# nano-ros-cpp is excluded because it's built via CMake/Corrosion
 exclude = [
     # Embedded crates (require cross-compilation)
-    "crates/nano-ros-cpp",
     "crates/nano-ros-bsp-qemu",
     "crates/nano-ros-bsp-stm32f4",
     # Native examples (desktop/Linux)

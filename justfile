@@ -8,16 +8,16 @@ default:
 # Entry Points
 # =============================================================================
 
-# Build everything: workspace (native + embedded), C++ bindings, and all examples
-build: build-workspace build-workspace-embedded build-cpp build-examples build-examples-cpp
+# Build everything: workspace (native + embedded) and all examples
+build: build-workspace build-workspace-embedded build-examples
     @echo "All builds completed!"
 
-# Format everything: workspace, C++, and all examples
-format: format-workspace format-cpp format-examples format-examples-cpp
+# Format everything: workspace and all examples
+format: format-workspace format-examples
     @echo "All formatting completed!"
 
-# Check everything: formatting, clippy (native + embedded + features), C++, and all examples
-check: check-workspace check-workspace-embedded check-workspace-features check-cpp check-examples check-examples-cpp
+# Check everything: formatting, clippy (native + embedded + features), and all examples
+check: check-workspace check-workspace-embedded check-workspace-features check-examples
     @echo "All checks passed!"
 
 # Run quick tests: workspace unit tests only (no integration tests)
@@ -296,7 +296,7 @@ clean-examples-qemu:
     @echo "QEMU example build artifacts cleaned"
 
 # Clean all example build artifacts
-clean-examples: clean-examples-native clean-examples-embedded clean-examples-qemu clean-examples-cpp clean-examples-c
+clean-examples: clean-examples-native clean-examples-embedded clean-examples-qemu clean-examples-c
     @echo "All example build artifacts cleaned"
 
 # =============================================================================
@@ -526,118 +526,6 @@ analyze-stack:
 static-analysis: test-miri
     @echo ""
     @echo "All static analysis checks passed!"
-
-# =============================================================================
-# C++ Bindings
-# =============================================================================
-
-# Build C++ bindings (nano-ros-cpp)
-build-cpp:
-    @echo "Building C++ bindings..."
-    cd crates/nano-ros-cpp && cmake -B build && cmake --build build
-
-# Build C++ bindings (release)
-build-cpp-release:
-    @echo "Building C++ bindings (release)..."
-    cd crates/nano-ros-cpp && cmake -B build -DCMAKE_BUILD_TYPE=Release && cmake --build build
-
-# Format C++ code
-format-cpp:
-    @echo "Formatting C++ code..."
-    @which clang-format > /dev/null || (echo "Error: clang-format not found. Install with: sudo apt install clang-format" && exit 1)
-    find crates/nano-ros-cpp/cpp crates/nano-ros-cpp/include/nano_ros \
-        -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | \
-        xargs clang-format -i --style=file:crates/nano-ros-cpp/.clang-format
-    @echo "C++ code formatted"
-
-# Check C++ formatting and run clang-tidy lints
-check-cpp: _check-cpp-format _check-cpp-tidy
-    @echo "C++ checks passed"
-
-# Check C++ formatting only (does not modify files)
-# Note: Excludes generated message headers (std_msgs, builtin_interfaces) which are auto-generated
-_check-cpp-format:
-    @echo "Checking C++ formatting..."
-    @which clang-format > /dev/null || (echo "Error: clang-format not found. Install with: sudo apt install clang-format" && exit 1)
-    find crates/nano-ros-cpp/cpp crates/nano-ros-cpp/include/nano_ros \
-        -name '*.cpp' -o -name '*.hpp' -o -name '*.h' | \
-        xargs clang-format --dry-run --Werror --style=file:crates/nano-ros-cpp/.clang-format
-    @echo "C++ formatting check passed"
-
-# Run clang-tidy on C++ code (requires build for compile_commands.json)
-_check-cpp-tidy:
-    @echo "Running clang-tidy..."
-    @which clang-tidy > /dev/null || (echo "Error: clang-tidy not found. Install with: sudo apt install clang-tidy" && exit 1)
-    @test -f crates/nano-ros-cpp/build/compile_commands.json || (echo "Error: compile_commands.json not found. Run 'just build-cpp' first." && exit 1)
-    cd crates/nano-ros-cpp && clang-tidy -p build cpp/*.cpp
-    @echo "clang-tidy check passed"
-
-# Clean C++ bindings build
-clean-cpp:
-    rm -rf crates/nano-ros-cpp/build
-    @echo "C++ bindings build cleaned"
-
-# =============================================================================
-# Examples - C++
-# =============================================================================
-
-# Build C++ examples
-build-examples-cpp: build-cpp
-    @echo "Building C++ examples..."
-    cd examples/native/cpp-talker && cmake -B build && cmake --build build
-    cd examples/native/cpp-listener && cmake -B build && cmake --build build
-    cd examples/native/cpp-custom-msg && cmake -B build && cmake --build build
-    cd examples/native/cpp-service-server && cmake -B build && cmake --build build
-    cd examples/native/cpp-service-client && cmake -B build && cmake --build build
-
-# Format C++ examples
-format-examples-cpp:
-    @echo "Formatting C++ examples..."
-    @which clang-format > /dev/null || (echo "Error: clang-format not found." && exit 1)
-    find examples/native/cpp-talker/src examples/native/cpp-listener/src examples/native/cpp-custom-msg/src \
-        examples/native/cpp-service-server/src examples/native/cpp-service-client/src -name '*.cpp' | \
-        xargs clang-format -i --style=file:crates/nano-ros-cpp/.clang-format
-
-# Check C++ examples
-check-examples-cpp:
-    @echo "Checking C++ examples..."
-    @which clang-format > /dev/null || (echo "Error: clang-format not found." && exit 1)
-    find examples/native/cpp-talker/src examples/native/cpp-listener/src examples/native/cpp-custom-msg/src \
-        examples/native/cpp-service-server/src examples/native/cpp-service-client/src -name '*.cpp' | \
-        xargs clang-format --dry-run --Werror --style=file:crates/nano-ros-cpp/.clang-format
-
-# Clean C++ examples build
-clean-examples-cpp:
-    rm -rf examples/native/cpp-talker/build examples/native/cpp-listener/build examples/native/cpp-custom-msg/build \
-        examples/native/cpp-service-server/build examples/native/cpp-service-client/build
-    @echo "C++ examples build cleaned"
-
-# Run C++ talker (requires zenohd)
-run-native-cpp-talker:
-    @echo "Running C++ talker (requires zenohd)..."
-    examples/native/cpp-talker/build/cpp_talker
-
-# Run C++ listener (requires zenohd)
-run-native-cpp-listener:
-    @echo "Running C++ listener (requires zenohd)..."
-    examples/native/cpp-listener/build/cpp_listener
-
-# Run C++ custom message example (requires zenohd)
-run-native-cpp-custom-msg:
-    @echo "Running C++ custom message example (requires zenohd)..."
-    examples/native/cpp-custom-msg/build/cpp_custom_msg
-
-# Run C++ service server (requires zenohd)
-run-native-cpp-service-server:
-    @echo "Running C++ service server (requires zenohd)..."
-    examples/native/cpp-service-server/build/cpp_service_server
-
-# Run C++ service client (requires zenohd + service server)
-# NOTE: Service client is not yet supported in transport layer
-run-native-cpp-service-client:
-    @echo "Running C++ service client (requires zenohd + service server)..."
-    @echo "NOTE: Service client creation will fail - not yet implemented in transport layer"
-    examples/native/cpp-service-client/build/cpp_service_client
 
 # =============================================================================
 # Zenoh
@@ -871,9 +759,7 @@ setup:
     @echo "=== Checking system dependencies ==="
     @which arm-none-eabi-gcc > /dev/null 2>&1 || (echo "WARNING: arm-none-eabi-gcc not found." && echo "For embedded development, install with: sudo apt install gcc-arm-none-eabi" && echo "")
     @which qemu-system-arm > /dev/null 2>&1 || (echo "WARNING: qemu-system-arm not found." && echo "For QEMU testing, install with: sudo apt install qemu-system-arm" && echo "")
-    @which cmake > /dev/null 2>&1 || (echo "WARNING: cmake not found." && echo "For C++ bindings, install with: sudo apt install cmake" && echo "")
-    @which clang-format > /dev/null 2>&1 || (echo "WARNING: clang-format not found." && echo "For C++ formatting, install with: sudo apt install clang-format" && echo "")
-    @which clang-tidy > /dev/null 2>&1 || (echo "WARNING: clang-tidy not found." && echo "For C++ linting, install with: sudo apt install clang-tidy" && echo "")
+    @which cmake > /dev/null 2>&1 || (echo "WARNING: cmake not found." && echo "For C examples, install with: sudo apt install cmake" && echo "")
     @echo "Setup complete!"
 
 # Setup all network bridges (QEMU + Zephyr, requires sudo)
@@ -895,7 +781,7 @@ doc:
     cargo doc --no-deps --open
 
 # Clean all build artifacts created by `just build`
-clean: clean-cpp clean-examples
+clean: clean-examples
     cargo clean
     @echo "All build artifacts cleaned"
 

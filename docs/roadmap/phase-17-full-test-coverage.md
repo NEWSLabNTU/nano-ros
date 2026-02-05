@@ -52,7 +52,6 @@ This phase implements missing integration tests to achieve full coverage:
 - **Services** - Request/response communication (native + Zephyr)
 - **Bidirectional cross-platform** - Native ↔ Zephyr in both directions
 - **Custom messages** - User-defined message types
-- **C++ bindings** - Full C++ integration test suite
 - **Parameters** - Parameter server integration tests
 - **QoS policies** - Quality of Service verification
 - **QEMU BSP** - Bare-metal communication tests
@@ -317,112 +316,7 @@ just test-rust-custom-msg
 
 ---
 
-## Phase 17.4: C++ Integration Tests
-
-**Status**: Not Started
-**Priority**: **Medium**
-
-C++ bindings exist but have no automated tests.
-
-### Work Items
-
-- [ ] **17.4.1** Create `tests/cpp_integration.rs`
-  ```rust
-  //! C++ binding integration tests
-
-  mod build {
-      #[rstest]
-      fn test_cpp_talker_builds() {
-          // cmake -B build && cmake --build build
-          // for native/cpp-talker
-      }
-
-      #[rstest]
-      fn test_cpp_listener_builds() {
-          // Build native/cpp-listener
-      }
-
-      #[rstest]
-      fn test_cpp_service_server_builds() {
-          // Build native/cpp-service-server
-      }
-
-      #[rstest]
-      fn test_cpp_service_client_builds() {
-          // Build native/cpp-service-client
-      }
-
-      #[rstest]
-      fn test_cpp_custom_msg_builds() {
-          // Build native/cpp-custom-msg
-      }
-  }
-
-  mod communication {
-      #[rstest]
-      fn test_cpp_talker_listener_e2e(zenohd_unique: ZenohRouter) {
-          // C++ talker → C++ listener
-      }
-
-      #[rstest]
-      fn test_cpp_rust_interop(zenohd_unique: ZenohRouter) {
-          // C++ talker → Rust listener
-          // Rust talker → C++ listener
-      }
-
-      #[rstest]
-      fn test_cpp_service_e2e(zenohd_unique: ZenohRouter) {
-          // C++ service server ↔ C++ service client
-      }
-  }
-  ```
-
-- [ ] **17.4.2** Add CMake build helpers
-  ```rust
-  // In fixtures/binaries.rs
-  fn build_cpp_example(name: &str) -> PathBuf {
-      let example_dir = project_root().join("examples/native").join(name);
-      let build_dir = example_dir.join("build");
-
-      // cmake -B build
-      Command::new("cmake")
-          .args(["-B", "build"])
-          .current_dir(&example_dir)
-          .status()
-          .expect("cmake configure failed");
-
-      // cmake --build build
-      Command::new("cmake")
-          .args(["--build", "build"])
-          .current_dir(&example_dir)
-          .status()
-          .expect("cmake build failed");
-
-      build_dir.join(name)
-  }
-  ```
-
-- [ ] **17.4.3** Add justfile recipes
-  ```just
-  # Build all C++ examples
-  build-cpp-examples:
-      for dir in examples/native/cpp-*/; do \
-          cmake -B "$dir/build" -S "$dir" && \
-          cmake --build "$dir/build"; \
-      done
-
-  # Run C++ integration tests
-  test-rust-cpp:
-      cargo test -p nano-ros-tests --test cpp_integration -- --nocapture
-
-  # Full C++ test with rebuild
-  test-rust-cpp-full: build-cpp-examples
-      just test-rust-cpp
-  ```
-
----
-
-## Phase 17.5: Parameter Server Integration Tests
+## Phase 17.4: Parameter Server Integration Tests
 
 **Status**: Not Started
 **Priority**: **Medium**
@@ -486,7 +380,7 @@ Parameter server has unit tests but no integration tests.
 
 ---
 
-## Phase 17.6: Timer and Executor Integration Tests
+## Phase 17.5: Timer and Executor Integration Tests
 
 **Status**: Not Started
 **Priority**: **Medium**
@@ -548,7 +442,7 @@ Timer and executor have unit tests but no integration tests verifying real-world
 
 ---
 
-## Phase 17.7: QoS Policy Tests
+## Phase 17.6: QoS Policy Tests
 
 **Status**: Not Started
 **Priority**: **Medium**
@@ -609,7 +503,7 @@ QoS policies are supported but not systematically tested.
 
 ---
 
-## Phase 17.8: QEMU BSP Communication Tests
+## Phase 17.7: QEMU BSP Communication Tests
 
 **Status**: Not Started
 **Priority**: **Medium**
@@ -692,7 +586,7 @@ QEMU BSP examples exist but aren't tested for actual communication.
 
 ---
 
-## Phase 17.9: Error Handling and Edge Case Tests
+## Phase 17.8: Error Handling and Edge Case Tests
 
 **Status**: Not Started
 **Priority**: **Low**
@@ -751,7 +645,7 @@ Systematic testing of error paths and edge cases.
 
 ---
 
-## Phase 17.10: Multi-Node and Scalability Tests
+## Phase 17.9: Multi-Node and Scalability Tests
 
 **Status**: Not Started
 **Priority**: **Low**
@@ -819,15 +713,14 @@ Tests for multi-node scenarios and scalability.
 | **17.1 Services**      | High     | Medium | ~15         | Service request/response        |
 | **17.2 Bidirectional** | High     | Low    | ~5          | Native ↔ Zephyr both directions |
 | **17.3 Custom Msg**    | High     | Medium | ~8          | User-defined message types      |
-| **17.4 C++**           | Medium   | High   | ~10         | C++ binding tests               |
-| **17.5 Parameters**    | Medium   | Medium | ~8          | Parameter server                |
-| **17.6 Executor**      | Medium   | Medium | ~8          | Timer and executor              |
-| **17.7 QoS**           | Medium   | Medium | ~8          | Quality of Service              |
-| **17.8 QEMU BSP**      | Medium   | High   | ~10         | Bare-metal communication        |
-| **17.9 Errors**        | Low      | Medium | ~8          | Error handling                  |
-| **17.10 Multi-Node**   | Low      | Medium | ~8          | Scalability                     |
+| **17.4 Parameters**    | Medium   | Medium | ~8          | Parameter server                |
+| **17.5 Executor**      | Medium   | Medium | ~8          | Timer and executor              |
+| **17.6 QoS**           | Medium   | Medium | ~8          | Quality of Service              |
+| **17.7 QEMU BSP**      | Medium   | High   | ~10         | Bare-metal communication        |
+| **17.8 Errors**        | Low      | Medium | ~8          | Error handling                  |
+| **17.9 Multi-Node**    | Low      | Medium | ~8          | Scalability                     |
 
-**Total New Tests**: ~88
+**Total New Tests**: ~78
 
 ---
 
@@ -836,13 +729,12 @@ Tests for multi-node scenarios and scalability.
 1. **17.1 Services** - High value, enables feature parity verification
 2. **17.2 Bidirectional** - Quick win, completes cross-platform coverage
 3. **17.3 Custom Messages** - Important for real-world usage
-4. **17.5 Parameters** - Completes ROS 2 feature coverage
-5. **17.6 Executor** - Verifies core runtime behavior
-6. **17.4 C++** - Lower priority but important for C++ users
-7. **17.7 QoS** - Important for production deployments
-8. **17.8 QEMU BSP** - Enables bare-metal CI
-9. **17.9 Errors** - Polish and robustness
-10. **17.10 Multi-Node** - Scalability verification
+4. **17.4 Parameters** - Completes ROS 2 feature coverage
+5. **17.5 Executor** - Verifies core runtime behavior
+6. **17.6 QoS** - Important for production deployments
+7. **17.7 QEMU BSP** - Enables bare-metal CI
+8. **17.8 Errors** - Polish and robustness
+9. **17.9 Multi-Node** - Scalability verification
 
 ---
 
@@ -850,13 +742,12 @@ Tests for multi-node scenarios and scalability.
 
 - [ ] All `native/rs-*` examples have integration tests
 - [ ] All `zephyr/rs-*` examples have integration tests
-- [ ] All `native/cpp-*` examples have integration tests
 - [ ] Native ↔ Zephyr communication tested in both directions
 - [ ] Services tested on Native, Zephyr, and ROS 2 interop
 - [ ] Parameter server tested with ROS 2 interop
 - [ ] QoS policies systematically tested
 - [ ] QEMU bare-metal examples tested for communication
-- [ ] 100+ integration tests total
+- [ ] 80+ integration tests total
 - [ ] CI runs all tests on every PR
 
 ---
@@ -878,31 +769,27 @@ test-rust-native-to-zephyr:
 test-rust-custom-msg:
     cargo test -p nano-ros-tests --test custom_msg -- --nocapture
 
-# 17.4: C++ integration tests
-test-rust-cpp:
-    cargo test -p nano-ros-tests --test cpp_integration -- --nocapture
-
-# 17.5: Parameter tests
+# 17.4: Parameter tests
 test-rust-params:
     cargo test -p nano-ros-tests --test params -- --nocapture
 
-# 17.6: Executor tests
+# 17.5: Executor tests
 test-rust-executor:
     cargo test -p nano-ros-tests --test executor -- --nocapture
 
-# 17.7: QoS tests
+# 17.6: QoS tests
 test-rust-qos:
     cargo test -p nano-ros-tests --test qos -- --nocapture
 
-# 17.8: QEMU BSP tests
+# 17.7: QEMU BSP tests
 test-qemu-bsp:
     cargo test -p nano-ros-tests --test emulator bsp -- --nocapture
 
-# 17.9: Error handling tests
+# 17.8: Error handling tests
 test-rust-errors:
     cargo test -p nano-ros-tests --test error_handling -- --nocapture
 
-# 17.10: Multi-node tests
+# 17.9: Multi-node tests
 test-rust-multi-node:
     cargo test -p nano-ros-tests --test multi_node -- --nocapture
 
@@ -912,7 +799,7 @@ test-rust-phase17: test-rust-services test-rust-custom-msg test-rust-params \
     @echo "Phase 17 tests complete"
 
 # Full coverage test suite
-test-rust-full-coverage: test-rust test-rust-phase17 test-rust-cpp test-qemu-bsp
+test-rust-full-coverage: test-rust test-rust-phase17 test-qemu-bsp
     @echo "Full test coverage complete"
 ```
 
@@ -924,15 +811,14 @@ test-rust-full-coverage: test-rust test-rust-phase17 test-rust-cpp test-qemu-bsp
 crates/nano-ros-tests/tests/
 ├── actions.rs          # Existing
 ├── custom_msg.rs       # NEW (17.3)
-├── cpp_integration.rs  # NEW (17.4)
-├── emulator.rs         # Extended (17.8)
-├── error_handling.rs   # NEW (17.9)
-├── executor.rs         # NEW (17.6)
-├── multi_node.rs       # NEW (17.10)
+├── emulator.rs         # Extended (17.7)
+├── error_handling.rs   # NEW (17.8)
+├── executor.rs         # NEW (17.5)
+├── multi_node.rs       # NEW (17.9)
 ├── nano2nano.rs        # Existing
-├── params.rs           # NEW (17.5)
+├── params.rs           # NEW (17.4)
 ├── platform.rs         # Existing
-├── qos.rs              # NEW (17.7)
+├── qos.rs              # NEW (17.6)
 ├── rmw_interop.rs      # Existing
 ├── services.rs         # NEW (17.1)
 └── zephyr.rs           # Extended (17.2)

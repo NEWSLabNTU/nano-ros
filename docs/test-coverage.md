@@ -46,7 +46,6 @@ This document provides a comprehensive overview of test coverage across all plat
 | `native/rs-custom-msg`     | Yes     | custom_msg.rs          |
 | `native/c-talker`          | Partial | c-tests.sh only        |
 | `native/c-listener`        | Partial | c-tests.sh only        |
-| `native/cpp-*`             | **NO**  | Missing tests          |
 
 ### 2. Zephyr RTOS - native_sim
 
@@ -156,7 +155,7 @@ nano-ros ROS API (rclrs-like). This needs to be fixed. See "Known Issues" sectio
 | `platform-integration/stm32f4-embassy` | Manual only |
 | `platform-integration/stm32f4-smoltcp` | Manual only |
 
-### 5. C/C++ Bindings
+### 5. C Bindings
 
 | Test Suite    | File                       | Tests | Coverage           |
 |---------------|----------------------------|-------|--------------------|
@@ -176,10 +175,6 @@ nano-ros ROS API (rclrs-like). This needs to be fixed. See "Known Issues" sectio
 | `native/c-listener`       | Yes    | c-tests.sh    |
 | `native/c-custom-msg`     | **NO** | Missing tests |
 | `native/c-baremetal-demo` | **NO** | Missing tests |
-| `native/cpp-talker`       | **NO** | Missing tests |
-| `native/cpp-listener`     | **NO** | Missing tests |
-| `native/cpp-service-*`    | **NO** | Missing tests |
-| `native/cpp-custom-msg`   | **NO** | Missing tests |
 
 ## Unit Test Coverage by Crate
 
@@ -250,18 +245,7 @@ emulator.rs (ADD)
 
 ### Medium Priority
 
-#### 5. C++ Integration Tests
-```
-tests/cpp_integration.rs (NEW)
-- test_cpp_talker_starts
-- test_cpp_listener_starts
-- test_cpp_talker_listener_e2e
-- test_cpp_service_communication
-```
-
-**Why:** C++ bindings exist but have no automated tests.
-
-#### 6. Parameter Server Tests
+#### 5. Parameter Server Tests
 ```
 tests/params.rs (NEW)
 - test_param_get_set
@@ -272,7 +256,7 @@ tests/params.rs (NEW)
 
 **Why:** Parameter server is implemented but only has unit tests.
 
-#### 7. Timer and Executor Tests
+#### 6. Timer and Executor Tests
 ```
 tests/executor.rs (NEW)
 - test_timer_callback
@@ -283,7 +267,7 @@ tests/executor.rs (NEW)
 
 **Why:** Timer/executor are core features without integration tests.
 
-#### 8. QoS Tests
+#### 7. QoS Tests
 ```
 tests/qos.rs (NEW)
 - test_qos_reliable
@@ -296,7 +280,7 @@ tests/qos.rs (NEW)
 
 ### Low Priority
 
-#### 9. Error Handling Tests
+#### 8. Error Handling Tests
 ```
 tests/error_handling.rs (NEW)
 - test_connection_timeout
@@ -307,7 +291,7 @@ tests/error_handling.rs (NEW)
 
 **Why:** Error paths are implemented but not systematically tested.
 
-#### 10. Multi-Node Tests
+#### 9. Multi-Node Tests
 ```
 tests/multi_node.rs (NEW)
 - test_multiple_publishers_single_topic
@@ -318,7 +302,7 @@ tests/multi_node.rs (NEW)
 
 **Why:** Multi-node scenarios aren't systematically tested.
 
-#### 11. STM32F4 Hardware-in-Loop Tests
+#### 10. STM32F4 Hardware-in-Loop Tests
 ```
 tests/stm32f4_hil.rs (NEW)
 - test_stm32f4_build
@@ -328,11 +312,10 @@ tests/stm32f4_hil.rs (NEW)
 
 **Why:** Physical hardware has no automated testing.
 
-#### 12. Platform Integration Tests
+#### 11. Platform Integration Tests
 ```
 tests/platform_integration.rs (NEW)
 - test_qemu_smoltcp_bridge
-- test_embedded_cpp_examples
 ```
 
 **Why:** Platform integration examples exist but aren't tested.
@@ -343,9 +326,8 @@ tests/platform_integration.rs (NEW)
 |------|---------|---------|----------|
 | **Services** | 8 tests (native) | Zephyr, ROS 2 interop | High |
 | **Native↔Zephyr** | 2 tests ✓ | Cross-platform services | Complete (pub/sub) |
-| **Custom Messages** | 0 tests | Serialization, pub/sub | High |
+| **Custom Messages** | 7 tests ✓ | Nested/array types | Complete (basic) |
 | **QEMU Communication** | 0 tests | BSP E2E | High |
-| **C++ Bindings** | 0 tests | Full suite | Medium |
 | **Parameters** | Unit only | Integration | Medium |
 | **Timer/Executor** | Unit only | Integration | Medium |
 | **QoS** | 0 tests | All policies | Medium |
@@ -383,7 +365,7 @@ just ci                       # Full CI pipeline
 | Zephyr        | west workspace, TAP network, zenohd |
 | QEMU          | qemu-system-arm, thumbv7m-none-eabi |
 | ROS 2 Interop | ROS 2 Humble, rmw_zenoh_cpp         |
-| C/C++         | cmake, C/C++ compiler               |
+| C             | cmake, C compiler                   |
 | STM32F4 HIL   | Physical board, debug probe         |
 
 ## Known Issues Found by Tests
