@@ -48,33 +48,38 @@ This document provides a comprehensive overview of test coverage across all plat
 
 ### 2. Zephyr RTOS - native_sim
 
-| Test Suite         | File        | Tests | Coverage                        |
-|--------------------|-------------|-------|---------------------------------|
+| Test Suite         | File        | Tests | Coverage                          |
+|--------------------|-------------|-------|-----------------------------------|
 | Zephyr Integration | `zephyr.rs` | 20    | Build, smoke, E2E, cross-platform |
 
+**⚠️ ISSUE: Zephyr Examples Use Low-Level APIs Instead of ROS API**
+
+All Zephyr Rust examples currently use low-level zenoh-pico/BSP APIs instead of the proper
+nano-ros ROS API (rclrs-like). This needs to be fixed. See "Known Issues" section below.
+
 **Test Breakdown:**
-| Test                                   | Type      | Description                |
-|----------------------------------------|-----------|----------------------------|
-| `test_zephyr_availability_checks`      | Detection | Verify workspace/network   |
-| `test_zephyr_talker_build`             | Build     | Build rs-talker            |
-| `test_zephyr_listener_build`           | Build     | Build rs-listener          |
-| `test_zephyr_talker_smoke`             | Smoke     | Boot without crash         |
-| `test_zephyr_listener_smoke`           | Smoke     | Boot without crash         |
-| `test_zephyr_talker_to_listener_e2e`   | E2E       | Zephyr ↔ Zephyr            |
-| `test_zephyr_to_native_e2e`            | E2E       | Zephyr → Native            |
-| `test_native_to_zephyr_e2e`            | E2E       | Native → Zephyr            |
-| `test_bidirectional_native_zephyr_e2e` | E2E       | Both directions at once    |
-| `test_zephyr_action_server_build`      | Build     | Build action server        |
-| `test_zephyr_action_client_build`      | Build     | Build action client        |
-| `test_zephyr_action_server_smoke`      | Smoke     | Boot without crash         |
-| `test_zephyr_action_client_smoke`      | Smoke     | Boot without crash         |
-| `test_zephyr_action_e2e`               | E2E       | Action communication       |
-| `test_zephyr_service_server_build`     | Build     | Build service server       |
-| `test_zephyr_service_client_build`     | Build     | Build service client       |
-| `test_zephyr_service_server_smoke`     | Smoke     | Boot without crash         |
-| `test_zephyr_service_client_smoke`     | Smoke     | Boot without crash         |
-| `test_native_server_zephyr_client`     | Cross-Platform | Native server + Zephyr client |
-| `test_zephyr_server_native_client`     | Cross-Platform | Zephyr server + Native client |
+| Test                                   | Type           | Description                   | API Issue |
+|----------------------------------------|----------------|-------------------------------|-----------|
+| `test_zephyr_availability_checks`      | Detection      | Verify workspace/network      | N/A       |
+| `test_zephyr_talker_build`             | Build          | Build rs-talker               | **FIX**   |
+| `test_zephyr_listener_build`           | Build          | Build rs-listener             | **FIX**   |
+| `test_zephyr_talker_smoke`             | Smoke          | Boot without crash            | **FIX**   |
+| `test_zephyr_listener_smoke`           | Smoke          | Boot without crash            | **FIX**   |
+| `test_zephyr_talker_to_listener_e2e`   | E2E            | Zephyr ↔ Zephyr               | **FIX**   |
+| `test_zephyr_to_native_e2e`            | E2E            | Zephyr → Native               | **FIX**   |
+| `test_native_to_zephyr_e2e`            | E2E            | Native → Zephyr               | **FIX**   |
+| `test_bidirectional_native_zephyr_e2e` | E2E            | Both directions at once       | **FIX**   |
+| `test_zephyr_action_server_build`      | Build          | Build action server           | **FIX**   |
+| `test_zephyr_action_client_build`      | Build          | Build action client           | **FIX**   |
+| `test_zephyr_action_server_smoke`      | Smoke          | Boot without crash            | **FIX**   |
+| `test_zephyr_action_client_smoke`      | Smoke          | Boot without crash            | **FIX**   |
+| `test_zephyr_action_e2e`               | E2E            | Action communication          | **FIX**   |
+| `test_zephyr_service_server_build`     | Build          | Build service server          | **FIX**   |
+| `test_zephyr_service_client_build`     | Build          | Build service client          | **FIX**   |
+| `test_zephyr_service_server_smoke`     | Smoke          | Boot without crash            | **FIX**   |
+| `test_zephyr_service_client_smoke`     | Smoke          | Boot without crash            | **FIX**   |
+| `test_native_server_zephyr_client`     | Cross-Platform | Native server + Zephyr client | **FIX**   |
+| `test_zephyr_server_native_client`     | Cross-Platform | Zephyr server + Native client | **FIX**   |
 
 **Justfile Recipes:**
 - `just test-rust-zephyr` - All Zephyr tests
@@ -89,16 +94,17 @@ This document provides a comprehensive overview of test coverage across all plat
 - `just test-zephyr-c` - C examples on Zephyr
 
 **Examples Covered:**
-| Example                    | Tested | Notes                   |
-|----------------------------|--------|-------------------------|
-| `zephyr/rs-talker`         | Yes    | Build, smoke, E2E       |
-| `zephyr/rs-listener`       | Yes    | Build, smoke, E2E       |
-| `zephyr/rs-action-server`  | Yes    | Build, smoke, E2E       |
-| `zephyr/rs-action-client`  | Yes    | Build, smoke, E2E       |
-| `zephyr/rs-service-server` | Yes    | Build, smoke, cross-platform |
-| `zephyr/rs-service-client` | Yes    | Build, smoke, cross-platform |
-| `zephyr/c-talker`          | Yes    | test-zephyr-c           |
-| `zephyr/c-listener`        | Yes    | test-zephyr-c           |
+| Example                    | Tested | API Status                   | Notes                          |
+|----------------------------|--------|------------------------------|--------------------------------|
+| `zephyr/rs-talker`         | Yes    | **FIX**                      | Uses BSP FFI, not nano-ros API |
+| `zephyr/rs-listener`       | Yes    | **FIX**                      | Uses BSP FFI, not nano-ros API |
+| `zephyr/rs-action-server`  | Yes    | **FIX**                      | Uses zenoh-pico-shim directly  |
+| `zephyr/rs-action-client`  | Yes    | **FIX**                      | Uses zenoh-pico-shim directly  |
+| `zephyr/rs-service-server` | Yes    | **FIX**                      | Uses zenoh-pico-shim directly  |
+| `zephyr/rs-service-client` | Yes    | **FIX**                      | Uses zenoh-pico-shim directly  |
+| `zephyr/rs-service-client` | Yes    | Build, smoke, cross-platform |                                |
+| `zephyr/c-talker`          | Yes    | test-zephyr-c                |                                |
+| `zephyr/c-listener`        | Yes    | test-zephyr-c                |                                |
 
 ### 3. QEMU ARM (Cortex-M3) - Bare Metal
 
@@ -379,6 +385,66 @@ just ci                       # Full CI pipeline
 | STM32F4 HIL   | Physical board, debug probe         |
 
 ## Known Issues Found by Tests
+
+### ⚠️ Zephyr Examples Use Low-Level APIs Instead of ROS API (HIGH PRIORITY)
+
+**Affected Tests:** ALL Zephyr Rust tests (19 tests)
+**Status:** Needs fix - examples must be rewritten
+
+**Description:** All Zephyr Rust examples use low-level APIs instead of the proper nano-ros ROS API (rclrs-like).
+
+**Current State (WRONG):**
+
+| Example              | Current API Used                        |
+|----------------------|-----------------------------------------|
+| `rs-talker`          | `nano-ros-bsp-zephyr` via raw FFI       |
+| `rs-listener`        | `nano-ros-bsp-zephyr` via raw FFI       |
+| `rs-action-server`   | `zenoh-pico-shim` directly (ShimContext)|
+| `rs-action-client`   | `zenoh-pico-shim` directly              |
+| `rs-service-server`  | `zenoh-pico-shim` directly              |
+| `rs-service-client`  | `zenoh-pico-shim` directly              |
+
+**Expected (Proper ROS API like Native examples):**
+
+```rust
+// Native examples use proper ROS API:
+use nano_ros::prelude::*;
+
+let context = Context::from_env();
+let mut executor = context.create_basic_executor();
+let mut node = executor.create_node("talker");
+let publisher = node.create_publisher::<Int32>(PublisherOptions::new("/chatter"));
+publisher.publish(&msg);
+```
+
+**What Zephyr examples currently do (WRONG):**
+
+```rust
+// Zephyr examples use low-level FFI:
+unsafe extern "C" {
+    fn nano_ros_bsp_init(...);
+    fn nano_ros_bsp_create_node(...);
+    fn nano_ros_bsp_create_publisher(...);
+}
+
+// Or directly use zenoh-pico-shim:
+use zenoh_pico_shim::{ShimContext, ShimQueryable};
+let ctx = ShimContext::new(locator);
+```
+
+**Impact:**
+1. Tests don't validate the actual nano-ros ROS API on Zephyr
+2. Cross-platform tests fail (key expression mismatch) because native uses ROS API format
+3. Zephyr examples are not representative of intended usage
+
+**Fix Required:**
+1. Port `nano-ros-node` crate to work with Zephyr/no_std (add `zephyr` feature)
+2. Rewrite all Zephyr Rust examples to use `nano_ros::prelude::*`
+3. Tests will then validate actual ROS API usage
+
+**Tracking:** This is a prerequisite for proper Phase 17 completion.
+
+---
 
 ### Concurrent Service Clients
 
