@@ -18,6 +18,20 @@
 #define printk(...)  // No-op on non-Zephyr platforms
 #endif
 
+// Internal zenoh-pico headers for socket FD access (select()-based timeout)
+#ifndef ZENOH_SHIM_SMOLTCP
+#include "zenoh-pico/net/session.h"
+#include "zenoh-pico/transport/transport.h"
+#include "zenoh-pico/api/olv_macros.h"
+#endif
+
+// Platform-specific select()
+#if defined(ZENOH_ZEPHYR)
+#include <zephyr/posix/sys/select.h>
+#elif !defined(ZENOH_SHIM_SMOLTCP)
+#include <sys/select.h>
+#endif
+
 // ============================================================================
 // Platform-Specific Declarations
 // ============================================================================
@@ -524,6 +538,32 @@ int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
 }
 
 // ============================================================================
+// Socket FD Helper (for select()-based timeout)
+// ============================================================================
+
+#ifndef ZENOH_SHIM_SMOLTCP
+/**
+ * Extract the socket file descriptor from the zenoh session.
+ *
+ * Path: g_session → _z_session_t._tp._transport._unicast._peers → first peer → _socket._fd
+ *
+ * Returns -1 if the session is not unicast or has no connected peers.
+ */
+static int _zenoh_shim_get_session_fd(void) {
+    _z_session_t *session = _Z_RC_IN_VAL(z_session_loan(&g_session));
+    if (session->_tp._type != _Z_TRANSPORT_UNICAST_TYPE) {
+        return -1;
+    }
+    _z_transport_peer_unicast_t *peer =
+        _z_transport_peer_unicast_slist_value(session->_tp._transport._unicast._peers);
+    if (peer == NULL) {
+        return -1;
+    }
+    return peer->_socket._fd;
+}
+#endif
+
+// ============================================================================
 // Polling Implementation
 // ============================================================================
 
@@ -532,12 +572,50 @@ int32_t zenoh_shim_poll(uint32_t timeout_ms) {
         return ZENOH_SHIM_ERR_SESSION;
     }
 
-    (void)timeout_ms;  // Timeout handled by socket layer
+#ifdef ZENOH_SHIM_SMOLTCP
+    // smoltcp: no real sockets, no select(). Loop with clock timeout.
+    uint64_t start = smoltcp_clock_now_ms();
+    int ret;
+    do {
+        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        if (ret == 0) break;  // Data processed
+        if (timeout_ms == 0) break;
+    } while (smoltcp_clock_now_ms() - start < timeout_ms);
+    return ret;
 
-    // For single-threaded platforms, zp_read() processes incoming data
-    // and invokes subscriber callbacks. The underlying socket operations
-    // (in network.c) poll the network stack via smoltcp_poll().
+#elif Z_FEATURE_MULTI_THREAD == 1
+    // Multi-threaded (Zephyr/POSIX): background read task handles data.
+    // Use select() to wait for activity or timeout — do NOT call zp_read()
+    // since the read task holds _mutex_rx.
+    int fd = _zenoh_shim_get_session_fd();
+    if (fd >= 0 && timeout_ms > 0) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(fd, &read_fds);
+        struct timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        select(fd + 1, &read_fds, NULL, NULL, &tv);
+    }
+    return 0;
+
+#else
+    // Single-threaded (not smoltcp): use select() then zp_read()
+    int fd = _zenoh_shim_get_session_fd();
+    if (fd >= 0 && timeout_ms > 0) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(fd, &read_fds);
+        struct timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        int result = select(fd + 1, &read_fds, NULL, NULL, &tv);
+        if (result <= 0) {
+            return (result == 0) ? ZENOH_SHIM_ERR_TIMEOUT : result;
+        }
+    }
     return zp_read(z_session_loan_mut(&g_session), NULL);
+#endif
 }
 
 int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
@@ -545,19 +623,55 @@ int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
         return ZENOH_SHIM_ERR_SESSION;
     }
 
-    (void)timeout_ms;  // Timeout handled by socket layer
-
-    // Combined poll and keepalive operation
-    // zp_read handles incoming data, zp_send_keep_alive handles lease maintenance
-    int ret = zp_read(z_session_loan_mut(&g_session), NULL);
-    if (ret < 0) {
-        return ret;
-    }
-
-    // Send keepalive if needed
+#ifdef ZENOH_SHIM_SMOLTCP
+    // smoltcp: no real sockets, no select(). Loop with clock timeout.
+    uint64_t start = smoltcp_clock_now_ms();
+    int ret;
+    do {
+        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        if (ret == 0) break;  // Data processed
+        if (timeout_ms == 0) break;
+    } while (smoltcp_clock_now_ms() - start < timeout_ms);
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
-
     return ret;
+
+#elif Z_FEATURE_MULTI_THREAD == 1
+    // Multi-threaded (Zephyr/POSIX): background read task handles data.
+    // Use select() to wait for activity or timeout — do NOT call zp_read()
+    // since the read task holds _mutex_rx.
+    int fd = _zenoh_shim_get_session_fd();
+    if (fd >= 0 && timeout_ms > 0) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(fd, &read_fds);
+        struct timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        select(fd + 1, &read_fds, NULL, NULL, &tv);
+    }
+    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    return 0;
+
+#else
+    // Single-threaded (not smoltcp): use select() then zp_read()
+    int fd = _zenoh_shim_get_session_fd();
+    if (fd >= 0 && timeout_ms > 0) {
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(fd, &read_fds);
+        struct timeval tv;
+        tv.tv_sec = timeout_ms / 1000;
+        tv.tv_usec = (timeout_ms % 1000) * 1000;
+        int result = select(fd + 1, &read_fds, NULL, NULL, &tv);
+        if (result <= 0) {
+            zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+            return (result == 0) ? ZENOH_SHIM_ERR_TIMEOUT : result;
+        }
+    }
+    int ret = zp_read(z_session_loan_mut(&g_session), NULL);
+    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    return ret;
+#endif
 }
 
 bool zenoh_shim_uses_polling(void) {
