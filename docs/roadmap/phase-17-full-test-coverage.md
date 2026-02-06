@@ -58,6 +58,18 @@ This phase implements missing integration tests to achieve full coverage:
 
 **Dependencies**: Phase 9 (Test Infrastructure) mostly complete
 
+### Phase 16 Unit Test Foundation
+
+Phase 16 (ROS 2 Interop Completion) added ~200 unit tests across the codebase covering:
+
+| Area                          | Tests | Key Files                                                                                                                                                                   |
+|-------------------------------|-------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Rust API alignment (A.1-A.10) | ~138  | context.rs (8), executor.rs (5), node.rs (6), options.rs (6), connected.rs (38), timer.rs (8), trigger.rs (10), typed.rs (14), traits.rs (23), logger.rs (7), error.rs (13) |
+| C API alignment (B.1-B.7)     | ~33   | c/executor.rs (18), c/lifecycle.rs (15)                                                                                                                                     |
+| Protocol interop (C.1-C.7)    | ~27   | shim.rs (19), parameter_services.rs (8)                                                                                                                                     |
+
+These unit tests complement Phase 17's **integration tests** which verify end-to-end behavior across processes and platforms. See `docs/test-coverage.md` for detailed breakdown.
+
 ---
 
 ## Phase 17.1: Service Integration Tests
@@ -75,16 +87,16 @@ Services are implemented but have zero integration tests.
 
 ### Test Results (8/8 passing)
 
-| Test | Status | Notes |
-|------|--------|-------|
-| `test_service_server_builds` | PASS | Binary builds successfully |
-| `test_service_client_builds` | PASS | Binary builds successfully |
-| `test_service_server_starts` | PASS | Server stays running |
-| `test_service_client_starts_without_server` | PASS | Reports ConnectionFailed correctly |
-| `test_service_client_timeout` | PASS | Handles missing server |
-| `test_service_request_response` | PASS | 4/4 responses, all correct |
-| `test_service_multiple_sequential_calls` | PASS | 8 responses across 2 runs |
-| `test_service_server_multiple_clients` | PASS | Partial - see finding below |
+| Test                                        | Status | Notes                              |
+|---------------------------------------------|--------|------------------------------------|
+| `test_service_server_builds`                | PASS   | Binary builds successfully         |
+| `test_service_client_builds`                | PASS   | Binary builds successfully         |
+| `test_service_server_starts`                | PASS   | Server stays running               |
+| `test_service_client_starts_without_server` | PASS   | Reports ConnectionFailed correctly |
+| `test_service_client_timeout`               | PASS   | Handles missing server             |
+| `test_service_request_response`             | PASS   | 4/4 responses, all correct         |
+| `test_service_multiple_sequential_calls`    | PASS   | 8 responses across 2 runs          |
+| `test_service_server_multiple_clients`      | PASS   | Partial - see finding below        |
 
 ### Finding: Concurrent Client Issue
 

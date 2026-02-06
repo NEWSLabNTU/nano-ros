@@ -11,7 +11,7 @@ This document provides a comprehensive overview of test coverage across all plat
 | Shell Scripts     | `tests/*.sh`                   | Legacy/supplementary test scripts        |
 | Test Utilities    | `crates/nano-ros-tests/src/`   | Fixtures, process management, helpers    |
 
-**Total Test Functions:** ~364 across all crates
+**Total Test Functions:** ~370 unit tests + ~95 integration tests across all crates
 
 ## Current Test Coverage by Platform
 
@@ -178,16 +178,51 @@ nano-ros ROS API (rclrs-like). This needs to be fixed. See "Known Issues" sectio
 
 ## Unit Test Coverage by Crate
 
-| Crate                 | Test Count | Coverage Areas                              |
-|-----------------------|------------|---------------------------------------------|
-| `nano-ros-core`       | ~40        | Time, Clock, Service, Action, Logger, Error |
-| `nano-ros-serdes`     | ~30        | CDR primitives, sequences, compatibility    |
-| `nano-ros-transport`  | ~10        | Shim, traits, keyexpr                       |
-| `nano-ros-node`       | ~20        | Node, Context, Timer, Executor, RTIC        |
-| `nano-ros-params`     | ~15        | Server, types, typed parameters             |
-| `nano-ros-c`          | ~10        | CDR, guard condition, platform              |
-| `zenoh-pico-shim`     | ~5         | Safe wrapper tests                          |
-| `zenoh-pico-shim-sys` | ~5         | FFI, smoltcp platform                       |
+| Crate                 | Test Count | Coverage Areas                                                  |
+|-----------------------|------------|-----------------------------------------------------------------|
+| `nano-ros-core`       | 75         | Time (17), Clock (6), Action (15), Lifecycle (13), Error (13), Logger (7), Service (2), MessageInfo (2) |
+| `nano-ros-serdes`     | 33         | CDR primitives (6), CDR encoder (5), compatibility (22)         |
+| `nano-ros-transport`  | 42         | QoS profiles/builder (23), RMW protocol/liveliness/attachment (19) |
+| `nano-ros-node`       | 106        | Actions/Promise (38), Lifecycle (15), Trigger (10), Timer (8), ParamServices (8), Context (8), Node (6), Options (6), Executor (5) |
+| `nano-ros-params`     | 30         | Typed parameters (14), server (10), types (6)                   |
+| `nano-ros-c`          | 60         | Executor (18), Guard condition (18), Lifecycle (15), CDR (5), Platform (4) |
+| `zenoh-pico-shim`     | 2          | Safe wrapper tests                                              |
+| `zenoh-pico-shim-sys` | 22         | smoltcp platform (21), FFI (1)                                  |
+
+### Phase 16 Unit Test Contributions
+
+Phase 16 (ROS 2 Interop Completion) added significant unit test coverage across all sub-phases:
+
+#### A. Rust API Alignment Tests
+
+| Sub-phase            | File(s)                                   | Tests | Coverage                                                                                 |
+|----------------------|-------------------------------------------|-------|------------------------------------------------------------------------------------------|
+| A.1 Context/Executor | `nano-ros-node/src/context.rs`            | 8     | InitOptions, Context creation, NodeOptions, error handling                               |
+| A.1 Executor         | `nano-ros-node/src/executor.rs`           | 5     | spin_once result, spin_options, subscription_handle, spin_period                         |
+| A.2 Node API         | `nano-ros-node/src/node.rs`, `options.rs` | 12    | Node creation, publisher/subscriber options                                              |
+| A.5 Service/Promise  | `nano-ros-node/src/connected.rs`          | 38    | Promise API (12), action protocol (26): goals, status, serialization                     |
+| A.6 Timer            | `nano-ros-node/src/timer.rs`              | 8     | Duration, state transitions, cancel/reset, oneshot/repeating/inert                       |
+| A.7 Parameter API    | `nano-ros-params/src/typed.rs`            | 14    | Typed parameters, range constraints, read-only                                           |
+| A.8 QoS Profiles     | `nano-ros-transport/src/traits.rs`        | 23    | Predefined profiles (8), builder/setters (4), string encoding (5), topic/action info (6) |
+| A.9 Logger           | `nano-ros-core/src/logger.rs`             | 7     | Logger creation, OnceFlag, throttle logic                                                |
+| A.10 Error Handling  | `nano-ros-core/src/error.rs`              | 13    | RclReturnCode, NanoRosError, error filters, context display                              |
+| Trigger              | `nano-ros-node/src/trigger.rs`            | 10    | Trigger policies: Any, All, Always, One, Custom, sensor fusion                           |
+
+#### B. C API Tests
+
+| Sub-phase            | File(s)                       | Tests | Coverage                                                |
+|----------------------|-------------------------------|-------|---------------------------------------------------------|
+| B.3/B.5/B.6 Executor | `nano-ros-c/src/executor.rs`  | 18    | Zero-init, init, add handles, semantics, LET mode, spin |
+| B.? Lifecycle        | `nano-ros-c/src/lifecycle.rs` | 15    | Lifecycle state machine, transitions, C API             |
+
+#### C. Protocol Interoperability Tests
+
+| Sub-phase                 | File(s)                 | Tests | Coverage                                                                  |
+|---------------------------|-------------------------|-------|---------------------------------------------------------------------------|
+| C.1 QoS Strings           | `shim.rs`               | 3     | QoS encoding: BEST_EFFORT/RELIABLE, VOLATILE/TRANSIENT_LOCAL              |
+| C.2 Parameter Services    | `parameter_services.rs` | 8     | Value conversion (4), handler tests (4): get/set/list/get_types           |
+| C.5 RMW Attachment        | `shim.rs`               | 6     | Serialization, deserialization, roundtrip, edge cases, MessageInfo        |
+| C.6 Protocol Verification | `shim.rs`               | 10    | Liveliness keyexprs (node/pub/sub/SS/SC), topic/service info, ZenohId hex |
 
 ## Missing Tests (Recommended)
 
@@ -330,18 +365,18 @@ tests/platform_integration.rs (NEW)
 
 ## Test Coverage Gaps Summary
 
-| Area | Current | Missing | Priority |
-|------|---------|---------|----------|
-| **Services** | 8 tests (native) | Zephyr, ROS 2 interop | High |
-| **Native↔Zephyr** | 2 tests ✓ | Cross-platform services | Complete (pub/sub) |
-| **Custom Messages** | 7 tests ✓ | Nested/array types | Complete (basic) |
-| **QEMU Communication** | 0 tests | BSP E2E | High |
-| **Parameters** | 7 tests ✓ | - | Complete |
-| **Timer/Executor** | 7 tests ✓ | - | Complete |
-| **QoS** | 6 tests ✓ | - | Complete |
-| **Error Handling** | Sparse | Systematic | Low |
-| **Multi-Node** | Sparse | Comprehensive | Low |
-| **STM32F4 HIL** | 0 tests | Full suite | Low |
+| Area                   | Current          | Missing                 | Priority           |
+|------------------------|------------------|-------------------------|--------------------|
+| **Services**           | 8 tests (native) | Zephyr, ROS 2 interop   | High               |
+| **Native↔Zephyr**      | 2 tests ✓        | Cross-platform services | Complete (pub/sub) |
+| **Custom Messages**    | 7 tests ✓        | Nested/array types      | Complete (basic)   |
+| **QEMU Communication** | 0 tests          | BSP E2E                 | High               |
+| **Parameters**         | 7 tests ✓        | -                       | Complete           |
+| **Timer/Executor**     | 7 tests ✓        | -                       | Complete           |
+| **QoS**                | 6 tests ✓        | -                       | Complete           |
+| **Error Handling**     | Sparse           | Systematic              | Low                |
+| **Multi-Node**         | Sparse           | Comprehensive           | Low                |
+| **STM32F4 HIL**        | 0 tests          | Full suite              | Low                |
 
 ## Test Execution Quick Reference
 
