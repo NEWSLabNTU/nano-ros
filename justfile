@@ -1,6 +1,11 @@
 # Common clippy lints for real-time safety
 CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable_condition -D clippy::never_loop -D clippy::empty_loop -D clippy::unconditional_recursion -W clippy::large_stack_arrays -W clippy::large_types_passed_by_value"
 
+# Example lists (single source of truth for build/format/check/clean recipes)
+NATIVE_EXAMPLES := "rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client"
+EMBEDDED_EXAMPLES := "stm32f4-rtic stm32f4-embassy stm32f4-polling stm32f4-smoltcp"
+QEMU_EXAMPLES := "platform-integration/qemu-smoltcp-bridge qemu/rs-test platform-integration/qemu-lan9118 qemu/rs-talker qemu/rs-listener qemu/bsp-talker qemu/bsp-listener"
+
 default:
     @just --list
 
@@ -98,11 +103,9 @@ quality:
     echo ""
     echo "=== QEMU Examples ==="
     qemu_failed=0
-    (cd examples/platform-integration/qemu-smoltcp-bridge && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/qemu/rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/qemu/rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    (cd examples/qemu/rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    for ex in {{QEMU_EXAMPLES}}; do
+        (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    done
     if [ $qemu_failed -ne 0 ]; then
         echo "[FAIL] QEMU examples FAILED"
         failed=1
@@ -206,36 +209,30 @@ check-examples: check-examples-native check-examples-embedded check-examples-qem
 
 # Build native examples
 build-examples-native:
-    @echo "Building native examples..."
-    cd examples/native/rs-talker && cargo build
-    cd examples/native/rs-listener && cargo build
-    cd examples/native/rs-custom-msg && cargo build
-    cd examples/native/rs-service-server && cargo build
-    cd examples/native/rs-service-client && cargo build
-    cd examples/native/rs-action-server && cargo build
-    cd examples/native/rs-action-client && cargo build
+    #!/usr/bin/env bash
+    set -e
+    echo "Building native examples..."
+    for ex in {{NATIVE_EXAMPLES}}; do
+        (cd examples/native/$ex && cargo build)
+    done
 
 # Format native examples
 format-examples-native:
-    @echo "Formatting native examples..."
-    cd examples/native/rs-talker && cargo +nightly fmt
-    cd examples/native/rs-listener && cargo +nightly fmt
-    cd examples/native/rs-custom-msg && cargo +nightly fmt
-    cd examples/native/rs-service-server && cargo +nightly fmt
-    cd examples/native/rs-service-client && cargo +nightly fmt
-    cd examples/native/rs-action-server && cargo +nightly fmt
-    cd examples/native/rs-action-client && cargo +nightly fmt
+    #!/usr/bin/env bash
+    set -e
+    echo "Formatting native examples..."
+    for ex in {{NATIVE_EXAMPLES}}; do
+        (cd examples/native/$ex && cargo +nightly fmt)
+    done
 
 # Check native examples
 check-examples-native:
-    @echo "Checking native examples..."
-    cd examples/native/rs-talker && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native/rs-listener && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native/rs-custom-msg && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native/rs-service-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native/rs-service-client && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native/rs-action-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
-    cd examples/native/rs-action-client && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking native examples..."
+    for ex in {{NATIVE_EXAMPLES}}; do
+        (cd examples/native/$ex && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}})
+    done
 
 # =============================================================================
 # Examples - Embedded (STM32F4)
@@ -243,27 +240,30 @@ check-examples-native:
 
 # Build embedded examples
 build-examples-embedded:
-    @echo "Building embedded examples..."
-    cd examples/platform-integration/stm32f4-rtic && cargo build --release
-    cd examples/platform-integration/stm32f4-embassy && cargo build --release
-    cd examples/platform-integration/stm32f4-polling && cargo build --release
-    cd examples/platform-integration/stm32f4-smoltcp && cargo build --release
+    #!/usr/bin/env bash
+    set -e
+    echo "Building embedded examples..."
+    for ex in {{EMBEDDED_EXAMPLES}}; do
+        (cd examples/platform-integration/$ex && cargo build --release)
+    done
 
 # Format embedded examples
 format-examples-embedded:
-    @echo "Formatting embedded examples..."
-    cd examples/platform-integration/stm32f4-rtic && cargo +nightly fmt
-    cd examples/platform-integration/stm32f4-embassy && cargo +nightly fmt
-    cd examples/platform-integration/stm32f4-polling && cargo +nightly fmt
-    cd examples/platform-integration/stm32f4-smoltcp && cargo +nightly fmt
+    #!/usr/bin/env bash
+    set -e
+    echo "Formatting embedded examples..."
+    for ex in {{EMBEDDED_EXAMPLES}}; do
+        (cd examples/platform-integration/$ex && cargo +nightly fmt)
+    done
 
 # Check embedded examples
 check-examples-embedded:
-    @echo "Checking embedded examples..."
-    cd examples/platform-integration/stm32f4-rtic && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/platform-integration/stm32f4-embassy && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/platform-integration/stm32f4-polling && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/platform-integration/stm32f4-smoltcp && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking embedded examples..."
+    for ex in {{EMBEDDED_EXAMPLES}}; do
+        (cd examples/platform-integration/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
+    done
 
 # Show embedded example binary sizes
 size-examples-embedded: build-examples-embedded
@@ -277,32 +277,27 @@ size-examples-embedded: build-examples-embedded
 
 # Clean embedded example build artifacts
 clean-examples-embedded:
-    rm -rf examples/platform-integration/stm32f4-rtic/target
-    rm -rf examples/platform-integration/stm32f4-embassy/target
-    rm -rf examples/platform-integration/stm32f4-polling/target
-    rm -rf examples/platform-integration/stm32f4-smoltcp/target
-    @echo "Embedded example build artifacts cleaned"
+    #!/usr/bin/env bash
+    for ex in {{EMBEDDED_EXAMPLES}}; do
+        rm -rf examples/platform-integration/$ex/target
+    done
+    echo "Embedded example build artifacts cleaned"
 
 # Clean native example build artifacts
 clean-examples-native:
-    rm -rf examples/native/rs-talker/target
-    rm -rf examples/native/rs-listener/target
-    rm -rf examples/native/rs-service-server/target
-    rm -rf examples/native/rs-service-client/target
-    rm -rf examples/native/rs-action-server/target
-    rm -rf examples/native/rs-action-client/target
-    @echo "Native example build artifacts cleaned"
+    #!/usr/bin/env bash
+    for ex in {{NATIVE_EXAMPLES}}; do
+        rm -rf examples/native/$ex/target
+    done
+    echo "Native example build artifacts cleaned"
 
 # Clean QEMU example build artifacts
 clean-examples-qemu:
-    rm -rf examples/platform-integration/qemu-smoltcp-bridge/target
-    rm -rf examples/qemu/rs-test/target
-    rm -rf examples/platform-integration/qemu-lan9118/target
-    rm -rf examples/qemu/rs-talker/target
-    rm -rf examples/qemu/rs-listener/target
-    rm -rf examples/qemu/bsp-talker/target
-    rm -rf examples/qemu/bsp-listener/target
-    @echo "QEMU example build artifacts cleaned"
+    #!/usr/bin/env bash
+    for ex in {{QEMU_EXAMPLES}}; do
+        rm -rf examples/$ex/target
+    done
+    echo "QEMU example build artifacts cleaned"
 
 # Clean all example build artifacts
 clean-examples: clean-examples-native clean-examples-embedded clean-examples-qemu clean-examples-c
@@ -379,36 +374,30 @@ rebuild-zephyr: clean-zephyr build-zephyr
 
 # Build QEMU examples
 build-examples-qemu:
-    @echo "Building QEMU examples..."
-    cd examples/platform-integration/qemu-smoltcp-bridge && cargo build --release
-    cd examples/qemu/rs-test && cargo build --release
-    cd examples/platform-integration/qemu-lan9118 && cargo build --release
-    cd examples/qemu/rs-talker && cargo build --release
-    cd examples/qemu/rs-listener && cargo build --release
-    cd examples/qemu/bsp-talker && cargo build --release
-    cd examples/qemu/bsp-listener && cargo build --release
+    #!/usr/bin/env bash
+    set -e
+    echo "Building QEMU examples..."
+    for ex in {{QEMU_EXAMPLES}}; do
+        (cd examples/$ex && cargo build --release)
+    done
 
 # Format QEMU examples
 format-examples-qemu:
-    @echo "Formatting QEMU examples..."
-    cd examples/platform-integration/qemu-smoltcp-bridge && cargo +nightly fmt
-    cd examples/qemu/rs-test && cargo +nightly fmt
-    cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt
-    cd examples/qemu/rs-talker && cargo +nightly fmt
-    cd examples/qemu/rs-listener && cargo +nightly fmt
-    cd examples/qemu/bsp-talker && cargo +nightly fmt
-    cd examples/qemu/bsp-listener && cargo +nightly fmt
+    #!/usr/bin/env bash
+    set -e
+    echo "Formatting QEMU examples..."
+    for ex in {{QEMU_EXAMPLES}}; do
+        (cd examples/$ex && cargo +nightly fmt)
+    done
 
 # Check QEMU examples
 check-examples-qemu:
-    @echo "Checking QEMU examples..."
-    cd examples/platform-integration/qemu-smoltcp-bridge && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu/rs-test && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu/rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu/rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu/bsp-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
-    cd examples/qemu/bsp-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking QEMU examples..."
+    for ex in {{QEMU_EXAMPLES}}; do
+        (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
+    done
 
 # Run all QEMU tests (non-networked)
 test-qemu: test-qemu-basic test-qemu-lan9118
@@ -697,7 +686,7 @@ doc:
     cargo doc --no-deps --open
 
 # Clean all build artifacts created by `just build`
-clean: clean-examples
+clean: clean-examples clean-zephyr
     cargo clean
     @echo "All build artifacts cleaned"
 
