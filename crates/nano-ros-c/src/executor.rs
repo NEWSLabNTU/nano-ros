@@ -16,6 +16,15 @@ use crate::timer::{nano_ros_timer_state_t, nano_ros_timer_t};
 /// Maximum number of handles in an executor
 pub const NANO_ROS_EXECUTOR_MAX_HANDLES: usize = 16;
 
+/// Maximum number of subscriptions in an executor
+pub const NANO_ROS_MAX_SUBSCRIPTIONS: usize = 8;
+
+/// Maximum number of timers in an executor
+pub const NANO_ROS_MAX_TIMERS: usize = 8;
+
+/// Maximum number of services in an executor
+pub const NANO_ROS_MAX_SERVICES: usize = 4;
+
 /// Buffer size for LET (Logical Execution Time) semantics per handle
 /// This is the maximum message size that can be sampled in LET mode.
 /// Larger messages will be truncated.
@@ -155,6 +164,12 @@ pub struct nano_ros_executor_t {
     let_data_available: [bool; NANO_ROS_EXECUTOR_MAX_HANDLES],
     /// Next invocation time in nanoseconds for drift-compensated spin_period
     invocation_time_ns: u64,
+    /// Number of subscription handles
+    subscription_count: usize,
+    /// Number of timer handles
+    timer_count: usize,
+    /// Number of service handles
+    service_count: usize,
 }
 
 impl Default for nano_ros_executor_t {
@@ -173,6 +188,9 @@ impl Default for nano_ros_executor_t {
             let_buffer_lens: [0usize; NANO_ROS_EXECUTOR_MAX_HANDLES],
             let_data_available: [false; NANO_ROS_EXECUTOR_MAX_HANDLES],
             invocation_time_ns: 0,
+            subscription_count: 0,
+            timer_count: 0,
+            service_count: 0,
         }
     }
 }
@@ -462,8 +480,11 @@ pub unsafe extern "C" fn nano_ros_executor_add_subscription(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    // Check if full
+    // Check if full (overall or per-type)
     if executor.handle_count >= executor.max_handles {
+        return NANO_ROS_RET_FULL;
+    }
+    if executor.subscription_count >= NANO_ROS_MAX_SUBSCRIPTIONS {
         return NANO_ROS_RET_FULL;
     }
 
@@ -476,6 +497,7 @@ pub unsafe extern "C" fn nano_ros_executor_add_subscription(
         data_ready: false,
     };
     executor.handle_count += 1;
+    executor.subscription_count += 1;
 
     NANO_ROS_RET_OK
 }
@@ -516,8 +538,11 @@ pub unsafe extern "C" fn nano_ros_executor_add_timer(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    // Check if full
+    // Check if full (overall or per-type)
     if executor.handle_count >= executor.max_handles {
+        return NANO_ROS_RET_FULL;
+    }
+    if executor.timer_count >= NANO_ROS_MAX_TIMERS {
         return NANO_ROS_RET_FULL;
     }
 
@@ -530,6 +555,7 @@ pub unsafe extern "C" fn nano_ros_executor_add_timer(
         data_ready: false,
     };
     executor.handle_count += 1;
+    executor.timer_count += 1;
 
     NANO_ROS_RET_OK
 }
@@ -570,8 +596,11 @@ pub unsafe extern "C" fn nano_ros_executor_add_service(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    // Check if full
+    // Check if full (overall or per-type)
     if executor.handle_count >= executor.max_handles {
+        return NANO_ROS_RET_FULL;
+    }
+    if executor.service_count >= NANO_ROS_MAX_SERVICES {
         return NANO_ROS_RET_FULL;
     }
 
@@ -584,6 +613,7 @@ pub unsafe extern "C" fn nano_ros_executor_add_service(
         data_ready: false,
     };
     executor.handle_count += 1;
+    executor.service_count += 1;
 
     NANO_ROS_RET_OK
 }
@@ -1284,6 +1314,70 @@ pub unsafe extern "C" fn nano_ros_executor_is_valid(executor: *const nano_ros_ex
     }
 }
 
+/// Get remaining total handle capacity.
+///
+/// # Returns
+/// * Remaining capacity, or -1 if executor is NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_get_remaining_handles(
+    executor: *const nano_ros_executor_t,
+) -> c_int {
+    if executor.is_null() {
+        return -1;
+    }
+
+    let executor = &*executor;
+    (executor.max_handles - executor.handle_count) as c_int
+}
+
+/// Get remaining subscription capacity.
+///
+/// # Returns
+/// * Remaining capacity, or -1 if executor is NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_get_remaining_subscriptions(
+    executor: *const nano_ros_executor_t,
+) -> c_int {
+    if executor.is_null() {
+        return -1;
+    }
+
+    let executor = &*executor;
+    (NANO_ROS_MAX_SUBSCRIPTIONS - executor.subscription_count) as c_int
+}
+
+/// Get remaining timer capacity.
+///
+/// # Returns
+/// * Remaining capacity, or -1 if executor is NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_get_remaining_timers(
+    executor: *const nano_ros_executor_t,
+) -> c_int {
+    if executor.is_null() {
+        return -1;
+    }
+
+    let executor = &*executor;
+    (NANO_ROS_MAX_TIMERS - executor.timer_count) as c_int
+}
+
+/// Get remaining service capacity.
+///
+/// # Returns
+/// * Remaining capacity, or -1 if executor is NULL
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nano_ros_executor_get_remaining_services(
+    executor: *const nano_ros_executor_t,
+) -> c_int {
+    if executor.is_null() {
+        return -1;
+    }
+
+    let executor = &*executor;
+    (NANO_ROS_MAX_SERVICES - executor.service_count) as c_int
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1587,5 +1681,67 @@ mod tests {
     fn test_invocation_time_ns_initialized() {
         let executor = nano_ros_executor_get_zero_initialized();
         assert_eq!(executor.invocation_time_ns, 0);
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // PER-TYPE LIMIT AND CAPACITY QUERY TESTS
+    // ═══════════════════════════════════════════════════════════════════════
+
+    #[test]
+    fn test_per_type_counters_initialized_to_zero() {
+        let executor = nano_ros_executor_get_zero_initialized();
+        assert_eq!(executor.subscription_count, 0);
+        assert_eq!(executor.timer_count, 0);
+        assert_eq!(executor.service_count, 0);
+    }
+
+    #[test]
+    fn test_remaining_handles_null() {
+        unsafe {
+            assert_eq!(nano_ros_executor_get_remaining_handles(ptr::null()), -1);
+            assert_eq!(
+                nano_ros_executor_get_remaining_subscriptions(ptr::null()),
+                -1
+            );
+            assert_eq!(nano_ros_executor_get_remaining_timers(ptr::null()), -1);
+            assert_eq!(nano_ros_executor_get_remaining_services(ptr::null()), -1);
+        }
+    }
+
+    #[test]
+    fn test_remaining_capacity_initial() {
+        unsafe {
+            let mut support = nano_ros_support_get_zero_initialized();
+            let mut executor = nano_ros_executor_get_zero_initialized();
+            support.state = nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED;
+
+            let ret = nano_ros_executor_init(&mut executor, &support, 16);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            assert_eq!(
+                nano_ros_executor_get_remaining_handles(&executor),
+                NANO_ROS_EXECUTOR_MAX_HANDLES as c_int
+            );
+            assert_eq!(
+                nano_ros_executor_get_remaining_subscriptions(&executor),
+                NANO_ROS_MAX_SUBSCRIPTIONS as c_int
+            );
+            assert_eq!(
+                nano_ros_executor_get_remaining_timers(&executor),
+                NANO_ROS_MAX_TIMERS as c_int
+            );
+            assert_eq!(
+                nano_ros_executor_get_remaining_services(&executor),
+                NANO_ROS_MAX_SERVICES as c_int
+            );
+        }
+    }
+
+    #[test]
+    fn test_per_type_limit_constants() {
+        assert_eq!(NANO_ROS_MAX_SUBSCRIPTIONS, 8);
+        assert_eq!(NANO_ROS_MAX_TIMERS, 8);
+        assert_eq!(NANO_ROS_MAX_SERVICES, 4);
+        assert_eq!(NANO_ROS_EXECUTOR_MAX_HANDLES, 16);
     }
 }

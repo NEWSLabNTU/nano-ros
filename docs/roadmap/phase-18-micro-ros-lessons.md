@@ -856,9 +856,9 @@ This task unifies and extends these limits for consistency, and exposes them in 
 
 ### 18.5.1 Rust API — Unified Const Generic Limits
 
-- [ ] Reconcile existing const generics into a consistent naming scheme
-- [ ] Add `MAX_SERVICES` to `NodeHandle` (currently missing)
-- [ ] Add runtime capacity query methods
+- [x] Reconcile existing const generics into a consistent naming scheme
+- [x] Add `MAX_SERVICES` to `NodeHandle` (currently missing)
+- [x] Add runtime capacity query methods
 - [ ] Document default values and how to override
 
 ```rust
@@ -901,9 +901,9 @@ let mut node: NodeHandle<'_, 4, 2, 2, 1> = executor.create_node("minimal")?;
 
 ### 18.5.2 C API — Entity Limits
 
-- [ ] Expose limits as `#define` constants in C header
-- [ ] Return `NANO_ROS_RET_NO_MEMORY` when limits exceeded
-- [ ] Document limits in C API header comments
+- [x] Expose limits as `#define` constants in C header
+- [x] Return `NANO_ROS_RET_FULL` when per-type limits exceeded
+- [x] Document limits in C API header comments
 
 ```c
 /* Default entity limits — override via build system or Kconfig */
@@ -934,7 +934,7 @@ int nano_ros_node_get_remaining_subscriptions(const nano_ros_node_t *node);
 
 ### 18.5.3 Kconfig Integration (Zephyr)
 
-- [ ] Add Kconfig entries for entity limits in BSP Zephyr
+- [x] Add Kconfig entries for entity limits in BSP Zephyr
 - [ ] Wire Kconfig values to Rust const generics via `build.rs`
 - [ ] Wire Kconfig values to C `#define` constants via generated header
 
@@ -971,10 +971,10 @@ endmenu
 ### 18.5.4 Tests
 
 - [ ] Compile-time test: exceeding limit produces clear error
-- [ ] Unit test: entity creation succeeds up to limit
-- [ ] Unit test: entity creation fails at limit with `NANO_ROS_RET_NO_MEMORY`
-- [ ] Unit test: `remaining_*_capacity()` returns correct values
-- [ ] C API test: `nano_ros_node_get_remaining_publishers` accuracy
+- [x] Unit test: entity creation succeeds up to limit
+- [x] Unit test: entity creation fails at limit with `NANO_ROS_RET_FULL`
+- [x] Unit test: `remaining_*_capacity()` returns correct values
+- [x] C API test: capacity query accuracy
 
 ---
 

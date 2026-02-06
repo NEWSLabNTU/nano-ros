@@ -567,6 +567,10 @@ pub enum RclrsError {
     ServiceTimeout,
     /// Service call was cancelled
     ServiceCancelled,
+    /// Subscription storage is full (too many subscriptions)
+    SubscriptionStorageFull,
+    /// Service storage is full (too many services)
+    ServiceStorageFull,
 }
 
 impl RclrsError {

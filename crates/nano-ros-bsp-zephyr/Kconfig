@@ -43,6 +43,24 @@ config NANO_ROS_MAX_SUBSCRIBERS
     help
       Maximum number of subscribers per node.
 
+config NANO_ROS_MAX_SERVICES
+    int "Maximum number of services per node"
+    default 4
+    help
+      Maximum number of service servers per node.
+
+config NANO_ROS_MAX_TIMERS
+    int "Maximum number of timers per node"
+    default 8
+    help
+      Maximum number of timers per node.
+
+config NANO_ROS_MAX_NODES
+    int "Maximum number of nodes per executor"
+    default 4
+    help
+      Maximum number of nodes managed by one executor.
+
 config NANO_ROS_INIT_DELAY_MS
     int "Initialization delay (ms)"
     default 2000

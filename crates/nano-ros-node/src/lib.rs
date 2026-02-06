@@ -168,8 +168,9 @@ pub use context::{
 // Re-export executor types
 #[cfg(feature = "zenoh")]
 pub use executor::{
-    DEFAULT_MAX_NODES, DEFAULT_MAX_SUBSCRIPTIONS, Executor, ExecutorTimerCallback, SpinOnceResult,
-    SpinOptions, SubscriptionCallback, SubscriptionCallbackWithInfo, SubscriptionHandle,
+    DEFAULT_MAX_NODES, DEFAULT_MAX_SERVICES, DEFAULT_MAX_SUBSCRIPTIONS, Executor,
+    ExecutorTimerCallback, SpinOnceResult, SpinOptions, SubscriptionCallback,
+    SubscriptionCallbackWithInfo, SubscriptionHandle,
 };
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]

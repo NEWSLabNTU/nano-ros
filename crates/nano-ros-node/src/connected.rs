@@ -1648,6 +1648,16 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         self.timers.len()
     }
 
+    /// Remaining liveliness token capacity (publishers + subscribers)
+    pub fn remaining_token_capacity(&self) -> usize {
+        MAX_TOKENS - self._entity_tokens.len()
+    }
+
+    /// Remaining timer capacity
+    pub fn remaining_timer_capacity(&self) -> usize {
+        MAX_TIMERS - self.timers.len()
+    }
+
     /// Process all timers
     ///
     /// Call this periodically to update timer elapsed times and fire callbacks.

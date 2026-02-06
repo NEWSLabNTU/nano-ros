@@ -29,6 +29,15 @@ extern "C" {
 /** Maximum number of handles in an executor */
 #define NANO_ROS_EXECUTOR_MAX_HANDLES 16
 
+/** Maximum number of subscriptions in an executor */
+#define NANO_ROS_MAX_SUBSCRIPTIONS 8
+
+/** Maximum number of timers in an executor */
+#define NANO_ROS_MAX_TIMERS 8
+
+/** Maximum number of services in an executor */
+#define NANO_ROS_MAX_SERVICES 4
+
 // ============================================================================
 // Executor Types
 // ============================================================================
@@ -130,6 +139,20 @@ typedef struct nano_ros_executor_t {
     nano_ros_executor_trigger_t trigger;
     /** User context for trigger function */
     void *trigger_context;
+    /** LET buffers (internal) */
+    uint8_t _let_buffers[NANO_ROS_EXECUTOR_MAX_HANDLES][512];
+    /** LET buffer lengths (internal) */
+    size_t _let_buffer_lens[NANO_ROS_EXECUTOR_MAX_HANDLES];
+    /** LET data availability flags (internal) */
+    bool _let_data_available[NANO_ROS_EXECUTOR_MAX_HANDLES];
+    /** Next invocation time in nanoseconds (internal) */
+    uint64_t _invocation_time_ns;
+    /** Number of subscription handles */
+    size_t subscription_count;
+    /** Number of timer handles */
+    size_t timer_count;
+    /** Number of service handles */
+    size_t service_count;
 } nano_ros_executor_t;
 
 // ============================================================================
@@ -354,6 +377,50 @@ int nano_ros_executor_get_handle_count(const nano_ros_executor_t *executor);
  */
 NANO_ROS_PUBLIC
 int nano_ros_executor_is_valid(const nano_ros_executor_t *executor);
+
+// ============================================================================
+// Capacity Queries
+// ============================================================================
+
+/**
+ * Get remaining total handle capacity.
+ *
+ * @param executor Pointer to an executor
+ *
+ * @return Remaining capacity, or -1 if NULL
+ */
+NANO_ROS_PUBLIC
+int nano_ros_executor_get_remaining_handles(const nano_ros_executor_t *executor);
+
+/**
+ * Get remaining subscription capacity.
+ *
+ * @param executor Pointer to an executor
+ *
+ * @return Remaining subscription capacity, or -1 if NULL
+ */
+NANO_ROS_PUBLIC
+int nano_ros_executor_get_remaining_subscriptions(const nano_ros_executor_t *executor);
+
+/**
+ * Get remaining timer capacity.
+ *
+ * @param executor Pointer to an executor
+ *
+ * @return Remaining timer capacity, or -1 if NULL
+ */
+NANO_ROS_PUBLIC
+int nano_ros_executor_get_remaining_timers(const nano_ros_executor_t *executor);
+
+/**
+ * Get remaining service capacity.
+ *
+ * @param executor Pointer to an executor
+ *
+ * @return Remaining service capacity, or -1 if NULL
+ */
+NANO_ROS_PUBLIC
+int nano_ros_executor_get_remaining_services(const nano_ros_executor_t *executor);
 
 // ============================================================================
 // Trigger Functions

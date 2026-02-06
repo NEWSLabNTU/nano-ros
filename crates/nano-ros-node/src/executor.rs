@@ -457,12 +457,16 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
 /// Maximum subscriptions per node (for no_std)
 pub const DEFAULT_MAX_SUBSCRIPTIONS: usize = 8;
 
+/// Maximum services per node
+pub const DEFAULT_MAX_SERVICES: usize = 4;
+
 /// Internal node state owned by executor
 #[cfg(feature = "zenoh")]
 pub struct NodeState<
     const MAX_TOKENS: usize = DEFAULT_MAX_TOKENS,
     const MAX_TIMERS: usize = DEFAULT_MAX_TIMERS,
     const MAX_SUBS: usize = DEFAULT_MAX_SUBSCRIPTIONS,
+    const MAX_SERVICES: usize = DEFAULT_MAX_SERVICES,
 > {
     /// The underlying connected node
     pub(crate) inner: ConnectedNode<MAX_TOKENS, MAX_TIMERS>,
@@ -483,8 +487,12 @@ pub struct NodeState<
 }
 
 #[cfg(feature = "zenoh")]
-impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize>
-    NodeState<MAX_TOKENS, MAX_TIMERS, MAX_SUBS>
+impl<
+    const MAX_TOKENS: usize,
+    const MAX_TIMERS: usize,
+    const MAX_SUBS: usize,
+    const MAX_SERVICES: usize,
+> NodeState<MAX_TOKENS, MAX_TIMERS, MAX_SUBS, MAX_SERVICES>
 {
     /// Create a new node state
     pub(crate) fn new(inner: ConnectedNode<MAX_TOKENS, MAX_TIMERS>) -> Self {
@@ -572,16 +580,24 @@ pub struct NodeHandle<
     const MAX_TOKENS: usize = DEFAULT_MAX_TOKENS,
     const MAX_TIMERS: usize = DEFAULT_MAX_TIMERS,
     const MAX_SUBS: usize = DEFAULT_MAX_SUBSCRIPTIONS,
+    const MAX_SERVICES: usize = DEFAULT_MAX_SERVICES,
 > {
-    pub(crate) node: &'a mut NodeState<MAX_TOKENS, MAX_TIMERS, MAX_SUBS>,
+    pub(crate) node: &'a mut NodeState<MAX_TOKENS, MAX_TIMERS, MAX_SUBS, MAX_SERVICES>,
 }
 
 #[cfg(feature = "zenoh")]
-impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize>
-    NodeHandle<'a, MAX_TOKENS, MAX_TIMERS, MAX_SUBS>
+impl<
+    'a,
+    const MAX_TOKENS: usize,
+    const MAX_TIMERS: usize,
+    const MAX_SUBS: usize,
+    const MAX_SERVICES: usize,
+> NodeHandle<'a, MAX_TOKENS, MAX_TIMERS, MAX_SUBS, MAX_SERVICES>
 {
     /// Create a new node handle
-    pub(crate) fn new(node: &'a mut NodeState<MAX_TOKENS, MAX_TIMERS, MAX_SUBS>) -> Self {
+    pub(crate) fn new(
+        node: &'a mut NodeState<MAX_TOKENS, MAX_TIMERS, MAX_SUBS, MAX_SERVICES>,
+    ) -> Self {
         Self { node }
     }
 
@@ -707,6 +723,10 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
         M: RosMessage + Deserialize + Send + 'static,
         C: SubscriptionCallback<M> + 'static,
     {
+        if self.node.subscriptions.len() >= MAX_SUBS {
+            return Err(RclrsError::SubscriptionStorageFull);
+        }
+
         let subscriber = self
             .node
             .inner
@@ -752,6 +772,10 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
         M: RosMessage + Deserialize + Send + 'static,
         C: SubscriptionCallbackWithInfo<M> + 'static,
     {
+        if self.node.subscriptions.len() >= MAX_SUBS {
+            return Err(RclrsError::SubscriptionStorageFull);
+        }
+
         let subscriber = self
             .node
             .inner
@@ -782,6 +806,10 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
         S: RosService + Send + 'static,
         C: ServiceCallback<S> + 'static,
     {
+        if self.node.services.len() >= MAX_SERVICES {
+            return Err(RclrsError::ServiceStorageFull);
+        }
+
         let server = self
             .node
             .inner
@@ -921,6 +949,32 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
     #[cfg(feature = "zenoh")]
     pub fn use_undeclared_parameters(&mut self) -> nano_ros_params::UndeclaredParameters<'_> {
         nano_ros_params::UndeclaredParameters::new(&mut self.node.inner.parameter_server)
+    }
+
+    // ═══════════════════════════════════════════════════════════════════════
+    // CAPACITY QUERIES
+    // ═══════════════════════════════════════════════════════════════════════
+
+    /// Remaining liveliness token capacity (publishers + subscribers)
+    pub fn remaining_token_capacity(&self) -> usize {
+        self.node.inner.remaining_token_capacity()
+    }
+
+    /// Remaining timer capacity
+    pub fn remaining_timer_capacity(&self) -> usize {
+        self.node.inner.remaining_timer_capacity()
+    }
+
+    /// Remaining subscription callback capacity
+    #[cfg(feature = "alloc")]
+    pub fn remaining_subscription_capacity(&self) -> usize {
+        MAX_SUBS - self.node.subscriptions.len()
+    }
+
+    /// Remaining service callback capacity
+    #[cfg(feature = "alloc")]
+    pub fn remaining_service_capacity(&self) -> usize {
+        MAX_SERVICES - self.node.services.len()
     }
 }
 
@@ -1084,6 +1138,11 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
     /// Get the number of nodes in this executor
     pub fn node_count(&self) -> usize {
         self.nodes.len()
+    }
+
+    /// Remaining node capacity
+    pub fn remaining_node_capacity(&self) -> usize {
+        MAX_NODES - self.nodes.len()
     }
 
     /// Set the trigger condition for this executor
@@ -1648,5 +1707,20 @@ mod tests {
         let elapsed_ms: u64 = 15;
         let remaining = period_ms.saturating_sub(elapsed_ms);
         assert_eq!(remaining, 0);
+    }
+
+    #[test]
+    fn test_default_max_services() {
+        assert_eq!(DEFAULT_MAX_SERVICES, 4);
+    }
+
+    #[test]
+    fn test_default_max_subscriptions() {
+        assert_eq!(DEFAULT_MAX_SUBSCRIPTIONS, 8);
+    }
+
+    #[test]
+    fn test_default_max_nodes() {
+        assert_eq!(DEFAULT_MAX_NODES, 4);
     }
 }
