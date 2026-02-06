@@ -45,6 +45,9 @@ nano-ros/
 │   └── platform-integration/  # Low-level reference implementations
 │       ├── qemu-smoltcp-bridge/  # smoltcp bridge library
 │       └── stm32f4-*/            # STM32F4 networking examples
+├── scripts/zenohd/            # Zenohd build scripts
+│   ├── build.sh               # Build zenohd from submodule
+│   └── zenoh/                 # Zenoh 1.6.2 submodule
 ├── scripts/zephyr/            # Zephyr setup scripts
 │   ├── setup.sh               # Initialize workspace
 │   └── setup-network.sh       # Configure TAP interface
@@ -63,6 +66,7 @@ nano-ros/
 ```bash
 just setup          # Install toolchains, cargo tools, check system deps
 just build          # Build with no_std
+just build-zenohd   # Build zenohd 1.6.2 from submodule (for integration tests)
 just check          # Format + clippy
 just quality        # Format + clippy + unit tests (no external deps)
 just doc            # Generate docs
@@ -70,11 +74,11 @@ just doc            # Generate docs
 # Test groups (by infrastructure requirement)
 just test-unit          # Unit tests + Miri (no external deps)
 just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
-just test-integration   # All Rust integration tests (needs zenohd)
+just test-integration   # All Rust integration tests (builds zenohd automatically)
 just test               # test-unit + test-qemu + test-integration
 just test-zephyr        # Zephyr E2E tests (needs west + TAP)
 just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh)
-just test-c             # C API tests (needs cmake + zenohd)
+just test-c             # C API tests (needs cmake)
 just test-all           # Everything
 ```
 
@@ -165,6 +169,14 @@ just test-c             # C API tests (needs cmake)
 **Unit tests** (per-crate `#[cfg(test)]` modules) go in each crate's source files as usual.
 
 ## Key Design Patterns
+
+### Zenoh Version Unification
+All zenoh components are pinned to **1.6.2** for compatibility with rmw_zenoh_cpp (ros-humble-zenoh-cpp-vendor 0.1.8):
+- **zenohd**: Built from submodule at `scripts/zenohd/zenoh/` via `just build-zenohd` → `build/zenohd/zenohd`
+- **zenoh-pico**: Submodule at `crates/zenoh-pico-shim-sys/zenoh-pico/` (1.6.2)
+- **rmw_zenoh_cpp**: Bundles zenoh-c 1.6.2
+
+Test infrastructure (`nano-ros-tests`) and shell scripts automatically use the local build at `build/zenohd/zenohd` when available, falling back to the system `zenohd`.
 
 ### Rust Edition 2024
 All crates use Rust edition 2024. Key syntax changes from edition 2021:
@@ -280,8 +292,11 @@ See [docs/roadmap/](docs/roadmap/) for details.
 
 ### Manual Testing
 ```bash
+# Build zenohd first (one-time)
+just build-zenohd
+
 # Terminal 1: Router
-zenohd --listen tcp/127.0.0.1:7447
+./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Talker
 cd examples/native-rs-talker && cargo run
@@ -293,7 +308,7 @@ cd examples/native-rs-listener && cargo run
 ### ROS 2 Interop
 ```bash
 # Terminal 1: Router
-zenohd --listen tcp/127.0.0.1:7447
+./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: nano-ros talker
 cd examples/native-rs-talker && cargo run
@@ -309,7 +324,7 @@ ROS 2 actions support long-running tasks with feedback and cancellation.
 
 ```bash
 # Terminal 1: Router
-zenohd --listen tcp/127.0.0.1:7447
+./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Action server (Fibonacci example)
 cd examples/native/rs-action-server && cargo run
@@ -401,7 +416,7 @@ Each container has isolated TAP networking with NAT to reach zenohd.
 ```bash
 # Terminal 1: Setup network + start router
 just setup-qemu-network                    # Requires sudo
-zenohd --listen tcp/0.0.0.0:7447
+./build/zenohd/zenohd --listen tcp/0.0.0.0:7447
 
 # Terminal 2: Talker (192.0.2.10)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \
