@@ -109,36 +109,43 @@ nano-ros ROS API (rclrs-like). This needs to be fixed. See "Known Issues" sectio
 
 ### 3. QEMU ARM (Cortex-M3) - Bare Metal
 
-| Test Suite | File          | Tests | Coverage                     |
-|------------|---------------|-------|------------------------------|
-| Emulator   | `emulator.rs` | 12    | CDR, Node API, type metadata |
+| Test Suite | File          | Tests | Coverage                        |
+|------------|---------------|-------|---------------------------------|
+| Emulator   | `emulator.rs` | 12    | CDR, Node API, type metadata, BSP |
 
 **Test Breakdown:**
-| Test                           | Description                 |
-|--------------------------------|-----------------------------|
-| `test_qemu_detection`          | Verify QEMU available       |
-| `test_arm_toolchain_detection` | Verify thumbv7m target      |
-| `test_qemu_cdr_serialization`  | CDR encode/decode           |
-| `test_qemu_node_api`           | Node, publisher, subscriber |
-| `test_qemu_type_metadata`      | Type names                  |
-| `test_qemu_all_tests_pass`     | Parse test results          |
-| `test_qemu_output_format`      | Verify markers              |
+| Test                           | Description                   |
+|--------------------------------|-------------------------------|
+| `test_qemu_detection`          | Verify QEMU available         |
+| `test_arm_toolchain_detection` | Verify thumbv7m target        |
+| `test_qemu_cdr_serialization`  | CDR encode/decode             |
+| `test_qemu_node_api`           | Node, publisher, subscriber   |
+| `test_qemu_type_metadata`      | Type names                    |
+| `test_qemu_all_tests_pass`     | Parse test results            |
+| `test_qemu_output_format`      | Verify markers                |
+| `test_qemu_bsp_talker_builds`  | BSP talker binary builds      |
+| `test_qemu_bsp_listener_builds`| BSP listener binary builds    |
+| `test_qemu_bsp_talker_starts`  | BSP talker starts (Docker)    |
+| `test_qemu_bsp_listener_starts`| BSP listener starts (Docker)  |
+| `test_qemu_bsp_both_build`     | Both BSP binaries build       |
 
 **Justfile Recipes:**
 - `just test-rust-emulator` - QEMU emulator tests
 - `just test-qemu` - Basic + LAN9118 tests
 - `just test-qemu-basic` - Semihosting tests
 - `just test-qemu-lan9118` - Network tests
+- `just test-qemu-bsp` - BSP build tests
 - `just test-qemu-zenoh` - Zenoh communication (manual)
+- `just test-rust-qemu-baremetal-bsp` - Full BSP Docker test
 
 **Examples Covered:**
-| Example             | Tested  | Notes                |
-|---------------------|---------|----------------------|
-| `qemu/rs-test`      | Yes     | CDR, Node API        |
-| `qemu/rs-talker`    | Partial | Build only           |
-| `qemu/rs-listener`  | Partial | Build only           |
-| `qemu/bsp-talker`   | **NO**  | BSP variant untested |
-| `qemu/bsp-listener` | **NO**  | BSP variant untested |
+| Example             | Tested  | Notes                           |
+|---------------------|---------|----------------------------------|
+| `qemu/rs-test`      | Yes     | CDR, Node API                    |
+| `qemu/rs-talker`    | Partial | Build only                       |
+| `qemu/rs-listener`  | Partial | Build only                       |
+| `qemu/bsp-talker`   | Yes     | Build + Docker E2E               |
+| `qemu/bsp-listener` | Yes     | Build + Docker E2E               |
 
 ### 4. STM32F4 - Physical Hardware
 

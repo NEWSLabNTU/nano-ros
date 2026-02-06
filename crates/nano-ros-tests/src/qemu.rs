@@ -186,6 +186,26 @@ pub fn is_arm_toolchain_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Check if zenoh-pico ARM library is available
+///
+/// The BSP examples require the zenoh-pico library to be cross-compiled for
+/// ARM Cortex-M3. This library is built with `just build-zenoh-pico-arm`.
+pub fn is_zenoh_pico_arm_available() -> bool {
+    // Check if the library exists at the expected location relative to project root
+    let lib_path = crate::project_root().join("build/qemu-zenoh-pico/libzenohpico.a");
+    lib_path.exists()
+}
+
+/// Skip test if zenoh-pico ARM library is not available
+pub fn require_zenoh_pico_arm() -> bool {
+    if !is_zenoh_pico_arm_available() {
+        eprintln!("Skipping test: libzenohpico.a not found");
+        eprintln!("Build with: just build-zenoh-pico-arm");
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

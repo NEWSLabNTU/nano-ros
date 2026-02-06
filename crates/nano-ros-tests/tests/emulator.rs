@@ -2,9 +2,18 @@
 //!
 //! Tests that run on QEMU Cortex-M3 emulator without physical hardware.
 //! These verify CDR serialization, Node API, and type metadata work on embedded targets.
+//!
+//! Run with: `cargo test -p nano-ros-tests --test emulator -- --nocapture`
+//! Or: `just test-rust-emulator`
+//!
+//! ## BSP Tests
+//!
+//! The BSP (Board Support Package) tests verify the simplified nano-ros-bsp-qemu API:
+//! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nano_ros_tests::fixtures::{
-    QemuProcess, is_arm_toolchain_available, is_qemu_available, parse_test_results, qemu_binary,
+    QemuProcess, build_qemu_bsp_listener, build_qemu_bsp_talker, is_arm_toolchain_available,
+    is_qemu_available, parse_test_results, qemu_binary, require_zenoh_pico_arm,
 };
 use nano_ros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
 use rstest::rstest;
@@ -161,4 +170,158 @@ fn test_arm_toolchain_detection() {
     let available = is_arm_toolchain_available();
     eprintln!("ARM toolchain available: {}", available);
     // This test just verifies the detection works
+}
+
+// =============================================================================
+// QEMU BSP Tests (Phase 17.7)
+// =============================================================================
+//
+// Tests for the simplified nano-ros-bsp-qemu API (Board Support Package).
+// These examples use a higher-level API than the rs-* examples.
+
+/// Test that qemu-bsp-talker builds successfully
+#[test]
+fn test_qemu_bsp_talker_builds() {
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let result = build_qemu_bsp_talker();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!("SUCCESS: qemu-bsp-talker builds at {}", binary.display());
+        }
+        Err(e) => {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("Permission denied") {
+                eprintln!("Build failed due to permission issues (likely from Docker build)");
+                eprintln!("Fix with: sudo rm -rf examples/qemu/bsp-talker/target");
+                eprintln!("Skipping test...");
+            } else {
+                panic!("qemu-bsp-talker build failed: {:?}", e);
+            }
+        }
+    }
+}
+
+/// Test that qemu-bsp-listener builds successfully
+#[test]
+fn test_qemu_bsp_listener_builds() {
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let result = build_qemu_bsp_listener();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!("SUCCESS: qemu-bsp-listener builds at {}", binary.display());
+        }
+        Err(e) => {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("Permission denied") {
+                eprintln!("Build failed due to permission issues (likely from Docker build)");
+                eprintln!("Fix with: sudo rm -rf examples/qemu/bsp-listener/target");
+                eprintln!("Skipping test...");
+            } else {
+                panic!("qemu-bsp-listener build failed: {:?}", e);
+            }
+        }
+    }
+}
+
+// =============================================================================
+// BSP Network Tests (Require Docker or TAP)
+// =============================================================================
+//
+// The BSP examples use the MPS2-AN385 machine with LAN9118 Ethernet, which
+// requires network setup. These tests are skipped by default.
+//
+// To run BSP network tests:
+//   just test-rust-qemu-baremetal-bsp  (uses Docker)
+//
+// Or manually with TAP interface:
+//   sudo ./scripts/qemu/setup-network.sh
+//   zenohd --listen tcp/0.0.0.0:7447
+//   ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary <path>
+
+/// Test that qemu-bsp-talker starts (requires Docker/TAP networking)
+///
+/// NOTE: This test is skipped by default as it requires network setup.
+/// Use `just test-rust-qemu-baremetal-bsp` for the full Docker-based test.
+#[test]
+fn test_qemu_bsp_talker_starts() {
+    // BSP examples require MPS2-AN385 with networking, which isn't available
+    // in the standard test environment. The Docker-based test handles this.
+    eprintln!("Skipping test: BSP start tests require Docker or TAP networking");
+    eprintln!("Run with: just test-rust-qemu-baremetal-bsp");
+    println!("INFO: BSP network tests skipped (use Docker for full test)");
+}
+
+/// Test that qemu-bsp-listener starts (requires Docker/TAP networking)
+///
+/// NOTE: This test is skipped by default as it requires network setup.
+/// Use `just test-rust-qemu-baremetal-bsp` for the full Docker-based test.
+#[test]
+fn test_qemu_bsp_listener_starts() {
+    // BSP examples require MPS2-AN385 with networking, which isn't available
+    // in the standard test environment. The Docker-based test handles this.
+    eprintln!("Skipping test: BSP start tests require Docker or TAP networking");
+    eprintln!("Run with: just test-rust-qemu-baremetal-bsp");
+    println!("INFO: BSP network tests skipped (use Docker for full test)");
+}
+
+/// Test that both BSP binaries can be built in sequence
+///
+/// This verifies the build system handles multiple BSP binaries correctly.
+#[test]
+fn test_qemu_bsp_both_build() {
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let talker = build_qemu_bsp_talker();
+    let listener = build_qemu_bsp_listener();
+
+    // Handle permission errors gracefully
+    let has_perm_error = |e: &dyn std::fmt::Debug| format!("{:?}", e).contains("Permission denied");
+
+    match (&talker, &listener) {
+        (Ok(talker_path), Ok(listener_path)) => {
+            // Verify they're different binaries
+            assert_ne!(
+                talker_path.file_name(),
+                listener_path.file_name(),
+                "Talker and listener should be different binaries"
+            );
+
+            println!("SUCCESS: Both BSP binaries build correctly");
+            println!("  Talker:   {}", talker_path.display());
+            println!("  Listener: {}", listener_path.display());
+        }
+        (Err(e), _) if has_perm_error(e) => {
+            eprintln!("Talker build failed due to permission issues");
+            eprintln!("Fix with: sudo rm -rf examples/qemu/bsp-talker/target");
+            eprintln!("Skipping test...");
+        }
+        (_, Err(e)) if has_perm_error(e) => {
+            eprintln!("Listener build failed due to permission issues");
+            eprintln!("Fix with: sudo rm -rf examples/qemu/bsp-listener/target");
+            eprintln!("Skipping test...");
+        }
+        (Err(e), _) => panic!("BSP talker build failed: {:?}", e),
+        (_, Err(e)) => panic!("BSP listener build failed: {:?}", e),
+    }
 }

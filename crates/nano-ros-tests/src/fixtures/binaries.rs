@@ -31,6 +31,12 @@ static NATIVE_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-custom-msg binary
 static NATIVE_CUSTOM_MSG_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the qemu-bsp-talker binary
+static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-bsp-listener binary
+static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build the qemu-test example and return its path
 ///
 /// Uses OnceLock to cache the build, so subsequent calls are fast.
@@ -294,6 +300,50 @@ pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
 pub fn custom_msg_binary() -> PathBuf {
     build_native_custom_msg()
         .expect("Failed to build native-rs-custom-msg")
+        .to_path_buf()
+}
+
+/// Build qemu-bsp-talker (cached)
+pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
+    QEMU_BSP_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu/bsp-talker",
+                "qemu-bsp-talker",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build qemu-bsp-listener (cached)
+pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
+    QEMU_BSP_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu/bsp-listener",
+                "qemu-bsp-listener",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the qemu-bsp-talker binary path
+#[rstest::fixture]
+pub fn qemu_bsp_talker_binary() -> PathBuf {
+    build_qemu_bsp_talker()
+        .expect("Failed to build qemu-bsp-talker")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the qemu-bsp-listener binary path
+#[rstest::fixture]
+pub fn qemu_bsp_listener_binary() -> PathBuf {
+    build_qemu_bsp_listener()
+        .expect("Failed to build qemu-bsp-listener")
         .to_path_buf()
 }
 

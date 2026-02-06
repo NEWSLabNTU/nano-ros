@@ -610,6 +610,10 @@ test-rust-executor:
 test-rust-qos:
     cargo test -p nano-ros-tests --test qos -- --nocapture
 
+# Run QEMU BSP tests (build and startup verification)
+test-qemu-bsp:
+    cargo test -p nano-ros-tests --test emulator test_qemu_bsp -- --nocapture
+
 # Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
 test-rust-actions-rmw-interop:
     cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture
