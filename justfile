@@ -177,9 +177,10 @@ check-workspace-features:
     cargo clippy -p nano-ros-transport --features "zenoh,std" -- {{CLIPPY_LINTS}}
     @echo "All feature checks passed!"
 
-# Run workspace tests (requires std)
+# Run workspace unit tests (no external deps)
+# Excludes nano-ros-tests which contains integration tests requiring zenohd/Zephyr/ROS 2
 test-workspace:
-    cargo nextest run --workspace --no-fail-fast
+    cargo nextest run --workspace --exclude nano-ros-tests --no-fail-fast
 
 # Run Miri to detect undefined behavior
 test-miri:
@@ -437,7 +438,7 @@ test-qemu-lan9118: build-examples-qemu
         -machine mps2-an385 \
         -nographic \
         -semihosting-config enable=on,target=native \
-        -kernel examples/platform-integration/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-lan9118
+        -kernel examples/platform-integration/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Check if QEMU is installed
 check-qemu:
@@ -567,8 +568,14 @@ build-zenoh-pico:
 # =============================================================================
 
 # Run all Rust integration tests (requires zenohd)
-test-integration: build-zenohd
-    cargo test -p nano-ros-tests --tests -- --nocapture
+# Excludes zephyr and rmw_interop tests (run via test-zephyr / test-ros2)
+test-integration:
+    #!/usr/bin/env bash
+    set -e
+    cargo test -p nano-ros-tests --lib -- --nocapture
+    for test in actions custom_msg emulator error_handling executor multi_node nano2nano params platform qos services; do
+        cargo test -p nano-ros-tests --test "$test" -- --nocapture
+    done
 
 # =============================================================================
 # Zephyr Tests (requires west workspace + bridge network)
