@@ -354,16 +354,21 @@ tests/qos.rs (COMPLETE - 6 tests)
 
 **Status:** Complete. All error paths tested.
 
-#### 9. Multi-Node Tests
-```
-tests/multi_node.rs (NEW)
-- test_multiple_publishers_single_topic
-- test_multiple_subscribers_single_topic
-- test_many_to_many_communication
-- test_node_discovery
-```
+#### 9. Multi-Node Tests ✓ COMPLETE
 
-**Why:** Multi-node scenarios aren't systematically tested.
+**Implemented in `tests/multi_node.rs` (8 tests):**
+- `test_multiple_publishers_single_topic` - 3 publishers, 1 subscriber
+- `test_multiple_subscribers_single_topic` - 1 publisher, 3 subscribers
+- `test_many_to_many` - 2 publishers, 2 subscribers
+- `test_sustained_communication` - 10 seconds, 90% delivery
+- `test_message_ordering_sustained` - 0 gaps in sequence
+- `test_subscriber_scalability` - 5 subscribers work correctly
+- `test_publisher_scalability` - 5 publishers work correctly
+- `test_concurrent_startup` - 4 nodes started simultaneously
+
+**Run:** `just test-rust-multi-node`
+
+**Status:** Complete. Multi-node scenarios systematically tested.
 
 #### 10. STM32F4 Hardware-in-Loop Tests
 ```
@@ -395,7 +400,7 @@ tests/platform_integration.rs (NEW)
 | **Timer/Executor**     | 7 tests ✓        | -                       | Complete           |
 | **QoS**                | 6 tests ✓        | -                       | Complete           |
 | **Error Handling**     | 8 tests ✓        | -                       | Complete           |
-| **Multi-Node**         | Sparse           | Comprehensive           | Low                |
+| **Multi-Node**         | 8 tests ✓        | -                       | Complete           |
 | **STM32F4 HIL**        | 0 tests          | Full suite              | Low                |
 
 ## Test Execution Quick Reference

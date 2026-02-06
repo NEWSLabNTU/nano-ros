@@ -618,6 +618,10 @@ test-qemu-bsp:
 test-rust-errors:
     cargo test -p nano-ros-tests --test error_handling -- --nocapture
 
+# Run Rust multi-node and scalability tests
+test-rust-multi-node:
+    cargo test -p nano-ros-tests --test multi_node -- --nocapture
+
 # Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
 test-rust-actions-rmw-interop:
     cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture
