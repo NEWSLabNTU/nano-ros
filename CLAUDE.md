@@ -119,6 +119,41 @@ QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
 - Use Write/Edit tools to create files (avoid cat + heredoc patterns)
 - The `tmp/` directory is git-ignored and can be cleaned freely
 
+### Writing Tests
+
+**Integration tests** go in `crates/nano-ros-tests/tests/`. Each file is a test suite:
+```
+crates/nano-ros-tests/
+├── src/              # Test utilities and fixtures
+│   ├── lib.rs        # wait_for_pattern(), count_pattern(), etc.
+│   ├── fixtures/     # rstest fixtures (ZenohRouter, binary builders)
+│   ├── process.rs    # Managed child process helpers
+│   ├── qemu.rs       # QEMU process management
+│   ├── ros2.rs       # ROS 2 process helpers
+│   └── zephyr.rs     # Zephyr native_sim helpers
+└── tests/            # Integration test suites
+    ├── nano2nano.rs  # nano-ros ↔ nano-ros pub/sub
+    ├── services.rs   # Service server/client tests
+    ├── actions.rs    # Action server/client tests
+    ├── emulator.rs   # QEMU bare-metal tests
+    ├── zephyr.rs     # Zephyr E2E tests
+    ├── rmw_interop.rs # ROS 2 interop tests
+    └── ...           # Other suites
+```
+
+The `tests/` directory at project root contains shell-based test scripts (C tests, Zephyr C tests, ROS 2 interop shell tests).
+
+**Running tests:** Use `just test-*` recipes. Avoid writing large test scripts in the Bash tool. Only use Bash for temporary one-off test commands.
+```bash
+just test-unit          # Unit tests (no deps)
+just test-integration   # All integration tests (needs zenohd)
+just test-zephyr        # Zephyr E2E (needs west + TAP)
+just test-ros2          # ROS 2 interop (needs ROS 2)
+just test-c             # C API tests (needs cmake)
+```
+
+**Unit tests** (per-crate `#[cfg(test)]` modules) go in each crate's source files as usual.
+
 ## Key Design Patterns
 
 ### Rust Edition 2024
