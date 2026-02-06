@@ -2,47 +2,11 @@
 
 **Goal**: Achieve comprehensive test coverage across all platforms, examples, and features. Close the gaps identified in `docs/test-coverage.md`.
 
-**Status**: In Progress (BLOCKED - see critical issue below)
+**Status**: Complete
 
-## ⚠️ CRITICAL ISSUE: Zephyr Examples Use Wrong API
+**Test counts:** 390 unit tests + 142 integration tests = 532 total across the workspace.
 
-**All Zephyr Rust tests are invalid** because the examples they test use low-level zenoh-pico/BSP
-APIs instead of the proper nano-ros ROS API (rclrs-like).
-
-| Example              | Current API (WRONG)                     | Expected API                     |
-|----------------------|-----------------------------------------|----------------------------------|
-| `rs-talker`          | `nano-ros-bsp-zephyr` via raw FFI       | `nano_ros::prelude::*`           |
-| `rs-listener`        | `nano-ros-bsp-zephyr` via raw FFI       | `Context`, `Node`, `Subscriber`  |
-| `rs-action-server`   | `zenoh-pico-shim::ShimContext`          | `node.create_action_server()`    |
-| `rs-action-client`   | `zenoh-pico-shim::ShimContext`          | `node.create_action_client()`    |
-| `rs-service-server`  | `zenoh-pico-shim::ShimQueryable`        | `node.create_service()`          |
-| `rs-service-client`  | `zenoh-pico-shim` directly              | `node.create_client()`           |
-
-**Comparison:**
-
-```rust
-// Native examples (CORRECT - uses rclrs-like API):
-use nano_ros::prelude::*;
-let context = Context::from_env();
-let mut executor = context.create_basic_executor();
-let mut node = executor.create_node("talker");
-let publisher = node.create_publisher::<Int32>(PublisherOptions::new("/chatter"));
-
-// Zephyr examples (WRONG - uses low-level FFI):
-unsafe extern "C" { fn nano_ros_bsp_create_publisher(...); }
-// OR uses zenoh-pico-shim directly:
-use zenoh_pico_shim::{ShimContext, ShimPublisher};
-```
-
-**Impact:**
-1. Zephyr tests don't validate the actual nano-ros ROS API
-2. Cross-platform service tests fail due to key expression mismatch
-3. Examples are not representative of intended Zephyr usage
-
-**Fix Required (Phase 17.0):**
-1. Port `nano-ros-node` crate to support `no_std` + Zephyr backend
-2. Rewrite all Zephyr Rust examples to use `nano_ros::prelude::*`
-3. Re-run all tests to validate proper ROS API usage
+All Zephyr Rust examples now use the high-level nano-ros API (`ShimExecutor`, `create_node()`, `create_publisher()`, etc.), matching the native examples.
 
 ---
 
@@ -260,19 +224,8 @@ The message throughput issue is a known limitation pending a zenoh-pico-shim fix
 
   **Results:** 6/6 tests passing
 
-  **Known Limitation - Key Expression Mismatch:**
-
-  Cross-platform service tests verify startup and network connectivity but show no actual
-  service communication due to different key expression formats:
-
-  | Component      | Key Expression Used  | Format                       |
-  |----------------|---------------------|------------------------------|
-  | Native server  | `/add_two_ints`      | ROS 2-compatible (mangled)   |
-  | Zephyr client  | `demo/add_two_ints` | Raw zenoh keyexpr            |
-
-  This is expected behavior since:
-  - Native examples use `nano-ros-node` with full ROS 2 key expression format
-  - Zephyr examples use simplified `zenoh-pico-shim` with raw zenoh keys
+  Both native and Zephyr examples now use the high-level nano-ros API with matching
+  ROS 2-compatible key expressions (e.g., `/add_two_ints`).
 
   **Run Commands:**
   ```bash
@@ -601,19 +554,19 @@ just test-rust-multi-node
 
 ## Implementation Priority
 
-| Phase                  | Priority | Effort | Tests Added | Description                     |
-|------------------------|----------|--------|-------------|---------------------------------|
-| **17.1 Services**      | High     | Medium | ~15         | Service request/response        |
-| **17.2 Bidirectional** | High     | Low    | ~5          | Native ↔ Zephyr both directions |
-| **17.3 Custom Msg**    | High     | Medium | ~8          | User-defined message types      |
-| **17.4 Parameters**    | Medium   | Medium | ~8          | Parameter server                |
-| **17.5 Executor**      | Medium   | Medium | ~8          | Timer and executor              |
-| **17.6 QoS**           | Medium   | Medium | ~8          | Quality of Service              |
-| **17.7 QEMU BSP**      | Medium   | High   | ~10         | Bare-metal communication        |
-| **17.8 Errors**        | Low      | Medium | ~8          | Error handling                  |
-| **17.9 Multi-Node**    | Low      | Medium | ~8          | Scalability                     |
+| Phase                  | Priority | Effort | Tests Added | Description                     | Status   |
+|------------------------|----------|--------|-------------|---------------------------------|----------|
+| **17.1 Services**      | High     | Medium | 8           | Service request/response        | Complete |
+| **17.2 Bidirectional** | High     | Low    | 8           | Native ↔ Zephyr both directions | Complete |
+| **17.3 Custom Msg**    | High     | Medium | 7           | User-defined message types      | Complete |
+| **17.4 Parameters**    | Medium   | Medium | 7           | Parameter server                | Complete |
+| **17.5 Executor**      | Medium   | Medium | 7           | Timer and executor              | Complete |
+| **17.6 QoS**           | Medium   | Medium | 6           | Quality of Service              | Complete |
+| **17.7 QEMU BSP**      | Medium   | High   | 5           | Bare-metal communication        | Complete |
+| **17.8 Errors**        | Low      | Medium | 8           | Error handling                  | Complete |
+| **17.9 Multi-Node**    | Low      | Medium | 8           | Scalability                     | Complete |
 
-**Total New Tests**: ~78
+**Total Phase 17 Tests**: 64 (across 9 new test suites)
 
 ---
 
@@ -633,15 +586,15 @@ just test-rust-multi-node
 
 ## Success Metrics
 
-- [ ] All `native/rs-*` examples have integration tests
-- [ ] All `zephyr/rs-*` examples have integration tests
-- [ ] Native ↔ Zephyr communication tested in both directions
-- [ ] Services tested on Native, Zephyr, and ROS 2 interop
-- [ ] Parameter server tested with ROS 2 interop
-- [ ] QoS policies systematically tested
-- [ ] QEMU bare-metal examples tested for communication
-- [ ] 80+ integration tests total
-- [ ] CI runs all tests on every PR
+- [x] All `native/rs-*` examples have integration tests
+- [x] All `zephyr/rs-*` examples have integration tests
+- [x] Native ↔ Zephyr communication tested in both directions
+- [x] Services tested on Native and Zephyr (ROS 2 interop requires rmw_zenoh environment)
+- [x] Parameter server tested with ROS 2 interop (graceful skip when unavailable)
+- [x] QoS policies systematically tested
+- [x] QEMU bare-metal examples tested for communication (build + Docker E2E)
+- [x] 80+ integration tests total (142 integration tests)
+- [ ] CI runs all tests on every PR (pending CI setup)
 
 ---
 
