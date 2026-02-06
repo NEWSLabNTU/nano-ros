@@ -1,6 +1,6 @@
 # Phase 18: Micro-ROS Lessons — Executor, Lifecycle & Transport Improvements
 
-**Status**: IN PROGRESS (18.1, 18.2 complete)
+**Status**: IN PROGRESS (18.1, 18.2, 18.3 complete)
 **Priority**: MEDIUM-HIGH
 **Goal**: Adopt high-impact patterns from micro-ROS (rclc) to improve nano-ros executor determinism, add lifecycle node support, and expand transport options
 
@@ -11,7 +11,7 @@ After a comprehensive study of the micro-ROS ecosystem (see [docs/micro-ros-comp
 1. **Executor trigger conditions** — deterministic callback scheduling for sensor fusion
 2. **`spin_period()`** — fixed-rate periodic execution
 3. **Lifecycle nodes** — managed node state machine (ROS 2 standard)
-4. **Serial/UART transport** — enables MCUs without networking hardware
+4. **Serial/UART transport** — enables MCUs without networking hardware (via zenoh-pico native serial link)
 5. **Compile-time entity limits** — optional bounds for safety-critical certification
 
 ### Reference Implementations
@@ -20,6 +20,8 @@ After a comprehensive study of the micro-ROS ecosystem (see [docs/micro-ros-comp
 - `external/micro-ros-rclc/` — rclc executor, lifecycle, parameter server
 - `external/Micro-XRCE-DDS-Client/` — transport abstraction patterns
 - `external/micro_ros_zephyr_module/` — Zephyr serial/USB transport
+- `external/zenoh/io/zenoh-links/zenoh-link-serial/` — zenoh Rust serial link (COBS + CRC32)
+- `crates/zenoh-pico-shim-sys/zenoh-pico/src/link/unicast/serial.c` — zenoh-pico native serial link
 
 ### Design Principles
 
@@ -28,7 +30,7 @@ After a comprehensive study of the micro-ROS ecosystem (see [docs/micro-ros-comp
 - **Rust API follows rclrs conventions**: builder patterns via `Into*Options` traits, `SpinOptions` for spin control, idiomatic Rust (generics, traits, RAII)
 - **C API follows rclc conventions**: `nano_ros_*` prefix mirroring `rclc_*` signatures, function-pointer callbacks, `void *context` pattern, `nano_ros_ret_t` return codes
 - Both APIs expose the same feature set; neither is a subset of the other
-- Serial transport is additive — does not replace zenoh for data plane
+- Serial transport leverages zenoh-pico's native `Z_FEATURE_LINK_SERIAL` — no custom framing needed
 
 ### API Alignment Reference
 
@@ -662,153 +664,59 @@ nano_ros_lifecycle_change_state(&lifecycle_node,
 
 micro-ROS's most-used transport on MCUs is UART serial. Many embedded boards lack Ethernet/WiFi but always have UART. Adding serial transport to nano-ros would enable these platforms.
 
-**Important**: Serial transport does NOT replace zenoh. It provides a point-to-point link between an MCU and a host running a serial bridge. The bridge translates serial frames into zenoh messages.
+**Key discovery:** Both zenoh (Rust) and zenoh-pico (C) already have **native serial transport support**. zenoh-pico implements it with COBS framing, CRC32 error detection, and platform-specific UART drivers for Zephyr, ESP-IDF, Raspberry Pi Pico, and POSIX. Instead of implementing custom framing from scratch, nano-ros should enable and expose zenoh-pico's existing serial link.
 
-**Architecture:**
+**Architecture (zenoh-pico native serial):**
 ```
-┌──────────────┐  UART  ┌──────────────────┐  Zenoh  ┌──────────────┐
-│     MCU      │◄──────►│  Serial Bridge   │◄───────►│   zenohd     │
-│  nano-ros    │        │  (host process)  │         │  + ROS 2     │
-│  serial shim │        │  serial <-> zenoh│         │              │
-└──────────────┘        └──────────────────┘         └──────────────┘
-```
-
-**micro-ROS reference** (`external/micro_ros_zephyr_module/`):
-- Ring buffer pattern (2KB) for interrupt-driven RX
-- Framing protocol for message boundaries
-- Custom transport callbacks via `rmw_uros_set_custom_transport()`
-
-### 18.4.1 Serial Framing Protocol
-
-- [ ] Design framing protocol (length-prefixed with CRC) for reliable message boundaries
-- [ ] Implement frame encoder/decoder in `crates/nano-ros-transport/src/serial/`
-- [ ] Support variable-length messages up to MTU
-- [ ] CRC-16 for error detection
-
-```rust
-/// Serial frame format:
-/// [START_BYTE(0xAA)] [LENGTH_HI] [LENGTH_LO] [TOPIC_ID_HI] [TOPIC_ID_LO] [PAYLOAD...] [CRC_HI] [CRC_LO]
-pub struct SerialFrame<'a> {
-    pub topic_id: u16,
-    pub payload: &'a [u8],
-}
-
-pub struct SerialFramer {
-    rx_buf: [u8; MAX_FRAME_SIZE],
-    rx_pos: usize,
-    state: FrameState,
-}
-
-impl SerialFramer {
-    /// Feed a received byte, returns a complete frame when available
-    pub fn feed(&mut self, byte: u8) -> Option<SerialFrame<'_>> { ... }
-
-    /// Encode a frame into an output buffer
-    pub fn encode(frame: &SerialFrame<'_>, out: &mut [u8]) -> Result<usize, SerialError> { ... }
-}
+┌──────────────┐  UART   ┌──────────────┐
+│     MCU      │◄───────►│   zenohd     │
+│  nano-ros    │  serial  │  (host)      │
+│  zenoh-pico  │  link    │  --listen    │
+│  serial link │  (COBS)  │  serial/...  │
+└──────────────┘          └──────┬───────┘
+                                 │ zenoh
+                          ┌──────▼───────┐
+                          │   ROS 2      │
+                          │   rmw_zenoh  │
+                          └──────────────┘
 ```
 
-### 18.4.2 Rust API — Transport Configuration
+Unlike micro-ROS which requires a separate agent/bridge process, zenoh-pico's serial link connects directly to `zenohd`. The router can listen on both TCP and serial simultaneously, so no bridge is needed.
 
-- [ ] Add `SerialTransport` variant to `TransportConfig`
-- [ ] Implement `Session`, `Publisher`, `Subscriber` traits for serial backend
-- [ ] Topic multiplexing: map topic names to 16-bit IDs within serial frames
-- [ ] Request/reply correlation for services
+**zenoh-pico serial reference** (`crates/zenoh-pico-shim-sys/zenoh-pico/`):
+- Feature flag: `Z_FEATURE_LINK_SERIAL` (disabled by default in CMakeLists.txt)
+- Locator format: `serial/<device>#baudrate=<rate>` (e.g., `serial//dev/ttyUSB0#baudrate=115200`)
+- Framing: COBS encoding + CRC32 error detection (`src/protocol/codec/serial.c`)
+- MTU: 1500 bytes, unicast, datagram, unreliable
+- Vtable pattern: `_z_link_t` function pointers (`_z_f_link_open`, `_z_f_link_write`, `_z_f_link_read`, etc.)
+- Zephyr driver: `uart_configure()` / `uart_poll_in()` / `uart_poll_out()` (`src/system/zephyr/network.c`)
+- POSIX driver: `termios` / `open()` / `read()` / `write()` (`src/system/unix/network.c`)
 
-```rust
-/// Extended TransportConfig with serial option
-pub enum TransportConfig<'a> {
-    /// Existing: connect to zenoh router
-    Zenoh {
-        locator: &'a str,
-        mode: SessionMode,
-    },
-    /// New: serial point-to-point link
-    Serial {
-        /// Platform-specific serial port configuration
-        port: SerialPortConfig<'a>,
-        /// Baud rate (default: 115200)
-        baud_rate: u32,
-    },
-}
+### 18.4.1 Enable `Z_FEATURE_LINK_SERIAL` in Build
 
-/// Platform-specific serial port identifier
-pub enum SerialPortConfig<'a> {
-    /// POSIX: path to device (e.g., "/dev/ttyUSB0")
-    #[cfg(feature = "posix")]
-    Device(&'a str),
-    /// Zephyr: UART device binding name (e.g., "uart0")
-    #[cfg(feature = "zephyr")]
-    ZephyrUart(&'a str),
-}
+- [x] ~~Add `serial` feature to `zenoh-pico-shim-sys` Cargo.toml~~ Serial is always enabled (no feature gate)
+- [x] Pass `Z_FEATURE_LINK_SERIAL=1` in `build.rs` CMake invocation unconditionally
+- [x] Add serial config header entries for smoltcp platform (`Z_FEATURE_LINK_SERIAL=1` in `zenoh_generic_config.h`)
+- [x] Zephyr: update Kconfig locator help text to document serial format
+
+```toml
+# crates/zenoh-pico-shim-sys/Cargo.toml
+[features]
+serial = []  # Enable Z_FEATURE_LINK_SERIAL in zenoh-pico build
 ```
-
-**Rust usage example:**
-```rust
-let context = Context::new(InitOptions::new()
-    .transport(TransportConfig::Serial {
-        port: SerialPortConfig::Device("/dev/ttyUSB0"),
-        baud_rate: 115200,
-    }))?;
-
-let mut executor = context.create_basic_executor();
-let mut node = executor.create_node("mcu_node")?;
-
-// API is identical regardless of transport
-let publisher = node.create_publisher::<Int32>("sensor/data")?;
-publisher.publish(&Int32 { data: 42 })?;
-```
-
-### 18.4.3 C API — Serial Transport
-
-- [ ] Add serial variant to `nano_ros_support_init` or new init function
-- [ ] Transport selection transparent to publisher/subscription C API
-
-```c
-/// Initialize support with serial transport
-/// (alternative to nano_ros_support_init which uses zenoh)
-nano_ros_ret_t nano_ros_support_init_serial(
-    nano_ros_support_t *support,
-    const char *port,       /* e.g., "/dev/ttyUSB0" or "uart0" (Zephyr) */
-    uint32_t baud_rate,
-    uint8_t domain_id);
-
-/// Check if support uses serial transport
-c_int nano_ros_support_is_serial(const nano_ros_support_t *support);
-```
-
-**C usage example:**
-```c
-nano_ros_support_t support = nano_ros_support_get_zero_initialized();
-nano_ros_support_init_serial(&support, "uart0", 115200, 0);
-
-// All other API calls are identical regardless of transport
-nano_ros_node_t node;
-nano_ros_node_init(&node, &support, "mcu_node", "");
-
-nano_ros_publisher_t pub;
-nano_ros_publisher_init_default(&pub, &node, &type_info, "sensor/data");
-nano_ros_publish_raw(&pub, data, data_len);
-```
-
-### 18.4.4 Zephyr Serial Backend
-
-- [ ] Implement UART driver using Zephyr UART async/interrupt API
-- [ ] Interrupt-driven RX with ring buffer (2KB, matches micro-ROS)
-- [ ] Polling TX (synchronous writes)
-- [ ] Kconfig integration: `CONFIG_NANO_ROS_TRANSPORT_SERIAL`
 
 ```kconfig
+# Zephyr Kconfig
 config NANO_ROS_TRANSPORT_SERIAL
     bool "Enable serial/UART transport"
     default n
     depends on SERIAL
     help
-      Enable serial transport for nano-ros. Uses UART for
-      point-to-point communication with a host serial bridge.
+      Enable zenoh-pico serial transport link. Uses UART for
+      point-to-point communication with a zenoh router.
 
 config NANO_ROS_SERIAL_UART_DEVICE
-    string "UART device name"
+    string "UART device name for zenoh serial link"
     default "uart0"
     depends on NANO_ROS_TRANSPORT_SERIAL
 
@@ -818,33 +726,101 @@ config NANO_ROS_SERIAL_BAUD_RATE
     depends on NANO_ROS_TRANSPORT_SERIAL
 ```
 
-### 18.4.5 POSIX Serial Backend (for testing)
+### 18.4.2 Locator-Based API (No New Transport Types)
 
-- [ ] Implement over `/dev/ttyUSB*` or pseudo-terminals (`/dev/pts/*`)
-- [ ] Use for host-side testing without hardware
-- [ ] Pseudo-terminal pair creation for integration tests
+Since zenoh-pico serial is just another link type accessed via locator string, **no new `TransportConfig` variants or transport trait implementations are needed**. Users simply pass a `serial://...` locator instead of `tcp://...`.
 
-### 18.4.6 Host-Side Serial Bridge
+- [x] ~~Propagate `serial` feature through `zenoh-pico-shim` and `nano-ros-transport`~~ Serial always enabled, no feature propagation needed
+- [ ] Validate serial locator format in `TransportConfig` (optional, for better error messages)
+- [x] Document serial locator format and usage (Kconfig help text + roadmap examples)
 
-- [ ] Create `tools/serial-bridge/` — standalone Rust binary
-- [ ] Reads serial frames from UART, publishes to zenoh
-- [ ] Subscribes to zenoh topics, sends as serial frames to MCU
-- [ ] Configuration: serial port, baud rate, zenoh locator
-- [ ] Topic ID <-> topic name mapping (negotiated or configured)
+**Rust usage:**
+```rust
+// TCP transport (existing)
+let ctx = Context::new(InitOptions::new()
+    .locator("tcp/127.0.0.1:7447"))?;
 
-```bash
-# Usage:
-serial-bridge --port /dev/ttyUSB0 --baud 115200 --zenoh tcp/127.0.0.1:7447
+// Serial transport — same API, different locator
+let ctx = Context::new(InitOptions::new()
+    .locator("serial//dev/ttyUSB0#baudrate=115200"))?;
+
+// Everything else is identical
+let mut executor = ctx.create_basic_executor();
+let mut node = executor.create_node("mcu_node")?;
+let publisher = node.create_publisher::<Int32>("sensor/data")?;
+publisher.publish(&Int32 { data: 42 })?;
 ```
 
-### 18.4.7 Tests
+**C usage:**
+```c
+// TCP transport (existing)
+nano_ros_support_t support = nano_ros_support_get_zero_initialized();
+nano_ros_support_init(&support, 1, "tcp/127.0.0.1:7447", 0);
 
-- [ ] Unit test: framing encode/decode roundtrip
-- [ ] Unit test: CRC error detection
-- [ ] Unit test: partial frame reassembly (byte-at-a-time feed)
-- [ ] Integration test: serial pub/sub via pseudo-terminal pair
-- [ ] Integration test: serial bridge end-to-end with zenohd
-- [ ] C API test: `nano_ros_support_init_serial` + publish/subscribe
+// Serial transport — same API, different locator
+nano_ros_support_t support = nano_ros_support_get_zero_initialized();
+nano_ros_support_init(&support, 1, "serial/uart0#baudrate=115200", 0);
+
+// Everything else is identical
+nano_ros_node_t node;
+nano_ros_node_init(&node, &support, "mcu_node", "");
+```
+
+### 18.4.3 Zephyr Integration
+
+- [ ] Wire Kconfig `NANO_ROS_SERIAL_UART_DEVICE` and `NANO_ROS_SERIAL_BAUD_RATE` to zenoh-pico build
+- [ ] Add Zephyr device tree overlay example for UART pins
+- [ ] BSP helper: `TransportConfig::from_kconfig()` reads serial settings when enabled
+- [ ] Verify zenoh-pico's Zephyr serial driver (`uart_poll_in`/`uart_poll_out`) works with nano-ros shim
+
+```dts
+/* Example device tree overlay for serial transport */
+&uart1 {
+    status = "okay";
+    current-speed = <115200>;
+    /* Connect to host via USB-UART adapter */
+};
+```
+
+### 18.4.4 POSIX Testing with Pseudo-Terminals
+
+- [ ] Create test helper that opens a PTY pair (`openpty()` or `posix_openpt()`)
+- [ ] Launch `zenohd --listen serial/<pty-slave>#baudrate=115200` in test
+- [ ] Connect nano-ros via `serial/<pty-master>#baudrate=115200`
+- [ ] Integration test: pub/sub over serial PTY pair
+
+```bash
+# Manual testing with socat (creates linked PTY pair):
+socat -d -d pty,raw,echo=0,link=/tmp/pty0 pty,raw,echo=0,link=/tmp/pty1
+
+# Terminal 1: zenohd listening on serial
+zenohd --listen serial//tmp/pty0#baudrate=115200
+
+# Terminal 2: nano-ros connecting via serial
+ZENOH_LOCATOR="serial//tmp/pty1#baudrate=115200" cargo run --example talker
+```
+
+### 18.4.5 QEMU Testing
+
+- [ ] Configure QEMU MPS2-AN385 with UART backend connected to host PTY
+- [ ] Test serial transport from bare-metal ARM firmware via QEMU UART
+- [ ] Add `just` recipe for QEMU serial transport test
+
+```bash
+# QEMU with UART connected to PTY:
+qemu-system-arm -M mps2-an385 \
+    -serial pty \         # UART0 → host PTY (for zenoh serial link)
+    -serial mon:stdio \   # UART1 → console (for debug output)
+    -kernel firmware.elf
+```
+
+### 18.4.6 Tests
+
+- [x] Build test: serial compiles for native targets (always enabled, no feature gate)
+- [ ] Build test: serial compiles for Zephyr target
+- [ ] Integration test: serial pub/sub via PTY pair (POSIX)
+- [ ] Integration test: serial service request/reply via PTY pair
+- [ ] QEMU test: serial transport from bare-metal ARM (stretch goal)
 
 ---
 
@@ -991,7 +967,7 @@ endmenu
 | Trigger conditions   | `TriggerCondition::All` blocks until all subs ready; custom `TriggerFn` works | `nano_ros_executor_trigger_all` matches behavior |
 | `spin_period()`      | `BasicExecutor::spin_period()` maintains rate within 10% | `nano_ros_executor_spin_one_period()` works |
 | Lifecycle nodes      | `LifecycleNode` + `LifecyclePollingNode` full state machine | `nano_ros_lifecycle_change_state()` + callbacks |
-| Serial transport     | Pub/sub via `TransportConfig::Serial` over pseudo-terminal | `nano_ros_support_init_serial()` + pub/sub |
+| Serial transport     | Pub/sub via `serial/` locator over PTY pair | Same locator string via existing `nano_ros_support_init()` |
 | Entity limits        | `NodeHandle` const generics enforced, capacity queries work | `#define` limits respected, capacity queries work |
 | `just quality`       | Passes after all changes | Passes after all changes |
 
@@ -1008,5 +984,5 @@ endmenu
 **Rationale:**
 - 18.1 and 18.2 are small executor changes, good warmup
 - 18.3 builds on executor improvements (lifecycle nodes register with executor)
-- 18.4 is the largest item, benefits from stable executor and lifecycle
+- 18.4 leverages zenoh-pico's native serial link — mainly build system and integration work
 - 18.5 is independent and can be done in parallel with any other item

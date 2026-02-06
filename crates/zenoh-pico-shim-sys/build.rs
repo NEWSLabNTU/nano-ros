@@ -91,6 +91,8 @@ fn main() {
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_smoltcp_platform.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_config.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_platform.h");
+    println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
+    println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
     println!("cargo:rerun-if-changed=src/ffi.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=cbindgen.toml");
@@ -312,6 +314,7 @@ fn build_zenoh_pico_native(zenoh_pico_src: &Path, out_dir: &Path) -> PathBuf {
         .define("Z_FEATURE_LOCAL_SUBSCRIBER", "0")
         .define("Z_FEATURE_INTEREST", "1")
         .define("Z_FEATURE_MATCHING", "1")
+        .define("Z_FEATURE_LINK_SERIAL", "1")
         .build();
 
     // Link the static library
@@ -332,18 +335,37 @@ fn build_zenoh_pico_native(zenoh_pico_src: &Path, out_dir: &Path) -> PathBuf {
 /// Copy source tree to build directory
 fn copy_source_tree(src: &Path, dst: &Path) {
     if dst.exists() {
-        // Check if we need to recopy
-        let src_cmake = src.join("CMakeLists.txt");
-        let dst_cmake = dst.join("CMakeLists.txt");
-        if dst_cmake.exists() {
-            let src_meta = std::fs::metadata(&src_cmake).ok();
-            let dst_meta = std::fs::metadata(&dst_cmake).ok();
-            if let (Some(s), Some(d)) = (src_meta, dst_meta)
-                && let (Ok(st), Ok(dt)) = (s.modified(), d.modified())
-                && dt >= st
-            {
-                return; // Already up to date
+        // Check if we need to recopy by comparing sentinel files.
+        // We check CMakeLists.txt and network.c (the latter catches submodule changes
+        // that don't touch the build system, e.g. adding serial support).
+        let sentinels = ["CMakeLists.txt", "src/system/unix/network.c"];
+        let mut up_to_date = true;
+        for sentinel in &sentinels {
+            let src_file = src.join(sentinel);
+            let dst_file = dst.join(sentinel);
+            if !dst_file.exists() {
+                up_to_date = false;
+                break;
             }
+            let src_meta = std::fs::metadata(&src_file).ok();
+            let dst_meta = std::fs::metadata(&dst_file).ok();
+            match (src_meta, dst_meta) {
+                (Some(s), Some(d)) => {
+                    if let (Ok(st), Ok(dt)) = (s.modified(), d.modified())
+                        && dt < st
+                    {
+                        up_to_date = false;
+                        break;
+                    }
+                }
+                _ => {
+                    up_to_date = false;
+                    break;
+                }
+            }
+        }
+        if up_to_date {
+            return;
         }
         let _ = std::fs::remove_dir_all(dst);
     }
@@ -433,7 +455,7 @@ fn build_c_shim(
         build.define("Z_FEATURE_LINK_UDP_MULTICAST", "0");
         build.define("Z_FEATURE_LINK_UDP_UNICAST", "0");
         build.define("Z_FEATURE_SCOUTING_UDP", "0");
-        build.define("Z_FEATURE_LINK_SERIAL", "0");
+        build.define("Z_FEATURE_LINK_SERIAL", "1");
 
         // ARM cross-compilation flags
         if target.contains("thumbv7em") {

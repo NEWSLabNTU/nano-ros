@@ -80,9 +80,15 @@ impl Ros2Process {
     /// # Arguments
     /// * `topic` - Topic name (e.g., "/chatter")
     /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
-    pub fn topic_echo(topic: &str, msg_type: &str, distro: &str) -> TestResult<Self> {
-        let env_setup = ros2_env_setup(distro);
+    pub fn topic_echo(
+        topic: &str,
+        msg_type: &str,
+        locator: &str,
+        distro: &str,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
@@ -179,15 +185,17 @@ impl Ros2Process {
     /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
     /// * `data` - Message data as YAML (e.g., "{data: 42}")
     /// * `rate` - Publishing rate in Hz
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn topic_pub(
         topic: &str,
         msg_type: &str,
         data: &str,
         rate: u32,
+        locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup(distro);
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability best_effort"
         );
@@ -280,8 +288,8 @@ pub fn collect_ros2_output(process: &mut Ros2Process, timeout: Duration) -> Stri
 // =============================================================================
 
 /// Run `ros2 node list` and return the output
-pub fn ros2_node_list(distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup(distro);
+pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 node list 2>&1");
 
     let output = Command::new("bash")
@@ -293,8 +301,8 @@ pub fn ros2_node_list(distro: &str) -> TestResult<String> {
 }
 
 /// Run `ros2 topic list` and return the output
-pub fn ros2_topic_list(distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup(distro);
+pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 topic list 2>&1");
 
     let output = Command::new("bash")
@@ -306,8 +314,8 @@ pub fn ros2_topic_list(distro: &str) -> TestResult<String> {
 }
 
 /// Run `ros2 service list` and return the output
-pub fn ros2_service_list(distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup(distro);
+pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 service list 2>&1");
 
     let output = Command::new("bash")
@@ -319,8 +327,8 @@ pub fn ros2_service_list(distro: &str) -> TestResult<String> {
 }
 
 /// Run `ros2 node info` for a specific node
-pub fn ros2_node_info(node_name: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup(distro);
+pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 node info {node_name} 2>&1");
 
     let output = Command::new("bash")
@@ -332,8 +340,8 @@ pub fn ros2_node_info(node_name: &str, distro: &str) -> TestResult<String> {
 }
 
 /// Run `ros2 topic info` for a specific topic
-pub fn ros2_topic_info(topic: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup(distro);
+pub fn ros2_topic_info(topic: &str, locator: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 topic info {topic} 2>&1");
 
     let output = Command::new("bash")
@@ -355,14 +363,16 @@ impl Ros2Process {
     /// * `service_name` - Service name (e.g., "/add_two_ints")
     /// * `service_type` - Service type (e.g., "example_interfaces/srv/AddTwoInts")
     /// * `request` - Request data as YAML (e.g., "{a: 5, b: 3}")
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn service_call(
         service_name: &str,
         service_type: &str,
         request: &str,
+        locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup(distro);
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 30 ros2 service call {service_name} {service_type} \"{request}\""
         );
@@ -439,14 +449,16 @@ rclpy.spin(node)
     /// * `topic` - Topic name (e.g., "/chatter")
     /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
     /// * `reliability` - QoS reliability ("reliable" or "best_effort")
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn topic_echo_with_qos(
         topic: &str,
         msg_type: &str,
         reliability: &str,
+        locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup(distro);
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
         );
@@ -474,6 +486,7 @@ rclpy.spin(node)
     /// * `data` - Message data as YAML (e.g., "{data: 42}")
     /// * `rate` - Publishing rate in Hz
     /// * `reliability` - QoS reliability ("reliable" or "best_effort")
+    /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn topic_pub_with_qos(
         topic: &str,
@@ -481,9 +494,10 @@ rclpy.spin(node)
         data: &str,
         rate: u32,
         reliability: &str,
+        locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup(distro);
+        let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
         );

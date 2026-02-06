@@ -21,7 +21,9 @@ config NANO_ROS_ZENOH_LOCATOR
     string "Zenoh router locator"
     default "tcp/192.0.2.2:7447"
     help
-      Zenoh router address in the format "tcp/IP:PORT".
+      Zenoh router address. Supported formats:
+        TCP:    "tcp/IP:PORT"       (e.g. "tcp/192.0.2.2:7447")
+        Serial: "serial/DEVICE#baudrate=RATE" (e.g. "serial/uart1#baudrate=115200")
 
 config NANO_ROS_NODE_NAME
     string "Default node name"

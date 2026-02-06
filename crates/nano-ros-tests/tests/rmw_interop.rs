@@ -68,14 +68,18 @@ fn test_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
 
     // Start ROS 2 listener first
     eprintln!("Starting ROS 2 topic echo...");
-    let mut ros2_listener =
-        match Ros2Process::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Failed to start ROS 2 listener: {}", e);
-                return;
-            }
-        };
+    let mut ros2_listener = match Ros2Process::topic_echo(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 listener: {}", e);
+            return;
+        }
+    };
 
     // Give ROS 2 time to subscribe
     std::thread::sleep(Duration::from_secs(3));
@@ -83,7 +87,9 @@ fn test_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     // Start nano-ros talker with ZENOH_LOCATOR env var
     eprintln!("Starting nano-ros talker...");
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -128,7 +134,9 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     // Start nano-ros listener first with ZENOH_LOCATOR env var
     eprintln!("Starting nano-ros listener...");
     let mut listener_cmd = Command::new(&listener_binary);
-    listener_cmd.env("ZENOH_LOCATOR", &locator);
+    listener_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
@@ -142,6 +150,7 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
         "std_msgs/msg/Int32",
         "{data: 42}",
         1,
+        &locator,
         DEFAULT_ROS_DISTRO,
     ) {
         Ok(p) => p,
@@ -250,7 +259,9 @@ fn test_nano_to_nano_inner(locator: &str, talker_path: &Path, listener_path: &Pa
 
     // Start listener with ZENOH_LOCATOR env var
     let mut listener_cmd = Command::new(listener_path);
-    listener_cmd.env("ZENOH_LOCATOR", locator);
+    listener_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", locator);
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
@@ -258,7 +269,9 @@ fn test_nano_to_nano_inner(locator: &str, talker_path: &Path, listener_path: &Pa
 
     // Start talker with ZENOH_LOCATOR env var
     let mut talker_cmd = Command::new(talker_path);
-    talker_cmd.env("ZENOH_LOCATOR", locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -276,17 +289,23 @@ fn test_nano_to_ros2_inner(locator: &str, talker_path: &Path) -> bool {
     use std::process::Command;
 
     // Start ROS 2 listener
-    let mut ros2_listener =
-        match Ros2Process::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
-            Ok(p) => p,
-            Err(_) => return false,
-        };
+    let mut ros2_listener = match Ros2Process::topic_echo(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(_) => return false,
+    };
 
     std::thread::sleep(Duration::from_secs(3));
 
     // Start nano-ros talker with ZENOH_LOCATOR env var
     let mut talker_cmd = Command::new(talker_path);
-    talker_cmd.env("ZENOH_LOCATOR", locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -305,7 +324,9 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
 
     // Start nano-ros listener with ZENOH_LOCATOR env var
     let mut listener_cmd = Command::new(listener_path);
-    listener_cmd.env("ZENOH_LOCATOR", locator);
+    listener_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", locator);
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
@@ -317,6 +338,7 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
         "std_msgs/msg/Int32",
         "{data: 42}",
         1,
+        locator,
         DEFAULT_ROS_DISTRO,
     ) {
         Ok(p) => p,
@@ -327,7 +349,7 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
 
     ros2_publisher.kill();
     let output = listener
-        .wait_for_output(Duration::from_secs(1))
+        .wait_for_all_output(Duration::from_secs(1))
         .unwrap_or_default();
 
     count_pattern(&output, "Received:") > 0
@@ -345,7 +367,9 @@ fn test_keyexpr_format(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
 
     // Start talker briefly to register key expression with ZENOH_LOCATOR env var
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -373,20 +397,26 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     eprintln!("Testing BEST_EFFORT QoS compatibility...");
 
     // Start ROS 2 listener with BEST_EFFORT
-    let mut ros2_listener =
-        match Ros2Process::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Failed to start ROS 2 listener: {}", e);
-                return;
-            }
-        };
+    let mut ros2_listener = match Ros2Process::topic_echo(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 listener: {}", e);
+            return;
+        }
+    };
 
     std::thread::sleep(Duration::from_secs(3));
 
     // Start nano-ros talker (uses BEST_EFFORT by default) with ZENOH_LOCATOR env var
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -422,7 +452,9 @@ fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server
     // Start nano-ros action server
     eprintln!("Starting nano-ros action server...");
     let mut server_cmd = Command::new(&action_server_binary);
-    server_cmd.env("ZENOH_LOCATOR", &locator);
+    server_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-action-server")
         .expect("Failed to start action server");
 
@@ -516,7 +548,9 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
     // Start nano-ros action client
     eprintln!("Starting nano-ros action client...");
     let mut client_cmd = Command::new(&action_client_binary);
-    client_cmd.env("ZENOH_LOCATOR", &locator);
+    client_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-action-client")
         .expect("Failed to start action client");
 
@@ -572,7 +606,9 @@ fn test_discovery_node_visible(zenohd_unique: ZenohRouter, talker_binary: PathBu
     // Start nano-ros talker
     eprintln!("Starting nano-ros talker...");
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -581,7 +617,7 @@ fn test_discovery_node_visible(zenohd_unique: ZenohRouter, talker_binary: PathBu
 
     // Check ROS 2 node list
     eprintln!("Checking ros2 node list...");
-    let node_list = ros2_node_list(DEFAULT_ROS_DISTRO).unwrap_or_default();
+    let node_list = ros2_node_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
 
     talker.kill();
 
@@ -609,7 +645,9 @@ fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathB
     // Start nano-ros talker
     eprintln!("Starting nano-ros talker...");
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -618,13 +656,13 @@ fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathB
 
     // Check ROS 2 topic list
     eprintln!("Checking ros2 topic list...");
-    let topic_list = ros2_topic_list(DEFAULT_ROS_DISTRO).unwrap_or_default();
+    let topic_list = ros2_topic_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
 
     eprintln!("Topic list:\n{}", topic_list);
 
     // Check topic info for /chatter
     eprintln!("Checking ros2 topic info /chatter...");
-    let topic_info = ros2_topic_info("/chatter", DEFAULT_ROS_DISTRO).unwrap_or_default();
+    let topic_info = ros2_topic_info("/chatter", &locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
 
     talker.kill();
 
@@ -656,7 +694,9 @@ fn test_discovery_service_visible(zenohd_unique: ZenohRouter, service_server_bin
     // Start nano-ros service server
     eprintln!("Starting nano-ros service server...");
     let mut server_cmd = Command::new(&service_server_binary);
-    server_cmd.env("ZENOH_LOCATOR", &locator);
+    server_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start service server");
 
@@ -665,7 +705,7 @@ fn test_discovery_service_visible(zenohd_unique: ZenohRouter, service_server_bin
 
     // Check ROS 2 service list
     eprintln!("Checking ros2 service list...");
-    let service_list = ros2_service_list(DEFAULT_ROS_DISTRO).unwrap_or_default();
+    let service_list = ros2_service_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
 
     server.kill();
 
@@ -700,7 +740,9 @@ fn test_service_nano_server_ros2_client(
     // Start nano-ros service server
     eprintln!("Starting nano-ros service server...");
     let mut server_cmd = Command::new(&service_server_binary);
-    server_cmd.env("ZENOH_LOCATOR", &locator);
+    server_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start service server");
 
@@ -718,6 +760,7 @@ fn test_service_nano_server_ros2_client(
         "/add_two_ints",
         "example_interfaces/srv/AddTwoInts",
         "{a: 5, b: 3}",
+        &locator,
         DEFAULT_ROS_DISTRO,
     ) {
         Ok(p) => p,
@@ -780,7 +823,9 @@ fn test_service_ros2_server_nano_client(
     // Start nano-ros service client
     eprintln!("Starting nano-ros service client...");
     let mut client_cmd = Command::new(&service_client_binary);
-    client_cmd.env("ZENOH_LOCATOR", &locator);
+    client_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
@@ -871,6 +916,7 @@ fn test_qos_matrix(
         "/chatter",
         "std_msgs/msg/Int32",
         sub_qos.as_str(),
+        &locator,
         DEFAULT_ROS_DISTRO,
     ) {
         Ok(p) => p,
@@ -885,7 +931,9 @@ fn test_qos_matrix(
     // Start nano-ros talker (currently only supports BEST_EFFORT)
     // Note: For full QoS testing, we'd need to modify the talker to support different QoS
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -943,14 +991,18 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     eprintln!("=== Latency Benchmark: nano-ros → ROS 2 ===");
 
     // Start ROS 2 subscriber
-    let mut ros2_subscriber =
-        match Ros2Process::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Failed to start ROS 2 subscriber: {}", e);
-                return;
-            }
-        };
+    let mut ros2_subscriber = match Ros2Process::topic_echo(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 subscriber: {}", e);
+            return;
+        }
+    };
 
     std::thread::sleep(Duration::from_secs(3));
 
@@ -959,7 +1011,9 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
 
     // Start nano-ros talker
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
@@ -1006,20 +1060,26 @@ fn test_throughput_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathB
     eprintln!("=== Throughput Benchmark: nano-ros → ROS 2 ===");
 
     // Start ROS 2 subscriber
-    let mut ros2_subscriber =
-        match Ros2Process::topic_echo("/chatter", "std_msgs/msg/Int32", DEFAULT_ROS_DISTRO) {
-            Ok(p) => p,
-            Err(e) => {
-                eprintln!("Failed to start ROS 2 subscriber: {}", e);
-                return;
-            }
-        };
+    let mut ros2_subscriber = match Ros2Process::topic_echo(
+        "/chatter",
+        "std_msgs/msg/Int32",
+        &locator,
+        DEFAULT_ROS_DISTRO,
+    ) {
+        Ok(p) => p,
+        Err(e) => {
+            eprintln!("Failed to start ROS 2 subscriber: {}", e);
+            return;
+        }
+    };
 
     std::thread::sleep(Duration::from_secs(3));
 
     // Start nano-ros talker
     let mut talker_cmd = Command::new(&talker_binary);
-    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
