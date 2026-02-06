@@ -31,8 +31,7 @@
 use heapless::String as HString;
 #[cfg(feature = "zenoh")]
 use log::info;
-use nano_ros::{CdrReader, CdrWriter, Deserialize, RosMessage, Serialize};
-use nano_ros_serdes::{DeserError, SerError};
+use nano_ros::{CdrReader, CdrWriter, DeserError, Deserialize, RosMessage, SerError, Serialize};
 
 // =============================================================================
 // Custom Message Type Definitions

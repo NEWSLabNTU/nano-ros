@@ -21,10 +21,9 @@ cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 
-# nano-ros core crates (no zenoh - this is a demo of the Embassy pattern)
+# nano-ros (no zenoh - this is a demo of the Embassy pattern)
 # For actual nano-ros usage, you would add zenoh-pico via C shim (see zephyr examples)
-nano-ros-core = { path = "../../../crates/nano-ros-core", default-features = false }
-nano-ros-serdes = { path = "../../../crates/nano-ros-serdes", default-features = false }
+nano-ros = { path = "../../../crates/nano-ros", default-features = false }
 
 # Logging (optional, for debugging)
 defmt = "0.3"

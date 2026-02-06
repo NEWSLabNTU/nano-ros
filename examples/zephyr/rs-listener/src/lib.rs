@@ -25,7 +25,7 @@ extern "C" fn rust_main() {
 fn run() -> Result<(), ShimNodeError> {
     let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
     let mut node = executor.create_node("listener")?;
-    let mut subscriber = node.create_subscriber::<Int32>("/chatter")?;
+    let mut subscription = node.create_subscription::<Int32>("/chatter")?;
 
     info!("Waiting for messages on /chatter...");
 
@@ -33,7 +33,7 @@ fn run() -> Result<(), ShimNodeError> {
 
     loop {
         let _ = executor.spin_once(1000);
-        while let Ok(Some(msg)) = subscriber.try_recv() {
+        while let Ok(Some(msg)) = subscription.try_recv() {
             count += 1;
             info!("[{}] Received: data={}", count, msg.data);
         }

@@ -31,9 +31,8 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "socket-tcp",
 ] }
 
-# nano-ros crates
-nano-ros-core = { path = "../../../crates/nano-ros-core", default-features = false }
-nano-ros-serdes = { path = "../../../crates/nano-ros-serdes", default-features = false }
+# nano-ros
+nano-ros = { path = "../../../crates/nano-ros", default-features = false }
 
 # zenoh-pico shim with smoltcp platform backend
 zenoh-pico-shim = { path = "../../../crates/zenoh-pico-shim", default-features = false, features = ["smoltcp"] }
