@@ -772,6 +772,79 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         &self.zid
     }
 
+    /// Register the 6 ROS 2 parameter services for this node.
+    ///
+    /// Creates service servers for:
+    /// - `{fqn}/get_parameters`
+    /// - `{fqn}/set_parameters`
+    /// - `{fqn}/set_parameters_atomically`
+    /// - `{fqn}/list_parameters`
+    /// - `{fqn}/describe_parameters`
+    /// - `{fqn}/get_parameter_types`
+    ///
+    /// where `{fqn}` is the fully qualified node name (e.g., `/my_node` or `/ns/my_node`).
+    #[cfg(feature = "param-services")]
+    pub fn register_parameter_services(
+        &mut self,
+    ) -> Result<crate::parameter_services::ParameterServiceServers, ConnectedNodeError> {
+        use crate::parameter_services::{PARAM_SERVICE_BUFFER_SIZE, ParameterServiceServers};
+
+        // Build fully qualified name prefix: /{namespace}/{name} or /{name}
+        let mut fqn: heapless::String<256> = heapless::String::new();
+        if self.namespace.as_str() == "/" {
+            let _ = core::fmt::write(&mut fqn, format_args!("/{}", self.name));
+        } else {
+            let _ = core::fmt::write(&mut fqn, format_args!("{}/{}", self.namespace, self.name));
+        }
+
+        // Helper closure to build service name
+        let make_name = |suffix: &str| -> heapless::String<256> {
+            let mut s: heapless::String<256> = heapless::String::new();
+            let _ = core::fmt::write(&mut s, format_args!("{}/{}", fqn, suffix));
+            s
+        };
+
+        let get = self.create_service_sized::<
+            rcl_interfaces::srv::GetParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >(make_name("get_parameters").as_str())?;
+
+        let set = self.create_service_sized::<
+            rcl_interfaces::srv::SetParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >(make_name("set_parameters").as_str())?;
+
+        let set_atomic = self.create_service_sized::<
+            rcl_interfaces::srv::SetParametersAtomically,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >(make_name("set_parameters_atomically").as_str())?;
+
+        let list = self.create_service_sized::<
+            rcl_interfaces::srv::ListParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >(make_name("list_parameters").as_str())?;
+
+        let describe = self.create_service_sized::<
+            rcl_interfaces::srv::DescribeParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >(make_name("describe_parameters").as_str())?;
+
+        let get_types = self.create_service_sized::<
+            rcl_interfaces::srv::GetParameterTypes,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >(make_name("get_parameter_types").as_str())?;
+
+        Ok(ParameterServiceServers::new(
+            get, set, set_atomic, list, describe, get_types,
+        ))
+    }
+
     /// Create a service server for the given service
     ///
     /// # Arguments
@@ -1798,6 +1871,19 @@ impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ) -> Result<bool, ConnectedNodeError> {
         self.server
             .handle_request::<S>(&mut self.req_buffer, &mut self.reply_buffer, handler)
+            .map_err(ConnectedNodeError::from)
+    }
+
+    /// Handle a single service request where the handler returns `Box<S::Reply>`
+    ///
+    /// Same as `handle_request` but for services with large response types
+    /// that need heap allocation to avoid stack overflow.
+    pub fn handle_request_boxed(
+        &mut self,
+        handler: impl FnOnce(&S::Request) -> alloc::boxed::Box<S::Reply>,
+    ) -> Result<bool, ConnectedNodeError> {
+        self.server
+            .handle_request_boxed::<S>(&mut self.req_buffer, &mut self.reply_buffer, handler)
             .map_err(ConnectedNodeError::from)
     }
 

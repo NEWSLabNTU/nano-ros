@@ -1,6 +1,6 @@
 # Phase 16: ROS 2 Interoperability Completion
 
-**Status**: PLANNING
+**Status**: IN PROGRESS
 **Priority**: HIGH
 **Goal**: Achieve full bidirectional ROS 2 ↔ nano-ros interoperability with API alignment to rclrs 0.7.0 and rclc
 
@@ -58,15 +58,15 @@ nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_
 | Pub/Sub    | ✅ Working          | ⚠️ Partial        | ⚠️ Partial        |
 | Services   | ✅ Working          | ⚠️ Untested       | ⚠️ Untested       |
 | Actions    | ✅ Working          | ❌ Not Working   | ❌ Not Working   |
-| Parameters | ✅ Working          | ❌ Not Working   | ❌ Not Working   |
+| Parameters | ✅ Working          | ⚠️ Untested       | ⚠️ Untested       |
 | Discovery  | N/A                 | ❌ Not Working   | ❌ Not Working   |
 
 ### Root Causes
 
 1. **Discovery**: nano-ros publishes liveliness tokens, but ROS 2 may not recognize them due to QoS string format issues
-2. **Parameters**: ROS 2 parameter services not implemented
+2. ~~**Parameters**: ROS 2 parameter services not implemented~~ → **RESOLVED**: Parameter service servers now registered and processed during spin
 3. **Actions**: Action protocol partially implemented but not tested against ROS 2
-4. **QoS**: Hardcoded BEST_EFFORT in liveliness tokens regardless of actual settings
+4. ~~**QoS**: Hardcoded BEST_EFFORT in liveliness tokens regardless of actual settings~~ → **RESOLVED**: `to_qos_string()` generates correct QoS encoding
 
 ---
 
@@ -811,6 +811,11 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - [x] Add `param-services` feature flag to `nano-ros-node`
 - [x] Handler return types use `Box<Response>` to avoid stack overflow (generated types ~1MB+)
 - [x] 8 unit tests for parameter service handlers
+- [x] Add `handle_request_boxed` to `ServiceServerTrait` and `ConnectedServiceServer`
+- [x] Create `ParameterServiceServers` struct holding 6 typed `ConnectedServiceServer` instances
+- [x] Add `ConnectedNode::register_parameter_services()` to create all 6 service servers
+- [x] Wire into executor: `NodeState` stores `Option<Box<ParameterServiceServers>>`, processed during `spin_once()`
+- [x] Add `NodeHandle::register_parameter_services()` for executor-based API
 
 **Implementation Notes**:
 - Generated crates at `crates/rcl-interfaces/generated/rcl_interfaces/` and `.../builtin_interfaces/`
@@ -819,12 +824,20 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - `ParameterValue` struct is ~18KB (due to `string_array_value: heapless::Vec<heapless::String<256>, 64>`)
 - Type conversions handle all 10 ROS 2 parameter types (NotSet, Bool, Integer, Double, String, plus arrays)
 - Descriptors include integer/floating point range constraints
+- `handle_request_boxed` added to `ServiceServerTrait` (gated by `alloc` feature) — handler returns `Box<S::Reply>`, keeping the response on the heap
+- `ParameterServiceServers` uses split borrow pattern: `process(&mut self, &mut ParameterServer)` avoids self-referential borrow issues
+- Service servers use 4096-byte buffers (`PARAM_SERVICE_BUFFER_SIZE`) for both request and reply — sufficient for typical parameter operations
+- `ParameterServiceServers` is `Box`-allocated in executor to avoid 48KB+ on stack (6 servers × 8KB buffers)
+- Service names follow ROS 2 convention: `{fully_qualified_name}/{service}` (e.g., `/my_node/get_parameters`)
 
 **Passing Criteria**:
 - [x] `rcl_interfaces` types generated and compile
 - [x] Type conversion roundtrip tests pass
 - [x] Service handler unit tests pass (8 tests)
-- [ ] `ros2 param list <node>` shows nano-ros parameters (TODO: integration test - requires service registration in node)
+- [x] `register_parameter_services()` creates 6 service servers with correct names
+- [x] Parameter services processed during executor `spin_once()`
+- [x] `just quality` passes with all changes
+- [ ] `ros2 param list <node>` shows nano-ros parameters (TODO: integration test)
 - [ ] `ros2 param get <node> <param>` returns correct value (TODO: integration test)
 - [ ] `ros2 param set <node> <param> <value>` updates parameter (TODO: integration test)
 

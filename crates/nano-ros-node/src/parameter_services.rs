@@ -470,6 +470,155 @@ pub fn handle_get_parameter_types(
     response
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PARAMETER SERVICE SERVERS
+// ═══════════════════════════════════════════════════════════════════════════
+
+use crate::connected::{ConnectedNodeError, ConnectedServiceServer};
+
+/// Buffer size for parameter service request/reply serialization.
+///
+/// 4096 bytes covers typical usage (dozens of parameters). CDR-serialized
+/// parameter data is much smaller than in-memory heapless structs.
+pub const PARAM_SERVICE_BUFFER_SIZE: usize = 4096;
+
+/// Holds the 6 ROS 2 parameter service servers for a node.
+///
+/// These servers handle `ros2 param` CLI interactions:
+/// - `get_parameters` / `set_parameters` / `set_parameters_atomically`
+/// - `list_parameters` / `describe_parameters` / `get_parameter_types`
+///
+/// Boxed when stored in executor to avoid 48KB+ on the stack
+/// (6 servers × 8KB buffers each).
+pub struct ParameterServiceServers {
+    get_parameters:
+        ConnectedServiceServer<GetParameters, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>,
+    set_parameters:
+        ConnectedServiceServer<SetParameters, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>,
+    set_parameters_atomically: ConnectedServiceServer<
+        SetParametersAtomically,
+        PARAM_SERVICE_BUFFER_SIZE,
+        PARAM_SERVICE_BUFFER_SIZE,
+    >,
+    list_parameters: ConnectedServiceServer<
+        ListParameters,
+        PARAM_SERVICE_BUFFER_SIZE,
+        PARAM_SERVICE_BUFFER_SIZE,
+    >,
+    describe_parameters: ConnectedServiceServer<
+        DescribeParameters,
+        PARAM_SERVICE_BUFFER_SIZE,
+        PARAM_SERVICE_BUFFER_SIZE,
+    >,
+    get_parameter_types: ConnectedServiceServer<
+        GetParameterTypes,
+        PARAM_SERVICE_BUFFER_SIZE,
+        PARAM_SERVICE_BUFFER_SIZE,
+    >,
+}
+
+impl ParameterServiceServers {
+    /// Create a new set of parameter service servers
+    pub(crate) fn new(
+        get_parameters: ConnectedServiceServer<
+            GetParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >,
+        set_parameters: ConnectedServiceServer<
+            SetParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >,
+        set_parameters_atomically: ConnectedServiceServer<
+            SetParametersAtomically,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >,
+        list_parameters: ConnectedServiceServer<
+            ListParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >,
+        describe_parameters: ConnectedServiceServer<
+            DescribeParameters,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >,
+        get_parameter_types: ConnectedServiceServer<
+            GetParameterTypes,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >,
+    ) -> Self {
+        Self {
+            get_parameters,
+            set_parameters,
+            set_parameters_atomically,
+            list_parameters,
+            describe_parameters,
+            get_parameter_types,
+        }
+    }
+
+    /// Process all parameter service servers, handling any pending requests.
+    ///
+    /// Uses split borrows: the `server` parameter provides mutable access to the
+    /// `ParameterServer` while `self` provides access to the service servers.
+    ///
+    /// Returns the number of requests handled.
+    pub(crate) fn process(
+        &mut self,
+        server: &mut ParameterServer,
+    ) -> Result<usize, ConnectedNodeError> {
+        let mut count = 0;
+
+        if self
+            .get_parameters
+            .handle_request_boxed(|req| handle_get_parameters(server, req))?
+        {
+            count += 1;
+        }
+
+        if self
+            .set_parameters
+            .handle_request_boxed(|req| handle_set_parameters(server, req))?
+        {
+            count += 1;
+        }
+
+        if self
+            .set_parameters_atomically
+            .handle_request_boxed(|req| handle_set_parameters_atomically(server, req))?
+        {
+            count += 1;
+        }
+
+        if self
+            .list_parameters
+            .handle_request_boxed(|req| handle_list_parameters(server, req))?
+        {
+            count += 1;
+        }
+
+        if self
+            .describe_parameters
+            .handle_request_boxed(|req| handle_describe_parameters(server, req))?
+        {
+            count += 1;
+        }
+
+        if self
+            .get_parameter_types
+            .handle_request_boxed(|req| handle_get_parameter_types(server, req))?
+        {
+            count += 1;
+        }
+
+        Ok(count)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

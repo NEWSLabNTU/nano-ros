@@ -476,6 +476,10 @@ pub struct NodeState<
     pub(crate) services: alloc::vec::Vec<alloc::boxed::Box<dyn ErasedServiceCallback>>,
     #[cfg(not(feature = "alloc"))]
     pub(crate) services: (),
+    /// Parameter service servers (boxed to avoid 48KB+ on stack)
+    #[cfg(feature = "param-services")]
+    pub(crate) param_services:
+        Option<alloc::boxed::Box<crate::parameter_services::ParameterServiceServers>>,
 }
 
 #[cfg(feature = "zenoh")]
@@ -494,6 +498,8 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize>
             services: alloc::vec::Vec::new(),
             #[cfg(not(feature = "alloc"))]
             services: (),
+            #[cfg(feature = "param-services")]
+            param_services: None,
         }
     }
 
@@ -528,6 +534,15 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize>
                 count += 1;
             }
         }
+
+        // Process parameter services separately (split borrow pattern)
+        #[cfg(feature = "param-services")]
+        if let Some(ref mut param_srv) = self.param_services {
+            count += param_srv
+                .process(&mut self.inner.parameter_server)
+                .map_err(RclrsError::from)?;
+        }
+
         Ok(count)
     }
 
@@ -615,6 +630,30 @@ impl<'a, const MAX_TOKENS: usize, const MAX_TIMERS: usize, const MAX_SUBS: usize
     /// ```
     pub fn logger(&self) -> nano_ros_core::Logger<'_> {
         nano_ros_core::Logger::new(self.node.inner.name())
+    }
+
+    /// Register the 6 ROS 2 parameter services for this node.
+    ///
+    /// After calling this, `ros2 param list`, `ros2 param get`, and `ros2 param set`
+    /// will work with this node's parameters.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let node = executor.create_node("my_node")?;
+    /// node.declare_parameter("speed", 1.0)?;
+    /// node.register_parameter_services()?;
+    /// // Now: ros2 param get /my_node speed → 1.0
+    /// ```
+    #[cfg(feature = "param-services")]
+    pub fn register_parameter_services(&mut self) -> Result<(), RclrsError> {
+        let servers = self
+            .node
+            .inner
+            .register_parameter_services()
+            .map_err(RclrsError::from)?;
+        self.node.param_services = Some(alloc::boxed::Box::new(servers));
+        Ok(())
     }
 
     /// Create a publisher for the given topic

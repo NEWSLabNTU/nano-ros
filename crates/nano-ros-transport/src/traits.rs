@@ -767,6 +767,46 @@ pub trait ServiceServerTrait {
         self.send_reply(sequence_number, &reply_buf[..len])?;
         Ok(true)
     }
+
+    /// Handle a service request where the handler returns `Box<S::Reply>`
+    ///
+    /// Identical to `handle_request` but the handler returns a heap-allocated reply.
+    /// This is needed for services with large response types (e.g., parameter services
+    /// where `Vec<ParameterValue, 64>` is ~1MB+) that would overflow the stack.
+    #[cfg(feature = "alloc")]
+    fn handle_request_boxed<S: RosService>(
+        &mut self,
+        req_buf: &mut [u8],
+        reply_buf: &mut [u8],
+        handler: impl FnOnce(&S::Request) -> alloc::boxed::Box<S::Reply>,
+    ) -> Result<bool, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        use nano_ros_core::{CdrReader, CdrWriter};
+
+        let (data_len, sequence_number) = match self.try_recv_request(req_buf)? {
+            Some(request) => (request.data.len(), request.sequence_number),
+            None => return Ok(false),
+        };
+
+        let mut reader = CdrReader::new_with_header(&req_buf[..data_len])
+            .map_err(|_| TransportError::DeserializationError)?;
+        let req = S::Request::deserialize(&mut reader)
+            .map_err(|_| TransportError::DeserializationError)?;
+
+        let reply = handler(&req);
+
+        let mut writer =
+            CdrWriter::new_with_header(reply_buf).map_err(|_| TransportError::BufferTooSmall)?;
+        reply
+            .serialize(&mut writer)
+            .map_err(|_| TransportError::SerializationError)?;
+        let len = writer.position();
+
+        self.send_reply(sequence_number, &reply_buf[..len])?;
+        Ok(true)
+    }
 }
 
 /// Service client trait for sending requests
