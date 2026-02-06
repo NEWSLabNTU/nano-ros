@@ -47,7 +47,7 @@ pub trait RosAction: Sized {
     type Goal: RosMessage;
 
     /// Result message returned by server upon completion
-    type Result: RosMessage;
+    type Result: RosMessage + Default;
 
     /// Feedback message sent by server during execution
     type Feedback: RosMessage;
