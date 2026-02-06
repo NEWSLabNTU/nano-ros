@@ -72,10 +72,11 @@ just quality        # Format + clippy + unit tests (no external deps)
 just doc            # Generate docs
 
 # Test groups (by infrastructure requirement)
-just test-unit          # Unit tests + Miri (no external deps)
+just test-unit          # Unit tests only (no external deps)
+just test-miri          # Miri UB detection (nano-ros-serdes, nano-ros-core, nano-ros-params)
 just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
 just test-integration   # All Rust integration tests (builds zenohd automatically)
-just test               # test-unit + test-qemu + test-integration
+just test               # test-unit + test-miri + test-qemu + test-integration
 just test-zephyr        # Zephyr E2E tests (needs west + TAP)
 just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
@@ -128,6 +129,31 @@ QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
 - Test scripts in `tests/` should have justfile entries for easy invocation (e.g., `just test-ros2-interop-debug`)
 - ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `crates/nano-ros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
 
+### Test Output and Logs
+
+All Rust tests run through **cargo-nextest** which provides concise colored progress output. Test results are automatically saved as JUnit XML.
+
+**Output modes (all `just test-*` recipes accept a `verbose` argument):**
+```bash
+just test-integration           # Concise: colored progress bar, failures shown at end
+just test-integration verbose   # Verbose: all test output streamed live
+```
+
+**JUnit XML logs** are generated automatically by nextest (configured in `.config/nextest.toml`):
+- Written to: `target/nextest/default/junit.xml`
+- Contains per-test pass/fail status and stdout/stderr for failing tests
+- Each nextest invocation overwrites the file (re-run a specific suite to get its XML)
+- View with: `just test-report` (requires `junit-cli-report-viewer`)
+
+**Non-nextest tests** (QEMU semihosting, C shell scripts) use `tests/run-test.sh` wrapper:
+- Captures output to timestamped log files in `test-logs/latest/`
+- Prints one-line `[PASS]`/`[FAIL]` summary per test
+- `--qemu` flag parses semihosting `[PASS]`/`[FAIL]` markers
+
+**Configuration files:**
+- `.config/nextest.toml` — nextest profiles, JUnit output, test groups (e.g., zephyr max-threads=1)
+- `tests/run-test.sh` — wrapper for non-cargo tests
+
 ### Temporary Scripts
 - Create temporary scripts in `$project/tmp/` directory (not `/tmp`)
 - Use Write/Edit tools to create files (avoid cat + heredoc patterns)
@@ -160,10 +186,12 @@ The `tests/` directory at project root contains shell-based test scripts (C test
 **Running tests:** Use `just test-*` recipes. Avoid writing large test scripts in the Bash tool. Only use Bash for temporary one-off test commands.
 ```bash
 just test-unit          # Unit tests (no deps)
+just test-miri          # Miri UB detection on embedded-safe crates
 just test-integration   # All integration tests (needs zenohd)
 just test-zephyr        # Zephyr E2E (needs west + TAP)
 just test-ros2          # ROS 2 interop (needs ROS 2)
 just test-c             # C API tests (needs cmake)
+just test-report        # View JUnit XML report (needs junit-cli-report-viewer)
 ```
 
 **Unit tests** (per-crate `#[cfg(test)]` modules) go in each crate's source files as usual.
