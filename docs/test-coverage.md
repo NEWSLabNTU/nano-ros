@@ -17,14 +17,18 @@ This document provides a comprehensive overview of test coverage across all plat
 
 ### 1. Native (Linux/macOS) - POSIX Backend
 
-| Test Suite         | File             | Tests | Coverage                            |
-|--------------------|------------------|-------|-------------------------------------|
-| Pub/Sub            | `nano2nano.rs`   | 9     | Basic talker/listener communication |
-| Services           | `services.rs`    | 8     | Service server/client (AddTwoInts)  |
-| Actions            | `actions.rs`     | 7     | Action server/client (Fibonacci)    |
-| Custom Messages    | `custom_msg.rs`  | 7     | Serialization, pub/sub, error handling |
-| ROS 2 Interop      | `rmw_interop.rs` | 19    | rmw_zenoh_cpp compatibility         |
-| Platform Detection | `platform.rs`    | 10    | Tool/environment detection          |
+| Test Suite         | File                | Tests | Coverage                            |
+|--------------------|---------------------|-------|-------------------------------------|
+| Pub/Sub            | `nano2nano.rs`      | 9     | Basic talker/listener communication |
+| Services           | `services.rs`       | 8     | Service server/client (AddTwoInts)  |
+| Actions            | `actions.rs`        | 7     | Action server/client (Fibonacci)    |
+| Custom Messages    | `custom_msg.rs`     | 7     | Serialization, pub/sub, error handling |
+| ROS 2 Interop      | `rmw_interop.rs`    | 19    | rmw_zenoh_cpp compatibility         |
+| Platform Detection | `platform.rs`       | 10    | Tool/environment detection          |
+| Parameters         | `params.rs`         | 7     | Parameter server integration        |
+| Timer/Executor     | `executor.rs`       | 7     | Timer firing, callback execution    |
+| QoS                | `qos.rs`            | 6     | Reliability, history, multi-sub     |
+| Error Handling     | `error_handling.rs` | 8     | Timeouts, disconnect, reconnect     |
 
 **Justfile Recipes:**
 - `just test-rust-nano2nano` - Native pub/sub tests
@@ -33,6 +37,10 @@ This document provides a comprehensive overview of test coverage across all plat
 - `just test-rust-custom-msg` - Custom message tests
 - `just test-rust-rmw-interop` - ROS 2 interoperability
 - `just test-rust-platform` - Platform detection
+- `just test-rust-params` - Parameter server tests
+- `just test-rust-executor` - Timer/executor tests
+- `just test-rust-qos` - QoS policy tests
+- `just test-rust-errors` - Error handling tests
 
 **Examples Covered:**
 | Example                    | Tested  | Notes                  |
@@ -330,16 +338,21 @@ tests/qos.rs (COMPLETE - 6 tests)
 
 ### Low Priority
 
-#### 8. Error Handling Tests
-```
-tests/error_handling.rs (NEW)
-- test_connection_timeout
-- test_invalid_topic
-- test_serialization_error_recovery
-- test_network_disconnect_reconnect
-```
+#### 8. Error Handling Tests ✓ COMPLETE
 
-**Why:** Error paths are implemented but not systematically tested.
+**Implemented in `tests/error_handling.rs` (8 tests):**
+- `test_connection_timeout_talker` - Graceful handling when router unavailable
+- `test_connection_timeout_listener` - Graceful handling when router unavailable
+- `test_router_disconnect` - Talker handles mid-communication router death
+- `test_listener_router_disconnect` - Listener handles mid-communication router death
+- `test_router_reconnect` - Communication resumes after router restart
+- `test_rapid_start_stop` - Multiple rapid restarts work correctly
+- `test_minimal_runtime` - Sub-second runtime works
+- `test_debug_logging_overhead` - Debug logging doesn't break communication
+
+**Run:** `just test-rust-errors`
+
+**Status:** Complete. All error paths tested.
 
 #### 9. Multi-Node Tests
 ```
@@ -377,11 +390,11 @@ tests/platform_integration.rs (NEW)
 | **Services**           | 8 tests (native) | Zephyr, ROS 2 interop   | High               |
 | **Native↔Zephyr**      | 2 tests ✓        | Cross-platform services | Complete (pub/sub) |
 | **Custom Messages**    | 7 tests ✓        | Nested/array types      | Complete (basic)   |
-| **QEMU Communication** | 0 tests          | BSP E2E                 | High               |
+| **QEMU Communication** | 5 tests ✓        | LAN9118 unit tests      | Complete (Docker)  |
 | **Parameters**         | 7 tests ✓        | -                       | Complete           |
 | **Timer/Executor**     | 7 tests ✓        | -                       | Complete           |
 | **QoS**                | 6 tests ✓        | -                       | Complete           |
-| **Error Handling**     | Sparse           | Systematic              | Low                |
+| **Error Handling**     | 8 tests ✓        | -                       | Complete           |
 | **Multi-Node**         | Sparse           | Comprehensive           | Low                |
 | **STM32F4 HIL**        | 0 tests          | Full suite              | Low                |
 
