@@ -7,6 +7,8 @@ EMBEDDED_EXAMPLES := "stm32f4-rtic stm32f4-embassy stm32f4-polling stm32f4-smolt
 QEMU_EXAMPLES := "platform-integration/qemu-smoltcp-bridge qemu/rs-test platform-integration/qemu-lan9118"
 QEMU_ZENOH_EXAMPLES := "qemu/rs-talker qemu/rs-listener qemu/bsp-talker qemu/bsp-listener"
 
+LOG_DIR := "test-logs"
+
 default:
     @just --list
 
@@ -27,16 +29,88 @@ check: check-workspace check-workspace-embedded check-workspace-features check-e
     @echo "All checks passed!"
 
 # Run unit tests only (no external dependencies)
-test-unit: test-workspace test-miri
-    @echo "Unit tests passed!"
+test-unit verbose="":
+    #!/usr/bin/env bash
+    set +e
+    failed=0
+
+    just test-workspace {{verbose}} || failed=1
+    just test-miri {{verbose}} || failed=1
+
+    if [ $failed -ne 0 ]; then
+        echo "FAIL: Some unit tests failed."
+        exit 1
+    else
+        echo "Unit tests passed!"
+    fi
 
 # Run standard tests (needs qemu-system-arm + zenohd)
-test: test-unit test-qemu test-integration
-    @echo "All standard tests passed!"
+test verbose="":
+    #!/usr/bin/env bash
+    set +e
+    failed=0
+    just _init-test-logs
+
+    echo "=== Unit Tests ==="
+    just test-unit {{verbose}} || failed=1
+
+    echo ""
+    echo "=== QEMU Tests ==="
+    just test-qemu {{verbose}} || failed=1
+
+    echo ""
+    echo "=== Integration Tests ==="
+    just test-integration {{verbose}} || failed=1
+
+    echo ""
+    echo "JUnit XML: target/nextest/default/junit.xml"
+    echo "QEMU logs: {{LOG_DIR}}/latest/"
+    if [ $failed -ne 0 ]; then
+        echo "FAIL: Some tests failed."
+        exit 1
+    else
+        echo "All standard tests passed!"
+    fi
 
 # Run all tests including Zephyr, ROS 2 interop, C API, Docker
-test-all: test test-zephyr test-ros2 test-c
-    @echo "All tests passed!"
+test-all verbose="":
+    #!/usr/bin/env bash
+    set +e
+    failed=0
+    just _init-test-logs
+
+    echo "=== Unit Tests ==="
+    just test-unit {{verbose}} || failed=1
+
+    echo ""
+    echo "=== QEMU Tests ==="
+    just test-qemu {{verbose}} || failed=1
+
+    echo ""
+    echo "=== Integration Tests ==="
+    just test-integration {{verbose}} || failed=1
+
+    echo ""
+    echo "=== Zephyr Tests ==="
+    just test-zephyr {{verbose}} || failed=1
+
+    echo ""
+    echo "=== ROS 2 Interop Tests ==="
+    just test-ros2 {{verbose}} || failed=1
+
+    echo ""
+    echo "=== C API Tests ==="
+    just test-c {{verbose}} || failed=1
+
+    echo ""
+    echo "JUnit XML:  target/nextest/default/junit.xml"
+    echo "Other logs: {{LOG_DIR}}/latest/"
+    if [ $failed -ne 0 ]; then
+        echo "FAIL: Some tests failed."
+        exit 1
+    else
+        echo "All tests passed!"
+    fi
 
 # Run code quality checks (formatting + clippy + unit tests) - no integration tests
 # Runs all checks even if some fail, then reports all failures at the end
@@ -127,6 +201,21 @@ ci: check test
     @echo "Full CI suite passed!"
 
 # =============================================================================
+# Test Infrastructure
+# =============================================================================
+
+# Initialize timestamped log directory for non-nextest test output (QEMU, C)
+_init-test-logs:
+    #!/usr/bin/env bash
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    mkdir -p "{{LOG_DIR}}/$timestamp"
+    ln -sfn "$timestamp" "{{LOG_DIR}}/latest"
+
+# View JUnit XML test report (requires: npm install -g junit-cli-report-viewer)
+test-report:
+    @junit-cli-report-viewer target/nextest/default/junit.xml
+
+# =============================================================================
 # Workspace
 # =============================================================================
 
@@ -179,15 +268,20 @@ check-workspace-features:
 
 # Run workspace unit tests (no external deps)
 # Excludes nano-ros-tests which contains integration tests requiring zenohd/Zephyr/ROS 2
-test-workspace:
-    cargo nextest run --workspace --exclude nano-ros-tests --no-fail-fast
+test-workspace verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(--color always --workspace --exclude nano-ros-tests --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output final)
+    fi
+    cargo nextest run "${args[@]}"
 
 # Run Miri to detect undefined behavior
-test-miri:
+test-miri verbose="":
     @echo "Running Miri on safe crates..."
     cargo +nightly miri test -p nano-ros-serdes
     cargo +nightly miri test -p nano-ros-core
-    @echo "Miri checks passed!"
 
 # =============================================================================
 # Examples
@@ -407,8 +501,19 @@ check-examples-qemu:
     done
 
 # Run all QEMU tests (non-networked)
-test-qemu: test-qemu-basic test-qemu-lan9118
-    @echo "All QEMU tests passed!"
+test-qemu verbose="":
+    #!/usr/bin/env bash
+    set +e
+    failed=0
+    just _init-test-logs
+    just test-qemu-basic {{verbose}} || failed=1
+    just test-qemu-lan9118 {{verbose}} || failed=1
+    if [ $failed -ne 0 ]; then
+        echo "FAIL: Some QEMU tests failed."
+        exit 1
+    else
+        echo "All QEMU tests passed!"
+    fi
 
 # Build zenoh-pico for ARM Cortex-M3 (required for qemu-rs-talker/listener)
 build-zenoh-pico-arm:
@@ -421,24 +526,20 @@ clean-zenoh-pico-arm:
     ./scripts/qemu/build-zenoh-pico.sh --clean
 
 # Run basic QEMU test (nano-ros serialization on Cortex-M3)
-test-qemu-basic: build-examples-qemu
-    @echo "Running QEMU basic test (lm3s6965evb)..."
-    qemu-system-arm \
-        -cpu cortex-m3 \
-        -machine lm3s6965evb \
-        -nographic \
-        -semihosting-config enable=on,target=native \
-        -kernel examples/qemu/rs-test/target/thumbv7m-none-eabi/release/qemu-rs-test
+test-qemu-basic verbose="": build-examples-qemu _init-test-logs
+    ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
+        --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
+        qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
+            -semihosting-config enable=on,target=native \
+            -kernel examples/qemu/rs-test/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
-test-qemu-lan9118: build-examples-qemu
-    @echo "Running QEMU LAN9118 test (mps2-an385)..."
-    qemu-system-arm \
-        -cpu cortex-m3 \
-        -machine mps2-an385 \
-        -nographic \
-        -semihosting-config enable=on,target=native \
-        -kernel examples/platform-integration/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+test-qemu-lan9118 verbose="": build-examples-qemu _init-test-logs
+    ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
+        --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
+        qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+            -semihosting-config enable=on,target=native \
+            -kernel examples/platform-integration/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Check if QEMU is installed
 check-qemu:
@@ -569,26 +670,34 @@ build-zenoh-pico:
 
 # Run all Rust integration tests (requires zenohd)
 # Excludes zephyr and rmw_interop tests (run via test-zephyr / test-ros2)
-test-integration:
+test-integration verbose="":
     #!/usr/bin/env bash
     set -e
-    cargo test -p nano-ros-tests --lib -- --nocapture
-    for test in actions custom_msg emulator error_handling executor multi_node nano2nano params platform qos services; do
-        cargo test -p nano-ros-tests --test "$test" -- --nocapture
-    done
+    args=(--color always -p nano-ros-tests --no-fail-fast
+          -E 'not binary(zephyr) and not binary(rmw_interop)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output final)
+    fi
+    cargo nextest run "${args[@]}"
 
 # =============================================================================
 # Zephyr Tests (requires west workspace + bridge network)
 # =============================================================================
 
 # Run Zephyr E2E tests (requires pre-built Zephyr examples + bridge network)
-# Note: --test-threads=1 required because tests share TAP interfaces
-test-zephyr: build-zenohd
-    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
+# Note: thread limit handled by [test-groups.zephyr] in .config/nextest.toml
+test-zephyr verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(--color always -p nano-ros-tests --test zephyr --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output final)
+    fi
+    cargo nextest run "${args[@]}"
 
 # Run Zephyr tests with full rebuild
-test-zephyr-full: build-zephyr
-    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
+test-zephyr-full verbose="": build-zephyr
+    just test-zephyr {{verbose}}
 
 # Run Zephyr C examples test
 test-zephyr-c:
@@ -599,8 +708,14 @@ test-zephyr-c:
 # =============================================================================
 
 # Run ROS 2 interop tests (Rust test harness)
-test-ros2: build-zenohd
-    cargo test -p nano-ros-tests --test rmw_interop -- --nocapture
+test-ros2 verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(--color always -p nano-ros-tests --test rmw_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output final)
+    fi
+    cargo nextest run "${args[@]}"
 
 # Run ROS 2 interop tests (shell script)
 test-ros2-shell:
@@ -611,19 +726,14 @@ test-ros2-shell:
 # =============================================================================
 
 # Run all C tests (examples + codegen)
-test-c: build-zenohd
+test-c verbose="": _init-test-logs
     #!/usr/bin/env bash
     set -e
-    echo "=== C Integration Tests ==="
-    ./tests/c-tests.sh
-    echo ""
-    echo "=== C Codegen Unit Tests ==="
-    (cd colcon-nano-ros/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture)
-    echo ""
-    echo "=== C Message Generation Tests ==="
-    ./tests/c-msg-gen-tests.sh
-    echo ""
-    echo "All C tests passed!"
+    v="{{ if verbose != "" { "--verbose" } else { "" } }}"
+    ./tests/run-test.sh --name c-integration --log {{LOG_DIR}}/latest/c-integration.log $v -- ./tests/c-tests.sh
+    ./tests/run-test.sh --name c-codegen --log {{LOG_DIR}}/latest/c-codegen.log $v -- \
+        bash -c 'cd colcon-nano-ros/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
+    ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh
 
 # Build C examples only (no tests)
 build-examples-c:
