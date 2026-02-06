@@ -259,27 +259,32 @@ tests/params.rs (COMPLETE - 7 tests)
 
 **Status:** Complete. Tests verify parameter declaration and ROS 2 interop.
 
-#### 6. Timer and Executor Tests
+#### 6. Timer and Executor Tests ✓
 ```
-tests/executor.rs (NEW)
-- test_timer_callback
-- test_executor_spin_once
-- test_executor_spin_some
-- test_multi_callback_execution
-```
-
-**Why:** Timer/executor are core features without integration tests.
-
-#### 7. QoS Tests
-```
-tests/qos.rs (NEW)
-- test_qos_reliable
-- test_qos_best_effort
-- test_qos_transient_local
-- test_qos_deadline
+tests/executor.rs (COMPLETE - 7 tests)
+- test_timer_interval_basic ✓
+- test_timer_regular_publishing ✓
+- test_callback_execution_order ✓
+- test_mixed_callbacks ✓
+- test_spin_once_processes_work ✓
+- test_executor_multiple_timers_via_publishers ✓
+- test_spin_result_timers_fired ✓
 ```
 
-**Why:** QoS is partially implemented but not tested.
+**Status:** Complete. Tests verify timer firing, callback order, and spin behavior.
+
+#### 7. QoS Tests ✓
+```
+tests/qos.rs (COMPLETE - 6 tests)
+- test_qos_reliable_delivery ✓
+- test_qos_reliable_no_loss ✓
+- test_qos_history_ordering ✓
+- test_qos_compatible_settings ✓
+- test_qos_multiple_subscribers ✓
+- test_qos_keyexpr_encoding ✓
+```
+
+**Status:** Complete. Tests verify RELIABLE QoS, history ordering, and multi-subscriber.
 
 ### Low Priority
 
@@ -332,8 +337,8 @@ tests/platform_integration.rs (NEW)
 | **Custom Messages** | 7 tests ✓ | Nested/array types | Complete (basic) |
 | **QEMU Communication** | 0 tests | BSP E2E | High |
 | **Parameters** | 7 tests ✓ | - | Complete |
-| **Timer/Executor** | Unit only | Integration | Medium |
-| **QoS** | 0 tests | All policies | Medium |
+| **Timer/Executor** | 7 tests ✓ | - | Complete |
+| **QoS** | 6 tests ✓ | - | Complete |
 | **Error Handling** | Sparse | Systematic | Low |
 | **Multi-Node** | Sparse | Comprehensive | Low |
 | **STM32F4 HIL** | 0 tests | Full suite | Low |
@@ -354,6 +359,8 @@ just test-c                   # C bindings
 just test-rust-services       # Services
 just test-rust-actions        # Actions
 just test-rust-params         # Parameters
+just test-rust-executor       # Timer/Executor
+just test-rust-qos            # QoS policies
 just test-rust-custom-msg     # Custom messages
 just test-rust-rmw-interop    # ROS 2 interop
 

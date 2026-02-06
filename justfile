@@ -602,6 +602,14 @@ test-rust-custom-msg:
 test-rust-params:
     cargo test -p nano-ros-tests --test params -- --nocapture
 
+# Run Rust executor and timer tests
+test-rust-executor:
+    cargo test -p nano-ros-tests --test executor -- --nocapture
+
+# Run Rust QoS policy tests
+test-rust-qos:
+    cargo test -p nano-ros-tests --test qos -- --nocapture
+
 # Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
 test-rust-actions-rmw-interop:
     cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture
