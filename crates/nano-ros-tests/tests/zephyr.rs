@@ -104,7 +104,7 @@ fn test_zephyr_talker_to_listener_e2e() {
         .expect("Failed to start Zephyr listener");
 
     // Give listener time to connect and create subscriber
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     eprintln!("Starting Zephyr talker...");
@@ -116,10 +116,10 @@ fn test_zephyr_talker_to_listener_e2e() {
 
     // Wait for output from both
     let talker_output = talker
-        .wait_for_output(Duration::from_secs(10))
+        .wait_for_output(Duration::from_secs(8))
         .unwrap_or_default();
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(10))
+        .wait_for_output(Duration::from_secs(8))
         .unwrap_or_default();
 
     // Kill processes
@@ -249,7 +249,7 @@ fn test_zephyr_to_native_e2e() {
         .expect("Failed to start listener");
 
     // Give listener time to connect and subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start Zephyr talker
     eprintln!("Starting Zephyr talker...");
@@ -261,7 +261,7 @@ fn test_zephyr_to_native_e2e() {
 
     // Wait for listener output (use wait_for_all_output to capture stderr where env_logger logs)
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(15))
+        .wait_for_all_output(Duration::from_secs(10))
         .expect("Listener timed out");
 
     // Get Zephyr output for debugging
@@ -341,7 +341,7 @@ fn test_native_to_zephyr_e2e() {
         .expect("Failed to start Zephyr listener");
 
     // Give listener time to connect and subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start native talker connecting to zenohd on bridge
     use nano_ros_tests::process::ManagedProcess;
@@ -360,7 +360,7 @@ fn test_native_to_zephyr_e2e() {
 
     // Wait for Zephyr output
     let zephyr_output = zephyr
-        .wait_for_output(Duration::from_secs(15))
+        .wait_for_output(Duration::from_secs(10))
         .unwrap_or_default();
 
     // Get native talker output for debugging
@@ -469,7 +469,7 @@ fn test_bidirectional_native_zephyr_e2e() {
             .expect("Failed to start Zephyr listener");
 
     // Give listeners time to connect and subscribe
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(2));
 
     // Start talkers
     eprintln!("Starting talkers...");
@@ -486,7 +486,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 
     // Wait for communication in both directions
     eprintln!("Waiting for bidirectional communication...");
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(5));
 
     // Collect outputs
     let native_listener_output = native_listener
@@ -611,7 +611,7 @@ fn test_zephyr_talker_smoke() {
 
     // Wait for output (Zephyr will fail to connect but should produce init messages)
     let output = zephyr
-        .wait_for_output(Duration::from_secs(5))
+        .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
 
     eprintln!("Zephyr output:\n{}", output);
@@ -648,7 +648,7 @@ fn test_zephyr_listener_smoke() {
 
     // Wait for output (Zephyr will fail to connect but should produce init messages)
     let output = zephyr
-        .wait_for_output(Duration::from_secs(5))
+        .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
 
     eprintln!("Zephyr output:\n{}", output);
@@ -783,7 +783,7 @@ fn test_zephyr_action_server_smoke() {
         .expect("Failed to start Zephyr action server");
 
     let output = zephyr
-        .wait_for_output(Duration::from_secs(5))
+        .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
 
     eprintln!("Zephyr output:\n{}", output);
@@ -814,7 +814,7 @@ fn test_zephyr_action_client_smoke() {
         .expect("Failed to start Zephyr action client");
 
     let output = zephyr
-        .wait_for_output(Duration::from_secs(5))
+        .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
 
     eprintln!("Zephyr output:\n{}", output);
@@ -870,7 +870,7 @@ fn test_zephyr_action_e2e() {
         .expect("Failed to start Zephyr action server");
 
     // Give server time to connect and set up queryables
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(2));
 
     // Start action client
     eprintln!("Starting Zephyr action client...");
@@ -882,10 +882,10 @@ fn test_zephyr_action_e2e() {
 
     // Wait for output from both
     let server_output = server
-        .wait_for_output(Duration::from_secs(20))
+        .wait_for_output(Duration::from_secs(10))
         .unwrap_or_default();
     let client_output = client
-        .wait_for_output(Duration::from_secs(20))
+        .wait_for_output(Duration::from_secs(10))
         .unwrap_or_default();
 
     // Kill processes
@@ -1040,7 +1040,7 @@ fn test_zephyr_service_server_smoke() {
         .expect("Failed to start Zephyr service server");
 
     let output = zephyr
-        .wait_for_output(Duration::from_secs(5))
+        .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
 
     eprintln!("Zephyr output:\n{}", output);
@@ -1074,7 +1074,7 @@ fn test_zephyr_service_client_smoke() {
         .expect("Failed to start Zephyr service client");
 
     let output = zephyr
-        .wait_for_output(Duration::from_secs(5))
+        .wait_for_output(Duration::from_secs(3))
         .unwrap_or_default();
 
     eprintln!("Zephyr output:\n{}", output);
@@ -1131,7 +1131,7 @@ fn test_native_server_zephyr_client() {
         .expect("Failed to start native service server");
 
     // Give server time to set up
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(2));
 
     if !server.is_running() {
         let output = server
@@ -1152,7 +1152,7 @@ fn test_native_server_zephyr_client() {
 
     // Wait for Zephyr output
     let zephyr_output = zephyr
-        .wait_for_output(Duration::from_secs(20))
+        .wait_for_output(Duration::from_secs(10))
         .unwrap_or_default();
 
     // Get native server output
@@ -1235,7 +1235,7 @@ fn test_zephyr_server_native_client() {
         .expect("Failed to start Zephyr service server");
 
     // Give Zephyr server time to set up queryables
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(3));
 
     // Start native service client
     use nano_ros_tests::process::ManagedProcess;
@@ -1250,7 +1250,7 @@ fn test_zephyr_server_native_client() {
 
     // Wait for service communication
     eprintln!("Waiting for Zephyr server ↔ Native client communication...");
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(8));
 
     // Get outputs
     let client_output = client
