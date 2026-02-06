@@ -68,7 +68,10 @@ just doc            # Generate docs
 just test-rust              # All Rust integration tests
 just test-rust-nano2nano    # nano-ros ↔ nano-ros tests
 just test-rust-rmw-interop  # ROS 2 interop tests
+just test-rust-errors       # Error handling and edge cases
+just test-rust-multi-node   # Multi-node and scalability tests
 just test-zephyr            # Zephyr native_sim tests
+just test-qemu-bsp          # QEMU BSP build verification
 ```
 
 ### First-Time Setup
@@ -171,10 +174,11 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 6 | Actions | Complete |
 | 7 | API alignment (rclrs) | Complete |
 | 8 | Embedded networking | Complete |
-| 9 | Test infrastructure | In Progress |
+| 9 | Test infrastructure | Complete |
 | 12 | QEMU bare-metal tests | Complete |
 | 13 | Bare-metal API simplification | Complete |
 | 14 | Platform BSP libraries | Planning |
+| 17 | Full test coverage | Complete |
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
@@ -183,6 +187,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | Topic | Location |
 |-------|----------|
 | Testing | [tests/README.md](tests/README.md) |
+| Test coverage | [docs/test-coverage.md](docs/test-coverage.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
 | Message generation | [docs/message-generation.md](docs/message-generation.md) |
 | Zephyr setup | [docs/zephyr-setup.md](docs/zephyr-setup.md) |
