@@ -337,3 +337,52 @@ size_t _z_send_tcp(const _z_sys_net_socket_t sock, const uint8_t *ptr, size_t le
 }
 
 #endif  // Z_FEATURE_LINK_TCP == 1
+
+// ============================================================================
+// Serial Link Stubs
+//
+// Serial transport requires direct UART access which smoltcp doesn't provide.
+// These stubs allow compilation with Z_FEATURE_LINK_SERIAL=1 while returning
+// errors at runtime. A BSP can provide real UART-backed implementations by
+// overriding these weak symbols.
+// ============================================================================
+
+#if Z_FEATURE_LINK_SERIAL == 1
+
+#include "zenoh-pico/system/link/serial.h"
+
+z_result_t _z_open_serial_from_dev(_z_sys_net_socket_t *sock, char *dev, uint32_t baudrate) {
+    (void)sock; (void)dev; (void)baudrate;
+    return _Z_ERR_GENERIC;
+}
+
+z_result_t _z_open_serial_from_pins(_z_sys_net_socket_t *sock, uint32_t txpin, uint32_t rxpin, uint32_t baudrate) {
+    (void)sock; (void)txpin; (void)rxpin; (void)baudrate;
+    return _Z_ERR_GENERIC;
+}
+
+z_result_t _z_listen_serial_from_dev(_z_sys_net_socket_t *sock, char *dev, uint32_t baudrate) {
+    (void)sock; (void)dev; (void)baudrate;
+    return _Z_ERR_GENERIC;
+}
+
+z_result_t _z_listen_serial_from_pins(_z_sys_net_socket_t *sock, uint32_t txpin, uint32_t rxpin, uint32_t baudrate) {
+    (void)sock; (void)txpin; (void)rxpin; (void)baudrate;
+    return _Z_ERR_GENERIC;
+}
+
+void _z_close_serial(_z_sys_net_socket_t *sock) {
+    (void)sock;
+}
+
+size_t _z_read_serial_internal(const _z_sys_net_socket_t sock, uint8_t *header, uint8_t *ptr, size_t len) {
+    (void)sock; (void)header; (void)ptr; (void)len;
+    return SIZE_MAX;
+}
+
+size_t _z_send_serial_internal(const _z_sys_net_socket_t sock, uint8_t header, const uint8_t *ptr, size_t len) {
+    (void)sock; (void)header; (void)ptr; (void)len;
+    return SIZE_MAX;
+}
+
+#endif  // Z_FEATURE_LINK_SERIAL == 1

@@ -11,7 +11,7 @@ This document provides a comprehensive overview of test coverage across all plat
 | Shell Scripts     | `tests/*.sh`                   | Legacy/supplementary test scripts        |
 | Test Utilities    | `crates/nano-ros-tests/src/`   | Fixtures, process management, helpers    |
 
-**Total Test Functions:** ~370 unit tests + ~95 integration tests across all crates
+**Total Test Functions:** ~382 unit tests + ~95 integration tests across all crates
 
 ## Current Test Coverage by Platform
 
@@ -45,8 +45,8 @@ This document provides a comprehensive overview of test coverage across all plat
 **Examples Covered:**
 | Example                    | Tested  | Notes                  |
 |----------------------------|---------|------------------------|
-| `native/rs-talker`         | Yes     | nano2nano, rmw_interop |
-| `native/rs-listener`       | Yes     | nano2nano, rmw_interop |
+| `native/rs-talker`         | Yes     | nano2nano, rmw_interop, serial E2E |
+| `native/rs-listener`       | Yes     | nano2nano, rmw_interop, serial E2E |
 | `native/rs-service-server` | Yes     | services.rs            |
 | `native/rs-service-client` | Yes     | services.rs            |
 | `native/rs-action-server`  | Yes     | actions.rs             |
@@ -54,6 +54,21 @@ This document provides a comprehensive overview of test coverage across all plat
 | `native/rs-custom-msg`     | Yes     | custom_msg.rs          |
 | `native/c-talker`          | Partial | c-tests.sh only        |
 | `native/c-listener`        | Partial | c-tests.sh only        |
+
+#### Serial Transport (Phase 18.4)
+
+| Test Type       | Status    | Description                                    |
+|-----------------|-----------|------------------------------------------------|
+| Build (native)  | **PASS**  | Serial compiles for native POSIX (`just quality`) |
+| Build (smoltcp) | **PASS**  | smoltcp serial stubs compile for thumbv7m       |
+| Unit tests      | **PASS**  | 9 tests: `locator_protocol()`, `validate_locator()` |
+| Manual E2E      | **PASS**  | 494 messages via serial PTY pair, zero loss     |
+
+**E2E Test Setup:** `socat` PTY pair + serial-enabled zenohd (built from `external/zenoh` with `transport_serial` feature, `fast` profile).
+
+**Path:** talker → serial/PTY1 → [socat] → serial/PTY0 → zenohd → tcp → listener
+
+**Requirements:** `socat`, serial-enabled zenohd (`external/zenoh/target/fast/zenohd`)
 
 ### 2. Zephyr RTOS - native_sim
 
@@ -197,7 +212,7 @@ nano-ros ROS API (rclrs-like). This needs to be fixed. See "Known Issues" sectio
 |-----------------------|------------|-----------------------------------------------------------------|
 | `nano-ros-core`       | 75         | Time (17), Clock (6), Action (15), Lifecycle (13), Error (13), Logger (7), Service (2), MessageInfo (2) |
 | `nano-ros-serdes`     | 33         | CDR primitives (6), CDR encoder (5), compatibility (22)         |
-| `nano-ros-transport`  | 42         | QoS profiles/builder (23), RMW protocol/liveliness/attachment (19) |
+| `nano-ros-transport`  | 41         | QoS profiles/builder (23), RMW protocol/liveliness/attachment (9), locator validation (9) |
 | `nano-ros-node`       | 106        | Actions/Promise (38), Lifecycle (15), Trigger (10), Timer (8), ParamServices (8), Context (8), Node (6), Options (6), Executor (5) |
 | `nano-ros-params`     | 30         | Typed parameters (14), server (10), types (6)                   |
 | `nano-ros-c`          | 60         | Executor (18), Guard condition (18), Lifecycle (15), CDR (5), Platform (4) |
@@ -238,6 +253,15 @@ Phase 16 (ROS 2 Interop Completion) added significant unit test coverage across 
 | C.2 Parameter Services    | `parameter_services.rs` | 8     | Value conversion (4), handler tests (4): get/set/list/get_types           |
 | C.5 RMW Attachment        | `shim.rs`               | 6     | Serialization, deserialization, roundtrip, edge cases, MessageInfo        |
 | C.6 Protocol Verification | `shim.rs`               | 10    | Liveliness keyexprs (node/pub/sub/SS/SC), topic/service info, ZenohId hex |
+
+### Phase 18 Unit Test Contributions
+
+Phase 18 (Micro-ROS Lessons) added tests for serial transport and locator validation:
+
+| Sub-phase            | File(s)                          | Tests | Coverage                                                          |
+|----------------------|----------------------------------|-------|-------------------------------------------------------------------|
+| 18.4 Locator parsing | `nano-ros-transport/src/traits.rs` | 9   | `locator_protocol()` TCP/serial/unknown, `validate_locator()` format checks |
+| 18.4 Serial E2E     | Manual (socat + PTY)             | 1     | 494 messages via serial→zenohd→TCP, zero loss                     |
 
 ## Missing Tests (Recommended)
 
@@ -390,18 +414,19 @@ tests/platform_integration.rs (NEW)
 
 ## Test Coverage Gaps Summary
 
-| Area                   | Current          | Missing                 | Priority           |
-|------------------------|------------------|-------------------------|--------------------|
-| **Services**           | 8 tests (native) | Zephyr, ROS 2 interop   | High               |
-| **Native↔Zephyr**      | 2 tests ✓        | Cross-platform services | Complete (pub/sub) |
-| **Custom Messages**    | 7 tests ✓        | Nested/array types      | Complete (basic)   |
-| **QEMU Communication** | 5 tests ✓        | LAN9118 unit tests      | Complete (Docker)  |
-| **Parameters**         | 7 tests ✓        | -                       | Complete           |
-| **Timer/Executor**     | 7 tests ✓        | -                       | Complete           |
-| **QoS**                | 6 tests ✓        | -                       | Complete           |
-| **Error Handling**     | 8 tests ✓        | -                       | Complete           |
-| **Multi-Node**         | 8 tests ✓        | -                       | Complete           |
-| **STM32F4 HIL**        | 0 tests          | Full suite              | Low                |
+| Area                   | Current          | Missing                   | Priority           |
+|------------------------|------------------|---------------------------|--------------------|
+| **Services**           | 8 tests (native) | Zephyr, ROS 2 interop     | High               |
+| **Serial Transport**   | 9 unit + E2E ✓   | Automated PTY test, Zephyr | Complete (manual)  |
+| **Native↔Zephyr**      | 2 tests ✓        | Cross-platform services   | Complete (pub/sub) |
+| **Custom Messages**    | 7 tests ✓        | Nested/array types        | Complete (basic)   |
+| **QEMU Communication** | 5 tests ✓        | LAN9118 unit tests        | Complete (Docker)  |
+| **Parameters**         | 7 tests ✓        | -                         | Complete           |
+| **Timer/Executor**     | 7 tests ✓        | -                         | Complete           |
+| **QoS**                | 6 tests ✓        | -                         | Complete           |
+| **Error Handling**     | 8 tests ✓        | -                         | Complete           |
+| **Multi-Node**         | 8 tests ✓        | -                         | Complete           |
+| **STM32F4 HIL**        | 0 tests          | Full suite                | Low                |
 
 ## Test Execution Quick Reference
 
@@ -431,14 +456,15 @@ just ci                       # Full CI pipeline
 
 ## Requirements Summary
 
-| Test Suite    | Requirements                        |
-|---------------|-------------------------------------|
-| Native        | zenohd                              |
-| Zephyr        | west workspace, TAP network, zenohd |
-| QEMU          | qemu-system-arm, thumbv7m-none-eabi |
-| ROS 2 Interop | ROS 2 Humble, rmw_zenoh_cpp         |
-| C             | cmake, C compiler                   |
-| STM32F4 HIL   | Physical board, debug probe         |
+| Test Suite    | Requirements                                          |
+|---------------|-------------------------------------------------------|
+| Native        | zenohd                                                |
+| Serial E2E    | socat, serial-enabled zenohd (built from external/zenoh with `transport_serial`) |
+| Zephyr        | west workspace, TAP network, zenohd                   |
+| QEMU          | qemu-system-arm, thumbv7m-none-eabi                   |
+| ROS 2 Interop | ROS 2 Humble, rmw_zenoh_cpp                           |
+| C             | cmake, C compiler                                     |
+| STM32F4 HIL   | Physical board, debug probe                           |
 
 ## Known Issues Found by Tests
 

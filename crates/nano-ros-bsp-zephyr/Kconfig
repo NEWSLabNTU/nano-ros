@@ -49,6 +49,14 @@ config NANO_ROS_INIT_DELAY_MS
     help
       Delay before initializing zenoh to allow network to settle.
 
+config NANO_ROS_TRANSPORT_SERIAL
+    bool "Enable serial/UART transport"
+    select ZENOH_PICO_LINK_SERIAL
+    help
+      Enable serial/UART transport for zenoh-pico.
+      Use with a serial locator, e.g.:
+        CONFIG_NANO_ROS_ZENOH_LOCATOR="serial/uart1#baudrate=115200"
+
 config NANO_ROS_AUTO_INIT
     bool "Automatic initialization"
     default n

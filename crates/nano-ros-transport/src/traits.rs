@@ -564,7 +564,7 @@ impl QosSettings {
 /// Transport session configuration
 #[derive(Debug, Clone)]
 pub struct TransportConfig<'a> {
-    /// Peer locator (e.g., "tcp/192.168.1.1:7447")
+    /// Peer locator (e.g., "tcp/192.168.1.1:7447" or "serial//dev/ttyUSB0#baudrate=115200")
     pub locator: Option<&'a str>,
     /// Session mode: client, peer, or router
     pub mode: SessionMode,
@@ -576,6 +576,70 @@ impl Default for TransportConfig<'_> {
             locator: None,
             mode: SessionMode::Client,
         }
+    }
+}
+
+/// Locator transport protocol
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LocatorProtocol {
+    /// TCP transport (e.g., "tcp/127.0.0.1:7447")
+    Tcp,
+    /// Serial/UART transport (e.g., "serial//dev/ttyUSB0#baudrate=115200")
+    Serial,
+    /// Unknown protocol
+    Unknown,
+}
+
+/// Parse the protocol from a locator string
+pub fn locator_protocol(locator: &str) -> LocatorProtocol {
+    if locator.starts_with("tcp/") {
+        LocatorProtocol::Tcp
+    } else if locator.starts_with("serial/") {
+        LocatorProtocol::Serial
+    } else {
+        LocatorProtocol::Unknown
+    }
+}
+
+/// Validate a locator string format.
+///
+/// Returns `Ok(())` if the locator is well-formed, or an error message describing
+/// the problem. This provides early feedback before zenoh-pico rejects a bad locator.
+///
+/// Supported formats:
+/// - TCP: `tcp/<host>:<port>` (e.g., `tcp/127.0.0.1:7447`)
+/// - Serial: `serial/<device>#baudrate=<rate>` (e.g., `serial//dev/ttyUSB0#baudrate=115200`)
+pub fn validate_locator(locator: &str) -> Result<(), &'static str> {
+    match locator_protocol(locator) {
+        LocatorProtocol::Tcp => {
+            let rest = &locator[4..]; // skip "tcp/"
+            if !rest.contains(':') {
+                return Err("TCP locator must contain host:port (e.g., tcp/127.0.0.1:7447)");
+            }
+            Ok(())
+        }
+        LocatorProtocol::Serial => {
+            let rest = &locator[7..]; // skip "serial/"
+            if rest.is_empty() {
+                return Err(
+                    "serial locator must specify device (e.g., serial//dev/ttyUSB0#baudrate=115200)",
+                );
+            }
+            if !rest.contains("#baudrate=") {
+                return Err(
+                    "serial locator must include #baudrate=RATE (e.g., serial//dev/ttyUSB0#baudrate=115200)",
+                );
+            }
+            // Validate baudrate is numeric
+            if let Some(baud_str) = rest.split("#baudrate=").nth(1) {
+                let baud_str = baud_str.split('#').next().unwrap_or(baud_str);
+                if baud_str.parse::<u32>().is_err() {
+                    return Err("serial baudrate must be a number");
+                }
+            }
+            Ok(())
+        }
+        LocatorProtocol::Unknown => Err("unknown locator protocol (expected tcp/ or serial/)"),
     }
 }
 
@@ -1107,5 +1171,67 @@ mod tests {
             .depth(42);
         let s: heapless::String<32> = qos.to_qos_string();
         assert_eq!(s.as_str(), "2:1:2,42:,:,:,,");
+    }
+
+    // --- Locator validation tests ---
+
+    #[test]
+    fn test_locator_protocol_tcp() {
+        assert_eq!(locator_protocol("tcp/127.0.0.1:7447"), LocatorProtocol::Tcp);
+    }
+
+    #[test]
+    fn test_locator_protocol_serial() {
+        assert_eq!(
+            locator_protocol("serial//dev/ttyUSB0#baudrate=115200"),
+            LocatorProtocol::Serial
+        );
+    }
+
+    #[test]
+    fn test_locator_protocol_unknown() {
+        assert_eq!(
+            locator_protocol("udp/127.0.0.1:7447"),
+            LocatorProtocol::Unknown
+        );
+        assert_eq!(locator_protocol(""), LocatorProtocol::Unknown);
+    }
+
+    #[test]
+    fn test_validate_tcp_locator_ok() {
+        assert!(validate_locator("tcp/127.0.0.1:7447").is_ok());
+        assert!(validate_locator("tcp/192.168.1.1:7447").is_ok());
+    }
+
+    #[test]
+    fn test_validate_tcp_locator_missing_port() {
+        assert!(validate_locator("tcp/127.0.0.1").is_err());
+    }
+
+    #[test]
+    fn test_validate_serial_locator_ok() {
+        assert!(validate_locator("serial//dev/ttyUSB0#baudrate=115200").is_ok());
+        assert!(validate_locator("serial//dev/ttyACM0#baudrate=9600").is_ok());
+        assert!(validate_locator("serial/uart1#baudrate=921600").is_ok());
+    }
+
+    #[test]
+    fn test_validate_serial_locator_empty_device() {
+        assert!(validate_locator("serial/").is_err());
+    }
+
+    #[test]
+    fn test_validate_serial_locator_missing_baudrate() {
+        assert!(validate_locator("serial//dev/ttyUSB0").is_err());
+    }
+
+    #[test]
+    fn test_validate_serial_locator_invalid_baudrate() {
+        assert!(validate_locator("serial//dev/ttyUSB0#baudrate=abc").is_err());
+    }
+
+    #[test]
+    fn test_validate_unknown_protocol() {
+        assert!(validate_locator("udp/127.0.0.1:7447").is_err());
     }
 }
