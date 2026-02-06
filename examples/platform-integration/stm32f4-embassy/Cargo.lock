@@ -583,6 +583,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
+name = "nano-ros"
+version = "0.1.0"
+dependencies = [
+ "nano-ros-core",
+ "nano-ros-macros",
+ "nano-ros-node",
+ "nano-ros-params",
+ "nano-ros-transport",
+]
+
+[[package]]
 name = "nano-ros-core"
 version = "0.1.0"
 dependencies = [
@@ -591,10 +602,44 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "nano-ros-node"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nano-ros-core",
+ "nano-ros-params",
+ "nano-ros-transport",
+]
+
+[[package]]
+name = "nano-ros-params"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+]
+
+[[package]]
 name = "nano-ros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nano-ros-transport"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nano-ros-core",
 ]
 
 [[package]]
@@ -784,8 +829,7 @@ dependencies = [
  "embassy-sync 0.6.2",
  "embassy-time",
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nano-ros",
  "panic-halt",
  "panic-probe",
  "static_cell",

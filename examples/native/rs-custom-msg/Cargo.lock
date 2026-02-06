@@ -394,8 +394,6 @@ dependencies = [
  "heapless",
  "log",
  "nano-ros",
- "nano-ros-macros",
- "nano-ros-serdes",
  "std_msgs",
 ]
 
