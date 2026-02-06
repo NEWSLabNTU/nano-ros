@@ -211,5 +211,5 @@ pub use lifecycle::LifecycleNode;
 pub use shim::{
     ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
     ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,
-    ShimNodeServiceServer, ShimNodeSubscriber,
+    ShimNodeServiceServer, ShimNodeSubscription,
 };

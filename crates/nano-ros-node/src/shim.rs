@@ -278,7 +278,7 @@ impl<'a> ShimNode<'a> {
         })
     }
 
-    /// Create a subscriber for the given topic
+    /// Create a subscription for the given topic
     ///
     /// # Arguments
     ///
@@ -292,40 +292,40 @@ impl<'a> ShimNode<'a> {
     /// # Example
     ///
     /// ```ignore
-    /// let mut subscriber = node.create_subscriber::<Int32>("/chatter")?;
+    /// let mut subscription = node.create_subscription::<Int32>("/chatter")?;
     ///
     /// // In your polling loop:
-    /// if let Some(msg) = subscriber.try_recv()? {
+    /// if let Some(msg) = subscription.try_recv()? {
     ///     // process message
     /// }
     /// ```
-    pub fn create_subscriber<M: RosMessage>(
+    pub fn create_subscription<M: RosMessage>(
         &mut self,
         topic_name: &str,
-    ) -> Result<ShimNodeSubscriber<M, 1024>, ShimNodeError> {
-        self.create_subscriber_sized::<M, 1024>(topic_name)
+    ) -> Result<ShimNodeSubscription<M, 1024>, ShimNodeError> {
+        self.create_subscription_sized::<M, 1024>(topic_name)
     }
 
-    /// Create a subscriber with custom buffer size
-    pub fn create_subscriber_sized<M: RosMessage, const RX_BUF: usize>(
+    /// Create a subscription with custom buffer size
+    pub fn create_subscription_sized<M: RosMessage, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
-    ) -> Result<ShimNodeSubscriber<M, RX_BUF>, ShimNodeError> {
-        self.create_subscriber_with_qos::<M, RX_BUF>(topic_name, QosSettings::default())
+    ) -> Result<ShimNodeSubscription<M, RX_BUF>, ShimNodeError> {
+        self.create_subscription_with_qos::<M, RX_BUF>(topic_name, QosSettings::default())
     }
 
-    /// Create a subscriber with custom QoS settings and buffer size
-    pub fn create_subscriber_with_qos<M: RosMessage, const RX_BUF: usize>(
+    /// Create a subscription with custom QoS settings and buffer size
+    pub fn create_subscription_with_qos<M: RosMessage, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
         qos: QosSettings,
-    ) -> Result<ShimNodeSubscriber<M, RX_BUF>, ShimNodeError> {
+    ) -> Result<ShimNodeSubscription<M, RX_BUF>, ShimNodeError> {
         let topic =
             TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_domain(self.domain_id);
 
         let subscriber = self.session.create_subscriber(&topic, qos)?;
 
-        Ok(ShimNodeSubscriber {
+        Ok(ShimNodeSubscription {
             subscriber,
             buffer: [0u8; RX_BUF],
             _phantom: PhantomData,
@@ -617,19 +617,19 @@ impl<M: RosMessage> ShimNodePublisher<M> {
 }
 
 // ============================================================================
-// ShimNodeSubscriber
+// ShimNodeSubscription
 // ============================================================================
 
-/// Subscriber handle for a typed message
+/// Subscription handle for a typed message
 ///
-/// Created via `ShimNode::create_subscriber()`.
-pub struct ShimNodeSubscriber<M: RosMessage, const RX_BUF: usize = 1024> {
+/// Created via `ShimNode::create_subscription()`.
+pub struct ShimNodeSubscription<M: RosMessage, const RX_BUF: usize = 1024> {
     subscriber: ShimSubscriber,
     buffer: [u8; RX_BUF],
     _phantom: PhantomData<M>,
 }
 
-impl<M: RosMessage, const RX_BUF: usize> ShimNodeSubscriber<M, RX_BUF> {
+impl<M: RosMessage, const RX_BUF: usize> ShimNodeSubscription<M, RX_BUF> {
     /// Try to receive a message (non-blocking)
     ///
     /// # Returns

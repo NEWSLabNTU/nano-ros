@@ -51,8 +51,8 @@ extern crate alloc;
 
 // Re-export core types
 pub use nano_ros_core::{
-    CdrReader, CdrWriter, Clock, ClockType, Deserialize, Duration, Logger, MessageInfo,
-    PUBLISHER_GID_SIZE, RosMessage, RosService, Serialize, Time,
+    CdrReader, CdrWriter, Clock, ClockType, DeserError, Deserialize, Duration, Logger, MessageInfo,
+    PUBLISHER_GID_SIZE, RosMessage, RosService, SerError, Serialize, Time,
 };
 
 // Re-export node types
@@ -131,8 +131,48 @@ pub use nano_ros_transport::ShimLivelinessToken;
 pub use nano_ros_node::{
     ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
     ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,
-    ShimNodeServiceServer, ShimNodeSubscriber,
+    ShimNodeServiceServer, ShimNodeSubscription,
 };
+
+// Clean type aliases for shim types (only when zenoh feature is NOT active to avoid conflicts)
+#[cfg(all(
+    any(
+        feature = "shim-posix",
+        feature = "shim-zephyr",
+        feature = "shim-smoltcp"
+    ),
+    not(feature = "zenoh")
+))]
+mod shim_aliases {
+    pub type Publisher<M> = super::ShimNodePublisher<M>;
+    pub type Subscription<M, const N: usize = 1024> = super::ShimNodeSubscription<M, N>;
+    pub type Service<S, const REQ: usize = 1024, const REP: usize = 1024> =
+        super::ShimNodeServiceServer<S, REQ, REP>;
+    pub type Client<S, const REQ: usize = 1024, const REP: usize = 1024> =
+        super::ShimNodeServiceClient<S, REQ, REP>;
+    pub type ActionServer<
+        A: nano_ros_core::RosAction,
+        const G: usize = 1024,
+        const R: usize = 1024,
+        const F: usize = 1024,
+        const M: usize = 4,
+    > = super::ShimNodeActionServer<A, G, R, F, M>;
+    pub type ActionClient<
+        A: nano_ros_core::RosAction,
+        const G: usize = 1024,
+        const R: usize = 1024,
+        const F: usize = 1024,
+    > = super::ShimNodeActionClient<A, G, R, F>;
+}
+#[cfg(all(
+    any(
+        feature = "shim-posix",
+        feature = "shim-zephyr",
+        feature = "shim-smoltcp"
+    ),
+    not(feature = "zenoh")
+))]
+pub use shim_aliases::*;
 
 // Re-export service types
 pub use nano_ros_core::{ServiceClient, ServiceServer};
@@ -218,8 +258,19 @@ pub mod prelude {
     ))]
     pub use crate::{
         ShimExecutor, ShimNode, ShimNodeActionClient, ShimNodeActionServer, ShimNodeError,
-        ShimNodePublisher, ShimNodeServiceClient, ShimNodeServiceServer, ShimNodeSubscriber,
+        ShimNodePublisher, ShimNodeServiceClient, ShimNodeServiceServer, ShimNodeSubscription,
     };
+
+    // Re-export clean type aliases
+    #[cfg(all(
+        any(
+            feature = "shim-posix",
+            feature = "shim-zephyr",
+            feature = "shim-smoltcp"
+        ),
+        not(feature = "zenoh")
+    ))]
+    pub use crate::shim_aliases::*;
 
     // Re-export parameter types
     pub use crate::{ParameterServer, ParameterType, ParameterValue};
