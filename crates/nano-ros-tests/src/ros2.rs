@@ -21,6 +21,22 @@ pub fn is_ros2_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Require ROS 2 for a test (skips if not available)
+///
+/// Returns true if ROS 2 is available, false otherwise.
+/// Prints a skip message when returning false.
+pub fn require_ros2() -> bool {
+    if !is_ros2_available() {
+        eprintln!("Skipping test: ROS 2 not found");
+        return false;
+    }
+    if !is_rmw_zenoh_available() {
+        eprintln!("Skipping test: rmw_zenoh_cpp not found");
+        return false;
+    }
+    true
+}
+
 /// Check if rmw_zenoh_cpp is available
 pub fn is_rmw_zenoh_available() -> bool {
     Command::new("bash")

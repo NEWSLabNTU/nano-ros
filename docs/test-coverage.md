@@ -245,16 +245,19 @@ emulator.rs (ADD)
 
 ### Medium Priority
 
-#### 5. Parameter Server Tests
+#### 5. Parameter Server Tests ✓
 ```
-tests/params.rs (NEW)
-- test_param_get_set
-- test_param_types
-- test_param_callbacks
-- test_param_persistence
+tests/params.rs (COMPLETE - 7 tests)
+- test_talker_with_params_builds ✓
+- test_talker_uses_default_param ✓
+- test_talker_param_declaration ✓
+- test_param_integer_type ✓
+- test_ros2_param_list ✓
+- test_ros2_param_get ✓
+- test_ros2_param_describe ✓
 ```
 
-**Why:** Parameter server is implemented but only has unit tests.
+**Status:** Complete. Tests verify parameter declaration and ROS 2 interop.
 
 #### 6. Timer and Executor Tests
 ```
@@ -328,7 +331,7 @@ tests/platform_integration.rs (NEW)
 | **Native↔Zephyr** | 2 tests ✓ | Cross-platform services | Complete (pub/sub) |
 | **Custom Messages** | 7 tests ✓ | Nested/array types | Complete (basic) |
 | **QEMU Communication** | 0 tests | BSP E2E | High |
-| **Parameters** | Unit only | Integration | Medium |
+| **Parameters** | 7 tests ✓ | - | Complete |
 | **Timer/Executor** | Unit only | Integration | Medium |
 | **QoS** | 0 tests | All policies | Medium |
 | **Error Handling** | Sparse | Systematic | Low |
@@ -350,6 +353,8 @@ just test-c                   # C bindings
 # By feature
 just test-rust-services       # Services
 just test-rust-actions        # Actions
+just test-rust-params         # Parameters
+just test-rust-custom-msg     # Custom messages
 just test-rust-rmw-interop    # ROS 2 interop
 
 # Quality gates

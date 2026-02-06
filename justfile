@@ -598,6 +598,10 @@ test-rust-services:
 test-rust-custom-msg:
     cargo test -p nano-ros-tests --test custom_msg -- --nocapture
 
+# Run Rust parameter server tests
+test-rust-params:
+    cargo test -p nano-ros-tests --test params -- --nocapture
+
 # Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
 test-rust-actions-rmw-interop:
     cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture
