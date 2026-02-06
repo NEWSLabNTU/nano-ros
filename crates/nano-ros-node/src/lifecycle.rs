@@ -30,7 +30,7 @@ pub enum LifecycleError {
 // LIFECYCLE NODE (alloc — Box callbacks)
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "alloc")]
+#[cfg(all(feature = "zenoh", feature = "alloc"))]
 use alloc::boxed::Box;
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]

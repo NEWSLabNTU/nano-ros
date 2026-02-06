@@ -106,6 +106,24 @@ pub unsafe extern "C" fn memchr(s: *const c_void, c: c_int, n: usize) -> *mut c_
     }
 }
 
+/// strchr - find character in string
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn strchr(s: *const c_char, c: c_int) -> *mut c_char {
+    unsafe {
+        let byte = c as u8;
+        let mut ptr = s;
+        loop {
+            if *ptr as u8 == byte {
+                return ptr as *mut c_char;
+            }
+            if *ptr == 0 {
+                return core::ptr::null_mut();
+            }
+            ptr = ptr.add(1);
+        }
+    }
+}
+
 /// strcmp - compare strings
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn strcmp(s1: *const c_char, s2: *const c_char) -> c_int {

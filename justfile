@@ -4,7 +4,8 @@ CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable
 # Example lists (single source of truth for build/format/check/clean recipes)
 NATIVE_EXAMPLES := "rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client"
 EMBEDDED_EXAMPLES := "stm32f4-rtic stm32f4-embassy stm32f4-polling stm32f4-smoltcp"
-QEMU_EXAMPLES := "platform-integration/qemu-smoltcp-bridge qemu/rs-test platform-integration/qemu-lan9118 qemu/rs-talker qemu/rs-listener qemu/bsp-talker qemu/bsp-listener"
+QEMU_EXAMPLES := "platform-integration/qemu-smoltcp-bridge qemu/rs-test platform-integration/qemu-lan9118"
+QEMU_ZENOH_EXAMPLES := "qemu/rs-talker qemu/rs-listener qemu/bsp-talker qemu/bsp-listener"
 
 default:
     @just --list
@@ -103,7 +104,7 @@ quality:
     echo ""
     echo "=== QEMU Examples ==="
     qemu_failed=0
-    for ex in {{QEMU_EXAMPLES}}; do
+    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     done
     if [ $qemu_failed -ne 0 ]; then
@@ -294,7 +295,7 @@ clean-examples-native:
 # Clean QEMU example build artifacts
 clean-examples-qemu:
     #!/usr/bin/env bash
-    for ex in {{QEMU_EXAMPLES}}; do
+    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         rm -rf examples/$ex/target
     done
     echo "QEMU example build artifacts cleaned"
@@ -372,12 +373,17 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU examples
+# Build QEMU examples (requires zenoh-pico: run 'just build-zenoh-pico-arm' first)
 build-examples-qemu:
     #!/usr/bin/env bash
     set -e
+    if [ ! -f build/qemu-zenoh-pico/libzenohpico.a ]; then
+        echo "Error: zenoh-pico ARM library not found at build/qemu-zenoh-pico/libzenohpico.a"
+        echo "Run: just build-zenoh-pico-arm"
+        exit 1
+    fi
     echo "Building QEMU examples..."
-    for ex in {{QEMU_EXAMPLES}}; do
+    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo build --release)
     done
 
@@ -386,7 +392,7 @@ format-examples-qemu:
     #!/usr/bin/env bash
     set -e
     echo "Formatting QEMU examples..."
-    for ex in {{QEMU_EXAMPLES}}; do
+    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt)
     done
 
@@ -395,7 +401,7 @@ check-examples-qemu:
     #!/usr/bin/env bash
     set -e
     echo "Checking QEMU examples..."
-    for ex in {{QEMU_EXAMPLES}}; do
+    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
     done
 
