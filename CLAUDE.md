@@ -13,11 +13,15 @@ nano-ros/
 │   ├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
 │   ├── nano-ros-params/       # Parameter server
 │   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
-│   ├── nano-ros-node/         # High-level node API
+│   ├── nano-ros-node/         # High-level node API + parameter_services
 │   ├── nano-ros-tests/        # Integration test crate
 │   ├── nano-ros-bsp-qemu/     # QEMU MPS2-AN385 Board Support Package
 │   ├── nano-ros-bsp-stm32f4/  # STM32F4 Board Support Package
 │   ├── nano-ros-bsp-zephyr/   # Zephyr RTOS Board Support Package (C)
+│   ├── rcl-interfaces/        # Generated ROS 2 interface types
+│   │   └── generated/         # cargo nano-ros generate output
+│   │       ├── rcl_interfaces/    # Parameter service types
+│   │       └── builtin_interfaces/ # Time, Duration types
 │   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
 │   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
 ├── colcon-nano-ros/           # Message binding generator (cargo nano-ros)
@@ -114,6 +118,12 @@ QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
 - Rename to `_name` with a comment explaining why
 - Use `#[allow(dead_code)]` for test struct fields
 
+### Testing
+- **Reusable tests** belong in `crates/nano-ros-tests/tests/` (Rust integration tests) or `tests/` (shell scripts)
+- **Temporary/exploratory tests** can be run directly in the Bash tool, but should be converted to proper test scripts once the feature is validated
+- Test scripts in `tests/` should have justfile entries for easy invocation (e.g., `just test-ros2-interop-debug`)
+- ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `crates/nano-ros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
+
 ### Temporary Scripts
 - Create temporary scripts in `$project/tmp/` directory (not `/tmp`)
 - Use Write/Edit tools to create files (avoid cat + heredoc patterns)
@@ -203,6 +213,15 @@ just generate-bindings
 ### Platform Backends
 Selected via feature flags: `posix` (desktop), `zephyr` (Zephyr RTOS), `smoltcp` (bare-metal).
 
+### Parameter Services
+Enable with `param-services` feature in `nano-ros-node`:
+```toml
+nano-ros-node = { version = "*", features = ["param-services"] }
+```
+- Provides ROS 2 parameter service handlers (`~/get_parameters`, `~/set_parameters`, etc.)
+- Uses generated `rcl_interfaces` types from `crates/rcl-interfaces/generated/`
+- Handlers return `Box<Response>` due to large heapless arrays (~1MB per ParameterValue)
+
 ### ROS 2 Interop
 Uses rmw_zenoh-compatible protocol. Key format for Humble:
 - Data keyexpr: `<domain>/<topic>/<type>/TypeHashNotSupported`
@@ -217,7 +236,7 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 1 | CDR, types, proc macros | Complete |
 | 2A | ROS 2 Interoperability | Complete |
 | 2B | Zephyr integration | Complete |
-| 3 | Services, parameters | In Progress |
+| 3 | Services, parameters | Complete |
 | 4 | Message generation | Complete |
 | 5 | RTIC integration | Complete |
 | 6 | Actions | Complete |
@@ -227,7 +246,12 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 12 | QEMU bare-metal tests | Complete |
 | 13 | Bare-metal API simplification | Complete |
 | 14 | Platform BSP libraries | Planning |
+| 16 | ROS 2 Interop Completion | In Progress |
 | 17 | Full test coverage | Complete |
+
+**Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
+- Integration tests requiring ROS 2 environment
+- Iron+ type hash support (future work)
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
@@ -248,6 +272,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | Schedulability | [docs/schedulability-analysis.md](docs/schedulability-analysis.md) |
 | Real-time lints | [docs/realtime-lint-guide.md](docs/realtime-lint-guide.md) |
 | Actions API | [docs/roadmap/phase-6-actions.md](docs/roadmap/phase-6-actions.md) |
+| ROS 2 Interop (Phase 16) | [docs/roadmap/phase-16-ros2-interop-completion.md](docs/roadmap/phase-16-ros2-interop-completion.md) |
 | QEMU/physical devices | [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) |
 | Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
 
