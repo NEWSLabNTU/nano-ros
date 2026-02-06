@@ -436,7 +436,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 
         // Declare node liveliness token for ROS 2 discovery
         let node_keyexpr: heapless::String<256> =
-            Ros2Liveliness::node_keyexpr(config.domain_id, &zid, config.name);
+            Ros2Liveliness::node_keyexpr(config.domain_id, &zid, config.namespace, config.name);
         #[cfg(feature = "log")]
         log::debug!("Node liveliness keyexpr: {}", node_keyexpr);
         // Create null-terminated keyexpr buffer for C API
@@ -488,7 +488,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 
         // Declare node liveliness token for ROS 2 discovery
         let node_keyexpr: heapless::String<256> =
-            Ros2Liveliness::node_keyexpr(config.domain_id, &zid, config.name);
+            Ros2Liveliness::node_keyexpr(config.domain_id, &zid, config.namespace, config.name);
         #[cfg(feature = "log")]
         log::debug!("Node liveliness keyexpr: {}", node_keyexpr);
         // Create null-terminated keyexpr buffer for C API
@@ -665,6 +665,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let pub_keyexpr: heapless::String<256> = Ros2Liveliness::publisher_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &topic_info,
             &options.qos,
@@ -737,6 +738,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let sub_keyexpr: heapless::String<256> = Ros2Liveliness::subscriber_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &topic_info,
             &options.qos,
@@ -890,6 +892,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let srv_keyexpr: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &service_info,
             &qos,
@@ -966,6 +969,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let srv_keyexpr: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &service_info,
             &qos,
@@ -1048,54 +1052,71 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
             .with_domain(self.domain_id);
 
+        // Build sub-service type names: {ACTION_NAME}SendGoal_, {ACTION_NAME}GetResult_, etc.
+        let mut send_goal_type: heapless::String<128> = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut send_goal_type,
+            format_args!("{}SendGoal_", A::ACTION_NAME),
+        );
+        let mut get_result_type: heapless::String<128> = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut get_result_type,
+            format_args!("{}GetResult_", A::ACTION_NAME),
+        );
+        let mut feedback_type: heapless::String<128> = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut feedback_type,
+            format_args!("{}FeedbackMessage_", A::ACTION_NAME),
+        );
+
         // Create send_goal service server
-        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0); // Domain already in key
+        let send_goal_name: heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info = ServiceInfo::new(&send_goal_name, &send_goal_type, A::ACTION_HASH)
+            .with_domain(self.domain_id);
         let send_goal_server = self
             .session
             .create_service_server(&send_goal_info)
             .map_err(|_| ConnectedNodeError::ActionServerCreationFailed)?;
 
         // Create cancel_goal service server
-        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_name: heapless::String<256> = action_info.cancel_goal_key();
         let cancel_goal_info = ServiceInfo::new(
-            &cancel_goal_keyexpr,
+            &cancel_goal_name,
             "action_msgs::srv::dds_::CancelGoal_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let cancel_goal_server = self
             .session
             .create_service_server(&cancel_goal_info)
             .map_err(|_| ConnectedNodeError::ActionServerCreationFailed)?;
 
         // Create get_result service server
-        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let get_result_name: heapless::String<256> = action_info.get_result_key();
+        let get_result_info = ServiceInfo::new(&get_result_name, &get_result_type, A::ACTION_HASH)
+            .with_domain(self.domain_id);
         let get_result_server = self
             .session
             .create_service_server(&get_result_info)
             .map_err(|_| ConnectedNodeError::ActionServerCreationFailed)?;
 
         // Create feedback publisher
-        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let feedback_name: heapless::String<256> = action_info.feedback_key();
+        let feedback_topic = TopicInfo::new(&feedback_name, &feedback_type, A::ACTION_HASH)
+            .with_domain(self.domain_id);
         let feedback_publisher = self
             .session
             .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| ConnectedNodeError::ActionServerCreationFailed)?;
 
         // Create status publisher
-        let status_keyexpr: heapless::String<256> = action_info.status_key();
+        let status_name: heapless::String<256> = action_info.status_key();
         let status_topic = TopicInfo::new(
-            &status_keyexpr,
+            &status_name,
             "action_msgs::msg::dds_::GoalStatusArray_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let status_publisher = self
             .session
             .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
@@ -1111,11 +1132,21 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             |session: &mut <ZenohTransport as Transport>::Session,
              tokens: &mut heapless::Vec<_, MAX_TOKENS>,
              keyexpr: &heapless::String<256>| {
+                if keyexpr.is_empty() {
+                    log::warn!("Action liveliness keyexpr is empty (string overflow?)");
+                    return;
+                }
+                log::debug!("Action liveliness keyexpr: {}", keyexpr);
                 let mut keyexpr_buf = [0u8; 257];
                 let bytes = keyexpr.as_bytes();
                 keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
-                if let Ok(token) = session.declare_liveliness(&keyexpr_buf[..=bytes.len()]) {
-                    let _ = tokens.push(token);
+                match session.declare_liveliness(&keyexpr_buf[..=bytes.len()]) {
+                    Ok(token) => {
+                        let _ = tokens.push(token);
+                    }
+                    Err(_) => {
+                        log::warn!("Failed to declare action liveliness token");
+                    }
                 }
             };
 
@@ -1123,6 +1154,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let send_goal_lv: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &send_goal_info,
             &service_qos,
@@ -1133,6 +1165,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let cancel_goal_lv: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &cancel_goal_info,
             &service_qos,
@@ -1143,6 +1176,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let get_result_lv: heapless::String<256> = Ros2Liveliness::service_server_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &get_result_info,
             &service_qos,
@@ -1153,6 +1187,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let feedback_lv: heapless::String<256> = Ros2Liveliness::publisher_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &feedback_topic,
             &topic_qos,
@@ -1163,6 +1198,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let status_lv: heapless::String<256> = Ros2Liveliness::publisher_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &status_topic,
             &topic_qos,
@@ -1231,54 +1267,71 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
             .with_domain(self.domain_id);
 
+        // Build sub-service type names: {ACTION_NAME}SendGoal_, {ACTION_NAME}GetResult_, etc.
+        let mut send_goal_type: heapless::String<128> = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut send_goal_type,
+            format_args!("{}SendGoal_", A::ACTION_NAME),
+        );
+        let mut get_result_type: heapless::String<128> = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut get_result_type,
+            format_args!("{}GetResult_", A::ACTION_NAME),
+        );
+        let mut feedback_type: heapless::String<128> = heapless::String::new();
+        let _ = core::fmt::write(
+            &mut feedback_type,
+            format_args!("{}FeedbackMessage_", A::ACTION_NAME),
+        );
+
         // Create send_goal service client
-        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let send_goal_name: heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info = ServiceInfo::new(&send_goal_name, &send_goal_type, A::ACTION_HASH)
+            .with_domain(self.domain_id);
         let send_goal_client = self
             .session
             .create_service_client(&send_goal_info)
             .map_err(|_| ConnectedNodeError::ActionClientCreationFailed)?;
 
         // Create cancel_goal service client
-        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_name: heapless::String<256> = action_info.cancel_goal_key();
         let cancel_goal_info = ServiceInfo::new(
-            &cancel_goal_keyexpr,
+            &cancel_goal_name,
             "action_msgs::srv::dds_::CancelGoal_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let cancel_goal_client = self
             .session
             .create_service_client(&cancel_goal_info)
             .map_err(|_| ConnectedNodeError::ActionClientCreationFailed)?;
 
         // Create get_result service client
-        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let get_result_name: heapless::String<256> = action_info.get_result_key();
+        let get_result_info = ServiceInfo::new(&get_result_name, &get_result_type, A::ACTION_HASH)
+            .with_domain(self.domain_id);
         let get_result_client = self
             .session
             .create_service_client(&get_result_info)
             .map_err(|_| ConnectedNodeError::ActionClientCreationFailed)?;
 
         // Create feedback subscriber
-        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
-        let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let feedback_name: heapless::String<256> = action_info.feedback_key();
+        let feedback_topic = TopicInfo::new(&feedback_name, &feedback_type, A::ACTION_HASH)
+            .with_domain(self.domain_id);
         let feedback_subscriber = self
             .session
             .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| ConnectedNodeError::ActionClientCreationFailed)?;
 
         // Create status subscriber
-        let status_keyexpr: heapless::String<256> = action_info.status_key();
+        let status_name: heapless::String<256> = action_info.status_key();
         let status_topic = TopicInfo::new(
-            &status_keyexpr,
+            &status_name,
             "action_msgs::msg::dds_::GoalStatusArray_",
             A::ACTION_HASH,
         )
-        .with_domain(0);
+        .with_domain(self.domain_id);
         let status_subscriber = self
             .session
             .create_subscriber(&status_topic, QosSettings::BEST_EFFORT)
@@ -1294,11 +1347,21 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             |session: &mut <ZenohTransport as Transport>::Session,
              tokens: &mut heapless::Vec<_, MAX_TOKENS>,
              keyexpr: &heapless::String<256>| {
+                if keyexpr.is_empty() {
+                    log::warn!("Action liveliness keyexpr is empty (string overflow?)");
+                    return;
+                }
+                log::debug!("Action liveliness keyexpr: {}", keyexpr);
                 let mut keyexpr_buf = [0u8; 257];
                 let bytes = keyexpr.as_bytes();
                 keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
-                if let Ok(token) = session.declare_liveliness(&keyexpr_buf[..=bytes.len()]) {
-                    let _ = tokens.push(token);
+                match session.declare_liveliness(&keyexpr_buf[..=bytes.len()]) {
+                    Ok(token) => {
+                        let _ = tokens.push(token);
+                    }
+                    Err(_) => {
+                        log::warn!("Failed to declare action liveliness token");
+                    }
                 }
             };
 
@@ -1306,6 +1369,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let send_goal_lv: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &send_goal_info,
             &service_qos,
@@ -1316,6 +1380,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let cancel_goal_lv: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &cancel_goal_info,
             &service_qos,
@@ -1326,6 +1391,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let get_result_lv: heapless::String<256> = Ros2Liveliness::service_client_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &get_result_info,
             &service_qos,
@@ -1336,6 +1402,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let feedback_lv: heapless::String<256> = Ros2Liveliness::subscriber_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &feedback_topic,
             &topic_qos,
@@ -1346,6 +1413,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let status_lv: heapless::String<256> = Ros2Liveliness::subscriber_keyexpr(
             self.domain_id,
             &self.zid,
+            &self.namespace,
             &self.name,
             &status_topic,
             &topic_qos,

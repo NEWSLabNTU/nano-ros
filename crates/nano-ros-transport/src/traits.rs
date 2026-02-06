@@ -119,59 +119,50 @@ impl<'a> ActionInfo<'a> {
         self
     }
 
-    /// Generate the send_goal service key
+    /// Generate the send_goal service name
+    /// Returns: `<action>/_action/send_goal`
     pub fn send_goal_key<const N: usize>(&self) -> heapless::String<N> {
-        self.service_key::<N>("SendGoal")
+        self.sub_name::<N>("send_goal")
     }
 
-    /// Generate the cancel_goal service key
+    /// Generate the cancel_goal service name
+    /// Returns: `<action>/_action/cancel_goal`
     pub fn cancel_goal_key<const N: usize>(&self) -> heapless::String<N> {
-        self.service_key::<N>("CancelGoal")
+        self.sub_name::<N>("cancel_goal")
     }
 
-    /// Generate the get_result service key
+    /// Generate the get_result service name
+    /// Returns: `<action>/_action/get_result`
     pub fn get_result_key<const N: usize>(&self) -> heapless::String<N> {
-        self.service_key::<N>("GetResult")
+        self.sub_name::<N>("get_result")
     }
 
-    /// Generate the feedback topic key
+    /// Generate the feedback topic name
+    /// Returns: `<action>/_action/feedback`
     pub fn feedback_key<const N: usize>(&self) -> heapless::String<N> {
-        self.topic_key::<N>("FeedbackMessage")
+        self.sub_name::<N>("feedback")
     }
 
-    /// Generate the status topic key
+    /// Generate the status topic name
+    /// Returns: `<action>/_action/status`
     pub fn status_key<const N: usize>(&self) -> heapless::String<N> {
-        self.topic_key::<N>("GoalStatusArray")
+        self.sub_name::<N>("status")
     }
 
-    /// Generate a service key for an action sub-service
-    fn service_key<const N: usize>(&self, suffix: &str) -> heapless::String<N> {
-        let mut key = heapless::String::new();
+    /// Generate a sub-entity name for an action component
+    /// Returns: `<action>/_action/<suffix>` (e.g., `fibonacci/_action/send_goal`)
+    ///
+    /// The caller is responsible for constructing the full key expression
+    /// by wrapping this name in a `ServiceInfo` or `TopicInfo` with the
+    /// correct sub-service/sub-topic type name.
+    fn sub_name<const N: usize>(&self, suffix: &str) -> heapless::String<N> {
+        let mut name = heapless::String::new();
         let action_stripped = self.name.trim_matches('/');
-        // Format: <domain>/<action>/_action/<service_type>/RIHS01_<hash>
         let _ = core::fmt::write(
-            &mut key,
-            format_args!(
-                "{}/{}/_action/{}_{}/RIHS01_{}",
-                self.domain_id, action_stripped, self.type_name, suffix, self.type_hash
-            ),
+            &mut name,
+            format_args!("/{}/_action/{}", action_stripped, suffix),
         );
-        key
-    }
-
-    /// Generate a topic key for an action sub-topic
-    fn topic_key<const N: usize>(&self, suffix: &str) -> heapless::String<N> {
-        let mut key = heapless::String::new();
-        let action_stripped = self.name.trim_matches('/');
-        // Format: <domain>/<action>/_action/<topic_type>/<hash>
-        let _ = core::fmt::write(
-            &mut key,
-            format_args!(
-                "{}/{}/_action/{}_{}/{}",
-                self.domain_id, action_stripped, self.type_name, suffix, self.type_hash
-            ),
-        );
-        key
+        name
     }
 }
 
@@ -193,15 +184,33 @@ impl<'a> ServiceInfo<'a> {
     }
 
     /// Generate the service key in rmw_zenoh format
-    /// Format: `<domain_id>/<service_name>/<type_name>/RIHS01_<hash>`
+    /// Format: `<domain_id>/<service_name>/<type_name>/TypeHashNotSupported`
+    /// Note: For Humble, the hash is `TypeHashNotSupported` (matching topic key format)
+    /// Note: For newer versions (Iron+), use `RIHS01_<hash>` format
     pub fn to_key<const N: usize>(&self) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let service_stripped = self.name.trim_matches('/');
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "{}/{}/{}/RIHS01_{}",
-                self.domain_id, service_stripped, self.type_name, self.type_hash
+                "{}/{}/{}/TypeHashNotSupported",
+                self.domain_id, service_stripped, self.type_name
+            ),
+        );
+        key
+    }
+
+    /// Generate a wildcard service key for client queries
+    /// Format: `<domain_id>/<service_name>/<type_name>/*`
+    /// This matches any type hash, allowing interop with ROS 2 nodes using different hashes
+    pub fn to_key_wildcard<const N: usize>(&self) -> heapless::String<N> {
+        let mut key = heapless::String::new();
+        let service_stripped = self.name.trim_matches('/');
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "{}/{}/{}/*",
+                self.domain_id, service_stripped, self.type_name
             ),
         );
         key
@@ -986,10 +995,8 @@ mod tests {
         .with_domain(0);
 
         let key: heapless::String<256> = action.send_goal_key();
-        assert!(key.contains("fibonacci"));
-        assert!(key.contains("_action"));
-        assert!(key.contains("SendGoal"));
-        assert!(key.contains("RIHS01_"));
+        // ActionInfo returns the sub-entity name with leading slash for ROS 2 compatibility
+        assert_eq!(key.as_str(), "/fibonacci/_action/send_goal");
     }
 
     #[test]
@@ -1002,9 +1009,26 @@ mod tests {
         .with_domain(0);
 
         let key: heapless::String<256> = action.feedback_key();
-        assert!(key.contains("fibonacci"));
-        assert!(key.contains("_action"));
-        assert!(key.contains("FeedbackMessage"));
+        assert_eq!(key.as_str(), "/fibonacci/_action/feedback");
+    }
+
+    #[test]
+    fn test_action_all_sub_names() {
+        let action = ActionInfo::new(
+            "/fibonacci",
+            "example_interfaces::action::dds_::Fibonacci_",
+            "abc123",
+        )
+        .with_domain(0);
+
+        let cancel: heapless::String<256> = action.cancel_goal_key();
+        assert_eq!(cancel.as_str(), "/fibonacci/_action/cancel_goal");
+
+        let result: heapless::String<256> = action.get_result_key();
+        assert_eq!(result.as_str(), "/fibonacci/_action/get_result");
+
+        let status: heapless::String<256> = action.status_key();
+        assert_eq!(status.as_str(), "/fibonacci/_action/status");
     }
 
     // --- QoS Profile Tests ---

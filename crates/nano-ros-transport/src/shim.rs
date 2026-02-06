@@ -232,21 +232,31 @@ pub struct Ros2Liveliness;
 impl Ros2Liveliness {
     /// Build a node liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/0/NN/%/%/<node_name>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/0/NN/%/<mangled_ns>/<node_name>`
+    ///
+    /// The namespace is mangled using the same rules as topic names:
+    /// - `/` → `%`
+    /// - `/demo` → `%demo`
+    /// - `/ns/sub` → `%ns%sub`
     pub fn node_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ShimZenohId,
+        namespace: &str,
         node_name: &str,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let mut zid_hex = [0u8; 32];
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
+        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/0/NN/%/%/{}",
-                domain_id, zid_str, node_name
+                "@ros2_lv/{}/{}/0/0/NN/%/{}/{}",
+                domain_id,
+                zid_str,
+                ns_mangled.as_str(),
+                node_name
             ),
         );
         key
@@ -254,11 +264,12 @@ impl Ros2Liveliness {
 
     /// Build a publisher liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/MP/%/%/<node_name>/<topic>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/MP/%/<mangled_ns>/<node_name>/<topic>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn publisher_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ShimZenohId,
+        namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
         qos: &QosSettings,
@@ -269,13 +280,15 @@ impl Ros2Liveliness {
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
         // Mangle topic name: replace slashes with percent signs
         let topic_mangled = Self::mangle_topic_name::<64>(topic.name);
+        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
         let qos_string: heapless::String<32> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/MP/%/%/{}/{}/{}/{}/{}",
+                "@ros2_lv/{}/{}/0/11/MP/%/{}/{}/{}/{}/{}/{}",
                 domain_id,
                 zid_str,
+                ns_mangled.as_str(),
                 node_name,
                 topic_mangled.as_str(),
                 topic.type_name,
@@ -288,11 +301,12 @@ impl Ros2Liveliness {
 
     /// Build a subscriber liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/MS/%/%/<node_name>/<topic>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/MS/%/<mangled_ns>/<node_name>/<topic>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn subscriber_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ShimZenohId,
+        namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
         qos: &QosSettings,
@@ -302,13 +316,15 @@ impl Ros2Liveliness {
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
         let topic_mangled = Self::mangle_topic_name::<64>(topic.name);
+        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
         let qos_string: heapless::String<32> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/MS/%/%/{}/{}/{}/{}/{}",
+                "@ros2_lv/{}/{}/0/11/MS/%/{}/{}/{}/{}/{}/{}",
                 domain_id,
                 zid_str,
+                ns_mangled.as_str(),
                 node_name,
                 topic_mangled.as_str(),
                 topic.type_name,
@@ -321,11 +337,12 @@ impl Ros2Liveliness {
 
     /// Build a service server liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SS/%/%/<node_name>/<service>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SS/%/<mangled_ns>/<node_name>/<service>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn service_server_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ShimZenohId,
+        namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
         qos: &QosSettings,
@@ -335,13 +352,15 @@ impl Ros2Liveliness {
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
         let service_mangled = Self::mangle_topic_name::<64>(service.name);
+        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
         let qos_string: heapless::String<32> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/SS/%/%/{}/{}/{}/{}/{}",
+                "@ros2_lv/{}/{}/0/11/SS/%/{}/{}/{}/{}/{}/{}",
                 domain_id,
                 zid_str,
+                ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
                 service.type_name,
@@ -354,11 +373,12 @@ impl Ros2Liveliness {
 
     /// Build a service client liveliness key expression
     ///
-    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SC/%/%/<node_name>/<service>/<type>/<hash>/<qos>`
+    /// Format: `@ros2_lv/<domain_id>/<zid>/0/11/SC/%/<mangled_ns>/<node_name>/<service>/<type>/<hash>/<qos>`
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn service_client_keyexpr<const N: usize>(
         domain_id: u32,
         zid: &ShimZenohId,
+        namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
         qos: &QosSettings,
@@ -368,13 +388,15 @@ impl Ros2Liveliness {
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
         let service_mangled = Self::mangle_topic_name::<64>(service.name);
+        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
         let qos_string: heapless::String<32> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/SC/%/%/{}/{}/{}/{}/{}",
+                "@ros2_lv/{}/{}/0/11/SC/%/{}/{}/{}/{}/{}/{}",
                 domain_id,
                 zid_str,
+                ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
                 service.type_name,
@@ -1201,8 +1223,8 @@ pub struct ShimServiceClient {
 impl ShimServiceClient {
     /// Create a new service client for the given service
     pub fn new(context: &ShimContext, service: &ServiceInfo) -> Result<Self, TransportError> {
-        // Generate the service key
-        let key: heapless::String<256> = service.to_key();
+        // Generate wildcard service key for queries (matches any type hash from ROS 2)
+        let key: heapless::String<256> = service.to_key_wildcard();
 
         // Create null-terminated keyexpr
         let mut keyexpr_buf = [0u8; 257];
@@ -1395,13 +1417,27 @@ mod tests {
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
             0x0f, 0x10,
         ]);
-        let keyexpr = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/my_node");
+        // Root namespace: "/" mangles to "%"
+        let keyexpr = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/", "my_node");
 
-        // Format: @ros2_lv/<domain_id>/<zid>/0/0/NN/%/%/<node_name>
+        // Format: @ros2_lv/<domain_id>/<zid>/0/0/NN/%/<mangled_ns>/<node_name>
         // ZID is in LSB-first order
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
         assert!(keyexpr.as_str().contains("/0/0/NN/%/%/"));
         assert!(keyexpr.as_str().ends_with("/my_node"));
+    }
+
+    #[test]
+    fn test_ros2_liveliness_node_keyexpr_with_namespace() {
+        let zid = ShimZenohId::from_bytes([0u8; 16]);
+
+        // Non-root namespace: "/demo" mangles to "%demo"
+        let keyexpr = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/demo", "talker");
+        assert!(keyexpr.as_str().contains("/0/0/NN/%/%demo/talker"));
+
+        // Nested namespace: "/ns/sub" mangles to "%ns%sub"
+        let keyexpr2 = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/ns/sub", "my_node");
+        assert!(keyexpr2.as_str().contains("/0/0/NN/%/%ns%sub/my_node"));
     }
 
     #[test]
@@ -1414,15 +1450,31 @@ mod tests {
             domain_id: 0,
         };
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
-        let keyexpr = Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/my_node", &topic, &qos);
+        let keyexpr =
+            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/", "my_node", &topic, &qos);
 
-        // Format: @ros2_lv/<domain_id>/<zid>/0/11/MP/%/%/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/MP/%/<mangled_ns>/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
         assert!(keyexpr.as_str().contains("/0/11/MP/%/%/"));
         assert!(keyexpr.as_str().contains("/my_node/"));
         assert!(keyexpr.as_str().contains("%chatter/"));
         assert!(keyexpr.as_str().contains("std_msgs::msg::dds_::String_"));
         assert!(keyexpr.as_str().contains("RIHS01_abc123"));
+    }
+
+    #[test]
+    fn test_ros2_liveliness_publisher_keyexpr_with_namespace() {
+        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let topic = TopicInfo {
+            name: "/chatter",
+            type_name: "std_msgs::msg::dds_::String_",
+            type_hash: "RIHS01_abc123",
+            domain_id: 0,
+        };
+        let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
+        let keyexpr =
+            Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/demo", "talker", &topic, &qos);
+        assert!(keyexpr.as_str().contains("/0/11/MP/%/%demo/talker/"));
     }
 
     #[test]
@@ -1435,9 +1487,10 @@ mod tests {
             domain_id: 0,
         };
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
-        let keyexpr = Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, "/my_node", &topic, &qos);
+        let keyexpr =
+            Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, "/", "my_node", &topic, &qos);
 
-        // Format: @ros2_lv/<domain_id>/<zid>/0/11/MS/%/%/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/MS/%/<mangled_ns>/<node_name>/<mangled_topic>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
         assert!(keyexpr.as_str().contains("/0/11/MS/%/%/"));
         assert!(keyexpr.as_str().contains("/my_node/"));
@@ -1455,13 +1508,29 @@ mod tests {
         };
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr =
-            Ros2Liveliness::service_server_keyexpr::<256>(0, &zid, "/my_node", &service, &qos);
+            Ros2Liveliness::service_server_keyexpr::<256>(0, &zid, "/", "my_node", &service, &qos);
 
-        // Format: @ros2_lv/<domain_id>/<zid>/0/11/SS/%/%/<node_name>/<mangled_service>/<type>/<hash>/<qos>
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/SS/%/<mangled_ns>/<node_name>/<mangled_service>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
         assert!(keyexpr.as_str().contains("/0/11/SS/%/%/"));
         assert!(keyexpr.as_str().contains("/my_node/"));
         assert!(keyexpr.as_str().contains("%add_two_ints/"));
+    }
+
+    #[test]
+    fn test_ros2_liveliness_service_server_keyexpr_with_namespace() {
+        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let service = ServiceInfo {
+            name: "/add_two_ints",
+            type_name: "example_interfaces::srv::dds_::AddTwoInts",
+            type_hash: "RIHS01_abc123",
+            domain_id: 0,
+        };
+        let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
+        let keyexpr = Ros2Liveliness::service_server_keyexpr::<256>(
+            0, &zid, "/demo", "my_node", &service, &qos,
+        );
+        assert!(keyexpr.as_str().contains("/0/11/SS/%/%demo/my_node/"));
     }
 
     #[test]
@@ -1475,9 +1544,9 @@ mod tests {
         };
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr =
-            Ros2Liveliness::service_client_keyexpr::<256>(0, &zid, "/my_node", &service, &qos);
+            Ros2Liveliness::service_client_keyexpr::<256>(0, &zid, "/", "my_node", &service, &qos);
 
-        // Format: @ros2_lv/<domain_id>/<zid>/0/11/SC/%/%/<node_name>/<mangled_service>/<type>/<hash>/<qos>
+        // Format: @ros2_lv/<domain_id>/<zid>/0/11/SC/%/<mangled_ns>/<node_name>/<mangled_service>/<type>/<hash>/<qos>
         assert!(keyexpr.as_str().starts_with("@ros2_lv/0/"));
         assert!(keyexpr.as_str().contains("/0/11/SC/%/%/"));
         assert!(keyexpr.as_str().contains("/my_node/"));

@@ -167,9 +167,9 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     // Kill ROS 2 publisher first
     ros2_publisher.kill();
 
-    // Collect nano-ros output
+    // Collect nano-ros output (log::info! goes to stderr)
     let nano_output = listener
-        .wait_for_output(Duration::from_secs(2))
+        .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
 
     eprintln!("nano-ros output:\n{}", nano_output);
@@ -279,7 +279,7 @@ fn test_nano_to_nano_inner(locator: &str, talker_path: &Path, listener_path: &Pa
 
     talker.kill();
     let output = listener
-        .wait_for_output(Duration::from_secs(1))
+        .wait_for_all_output(Duration::from_secs(1))
         .unwrap_or_default();
 
     count_pattern(&output, "Received:") > 0

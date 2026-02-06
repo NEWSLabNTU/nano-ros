@@ -55,18 +55,19 @@ nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_
 
 | Feature    | nano-ros → nano-ros | nano-ros → ROS 2 | ROS 2 → nano-ros |
 |------------|---------------------|------------------|------------------|
-| Pub/Sub    | ✅ Working          | ⚠️ Partial        | ⚠️ Partial        |
-| Services   | ✅ Working          | ⚠️ Untested       | ⚠️ Untested       |
-| Actions    | ✅ Working          | ❌ Not Working   | ❌ Not Working   |
+| Pub/Sub    | ✅ Working          | ✅ Working        | ✅ Working        |
+| Services   | ✅ Working          | ⚠️ Partial        | ⚠️ Partial        |
+| Actions    | ✅ Working          | ⚠️ Partial        | ⚠️ Partial        |
 | Parameters | ✅ Working          | ⚠️ Untested       | ⚠️ Untested       |
 | Discovery  | N/A                 | ❌ Not Working   | ❌ Not Working   |
 
 ### Root Causes
 
-1. **Discovery**: nano-ros publishes liveliness tokens, but ROS 2 may not recognize them due to QoS string format issues
+1. **Discovery**: nano-ros publishes liveliness tokens, but `ros2 node/topic/service list` does not see them. Likely liveliness token format or QoS metadata mismatch.
 2. ~~**Parameters**: ROS 2 parameter services not implemented~~ → **RESOLVED**: Parameter service servers now registered and processed during spin
-3. **Actions**: Action protocol partially implemented but not tested against ROS 2
-4. ~~**QoS**: Hardcoded BEST_EFFORT in liveliness tokens regardless of actual settings~~ → **RESOLVED**: `to_qos_string()` generates correct QoS encoding
+3. **Services**: `ros2 service call` sends request to nano-ros server but receives no response. nano-ros service client gets `ConnectionFailed` calling ROS 2 server. Service keyexpr or request/reply protocol mismatch suspected.
+4. **Actions**: `ros2 action send_goal` waits indefinitely for nano-ros action server. nano-ros action client gets `ConnectionFailed` calling ROS 2 action server. Discovery dependency (action relies on service discovery) likely involved.
+5. ~~**QoS**: Hardcoded BEST_EFFORT in liveliness tokens regardless of actual settings~~ → **RESOLVED**: `to_qos_string()` generates correct QoS encoding
 
 ---
 
@@ -1080,15 +1081,16 @@ discovery - topics, services
 
 | Test                                            | Status |
 |-------------------------------------------------|--------|
-| `ros2 topic list` shows nano-ros publishers     | ⬜     |
-| `ros2 topic echo` receives nano-ros messages    | ⬜     |
-| nano-ros subscriber receives `ros2 topic pub`   | ⬜     |
-| `ros2 service list` shows nano-ros services     | ⬜     |
-| `ros2 service call` invokes nano-ros server     | ⬜     |
-| nano-ros client calls ROS 2 service             | ⬜     |
+| nano-ros → nano-ros pub/sub                     | ✅     |
+| `ros2 topic echo` receives nano-ros messages    | ✅     |
+| nano-ros subscriber receives `ros2 topic pub`   | ✅     |
+| `ros2 topic list` shows nano-ros publishers     | ❌     |
+| `ros2 service list` shows nano-ros services     | ❌     |
+| `ros2 service call` invokes nano-ros server     | ⚠️ Sends request, no response |
+| nano-ros client calls ROS 2 service             | ❌ ConnectionFailed |
 | `ros2 action list` shows nano-ros actions       | ⬜     |
-| `ros2 action send_goal` invokes nano-ros server | ⬜     |
-| nano-ros client calls ROS 2 action server       | ⬜     |
+| `ros2 action send_goal` invokes nano-ros server | ❌ Waits for server |
+| nano-ros client calls ROS 2 action server       | ❌ ConnectionFailed |
 | `ros2 param list` shows nano-ros parameters     | ⬜     |
 | `ros2 param get/set` works with nano-ros        | ⬜     |
 
@@ -1096,11 +1098,11 @@ discovery - topics, services
 
 | Test                                                  | Status |
 |-------------------------------------------------------|--------|
-| Attachment parsing extracts sequence_number correctly | ⬜     |
-| Attachment parsing extracts timestamp correctly       | ⬜     |
-| Attachment parsing extracts GID correctly             | ⬜     |
-| MessageInfo populated from nano-ros publisher         | ⬜     |
-| MessageInfo populated from ROS 2 publisher            | ⬜     |
+| Attachment parsing extracts sequence_number correctly | ✅     |
+| Attachment parsing extracts timestamp correctly       | ✅     |
+| Attachment parsing extracts GID correctly             | ✅     |
+| MessageInfo populated from nano-ros publisher         | ✅     |
+| MessageInfo populated from ROS 2 publisher            | ✅     |
 | Sequence numbers increment correctly per-publisher    | ⬜     |
 | GID is consistent across messages from same publisher | ⬜     |
 
@@ -1108,33 +1110,33 @@ discovery - topics, services
 
 | Test                                                    | Status |
 |---------------------------------------------------------|--------|
-| Data keyexpr format matches rmw_zenoh                   | ⬜     |
-| Node liveliness token format correct                    | ⬜     |
-| Publisher liveliness token format correct               | ⬜     |
-| Subscriber liveliness token format correct              | ⬜     |
-| Service server liveliness token format correct          | ⬜     |
-| Service client liveliness token format correct          | ⬜     |
-| QoS string encoding matches rmw_zenoh                   | ⬜     |
-| ZenohId LSB-first hex encoding correct                  | ⬜     |
-| RMW attachment 33-byte format correct                   | ⬜     |
-| Service request/reply keyexpr format correct            | ⬜     |
+| Data keyexpr format matches rmw_zenoh                   | ✅     |
+| Node liveliness token format correct                    | ✅     |
+| Publisher liveliness token format correct               | ✅     |
+| Subscriber liveliness token format correct              | ✅     |
+| Service server liveliness token format correct          | ✅     |
+| Service client liveliness token format correct          | ✅     |
+| QoS string encoding matches rmw_zenoh                   | ✅     |
+| ZenohId LSB-first hex encoding correct                  | ✅     |
+| RMW attachment 33-byte format correct                   | ✅     |
+| Service request/reply keyexpr format correct            | ✅     |
 
 ### API Compatibility Tests
 
 | Test                                                | Status |
 |-----------------------------------------------------|--------|
-| Rust: `Context::default_from_env()` matches rclrs   | ⬜     |
-| Rust: `executor.create_node()` matches rclrs        | ⬜     |
-| Rust: `node.create_publisher()` matches rclrs       | ⬜     |
-| Rust: `node.create_subscription()` matches rclrs    | ⬜     |
-| Rust: `node.create_service()` matches rclrs         | ⬜     |
-| Rust: `node.create_client()` matches rclrs          | ⬜     |
-| Rust: `ParameterBuilder` API matches rclrs          | ⬜     |
+| Rust: `Context::default_from_env()` matches rclrs   | ✅     |
+| Rust: `executor.create_node()` matches rclrs        | ✅     |
+| Rust: `node.create_publisher()` matches rclrs       | ✅     |
+| Rust: `node.create_subscription()` matches rclrs    | ✅     |
+| Rust: `node.create_service()` matches rclrs         | ✅     |
+| Rust: `node.create_client()` matches rclrs          | ✅     |
+| Rust: `ParameterBuilder` API matches rclrs          | ✅     |
 | C: `nano_ros_*_get_zero_initialized()` works        | ⬜     |
 | C: `nano_ros_*_init_default()` works                | ⬜     |
-| C: `nano_ros_executor_init()` pre-allocates handles | ⬜     |
-| C: `nano_ros_executor_spin_some()` works            | ⬜     |
-| C: Context callbacks work correctly                 | ⬜     |
+| C: `nano_ros_executor_init()` pre-allocates handles | ✅     |
+| C: `nano_ros_executor_spin_some()` works            | ✅     |
+| C: Context callbacks work correctly                 | ✅     |
 
 ---
 
