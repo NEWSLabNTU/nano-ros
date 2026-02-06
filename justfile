@@ -31,37 +31,32 @@ check: check-workspace check-workspace-embedded check-workspace-features check-e
 # Run unit tests only (no external dependencies)
 test-unit verbose="":
     #!/usr/bin/env bash
-    set +e
-    failed=0
-
-    just test-workspace {{verbose}} || failed=1
-    just test-miri {{verbose}} || failed=1
-
-    if [ $failed -ne 0 ]; then
-        echo "FAIL: Some unit tests failed."
-        exit 1
-    else
-        echo "Unit tests passed!"
+    args=(--workspace --exclude nano-ros-tests --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
     fi
+    cargo nextest run "${args[@]}"
 
 # Run standard tests (needs qemu-system-arm + zenohd)
+# Single nextest run (workspace + integration, excluding zephyr/ros2) + Miri + QEMU
 test verbose="":
     #!/usr/bin/env bash
     set +e
     failed=0
     just _init-test-logs
-
-    echo "=== Unit Tests ==="
-    just test-unit {{verbose}} || failed=1
-
+    args=(--workspace --no-fail-fast
+          -E 'not binary(zephyr) and not binary(rmw_interop)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}" || failed=1
+    echo ""
+    echo "=== Miri ==="
+    just test-miri || failed=1
     echo ""
     echo "=== QEMU Tests ==="
-    just test-qemu {{verbose}} || failed=1
-
-    echo ""
-    echo "=== Integration Tests ==="
-    just test-integration {{verbose}} || failed=1
-
+    just test-qemu-basic {{verbose}} || failed=1
+    just test-qemu-lan9118 {{verbose}} || failed=1
     echo ""
     echo "JUnit XML: target/nextest/default/junit.xml"
     echo "QEMU logs: {{LOG_DIR}}/latest/"
@@ -72,36 +67,28 @@ test verbose="":
         echo "All standard tests passed!"
     fi
 
-# Run all tests including Zephyr, ROS 2 interop, C API, Docker
+# Run all tests including Zephyr, ROS 2 interop, C API
+# Single nextest run (entire workspace) + Miri + QEMU + C
 test-all verbose="":
     #!/usr/bin/env bash
     set +e
     failed=0
     just _init-test-logs
-
-    echo "=== Unit Tests ==="
-    just test-unit {{verbose}} || failed=1
-
+    args=(--workspace --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}" || failed=1
+    echo ""
+    echo "=== Miri ==="
+    just test-miri || failed=1
     echo ""
     echo "=== QEMU Tests ==="
-    just test-qemu {{verbose}} || failed=1
-
-    echo ""
-    echo "=== Integration Tests ==="
-    just test-integration {{verbose}} || failed=1
-
-    echo ""
-    echo "=== Zephyr Tests ==="
-    just test-zephyr {{verbose}} || failed=1
-
-    echo ""
-    echo "=== ROS 2 Interop Tests ==="
-    just test-ros2 {{verbose}} || failed=1
-
+    just test-qemu-basic {{verbose}} || failed=1
+    just test-qemu-lan9118 {{verbose}} || failed=1
     echo ""
     echo "=== C API Tests ==="
     just test-c {{verbose}} || failed=1
-
     echo ""
     echo "JUnit XML:  target/nextest/default/junit.xml"
     echo "Other logs: {{LOG_DIR}}/latest/"
@@ -165,10 +152,8 @@ quality:
 
     echo ""
     echo "=== Miri (UB detection) ==="
-    miri_failed=0
-    cargo +nightly miri test -p nano-ros-serdes || miri_failed=1
-    cargo +nightly miri test -p nano-ros-core || miri_failed=1
-    if [ $miri_failed -ne 0 ]; then
+    just test-miri
+    if [ $? -ne 0 ]; then
         echo "[FAIL] Miri FAILED"
         failed=1
     else
@@ -271,17 +256,18 @@ check-workspace-features:
 test-workspace verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(--color always --workspace --exclude nano-ros-tests --no-fail-fast)
+    args=(--workspace --exclude nano-ros-tests --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output final)
+        args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
 
-# Run Miri to detect undefined behavior
-test-miri verbose="":
-    @echo "Running Miri on safe crates..."
+# Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
+test-miri:
+    @echo "Running Miri on embedded-safe crates..."
     cargo +nightly miri test -p nano-ros-serdes
     cargo +nightly miri test -p nano-ros-core
+    cargo +nightly miri test -p nano-ros-params
 
 # =============================================================================
 # Examples
@@ -673,10 +659,10 @@ build-zenoh-pico:
 test-integration verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(--color always -p nano-ros-tests --no-fail-fast
+    args=(-p nano-ros-tests --no-fail-fast
           -E 'not binary(zephyr) and not binary(rmw_interop)')
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output final)
+        args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
 
@@ -689,9 +675,9 @@ test-integration verbose="":
 test-zephyr verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(--color always -p nano-ros-tests --test zephyr --no-fail-fast)
+    args=(-p nano-ros-tests --test zephyr --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output final)
+        args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
 
@@ -711,9 +697,9 @@ test-zephyr-c:
 test-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(--color always -p nano-ros-tests --test rmw_interop --no-fail-fast)
+    args=(-p nano-ros-tests --test rmw_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output final)
+        args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
 
