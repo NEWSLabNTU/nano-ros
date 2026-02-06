@@ -208,4 +208,8 @@ pub use lifecycle::LifecycleNode;
 
 // Re-export shim types when shim feature is enabled
 #[cfg(feature = "shim")]
-pub use shim::{ShimExecutor, ShimNode, ShimNodePublisher, ShimNodeSubscriber};
+pub use shim::{
+    ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
+    ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,
+    ShimNodeServiceServer, ShimNodeSubscriber,
+};

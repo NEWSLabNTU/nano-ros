@@ -1,336 +1,97 @@
 //! nano-ros Zephyr Action Client Example (Rust)
 //!
-//! This example demonstrates a ROS 2 compatible action client running on
-//! Zephyr RTOS using the zenoh-pico-shim crate.
-//!
+//! A ROS 2 compatible action client running on Zephyr RTOS using the nano-ros API.
 //! The client sends a Fibonacci goal and receives feedback as the sequence
 //! is computed.
-//!
-//! Architecture:
-//! ```text
-//! Rust Application (this file)
-//!     └── zenoh-pico-shim (Rust wrapper)
-//!         └── zenoh_shim.c (C shim, compiled by Zephyr)
-//!             └── zenoh-pico (C library)
-//!                 └── Zephyr network stack
-//! ```
-//!
-//! Action channels used:
-//! - send_goal (query) - Submit goal and get acceptance response
-//! - feedback (subscriber) - Receive progress updates
 
 #![no_std]
 
-use core::ffi::c_void;
-use core::ptr;
-use core::sync::atomic::{AtomicU32, Ordering};
-
 use log::{error, info, warn};
-
-// nano-ros CDR serialization
-use nano_ros_core::{Deserialize, RosMessage, Serialize};
-use nano_ros_serdes::{CdrReader, CdrWriter};
-
-// zenoh-pico shim crate
-use zenoh_pico_shim::{ShimCallback, ShimContext, ShimError, ShimSubscriber};
-
-// Generated action types
-use example_interfaces::action::{FibonacciFeedback, FibonacciGoal};
-
-// =============================================================================
-// Error Types
-// =============================================================================
-
-#[derive(Debug, Clone, Copy)]
-pub enum ActionError {
-    Shim(ShimError),
-    SerializationError,
-    DeserializationError,
-    KeyExprTooLong,
-    Timeout,
-    Rejected,
-}
-
-impl From<ShimError> for ActionError {
-    fn from(err: ShimError) -> Self {
-        ActionError::Shim(err)
-    }
-}
-
-// =============================================================================
-// Feedback Handler
-// =============================================================================
-
-/// Static storage for received feedback
-static mut LAST_FEEDBACK: Option<FibonacciFeedback> = None;
-static FEEDBACK_COUNT: AtomicU32 = AtomicU32::new(0);
-
-/// Expected goal ID (set when goal is sent)
-static mut EXPECTED_GOAL_ID: [u8; 16] = [0u8; 16];
-
-/// Callback for feedback messages
-/// Signature matches ShimCallback: fn(data: *const u8, len: usize, ctx: *mut c_void)
-extern "C" fn on_feedback(
-    payload: *const u8,
-    payload_len: usize,
-    _ctx: *mut c_void,
-) {
-    let count = FEEDBACK_COUNT.fetch_add(1, Ordering::Relaxed);
-
-    // Safety: payload is valid for payload_len bytes
-    let payload_slice = if payload.is_null() || payload_len == 0 {
-        &[]
-    } else {
-        unsafe { core::slice::from_raw_parts(payload, payload_len) }
-    };
-
-    // Deserialize feedback message (goal_id + feedback)
-    let mut reader = CdrReader::new(payload_slice);
-
-    // Read goal_id (UUID as sequence)
-    let mut goal_id = [0u8; 16];
-    let uuid_len = match reader.read_u32() {
-        Ok(len) => len as usize,
-        Err(_) => {
-            info!("[FB {}] Failed to read UUID length", count);
-            return;
-        }
-    };
-    if uuid_len != 16 {
-        info!("[FB {}] Invalid UUID length: {}", count, uuid_len);
-        return;
-    }
-    for i in 0..16 {
-        goal_id[i] = match reader.read_u8() {
-            Ok(b) => b,
-            Err(_) => {
-                info!("[FB {}] Failed to read UUID byte", count);
-                return;
-            }
-        };
-    }
-
-    // Check if this feedback is for our goal
-    // SAFETY: Reading from EXPECTED_GOAL_ID, set once at startup
-    let matches = unsafe { goal_id == *ptr::addr_of!(EXPECTED_GOAL_ID) };
-    if !matches {
-        info!("[FB {}] Feedback for different goal, ignoring", count);
-        return;
-    }
-
-    // Read feedback
-    let feedback = match FibonacciFeedback::deserialize(&mut reader) {
-        Ok(f) => f,
-        Err(_) => {
-            info!("[FB {}] Failed to deserialize feedback", count);
-            return;
-        }
-    };
-
-    info!(
-        "Feedback #{}: {:?}",
-        count + 1,
-        feedback.sequence.as_slice()
-    );
-
-    // Store feedback
-    // SAFETY: Single writer in callback context
-    unsafe {
-        *ptr::addr_of_mut!(LAST_FEEDBACK) = Some(feedback);
-    }
-}
-
-// =============================================================================
-// Key Expression Constants
-// =============================================================================
-
-const SEND_GOAL_KEYEXPR: &[u8] = b"demo/fibonacci/_action/send_goal\0";
-const FEEDBACK_KEYEXPR: &[u8] = b"demo/fibonacci/_action/feedback\0";
-
-// =============================================================================
-// Helper Functions
-// =============================================================================
-
-/// Generate a simple pseudo-random goal ID
-fn generate_goal_id(seed: u32) -> [u8; 16] {
-    let mut id = [0u8; 16];
-    // Simple LCG for pseudo-random bytes
-    let mut state = seed.wrapping_mul(1103515245).wrapping_add(12345);
-    for byte in &mut id {
-        state = state.wrapping_mul(1103515245).wrapping_add(12345);
-        *byte = (state >> 16) as u8;
-    }
-    id
-}
-
-/// Send a goal and wait for acceptance
-fn send_goal(
-    ctx: &ShimContext,
-    goal: &FibonacciGoal,
-    goal_id: &[u8; 16],
-) -> Result<bool, ActionError> {
-    // Serialize request (goal_id + goal)
-    let mut request_buf = [0u8; 256];
-    let mut writer = CdrWriter::new(&mut request_buf);
-
-    // Write goal_id (UUID as sequence)
-    writer
-        .write_u32(16)
-        .map_err(|_| ActionError::SerializationError)?;
-    for b in goal_id {
-        writer
-            .write_u8(*b)
-            .map_err(|_| ActionError::SerializationError)?;
-    }
-
-    // Write goal
-    goal.serialize(&mut writer)
-        .map_err(|_| ActionError::SerializationError)?;
-
-    let request_len = writer.position();
-
-    // Send query and wait for reply
-    let mut reply_buf = [0u8; 64];
-    let reply_len = ctx
-        .get(SEND_GOAL_KEYEXPR, &request_buf[..request_len], &mut reply_buf, 10000)
-        .map_err(|e| match e {
-            ShimError::Timeout => ActionError::Timeout,
-            other => ActionError::Shim(other),
-        })?;
-
-    // Deserialize response (accepted: bool, stamp: Time)
-    let mut reader = CdrReader::new(&reply_buf[..reply_len]);
-
-    // Read accepted (bool as u8)
-    let accepted = reader
-        .read_u8()
-        .map_err(|_| ActionError::DeserializationError)?
-        != 0;
-
-    // Read stamp (Time: sec, nanosec) - we don't need it
-    let _ = reader.read_i32();
-    let _ = reader.read_u32();
-
-    Ok(accepted)
-}
-
-// =============================================================================
-// Main Entry Point
-// =============================================================================
+use nano_ros::{ShimExecutor, ShimNodeError};
+use example_interfaces::action::{Fibonacci, FibonacciGoal};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
-    // Initialize logging
     unsafe {
         zephyr::set_logger().ok();
     }
 
-    info!("nano-ros Zephyr Action Client Starting");
+    info!("nano-ros Zephyr Action Client");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
     info!("Action: Fibonacci");
 
-    // Connection parameters
-    let locator = b"tcp/192.0.2.2:7447\0";
-    info!("Connecting to zenoh router at tcp/192.0.2.2:7447");
+    if let Err(e) = run() {
+        error!("Error: {:?}", e);
+    }
+}
 
-    // Create ShimContext
-    let ctx = match ShimContext::new(locator) {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            error!("Failed to create context: {}", e);
-            return;
-        }
-    };
-    info!("Session opened");
+fn run() -> Result<(), ShimNodeError> {
+    let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
+    let mut node = executor.create_node("fibonacci_action_client")?;
+    let mut action_client = node.create_action_client::<Fibonacci>("/fibonacci")?;
 
-    // Subscribe to feedback
-    info!("Subscribing to feedback topic...");
-    let _feedback_subscriber = match unsafe {
-        ctx.declare_subscriber_raw(FEEDBACK_KEYEXPR, on_feedback as ShimCallback, core::ptr::null_mut())
-    } {
-        Ok(s) => {
-            info!("Feedback subscriber ready");
-            s
-        }
-        Err(e) => {
-            error!("Failed to subscribe to feedback: {}", e);
-            return;
-        }
-    };
+    info!("Action client ready: /fibonacci");
 
     // Allow time for connection to stabilize
     info!("Waiting for server...");
     zephyr::time::sleep(zephyr::time::Duration::secs(3));
 
-    // Generate a goal ID
-    let goal_id = generate_goal_id(12345);
-    // SAFETY: Set once before subscribing, read only in callback
-    unsafe {
-        *ptr::addr_of_mut!(EXPECTED_GOAL_ID) = goal_id;
-    }
-
-    // Create goal - compute Fibonacci sequence up to order 10
+    // Send goal
     let goal = FibonacciGoal { order: 10 };
     info!("Sending goal: order={}", goal.order);
-    info!(
-        "Goal ID: {:02x}{:02x}{:02x}{:02x}...",
-        goal_id[0], goal_id[1], goal_id[2], goal_id[3]
-    );
 
-    // Send goal
-    match send_goal(&ctx, &goal, &goal_id) {
-        Ok(true) => {
-            info!("Goal accepted!");
+    let goal_id = match action_client.send_goal(&goal) {
+        Ok(id) => {
+            info!(
+                "Goal accepted! ID: {:02x}{:02x}{:02x}{:02x}...",
+                id.uuid[0], id.uuid[1], id.uuid[2], id.uuid[3]
+            );
+            id
         }
-        Ok(false) => {
+        Err(ShimNodeError::ServiceRequestFailed) => {
             warn!("Goal was rejected by the server");
-            return;
-        }
-        Err(ActionError::Timeout) => {
-            error!("Timeout waiting for goal response");
-            error!("Make sure the action server is running");
-            return;
+            return Ok(());
         }
         Err(e) => {
             error!("Failed to send goal: {:?}", e);
-            return;
+            return Err(e);
         }
-    }
+    };
 
     info!("Waiting for feedback and result...");
 
-    // Wait for feedback - Fibonacci(10) takes about 5.5 seconds (11 iterations * 500ms each)
-    let mut last_feedback_count = 0u32;
-    let mut no_feedback_cycles = 0u32;
+    // Wait for feedback
+    let mut feedback_count: u32 = 0;
+    let mut no_feedback_cycles: u32 = 0;
     let max_wait_cycles = 200; // 20 seconds max (100ms per cycle)
 
     for cycle in 0..max_wait_cycles {
-        zephyr::time::sleep(zephyr::time::Duration::millis(100));
+        let _ = executor.spin_once(100);
 
-        let current_count = FEEDBACK_COUNT.load(Ordering::Relaxed);
+        // Check for feedback
+        match action_client.try_recv_feedback() {
+            Ok(Some((fid, feedback))) => {
+                if fid.uuid == goal_id.uuid {
+                    feedback_count += 1;
+                    info!("Feedback #{}: {:?}", feedback_count, feedback.sequence.as_slice());
+                    no_feedback_cycles = 0;
 
-        if current_count > last_feedback_count {
-            // We received new feedback
-            last_feedback_count = current_count;
-            no_feedback_cycles = 0;
-
-            // Check if we have all feedback (order + 1 values)
-            // SAFETY: Reading from LAST_FEEDBACK which may be written by callback
-            let feedback = unsafe { (*ptr::addr_of!(LAST_FEEDBACK)).as_ref() };
-            if let Some(f) = feedback {
-                if f.sequence.len() as i32 > goal.order {
-                    info!("Received all feedback, action completed!");
-                    info!("Final sequence: {:?}", f.sequence.as_slice());
+                    // Check if we have all feedback (order + 1 values)
+                    if feedback.sequence.len() as i32 > goal.order {
+                        info!("Received all feedback, action completed!");
+                        break;
+                    }
+                }
+            }
+            Ok(None) => {
+                no_feedback_cycles += 1;
+                if no_feedback_cycles > 50 && feedback_count == 0 {
+                    error!("No feedback received after 5 seconds");
                     break;
                 }
             }
-        } else {
-            no_feedback_cycles += 1;
-            // If no feedback for 5 seconds after goal accepted, something might be wrong
-            if no_feedback_cycles > 50 && last_feedback_count == 0 {
-                error!("No feedback received after 5 seconds");
-                error!("Check that the action server is running");
-                break;
+            Err(e) => {
+                error!("Feedback error: {:?}", e);
             }
         }
 
@@ -339,11 +100,20 @@ extern "C" fn rust_main() {
         }
     }
 
+    // Get final result
+    match action_client.get_result(&goal_id) {
+        Ok((status, result)) => {
+            info!("Result: status={:?}, sequence={:?}", status, result.sequence.as_slice());
+        }
+        Err(e) => {
+            error!("Failed to get result: {:?}", e);
+        }
+    }
+
     info!("Action client finished");
 
-    // Keep alive to allow cleanup
+    // Keep alive
     loop {
         zephyr::time::sleep(zephyr::time::Duration::secs(10));
-        info!("Action client idle (received {} feedback messages)", FEEDBACK_COUNT.load(Ordering::Relaxed));
     }
 }

@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
 # nano-ros Zephyr Listener Example (Rust)
 #
-# A ROS 2 compatible subscriber running on Zephyr RTOS using nano-ros BSP.
+# A ROS 2 compatible subscriber running on Zephyr RTOS using nano-ros API.
 
 [package]
 # Name must be "rustapp" for zephyr-lang-rust integration
 name = "rustapp"
 version = "0.1.0"
 edition = "2024"
-description = "nano-ros listener for Zephyr RTOS using BSP"
+description = "nano-ros listener for Zephyr RTOS"
 license = "Apache-2.0"
 
 [lib]
@@ -19,9 +19,8 @@ crate-type = ["staticlib"]
 zephyr = "0.1.0"
 log = "0.4"
 
-# nano-ros crates (patched to local via .cargo/config.toml)
-nano-ros-core = { version = "*", default-features = false }
-nano-ros-serdes = { version = "*", default-features = false }
+# nano-ros unified API (patched to local via .cargo/config.toml)
+nano-ros = { version = "*", default-features = false, features = ["shim-zephyr"] }
 
 # Generated message types (patched to local via .cargo/config.toml)
 std_msgs = { version = "*", default-features = false }

@@ -122,6 +122,18 @@ pub use nano_ros_transport::{
 ))]
 pub use nano_ros_transport::ShimLivelinessToken;
 
+// Re-export shim node types for embedded platforms
+#[cfg(any(
+    feature = "shim-posix",
+    feature = "shim-zephyr",
+    feature = "shim-smoltcp"
+))]
+pub use nano_ros_node::{
+    ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
+    ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,
+    ShimNodeServiceServer, ShimNodeSubscriber,
+};
+
 // Re-export service types
 pub use nano_ros_core::{ServiceClient, ServiceServer};
 
@@ -197,6 +209,17 @@ pub mod prelude {
     // Re-export BasicExecutor, SpinPeriodResult, and Promise
     #[cfg(all(feature = "zenoh", feature = "std"))]
     pub use crate::{BasicExecutor, Promise, SpinPeriodResult};
+
+    // Re-export shim node types
+    #[cfg(any(
+        feature = "shim-posix",
+        feature = "shim-zephyr",
+        feature = "shim-smoltcp"
+    ))]
+    pub use crate::{
+        ShimExecutor, ShimNode, ShimNodeActionClient, ShimNodeActionServer, ShimNodeError,
+        ShimNodePublisher, ShimNodeServiceClient, ShimNodeServiceServer, ShimNodeSubscriber,
+    };
 
     // Re-export parameter types
     pub use crate::{ParameterServer, ParameterType, ParameterValue};
