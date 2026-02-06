@@ -60,18 +60,18 @@ nano-ros/
 just setup          # Install toolchains, cargo tools, check system deps
 just build          # Build with no_std
 just check          # Format + clippy
-just test           # Run all tests
-just quality        # Format + clippy + tests
+just quality        # Format + clippy + unit tests (no external deps)
 just doc            # Generate docs
 
-# Integration tests
-just test-rust              # All Rust integration tests
-just test-rust-nano2nano    # nano-ros ↔ nano-ros tests
-just test-rust-rmw-interop  # ROS 2 interop tests
-just test-rust-errors       # Error handling and edge cases
-just test-rust-multi-node   # Multi-node and scalability tests
-just test-zephyr            # Zephyr native_sim tests
-just test-qemu-bsp          # QEMU BSP build verification
+# Test groups (by infrastructure requirement)
+just test-unit          # Unit tests + Miri (no external deps)
+just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
+just test-integration   # All Rust integration tests (needs zenohd)
+just test               # test-unit + test-qemu + test-integration
+just test-zephyr        # Zephyr E2E tests (needs west + TAP)
+just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh)
+just test-c             # C API tests (needs cmake + zenohd)
+just test-all           # Everything
 ```
 
 ### First-Time Setup
@@ -129,6 +129,20 @@ All crates use Rust edition 2024. Key syntax changes from edition 2021:
 - **Unsafe fn bodies require explicit blocks**: Unsafe operations inside `unsafe fn` need `unsafe { ... }` blocks
 
 The `nano-ros-c` crate keeps `#![allow(unsafe_op_in_unsafe_fn)]` because it's a pure C FFI wrapper with 420+ unsafe operations where adding explicit blocks would add verbosity without safety improvement.
+
+### API Alignment
+
+The nano-ros API follows established ROS 2 client library conventions:
+
+- **Rust API**: Follows [rclrs](external/ros2_rust) (ROS 2 Rust client) 0.7.0 naming
+- **C API**: Follows rclc (ROS 2 C client) naming
+
+Key naming rules:
+- `create_publisher()`, `create_subscription()` (not `create_subscriber`)
+- `create_service()`, `create_client()`
+- `create_action_server()`, `create_action_client()`
+- Clean type names: `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`
+- Error type: `RclrsError` for the unified error enum
 
 ### `no_std` Support
 All core crates support `#![no_std]` with optional `std`/`alloc` features.

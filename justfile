@@ -20,12 +20,16 @@ format: format-workspace format-examples
 check: check-workspace check-workspace-embedded check-workspace-features check-examples
     @echo "All checks passed!"
 
-# Run quick tests: workspace unit tests only (no integration tests)
-test-quick: test-workspace
-    @echo "Quick tests passed!"
+# Run unit tests only (no external dependencies)
+test-unit: test-workspace test-miri
+    @echo "Unit tests passed!"
 
-# Test everything: workspace tests, Miri, QEMU, Rust integration, and shell integration tests
-test: test-workspace test-miri test-qemu test-rust test-integration
+# Run standard tests (needs qemu-system-arm + zenohd)
+test: test-unit test-qemu test-integration
+    @echo "All standard tests passed!"
+
+# Run all tests including Zephyr, ROS 2 interop, C API, Docker
+test-all: test test-zephyr test-ros2 test-c
     @echo "All tests passed!"
 
 # Run code quality checks (formatting + clippy + unit tests) - no integration tests
@@ -205,6 +209,7 @@ build-examples-native:
     @echo "Building native examples..."
     cd examples/native/rs-talker && cargo build
     cd examples/native/rs-listener && cargo build
+    cd examples/native/rs-custom-msg && cargo build
     cd examples/native/rs-service-server && cargo build
     cd examples/native/rs-service-client && cargo build
     cd examples/native/rs-action-server && cargo build
@@ -215,6 +220,7 @@ format-examples-native:
     @echo "Formatting native examples..."
     cd examples/native/rs-talker && cargo +nightly fmt
     cd examples/native/rs-listener && cargo +nightly fmt
+    cd examples/native/rs-custom-msg && cargo +nightly fmt
     cd examples/native/rs-service-server && cargo +nightly fmt
     cd examples/native/rs-service-client && cargo +nightly fmt
     cd examples/native/rs-action-server && cargo +nightly fmt
@@ -225,6 +231,7 @@ check-examples-native:
     @echo "Checking native examples..."
     cd examples/native/rs-talker && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
     cd examples/native/rs-listener && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
+    cd examples/native/rs-custom-msg && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
     cd examples/native/rs-service-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
     cd examples/native/rs-service-client && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
     cd examples/native/rs-action-server && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}}
@@ -293,6 +300,8 @@ clean-examples-qemu:
     rm -rf examples/platform-integration/qemu-lan9118/target
     rm -rf examples/qemu/rs-talker/target
     rm -rf examples/qemu/rs-listener/target
+    rm -rf examples/qemu/bsp-talker/target
+    rm -rf examples/qemu/bsp-listener/target
     @echo "QEMU example build artifacts cleaned"
 
 # Clean all example build artifacts
@@ -306,7 +315,7 @@ clean-examples: clean-examples-native clean-examples-embedded clean-examples-qem
 # Zephyr workspace path (symlink or sibling directory)
 ZEPHYR_WORKSPACE := if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else { "../nano-ros-workspace" }
 
-# Build Zephyr examples (talker and listener to separate directories)
+# Build Zephyr Rust examples (all Rust examples for native_sim)
 build-zephyr:
     #!/usr/bin/env bash
     set -e
@@ -316,16 +325,24 @@ build-zephyr:
         echo "Run: ./scripts/zephyr/setup.sh"
         exit 1
     fi
-    echo "Building Zephyr examples in $WORKSPACE..."
+    echo "Building Zephyr Rust examples in $WORKSPACE..."
     cd "$WORKSPACE"
     echo "  Building zephyr/rs-talker -> build-talker/"
     west build -b native_sim/native/64 -d build-talker -p auto nano-ros/examples/zephyr/rs-talker
     echo "  Building zephyr/rs-listener -> build-listener/"
     west build -b native_sim/native/64 -d build-listener -p auto nano-ros/examples/zephyr/rs-listener
-    echo "Zephyr examples built successfully!"
+    echo "  Building zephyr/rs-service-server -> build-service-server/"
+    west build -b native_sim/native/64 -d build-service-server -p auto nano-ros/examples/zephyr/rs-service-server
+    echo "  Building zephyr/rs-service-client -> build-service-client/"
+    west build -b native_sim/native/64 -d build-service-client -p auto nano-ros/examples/zephyr/rs-service-client
+    echo "  Building zephyr/rs-action-server -> build-action-server/"
+    west build -b native_sim/native/64 -d build-action-server -p auto nano-ros/examples/zephyr/rs-action-server
+    echo "  Building zephyr/rs-action-client -> build-action-client/"
+    west build -b native_sim/native/64 -d build-action-client -p auto nano-ros/examples/zephyr/rs-action-client
+    echo "Zephyr Rust examples built successfully!"
 
-# Build Zephyr action examples (server and client to separate directories)
-build-zephyr-actions:
+# Build Zephyr C examples
+build-zephyr-c:
     #!/usr/bin/env bash
     set -e
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
@@ -334,23 +351,23 @@ build-zephyr-actions:
         echo "Run: ./scripts/zephyr/setup.sh"
         exit 1
     fi
-    echo "Building Zephyr action examples in $WORKSPACE..."
+    echo "Building Zephyr C examples in $WORKSPACE..."
     cd "$WORKSPACE"
-    echo "  Building zephyr/rs-action-server -> build-action-server/"
-    west build -b native_sim/native/64 -d build-action-server -p auto nano-ros/examples/zephyr/rs-action-server
-    echo "  Building zephyr/rs-action-client -> build-action-client/"
-    west build -b native_sim/native/64 -d build-action-client -p auto nano-ros/examples/zephyr/rs-action-client
-    echo "Zephyr action examples built successfully!"
+    echo "  Building zephyr/c-talker -> build-c-talker/"
+    west build -b native_sim/native/64 -d build-c-talker -p auto nano-ros/examples/zephyr/c-talker
+    echo "  Building zephyr/c-listener -> build-c-listener/"
+    west build -b native_sim/native/64 -d build-c-listener -p auto nano-ros/examples/zephyr/c-listener
+    echo "Zephyr C examples built successfully!"
 
-# Build all Zephyr examples (talker, listener, action server, action client)
-build-zephyr-all: build-zephyr build-zephyr-actions
+# Build all Zephyr examples (Rust + C)
+build-zephyr-all: build-zephyr build-zephyr-c
     @echo "All Zephyr examples built!"
 
 # Clean Zephyr build directories
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -368,6 +385,8 @@ build-examples-qemu:
     cd examples/platform-integration/qemu-lan9118 && cargo build --release
     cd examples/qemu/rs-talker && cargo build --release
     cd examples/qemu/rs-listener && cargo build --release
+    cd examples/qemu/bsp-talker && cargo build --release
+    cd examples/qemu/bsp-listener && cargo build --release
 
 # Format QEMU examples
 format-examples-qemu:
@@ -377,6 +396,8 @@ format-examples-qemu:
     cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt
     cd examples/qemu/rs-talker && cargo +nightly fmt
     cd examples/qemu/rs-listener && cargo +nightly fmt
+    cd examples/qemu/bsp-talker && cargo +nightly fmt
+    cd examples/qemu/bsp-listener && cargo +nightly fmt
 
 # Check QEMU examples
 check-examples-qemu:
@@ -386,6 +407,8 @@ check-examples-qemu:
     cd examples/platform-integration/qemu-lan9118 && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
     cd examples/qemu/rs-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
     cd examples/qemu/rs-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu/bsp-talker && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
+    cd examples/qemu/bsp-listener && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}
 
 # Run all QEMU tests (non-networked)
 test-qemu: test-qemu-basic test-qemu-lan9118
@@ -504,10 +527,6 @@ qemu-help:
     @echo ""
     @echo "For more details: ./scripts/qemu/launch-mps2-an385.sh --help"
 
-# Run multi-node test (QEMU + native)
-test-multi-node:
-    ./scripts/run-multi-node-test.sh
-
 # =============================================================================
 # Static Analysis
 # =============================================================================
@@ -521,11 +540,6 @@ analyze-stack:
     @echo "Note: For full call graph analysis, install cargo-call-stack:"
     @echo "  cargo +nightly install cargo-call-stack"
     @echo "  cd examples/platform-integration/stm32f4-rtic && cargo +nightly call-stack --release"
-
-# Run all static analysis checks (Miri UB detection)
-static-analysis: test-miri
-    @echo ""
-    @echo "All static analysis checks passed!"
 
 # =============================================================================
 # Zenoh
@@ -545,183 +559,61 @@ build-zenoh-pico:
     cd crates/zenoh-pico-shim-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
     @echo "zenoh-pico built at: crates/zenoh-pico-shim-sys/zenoh-pico/build"
 
-# Test zenoh-pico-shim (requires zenohd running)
-test-zenoh-shim:
-    @echo "Testing zenoh-pico-shim (requires: zenohd --listen tcp/127.0.0.1:7447)"
-    cargo test -p zenoh-pico-shim --features "posix std" -- --test-threads=1
-
 # =============================================================================
-# Integration Tests
+# Integration Tests (requires zenohd running on tcp/127.0.0.1:7447)
 # =============================================================================
 
-# Run all integration tests (Rust-based, requires zenohd)
+# Run all Rust integration tests (requires zenohd)
 test-integration:
     cargo test -p nano-ros-tests --tests -- --nocapture
 
-# Run Zephyr C examples test (requires west workspace + TAP network)
+# =============================================================================
+# Zephyr Tests (requires west workspace + bridge network)
+# =============================================================================
+
+# Run Zephyr E2E tests (requires pre-built Zephyr examples + bridge network)
+# Note: --test-threads=1 required because tests share TAP interfaces
+test-zephyr:
+    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
+
+# Run Zephyr tests with full rebuild
+test-zephyr-full: build-zephyr
+    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
+
+# Run Zephyr C examples test
 test-zephyr-c:
     ./tests/zephyr/run-c.sh
 
 # =============================================================================
-# Rust Integration Tests (crates/nano-ros-tests)
+# ROS 2 Interop Tests (requires ROS 2 + rmw_zenoh_cpp + zenohd)
 # =============================================================================
 
-# Run all Rust integration tests
-test-rust:
-    cargo test -p nano-ros-tests --tests -- --nocapture
-
-# Run Rust emulator tests (QEMU Cortex-M3)
-test-rust-emulator:
-    cargo test -p nano-ros-tests --test emulator -- --nocapture
-
-# Run Rust native pub/sub tests
-test-rust-nano2nano:
-    cargo test -p nano-ros-tests --test nano2nano -- --nocapture
-
-# Run Rust platform detection tests
-test-rust-platform:
-    cargo test -p nano-ros-tests --test platform -- --nocapture
-
-# Run Rust RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
-test-rust-rmw-interop:
+# Run ROS 2 interop tests (Rust test harness)
+test-ros2:
     cargo test -p nano-ros-tests --test rmw_interop -- --nocapture
 
-# Run Rust native action tests (nano-ros server ↔ nano-ros client)
-test-rust-actions:
-    cargo test -p nano-ros-tests --test actions -- --nocapture
-
-# Run Rust native service tests (nano-ros server ↔ nano-ros client)
-test-rust-services:
-    cargo test -p nano-ros-tests --test services -- --nocapture
-
-# Run Rust custom message tests (serialization, pub/sub)
-test-rust-custom-msg:
-    cargo test -p nano-ros-tests --test custom_msg -- --nocapture
-
-# Run Rust parameter server tests
-test-rust-params:
-    cargo test -p nano-ros-tests --test params -- --nocapture
-
-# Run Rust executor and timer tests
-test-rust-executor:
-    cargo test -p nano-ros-tests --test executor -- --nocapture
-
-# Run Rust QoS policy tests
-test-rust-qos:
-    cargo test -p nano-ros-tests --test qos -- --nocapture
-
-# Run QEMU BSP tests (build and startup verification)
-test-qemu-bsp:
-    cargo test -p nano-ros-tests --test emulator test_qemu_bsp -- --nocapture
-
-# Run Rust error handling tests
-test-rust-errors:
-    cargo test -p nano-ros-tests --test error_handling -- --nocapture
-
-# Run Rust multi-node and scalability tests
-test-rust-multi-node:
-    cargo test -p nano-ros-tests --test multi_node -- --nocapture
-
-# Run Rust action RMW interop tests (requires ROS 2 + rmw_zenoh_cpp)
-test-rust-actions-rmw-interop:
-    cargo test -p nano-ros-tests --test rmw_interop test_action -- --nocapture
-
-# Run Rust Zephyr tests (requires west workspace + bridge network)
-# Use test-rust-zephyr-full to force rebuild before testing
-# Note: --test-threads=1 required because tests share TAP interfaces (zeth0, zeth1)
-test-rust-zephyr:
-    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
-
-# Run Rust Zephyr tests with rebuild
-test-rust-zephyr-full: build-zephyr
-    cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
-
-# Alias for test-rust-zephyr
-test-zephyr-rs: test-rust-zephyr
-
-# Run specific Zephyr to native E2E test (Zephyr talker → native listener)
-test-rust-zephyr-to-native:
-    cargo test -p nano-ros-tests --test zephyr test_zephyr_to_native_e2e -- --nocapture
-
-# Run specific native to Zephyr E2E test (native talker → Zephyr listener)
-test-rust-native-to-zephyr:
-    cargo test -p nano-ros-tests --test zephyr test_native_to_zephyr_e2e -- --nocapture
-
-# Run bidirectional Native ↔ Zephyr E2E test
-test-rust-bidirectional-zephyr:
-    cargo test -p nano-ros-tests --test zephyr test_bidirectional_native_zephyr_e2e -- --nocapture
-
-# Run Rust Zephyr action tests only (requires west workspace + bridge network)
-test-rust-zephyr-actions:
-    cargo test -p nano-ros-tests --test zephyr test_zephyr_action -- --nocapture
-
-# Run Rust Zephyr action tests with rebuild
-test-rust-zephyr-actions-full: build-zephyr-actions
-    cargo test -p nano-ros-tests --test zephyr test_zephyr_action -- --nocapture
-
-# Run Rust Zephyr service tests only (requires west workspace + bridge network)
-test-rust-zephyr-services:
-    cargo test -p nano-ros-tests --test zephyr test_zephyr_service -- --nocapture --test-threads=1
-
-# Run cross-platform service tests (native server + Zephyr client)
-test-rust-native-server-zephyr-client:
-    cargo test -p nano-ros-tests --test zephyr test_native_server_zephyr_client -- --nocapture
-
-# Run cross-platform service tests (Zephyr server + native client)
-test-rust-zephyr-server-native-client:
-    cargo test -p nano-ros-tests --test zephyr test_zephyr_server_native_client -- --nocapture
-
-# Run Rust tests via wrapper script (with nice output)
-test-rust-full:
-    ./tests/rust-tests.sh
-
-# =============================================================================
-# C Integration Tests
-# =============================================================================
-
-# Run C message generation tests (full integration: build + generate + compile + run)
-test-c-msg-gen:
-    ./tests/c-msg-gen-tests.sh
-
-# Run C codegen Rust unit tests (in cargo-nano-ros)
-test-rust-c-codegen:
-    cd colcon-nano-ros/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture
-
-# Run all C codegen tests (unit + integration)
-test-c-codegen: test-rust-c-codegen test-c-msg-gen
-    @echo "All C codegen tests passed!"
-
-# =============================================================================
-# ROS 2 Interop Tests (shell scripts - requires ROS 2 + rmw_zenoh_cpp)
-# =============================================================================
-
-# Run all ROS 2 interop tests (shell script)
-test-ros2-interop:
+# Run ROS 2 interop tests (shell script)
+test-ros2-shell:
     ./tests/ros2-interop.sh
 
-# Run ROS 2 pub/sub interop tests only
-test-ros2-interop-pubsub:
-    ./tests/ros2-interop.sh pubsub
-
-# Run ROS 2 action interop tests only
-test-ros2-interop-actions:
-    ./tests/ros2-interop.sh actions
-
-# Run ROS 2 discovery tests only
-test-ros2-interop-discovery:
-    ./tests/ros2-interop.sh discovery
-
 # =============================================================================
-# C Integration Tests
+# C API Tests (requires cmake + zenohd)
 # =============================================================================
 
-# Run C integration tests (native-c-talker/listener)
+# Run all C tests (examples + codegen)
 test-c:
+    #!/usr/bin/env bash
+    set -e
+    echo "=== C Integration Tests ==="
     ./tests/c-tests.sh
-
-# Run C integration tests with verbose output
-test-c-verbose:
-    ./tests/c-tests.sh --verbose
+    echo ""
+    echo "=== C Codegen Unit Tests ==="
+    (cd colcon-nano-ros/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture)
+    echo ""
+    echo "=== C Message Generation Tests ==="
+    ./tests/c-msg-gen-tests.sh
+    echo ""
+    echo "All C tests passed!"
 
 # Build C examples only (no tests)
 build-examples-c:
@@ -819,26 +711,22 @@ zephyr-help:
     @echo "  2. Set up bridge network:   sudo ./scripts/zephyr/setup-network.sh"
     @echo ""
     @echo "Build examples:"
-    @echo "  just build-zephyr           # Build talker and listener"
-    @echo "  just build-zephyr-actions   # Build action server and client"
-    @echo "  just build-zephyr-all       # Build all Zephyr examples"
-    @echo "  just rebuild-zephyr         # Clean and rebuild talker/listener"
+    @echo "  just build-zephyr           # Build all Rust Zephyr examples"
+    @echo "  just build-zephyr-c         # Build C Zephyr examples"
+    @echo "  just build-zephyr-all       # Build all Zephyr examples (Rust + C)"
+    @echo "  just rebuild-zephyr         # Clean and rebuild"
     @echo "  just clean-zephyr           # Remove all build directories"
     @echo ""
     @echo "Run tests:"
-    @echo "  just test-rust-zephyr            # Run talker/listener tests"
-    @echo "  just test-rust-zephyr-full       # Rebuild and run talker/listener tests"
-    @echo "  just test-rust-zephyr-actions    # Run action tests only"
-    @echo "  just test-rust-zephyr-actions-full # Rebuild and run action tests"
+    @echo "  just test-zephyr            # Run all Zephyr E2E tests"
+    @echo "  just test-zephyr-full       # Rebuild and run all Zephyr tests"
+    @echo "  just test-zephyr-c          # Run Zephyr C examples test"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
     @echo "  west build -b native_sim/native/64 -d build-talker nano-ros/examples/zephyr/rs-talker"
     @echo "  west build -b native_sim/native/64 -d build-listener nano-ros/examples/zephyr/rs-listener"
     @echo "  west build -b native_sim/native/64 -d build-action-server nano-ros/examples/zephyr/rs-action-server"
     @echo "  west build -b native_sim/native/64 -d build-action-client nano-ros/examples/zephyr/rs-action-client"
-    @echo ""
-    @echo "NOTE: Running both Zephyr action server and client simultaneously has a known"
-    @echo "zenoh-pico limitation where the second client may fail to subscribe."
 
 # =============================================================================
 # Docker
@@ -873,7 +761,7 @@ docker-shell-network:
 # Run bare-metal QEMU talker/listener test using Docker Compose (rs-* examples)
 # Uses separate containers for zenohd, talker, and listener with isolated networking
 # Each container creates its own TAP/bridge and NATs to the Docker network
-test-rust-qemu-baremetal: docker-build build-zenoh-pico-arm
+test-docker-qemu: docker-build build-zenoh-pico-arm
     @echo "Running bare-metal QEMU talker/listener test (rs-* examples)..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
@@ -881,8 +769,7 @@ test-rust-qemu-baremetal: docker-build build-zenoh-pico-arm
     @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run bare-metal QEMU talker/listener test using BSP examples
-# Same as test-rust-qemu-baremetal but uses the simplified bsp-* examples
-test-rust-qemu-baremetal-bsp: docker-build build-zenoh-pico-arm
+test-docker-qemu-bsp: docker-build build-zenoh-pico-arm
     @echo "Running bare-metal QEMU talker/listener test (bsp-* examples)..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
@@ -917,20 +804,21 @@ docker-help:
     @echo "==============================="
     @echo ""
     @echo "Build Docker image:"
-    @echo "  just docker-build         # Build nano-ros-qemu image"
+    @echo "  just docker-build           # Build nano-ros-qemu image"
     @echo ""
     @echo "Interactive shell:"
-    @echo "  just docker-shell         # Start container with shell"
-    @echo "  just docker-shell-network # Start with TAP networking support"
+    @echo "  just docker-shell           # Start container with shell"
+    @echo "  just docker-shell-network   # Start with TAP networking support"
     @echo ""
     @echo "Run commands in Docker:"
-    @echo "  just test-rust-qemu-baremetal  # Run QEMU talker/listener test (Docker Compose)"
-    @echo "  just docker-build-qemu         # Build QEMU examples in Docker"
+    @echo "  just test-docker-qemu       # Run QEMU talker/listener test (rs-* examples)"
+    @echo "  just test-docker-qemu-bsp   # Run QEMU talker/listener test (bsp-* examples)"
+    @echo "  just docker-build-qemu      # Build QEMU examples in Docker"
     @echo ""
     @echo "Docker Compose:"
-    @echo "  just docker-up            # Start development services"
-    @echo "  just docker-down          # Stop development services"
-    @echo "  just docker-exec          # Execute command in container"
+    @echo "  just docker-up              # Start development services"
+    @echo "  just docker-down            # Stop development services"
+    @echo "  just docker-exec            # Execute command in container"
     @echo ""
     @echo "Benefits:"
     @echo "  - QEMU 7.2 (Debian bookworm) - fixes TAP networking issues"

@@ -17,47 +17,29 @@ nano-ros uses a Rust-based test framework with rstest fixtures in `crates/nano-r
 ### Quick Start
 
 ```bash
-# Run all integration tests
-just test-rust
+# Unit tests only (no external deps)
+just test-unit
 
-# Run via cargo directly
+# Standard tests (needs qemu-system-arm + zenohd)
+just test
+
+# All tests (needs Zephyr, ROS 2, cmake, etc.)
+just test-all
+
+# Run integration tests via cargo directly
 cargo test -p nano-ros-tests --tests -- --nocapture
-
-# Run via wrapper script (with colored output)
-./tests/rust-tests.sh
 ```
 
-### Specific Test Suites
+### Test Groups
 
 ```bash
-# QEMU Cortex-M3 emulator tests
-just test-rust-emulator
-
-# nano-ros ↔ nano-ros pub/sub tests
-just test-rust-nano2nano
-
-# Platform detection tests
-just test-rust-platform
-
-# ROS 2 rmw_zenoh interop tests (requires ROS 2 + rmw_zenoh_cpp)
-just test-rust-rmw-interop
-
-# C API integration tests (native-c-talker/listener)
-./tests/c-tests.sh
-
-# Zephyr native_sim tests (requires west workspace + TAP network)
-just test-zephyr
-```
-
-### Using the Wrapper Script
-
-```bash
-./tests/rust-tests.sh                 # Run all tests
-./tests/rust-tests.sh emulator        # Run emulator tests
-./tests/rust-tests.sh nano2nano       # Run pub/sub tests
-./tests/rust-tests.sh platform        # Run platform tests
-./tests/rust-tests.sh rmw_interop     # Run ROS 2 interop tests
-./tests/rust-tests.sh -v all          # Verbose output
+just test-unit          # Unit tests + Miri (no external deps)
+just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
+just test-integration   # All Rust integration tests (needs zenohd)
+just test-zephyr        # Zephyr E2E tests (needs west + TAP network)
+just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
+just test-c             # C API tests (needs cmake + zenohd)
+just test-docker-qemu   # QEMU networked tests in Docker (needs docker)
 ```
 
 ## Directory Structure
@@ -65,10 +47,11 @@ just test-zephyr
 ```
 tests/
 ├── README.md           # This file
-├── rust-tests.sh       # Optional wrapper script for Rust tests
 ├── c-tests.sh          # C API integration tests (CMake-based)
+├── c-msg-gen-tests.sh  # C message generation tests
+├── ros2-interop.sh     # ROS 2 interop tests (shell-based)
 ├── zephyr/             # Zephyr native_sim tests (shell-based)
-│   └── run.sh          # Requires west workspace + TAP network
+│   └── run-c.sh        # Zephyr C examples test
 └── simple-workspace/   # Standalone build verification
 
 crates/nano-ros-tests/  # Rust test crate
@@ -282,13 +265,15 @@ ros2-interop-tests:
 
 ### Test Categories for CI
 
-| Test Suite | Command | ROS 2 Required |
-|------------|---------|----------------|
-| Unit tests | `just test` | No |
-| QEMU tests | `just test-rust-emulator` | No |
-| nano2nano tests | `just test-rust-nano2nano` | No |
-| ROS 2 interop | `./tests/ros2-interop.sh all` | Yes |
-| ROS 2 interop (Rust) | `cargo test -p nano-ros-tests --test rmw_interop` | Yes |
+| Test Suite | Command | Requirements |
+|------------|---------|--------------|
+| Unit tests | `just test-unit` | None |
+| QEMU tests | `just test-qemu` | qemu-system-arm |
+| Integration tests | `just test-integration` | zenohd |
+| Zephyr tests | `just test-zephyr` | west + TAP |
+| ROS 2 interop | `just test-ros2` | ROS 2 + rmw_zenoh |
+| C API tests | `just test-c` | cmake + zenohd |
+| Docker QEMU | `just test-docker-qemu` | docker |
 
 Tests that require ROS 2 will gracefully skip if prerequisites are not met.
 
