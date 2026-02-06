@@ -134,6 +134,13 @@ pub use nano_ros_core::{
 // Re-export trigger types
 pub use nano_ros_node::{Trigger, TriggerCondition, TriggerFn};
 
+// Re-export lifecycle types (always available, no_std compatible)
+pub use nano_ros_core::{LifecycleState, LifecycleTransition, TransitionResult};
+pub use nano_ros_node::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
+
+#[cfg(all(feature = "zenoh", feature = "alloc"))]
+pub use nano_ros_node::LifecycleNode;
+
 // Re-export parameter types
 pub use nano_ros_params::{
     Parameter, ParameterDescriptor, ParameterServer, ParameterType, ParameterValue,
@@ -177,6 +184,15 @@ pub mod prelude {
 
     // Re-export trigger types
     pub use crate::{Trigger, TriggerCondition, TriggerFn};
+
+    // Re-export lifecycle types
+    pub use crate::{
+        LifecycleCallbackFn, LifecycleError, LifecyclePollingNode, LifecycleState,
+        LifecycleTransition, TransitionResult,
+    };
+
+    #[cfg(all(feature = "zenoh", feature = "alloc"))]
+    pub use crate::LifecycleNode;
 
     // Re-export BasicExecutor, SpinPeriodResult, and Promise
     #[cfg(all(feature = "zenoh", feature = "std"))]

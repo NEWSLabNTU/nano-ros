@@ -365,11 +365,11 @@ ROS 2 lifecycle nodes (REP-2002) provide a managed state machine for determinist
 
 ### 18.3.1 Lifecycle State Types
 
-- [ ] Create `crates/nano-ros-core/src/lifecycle.rs`
-- [ ] Define `LifecycleState` enum (shared by Rust and C APIs)
-- [ ] Define `LifecycleTransition` enum
-- [ ] Define `TransitionResult` matching rclc callback return convention
-- [ ] Re-export from `nano-ros` unified crate
+- [x] Create `crates/nano-ros-core/src/lifecycle.rs`
+- [x] Define `LifecycleState` enum (shared by Rust and C APIs)
+- [x] Define `LifecycleTransition` enum
+- [x] Define `TransitionResult` matching rclc callback return convention
+- [x] Re-export from `nano-ros` unified crate
 
 ```rust
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -404,12 +404,12 @@ pub enum TransitionResult {
 
 ### 18.3.2 Rust API — LifecycleNode (std)
 
-- [ ] Create `crates/nano-ros-node/src/lifecycle.rs`
-- [ ] `LifecycleNode` wraps a `NodeHandle` and adds state machine
-- [ ] Builder pattern via `LifecycleNodeOptions` / `IntoLifecycleNodeOptions`
-- [ ] Callback registration via builder (before construction) or setter (after)
-- [ ] `LifecycleNode` exposes the inner `NodeHandle` for creating publishers/subscriptions
-- [ ] Integrate with executor: lifecycle node registers as a regular node
+- [x] Create `crates/nano-ros-node/src/lifecycle.rs`
+- [x] `LifecycleNode` wraps a `NodeHandle` and adds state machine
+- [ ] Builder pattern via `LifecycleNodeOptions` / `IntoLifecycleNodeOptions` (deferred — not needed for core functionality)
+- [x] Callback registration via builder (before construction) or setter (after)
+- [x] `LifecycleNode` exposes the inner `NodeHandle` for creating publishers/subscriptions
+- [x] Integrate with executor: lifecycle node registers as a regular node
 
 ```rust
 /// Options for creating a lifecycle node (follows rclrs IntoNodeOptions pattern)
@@ -507,9 +507,9 @@ executor.spin(SpinOptions::new())?;
 
 ### 18.3.3 Rust API — LifecyclePollingNode (no_std)
 
-- [ ] Implement `LifecyclePollingNode` without `Box` callbacks
-- [ ] Use function pointers instead of closures (matches `SubscriptionCallback` / `ExecutorTimerCallback` duality)
-- [ ] State transitions driven by user code (no services)
+- [x] Implement `LifecyclePollingNode` without `Box` callbacks
+- [x] Use function pointers instead of closures (matches `SubscriptionCallback` / `ExecutorTimerCallback` duality)
+- [x] State transitions driven by user code (no services)
 
 ```rust
 /// Lifecycle callback function pointer (no_std compatible)
@@ -576,10 +576,10 @@ let lifecycle_node = executor.create_lifecycle_node(
 
 ### 18.3.5 C API
 
-- [ ] Add `nano_ros_lifecycle_node_t` struct
-- [ ] Match rclc_lifecycle function signatures
-- [ ] Callback registration via `nano_ros_lifecycle_register_on_*()` (matches rclc)
-- [ ] State transition via `nano_ros_lifecycle_change_state()` (matches rclc)
+- [x] Add `nano_ros_lifecycle_state_machine_t` struct
+- [x] Match rclc_lifecycle function signatures
+- [x] Callback registration via `nano_ros_lifecycle_register_on_*()` (matches rclc)
+- [x] State transition via `nano_ros_lifecycle_change_state()` (matches rclc)
 
 ```c
 /// Lifecycle callback type (matches rclc: int (*cb)(void))
@@ -646,13 +646,13 @@ nano_ros_lifecycle_change_state(&lifecycle_node,
 
 ### 18.3.6 Tests
 
-- [ ] Unit test: valid transition sequence (unconfigured -> inactive -> active -> finalized)
-- [ ] Unit test: invalid transition rejected (active -> configure fails)
-- [ ] Unit test: error recovery path (active -> error -> unconfigured)
-- [ ] Unit test: callback invocation on transitions
-- [ ] Unit test: `LifecyclePollingNode` with fn pointers (no_std)
-- [ ] C API test: `nano_ros_lifecycle_change_state` with callback
-- [ ] Integration test: lifecycle node with ROS 2 `ros2 lifecycle` CLI (requires `alloc` + services)
+- [x] Unit test: valid transition sequence (unconfigured -> inactive -> active -> finalized)
+- [x] Unit test: invalid transition rejected (active -> configure fails)
+- [x] Unit test: error recovery path (active -> error -> unconfigured)
+- [x] Unit test: callback invocation on transitions
+- [x] Unit test: `LifecyclePollingNode` with fn pointers (no_std)
+- [x] C API test: `nano_ros_lifecycle_change_state` with callback
+- [ ] Integration test: lifecycle node with ROS 2 `ros2 lifecycle` CLI (requires `alloc` + services, deferred with 18.3.4)
 
 ---
 

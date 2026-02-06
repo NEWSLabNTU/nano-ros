@@ -19,6 +19,7 @@ extern crate alloc;
 pub mod action;
 pub mod clock;
 pub mod error;
+pub mod lifecycle;
 pub mod logger;
 pub mod message_info;
 pub mod service;
@@ -33,6 +34,7 @@ pub use clock::{Clock, ClockType};
 pub use error::{
     ErrorContext, NanoRosError, NanoRosErrorFilter, NestedError, RclReturnCode, TakeFailedAsNone,
 };
+pub use lifecycle::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use logger::{Logger, OnceFlag};
 pub use message_info::{MessageInfo, PUBLISHER_GID_SIZE};
 pub use service::{ServiceCallback, ServiceClient, ServiceRequest, ServiceResult, ServiceServer};

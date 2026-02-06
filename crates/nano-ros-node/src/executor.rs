@@ -1068,6 +1068,19 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
         Ok(NodeHandle::new(node))
     }
 
+    /// Create a lifecycle-managed node.
+    ///
+    /// Creates a regular node through the executor and wraps it in a
+    /// [`LifecycleNode`] state machine starting in the `Unconfigured` state.
+    #[cfg(feature = "alloc")]
+    pub fn create_lifecycle_node<'a, 'b>(
+        &'a mut self,
+        opts: impl IntoNodeOptions<'b>,
+    ) -> Result<crate::lifecycle::LifecycleNode<'a>, RclrsError> {
+        let handle = self.create_node(opts)?;
+        Ok(crate::lifecycle::LifecycleNode::new(handle))
+    }
+
     /// Get the number of nodes in this executor
     pub fn node_count(&self) -> usize {
         self.nodes.len()
@@ -1257,6 +1270,18 @@ impl BasicExecutor {
 
         let node = self.nodes.last_mut().unwrap();
         Ok(NodeHandle::new(node))
+    }
+
+    /// Create a lifecycle-managed node.
+    ///
+    /// Creates a regular node through the executor and wraps it in a
+    /// [`LifecycleNode`] state machine starting in the `Unconfigured` state.
+    pub fn create_lifecycle_node<'a, 'b>(
+        &'a mut self,
+        opts: impl IntoNodeOptions<'b>,
+    ) -> Result<crate::lifecycle::LifecycleNode<'a>, RclrsError> {
+        let handle = self.create_node(opts)?;
+        Ok(crate::lifecycle::LifecycleNode::new(handle))
     }
 
     /// Get the number of nodes in this executor

@@ -85,6 +85,7 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod lifecycle;
 mod node;
 mod publisher;
 mod subscriber;
@@ -198,6 +199,12 @@ pub use timer::{
 
 // Re-export trigger types
 pub use trigger::{Trigger, TriggerCondition, TriggerFn};
+
+// Re-export lifecycle types
+pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
+
+#[cfg(all(feature = "zenoh", feature = "alloc"))]
+pub use lifecycle::LifecycleNode;
 
 // Re-export shim types when shim feature is enabled
 #[cfg(feature = "shim")]
