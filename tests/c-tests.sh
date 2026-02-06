@@ -13,6 +13,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# Use locally-built zenohd if available, otherwise fall back to system PATH
+ZENOHD="$PROJECT_ROOT/build/zenohd/zenohd"
+[ -x "$ZENOHD" ] || ZENOHD="zenohd"
+
 # Colors for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -135,11 +139,11 @@ check_prerequisites() {
     fi
 
     # Check zenohd
-    if command -v zenohd &>/dev/null; then
-        log_success "zenohd found: $(which zenohd)"
+    if "$ZENOHD" --version &>/dev/null; then
+        log_success "zenohd found: $ZENOHD"
     else
         log_error "zenohd not found"
-        log_info "Install zenoh: https://zenoh.io/docs/getting-started/installation/"
+        log_info "Build with: just build-zenohd"
         missing=1
     fi
 
@@ -252,7 +256,7 @@ test_c_pubsub() {
     log_info "Starting zenoh router..."
     pkill -x zenohd 2>/dev/null || true
     sleep 1
-    zenohd --listen tcp/127.0.0.1:7447 > "$(tmpfile zenohd.txt)" 2>&1 &
+    "$ZENOHD" --listen tcp/127.0.0.1:7447 > "$(tmpfile zenohd.txt)" 2>&1 &
     local zenohd_pid=$!
     register_pid $zenohd_pid
     sleep 2

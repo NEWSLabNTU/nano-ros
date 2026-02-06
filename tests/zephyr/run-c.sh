@@ -23,6 +23,10 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# Use locally-built zenohd if available, otherwise fall back to system PATH
+ZENOHD="$PROJECT_ROOT/build/zenohd/zenohd"
+[ -x "$ZENOHD" ] || ZENOHD="zenohd"
+
 # =============================================================================
 # Utilities (self-contained)
 # =============================================================================
@@ -230,10 +234,11 @@ check_zephyr_prerequisites() {
     fi
 
     # Check zenohd
-    if command -v zenohd &>/dev/null; then
-        log_success "zenohd found: $(which zenohd)"
+    if "$ZENOHD" --version &>/dev/null; then
+        log_success "zenohd found: $ZENOHD"
     else
         log_error "zenohd not found"
+        log_info "Build with: just build-zenohd"
         missing=1
     fi
 
@@ -305,7 +310,7 @@ test_zephyr_to_native() {
     log_info "Starting zenoh router..."
     pkill -x zenohd 2>/dev/null || true
     sleep 1
-    zenohd --listen tcp/0.0.0.0:7447 > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
+    "$ZENOHD" --listen tcp/0.0.0.0:7447 > "$(tmpfile zephyr_zenohd.txt)" 2>&1 &
     local zenohd_pid=$!
     register_pid $zenohd_pid
     sleep 2

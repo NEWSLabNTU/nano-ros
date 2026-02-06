@@ -4,3 +4,6 @@
 [submodule "colcon-cargo-ros2"]
 	path = colcon-nano-ros
 	url = https://github.com/jerry73204/colcon-cargo-ros2.git
+[submodule "scripts/zenohd/zenoh"]
+	path = scripts/zenohd/zenoh
+	url = https://github.com/jerry73204/zenoh.git

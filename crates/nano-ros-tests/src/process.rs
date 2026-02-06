@@ -252,9 +252,22 @@ impl Drop for ManagedProcess {
 // Zenoh Availability Check
 // =============================================================================
 
-/// Check if zenohd is available in PATH
+/// Get the path to the zenohd binary.
+///
+/// Checks for a locally-built zenohd at `build/zenohd/zenohd` first,
+/// then falls back to `zenohd` on the system PATH.
+pub fn zenohd_binary_path() -> std::path::PathBuf {
+    let local = crate::project_root().join("build/zenohd/zenohd");
+    if local.exists() {
+        local
+    } else {
+        std::path::PathBuf::from("zenohd")
+    }
+}
+
+/// Check if zenohd is available (local build or system PATH)
 pub fn is_zenohd_available() -> bool {
-    Command::new("zenohd")
+    Command::new(zenohd_binary_path())
         .arg("--version")
         .stdout(Stdio::null())
         .stderr(Stdio::null())

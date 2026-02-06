@@ -548,6 +548,14 @@ build-zenoh:
 check-zenoh:
     cargo clippy -p nano-ros-transport --features zenoh,std -- {{CLIPPY_LINTS}}
 
+# Build zenohd 1.6.2 from submodule (version-matched to rmw_zenoh_cpp)
+build-zenohd:
+    ./scripts/zenohd/build.sh
+
+# Clean zenohd build
+clean-zenohd:
+    ./scripts/zenohd/build.sh --clean
+
 # Build zenoh-pico C library (standalone, for debugging)
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
@@ -559,7 +567,7 @@ build-zenoh-pico:
 # =============================================================================
 
 # Run all Rust integration tests (requires zenohd)
-test-integration:
+test-integration: build-zenohd
     cargo test -p nano-ros-tests --tests -- --nocapture
 
 # =============================================================================
@@ -568,7 +576,7 @@ test-integration:
 
 # Run Zephyr E2E tests (requires pre-built Zephyr examples + bridge network)
 # Note: --test-threads=1 required because tests share TAP interfaces
-test-zephyr:
+test-zephyr: build-zenohd
     cargo test -p nano-ros-tests --test zephyr -- --nocapture --test-threads=1
 
 # Run Zephyr tests with full rebuild
@@ -584,7 +592,7 @@ test-zephyr-c:
 # =============================================================================
 
 # Run ROS 2 interop tests (Rust test harness)
-test-ros2:
+test-ros2: build-zenohd
     cargo test -p nano-ros-tests --test rmw_interop -- --nocapture
 
 # Run ROS 2 interop tests (shell script)
@@ -596,7 +604,7 @@ test-ros2-shell:
 # =============================================================================
 
 # Run all C tests (examples + codegen)
-test-c:
+test-c: build-zenohd
     #!/usr/bin/env bash
     set -e
     echo "=== C Integration Tests ==="
@@ -692,7 +700,7 @@ doc:
     cargo doc --no-deps --open
 
 # Clean all build artifacts created by `just build`
-clean: clean-examples clean-zephyr
+clean: clean-examples clean-zephyr clean-zenohd
     cargo clean
     @echo "All build artifacts cleaned"
 

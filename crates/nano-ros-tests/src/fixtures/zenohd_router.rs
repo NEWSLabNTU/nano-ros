@@ -50,7 +50,7 @@ impl ZenohRouter {
 
         let locator = format!("tcp/0.0.0.0:{}", port);
 
-        let handle = std::process::Command::new("zenohd")
+        let handle = std::process::Command::new(crate::process::zenohd_binary_path())
             .args(["--listen", &locator])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
