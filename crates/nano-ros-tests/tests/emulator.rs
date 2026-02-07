@@ -12,9 +12,9 @@
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nano_ros_tests::fixtures::{
-    QemuProcess, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_rs_listener,
-    build_qemu_rs_talker, is_arm_toolchain_available, is_qemu_available, parse_test_results,
-    qemu_binary, require_docker_compose, require_zenoh_pico_arm,
+    QemuProcess, build_example, build_qemu_bsp_listener, build_qemu_bsp_talker,
+    build_qemu_rs_listener, build_qemu_rs_talker, is_arm_toolchain_available, is_qemu_available,
+    parse_test_results, qemu_binary, require_docker_compose, require_zenoh_pico_arm,
 };
 use nano_ros_tests::{assert_output_contains, assert_output_excludes, count_pattern, project_root};
 use rstest::rstest;
@@ -407,9 +407,10 @@ fn test_qemu_rs_listener_builds() {
 /// - ARM toolchain (`thumbv7m-none-eabi`)
 /// - zenoh-pico ARM library (`just build-zenoh-pico-arm`)
 ///
-/// The Docker entrypoint auto-builds binaries with `--features docker` if needed.
-/// We remove any pre-built binaries first so the entrypoint uses the correct
-/// Docker network configuration (different IPs than TAP mode).
+/// Binaries are built on the host with `--features docker` (for Docker network IPs)
+/// before starting Docker Compose. This avoids two race conditions:
+/// 1. Other emulator tests building without --features docker concurrently
+/// 2. Docker containers building concurrently from a shared volume mount
 #[test]
 fn test_qemu_rs_talker_listener_e2e() {
     if !require_docker_compose() {
@@ -429,17 +430,28 @@ fn test_qemu_rs_talker_listener_e2e() {
         compose_file.display()
     );
 
-    // Remove pre-built binaries so the Docker entrypoint rebuilds with --features docker.
-    // The docker feature changes IP configuration for container networking.
-    let talker_bin =
-        root.join("examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker");
-    let listener_bin =
-        root.join("examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener");
-    let _ = std::fs::remove_file(&talker_bin);
-    let _ = std::fs::remove_file(&listener_bin);
+    // Build binaries on host with --features docker so they use Docker network IPs
+    // (192.168.100.x) instead of TAP-mode IPs (192.0.3.x).
+    eprintln!("Building QEMU binaries with --features docker...");
+    let talker = build_example(
+        "qemu/rs-talker",
+        "qemu-rs-talker",
+        Some(&["docker"]),
+        Some("thumbv7m-none-eabi"),
+    )
+    .expect("Failed to build qemu-rs-talker with docker feature");
+    let listener = build_example(
+        "qemu/rs-listener",
+        "qemu-rs-listener",
+        Some(&["docker"]),
+        Some("thumbv7m-none-eabi"),
+    )
+    .expect("Failed to build qemu-rs-listener with docker feature");
+    eprintln!("  Talker:   {}", talker.display());
+    eprintln!("  Listener: {}", listener.display());
 
     eprintln!("Starting QEMU E2E test via Docker Compose (rs examples)...");
-    eprintln!("This may take a while on first run (Docker image build + cargo build).");
+    eprintln!("This may take a while on first run (Docker image build).");
 
     // Pass host UID/GID so containers create files with correct ownership
     let host_uid = unsafe { libc::getuid() }.to_string();

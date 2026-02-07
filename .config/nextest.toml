@@ -18,6 +18,13 @@ max-threads = 1
 [test-groups.c_api]
 max-threads = 1
 
+# Emulator tests must run sequentially: the build tests (test_qemu_rs_*_builds)
+# and the Docker E2E test share the same target directory. Running them concurrently
+# causes a race where build tests create binaries without --features docker, which
+# the Docker entrypoint then picks up instead of rebuilding with Docker network IPs.
+[test-groups.emulator]
+max-threads = 1
+
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
 test-group = "zephyr"
@@ -26,10 +33,11 @@ test-group = "zephyr"
 filter = "binary(c_api)"
 test-group = "c_api"
 
+[[profile.default.overrides]]
+filter = "binary(emulator)"
+test-group = "emulator"
 # Docker-based QEMU E2E tests need much longer timeouts
 # (image build + container startup + network setup + test execution)
-[[profile.default.overrides]]
-filter = "binary(emulator) & test(e2e)"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [profile.ci]
