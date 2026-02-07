@@ -553,21 +553,21 @@ test-qemu-esp32-basic: build-examples-esp32-qemu
     echo "ESP32-C3 QEMU boot test"
     echo "========================"
     echo ""
-    echo "Prerequisites: qemu-system-riscv32 with Espressif ESP32-C3 support"
-    echo ""
     if ! command -v qemu-system-riscv32 &>/dev/null; then
         echo "WARNING: qemu-system-riscv32 not found - skipping runtime test"
         echo "Flash images are at: build/esp32-qemu/"
         exit 0
     fi
     echo "Running boot test..."
-    output=$(timeout 15 qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+    tmpfile=$(mktemp)
+    trap 'rm -f "$tmpfile"' EXIT
+    timeout 20 qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
         -drive "file=build/esp32-qemu/esp32-qemu-talker.bin,if=mtd,format=raw" \
         -nic none \
-        2>&1 || true)
-    echo "$output"
+        > "$tmpfile" 2>&1 || true
+    cat "$tmpfile"
     echo ""
-    if echo "$output" | grep -q "nano-ros ESP32-C3 QEMU BSP"; then
+    if grep -q "nano-ros ESP32-C3 QEMU BSP" "$tmpfile"; then
         echo "[PASS] ESP32-C3 QEMU boot test - BSP initialized"
     else
         echo "[FAIL] ESP32-C3 QEMU boot test - BSP banner not found"
