@@ -620,12 +620,11 @@ fn test_zephyr_talker_smoke() {
 
     // The process should have started and produced some output
     let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
-    let has_error = output.contains("Failed to create context") || output.contains("session error");
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr talker booted and initialized");
-        if has_error {
-            eprintln!("NOTE: Connection failed (expected without zenohd on bridge)");
+        if output.contains("ConnectionFailed") || output.contains("session error") {
+            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
         }
     } else {
         panic!("Zephyr talker failed to boot - no initialization output");
@@ -660,6 +659,9 @@ fn test_zephyr_listener_smoke() {
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr listener booted and initialized");
+        if output.contains("ConnectionFailed") || output.contains("session error") {
+            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
+        }
     } else {
         panic!("Zephyr listener failed to boot - no initialization output");
     }
@@ -794,6 +796,9 @@ fn test_zephyr_action_server_smoke() {
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr action server booted and initialized");
+        if output.contains("ConnectionFailed") || output.contains("session error") {
+            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
+        }
     } else {
         panic!("Zephyr action server failed to boot - no initialization output");
     }
@@ -825,6 +830,9 @@ fn test_zephyr_action_client_smoke() {
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr action client booted and initialized");
+        if output.contains("ConnectionFailed") || output.contains("session error") {
+            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
+        }
     } else {
         panic!("Zephyr action client failed to boot - no initialization output");
     }
@@ -1054,6 +1062,9 @@ fn test_zephyr_service_server_smoke() {
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr service server booted and initialized");
+        if output.contains("ConnectionFailed") || output.contains("session error") {
+            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
+        }
     } else {
         panic!("Zephyr service server failed to boot - no initialization output");
     }
@@ -1088,6 +1099,9 @@ fn test_zephyr_service_client_smoke() {
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr service client booted and initialized");
+        if output.contains("ConnectionFailed") || output.contains("session error") {
+            eprintln!("NOTE: Connection error above is expected (no zenohd in smoke test)");
+        }
     } else {
         panic!("Zephyr service client failed to boot - no initialization output");
     }
