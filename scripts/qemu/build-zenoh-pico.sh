@@ -52,10 +52,6 @@ if [ ! -d "$ZENOH_PICO_DIR/include" ]; then
 fi
 
 echo "Building zenoh-pico for ARM Cortex-M3..."
-echo "  Source: $ZENOH_PICO_DIR"
-echo "  Platform: $PLATFORM_DIR"
-echo "  Output: $BUILD_DIR"
-echo ""
 
 # Create build directory
 mkdir -p "$BUILD_DIR"
@@ -133,30 +129,20 @@ DEFINES="$DEFINES -DZ_FEATURE_RAWETH_TRANSPORT=0"
 DEFINES="$DEFINES -DZENOH_DEBUG=0"
 
 # Compile each source file
-echo "Compiling sources..."
 OBJECTS=""
+count=0
 for src in $SOURCES; do
     basename=$(basename "$src" .c)
     # Handle name collisions by using full path hash
     objname=$(echo "$src" | md5sum | cut -c1-8)_${basename}.o
     obj="$BUILD_DIR/$objname"
 
-    echo "  $basename.c"
     arm-none-eabi-gcc $CFLAGS $INCLUDES $DEFINES -c "$src" -o "$obj"
     OBJECTS="$OBJECTS $obj"
+    count=$((count + 1))
 done
 
 # Create static library
-echo ""
-echo "Creating static library..."
 arm-none-eabi-ar rcs "$BUILD_DIR/libzenohpico.a" $OBJECTS
 
-# Show result
-echo ""
-echo "Build complete!"
-echo "  Library: $BUILD_DIR/libzenohpico.a"
-echo "  Size: $(stat -c%s "$BUILD_DIR/libzenohpico.a" | numfmt --to=iec-i --suffix=B)"
-echo ""
-echo "To use in your project:"
-echo "  CFLAGS: $INCLUDES $DEFINES"
-echo "  LDFLAGS: -L$BUILD_DIR -lzenohpico"
+echo "Built $count sources → $BUILD_DIR/libzenohpico.a ($(stat -c%s "$BUILD_DIR/libzenohpico.a" | numfmt --to=iec-i --suffix=B))"

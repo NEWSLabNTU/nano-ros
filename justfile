@@ -101,7 +101,7 @@ test-all verbose="":
 
 # Run code quality checks (formatting + clippy + unit tests) - no integration tests
 # Runs all checks even if some fail, then reports all failures at the end
-quality:
+quality: build-zenoh-pico-arm
     #!/usr/bin/env bash
     set +e  # Don't exit on first error
     failed=0
@@ -452,15 +452,10 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU examples (requires zenoh-pico: run 'just build-zenoh-pico-arm' first)
-build-examples-qemu:
+# Build QEMU examples (automatically builds zenoh-pico ARM library first)
+build-examples-qemu: build-zenoh-pico-arm
     #!/usr/bin/env bash
     set -e
-    if [ ! -f build/qemu-zenoh-pico/libzenohpico.a ]; then
-        echo "Error: zenoh-pico ARM library not found at build/qemu-zenoh-pico/libzenohpico.a"
-        echo "Run: just build-zenoh-pico-arm"
-        exit 1
-    fi
     echo "Building QEMU examples..."
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo build --release)
@@ -499,11 +494,9 @@ test-qemu verbose="":
         echo "All QEMU tests passed!"
     fi
 
-# Build zenoh-pico for ARM Cortex-M3 (required for qemu-rs-talker/listener)
+# Build zenoh-pico for ARM Cortex-M3 (required for QEMU examples)
 build-zenoh-pico-arm:
-    @echo "Building zenoh-pico for ARM Cortex-M3..."
-    ./scripts/qemu/build-zenoh-pico.sh
-    @echo "zenoh-pico built at: build/qemu-zenoh-pico/libzenohpico.a"
+    @./scripts/qemu/build-zenoh-pico.sh
 
 # Clean zenoh-pico ARM build
 clean-zenoh-pico-arm:
@@ -544,7 +537,7 @@ status-qemu-network:
 
 # Test QEMU zenoh-pico communication (requires zenohd + TAP network)
 # This runs qemu-rs-talker and qemu-rs-listener via zenohd
-test-qemu-zenoh: build-zenoh-pico-arm build-examples-qemu
+test-qemu-zenoh: build-examples-qemu
     #!/usr/bin/env bash
     set -e
     echo "============================================"
@@ -865,7 +858,7 @@ docker-shell-network:
 # Run bare-metal QEMU talker/listener test using Docker Compose (rs-* examples)
 # Uses separate containers for zenohd, talker, and listener with isolated networking
 # Each container creates its own TAP/bridge and NATs to the Docker network
-test-docker-qemu: docker-build build-zenoh-pico-arm
+test-docker-qemu: docker-build build-examples-qemu
     @echo "Running bare-metal QEMU talker/listener test (rs-* examples)..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
@@ -873,7 +866,7 @@ test-docker-qemu: docker-build build-zenoh-pico-arm
     @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run bare-metal QEMU talker/listener test using BSP examples
-test-docker-qemu-bsp: docker-build build-zenoh-pico-arm
+test-docker-qemu-bsp: docker-build build-examples-qemu
     @echo "Running bare-metal QEMU talker/listener test (bsp-* examples)..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
