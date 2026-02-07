@@ -51,6 +51,8 @@ nano-ros/
 ├── scripts/zephyr/            # Zephyr setup scripts
 │   ├── setup.sh               # Initialize workspace
 │   └── setup-network.sh       # Configure TAP interface
+├── cmake/                     # CMake find modules for external users
+│   └── FindNanoRos.cmake      # Top-level find module → NanoRos::NanoRos target
 ├── docker/                    # Docker development environment
 │   ├── Dockerfile.qemu-arm    # QEMU 7.2 + ARM toolchain
 │   └── docker-compose.yml     # Container orchestration
@@ -242,6 +244,19 @@ just install-cargo-nano-ros
 
 # Or manually:
 cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
+
+# Or from git (external users):
+cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
+```
+
+**Generating config for external users (git dependency):**
+```bash
+cargo nano-ros generate --config --nano-ros-git
+```
+
+**Generating config for local development (path dependency):**
+```bash
+cargo nano-ros generate --config --nano-ros-path /path/to/nano-ros/crates
 ```
 
 **Regenerating bindings in examples (requires ROS 2 environment):**
@@ -249,6 +264,15 @@ cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
 source /opt/ros/humble/setup.bash
 just generate-bindings
 ```
+
+### C API and CMake Integration
+C examples use `FindNanoRos.cmake` (at `cmake/FindNanoRos.cmake`) which wraps the internal `FindNanoRosC.cmake` (at `crates/nano-ros-c/cmake/`). Usage:
+```cmake
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
+find_package(NanoRos REQUIRED)
+target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
+```
+This provides include dirs, static library, and platform link libs (pthread, dl, m) automatically.
 
 ### Platform Backends
 Selected via feature flags: `posix` (desktop), `zephyr` (Zephyr RTOS), `smoltcp` (bare-metal).
@@ -291,6 +315,9 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 19 | Transport session configuration | Planning |
 | 20 | Remaining work (TODO audit) | Planning |
 | 21 | C API `no_std` backend | In Progress |
+| 22 | ESP32-C3 platform support | Not Started |
+| 23 | Arduino precompiled library | Not Started |
+| 24 | RPi Pico W platform support | Not Started |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment
@@ -302,6 +329,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 
 | Topic | Location |
 |-------|----------|
+| Getting started | [docs/getting-started.md](docs/getting-started.md) |
 | Testing | [tests/README.md](tests/README.md) |
 | Test coverage | [docs/test-coverage.md](docs/test-coverage.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
@@ -320,6 +348,9 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | Transport config (Phase 19) | [docs/roadmap/phase-19-transport-config.md](docs/roadmap/phase-19-transport-config.md) |
 | Remaining work (Phase 20) | [docs/roadmap/phase-20-remaining-work.md](docs/roadmap/phase-20-remaining-work.md) |
 | C API `no_std` backend (Phase 21) | [docs/roadmap/phase-21-c-api-nostd-backend.md](docs/roadmap/phase-21-c-api-nostd-backend.md) |
+| ESP32-C3 support (Phase 22) | [docs/roadmap/phase-22-esp32-support.md](docs/roadmap/phase-22-esp32-support.md) |
+| Arduino library (Phase 23) | [docs/roadmap/phase-23-arduino-precompiled.md](docs/roadmap/phase-23-arduino-precompiled.md) |
+| RPi Pico W support (Phase 24) | [docs/roadmap/phase-24-rpi-pico-w.md](docs/roadmap/phase-24-rpi-pico-w.md) |
 | Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
 
 ## Quick Reference
@@ -333,10 +364,10 @@ just build-zenohd
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Talker
-cd examples/native-rs-talker && cargo run
+cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: Listener
-cd examples/native-rs-listener && cargo run
+cd examples/native/rs-listener && RUST_LOG=info cargo run --features zenoh
 ```
 
 ### ROS 2 Interop
@@ -345,7 +376,7 @@ cd examples/native-rs-listener && cargo run
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: nano-ros talker
-cd examples/native-rs-talker && cargo run
+cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
@@ -454,11 +485,11 @@ just setup-qemu-network                    # Requires sudo
 
 # Terminal 2: Talker (192.0.2.10)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \
-    --binary examples/qemu-rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker
+    --binary examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker
 
 # Terminal 3: Listener (192.0.2.11)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 \
-    --binary examples/qemu-rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener
+    --binary examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener
 ```
 
 Run `just qemu-help` for more options.
