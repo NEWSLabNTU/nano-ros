@@ -37,6 +37,15 @@ static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-listener binary
 static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached: nano-ros-c library built
+static NANO_ROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the c-talker binary
+static C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the c-listener binary
+static C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build the qemu-test example and return its path
 ///
 /// Uses OnceLock to cache the build, so subsequent calls are fast.
@@ -344,6 +353,154 @@ pub fn qemu_bsp_talker_binary() -> PathBuf {
 pub fn qemu_bsp_listener_binary() -> PathBuf {
     build_qemu_bsp_listener()
         .expect("Failed to build qemu-bsp-listener")
+        .to_path_buf()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// C Example Builders (CMake-based)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build the nano-ros-c static library (cached).
+///
+/// Runs `cargo build -p nano-ros-c --release` and returns the path to `libnano_ros_c.a`.
+pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
+    NANO_ROS_C_LIB
+        .get_or_try_init(|| {
+            let root = project_root();
+
+            eprintln!("Building nano-ros-c library...");
+
+            let output = cmd!("cargo", "build", "-p", "nano-ros-c", "--release")
+                .dir(&root)
+                .stderr_to_stdout()
+                .stdout_capture()
+                .unchecked()
+                .run()
+                .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let lib_path = root.join("target/release/libnano_ros_c.a");
+            if !lib_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Library not found after build: {}",
+                    lib_path.display()
+                )));
+            }
+
+            Ok(lib_path)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build a CMake-based C example.
+///
+/// # Arguments
+/// * `example_dir` - Path relative to `examples/` (e.g., "native/c-talker")
+/// * `binary_name` - Name of the output binary (e.g., "c_talker")
+///
+/// This first ensures the nano-ros-c library is built, then runs cmake + cmake --build.
+pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
+    // Ensure the C library is built first
+    build_nano_ros_c_lib()?;
+
+    let root = project_root();
+    let src_dir = root.join(format!("examples/{}", example_dir));
+
+    if !src_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "C example directory not found: {}",
+            src_dir.display()
+        )));
+    }
+
+    let build_dir = src_dir.join("build");
+
+    eprintln!("Building C example {}...", example_dir);
+
+    // Clean and create build directory
+    if build_dir.exists() {
+        std::fs::remove_dir_all(&build_dir)
+            .map_err(|e| TestError::BuildFailed(format!("Failed to clean build dir: {}", e)))?;
+    }
+    std::fs::create_dir_all(&build_dir)
+        .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
+
+    // Run cmake configure
+    let root_arg = format!("-DNANO_ROS_ROOT={}", root.display());
+    let output = cmd!("cmake", &root_arg, "..")
+        .dir(&build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake configure failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    // Run cmake build
+    let output = cmd!("cmake", "--build", ".")
+        .dir(&build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake build failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let binary_path = build_dir.join(binary_name);
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+/// Build c-talker example (cached)
+pub fn build_c_talker() -> TestResult<&'static Path> {
+    C_TALKER_BINARY
+        .get_or_try_init(|| build_c_example("native/c-talker", "c_talker"))
+        .map(|p| p.as_path())
+}
+
+/// Build c-listener example (cached)
+pub fn build_c_listener() -> TestResult<&'static Path> {
+    C_LISTENER_BINARY
+        .get_or_try_init(|| build_c_example("native/c-listener", "c_listener"))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the c-talker binary path
+#[rstest::fixture]
+pub fn c_talker_binary() -> PathBuf {
+    build_c_talker()
+        .expect("Failed to build c-talker")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the c-listener binary path
+#[rstest::fixture]
+pub fn c_listener_binary() -> PathBuf {
+    build_c_listener()
+        .expect("Failed to build c-listener")
         .to_path_buf()
 }
 

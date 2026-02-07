@@ -341,6 +341,29 @@ pub fn require_zenohd() -> bool {
     true
 }
 
+/// Check if cmake is available in PATH
+pub fn is_cmake_available() -> bool {
+    Command::new("cmake")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Skip test if cmake is not available
+///
+/// Returns `false` if cmake is not found, printing a skip message.
+/// Returns `true` if cmake is available and the test should proceed.
+pub fn require_cmake() -> bool {
+    if !is_cmake_available() {
+        eprintln!("Skipping test: cmake not found");
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,5 +372,11 @@ mod tests {
     fn test_zenohd_detection() {
         let available = is_zenohd_available();
         eprintln!("zenohd available: {}", available);
+    }
+
+    #[test]
+    fn test_cmake_detection() {
+        let available = is_cmake_available();
+        eprintln!("cmake available: {}", available);
     }
 }

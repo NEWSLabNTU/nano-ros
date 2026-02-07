@@ -58,3 +58,7 @@ path = "tests/zephyr.rs"
 [[test]]
 name = "actions"
 path = "tests/actions.rs"
+
+[[test]]
+name = "c_api"
+path = "tests/c_api.rs"

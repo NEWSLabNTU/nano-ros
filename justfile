@@ -704,12 +704,18 @@ test-ros2-shell:
 # C API Tests (requires cmake + zenohd)
 # =============================================================================
 
-# Run all C tests (examples + codegen)
+# Run all C tests (integration + codegen)
 test-c verbose="": _init-test-logs
     #!/usr/bin/env bash
     set -e
     v="{{ if verbose != "" { "--verbose" } else { "" } }}"
-    ./tests/run-test.sh --name c-integration --log {{LOG_DIR}}/latest/c-integration.log $v -- ./tests/c-tests.sh
+    # C API integration tests (build + communication via nextest)
+    args=(-p nano-ros-tests --no-fail-fast -E 'binary(c_api)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+    # C codegen tests
     ./tests/run-test.sh --name c-codegen --log {{LOG_DIR}}/latest/c-codegen.log $v -- \
         bash -c 'cd colcon-nano-ros/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
     ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh

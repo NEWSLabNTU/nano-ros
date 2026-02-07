@@ -47,7 +47,6 @@ just test-docker-qemu   # QEMU networked tests in Docker (needs docker)
 ```
 tests/
 ├── README.md           # This file
-├── c-tests.sh          # C API integration tests (CMake-based)
 ├── c-msg-gen-tests.sh  # C message generation tests
 ├── ros2-interop.sh     # ROS 2 interop tests (shell-based)
 ├── zephyr/             # Zephyr native_sim tests (shell-based)
@@ -150,22 +149,17 @@ sudo ./scripts/setup-zephyr-network.sh
 just test-zephyr
 ```
 
-### c (shell-based)
+### c_api (Rust-managed)
 Tests C API integration using CMake-built examples:
+- C talker and C listener build verification
+- C talker and C listener startup/initialization
 - C talker → C listener pub/sub communication
-- Verifies nano-ros-c FFI bindings work correctly
 
 **Requirements:** `cmake`, `zenohd`, Rust toolchain
 
 ```bash
-# Run C tests
-./tests/c-tests.sh
-
-# Verbose output
-./tests/c-tests.sh --verbose
-
-# Skip rebuild (use existing binaries)
-./tests/c-tests.sh --skip-build
+just test-c             # Run all C tests
+just test-c verbose     # Verbose output
 ```
 
 ## Requirements
@@ -304,6 +298,7 @@ The Rust test framework replaces the previous shell-based tests:
 | `tests/rmw-detailed/` | `tests/rmw_interop.rs` |
 | `tests/smoltcp/` | Unit tests in crate |
 | `tests/common/` | `src/lib.rs` + `src/fixtures/` |
+| `tests/c-tests.sh` | `tests/c_api.rs` |
 
 Benefits of Rust tests:
 - Type-safe process management

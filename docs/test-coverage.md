@@ -13,7 +13,7 @@ This document provides a comprehensive overview of test coverage across all plat
 
 **Nextest Tests:** 548 total (553 including 5 skipped) across 27 binaries
 **QEMU Semihosting:** 14 tests (9 basic + 5 LAN9118) via `tests/run-test.sh`
-**C API:** 3 test suites via shell scripts
+**C API:** 5 integration tests via nextest + codegen tests
 **Miri:** 143 tests (nano-ros-serdes, nano-ros-core, nano-ros-params)
 
 ## Current Test Coverage by Platform
@@ -57,8 +57,8 @@ This document provides a comprehensive overview of test coverage across all plat
 | `native/rs-action-server`  | Yes     | actions.rs                         |
 | `native/rs-action-client`  | Yes     | actions.rs                         |
 | `native/rs-custom-msg`     | Yes     | custom_msg.rs                      |
-| `native/c-talker`          | Partial | c-tests.sh only                    |
-| `native/c-listener`        | Partial | c-tests.sh only                    |
+| `native/c-talker`          | Yes     | c_api.rs (build, start, comms)     |
+| `native/c-listener`        | Yes     | c_api.rs (build, start, comms)     |
 
 #### Serial Transport (Phase 18.4)
 
@@ -190,7 +190,7 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 
 | Test Suite    | File                       | Tests | Coverage           |
 |---------------|----------------------------|-------|--------------------|
-| C Integration | `tests/c-tests.sh`         | 2     | Talker/listener    |
+| C Integration | `c_api.rs`                 | 5     | Build, start, comms|
 | C Codegen     | `tests/c-msg-gen-tests.sh` | 1     | Message generation |
 
 **Justfile Recipes:**
@@ -202,8 +202,8 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 **Examples Covered:**
 | Example                   | Tested | Notes         |
 |---------------------------|--------|---------------|
-| `native/c-talker`         | Yes    | c-tests.sh    |
-| `native/c-listener`       | Yes    | c-tests.sh    |
+| `native/c-talker`         | Yes    | c_api.rs      |
+| `native/c-listener`       | Yes    | c_api.rs      |
 | `native/c-custom-msg`     | **NO** | Missing tests |
 | `native/c-baremetal-demo` | **NO** | Missing tests |
 
@@ -277,7 +277,7 @@ Physical hardware has no automated testing.
 - native/c-custom-msg      (untested)
 - native/c-baremetal-demo   (untested)
 ```
-Only c-talker/c-listener are tested via `c-tests.sh`.
+Only c-talker/c-listener are tested via `c_api.rs`.
 
 **3. QEMU BSP Communication Tests**
 ```
@@ -304,7 +304,7 @@ QEMU BSP examples build but aren't tested for E2E communication without Docker.
 | **QEMU/Emulator**      | 12    | Complete              |
 | **Platform Detection** | 10    | Complete              |
 | **Serial Transport**   | 9     | Complete (manual E2E) |
-| **C Bindings**         | 3     | Partial               |
+| **C Bindings**         | 6     | Partial               |
 | **STM32F4 HIL**        | 0     | Not applicable        |
 
 ## Test Execution Quick Reference

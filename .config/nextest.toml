@@ -15,9 +15,16 @@ store-failure-output = true
 [test-groups.zephyr]
 max-threads = 1
 
+[test-groups.c_api]
+max-threads = 1
+
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
 test-group = "zephyr"
+
+[[profile.default.overrides]]
+filter = "binary(c_api)"
+test-group = "c_api"
 
 [profile.ci]
 # CI profile with stricter timeouts
