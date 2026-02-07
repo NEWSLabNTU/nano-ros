@@ -232,6 +232,13 @@ static void shim_sample_handler(z_loaned_sample_t *sample, void *arg) {
 // ============================================================================
 
 int32_t zenoh_shim_init(const char *locator) {
+    return zenoh_shim_init_with_config(locator, "client", NULL, 0);
+}
+
+int32_t zenoh_shim_init_with_config(const char *locator,
+                                     const char *mode,
+                                     const zenoh_shim_property_t *properties,
+                                     size_t num_properties) {
     // Initialize storage
     memset(g_publishers, 0, sizeof(g_publishers));
     memset(g_subscribers, 0, sizeof(g_subscribers));
@@ -254,7 +261,7 @@ int32_t zenoh_shim_init(const char *locator) {
     // Initialize zenoh config
     z_config_default(&g_config);
 
-    if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_MODE_KEY, "client") < 0) {
+    if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_MODE_KEY, mode) < 0) {
         return ZENOH_SHIM_ERR_CONFIG;
     }
 
@@ -262,11 +269,33 @@ int32_t zenoh_shim_init(const char *locator) {
         if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_CONNECT_KEY, locator) < 0) {
             return ZENOH_SHIM_ERR_CONFIG;
         }
-        // TODO: zenoh-pico enables multicast scouting by default, which can
-        // cause clients to discover and connect to unintended routers. This is
-        // problematic for parallel test isolation and embedded environments
-        // where multicast is unavailable. A future zenoh_shim_init_with_config()
-        // API should allow users to control scouting and other session options.
+    }
+
+    // Apply additional properties
+    for (size_t i = 0; i < num_properties; i++) {
+        if (properties[i].key == NULL || properties[i].value == NULL) {
+            continue;
+        }
+
+        uint8_t config_key;
+        if (strcmp(properties[i].key, "multicast_scouting") == 0) {
+            config_key = Z_CONFIG_MULTICAST_SCOUTING_KEY;
+        } else if (strcmp(properties[i].key, "scouting_timeout_ms") == 0) {
+            config_key = Z_CONFIG_SCOUTING_TIMEOUT_KEY;
+        } else if (strcmp(properties[i].key, "multicast_locator") == 0) {
+            config_key = Z_CONFIG_MULTICAST_LOCATOR_KEY;
+        } else if (strcmp(properties[i].key, "listen") == 0) {
+            config_key = Z_CONFIG_LISTEN_KEY;
+        } else if (strcmp(properties[i].key, "add_timestamp") == 0) {
+            config_key = Z_CONFIG_ADD_TIMESTAMP_KEY;
+        } else {
+            // Unknown key — silently ignore
+            continue;
+        }
+
+        if (zp_config_insert(z_config_loan_mut(&g_config), config_key, properties[i].value) < 0) {
+            return ZENOH_SHIM_ERR_CONFIG;
+        }
     }
 
     g_initialized = true;

@@ -6,10 +6,14 @@ license.workspace = true
 description = "Node abstraction for nano-ros"
 
 [features]
-default = ["std"]
+default = ["std", "ros-humble"]
 std = ["nano-ros-core/std", "nano-ros-transport/std", "log"]
 alloc = ["nano-ros-core/alloc"]
 zenoh = ["nano-ros-transport/zenoh", "alloc"]
+
+# ROS edition feature flags (controls which env vars are supported)
+ros-humble = []                  # ROS_LOCALHOST_ONLY (Humble+, default)
+ros-iron = ["ros-humble"]        # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEERS (Iron+)
 log = ["dep:log"]
 
 # Shim transport backend (for embedded platforms without full zenoh features)

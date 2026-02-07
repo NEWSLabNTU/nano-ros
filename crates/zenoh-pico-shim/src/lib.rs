@@ -40,7 +40,7 @@ pub use zenoh_pico_shim_sys::{
     ZENOH_SHIM_ERR_KEYEXPR, ZENOH_SHIM_ERR_PUBLISH, ZENOH_SHIM_ERR_SESSION, ZENOH_SHIM_ERR_TASK,
     ZENOH_SHIM_ERR_TIMEOUT, ZENOH_SHIM_MAX_LIVELINESS, ZENOH_SHIM_MAX_PUBLISHERS,
     ZENOH_SHIM_MAX_QUERYABLES, ZENOH_SHIM_MAX_SUBSCRIBERS, ZENOH_SHIM_OK, ZENOH_SHIM_RMW_GID_SIZE,
-    ZENOH_SHIM_ZID_SIZE,
+    ZENOH_SHIM_ZID_SIZE, zenoh_shim_property_t,
 };
 
 // Re-export platform module for smoltcp
@@ -53,10 +53,11 @@ use zenoh_pico_shim_sys::{
     zenoh_shim_close, zenoh_shim_declare_liveliness, zenoh_shim_declare_publisher,
     zenoh_shim_declare_queryable, zenoh_shim_declare_subscriber,
     zenoh_shim_declare_subscriber_with_attachment, zenoh_shim_get, zenoh_shim_get_zid,
-    zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_poll, zenoh_shim_publish,
-    zenoh_shim_publish_with_attachment, zenoh_shim_query_reply, zenoh_shim_spin_once,
-    zenoh_shim_undeclare_liveliness, zenoh_shim_undeclare_publisher,
-    zenoh_shim_undeclare_queryable, zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
+    zenoh_shim_init, zenoh_shim_init_with_config, zenoh_shim_is_open, zenoh_shim_open,
+    zenoh_shim_poll, zenoh_shim_publish, zenoh_shim_publish_with_attachment,
+    zenoh_shim_query_reply, zenoh_shim_spin_once, zenoh_shim_undeclare_liveliness,
+    zenoh_shim_undeclare_publisher, zenoh_shim_undeclare_queryable,
+    zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
 };
 
 // ============================================================================
@@ -283,6 +284,55 @@ impl ShimContext {
     pub fn new(locator: &[u8]) -> Result<Self> {
         // Safety: locator is a valid byte slice, cast to c_char for C string
         let ret = unsafe { zenoh_shim_init(locator.as_ptr().cast()) };
+        if ret < 0 {
+            return Err(ShimError::from_code(ret));
+        }
+
+        let ret = unsafe { zenoh_shim_open() };
+        if ret < 0 {
+            return Err(ShimError::from_code(ret));
+        }
+
+        Ok(ShimContext {
+            _private: PhantomData,
+        })
+    }
+
+    /// Create a new shim context with mode, locator, and properties
+    ///
+    /// Byte slices for locator and mode must be null-terminated C strings.
+    ///
+    /// # Arguments
+    ///
+    /// * `locator` - Null-terminated locator (e.g., `b"tcp/127.0.0.1:7447\0"`), or `None` for peer mode
+    /// * `mode` - Null-terminated mode string (`b"client\0"` or `b"peer\0"`)
+    /// * `properties` - Array of C-compatible key-value properties
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if initialization or session opening fails.
+    pub fn with_config(
+        locator: Option<&[u8]>,
+        mode: &[u8],
+        properties: &[zenoh_pico_shim_sys::zenoh_shim_property_t],
+    ) -> Result<Self> {
+        let locator_ptr = match locator {
+            Some(loc) => loc.as_ptr().cast(),
+            None => core::ptr::null(),
+        };
+        let props_ptr = if properties.is_empty() {
+            core::ptr::null()
+        } else {
+            properties.as_ptr()
+        };
+        let ret = unsafe {
+            zenoh_shim_init_with_config(
+                locator_ptr,
+                mode.as_ptr().cast(),
+                props_ptr,
+                properties.len(),
+            )
+        };
         if ret < 0 {
             return Err(ShimError::from_code(ret));
         }

@@ -102,6 +102,20 @@
 #define ZENOH_SHIM_ERR_TIMEOUT -9
 
 /**
+ * A key-value property for transport configuration (C-compatible)
+ */
+typedef struct zenoh_shim_property_t {
+  /**
+   * Property key (null-terminated C string)
+   */
+  const char *key;
+  /**
+   * Property value (null-terminated C string)
+   */
+  const char *value;
+} zenoh_shim_property_t;
+
+/**
  * Callback function type for receiving samples (legacy, payload only).
  *
  * # Parameters
@@ -164,6 +178,24 @@ typedef void (*PollCallbackFn)(void);
  * 0 on success, negative error code on failure.
  */
 int32_t zenoh_shim_init(const char *_locator);
+
+/**
+ * Initialize zenoh configuration with mode, locator, and properties.
+ *
+ * # Parameters
+ * * `locator` - Connection string (e.g., "tcp/192.168.1.1:7447"), null-terminated.
+ *   Can be NULL for peer mode.
+ * * `mode` - Session mode string ("client" or "peer"), null-terminated.
+ * * `properties` - Array of key-value properties, or NULL.
+ * * `num_properties` - Number of properties in the array.
+ *
+ * # Returns
+ * 0 on success, negative error code on failure.
+ */
+int32_t zenoh_shim_init_with_config(const char *_locator,
+                                    const char *_mode,
+                                    const struct zenoh_shim_property_t *_properties,
+                                    uintptr_t _num_properties);
 
 /**
  * Open zenoh session and start background tasks (if threaded backend).

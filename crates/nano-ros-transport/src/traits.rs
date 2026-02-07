@@ -577,6 +577,16 @@ pub struct TransportConfig<'a> {
     pub locator: Option<&'a str>,
     /// Session mode: client, peer, or router
     pub mode: SessionMode,
+    /// Additional transport properties (key-value pairs)
+    ///
+    /// These are passed through to the underlying transport backend.
+    /// For zenoh-pico, recognized keys include:
+    /// - `"multicast_scouting"` - Enable/disable multicast scouting (`"true"` or `"false"`)
+    /// - `"scouting_timeout_ms"` - Scouting timeout in milliseconds
+    /// - `"multicast_locator"` - Multicast group address
+    /// - `"listen"` - Listen endpoint (e.g., `"tcp/0.0.0.0:0"`)
+    /// - `"add_timestamp"` - Add timestamps to messages (`"true"` or `"false"`)
+    pub properties: &'a [(&'a str, &'a str)],
 }
 
 impl Default for TransportConfig<'_> {
@@ -584,6 +594,7 @@ impl Default for TransportConfig<'_> {
         Self {
             locator: None,
             mode: SessionMode::Client,
+            properties: &[],
         }
     }
 }

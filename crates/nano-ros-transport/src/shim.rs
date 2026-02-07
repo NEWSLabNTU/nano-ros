@@ -25,6 +25,7 @@
 //! let config = TransportConfig {
 //!     locator: Some("tcp/192.168.1.1:7447"),
 //!     mode: SessionMode::Client,
+//!     properties: &[],
 //! };
 //!
 //! // Open session
@@ -484,7 +485,78 @@ impl ShimSession {
             }
         };
 
-        let context = ShimContext::new(&locator).map_err(TransportError::from)?;
+        // Build mode string
+        let mode: &[u8] = match config.mode {
+            SessionMode::Client => b"client\0",
+            SessionMode::Peer => b"peer\0",
+        };
+
+        // Build null-terminated property strings on the stack
+        // Each key/value is at most 64 bytes
+        let mut key_bufs = [[0u8; 64]; 8];
+        let mut val_bufs = [[0u8; 64]; 8];
+        let mut c_props: [zenoh_pico_shim::zenoh_shim_property_t; 8] =
+            unsafe { core::mem::zeroed() };
+
+        let mut prop_count = 0usize;
+
+        // Copy explicit properties from config
+        for i in 0..config.properties.len().min(8) {
+            let (key, value) = config.properties[i];
+            let key_bytes = key.as_bytes();
+            let val_bytes = value.as_bytes();
+            if key_bytes.len() >= 64 || val_bytes.len() >= 64 {
+                continue; // Skip oversized properties
+            }
+            key_bufs[prop_count][..key_bytes.len()].copy_from_slice(key_bytes);
+            key_bufs[prop_count][key_bytes.len()] = 0;
+            val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
+            val_bufs[prop_count][val_bytes.len()] = 0;
+            c_props[prop_count] = zenoh_pico_shim::zenoh_shim_property_t {
+                key: key_bufs[prop_count].as_ptr().cast(),
+                value: val_bufs[prop_count].as_ptr().cast(),
+            };
+            prop_count += 1;
+        }
+
+        // Read ZENOH_* env vars as defaults (explicit properties take precedence)
+        #[cfg(feature = "std")]
+        {
+            let env_mappings: &[(&str, &str)] = &[
+                ("ZENOH_MULTICAST_SCOUTING", "multicast_scouting"),
+                ("ZENOH_SCOUTING_TIMEOUT", "scouting_timeout_ms"),
+                ("ZENOH_LISTEN", "listen"),
+            ];
+            for &(env_name, prop_key) in env_mappings {
+                if let Ok(val) = std::env::var(env_name) {
+                    let already_set = config.properties.iter().any(|(k, _)| *k == prop_key);
+                    if !already_set && prop_count < 8 {
+                        let key_bytes = prop_key.as_bytes();
+                        let val_bytes = val.as_bytes();
+                        if key_bytes.len() < 64 && val_bytes.len() < 64 {
+                            key_bufs[prop_count][..key_bytes.len()].copy_from_slice(key_bytes);
+                            key_bufs[prop_count][key_bytes.len()] = 0;
+                            val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
+                            val_bufs[prop_count][val_bytes.len()] = 0;
+                            c_props[prop_count] = zenoh_pico_shim::zenoh_shim_property_t {
+                                key: key_bufs[prop_count].as_ptr().cast(),
+                                value: val_bufs[prop_count].as_ptr().cast(),
+                            };
+                            prop_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+
+        let locator_opt = if config.mode == SessionMode::Peer && config.locator.is_none() {
+            None
+        } else {
+            Some(locator.as_slice())
+        };
+
+        let context = ShimContext::with_config(locator_opt, mode, &c_props[..prop_count])
+            .map_err(TransportError::from)?;
 
         Ok(Self { context })
     }

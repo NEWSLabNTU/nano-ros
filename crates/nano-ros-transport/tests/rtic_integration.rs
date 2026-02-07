@@ -126,6 +126,7 @@ fn test_transport_config() {
     let config = TransportConfig {
         locator: Some("tcp/127.0.0.1:7447"),
         mode: SessionMode::Client,
+        properties: &[],
     };
 
     assert!(config.locator.unwrap().contains("7447"));

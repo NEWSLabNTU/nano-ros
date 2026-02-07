@@ -119,6 +119,15 @@ pub type PollCallback = extern "C" fn();
 mod cbindgen_stubs {
     use super::*;
 
+    /// A key-value property for transport configuration.
+    #[repr(C)]
+    pub struct zenoh_shim_property_t {
+        /// Property key (null-terminated C string)
+        pub key: *const c_char,
+        /// Property value (null-terminated C string)
+        pub value: *const c_char,
+    }
+
     /// Initialize zenoh configuration with client mode and connect locator.
     ///
     /// # Parameters
@@ -129,6 +138,27 @@ mod cbindgen_stubs {
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_init(_locator: *const c_char) -> i32 {
+        0
+    }
+
+    /// Initialize zenoh configuration with mode, locator, and properties.
+    ///
+    /// # Parameters
+    /// * `locator` - Connection string (e.g., "tcp/192.168.1.1:7447"), null-terminated.
+    ///   Can be NULL for peer mode.
+    /// * `mode` - Session mode string ("client" or "peer"), null-terminated.
+    /// * `properties` - Array of key-value properties, or NULL.
+    /// * `num_properties` - Number of properties in the array.
+    ///
+    /// # Returns
+    /// 0 on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zenoh_shim_init_with_config(
+        _locator: *const c_char,
+        _mode: *const c_char,
+        _properties: *const zenoh_shim_property_t,
+        _num_properties: usize,
+    ) -> i32 {
         0
     }
 

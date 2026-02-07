@@ -54,6 +54,8 @@ exclude = []
 include = [
     # Shim API - Session lifecycle
     "zenoh_shim_init",
+    "zenoh_shim_init_with_config",
+    "zenoh_shim_property_t",
     "zenoh_shim_open",
     "zenoh_shim_is_open",
     "zenoh_shim_close",

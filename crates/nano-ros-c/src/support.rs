@@ -133,6 +133,7 @@ pub unsafe extern "C" fn nano_ros_support_init(
         let config = TransportConfig {
             locator: Some(locator_str),
             mode: SessionMode::Client,
+            properties: &[],
         };
 
         match ZenohSession::new(&config) {

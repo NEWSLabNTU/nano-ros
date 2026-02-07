@@ -8,7 +8,7 @@ keywords = ["ros", "ros2", "embedded", "no_std"]
 categories = ["embedded", "no-std", "robotics"]
 
 [features]
-default = ["std", "zenoh"]
+default = ["std", "zenoh", "ros-humble"]
 std = [
     "alloc",  # std implies alloc
     "nano-ros-core/std",
@@ -26,6 +26,10 @@ zenoh = [
     "nano-ros-node/zenoh",
     "nano-ros-transport/zenoh",
 ]
+
+# ROS edition feature flags
+ros-humble = ["nano-ros-node/ros-humble"]
+ros-iron = ["nano-ros-node/ros-iron"]
 
 # Shim transport backends
 shim-posix = ["nano-ros-node/shim-posix", "nano-ros-transport/shim-posix"]

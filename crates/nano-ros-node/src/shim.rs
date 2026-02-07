@@ -125,6 +125,7 @@ impl ShimExecutor {
         let config = TransportConfig {
             locator: Some(locator_str),
             mode: nano_ros_transport::SessionMode::Client,
+            properties: &[],
         };
 
         let session = ShimTransport::open(&config)?;

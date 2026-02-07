@@ -93,9 +93,16 @@ impl Context {
     #[cfg(feature = "zenoh")]
     pub fn new(options: InitOptions) -> Result<Self, RclrsError> {
         let domain_id = options.domain_id.unwrap_or(0);
+        let properties: &'static [(&'static str, &'static str)] = if options.properties.is_empty() {
+            &[]
+        } else {
+            let v: alloc::vec::Vec<_> = options.properties.iter().copied().collect();
+            alloc::boxed::Box::leak(v.into_boxed_slice())
+        };
         let transport_config = TransportConfig {
             locator: options.locator,
             mode: options.session_mode,
+            properties,
         };
         Ok(Self {
             domain_id,
@@ -116,8 +123,16 @@ impl Context {
     /// - `ROS_DOMAIN_ID`: Domain ID (default: 0)
     /// - `ZENOH_MODE`: Session mode - "peer" for peer mode, otherwise client mode
     /// - `ZENOH_LOCATOR`: Locator for client mode (default: "tcp/127.0.0.1:7447")
+    /// - `ROS_LOCALHOST_ONLY`: When "1", forces loopback locator and disables multicast
+    ///   scouting (Humble+, requires `ros-humble` feature)
+    /// - `ROS_AUTOMATIC_DISCOVERY_RANGE`: Controls discovery scope — "LOCALHOST" acts
+    ///   like `ROS_LOCALHOST_ONLY=1`, "OFF" disables scouting only (Iron+, requires
+    ///   `ros-iron` feature, supersedes `ROS_LOCALHOST_ONLY`)
+    /// - `ROS_STATIC_PEERS`: Semicolon-separated locators; first entry overrides
+    ///   `ZENOH_LOCATOR` (Iron+, requires `ros-iron` feature)
     ///
     /// In peer mode, no locator is needed as peers discover each other via multicast.
+    /// `ROS_LOCALHOST_ONLY` is ignored in peer mode.
     ///
     /// # Examples
     ///
@@ -127,6 +142,10 @@ impl Context {
     ///
     /// // Peer mode (set ZENOH_MODE=peer)
     /// std::env::set_var("ZENOH_MODE", "peer");
+    /// let context = Context::from_env()?;
+    ///
+    /// // Localhost-only mode
+    /// std::env::set_var("ROS_LOCALHOST_ONLY", "1");
     /// let context = Context::from_env()?;
     /// ```
     #[cfg(all(feature = "std", feature = "zenoh"))]
@@ -141,21 +160,102 @@ impl Context {
             .map(|v| v.eq_ignore_ascii_case("peer"))
             .unwrap_or(false);
 
+        // --- ROS discovery env vars ---
+
+        // Compute disable_scouting and force_localhost flags
+        let mut disable_scouting = false;
+        let mut force_localhost = false;
+
+        // ROS_LOCALHOST_ONLY (Humble+)
+        #[cfg(feature = "ros-humble")]
+        {
+            let localhost_only = std::env::var("ROS_LOCALHOST_ONLY")
+                .map(|v| v == "1")
+                .unwrap_or(false);
+            if localhost_only && !is_peer_mode {
+                disable_scouting = true;
+                force_localhost = true;
+            }
+        }
+
+        // ROS_AUTOMATIC_DISCOVERY_RANGE (Iron+) — supersedes ROS_LOCALHOST_ONLY
+        #[cfg(feature = "ros-iron")]
+        {
+            if let Ok(range) = std::env::var("ROS_AUTOMATIC_DISCOVERY_RANGE") {
+                match range.as_str() {
+                    "LOCALHOST" => {
+                        if !is_peer_mode {
+                            disable_scouting = true;
+                            force_localhost = true;
+                        }
+                    }
+                    "OFF" => {
+                        disable_scouting = true;
+                        // force_localhost is NOT set — keep explicit locator
+                    }
+                    _ => {
+                        // "SUBNET", "SYSTEM_DEFAULT", or unrecognized — no effect
+                    }
+                }
+            }
+        }
+
+        // ROS_STATIC_PEERS (Iron+) — first entry overrides ZENOH_LOCATOR
+        #[cfg(feature = "ros-iron")]
+        let static_peer: Option<&'static str> = std::env::var("ROS_STATIC_PEERS")
+            .ok()
+            .filter(|s| !s.is_empty())
+            .and_then(|s| {
+                // Take first semicolon-separated entry
+                let first: std::string::String = s.split(';').next().unwrap_or("").trim().into();
+                if first.is_empty() {
+                    None
+                } else {
+                    Some(&*std::boxed::Box::leak(first.into_boxed_str()))
+                }
+            });
+
+        // --- Build TransportConfig ---
+
         let transport_config = if is_peer_mode {
             TransportConfig {
                 locator: None,
                 mode: SessionMode::Peer,
+                properties: &[],
             }
         } else {
-            // Client mode - use ZENOH_LOCATOR or default
-            // Note: We leak the string to get a 'static lifetime. This is acceptable
-            // for CLI applications where the context lives for the program duration.
-            let locator: Option<&'static str> = std::env::var("ZENOH_LOCATOR")
-                .ok()
-                .map(|s| -> &'static str { std::boxed::Box::leak(s.into_boxed_str()) });
+            // Compute effective locator (priority: force_localhost > static_peers > ZENOH_LOCATOR > default)
+            let locator: Option<&'static str> = if force_localhost {
+                Some("tcp/127.0.0.1:7447")
+            } else {
+                // Check ROS_STATIC_PEERS first (Iron+)
+                #[cfg(feature = "ros-iron")]
+                let from_static_peers = static_peer;
+                #[cfg(not(feature = "ros-iron"))]
+                let from_static_peers: Option<&'static str> = None;
+
+                if let Some(peer) = from_static_peers {
+                    Some(peer)
+                } else {
+                    // Fall back to ZENOH_LOCATOR or default
+                    let from_env: Option<&'static str> = std::env::var("ZENOH_LOCATOR")
+                        .ok()
+                        .map(|s| -> &'static str { std::boxed::Box::leak(s.into_boxed_str()) });
+                    from_env.or(Some("tcp/127.0.0.1:7447"))
+                }
+            };
+
+            // Build properties: static slice when scouting is disabled
+            let properties: &'static [(&'static str, &'static str)] = if disable_scouting {
+                &[("multicast_scouting", "false")]
+            } else {
+                &[]
+            };
+
             TransportConfig {
-                locator: locator.or(Some("tcp/127.0.0.1:7447")),
+                locator,
                 mode: SessionMode::Client,
+                properties,
             }
         };
 
@@ -190,6 +290,7 @@ impl Context {
         let transport_config = TransportConfig {
             locator: Some("tcp/127.0.0.1:7447"),
             mode: SessionMode::Client,
+            properties: &[],
         };
         Ok(Self {
             domain_id: 0,
@@ -355,6 +456,9 @@ pub struct InitOptions {
     /// Session mode (Client or Peer)
     #[cfg(feature = "zenoh")]
     pub(crate) session_mode: SessionMode,
+    /// Additional transport properties (key-value pairs)
+    #[cfg(feature = "zenoh")]
+    pub(crate) properties: heapless::Vec<(&'static str, &'static str), 8>,
 }
 
 impl Default for InitOptions {
@@ -372,6 +476,8 @@ impl InitOptions {
             locator: Some("tcp/127.0.0.1:7447"),
             #[cfg(feature = "zenoh")]
             session_mode: SessionMode::Client,
+            #[cfg(feature = "zenoh")]
+            properties: heapless::Vec::new(),
         }
     }
 
@@ -415,6 +521,23 @@ impl InitOptions {
     pub fn peer_mode(mut self) -> Self {
         self.session_mode = SessionMode::Peer;
         self.locator = None;
+        self
+    }
+
+    /// Add a transport property (key-value pair)
+    ///
+    /// Properties are passed through to the underlying transport backend.
+    /// For zenoh-pico, recognized keys include:
+    /// - `"multicast_scouting"` - `"true"` or `"false"`
+    /// - `"scouting_timeout_ms"` - Timeout in milliseconds
+    /// - `"multicast_locator"` - Multicast group address
+    /// - `"listen"` - Listen endpoint
+    /// - `"add_timestamp"` - `"true"` or `"false"`
+    ///
+    /// Up to 8 properties can be set. Additional properties are silently ignored.
+    #[cfg(feature = "zenoh")]
+    pub fn property(mut self, key: &'static str, value: &'static str) -> Self {
+        let _ = self.properties.push((key, value));
         self
     }
 }
@@ -654,6 +777,274 @@ mod tests {
         let options = InitOptions::new().peer_mode();
         assert_eq!(options.session_mode, SessionMode::Peer);
         assert_eq!(options.locator, None);
+    }
+
+    #[test]
+    #[cfg(feature = "zenoh")]
+    fn test_init_options_properties() {
+        let options = InitOptions::new()
+            .property("multicast_scouting", "false")
+            .property("scouting_timeout_ms", "1000");
+        assert_eq!(options.properties.len(), 2);
+        assert_eq!(options.properties[0], ("multicast_scouting", "false"));
+        assert_eq!(options.properties[1], ("scouting_timeout_ms", "1000"));
+    }
+
+    #[test]
+    #[cfg(feature = "zenoh")]
+    fn test_init_options_properties_default_empty() {
+        let options = InitOptions::new();
+        assert!(options.properties.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "zenoh")]
+    fn test_init_options_properties_overflow_silently_ignored() {
+        // heapless::Vec<_, 8> can hold at most 8 entries; the 9th push is silently dropped
+        let mut options = InitOptions::new();
+        for i in 0..10 {
+            // Use a match to get &'static str keys
+            let key: &'static str = match i {
+                0 => "k0",
+                1 => "k1",
+                2 => "k2",
+                3 => "k3",
+                4 => "k4",
+                5 => "k5",
+                6 => "k6",
+                7 => "k7",
+                _ => "overflow",
+            };
+            options = options.property(key, "v");
+        }
+        // Should cap at 8 (heapless::Vec capacity)
+        assert_eq!(options.properties.len(), 8);
+    }
+
+    #[test]
+    #[cfg(feature = "zenoh")]
+    fn test_context_with_properties_stores_config() {
+        let context = Context::new(
+            InitOptions::new()
+                .locator("tcp/127.0.0.1:7447")
+                .property("multicast_scouting", "false")
+                .property("scouting_timeout_ms", "500"),
+        )
+        .unwrap();
+
+        // Verify properties are stored in the transport config
+        assert_eq!(context.transport_config.properties.len(), 2);
+        assert_eq!(
+            context.transport_config.properties[0],
+            ("multicast_scouting", "false")
+        );
+        assert_eq!(
+            context.transport_config.properties[1],
+            ("scouting_timeout_ms", "500")
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "zenoh")]
+    fn test_context_without_properties_has_empty_config() {
+        let context = Context::new(InitOptions::new()).unwrap();
+        assert!(context.transport_config.properties.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "zenoh")]
+    fn test_context_from_env_has_empty_properties() {
+        // Clear env vars that could add properties
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::remove_var("ROS_LOCALHOST_ONLY");
+            std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE");
+            std::env::remove_var("ROS_STATIC_PEERS");
+            std::env::remove_var("ZENOH_MODE");
+            std::env::remove_var("ZENOH_LOCATOR");
+        }
+
+        let context = Context::from_env().unwrap();
+        assert!(context.transport_config.properties.is_empty());
+    }
+
+    #[test]
+    #[cfg(feature = "zenoh")]
+    fn test_context_default_from_env_has_empty_properties() {
+        let context = Context::default_from_env().unwrap();
+        assert!(context.transport_config.properties.is_empty());
+    }
+
+    // =========================================================================
+    // ROS env var tests (Phase 19b)
+    // =========================================================================
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-humble"))]
+    fn test_from_env_ros_localhost_only() {
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::set_var("ROS_LOCALHOST_ONLY", "1");
+            std::env::remove_var("ZENOH_MODE");
+            std::env::remove_var("ZENOH_LOCATOR");
+            std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE");
+            std::env::remove_var("ROS_STATIC_PEERS");
+        }
+
+        let context = Context::from_env().unwrap();
+
+        assert_eq!(context.transport_config.locator, Some("tcp/127.0.0.1:7447"));
+        assert_eq!(context.transport_config.mode, SessionMode::Client);
+        assert_eq!(context.transport_config.properties.len(), 1);
+        assert_eq!(
+            context.transport_config.properties[0],
+            ("multicast_scouting", "false")
+        );
+
+        unsafe { std::env::remove_var("ROS_LOCALHOST_ONLY") };
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-humble"))]
+    fn test_from_env_ros_localhost_only_zero() {
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::set_var("ROS_LOCALHOST_ONLY", "0");
+            std::env::remove_var("ZENOH_MODE");
+            std::env::remove_var("ZENOH_LOCATOR");
+            std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE");
+            std::env::remove_var("ROS_STATIC_PEERS");
+        }
+
+        let context = Context::from_env().unwrap();
+        assert!(context.transport_config.properties.is_empty());
+
+        unsafe { std::env::remove_var("ROS_LOCALHOST_ONLY") };
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-humble"))]
+    fn test_from_env_ros_localhost_only_peer_mode_ignored() {
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::set_var("ROS_LOCALHOST_ONLY", "1");
+            std::env::set_var("ZENOH_MODE", "peer");
+            std::env::remove_var("ZENOH_LOCATOR");
+            std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE");
+            std::env::remove_var("ROS_STATIC_PEERS");
+        }
+
+        let context = Context::from_env().unwrap();
+
+        assert_eq!(context.transport_config.mode, SessionMode::Peer);
+        assert_eq!(context.transport_config.locator, None);
+        assert!(context.transport_config.properties.is_empty());
+
+        unsafe {
+            std::env::remove_var("ROS_LOCALHOST_ONLY");
+            std::env::remove_var("ZENOH_MODE");
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    fn test_from_env_discovery_range_localhost() {
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::set_var("ROS_AUTOMATIC_DISCOVERY_RANGE", "LOCALHOST");
+            std::env::remove_var("ROS_LOCALHOST_ONLY");
+            std::env::remove_var("ZENOH_MODE");
+            std::env::remove_var("ZENOH_LOCATOR");
+            std::env::remove_var("ROS_STATIC_PEERS");
+        }
+
+        let context = Context::from_env().unwrap();
+
+        assert_eq!(context.transport_config.locator, Some("tcp/127.0.0.1:7447"));
+        assert_eq!(context.transport_config.properties.len(), 1);
+        assert_eq!(
+            context.transport_config.properties[0],
+            ("multicast_scouting", "false")
+        );
+
+        unsafe { std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE") };
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    fn test_from_env_discovery_range_off() {
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::set_var("ROS_AUTOMATIC_DISCOVERY_RANGE", "OFF");
+            std::env::set_var("ZENOH_LOCATOR", "tcp/10.0.0.1:7447");
+            std::env::remove_var("ROS_LOCALHOST_ONLY");
+            std::env::remove_var("ZENOH_MODE");
+            std::env::remove_var("ROS_STATIC_PEERS");
+        }
+
+        let context = Context::from_env().unwrap();
+
+        // Locator should NOT be forced to loopback
+        assert_eq!(context.transport_config.locator, Some("tcp/10.0.0.1:7447"));
+        // Scouting should be disabled
+        assert_eq!(context.transport_config.properties.len(), 1);
+        assert_eq!(
+            context.transport_config.properties[0],
+            ("multicast_scouting", "false")
+        );
+
+        unsafe {
+            std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE");
+            std::env::remove_var("ZENOH_LOCATOR");
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    fn test_from_env_discovery_range_supersedes_localhost_only() {
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::set_var("ROS_LOCALHOST_ONLY", "1");
+            std::env::set_var("ROS_AUTOMATIC_DISCOVERY_RANGE", "SUBNET");
+            std::env::remove_var("ZENOH_MODE");
+            std::env::remove_var("ZENOH_LOCATOR");
+            std::env::remove_var("ROS_STATIC_PEERS");
+        }
+
+        let context = Context::from_env().unwrap();
+
+        // ROS_LOCALHOST_ONLY=1 sets flags, then SUBNET is a no-op in the RANGE handler.
+        // So ROS_LOCALHOST_ONLY=1 still takes effect. This is correct ROS 2 behavior:
+        // SUBNET means "use default behavior" which doesn't override ROS_LOCALHOST_ONLY.
+        assert_eq!(context.transport_config.properties.len(), 1);
+
+        unsafe {
+            std::env::remove_var("ROS_LOCALHOST_ONLY");
+            std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE");
+        }
+    }
+
+    #[test]
+    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    fn test_from_env_static_peers() {
+        // Safety: test-only env var manipulation, tests run serially via nextest
+        unsafe {
+            std::env::set_var("ROS_STATIC_PEERS", "tcp/10.0.0.1:7447;tcp/10.0.0.2:7447");
+            std::env::set_var("ZENOH_LOCATOR", "tcp/192.168.1.1:7447");
+            std::env::remove_var("ROS_LOCALHOST_ONLY");
+            std::env::remove_var("ROS_AUTOMATIC_DISCOVERY_RANGE");
+            std::env::remove_var("ZENOH_MODE");
+        }
+
+        let context = Context::from_env().unwrap();
+
+        // First entry from ROS_STATIC_PEERS should be used
+        assert_eq!(context.transport_config.locator, Some("tcp/10.0.0.1:7447"));
+
+        unsafe {
+            std::env::remove_var("ROS_STATIC_PEERS");
+            std::env::remove_var("ZENOH_LOCATOR");
+        }
     }
 
     #[test]

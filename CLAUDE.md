@@ -288,6 +288,7 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 14 | Platform BSP libraries | Planning |
 | 16 | ROS 2 Interop Completion | In Progress |
 | 17 | Full test coverage | Complete |
+| 19 | Transport session configuration | Planning |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment
@@ -314,6 +315,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | Actions API | [docs/roadmap/phase-6-actions.md](docs/roadmap/phase-6-actions.md) |
 | ROS 2 Interop (Phase 16) | [docs/roadmap/phase-16-ros2-interop-completion.md](docs/roadmap/phase-16-ros2-interop-completion.md) |
 | QEMU/physical devices | [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) |
+| Transport config (Phase 19) | [docs/roadmap/phase-19-transport-config.md](docs/roadmap/phase-19-transport-config.md) |
 | Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
 
 ## Quick Reference

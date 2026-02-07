@@ -529,6 +529,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let transport_config = TransportConfig {
             locator: Some(locator),
             mode: SessionMode::Client,
+            properties: &[],
         };
         Self::new_without_tasks(config, &transport_config)
     }
@@ -545,6 +546,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         let transport_config = TransportConfig {
             locator: None,
             mode: SessionMode::Peer,
+            properties: &[],
         };
         Self::new_without_tasks(config, &transport_config)
     }

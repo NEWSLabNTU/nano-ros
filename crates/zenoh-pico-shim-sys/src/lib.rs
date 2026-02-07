@@ -50,6 +50,15 @@ pub mod platform_smoltcp;
 // Extern C Functions from the Shim
 // ============================================================================
 
+/// A key-value property for transport configuration (C-compatible)
+#[repr(C)]
+pub struct zenoh_shim_property_t {
+    /// Property key (null-terminated C string)
+    pub key: *const core::ffi::c_char,
+    /// Property value (null-terminated C string)
+    pub value: *const core::ffi::c_char,
+}
+
 // These extern declarations import the C shim functions.
 // The actual implementations are in c/shim/zenoh_shim.c
 //
@@ -63,6 +72,12 @@ pub mod platform_smoltcp;
 unsafe extern "C" {
     // Session lifecycle
     pub fn zenoh_shim_init(locator: *const core::ffi::c_char) -> i32;
+    pub fn zenoh_shim_init_with_config(
+        locator: *const core::ffi::c_char,
+        mode: *const core::ffi::c_char,
+        properties: *const zenoh_shim_property_t,
+        num_properties: usize,
+    ) -> i32;
     pub fn zenoh_shim_open() -> i32;
     pub fn zenoh_shim_is_open() -> i32;
     pub fn zenoh_shim_close();
