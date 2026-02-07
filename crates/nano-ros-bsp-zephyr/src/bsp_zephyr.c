@@ -11,6 +11,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/net/net_if.h>
 #include <stdio.h>
 #include <string.h>
 
@@ -52,12 +53,24 @@ int32_t nano_ros_bsp_init_with_locator(nano_ros_bsp_context_t *ctx, const char *
 
     memset(ctx, 0, sizeof(*ctx));
 
-    /* Wait for network to initialize */
+    /* Wait for network interface to come up */
+    {
 #ifdef CONFIG_NANO_ROS_INIT_DELAY_MS
-    k_sleep(K_MSEC(CONFIG_NANO_ROS_INIT_DELAY_MS));
+        const int timeout_ms = CONFIG_NANO_ROS_INIT_DELAY_MS;
 #else
-    k_sleep(K_MSEC(2000));
+        const int timeout_ms = 2000;
 #endif
+        struct net_if *iface = net_if_get_default();
+        int elapsed = 0;
+        while (!net_if_is_up(iface) && elapsed < timeout_ms) {
+            k_sleep(K_MSEC(50));
+            elapsed += 50;
+        }
+        if (!net_if_is_up(iface)) {
+            LOG_ERR("Network interface not ready after %d ms", timeout_ms);
+            return NANO_ROS_BSP_ERR_CONNECT;
+        }
+    }
 
     LOG_INF("Initializing nano-ros BSP");
     LOG_INF("  Locator: %s", locator);

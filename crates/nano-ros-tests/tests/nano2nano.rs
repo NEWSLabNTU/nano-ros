@@ -30,14 +30,16 @@ fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     let mut talker =
         ManagedProcess::spawn_command(cmd, "native-rs-talker").expect("Failed to start talker");
 
-    // Let it run briefly and check it started
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Check process is still running (didn't crash)
-    if talker.is_running() {
-        eprintln!("native-rs-talker started successfully");
-    } else {
-        eprintln!("native-rs-talker exited early");
+    // Wait for readiness (talker prints "Publishing" after setup)
+    match talker.wait_for_output_pattern("Publishing", Duration::from_secs(5)) {
+        Ok(_) => eprintln!("native-rs-talker started successfully"),
+        Err(_) => {
+            if talker.is_running() {
+                eprintln!("native-rs-talker running (no readiness marker yet)");
+            } else {
+                eprintln!("native-rs-talker exited early");
+            }
+        }
     }
 }
 
@@ -57,14 +59,16 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
     let mut listener =
         ManagedProcess::spawn_command(cmd, "native-rs-listener").expect("Failed to start listener");
 
-    // Let it run briefly and check it started
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Check process is still running (didn't crash)
-    if listener.is_running() {
-        eprintln!("native-rs-listener started successfully");
-    } else {
-        eprintln!("native-rs-listener exited early");
+    // Wait for readiness (listener prints "Waiting for" after setup)
+    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5)) {
+        Ok(_) => eprintln!("native-rs-listener started successfully"),
+        Err(_) => {
+            if listener.is_running() {
+                eprintln!("native-rs-listener running (no readiness marker yet)");
+            } else {
+                eprintln!("native-rs-listener exited early");
+            }
+        }
     }
 }
 
@@ -91,8 +95,8 @@ fn test_talker_listener_communication(
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for listener to be ready (prints "Waiting for" after subscription)
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
 
     // Start talker with ZENOH_LOCATOR env var
     let mut talker_cmd = Command::new(&talker_binary);
@@ -100,16 +104,13 @@ fn test_talker_listener_communication(
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    // Let them communicate for a few seconds
-    std::thread::sleep(Duration::from_secs(5));
-
-    // Kill talker first
-    talker.kill();
-
-    // Collect listener output (use wait_for_all_output to capture stderr where env_logger logs)
+    // Wait for listener to receive messages (event-driven instead of fixed sleep)
     let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
+        .wait_for_output_pattern("Received:", Duration::from_secs(10))
         .unwrap_or_default();
+
+    // Kill talker
+    talker.kill();
 
     eprintln!("Listener output:\n{}", listener_output);
 
@@ -145,13 +146,15 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-peer")
         .expect("Failed to start listener in peer mode");
 
-    // Give listener time to start and set up peer discovery
-    std::thread::sleep(Duration::from_secs(2));
-
-    // Check listener is still running
-    if !listener.is_running() {
-        eprintln!("[INFO] Listener exited early - peer mode may not be supported");
-        return;
+    // Wait for listener readiness
+    if listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .is_err()
+    {
+        if !listener.is_running() {
+            eprintln!("[INFO] Listener exited early - peer mode may not be supported");
+            return;
+        }
     }
 
     // Start talker in peer mode
@@ -160,26 +163,24 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-peer")
         .expect("Failed to start talker in peer mode");
 
-    // Give talker time to start
-    std::thread::sleep(Duration::from_secs(1));
-
-    // Check talker is still running
-    if !talker.is_running() {
+    // Wait for talker readiness
+    if talker
+        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .is_err()
+        && !talker.is_running()
+    {
         eprintln!("[INFO] Talker exited early - peer mode may not be supported");
         return;
     }
 
-    // Let them communicate
-    eprintln!("Letting peers communicate for 6 seconds...");
-    std::thread::sleep(Duration::from_secs(6));
+    // Wait for listener to receive messages (event-driven)
+    eprintln!("Waiting for peer communication...");
+    let listener_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .unwrap_or_default();
 
     // Kill talker first
     talker.kill();
-
-    // Collect listener output (use wait_for_all_output to capture stderr where env_logger logs)
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     eprintln!("Listener output:\n{}", listener_output);
 

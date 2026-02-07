@@ -1,6 +1,6 @@
 # Phase 25: Sleep Reduction
 
-**Status: Planning**
+**Status: Complete**
 
 ## Summary
 
@@ -14,12 +14,12 @@ time in tests.
 
 | Task | Status | Description |
 |------|--------|-------------|
-| 25.1 Executor spin wake mechanism | Pending | Replace 10 ms poll sleep with condvar/eventfd wake |
-| 25.2 Service call condvar wait | Pending | Replace 10 ms poll loop in `zenoh_shim_get` with condvar |
-| 25.3 Test output polling with `poll(2)` | Pending | Replace `sleep(50ms)` loops with fd polling |
-| 25.4 Remove zenohd fixture sleep | Pending | Drop 500 ms post-port-check delay |
-| 25.5 Event-driven test synchronization | Pending | Replace fixed `sleep(N)` with `wait_for_pattern` |
-| 25.6 BSP network readiness polling | Pending | Replace 2 s sleep with `net_if_is_up` poll |
+| 25.1 Executor spin wake mechanism | Done | Replace 10 ms poll sleep with condvar/eventfd wake |
+| 25.2 Service call condvar wait | Done | Replace 10 ms poll loop in `zenoh_shim_get` with condvar |
+| 25.3 Test output polling with `poll(2)` | Done | Replace `sleep(50ms)` loops with fd polling |
+| 25.4 Remove zenohd fixture sleep | Done | Drop 500 ms post-port-check delay |
+| 25.5 Event-driven test synchronization | Done | Replace fixed `sleep(N)` with `wait_for_pattern` |
+| 25.6 BSP network readiness polling | Done | Replace 2 s sleep with `net_if_is_up` poll |
 
 ## 25.1 Executor Spin Wake Mechanism
 

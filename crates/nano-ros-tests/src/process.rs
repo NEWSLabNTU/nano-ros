@@ -8,6 +8,27 @@ use crate::TestError;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
 
+/// Wait for a file descriptor to become readable, or sleep on non-Unix.
+///
+/// Uses `poll(2)` on Unix to avoid busy-waiting.
+#[cfg(unix)]
+fn poll_or_sleep(fd: std::os::unix::io::RawFd, remaining: Duration) {
+    let ms = remaining.as_millis().min(500) as i32;
+    let mut fds = [libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    }];
+    unsafe {
+        libc::poll(fds.as_mut_ptr(), 1, ms);
+    }
+}
+
+#[cfg(not(unix))]
+fn poll_or_sleep(remaining: Duration) {
+    std::thread::sleep(remaining.min(Duration::from_millis(50)));
+}
+
 /// Configure a Command to spawn the child in its own process group.
 ///
 /// This ensures that `kill_process_group()` can kill the child and all
@@ -155,6 +176,10 @@ impl ManagedProcess {
         }
 
         let mut buffer = [0u8; 4096];
+
+        #[cfg(unix)]
+        let fd = stdout.as_raw_fd();
+
         loop {
             if start.elapsed() > timeout {
                 kill_process_group(&mut self.handle);
@@ -171,12 +196,14 @@ impl ManagedProcess {
                     break;
                 }
                 Ok(None) => match stdout.read(&mut buffer) {
-                    Ok(0) => std::thread::sleep(Duration::from_millis(50)),
+                    Ok(0) => {
+                        poll_or_sleep(fd, timeout.saturating_sub(start.elapsed()));
+                    }
                     Ok(n) => {
                         output.push_str(&String::from_utf8_lossy(&buffer[..n]));
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(50));
+                        poll_or_sleep(fd, timeout.saturating_sub(start.elapsed()));
                     }
                     Err(_) => break,
                 },
@@ -184,6 +211,127 @@ impl ManagedProcess {
             }
         }
 
+        Ok(output)
+    }
+
+    /// Wait until a pattern appears in stdout+stderr, then return all output so far.
+    ///
+    /// Useful for waiting until a process prints a readiness marker or until
+    /// enough messages have been received, without a fixed sleep.
+    pub fn wait_for_output_pattern(
+        &mut self,
+        pattern: &str,
+        timeout: Duration,
+    ) -> Result<String, TestError> {
+        use std::io::Read;
+        #[cfg(unix)]
+        use std::os::unix::io::AsRawFd;
+
+        let start = std::time::Instant::now();
+        let mut output = String::new();
+
+        let mut stdout = self.handle.stdout.take();
+        let mut stderr = self.handle.stderr.take();
+
+        // Set non-blocking mode
+        #[cfg(unix)]
+        {
+            if let Some(ref out) = stdout {
+                let fd = out.as_raw_fd();
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+            if let Some(ref err) = stderr {
+                let fd = err.as_raw_fd();
+                unsafe {
+                    let flags = libc::fcntl(fd, libc::F_GETFL);
+                    libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+                }
+            }
+        }
+
+        let mut buf = [0u8; 4096];
+
+        loop {
+            if start.elapsed() > timeout {
+                // Put handles back so drop can still kill the process
+                self.handle.stdout = stdout;
+                self.handle.stderr = stderr;
+                if output.is_empty() {
+                    return Err(TestError::Timeout);
+                }
+                return Ok(output);
+            }
+
+            if let Ok(Some(_)) = self.handle.try_wait() {
+                if let Some(ref mut out) = stdout {
+                    let _ = out.read_to_string(&mut output);
+                }
+                if let Some(ref mut err) = stderr {
+                    let _ = err.read_to_string(&mut output);
+                }
+                break;
+            }
+
+            let mut got_data = false;
+            if let Some(ref mut out) = stdout
+                && let Ok(n) = out.read(&mut buf)
+                && n > 0
+            {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                got_data = true;
+            }
+            if let Some(ref mut err) = stderr
+                && let Ok(n) = err.read(&mut buf)
+                && n > 0
+            {
+                output.push_str(&String::from_utf8_lossy(&buf[..n]));
+                got_data = true;
+            }
+
+            if output.contains(pattern) {
+                // Put handles back for further use
+                self.handle.stdout = stdout;
+                self.handle.stderr = stderr;
+                return Ok(output);
+            }
+
+            if !got_data {
+                #[cfg(unix)]
+                {
+                    let remaining = timeout.saturating_sub(start.elapsed());
+                    let ms = remaining.as_millis().min(500) as i32;
+                    let mut fds = Vec::new();
+                    if let Some(ref out) = stdout {
+                        fds.push(libc::pollfd {
+                            fd: out.as_raw_fd(),
+                            events: libc::POLLIN,
+                            revents: 0,
+                        });
+                    }
+                    if let Some(ref err) = stderr {
+                        fds.push(libc::pollfd {
+                            fd: err.as_raw_fd(),
+                            events: libc::POLLIN,
+                            revents: 0,
+                        });
+                    }
+                    if !fds.is_empty() {
+                        unsafe {
+                            libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, ms);
+                        }
+                    }
+                }
+                #[cfg(not(unix))]
+                std::thread::sleep(Duration::from_millis(50));
+            }
+        }
+
+        // Put handles back
+        self.handle.stdout = stdout;
+        self.handle.stderr = stderr;
         Ok(output)
     }
 
@@ -273,6 +421,33 @@ impl ManagedProcess {
                             Err(_) => {}
                         }
                     }
+                    // Wait for data on either fd via poll(2)
+                    #[cfg(unix)]
+                    {
+                        let remaining = timeout.saturating_sub(start.elapsed());
+                        let ms = remaining.as_millis().min(500) as i32;
+                        let mut fds = Vec::new();
+                        if let Some(ref out) = stdout {
+                            fds.push(libc::pollfd {
+                                fd: out.as_raw_fd(),
+                                events: libc::POLLIN,
+                                revents: 0,
+                            });
+                        }
+                        if let Some(ref err) = stderr {
+                            fds.push(libc::pollfd {
+                                fd: err.as_raw_fd(),
+                                events: libc::POLLIN,
+                                revents: 0,
+                            });
+                        }
+                        if !fds.is_empty() {
+                            unsafe {
+                                libc::poll(fds.as_mut_ptr(), fds.len() as libc::nfds_t, ms);
+                            }
+                        }
+                    }
+                    #[cfg(not(unix))]
                     std::thread::sleep(Duration::from_millis(50));
                 }
                 Err(_) => break,

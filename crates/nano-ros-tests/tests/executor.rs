@@ -39,14 +39,12 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Let it run for ~5 seconds (should publish ~5 messages at 1Hz)
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for ~5 messages at 1Hz (event-driven: wait for data=4 which means 5 publishes)
+    let output = proc
+        .wait_for_output_pattern("data=4", Duration::from_secs(10))
+        .unwrap_or_default();
 
     proc.kill();
-
-    let output = proc
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     println!("=== Talker timer output ===");
     println!("{}", output);
@@ -82,14 +80,12 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Let it run for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for at least 2 sequential messages
+    let output = proc
+        .wait_for_output_pattern("data=1", Duration::from_secs(10))
+        .unwrap_or_default();
 
     proc.kill();
-
-    let output = proc
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     // Verify sequential counter values (indicating regular firing)
     let has_sequential = output.contains("data=0") && output.contains("data=1");
@@ -128,8 +124,8 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for listener readiness
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -141,16 +137,14 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for listener to receive messages (event-driven)
+    let listener_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .unwrap_or_default();
 
     // Kill both
     talker.kill();
     listener.kill();
-
-    let listener_output = listener
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     println!("=== Listener output ===");
     println!("{}", listener_output);
@@ -219,7 +213,8 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for listener readiness
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -231,16 +226,15 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for listener to receive messages (event-driven)
+    let listener_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .unwrap_or_default();
 
     talker.kill();
     listener.kill();
 
     let talker_output = talker
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let listener_output = listener
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
 
@@ -293,14 +287,12 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
-    // Let it run briefly
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for at least one publish (event-driven)
+    let output = proc
+        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .unwrap_or_default();
 
     proc.kill();
-
-    let output = proc
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     // The talker uses spin_once() in its main loop.
     // If spin_once processes work correctly, we should see "Published:" messages.
@@ -348,18 +340,16 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
     let mut talker2 =
         ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker2");
 
-    // Let them run
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for both to publish at least once (event-driven)
+    let output1 = talker1
+        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .unwrap_or_default();
+    let output2 = talker2
+        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .unwrap_or_default();
 
     talker1.kill();
     talker2.kill();
-
-    let output1 = talker1
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    let output2 = talker2
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     let count1 = count_pattern(&output1, "Published:");
     let count2 = count_pattern(&output2, "Published:");
@@ -398,13 +388,12 @@ fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for at least one publish (event-driven)
+    let output = proc
+        .wait_for_output_pattern("Published:", Duration::from_secs(5))
+        .unwrap_or_default();
 
     proc.kill();
-
-    let output = proc
-        .wait_for_all_output(Duration::from_secs(2))
-        .unwrap_or_default();
 
     println!("=== Talker debug output ===");
     println!("{}", output);

@@ -62,6 +62,55 @@ pub const RMW_GID_SIZE: usize = ZENOH_SHIM_RMW_GID_SIZE;
 const RMW_ATTACHMENT_SIZE: usize = 8 + 8 + 1 + RMW_GID_SIZE;
 
 // ============================================================================
+// Executor Wake Signal (std only)
+// ============================================================================
+
+/// Signal the executor that new data is available.
+///
+/// Called from subscription and service callbacks (which run on the zenoh-pico
+/// background read thread) to wake the executor's `spin()` loop immediately
+/// instead of waiting for the poll interval timeout.
+#[cfg(feature = "std")]
+pub fn signal_executor_wake() {
+    let (lock, cvar) = &*EXECUTOR_WAKE;
+    if let Ok(mut pending) = lock.lock() {
+        *pending = true;
+        cvar.notify_one();
+    }
+}
+
+/// Wait for a wake signal or timeout.
+///
+/// Returns `true` if woken by a signal, `false` on timeout.
+/// Used by `BasicExecutor::spin()` to sleep efficiently between iterations.
+#[cfg(feature = "std")]
+pub fn wait_for_executor_wake(timeout: core::time::Duration) -> bool {
+    let (lock, cvar) = &*EXECUTOR_WAKE;
+    if let Ok(mut pending) = lock.lock() {
+        if *pending {
+            *pending = false;
+            return true;
+        }
+        let result = cvar.wait_timeout(pending, timeout);
+        if let Ok((mut guard, _)) = result {
+            let was_signaled = *guard;
+            *guard = false;
+            was_signaled
+        } else {
+            false
+        }
+    } else {
+        // Mutex poisoned — fall back to sleep behavior
+        std::thread::sleep(timeout);
+        false
+    }
+}
+
+#[cfg(feature = "std")]
+static EXECUTOR_WAKE: std::sync::LazyLock<(std::sync::Mutex<bool>, std::sync::Condvar)> =
+    std::sync::LazyLock::new(|| (std::sync::Mutex::new(false), std::sync::Condvar::new()));
+
+// ============================================================================
 // Error Conversion
 // ============================================================================
 
@@ -880,6 +929,10 @@ extern "C" fn subscriber_callback_with_attachment(
         }
 
         buffer.has_data.store(true, Ordering::Release);
+
+        // Wake the executor spin loop (if waiting)
+        #[cfg(feature = "std")]
+        signal_executor_wake();
     }
 }
 
@@ -1128,6 +1181,10 @@ extern "C" fn queryable_callback(
         buffer.sequence_number.store(seq, Ordering::Release);
 
         buffer.has_request.store(true, Ordering::Release);
+
+        // Wake the executor spin loop (if waiting)
+        #[cfg(feature = "std")]
+        signal_executor_wake();
     }
 }
 

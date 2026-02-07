@@ -30,12 +30,18 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
     let mut server = ManagedProcess::spawn_command(cmd, "native-rs-action-server")
         .expect("Failed to start action server");
 
-    // Let it run briefly and check it started
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for server readiness
+    match server.wait_for_output_pattern("Waiting for action", Duration::from_secs(5)) {
+        Ok(_) => {
+            eprintln!("[PASS] native-rs-action-server started successfully");
+            return;
+        }
+        Err(_) => {}
+    }
 
     // Check process is still running (didn't crash)
     if server.is_running() {
-        eprintln!("[PASS] native-rs-action-server started successfully");
+        eprintln!("[PASS] native-rs-action-server started (no marker yet)");
     } else {
         eprintln!("[FAIL] native-rs-action-server exited early");
         panic!("Action server failed to start");
@@ -58,8 +64,8 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-action-client")
         .expect("Failed to start action client");
 
-    // Let it run briefly - it will timeout without a server
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait briefly — client will timeout without server
+    let _ = client.wait_for_output_pattern("Sending goal", Duration::from_secs(5));
 
     // Check process is still running (may timeout without server)
     if client.is_running() {
@@ -92,11 +98,12 @@ fn test_action_server_client_communication(
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-action-server")
         .expect("Failed to start action server");
 
-    // Give server time to set up
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Check server is still running
-    if !server.is_running() {
+    // Wait for server readiness
+    if server
+        .wait_for_output_pattern("Waiting for action", Duration::from_secs(5))
+        .is_err()
+        && !server.is_running()
+    {
         eprintln!("[FAIL] Action server exited before client started");
         panic!("Action server failed");
     }
@@ -108,13 +115,10 @@ fn test_action_server_client_communication(
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-action-client")
         .expect("Failed to start action client");
 
-    // Wait for client to finish (it sends goal and waits for feedback)
-    // Fibonacci(10) takes ~5.5 seconds (11 iterations * 500ms each)
-    std::thread::sleep(Duration::from_secs(15));
-
-    // Collect client output (use wait_for_all_output to capture stderr from env_logger)
+    // Wait for client to complete (event-driven — Fibonacci(10) takes ~5.5s)
     let client_output = client
-        .wait_for_all_output(Duration::from_secs(5))
+        .wait_for_output_pattern("finished", Duration::from_secs(20))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     // Kill server

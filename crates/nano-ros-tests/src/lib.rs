@@ -28,6 +28,21 @@ use std::net::TcpStream;
 use std::process::{Child, ChildStdout};
 use std::time::{Duration, Instant};
 
+/// Poll a file descriptor for readability using poll(2).
+///
+/// Returns `true` if the fd is readable, `false` on timeout.
+#[cfg(unix)]
+fn poll_readable(fd: std::os::unix::io::RawFd, timeout_ms: i32) -> bool {
+    let mut fds = [libc::pollfd {
+        fd,
+        events: libc::POLLIN,
+        revents: 0,
+    }];
+    // Safety: valid pollfd struct, single element
+    let ret = unsafe { libc::poll(fds.as_mut_ptr(), 1, timeout_ms) };
+    ret > 0 && (fds[0].revents & libc::POLLIN) != 0
+}
+
 /// Error type for test utilities
 #[derive(Debug, thiserror::Error)]
 pub enum TestError {
@@ -84,15 +99,28 @@ pub fn wait_for_pattern(
     pattern: &str,
     timeout: Duration,
 ) -> TestResult<String> {
+    #[cfg(unix)]
+    use std::os::unix::io::AsRawFd;
+
     let start = Instant::now();
     let mut line = String::new();
+
+    #[cfg(unix)]
+    let fd = reader.get_ref().as_raw_fd();
 
     while start.elapsed() < timeout {
         line.clear();
         match reader.read_line(&mut line) {
             Ok(0) => {
-                // EOF - process may have exited
-                std::thread::sleep(Duration::from_millis(50));
+                // EOF — wait for more data via poll(2)
+                let remaining = timeout.saturating_sub(start.elapsed());
+                #[cfg(unix)]
+                {
+                    let ms = remaining.as_millis().min(500) as i32;
+                    poll_readable(fd, ms);
+                }
+                #[cfg(not(unix))]
+                std::thread::sleep(remaining.min(Duration::from_millis(50)));
                 continue;
             }
             Ok(_) => {
@@ -101,7 +129,14 @@ pub fn wait_for_pattern(
                 }
             }
             Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                std::thread::sleep(Duration::from_millis(50));
+                let remaining = timeout.saturating_sub(start.elapsed());
+                #[cfg(unix)]
+                {
+                    let ms = remaining.as_millis().min(500) as i32;
+                    poll_readable(fd, ms);
+                }
+                #[cfg(not(unix))]
+                std::thread::sleep(remaining.min(Duration::from_millis(50)));
                 continue;
             }
             Err(e) => return Err(TestError::ProcessStart(e)),
@@ -120,11 +155,16 @@ pub fn wait_for_pattern(
 /// The collected stdout as a string
 pub fn collect_output(mut child: Child, timeout: Duration) -> TestResult<String> {
     use std::io::Read;
+    #[cfg(unix)]
+    use std::os::unix::io::AsRawFd;
 
     let start = Instant::now();
     let mut output = String::new();
 
     if let Some(mut stdout) = child.stdout.take() {
+        #[cfg(unix)]
+        let fd = stdout.as_raw_fd();
+
         // Set up non-blocking read with timeout
         let mut buffer = [0u8; 4096];
         while start.elapsed() < timeout {
@@ -134,7 +174,14 @@ pub fn collect_output(mut child: Child, timeout: Duration) -> TestResult<String>
                     output.push_str(&String::from_utf8_lossy(&buffer[..n]));
                 }
                 Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                    std::thread::sleep(Duration::from_millis(50));
+                    let remaining = timeout.saturating_sub(start.elapsed());
+                    #[cfg(unix)]
+                    {
+                        let ms = remaining.as_millis().min(500) as i32;
+                        poll_readable(fd, ms);
+                    }
+                    #[cfg(not(unix))]
+                    std::thread::sleep(remaining.min(Duration::from_millis(50)));
                 }
                 Err(_) => break,
             }

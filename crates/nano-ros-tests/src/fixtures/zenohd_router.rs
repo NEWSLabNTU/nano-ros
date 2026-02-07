@@ -59,13 +59,10 @@ impl ZenohRouter {
         crate::process::set_new_process_group(&mut cmd);
         let handle = cmd.spawn()?;
 
-        // Wait for zenohd to be ready
+        // Wait for zenohd to be ready (TCP port accepting connections)
         if !wait_for_port(port, Duration::from_secs(5)) {
             return Err(TestError::Timeout);
         }
-
-        // Additional small delay for full initialization
-        std::thread::sleep(Duration::from_millis(500));
 
         Ok(Self { handle, port })
     }

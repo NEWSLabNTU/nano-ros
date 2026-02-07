@@ -107,6 +107,10 @@ typedef struct {
     size_t len;
     bool received;
     bool done;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_t mutex;
+    _z_condvar_t cond;
+#endif
 } get_reply_ctx_t;
 
 // ============================================================================
@@ -923,7 +927,14 @@ static void shim_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
  */
 static void shim_get_reply_dropper(void *ctx) {
     get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_lock(&rctx->mutex);
     rctx->done = true;
+    _z_condvar_signal(&rctx->cond);
+    _z_mutex_unlock(&rctx->mutex);
+#else
+    rctx->done = true;
+#endif
 }
 
 int32_t zenoh_shim_get(const char *keyexpr,
@@ -939,6 +950,10 @@ int32_t zenoh_shim_get(const char *keyexpr,
     ctx.len = 0;
     ctx.received = false;
     ctx.done = false;
+#if Z_FEATURE_MULTI_THREAD == 1
+    _z_mutex_init(&ctx.mutex);
+    _z_condvar_init(&ctx.cond);
+#endif
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
@@ -989,17 +1004,21 @@ int32_t zenoh_shim_get(const char *keyexpr,
         elapsed += poll_interval;
     }
 #else
-    // Multi-threaded: wait for completion with timeout
-    // Background threads will invoke callbacks
-    uint32_t elapsed = 0;
-    const uint32_t poll_interval = 10;
+    // Multi-threaded: wait for completion via condvar
+    // The dropper callback signals ctx.cond when the reply channel closes
+    {
+        z_clock_t deadline = z_clock_now();
+        z_clock_advance_ms(&deadline, timeout_ms);
 
-    while (!ctx.done && elapsed < timeout_ms) {
-        // On threaded platforms, the read/lease tasks handle the session
-        // We just need to wait
-        z_sleep_ms(poll_interval);
-        elapsed += poll_interval;
+        _z_mutex_lock(&ctx.mutex);
+        while (!ctx.done) {
+            z_result_t r = _z_condvar_wait_until(&ctx.cond, &ctx.mutex, &deadline);
+            if (r != 0) break;  // timeout or error
+        }
+        _z_mutex_unlock(&ctx.mutex);
     }
+    _z_condvar_drop(&ctx.cond);
+    _z_mutex_drop(&ctx.mutex);
 #endif
 
     // Check if we got a reply

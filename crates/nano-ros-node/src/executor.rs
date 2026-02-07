@@ -1460,7 +1460,15 @@ impl BasicExecutor {
                 break;
             }
 
-            // Sleep between iterations
+            // Wait for data or timeout — condvar is signaled by transport
+            // callbacks when new subscription/service data arrives, giving
+            // near-zero latency dispatch. Falls back to polling interval
+            // timeout when idle (same CPU usage as before).
+            #[cfg(feature = "zenoh")]
+            nano_ros_transport::shim::wait_for_executor_wake(Duration::from_millis(
+                POLL_INTERVAL_MS,
+            ));
+            #[cfg(not(feature = "zenoh"))]
             std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
         }
 

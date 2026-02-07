@@ -63,12 +63,18 @@ fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary:
     let mut server = ManagedProcess::spawn_command(cmd, "native-rs-service-server")
         .expect("Failed to start service server");
 
-    // Let it run briefly and check it started
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for server readiness
+    match server.wait_for_output_pattern("Waiting for service", Duration::from_secs(5)) {
+        Ok(_) => {
+            eprintln!("[PASS] native-rs-service-server started successfully");
+            return;
+        }
+        Err(_) => {}
+    }
 
     // Check process is still running (didn't crash)
     if server.is_running() {
-        eprintln!("[PASS] native-rs-service-server started successfully");
+        eprintln!("[PASS] native-rs-service-server started (no marker yet)");
     } else {
         // Collect any output for debugging
         let output = server
@@ -101,12 +107,10 @@ fn test_service_client_starts_without_server(
     let mut client = ManagedProcess::spawn_command(cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
-    // Let it run briefly - it will fail/exit without a server
-    std::thread::sleep(Duration::from_secs(8));
-
-    // Collect output
+    // Wait for client to report failure or exit (no server running)
     let output = client
-        .wait_for_all_output(Duration::from_secs(2))
+        .wait_for_output_pattern("failed", Duration::from_secs(10))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     eprintln!("Client output (no server):\n{}", output);
@@ -155,11 +159,12 @@ fn test_service_request_response(
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start service server");
 
-    // Give server time to set up service
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Check server is still running
-    if !server.is_running() {
+    // Wait for server readiness
+    if server
+        .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
+        .is_err()
+        && !server.is_running()
+    {
         let output = server
             .wait_for_all_output(Duration::from_secs(1))
             .unwrap_or_default();
@@ -175,12 +180,10 @@ fn test_service_request_response(
     let mut client = ManagedProcess::spawn_command(client_cmd, "native-rs-service-client")
         .expect("Failed to start service client");
 
-    // Wait for client to finish (it makes 4 service calls with 500ms delay each)
-    std::thread::sleep(Duration::from_secs(10));
-
-    // Collect client output
+    // Wait for client to complete all calls (event-driven)
     let client_output = client
-        .wait_for_all_output(Duration::from_secs(3))
+        .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     // Kill server and collect its output
@@ -256,9 +259,12 @@ fn test_service_multiple_sequential_calls(
     let mut server = ManagedProcess::spawn_command(server_cmd, "service-server")
         .expect("Failed to start service server");
 
-    std::thread::sleep(Duration::from_secs(3));
-
-    if !server.is_running() {
+    // Wait for server readiness
+    if server
+        .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
+        .is_err()
+        && !server.is_running()
+    {
         panic!("Service server failed to start");
     }
 
@@ -274,18 +280,15 @@ fn test_service_multiple_sequential_calls(
         let mut client = ManagedProcess::spawn_command(client_cmd, "service-client")
             .expect("Failed to start service client");
 
-        std::thread::sleep(Duration::from_secs(8));
-
+        // Wait for client to complete (event-driven)
         let output = client
-            .wait_for_all_output(Duration::from_secs(2))
+            .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+            .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
             .unwrap_or_default();
 
         let responses = count_pattern(&output, "Response:");
         eprintln!("Run {}: {} responses", run, responses);
         total_responses += responses;
-
-        // Small delay between runs
-        std::thread::sleep(Duration::from_millis(500));
     }
 
     server.kill();
@@ -323,11 +326,10 @@ fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary
     let mut client = ManagedProcess::spawn_command(client_cmd, "service-client-timeout")
         .expect("Failed to start service client");
 
-    // Wait for timeout (default is 5 seconds)
-    std::thread::sleep(Duration::from_secs(10));
-
+    // Wait for client to report timeout or exit
     let output = client
-        .wait_for_all_output(Duration::from_secs(2))
+        .wait_for_output_pattern("failed", Duration::from_secs(12))
+        .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     eprintln!("Timeout test output:\n{}", output);
@@ -370,9 +372,12 @@ fn test_service_server_multiple_clients(
     let mut server = ManagedProcess::spawn_command(server_cmd, "service-server")
         .expect("Failed to start service server");
 
-    std::thread::sleep(Duration::from_secs(3));
-
-    if !server.is_running() {
+    // Wait for server readiness
+    if server
+        .wait_for_output_pattern("Waiting for service", Duration::from_secs(5))
+        .is_err()
+        && !server.is_running()
+    {
         panic!("Service server failed to start");
     }
 
@@ -389,14 +394,14 @@ fn test_service_server_multiple_clients(
     let mut client2 = ManagedProcess::spawn_command(client2_cmd, "service-client-2")
         .expect("Failed to start client 2");
 
-    // Wait for both clients to complete
-    std::thread::sleep(Duration::from_secs(12));
-
+    // Wait for both clients to complete (event-driven)
     let output1 = client1
-        .wait_for_all_output(Duration::from_secs(2))
+        .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+        .or_else(|_| client1.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
     let output2 = client2
-        .wait_for_all_output(Duration::from_secs(2))
+        .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+        .or_else(|_| client2.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 
     server.kill();

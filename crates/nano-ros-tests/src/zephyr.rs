@@ -167,33 +167,35 @@ impl ZephyrProcess {
             // Check if process exited
             if let Ok(Some(_)) = self.handle.try_wait() {
                 // Process exited, collect any remaining output
-                std::thread::sleep(Duration::from_millis(100));
-                while let Ok(output) = rx.try_recv() {
+                while let Ok(output) = rx.recv_timeout(Duration::from_millis(50)) {
                     last_output = output;
                 }
                 break;
             }
 
-            // Check for new output
-            if let Ok(output) = rx.try_recv() {
-                last_output = output;
+            // Wait for new output with bounded timeout
+            let remaining = timeout.saturating_sub(start.elapsed());
+            let wait = remaining.min(Duration::from_millis(500));
+            match rx.recv_timeout(wait) {
+                Ok(output) => {
+                    last_output = output;
 
-                // Check for completion/error markers (Zephyr outputs error and stops)
-                if last_output.contains("Failed to create context")
-                    || last_output.contains("session error")
-                    || last_output.contains("SUCCESS")
-                    || last_output.contains("COMPLETE")
-                {
-                    // Give it a moment for any trailing output
-                    std::thread::sleep(Duration::from_millis(200));
-                    while let Ok(output) = rx.try_recv() {
-                        last_output = output;
+                    // Check for completion/error markers (Zephyr outputs error and stops)
+                    if last_output.contains("Failed to create context")
+                        || last_output.contains("session error")
+                        || last_output.contains("SUCCESS")
+                        || last_output.contains("COMPLETE")
+                    {
+                        // Drain any trailing output
+                        while let Ok(output) = rx.recv_timeout(Duration::from_millis(50)) {
+                            last_output = output;
+                        }
+                        break;
                     }
-                    break;
                 }
+                Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
             }
-
-            std::thread::sleep(Duration::from_millis(100));
         }
 
         // Kill the process if still running
