@@ -59,6 +59,12 @@ exclude = [
     "examples/platform-integration/stm32f4-rtic",
     "examples/platform-integration/stm32f4-polling",
     "examples/platform-integration/stm32f4-embassy",
+    # ESP32 crates (RISC-V, require nightly + esp-hal)
+    "crates/nano-ros-bsp-esp32",
+    # ESP32 examples (RISC-V, require nightly + esp-hal)
+    "examples/esp32/hello-world",
+    "examples/esp32/bsp-talker",
+    "examples/esp32/bsp-listener",
 ]
 
 [workspace.package]

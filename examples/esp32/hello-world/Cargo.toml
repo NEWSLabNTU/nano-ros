@@ -1,0 +1,28 @@
+[package]
+name = "esp32-hello-world"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Minimal ESP32-C3 hello world example for nano-ros"
+
+[[bin]]
+name = "esp32-hello-world"
+test = false
+bench = false
+
+[dependencies]
+esp-backtrace = { version = "~0.18.0", features = [
+    "esp32c3",
+    "panic-handler",
+    "println",
+] }
+esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32c3"] }
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+esp-println = { version = "~0.16.0", features = ["esp32c3"] }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1

@@ -98,6 +98,31 @@ fn main() {
     println!("cargo:rerun-if-changed=cbindgen.toml");
 }
 
+/// Check if the RISC-V GCC supports picolibc specs (provides C standard library headers)
+fn has_picolibc_specs() -> bool {
+    // Try riscv64-unknown-elf-gcc first (system GCC), then riscv32-esp-elf-gcc (ESP-IDF)
+    for cc in &["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"] {
+        if let Ok(status) = Command::new(cc)
+            .args([
+                "-march=rv32imc",
+                "-mabi=ilp32",
+                "--specs=picolibc.specs",
+                "-E",
+                "-x",
+                "c",
+                "/dev/null",
+                "-o",
+                "/dev/null",
+            ])
+            .status()
+            && status.success()
+        {
+            return true;
+        }
+    }
+    false
+}
+
 /// Check if we're building for an embedded target
 fn is_embedded_target(target: &str) -> bool {
     target.contains("zephyr")
@@ -464,6 +489,17 @@ fn build_c_shim(
                 .flag("-mthumb")
                 .flag("-mfpu=fpv4-sp-d16")
                 .flag("-mfloat-abi=hard");
+        }
+
+        // RISC-V cross-compilation flags (ESP32-C3)
+        if target.contains("riscv32imc") {
+            build.flag("-march=rv32imc").flag("-mabi=ilp32");
+
+            // picolibc provides C standard library headers (stdint.h, etc.)
+            // for the system riscv64-unknown-elf-gcc toolchain
+            if has_picolibc_specs() {
+                build.flag("--specs=picolibc.specs");
+            }
         }
     }
 

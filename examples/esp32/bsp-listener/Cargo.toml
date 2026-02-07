@@ -1,0 +1,28 @@
+[package]
+name = "esp32-bsp-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Simple WiFi subscriber example using nano-ros-bsp-esp32"
+
+[[bin]]
+name = "esp32-bsp-listener"
+test = false
+bench = false
+
+[dependencies]
+# Board Support Package - all you need for ESP32 WiFi + zenoh
+nano-ros-bsp-esp32 = { path = "../../../crates/nano-ros-bsp-esp32" }
+
+# Required for #[main] proc macro (references esp_hal crate directly)
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+
+# Panic handler (required for no_std)
+esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1

@@ -55,15 +55,19 @@ static mut HEAP_INITIALIZED: bool = false;
 mod bump_alloc {
     use core::cell::UnsafeCell;
     use core::ptr;
-    use core::sync::atomic::{AtomicUsize, Ordering};
 
-    /// Simple bump allocator
+    /// Simple bump allocator for single-threaded embedded use
+    ///
+    /// Uses `UnsafeCell` instead of atomics for compatibility with targets
+    /// that lack atomic CAS (e.g., riscv32imc without the A extension).
+    /// This is safe because the platform is documented as single-threaded only.
     pub struct BumpAllocator {
         heap_start: UnsafeCell<*mut u8>,
         heap_end: UnsafeCell<*mut u8>,
-        next: AtomicUsize,
+        next: UnsafeCell<usize>,
     }
 
+    // Safety: single-threaded platform only (documented in module docs)
     unsafe impl Sync for BumpAllocator {}
 
     impl BumpAllocator {
@@ -71,7 +75,7 @@ mod bump_alloc {
             Self {
                 heap_start: UnsafeCell::new(ptr::null_mut()),
                 heap_end: UnsafeCell::new(ptr::null_mut()),
-                next: AtomicUsize::new(0),
+                next: UnsafeCell::new(0),
             }
         }
 
@@ -80,36 +84,27 @@ mod bump_alloc {
             unsafe {
                 *self.heap_start.get() = heap_start;
                 *self.heap_end.get() = heap_start.add(heap_size);
-                self.next.store(heap_start as usize, Ordering::Release);
+                *self.next.get() = heap_start as usize;
             }
         }
 
         /// Allocate memory with alignment
         pub fn alloc(&self, size: usize, align: usize) -> *mut u8 {
-            // Load current next pointer
-            let mut current = self.next.load(Ordering::Acquire);
+            unsafe {
+                let current = *self.next.get();
 
-            loop {
                 // Calculate aligned address
                 let aligned = (current + align - 1) & !(align - 1);
                 let new_next = aligned + size;
 
                 // Check bounds
-                let heap_end = unsafe { *self.heap_end.get() as usize };
+                let heap_end = *self.heap_end.get() as usize;
                 if new_next > heap_end {
                     return ptr::null_mut();
                 }
 
-                // Try to update atomically
-                match self.next.compare_exchange_weak(
-                    current,
-                    new_next,
-                    Ordering::AcqRel,
-                    Ordering::Acquire,
-                ) {
-                    Ok(_) => return aligned as *mut u8,
-                    Err(next) => current = next,
-                }
+                *self.next.get() = new_next;
+                aligned as *mut u8
             }
         }
 

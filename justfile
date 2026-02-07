@@ -502,6 +502,25 @@ build-zenoh-pico-arm:
 clean-zenoh-pico-arm:
     ./scripts/qemu/build-zenoh-pico.sh --clean
 
+# Build zenoh-pico for ESP32-C3 (RISC-V RV32IMC)
+build-zenoh-pico-riscv:
+    @./scripts/esp32/build-zenoh-pico.sh
+
+# Clean zenoh-pico RISC-V build
+clean-zenoh-pico-riscv:
+    ./scripts/esp32/build-zenoh-pico.sh --clean
+
+# Build ESP32 examples (requires nightly + zenoh-pico RISC-V)
+build-examples-esp32: build-zenoh-pico-riscv
+    #!/usr/bin/env bash
+    set -e
+    echo "Building ESP32 examples..."
+    for ex in bsp-talker bsp-listener; do
+        echo "  Building esp32/$ex..."
+        (cd examples/esp32/$ex && SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +nightly build --release)
+    done
+    echo "ESP32 examples built!"
+
 # Run basic QEMU test (nano-ros serialization on Cortex-M3)
 test-qemu-basic verbose="": build-examples-qemu _init-test-logs
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
@@ -772,15 +791,18 @@ setup:
     rustup component add --toolchain nightly rustfmt miri rust-src
     rustup target add thumbv7em-none-eabihf
     rustup target add thumbv7m-none-eabi
+    rustup target add riscv32imc-unknown-none-elf
     @echo ""
     @echo "=== Installing cargo tools ==="
     cargo install cargo-nextest --locked
+    cargo install espflash --locked || true
     cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
     @echo ""
     @echo "=== Checking system dependencies ==="
     @which arm-none-eabi-gcc > /dev/null 2>&1 || (echo "WARNING: arm-none-eabi-gcc not found." && echo "For embedded development, install with: sudo apt install gcc-arm-none-eabi" && echo "")
     @which qemu-system-arm > /dev/null 2>&1 || (echo "WARNING: qemu-system-arm not found." && echo "For QEMU testing, install with: sudo apt install qemu-system-arm" && echo "")
     @which cmake > /dev/null 2>&1 || (echo "WARNING: cmake not found." && echo "For C examples, install with: sudo apt install cmake" && echo "")
+    @which riscv64-unknown-elf-gcc > /dev/null 2>&1 || which riscv32-esp-elf-gcc > /dev/null 2>&1 || (echo "WARNING: RISC-V GCC not found." && echo "For ESP32-C3 development, install with: sudo apt install gcc-riscv64-unknown-elf" && echo "")
     @echo "Setup complete!"
 
 # Setup all network bridges (QEMU + Zephyr, requires sudo)

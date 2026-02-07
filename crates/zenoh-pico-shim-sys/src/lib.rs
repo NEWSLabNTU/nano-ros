@@ -43,7 +43,7 @@ pub use ffi::*;
 /// Note: Excluded from cbindgen to avoid duplicate function declarations.
 /// The FFI declarations are in ffi.rs for header generation.
 #[cfg(not(cbindgen))]
-#[cfg(feature = "smoltcp")]
+#[cfg(feature = "smoltcp-platform-rust")]
 pub mod platform_smoltcp;
 
 // ============================================================================

@@ -19,6 +19,10 @@ default = []
 posix = []
 zephyr = []
 smoltcp = []
+# Include the default Rust platform implementation for smoltcp.
+# BSP crates that provide their own bridge.rs should NOT enable this
+# (they only need "smoltcp" for the C platform files).
+smoltcp-platform-rust = ["smoltcp"]
 # Standard library support
 std = []
 
