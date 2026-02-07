@@ -7,7 +7,7 @@ description = "Node abstraction for nano-ros"
 
 [features]
 default = ["std", "ros-humble"]
-std = ["nano-ros-core/std", "nano-ros-transport/std", "log"]
+std = ["alloc", "nano-ros-core/std", "nano-ros-transport/std", "log"]
 alloc = ["nano-ros-core/alloc"]
 zenoh = ["nano-ros-transport/zenoh", "alloc"]
 

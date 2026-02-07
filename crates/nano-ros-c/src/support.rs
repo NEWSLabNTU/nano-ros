@@ -124,9 +124,9 @@ pub unsafe extern "C" fn nano_ros_support_init(
 
     // Initialize the zenoh session
     // For now, we'll use the shim directly
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{SessionMode, TransportConfig, ZenohSession};
+        use nano_ros_transport::{SessionMode, ShimSession, TransportConfig};
 
         let locator_str = core::str::from_utf8_unchecked(&support.locator[..support.locator_len]);
 
@@ -136,11 +136,11 @@ pub unsafe extern "C" fn nano_ros_support_init(
             properties: &[],
         };
 
-        match ZenohSession::new(&config) {
+        match ShimSession::new(&config) {
             Ok(session) => {
                 // Store the session pointer
-                let session_box = std::boxed::Box::new(session);
-                support._internal = std::boxed::Box::into_raw(session_box) as *mut _;
+                let session_box = alloc::boxed::Box::new(session);
+                support._internal = alloc::boxed::Box::into_raw(session_box) as *mut _;
                 support.state = nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED;
                 NANO_ROS_RET_OK
             }
@@ -148,7 +148,7 @@ pub unsafe extern "C" fn nano_ros_support_init(
         }
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         // For no_std, we need to use the shim transport
         // This will be implemented when shim support is added
@@ -183,11 +183,11 @@ pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t)
     }
 
     // Clean up the session
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !support._internal.is_null() {
-            use nano_ros_transport::ZenohSession;
-            let _session = std::boxed::Box::from_raw(support._internal as *mut ZenohSession);
+            use nano_ros_transport::ShimSession;
+            let _session = alloc::boxed::Box::from_raw(support._internal as *mut ShimSession);
             // Session is dropped here
         }
     }
@@ -221,24 +221,24 @@ pub unsafe extern "C" fn nano_ros_support_is_valid(support: *const nano_ros_supp
 
 impl nano_ros_support_t {
     /// Get the internal session pointer (for internal use)
-    #[cfg(feature = "std")]
-    pub(crate) unsafe fn get_session(&self) -> Option<&nano_ros_transport::ZenohSession> {
+    #[cfg(feature = "alloc")]
+    pub(crate) unsafe fn get_session(&self) -> Option<&nano_ros_transport::ShimSession> {
         if self._internal.is_null() {
             None
         } else {
-            Some(&*(self._internal as *const nano_ros_transport::ZenohSession))
+            Some(&*(self._internal as *const nano_ros_transport::ShimSession))
         }
     }
 
     /// Get the internal session pointer mutably (for internal use)
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     pub(crate) unsafe fn get_session_mut(
         &mut self,
-    ) -> Option<&mut nano_ros_transport::ZenohSession> {
+    ) -> Option<&mut nano_ros_transport::ShimSession> {
         if self._internal.is_null() {
             None
         } else {
-            Some(&mut *(self._internal as *mut nano_ros_transport::ZenohSession))
+            Some(&mut *(self._internal as *mut nano_ros_transport::ShimSession))
         }
     }
 

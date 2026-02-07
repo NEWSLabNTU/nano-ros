@@ -222,9 +222,9 @@ pub unsafe extern "C" fn nano_ros_service_init(
     service.node = node;
 
     // Create the internal service server using zenoh
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceInfo, Session, ZenohSession};
+        use nano_ros_transport::{ServiceInfo, Session, ShimSession};
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -240,7 +240,7 @@ pub unsafe extern "C" fn nano_ros_service_init(
         let domain_id = support_mut.domain_id as u32;
 
         // Get mutable session reference
-        let session: &mut ZenohSession = match support_mut.get_session_mut() {
+        let session: &mut ShimSession = match support_mut.get_session_mut() {
             Some(s) => s,
             None => return NANO_ROS_RET_NOT_INIT,
         };
@@ -258,8 +258,8 @@ pub unsafe extern "C" fn nano_ros_service_init(
         // Create service server
         match session.create_service_server(&svc_info) {
             Ok(server_handle) => {
-                let server_box = std::boxed::Box::new(server_handle);
-                service._internal = std::boxed::Box::into_raw(server_box) as *mut _;
+                let server_box = alloc::boxed::Box::new(server_handle);
+                service._internal = alloc::boxed::Box::into_raw(server_box) as *mut _;
             }
             Err(_) => return NANO_ROS_RET_ERROR,
         }
@@ -268,7 +268,7 @@ pub unsafe extern "C" fn nano_ros_service_init(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         // For no_std, not yet implemented
         NANO_ROS_RET_ERROR
@@ -297,11 +297,11 @@ pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t)
     }
 
     // Clean up internal resources
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !service._internal.is_null() {
-            use nano_ros_transport::ZenohServiceServer;
-            let _server = std::boxed::Box::from_raw(service._internal as *mut ZenohServiceServer);
+            use nano_ros_transport::ShimServiceServer;
+            let _server = alloc::boxed::Box::from_raw(service._internal as *mut ShimServiceServer);
             // Server is dropped here
         }
     }
@@ -351,15 +351,15 @@ pub unsafe extern "C" fn nano_ros_service_take_request(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceServerTrait, ZenohServiceServer};
+        use nano_ros_transport::{ServiceServerTrait, ShimServiceServer};
 
         if service._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let server = &mut *(service._internal as *mut ZenohServiceServer);
+        let server = &mut *(service._internal as *mut ShimServiceServer);
 
         // Create a temporary buffer using the provided buffer
         let buf = core::slice::from_raw_parts_mut(request_data, request_capacity);
@@ -375,7 +375,7 @@ pub unsafe extern "C" fn nano_ros_service_take_request(
         }
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -411,15 +411,15 @@ pub unsafe extern "C" fn nano_ros_service_send_response(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceServerTrait, ZenohServiceServer};
+        use nano_ros_transport::{ServiceServerTrait, ShimServiceServer};
 
         if service._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let server = &mut *(service._internal as *mut ZenohServiceServer);
+        let server = &mut *(service._internal as *mut ShimServiceServer);
         let data = core::slice::from_raw_parts(response_data, response_len);
 
         match server.send_reply(sequence_number, data) {
@@ -428,7 +428,7 @@ pub unsafe extern "C" fn nano_ros_service_send_response(
         }
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -631,9 +631,9 @@ pub unsafe extern "C" fn nano_ros_client_init(
     client.node = node;
 
     // Create the internal service client using zenoh
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceInfo, Session, ZenohSession};
+        use nano_ros_transport::{ServiceInfo, Session, ShimSession};
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -649,7 +649,7 @@ pub unsafe extern "C" fn nano_ros_client_init(
         let domain_id = support_mut.domain_id as u32;
 
         // Get mutable session reference
-        let session: &mut ZenohSession = match support_mut.get_session_mut() {
+        let session: &mut ShimSession = match support_mut.get_session_mut() {
             Some(s) => s,
             None => return NANO_ROS_RET_NOT_INIT,
         };
@@ -667,8 +667,8 @@ pub unsafe extern "C" fn nano_ros_client_init(
         // Create service client
         match session.create_service_client(&svc_info) {
             Ok(client_handle) => {
-                let client_box = std::boxed::Box::new(client_handle);
-                client._internal = std::boxed::Box::into_raw(client_box) as *mut _;
+                let client_box = alloc::boxed::Box::new(client_handle);
+                client._internal = alloc::boxed::Box::into_raw(client_box) as *mut _;
             }
             Err(_) => return NANO_ROS_RET_ERROR,
         }
@@ -677,7 +677,7 @@ pub unsafe extern "C" fn nano_ros_client_init(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         // For no_std, not yet implemented
         NANO_ROS_RET_ERROR
@@ -706,12 +706,12 @@ pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) ->
     }
 
     // Clean up internal resources
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !client._internal.is_null() {
-            use nano_ros_transport::ZenohServiceClient;
+            use nano_ros_transport::ShimServiceClient;
             let _client_handle =
-                std::boxed::Box::from_raw(client._internal as *mut ZenohServiceClient);
+                alloc::boxed::Box::from_raw(client._internal as *mut ShimServiceClient);
             // Client is dropped here
         }
     }
@@ -765,15 +765,15 @@ pub unsafe extern "C" fn nano_ros_client_call(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceClientTrait, ZenohServiceClient};
+        use nano_ros_transport::{ServiceClientTrait, ShimServiceClient};
 
         if client._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let client_handle = &mut *(client._internal as *mut ZenohServiceClient);
+        let client_handle = &mut *(client._internal as *mut ShimServiceClient);
         let request = core::slice::from_raw_parts(request_data, request_len);
         let reply_buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
 
@@ -787,7 +787,7 @@ pub unsafe extern "C" fn nano_ros_client_call(
         }
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }

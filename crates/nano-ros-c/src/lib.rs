@@ -26,6 +26,14 @@
 // Executor spin loops depend on external state changes (e.g., from another thread calling stop)
 #![allow(clippy::while_immutable_condition)]
 
+#[cfg(all(
+    feature = "alloc",
+    not(any(feature = "shim-posix", feature = "shim-zephyr"))
+))]
+compile_error!(
+    "nano-ros-c `alloc` requires a transport backend. Enable `shim-posix` or `shim-zephyr`."
+);
+
 #[cfg(feature = "std")]
 extern crate std;
 

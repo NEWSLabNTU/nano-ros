@@ -680,9 +680,9 @@ const MESSAGE_BUFFER_SIZE: usize = 4096;
 /// Process a subscription message if one is available.
 ///
 /// Returns true if a message was processed, false otherwise.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bool {
-    use nano_ros_transport::{Subscriber, ZenohSubscriber};
+    use nano_ros_transport::{ShimSubscriber, Subscriber};
 
     let subscription_ref = &mut *subscription;
 
@@ -704,7 +704,7 @@ unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bo
     if internal.is_null() {
         return false;
     }
-    let subscriber = &mut *(internal as *mut ZenohSubscriber);
+    let subscriber = &mut *(internal as *mut ShimSubscriber);
 
     // Allocate buffer on stack
     let mut buffer = [0u8; MESSAGE_BUFFER_SIZE];
@@ -724,9 +724,9 @@ unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bo
 /// Process a service request if one is available.
 ///
 /// Returns true if a request was processed, false otherwise.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
-    use nano_ros_transport::{ServiceServerTrait, ZenohServiceServer};
+    use nano_ros_transport::{ServiceServerTrait, ShimServiceServer};
 
     let service_ref = &mut *service;
 
@@ -746,7 +746,7 @@ unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
     if internal.is_null() {
         return false;
     }
-    let server = &mut *(internal as *mut ZenohServiceServer);
+    let server = &mut *(internal as *mut ShimServiceServer);
 
     // Allocate buffers on stack
     let mut request_buf = [0u8; MESSAGE_BUFFER_SIZE];
@@ -785,12 +785,12 @@ unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
 /// Sample a subscription's data into the LET buffer.
 ///
 /// Returns true if data was sampled, false otherwise.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 unsafe fn sample_subscription_for_let(
     subscription: *mut nano_ros_subscription_t,
     buffer: &mut [u8],
 ) -> Option<usize> {
-    use nano_ros_transport::{Subscriber, ZenohSubscriber};
+    use nano_ros_transport::{ShimSubscriber, Subscriber};
 
     let subscription_ref = &*subscription;
 
@@ -806,7 +806,7 @@ unsafe fn sample_subscription_for_let(
     if internal.is_null() {
         return None;
     }
-    let subscriber = &mut *(internal as *mut ZenohSubscriber);
+    let subscriber = &mut *(internal as *mut ShimSubscriber);
 
     // Try to receive a message into the LET buffer
     match subscriber.try_recv_raw(buffer) {
@@ -819,7 +819,7 @@ unsafe fn sample_subscription_for_let(
 /// Process a subscription callback using pre-sampled LET data.
 ///
 /// Returns true if the callback was invoked, false otherwise.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 unsafe fn process_subscription_from_let(
     subscription: *mut nano_ros_subscription_t,
     data: &[u8],
@@ -850,7 +850,7 @@ unsafe fn process_subscription_from_let(
 /// This function takes data from all ready subscriptions and stores it
 /// in the executor's LET buffers. Services are not pre-sampled since
 /// they need request-reply semantics.
-#[cfg(feature = "std")]
+#[cfg(feature = "alloc")]
 unsafe fn sample_all_handles_for_let(executor: &mut nano_ros_executor_t) {
     // Clear previous LET data
     for i in 0..executor.handle_count {
@@ -921,11 +921,11 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
     let current_time_ns = crate::platform::get_time_ns();
 
     // LET semantics: Sample all data at the start of the spin cycle
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     let use_let = executor.semantics
         == nano_ros_executor_semantics_t::NANO_ROS_SEMANTICS_LOGICAL_EXECUTION_TIME;
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     if use_let {
         sample_all_handles_for_let(executor);
     }
@@ -939,7 +939,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
             ready_mask[i] = match handle.handle_type {
                 nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
                     // In LET mode, use the pre-sampled data availability
-                    #[cfg(feature = "std")]
+                    #[cfg(feature = "alloc")]
                     {
                         if use_let {
                             executor.let_data_available[i]
@@ -947,7 +947,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                             handle.data_ready
                         }
                     }
-                    #[cfg(not(feature = "std"))]
+                    #[cfg(not(feature = "alloc"))]
                     {
                         handle.data_ready
                     }
@@ -1015,7 +1015,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                 }
             }
             nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
-                #[cfg(feature = "std")]
+                #[cfg(feature = "alloc")]
                 {
                     let subscription = handle.handle as *mut nano_ros_subscription_t;
                     if !subscription.is_null() {
@@ -1047,7 +1047,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                 }
             }
             nano_ros_executor_handle_type_t::NANO_ROS_EXECUTOR_HANDLE_SERVICE => {
-                #[cfg(feature = "std")]
+                #[cfg(feature = "alloc")]
                 {
                     let service = handle.handle as *mut nano_ros_service_t;
                     // Try to receive and process a request

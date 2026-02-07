@@ -269,9 +269,9 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
     };
 
     // Create the internal publisher using zenoh
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{Session, TopicInfo, ZenohSession};
+        use nano_ros_transport::{Session, ShimSession, TopicInfo};
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -287,7 +287,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         let domain_id = support_mut.domain_id as u32;
 
         // Get mutable session reference
-        let session: &mut ZenohSession = match support_mut.get_session_mut() {
+        let session: &mut ShimSession = match support_mut.get_session_mut() {
             Some(s) => s,
             None => return NANO_ROS_RET_NOT_INIT,
         };
@@ -306,8 +306,8 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         // Create publisher
         match session.create_publisher(&topic_info, _qos_settings) {
             Ok(pub_handle) => {
-                let pub_box = std::boxed::Box::new(pub_handle);
-                publisher._internal = std::boxed::Box::into_raw(pub_box) as *mut _;
+                let pub_box = alloc::boxed::Box::new(pub_handle);
+                publisher._internal = alloc::boxed::Box::into_raw(pub_box) as *mut _;
             }
             Err(_) => return NANO_ROS_RET_ERROR,
         }
@@ -316,7 +316,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         // For no_std, use shim transport (not yet implemented)
         NANO_ROS_RET_ERROR
@@ -355,15 +355,15 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{Publisher, ZenohPublisher};
+        use nano_ros_transport::{Publisher, ShimPublisher};
 
         if publisher._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let pub_handle = &*(publisher._internal as *const ZenohPublisher);
+        let pub_handle = &*(publisher._internal as *const ShimPublisher);
         let data_slice = core::slice::from_raw_parts(data, len);
 
         match pub_handle.publish_raw(data_slice) {
@@ -372,7 +372,7 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
         }
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -405,11 +405,11 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
     }
 
     // Clean up internal resources
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !publisher._internal.is_null() {
-            use nano_ros_transport::ZenohPublisher;
-            let _pub = std::boxed::Box::from_raw(publisher._internal as *mut ZenohPublisher);
+            use nano_ros_transport::ShimPublisher;
+            let _pub = alloc::boxed::Box::from_raw(publisher._internal as *mut ShimPublisher);
             // Publisher is dropped here
         }
     }

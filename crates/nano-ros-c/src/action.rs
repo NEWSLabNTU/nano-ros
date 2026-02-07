@@ -359,7 +359,7 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
     }
 
     // Create internal action server using zenoh (when implemented)
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -384,7 +384,7 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         // For no_std, not yet implemented
         NANO_ROS_RET_ERROR
@@ -413,7 +413,7 @@ pub unsafe extern "C" fn nano_ros_action_publish_feedback(
         return NANO_ROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // In a full implementation, publish feedback to the feedback topic
         // For now, just validate the data
@@ -421,7 +421,7 @@ pub unsafe extern "C" fn nano_ros_action_publish_feedback(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -449,7 +449,7 @@ pub unsafe extern "C" fn nano_ros_action_succeed(
         return NANO_ROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // Store result and update status
         if !result.is_null() {
@@ -470,7 +470,7 @@ pub unsafe extern "C" fn nano_ros_action_succeed(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -500,7 +500,7 @@ pub unsafe extern "C" fn nano_ros_action_abort(
         return NANO_ROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !result.is_null() {
             let _data = core::slice::from_raw_parts(result, result_len);
@@ -520,7 +520,7 @@ pub unsafe extern "C" fn nano_ros_action_abort(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -548,7 +548,7 @@ pub unsafe extern "C" fn nano_ros_action_canceled(
         return NANO_ROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !result.is_null() {
             let _data = core::slice::from_raw_parts(result, result_len);
@@ -568,7 +568,7 @@ pub unsafe extern "C" fn nano_ros_action_canceled(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -627,7 +627,7 @@ pub unsafe extern "C" fn nano_ros_action_server_fini(
     }
 
     // Clean up internal resources
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // Clean up any internal handles
         if !server._internal.is_null() {
@@ -802,7 +802,7 @@ pub unsafe extern "C" fn nano_ros_action_client_init(
     client.node = node;
 
     // Create internal action client using zenoh (when implemented)
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -819,7 +819,7 @@ pub unsafe extern "C" fn nano_ros_action_client_init(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         // For no_std, not yet implemented
         NANO_ROS_RET_ERROR
@@ -880,7 +880,7 @@ pub unsafe extern "C" fn nano_ros_action_send_goal(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // Generate a UUID for this goal
         let uuid = &mut *goal_uuid;
@@ -893,7 +893,7 @@ pub unsafe extern "C" fn nano_ros_action_send_goal(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -915,14 +915,14 @@ pub unsafe extern "C" fn nano_ros_action_cancel_goal(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // In a full implementation, send cancel request via the CancelGoal service
         let _uuid = &*goal_uuid;
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -953,7 +953,7 @@ pub unsafe extern "C" fn nano_ros_action_get_result(
         return NANO_ROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         // In a full implementation, call the GetResult service
         let _uuid = &*goal_uuid;
@@ -963,7 +963,7 @@ pub unsafe extern "C" fn nano_ros_action_get_result(
         NANO_ROS_RET_TIMEOUT
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         NANO_ROS_RET_ERROR
     }
@@ -985,7 +985,7 @@ pub unsafe extern "C" fn nano_ros_action_client_fini(
     }
 
     // Clean up internal resources
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !client._internal.is_null() {
             client._internal = ptr::null_mut();

@@ -11,10 +11,10 @@ This document provides a comprehensive overview of test coverage across all plat
 | Shell Scripts     | `tests/*.sh`                   | Legacy/supplementary test scripts        |
 | Test Utilities    | `crates/nano-ros-tests/src/`   | Fixtures, process management, helpers    |
 
-**Nextest Tests:** 536 total (532 run + 4 skipped) across 31 binaries
+**Nextest Tests:** 548 total (553 including 5 skipped) across 27 binaries
 **QEMU Semihosting:** 14 tests (9 basic + 5 LAN9118) via `tests/run-test.sh`
 **C API:** 3 test suites via shell scripts
-**Miri:** 137 tests (nano-ros-serdes, nano-ros-core, nano-ros-params)
+**Miri:** 143 tests (nano-ros-serdes, nano-ros-core, nano-ros-params)
 
 ## Current Test Coverage by Platform
 
@@ -214,7 +214,7 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 | `nano-ros-core`       | 75         | Time (17), Action (15), Lifecycle (13), Error (13), Logger (7), Clock (6), Service (2), MessageInfo (2)          |
 | `nano-ros-serdes`     | 33         | CDR primitives (6), CDR encoder (5), compatibility (22)                                                          |
 | `nano-ros-transport`  | 56         | QoS profiles/builder (34), RMW protocol/liveliness/attachment (22)                                               |
-| `nano-ros-node`       | 109        | Actions/Promise (38), Context (18), Lifecycle (15), Trigger (10), Timer (8), Executor (8), Node (6), Options (6) |
+| `nano-ros-node`       | 110        | Connected (38), Context (18), Lifecycle (15), Trigger (10), Timer (8), Executor (8), Node (6), Options (6), Shim (1) |
 | `nano-ros-params`     | 30         | Typed parameters (14), server (10), types (6)                                                                    |
 | `nano-ros-c`          | 64         | Executor (22), Guard condition (18), Lifecycle (15), CDR (5), Platform (4)                                       |
 | `zenoh-pico-shim`     | 2          | Error display, error code conversion                                                                             |
@@ -227,7 +227,7 @@ Tests in separate integration test binaries (`tests/` directories within each cr
 | Crate/Binary                            | Test Count | Coverage Areas                                               |
 |-----------------------------------------|------------|--------------------------------------------------------------|
 | `nano-ros-transport::rtic_integration`  | 7          | RTIC transport config, QoS, session mode, topic/service info |
-| `nano-ros-transport::zenoh_integration` | 8 (3 run)  | Session open/close, CDR format, topic key generation         |
+| `nano-ros-transport::zenoh_integration` | 13 (8 run) | Session open/close, CDR format, topic key generation         |
 | `nano-ros-node::rtic_integration`       | 6          | RTIC node/context integration                                |
 | `zenoh-pico-shim::integration`          | 13         | Session, pub/sub, liveliness, publisher limits               |
 

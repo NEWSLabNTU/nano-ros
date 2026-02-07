@@ -297,9 +297,9 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
     };
 
     // Create the internal subscriber using zenoh
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{Session, TopicInfo, ZenohSession};
+        use nano_ros_transport::{Session, ShimSession, TopicInfo};
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -315,7 +315,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
         let domain_id = support_mut.domain_id as u32;
 
         // Get mutable session reference
-        let session: &mut ZenohSession = match support_mut.get_session_mut() {
+        let session: &mut ShimSession = match support_mut.get_session_mut() {
             Some(s) => s,
             None => return NANO_ROS_RET_NOT_INIT,
         };
@@ -334,8 +334,8 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
         // Create subscriber (uses polling model - executor will poll and invoke callbacks)
         match session.create_subscriber(&topic_info, _qos_settings) {
             Ok(sub_handle) => {
-                let sub_box = std::boxed::Box::new(sub_handle);
-                subscription._internal = std::boxed::Box::into_raw(sub_box) as *mut _;
+                let sub_box = alloc::boxed::Box::new(sub_handle);
+                subscription._internal = alloc::boxed::Box::into_raw(sub_box) as *mut _;
             }
             Err(_) => return NANO_ROS_RET_ERROR,
         }
@@ -344,7 +344,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
         NANO_ROS_RET_OK
     }
 
-    #[cfg(not(feature = "std"))]
+    #[cfg(not(feature = "alloc"))]
     {
         // For no_std, use shim transport (not yet implemented)
         NANO_ROS_RET_ERROR
@@ -379,11 +379,11 @@ pub unsafe extern "C" fn nano_ros_subscription_fini(
     }
 
     // Clean up internal resources
-    #[cfg(feature = "std")]
+    #[cfg(feature = "alloc")]
     {
         if !subscription._internal.is_null() {
-            use nano_ros_transport::ZenohSubscriber;
-            let _sub = std::boxed::Box::from_raw(subscription._internal as *mut ZenohSubscriber);
+            use nano_ros_transport::ShimSubscriber;
+            let _sub = alloc::boxed::Box::from_raw(subscription._internal as *mut ShimSubscriber);
             // Subscriber is dropped here
         }
     }
