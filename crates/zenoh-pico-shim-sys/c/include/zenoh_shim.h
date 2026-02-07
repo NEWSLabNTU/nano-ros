@@ -390,7 +390,8 @@ int32_t zenoh_shim_undeclare_queryable(int32_t _handle);
  * # Returns
  * 0 on success, negative error code on failure.
  */
-int32_t zenoh_shim_query_reply(const char *_keyexpr,
+int32_t zenoh_shim_query_reply(int32_t _queryable_handle,
+                               const char *_keyexpr,
                                const uint8_t *_data,
                                uintptr_t _len,
                                const uint8_t *_attachment,

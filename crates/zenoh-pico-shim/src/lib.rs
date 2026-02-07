@@ -503,16 +503,18 @@ impl ShimContext {
     ///
     /// # Parameters
     ///
+    /// * `queryable_handle` - Handle of the queryable that received the query
     /// * `keyexpr` - Reply key expression (null-terminated)
     /// * `data` - Reply payload
     /// * `attachment` - Optional attachment data
     ///
     /// # Errors
     ///
-    /// Returns an error if not called from within a query callback,
+    /// Returns an error if the queryable handle is invalid, no stored query exists,
     /// or if the reply operation fails.
     pub fn query_reply(
         &self,
+        queryable_handle: i32,
         keyexpr: &[u8],
         data: &[u8],
         attachment: Option<&[u8]>,
@@ -524,6 +526,7 @@ impl ShimContext {
 
         let ret = unsafe {
             zenoh_shim_query_reply(
+                queryable_handle,
                 keyexpr.as_ptr().cast(),
                 data.as_ptr(),
                 data.len(),

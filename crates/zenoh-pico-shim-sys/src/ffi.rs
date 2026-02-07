@@ -401,6 +401,7 @@ mod cbindgen_stubs {
     /// 0 on success, negative error code on failure.
     #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_query_reply(
+        _queryable_handle: i32,
         _keyexpr: *const c_char,
         _data: *const u8,
         _len: usize,

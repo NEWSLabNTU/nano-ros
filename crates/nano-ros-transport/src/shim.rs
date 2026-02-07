@@ -1175,9 +1175,6 @@ impl ServiceServerTrait for ShimServiceServer {
     }
 
     fn send_reply(&mut self, _sequence_number: i64, data: &[u8]) -> Result<(), Self::Error> {
-        // Note: This only works if called immediately after try_recv_request
-        // while the C shim's g_current_query is still valid.
-        // In practice, this is a limitation of the callback model.
         if self.reply_keyexpr_len == 0 {
             return Err(TransportError::ServiceReplyFailed);
         }
@@ -1185,9 +1182,14 @@ impl ServiceServerTrait for ShimServiceServer {
         // Get context reference
         let context = unsafe { &*self.context };
 
-        // Send reply using the stored keyexpr
+        // Send reply using the queryable handle and stored keyexpr
         context
-            .query_reply(&self.reply_keyexpr[..=self.reply_keyexpr_len], data, None)
+            .query_reply(
+                self._queryable.handle(),
+                &self.reply_keyexpr[..=self.reply_keyexpr_len],
+                data,
+                None,
+            )
             .map_err(|_| TransportError::ServiceReplyFailed)?;
 
         // Clear the stored keyexpr

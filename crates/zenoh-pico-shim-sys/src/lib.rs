@@ -107,6 +107,7 @@ unsafe extern "C" {
     ) -> i32;
     pub fn zenoh_shim_undeclare_queryable(handle: i32) -> i32;
     pub fn zenoh_shim_query_reply(
+        queryable_handle: i32,
         keyexpr: *const core::ffi::c_char,
         data: *const u8,
         len: usize,
