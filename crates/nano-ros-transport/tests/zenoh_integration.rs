@@ -13,13 +13,14 @@ use std::thread;
 use std::time::Duration;
 
 /// Test that we can open and close a session in peer mode
-/// (doesn't require a router)
+/// (doesn't require a router).
+/// Multicast scouting is disabled to avoid contention under parallel test load.
 #[test]
 fn test_session_open_close_peer() {
     let config = TransportConfig {
         locator: None,
         mode: SessionMode::Peer,
-        properties: &[],
+        properties: &[("multicast_scouting", "false")],
     };
 
     let result = ZenohTransport::open(&config);
