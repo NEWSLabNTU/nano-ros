@@ -180,7 +180,7 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 **Examples (Untested):**
 | Example                                | Status      |
 |----------------------------------------|-------------|
-| `stm32f4/`                             | Manual only |
+| `stm32f4/bsp-talker`                  | Manual only |
 | `platform-integration/stm32f4-polling` | Manual only |
 | `platform-integration/stm32f4-rtic`    | Manual only |
 | `platform-integration/stm32f4-embassy` | Manual only |
@@ -188,24 +188,25 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 
 ### 5. C Bindings
 
-| Test Suite    | File                       | Tests | Coverage           |
-|---------------|----------------------------|-------|--------------------|
-| C Integration | `c_api.rs`                 | 5     | Build, start, comms|
-| C Codegen     | `tests/c-msg-gen-tests.sh` | 1     | Message generation |
+| Test Suite    | File                       | Tests | Coverage              |
+|---------------|----------------------------|-------|-----------------------|
+| C Integration | `c_api.rs`                 | 5     | Build, start, comms   |
+| C Codegen     | `tests/c-msg-gen-tests.sh` | 1     | Message generation    |
+| Zephyr C      | `tests/zephyr/run-c.sh`   | 1     | Zephyr C pub/sub      |
 
 **Justfile Recipes:**
-- `just test-c` - C API integration
-- `just test-c-verbose` - Verbose output
-- `just test-c-codegen` - Message generation
-- `just test-c-msg-gen` - Shell-based codegen test
+- `just test-c` - C API integration + codegen
+- `just test-zephyr-c` - Zephyr C examples
 
 **Examples Covered:**
-| Example                   | Tested | Notes         |
-|---------------------------|--------|---------------|
-| `native/c-talker`         | Yes    | c_api.rs      |
-| `native/c-listener`       | Yes    | c_api.rs      |
-| `native/c-custom-msg`     | **NO** | Missing tests |
-| `native/c-baremetal-demo` | **NO** | Missing tests |
+| Example                   | Tested | Notes                    |
+|---------------------------|--------|--------------------------|
+| `native/c-talker`         | Yes    | c_api.rs                 |
+| `native/c-listener`       | Yes    | c_api.rs                 |
+| `native/c-custom-msg`     | Yes    | c-msg-gen-tests.sh       |
+| `native/c-baremetal-demo` | **NO** | No automated tests       |
+| `zephyr/c-talker`         | Yes    | tests/zephyr/run-c.sh    |
+| `zephyr/c-listener`       | Yes    | tests/zephyr/run-c.sh    |
 
 ## Unit Test Coverage by Crate
 
@@ -244,49 +245,101 @@ Tests in `nano-ros-tests/src/` (library unit tests for test infrastructure):
 | `qemu`       | 2          | Test result parsing                                     |
 | `process`    | 1          | zenohd detection                                        |
 
-## Missing Tests (Recommended)
+## Platform × Language Test Matrix
 
-### Completed
+All 31 examples organized by platform and language, with their test coverage status.
 
-All previously identified high and medium priority test suites have been implemented:
+### Native (Linux/macOS)
 
-- **Services** (14 tests): Native `services.rs` (8) + Zephyr `zephyr.rs` (6)
-- **Native ↔ Zephyr E2E** (4 tests): `test_native_to_zephyr_e2e`, `test_bidirectional_native_zephyr_e2e`, cross-platform services
-- **Custom Messages** (7 tests): `custom_msg.rs` - serialization, pub/sub, error handling
-- **Parameters** (7 tests): `params.rs` - declaration, ROS 2 interop
-- **Timer/Executor** (7 tests): `executor.rs` - timer firing, callback order, spin behavior
-- **QoS** (6 tests): `qos.rs` - RELIABLE delivery, history ordering, multi-subscriber
-- **Error Handling** (8 tests): `error_handling.rs` - timeouts, disconnect, reconnect
-- **Multi-Node** (8 tests): `multi_node.rs` - scalability, ordering, sustained communication
+| Example | Lang | Feature | Test Coverage | Status |
+|---------|------|---------|---------------|--------|
+| `native/rs-talker` | Rust | Pub/Sub | nano2nano, rmw_interop, multi_node, qos, error_handling, executor, params | Complete |
+| `native/rs-listener` | Rust | Pub/Sub | nano2nano, rmw_interop, multi_node, qos | Complete |
+| `native/rs-service-server` | Rust | Service | services, rmw_interop, zephyr (cross-platform) | Complete |
+| `native/rs-service-client` | Rust | Service | services, rmw_interop, zephyr (cross-platform) | Complete |
+| `native/rs-action-server` | Rust | Action | actions, rmw_interop | Complete |
+| `native/rs-action-client` | Rust | Action | actions, rmw_interop | Complete |
+| `native/rs-custom-msg` | Rust | Custom Msg | custom_msg (serialization, pub/sub, structure) | Complete |
+| `native/c-talker` | C | Pub/Sub | c_api.rs (build, start, comms) | Complete |
+| `native/c-listener` | C | Pub/Sub | c_api.rs (build, start, comms) | Complete |
+| `native/c-custom-msg` | C | Custom Msg | c-msg-gen-tests.sh (build, generate, run) | Complete |
+| `native/c-baremetal-demo` | C | no_std demo | **NONE** | **Missing** |
 
-### Remaining Gaps
+### QEMU ARM (Cortex-M3)
 
-#### Low Priority
+| Example | Lang | Feature | Test Coverage | Status |
+|---------|------|---------|---------------|--------|
+| `qemu/rs-test` | Rust | Unit tests | emulator.rs (CDR, Node API, type metadata) | Complete |
+| `qemu/rs-talker` | Rust | Pub/Sub | Build only (via `just quality`) | **E2E missing** |
+| `qemu/rs-listener` | Rust | Pub/Sub | Build only (via `just quality`) | **E2E missing** |
+| `qemu/bsp-talker` | Rust | BSP Pub/Sub | emulator.rs (build, start), Docker E2E | Complete |
+| `qemu/bsp-listener` | Rust | BSP Pub/Sub | emulator.rs (build, start), Docker E2E | Complete |
 
-**1. STM32F4 Hardware-in-Loop Tests**
-```
-tests/stm32f4_hil.rs (NEW)
-- test_stm32f4_build
-- test_stm32f4_flash
-- test_stm32f4_communication (requires probe)
-```
-Physical hardware has no automated testing.
+No C examples exist for QEMU.
 
-**2. C Example Tests**
-```
-- native/c-custom-msg      (untested)
-- native/c-baremetal-demo   (untested)
-```
-Only c-talker/c-listener are tested via `c_api.rs`.
+### Zephyr RTOS (native_sim)
 
-**3. QEMU BSP Communication Tests**
-```
-emulator.rs (ADD)
-- test_qemu_bsp_talker_listener_e2e
-```
-QEMU BSP examples build but aren't tested for E2E communication without Docker.
+| Example | Lang | Feature | Test Coverage | Status |
+|---------|------|---------|---------------|--------|
+| `zephyr/rs-talker` | Rust | Pub/Sub | zephyr.rs (build, smoke, E2E, cross-platform) | Complete |
+| `zephyr/rs-listener` | Rust | Pub/Sub | zephyr.rs (build, smoke, E2E, cross-platform) | Complete |
+| `zephyr/rs-service-server` | Rust | Service | zephyr.rs (build, smoke, cross-platform) | Complete |
+| `zephyr/rs-service-client` | Rust | Service | zephyr.rs (build, smoke, cross-platform) | Complete |
+| `zephyr/rs-action-server` | Rust | Action | zephyr.rs (build, smoke, E2E) | Complete |
+| `zephyr/rs-action-client` | Rust | Action | zephyr.rs (build, smoke, E2E) | Complete |
+| `zephyr/c-talker` | C | Pub/Sub | tests/zephyr/run-c.sh | Complete |
+| `zephyr/c-listener` | C | Pub/Sub | tests/zephyr/run-c.sh | Complete |
 
-## Test Coverage Gaps Summary
+### STM32F4 (Physical Hardware)
+
+| Example | Lang | Feature | Test Coverage | Status |
+|---------|------|---------|---------------|--------|
+| `stm32f4/bsp-talker` | Rust | BSP Pub/Sub | **NONE** (requires physical board) | **Not testable** |
+
+### Platform Integration (Reference Implementations)
+
+| Example | Lang | Feature | Test Coverage | Status |
+|---------|------|---------|---------------|--------|
+| `qemu-lan9118` | Rust | Ethernet driver | emulator.rs (LAN9118 test) | Complete |
+| `qemu-smoltcp-bridge` | Rust | Network bridge | Library only (no binary) | N/A |
+| `stm32f4-rtic` | Rust | RTIC framework | Build check only | **E2E missing** |
+| `stm32f4-embassy` | Rust | Embassy async | Build check only | **E2E missing** |
+| `stm32f4-polling` | Rust | Polling network | Build check only | **E2E missing** |
+| `stm32f4-smoltcp` | Rust | smoltcp network | Build check only | **E2E missing** |
+
+### Summary by Platform × Language
+
+| Platform | Rust | C | Total |
+|----------|------|---|-------|
+| Native | 7/7 | 2/3 | 9/10 |
+| QEMU | 3/5 | — | 3/5 |
+| Zephyr | 6/6 | 2/2 | 8/8 |
+| STM32F4 | 0/1 | — | 0/1 |
+| Platform-Integration | 2/6 | — | 2/6 |
+| **Total** | **18/25** | **4/5** | **22/30** |
+
+(Excludes `qemu-smoltcp-bridge` which is a library, not a runnable example.)
+
+## Remaining Gaps
+
+### Actionable (can be automated)
+
+**1. Native C baremetal demo** — `native/c-baremetal-demo`
+- Runs without zenoh (standalone no_std demo)
+- Add to `c_api.rs`: build + run, assert exit code 0
+
+**2. QEMU rs-talker/rs-listener E2E** — `qemu/rs-talker`, `qemu/rs-listener`
+- Build tested via `just quality`, but no communication test
+- Requires QEMU TAP networking or Docker (same as BSP tests)
+- Add to `emulator.rs`: `test_qemu_rs_talker_listener_e2e` (Docker-gated)
+
+### Not automatable
+
+**3. STM32F4 hardware** — `stm32f4/bsp-talker`, `stm32f4-*`
+- Requires physical board + debug probe
+- Build verification possible; runtime tests require HIL setup
+
+## Feature Coverage Summary
 
 | Area                   | Tests | Status                |
 |------------------------|-------|-----------------------|
@@ -304,8 +357,8 @@ QEMU BSP examples build but aren't tested for E2E communication without Docker.
 | **QEMU/Emulator**      | 12    | Complete              |
 | **Platform Detection** | 10    | Complete              |
 | **Serial Transport**   | 9     | Complete (manual E2E) |
-| **C Bindings**         | 6     | Partial               |
-| **STM32F4 HIL**        | 0     | Not applicable        |
+| **C Bindings**         | 6     | Partial (1 untested)  |
+| **STM32F4 HIL**        | 0     | Not automatable       |
 
 ## Test Execution Quick Reference
 

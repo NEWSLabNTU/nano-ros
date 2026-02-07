@@ -2,7 +2,7 @@
 
 **Goal**: Achieve comprehensive test coverage across all platforms, examples, and features. Close the gaps identified in `docs/test-coverage.md`.
 
-**Status**: Complete
+**Status**: In Progress (17.10 remaining)
 
 **Test counts:** 390 unit tests + 142 integration tests = 532 total across the workspace.
 
@@ -552,21 +552,106 @@ just test-rust-multi-node
 
 ---
 
+## Phase 17.10: Remaining Platform × Language Gaps
+
+**Status**: Pending
+**Priority**: **Low**
+
+A platform × language matrix review (see `docs/test-coverage.md`) identified 8 untested examples out of 30 runnable examples (73% coverage). Two gaps are actionable.
+
+### 17.10.1: Native C baremetal demo build+run test
+
+**Example**: `native/c-baremetal-demo`
+**File**: `crates/nano-ros-tests/tests/c_api.rs`
+**Effort**: Low
+
+The C baremetal demo runs standalone without zenoh — it demonstrates the `no_std` C API.
+Add a build-and-run test to `c_api.rs`.
+
+- [ ] Add `build_c_baremetal_demo()` helper to `fixtures/binaries.rs` (reuse `build_c_example`)
+- [ ] Add `c_baremetal_demo_binary` rstest fixture
+- [ ] Add `test_c_baremetal_demo_builds` — CMake build succeeds
+- [ ] Add `test_c_baremetal_demo_runs` — runs to completion, exit code 0
+
+```rust
+#[test]
+fn test_c_baremetal_demo_builds() {
+    if !require_cmake() { return; }
+    let path = build_c_baremetal_demo().expect("build failed");
+    assert!(path.exists());
+}
+
+#[test]
+fn test_c_baremetal_demo_runs() {
+    if !require_cmake() { return; }
+    let binary = build_c_baremetal_demo().expect("build failed");
+    let output = Command::new(&binary)
+        .output()
+        .expect("failed to run");
+    assert!(output.status.success(), "exit code: {:?}", output.status);
+}
+```
+
+### 17.10.2: QEMU rs-talker/rs-listener E2E communication test
+
+**Examples**: `qemu/rs-talker`, `qemu/rs-listener`
+**File**: `crates/nano-ros-tests/tests/emulator.rs`
+**Effort**: Medium
+
+These bare-metal ARM binaries build (verified by `just quality`) but have no communication test.
+The BSP variants (`qemu/bsp-talker`, `qemu/bsp-listener`) already have Docker-gated E2E tests.
+Add an equivalent test for the non-BSP variants.
+
+- [ ] Add `test_qemu_rs_talker_listener_e2e` to `emulator.rs`
+- [ ] Gate on Docker availability (same as BSP startup tests)
+- [ ] Reuse Docker Compose infrastructure from `docker/docker-compose.yml`
+
+```rust
+#[rstest]
+fn test_qemu_rs_talker_listener_e2e() {
+    // Skip if Docker not available
+    if !is_docker_available() { return; }
+    // Build both binaries
+    let talker = build_qemu_rs_talker().expect("build failed");
+    let listener = build_qemu_rs_listener().expect("build failed");
+    // Launch via Docker Compose with TAP networking
+    // Verify listener receives messages from talker
+}
+```
+
+### 17.10.3: STM32F4 build verification
+
+**Examples**: `stm32f4/bsp-talker`, `stm32f4-rtic`, `stm32f4-embassy`, `stm32f4-polling`, `stm32f4-smoltcp`
+**File**: `crates/nano-ros-tests/tests/emulator.rs` (or new `stm32f4.rs`)
+**Effort**: Low (build only), not automatable for runtime
+
+Runtime tests require physical hardware + debug probe. However, **build verification**
+can confirm these examples compile for the `thumbv7m-none-eabi` target.
+
+- [ ] Add `test_stm32f4_bsp_talker_builds` — `cargo build --release` succeeds
+- [ ] Add `test_stm32f4_platform_examples_build` — build check for stm32f4-* examples
+- [ ] Gate on ARM toolchain availability
+
+**Note**: Runtime E2E tests are not automatable without HIL (Hardware-in-Loop) infrastructure.
+
+---
+
 ## Implementation Priority
 
-| Phase                  | Priority | Effort | Tests Added | Description                     | Status   |
-|------------------------|----------|--------|-------------|---------------------------------|----------|
-| **17.1 Services**      | High     | Medium | 8           | Service request/response        | Complete |
-| **17.2 Bidirectional** | High     | Low    | 8           | Native ↔ Zephyr both directions | Complete |
-| **17.3 Custom Msg**    | High     | Medium | 7           | User-defined message types      | Complete |
-| **17.4 Parameters**    | Medium   | Medium | 7           | Parameter server                | Complete |
-| **17.5 Executor**      | Medium   | Medium | 7           | Timer and executor              | Complete |
-| **17.6 QoS**           | Medium   | Medium | 6           | Quality of Service              | Complete |
-| **17.7 QEMU BSP**      | Medium   | High   | 5           | Bare-metal communication        | Complete |
-| **17.8 Errors**        | Low      | Medium | 8           | Error handling                  | Complete |
-| **17.9 Multi-Node**    | Low      | Medium | 8           | Scalability                     | Complete |
+| Phase                      | Priority | Effort | Tests Added | Description                     | Status   |
+|----------------------------|----------|--------|-------------|---------------------------------|----------|
+| **17.1 Services**          | High     | Medium | 8           | Service request/response        | Complete |
+| **17.2 Bidirectional**     | High     | Low    | 8           | Native ↔ Zephyr both directions | Complete |
+| **17.3 Custom Msg**        | High     | Medium | 7           | User-defined message types      | Complete |
+| **17.4 Parameters**        | Medium   | Medium | 7           | Parameter server                | Complete |
+| **17.5 Executor**          | Medium   | Medium | 7           | Timer and executor              | Complete |
+| **17.6 QoS**               | Medium   | Medium | 6           | Quality of Service              | Complete |
+| **17.7 QEMU BSP**          | Medium   | High   | 5           | Bare-metal communication        | Complete |
+| **17.8 Errors**            | Low      | Medium | 8           | Error handling                  | Complete |
+| **17.9 Multi-Node**        | Low      | Medium | 8           | Scalability                     | Complete |
+| **17.10 Remaining Gaps**   | Low      | Low-Med| ~7          | C baremetal, QEMU E2E, STM32F4 | Pending  |
 
-**Total Phase 17 Tests**: 64 (across 9 new test suites)
+**Total Phase 17 Tests**: 64 completed (across 9 test suites) + ~7 pending (17.10)
 
 ---
 
@@ -587,13 +672,18 @@ just test-rust-multi-node
 ## Success Metrics
 
 - [x] All `native/rs-*` examples have integration tests
+- [x] All `native/c-talker` and `native/c-listener` have integration tests (c_api.rs)
 - [x] All `zephyr/rs-*` examples have integration tests
+- [x] All `zephyr/c-*` examples have shell tests (run-c.sh)
 - [x] Native ↔ Zephyr communication tested in both directions
 - [x] Services tested on Native and Zephyr (ROS 2 interop requires rmw_zenoh environment)
 - [x] Parameter server tested with ROS 2 interop (graceful skip when unavailable)
 - [x] QoS policies systematically tested
 - [x] QEMU bare-metal examples tested for communication (build + Docker E2E)
 - [x] 80+ integration tests total (142 integration tests)
+- [ ] `native/c-baremetal-demo` has build+run test (17.10.1)
+- [ ] `qemu/rs-talker` ↔ `qemu/rs-listener` E2E test (17.10.2)
+- [ ] STM32F4 examples have build verification tests (17.10.3)
 - [ ] CI runs all tests on every PR (pending CI setup)
 
 ---
@@ -656,8 +746,9 @@ test-rust-full-coverage: test-rust test-rust-phase17 test-qemu-bsp
 ```
 crates/nano-ros-tests/tests/
 ├── actions.rs          # Existing
+├── c_api.rs            # NEW (C integration tests, extends 17.10.1)
 ├── custom_msg.rs       # NEW (17.3)
-├── emulator.rs         # Extended (17.7)
+├── emulator.rs         # Extended (17.7, 17.10.2)
 ├── error_handling.rs   # NEW (17.8)
 ├── executor.rs         # NEW (17.5)
 ├── multi_node.rs       # NEW (17.9)
