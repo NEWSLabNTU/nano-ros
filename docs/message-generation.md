@@ -75,6 +75,34 @@ example_interfaces = { version = "*", default-features = false }
 
 The `.cargo/config.toml` patches redirect these to local paths.
 
+## Git Dependency Workflow
+
+For projects that consume nano-ros as a **git dependency** (not from within the nano-ros repo), use `--nano-ros-git` instead of `--nano-ros-path`:
+
+**Step 1:** Add git dependency to `Cargo.toml`:
+```toml
+[dependencies]
+nano-ros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
+std_msgs = { version = "*", default-features = false }
+```
+
+**Step 2:** Create `package.xml` (same as above).
+
+**Step 3:** Generate bindings with git patches:
+```bash
+source /opt/ros/humble/setup.bash
+cargo nano-ros generate --config --nano-ros-git
+```
+
+This generates `.cargo/config.toml` with git-based patches:
+```toml
+[patch.crates-io]
+nano-ros-core = { git = "https://github.com/jerry73204/nano-ros" }
+nano-ros-serdes = { git = "https://github.com/jerry73204/nano-ros" }
+std_msgs = { path = "generated/std_msgs" }
+builtin_interfaces = { path = "generated/builtin_interfaces" }
+```
+
 **Step 4: Use in code**
 
 ```rust
@@ -90,12 +118,13 @@ let msg = Int32 { data: 42 };
 cargo nano-ros generate [OPTIONS]
 
 Options:
-  -m, --manifest <PATH>     Path to package.xml [default: package.xml]
-  -o, --output <DIR>        Output directory [default: generated]
-  -n, --nano-ros <PATH>     Path to nano-ros crates (for config patches)
-  -f, --force               Overwrite existing bindings
-  -v, --verbose             Enable verbose output
-      --no-config           Skip .cargo/config.toml generation
+      --manifest-path <PATH>  Path to package.xml [default: package.xml]
+  -o, --output <DIR>          Output directory [default: generated]
+      --config                Generate .cargo/config.toml with [patch.crates-io] entries
+      --nano-ros-path <PATH>  Path to nano-ros crates (for config patches, local dev)
+      --nano-ros-git          Use nano-ros git repo for config patches (external users)
+      --force                 Overwrite existing bindings
+  -v, --verbose               Enable verbose output
 ```
 
 ## Generated Output Structure

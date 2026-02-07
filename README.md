@@ -1,58 +1,121 @@
 # nano-ros
 
-A lightweight ROS 2 client library for embedded systems, written in Rust.
+A lightweight ROS 2 client library for embedded real-time systems, written in Rust.
 
 ## Features
 
-- `no_std` compatible for bare-metal and RTOS targets
-- ROS 2 interoperability via rmw_zenoh
-- Runs on Zephyr RTOS and native Linux
+- `no_std` compatible for bare-metal and RTOS targets (Zephyr, RTIC, Embassy)
+- ROS 2 interoperability via rmw_zenoh protocol
 - Zero-copy CDR serialization
+- C API for integration with C/C++ projects
+- Runs on Linux, QEMU bare-metal (Cortex-M3), Zephyr RTOS, and STM32F4
+
+## Status
+
+| Feature         | Status   |
+|-----------------|----------|
+| Pub/Sub         | Complete |
+| Services        | Complete |
+| Actions         | Complete |
+| Parameters      | Complete |
+| ROS 2 Interop   | Complete |
+| Zephyr Support  | Complete |
+| QEMU Bare-Metal | Complete |
+| C API           | Complete |
+| Message Codegen | Complete |
 
 ## Requirements
 
-- Rust 1.75+
-- zenohd router
-- (Optional) ROS 2 Humble with rmw_zenoh_cpp
+- Rust nightly (edition 2024)
+- zenohd 1.6.2 router (built from submodule via `just build-zenohd`)
+- (Optional) ROS 2 Humble with rmw_zenoh_cpp for interop
+- (Optional) cmake for C examples
 
-## Quick Start
+## Quick Start (Rust)
 
-### 1. Clone and Build
+### As a Git Dependency
+
+Add nano-ros to your project's `Cargo.toml`:
+
+```toml
+[dependencies]
+nano-ros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
+std_msgs = { version = "*", default-features = false }
+```
+
+Generate message bindings with `cargo nano-ros`:
+
+```bash
+# Install the binding generator
+cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
+
+# Source ROS 2 and generate bindings
+source /opt/ros/humble/setup.bash
+cargo nano-ros generate --config --nano-ros-git
+```
+
+This creates `generated/` with Rust types for your ROS 2 messages and a `.cargo/config.toml` with the necessary patch entries.
+
+See [Getting Started](docs/getting-started.md) for a complete walkthrough.
+
+### From the Repository
 
 ```bash
 git clone https://github.com/jerry73204/nano-ros.git
 cd nano-ros
-cargo build --release -p native-rs-talker -p native-rs-listener --features zenoh
+just setup         # Install toolchains + tools
+just build-zenohd  # Build zenohd 1.6.2 from submodule
 ```
 
-### 2. Start Zenoh Router
+Run the demo:
 
 ```bash
-zenohd --listen tcp/127.0.0.1:7447
+# Terminal 1: Zenoh router
+./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
+
+# Terminal 2: Talker
+cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
+
+# Terminal 3: Listener
+cd examples/native/rs-listener && RUST_LOG=info cargo run --features zenoh
 ```
 
-### 3. Run Demo
+## Quick Start (C API)
 
-Terminal 1 - Talker:
+Build the nano-ros C library and link against it with CMake:
+
 ```bash
-cargo run -p native-rs-talker --release --features zenoh
+# Build the static library
+cd nano-ros
+cargo build -p nano-ros-c --release
+
+# Build a C example
+cd examples/native/c-talker
+mkdir -p build && cd build
+cmake -DNANO_ROS_ROOT=/path/to/nano-ros ..
+make
 ```
 
-Terminal 2 - Listener:
-```bash
-cargo run -p native-rs-listener --release --features zenoh
+A `FindNanoRos.cmake` module is provided at `cmake/FindNanoRos.cmake` for easy integration:
+
+```cmake
+list(APPEND CMAKE_MODULE_PATH "/path/to/nano-ros/cmake")
+find_package(NanoRos REQUIRED)
+target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
+
+See [Getting Started](docs/getting-started.md) for a complete C walkthrough.
 
 ## ROS 2 Interoperability
 
-nano-ros can communicate with ROS 2 nodes using rmw_zenoh.
+nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 
 ```bash
 # Terminal 1: zenohd
-zenohd --listen tcp/127.0.0.1:7447
+./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: nano-ros talker
-cargo run -p native-rs-talker --release --features zenoh
+cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
@@ -60,42 +123,38 @@ export RMW_IMPLEMENTATION=rmw_zenoh_cpp
 ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```
 
-## Zephyr RTOS
-
-For embedded targets, see [docs/roadmap/phase-2-zephyr-qemu.md](docs/roadmap/phase-2-zephyr-qemu.md).
-
-```bash
-# Setup (one-time)
-./zephyr/setup.sh
-
-# Build for native_sim
-cd ~/nano-ros-workspace
-west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-talker-rs
-
-# Run
-./build/zephyr/zephyr.exe
-```
-
 ## Project Structure
 
 ```
 crates/
-├── nano-ros-core       # Node, Publisher, Subscriber
-├── nano-ros-serdes     # CDR serialization
-├── nano-ros-types      # std_msgs, geometry_msgs, etc.
-├── nano-ros-transport  # Zenoh transport layer
-└── zenoh-pico          # Zenoh-pico Rust bindings
+├── nano-ros/              # Unified API (re-exports all sub-crates)
+├── nano-ros-core/         # Core types, traits, node abstraction
+├── nano-ros-serdes/       # CDR serialization
+├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
+├── nano-ros-params/       # Parameter server
+├── nano-ros-transport/    # Transport abstraction (zenoh backend)
+├── nano-ros-node/         # High-level node API + parameter services
+├── nano-ros-c/            # C API (rclc-style)
+├── rcl-interfaces/        # Generated ROS 2 interface types
+├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
+└── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
 ```
 
-## Status
+## Message Generation
 
-| Feature        | Status   |
-|----------------|----------|
-| Pub/Sub        | Complete |
-| ROS 2 Interop  | Complete |
-| Zephyr Support | Complete |
-| Services       | Planned  |
-| Parameters     | Planned  |
+nano-ros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/message-generation.md) for details.
+
+## Documentation
+
+| Topic                  | Location                                                     |
+|------------------------|--------------------------------------------------------------|
+| Getting started        | [docs/getting-started.md](docs/getting-started.md)           |
+| Message generation     | [docs/message-generation.md](docs/message-generation.md)     |
+| ROS 2 interop protocol | [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md)       |
+| Testing                | [tests/README.md](tests/README.md)                           |
+| Zephyr setup           | [docs/zephyr-setup.md](docs/zephyr-setup.md)                 |
+| Embedded integration   | [docs/embedded-integration.md](docs/embedded-integration.md) |
+| Troubleshooting        | [docs/troubleshooting.md](docs/troubleshooting.md)           |
 
 ## License
 
