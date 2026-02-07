@@ -29,7 +29,7 @@ both `std` (desktop) and `no_std` (embedded/RTIC) targets.
 │ + create_node()           │             │ + create_node()           │
 │ + spin_once()             │             │ + spin_once()             │
 │                           │             │ + spin()                  │
-│                           │             │ + spin_async()            │
+│                           │             │ + spin_period()           │
 └───────────────────────────┘             └───────────────────────────┘
             │                                             │
             │         ┌───────────────────┐               │
@@ -170,17 +170,14 @@ pub struct SpinOnceResult {
     pub services_handled: usize,
 }
 
-/// Extended trait for executors with blocking/async spin (std only)
+/// Extended trait for executors with blocking spin (std only)
 #[cfg(feature = "std")]
 pub trait SpinExecutor: Executor {
     /// Blocking spin loop
     fn spin(&mut self, opts: SpinOptions) -> Vec<RclrsError>;
 
-    /// Async spin (runs on background thread)
-    fn spin_async(self, opts: SpinOptions)
-        -> BoxFuture<'static, (Self, Vec<RclrsError>)>
-    where
-        Self: Sized;
+    /// Spin at a fixed rate, compensating for processing time.
+    fn spin_period(&mut self, period: std::time::Duration) -> Result<(), RclrsError>;
 }
 ```
 
@@ -235,10 +232,6 @@ impl BasicExecutor {
 
     /// Blocking spin loop
     pub fn spin(&mut self, opts: SpinOptions) -> Vec<RclrsError>;
-
-    /// Async spin (runs on separate thread)
-    pub async fn spin_async(self, opts: SpinOptions)
-        -> (Self, Vec<RclrsError>);
 
     /// Request the executor to stop spinning
     pub fn halt(&self);
@@ -529,7 +522,6 @@ fn main() {
 | `PollingExecutor::spin_once()` | ✅ | ✅ | ✅ |
 | `BasicExecutor::spin_once()` | ❌ | ❌ | ✅ |
 | `BasicExecutor::spin()` | ❌ | ❌ | ✅ |
-| `BasicExecutor::spin_async()` | ❌ | ❌ | ✅ |
 | `Executor` trait | ✅ | ✅ | ✅ |
 | `SpinExecutor` trait | ❌ | ❌ | ✅ |
 | Function pointer callbacks | ✅ | ✅ | ✅ |

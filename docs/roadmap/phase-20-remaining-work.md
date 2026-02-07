@@ -6,23 +6,21 @@ This phase tracks all remaining TODO items, unimplemented stubs, and future work
 
 **Status**: Planning
 
-## 1. Async Executor Support
+## 1. ~~Async Executor Support~~ — Removed
 
-**Blocked by**: zenoh-pico types not implementing `Send`
+`spin_async()` has been removed. It spawned an OS thread and required `Send` bounds on zenoh-pico shim types, which are intentionally `!Send` (global C state machine). This design was incompatible with RTOS and bare-metal targets — the primary use case for nano-ros.
 
-The `spin_async` method on `SpinExecutor` and `BasicExecutor` is commented out because the underlying zenoh-pico shim types are not `Send`. This prevents running the executor on a background thread from async code.
+**Use `spin_once()` instead.** It works on all platforms and integrates naturally with RTIC async tasks, Embassy tasks, and desktop event loops:
 
-**Files**:
-- `crates/nano-ros-node/src/executor.rs:1031` — `SpinExecutor` trait definition
-- `crates/nano-ros-node/src/executor.rs:1604` — `BasicExecutor` implementation
+```rust
+// RTIC / Embassy / bare-metal
+loop {
+    executor.spin_once(10); // 10ms timeout
+    // yield / delay
+}
+```
 
-**Work required**:
-- Audit zenoh-pico-shim types for thread safety
-- Either make shim types `Send` (if safe) or use a channel-based design where the executor runs on a dedicated thread and communicates via message passing
-- Un-comment and test `spin_async` behind the `async` feature flag
-- Requires the `futures` dependency (already optional in Cargo.toml)
-
-**Impact**: Enables idiomatic async Rust usage — important for Embassy integration and desktop applications using tokio/async-std.
+The `async` feature flag and `futures` dependency have also been removed from `nano-ros-node`.
 
 ## 2. ~~Parameter Array Types (C API)~~ — Complete
 
@@ -45,9 +43,9 @@ The Embassy example cannot use the full nano-ros executor because zenoh-pico-shi
 
 | Priority | Item                     | Effort | Impact                             |
 |----------|--------------------------|--------|------------------------------------|
-| 1        | Async executor (#1)      | Medium | High — unblocks async Rust         |
-| 2        | Embassy integration (#3) | Low    | Medium — documentation + toolchain |
-| 3        | Parameter arrays (#2)    | Low    | Low — rarely used on embedded      |
+| 1        | Embassy integration (#3) | Low    | Medium — documentation + toolchain |
+| —        | ~~Async executor (#1)~~  | —      | Removed — use `spin_once()` instead |
+| —        | ~~Parameter arrays (#2)~~| —      | Complete                           |
 
 > **Note**: C API `no_std` backend was moved to [Phase 21](phase-21-c-api-nostd-backend.md).
 

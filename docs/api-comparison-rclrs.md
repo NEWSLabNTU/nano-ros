@@ -535,7 +535,7 @@ let node = ConnectedNode::connect(config, locator)?;
 4. **No ExecutorCommands**: No runtime node management
 
 ### Recommendation
-- Add Executor abstraction with spin/spin_async
+- ~~Add Executor abstraction with spin/spin_async~~ Done (spin_async removed — incompatible with embedded)
 - Implement SpinOptions for spin control
 - Add ExecutorCommands for runtime operations
 - Keep manual polling as alternative for embedded
@@ -583,11 +583,11 @@ let srv = worker.create_service("srv", |data, req| { ... })?;
 - Blocking calls
 - Poll-based message reception
 
-### Recommendation
-- Add Promise<T> type (could use futures::oneshot)
-- Add async method variants (_async suffix)
-- Implement spin_async
-- Consider async_trait for callbacks
+### nano-ros Decision
+- nano-ros is synchronous by design for embedded compatibility
+- `spin_async()` was removed — it spawned OS threads, incompatible with RTOS/bare-metal
+- Use `spin_once()` from RTIC/Embassy async tasks for async integration
+- Async callbacks and Promise<T> are not planned (zenoh-pico types are `!Send`)
 
 ---
 

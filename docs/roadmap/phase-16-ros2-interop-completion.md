@@ -24,7 +24,7 @@ nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_
 | `Arc<NodeState>`    | `&mut NodeHandle` / direct ownership | Arc requires heap allocation + atomic ops |
 | `Arc<Publisher<T>>` | `PublisherHandle` / direct ownership | Same - no heap on bare-metal              |
 | `Send + Sync` types | `!Send` types allowed                | Single-threaded RTOS patterns             |
-| `spin_async()`      | `spin()` / `spin_once()` only        | zenoh-pico not thread-safe                |
+| `spin_async()`      | Not supported — use `spin_once()`    | Removed: incompatible with embedded       |
 | Dynamic allocation  | Static buffers via const generics    | Predictable memory usage                  |
 
 **Key Design Decisions:**
@@ -44,7 +44,7 @@ nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_
    - Embedded patterns use single-threaded executors (RTIC, rclc)
    - `PollingExecutor` handles all I/O in one thread
 
-3. **No `spin_async()`**: async runtime integration requires `Send` futures. Since zenoh-pico types are `!Send`, async spinning is blocked. Use `spin_once()` in RTIC/Embassy tasks instead.
+3. **No `spin_async()`**: Removed from the codebase. It spawned OS threads, which is incompatible with embedded targets. Use `spin_once()` in RTIC/Embassy tasks instead.
 
 **API Compatibility Approach:**
 - **Method signatures** match rclrs where possible

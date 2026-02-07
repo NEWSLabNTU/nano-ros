@@ -647,7 +647,7 @@ This roadmap outlines the refactoring effort to align nano-ros API with rclrs 0.
   }
   ```
 
-- [ ] **7.6.4.5** Implement `spin_async()` (spawns background thread)
+- [x] ~~**7.6.4.5** Implement `spin_async()`~~ — Removed (incompatible with embedded targets; use `spin_once()`)
 
 - [x] **7.6.4.6** Implement `halt()` method
 
@@ -750,7 +750,7 @@ This roadmap outlines the refactoring effort to align nano-ros API with rclrs 0.
 - [x] Unified `Context → Executor → Node` API works on all targets
 - [x] `PollingExecutor` works on no_std (RTIC, Embassy)
 - [x] `BasicExecutor` provides full `spin()` on std
-- [x] `spin_async()` deferred to Phase 7.10 (requires Send bounds on zenoh-pico types)
+- [x] `spin_async()` removed (incompatible with embedded targets; use `spin_once()`)
 - [x] Callbacks invoked during `spin_once()`
 - [x] Function pointer callbacks work without alloc
 - [x] Closure callbacks work with alloc
@@ -758,12 +758,17 @@ This roadmap outlines the refactoring effort to align nano-ros API with rclrs 0.
 - [x] All examples updated to use executor API
 - [x] Tests pass on both std and no_std
 
-### Notes on spin_async()
+### Notes on spin_async() (Removed)
 
-The `spin_async()` method is commented out because zenoh-pico's C types are not `Send`.
-This is a fundamental limitation of the FFI bindings. For async support:
-- Phase 7.10 will address this with either a pure-Rust zenoh backend or unsafe Send wrappers
-- For now, use `spin()` (blocking) or `spin_once()` (manual polling)
+`spin_async()` was removed from the codebase. It spawned an OS thread — incompatible with RTOS and bare-metal targets. The `async` feature flag and `futures` dependency have been removed from `nano-ros-node`.
+
+For async integration (RTIC, Embassy, tokio), call `spin_once()` from your async task:
+```rust
+loop {
+    executor.spin_once(10); // 10ms timeout
+    Timer::after(Duration::from_millis(10)).await;
+}
+```
 
 ---
 

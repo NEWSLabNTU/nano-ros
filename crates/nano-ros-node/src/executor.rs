@@ -15,7 +15,7 @@
 //! # Executor Types
 //!
 //! - **PollingExecutor**: Always available, no_std compatible. User calls `spin_once()` manually.
-//! - **BasicExecutor**: std only. Has blocking `spin()` and async `spin_async()`.
+//! - **BasicExecutor**: std only. Has blocking `spin()`, `spin_period()`.
 //!
 //! # Example (RTIC/Embedded)
 //!
@@ -46,18 +46,6 @@
 //!
 //! executor.spin(SpinOptions::default());
 //! ```
-
-#[cfg(feature = "async")]
-use futures::future::BoxFuture;
-// Helper trait for conditional Send bounds
-#[cfg(feature = "async")]
-pub trait MaybeSend: Send {}
-#[cfg(feature = "async")]
-impl<T: Send> MaybeSend for T {}
-#[cfg(not(feature = "async"))]
-pub trait MaybeSend {}
-#[cfg(not(feature = "async"))]
-impl<T> MaybeSend for T {}
 
 use nano_ros_core::{Deserialize, MessageInfo, RosMessage, Time};
 
@@ -318,7 +306,7 @@ impl<S: RosService, F: FnMut(&S::Request) -> S::Reply + Send> ServiceCallback<S>
 
 /// Type-erased service callback for storing in executor
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
-pub(crate) trait ErasedServiceCallback: MaybeSend {
+pub(crate) trait ErasedServiceCallback {
     /// Check if a request is available without consuming it
     fn has_data(&self) -> bool;
     /// Try to receive and handle a service request, returns true if handled
@@ -381,7 +369,7 @@ impl ServiceHandle {
 
 /// Type-erased subscription callback for storing in executor
 #[cfg(feature = "zenoh")]
-pub(crate) trait ErasedCallback: MaybeSend {
+pub(crate) trait ErasedCallback {
     /// Check if data is available without consuming it
     fn has_data(&self) -> bool;
     /// Try to receive and process a message, returns true if message was processed
@@ -1027,16 +1015,6 @@ pub trait SpinExecutor: Executor {
     ///
     /// Blocks until halted. Uses wall-clock time to maintain the target rate.
     fn spin_period(&mut self, period: std::time::Duration) -> Result<(), RclrsError>;
-
-    // TODO: Re-enable spin_async once underlying zenoh-pico types are Send.
-    // /// Async spin (runs on background thread)
-    // #[cfg(feature = "async")]
-    // fn spin_async(
-    //     self,
-    //     opts: SpinOptions,
-    // ) -> BoxFuture<'static, (Self, Vec<RclrsError>)>
-    // where
-    //     Self: Sized;
 }
 // ═══════════════════════════════════════════════════════════════════════════
 // POLLING EXECUTOR (no_std compatible)
@@ -1262,9 +1240,10 @@ impl<const MAX_NODES: usize> Executor for PollingExecutor<MAX_NODES> {
 // BASIC EXECUTOR (std only)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Full-featured executor with blocking and async spin (std only)
+/// Full-featured executor with blocking spin (std only)
 ///
-/// This executor can run a blocking spin loop or spawn work on background threads.
+/// Use `spin()` for a blocking spin loop, or `spin_once()` with a timeout
+/// for integration with external event loops.
 ///
 /// # Example
 ///
@@ -1600,26 +1579,6 @@ impl SpinExecutor for BasicExecutor {
     fn spin_period(&mut self, period: std::time::Duration) -> Result<(), RclrsError> {
         BasicExecutor::spin_period(self, period)
     }
-
-    // TODO: Re-enable spin_async once underlying zenoh-pico types are Send.
-    // #[cfg(feature = "async")]
-    // fn spin_async(
-    //     mut self,
-    //     opts: SpinOptions,
-    // ) -> BoxFuture<'static, (Self, Vec<RclrsError>)>
-    // where
-    //     Self: Send + 'static,
-    // {
-    //     Box::pin(async move {
-    //         let (tx, rx) = futures::channel::oneshot::channel();
-    //         std::thread::spawn(move || {
-    //             self.spin(opts);
-    //             // Errors are not propagated from spin, so return empty vec
-    //             let _ = tx.send((self, Vec::new()));
-    //         });
-    //         rx.await.unwrap()
-    //     })
-    // }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
