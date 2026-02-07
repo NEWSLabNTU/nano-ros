@@ -30,7 +30,9 @@
 // ============================================================================
 
 // Single-threaded operation (no background tasks)
+#ifndef Z_FEATURE_MULTI_THREAD
 #define Z_FEATURE_MULTI_THREAD 0
+#endif
 
 // Basic pub/sub functionality
 #define Z_FEATURE_PUBLICATION 1
@@ -53,15 +55,34 @@
 // ============================================================================
 
 // TCP and serial transport enabled
+// Use #ifndef guards: build.rs may also pass these via -D flags
+#ifndef Z_FEATURE_LINK_TCP
 #define Z_FEATURE_LINK_TCP 1
+#endif
+#ifndef Z_FEATURE_LINK_UDP_MULTICAST
 #define Z_FEATURE_LINK_UDP_MULTICAST 0
+#endif
+#ifndef Z_FEATURE_LINK_UDP_UNICAST
 #define Z_FEATURE_LINK_UDP_UNICAST 0
+#endif
+#ifndef Z_FEATURE_LINK_BLUETOOTH
 #define Z_FEATURE_LINK_BLUETOOTH 0
+#endif
+#ifndef Z_FEATURE_LINK_WS
 #define Z_FEATURE_LINK_WS 0
+#endif
+#ifndef Z_FEATURE_LINK_SERIAL
 #define Z_FEATURE_LINK_SERIAL 1
+#endif
+#ifndef Z_FEATURE_LINK_SERIAL_USB
 #define Z_FEATURE_LINK_SERIAL_USB 0
+#endif
+#ifndef Z_FEATURE_LINK_TLS
 #define Z_FEATURE_LINK_TLS 0
+#endif
+#ifndef Z_FEATURE_RAWETH_TRANSPORT
 #define Z_FEATURE_RAWETH_TRANSPORT 0
+#endif
 
 // Transport modes
 #define Z_FEATURE_UNICAST_TRANSPORT 1
@@ -69,7 +90,9 @@
 
 // Disable scouting (connect directly to router)
 #define Z_FEATURE_SCOUTING 0
+#ifndef Z_FEATURE_SCOUTING_UDP
 #define Z_FEATURE_SCOUTING_UDP 0
+#endif
 
 // ============================================================================
 // Protocol Features
