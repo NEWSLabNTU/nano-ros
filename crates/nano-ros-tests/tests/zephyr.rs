@@ -920,8 +920,6 @@ fn test_zephyr_action_e2e() {
         client_output.contains("Session opened") || client_output.contains("Action client ready");
     let client_subscribed = client_output.contains("Feedback subscriber ready")
         || client_output.contains("Subscriber created");
-    let client_subscribe_failed = client_output.contains("Failed to subscribe")
-        || client_output.contains("z_declare_subscriber failed");
     let client_got_feedback =
         client_output.contains("Feedback #") || client_output.contains("feedback");
     let client_completed = client_output.contains("completed") || client_output.contains("Result:");
@@ -932,25 +930,6 @@ fn test_zephyr_action_e2e() {
     }
     if !client_connected {
         panic!("Action client failed to connect to zenohd");
-    }
-
-    // Handle zenoh-pico multi-client limitation
-    if client_subscribe_failed {
-        eprintln!("\nKNOWN LIMITATION: zenoh-pico multi-client subscription failure");
-        eprintln!("When multiple zenoh-pico clients connect to the same router,");
-        eprintln!("the second client's subscription may fail due to transport issues.");
-        eprintln!("This is a zenoh-pico limitation, not a nano-ros issue.");
-        eprintln!("");
-        eprintln!("Server status:");
-        eprintln!("  - Connected: {}", server_connected);
-        eprintln!("  - Created queryables: {}", server_created_queryables);
-        eprintln!("  - Received goal: {}", server_received_goal);
-        eprintln!("Client status:");
-        eprintln!("  - Connected: {}", client_connected);
-        eprintln!("  - Subscribe failed: {}", client_subscribe_failed);
-        eprintln!("");
-        eprintln!("Test passes with warning - this is expected behavior.");
-        return;
     }
 
     // Full success case

@@ -420,7 +420,7 @@ int32_t zenoh_shim_declare_publisher(const char *keyexpr) {
     }
 
     int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
-                            z_view_keyexpr_loan(&ke), NULL);
+                                      z_view_keyexpr_loan(&ke), NULL);
     if (pub_ret < 0) {
         printk("zenoh_shim: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
         return ZENOH_SHIM_ERR_GENERIC;
@@ -501,7 +501,7 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
     z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
 
     int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
-                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback = NULL;
@@ -548,7 +548,7 @@ int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
     z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
 
     int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
-                             z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
         printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback_ext = NULL;
@@ -759,9 +759,10 @@ int32_t zenoh_shim_declare_liveliness(const char *keyexpr) {
         return ZENOH_SHIM_ERR_KEYEXPR;
     }
 
-    if (z_liveliness_declare_token(z_session_loan(&g_session),
-                                    &g_liveliness[idx].token,
-                                    z_view_keyexpr_loan(&ke), NULL) < 0) {
+    int lv_ret = z_liveliness_declare_token(z_session_loan(&g_session),
+                                            &g_liveliness[idx].token,
+                                            z_view_keyexpr_loan(&ke), NULL);
+    if (lv_ret < 0) {
         return ZENOH_SHIM_ERR_GENERIC;
     }
 
@@ -854,8 +855,10 @@ int32_t zenoh_shim_declare_queryable(const char *keyexpr,
     z_owned_closure_query_t closure;
     z_closure_query(&closure, shim_query_handler, NULL, (void *)(intptr_t)idx);
 
-    if (z_declare_queryable(z_session_loan(&g_session), &g_queryables[idx].queryable,
-                            z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), NULL) < 0) {
+    int q_ret = z_declare_queryable(z_session_loan(&g_session), &g_queryables[idx].queryable,
+                                    z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), NULL);
+    if (q_ret < 0) {
+        printk("zenoh_shim: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
         g_queryables[idx].callback = NULL;
         g_queryables[idx].ctx = NULL;
         return ZENOH_SHIM_ERR_GENERIC;
