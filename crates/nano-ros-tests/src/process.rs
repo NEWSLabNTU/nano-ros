@@ -364,6 +364,36 @@ pub fn require_cmake() -> bool {
     true
 }
 
+/// Check if `docker compose` is available and the Docker daemon is running
+pub fn is_docker_compose_available() -> bool {
+    Command::new("docker")
+        .args(["compose", "version"])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+        && Command::new("docker")
+            .args(["info"])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
+}
+
+/// Skip test if Docker Compose is not available
+///
+/// Returns `false` if Docker Compose or the Docker daemon is unavailable.
+/// Returns `true` if Docker is available and the test should proceed.
+pub fn require_docker_compose() -> bool {
+    if !is_docker_compose_available() {
+        eprintln!("Skipping test: docker compose not available");
+        return false;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

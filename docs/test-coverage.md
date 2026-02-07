@@ -135,7 +135,7 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 
 | Test Suite | File          | Tests | Coverage                          |
 |------------|---------------|-------|-----------------------------------|
-| Emulator   | `emulator.rs` | 12    | CDR, Node API, type metadata, BSP |
+| Emulator   | `emulator.rs` | 15    | CDR, Node API, type metadata, BSP, rs E2E |
 
 **Test Breakdown:**
 | Test                            | Description                  |
@@ -166,8 +166,8 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 | Example             | Tested  | Notes              |
 |---------------------|---------|--------------------|
 | `qemu/rs-test`      | Yes     | CDR, Node API      |
-| `qemu/rs-talker`    | Partial | Build only         |
-| `qemu/rs-listener`  | Partial | Build only         |
+| `qemu/rs-talker`    | Yes     | Build + Docker E2E |
+| `qemu/rs-listener`  | Yes     | Build + Docker E2E |
 | `qemu/bsp-talker`   | Yes     | Build + Docker E2E |
 | `qemu/bsp-listener` | Yes     | Build + Docker E2E |
 
@@ -270,8 +270,8 @@ All 31 examples organized by platform and language, with their test coverage sta
 | Example | Lang | Feature | Test Coverage | Status |
 |---------|------|---------|---------------|--------|
 | `qemu/rs-test` | Rust | Unit tests | emulator.rs (CDR, Node API, type metadata) | Complete |
-| `qemu/rs-talker` | Rust | Pub/Sub | Build only (via `just quality`) | **E2E missing** |
-| `qemu/rs-listener` | Rust | Pub/Sub | Build only (via `just quality`) | **E2E missing** |
+| `qemu/rs-talker` | Rust | Pub/Sub | emulator.rs (build), Docker E2E | Complete |
+| `qemu/rs-listener` | Rust | Pub/Sub | emulator.rs (build), Docker E2E | Complete |
 | `qemu/bsp-talker` | Rust | BSP Pub/Sub | emulator.rs (build, start), Docker E2E | Complete |
 | `qemu/bsp-listener` | Rust | BSP Pub/Sub | emulator.rs (build, start), Docker E2E | Complete |
 
@@ -312,11 +312,11 @@ No C examples exist for QEMU.
 | Platform | Rust | C | Total |
 |----------|------|---|-------|
 | Native | 7/7 | 2/3 | 9/10 |
-| QEMU | 3/5 | — | 3/5 |
+| QEMU | 5/5 | — | 5/5 |
 | Zephyr | 6/6 | 2/2 | 8/8 |
 | STM32F4 | 0/1 | — | 0/1 |
 | Platform-Integration | 2/6 | — | 2/6 |
-| **Total** | **18/25** | **4/5** | **22/30** |
+| **Total** | **20/25** | **4/5** | **24/30** |
 
 (Excludes `qemu-smoltcp-bridge` which is a library, not a runnable example.)
 
@@ -328,14 +328,9 @@ No C examples exist for QEMU.
 - Runs without zenoh (standalone no_std demo)
 - Add to `c_api.rs`: build + run, assert exit code 0
 
-**2. QEMU rs-talker/rs-listener E2E** — `qemu/rs-talker`, `qemu/rs-listener`
-- Build tested via `just quality`, but no communication test
-- Requires QEMU TAP networking or Docker (same as BSP tests)
-- Add to `emulator.rs`: `test_qemu_rs_talker_listener_e2e` (Docker-gated)
-
 ### Not automatable
 
-**3. STM32F4 hardware** — `stm32f4/bsp-talker`, `stm32f4-*`
+**2. STM32F4 hardware** — `stm32f4/bsp-talker`, `stm32f4-*`
 - Requires physical board + debug probe
 - Build verification possible; runtime tests require HIL setup
 
@@ -354,7 +349,7 @@ No C examples exist for QEMU.
 | **Error Handling**     | 8     | Complete              |
 | **Multi-Node**         | 8     | Complete              |
 | **Zephyr**             | 20    | Complete              |
-| **QEMU/Emulator**      | 12    | Complete              |
+| **QEMU/Emulator**      | 15    | Complete              |
 | **Platform Detection** | 10    | Complete              |
 | **Serial Transport**   | 9     | Complete (manual E2E) |
 | **C Bindings**         | 6     | Partial (1 untested)  |

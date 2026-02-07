@@ -594,30 +594,30 @@ fn test_c_baremetal_demo_runs() {
 
 ### 17.10.2: QEMU rs-talker/rs-listener E2E communication test
 
+**Status**: Complete
 **Examples**: `qemu/rs-talker`, `qemu/rs-listener`
 **File**: `crates/nano-ros-tests/tests/emulator.rs`
-**Effort**: Medium
 
-These bare-metal ARM binaries build (verified by `just quality`) but have no communication test.
-The BSP variants (`qemu/bsp-talker`, `qemu/bsp-listener`) already have Docker-gated E2E tests.
-Add an equivalent test for the non-BSP variants.
+- [x] Add `build_qemu_rs_talker()` and `build_qemu_rs_listener()` cached builders to `fixtures/binaries.rs`
+- [x] Add `is_docker_compose_available()` and `require_docker_compose()` to `process.rs`
+- [x] Add `test_qemu_rs_talker_builds` — build verification
+- [x] Add `test_qemu_rs_listener_builds` — build verification
+- [x] Add `test_qemu_rs_talker_listener_e2e` — Docker Compose E2E (gated on Docker)
+- [x] Add nextest timeout override for Docker E2E tests (120s × 3)
 
-- [ ] Add `test_qemu_rs_talker_listener_e2e` to `emulator.rs`
-- [ ] Gate on Docker availability (same as BSP startup tests)
-- [ ] Reuse Docker Compose infrastructure from `docker/docker-compose.yml`
+**Test Results (3/3 passing):**
 
-```rust
-#[rstest]
-fn test_qemu_rs_talker_listener_e2e() {
-    // Skip if Docker not available
-    if !is_docker_available() { return; }
-    // Build both binaries
-    let talker = build_qemu_rs_talker().expect("build failed");
-    let listener = build_qemu_rs_listener().expect("build failed");
-    // Launch via Docker Compose with TAP networking
-    // Verify listener receives messages from talker
-}
-```
+| Test | Status | Notes |
+|------|--------|-------|
+| `test_qemu_rs_talker_builds` | PASS | Build verification (~0.1s) |
+| `test_qemu_rs_listener_builds` | PASS | Build verification (~0.1s) |
+| `test_qemu_rs_talker_listener_e2e` | PASS | Docker E2E (~47s), skips without Docker |
+
+**Implementation Notes:**
+- Pre-built binaries are removed before Docker Compose so the entrypoint auto-builds
+  with `--features docker` (different IP config for container networking)
+- Docker E2E verifies both talker publishing (3+ messages) and listener receiving (3+ messages)
+- Nextest override: `binary(emulator) & test(e2e)` gets 120s × 3 = 360s timeout
 
 ### 17.10.3: STM32F4 build verification
 

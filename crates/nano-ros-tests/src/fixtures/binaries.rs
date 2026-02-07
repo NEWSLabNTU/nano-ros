@@ -31,6 +31,12 @@ static NATIVE_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-custom-msg binary
 static NATIVE_CUSTOM_MSG_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the qemu-rs-talker binary
+static QEMU_RS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-rs-listener binary
+static QEMU_RS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the qemu-bsp-talker binary
 static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -310,6 +316,34 @@ pub fn custom_msg_binary() -> PathBuf {
     build_native_custom_msg()
         .expect("Failed to build native-rs-custom-msg")
         .to_path_buf()
+}
+
+/// Build qemu-rs-talker (cached)
+pub fn build_qemu_rs_talker() -> TestResult<&'static Path> {
+    QEMU_RS_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu/rs-talker",
+                "qemu-rs-talker",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build qemu-rs-listener (cached)
+pub fn build_qemu_rs_listener() -> TestResult<&'static Path> {
+    QEMU_RS_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu/rs-listener",
+                "qemu-rs-listener",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
 }
 
 /// Build qemu-bsp-talker (cached)

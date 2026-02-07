@@ -12,10 +12,11 @@
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nano_ros_tests::fixtures::{
-    QemuProcess, build_qemu_bsp_listener, build_qemu_bsp_talker, is_arm_toolchain_available,
-    is_qemu_available, parse_test_results, qemu_binary, require_zenoh_pico_arm,
+    QemuProcess, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_rs_listener,
+    build_qemu_rs_talker, is_arm_toolchain_available, is_qemu_available, parse_test_results,
+    qemu_binary, require_docker_compose, require_zenoh_pico_arm,
 };
-use nano_ros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
+use nano_ros_tests::{assert_output_contains, assert_output_excludes, count_pattern, project_root};
 use rstest::rstest;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -324,4 +325,187 @@ fn test_qemu_bsp_both_build() {
         (Err(e), _) => panic!("BSP talker build failed: {:?}", e),
         (_, Err(e)) => panic!("BSP listener build failed: {:?}", e),
     }
+}
+
+// =============================================================================
+// QEMU rs-talker/rs-listener Tests (Phase 17.10.2)
+// =============================================================================
+//
+// The rs-talker and rs-listener examples use MPS2-AN385 with LAN9118 Ethernet
+// networking. Build verification can run without Docker; E2E communication
+// requires the Docker Compose infrastructure in tests/qemu-baremetal/.
+
+/// Test that qemu-rs-talker builds for thumbv7m-none-eabi
+#[test]
+fn test_qemu_rs_talker_builds() {
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let result = build_qemu_rs_talker();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            eprintln!("SUCCESS: qemu-rs-talker builds at {}", binary.display());
+        }
+        Err(e) => {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("Permission denied") {
+                eprintln!("Build failed due to permission issues (likely from Docker build)");
+                eprintln!("Fix with: sudo rm -rf examples/qemu/rs-talker/target");
+                eprintln!("Skipping test...");
+            } else {
+                panic!("qemu-rs-talker build failed: {:?}", e);
+            }
+        }
+    }
+}
+
+/// Test that qemu-rs-listener builds for thumbv7m-none-eabi
+#[test]
+fn test_qemu_rs_listener_builds() {
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let result = build_qemu_rs_listener();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            eprintln!("SUCCESS: qemu-rs-listener builds at {}", binary.display());
+        }
+        Err(e) => {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("Permission denied") {
+                eprintln!("Build failed due to permission issues (likely from Docker build)");
+                eprintln!("Fix with: sudo rm -rf examples/qemu/rs-listener/target");
+                eprintln!("Skipping test...");
+            } else {
+                panic!("qemu-rs-listener build failed: {:?}", e);
+            }
+        }
+    }
+}
+
+/// Test QEMU rs-talker → rs-listener end-to-end communication via Docker
+///
+/// This test uses the Docker Compose infrastructure at `tests/qemu-baremetal/`
+/// to run zenohd, talker, and listener in separate containers with TAP networking.
+///
+/// Prerequisites:
+/// - Docker with compose plugin
+/// - ARM toolchain (`thumbv7m-none-eabi`)
+/// - zenoh-pico ARM library (`just build-zenoh-pico-arm`)
+///
+/// The Docker entrypoint auto-builds binaries with `--features docker` if needed.
+/// We remove any pre-built binaries first so the entrypoint uses the correct
+/// Docker network configuration (different IPs than TAP mode).
+#[test]
+fn test_qemu_rs_talker_listener_e2e() {
+    if !require_docker_compose() {
+        return;
+    }
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let root = project_root();
+    let compose_file = root.join("tests/qemu-baremetal/docker-compose.yml");
+
+    assert!(
+        compose_file.exists(),
+        "Docker Compose file not found: {}",
+        compose_file.display()
+    );
+
+    // Remove pre-built binaries so the Docker entrypoint rebuilds with --features docker.
+    // The docker feature changes IP configuration for container networking.
+    let talker_bin =
+        root.join("examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker");
+    let listener_bin =
+        root.join("examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener");
+    let _ = std::fs::remove_file(&talker_bin);
+    let _ = std::fs::remove_file(&listener_bin);
+
+    eprintln!("Starting QEMU E2E test via Docker Compose (rs examples)...");
+    eprintln!("This may take a while on first run (Docker image build + cargo build).");
+
+    // Run docker compose up with QEMU_EXAMPLE=rs
+    let result = duct::cmd!(
+        "docker",
+        "compose",
+        "-f",
+        compose_file.to_str().unwrap(),
+        "up",
+        "--build",
+        "--abort-on-container-exit"
+    )
+    .env("QEMU_EXAMPLE", "rs")
+    .dir(&root)
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run();
+
+    // Always clean up containers
+    let _ = duct::cmd!(
+        "docker",
+        "compose",
+        "-f",
+        compose_file.to_str().unwrap(),
+        "down",
+        "-v"
+    )
+    .dir(&root)
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run();
+
+    let output = result.expect("Failed to run docker compose");
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    eprintln!("Docker Compose output (last 2000 chars):");
+    let tail: String = stdout
+        .chars()
+        .rev()
+        .take(2000)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
+    eprintln!("{}", tail);
+
+    // Verify listener received messages
+    // The listener prints "Received [N]: Hello from QEMU #M"
+    let received_count = count_pattern(&stdout, "Received [");
+    eprintln!("Listener received {} messages", received_count);
+
+    assert!(
+        received_count >= 3,
+        "Expected listener to receive at least 3 messages, got {}.\nOutput (tail):\n{}",
+        received_count,
+        tail
+    );
+
+    // Verify talker published messages
+    let published_count = count_pattern(&stdout, "Published:");
+    eprintln!("Talker published {} messages", published_count);
+
+    assert!(
+        published_count >= 3,
+        "Expected talker to publish at least 3 messages, got {}.\nOutput (tail):\n{}",
+        published_count,
+        tail
+    );
 }

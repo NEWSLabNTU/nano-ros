@@ -26,6 +26,12 @@ test-group = "zephyr"
 filter = "binary(c_api)"
 test-group = "c_api"
 
+# Docker-based QEMU E2E tests need much longer timeouts
+# (image build + container startup + network setup + test execution)
+[[profile.default.overrides]]
+filter = "binary(emulator) & test(e2e)"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
 [profile.ci]
 # CI profile with stricter timeouts
 slow-timeout = { period = "30s", terminate-after = 2 }
