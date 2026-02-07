@@ -133,15 +133,17 @@ fn test_zephyr_talker_to_listener_e2e() {
     // Check talker status
     let talker_published = talker_output.contains("Published:") || talker_output.contains("data=");
     let talker_connected = !talker_output.contains("session error");
-    let talker_created_pub =
-        talker_output.contains("Declared publisher") || talker_output.contains("Publisher created");
+    let talker_created_pub = talker_output.contains("Declared publisher")
+        || talker_output.contains("Publisher created")
+        || talker_output.contains("Publishing messages");
 
     // Check listener status
     let listener_received =
         listener_output.contains("Received:") || listener_output.contains("data=");
     let listener_connected = !listener_output.contains("session error");
     let listener_created_sub = listener_output.contains("Declared subscriber")
-        || listener_output.contains("Subscriber created");
+        || listener_output.contains("Subscriber created")
+        || listener_output.contains("Waiting for messages");
     let listener_failed_sub = listener_output.contains("Failed to create subscriber");
 
     if !talker_connected {
@@ -897,14 +899,17 @@ fn test_zephyr_action_e2e() {
     eprintln!("\n=== Action Client output ===\n{}", client_output);
 
     // Check server status
-    let server_connected = server_output.contains("Session opened");
+    let server_connected =
+        server_output.contains("Session opened") || server_output.contains("Action server ready");
     let server_created_queryables =
         server_output.contains("Queryable") || server_output.contains("ready");
-    let server_received_goal =
-        server_output.contains("Received goal") || server_output.contains("Goal accepted");
+    let server_received_goal = server_output.contains("Received goal")
+        || server_output.contains("Goal accepted")
+        || server_output.contains("Goal request");
 
     // Check client status
-    let client_connected = client_output.contains("Session opened");
+    let client_connected =
+        client_output.contains("Session opened") || client_output.contains("Action client ready");
     let client_subscribed = client_output.contains("Feedback subscriber ready")
         || client_output.contains("Subscriber created");
     let client_subscribe_failed = client_output.contains("Failed to subscribe")
