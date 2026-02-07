@@ -265,9 +265,7 @@ test-workspace verbose="":
 # Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
 test-miri:
     @echo "Running Miri on embedded-safe crates..."
-    cargo +nightly miri test -p nano-ros-serdes
-    cargo +nightly miri test -p nano-ros-core
-    cargo +nightly miri test -p nano-ros-params
+    CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo +nightly miri test -p nano-ros-serdes -p nano-ros-core -p nano-ros-params
 
 # =============================================================================
 # Examples
