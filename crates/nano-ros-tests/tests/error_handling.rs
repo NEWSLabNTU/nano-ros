@@ -277,12 +277,12 @@ fn test_router_reconnect() {
     let talker_binary = build_native_talker().expect("Failed to build talker");
     let listener_binary = build_native_listener().expect("Failed to build listener");
 
-    // Use a fixed port for reconnection test
-    let port = 17888;
-    let locator = format!("tcp/127.0.0.1:{}", port);
+    // Allocate an ephemeral port for this test (avoids collisions with parallel tests)
+    let router1 = ZenohRouter::start_unique().expect("Failed to start router");
+    let port = router1.port();
+    let locator = router1.locator();
 
-    // Phase 1: Start router and verify communication
-    let router1 = ZenohRouter::start(port).expect("Failed to start router");
+    // Phase 1: Router already started above, verify communication
 
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd

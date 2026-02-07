@@ -260,6 +260,11 @@ int32_t zenoh_shim_init(const char *locator) {
         if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_CONNECT_KEY, locator) < 0) {
             return ZENOH_SHIM_ERR_CONFIG;
         }
+        // TODO: zenoh-pico enables multicast scouting by default, which can
+        // cause clients to discover and connect to unintended routers. This is
+        // problematic for parallel test isolation and embedded environments
+        // where multicast is unavailable. A future zenoh_shim_init_with_config()
+        // API should allow users to control scouting and other session options.
     }
 
     g_initialized = true;
