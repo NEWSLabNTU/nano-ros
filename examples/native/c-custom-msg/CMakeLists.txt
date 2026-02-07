@@ -21,11 +21,9 @@ if(NOT DEFINED NANO_ROS_ROOT)
     )
 endif()
 
-# Add cmake module path for FindNanoRosC and nano_ros_generate_interfaces
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
 list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/crates/nano-ros-c/cmake")
-
-# Find nano-ros-c library
-find_package(NanoRosC REQUIRED)
+find_package(NanoRos REQUIRED)
 
 # Include the generate interfaces function
 include(nano_ros_generate_interfaces)
@@ -49,17 +47,5 @@ add_executable(test_messages src/main.c)
 target_link_libraries(test_messages
     PRIVATE
         ${PROJECT_NAME}__nano_ros_c
-        nano_ros_c::nano_ros_c
+        NanoRos::NanoRos
 )
-
-# ============================================================================
-# Print configuration info
-# ============================================================================
-
-message(STATUS "")
-message(STATUS "native-c-custom-msg configuration:")
-message(STATUS "  nano-ros-c include: ${NanoRosC_INCLUDE_DIRS}")
-message(STATUS "  nano-ros-c library: ${NanoRosC_LIBRARIES}")
-message(STATUS "  Generated headers: ${${PROJECT_NAME}_GENERATED_HEADERS}")
-message(STATUS "  Generated sources: ${${PROJECT_NAME}_GENERATED_SOURCES}")
-message(STATUS "")

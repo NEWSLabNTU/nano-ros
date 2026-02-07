@@ -21,47 +21,16 @@ if(NOT DEFINED NANO_ROS_ROOT)
     )
 endif()
 
-# Include directory for nano_ros headers
-set(NANO_ROS_C_INCLUDE "${NANO_ROS_ROOT}/crates/nano-ros-c/include")
-
-# Library directory (workspace target, release build)
-set(NANO_ROS_C_LIB_DIR "${NANO_ROS_ROOT}/target/release")
-
-# Check if library exists
-if(NOT EXISTS "${NANO_ROS_C_LIB_DIR}/libnano_ros_c.a")
-    message(FATAL_ERROR
-        "nano-ros-c library not found at ${NANO_ROS_C_LIB_DIR}/libnano_ros_c.a\n"
-        "Please build nano-ros-c first:\n"
-        "  cd ${NANO_ROS_ROOT} && cargo build -p nano-ros-c --release"
-    )
-endif()
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
+find_package(NanoRos REQUIRED)
 
 # ============================================================================
 # Executable
 # ============================================================================
 add_executable(c_listener src/main.c)
-
-target_include_directories(c_listener
-    PRIVATE
-        ${NANO_ROS_C_INCLUDE}
-)
-
-# Link against nano-ros-c static library
-target_link_libraries(c_listener
-    PRIVATE
-        "${NANO_ROS_C_LIB_DIR}/libnano_ros_c.a"
-)
-
-# Platform-specific libraries
-if(UNIX AND NOT APPLE)
-    target_link_libraries(c_listener PRIVATE pthread dl m)
-elseif(APPLE)
-    target_link_libraries(c_listener PRIVATE pthread dl m "-framework Security")
-endif()
+target_link_libraries(c_listener PRIVATE NanoRos::NanoRos)
 
 # ============================================================================
 # Installation (optional)
 # ============================================================================
-install(TARGETS c_listener
-    RUNTIME DESTINATION bin
-)
+install(TARGETS c_listener RUNTIME DESTINATION bin)

@@ -17,26 +17,8 @@ if(NOT DEFINED NANO_ROS_ROOT)
     )
 endif()
 
-set(NANO_ROS_C_INCLUDE "${NANO_ROS_ROOT}/crates/nano-ros-c/include")
-
-# Look for the static library in common locations
-find_library(NANO_ROS_C_LIB
-    NAMES nano_ros_c libnano_ros_c
-    PATHS
-        "${NANO_ROS_ROOT}/target/release"
-        "${NANO_ROS_ROOT}/target/debug"
-    NO_DEFAULT_PATH
-)
-
-if(NOT NANO_ROS_C_LIB)
-    message(FATAL_ERROR
-        "Could not find libnano_ros_c. Please build it first:\n"
-        "  cd ${NANO_ROS_ROOT} && cargo build --release -p nano-ros-c\n"
-    )
-endif()
-
-message(STATUS "Found nano-ros-c library: ${NANO_ROS_C_LIB}")
-message(STATUS "nano-ros-c include dir: ${NANO_ROS_C_INCLUDE}")
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
+find_package(NanoRos REQUIRED)
 
 # Create executable
 add_executable(baremetal_demo
@@ -44,34 +26,14 @@ add_executable(baremetal_demo
     src/platform_impl.c
 )
 
-# Include paths
-target_include_directories(baremetal_demo PRIVATE
-    ${NANO_ROS_C_INCLUDE}
-)
-
 # Link libraries
-target_link_libraries(baremetal_demo
-    ${NANO_ROS_C_LIB}
-)
+target_link_libraries(baremetal_demo PRIVATE NanoRos::NanoRos)
 
-# Platform-specific libraries
+# Platform-specific libraries not covered by FindNanoRos
 if(UNIX AND NOT APPLE)
-    # Linux
-    target_link_libraries(baremetal_demo
-        pthread
-        dl
-        m
-        rt  # For clock_gettime
-    )
+    target_link_libraries(baremetal_demo PRIVATE rt)
 elseif(APPLE)
-    # macOS
-    target_link_libraries(baremetal_demo
-        pthread
-        dl
-        m
-        "-framework CoreFoundation"
-        "-framework Security"
-    )
+    target_link_libraries(baremetal_demo PRIVATE "-framework CoreFoundation")
 endif()
 
 # Compiler warnings
