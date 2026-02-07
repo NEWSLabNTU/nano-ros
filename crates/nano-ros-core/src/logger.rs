@@ -5,7 +5,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! let logger = node.logger();
 //! logger.info("Node started");
 //! logger.warn("Low battery");
@@ -16,7 +16,7 @@
 //!
 //! The logger supports modifiers for conditional logging:
 //!
-//! ```ignore
+//! ```
 //! use nano_ros_core::{Logger, OnceFlag};
 //!
 //! let logger = Logger::new("my_node");
@@ -42,13 +42,13 @@
 //!
 //! ## Desktop/std targets
 //! Use `env_logger` or similar:
-//! ```ignore
+//! ```text
 //! env_logger::init();
 //! ```
 //!
 //! ## Embedded targets with defmt
 //! Use `defmt-log` to bridge `log` calls to `defmt` for minimal overhead:
-//! ```ignore
+//! ```text
 //! // In Cargo.toml:
 //! // defmt = "0.3"
 //! // defmt-log = "0.1"
@@ -289,7 +289,7 @@ impl<'a> Logger<'a> {
     /// * `message` - The message to log
     ///
     /// # Example
-    /// ```ignore
+    /// ```text
     /// static mut LAST_LOG: u64 = 0;
     /// let now_ms = clock.now_ms();
     /// // Safety: only accessed from single thread

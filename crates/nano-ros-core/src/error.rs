@@ -13,20 +13,15 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```
 //! use nano_ros_core::{NanoRosError, RclReturnCode};
 //!
 //! fn publish_message() -> Result<(), NanoRosError> {
-//!     // ... publish logic ...
 //!     Err(NanoRosError::timeout())
 //! }
 //!
 //! let result = publish_message();
-//! if let Err(e) = result {
-//!     if e.is_timeout() {
-//!         // Handle timeout specifically
-//!     }
-//! }
+//! assert!(result.unwrap_err().is_timeout());
 //! ```
 
 use core::fmt;

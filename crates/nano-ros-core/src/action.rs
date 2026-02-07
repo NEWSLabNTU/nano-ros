@@ -15,7 +15,7 @@
 //!
 //! ## Example
 //!
-//! ```ignore
+//! ```text
 //! use nano_ros_core::{RosAction, GoalStatus};
 //!
 //! // Define an action type

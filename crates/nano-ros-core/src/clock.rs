@@ -7,7 +7,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! use nano_ros::clock::{Clock, ClockType};
 //!
 //! // Create a system clock

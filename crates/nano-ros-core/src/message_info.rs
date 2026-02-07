@@ -5,7 +5,7 @@
 //!
 //! # Example
 //!
-//! ```ignore
+//! ```text
 //! node.create_subscription("/topic", |msg: &Int32, info: &MessageInfo| {
 //!     println!("Received at {:?} from {:?}", info.source_timestamp(), info.publisher_gid());
 //! });
