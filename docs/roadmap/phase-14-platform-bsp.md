@@ -496,8 +496,9 @@ Phases 14.1-14.3 can proceed in parallel. Phase 14.4 depends on all BSP librarie
 
 ## Future Extensions
 
-- `nano-ros-bsp-esp32`: ESP32 with WiFi
-- `nano-ros-bsp-rp2040`: Raspberry Pi Pico with Ethernet hat
+- `nano-ros-bsp-esp32`: ESP32 with WiFi → **[Phase 22](phase-22-esp32-support.md)**
+- Precompiled Arduino library → **[Phase 23](phase-23-arduino-precompiled.md)**
+- `nano-ros-bsp-pico-w`: Raspberry Pi Pico W with WiFi → **[Phase 24](phase-24-rpi-pico-w.md)**
 - `nano-ros-bsp-nrf52`: Nordic nRF52 with BLE transport
 - mDNS-based zenoh router discovery
 - DHCP client for automatic IP configuration
