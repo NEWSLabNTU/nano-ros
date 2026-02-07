@@ -2,6 +2,7 @@
 //!
 //! Provides automatic startup and cleanup of the zenoh router daemon.
 
+use crate::process::kill_process_group;
 use crate::{TestError, TestResult, wait_for_port};
 use std::process::Child;
 use std::time::Duration;
@@ -50,11 +51,13 @@ impl ZenohRouter {
     pub fn start(port: u16) -> TestResult<Self> {
         let locator = format!("tcp/0.0.0.0:{}", port);
 
-        let handle = std::process::Command::new(crate::process::zenohd_binary_path())
-            .args(["--listen", &locator, "--no-multicast-scouting"])
+        let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
+        cmd.args(["--listen", &locator, "--no-multicast-scouting"])
             .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .spawn()?;
+            .stderr(std::process::Stdio::null());
+        #[cfg(unix)]
+        crate::process::set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
 
         // Wait for zenohd to be ready
         if !wait_for_port(port, Duration::from_secs(5)) {
@@ -92,8 +95,7 @@ impl ZenohRouter {
 
 impl Drop for ZenohRouter {
     fn drop(&mut self) {
-        let _ = self.handle.kill();
-        let _ = self.handle.wait();
+        kill_process_group(&mut self.handle);
     }
 }
 

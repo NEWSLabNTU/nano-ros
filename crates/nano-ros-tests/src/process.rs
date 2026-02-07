@@ -1,10 +1,50 @@
 //! Managed process utilities for integration tests
 //!
 //! Provides RAII-based process management with automatic cleanup.
+//! All child processes are spawned in their own process group so that
+//! `kill_process_group()` can reap the entire tree (bash + children).
 
 use crate::TestError;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
+
+/// Configure a Command to spawn the child in its own process group.
+///
+/// This ensures that `kill_process_group()` can kill the child and all
+/// its descendants (e.g., bash → timeout → ros2).
+#[cfg(unix)]
+pub fn set_new_process_group(command: &mut Command) -> &mut Command {
+    use std::os::unix::process::CommandExt;
+    // SAFETY: setpgid is async-signal-safe and called before exec
+    unsafe {
+        command.pre_exec(|| {
+            libc::setpgid(0, 0);
+            Ok(())
+        })
+    }
+}
+
+/// Kill an entire process group given a child handle.
+///
+/// Sends SIGKILL to the process group (negative PID), then waits for
+/// the direct child to be reaped.
+#[cfg(unix)]
+pub fn kill_process_group(handle: &mut Child) {
+    let pid = handle.id() as libc::pid_t;
+    // Kill the entire process group
+    unsafe {
+        libc::kill(-pid, libc::SIGKILL);
+    }
+    // Reap the direct child to avoid zombies
+    let _ = handle.wait();
+}
+
+/// Fallback for non-unix: kill just the direct child.
+#[cfg(not(unix))]
+pub fn kill_process_group(handle: &mut Child) {
+    let _ = handle.kill();
+    let _ = handle.wait();
+}
 
 /// Managed process with automatic cleanup
 ///
@@ -37,10 +77,11 @@ impl ManagedProcess {
         name: impl Into<String>,
     ) -> Result<Self, TestError> {
         let name = name.into();
-        let handle = Command::new(binary)
-            .args(args)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+        let mut cmd = Command::new(binary);
+        cmd.args(args).stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to spawn {}: {}", name, e)))?;
 
@@ -54,9 +95,10 @@ impl ManagedProcess {
     /// * `name` - Human-readable name for error messages
     pub fn spawn_command(mut command: Command, name: impl Into<String>) -> Result<Self, TestError> {
         let name = name.into();
+        command.stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut command);
         let handle = command
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to spawn {}: {}", name, e)))?;
 
@@ -115,7 +157,7 @@ impl ManagedProcess {
         let mut buffer = [0u8; 4096];
         loop {
             if start.elapsed() > timeout {
-                let _ = self.handle.kill();
+                kill_process_group(&mut self.handle);
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }
@@ -145,10 +187,9 @@ impl ManagedProcess {
         Ok(output)
     }
 
-    /// Kill the process and wait for it to exit
+    /// Kill the process group and wait for it to exit
     pub fn kill(&mut self) {
-        let _ = self.handle.kill();
-        let _ = self.handle.wait();
+        kill_process_group(&mut self.handle);
     }
 
     /// Wait for output with timeout, capturing both stdout and stderr
@@ -191,7 +232,7 @@ impl ManagedProcess {
 
         loop {
             if start.elapsed() > timeout {
-                let _ = self.handle.kill();
+                kill_process_group(&mut self.handle);
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }

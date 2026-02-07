@@ -2,6 +2,7 @@
 //!
 //! Provides managed QEMU processes for testing ARM Cortex-M binaries.
 
+use crate::process::{kill_process_group, set_new_process_group};
 use crate::{TestError, TestResult};
 use std::io::Read;
 use std::path::Path;
@@ -46,21 +47,23 @@ impl QemuProcess {
             )));
         }
 
-        let handle = Command::new("qemu-system-arm")
-            .args([
-                "-cpu",
-                "cortex-m3",
-                "-machine",
-                "lm3s6965evb",
-                "-nographic",
-                "-semihosting-config",
-                "enable=on,target=native",
-                "-kernel",
-            ])
-            .arg(binary)
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
+        let mut cmd = Command::new("qemu-system-arm");
+        cmd.args([
+            "-cpu",
+            "cortex-m3",
+            "-machine",
+            "lm3s6965evb",
+            "-nographic",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-kernel",
+        ])
+        .arg(binary)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
 
         Ok(Self { handle })
     }
@@ -88,7 +91,7 @@ impl QemuProcess {
         loop {
             if start.elapsed() > timeout {
                 // Kill on timeout
-                let _ = self.handle.kill();
+                kill_process_group(&mut self.handle);
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }
@@ -118,7 +121,7 @@ impl QemuProcess {
                             {
                                 // Give it a moment to finish cleanly
                                 std::thread::sleep(Duration::from_millis(100));
-                                let _ = self.handle.kill();
+                                kill_process_group(&mut self.handle);
                                 break;
                             }
                         }
@@ -136,9 +139,8 @@ impl QemuProcess {
     }
 
     /// Kill the QEMU process
-    pub fn kill(&mut self) -> TestResult<()> {
-        self.handle.kill()?;
-        Ok(())
+    pub fn kill(&mut self) {
+        kill_process_group(&mut self.handle);
     }
 
     /// Check if QEMU is still running
@@ -149,8 +151,7 @@ impl QemuProcess {
 
 impl Drop for QemuProcess {
     fn drop(&mut self) {
-        let _ = self.handle.kill();
-        let _ = self.handle.wait();
+        kill_process_group(&mut self.handle);
     }
 }
 

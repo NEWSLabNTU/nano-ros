@@ -149,8 +149,7 @@ pub fn collect_output(mut child: Child, timeout: Duration) -> TestResult<String>
     }
 
     // Ensure process is terminated
-    let _ = child.kill();
-    let _ = child.wait();
+    process::kill_process_group(&mut child);
 
     Ok(output)
 }

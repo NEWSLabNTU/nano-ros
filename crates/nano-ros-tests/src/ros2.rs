@@ -2,6 +2,7 @@
 //!
 //! Provides helpers for running ROS 2 commands and processes.
 
+use crate::process::{kill_process_group, set_new_process_group};
 use crate::{TestError, TestResult};
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -75,6 +76,22 @@ pub struct Ros2Process {
 }
 
 impl Ros2Process {
+    /// Spawn a bash command in its own process group.
+    fn spawn_bash(cmd: &str, name: impl Into<String>) -> TestResult<Self> {
+        let name = name.into();
+        let mut command = Command::new("bash");
+        command
+            .args(["-c", cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut command);
+        let handle = command
+            .spawn()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
+        Ok(Self { handle, name })
+    }
+
     /// Start a ROS 2 topic echo subscriber
     ///
     /// # Arguments
@@ -93,19 +110,7 @@ impl Ros2Process {
             "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!("Failed to start ros2 topic echo: {e}"))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: format!("ros2 topic echo {topic}"),
-        })
+        Self::spawn_bash(&cmd, format!("ros2 topic echo {topic}"))
     }
 
     /// Start a ROS 2 action send_goal command
@@ -128,19 +133,7 @@ impl Ros2Process {
             "{env_setup} && timeout 30 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!("Failed to start ros2 action send_goal: {e}"))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: format!("ros2 action send_goal {action_name}"),
-        })
+        Self::spawn_bash(&cmd, format!("ros2 action send_goal {action_name}"))
     }
 
     /// Start a ROS 2 Fibonacci action server
@@ -160,22 +153,7 @@ impl Ros2Process {
             "{env_setup} && timeout 60 ros2 run action_tutorials_py fibonacci_action_server"
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!(
-                    "Failed to start ROS 2 Fibonacci action server: {e}. \
-                     Install with: sudo apt install ros-{distro}-action-tutorials-py"
-                ))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: "ros2 fibonacci_action_server".to_string(),
-        })
+        Self::spawn_bash(&cmd, "ros2 fibonacci_action_server")
     }
 
     /// Start a ROS 2 topic pub publisher
@@ -200,19 +178,7 @@ impl Ros2Process {
             "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability best_effort"
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!("Failed to start ros2 topic pub: {e}"))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: format!("ros2 topic pub {topic}"),
-        })
+        Self::spawn_bash(&cmd, format!("ros2 topic pub {topic}"))
     }
 
     /// Wait for output and return it
@@ -231,7 +197,7 @@ impl Ros2Process {
         let mut buffer = [0u8; 4096];
         loop {
             if start.elapsed() > timeout {
-                let _ = self.handle.kill();
+                kill_process_group(&mut self.handle);
                 if output.is_empty() {
                     return Err(TestError::Timeout);
                 }
@@ -262,8 +228,7 @@ impl Ros2Process {
 
     /// Kill the process
     pub fn kill(&mut self) {
-        let _ = self.handle.kill();
-        let _ = self.handle.wait();
+        kill_process_group(&mut self.handle);
     }
 
     /// Check if process is still running
@@ -377,19 +342,7 @@ impl Ros2Process {
             "{env_setup} && timeout 30 ros2 service call {service_name} {service_type} \"{request}\""
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!("Failed to start ros2 service call: {e}"))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: format!("ros2 service call {service_name}"),
-        })
+        Self::spawn_bash(&cmd, format!("ros2 service call {service_name}"))
     }
 
     /// Start a ROS 2 service server (example_interfaces AddTwoInts)
@@ -428,19 +381,7 @@ rclpy.spin(node)
             python_script.replace('\n', "\\n").replace('\'', "\\'")
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!("Failed to start ROS 2 AddTwoInts server: {e}"))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: "ros2 add_two_ints_server".to_string(),
-        })
+        Self::spawn_bash(&cmd, "ros2 add_two_ints_server")
     }
 
     /// Start a ROS 2 topic echo subscriber with custom QoS
@@ -463,19 +404,7 @@ rclpy.spin(node)
             "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!("Failed to start ros2 topic echo: {e}"))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: format!("ros2 topic echo {topic} ({})", reliability),
-        })
+        Self::spawn_bash(&cmd, format!("ros2 topic echo {topic} ({reliability})"))
     }
 
     /// Start a ROS 2 topic pub publisher with custom QoS
@@ -502,19 +431,7 @@ rclpy.spin(node)
             "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
         );
 
-        let handle = Command::new("bash")
-            .args(["-c", &cmd])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|e| {
-                TestError::ProcessFailed(format!("Failed to start ros2 topic pub: {e}"))
-            })?;
-
-        Ok(Self {
-            handle,
-            name: format!("ros2 topic pub {topic} ({})", reliability),
-        })
+        Self::spawn_bash(&cmd, format!("ros2 topic pub {topic} ({reliability})"))
     }
 }
 

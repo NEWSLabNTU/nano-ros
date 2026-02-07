@@ -2,6 +2,7 @@
 //!
 //! Provides managed Zephyr processes for testing native_sim and QEMU targets.
 
+use crate::process::{kill_process_group, set_new_process_group};
 use crate::{TestError, TestResult, project_root};
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -83,27 +84,31 @@ impl ZephyrProcess {
                     .subsec_nanos();
                 let offset = SEED_COUNTER.fetch_add(10000, std::sync::atomic::Ordering::Relaxed);
                 let seed = base.wrapping_add(offset);
-                Command::new(binary)
-                    .arg(format!("--seed={}", seed))
+                let mut cmd = Command::new(binary);
+                cmd.arg(format!("--seed={}", seed))
                     .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()?
+                    .stderr(Stdio::piped());
+                #[cfg(unix)]
+                set_new_process_group(&mut cmd);
+                cmd.spawn()?
             }
             ZephyrPlatform::QemuArm => {
                 // QEMU ARM requires qemu-system-arm
-                Command::new("qemu-system-arm")
-                    .args([
-                        "-cpu",
-                        "cortex-m3",
-                        "-machine",
-                        "lm3s6965evb",
-                        "-nographic",
-                        "-kernel",
-                    ])
-                    .arg(binary)
-                    .stdout(Stdio::piped())
-                    .stderr(Stdio::piped())
-                    .spawn()?
+                let mut cmd = Command::new("qemu-system-arm");
+                cmd.args([
+                    "-cpu",
+                    "cortex-m3",
+                    "-machine",
+                    "lm3s6965evb",
+                    "-nographic",
+                    "-kernel",
+                ])
+                .arg(binary)
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped());
+                #[cfg(unix)]
+                set_new_process_group(&mut cmd);
+                cmd.spawn()?
             }
         };
 
@@ -192,7 +197,7 @@ impl ZephyrProcess {
         }
 
         // Kill the process if still running
-        let _ = self.handle.kill();
+        kill_process_group(&mut self.handle);
 
         if last_output.is_empty() {
             Err(TestError::Timeout)
@@ -202,9 +207,8 @@ impl ZephyrProcess {
     }
 
     /// Kill the Zephyr process
-    pub fn kill(&mut self) -> TestResult<()> {
-        self.handle.kill()?;
-        Ok(())
+    pub fn kill(&mut self) {
+        kill_process_group(&mut self.handle);
     }
 
     /// Check if process is still running
@@ -215,8 +219,7 @@ impl ZephyrProcess {
 
 impl Drop for ZephyrProcess {
     fn drop(&mut self) {
-        let _ = self.handle.kill();
-        let _ = self.handle.wait();
+        kill_process_group(&mut self.handle);
     }
 }
 
