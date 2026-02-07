@@ -48,8 +48,9 @@ fi
 elapsed=$(( $(date +%s) - start ))
 
 if $qemu; then
-    passed=$(grep -c '\[PASS\]' "$logfile" 2>/dev/null || echo 0)
-    failed=$(grep -c '\[FAIL\]' "$logfile" 2>/dev/null || echo 0)
+    passed=$(grep -c '\[PASS\]' "$logfile" 2>/dev/null || true)
+    failed=$(grep -c '\[FAIL\]' "$logfile" 2>/dev/null || true)
+    : "${passed:=0}" "${failed:=0}"
     if [[ $rc -eq 0 && $failed -eq 0 ]]; then
         echo "  [PASS] $name  ${passed} passed, ${failed} failed  (${elapsed}s)"
     else
