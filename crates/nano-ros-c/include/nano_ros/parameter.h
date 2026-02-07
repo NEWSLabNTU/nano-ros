@@ -55,17 +55,30 @@ typedef enum nano_ros_parameter_type_t {
     NANO_ROS_PARAMETER_DOUBLE = 3,
     /** String parameter */
     NANO_ROS_PARAMETER_STRING = 4,
-    /** Byte array parameter (not yet supported) */
+    /** Byte array parameter */
     NANO_ROS_PARAMETER_BYTE_ARRAY = 5,
-    /** Boolean array parameter (not yet supported) */
+    /** Boolean array parameter */
     NANO_ROS_PARAMETER_BOOL_ARRAY = 6,
-    /** Integer array parameter (not yet supported) */
+    /** Integer array parameter */
     NANO_ROS_PARAMETER_INTEGER_ARRAY = 7,
-    /** Double array parameter (not yet supported) */
+    /** Double array parameter */
     NANO_ROS_PARAMETER_DOUBLE_ARRAY = 8,
-    /** String array parameter (not yet supported) */
+    /** String array parameter */
     NANO_ROS_PARAMETER_STRING_ARRAY = 9,
 } nano_ros_parameter_type_t;
+
+/**
+ * Array parameter value (pointer + length to caller-owned data).
+ *
+ * The caller must keep the array data valid for the lifetime of the parameter.
+ * For string arrays, `data` points to an array of `const char *` pointers.
+ */
+typedef struct nano_ros_param_array_t {
+    /** Pointer to caller-owned array data */
+    const void *data;
+    /** Number of elements */
+    size_t len;
+} nano_ros_param_array_t;
 
 /**
  * Parameter value union.
@@ -81,6 +94,8 @@ typedef union nano_ros_parameter_value_t {
     double double_value;
     /** String value (fixed-size buffer) */
     char string_value[NANO_ROS_MAX_PARAM_STRING_LEN];
+    /** Array value (pointer + length) */
+    nano_ros_param_array_t array_value;
 } nano_ros_parameter_value_t;
 
 /**
@@ -370,6 +385,253 @@ nano_ros_ret_t nano_ros_param_set_string(
     nano_ros_param_server_t *server,
     const char *name,
     const char *value);
+
+// ============================================================================
+// Array Parameter Functions
+// ============================================================================
+//
+// Array parameters use caller-owned memory via pointer + length.
+// The caller must keep the array data valid for the lifetime of the parameter.
+
+/**
+ * Declare a byte array parameter.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to byte array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_declare_byte_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const uint8_t *data,
+    size_t len);
+
+/**
+ * Get a byte array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to store the data pointer
+ * @param len Pointer to store the element count
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_get_byte_array(
+    const nano_ros_param_server_t *server,
+    const char *name,
+    const uint8_t **data,
+    size_t *len);
+
+/**
+ * Set a byte array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to byte array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_set_byte_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const uint8_t *data,
+    size_t len);
+
+/**
+ * Declare a boolean array parameter.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to boolean array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_declare_bool_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const bool *data,
+    size_t len);
+
+/**
+ * Get a boolean array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to store the data pointer
+ * @param len Pointer to store the element count
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_get_bool_array(
+    const nano_ros_param_server_t *server,
+    const char *name,
+    const bool **data,
+    size_t *len);
+
+/**
+ * Set a boolean array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to boolean array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_set_bool_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const bool *data,
+    size_t len);
+
+/**
+ * Declare an integer array parameter.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to integer array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_declare_integer_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const int64_t *data,
+    size_t len);
+
+/**
+ * Get an integer array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to store the data pointer
+ * @param len Pointer to store the element count
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_get_integer_array(
+    const nano_ros_param_server_t *server,
+    const char *name,
+    const int64_t **data,
+    size_t *len);
+
+/**
+ * Set an integer array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to integer array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_set_integer_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const int64_t *data,
+    size_t len);
+
+/**
+ * Declare a double array parameter.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to double array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_declare_double_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const double *data,
+    size_t len);
+
+/**
+ * Get a double array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to store the data pointer
+ * @param len Pointer to store the element count
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_get_double_array(
+    const nano_ros_param_server_t *server,
+    const char *name,
+    const double **data,
+    size_t *len);
+
+/**
+ * Set a double array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to double array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_set_double_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const double *data,
+    size_t len);
+
+/**
+ * Declare a string array parameter.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to string pointer array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_declare_string_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const char *const *data,
+    size_t len);
+
+/**
+ * Get a string array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to store the string pointer array
+ * @param len Pointer to store the element count
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_get_string_array(
+    const nano_ros_param_server_t *server,
+    const char *name,
+    const char *const **data,
+    size_t *len);
+
+/**
+ * Set a string array parameter value.
+ *
+ * @param server Pointer to an initialized parameter server
+ * @param name Parameter name
+ * @param data Pointer to string pointer array (NULL allowed if len is 0)
+ * @param len Number of elements
+ * @return NANO_ROS_RET_OK on success
+ */
+NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+nano_ros_ret_t nano_ros_param_set_string_array(
+    nano_ros_param_server_t *server,
+    const char *name,
+    const char *const *data,
+    size_t len);
 
 /**
  * Check if a parameter exists.

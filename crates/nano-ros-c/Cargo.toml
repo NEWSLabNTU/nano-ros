@@ -23,6 +23,7 @@ shim-zephyr = ["nano-ros/shim-zephyr", "nano-ros-transport/shim-zephyr"]
 nano-ros = { path = "../nano-ros", default-features = false }
 nano-ros-transport = { path = "../nano-ros-transport", default-features = false }
 nano-ros-core = { path = "../nano-ros-core", default-features = false }
+paste = "1"
 
 [package.metadata.docs.rs]
 all-features = true

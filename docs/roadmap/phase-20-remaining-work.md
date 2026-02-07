@@ -24,26 +24,9 @@ The `spin_async` method on `SpinExecutor` and `BasicExecutor` is commented out b
 
 **Impact**: Enables idiomatic async Rust usage — important for Embassy integration and desktop applications using tokio/async-std.
 
-## 2. Parameter Array Types (C API)
+## 2. ~~Parameter Array Types (C API)~~ — Complete
 
-**5 enum variants** are declared but documented as "not yet supported" in the C parameter API. See also [Phase 21](phase-21-c-api-nostd-backend.md) for related C API `no_std` backend work.
-
-**File**: `crates/nano-ros-c/src/parameter.rs:38-47`
-
-Unsupported types:
-- `NANO_ROS_PARAMETER_BYTE_ARRAY` (type 5)
-- `NANO_ROS_PARAMETER_BOOL_ARRAY` (type 6)
-- `NANO_ROS_PARAMETER_INTEGER_ARRAY` (type 7)
-- `NANO_ROS_PARAMETER_DOUBLE_ARRAY` (type 8)
-- `NANO_ROS_PARAMETER_STRING_ARRAY` (type 9)
-
-**Work required**:
-- Extend `nano_ros_parameter_value_t` union to include array pointer + length fields
-- Implement conversion between C array representation and the Rust `ParameterValue` array variants
-- Add setter/getter functions for each array type
-- Memory management: decide whether C callers own the array memory or if nano-ros copies it
-
-**Impact**: Low — array parameters are uncommon in embedded ROS 2 use cases. Scalar types (bool, int, double, string) cover most needs.
+All 5 array parameter types are now supported in the C API using a pointer+length design with caller-owned memory. Added `nano_ros_param_array_t` struct, 15 functions (declare/get/set × 5 types), and 12 unit tests.
 
 ## 3. Embassy Integration
 
@@ -60,11 +43,11 @@ The Embassy example cannot use the full nano-ros executor because zenoh-pico-shi
 
 ## Priority Order
 
-| Priority | Item | Effort | Impact |
-|----------|------|--------|--------|
-| 1 | Async executor (#1) | Medium | High — unblocks async Rust |
-| 2 | Embassy integration (#3) | Low | Medium — documentation + toolchain |
-| 3 | Parameter arrays (#2) | Low | Low — rarely used on embedded |
+| Priority | Item                     | Effort | Impact                             |
+|----------|--------------------------|--------|------------------------------------|
+| 1        | Async executor (#1)      | Medium | High — unblocks async Rust         |
+| 2        | Embassy integration (#3) | Low    | Medium — documentation + toolchain |
+| 3        | Parameter arrays (#2)    | Low    | Low — rarely used on embedded      |
 
 > **Note**: C API `no_std` backend was moved to [Phase 21](phase-21-c-api-nostd-backend.md).
 

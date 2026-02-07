@@ -35,16 +35,29 @@ pub enum nano_ros_parameter_type_t {
     NANO_ROS_PARAMETER_DOUBLE = 3,
     /// String parameter
     NANO_ROS_PARAMETER_STRING = 4,
-    /// Byte array parameter (not yet supported)
+    /// Byte array parameter
     NANO_ROS_PARAMETER_BYTE_ARRAY = 5,
-    /// Boolean array parameter (not yet supported)
+    /// Boolean array parameter
     NANO_ROS_PARAMETER_BOOL_ARRAY = 6,
-    /// Integer array parameter (not yet supported)
+    /// Integer array parameter
     NANO_ROS_PARAMETER_INTEGER_ARRAY = 7,
-    /// Double array parameter (not yet supported)
+    /// Double array parameter
     NANO_ROS_PARAMETER_DOUBLE_ARRAY = 8,
-    /// String array parameter (not yet supported)
+    /// String array parameter
     NANO_ROS_PARAMETER_STRING_ARRAY = 9,
+}
+
+/// Array parameter value (pointer + length to caller-owned data).
+///
+/// The caller must keep the array data valid for the lifetime of the parameter.
+/// For string arrays, `data` points to an array of `*const c_char` pointers.
+#[repr(C)]
+#[derive(Debug, Clone, Copy)]
+pub struct nano_ros_param_array_t {
+    /// Pointer to caller-owned array data
+    pub data: *const c_void,
+    /// Number of elements
+    pub len: usize,
 }
 
 /// Parameter value union.
@@ -59,6 +72,8 @@ pub union nano_ros_parameter_value_t {
     pub double_value: f64,
     /// String value (fixed-size buffer)
     pub string_value: [u8; NANO_ROS_MAX_PARAM_STRING_LEN],
+    /// Array value (pointer + length)
+    pub array_value: nano_ros_param_array_t,
 }
 
 impl Default for nano_ros_parameter_value_t {
@@ -653,6 +668,126 @@ pub unsafe extern "C" fn nano_ros_param_set_string(
     )
 }
 
+// ============================================================================
+// Array Parameter Functions
+// ============================================================================
+
+/// Macro to generate declare/get/set functions for array parameter types.
+///
+/// For each array type, generates three `#[unsafe(no_mangle)]` extern "C" functions:
+/// - `nano_ros_param_declare_{name}_array`: Declare with initial data
+/// - `nano_ros_param_get_{name}_array`: Get stored pointer + length
+/// - `nano_ros_param_set_{name}_array`: Update stored pointer + length
+macro_rules! impl_param_array {
+    (
+        name: $name:ident,
+        elem: $T:ty,
+        variant: $variant:ident,
+        doc: $doc:literal
+    ) => {
+        paste::paste! {
+            #[doc = "Declare " $doc " parameter.\n\n"]
+            #[doc = "The caller must keep the array data valid for the lifetime of the parameter.\n"]
+            #[doc = "`data` may be NULL only if `len` is 0."]
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn [<nano_ros_param_declare_ $name _array>](
+                server: *mut nano_ros_param_server_t,
+                name: *const c_char,
+                data: *const $T,
+                len: usize,
+            ) -> nano_ros_ret_t {
+                if data.is_null() && len != 0 {
+                    return NANO_ROS_RET_INVALID_ARGUMENT;
+                }
+                let value = nano_ros_parameter_value_t {
+                    array_value: nano_ros_param_array_t {
+                        data: data as *const c_void,
+                        len,
+                    },
+                };
+                declare_parameter_internal(
+                    server,
+                    name,
+                    nano_ros_parameter_type_t::[<NANO_ROS_PARAMETER_ $variant>],
+                    value,
+                )
+            }
+
+            #[doc = "Get " $doc " parameter value.\n\n"]
+            #[doc = "Returns the stored pointer and element count via out-parameters."]
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn [<nano_ros_param_get_ $name _array>](
+                server: *const nano_ros_param_server_t,
+                name: *const c_char,
+                data: *mut *const $T,
+                len: *mut usize,
+            ) -> nano_ros_ret_t {
+                if server.is_null() || name.is_null() || data.is_null() || len.is_null() {
+                    return NANO_ROS_RET_INVALID_ARGUMENT;
+                }
+
+                let server = &*server;
+
+                if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
+                    return NANO_ROS_RET_NOT_INIT;
+                }
+
+                match find_parameter(server, name) {
+                    Some(idx) => {
+                        let param = &*server.parameters.add(idx);
+                        if param.r#type
+                            != nano_ros_parameter_type_t::[<NANO_ROS_PARAMETER_ $variant>]
+                        {
+                            return NANO_ROS_RET_INVALID_ARGUMENT;
+                        }
+                        *data = param.value.array_value.data as *const $T;
+                        *len = param.value.array_value.len;
+                        NANO_ROS_RET_OK
+                    }
+                    None => NANO_ROS_RET_NOT_FOUND,
+                }
+            }
+
+            #[doc = "Set " $doc " parameter value.\n\n"]
+            #[doc = "The caller must keep the array data valid for the lifetime of the parameter.\n"]
+            #[doc = "`data` may be NULL only if `len` is 0."]
+            #[unsafe(no_mangle)]
+            pub unsafe extern "C" fn [<nano_ros_param_set_ $name _array>](
+                server: *mut nano_ros_param_server_t,
+                name: *const c_char,
+                data: *const $T,
+                len: usize,
+            ) -> nano_ros_ret_t {
+                if data.is_null() && len != 0 {
+                    return NANO_ROS_RET_INVALID_ARGUMENT;
+                }
+                let new_value = nano_ros_parameter_value_t {
+                    array_value: nano_ros_param_array_t {
+                        data: data as *const c_void,
+                        len,
+                    },
+                };
+                set_parameter_internal(
+                    server,
+                    name,
+                    nano_ros_parameter_type_t::[<NANO_ROS_PARAMETER_ $variant>],
+                    new_value,
+                )
+            }
+        }
+    };
+}
+
+impl_param_array!(name: byte, elem: u8, variant: BYTE_ARRAY, doc: "a byte array");
+impl_param_array!(name: bool, elem: bool, variant: BOOL_ARRAY, doc: "a boolean array");
+impl_param_array!(name: integer, elem: i64, variant: INTEGER_ARRAY, doc: "an integer array");
+impl_param_array!(name: double, elem: f64, variant: DOUBLE_ARRAY, doc: "a double array");
+impl_param_array!(name: string, elem: *const c_char, variant: STRING_ARRAY, doc: "a string array");
+
+// ============================================================================
+// Query Functions
+// ============================================================================
+
 /// Check if a parameter exists.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_param_has(
@@ -735,4 +870,353 @@ pub unsafe extern "C" fn nano_ros_param_server_fini(
     server.callback_context = ptr::null_mut();
 
     NANO_ROS_RET_OK
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use core::ffi::c_char;
+
+    /// Helper to create an initialized parameter server with storage.
+    unsafe fn setup_server(
+        server: &mut nano_ros_param_server_t,
+        storage: &mut [nano_ros_parameter_t],
+    ) {
+        *server = nano_ros_param_server_get_zero_initialized();
+        let ret = nano_ros_param_server_init(server, storage.as_mut_ptr(), storage.len());
+        assert_eq!(ret, NANO_ROS_RET_OK);
+    }
+
+    #[test]
+    fn test_declare_and_get_integer_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let values: [i64; 3] = [10, 20, 30];
+            let name = c"int_arr".as_ptr();
+            let ret = nano_ros_param_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let mut data: *const i64 = ptr::null();
+            let mut len: usize = 0;
+            let ret = nano_ros_param_get_integer_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(len, 3);
+            assert_eq!(*data, 10);
+            assert_eq!(*data.add(1), 20);
+            assert_eq!(*data.add(2), 30);
+        }
+    }
+
+    #[test]
+    fn test_declare_and_get_double_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let values: [f64; 2] = [1.5, 2.5];
+            let name = c"dbl_arr".as_ptr();
+            let ret = nano_ros_param_declare_double_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let mut data: *const f64 = ptr::null();
+            let mut len: usize = 0;
+            let ret = nano_ros_param_get_double_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(len, 2);
+            assert_eq!(*data, 1.5);
+            assert_eq!(*data.add(1), 2.5);
+        }
+    }
+
+    #[test]
+    fn test_declare_and_get_bool_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let values: [bool; 3] = [true, false, true];
+            let name = c"bool_arr".as_ptr();
+            let ret =
+                nano_ros_param_declare_bool_array(&mut server, name, values.as_ptr(), values.len());
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let mut data: *const bool = ptr::null();
+            let mut len: usize = 0;
+            let ret = nano_ros_param_get_bool_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(len, 3);
+            assert!(*data);
+            assert!(!*data.add(1));
+            assert!(*data.add(2));
+        }
+    }
+
+    #[test]
+    fn test_declare_and_get_byte_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let values: [u8; 4] = [0xDE, 0xAD, 0xBE, 0xEF];
+            let name = c"byte_arr".as_ptr();
+            let ret =
+                nano_ros_param_declare_byte_array(&mut server, name, values.as_ptr(), values.len());
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let mut data: *const u8 = ptr::null();
+            let mut len: usize = 0;
+            let ret = nano_ros_param_get_byte_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(len, 4);
+            assert_eq!(
+                core::slice::from_raw_parts(data, len),
+                &[0xDE, 0xAD, 0xBE, 0xEF]
+            );
+        }
+    }
+
+    #[test]
+    fn test_declare_and_get_string_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let s1 = c"hello".as_ptr();
+            let s2 = c"world".as_ptr();
+            let strings: [*const c_char; 2] = [s1, s2];
+            let name = c"str_arr".as_ptr();
+            let ret = nano_ros_param_declare_string_array(
+                &mut server,
+                name,
+                strings.as_ptr(),
+                strings.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let mut data: *const *const c_char = ptr::null();
+            let mut len: usize = 0;
+            let ret = nano_ros_param_get_string_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(len, 2);
+            assert_eq!(*data, s1);
+            assert_eq!(*data.add(1), s2);
+        }
+    }
+
+    #[test]
+    fn test_set_integer_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let initial: [i64; 2] = [1, 2];
+            let name = c"int_arr".as_ptr();
+            let ret = nano_ros_param_declare_integer_array(
+                &mut server,
+                name,
+                initial.as_ptr(),
+                initial.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let updated: [i64; 3] = [10, 20, 30];
+            let ret = nano_ros_param_set_integer_array(
+                &mut server,
+                name,
+                updated.as_ptr(),
+                updated.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let mut data: *const i64 = ptr::null();
+            let mut len: usize = 0;
+            let ret = nano_ros_param_get_integer_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(len, 3);
+            assert_eq!(*data, 10);
+        }
+    }
+
+    #[test]
+    fn test_empty_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let name = c"empty".as_ptr();
+            let ret = nano_ros_param_declare_integer_array(&mut server, name, ptr::null(), 0);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let mut data: *const i64 = ptr::null();
+            let mut len: usize = 99;
+            let ret = nano_ros_param_get_integer_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(len, 0);
+        }
+    }
+
+    #[test]
+    fn test_null_data_nonzero_len_rejected() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let name = c"bad".as_ptr();
+            let ret = nano_ros_param_declare_integer_array(&mut server, name, ptr::null(), 5);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+
+            // Also test set path
+            let initial: [i64; 1] = [1];
+            let ret = nano_ros_param_declare_integer_array(
+                &mut server,
+                name,
+                initial.as_ptr(),
+                initial.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let ret = nano_ros_param_set_integer_array(&mut server, name, ptr::null(), 3);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    #[test]
+    fn test_type_mismatch_array_get() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let values: [i64; 2] = [1, 2];
+            let name = c"int_arr".as_ptr();
+            let ret = nano_ros_param_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            // Try to get as double array
+            let mut data: *const f64 = ptr::null();
+            let mut len: usize = 0;
+            let ret = nano_ros_param_get_double_array(&server, name, &mut data, &mut len);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    #[test]
+    fn test_type_mismatch_set_scalar_on_array() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let values: [i64; 2] = [1, 2];
+            let name = c"int_arr".as_ptr();
+            let ret = nano_ros_param_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            // Try to set as scalar integer
+            let ret = nano_ros_param_set_integer(&mut server, name, 42);
+            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        }
+    }
+
+    #[test]
+    fn test_get_type_returns_array_type() {
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let values: [f64; 1] = [3.14];
+            let name = c"dbl_arr".as_ptr();
+            let ret = nano_ros_param_declare_double_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let ptype = nano_ros_param_get_type(&server, name);
+            assert_eq!(
+                ptype,
+                nano_ros_parameter_type_t::NANO_ROS_PARAMETER_DOUBLE_ARRAY
+            );
+        }
+    }
+
+    #[test]
+    fn test_callback_with_array_param() {
+        static mut CALLBACK_CALLED: bool = false;
+
+        unsafe extern "C" fn on_change(
+            _name: *const c_char,
+            _param: *const nano_ros_parameter_t,
+            _context: *mut c_void,
+        ) -> bool {
+            unsafe {
+                CALLBACK_CALLED = true;
+            }
+            true
+        }
+
+        let mut server = nano_ros_param_server_t::default();
+        let mut storage = [nano_ros_parameter_t::default(); 4];
+        unsafe {
+            setup_server(&mut server, &mut storage);
+
+            let ret =
+                nano_ros_param_server_set_callback(&mut server, Some(on_change), ptr::null_mut());
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            let values: [i64; 2] = [1, 2];
+            let name = c"int_arr".as_ptr();
+            let ret = nano_ros_param_declare_integer_array(
+                &mut server,
+                name,
+                values.as_ptr(),
+                values.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+
+            CALLBACK_CALLED = false;
+            let updated: [i64; 1] = [99];
+            let ret = nano_ros_param_set_integer_array(
+                &mut server,
+                name,
+                updated.as_ptr(),
+                updated.len(),
+            );
+            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert!(CALLBACK_CALLED);
+        }
+    }
 }
