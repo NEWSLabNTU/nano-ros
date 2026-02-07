@@ -6,22 +6,32 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # Find nano-ros-c library (built from Rust)
 # The library should be pre-built with: cargo build --release -p nano-ros-c
-set(NANO_ROS_C_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../crates/nano-ros-c")
-set(NANO_ROS_C_INCLUDE "${NANO_ROS_C_ROOT}/include")
+#
+# Pass -DNANO_ROS_ROOT=/path/to/nano-ros when configuring:
+#   cmake -DNANO_ROS_ROOT=/path/to/nano-ros ..
+if(NOT DEFINED NANO_ROS_ROOT)
+    message(FATAL_ERROR
+        "NANO_ROS_ROOT not set.\n"
+        "Please specify the path to your nano-ros workspace:\n"
+        "  cmake -DNANO_ROS_ROOT=/path/to/nano-ros .."
+    )
+endif()
+
+set(NANO_ROS_C_INCLUDE "${NANO_ROS_ROOT}/crates/nano-ros-c/include")
 
 # Look for the static library in common locations
 find_library(NANO_ROS_C_LIB
     NAMES nano_ros_c libnano_ros_c
     PATHS
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../target/release"
-        "${CMAKE_CURRENT_SOURCE_DIR}/../../target/debug"
+        "${NANO_ROS_ROOT}/target/release"
+        "${NANO_ROS_ROOT}/target/debug"
     NO_DEFAULT_PATH
 )
 
 if(NOT NANO_ROS_C_LIB)
     message(FATAL_ERROR
         "Could not find libnano_ros_c. Please build it first:\n"
-        "  cargo build --release -p nano-ros-c\n"
+        "  cd ${NANO_ROS_ROOT} && cargo build --release -p nano-ros-c\n"
     )
 endif()
 

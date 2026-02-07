@@ -96,7 +96,7 @@ mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
 # Configure with CMake
-cmake .. -DCMAKE_BUILD_TYPE=Release
+cmake -DNANO_ROS_ROOT="$PROJECT_ROOT" -DCMAKE_BUILD_TYPE=Release ..
 
 info "CMake configuration successful"
 

@@ -717,9 +717,9 @@ build-examples-c:
     @echo "Building nano-ros-c library..."
     cargo build -p nano-ros-c --release
     @echo "Building native/c-talker..."
-    cd examples/native/c-talker && rm -rf build && mkdir -p build && cd build && cmake .. && make
+    cd examples/native/c-talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
     @echo "Building native/c-listener..."
-    cd examples/native/c-listener && rm -rf build && mkdir -p build && cd build && cmake .. && make
+    cd examples/native/c-listener && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
     @echo "C examples built!"
 
 # Clean C examples build

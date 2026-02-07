@@ -202,7 +202,7 @@ build_c_examples() {
     mkdir -p "$talker_build"
     cd "$talker_build"
 
-    if cmake .. > "$(tmpfile talker_cmake.txt)" 2>&1 && \
+    if cmake -DNANO_ROS_ROOT="$PROJECT_ROOT" .. > "$(tmpfile talker_cmake.txt)" 2>&1 && \
        make > "$(tmpfile talker_make.txt)" 2>&1; then
         log_success "native/c-talker built"
     else
@@ -220,7 +220,7 @@ build_c_examples() {
     mkdir -p "$listener_build"
     cd "$listener_build"
 
-    if cmake .. > "$(tmpfile listener_cmake.txt)" 2>&1 && \
+    if cmake -DNANO_ROS_ROOT="$PROJECT_ROOT" .. > "$(tmpfile listener_cmake.txt)" 2>&1 && \
        make > "$(tmpfile listener_make.txt)" 2>&1; then
         log_success "native/c-listener built"
     else
