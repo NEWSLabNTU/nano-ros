@@ -273,26 +273,126 @@ fn main() -> ! {
 - [x] BSP example demonstrates simplified API (<30 lines)
 - [ ] Examples documented
 
-### 22.5: Integration Testing
+### 22.5: QEMU ESP32-C3 Integration Testing (OpenETH)
+
+**Status**: In Progress (22.5a + 22.5b + 22.5c complete, 22.5d not started)
+
+**Goal**: Run ESP32-C3 interop tests in QEMU using the OpenCores Ethernet MAC (OpenETH), eliminating the need for physical hardware or WiFi. Espressif's QEMU fork (`qemu-system-riscv32 -M esp32c3`) emulates OpenETH at `0x600CD000` with TAP networking, giving the emulated ESP32-C3 full IP connectivity to zenohd.
+
+**Architecture**:
+```
+┌──────────────────┐         ┌─────────┐         ┌──────────────────┐
+│ QEMU ESP32-C3    │  TAP    │ zenohd  │  TAP    │ QEMU ESP32-C3    │
+│  bsp-talker      │◄───────►│ (host)  │◄───────►│  bsp-listener    │
+│                  │  eth    │         │  eth    │                  │
+│ OpenETH MAC      │         │         │         │ OpenETH MAC      │
+│ smoltcp TCP/IP   │         │         │         │ smoltcp TCP/IP   │
+│ zenoh-pico       │         │         │         │ zenoh-pico       │
+└──────────────────┘         └─────────┘         └──────────────────┘
+```
+
+Same pattern as QEMU ARM (LAN9118) Docker E2E tests, but RISC-V with OpenETH.
+
+#### 22.5a: OpenETH smoltcp Driver
+
+**Tasks**:
+1. [x] Create `crates/openeth-smoltcp/` crate (like `crates/lan9118-smoltcp/`)
+2. [x] Define OpenETH register constants (`MODER`, `INT_SOURCE`, `TX_BD_NUM`, etc. — ~15 registers at base `0x600CD000`)
+3. [x] Define TX/RX buffer descriptor structs (8 bytes each, at base + `0x400`)
+4. [x] Implement init: reset (`MODER.RST`), configure descriptors, allocate static DMA buffers (1600 bytes each), set MAC address, enable TX/RX
+5. [x] Implement `smoltcp::phy::Device` trait (polling: scan RX descriptors for `e==0`, TX descriptors for `rd==0`)
+6. [ ] Unit tests for register definitions and descriptor layout
+
+**Reference**: ESP-IDF C driver at `components/esp_eth/src/esp_eth_mac_openeth.c` + `openeth.h` ([GitHub](https://github.com/espressif/esp-idf/blob/master/components/esp_eth/src/openeth/openeth.h))
+
+**Acceptance Criteria**:
+- [x] Crate compiles for `riscv32imc-unknown-none-elf`
+- [x] Register layout matches ESP-IDF reference
+- [x] `smoltcp::phy::Device` trait implemented with RxToken/TxToken
+
+**Notes**:
+- OpenETH is simpler than LAN9118: ~15 registers, DMA descriptor ring (vs FIFO), no PHY negotiation needed in QEMU
+- Estimated ~300-400 lines of Rust (LAN9118 driver is ~670 lines)
+- DMA buffers must be in ESP32-C3 DRAM (`0x3FC80000+`)
+- QEMU transmits instantly when `rd=1` is set — no TX completion wait needed
+
+#### 22.5b: ESP32-C3 QEMU BSP Variant
+
+**Tasks**:
+1. [x] Create `crates/nano-ros-bsp-esp32-qemu/` (separate crate, no WiFi deps)
+2. [x] `node.rs`: Use OpenETH + smoltcp instead of WiFi (`esp-radio`) — skip WiFi init, DHCP, `esp-rtos`
+3. [x] `bridge.rs`: Reuse smoltcp↔zenoh-pico bridge (copied from WiFi BSP)
+4. [x] `clock.rs`: Reuse `esp_hal::time::Instant` (works in QEMU with `-icount 3`)
+5. [x] Static IP configuration (QEMU TAP network uses `192.0.3.x`)
+6. [x] Create `examples/esp32/qemu-talker/` and `examples/esp32/qemu-listener/`
+
+**Acceptance Criteria**:
+- [x] BSP compiles for `riscv32imc-unknown-none-elf` without `esp-radio`/`esp-rtos` dependencies
+- [x] Examples compile and produce flash images
+
+**Notes**:
+- May still need `esp-hal` for basic init (clocks, heap allocator, UART output) and `esp-alloc` for heap
+- Does NOT need `esp-radio`, `esp-rtos`, or WiFi — OpenETH replaces the entire WiFi stack
+- Decide: separate crate vs feature flag — separate crate avoids pulling WiFi deps into QEMU builds
+
+#### 22.5c: Espressif QEMU Tooling
+
+**Tasks**:
+1. [ ] Add script to download/build Espressif QEMU fork (`scripts/esp32/install-qemu-esp32.sh`)
+2. [ ] Add `just build-qemu-esp32` recipe to build Espressif QEMU from source or download pre-built binary
+3. [x] Add flash image build step: `espflash save-image --chip esp32c3` in `just build-examples-esp32-qemu`
+4. [x] Add `just build-examples-esp32-qemu` recipe (build examples + create flash images)
+5. [x] Add `scripts/esp32/launch-esp32c3.sh` launch script with TAP networking support
+6. [x] Add `just test-qemu-esp32-basic` recipe (boot test)
+7. [ ] Verify QEMU launch: `qemu-system-riscv32 -M esp32c3 -icount 3 -nographic -drive file=flash.bin,if=mtd,format=raw -nic tap,model=open_eth`
+
+**Acceptance Criteria**:
+- [ ] Espressif QEMU installs via script
+- [x] Flash images generated from compiled examples
+- [ ] QEMU boots and shows UART output from example
+
+**Notes**:
+- Espressif QEMU requires `-icount 3` for instruction timing (simulates 125MHz)
+- Flash image format differs from raw ELF — need bootloader + partition table + app merged
+- Pre-built binaries available at [github.com/espressif/qemu/releases](https://github.com/espressif/qemu/releases)
+- `espflash save-image` may be simplest for bare-metal Rust binaries
+
+#### 22.5d: QEMU ESP32-C3 Interop Tests
+
+**Tasks**:
+1. [ ] Add `esp32_emulator.rs` test suite in `crates/nano-ros-tests/tests/`
+2. [ ] Test: QEMU ESP32-C3 talker boots and prints output
+3. [ ] Test: QEMU ESP32-C3 listener boots and prints output
+4. [ ] Test: ESP32-C3 talker → native listener (via zenohd, TAP network)
+5. [ ] Test: Native talker → ESP32-C3 listener (via zenohd, TAP network)
+6. [ ] Test: ESP32-C3 talker → ESP32-C3 listener (two QEMU instances, via zenohd)
+7. [ ] Test: ESP32-C3 talker → QEMU ARM listener (cross-architecture, via zenohd)
+8. [ ] Add Docker Compose setup for ESP32-C3 QEMU tests (like existing `docker/docker-compose.yml`)
+9. [ ] Add `just test-qemu-esp32` and `just docker-qemu-esp32-test` recipes
+
+**Acceptance Criteria**:
+- [ ] Bidirectional pub/sub works in QEMU without physical hardware
+- [ ] Cross-architecture test passes (ESP32-C3 RISC-V ↔ QEMU ARM Cortex-M3)
+- [ ] Tests run in CI (Docker-based, no hardware required)
+
+### 22.6: Hardware Integration Testing (WiFi)
 
 **Status**: Not Started
 
 **Tasks**:
-1. [ ] Test ESP32 talker → native listener (via zenohd)
-2. [ ] Test native talker → ESP32 listener (via zenohd)
-3. [ ] Test ESP32 ↔ ESP32 communication (two boards)
-4. [ ] Test ESP32 ↔ ROS 2 interop (via rmw_zenoh)
-5. [ ] Measure WiFi latency and throughput
-6. [ ] Measure power consumption (active + sleep modes)
-7. [ ] Add QEMU ESP32-C3 testing (if available in espflash/wokwi)
-8. [ ] Document test results in `docs/esp32-performance.md`
+1. [ ] Test ESP32 talker → native listener over WiFi (requires ESP32-C3 board)
+2. [ ] Test native talker → ESP32 listener over WiFi
+3. [ ] Test ESP32 ↔ ROS 2 interop over WiFi (via rmw_zenoh)
+4. [ ] Measure WiFi latency and throughput
+5. [ ] Measure power consumption (active + sleep modes)
+6. [ ] Document test results in `docs/esp32-performance.md`
 
 **Acceptance Criteria**:
 - [ ] Bidirectional pub/sub works over WiFi
 - [ ] ROS 2 interop verified
 - [ ] Performance documented
 
-### 22.6: Documentation and CI
+### 22.7: Documentation and CI
 
 **Status**: Not Started
 
@@ -312,24 +412,24 @@ fn main() -> ! {
 ## Dependencies
 
 ```
-22.1 (Dev setup) ─────────────────────────────────────────────┐
-                                                               │
-22.2 (Cross-compile zenoh-pico) ──────────────────────────────┤
-                                                               │
-                                                               ▼
-22.3 (BSP crate) ─────────────────────────────────────────────┤
-                                                               │
-                                                               ▼
-22.4 (Examples) ──────────────────────────────────────────────┤
-                                                               │
-                                                               ▼
-22.5 (Integration testing) ───────────────────────────────────┤
-                                                               │
-                                                               ▼
-22.6 (Documentation) ─────────────────────────────────────────┘
+22.1 (Dev setup) ──────────┐
+                            ├──► 22.3 (BSP crate) ──► 22.4 (Examples) ──► 22.6 (HW WiFi tests)
+22.2 (Cross-compile) ──────┘        │                                            │
+                                    │                                            ▼
+                                    └──► 22.5a (OpenETH driver)                22.7 (Docs)
+                                              │
+                                              ▼
+                                         22.5b (QEMU BSP variant)
+                                              │
+                                         22.5c (QEMU tooling)
+                                              │
+                                              ▼
+                                         22.5d (QEMU interop tests) ──► 22.7 (Docs)
 ```
 
-Phases 22.1 and 22.2 can proceed in parallel. All subsequent phases are sequential.
+- 22.1 and 22.2 can proceed in parallel
+- 22.5a–d (QEMU OpenETH path) can proceed in parallel with 22.6 (WiFi hardware tests)
+- 22.5a depends only on 22.3 (needs smoltcp bridge pattern); does NOT depend on 22.4 (WiFi examples)
 
 ## Risks and Mitigations
 

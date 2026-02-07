@@ -1,0 +1,14 @@
+[target.riscv32imc-unknown-none-elf]
+rustflags = [
+  "-C", "link-arg=-Tlinkall.x",
+  "-C", "force-frame-pointers",
+]
+
+[build]
+target = "riscv32imc-unknown-none-elf"
+
+[env]
+ESP_LOG = "info"
+
+[unstable]
+build-std = ["core", "alloc"]

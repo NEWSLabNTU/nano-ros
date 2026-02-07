@@ -48,11 +48,63 @@ fi
 
 echo "Using toolchain: $CC"
 
-# Detect picolibc specs (needed for system riscv64-unknown-elf-gcc)
-PICOLIBC_SPECS=""
-if $CC -march=rv32imc -mabi=ilp32 --specs=picolibc.specs -E -x c /dev/null -o /dev/null 2>/dev/null; then
-    PICOLIBC_SPECS="--specs=picolibc.specs"
+# Detect picolibc include path (needed for C standard library headers).
+# We do NOT use --specs=picolibc.specs because it enables TLS (-ftls-model=local-exec)
+# which makes errno a __thread variable accessed via the tp register. On bare-metal
+# ESP32-C3, tp is never initialized (=0), causing null pointer crashes in strtoul etc.
+# Instead, we add the include path directly and override errno to use our __errno() stub.
+PICOLIBC_INCLUDES=""
+PICOLIBC_SYSROOT=$($CC -march=rv32imc -mabi=ilp32 --specs=picolibc.specs -print-sysroot 2>/dev/null || true)
+if [ -n "$PICOLIBC_SYSROOT" ] && [ -d "$PICOLIBC_SYSROOT/include" ]; then
+    PICOLIBC_INCLUDES="-isystem $PICOLIBC_SYSROOT/include"
+elif [ -d "/usr/lib/picolibc/riscv64-unknown-elf/include" ]; then
+    PICOLIBC_INCLUDES="-isystem /usr/lib/picolibc/riscv64-unknown-elf/include"
 fi
+
+# Create a wrapper errno.h that shadows picolibc's TLS-based version.
+# picolibc declares `extern __thread int errno` which uses the tp (thread pointer)
+# register. On bare-metal ESP32-C3, tp is never initialized → null pointer crash.
+# Our wrapper provides a plain `extern int errno` (backed by libc_stubs.rs).
+mkdir -p "$BUILD_DIR/include"
+cat > "$BUILD_DIR/include/errno.h" << 'ERRNO_EOF'
+#ifndef _ERRNO_OVERRIDE_H
+#define _ERRNO_OVERRIDE_H
+
+/* Minimal errno.h for bare-metal RISC-V (no TLS).
+ * Shadows picolibc's errno.h which uses __thread. */
+extern int errno;
+
+#define EPERM    1
+#define ENOENT   2
+#define EIO      5
+#define ENOMEM  12
+#define EACCES  13
+#define EFAULT  14
+#define EBUSY   16
+#define EEXIST  17
+#define EINVAL  22
+#define ENOSPC  28
+#define ERANGE  34
+#define ENOSYS  88
+#define ENOMSG  91
+#define ENOTSUP 95
+#define EADDRINUSE 98
+#define EADDRNOTAVAIL 99
+#define ENETUNREACH 101
+#define ECONNABORTED 103
+#define ECONNRESET 104
+#define ENOBUFS 105
+#define EISCONN 106
+#define ENOTCONN 107
+#define ETIMEDOUT 110
+#define ECONNREFUSED 111
+#define EALREADY 114
+#define EINPROGRESS 115
+#define EAGAIN  11
+#define EWOULDBLOCK EAGAIN
+
+#endif
+ERRNO_EOF
 
 # Check zenoh-pico submodule
 if [ ! -d "$ZENOH_PICO_DIR/include" ]; then
@@ -111,8 +163,11 @@ SHIM_DIR="$REPO_ROOT/crates/zenoh-pico-shim-sys/c/shim"
 SOURCES="$SOURCES $SHIM_DIR/zenoh_shim.c"
 
 # Compiler flags for ESP32-C3 (RISC-V RV32IMC)
-# picolibc.specs provides C standard library headers (stdint.h, stdlib.h, etc.)
-CFLAGS="-march=rv32imc -mabi=ilp32 $PICOLIBC_SPECS"
+# Use picolibc headers for standard library (stdint.h, stdlib.h, etc.) but our own
+# errno.h shadows picolibc's TLS-based version. BUILD_DIR/include comes first in
+# search order so our errno.h is found before picolibc's.
+CFLAGS="-march=rv32imc -mabi=ilp32"
+CFLAGS="$CFLAGS -isystem $BUILD_DIR/include $PICOLIBC_INCLUDES"
 CFLAGS="$CFLAGS -Os -g"
 CFLAGS="$CFLAGS -ffunction-sections -fdata-sections"
 CFLAGS="$CFLAGS -fno-common -fno-exceptions"

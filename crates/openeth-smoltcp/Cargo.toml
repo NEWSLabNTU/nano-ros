@@ -1,0 +1,20 @@
+[package]
+name = "openeth-smoltcp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "OpenCores Ethernet MAC driver for smoltcp (QEMU ESP32-C3)"
+readme = "README.md"
+keywords = ["embedded", "ethernet", "smoltcp", "no_std", "riscv"]
+categories = ["embedded", "no-std", "hardware-support"]
+
+[dependencies]
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-udp",
+    "socket-tcp",
+] }
+
+[features]
+default = []

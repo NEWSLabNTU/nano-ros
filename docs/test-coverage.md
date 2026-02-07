@@ -171,7 +171,56 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 | `qemu/bsp-talker`   | Yes     | Build + Docker E2E |
 | `qemu/bsp-listener` | Yes     | Build + Docker E2E |
 
-### 4. STM32F4 - Physical Hardware
+### 4. ESP32-C3 - QEMU OpenETH + WiFi Hardware
+
+| Test Suite       | Tests | Coverage                          |
+|------------------|-------|-----------------------------------|
+| Build (WiFi)     | 2     | Compile-only                      |
+| QEMU OpenETH     | 0     | Planned (Phase 22.5)              |
+
+**Build Verification:**
+- `just build-examples-esp32` — Compiles bsp-talker and bsp-listener for `riscv32imc-unknown-none-elf`
+
+**QEMU OpenETH Interop Tests (planned — no hardware required):**
+
+Uses Espressif's QEMU fork (`qemu-system-riscv32 -M esp32c3`) with OpenCores Ethernet MAC (`-nic tap,model=open_eth`). Same TAP/Docker pattern as QEMU ARM tests.
+
+| Test                                    | Type           | Status      | Description                                        |
+|-----------------------------------------|----------------|-------------|----------------------------------------------------|
+| ESP32-C3 QEMU talker boots              | Smoke          | **Planned** | UART output visible via QEMU                       |
+| ESP32-C3 QEMU listener boots            | Smoke          | **Planned** | UART output visible via QEMU                       |
+| ESP32-C3 talker → native listener       | Cross-Platform | **Planned** | QEMU ESP32-C3 pub → zenohd → native sub           |
+| Native talker → ESP32-C3 listener       | Cross-Platform | **Planned** | Native pub → zenohd → QEMU ESP32-C3 sub           |
+| ESP32-C3 talker → ESP32-C3 listener     | E2E            | **Planned** | Two QEMU ESP32-C3 instances via zenohd             |
+| ESP32-C3 talker → QEMU ARM listener     | Cross-Arch     | **Planned** | RISC-V (OpenETH) ↔ Cortex-M3 (LAN9118) via zenohd |
+
+**WiFi Hardware Tests (require ESP32-C3 board):**
+| Test                              | Type           | Status         | Description                                   |
+|-----------------------------------|----------------|----------------|-----------------------------------------------|
+| ESP32 talker → native listener    | Cross-Platform | **Not tested** | ESP32 WiFi pub → zenohd → native sub          |
+| Native talker → ESP32 listener    | Cross-Platform | **Not tested** | Native pub → zenohd → ESP32 WiFi sub          |
+| ESP32 ↔ ROS 2 interop            | ROS 2 Interop  | **Not tested** | WiFi ↔ rmw_zenoh_cpp via zenohd               |
+
+**Examples:**
+| Example              | Tested  | Notes                                  |
+|----------------------|---------|----------------------------------------|
+| `esp32/bsp-talker`   | Build   | Compile-verified, runtime needs HW     |
+| `esp32/bsp-listener` | Build   | Compile-verified, runtime needs HW     |
+| `esp32/qemu-talker`  | —       | Planned (Phase 22.5b)                  |
+| `esp32/qemu-listener`| —       | Planned (Phase 22.5b)                  |
+
+**Justfile Recipes:**
+- `just build-examples-esp32` - Build WiFi examples
+- `just build-examples-esp32-qemu` - Build QEMU examples + flash images (planned)
+- `just test-qemu-esp32` - QEMU ESP32-C3 interop tests (planned)
+- `just docker-qemu-esp32-test` - Docker-based QEMU ESP32-C3 tests (planned)
+
+**Prerequisites (planned):**
+- Espressif QEMU fork (`qemu-system-riscv32` with `-M esp32c3`)
+- `espflash` or `esptool.py` for flash image creation
+- OpenETH smoltcp driver crate (`crates/openeth-smoltcp/`)
+
+### 5. STM32F4 - Physical Hardware
 
 | Test Suite | Tests | Coverage           |
 |------------|-------|--------------------|
@@ -186,7 +235,7 @@ All Zephyr Rust examples use the high-level nano-ros API (`ShimExecutor`, `creat
 | `platform-integration/stm32f4-embassy` | Manual only |
 | `platform-integration/stm32f4-smoltcp` | Manual only |
 
-### 5. C Bindings
+### 6. C Bindings
 
 | Test Suite    | File                       | Tests | Coverage              |
 |---------------|----------------------------|-------|-----------------------|
@@ -290,6 +339,13 @@ No C examples exist for QEMU.
 | `zephyr/c-talker` | C | Pub/Sub | tests/zephyr/run-c.sh | Complete |
 | `zephyr/c-listener` | C | Pub/Sub | tests/zephyr/run-c.sh | Complete |
 
+### ESP32-C3 (WiFi Hardware)
+
+| Example | Lang | Feature | Test Coverage | Status |
+|---------|------|---------|---------------|--------|
+| `esp32/bsp-talker` | Rust | BSP WiFi Pub | Build only (requires ESP32-C3 + WiFi) | **E2E missing** |
+| `esp32/bsp-listener` | Rust | BSP WiFi Sub | Build only (requires ESP32-C3 + WiFi) | **E2E missing** |
+
 ### STM32F4 (Physical Hardware)
 
 | Example | Lang | Feature | Test Coverage | Status |
@@ -314,9 +370,10 @@ No C examples exist for QEMU.
 | Native | 7/7 | 2/3 | 9/10 |
 | QEMU | 5/5 | — | 5/5 |
 | Zephyr | 6/6 | 2/2 | 8/8 |
+| ESP32-C3 | 0/2 | — | 0/2 |
 | STM32F4 | 0/1 | — | 0/1 |
 | Platform-Integration | 2/6 | — | 2/6 |
-| **Total** | **20/25** | **4/5** | **24/30** |
+| **Total** | **20/27** | **4/5** | **24/32** |
 
 (Excludes `qemu-smoltcp-bridge` which is a library, not a runnable example.)
 
@@ -328,9 +385,32 @@ No C examples exist for QEMU.
 - Runs without zenoh (standalone no_std demo)
 - Add to `c_api.rs`: build + run, assert exit code 0
 
+### Automatable (QEMU ESP32-C3 with OpenETH — Phase 22.5)
+
+**2. ESP32-C3 QEMU interop** — `esp32/qemu-talker`, `esp32/qemu-listener`
+- Uses Espressif QEMU fork with OpenCores Ethernet MAC (no WiFi hardware needed)
+- Requires: OpenETH smoltcp driver (`crates/openeth-smoltcp/`), ESP32-C3 QEMU BSP variant, flash image tooling
+- Test plan (all in Docker, CI-automatable):
+  - ESP32-C3 talker → native listener (via zenohd, TAP network)
+  - Native talker → ESP32-C3 listener (via zenohd, TAP network)
+  - ESP32-C3 ↔ ESP32-C3 (two QEMU instances, same zenohd)
+  - ESP32-C3 RISC-V ↔ QEMU ARM Cortex-M3 (cross-architecture, same zenohd)
+- See [Phase 22.5 roadmap](roadmap/phase-22-esp32-support.md) for implementation details
+
+### Hardware-dependent (requires ESP32-C3 board + WiFi)
+
+**3. ESP32-C3 WiFi interop** — `esp32/bsp-talker`, `esp32/bsp-listener`
+- Build verification works today: `just build-examples-esp32`
+- Runtime tests require ESP32-C3 hardware connected to WiFi
+- WiFi-specific tests (not coverable by QEMU):
+  - WiFi connect + DHCP acquisition
+  - WiFi reconnection and error recovery
+  - Latency and throughput measurements over WiFi
+  - ESP32 ↔ ROS 2 interop (via rmw_zenoh_cpp)
+
 ### Not automatable
 
-**2. STM32F4 hardware** — `stm32f4/bsp-talker`, `stm32f4-*`
+**4. STM32F4 hardware** — `stm32f4/bsp-talker`, `stm32f4-*`
 - Requires physical board + debug probe
 - Build verification possible; runtime tests require HIL setup
 
@@ -353,6 +433,8 @@ No C examples exist for QEMU.
 | **Platform Detection** | 10    | Complete              |
 | **Serial Transport**   | 9     | Complete (manual E2E) |
 | **C Bindings**         | 6     | Partial (1 untested)  |
+| **ESP32-C3 QEMU**      | 0     | Planned (Phase 22.5)  |
+| **ESP32-C3 WiFi**      | 0     | Build only (needs HW) |
 | **STM32F4 HIL**        | 0     | Not automatable       |
 
 ## Test Execution Quick Reference
@@ -365,6 +447,7 @@ just test-all
 just test-rust-nano2nano      # Native
 just test-rust-zephyr         # Zephyr
 just test-rust-emulator       # QEMU ARM
+just build-examples-esp32     # ESP32-C3 (build only)
 just test-c                   # C bindings
 
 # By feature
@@ -392,6 +475,8 @@ just quality                  # Format + clippy + unit tests + Miri + QEMU examp
 | QEMU          | qemu-system-arm, thumbv7m-none-eabi                   |
 | ROS 2 Interop | ROS 2 Humble, rmw_zenoh_cpp                           |
 | C             | cmake, C compiler                                     |
+| ESP32-C3 QEMU | Espressif QEMU fork, espflash, zenohd                  |
+| ESP32-C3 WiFi | ESP32-C3 board, WiFi network, espflash, zenohd        |
 | STM32F4 HIL   | Physical board, debug probe                           |
 
 ## Known Issues Found by Tests

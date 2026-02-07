@@ -521,6 +521,59 @@ build-examples-esp32: build-zenoh-pico-riscv
     done
     echo "ESP32 examples built!"
 
+# Build ESP32 QEMU examples (requires nightly + zenoh-pico RISC-V)
+build-examples-esp32-qemu: build-zenoh-pico-riscv
+    #!/usr/bin/env bash
+    set -e
+    echo "Building ESP32 QEMU examples..."
+    for ex in qemu-talker qemu-listener; do
+        echo "  Building esp32/$ex..."
+        (cd examples/esp32/$ex && cargo +nightly build --release)
+    done
+    echo ""
+    echo "Creating flash images..."
+    mkdir -p build/esp32-qemu
+    for ex in qemu-talker qemu-listener; do
+        bin_name="esp32-$ex"
+        elf="examples/esp32/$ex/target/riscv32imc-unknown-none-elf/release/$bin_name"
+        out="build/esp32-qemu/$bin_name.bin"
+        if command -v espflash &>/dev/null; then
+            espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
+            echo "  $out"
+        else
+            echo "  WARNING: espflash not found, skipping flash image for $ex"
+            echo "  Install with: cargo install espflash"
+        fi
+    done
+    echo "ESP32 QEMU examples built!"
+
+# Run basic QEMU ESP32-C3 boot test (verify UART output)
+test-qemu-esp32-basic: build-examples-esp32-qemu
+    #!/usr/bin/env bash
+    echo "ESP32-C3 QEMU boot test"
+    echo "========================"
+    echo ""
+    echo "Prerequisites: qemu-system-riscv32 with Espressif ESP32-C3 support"
+    echo ""
+    if ! command -v qemu-system-riscv32 &>/dev/null; then
+        echo "WARNING: qemu-system-riscv32 not found - skipping runtime test"
+        echo "Flash images are at: build/esp32-qemu/"
+        exit 0
+    fi
+    echo "Running boot test..."
+    output=$(timeout 15 qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+        -drive "file=build/esp32-qemu/esp32-qemu-talker.bin,if=mtd,format=raw" \
+        -nic none \
+        2>&1 || true)
+    echo "$output"
+    echo ""
+    if echo "$output" | grep -q "nano-ros ESP32-C3 QEMU BSP"; then
+        echo "[PASS] ESP32-C3 QEMU boot test - BSP initialized"
+    else
+        echo "[FAIL] ESP32-C3 QEMU boot test - BSP banner not found"
+        exit 1
+    fi
+
 # Run basic QEMU test (nano-ros serialization on Cortex-M3)
 test-qemu-basic verbose="": build-examples-qemu _init-test-logs
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
@@ -803,6 +856,7 @@ setup:
     @which qemu-system-arm > /dev/null 2>&1 || (echo "WARNING: qemu-system-arm not found." && echo "For QEMU testing, install with: sudo apt install qemu-system-arm" && echo "")
     @which cmake > /dev/null 2>&1 || (echo "WARNING: cmake not found." && echo "For C examples, install with: sudo apt install cmake" && echo "")
     @which riscv64-unknown-elf-gcc > /dev/null 2>&1 || which riscv32-esp-elf-gcc > /dev/null 2>&1 || (echo "WARNING: RISC-V GCC not found." && echo "For ESP32-C3 development, install with: sudo apt install gcc-riscv64-unknown-elf" && echo "")
+    @which qemu-system-riscv32 > /dev/null 2>&1 || (echo "WARNING: qemu-system-riscv32 not found." && echo "For ESP32-C3 QEMU testing, build with: ./scripts/esp32/install-espressif-qemu.sh" && echo "")
     @echo "Setup complete!"
 
 # Setup all network bridges (QEMU + Zephyr, requires sudo)
