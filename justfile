@@ -669,6 +669,8 @@ test-zephyr verbose="":
     args=(-p nano-ros-tests --test zephyr --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
+    else
+        args+=(--success-output immediate --failure-output immediate)
     fi
     cargo nextest run "${args[@]}"
 
