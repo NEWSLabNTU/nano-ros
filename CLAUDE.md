@@ -289,6 +289,8 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 16 | ROS 2 Interop Completion | In Progress |
 | 17 | Full test coverage | Complete |
 | 19 | Transport session configuration | Planning |
+| 20 | Remaining work (TODO audit) | Planning |
+| 21 | C API `no_std` backend | In Progress |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment
@@ -316,6 +318,8 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | ROS 2 Interop (Phase 16) | [docs/roadmap/phase-16-ros2-interop-completion.md](docs/roadmap/phase-16-ros2-interop-completion.md) |
 | QEMU/physical devices | [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) |
 | Transport config (Phase 19) | [docs/roadmap/phase-19-transport-config.md](docs/roadmap/phase-19-transport-config.md) |
+| Remaining work (Phase 20) | [docs/roadmap/phase-20-remaining-work.md](docs/roadmap/phase-20-remaining-work.md) |
+| C API `no_std` backend (Phase 21) | [docs/roadmap/phase-21-c-api-nostd-backend.md](docs/roadmap/phase-21-c-api-nostd-backend.md) |
 | Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
 
 ## Quick Reference
