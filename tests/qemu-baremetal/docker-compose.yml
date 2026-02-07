@@ -51,14 +51,16 @@ services:
         ipv4_address: 172.20.0.10
     volumes:
       - ../..:/work
-      - cargo-registry:/root/.cargo/registry
-      - cargo-git:/root/.cargo/git
+      - cargo-registry:/cargo/registry
+      - cargo-git:/cargo/git
     environment:
       - ZENOH_ROUTER_IP=172.20.0.2
       - QEMU_ROLE=talker
       - QEMU_MAC=02:00:00:00:00:00
       - QEMU_GUEST_IP=192.168.100.10
       - QEMU_EXAMPLE=${QEMU_EXAMPLE:-rs}
+      - HOST_UID=${HOST_UID:-0}
+      - HOST_GID=${HOST_GID:-0}
     working_dir: /work
     entrypoint: ["/work/tests/qemu-baremetal/entrypoint.sh"]
     depends_on:
@@ -86,13 +88,15 @@ services:
         ipv4_address: 172.20.0.11
     volumes:
       - ../..:/work
-      - cargo-registry:/root/.cargo/registry
-      - cargo-git:/root/.cargo/git
+      - cargo-registry:/cargo/registry
+      - cargo-git:/cargo/git
     environment:
       - ZENOH_ROUTER_IP=172.20.0.2
       - QEMU_ROLE=listener
       - QEMU_MAC=02:00:00:00:00:01
       - QEMU_EXAMPLE=${QEMU_EXAMPLE:-rs}
+      - HOST_UID=${HOST_UID:-0}
+      - HOST_GID=${HOST_GID:-0}
     working_dir: /work
     entrypoint: ["/work/tests/qemu-baremetal/entrypoint.sh"]
     depends_on:

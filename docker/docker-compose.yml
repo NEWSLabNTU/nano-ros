@@ -22,8 +22,8 @@ services:
     volumes:
       - ..:/work
       # Cache cargo registry for faster rebuilds
-      - cargo-registry:/root/.cargo/registry
-      - cargo-git:/root/.cargo/git
+      - cargo-registry:/cargo/registry
+      - cargo-git:/cargo/git
 
     # Enable TAP networking (requires --privileged or specific capabilities)
     # Uncomment for networking tests:

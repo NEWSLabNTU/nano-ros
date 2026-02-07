@@ -441,6 +441,10 @@ fn test_qemu_rs_talker_listener_e2e() {
     eprintln!("Starting QEMU E2E test via Docker Compose (rs examples)...");
     eprintln!("This may take a while on first run (Docker image build + cargo build).");
 
+    // Pass host UID/GID so containers create files with correct ownership
+    let host_uid = unsafe { libc::getuid() }.to_string();
+    let host_gid = unsafe { libc::getgid() }.to_string();
+
     // Run docker compose up with QEMU_EXAMPLE=rs
     let result = duct::cmd!(
         "docker",
@@ -452,6 +456,8 @@ fn test_qemu_rs_talker_listener_e2e() {
         "--abort-on-container-exit"
     )
     .env("QEMU_EXAMPLE", "rs")
+    .env("HOST_UID", &host_uid)
+    .env("HOST_GID", &host_gid)
     .dir(&root)
     .stderr_to_stdout()
     .stdout_capture()
@@ -467,6 +473,8 @@ fn test_qemu_rs_talker_listener_e2e() {
         "down",
         "-v"
     )
+    .env("HOST_UID", &host_uid)
+    .env("HOST_GID", &host_gid)
     .dir(&root)
     .stderr_to_stdout()
     .stdout_capture()

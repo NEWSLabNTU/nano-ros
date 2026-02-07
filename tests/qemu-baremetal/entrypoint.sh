@@ -12,6 +12,8 @@
 #   QEMU_ROLE       - "talker" or "listener"
 #   QEMU_MAC        - MAC address for QEMU NIC
 #   QEMU_EXAMPLE    - Example type: "rs" (default), "bsp"
+#   HOST_UID        - Host user UID for file ownership (default: 0 = root)
+#   HOST_GID        - Host group GID for file ownership (default: 0 = root)
 
 set -e
 
@@ -25,6 +27,24 @@ ZENOH_ROUTER_IP="${ZENOH_ROUTER_IP:-172.20.0.2}"
 QEMU_ROLE="${QEMU_ROLE:-talker}"
 QEMU_MAC="${QEMU_MAC:-02:00:00:00:00:00}"
 QEMU_EXAMPLE="${QEMU_EXAMPLE:-rs}"
+HOST_UID="${HOST_UID:-0}"
+HOST_GID="${HOST_GID:-0}"
+
+# Create a non-root builder user matching host UID/GID
+RUNAS=""
+if [ "$HOST_UID" != "0" ]; then
+    groupadd -g "$HOST_GID" -o builder 2>/dev/null || true
+    useradd -u "$HOST_UID" -g "$HOST_GID" -o -m -d /home/builder -s /bin/bash builder 2>/dev/null || true
+
+    # Ensure cargo/rustup mutable directories are writable by builder
+    mkdir -p /cargo/registry /cargo/git /rustup/tmp /rustup/downloads /rustup/update-hashes
+    chown -R "$HOST_UID:$HOST_GID" /cargo/registry /cargo/git
+    chown -R "$HOST_UID:$HOST_GID" /rustup/tmp /rustup/downloads /rustup/update-hashes
+    chown "$HOST_UID:$HOST_GID" /cargo /rustup
+
+    RUNAS="gosu builder"
+    echo "Running builds as UID=$HOST_UID GID=$HOST_GID"
+fi
 
 # Determine binary path based on example type
 if [ "$QEMU_EXAMPLE" = "bsp" ]; then
@@ -54,9 +74,9 @@ if [ ! -f "$BINARY" ]; then
     echo ""
     echo "Building example with Docker network configuration..."
 
-    # Build with docker feature
+    # Build with docker feature (as host user to avoid root-owned artifacts)
     cd "/work/examples/qemu/${EXAMPLE_DIR}"
-    cargo build --release --features docker
+    $RUNAS cargo build --release --features docker
 
     if [ ! -f "$BINARY" ]; then
         echo "Error: Build failed"
@@ -74,8 +94,12 @@ ip link set "$BRIDGE_NAME" up
 
 echo "  Created bridge: $BRIDGE_NAME ($BRIDGE_IP/$BRIDGE_MASK)"
 
-# Create TAP interface
-ip tuntap add dev "$TAP_NAME" mode tap
+# Create TAP interface (grant access to builder user if non-root)
+if [ "$HOST_UID" != "0" ]; then
+    ip tuntap add dev "$TAP_NAME" mode tap user "$HOST_UID"
+else
+    ip tuntap add dev "$TAP_NAME" mode tap
+fi
 ip link set "$TAP_NAME" master "$BRIDGE_NAME"
 ip link set "$TAP_NAME" up
 
@@ -138,9 +162,9 @@ echo ""
 echo "Step 3: Starting QEMU ${QEMU_ROLE}..."
 echo ""
 
-# Run QEMU
+# Run QEMU (as host user if non-root)
 # Note: mps2-an385 uses legacy -net syntax for lan9118, not -device
-exec qemu-system-arm \
+exec $RUNAS qemu-system-arm \
     -cpu cortex-m3 \
     -machine mps2-an385 \
     -nographic \

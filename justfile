@@ -869,9 +869,10 @@ docker-build:
 docker-shell:
     @echo "Starting Docker container..."
     docker run -it --rm \
+        -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
         -v $(pwd):/work \
-        -v nano-ros-cargo-registry:/root/.cargo/registry \
-        -v nano-ros-cargo-git:/root/.cargo/git \
+        -v nano-ros-cargo-registry:/cargo/registry \
+        -v nano-ros-cargo-git:/cargo/git \
         nano-ros-qemu
 
 # Start Docker container with TAP networking support
@@ -880,9 +881,10 @@ docker-shell-network:
     docker run -it --rm \
         --cap-add=NET_ADMIN \
         --device=/dev/net/tun \
+        -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
         -v $(pwd):/work \
-        -v nano-ros-cargo-registry:/root/.cargo/registry \
-        -v nano-ros-cargo-git:/root/.cargo/git \
+        -v nano-ros-cargo-registry:/cargo/registry \
+        -v nano-ros-cargo-git:/cargo/git \
         nano-ros-qemu
 
 # Run bare-metal QEMU talker/listener test using Docker Compose (rs-* examples)
@@ -892,7 +894,7 @@ test-docker-qemu: docker-build build-examples-qemu
     @echo "Running bare-metal QEMU talker/listener test (rs-* examples)..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
-    QEMU_EXAMPLE=rs docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
+    HOST_UID=$(id -u) HOST_GID=$(id -g) QEMU_EXAMPLE=rs docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
     @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run bare-metal QEMU talker/listener test using BSP examples
@@ -900,16 +902,17 @@ test-docker-qemu-bsp: docker-build build-examples-qemu
     @echo "Running bare-metal QEMU talker/listener test (bsp-* examples)..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
-    QEMU_EXAMPLE=bsp docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
+    HOST_UID=$(id -u) HOST_GID=$(id -g) QEMU_EXAMPLE=bsp docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
     @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run QEMU build inside Docker container
 docker-build-qemu: docker-build
     @echo "Building QEMU examples inside Docker..."
     docker run --rm \
+        -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
         -v $(pwd):/work \
-        -v nano-ros-cargo-registry:/root/.cargo/registry \
-        -v nano-ros-cargo-git:/root/.cargo/git \
+        -v nano-ros-cargo-registry:/cargo/registry \
+        -v nano-ros-cargo-git:/cargo/git \
         nano-ros-qemu \
         bash -c "cd /work && just build-examples-qemu"
 
