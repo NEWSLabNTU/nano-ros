@@ -34,5 +34,12 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "proto-dhcpv4",
 ] }
 
+# Atomics for riscv32imc (no hardware atomic support)
+# unsafe-assume-single-core is safe because ESP32-C3 is single-core
+portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
+
+# Critical section for safe interior mutability in statics
+critical-section = "1"
+
 [features]
 default = []

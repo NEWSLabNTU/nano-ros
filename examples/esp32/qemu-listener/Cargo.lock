@@ -1003,6 +1003,7 @@ dependencies = [
  "heapless 0.8.0",
  "nano-ros-core",
  "openeth-smoltcp",
+ "portable-atomic",
  "smoltcp",
  "zenoh-pico-shim-sys",
 ]

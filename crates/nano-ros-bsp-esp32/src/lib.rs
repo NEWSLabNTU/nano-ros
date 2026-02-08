@@ -88,6 +88,13 @@ pub use subscriber::Subscriber;
 // Re-export callback type for subscribers
 pub use zenoh_pico_shim_sys::ShimCallback;
 
+// Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
+// ESP32-C3 is single-core, so portable-atomic uses compiler fences.
+pub use portable_atomic;
+
+// Re-export critical-section for safe interior mutability in statics
+pub use critical_section;
+
 /// Prelude for convenient imports
 ///
 /// Use with: `use nano_ros_bsp_esp32::prelude::*;`

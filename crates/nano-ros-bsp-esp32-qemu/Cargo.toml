@@ -37,5 +37,9 @@ nano-ros-core = { path = "../nano-ros-core", default-features = false }
 # Heapless collections (for keyexpr formatting)
 heapless = "0.8"
 
+# Atomics for riscv32imc (no hardware atomic support)
+# unsafe-assume-single-core is safe because ESP32-C3 is single-core
+portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
+
 [features]
 default = []

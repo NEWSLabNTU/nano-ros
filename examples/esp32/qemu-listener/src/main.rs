@@ -21,6 +21,7 @@
 
 use esp_backtrace as _;
 use nano_ros_bsp_esp32_qemu::esp_println;
+use nano_ros_bsp_esp32_qemu::portable_atomic::{AtomicI32, AtomicU32, Ordering};
 use nano_ros_bsp_esp32_qemu::prelude::*;
 
 mod msg {
@@ -58,20 +59,16 @@ mod msg {
 
 use msg::Int32;
 
-/// Last received Int32 value
-static mut LAST_VALUE: i32 = 0;
+/// Last received Int32 value (portable-atomic provides safe atomics on riscv32imc)
+static LAST_VALUE: AtomicI32 = AtomicI32::new(0);
 
-/// Message count (using static mut since ESP32-C3 is single-core
-/// and riscv32imc lacks atomic CAS operations)
-static mut MSG_COUNT: u32 = 0;
+/// Message count
+static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Typed subscriber callback
-#[allow(static_mut_refs)]
 fn on_message(msg: &Int32) {
-    unsafe {
-        LAST_VALUE = msg.data;
-        MSG_COUNT += 1;
-    }
+    LAST_VALUE.store(msg.data, Ordering::Relaxed);
+    MSG_COUNT.fetch_add(1, Ordering::Relaxed);
 }
 
 nano_ros_bsp_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
@@ -95,9 +92,9 @@ fn main() -> ! {
             node.spin_once(10);
 
             // Check for new messages
-            let current_count = unsafe { MSG_COUNT };
+            let current_count = MSG_COUNT.load(Ordering::Relaxed);
             if current_count > last_count {
-                let value = unsafe { LAST_VALUE };
+                let value = LAST_VALUE.load(Ordering::Relaxed);
                 esp_println::println!("Received [{}]: {}", current_count, value);
                 last_count = current_count;
 

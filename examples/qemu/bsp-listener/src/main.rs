@@ -6,24 +6,22 @@
 #![no_std]
 #![no_main]
 
-use core::sync::atomic::{AtomicU32, Ordering};
+use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
 use nano_ros_bsp_qemu::prelude::*;
 use nano_ros_bsp_qemu::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
-/// Last received Int32 value
-static mut LAST_VALUE: i32 = 0;
+/// Last received Int32 value (atomic for safe callback access)
+static LAST_VALUE: AtomicI32 = AtomicI32::new(0);
 
 /// Message count (atomic for safe callback access)
 static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 
 /// Typed subscriber callback
 fn on_message(msg: &Int32) {
-    unsafe {
-        LAST_VALUE = msg.data;
-    }
+    LAST_VALUE.store(msg.data, Ordering::Relaxed);
     MSG_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 
@@ -47,7 +45,7 @@ fn main() -> ! {
 
             let current_count = MSG_COUNT.load(Ordering::SeqCst);
             if current_count > last_count {
-                let value = unsafe { LAST_VALUE };
+                let value = LAST_VALUE.load(Ordering::Relaxed);
                 println!("Received [{}]: {}", current_count, value);
                 last_count = current_count;
 

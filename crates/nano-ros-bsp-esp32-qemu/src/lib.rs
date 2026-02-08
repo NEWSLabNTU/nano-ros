@@ -90,6 +90,10 @@ pub use subscriber::Subscription;
 // Re-export core traits needed for message type definitions
 pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
 
+// Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
+// ESP32-C3 is single-core, so portable-atomic uses compiler fences.
+pub use portable_atomic;
+
 /// Prelude for convenient imports
 ///
 /// Use with: `use nano_ros_bsp_esp32_qemu::prelude::*;`

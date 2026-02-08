@@ -136,7 +136,7 @@ The `mps2-an385.x` linker script is currently shared via `include_bytes!("../../
 
 ### 28.3: Safe message storage in BSP listener API
 
-**Status**: Not Started
+**Status**: Complete
 **Priority**: Medium
 
 Replace `static mut LAST_VALUE` pattern in listener examples with safe abstractions provided by the BSP.
@@ -155,26 +155,30 @@ let value = unsafe { LAST_VALUE };
 
 **Target pattern** (safe):
 ```rust
-// Option A: Atomic wrapper (works on platforms with atomic CAS)
+// Option A: Atomic wrapper (works on platforms with hardware atomics)
 static LAST_VALUE: AtomicI32 = AtomicI32::new(0);
 
 fn on_message(msg: &Int32) {
     LAST_VALUE.store(msg.data, Ordering::Relaxed);
 }
 
-// Option B: BSP-provided message cell
-let msg_cell = node.create_message_cell::<Int32>();
-let _sub = node.create_subscription::<Int32>("/chatter", msg_cell.callback());
-// In main loop:
-if let Some(msg) = msg_cell.take() { ... }
+// Option B: portable-atomic (for riscv32imc without hardware atomics)
+use nano_ros_bsp_esp32_qemu::portable_atomic::{AtomicI32, Ordering};
+static LAST_VALUE: AtomicI32 = AtomicI32::new(0);
+
+// Option C: critical_section::Mutex for compound data (byte buffers)
+use critical_section::Mutex;
+use core::cell::RefCell;
+static MSG_BUFFER: Mutex<RefCell<MsgBuffer>> = ...;
 ```
 
 **Changes**:
-- [ ] Evaluate which approach fits each platform (atomics available on Cortex-M3+, not on ESP32-C3 riscv32imc without A extension)
-- [ ] For QEMU ARM: use `AtomicI32` directly (Cortex-M3 supports atomic loads/stores)
-- [ ] For ESP32-C3: provide `critical_section`-based `Cell` wrapper in BSP
-- [ ] Update 4 listener examples to use safe pattern
-- [ ] Document the pattern in BSP crate docs
+- [x] Evaluate which approach fits each platform (atomics available on Cortex-M3+, not on ESP32-C3 riscv32imc without A extension)
+- [x] For QEMU ARM: use `core::sync::atomic::AtomicI32` directly (Cortex-M3 supports atomic loads/stores)
+- [x] For ESP32-C3: use `portable-atomic` (with `unsafe-assume-single-core`) for scalar atomics, `critical_section::Mutex<RefCell<T>>` for compound data (byte buffers)
+- [x] Update 4 listener examples to use safe pattern
+- [x] Add `portable-atomic` dependency to ESP32 BSP crates (`nano-ros-bsp-esp32-qemu`, `nano-ros-bsp-esp32`) and re-export
+- [x] Add `critical-section` dependency to `nano-ros-bsp-esp32` (WiFi BSP) for buffer protection
 
 **Acceptance criteria**:
 - Zero `static mut` in BSP examples (qemu/bsp-listener, qemu/rs-listener)
