@@ -247,6 +247,8 @@ All core crates support `#![no_std]` with optional `std`/`alloc` features.
 ### Message Types
 Generated per-project using `cargo nano-ros generate` from `package.xml`. See [docs/message-generation.md](docs/message-generation.md).
 
+**All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate`. See [docs/creating-examples.md](docs/creating-examples.md) for the full guide.
+
 **Installing cargo-nano-ros:**
 ```bash
 # From the nano-ros repository root
@@ -269,7 +271,9 @@ cargo nano-ros generate --config --nano-ros-git
 cargo nano-ros generate --config --nano-ros-path /path/to/nano-ros/crates
 ```
 
-**Regenerating bindings in examples (requires ROS 2 environment):**
+The `--config` flag uses `ConfigPatcher` (TOML-aware, idempotent) to add `[patch.crates-io]` entries to `.cargo/config.toml`, preserving existing `[build]`, `[target.*]`, and other sections.
+
+**Regenerating bindings in all examples (requires ROS 2 environment):**
 ```bash
 source /opt/ros/humble/setup.bash
 just generate-bindings
@@ -328,6 +332,7 @@ See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
 | 22 | ESP32-C3 platform support | Not Started |
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
+| 26 | Typed BSP API + example migration | Complete |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment
@@ -340,6 +345,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | Topic | Location |
 |-------|----------|
 | Getting started | [docs/getting-started.md](docs/getting-started.md) |
+| Creating examples | [docs/creating-examples.md](docs/creating-examples.md) |
 | Testing | [tests/README.md](tests/README.md) |
 | Test coverage | [docs/test-coverage.md](docs/test-coverage.md) |
 | Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
@@ -361,6 +367,7 @@ See [docs/roadmap/](docs/roadmap/) for details.
 | ESP32-C3 support (Phase 22) | [docs/roadmap/phase-22-esp32-support.md](docs/roadmap/phase-22-esp32-support.md) |
 | Arduino library (Phase 23) | [docs/roadmap/phase-23-arduino-precompiled.md](docs/roadmap/phase-23-arduino-precompiled.md) |
 | RPi Pico W support (Phase 24) | [docs/roadmap/phase-24-rpi-pico-w.md](docs/roadmap/phase-24-rpi-pico-w.md) |
+| Typed BSP API (Phase 26) | [docs/roadmap/phase-26-example-fixes.md](docs/roadmap/phase-26-example-fixes.md) |
 | Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
 
 ## Quick Reference
