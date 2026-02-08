@@ -1,11 +1,21 @@
 [build]
 target = "thumbv7m-none-eabi"
 
-[target.thumbv7m-none-eabi]
-# MPS2-AN385 with LAN9118 Ethernet and TAP networking
-# Note: For networking tests, use launch-mps2-an385.sh instead
-runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
+[patch.crates-io.builtin_interfaces]
+path = "generated/builtin_interfaces"
 
+[patch.crates-io.nano-ros-core]
+path = "../../../crates/nano-ros-core"
+
+[patch.crates-io.nano-ros-serdes]
+path = "../../../crates/nano-ros-serdes"
+
+[patch.crates-io.std_msgs]
+path = "generated/std_msgs"
+
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -kernel"
 rustflags = [
-    "-C", "link-arg=-Tlink.x",
+    "-C",
+    "link-arg=-Tlink.x",
 ]

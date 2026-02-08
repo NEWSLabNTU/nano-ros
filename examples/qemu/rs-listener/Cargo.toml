@@ -19,5 +19,8 @@ docker = ["nano-ros-bsp-qemu/docker"]
 # Board Support Package - handles all bare-metal setup
 nano-ros-bsp-qemu = { path = "../../../crates/nano-ros-bsp-qemu" }
 
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
 # Panic handler (required for no_std)
 panic-semihosting = { version = "0.6", features = ["exit"] }

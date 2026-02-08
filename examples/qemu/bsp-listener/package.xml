@@ -1,0 +1,12 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>qemu_bsp_listener</name>
+  <version>0.1.0</version>
+  <description>Simple QEMU listener example using nano-ros-bsp-qemu</description>
+  <maintainer email="dev@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+  <depend>std_msgs</depend>
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

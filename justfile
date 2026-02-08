@@ -836,7 +836,12 @@ generate-bindings:
     cd examples/native/rs-service-client && cargo nano-ros generate
     cd examples/native/rs-action-server && cargo nano-ros generate
     cd examples/native/rs-action-client && cargo nano-ros generate
-    cd examples/qemu/rs-test && cargo nano-ros generate
+    cd examples/qemu/rs-test && cargo nano-ros generate --config --nano-ros-path ../../../crates
+    cd examples/qemu/rs-talker && cargo nano-ros generate --config --nano-ros-path ../../../crates
+    cd examples/qemu/rs-listener && cargo nano-ros generate --config --nano-ros-path ../../../crates
+    cd examples/qemu/bsp-talker && cargo nano-ros generate --config --nano-ros-path ../../../crates
+    cd examples/qemu/bsp-listener && cargo nano-ros generate --config --nano-ros-path ../../../crates
+    cd examples/stm32f4/bsp-talker && cargo nano-ros generate --config --nano-ros-path ../../../crates
     cd examples/zephyr/rs-talker && cargo nano-ros generate
     cd examples/zephyr/rs-listener && cargo nano-ros generate
     @echo "All bindings regenerated!"

@@ -89,19 +89,44 @@ Each example defines a local `mod msg` with an `Int32` type implementing `Serial
 
 - [x] `examples/stm32f4/bsp-talker/src/main.rs` — typed `Publisher<Int32>`, auto CDR
 
-## 26.4: Migrate native C examples to generated bindings
+## 26.4: Replace hand-written messages with generated bindings
+
+**Status**: Complete
+
+The 5 BSP examples (4 QEMU + 1 STM32F4) defined `Int32` manually via inline `mod msg` blocks. This duplicated what `cargo nano-ros generate` produces automatically from `package.xml`.
+
+### Changes
+
+- [x] Fixed `generate_cargo_config()` in `cargo-nano-ros` to use `ConfigPatcher` (TOML-aware, idempotent) instead of fragile string concatenation
+- [x] Added `package.xml` to each example declaring `std_msgs` dependency
+- [x] Ran `cargo nano-ros generate --config --nano-ros-path` to produce `generated/` bindings
+- [x] Updated `Cargo.toml` in each example to depend on `std_msgs`
+- [x] Replaced `mod msg { ... }` + `use msg::Int32` with `use std_msgs::msg::Int32`
+- [x] Added all 5 examples to `just generate-bindings` recipe
+
+### Examples migrated
+
+| Example | Directory |
+|---------|-----------|
+| QEMU RS Talker | `examples/qemu/rs-talker/` |
+| QEMU RS Listener | `examples/qemu/rs-listener/` |
+| QEMU BSP Talker | `examples/qemu/bsp-talker/` |
+| QEMU BSP Listener | `examples/qemu/bsp-listener/` |
+| STM32F4 BSP Talker | `examples/stm32f4/bsp-talker/` |
+
+## 26.5: Migrate native C examples to generated bindings
 
 **Status**: Not Started
 
 The native C examples (`c-talker`, `c-listener`, `c-baremetal-demo`) hand-write CDR serialization. Migration to generated C bindings is deferred to Phase 23 (Arduino precompiled library).
 
-## 26.5: Migrate Zephyr C examples to generated bindings
+## 26.6: Migrate Zephyr C examples to generated bindings
 
 **Status**: Not Started
 
 The Zephyr C examples (`c-talker`, `c-listener`) have hand-written CDR ser/de. Migration deferred to Phase 23.
 
-## 26.6: Domain ID in integration tests
+## 26.7: Domain ID in integration tests
 
 **Status**: Not Started
 
