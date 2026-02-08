@@ -485,7 +485,6 @@ impl<'a> ShimNode<'a> {
             result_buffer: [0u8; RESULT_BUF],
             feedback_buffer: [0u8; FEEDBACK_BUF],
             cancel_buffer: [0u8; 256],
-            goal_counter: 0,
         })
     }
 
@@ -797,7 +796,6 @@ pub struct ShimNodeActionServer<
     result_buffer: [u8; RESULT_BUF],
     feedback_buffer: [u8; FEEDBACK_BUF],
     cancel_buffer: [u8; 256],
-    goal_counter: u64,
 }
 
 impl<
