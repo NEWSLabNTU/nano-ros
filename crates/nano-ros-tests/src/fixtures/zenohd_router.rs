@@ -4,6 +4,7 @@
 
 use crate::process::kill_process_group;
 use crate::{TestError, TestResult, wait_for_port};
+use std::net::TcpStream;
 use std::process::Child;
 use std::time::Duration;
 
@@ -18,6 +19,36 @@ fn allocate_ephemeral_port() -> std::io::Result<u16> {
     let port = listener.local_addr()?.port();
     drop(listener);
     Ok(port)
+}
+
+/// Kill any process listening on the given TCP port.
+///
+/// Orphaned zenohd processes can survive across test runs when nextest
+/// SIGKILL's a test process (preventing Drop from running). This function
+/// detects and kills such orphans before starting a new router.
+fn kill_listeners_on_port(port: u16) {
+    if TcpStream::connect(format!("127.0.0.1:{}", port)).is_err() {
+        return; // nothing listening
+    }
+    eprintln!(
+        "WARNING: port {} already in use — killing orphaned process",
+        port
+    );
+    // fuser -k sends SIGKILL to all processes using the port
+    let _ = std::process::Command::new("fuser")
+        .args(["-k", &format!("{}/tcp", port)])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status();
+    // Wait for the port to actually become free
+    let start = std::time::Instant::now();
+    while start.elapsed() < Duration::from_secs(5) {
+        if TcpStream::connect(format!("127.0.0.1:{}", port)).is_err() {
+            return; // port is now free
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    eprintln!("WARNING: port {} still in use after kill attempt", port);
 }
 
 /// Managed zenohd router process
@@ -43,12 +74,18 @@ pub struct ZenohRouter {
 impl ZenohRouter {
     /// Start a new zenohd router on the specified port
     ///
+    /// Kills any orphaned zenohd still listening on the port from a previous
+    /// test run (e.g. if nextest SIGKILL'd the test process, preventing Drop).
+    ///
     /// # Arguments
     /// * `port` - TCP port to listen on
     ///
     /// # Returns
     /// A managed router instance that will be stopped on drop
     pub fn start(port: u16) -> TestResult<Self> {
+        // Kill any orphaned zenohd from a previous test run
+        kill_listeners_on_port(port);
+
         let locator = format!("tcp/0.0.0.0:{}", port);
 
         let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
@@ -60,7 +97,8 @@ impl ZenohRouter {
         let handle = cmd.spawn()?;
 
         // Wait for zenohd to be ready (TCP port accepting connections)
-        if !wait_for_port(port, Duration::from_secs(5)) {
+        // 10s allows for slow startup under concurrent test load
+        if !wait_for_port(port, Duration::from_secs(10)) {
             return Err(TestError::Timeout);
         }
 

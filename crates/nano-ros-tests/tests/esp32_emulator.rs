@@ -138,10 +138,10 @@ fn test_esp32_qemu_talker_boots() {
 // These tests require:
 // - qemu-system-riscv32, espflash, nightly toolchain
 // - TAP networking (tap-qemu0, tap-qemu1 on qemu-br bridge)
-// - zenohd listening on port 7447
+// - zenohd listening on port 7448
 //
-// The ESP32 firmware hardcodes tcp/192.0.3.1:7447 as the zenoh locator,
-// so zenohd must listen on 0.0.0.0:7447 (fixed port).
+// The ESP32 firmware hardcodes tcp/192.0.3.1:7448 as the zenoh locator,
+// so zenohd must listen on 0.0.0.0:7448 (fixed port).
 //
 // Ordering follows the Docker-based ARM QEMU pattern:
 //   1. Start zenohd, verify reachable on bridge IP
@@ -194,7 +194,7 @@ fn require_esp32_networked() -> bool {
 /// - Listener: tap-qemu1, MAC 02:00:00:00:00:02, IP 192.0.3.11
 /// - Talker:   tap-qemu0, MAC 02:00:00:00:00:01, IP 192.0.3.10
 ///
-/// Both connect to zenohd at 192.0.3.1:7447 (bridge IP).
+/// Both connect to zenohd at 192.0.3.1:7448 (bridge IP).
 #[test]
 fn test_esp32_talker_listener_e2e() {
     if !require_esp32_networked() {
@@ -203,19 +203,13 @@ fn test_esp32_talker_listener_e2e() {
 
     let (talker_bin, listener_bin) = build_esp32_flash_images();
 
-    // Ensure port 7447 is free (may be in TIME_WAIT from a prior test)
-    assert!(
-        wait_for_port_free(7447, Duration::from_secs(30)),
-        "Port 7447 still in use after 30s — previous zenohd may not have cleaned up"
-    );
-
-    // Start zenohd on fixed port 7447
-    let _router = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
+    let _router = ZenohRouter::start(7448).expect("Failed to start zenohd on port 7448");
 
     // Verify zenohd is reachable on the bridge IP (not just localhost)
     assert!(
-        wait_for_addr("192.0.3.1:7447", Duration::from_secs(10)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+        wait_for_addr("192.0.3.1:7448", Duration::from_secs(10)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7448"
     );
 
     // Step 1: Start listener on tap-qemu1 (different TAP from talker)
@@ -283,9 +277,9 @@ fn test_esp32_talker_listener_e2e() {
 // These tests verify that ESP32 QEMU examples can communicate with native
 // nano-ros examples via CDR-encoded Int32 on the /chatter ROS 2 topic.
 //
-// Both ESP32 and native processes connect to the same zenohd on port 7447:
-// - ESP32 via TAP bridge at 192.0.3.1:7447
-// - Native via localhost at 127.0.0.1:7447
+// Both ESP32 and native processes connect to the same zenohd on port 7448:
+// - ESP32 via TAP bridge at 192.0.3.1:7448
+// - Native via localhost at 127.0.0.1:7448
 
 /// Helper: build ESP32 talker flash image only
 fn build_esp32_talker_flash() -> std::path::PathBuf {
@@ -320,25 +314,19 @@ fn test_esp32_to_native() {
     let talker_bin = build_esp32_talker_flash();
     let native_listener = build_native_listener().expect("Failed to build native listener");
 
-    // Ensure port 7447 is free
-    assert!(
-        wait_for_port_free(7447, Duration::from_secs(30)),
-        "Port 7447 still in use after 30s"
-    );
-
-    // Start zenohd on fixed port 7447
-    let _router = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
+    let _router = ZenohRouter::start(7448).expect("Failed to start zenohd on port 7448");
 
     // Verify zenohd is reachable on the bridge IP
     assert!(
-        wait_for_addr("192.0.3.1:7447", Duration::from_secs(10)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+        wait_for_addr("192.0.3.1:7448", Duration::from_secs(10)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7448"
     );
 
     // Start native listener on localhost (connects to same zenohd)
     let mut listener_cmd = Command::new(native_listener);
     listener_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7447")
+        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7448")
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start native listener");
@@ -399,19 +387,13 @@ fn test_native_to_esp32() {
     let listener_bin = build_esp32_listener_flash();
     let native_talker = build_native_talker().expect("Failed to build native talker");
 
-    // Ensure port 7447 is free
-    assert!(
-        wait_for_port_free(7447, Duration::from_secs(30)),
-        "Port 7447 still in use after 30s"
-    );
-
-    // Start zenohd on fixed port 7447
-    let _router = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
+    let _router = ZenohRouter::start(7448).expect("Failed to start zenohd on port 7448");
 
     // Verify zenohd is reachable on the bridge IP
     assert!(
-        wait_for_addr("192.0.3.1:7447", Duration::from_secs(10)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+        wait_for_addr("192.0.3.1:7448", Duration::from_secs(10)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7448"
     );
 
     // Start ESP32 listener on tap-qemu1
@@ -436,7 +418,7 @@ fn test_native_to_esp32() {
     // Start native talker on localhost (publishes every 1s)
     let mut talker_cmd = Command::new(native_talker);
     talker_cmd
-        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7447")
+        .env("ZENOH_LOCATOR", "tcp/127.0.0.1:7448")
         .env("RUST_LOG", "info");
     let mut native_proc = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start native talker");

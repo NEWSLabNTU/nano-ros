@@ -12,43 +12,39 @@ path = "junit.xml"
 store-success-output = false
 store-failure-output = true
 
+# ESP32 QEMU tests: exclusive access to tap-qemu0/tap-qemu1, port 7448
+[test-groups.esp32-emulator]
+max-threads = 1
+
+# Zephyr native_sim tests: exclusive access to zeth-br/zeth0/zeth1, port 7447
 [test-groups.zephyr]
+max-threads = 1
+
+# ARM QEMU tests: target directory serialization (Docker E2E is network-isolated)
+[test-groups.arm-emulator]
 max-threads = 1
 
 [test-groups.c_api]
 max-threads = 1
 
-# Emulator tests must run sequentially: the build tests (test_qemu_rs_*_builds)
-# and the Docker E2E test share the same target directory. Running them concurrently
-# causes a race where build tests create binaries without --features docker, which
-# the Docker entrypoint then picks up instead of rebuilding with Docker network IPs.
-[test-groups.emulator]
-max-threads = 1
-
-# ESP32 networked tests share port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
-[test-groups.esp32-emulator]
-max-threads = 1
+[[profile.default.overrides]]
+filter = "binary(esp32_emulator)"
+test-group = "esp32-emulator"
+slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
 test-group = "zephyr"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = "binary(emulator) and not binary(esp32_emulator)"
+test-group = "arm-emulator"
+slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(c_api)"
 test-group = "c_api"
-
-[[profile.default.overrides]]
-filter = "binary(emulator) and not binary(esp32_emulator)"
-test-group = "emulator"
-# Docker-based QEMU E2E tests need much longer timeouts
-# (image build + container startup + network setup + test execution)
-slow-timeout = { period = "120s", terminate-after = 3 }
-
-[[profile.default.overrides]]
-filter = "binary(esp32_emulator)"
-test-group = "esp32-emulator"
-# ESP32 tests: nightly build + espflash + QEMU boot + zenoh communication
-slow-timeout = { period = "120s", terminate-after = 3 }
 
 [profile.ci]
 # CI profile with stricter timeouts

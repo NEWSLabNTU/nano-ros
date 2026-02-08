@@ -10,13 +10,13 @@
 /// - MAC: 02:00:00:00:00:01
 /// - IP: 192.0.3.10/24
 /// - Gateway: 192.0.3.1
-/// - Zenoh locator: tcp/192.0.3.1:7447
+/// - Zenoh locator: tcp/192.0.3.1:7448
 ///
 /// # Example
 ///
 /// ```ignore
 /// let config = Config::default()
-///     .with_zenoh_locator(b"tcp/10.0.0.1:7447\0");
+///     .with_zenoh_locator(b"tcp/10.0.0.1:7448\0");
 /// ```
 #[derive(Clone)]
 pub struct Config {
@@ -41,7 +41,7 @@ impl Default for Config {
             ip: [192, 0, 3, 10],
             prefix: 24,
             gateway: [192, 0, 3, 1],
-            zenoh_locator: b"tcp/192.0.3.1:7447\0",
+            zenoh_locator: b"tcp/192.0.3.1:7448\0",
             domain_id: 0,
         }
     }
@@ -55,7 +55,7 @@ impl Config {
             ip: [192, 0, 3, 11],
             prefix: 24,
             gateway: [192, 0, 3, 1],
-            zenoh_locator: b"tcp/192.0.3.1:7447\0",
+            zenoh_locator: b"tcp/192.0.3.1:7448\0",
             domain_id: 0,
         }
     }

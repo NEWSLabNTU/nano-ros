@@ -100,8 +100,13 @@ pub fn is_tap_available(iface: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Skip test if TAP networking (tap-qemu0 and tap-qemu1) is not available
+/// Skip test if TAP networking (qemu-br bridge + tap-qemu0/tap-qemu1) is not available
 pub fn require_tap_network() -> bool {
+    if !is_tap_available("qemu-br") {
+        eprintln!("Skipping test: qemu-br bridge not found");
+        eprintln!("Set up with: sudo ./scripts/qemu/setup-network.sh");
+        return false;
+    }
     if !is_tap_available("tap-qemu0") || !is_tap_available("tap-qemu1") {
         eprintln!("Skipping test: TAP network not available (need tap-qemu0 and tap-qemu1)");
         eprintln!("Set up with: sudo ./scripts/qemu/setup-network.sh");
@@ -116,7 +121,7 @@ pub fn require_tap_network() -> bool {
 
 /// Wait until a TCP port is free (no listener).
 ///
-/// Useful to avoid `EADDRINUSE` when reusing a fixed port (e.g. 7447)
+/// Useful to avoid `EADDRINUSE` when reusing a fixed port (e.g. 7448)
 /// across sequential tests.
 pub fn wait_for_port_free(port: u16, timeout: std::time::Duration) -> bool {
     let start = std::time::Instant::now();
