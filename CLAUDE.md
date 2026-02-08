@@ -344,6 +344,7 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 | 24 | RPi Pico W platform support | Not Started |
 | 26 | Typed BSP API + example migration | Complete |
 | 27 | Codegen automation | Complete |
+| 28 | Example portability + safety | Planning |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment
