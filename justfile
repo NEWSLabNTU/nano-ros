@@ -162,6 +162,7 @@ quality: build-zenoh-pico-arm
 
     echo ""
     echo "=== QEMU Examples ==="
+    export ZENOH_PICO_LIB_DIR="$(pwd)/build/qemu-zenoh-pico"
     qemu_failed=0
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
@@ -457,6 +458,7 @@ rebuild-zephyr: clean-zephyr build-zephyr
 build-examples-qemu: build-zenoh-pico-arm
     #!/usr/bin/env bash
     set -e
+    export ZENOH_PICO_LIB_DIR="$(pwd)/build/qemu-zenoh-pico"
     echo "Building QEMU examples..."
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo build --release)
@@ -475,6 +477,7 @@ format-examples-qemu:
 check-examples-qemu:
     #!/usr/bin/env bash
     set -e
+    export ZENOH_PICO_LIB_DIR="$(pwd)/build/qemu-zenoh-pico"
     echo "Checking QEMU examples..."
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
@@ -515,6 +518,7 @@ clean-zenoh-pico-riscv:
 build-examples-esp32: build-zenoh-pico-riscv
     #!/usr/bin/env bash
     set -e
+    export ZENOH_PICO_LIB_DIR="$(pwd)/build/esp32-zenoh-pico"
     echo "Building ESP32 examples..."
     for ex in bsp-talker bsp-listener; do
         echo "  Building esp32/$ex..."
@@ -526,6 +530,7 @@ build-examples-esp32: build-zenoh-pico-riscv
 build-examples-esp32-qemu: build-zenoh-pico-riscv
     #!/usr/bin/env bash
     set -e
+    export ZENOH_PICO_LIB_DIR="$(pwd)/build/esp32-zenoh-pico"
     echo "Building ESP32 QEMU examples..."
     for ex in qemu-talker qemu-listener; do
         echo "  Building esp32/$ex..."

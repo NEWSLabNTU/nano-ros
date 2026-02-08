@@ -2,7 +2,7 @@
 
 **Goal**: Make all examples copyable outside the repo (no repo-relative paths in build.rs) and eliminate unnecessary unsafe code by pushing platform details into BSP crates.
 
-**Status**: Planning
+**Status**: In Progress
 **Priority**: Medium
 **Depends on**: Phase 14 (BSP libraries) — complete, Phase 26 (typed API) — complete
 
@@ -34,13 +34,13 @@ File::create(out.join("memory.x")).unwrap()
 
 Native examples have zero unsafe — the API works well there. Unsafe concentrates in embedded examples:
 
-| Pattern | Examples | Lines | Root cause |
-|---------|----------|-------|------------|
-| `static mut` callback buffers | 4 listeners | ~20 | BSP doesn't provide safe message storage |
-| Global socket table | qemu-smoltcp-bridge | ~80 | Reference impl exposes internals |
-| libc stubs | qemu-smoltcp-bridge | ~250 | zenoh-pico needs libc on bare-metal |
-| DMA buffer `#[link_section]` | 3 STM32F4 platform-integration | ~12 | Hardware memory layout |
-| Zephyr FFI boundary | 6 Zephyr examples | ~6 | Inherent to C-Rust FFI |
+| Pattern                       | Examples                       | Lines | Root cause                               |
+|-------------------------------|--------------------------------|-------|------------------------------------------|
+| `static mut` callback buffers | 4 listeners                    | ~20   | BSP doesn't provide safe message storage |
+| Global socket table           | qemu-smoltcp-bridge            | ~80   | Reference impl exposes internals         |
+| libc stubs                    | qemu-smoltcp-bridge            | ~250  | zenoh-pico needs libc on bare-metal      |
+| DMA buffer `#[link_section]`  | 3 STM32F4 platform-integration | ~12   | Hardware memory layout                   |
+| Zephyr FFI boundary           | 6 Zephyr examples              | ~6    | Inherent to C-Rust FFI                   |
 
 The first three are fixable by moving platform concerns into BSP/support crates.
 
@@ -94,7 +94,7 @@ These use `include_bytes!()` on local files — no repo-root needed:
 
 ### 28.1: BSP crates own zenoh-pico linkage
 
-**Status**: Not Started
+**Status**: Complete
 **Priority**: High — this is the main portability blocker
 
 Move zenoh-pico library discovery from example build.rs into BSP crate build.rs. The BSP crate's build script handles finding or building zenoh-pico, and emits the `cargo:rustc-link-search` and `cargo:rustc-link-lib` directives.
@@ -102,10 +102,11 @@ Move zenoh-pico library discovery from example build.rs into BSP crate build.rs.
 **Approach**: Use an environment variable (`ZENOH_PICO_LIB_DIR`) that the BSP build.rs reads. The justfile `build-zenoh-pico-arm` recipe sets this, and the BSP crate documents the requirement. This is the same pattern used by `zenoh-pico-shim-sys` for native builds.
 
 **Changes**:
-- [ ] `crates/nano-ros-bsp-qemu/build.rs` — emit link search for zenoh-pico ARM library
-- [ ] `crates/nano-ros-bsp-esp32-qemu/build.rs` — emit link search for zenoh-pico RISC-V library (if this crate exists; otherwise `nano-ros-bsp-esp32`)
-- [ ] Remove zenoh-pico link logic from all 8 example build.rs files
-- [ ] Example build.rs files reduce to just linker script handling (or disappear entirely)
+- [x] `crates/nano-ros-bsp-qemu/build.rs` — emit link search for zenoh-pico ARM library
+- [x] `crates/nano-ros-bsp-esp32/build.rs` — emit link search for zenoh-pico RISC-V library
+- [x] `crates/nano-ros-bsp-esp32-qemu/build.rs` — emit link search for zenoh-pico RISC-V library
+- [x] Remove zenoh-pico link logic from all 8 example build.rs files
+- [x] Example build.rs files eliminated entirely (BSP crates handle everything)
 
 **Acceptance criteria**:
 - Examples build with `cargo build --release` after setting `ZENOH_PICO_LIB_DIR`
@@ -114,17 +115,17 @@ Move zenoh-pico library discovery from example build.rs into BSP crate build.rs.
 
 ### 28.2: BSP crates own linker scripts
 
-**Status**: Not Started
+**Status**: Complete
 **Priority**: High
 
 The `mps2-an385.x` linker script is currently shared via `include_bytes!("../../platform-integration/qemu-smoltcp-bridge/mps2-an385.x")`. It should ship with the BSP crate.
 
 **Changes**:
-- [ ] Copy `mps2-an385.x` into `crates/nano-ros-bsp-qemu/` (canonical location)
-- [ ] `crates/nano-ros-bsp-qemu/build.rs` — write linker script to `OUT_DIR` and emit `cargo:rustc-link-search`
-- [ ] Remove linker script handling from QEMU example build.rs files
-- [ ] Same pattern for ESP32 BSP if applicable
-- [ ] `examples/platform-integration/qemu-smoltcp-bridge/mps2-an385.x` — keep as reference but no longer imported by other examples
+- [x] Copy `mps2-an385.x` into `crates/nano-ros-bsp-qemu/` (canonical location)
+- [x] `crates/nano-ros-bsp-qemu/build.rs` — write linker script to `OUT_DIR` and emit `cargo:rustc-link-search`
+- [x] Remove linker script handling from QEMU example build.rs files (build.rs files deleted entirely)
+- [x] ESP32 BSP not applicable (esp-hal manages linker scripts)
+- [x] `examples/platform-integration/qemu-smoltcp-bridge/mps2-an385.x` — kept as reference, no longer imported by other examples
 
 **Acceptance criteria**:
 - QEMU examples have no `include_bytes!` referencing paths outside their own directory
