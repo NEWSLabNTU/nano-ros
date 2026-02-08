@@ -69,7 +69,7 @@ Run tests:
 ./tests/run-all.sh rmw-interop  # Only RMW interop tests
 ```
 
-See [docs/rmw_zenoh_interop.md](../rmw_zenoh_interop.md) for protocol details.
+See [docs/rmw_zenoh_interop.md](../reference/rmw_zenoh_interop.md) for protocol details.
 
 ---
 
@@ -351,7 +351,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 | Network setup | `scripts/setup-zephyr-network.sh` |
 | West manifest | `west.yml` |
 | Zephyr module config | `zephyr/module.yml` |
-| Protocol docs | `docs/rmw_zenoh_interop.md` |
+| Protocol docs | `docs/reference/rmw_zenoh_interop.md` |
 | Zenoh subscriber test | `crates/zenoh-pico/examples/sub_test.rs` |
 
 ---
@@ -408,7 +408,7 @@ The Rust code calls these simple C functions instead of using raw FFI bindings.
 
 ## References
 
-- [ROS 2 rmw_zenoh Interop Analysis](../rmw_zenoh_interop.md)
+- [ROS 2 rmw_zenoh Interop Analysis](../reference/rmw_zenoh_interop.md)
 - [zenoh-pico GitHub](https://github.com/eclipse-zenoh/zenoh-pico)
 - [rmw_zenoh](https://github.com/ros2/rmw_zenoh)
 - [Zephyr Rust](https://github.com/zephyrproject-rtos/zephyr-lang-rust) - integrated at `modules/lang/rust`

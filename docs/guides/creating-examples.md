@@ -512,6 +512,6 @@ fn run() -> Result<(), ShimNodeError> {
 
 ## See Also
 
-- [examples/README.md](../examples/README.md) — Running existing examples
-- [docs/message-generation.md](message-generation.md) — Message generation details
-- [docs/zephyr-setup.md](zephyr-setup.md) — Zephyr workspace setup
+- [examples/README.md](../../examples/README.md) — Running existing examples
+- [message-generation.md](message-generation.md) — Message generation details
+- [zephyr-setup.md](zephyr-setup.md) — Zephyr workspace setup

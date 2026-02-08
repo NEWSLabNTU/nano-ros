@@ -6,7 +6,7 @@
 
 ## Overview
 
-After a comprehensive study of the micro-ROS ecosystem (see [docs/micro-ros-comparison.md](../micro-ros-comparison.md)), we identified several features that would materially improve nano-ros for production embedded use. This phase focuses on the five highest-impact items:
+After a comprehensive study of the micro-ROS ecosystem (see [docs/micro-ros-comparison.md](../reference/micro-ros-comparison.md)), we identified several features that would materially improve nano-ros for production embedded use. This phase focuses on the five highest-impact items:
 
 1. **Executor trigger conditions** — deterministic callback scheduling for sensor fusion
 2. **`spin_period()`** — fixed-rate periodic execution

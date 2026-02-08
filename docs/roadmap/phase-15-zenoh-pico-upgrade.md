@@ -102,7 +102,7 @@ nano_ros_bsp_create_subscriber(sub_ptr, ...);  // Pointer stays valid
 
 **Fix Applied**: Updated `examples/zephyr/rs-listener/src/lib.rs` to use static storage.
 
-**Documentation**: Added "Rust/C FFI Issues" section to `docs/troubleshooting.md`.
+**Documentation**: Added "Rust/C FFI Issues" section to `docs/guides/troubleshooting.md`.
 
 ---
 
@@ -132,7 +132,7 @@ nano_ros_bsp_create_subscriber(sub_ptr, ...);  // Pointer stays valid
 | `crates/nano-ros-tests/src/zephyr.rs` | Added unique seed support for native_sim ✅ |
 | `crates/nano-ros-tests/tests/zephyr.rs` | Fixed pattern matching for BSP log format ✅ |
 | `examples/zephyr/rs-listener/src/lib.rs` | Fixed callback crash using static storage ✅ |
-| `docs/troubleshooting.md` | Added Rust/C FFI section ✅ |
+| `docs/guides/troubleshooting.md` | Added Rust/C FFI section ✅ |
 
 ---
 

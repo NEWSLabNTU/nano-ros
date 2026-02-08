@@ -967,7 +967,7 @@ Currently nano-ros serializes this attachment when publishing but doesn't deseri
 
 **Problem**: Need comprehensive verification that nano-ros protocol implementation matches rmw_zenoh_cpp exactly.
 
-**Reference**: `docs/rmw_zenoh_interop.md`, rmw_zenoh_cpp source
+**Reference**: `docs/reference/rmw_zenoh_interop.md`, rmw_zenoh_cpp source
 
 **Tasks**:
 

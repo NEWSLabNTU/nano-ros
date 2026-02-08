@@ -313,7 +313,7 @@ The existing `just build-zenoh-pico-arm` builds for Cortex-M3 (`thumbv7m-none-ea
 1. [ ] Create `docs/pico-w-setup.md` — Development environment
 2. [ ] Update `CLAUDE.md` — Add Pico W to workspace structure
 3. [ ] Update Phase 14 roadmap — Reference Pico W BSP
-4. [ ] Update `docs/micro-ros-comparison.md` — Add Pico W to platform table
+4. [ ] Update `docs/reference/micro-ros-comparison.md` — Add Pico W to platform table
 5. [ ] Create `docs/pico-w-performance.md` — Benchmarks
 
 **Acceptance Criteria**:

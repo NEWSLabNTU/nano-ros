@@ -223,7 +223,7 @@ See [RTIC Integration Design](../rtic-integration-design.md) for detailed archit
   ```
 
 - [ ] **5.4.4** Document memory requirements
-  - Create `docs/memory-requirements.md`
+  - Create `docs/design/memory-requirements.md`
   - Include typical sizes for different use cases
   - Add calculation examples
 
@@ -271,7 +271,7 @@ See [RTIC Integration Design](../rtic-integration-design.md) for detailed archit
   - Install RAUK
   - Run analysis on example
   - Interpret results
-  - Add to `docs/wcet-analysis.md`
+  - Add to `docs/design/wcet-analysis.md`
 
 - [ ] **5.5.5** Add integration tests
   - Test RTIC on QEMU

@@ -167,7 +167,7 @@ fn main() -> ! {
 3. [x] Create `examples/esp32/` directory structure
 4. [x] Verify bare `esp-hal` blink example compiles for ESP32-C3 (`examples/esp32/hello-world/`)
 5. [ ] Verify `esp-wifi` connects to WiFi and gets DHCP address (requires hardware)
-6. [x] Document ESP32-C3 development setup in `docs/esp32-setup.md`
+6. [x] Document ESP32-C3 development setup in `docs/guides/esp32-setup.md`
 
 **Acceptance Criteria**:
 - [x] ESP32-C3 hello-world example compiles to RISC-V ELF
@@ -197,7 +197,7 @@ fn main() -> ! {
 **Acceptance Criteria**:
 - [x] `build/esp32-zenoh-pico/libzenohpico.a` built for RISC-V (`elf32-littleriscv`)
 - [x] Library links cleanly with esp-hal test binary (Phase 22.3)
-- [x] Build script documented in `docs/esp32-setup.md`
+- [x] Build script documented in `docs/guides/esp32-setup.md`
 
 **Implementation Notes**:
 - Toolchain auto-detection: `riscv64-unknown-elf-gcc` or `riscv32-esp-elf-gcc` (ESP-IDF)
@@ -417,10 +417,10 @@ Same pattern as QEMU ARM (LAN9118) Docker E2E tests, but RISC-V with OpenETH.
 **Status**: Not Started
 
 **Tasks**:
-1. [ ] Create `docs/esp32-setup.md` — Development environment setup
+1. [ ] Create `docs/guides/esp32-setup.md` — Development environment setup
 2. [ ] Create `docs/esp32-performance.md` — Benchmarks and measurements
 3. [ ] Update `CLAUDE.md` — Add ESP32 to workspace structure and build commands
-4. [ ] Update `docs/micro-ros-comparison.md` — Add ESP32 to platform support table
+4. [ ] Update `docs/reference/micro-ros-comparison.md` — Add ESP32 to platform support table
 5. [ ] Update Phase 14 roadmap — Reference ESP32 BSP
 6. [ ] Add clippy check for ESP32 target to `just quality` (optional)
 

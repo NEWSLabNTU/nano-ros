@@ -245,9 +245,9 @@ Key naming rules:
 All core crates support `#![no_std]` with optional `std`/`alloc` features.
 
 ### Message Types
-Generated per-project using `cargo nano-ros generate` from `package.xml`. See [docs/message-generation.md](docs/message-generation.md).
+Generated per-project using `cargo nano-ros generate` from `package.xml`. See [docs/guides/message-generation.md](docs/guides/message-generation.md).
 
-**All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate`. See [docs/creating-examples.md](docs/creating-examples.md) for the full guide.
+**All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate`. See [docs/guides/creating-examples.md](docs/guides/creating-examples.md) for the full guide.
 
 **Installing cargo-nano-ros:**
 ```bash
@@ -305,7 +305,7 @@ Uses rmw_zenoh-compatible protocol. Key format for Humble:
 - Data keyexpr: `<domain>/<topic>/<type>/TypeHashNotSupported`
 - Liveliness: `@ros2_lv/.../<type>/RIHS01_<hash>/<qos>`
 
-See [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md).
+See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 
 ## Development Phases
 
@@ -342,33 +342,16 @@ See [docs/roadmap/](docs/roadmap/) for details.
 
 ## Documentation Index
 
-| Topic | Location |
-|-------|----------|
-| Getting started | [docs/getting-started.md](docs/getting-started.md) |
-| Creating examples | [docs/creating-examples.md](docs/creating-examples.md) |
-| Testing | [tests/README.md](tests/README.md) |
-| Test coverage | [docs/test-coverage.md](docs/test-coverage.md) |
-| Troubleshooting | [docs/troubleshooting.md](docs/troubleshooting.md) |
-| Message generation | [docs/message-generation.md](docs/message-generation.md) |
-| Zephyr setup | [docs/zephyr-setup.md](docs/zephyr-setup.md) |
-| ROS 2 interop protocol | [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md) |
-| Embedded integration | [docs/embedded-integration.md](docs/embedded-integration.md) |
-| RTIC design | [docs/rtic-integration-design.md](docs/rtic-integration-design.md) |
-| Memory requirements | [docs/memory-requirements.md](docs/memory-requirements.md) |
-| WCET analysis | [docs/wcet-analysis.md](docs/wcet-analysis.md) |
-| Schedulability | [docs/schedulability-analysis.md](docs/schedulability-analysis.md) |
-| Real-time lints | [docs/realtime-lint-guide.md](docs/realtime-lint-guide.md) |
-| Actions API | [docs/roadmap/phase-6-actions.md](docs/roadmap/phase-6-actions.md) |
-| ROS 2 Interop (Phase 16) | [docs/roadmap/phase-16-ros2-interop-completion.md](docs/roadmap/phase-16-ros2-interop-completion.md) |
-| QEMU/physical devices | [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) |
-| Transport config (Phase 19) | [docs/roadmap/phase-19-transport-config.md](docs/roadmap/phase-19-transport-config.md) |
-| Remaining work (Phase 20) | [docs/roadmap/phase-20-remaining-work.md](docs/roadmap/phase-20-remaining-work.md) |
-| C API `no_std` backend (Phase 21) | [docs/roadmap/phase-21-c-api-nostd-backend.md](docs/roadmap/phase-21-c-api-nostd-backend.md) |
-| ESP32-C3 support (Phase 22) | [docs/roadmap/phase-22-esp32-support.md](docs/roadmap/phase-22-esp32-support.md) |
-| Arduino library (Phase 23) | [docs/roadmap/phase-23-arduino-precompiled.md](docs/roadmap/phase-23-arduino-precompiled.md) |
-| RPi Pico W support (Phase 24) | [docs/roadmap/phase-24-rpi-pico-w.md](docs/roadmap/phase-24-rpi-pico-w.md) |
-| Typed BSP API (Phase 26) | [docs/roadmap/phase-26-example-fixes.md](docs/roadmap/phase-26-example-fixes.md) |
-| Phase roadmaps | [docs/roadmap/](docs/roadmap/) |
+```
+docs/
+├── guides/          # Getting started, setup, how-to
+├── reference/       # Protocol specs, comparisons, coverage
+├── design/          # Architecture, real-time analysis
+├── research/        # Autoware porting analysis
+└── roadmap/         # Phase planning (phase-1 through phase-26)
+```
+
+Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [tests/README](tests/README.md).
 
 ## Quick Reference
 
@@ -421,7 +404,7 @@ just build-zephyr-actions      # Build server and client
 just test-rust-zephyr-actions  # Run E2E tests (requires TAP setup)
 ```
 
-See [docs/roadmap/phase-6-actions.md](docs/roadmap/phase-6-actions.md) for API details.
+See `docs/roadmap/phase-6-actions.md` for API details.
 
 ### Zephyr Setup
 ```bash
@@ -436,7 +419,7 @@ Scripts use this symlink to locate the workspace. For custom workspace locations
 ln -sfn /path/to/custom-workspace zephyr-workspace
 ```
 
-See [docs/zephyr-setup.md](docs/zephyr-setup.md) for details.
+See [docs/guides/zephyr-setup.md](docs/guides/zephyr-setup.md) for details.
 
 ### Docker Development Environment
 
@@ -454,7 +437,7 @@ just docker-test-qemu          # Run QEMU tests in container
 just docker-help               # Show all Docker commands
 ```
 
-See [docs/qemu-physical-device-compatibility.md](docs/qemu-physical-device-compatibility.md) for QEMU/physical device analysis.
+See `docs/reference/qemu-physical-device-compatibility.md` for QEMU/physical device analysis.
 
 ### QEMU Bare-Metal Testing
 

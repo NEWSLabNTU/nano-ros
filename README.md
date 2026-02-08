@@ -56,7 +56,7 @@ cargo nano-ros generate --config --nano-ros-git
 
 This creates `generated/` with Rust types for your ROS 2 messages and a `.cargo/config.toml` with the necessary patch entries.
 
-See [Getting Started](docs/getting-started.md) for a complete walkthrough.
+See [Getting Started](docs/guides/getting-started.md) for a complete walkthrough.
 
 ### From the Repository
 
@@ -104,7 +104,7 @@ find_package(NanoRos REQUIRED)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
 
-See [Getting Started](docs/getting-started.md) for a complete C walkthrough.
+See [Getting Started](docs/guides/getting-started.md) for a complete C walkthrough.
 
 ## ROS 2 Interoperability
 
@@ -142,19 +142,19 @@ crates/
 
 ## Message Generation
 
-nano-ros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/message-generation.md) for details.
+nano-ros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
 
 ## Documentation
 
 | Topic                  | Location                                                     |
 |------------------------|--------------------------------------------------------------|
-| Getting started        | [docs/getting-started.md](docs/getting-started.md)           |
-| Message generation     | [docs/message-generation.md](docs/message-generation.md)     |
-| ROS 2 interop protocol | [docs/rmw_zenoh_interop.md](docs/rmw_zenoh_interop.md)       |
+| Getting started        | [docs/guides/getting-started.md](docs/guides/getting-started.md)           |
+| Message generation     | [docs/guides/message-generation.md](docs/guides/message-generation.md)     |
+| ROS 2 interop protocol | [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md)       |
 | Testing                | [tests/README.md](tests/README.md)                           |
-| Zephyr setup           | [docs/zephyr-setup.md](docs/zephyr-setup.md)                 |
-| Embedded integration   | [docs/embedded-integration.md](docs/embedded-integration.md) |
-| Troubleshooting        | [docs/troubleshooting.md](docs/troubleshooting.md)           |
+| Zephyr setup           | [docs/guides/zephyr-setup.md](docs/guides/zephyr-setup.md)                 |
+| Embedded integration   | [docs/reference/embedded-integration.md](docs/reference/embedded-integration.md) |
+| Troubleshooting        | [docs/guides/troubleshooting.md](docs/guides/troubleshooting.md)           |
 
 ## License
 

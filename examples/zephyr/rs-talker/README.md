@@ -115,5 +115,5 @@ CONFIG_RUST=y
 ## See Also
 
 - `examples/zephyr-rs-listener/` - Subscriber example
-- `docs/embedded-integration.md` - Full embedded integration guide
+- `docs/reference/embedded-integration.md` - Full embedded integration guide
 - Zephyr documentation: https://docs.zephyrproject.org/

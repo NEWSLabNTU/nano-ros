@@ -508,7 +508,7 @@ Update documentation and clean up.
   - Supported platforms
   - Example usage
 
-- [ ] **13.5.2** Update `docs/embedded-integration.md`
+- [ ] **13.5.2** Update `docs/reference/embedded-integration.md`
   - Reference new API
   - Update architecture diagrams
 

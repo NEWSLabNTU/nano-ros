@@ -355,7 +355,7 @@ These are available via `nano_ros_node::rtic` when both `zenoh` and `rtic` featu
 - 16 publishers/subscribers, 4KB messages
 - ~80KB static + zenoh heap
 
-See `docs/memory-requirements.md` for detailed calculations.
+See `memory-requirements.md` in `docs/design/` for detailed calculations.
 
 ## Hardware Requirements
 
@@ -469,7 +469,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 - **QoS string**: Explicit values like `2:2:1,1:,:,:,,` for BEST_EFFORT/VOLATILE
 - **RMW Attachment**: 33 bytes (sequence_number + timestamp + gid_size + gid)
 
-See `docs/rmw_zenoh_interop.md` for detailed protocol documentation.
+See `rmw_zenoh_interop.md` in this directory for detailed protocol documentation.
 
 ### Test Commands
 

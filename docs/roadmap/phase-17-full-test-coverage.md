@@ -1,6 +1,6 @@
 # Phase 17: Full Test Coverage
 
-**Goal**: Achieve comprehensive test coverage across all platforms, examples, and features. Close the gaps identified in `docs/test-coverage.md`.
+**Goal**: Achieve comprehensive test coverage across all platforms, examples, and features. Close the gaps identified in `docs/reference/test-coverage.md`.
 
 **Status**: In Progress (17.10 remaining)
 
@@ -32,7 +32,7 @@ Phase 16 (ROS 2 Interop Completion) added ~200 unit tests across the codebase co
 | C API alignment (B.1-B.7)     | ~33   | c/executor.rs (18), c/lifecycle.rs (15)                                                                                                                                     |
 | Protocol interop (C.1-C.7)    | ~27   | shim.rs (19), parameter_services.rs (8)                                                                                                                                     |
 
-These unit tests complement Phase 17's **integration tests** which verify end-to-end behavior across processes and platforms. See `docs/test-coverage.md` for detailed breakdown.
+These unit tests complement Phase 17's **integration tests** which verify end-to-end behavior across processes and platforms. See `docs/reference/test-coverage.md` for detailed breakdown.
 
 ---
 
@@ -204,7 +204,7 @@ The `zp_read()` call blocks until the socket-level timeout (~10s on native_sim),
 - Native talker uses standard Rust sleep (not zenoh spin_once)
 - Zephyr listener's spin_once blocking doesn't affect receive timing
 
-**Tracking:** This bug is documented in `docs/test-coverage.md` under "Known Issues".
+**Tracking:** This bug is documented in `docs/reference/test-coverage.md` under "Known Issues".
 The fix requires implementing proper timeout handling in `zenoh_shim_spin_once()`.
 
 Both directions work, confirming full cross-platform communication capability.
@@ -557,7 +557,7 @@ just test-rust-multi-node
 **Status**: Pending
 **Priority**: **Low**
 
-A platform × language matrix review (see `docs/test-coverage.md`) identified 8 untested examples out of 30 runnable examples (73% coverage). Two gaps are actionable.
+A platform × language matrix review (see `docs/reference/test-coverage.md`) identified 8 untested examples out of 30 runnable examples (73% coverage). Two gaps are actionable.
 
 ### 17.10.1: Native C baremetal demo build+run test
 

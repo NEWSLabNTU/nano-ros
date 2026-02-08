@@ -88,5 +88,5 @@ extern "C" fn on_message(data: *const u8, len: usize, _ctx: *mut c_void) {
 ## See Also
 
 - `examples/zephyr-rs-talker/` - Publisher example
-- `docs/embedded-integration.md` - Full embedded integration guide
+- `docs/reference/embedded-integration.md` - Full embedded integration guide
 - Zephyr documentation: https://docs.zephyrproject.org/

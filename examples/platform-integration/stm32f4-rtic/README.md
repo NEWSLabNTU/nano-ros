@@ -108,4 +108,4 @@ probe-rs run --chip STM32F429ZITx target/thumbv7em-none-eabihf/release/stm32f4-r
 
 - `examples/stm32f4-rs-polling/` - Simpler polling-based example
 - `examples/stm32f4-rs-smoltcp/` - smoltcp validation without zenoh
-- `docs/embedded-integration.md` - Full embedded integration guide
+- `docs/reference/embedded-integration.md` - Full embedded integration guide

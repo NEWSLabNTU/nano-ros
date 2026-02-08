@@ -76,4 +76,4 @@ Python script to analyze zenoh key expressions.
 ## See Also
 
 - `tests/` - Integration tests
-- `docs/rmw_zenoh_interop.md` - RMW protocol documentation
+- `docs/reference/rmw_zenoh_interop.md` - RMW protocol documentation

@@ -330,7 +330,7 @@ Create a WCET budget table:
 
 ### Step 4: Perform Schedulability Analysis
 
-See `docs/schedulability-analysis.md` for RMA/response time analysis.
+See `schedulability-analysis.md` for RMA/response time analysis.
 
 ## Static Analysis Tools
 

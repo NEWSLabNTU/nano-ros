@@ -33,7 +33,7 @@ This phase focuses on creating comprehensive bare-metal testing infrastructure u
 | QEMU emulator tests     | ✅ 14 tests (no network) | `crates/nano-ros-tests/tests/emulator.rs` |
 | smoltcp platform layer  | ✅ Exists                | `crates/zenoh-pico-shim-sys/`             |
 | QEMU network scripts    | ✅ Complete              | `scripts/qemu/`                           |
-| RTIC design             | ✅ Documented            | `docs/rtic-integration-design.md`         |
+| RTIC design             | ✅ Documented            | `docs/design/rtic-integration-design.md`  |
 
 ### What's Missing
 
@@ -151,7 +151,7 @@ Create QEMU instances with network connectivity via TAP interfaces.
 **Deliverables**:
 - [x] `scripts/qemu/launch-mps2-an385.sh` - QEMU launcher
 - [x] `scripts/qemu/setup-network.sh` - Bridge + TAP setup
-- [x] Documentation in `docs/qemu-bare-metal.md`
+- [x] Documentation in `docs/guides/qemu-bare-metal.md`
 - [x] Justfile recipes: `setup-qemu-network`, `teardown-qemu-network`, `status-qemu-network`
 
 ---
@@ -610,4 +610,4 @@ impl<'a> smoltcp::phy::Device for Lan9118<'a> {
 - [embedded-alloc](https://github.com/rust-embedded/embedded-alloc)
 - [RTIC Framework](https://rtic.rs/)
 - [LAN9118 Datasheet](https://www.microchip.com/en-us/product/LAN9118)
-- Existing docs: `docs/rtic-integration-design.md`, `docs/embedded-integration.md`
+- Existing docs: `docs/design/rtic-integration-design.md`, `docs/reference/embedded-integration.md`

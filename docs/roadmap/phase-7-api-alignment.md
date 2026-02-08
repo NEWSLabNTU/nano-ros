@@ -12,7 +12,7 @@ This roadmap outlines the refactoring effort to align nano-ros API with rclrs 0.
 ## Reference
 
 - rclrs 0.6.0: `/home/aeon/repos/nano-ros/external/ros2_rust/rclrs/`
-- API Comparison: `/home/aeon/repos/nano-ros/docs/api-comparison-rclrs.md`
+- API Comparison: `/home/aeon/repos/nano-ros/docs/reference/api-comparison-rclrs.md`
 
 ---
 
@@ -524,7 +524,7 @@ This roadmap outlines the refactoring effort to align nano-ros API with rclrs 0.
 
 **Goal**: Add unified executor abstraction that works on both std and no_std targets.
 
-**Design Document**: See `docs/architecture/unified-executor-design.md` for full design.
+**Design Document**: See `docs/design/unified-executor-design.md` for full design.
 
 ### Design Principles
 
@@ -1156,7 +1156,7 @@ Tasks moved to 7.6:
 **Notes:**
 - Phase 7.7 (Callback Subscriptions) merged into Phase 7.6 (Unified Executor Model)
 - Phase 7.6 effort increased from 1 week to 2 weeks to account for merged scope
-- See `docs/architecture/unified-executor-design.md` for Phase 7.6 design details
+- See `docs/design/unified-executor-design.md` for Phase 7.6 design details
 - `spin_async()` deferred to Phase 7.10 (Async Support) due to zenoh-pico Send bounds
 - Phase 7.12 (Error Types) complete - `RclrsError` implemented in `context.rs`
 

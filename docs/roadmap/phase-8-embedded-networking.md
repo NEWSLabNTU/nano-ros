@@ -1168,7 +1168,7 @@ The goal is a single unified API that works for both desktop and embedded platfo
 
 ### 8.8.D: Documentation (Complete)
 
-- [x] **8.8.14** Update `docs/embedded-integration.md`
+- [x] **8.8.14** Update `docs/reference/embedded-integration.md`
   - Document zenoh-pico-shim architecture and unified API
   - Document smoltcp + RTIC integration
   - Document smoltcp + polling integration

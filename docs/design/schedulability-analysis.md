@@ -80,7 +80,7 @@ Where Bᵢ = maximum blocking time from lower-priority tasks holding resources.
 
 ## nano-ros RTIC Example Analysis
 
-> **Note:** The WCET values in this section are **illustrative examples** to demonstrate the analysis methodology. Actual values must be measured on real hardware. See `docs/wcet-analysis.md` for measurement techniques.
+> **Note:** The WCET values in this section are **illustrative examples** to demonstrate the analysis methodology. Actual values must be measured on real hardware. See `wcet-analysis.md` for measurement techniques.
 
 ### Task Set Definition
 
@@ -92,7 +92,7 @@ From `examples/stm32f4-rs-rtic/src/main.rs`:
 | publisher_task | 100 ms | 1 (low) | 0.170 ms | 100 ms |
 | zenoh_keepalive | 1000 ms | 1 (low) | 0.047 ms | 1000 ms |
 
-*WCET values from `docs/wcet-analysis.md` with 20% safety margin.
+*WCET values from `wcet-analysis.md` with 20% safety margin.
 
 ### Step 1: Priority Assignment Verification
 

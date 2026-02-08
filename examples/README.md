@@ -155,5 +155,5 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ## See Also
 
 - [CLAUDE.md](../CLAUDE.md) - Development guidelines
-- [docs/zephyr-setup.md](../docs/zephyr-setup.md) - Zephyr workspace setup
-- [docs/rmw_zenoh_interop.md](../docs/rmw_zenoh_interop.md) - ROS 2 protocol details
+- [docs/zephyr-setup.md](../docs/guides/zephyr-setup.md) - Zephyr workspace setup
+- [docs/rmw_zenoh_interop.md](../docs/reference/rmw_zenoh_interop.md) - ROS 2 protocol details
