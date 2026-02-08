@@ -13,3 +13,7 @@ __pycache__/
 
 # Zephyr workspace symlink (user-specific, created by scripts/zephyr/setup.sh)
 /zephyr-workspace
+
+# Generated message bindings in examples (recreated by: just generate-bindings)
+# NOTE: crates/rcl-interfaces/generated/ is NOT gitignored — it's a workspace member
+examples/**/generated/
