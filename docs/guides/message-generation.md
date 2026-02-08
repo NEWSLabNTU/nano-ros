@@ -1,23 +1,18 @@
 # Message Binding Generation
 
-nano-ros uses generated Rust bindings for ROS 2 message types. The `cargo nano-ros generate` command generates `no_std` compatible bindings from `package.xml` dependencies.
+nano-ros uses generated Rust bindings for ROS 2 message types. The `nano-ros generate-rust` (or `cargo nano-ros generate-rust`) command generates `no_std` compatible bindings from `package.xml` dependencies.
 
 ## Overview
 
 The binding generator lives in `colcon-nano-ros/packages/cargo-nano-ros/` and provides:
-- Standalone `cargo nano-ros` subcommand for generating bindings
+- `nano-ros` standalone binary and `cargo nano-ros` subcommand
 - Pure Rust, `no_std` compatible output using `heapless` types
-- Automatic dependency resolution via ament index
+- Automatic dependency resolution via ament index or bundled interfaces
 - `.cargo/config.toml` generation for crate patches
 
 ## Prerequisites
 
-1. **ROS 2 environment sourced** - Required for ament index access
-   ```bash
-   source /opt/ros/humble/setup.bash
-   ```
-
-2. **package.xml in project root** - Declares ROS interface dependencies
+1. **package.xml in project root** - Declares ROS interface dependencies
    ```xml
    <?xml version="1.0"?>
    <package format="3">
@@ -34,10 +29,25 @@ The binding generator lives in `colcon-nano-ros/packages/cargo-nano-ros/` and pr
    </package>
    ```
 
-3. **cargo-nano-ros installed**
+2. **nano-ros tool installed**
    ```bash
-   cd colcon-nano-ros && just install
-   # Or: cargo install --path colcon-nano-ros/packages/cargo-nano-ros
+   # From the nano-ros repository root
+   just install-cargo-nano-ros
+
+   # Or manually:
+   cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
+
+   # Or from git (external users):
+   cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
+   ```
+
+3. **ROS 2 environment** (optional for standard types)
+
+   Standard interfaces (`std_msgs`, `builtin_interfaces`) are bundled with nano-ros
+   and work without ROS 2. For additional packages (e.g., `geometry_msgs`, `sensor_msgs`),
+   source a ROS 2 environment:
+   ```bash
+   source /opt/ros/humble/setup.bash
    ```
 
 ## Workflow
@@ -54,15 +64,15 @@ Declare your ROS interface dependencies in `<depend>` tags:
 
 ```bash
 cd my_project
-cargo nano-ros generate
+nano-ros generate-rust              # standalone binary
+# or: cargo nano-ros generate-rust  # cargo subcommand (equivalent)
 ```
 
 This will:
 1. Parse `package.xml` to find dependencies
-2. Resolve transitive dependencies via ament index
+2. Resolve transitive dependencies (ament index + bundled interfaces)
 3. Filter to interface packages (those with msg/srv/action)
 4. Generate bindings to `generated/` directory
-5. Create `.cargo/config.toml` with `[patch.crates-io]` entries
 
 **Step 3: Add dependencies to Cargo.toml**
 
@@ -91,7 +101,7 @@ std_msgs = { version = "*", default-features = false }
 **Step 3:** Generate bindings with git patches:
 ```bash
 source /opt/ros/humble/setup.bash
-cargo nano-ros generate --config --nano-ros-git
+cargo nano-ros generate-rust --config --nano-ros-git
 ```
 
 This generates `.cargo/config.toml` with git-based patches:
@@ -115,7 +125,8 @@ let msg = Int32 { data: 42 };
 ## Command Options
 
 ```bash
-cargo nano-ros generate [OPTIONS]
+nano-ros generate-rust [OPTIONS]
+# or: cargo nano-ros generate-rust [OPTIONS]
 
 Options:
       --manifest-path <PATH>  Path to package.xml [default: package.xml]
@@ -200,18 +211,47 @@ cd examples/native-rs-service-client && cargo build
 
 To regenerate after ROS package updates or dependency changes:
 ```bash
-cargo nano-ros generate --force
+cargo nano-ros generate-rust --force
 ```
+
+## Bundled Interfaces
+
+nano-ros ships standard `.msg` files for common packages so codegen works without a
+ROS 2 environment:
+
+- `std_msgs` (Bool, Int32, String, Header, etc.)
+- `builtin_interfaces` (Time, Duration)
+
+These are located at `colcon-nano-ros/interfaces/`. When a ROS 2 environment is sourced,
+the ament index takes precedence over bundled files.
 
 ## Troubleshooting
 
-**"Failed to load ament index"**
-- Ensure ROS 2 is sourced: `source /opt/ros/humble/setup.bash`
-
-**"Package 'X' not found in ament index"**
+**"Package 'X' not found in ament index or bundled interfaces"**
+- For standard types (`std_msgs`, `builtin_interfaces`): should work without ROS 2
+- For other packages: source ROS 2 environment: `source /opt/ros/humble/setup.bash`
 - Check package is installed: `ros2 pkg list | grep X`
 - Install if missing: `sudo apt install ros-humble-X`
 
 **Build errors with generated code**
 - Regenerate with `--force` flag
 - Check nano-ros crate compatibility
+
+## C Code Generation (CMake)
+
+The `nano_ros_generate_interfaces()` CMake function generates C bindings for `.msg`, `.srv`,
+and `.action` files. It uses a bundled codegen library — no external `nano-ros` binary needed.
+
+### Prerequisites
+
+Build the codegen library once:
+```bash
+just build-codegen-lib
+# or: cargo build -p nano-ros-codegen-c --release --manifest-path colcon-nano-ros/packages/Cargo.toml
+```
+
+### Usage
+
+See `examples/native/c-custom-msg/CMakeLists.txt` for a complete example. CMake
+automatically compiles a thin wrapper at configure time that links against the
+`libnano_ros_codegen_c.a` static library.
