@@ -63,7 +63,7 @@ fi
 info "cargo-nano-ros built successfully: $GENERATOR"
 
 # ============================================================================
-# Step 2: Build nano-ros-c library (Rust crate via Cargo)
+# Step 2: Build nano-ros-c and nano-ros-codegen-c libraries
 # ============================================================================
 
 info "Building nano-ros-c library..."
@@ -72,6 +72,10 @@ cd "$PROJECT_ROOT"
 
 # Build nano-ros-c with Cargo (release mode)
 cargo build -p nano-ros-c --release
+
+# Build nano-ros-codegen-c staticlib (needed by CMake FindNanoRosCodegen)
+info "Building nano-ros-codegen-c staticlib..."
+cargo build -p nano-ros-codegen-c --release --manifest-path colcon-nano-ros/packages/Cargo.toml
 
 NANO_ROS_C_LIB="$PROJECT_ROOT/target/release/libnano_ros_c.a"
 if [ ! -f "$NANO_ROS_C_LIB" ]; then

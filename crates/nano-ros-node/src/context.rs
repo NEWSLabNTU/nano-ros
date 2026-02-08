@@ -163,9 +163,15 @@ impl Context {
         // --- ROS discovery env vars ---
 
         // Compute disable_scouting and force_localhost flags
-        #[cfg_attr(not(any(feature = "ros-humble", feature = "ros-iron")), allow(unused_mut))]
+        #[cfg_attr(
+            not(any(feature = "ros-humble", feature = "ros-iron")),
+            allow(unused_mut)
+        )]
         let mut disable_scouting = false;
-        #[cfg_attr(not(any(feature = "ros-humble", feature = "ros-iron")), allow(unused_mut))]
+        #[cfg_attr(
+            not(any(feature = "ros-humble", feature = "ros-iron")),
+            allow(unused_mut)
+        )]
         let mut force_localhost = false;
 
         // ROS_LOCALHOST_ONLY (Humble+)
