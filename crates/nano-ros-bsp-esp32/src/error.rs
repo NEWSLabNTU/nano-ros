@@ -27,6 +27,12 @@ pub enum Error {
     SubscriberDeclare,
     /// Publish operation failed
     Publish,
+    /// Topic keyexpr exceeds 256-byte buffer
+    TopicTooLong,
+    /// CDR serialization buffer too small
+    BufferTooSmall,
+    /// CDR serialization failed
+    Serialize,
     /// Socket limit reached
     SocketLimit,
     /// Invalid configuration
@@ -47,6 +53,9 @@ impl fmt::Display for Error {
             Error::PublisherDeclare => write!(f, "Publisher declaration failed"),
             Error::SubscriberDeclare => write!(f, "Subscriber declaration failed"),
             Error::Publish => write!(f, "Publish operation failed"),
+            Error::TopicTooLong => write!(f, "Topic keyexpr exceeds 256-byte buffer"),
+            Error::BufferTooSmall => write!(f, "CDR serialization buffer too small"),
+            Error::Serialize => write!(f, "CDR serialization failed"),
             Error::SocketLimit => write!(f, "Socket limit reached"),
             Error::InvalidConfig => write!(f, "Invalid configuration"),
         }

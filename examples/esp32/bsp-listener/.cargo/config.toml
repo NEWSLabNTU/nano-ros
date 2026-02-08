@@ -13,3 +13,15 @@ ESP_LOG = "info"
 
 [unstable]
 build-std = ["core", "alloc"]
+
+[patch.crates-io.builtin_interfaces]
+path = "generated/builtin_interfaces"
+
+[patch.crates-io.nano-ros-core]
+path = "../../../crates/nano-ros-core"
+
+[patch.crates-io.nano-ros-serdes]
+path = "../../../crates/nano-ros-serdes"
+
+[patch.crates-io.std_msgs]
+path = "generated/std_msgs"

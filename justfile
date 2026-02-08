@@ -860,6 +860,12 @@ generate-bindings:
         (cd examples/qemu/$ex && $NANO_ROS generate-rust)
     done
 
+    # ESP32 WiFi examples
+    for ex in bsp-talker bsp-listener; do
+        echo "  esp32/$ex"
+        (cd examples/esp32/$ex && $NANO_ROS generate-rust)
+    done
+
     # STM32F4 examples
     echo "  stm32f4/bsp-talker"
     (cd examples/stm32f4/bsp-talker && $NANO_ROS generate-rust)
@@ -890,6 +896,8 @@ clean-bindings:
         examples/qemu/rs-listener/generated
         examples/qemu/bsp-talker/generated
         examples/qemu/bsp-listener/generated
+        examples/esp32/bsp-talker/generated
+        examples/esp32/bsp-listener/generated
         examples/stm32f4/bsp-talker/generated
         examples/zephyr/rs-talker/generated
         examples/zephyr/rs-listener/generated

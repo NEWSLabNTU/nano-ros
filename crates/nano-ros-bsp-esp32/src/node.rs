@@ -6,16 +6,20 @@
 use core::ffi::{c_char, c_void};
 use core::ptr;
 
+use core::fmt::Write as _;
+
 use esp_hal::rng::Rng;
 use esp_hal::time::Instant;
 use esp_radio::wifi::{self, ClientConfig, ModeConfig, WifiDevice};
+use heapless::String;
+use nano_ros_core::RosMessage;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::socket::dhcpv4;
 use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 use zenoh_pico_shim_sys::{
-    ShimCallback, zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
+    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
     zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
 };
 
@@ -26,7 +30,7 @@ use crate::clock;
 use crate::config::{IpMode, NodeConfig};
 use crate::error::Error;
 use crate::publisher::Publisher;
-use crate::subscriber::Subscriber;
+use crate::subscriber::{Subscription, subscription_trampoline};
 
 // NOTE: We intentionally do NOT define a `type Result<T>` alias in this module.
 // The `esp_println::println!` macro uses `?` internally which expands to
@@ -58,53 +62,72 @@ pub unsafe extern "C" fn smoltcp_network_poll() {
 /// Simplified node for ESP32 applications
 ///
 /// This hides all low-level WiFi/smoltcp details.
-/// Users interact only with ROS concepts (publishers, subscribers).
+/// Users interact only with ROS concepts (publishers, subscriptions).
 pub struct Node {
-    _private: (), // prevent external construction
+    domain_id: u32,
 }
 
 impl Node {
-    /// Create a publisher for the given topic
+    /// Create a typed publisher for a ROS 2 topic
     ///
-    /// # Arguments
+    /// Constructs the ROS 2 keyexpr from topic name and `M::TYPE_NAME`:
+    /// `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
     ///
-    /// * `topic` - Topic name (null-terminated, e.g., `b"demo/topic\0"`)
-    pub fn create_publisher(&mut self, topic: &[u8]) -> core::result::Result<Publisher, Error> {
-        let handle = unsafe { zenoh_shim_declare_publisher(topic.as_ptr() as *const c_char) };
+    /// # Example
+    ///
+    /// ```ignore
+    /// let pub_ = node.create_publisher::<Int32>("/chatter")?;
+    /// pub_.publish(&Int32 { data: 42 })?;
+    /// ```
+    pub fn create_publisher<M: RosMessage>(
+        &mut self,
+        topic: &str,
+    ) -> core::result::Result<Publisher<M>, Error> {
+        let mut key = format_ros2_keyexpr(self.domain_id, topic, M::TYPE_NAME);
+        key.push('\0').map_err(|_| Error::TopicTooLong)?;
+        let handle = unsafe { zenoh_shim_declare_publisher(key.as_bytes().as_ptr() as *const c_char) };
         if handle < 0 {
             return Err(Error::PublisherDeclare);
         }
         Ok(unsafe { Publisher::from_handle(handle) })
     }
 
-    /// Create a subscriber for the given topic
+    /// Create a typed subscription for a ROS 2 topic
     ///
-    /// # Arguments
+    /// Messages are deserialized from CDR and delivered to the callback.
     ///
-    /// * `topic` - Topic name (null-terminated)
-    /// * `callback` - Function called when messages arrive
-    /// * `context` - User data passed to callback
+    /// # Limitations
     ///
-    /// # Safety
+    /// The callback is a function pointer (`fn(&M)`), not a closure.
+    /// Use `static` variables for external state — the standard bare-metal pattern.
     ///
-    /// The callback and context must remain valid for the node's lifetime.
-    pub unsafe fn create_subscriber(
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn on_message(msg: &Int32) {
+    ///     // handle message
+    /// }
+    /// let _sub = node.create_subscription::<Int32>("/chatter", on_message)?;
+    /// ```
+    pub fn create_subscription<M: RosMessage>(
         &mut self,
-        topic: &[u8],
-        callback: Option<ShimCallback>,
-        context: *mut c_void,
-    ) -> core::result::Result<Subscriber, Error> {
-        let cb = match callback {
-            Some(f) => f,
-            None => return Err(Error::SubscriberDeclare),
+        topic: &str,
+        callback: fn(&M),
+    ) -> core::result::Result<Subscription<M>, Error> {
+        let mut key = format_ros2_keyexpr_wildcard(self.domain_id, topic, M::TYPE_NAME);
+        key.push('\0').map_err(|_| Error::TopicTooLong)?;
+        let ctx = callback as *mut c_void;
+        let handle = unsafe {
+            zenoh_shim_declare_subscriber(
+                key.as_bytes().as_ptr() as *const c_char,
+                subscription_trampoline::<M>,
+                ctx,
+            )
         };
-
-        let handle =
-            unsafe { zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, cb, context) };
         if handle < 0 {
             return Err(Error::SubscriberDeclare);
         }
-        Ok(unsafe { Subscriber::from_handle(handle) })
+        Ok(unsafe { Subscription::from_handle(handle) })
     }
 
     /// Process network events and dispatch callbacks
@@ -133,6 +156,26 @@ impl Node {
             GLOBAL_DEVICE = ptr::null_mut();
         }
     }
+}
+
+/// Format a ROS 2 data keyexpr: `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
+fn format_ros2_keyexpr(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
+    let mut key = String::<256>::new();
+    let topic_stripped = topic.trim_matches('/');
+    let _ = write!(
+        key,
+        "{}/{}/{}/TypeHashNotSupported",
+        domain_id, topic_stripped, type_name
+    );
+    key
+}
+
+/// Format a ROS 2 subscriber keyexpr with wildcard: `<domain_id>/<topic>/<type_name>/*`
+fn format_ros2_keyexpr_wildcard(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
+    let mut key = String::<256>::new();
+    let topic_stripped = topic.trim_matches('/');
+    let _ = write!(key, "{}/{}/{}/*", domain_id, topic_stripped, type_name);
+    key
 }
 
 /// Helper to create a socket set with pre-allocated storage
@@ -164,16 +207,17 @@ unsafe fn create_socket_set() -> SocketSet<'static> {
 /// #![no_main]
 ///
 /// use nano_ros_bsp_esp32::prelude::*;
+/// use std_msgs::msg::Int32;
 ///
 /// #[entry]
 /// fn main() -> ! {
 ///     run_node(
 ///         NodeConfig::new(WifiConfig::new("MySSID", "MyPassword")),
 ///         |node| {
-///             let pub_ = node.create_publisher(b"demo/esp32\0")?;
-///             for _ in 0..10 {
-///                 node.spin_once(10);
-///                 pub_.publish(b"Hello from ESP32!")?;
+///             let publisher = node.create_publisher::<Int32>("/chatter")?;
+///             for i in 0i32..10 {
+///                 for _ in 0..100 { node.spin_once(10); }
+///                 publisher.publish(&Int32 { data: i })?;
 ///             }
 ///             Ok(())
 ///         },
@@ -423,7 +467,9 @@ where
     esp_println::println!("");
 
     // Step 12: Create node and run user application
-    let mut node = Node { _private: () };
+    let mut node = Node {
+        domain_id: config.domain_id,
+    };
 
     match f(&mut node) {
         Ok(()) => {

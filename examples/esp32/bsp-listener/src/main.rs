@@ -1,7 +1,7 @@
 //! Simple ESP32 WiFi Listener using nano-ros-bsp-esp32
 //!
-//! This example connects to WiFi, establishes a zenoh session, and subscribes
-//! to messages. Compare with the QEMU bsp-listener to see the similar API.
+//! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
+//! Compare with the QEMU bsp-listener to see the similar API.
 //!
 //! # Building
 //!
@@ -18,51 +18,27 @@
 #![no_std]
 #![no_main]
 
-use core::cell::RefCell;
-use core::ffi::c_void;
-use core::ptr;
-
 use esp_backtrace as _;
-use nano_ros_bsp_esp32::critical_section::{self, Mutex};
 use nano_ros_bsp_esp32::esp_println;
 use nano_ros_bsp_esp32::portable_atomic::{AtomicU32, Ordering};
 use nano_ros_bsp_esp32::prelude::*;
+use std_msgs::msg::Int32;
 
 /// WiFi credentials (set via environment variables at compile time)
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
-/// Topic to subscribe to
-const TOPIC: &[u8] = b"demo/esp32\0";
-
-/// Message buffer for storing received messages
-const MSG_BUFFER_SIZE: usize = 256;
-
-/// Received message state, protected by critical section for safe access
-struct MsgBuffer {
-    data: [u8; MSG_BUFFER_SIZE],
-    len: usize,
-}
-
-static MSG_BUFFER: Mutex<RefCell<MsgBuffer>> = Mutex::new(RefCell::new(MsgBuffer {
-    data: [0u8; MSG_BUFFER_SIZE],
-    len: 0,
-}));
+/// Last received Int32 value
+static mut LAST_VALUE: i32 = 0;
 
 /// Message count (portable-atomic provides safe atomics on riscv32imc)
 static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 
-/// Subscriber callback - called when a message is received
-extern "C" fn on_message(data: *const u8, len: usize, _ctx: *mut c_void) {
-    critical_section::with(|cs| {
-        let mut buf = MSG_BUFFER.borrow_ref_mut(cs);
-        let copy_len = len.min(MSG_BUFFER_SIZE);
-        // SAFETY: `data` is a valid pointer to `len` bytes provided by zenoh-pico C callback
-        unsafe {
-            ptr::copy_nonoverlapping(data, buf.data.as_mut_ptr(), copy_len);
-        }
-        buf.len = copy_len;
-    });
+/// Typed subscriber callback
+fn on_message(msg: &Int32) {
+    unsafe {
+        LAST_VALUE = msg.data;
+    }
     MSG_COUNT.fetch_add(1, Ordering::Relaxed);
 }
 
@@ -73,11 +49,10 @@ fn main() -> ! {
     run_node(
         NodeConfig::new(WifiConfig::new(SSID, PASSWORD)),
         |node| {
-            // Declare subscriber
-            esp_println::println!("Subscribing to topic: demo/esp32");
+            // Declare subscription
+            esp_println::println!("Subscribing to /chatter (std_msgs/Int32)");
 
-            let _subscriber =
-                unsafe { node.create_subscriber(TOPIC, Some(on_message), ptr::null_mut()) }?;
+            let _subscription = node.create_subscription::<Int32>("/chatter", on_message)?;
 
             esp_println::println!("Subscriber declared");
             esp_println::println!("");
@@ -94,20 +69,8 @@ fn main() -> ! {
                 // Check for new messages
                 let current_count = MSG_COUNT.load(Ordering::Relaxed);
                 if current_count > last_count {
-                    // New message received — read buffer under critical section
-                    critical_section::with(|cs| {
-                        let buf = MSG_BUFFER.borrow_ref(cs);
-                        let msg = &buf.data[..buf.len];
-                        if let Ok(s) = core::str::from_utf8(msg) {
-                            esp_println::println!("Received [{}]: {}", current_count, s);
-                        } else {
-                            esp_println::println!(
-                                "Received [{}]: <{} bytes binary>",
-                                current_count,
-                                buf.len
-                            );
-                        }
-                    });
+                    let value = unsafe { LAST_VALUE };
+                    esp_println::println!("Received [{}]: {}", current_count, value);
                     last_count = current_count;
 
                     // Exit after receiving 10 messages

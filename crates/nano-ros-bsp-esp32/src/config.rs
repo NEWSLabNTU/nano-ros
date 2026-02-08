@@ -69,6 +69,8 @@ pub struct NodeConfig {
     pub ip_mode: IpMode,
     /// Zenoh router locator (null-terminated)
     pub zenoh_locator: &'static [u8],
+    /// ROS 2 domain ID (used in keyexpr formatting)
+    pub domain_id: u32,
 }
 
 impl NodeConfig {
@@ -78,6 +80,7 @@ impl NodeConfig {
             wifi,
             ip_mode: IpMode::Dhcp,
             zenoh_locator: b"tcp/192.168.1.1:7447\0",
+            domain_id: 0,
         }
     }
 
@@ -94,6 +97,12 @@ impl NodeConfig {
             prefix,
             gateway,
         };
+        self
+    }
+
+    /// Builder: set ROS 2 domain ID
+    pub fn with_domain_id(mut self, domain_id: u32) -> Self {
+        self.domain_id = domain_id;
         self
     }
 }

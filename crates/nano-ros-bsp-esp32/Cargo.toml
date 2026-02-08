@@ -41,5 +41,11 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 # Critical section for safe interior mutability in statics
 critical-section = "1"
 
+# Core types (RosMessage, Serialize, Deserialize, CDR)
+nano-ros-core = { path = "../nano-ros-core", default-features = false }
+
+# Stack-allocated strings for ROS 2 keyexpr formatting
+heapless = "0.8"
+
 [features]
 default = []
