@@ -32,73 +32,13 @@ Example:
       geometry_msgs
   )
 
+Prerequisites:
+  Build the codegen library before running CMake::
+
+    cargo build -p nano-ros-codegen-c --release \
+      --manifest-path colcon-nano-ros/packages/Cargo.toml
+
 #]=======================================================================]
-
-# Find the generator tool (cargo nano-ros)
-function(_nano_ros_find_generator)
-  if(DEFINED CACHE{_NANO_ROS_GENERATOR})
-    return()
-  endif()
-
-  # Get nano-ros root for locating the colcon-nano-ros build
-  if(DEFINED NANO_ROS_ROOT)
-    set(_nano_ros_root "${NANO_ROS_ROOT}")
-  else()
-    # Try to infer from this file's location
-    get_filename_component(_cmake_dir "${CMAKE_CURRENT_LIST_DIR}" DIRECTORY)
-    get_filename_component(_nano_ros_c_dir "${_cmake_dir}" DIRECTORY)
-    get_filename_component(_crates_dir "${_nano_ros_c_dir}" DIRECTORY)
-    get_filename_component(_nano_ros_root "${_crates_dir}" DIRECTORY)
-  endif()
-
-  # First, try to find in colcon-nano-ros build directory (preferred for development)
-  # Note: colcon-nano-ros uses packages/ workspace structure
-  set(_colcon_release "${_nano_ros_root}/colcon-nano-ros/packages/target/release/cargo-nano-ros")
-  set(_colcon_debug "${_nano_ros_root}/colcon-nano-ros/packages/target/debug/cargo-nano-ros")
-
-  # Note: cargo-nano-ros is a cargo subcommand, so when run directly it needs
-  # to be invoked as: cargo-nano-ros nano-ros <subcommand>
-  if(EXISTS "${_colcon_release}")
-    set(_NANO_ROS_GENERATOR "${_colcon_release}" CACHE INTERNAL "nano-ros generator")
-    set(_NANO_ROS_GENERATOR_ARGS "nano-ros;generate-c" CACHE INTERNAL "nano-ros generator args")
-    message(STATUS "Found cargo-nano-ros: ${_colcon_release}")
-    return()
-  elseif(EXISTS "${_colcon_debug}")
-    set(_NANO_ROS_GENERATOR "${_colcon_debug}" CACHE INTERNAL "nano-ros generator")
-    set(_NANO_ROS_GENERATOR_ARGS "nano-ros;generate-c" CACHE INTERNAL "nano-ros generator args")
-    message(STATUS "Found cargo-nano-ros: ${_colcon_debug}")
-    return()
-  endif()
-
-  # Fallback: try to find cargo-nano-ros in PATH
-  find_program(_NANO_ROS_GENERATOR_PROG cargo-nano-ros
-    NO_CMAKE_FIND_ROOT_PATH  # Don't use any root path
-    NO_DEFAULT_PATH          # Don't use default search
-    PATHS ENV PATH           # Only search PATH
-  )
-
-  if(_NANO_ROS_GENERATOR_PROG)
-    # Verify it supports generate-c
-    execute_process(
-      COMMAND "${_NANO_ROS_GENERATOR_PROG}" generate-c --help
-      RESULT_VARIABLE _help_result
-      OUTPUT_QUIET
-      ERROR_QUIET
-    )
-    if(_help_result EQUAL 0)
-      set(_NANO_ROS_GENERATOR "${_NANO_ROS_GENERATOR_PROG}" CACHE INTERNAL "nano-ros generator")
-      set(_NANO_ROS_GENERATOR_ARGS "generate-c" CACHE INTERNAL "nano-ros generator args")
-      message(STATUS "Found cargo-nano-ros: ${_NANO_ROS_GENERATOR_PROG}")
-      return()
-    endif()
-  endif()
-
-  # Final fallback: use cargo nano-ros (requires cargo-nano-ros installed via cargo install)
-  find_program(_CARGO cargo REQUIRED)
-  set(_NANO_ROS_GENERATOR "${_CARGO}" CACHE INTERNAL "nano-ros generator")
-  set(_NANO_ROS_GENERATOR_ARGS "nano-ros;generate-c" CACHE INTERNAL "nano-ros generator args")
-  message(STATUS "Using cargo nano-ros (fallback)")
-endfunction()
 
 function(nano_ros_generate_interfaces target)
   cmake_parse_arguments(_ARG
@@ -122,8 +62,8 @@ function(nano_ros_generate_interfaces target)
     endif()
   endforeach()
 
-  # Find generator
-  _nano_ros_find_generator()
+  # Find the bundled codegen tool (built from libnano_ros_codegen_c.a)
+  find_package(NanoRosCodegen REQUIRED)
 
   # Output directory
   set(_output_dir "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c/${target}")
@@ -202,11 +142,10 @@ function(nano_ros_generate_interfaces target)
   # Add umbrella header
   list(APPEND _generated_headers "${_output_dir}/${target}.h")
 
-  # Custom command to generate C code
+  # Custom command to generate C code using the bundled codegen tool
   add_custom_command(
     OUTPUT ${_generated_headers} ${_generated_sources}
-    COMMAND ${_NANO_ROS_GENERATOR} ${_NANO_ROS_GENERATOR_ARGS}
-      --args-file "${_args_file}"
+    COMMAND "${_NANO_ROS_CODEGEN_TOOL}" --args-file "${_args_file}"
     DEPENDS ${_interface_files} ${_args_file}
     WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
     COMMENT "Generating nano-ros C interfaces for ${target}"

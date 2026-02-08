@@ -444,6 +444,7 @@ dependencies = [
 name = "nano-ros-core"
 version = "0.1.0"
 dependencies = [
+ "heapless",
  "log",
  "nano-ros-serdes",
 ]

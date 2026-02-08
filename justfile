@@ -822,6 +822,11 @@ clean-examples-c:
 # Message Bindings
 # =============================================================================
 
+# Build the codegen static library (for CMake C code generation)
+build-codegen-lib:
+    @echo "Building nano-ros-codegen-c staticlib..."
+    cargo build -p nano-ros-codegen-c --release --manifest-path colcon-nano-ros/packages/Cargo.toml
+
 # Install cargo-nano-ros (requires ROS 2 environment)
 install-cargo-nano-ros:
     @echo "Installing cargo-nano-ros..."
@@ -831,20 +836,20 @@ install-cargo-nano-ros:
 generate-bindings:
     @echo "Regenerating bindings in all examples..."
     @echo "Note: Requires ROS 2 environment sourced and cargo-nano-ros installed"
-    cd examples/native/rs-talker && cargo nano-ros generate
-    cd examples/native/rs-listener && cargo nano-ros generate
-    cd examples/native/rs-service-server && cargo nano-ros generate
-    cd examples/native/rs-service-client && cargo nano-ros generate
-    cd examples/native/rs-action-server && cargo nano-ros generate
-    cd examples/native/rs-action-client && cargo nano-ros generate
-    cd examples/qemu/rs-test && cargo nano-ros generate --config --nano-ros-path ../../../crates
-    cd examples/qemu/rs-talker && cargo nano-ros generate --config --nano-ros-path ../../../crates
-    cd examples/qemu/rs-listener && cargo nano-ros generate --config --nano-ros-path ../../../crates
-    cd examples/qemu/bsp-talker && cargo nano-ros generate --config --nano-ros-path ../../../crates
-    cd examples/qemu/bsp-listener && cargo nano-ros generate --config --nano-ros-path ../../../crates
-    cd examples/stm32f4/bsp-talker && cargo nano-ros generate --config --nano-ros-path ../../../crates
-    cd examples/zephyr/rs-talker && cargo nano-ros generate
-    cd examples/zephyr/rs-listener && cargo nano-ros generate
+    cd examples/native/rs-talker && cargo nano-ros generate-rust
+    cd examples/native/rs-listener && cargo nano-ros generate-rust
+    cd examples/native/rs-service-server && cargo nano-ros generate-rust
+    cd examples/native/rs-service-client && cargo nano-ros generate-rust
+    cd examples/native/rs-action-server && cargo nano-ros generate-rust
+    cd examples/native/rs-action-client && cargo nano-ros generate-rust
+    cd examples/qemu/rs-test && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
+    cd examples/qemu/rs-talker && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
+    cd examples/qemu/rs-listener && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
+    cd examples/qemu/bsp-talker && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
+    cd examples/qemu/bsp-listener && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
+    cd examples/stm32f4/bsp-talker && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
+    cd examples/zephyr/rs-talker && cargo nano-ros generate-rust
+    cd examples/zephyr/rs-listener && cargo nano-ros generate-rust
     @echo "All bindings regenerated!"
 
 # =============================================================================
