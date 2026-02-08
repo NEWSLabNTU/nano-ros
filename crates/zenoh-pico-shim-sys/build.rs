@@ -40,9 +40,21 @@ fn main() {
     let zenoh_pico_src = manifest_dir.join("zenoh-pico");
     let c_dir = manifest_dir.join("c");
     let include_dir = c_dir.join("include");
+    let use_system = env::var("CARGO_FEATURE_SYSTEM_ZENOHPICO").is_ok();
 
-    // Check if zenoh-pico submodule is present
-    if !zenoh_pico_src.join("include").exists() {
+    // system-zenohpico is not supported for embedded targets — embedded builds need
+    // the smoltcp platform layer compiled into the same archive as zenoh-pico.
+    if use_system && is_embedded_target(&target) {
+        panic!(
+            "system-zenohpico is not supported for embedded targets ({}). \
+             Embedded builds require the smoltcp platform layer to be compiled \
+             together with zenoh-pico from the submodule.",
+            target
+        );
+    }
+
+    // Check if zenoh-pico submodule is present (not needed with system-zenohpico)
+    if !use_system && !zenoh_pico_src.join("include").exists() {
         panic!(
             "zenoh-pico submodule not found at {:?}. Run: git submodule update --init",
             zenoh_pico_src
@@ -54,8 +66,12 @@ fn main() {
 
     // Build zenoh-pico and C shim
     if !is_embedded_target(&target) {
-        // Native: build zenoh-pico via CMake, then shim via cc
-        let zenoh_pico_include = build_zenoh_pico_native(&zenoh_pico_src, &out_dir);
+        // Native: build zenoh-pico via CMake (or use system library), then shim via cc
+        let zenoh_pico_include = if use_system {
+            use_system_zenoh_pico()
+        } else {
+            build_zenoh_pico_native(&zenoh_pico_src, &out_dir)
+        };
         if backend_count > 0 && !use_zephyr {
             build_c_shim(
                 &c_dir,
@@ -88,10 +104,12 @@ fn main() {
     println!("cargo:rerun-if-changed=c/platform_smoltcp/system.c");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/network.c");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_smoltcp_platform.h");
+    println!("cargo:rerun-if-changed=c/platform_smoltcp/errno_override.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_config.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_platform.h");
     println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
     println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
+    println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
     println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
     println!("cargo:rerun-if-changed=src/ffi.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
@@ -357,6 +375,67 @@ fn build_zenoh_pico_native(zenoh_pico_src: &Path, out_dir: &Path) -> PathBuf {
     zenoh_pico_build.join("include")
 }
 
+/// Use a pre-built zenoh-pico from ZENOH_PICO_DIR (system-zenohpico feature).
+///
+/// Expects a CMake install prefix layout:
+///   $ZENOH_PICO_DIR/lib/libzenohpico.a
+///   $ZENOH_PICO_DIR/include/zenoh-pico.h
+fn use_system_zenoh_pico() -> PathBuf {
+    let zenoh_pico_dir = env::var("ZENOH_PICO_DIR").unwrap_or_else(|_| {
+        panic!(
+            "ZENOH_PICO_DIR environment variable is required when system-zenohpico feature is enabled.\n\
+             Set it to the CMake install prefix of your zenoh-pico build, e.g.:\n\
+             ZENOH_PICO_DIR=/path/to/zenoh-pico-install cargo build --features system-zenohpico"
+        );
+    });
+    println!("cargo:rerun-if-env-changed=ZENOH_PICO_DIR");
+
+    let dir = PathBuf::from(&zenoh_pico_dir);
+    let lib_path = dir.join("lib").join("libzenohpico.a");
+    let header_path = dir.join("include").join("zenoh-pico.h");
+
+    if !lib_path.exists() {
+        panic!(
+            "ZENOH_PICO_DIR={}: expected static library at {}\n\
+             Build zenoh-pico with: cmake --build <build> && cmake --install <build>",
+            zenoh_pico_dir,
+            lib_path.display()
+        );
+    }
+    if !header_path.exists() {
+        panic!(
+            "ZENOH_PICO_DIR={}: expected version header at {}\n\
+             Build zenoh-pico with: cmake --build <build> && cmake --install <build>",
+            zenoh_pico_dir,
+            header_path.display()
+        );
+    }
+
+    // Link the pre-built library
+    println!(
+        "cargo:rustc-link-search=native={}",
+        dir.join("lib").display()
+    );
+    println!("cargo:rustc-link-lib=static=zenohpico");
+
+    // Link system libraries (same as build_zenoh_pico_native)
+    let target = env::var("TARGET").unwrap_or_default();
+    if target.contains("linux") || target.contains("darwin") || target.contains("macos") {
+        println!("cargo:rustc-link-lib=pthread");
+    } else if target.contains("windows") {
+        println!("cargo:rustc-link-lib=ws2_32");
+    }
+
+    println!(
+        "cargo:warning=Using system zenoh-pico from {}. \
+         Ensure it was built with compatible Z_FEATURE_* flags \
+         (Z_FEATURE_INTEREST=1, Z_FEATURE_MATCHING=1).",
+        zenoh_pico_dir
+    );
+
+    dir.join("include")
+}
+
 /// Copy source tree to build directory
 fn copy_source_tree(src: &Path, dst: &Path) {
     if dst.exists() {
@@ -536,7 +615,11 @@ fn build_zenoh_pico_embedded(
         // On bare-metal ESP32-C3, tp is never initialized → null pointer crash.
         let errno_dir = out_dir.join("errno-override");
         std::fs::create_dir_all(&errno_dir).unwrap();
-        std::fs::write(errno_dir.join("errno.h"), BARE_METAL_ERRNO_H).unwrap();
+        std::fs::write(
+            errno_dir.join("errno.h"),
+            include_bytes!("c/platform_smoltcp/errno_override.h"),
+        )
+        .unwrap();
         // errno override must be searched BEFORE picolibc headers
         build.include(&errno_dir);
 
@@ -688,66 +771,12 @@ fn generate_embedded_version_header(zenoh_pico_src: &Path, include_dir: &Path) {
     let minor = parts.get(1).unwrap_or(&"0");
     let patch = parts.get(2).unwrap_or(&"0");
 
-    let header = format!(
-        r#"// Auto-generated version header for zenoh-pico
-#ifndef ZENOH_PICO_H
-#define ZENOH_PICO_H
-
-#define ZENOH_PICO "{version}"
-#define ZENOH_PICO_MAJOR {major}
-#define ZENOH_PICO_MINOR {minor}
-#define ZENOH_PICO_PATCH {patch}
-#define ZENOH_PICO_TWEAK 0
-
-#include "zenoh-pico/api.h"
-
-#endif // ZENOH_PICO_H
-"#
-    );
+    let template = include_str!("c/zenoh-pico-version.h.in");
+    let header = template
+        .replace("@ZENOH_PICO@", &version)
+        .replace("@ZENOH_PICO_MAJOR@", major)
+        .replace("@ZENOH_PICO_MINOR@", minor)
+        .replace("@ZENOH_PICO_PATCH@", patch);
 
     std::fs::write(include_dir.join("zenoh-pico.h"), header).unwrap();
 }
-
-/// Minimal errno.h for bare-metal RISC-V (no TLS).
-///
-/// Shadows picolibc's errno.h which declares `extern __thread int errno`.
-/// On bare-metal ESP32-C3, the thread pointer register (tp) is never initialized,
-/// causing null pointer crashes in strtoul and other libc functions.
-const BARE_METAL_ERRNO_H: &str = r#"#ifndef _ERRNO_OVERRIDE_H
-#define _ERRNO_OVERRIDE_H
-
-/* Minimal errno.h for bare-metal RISC-V (no TLS).
- * Shadows picolibc's errno.h which uses __thread. */
-extern int errno;
-
-#define EPERM    1
-#define ENOENT   2
-#define EIO      5
-#define ENOMEM  12
-#define EACCES  13
-#define EFAULT  14
-#define EBUSY   16
-#define EEXIST  17
-#define EINVAL  22
-#define ENOSPC  28
-#define ERANGE  34
-#define ENOSYS  88
-#define ENOMSG  91
-#define ENOTSUP 95
-#define EADDRINUSE 98
-#define EADDRNOTAVAIL 99
-#define ENETUNREACH 101
-#define ECONNABORTED 103
-#define ECONNRESET 104
-#define ENOBUFS 105
-#define EISCONN 106
-#define ENOTCONN 107
-#define ETIMEDOUT 110
-#define ECONNREFUSED 111
-#define EALREADY 114
-#define EINPROGRESS 115
-#define EAGAIN  11
-#define EWOULDBLOCK EAGAIN
-
-#endif
-"#;

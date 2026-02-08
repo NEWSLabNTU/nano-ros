@@ -109,6 +109,8 @@ Move zenoh-pico cross-compilation from external shell scripts and example build.
 - [x] `crates/nano-ros-bsp-qemu/build.rs` — linker script only (no zenoh-pico linkage)
 - [x] `crates/nano-ros-bsp-esp32{,-qemu}/build.rs` — deleted (no longer needed)
 
+For users who need custom zenoh-pico configuration (different `Z_FEATURE_*` flags, patched source, etc.), the `system-zenohpico` feature on `zenoh-pico-shim-sys` allows using a pre-built library via the `ZENOH_PICO_DIR` environment variable. This is only supported for native targets.
+
 **Acceptance criteria**:
 - `cargo build --release` in any QEMU/ESP32 example builds zenoh-pico automatically
 - No environment variables, pre-build steps, or repo-root walking

@@ -113,6 +113,12 @@ Examples use `Context::from_env()` for configuration:
 | `ZENOH_LOCATOR` | Router address (e.g., `tcp/192.168.1.1:7447`) | `tcp/127.0.0.1:7447` |
 | `ZENOH_MODE` | Session mode: `client` or `peer` | `client` |
 
+Build-time environment variables:
+
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zenoh-pico-shim-sys`) | Only with `system-zenohpico` |
+
 ## Development Practices
 
 ### Quality Checks
