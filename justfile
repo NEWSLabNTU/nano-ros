@@ -16,8 +16,8 @@ default:
 # Entry Points
 # =============================================================================
 
-# Build everything: workspace (native + embedded) and all examples
-build: build-workspace build-workspace-embedded build-examples
+# Build everything: refresh bindings, workspace (native + embedded) and all examples
+build: generate-bindings build-workspace build-workspace-embedded build-examples
     @echo "All builds completed!"
 
 # Format everything: workspace and all examples
@@ -804,18 +804,20 @@ test-c verbose="": _init-test-logs
     ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh
 
 # Build C examples only (no tests)
-build-examples-c:
+build-examples-c: build-codegen-lib
     @echo "Building nano-ros-c library..."
     cargo build -p nano-ros-c --release
     @echo "Building native/c-talker..."
     cd examples/native/c-talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
     @echo "Building native/c-listener..."
     cd examples/native/c-listener && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
+    @echo "Building native/c-custom-msg..."
+    cd examples/native/c-custom-msg && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
     @echo "C examples built!"
 
 # Clean C examples build
 clean-examples-c:
-    rm -rf examples/native/c-talker/build examples/native/c-listener/build
+    rm -rf examples/native/c-talker/build examples/native/c-listener/build examples/native/c-custom-msg/build
     @echo "C examples build cleaned"
 
 # =============================================================================
@@ -832,25 +834,80 @@ install-cargo-nano-ros:
     @echo "Installing cargo-nano-ros..."
     cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
 
-# Regenerate bindings in all examples (requires ROS 2 environment + cargo-nano-ros)
+# Regenerate Rust bindings in all examples and rcl-interfaces
+# Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
 generate-bindings:
-    @echo "Regenerating bindings in all examples..."
-    @echo "Note: Requires ROS 2 environment sourced and cargo-nano-ros installed"
-    cd examples/native/rs-talker && cargo nano-ros generate-rust
-    cd examples/native/rs-listener && cargo nano-ros generate-rust
-    cd examples/native/rs-service-server && cargo nano-ros generate-rust
-    cd examples/native/rs-service-client && cargo nano-ros generate-rust
-    cd examples/native/rs-action-server && cargo nano-ros generate-rust
-    cd examples/native/rs-action-client && cargo nano-ros generate-rust
-    cd examples/qemu/rs-test && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
-    cd examples/qemu/rs-talker && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
-    cd examples/qemu/rs-listener && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
-    cd examples/qemu/bsp-talker && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
-    cd examples/qemu/bsp-listener && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
-    cd examples/stm32f4/bsp-talker && cargo nano-ros generate-rust --config --nano-ros-path ../../../crates
-    cd examples/zephyr/rs-talker && cargo nano-ros generate-rust
-    cd examples/zephyr/rs-listener && cargo nano-ros generate-rust
-    @echo "All bindings regenerated!"
+    #!/usr/bin/env bash
+    set -e
+    echo "Building nano-ros codegen tool..."
+    cargo build --manifest-path colcon-nano-ros/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
+    NANO_ROS="$(pwd)/colcon-nano-ros/packages/target/debug/nano-ros"
+    echo "Regenerating Rust bindings..."
+
+    # Internal crate (workspace member — checked into git)
+    echo "  rcl-interfaces"
+    (cd crates/rcl-interfaces && $NANO_ROS generate-rust)
+
+    # Native examples
+    for ex in rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client; do
+        echo "  native/$ex"
+        (cd examples/native/$ex && $NANO_ROS generate-rust)
+    done
+
+    # QEMU examples
+    for ex in rs-test rs-talker rs-listener bsp-talker bsp-listener; do
+        echo "  qemu/$ex"
+        (cd examples/qemu/$ex && $NANO_ROS generate-rust)
+    done
+
+    # STM32F4 examples
+    echo "  stm32f4/bsp-talker"
+    (cd examples/stm32f4/bsp-talker && $NANO_ROS generate-rust)
+
+    # Zephyr examples
+    for ex in rs-talker rs-listener rs-service-server rs-service-client rs-action-server rs-action-client; do
+        echo "  zephyr/$ex"
+        (cd examples/zephyr/$ex && $NANO_ROS generate-rust)
+    done
+
+    echo "All bindings regenerated!"
+
+# Remove generated/ directories in examples (not rcl-interfaces — it's a workspace member)
+clean-bindings:
+    #!/usr/bin/env bash
+    set -e
+    echo "Removing generated bindings..."
+    dirs=(
+        examples/native/rs-talker/generated
+        examples/native/rs-listener/generated
+        examples/native/rs-custom-msg/generated
+        examples/native/rs-service-server/generated
+        examples/native/rs-service-client/generated
+        examples/native/rs-action-server/generated
+        examples/native/rs-action-client/generated
+        examples/qemu/rs-test/generated
+        examples/qemu/rs-talker/generated
+        examples/qemu/rs-listener/generated
+        examples/qemu/bsp-talker/generated
+        examples/qemu/bsp-listener/generated
+        examples/stm32f4/bsp-talker/generated
+        examples/zephyr/rs-talker/generated
+        examples/zephyr/rs-listener/generated
+        examples/zephyr/rs-service-server/generated
+        examples/zephyr/rs-service-client/generated
+        examples/zephyr/rs-action-server/generated
+        examples/zephyr/rs-action-client/generated
+    )
+    for d in "${dirs[@]}"; do
+        if [ -d "$d" ]; then
+            rm -rf "$d"
+            echo "  removed $d"
+        fi
+    done
+    echo "All generated bindings removed."
+
+# Clean and regenerate all bindings from scratch
+regenerate-bindings: clean-bindings generate-bindings
 
 # =============================================================================
 # Setup & Cleanup

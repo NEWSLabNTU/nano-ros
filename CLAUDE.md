@@ -67,11 +67,16 @@ nano-ros/
 
 ```bash
 just setup          # Install toolchains, cargo tools, check system deps
-just build          # Build with no_std
+just build          # Generate bindings + build workspace (native + embedded) + examples
 just build-zenohd   # Build zenohd 1.6.2 from submodule (for integration tests)
 just check          # Format + clippy
 just quality        # Format + clippy + unit tests (no external deps)
 just doc            # Generate docs
+
+# Message bindings
+just generate-bindings      # Regenerate all generated/ dirs (uses bundled interfaces)
+just clean-bindings         # Remove all generated/ dirs (including rcl-interfaces)
+just regenerate-bindings    # clean-bindings + generate-bindings
 
 # Test groups (by infrastructure requirement)
 just test-unit          # Unit tests only (no external deps)
@@ -249,6 +254,10 @@ Generated per-project using `cargo nano-ros generate-rust` from `package.xml`. S
 
 **All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate-rust`. See [docs/guides/creating-examples.md](docs/guides/creating-examples.md) for the full guide.
 
+**Example `generated/` directories are gitignored** and recreated by `just generate-bindings` (called automatically by `just build`). Only `crates/rcl-interfaces/generated/` is checked into git (workspace member — cargo requires member paths on disk).
+
+**`.cargo/config.toml` is manually maintained** per example. Each contains `[patch.crates-io]` entries pointing to the local workspace crates, along with platform-specific `[build]` and `[target.*]` settings. The codegen tool does not touch these files.
+
 **Bundled interfaces**: Standard .msg files (`std_msgs`, `builtin_interfaces`) are shipped at `colcon-nano-ros/interfaces/` so codegen works without a ROS 2 environment. The ament index takes precedence when available; bundled files fill gaps.
 
 **heapless re-export**: `nano-ros-core` re-exports `heapless` (`pub use heapless;`) so generated code can reference `nano_ros_core::heapless::String<256>` etc. without requiring a separate `heapless` dependency.
@@ -267,27 +276,15 @@ cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
 cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
 ```
 
-**Generating config for external users (git dependency):**
+**Regenerating bindings:**
 ```bash
-cargo nano-ros generate-rust --config --nano-ros-git
-```
-
-**Generating config for local development (path dependency):**
-```bash
-cargo nano-ros generate-rust --config --nano-ros-path /path/to/nano-ros/crates
+just generate-bindings      # Regenerate all (uses bundled interfaces, no ROS 2 needed)
+just regenerate-bindings    # Clean + regenerate from scratch
 ```
 
 **Building the C codegen library (for CMake integration):**
 ```bash
 just build-codegen-lib
-```
-
-The `--config` flag uses `ConfigPatcher` (TOML-aware, idempotent) to add `[patch.crates-io]` entries to `.cargo/config.toml`, preserving existing `[build]`, `[target.*]`, and other sections.
-
-**Regenerating bindings in all examples (requires ROS 2 environment):**
-```bash
-source /opt/ros/humble/setup.bash
-just generate-bindings
 ```
 
 ### C API and CMake Integration
@@ -353,6 +350,14 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 - Iron+ type hash support (future work)
 
 See [docs/roadmap/](docs/roadmap/) for details.
+
+### Distribution UX (Future)
+
+Planned improvements for toolchain distribution:
+- **crates.io publishing**: `cargo-nano-ros`, `nano-ros-core`, `nano-ros-serdes`, pre-generated standard message crates — eliminates `[patch.crates-io]`
+- **Pre-built binaries**: GitHub releases for `nano-ros` binary
+- **`cargo nano-ros init`**: Template scaffolding for new projects
+- **C single-archive release**: library + headers + cmake modules + codegen binary
 
 ## Documentation Index
 
