@@ -1,7 +1,7 @@
 //! nano-ros STM32F4 Talker Example using BSP
 //!
-//! This example demonstrates the simplified BSP API that hides all
-//! platform-specific details (clocks, GPIO, Ethernet, smoltcp).
+//! Publishes typed `std_msgs/Int32` messages on `/chatter`,
+//! compatible with ROS 2 nodes via rmw_zenoh.
 //!
 //! # Hardware
 //!
@@ -30,8 +30,40 @@ use panic_probe as _;
 
 use nano_ros_bsp_stm32f4::prelude::*;
 
-/// ROS 2 keyexpr for std_msgs/Int32 on /chatter topic
-const TOPIC: &[u8] = b"0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported\0";
+mod msg {
+    use nano_ros_bsp_stm32f4::{Deserialize, RosMessage, Serialize, nano_ros_core};
+
+    pub struct Int32 {
+        pub data: i32,
+    }
+
+    impl Serialize for Int32 {
+        fn serialize(
+            &self,
+            w: &mut nano_ros_core::CdrWriter,
+        ) -> core::result::Result<(), nano_ros_core::SerError> {
+            w.write_i32(self.data)
+        }
+    }
+
+    impl Deserialize for Int32 {
+        fn deserialize(
+            r: &mut nano_ros_core::CdrReader,
+        ) -> core::result::Result<Self, nano_ros_core::DeserError> {
+            Ok(Self {
+                data: r.read_i32()?,
+            })
+        }
+    }
+
+    impl RosMessage for Int32 {
+        const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
+        const TYPE_HASH: &'static str =
+            "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
+    }
+}
+
+use msg::Int32;
 
 /// Poll interval in milliseconds
 const POLL_INTERVAL_MS: u32 = 10;
@@ -42,34 +74,22 @@ const PUBLISH_INTERVAL_MS: u32 = 1000;
 #[entry]
 fn main() -> ! {
     run_node(Config::nucleo_f429zi(), |node| {
-        info!("Creating publisher for /chatter...");
-        let publisher = node.create_publisher(TOPIC)?;
+        info!("Creating publisher for /chatter (std_msgs/Int32)...");
+        let publisher = node.create_publisher::<Int32>("/chatter")?;
 
         info!("Starting publish loop (1 Hz)...");
         let mut counter: i32 = 0;
         let mut last_publish_ms: u64 = 0;
 
         loop {
-            // Poll network and process callbacks
             node.spin_once(POLL_INTERVAL_MS);
 
-            // Check if it's time to publish
             let now_ms = node.now_ms();
             if now_ms - last_publish_ms >= PUBLISH_INTERVAL_MS as u64 {
                 last_publish_ms = now_ms;
                 counter = counter.wrapping_add(1);
 
-                // Create CDR-encoded Int32 message
-                // CDR format: 4-byte header + 4-byte int32
-                let mut cdr_buffer = [0u8; 8];
-                cdr_buffer[0] = 0x00; // CDR header: little-endian, no options
-                cdr_buffer[1] = 0x01;
-                cdr_buffer[2] = 0x00;
-                cdr_buffer[3] = 0x00;
-                // Little-endian int32
-                cdr_buffer[4..8].copy_from_slice(&counter.to_le_bytes());
-
-                match publisher.publish(&cdr_buffer) {
+                match publisher.publish(&Int32 { data: counter }) {
                     Ok(()) => info!("Published: {}", counter),
                     Err(e) => warn!("Publish failed: {:?}", e),
                 }

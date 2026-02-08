@@ -1,6 +1,7 @@
-//! QEMU Talker - zenoh-pico Publisher for MPS2-AN385
+//! QEMU Talker - ROS 2 Int32 Publisher for MPS2-AN385
 //!
-//! This example uses nano-ros-bsp-qemu for simplified bare-metal setup.
+//! Publishes typed `std_msgs/Int32` messages on `/chatter`,
+//! compatible with ROS 2 nodes via rmw_zenoh.
 
 #![no_std]
 #![no_main]
@@ -9,36 +10,61 @@ use nano_ros_bsp_qemu::prelude::*;
 use nano_ros_bsp_qemu::println;
 use panic_semihosting as _;
 
-/// Topic to publish on
-const TOPIC: &[u8] = b"demo/qemu\0";
+mod msg {
+    use nano_ros_bsp_qemu::{Deserialize, RosMessage, Serialize, nano_ros_core};
+
+    pub struct Int32 {
+        pub data: i32,
+    }
+
+    impl Serialize for Int32 {
+        fn serialize(
+            &self,
+            w: &mut nano_ros_core::CdrWriter,
+        ) -> core::result::Result<(), nano_ros_core::SerError> {
+            w.write_i32(self.data)
+        }
+    }
+
+    impl Deserialize for Int32 {
+        fn deserialize(
+            r: &mut nano_ros_core::CdrReader,
+        ) -> core::result::Result<Self, nano_ros_core::DeserError> {
+            Ok(Self {
+                data: r.read_i32()?,
+            })
+        }
+    }
+
+    impl RosMessage for Int32 {
+        const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
+        const TYPE_HASH: &'static str =
+            "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
+    }
+}
+
+use msg::Int32;
 
 #[entry]
 fn main() -> ! {
     run_node(Config::default(), |node| {
-        // Declare publisher
-        println!("Declaring publisher on topic: demo/qemu");
-        let publisher = node.create_publisher(TOPIC)?;
-        println!("Publisher declared (handle: {})", publisher.handle());
+        println!("Declaring publisher on /chatter (std_msgs/Int32)");
+        let publisher = node.create_publisher::<Int32>("/chatter")?;
+        println!("Publisher declared");
 
-        // Publish messages
         println!("");
         println!("Publishing messages...");
 
-        let mut msg_buf = [0u8; 64];
-
-        for i in 0..10u32 {
+        for i in 0..10i32 {
             // Poll to process network events
             for _ in 0..100 {
                 node.spin_once(10);
             }
 
-            // Format and publish message
-            let msg = format_message(&mut msg_buf, i);
-
-            if let Err(e) = publisher.publish(msg) {
+            if let Err(e) = publisher.publish(&Int32 { data: i }) {
                 println!("Publish failed: {:?}", e);
             } else {
-                println!("Published: {}", core::str::from_utf8(msg).unwrap_or("?"));
+                println!("Published: {}", i);
             }
         }
 
@@ -47,45 +73,4 @@ fn main() -> ! {
 
         Ok(())
     })
-}
-
-/// Format a message into the buffer
-fn format_message(buf: &mut [u8], num: u32) -> &[u8] {
-    let prefix = b"Hello from QEMU #";
-    let mut pos = 0;
-
-    // Copy prefix
-    for &b in prefix {
-        if pos < buf.len() {
-            buf[pos] = b;
-            pos += 1;
-        }
-    }
-
-    // Convert number to string
-    if num == 0 {
-        if pos < buf.len() {
-            buf[pos] = b'0';
-            pos += 1;
-        }
-    } else {
-        let mut n = num;
-        let mut digits = [0u8; 10];
-        let mut digit_count = 0;
-
-        while n > 0 {
-            digits[digit_count] = b'0' + (n % 10) as u8;
-            n /= 10;
-            digit_count += 1;
-        }
-
-        for i in (0..digit_count).rev() {
-            if pos < buf.len() {
-                buf[pos] = digits[i];
-                pos += 1;
-            }
-        }
-    }
-
-    &buf[..pos]
 }

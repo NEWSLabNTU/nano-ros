@@ -34,6 +34,9 @@ smoltcp = { version = "0.12", default-features = false, features = [
 zenoh-pico-shim = { path = "../zenoh-pico-shim", default-features = false, features = ["smoltcp"] }
 zenoh-pico-shim-sys = { path = "../zenoh-pico-shim-sys", default-features = false, features = ["smoltcp"] }
 
+# Core types (RosMessage, CDR serialization)
+nano-ros-core = { path = "../nano-ros-core", default-features = false }
+
 # Logging (defmt)
 defmt = "0.3"
 

@@ -27,6 +27,12 @@ pub enum Error {
     SocketLimit,
     /// Invalid configuration
     InvalidConfig,
+    /// Topic keyexpr too long for internal buffer
+    TopicTooLong,
+    /// CDR serialization buffer too small
+    BufferTooSmall,
+    /// CDR serialization failed
+    Serialize,
 }
 
 impl fmt::Display for Error {
@@ -43,6 +49,9 @@ impl fmt::Display for Error {
             Error::Publish => write!(f, "Publish operation failed"),
             Error::SocketLimit => write!(f, "Socket limit reached"),
             Error::InvalidConfig => write!(f, "Invalid configuration"),
+            Error::TopicTooLong => write!(f, "Topic keyexpr too long for internal buffer"),
+            Error::BufferTooSmall => write!(f, "CDR serialization buffer too small"),
+            Error::Serialize => write!(f, "CDR serialization failed"),
         }
     }
 }

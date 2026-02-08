@@ -4,7 +4,7 @@
 //!
 //! This crate provides a simplified API that abstracts away all hardware
 //! and network stack details. Users only need to focus on ROS concepts
-//! (publishers, subscribers, topics).
+//! (publishers, subscriptions, topics).
 //!
 //! # Example
 //!
@@ -15,14 +15,30 @@
 //! use nano_ros_bsp_qemu::prelude::*;
 //! use panic_semihosting as _; // Required panic handler
 //!
+//! struct Int32 { data: i32 }
+//! impl Serialize for Int32 {
+//!     fn serialize(&self, w: &mut nano_ros_core::CdrWriter) -> Result<(), nano_ros_core::SerError> {
+//!         w.write_i32(self.data)
+//!     }
+//! }
+//! impl Deserialize for Int32 {
+//!     fn deserialize(r: &mut nano_ros_core::CdrReader) -> Result<Self, nano_ros_core::DeserError> {
+//!         Ok(Self { data: r.read_i32()? })
+//!     }
+//! }
+//! impl RosMessage for Int32 {
+//!     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
+//!     const TYPE_HASH: &'static str = "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
+//! }
+//!
 //! #[entry]
 //! fn main() -> ! {
 //!     run_node(Config::default(), |node| {
-//!         let publisher = node.create_publisher(b"demo/topic\0")?;
+//!         let publisher = node.create_publisher::<Int32>("/chatter")?;
 //!
-//!         for _ in 0..10 {
+//!         for i in 0i32..10 {
 //!             node.spin_once(10);
-//!             publisher.publish(b"Hello from QEMU!")?;
+//!             publisher.publish(&Int32 { data: i })?;
 //!         }
 //!
 //!         Ok(())
@@ -82,10 +98,10 @@ pub use config::Config;
 pub use error::{Error, Result};
 pub use node::{Node, run_node};
 pub use publisher::Publisher;
-pub use subscriber::Subscriber;
+pub use subscriber::Subscription;
 
-// Re-export callback type for subscribers
-pub use zenoh_pico_shim_sys::ShimCallback;
+// Re-export core traits needed for message type definitions
+pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
 
 /// Prelude for convenient imports
 ///
@@ -95,9 +111,9 @@ pub mod prelude {
     pub use crate::error::{Error, Result};
     pub use crate::node::{Node, run_node};
     pub use crate::publisher::Publisher;
-    pub use crate::subscriber::Subscriber;
+    pub use crate::subscriber::Subscription;
     pub use cortex_m_rt::entry;
-    pub use zenoh_pico_shim_sys::ShimCallback;
+    pub use nano_ros_core::{Deserialize, RosMessage, Serialize};
 }
 
 /// Print to QEMU semihosting console

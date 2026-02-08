@@ -4,15 +4,19 @@ use core::ffi::{c_char, c_void};
 use core::marker::PhantomData;
 use core::ptr;
 
+use core::fmt::Write as _;
+
 use cortex_m_semihosting::hprintln;
+use heapless::String;
 use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
+use nano_ros_core::RosMessage;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::phy::Device;
 use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 use zenoh_pico_shim_sys::{
-    ShimCallback, zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
+    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
     zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
 };
 
@@ -24,7 +28,7 @@ use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::exit_failure;
 use crate::publisher::Publisher;
-use crate::subscriber::Subscriber;
+use crate::subscriber::{Subscription, subscription_trampoline};
 
 /// Trait for Ethernet devices that can be used with Node
 pub trait EthernetDevice: Device {
@@ -142,33 +146,28 @@ impl<'a, D: EthernetDevice + 'static> InnerNode<'a, D> {
         })
     }
 
-    /// Create a publisher
-    fn create_publisher(&mut self, topic: &[u8]) -> Result<Publisher> {
+    /// Create a publisher for a raw keyexpr
+    fn create_publisher_raw(&mut self, topic: &[u8]) -> Result<i32> {
         let handle = unsafe { zenoh_shim_declare_publisher(topic.as_ptr() as *const c_char) };
         if handle < 0 {
             return Err(Error::PublisherDeclare);
         }
-        Ok(unsafe { Publisher::from_handle(handle) })
+        Ok(handle)
     }
 
-    /// Create a subscriber
+    /// Create a subscriber for a raw keyexpr
     unsafe fn create_subscriber_raw(
         &mut self,
         topic: &[u8],
-        callback: Option<ShimCallback>,
+        callback: extern "C" fn(*const u8, usize, *mut c_void),
         context: *mut c_void,
-    ) -> Result<Subscriber> {
-        let cb = match callback {
-            Some(f) => f,
-            None => return Err(Error::SubscriberDeclare),
-        };
-
+    ) -> Result<i32> {
         let handle =
-            unsafe { zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, cb, context) };
+            unsafe { zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, callback, context) };
         if handle < 0 {
             return Err(Error::SubscriberDeclare);
         }
-        Ok(unsafe { Subscriber::from_handle(handle) })
+        Ok(handle)
     }
 
     /// Spin once
@@ -198,46 +197,80 @@ impl<'a, D: EthernetDevice> Drop for InnerNode<'a, D> {
 /// Simplified node for QEMU bare-metal applications
 ///
 /// This hides all low-level smoltcp details.
-/// Users interact only with ROS concepts (publishers, subscribers).
+/// Users interact only with ROS concepts (publishers, subscriptions).
+///
+/// # Example
+///
+/// ```ignore
+/// use nano_ros_bsp_qemu::prelude::*;
+///
+/// // Define a message type (or use generated bindings)
+/// struct Int32 { data: i32 }
+/// // ... impl Serialize, Deserialize, RosMessage ...
+///
+/// run_node(Config::default(), |node| {
+///     let pub_ = node.create_publisher::<Int32>("/chatter")?;
+///     pub_.publish(&Int32 { data: 42 })?;
+///     Ok(())
+/// })
+/// ```
 pub struct Node<'a> {
     inner: InnerNode<'a, Lan9118>,
+    domain_id: u32,
 }
 
 impl<'a> Node<'a> {
-    /// Create a publisher for the given topic
+    /// Create a typed publisher for a ROS 2 topic
     ///
-    /// # Arguments
-    ///
-    /// * `topic` - Topic name (null-terminated, e.g., `b"demo/topic\0"`)
+    /// Constructs the ROS 2 keyexpr from topic name and `M::TYPE_NAME`:
+    /// `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let publisher = node.create_publisher(b"chatter\0")?;
-    /// publisher.publish(b"Hello!")?;
+    /// let pub_ = node.create_publisher::<Int32>("/chatter")?;
+    /// pub_.publish(&Int32 { data: 42 })?;
     /// ```
-    pub fn create_publisher(&mut self, topic: &[u8]) -> Result<Publisher> {
-        self.inner.create_publisher(topic)
+    pub fn create_publisher<M: RosMessage>(&mut self, topic: &str) -> Result<Publisher<M>> {
+        let mut key = format_ros2_keyexpr(self.domain_id, topic, M::TYPE_NAME);
+        key.push('\0').map_err(|_| Error::TopicTooLong)?;
+        let handle = self.inner.create_publisher_raw(key.as_bytes())?;
+        Ok(unsafe { Publisher::from_handle(handle) })
     }
 
-    /// Create a subscriber for the given topic
+    /// Create a typed subscription for a ROS 2 topic
     ///
-    /// # Arguments
+    /// Messages are deserialized from CDR and delivered to the callback.
     ///
-    /// * `topic` - Topic name (null-terminated)
-    /// * `callback` - Function called when messages arrive
-    /// * `context` - User data passed to callback
+    /// # Limitations
     ///
-    /// # Safety
+    /// The callback is a function pointer (`fn(&M)`), not a closure.
+    /// Use `static` variables for external state — the standard bare-metal pattern.
     ///
-    /// The callback and context must remain valid for the node's lifetime.
-    pub unsafe fn create_subscriber(
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn on_message(msg: &Int32) {
+    ///     // handle message
+    /// }
+    /// let _sub = node.create_subscription::<Int32>("/chatter", on_message)?;
+    /// ```
+    pub fn create_subscription<M: RosMessage>(
         &mut self,
-        topic: &[u8],
-        callback: Option<ShimCallback>,
-        context: *mut c_void,
-    ) -> Result<Subscriber> {
-        unsafe { self.inner.create_subscriber_raw(topic, callback, context) }
+        topic: &str,
+        callback: fn(&M),
+    ) -> Result<Subscription<M>> {
+        let mut key = format_ros2_keyexpr_wildcard(self.domain_id, topic, M::TYPE_NAME);
+        key.push('\0').map_err(|_| Error::TopicTooLong)?;
+        let ctx = callback as *mut c_void;
+        let handle = unsafe {
+            self.inner.create_subscriber_raw(
+                key.as_bytes(),
+                subscription_trampoline::<M>,
+                ctx,
+            )
+        }?;
+        Ok(unsafe { Subscription::from_handle(handle) })
     }
 
     /// Process network events and dispatch callbacks
@@ -273,6 +306,26 @@ fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
 #[allow(static_mut_refs)]
 unsafe fn create_socket_set() -> SocketSet<'static> {
     unsafe { SocketSet::new(&mut buffers::SOCKET_STORAGE[..]) }
+}
+
+/// Format a ROS 2 data keyexpr: `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
+fn format_ros2_keyexpr(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
+    let mut key = String::<256>::new();
+    let topic_stripped = topic.trim_matches('/');
+    let _ = write!(
+        key,
+        "{}/{}/{}/TypeHashNotSupported",
+        domain_id, topic_stripped, type_name
+    );
+    key
+}
+
+/// Format a ROS 2 subscriber keyexpr with wildcard: `<domain_id>/<topic>/<type_name>/*`
+fn format_ros2_keyexpr_wildcard(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
+    let mut key = String::<256>::new();
+    let topic_stripped = topic.trim_matches('/');
+    let _ = write!(key, "{}/{}/{}/*", domain_id, topic_stripped, type_name);
+    key
 }
 
 /// Create LAN9118 Ethernet driver for QEMU MPS2-AN385
@@ -311,16 +364,15 @@ fn create_ethernet(mac: [u8; 6]) -> Result<Lan9118> {
 ///
 /// use nano_ros_bsp_qemu::prelude::*;
 ///
+/// // Define a message type
+/// struct Int32 { data: i32 }
+/// // ... impl Serialize, Deserialize, RosMessage ...
+///
 /// #[entry]
 /// fn main() -> ! {
 ///     run_node(Config::default(), |node| {
-///         let pub_ = node.create_publisher(b"demo/topic\0")?;
-///
-///         for _ in 0..10 {
-///             node.spin_once(10);
-///             pub_.publish(b"Hello!")?;
-///         }
-///
+///         let pub_ = node.create_publisher::<Int32>("/chatter")?;
+///         pub_.publish(&Int32 { data: 42 })?;
 ///         Ok(())
 ///     })
 /// }
@@ -393,7 +445,10 @@ where
     hprintln!("");
 
     // Create wrapper node
-    let mut node = Node { inner };
+    let mut node = Node {
+        inner,
+        domain_id: config.domain_id,
+    };
 
     // Run user application
     match f(&mut node) {

@@ -22,6 +22,8 @@ pub struct Config {
     pub hse_freq_mhz: u8,
     /// Pin configuration preset
     pub pins: PinConfig,
+    /// ROS 2 domain ID (default: 0)
+    pub domain_id: u32,
 }
 
 impl Config {
@@ -40,6 +42,7 @@ impl Config {
             zenoh_locator: b"tcp/192.168.1.1:7447\0",
             hse_freq_mhz: 8, // NUCLEO-F429ZI uses 8 MHz HSE
             pins: PinConfig::NucleoF429ZI,
+            domain_id: 0,
         }
     }
 
@@ -56,6 +59,7 @@ impl Config {
             zenoh_locator: b"tcp/192.168.1.1:7447\0",
             hse_freq_mhz: 8, // Discovery uses 8 MHz HSE
             pins: PinConfig::DiscoveryF407,
+            domain_id: 0,
         }
     }
 
@@ -69,6 +73,7 @@ impl Config {
             zenoh_locator: b"tcp/192.168.1.1:7447\0",
             hse_freq_mhz: 8,
             pins,
+            domain_id: 0,
         }
     }
 
@@ -107,6 +112,12 @@ impl Config {
     /// Set external oscillator frequency in MHz
     pub fn hse_freq_mhz(mut self, freq: u8) -> Self {
         self.hse_freq_mhz = freq;
+        self
+    }
+
+    /// Set ROS 2 domain ID
+    pub fn domain_id(mut self, domain_id: u32) -> Self {
+        self.domain_id = domain_id;
         self
     }
 }

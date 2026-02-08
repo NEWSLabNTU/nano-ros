@@ -11,14 +11,30 @@
 //!
 //! use nano_ros_bsp_stm32f4::prelude::*;
 //!
+//! struct Int32 { data: i32 }
+//! impl Serialize for Int32 {
+//!     fn serialize(&self, w: &mut nano_ros_core::CdrWriter) -> Result<(), nano_ros_core::SerError> {
+//!         w.write_i32(self.data)
+//!     }
+//! }
+//! impl Deserialize for Int32 {
+//!     fn deserialize(r: &mut nano_ros_core::CdrReader) -> Result<Self, nano_ros_core::DeserError> {
+//!         Ok(Self { data: r.read_i32()? })
+//!     }
+//! }
+//! impl RosMessage for Int32 {
+//!     const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
+//!     const TYPE_HASH: &'static str = "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
+//! }
+//!
 //! #[entry]
 //! fn main() -> ! {
 //!     run_node(Config::nucleo_f429zi(), |node| {
-//!         let publisher = node.create_publisher("/demo")?;
+//!         let publisher = node.create_publisher::<Int32>("/chatter")?;
 //!
-//!         for i in 0u32..10 {
+//!         for i in 0i32..10 {
 //!             node.spin_once(1000);
-//!             publisher.publish(&i.to_le_bytes())?;
+//!             publisher.publish(&Int32 { data: i })?;
 //!             defmt::info!("Published: {}", i);
 //!         }
 //!         Ok(())
@@ -49,6 +65,9 @@ pub use cortex_m_rt::entry;
 pub use defmt;
 pub use node::{Node, run_node};
 
+// Re-export core traits needed for message type definitions
+pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
+
 /// Result type for BSP operations
 pub type Result<T> = core::result::Result<T, Error>;
 
@@ -73,6 +92,12 @@ pub enum Error {
     Timeout,
     /// Resource exhausted (buffers full, etc.)
     ResourceExhausted,
+    /// Topic keyexpr too long for internal buffer
+    TopicTooLong,
+    /// CDR serialization buffer too small
+    BufferTooSmall,
+    /// CDR serialization failed
+    Serialize,
 }
 
 /// Convenient prelude module
@@ -84,17 +109,36 @@ pub mod prelude {
     pub use crate::{Error, Result};
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};
+    pub use nano_ros_core::{Deserialize, RosMessage, Serialize};
 }
 
-/// Publisher handle for sending messages
-#[derive(Debug)]
-pub struct Publisher {
+/// Publisher handle for sending typed messages
+pub struct Publisher<M: RosMessage> {
     handle: i32,
+    _marker: core::marker::PhantomData<M>,
 }
 
-impl Publisher {
-    /// Publish data to the topic
-    pub fn publish(&self, data: &[u8]) -> Result<()> {
+impl<M: RosMessage> Publisher<M> {
+    /// Publish a typed message (CDR-serialized automatically)
+    ///
+    /// Uses a 256-byte stack buffer. For larger messages, use
+    /// [`publish_with_buffer`](Self::publish_with_buffer).
+    pub fn publish(&self, msg: &M) -> Result<()> {
+        self.publish_with_buffer::<256>(msg)
+    }
+
+    /// Publish a typed message with a custom stack buffer size
+    pub fn publish_with_buffer<const BUF: usize>(&self, msg: &M) -> Result<()> {
+        let mut buf = [0u8; BUF];
+        let mut writer =
+            nano_ros_core::CdrWriter::new_with_header(&mut buf).map_err(|_| Error::BufferTooSmall)?;
+        msg.serialize(&mut writer)
+            .map_err(|_| Error::Serialize)?;
+        self.publish_raw(writer.as_slice())
+    }
+
+    /// Publish pre-encoded CDR bytes (escape hatch)
+    pub fn publish_raw(&self, data: &[u8]) -> Result<()> {
         let ret = unsafe {
             zenoh_pico_shim_sys::zenoh_shim_publish(self.handle, data.as_ptr(), data.len())
         };
@@ -102,13 +146,24 @@ impl Publisher {
     }
 }
 
-/// Subscriber callback type
-pub type SubscriberCallback =
-    extern "C" fn(data: *const u8, len: usize, ctx: *mut core::ffi::c_void);
-
-/// Subscriber handle for receiving messages
-#[derive(Debug)]
-pub struct Subscriber {
+/// Subscription handle for receiving typed messages
+pub struct Subscription<M: RosMessage> {
     #[allow(dead_code)] // Handle kept for future use (e.g., undeclare)
     handle: i32,
+    _marker: core::marker::PhantomData<M>,
+}
+
+/// Generic trampoline: deserializes CDR and calls user's typed `fn(&M)`
+pub(crate) extern "C" fn subscription_trampoline<M: RosMessage>(
+    data: *const u8,
+    len: usize,
+    ctx: *mut core::ffi::c_void,
+) {
+    let callback: fn(&M) = unsafe { core::mem::transmute(ctx) };
+    let bytes = unsafe { core::slice::from_raw_parts(data, len) };
+    if let Ok(mut reader) = nano_ros_core::CdrReader::new_with_header(bytes) {
+        if let Ok(msg) = M::deserialize(&mut reader) {
+            callback(&msg);
+        }
+    }
 }

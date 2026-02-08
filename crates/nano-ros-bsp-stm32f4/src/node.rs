@@ -4,10 +4,15 @@
 //! communication without exposing smoltcp or zenoh-pico details.
 
 use core::ffi::{c_char, c_void};
+use core::fmt::Write as _;
+
+use heapless::String;
+use nano_ros_core::RosMessage;
 
 use crate::config::Config;
 use crate::platform::Platform;
-use crate::{Error, Publisher, Result, Subscriber, SubscriberCallback};
+use crate::subscription_trampoline;
+use crate::{Error, Publisher, Result, Subscription};
 
 use zenoh_pico_shim_sys::{
     zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber, zenoh_shim_init,
@@ -18,54 +23,77 @@ use zenoh_pico_shim_sys::{
 pub struct Node {
     platform: Platform,
     _initialized: bool,
+    domain_id: u32,
 }
 
 impl Node {
-    /// Create a publisher for the given topic
+    /// Create a typed publisher for a ROS 2 topic
     ///
-    /// # Arguments
+    /// Constructs the ROS 2 keyexpr from topic name and `M::TYPE_NAME`:
+    /// `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
     ///
-    /// * `topic` - ROS 2 keyexpr topic (null-terminated, e.g., b"/demo/topic\0")
+    /// # Example
     ///
-    /// # Returns
-    ///
-    /// A `Publisher` handle that can be used to send messages.
-    pub fn create_publisher(&mut self, topic: &[u8]) -> Result<Publisher> {
-        let handle = unsafe { zenoh_shim_declare_publisher(topic.as_ptr() as *const c_char) };
+    /// ```ignore
+    /// let pub_ = node.create_publisher::<Int32>("/chatter")?;
+    /// pub_.publish(&Int32 { data: 42 })?;
+    /// ```
+    pub fn create_publisher<M: RosMessage>(&mut self, topic: &str) -> Result<Publisher<M>> {
+        let mut key = format_ros2_keyexpr(self.domain_id, topic, M::TYPE_NAME);
+        key.push('\0').map_err(|_| Error::TopicTooLong)?;
+        let handle = unsafe { zenoh_shim_declare_publisher(key.as_bytes().as_ptr() as *const c_char) };
         if handle < 0 {
             defmt::error!("Failed to create publisher: {}", handle);
             return Err(Error::Publisher);
         }
         defmt::info!("Publisher created (handle={})", handle);
-        Ok(Publisher { handle })
+        Ok(Publisher {
+            handle,
+            _marker: core::marker::PhantomData,
+        })
     }
 
-    /// Create a subscriber for the given topic
+    /// Create a typed subscription for a ROS 2 topic
     ///
-    /// # Arguments
+    /// Messages are deserialized from CDR and delivered to the callback.
     ///
-    /// * `topic` - ROS 2 keyexpr topic (null-terminated, e.g., b"/demo/topic\0")
-    /// * `callback` - Function to call when a message arrives
-    /// * `context` - User context passed to callback
+    /// # Limitations
     ///
-    /// # Safety
+    /// The callback is a function pointer (`fn(&M)`), not a closure.
+    /// Use `static` variables for external state — the standard bare-metal pattern.
     ///
-    /// The callback and context must remain valid for the lifetime of the subscriber.
-    pub unsafe fn create_subscriber(
+    /// # Example
+    ///
+    /// ```ignore
+    /// fn on_message(msg: &Int32) {
+    ///     // handle message
+    /// }
+    /// let _sub = node.create_subscription::<Int32>("/chatter", on_message)?;
+    /// ```
+    pub fn create_subscription<M: RosMessage>(
         &mut self,
-        topic: &[u8],
-        callback: SubscriberCallback,
-        context: *mut c_void,
-    ) -> Result<Subscriber> {
+        topic: &str,
+        callback: fn(&M),
+    ) -> Result<Subscription<M>> {
+        let mut key = format_ros2_keyexpr_wildcard(self.domain_id, topic, M::TYPE_NAME);
+        key.push('\0').map_err(|_| Error::TopicTooLong)?;
+        let ctx = callback as *mut c_void;
         let handle = unsafe {
-            zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, callback, context)
+            zenoh_shim_declare_subscriber(
+                key.as_bytes().as_ptr() as *const c_char,
+                subscription_trampoline::<M>,
+                ctx,
+            )
         };
         if handle < 0 {
             defmt::error!("Failed to create subscriber: {}", handle);
             return Err(Error::Subscriber);
         }
         defmt::info!("Subscriber created (handle={})", handle);
-        Ok(Subscriber { handle })
+        Ok(Subscription {
+            handle,
+            _marker: core::marker::PhantomData,
+        })
     }
 
     /// Process network events and callbacks
@@ -113,15 +141,15 @@ impl Drop for Node {
 /// ```no_run
 /// use nano_ros_bsp_stm32f4::prelude::*;
 ///
+/// // Define a message type
+/// struct Int32 { data: i32 }
+/// // ... impl Serialize, Deserialize, RosMessage ...
+///
 /// #[entry]
 /// fn main() -> ! {
 ///     run_node(Config::nucleo_f429zi(), |node| {
-///         let pub_ = node.create_publisher(b"0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported\0")?;
-///
-///         for i in 0u32..10 {
-///             node.spin_once(500);
-///             pub_.publish(&i.to_le_bytes())?;
-///         }
+///         let pub_ = node.create_publisher::<Int32>("/chatter")?;
+///         pub_.publish(&Int32 { data: 42 })?;
 ///         Ok(())
 ///     })
 /// }
@@ -177,6 +205,7 @@ where
     let mut node = Node {
         platform,
         _initialized: true,
+        domain_id: config.domain_id,
     };
 
     // Run user code
@@ -195,4 +224,24 @@ where
     loop {
         cortex_m::asm::wfi();
     }
+}
+
+/// Format a ROS 2 data keyexpr: `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
+fn format_ros2_keyexpr(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
+    let mut key = String::<256>::new();
+    let topic_stripped = topic.trim_matches('/');
+    let _ = write!(
+        key,
+        "{}/{}/{}/TypeHashNotSupported",
+        domain_id, topic_stripped, type_name
+    );
+    key
+}
+
+/// Format a ROS 2 subscriber keyexpr with wildcard: `<domain_id>/<topic>/<type_name>/*`
+fn format_ros2_keyexpr_wildcard(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
+    let mut key = String::<256>::new();
+    let topic_stripped = topic.trim_matches('/');
+    let _ = write!(key, "{}/{}/{}/*", domain_id, topic_stripped, type_name);
+    key
 }

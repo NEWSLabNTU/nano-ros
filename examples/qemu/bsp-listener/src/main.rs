@@ -1,41 +1,63 @@
 //! Simple QEMU Listener using nano-ros-bsp-qemu
 //!
-//! This example demonstrates the simplified BSP API for subscribers.
+//! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with qemu-rs-listener to see the reduced boilerplate.
 
 #![no_std]
 #![no_main]
 
-use core::ffi::c_void;
-use core::ptr;
 use core::sync::atomic::{AtomicU32, Ordering};
 
 use nano_ros_bsp_qemu::prelude::*;
 use nano_ros_bsp_qemu::println;
 use panic_semihosting as _;
 
-/// Topic to subscribe to
-const TOPIC: &[u8] = b"demo/qemu\0";
+mod msg {
+    use nano_ros_bsp_qemu::{Deserialize, RosMessage, Serialize, nano_ros_core};
 
-/// Message buffer for storing received messages
-const MSG_BUFFER_SIZE: usize = 256;
-static mut MSG_BUFFER: [u8; MSG_BUFFER_SIZE] = [0u8; MSG_BUFFER_SIZE];
-static mut MSG_LEN: usize = 0;
+    pub struct Int32 {
+        pub data: i32,
+    }
+
+    impl Serialize for Int32 {
+        fn serialize(
+            &self,
+            w: &mut nano_ros_core::CdrWriter,
+        ) -> core::result::Result<(), nano_ros_core::SerError> {
+            w.write_i32(self.data)
+        }
+    }
+
+    impl Deserialize for Int32 {
+        fn deserialize(
+            r: &mut nano_ros_core::CdrReader,
+        ) -> core::result::Result<Self, nano_ros_core::DeserError> {
+            Ok(Self {
+                data: r.read_i32()?,
+            })
+        }
+    }
+
+    impl RosMessage for Int32 {
+        const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
+        const TYPE_HASH: &'static str =
+            "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
+    }
+}
+
+use msg::Int32;
+
+/// Last received Int32 value
+static mut LAST_VALUE: i32 = 0;
 
 /// Message count (atomic for safe callback access)
 static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
 
-/// Subscriber callback - called when a message is received
-#[allow(static_mut_refs)]
-extern "C" fn on_message(data: *const u8, len: usize, _ctx: *mut c_void) {
-    // Copy message to buffer (using unsafe block for static mut access)
+/// Typed subscriber callback
+fn on_message(msg: &Int32) {
     unsafe {
-        let copy_len = len.min(MSG_BUFFER_SIZE);
-        ptr::copy_nonoverlapping(data, MSG_BUFFER.as_mut_ptr(), copy_len);
-        MSG_LEN = copy_len;
+        LAST_VALUE = msg.data;
     }
-
-    // Increment message count
     MSG_COUNT.fetch_add(1, Ordering::SeqCst);
 }
 
@@ -43,40 +65,26 @@ extern "C" fn on_message(data: *const u8, len: usize, _ctx: *mut c_void) {
 fn main() -> ! {
     // Use listener config (different IP/MAC than talker)
     run_node(Config::listener(), |node| {
-        // Declare subscriber
-        println!("Subscribing to topic: demo/qemu");
+        println!("Subscribing to /chatter (std_msgs/Int32)");
 
-        let _subscriber =
-            unsafe { node.create_subscriber(TOPIC, Some(on_message), ptr::null_mut()) }?;
+        let _subscription = node.create_subscription::<Int32>("/chatter", on_message)?;
 
         println!("Subscriber declared");
         println!("");
         println!("Waiting for messages...");
 
-        // Receive messages
         let mut last_count = 0u32;
         let mut poll_count = 0u32;
 
         loop {
-            // Poll to process network events
             node.spin_once(10);
 
-            // Check for new messages
             let current_count = MSG_COUNT.load(Ordering::SeqCst);
             if current_count > last_count {
-                // New message received
-                #[allow(static_mut_refs)]
-                unsafe {
-                    let msg = &MSG_BUFFER[..MSG_LEN];
-                    if let Ok(s) = core::str::from_utf8(msg) {
-                        println!("Received [{}]: {}", current_count, s);
-                    } else {
-                        println!("Received [{}]: <{} bytes binary>", current_count, MSG_LEN);
-                    }
-                }
+                let value = unsafe { LAST_VALUE };
+                println!("Received [{}]: {}", current_count, value);
                 last_count = current_count;
 
-                // Exit after receiving 10 messages
                 if current_count >= 10 {
                     println!("");
                     println!("Received 10 messages.");
@@ -85,8 +93,6 @@ fn main() -> ! {
             }
 
             poll_count += 1;
-
-            // Safety timeout
             if poll_count > 100000 {
                 println!("");
                 println!("Timeout waiting for messages.");

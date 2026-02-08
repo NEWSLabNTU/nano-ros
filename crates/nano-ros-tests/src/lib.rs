@@ -26,7 +26,25 @@ pub mod zephyr;
 use std::io::{BufRead, BufReader};
 use std::net::TcpStream;
 use std::process::{Child, ChildStdout};
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::{Duration, Instant};
+
+/// Intra-process counter for multiple `unique_domain_id()` calls in one test.
+static DOMAIN_SEQ: AtomicU32 = AtomicU32::new(0);
+
+/// Returns a unique ROS domain ID for test isolation.
+///
+/// Nextest runs each test in a separate process, so the PID is unique across
+/// concurrent tests. The low 8 bits hold an intra-process sequence counter
+/// for the rare case where one test needs multiple distinct domain IDs.
+///
+/// This avoids the pitfall of a global `AtomicU32` counter that resets per
+/// process — all processes would start at the same value.
+pub fn unique_domain_id() -> u32 {
+    let pid = std::process::id();
+    let seq = DOMAIN_SEQ.fetch_add(1, Ordering::Relaxed);
+    (pid << 8) | (seq & 0xFF)
+}
 
 /// Poll a file descriptor for readability using poll(2).
 ///
@@ -283,5 +301,16 @@ mod tests {
     fn test_assert_output_contains_fails() {
         let output = "Hello world";
         assert_output_contains(output, &["missing"]);
+    }
+
+    #[test]
+    fn test_unique_domain_id() {
+        let id1 = unique_domain_id();
+        let id2 = unique_domain_id();
+        // PID-based, so non-zero
+        assert!(id1 > 0);
+        // Sequential calls differ in the low 8 bits (intra-process counter)
+        assert_ne!(id1, id2);
+        assert_eq!(id2 - id1, 1);
     }
 }
