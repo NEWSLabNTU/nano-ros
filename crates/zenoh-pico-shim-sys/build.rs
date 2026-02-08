@@ -52,28 +52,27 @@ fn main() {
     // Generate C header from Rust FFI declarations
     generate_header(&manifest_dir, &include_dir);
 
-    // Build zenoh-pico
-    let zenoh_pico_include = if !is_embedded_target(&target) {
-        // For native builds, build via CMake
-        build_zenoh_pico_native(&zenoh_pico_src, &out_dir)
-    } else {
-        // For embedded, just use headers (zenoh-pico is built separately)
-        zenoh_pico_src.join("include")
-    };
-
-    // Build C shim
-    // For Zephyr, the C code is built by Zephyr's build system, not Cargo
-    // The Rust code just needs the FFI declarations
-    if backend_count > 0 && !use_zephyr {
-        build_c_shim(
-            &c_dir,
-            &include_dir,
-            &zenoh_pico_include,
-            use_posix,
-            use_smoltcp,
-            &target,
-        );
+    // Build zenoh-pico and C shim
+    if !is_embedded_target(&target) {
+        // Native: build zenoh-pico via CMake, then shim via cc
+        let zenoh_pico_include = build_zenoh_pico_native(&zenoh_pico_src, &out_dir);
+        if backend_count > 0 && !use_zephyr {
+            build_c_shim(
+                &c_dir,
+                &include_dir,
+                &zenoh_pico_include,
+                use_posix,
+                use_smoltcp,
+                &target,
+            );
+        }
+    } else if use_smoltcp {
+        // Embedded + smoltcp: build zenoh-pico + platform + shim all together with cc.
+        // This replaces the external build-zenoh-pico.sh shell scripts.
+        build_zenoh_pico_embedded(&zenoh_pico_src, &c_dir, &include_dir, &out_dir, &target);
     }
+    // For Zephyr: C code is built by Zephyr's build system, not Cargo.
+    // For no-backend: nothing to build (minimal configuration for header generation).
 
     // Set cfg flags for Rust code
     if use_posix {
@@ -93,6 +92,7 @@ fn main() {
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_platform.h");
     println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
     println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
+    println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
     println!("cargo:rerun-if-changed=src/ffi.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=cbindgen.toml");
@@ -506,3 +506,248 @@ fn build_c_shim(
     build.opt_level(2);
     build.compile("zenoh_shim");
 }
+
+/// Build zenoh-pico + platform layer + shim for embedded targets using cc.
+///
+/// Compiles all zenoh-pico sources together with our smoltcp platform layer and
+/// shim into a single static library (`libzenohpico.a`). This replaces the
+/// external `scripts/{qemu,esp32}/build-zenoh-pico.sh` shell scripts.
+fn build_zenoh_pico_embedded(
+    zenoh_pico_src: &Path,
+    c_dir: &Path,
+    include_dir: &Path,
+    out_dir: &Path,
+    target: &str,
+) {
+    let mut build = cc::Build::new();
+    let platform_dir = c_dir.join("platform_smoltcp");
+
+    // Generate version header in OUT_DIR
+    let version_include_dir = out_dir.join("zenoh-pico-version");
+    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
+
+    // RISC-V toolchain setup (compiler detection, errno shadow, picolibc)
+    if target.contains("riscv32imc") {
+        detect_riscv_compiler(&mut build);
+        build.flag("-march=rv32imc").flag("-mabi=ilp32");
+
+        // Generate errno.h shadow that avoids picolibc's TLS-based errno.
+        // picolibc declares `extern __thread int errno` which uses the tp register.
+        // On bare-metal ESP32-C3, tp is never initialized → null pointer crash.
+        let errno_dir = out_dir.join("errno-override");
+        std::fs::create_dir_all(&errno_dir).unwrap();
+        std::fs::write(errno_dir.join("errno.h"), BARE_METAL_ERRNO_H).unwrap();
+        // errno override must be searched BEFORE picolibc headers
+        build.include(&errno_dir);
+
+        // Add picolibc sysroot for C standard library headers (stdint.h, etc.)
+        // Do NOT use --specs=picolibc.specs (it enables TLS errno)
+        if let Some(sysroot) = get_picolibc_sysroot() {
+            build.include(sysroot.join("include"));
+        }
+    }
+
+    // ARM Cortex-M cross-compilation flags
+    if target.contains("thumbv7m") && !target.contains("thumbv7me") {
+        build.flag("-mcpu=cortex-m3").flag("-mthumb");
+    } else if target.contains("thumbv7em") {
+        build
+            .flag("-mcpu=cortex-m4")
+            .flag("-mthumb")
+            .flag("-mfpu=fpv4-sp-d16")
+            .flag("-mfloat-abi=hard");
+    }
+
+    // Collect zenoh-pico core sources (excluding platform-specific system backends)
+    let src_dir = zenoh_pico_src.join("src");
+    for subdir in &[
+        "api",
+        "collections",
+        "link",
+        "net",
+        "protocol",
+        "session",
+        "transport",
+        "utils",
+    ] {
+        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
+    }
+    // Common system sources (shared across all platforms)
+    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+
+    // smoltcp platform layer
+    build.file(platform_dir.join("system.c"));
+    build.file(platform_dir.join("network.c"));
+
+    // Shim (high-level API wrapper)
+    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+
+    // Include paths
+    build.include(zenoh_pico_src.join("include"));
+    build.include(&version_include_dir);
+    build.include(&platform_dir);
+    build.include(include_dir);
+
+    // Platform defines (matching scripts/{qemu,esp32}/build-zenoh-pico.sh)
+    build.define("ZENOH_GENERIC", None);
+    build.define("ZENOH_SHIM_SMOLTCP", None);
+    build.define("Z_FEATURE_MULTI_THREAD", "0");
+    build.define("Z_FEATURE_LINK_TCP", "1");
+    build.define("Z_FEATURE_LINK_UDP_MULTICAST", "0");
+    build.define("Z_FEATURE_LINK_UDP_UNICAST", "0");
+    build.define("Z_FEATURE_SCOUTING_UDP", "0");
+    build.define("Z_FEATURE_LINK_SERIAL", "0");
+    build.define("Z_FEATURE_LINK_WS", "0");
+    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
+    build.define("Z_FEATURE_RAWETH_TRANSPORT", "0");
+    build.define("ZENOH_DEBUG", "0");
+
+    // Embedded-optimized compiler flags
+    build
+        .opt_level(2)
+        .flag("-ffunction-sections")
+        .flag("-fdata-sections")
+        .warnings(false);
+
+    build.compile("zenohpico");
+}
+
+/// Recursively collect all .c files from a directory and add them to a cc::Build.
+fn add_c_sources_recursive(build: &mut cc::Build, dir: &Path) {
+    if !dir.exists() {
+        return;
+    }
+    let mut entries: Vec<_> = std::fs::read_dir(dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .collect();
+    entries.sort_by_key(|e| e.file_name());
+    for entry in entries {
+        let path = entry.path();
+        if path.is_dir() {
+            add_c_sources_recursive(build, &path);
+        } else if path.extension().is_some_and(|ext| ext == "c") {
+            build.file(&path);
+        }
+    }
+}
+
+/// Detect and set the RISC-V cross-compiler for cc::Build.
+fn detect_riscv_compiler(build: &mut cc::Build) {
+    for cc_name in &["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"] {
+        if Command::new(cc_name).arg("--version").output().is_ok() {
+            build.compiler(cc_name);
+            return;
+        }
+    }
+    // Fall through — let cc crate try to detect automatically
+}
+
+/// Get the picolibc sysroot path for RISC-V (provides C standard library headers).
+fn get_picolibc_sysroot() -> Option<PathBuf> {
+    for cc_name in &["riscv64-unknown-elf-gcc", "riscv32-esp-elf-gcc"] {
+        if let Ok(output) = Command::new(cc_name)
+            .args([
+                "-march=rv32imc",
+                "-mabi=ilp32",
+                "--specs=picolibc.specs",
+                "-print-sysroot",
+            ])
+            .output()
+            && output.status.success()
+        {
+            let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !sysroot.is_empty() {
+                let path = PathBuf::from(&sysroot);
+                if path.join("include").exists() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    // Fallback: known system location
+    let fallback = PathBuf::from("/usr/lib/picolibc/riscv64-unknown-elf");
+    if fallback.join("include").exists() {
+        return Some(fallback);
+    }
+    None
+}
+
+/// Generate zenoh-pico version header for embedded builds.
+fn generate_embedded_version_header(zenoh_pico_src: &Path, include_dir: &Path) {
+    std::fs::create_dir_all(include_dir).unwrap();
+
+    let version_file = zenoh_pico_src.join("version.txt");
+    let version = std::fs::read_to_string(version_file)
+        .unwrap_or_else(|_| "0.0.0".to_string())
+        .trim()
+        .to_string();
+
+    let parts: Vec<&str> = version.split('.').collect();
+    let major = parts.first().unwrap_or(&"0");
+    let minor = parts.get(1).unwrap_or(&"0");
+    let patch = parts.get(2).unwrap_or(&"0");
+
+    let header = format!(
+        r#"// Auto-generated version header for zenoh-pico
+#ifndef ZENOH_PICO_H
+#define ZENOH_PICO_H
+
+#define ZENOH_PICO "{version}"
+#define ZENOH_PICO_MAJOR {major}
+#define ZENOH_PICO_MINOR {minor}
+#define ZENOH_PICO_PATCH {patch}
+#define ZENOH_PICO_TWEAK 0
+
+#include "zenoh-pico/api.h"
+
+#endif // ZENOH_PICO_H
+"#
+    );
+
+    std::fs::write(include_dir.join("zenoh-pico.h"), header).unwrap();
+}
+
+/// Minimal errno.h for bare-metal RISC-V (no TLS).
+///
+/// Shadows picolibc's errno.h which declares `extern __thread int errno`.
+/// On bare-metal ESP32-C3, the thread pointer register (tp) is never initialized,
+/// causing null pointer crashes in strtoul and other libc functions.
+const BARE_METAL_ERRNO_H: &str = r#"#ifndef _ERRNO_OVERRIDE_H
+#define _ERRNO_OVERRIDE_H
+
+/* Minimal errno.h for bare-metal RISC-V (no TLS).
+ * Shadows picolibc's errno.h which uses __thread. */
+extern int errno;
+
+#define EPERM    1
+#define ENOENT   2
+#define EIO      5
+#define ENOMEM  12
+#define EACCES  13
+#define EFAULT  14
+#define EBUSY   16
+#define EEXIST  17
+#define EINVAL  22
+#define ENOSPC  28
+#define ERANGE  34
+#define ENOSYS  88
+#define ENOMSG  91
+#define ENOTSUP 95
+#define EADDRINUSE 98
+#define EADDRNOTAVAIL 99
+#define ENETUNREACH 101
+#define ECONNABORTED 103
+#define ECONNRESET 104
+#define ENOBUFS 105
+#define EISCONN 106
+#define ENOTCONN 107
+#define ETIMEDOUT 110
+#define ECONNREFUSED 111
+#define EALREADY 114
+#define EINPROGRESS 115
+#define EAGAIN  11
+#define EWOULDBLOCK EAGAIN
+
+#endif
+"#;

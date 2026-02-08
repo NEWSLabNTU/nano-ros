@@ -92,26 +92,27 @@ These use `include_bytes!()` on local files — no repo-root needed:
 
 ## Work Items
 
-### 28.1: BSP crates own zenoh-pico linkage
+### 28.1: Inline zenoh-pico build in zenoh-pico-shim-sys
 
 **Status**: Complete
 **Priority**: High — this is the main portability blocker
 
-Move zenoh-pico library discovery from example build.rs into BSP crate build.rs. The BSP crate's build script handles finding or building zenoh-pico, and emits the `cargo:rustc-link-search` and `cargo:rustc-link-lib` directives.
+Move zenoh-pico cross-compilation from external shell scripts and example build.rs files into `zenoh-pico-shim-sys/build.rs`. For embedded + smoltcp targets, the build script compiles all zenoh-pico sources (core + platform + shim) using the `cc` crate. No pre-build step or environment variable needed.
 
-**Approach**: Use an environment variable (`ZENOH_PICO_LIB_DIR`) that the BSP build.rs reads. The justfile `build-zenoh-pico-arm` recipe sets this, and the BSP crate documents the requirement. This is the same pattern used by `zenoh-pico-shim-sys` for native builds.
+**Approach**: `zenoh-pico-shim-sys/build.rs` detects embedded targets (`thumbv7m`, `thumbv7em`, `riscv32imc`) and builds zenoh-pico inline with `cc::Build`. This mirrors what `scripts/{qemu,esp32}/build-zenoh-pico.sh` did, but integrated into the cargo build. For RISC-V, a shadow `errno.h` avoids picolibc's TLS-based errno (which crashes on bare-metal ESP32-C3).
 
 **Changes**:
-- [x] `crates/nano-ros-bsp-qemu/build.rs` — emit link search for zenoh-pico ARM library
-- [x] `crates/nano-ros-bsp-esp32/build.rs` — emit link search for zenoh-pico RISC-V library
-- [x] `crates/nano-ros-bsp-esp32-qemu/build.rs` — emit link search for zenoh-pico RISC-V library
-- [x] Remove zenoh-pico link logic from all 8 example build.rs files
-- [x] Example build.rs files eliminated entirely (BSP crates handle everything)
+- [x] `crates/zenoh-pico-shim-sys/build.rs` — `build_zenoh_pico_embedded()` compiles ~120 sources for embedded targets
+- [x] Remove zenoh-pico link logic from all 8 example build.rs files (files deleted entirely)
+- [x] Remove `ZENOH_PICO_LIB_DIR` env var from justfile, BSP build.rs files, and CLAUDE.md
+- [x] Remove `build-zenoh-pico-arm` / `build-zenoh-pico-riscv` as build dependencies (recipes kept for manual use)
+- [x] `crates/nano-ros-bsp-qemu/build.rs` — linker script only (no zenoh-pico linkage)
+- [x] `crates/nano-ros-bsp-esp32{,-qemu}/build.rs` — deleted (no longer needed)
 
 **Acceptance criteria**:
-- Examples build with `cargo build --release` after setting `ZENOH_PICO_LIB_DIR`
-- No example build.rs walks up the directory tree
-- Examples can be copied to a standalone directory and build (given correct deps and env var)
+- `cargo build --release` in any QEMU/ESP32 example builds zenoh-pico automatically
+- No environment variables, pre-build steps, or repo-root walking
+- Examples can be copied to a standalone directory and build (given correct crate deps)
 
 ### 28.2: BSP crates own linker scripts
 

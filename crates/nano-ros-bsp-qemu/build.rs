@@ -1,7 +1,6 @@
 //! Build script for nano-ros-bsp-qemu
 //!
-//! 1. Copies the mps2-an385.x linker script to the output directory
-//! 2. Links the pre-built zenoh-pico ARM library via ZENOH_PICO_LIB_DIR env var
+//! Copies the mps2-an385.x linker script to the output directory.
 
 use std::env;
 use std::fs::File;
@@ -19,15 +18,6 @@ fn main() {
 
     println!("cargo:rustc-link-search={}", out.display());
 
-    // Link pre-built zenoh-pico library
-    if let Ok(lib_dir) = env::var("ZENOH_PICO_LIB_DIR") {
-        println!("cargo:rustc-link-search=native={lib_dir}");
-        println!("cargo:rustc-link-lib=static=zenohpico");
-        let lib_path = PathBuf::from(&lib_dir).join("libzenohpico.a");
-        println!("cargo:rerun-if-changed={}", lib_path.display());
-    }
-
     println!("cargo:rerun-if-changed=mps2-an385.x");
     println!("cargo:rerun-if-changed=build.rs");
-    println!("cargo:rerun-if-env-changed=ZENOH_PICO_LIB_DIR");
 }

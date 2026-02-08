@@ -101,7 +101,7 @@ test-all verbose="":
 
 # Run code quality checks (formatting + clippy + unit tests) - no integration tests
 # Runs all checks even if some fail, then reports all failures at the end
-quality: build-zenoh-pico-arm
+quality:
     #!/usr/bin/env bash
     set +e  # Don't exit on first error
     failed=0
@@ -162,7 +162,6 @@ quality: build-zenoh-pico-arm
 
     echo ""
     echo "=== QEMU Examples ==="
-    export ZENOH_PICO_LIB_DIR="$(pwd)/build/qemu-zenoh-pico"
     qemu_failed=0
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
@@ -454,11 +453,10 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU examples (automatically builds zenoh-pico ARM library first)
-build-examples-qemu: build-zenoh-pico-arm
+# Build QEMU examples (zenoh-pico is built inline by zenoh-pico-shim-sys)
+build-examples-qemu:
     #!/usr/bin/env bash
     set -e
-    export ZENOH_PICO_LIB_DIR="$(pwd)/build/qemu-zenoh-pico"
     echo "Building QEMU examples..."
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo build --release)
@@ -477,7 +475,6 @@ format-examples-qemu:
 check-examples-qemu:
     #!/usr/bin/env bash
     set -e
-    export ZENOH_PICO_LIB_DIR="$(pwd)/build/qemu-zenoh-pico"
     echo "Checking QEMU examples..."
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
@@ -514,11 +511,10 @@ build-zenoh-pico-riscv:
 clean-zenoh-pico-riscv:
     ./scripts/esp32/build-zenoh-pico.sh --clean
 
-# Build ESP32 examples (requires nightly + zenoh-pico RISC-V)
-build-examples-esp32: build-zenoh-pico-riscv
+# Build ESP32 examples (requires nightly; zenoh-pico is built inline)
+build-examples-esp32:
     #!/usr/bin/env bash
     set -e
-    export ZENOH_PICO_LIB_DIR="$(pwd)/build/esp32-zenoh-pico"
     echo "Building ESP32 examples..."
     for ex in bsp-talker bsp-listener; do
         echo "  Building esp32/$ex..."
@@ -526,11 +522,10 @@ build-examples-esp32: build-zenoh-pico-riscv
     done
     echo "ESP32 examples built!"
 
-# Build ESP32 QEMU examples (requires nightly + zenoh-pico RISC-V)
-build-examples-esp32-qemu: build-zenoh-pico-riscv
+# Build ESP32 QEMU examples (requires nightly; zenoh-pico is built inline)
+build-examples-esp32-qemu:
     #!/usr/bin/env bash
     set -e
-    export ZENOH_PICO_LIB_DIR="$(pwd)/build/esp32-zenoh-pico"
     echo "Building ESP32 QEMU examples..."
     for ex in qemu-talker qemu-listener; do
         echo "  Building esp32/$ex..."

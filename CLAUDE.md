@@ -112,7 +112,6 @@ Examples use `Context::from_env()` for configuration:
 | `ROS_DOMAIN_ID` | ROS 2 domain ID | `0` |
 | `ZENOH_LOCATOR` | Router address (e.g., `tcp/192.168.1.1:7447`) | `tcp/127.0.0.1:7447` |
 | `ZENOH_MODE` | Session mode: `client` or `peer` | `client` |
-| `ZENOH_PICO_LIB_DIR` | Path to pre-built zenoh-pico library dir (for embedded BSP crates) | Set by justfile recipes |
 
 ## Development Practices
 
