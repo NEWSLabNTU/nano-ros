@@ -208,6 +208,7 @@ test-report:
 # Excludes nano-ros-c which currently requires std
 build-workspace:
     cargo build --workspace --no-default-features --exclude nano-ros-c
+    cargo nextest run --workspace --no-run
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zenoh-pico-shim-sys which requires native system headers for CMake build
