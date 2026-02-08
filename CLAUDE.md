@@ -19,7 +19,7 @@ nano-ros/
 │   ├── nano-ros-bsp-stm32f4/  # STM32F4 Board Support Package
 │   ├── nano-ros-bsp-zephyr/   # Zephyr RTOS Board Support Package (C)
 │   ├── rcl-interfaces/        # Generated ROS 2 interface types
-│   │   └── generated/         # cargo nano-ros generate output
+│   │   └── generated/         # cargo nano-ros generate-rust output
 │   │       ├── rcl_interfaces/    # Parameter service types
 │   │       └── builtin_interfaces/ # Time, Duration types
 │   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
@@ -245,9 +245,15 @@ Key naming rules:
 All core crates support `#![no_std]` with optional `std`/`alloc` features.
 
 ### Message Types
-Generated per-project using `cargo nano-ros generate` from `package.xml`. See [docs/guides/message-generation.md](docs/guides/message-generation.md).
+Generated per-project using `cargo nano-ros generate-rust` from `package.xml`. See [docs/guides/message-generation.md](docs/guides/message-generation.md).
 
-**All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate`. See [docs/guides/creating-examples.md](docs/guides/creating-examples.md) for the full guide.
+**All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate-rust`. See [docs/guides/creating-examples.md](docs/guides/creating-examples.md) for the full guide.
+
+**Bundled interfaces**: Standard .msg files (`std_msgs`, `builtin_interfaces`) are shipped at `colcon-nano-ros/interfaces/` so codegen works without a ROS 2 environment. The ament index takes precedence when available; bundled files fill gaps.
+
+**heapless re-export**: `nano-ros-core` re-exports `heapless` (`pub use heapless;`) so generated code can reference `nano_ros_core::heapless::String<256>` etc. without requiring a separate `heapless` dependency.
+
+**Inline codegen mode**: `rosidl-codegen` supports an inline mode (`NanoRosCodegenMode::Inline`) where generated code uses `nano_ros_core::` prefixed imports and `super::` relative paths for cross-package references. This is used for single-crate scenarios; the standard `cargo nano-ros generate-rust` (separate crates per package) remains the primary workflow.
 
 **Installing cargo-nano-ros:**
 ```bash
@@ -263,12 +269,17 @@ cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ro
 
 **Generating config for external users (git dependency):**
 ```bash
-cargo nano-ros generate --config --nano-ros-git
+cargo nano-ros generate-rust --config --nano-ros-git
 ```
 
 **Generating config for local development (path dependency):**
 ```bash
-cargo nano-ros generate --config --nano-ros-path /path/to/nano-ros/crates
+cargo nano-ros generate-rust --config --nano-ros-path /path/to/nano-ros/crates
+```
+
+**Building the C codegen library (for CMake integration):**
+```bash
+just build-codegen-lib
 ```
 
 The `--config` flag uses `ConfigPatcher` (TOML-aware, idempotent) to add `[patch.crates-io]` entries to `.cargo/config.toml`, preserving existing `[build]`, `[target.*]`, and other sections.
@@ -287,6 +298,8 @@ find_package(NanoRos REQUIRED)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
 This provides include dirs, static library, and platform link libs (pthread, dl, m) automatically.
+
+**C code generation** uses `nano_ros_generate_interfaces()` (from `nano_ros_generate_interfaces.cmake`). The codegen tool is bundled as `libnano_ros_codegen_c.a` — no external `nano-ros` binary needed. Build it with `just build-codegen-lib` before running CMake. The CMake module `FindNanoRosCodegen.cmake` compiles a thin C wrapper at configure time.
 
 ### Platform Backends
 Selected via feature flags: `posix` (desktop), `zephyr` (Zephyr RTOS), `smoltcp` (bare-metal).
@@ -333,6 +346,7 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
 | 26 | Typed BSP API + example migration | Complete |
+| 27 | Codegen automation | Complete |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment
@@ -348,10 +362,10 @@ docs/
 ├── reference/       # Protocol specs, comparisons, coverage
 ├── design/          # Architecture, real-time analysis
 ├── research/        # Autoware porting analysis
-└── roadmap/         # Phase planning (phase-1 through phase-26)
+└── roadmap/         # Phase planning (phase-1 through phase-27)
 ```
 
-Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [tests/README](tests/README.md).
+Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [codegen automation](docs/roadmap/phase-27-codegen-automation.md), [tests/README](tests/README.md).
 
 ## Quick Reference
 
