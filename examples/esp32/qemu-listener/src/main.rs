@@ -1,7 +1,7 @@
 //! Simple ESP32-C3 QEMU Listener using nano-ros-bsp-esp32-qemu
 //!
-//! This example uses the OpenETH NIC in QEMU (no WiFi needed), establishes
-//! a zenoh session via static IP, and subscribes to messages.
+//! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
+//! Compare with qemu-bsp-listener — this is the ESP32-C3 equivalent.
 //!
 //! # Building
 //!
@@ -19,37 +19,57 @@
 #![no_std]
 #![no_main]
 
-use core::ffi::c_void;
-use core::ptr;
-
 use esp_backtrace as _;
 use nano_ros_bsp_esp32_qemu::esp_println;
 use nano_ros_bsp_esp32_qemu::prelude::*;
 
-/// Topic to subscribe to
-const TOPIC: &[u8] = b"demo/esp32\0";
+mod msg {
+    use nano_ros_bsp_esp32_qemu::{Deserialize, RosMessage, Serialize, nano_ros_core};
 
-/// Message buffer for storing received messages
-const MSG_BUFFER_SIZE: usize = 256;
-static mut MSG_BUFFER: [u8; MSG_BUFFER_SIZE] = [0u8; MSG_BUFFER_SIZE];
-static mut MSG_LEN: usize = 0;
-
-/// Message count (using static mut since ESP32-C3 is single-core
-/// and callbacks run in the same polling context)
-static mut MSG_COUNT: u32 = 0;
-
-/// Subscriber callback - called when a message is received
-#[allow(static_mut_refs)]
-extern "C" fn on_message(data: *const u8, len: usize, _ctx: *mut c_void) {
-    // Copy message to buffer
-    unsafe {
-        let copy_len = len.min(MSG_BUFFER_SIZE);
-        ptr::copy_nonoverlapping(data, MSG_BUFFER.as_mut_ptr(), copy_len);
-        MSG_LEN = copy_len;
+    pub struct Int32 {
+        pub data: i32,
     }
 
-    // Increment message count
+    impl Serialize for Int32 {
+        fn serialize(
+            &self,
+            w: &mut nano_ros_core::CdrWriter,
+        ) -> core::result::Result<(), nano_ros_core::SerError> {
+            w.write_i32(self.data)
+        }
+    }
+
+    impl Deserialize for Int32 {
+        fn deserialize(
+            r: &mut nano_ros_core::CdrReader,
+        ) -> core::result::Result<Self, nano_ros_core::DeserError> {
+            Ok(Self {
+                data: r.read_i32()?,
+            })
+        }
+    }
+
+    impl RosMessage for Int32 {
+        const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
+        const TYPE_HASH: &'static str =
+            "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
+    }
+}
+
+use msg::Int32;
+
+/// Last received Int32 value
+static mut LAST_VALUE: i32 = 0;
+
+/// Message count (using static mut since ESP32-C3 is single-core
+/// and riscv32imc lacks atomic CAS operations)
+static mut MSG_COUNT: u32 = 0;
+
+/// Typed subscriber callback
+#[allow(static_mut_refs)]
+fn on_message(msg: &Int32) {
     unsafe {
+        LAST_VALUE = msg.data;
         MSG_COUNT += 1;
     }
 }
@@ -59,17 +79,14 @@ nano_ros_bsp_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 #[entry]
 fn main() -> ! {
     run_node(Config::listener(), |node| {
-        // Declare subscriber
-        esp_println::println!("Subscribing to topic: demo/esp32");
+        esp_println::println!("Subscribing to /chatter (std_msgs/Int32)");
 
-        let _subscriber =
-            unsafe { node.create_subscriber(TOPIC, Some(on_message), ptr::null_mut()) }?;
+        let _subscription = node.create_subscription::<Int32>("/chatter", on_message)?;
 
         esp_println::println!("Subscriber declared");
         esp_println::println!("");
         esp_println::println!("Waiting for messages...");
 
-        // Receive messages
         let mut last_count = 0u32;
         let mut poll_count = 0u32;
 
@@ -80,20 +97,8 @@ fn main() -> ! {
             // Check for new messages
             let current_count = unsafe { MSG_COUNT };
             if current_count > last_count {
-                // New message received
-                #[allow(static_mut_refs)]
-                unsafe {
-                    let msg = &MSG_BUFFER[..MSG_LEN];
-                    if let Ok(s) = core::str::from_utf8(msg) {
-                        esp_println::println!("Received [{}]: {}", current_count, s);
-                    } else {
-                        esp_println::println!(
-                            "Received [{}]: <{} bytes binary>",
-                            current_count,
-                            MSG_LEN
-                        );
-                    }
-                }
+                let value = unsafe { LAST_VALUE };
+                esp_println::println!("Received [{}]: {}", current_count, value);
                 last_count = current_count;
 
                 // Exit after receiving 10 messages

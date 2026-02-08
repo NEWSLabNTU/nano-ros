@@ -25,6 +25,10 @@ max-threads = 1
 [test-groups.emulator]
 max-threads = 1
 
+# ESP32 networked tests share port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+[test-groups.esp32-emulator]
+max-threads = 1
+
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
 test-group = "zephyr"
@@ -34,10 +38,16 @@ filter = "binary(c_api)"
 test-group = "c_api"
 
 [[profile.default.overrides]]
-filter = "binary(emulator)"
+filter = "binary(emulator) and not binary(esp32_emulator)"
 test-group = "emulator"
 # Docker-based QEMU E2E tests need much longer timeouts
 # (image build + container startup + network setup + test execution)
+slow-timeout = { period = "120s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = "binary(esp32_emulator)"
+test-group = "esp32-emulator"
+# ESP32 tests: nightly build + espflash + QEMU boot + zenoh communication
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [profile.ci]

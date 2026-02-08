@@ -371,3 +371,146 @@ impl Device for OpenEth {
         caps
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // =====================================================================
+    // Constants
+    // =====================================================================
+
+    #[test]
+    fn test_mtu_is_standard_ethernet() {
+        assert_eq!(MTU, 1500);
+    }
+
+    #[test]
+    fn test_max_frame_size_covers_mtu_plus_headers() {
+        // Ethernet header = 14 bytes (6 dst + 6 src + 2 ethertype)
+        // MTU = 1500
+        // Total = 1514, rounded to 1536
+        assert!(MAX_FRAME_SIZE >= MTU + 14);
+        assert_eq!(MAX_FRAME_SIZE, 1536);
+    }
+
+    #[test]
+    fn test_dma_buf_size_covers_max_frame() {
+        // DMA buffer must hold a full frame + any padding/CRC
+        assert!(DMA_BUF_SIZE >= MAX_FRAME_SIZE);
+        assert_eq!(DMA_BUF_SIZE, 1600);
+    }
+
+    #[test]
+    fn test_esp32c3_base_reexported() {
+        assert_eq!(ESP32C3_BASE, regs::ESP32C3_BASE);
+    }
+
+    // =====================================================================
+    // Config
+    // =====================================================================
+
+    #[test]
+    fn test_config_default() {
+        let config = Config::default();
+        assert_eq!(config.base_addr, 0x600C_D000);
+        // Default MAC is locally-administered unicast
+        assert_eq!(config.mac_addr, [0x02, 0x00, 0x00, 0x00, 0x00, 0x01]);
+        // Bit 1 of first byte = locally administered
+        assert_ne!(config.mac_addr[0] & 0x02, 0);
+        // Bit 0 of first byte = 0 means unicast
+        assert_eq!(config.mac_addr[0] & 0x01, 0);
+    }
+
+    #[test]
+    fn test_config_custom() {
+        let config = Config {
+            base_addr: 0x1234_5000,
+            mac_addr: [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF],
+        };
+        assert_eq!(config.base_addr, 0x1234_5000);
+        assert_eq!(config.mac_addr[0], 0xAA);
+    }
+
+    #[test]
+    fn test_config_clone() {
+        let config = Config::default();
+        let cloned = config.clone();
+        assert_eq!(config.base_addr, cloned.base_addr);
+        assert_eq!(config.mac_addr, cloned.mac_addr);
+    }
+
+    // =====================================================================
+    // OpenEth struct memory layout
+    // =====================================================================
+
+    #[test]
+    fn test_openeth_struct_size() {
+        // Verify the struct fits in reasonable stack space
+        // base(8) + mac(6) + tx_buf(1600) + rx_buf(1600) + rx_frame(1536) + rx_frame_len(8)
+        let size = core::mem::size_of::<OpenEth>();
+        // Should be under 8KB (reasonable for embedded stack)
+        assert!(
+            size < 8192,
+            "OpenEth is {} bytes, expected < 8192",
+            size
+        );
+        // Should be at least the sum of buffer sizes
+        assert!(
+            size >= DMA_BUF_SIZE * 2 + MAX_FRAME_SIZE,
+            "OpenEth is {} bytes, expected >= {}",
+            size,
+            DMA_BUF_SIZE * 2 + MAX_FRAME_SIZE
+        );
+    }
+
+    // =====================================================================
+    // Device capabilities
+    // =====================================================================
+
+    #[test]
+    fn test_capabilities() {
+        let config = Config {
+            base_addr: 0, // won't access hardware in capabilities()
+            mac_addr: [0; 6],
+        };
+        // Safety: we won't call init() or any hardware-accessing methods
+        let eth = unsafe { OpenEth::new(config) };
+        let caps = eth.capabilities();
+
+        assert_eq!(caps.medium, Medium::Ethernet);
+        assert_eq!(caps.max_transmission_unit, 1500);
+        assert_eq!(caps.max_burst_size, Some(1));
+    }
+
+    // =====================================================================
+    // MAC address
+    // =====================================================================
+
+    #[test]
+    fn test_mac_address_preserved() {
+        let mac = [0x02, 0x00, 0x00, 0xDE, 0xAD, 0x42];
+        let config = Config {
+            base_addr: 0,
+            mac_addr: mac,
+        };
+        let eth = unsafe { OpenEth::new(config) };
+        assert_eq!(eth.mac_address(), mac);
+    }
+
+    // =====================================================================
+    // Error type
+    // =====================================================================
+
+    #[test]
+    fn test_error_equality() {
+        assert_eq!(Error::InitFailed, Error::InitFailed);
+    }
+
+    #[test]
+    fn test_error_copy() {
+        let err = Error::InitFailed;
+        let copied = err;
+        assert_eq!(err, copied);
+    }
+}

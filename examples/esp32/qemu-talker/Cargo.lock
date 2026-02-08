@@ -1000,9 +1000,26 @@ dependencies = [
  "esp-bootloader-esp-idf",
  "esp-hal",
  "esp-println",
+ "heapless 0.8.0",
+ "nano-ros-core",
  "openeth-smoltcp",
  "smoltcp",
  "zenoh-pico-shim-sys",
+]
+
+[[package]]
+name = "nano-ros-core"
+version = "0.1.0"
+dependencies = [
+ "log",
+ "nano-ros-serdes",
+]
+
+[[package]]
+name = "nano-ros-serdes"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
 ]
 
 [[package]]

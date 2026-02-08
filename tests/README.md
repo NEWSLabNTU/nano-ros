@@ -35,6 +35,7 @@ cargo test -p nano-ros-tests --tests -- --nocapture
 ```bash
 just test-unit          # Unit tests + Miri (no external deps)
 just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
+just test-qemu-esp32    # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
 just test-integration   # All Rust integration tests (needs zenohd)
 just test-zephyr        # Zephyr E2E tests (needs west + TAP network)
 just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
@@ -57,6 +58,7 @@ crates/nano-ros-tests/  # Rust test crate
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs          # Test utilities (wait_for_pattern, count_pattern)
+│   ├── esp32.rs        # ESP32-C3 QEMU helpers (guard functions, flash, launch)
 │   └── fixtures/
 │       ├── mod.rs
 │       ├── binaries.rs     # Binary build helpers (cached)
@@ -64,10 +66,11 @@ crates/nano-ros-tests/  # Rust test crate
 │       ├── ros2.rs         # ROS 2 process helpers
 │       └── zenohd_fixture.rs # ZenohRouter fixture (RAII)
 └── tests/
-    ├── emulator.rs     # QEMU Cortex-M3 tests
-    ├── nano2nano.rs    # nano-ros ↔ nano-ros tests
-    ├── platform.rs     # Platform detection tests
-    └── rmw_interop.rs  # ROS 2 interop tests
+    ├── emulator.rs         # QEMU Cortex-M3 tests (ARM)
+    ├── esp32_emulator.rs   # QEMU ESP32-C3 tests (RISC-V)
+    ├── nano2nano.rs        # nano-ros ↔ nano-ros tests
+    ├── platform.rs         # Platform detection tests
+    └── rmw_interop.rs      # ROS 2 interop tests
 ```
 
 ## Test Suites
@@ -79,6 +82,20 @@ Tests on QEMU Cortex-M3 emulator:
 - Type metadata tests
 
 **Requirements:** `qemu-system-arm`, `thumbv7m-none-eabi` target
+
+### esp32_emulator
+Tests on QEMU ESP32-C3 emulator (Espressif fork):
+- Build verification (nightly toolchain + zenoh-pico RISC-V)
+- Boot test (BSP banner via UART)
+- Networked E2E (talker → listener via zenohd + TAP)
+
+**Requirements:** `qemu-system-riscv32` (Espressif fork), `espflash`, nightly toolchain, `riscv32imc-unknown-none-elf` target, zenoh-pico RISC-V library
+
+For networked tests: TAP interfaces (`sudo ./scripts/qemu/setup-network.sh`), zenohd
+
+```bash
+just test-qemu-esp32    # Run all ESP32 QEMU tests
+```
 
 ### nano2nano
 Tests communication between nano-ros nodes:
@@ -208,11 +225,80 @@ fn test_my_feature(zenohd_unique: ZenohRouter) {
 | Fixture | Description |
 |---------|-------------|
 | `zenohd_unique` | Starts zenohd on unique port, auto-cleanup |
+| `ZenohRouter::start(port)` | Starts zenohd on fixed port, auto-cleanup |
 | `build_native_talker()` | Builds and caches native-rs-talker binary |
 | `build_native_listener()` | Builds and caches native-rs-listener binary |
-| `QemuProcess::run()` | Runs QEMU with semihosting, auto-cleanup |
+| `build_esp32_qemu_talker()` | Builds and caches ESP32 QEMU talker (nightly) |
+| `build_esp32_qemu_listener()` | Builds and caches ESP32 QEMU listener (nightly) |
+| `QemuProcess::run()` | Runs QEMU ARM with semihosting, auto-cleanup |
+| `start_esp32_qemu()` | Starts QEMU ESP32-C3 instance, auto-cleanup |
 | `Ros2Process::topic_echo()` | Runs ros2 topic echo, auto-cleanup |
 | `Ros2Process::topic_pub()` | Runs ros2 topic pub, auto-cleanup |
+
+### QEMU Networked Test Practices
+
+When writing QEMU tests that involve network communication (pub/sub via zenohd + TAP), follow these rules to avoid flaky tests:
+
+**1. Each QEMU peer must use a different TAP device.**
+
+Never share a TAP device between two QEMU instances. Each peer gets its own TAP interface on the bridge:
+
+```
+Talker:   tap-qemu0, MAC 02:00:00:00:00:01, IP 192.0.3.10
+Listener: tap-qemu1, MAC 02:00:00:00:00:02, IP 192.0.3.11
+Bridge:   qemu-br, IP 192.0.3.1 (zenohd listens here)
+```
+
+This applies to all QEMU platforms (ARM MPS2-AN385 and ESP32-C3).
+
+**2. Start the subscriber first, then the publisher.**
+
+The subscriber must be running and have registered its subscription with zenohd before the publisher starts sending. Otherwise messages are lost because zenoh doesn't buffer for unknown subscribers.
+
+**3. Add stabilization delay between subscription and publish.**
+
+After the subscriber reports it's connected and subscribed, wait 5 seconds before starting the publisher. This gives zenohd time to propagate the subscription to other sessions.
+
+**4. Verify zenohd is reachable on the bridge IP, not just localhost.**
+
+QEMU instances connect to zenohd via the bridge IP (e.g., `192.0.3.1:7447`), not `127.0.0.1`. Always verify reachability on the bridge IP:
+
+```rust
+assert!(wait_for_addr("192.0.3.1:7447", Duration::from_secs(5)));
+```
+
+**5. Wait for port to be free before starting zenohd on a fixed port.**
+
+If firmware hardcodes a zenoh locator (e.g., `tcp/192.0.3.1:7447`), the port is fixed. Check that no prior zenohd is still holding the port:
+
+```rust
+assert!(wait_for_port_free(7447, Duration::from_secs(10)));
+```
+
+**6. Use nextest test groups with `max-threads = 1` for port-sharing tests.**
+
+Tests that share a fixed port (like 7447) must run sequentially. Configure this in `.config/nextest.toml`:
+
+```toml
+[test-groups.esp32-emulator]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(esp32_emulator)"
+test-group = "esp32-emulator"
+```
+
+**Example E2E test ordering:**
+
+```
+1. Verify port 7447 is free
+2. Start zenohd on 0.0.0.0:7447
+3. Verify zenohd reachable on bridge IP 192.0.3.1:7447
+4. Start listener on tap-qemu1, wait for "Waiting for messages..."
+5. Sleep 5s (subscription propagation)
+6. Start talker on tap-qemu0, wait for "Done publishing..."
+7. Verify listener received messages
+```
 
 ### Test Utilities
 
@@ -262,7 +348,8 @@ ros2-interop-tests:
 | Test Suite | Command | Requirements |
 |------------|---------|--------------|
 | Unit tests | `just test-unit` | None |
-| QEMU tests | `just test-qemu` | qemu-system-arm |
+| QEMU ARM tests | `just test-qemu` | qemu-system-arm |
+| QEMU ESP32 tests | `just test-qemu-esp32` | qemu-system-riscv32 + espflash + TAP |
 | Integration tests | `just test-integration` | zenohd |
 | Zephyr tests | `just test-zephyr` | west + TAP |
 | ROS 2 interop | `just test-ros2` | ROS 2 + rmw_zenoh |
@@ -281,9 +368,17 @@ Tests that require ROS 2 will gracefully skip if prerequisites are not met.
 - Source ROS 2: `source /opt/ros/humble/setup.bash`
 - Verify rmw_zenoh: `ros2 pkg list | grep rmw_zenoh`
 
-### QEMU tests fail
+### QEMU ARM tests fail
 - Check QEMU installed: `qemu-system-arm --version`
 - Check ARM target: `rustup target list | grep thumbv7m`
+
+### ESP32 QEMU tests fail
+- Check Espressif QEMU: `qemu-system-riscv32 --version`
+- Check RISC-V target: `rustup +nightly target list --installed | grep riscv32imc`
+- Check espflash: `espflash --version`
+- Check zenoh-pico RISC-V: `ls build/esp32-zenoh-pico/libzenohpico.a`
+- Check TAP interfaces: `ip link show tap-qemu0 && ip link show tap-qemu1`
+- If port 7447 is busy: `pkill -x zenohd` and wait for TIME_WAIT to expire
 
 ## Migration from Shell Scripts
 

@@ -574,6 +574,16 @@ test-qemu-esp32-basic: build-examples-esp32-qemu
         exit 1
     fi
 
+# Run ESP32-C3 QEMU integration tests (build, boot, E2E via nextest)
+test-qemu-esp32 verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nano-ros-tests --test esp32_emulator --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # Run basic QEMU test (nano-ros serialization on Cortex-M3)
 test-qemu-basic verbose="": build-examples-qemu _init-test-logs
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
@@ -723,7 +733,7 @@ test-integration verbose="":
     #!/usr/bin/env bash
     set -e
     args=(-p nano-ros-tests --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(esp32_emulator)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

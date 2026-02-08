@@ -77,6 +77,7 @@ just doc            # Generate docs
 just test-unit          # Unit tests only (no external deps)
 just test-miri          # Miri UB detection (nano-ros-serdes, nano-ros-core, nano-ros-params)
 just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
+just test-qemu-esp32    # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
 just test-integration   # All Rust integration tests (builds zenohd automatically)
 just test               # test-unit + test-miri + test-qemu + test-integration
 just test-zephyr        # Zephyr E2E tests (needs west + TAP)
@@ -130,6 +131,15 @@ QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
 - **Temporary/exploratory tests** can be run directly in the Bash tool, but should be converted to proper test scripts once the feature is validated
 - Test scripts in `tests/` should have justfile entries for easy invocation (e.g., `just test-ros2-interop-debug`)
 - ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `crates/nano-ros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
+
+### QEMU Networked Test Rules
+For QEMU tests involving pub/sub communication via zenohd + TAP networking:
+- **Each QEMU peer must use a different TAP device** (e.g., talker on `tap-qemu0`, listener on `tap-qemu1`). This applies to all QEMU platforms (ARM and ESP32-C3).
+- **Start the subscriber first, then the publisher.** Zenoh doesn't buffer messages for unknown subscribers.
+- **Add 5s stabilization delay** between subscriber connection and publisher start, to allow subscription propagation through zenohd.
+- **Verify zenohd on the bridge IP** (e.g., `192.0.3.1:7447`), not just localhost. QEMU instances reach zenohd via the bridge.
+- **Use `max-threads = 1` nextest test groups** for tests sharing a fixed zenoh port.
+- See `tests/README.md` section "QEMU Networked Test Practices" for full details and example ordering.
 
 ### Test Output and Logs
 

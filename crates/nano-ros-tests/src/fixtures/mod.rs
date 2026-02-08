@@ -13,6 +13,7 @@ pub use binaries::*;
 pub use zenohd_router::*;
 
 // Re-export utilities for backwards compatibility
+pub use crate::esp32::*;
 pub use crate::process::*;
 pub use crate::qemu::*;
 pub use crate::ros2::*;

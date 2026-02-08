@@ -101,11 +101,17 @@ impl OnceFlag {
     /// Check if this is the first time being called, and mark as triggered
     ///
     /// Returns `true` on the first call, `false` on subsequent calls.
+    ///
+    /// Uses load+store instead of compare_exchange for compatibility with
+    /// targets lacking CAS (e.g., riscv32imc without the A extension).
+    /// This is safe for nano-ros's single-core embedded use cases.
     pub fn check_first(&self) -> bool {
-        // Use compare_exchange to atomically check and set
-        self.triggered
-            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .is_ok()
+        if !self.triggered.load(Ordering::Acquire) {
+            self.triggered.store(true, Ordering::Release);
+            true
+        } else {
+            false
+        }
     }
 
     /// Check if the flag has been triggered

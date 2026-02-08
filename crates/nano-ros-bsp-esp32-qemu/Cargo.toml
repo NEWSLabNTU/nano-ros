@@ -31,5 +31,11 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "socket-tcp",
 ] }
 
+# Core types (RosMessage, CDR serialization)
+nano-ros-core = { path = "../nano-ros-core", default-features = false }
+
+# Heapless collections (for keyexpr formatting)
+heapless = "0.8"
+
 [features]
 default = []

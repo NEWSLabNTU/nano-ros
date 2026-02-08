@@ -17,6 +17,7 @@
 //! }
 //! ```
 
+pub mod esp32;
 pub mod fixtures;
 pub mod process;
 pub mod qemu;

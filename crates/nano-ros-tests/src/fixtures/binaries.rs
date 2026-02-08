@@ -43,6 +43,12 @@ static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-listener binary
 static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the esp32-qemu-talker binary (ELF)
+static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the esp32-qemu-listener binary (ELF)
+static ESP32_QEMU_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached: nano-ros-c library built
 static NANO_ROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
 
@@ -536,6 +542,70 @@ pub fn c_listener_binary() -> PathBuf {
     build_c_listener()
         .expect("Failed to build c-listener")
         .to_path_buf()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ESP32-C3 QEMU Example Builders (nightly toolchain)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build an ESP32-C3 QEMU example using `cargo +nightly`
+///
+/// ESP32 examples require the nightly toolchain with `-Zbuild-std`, so we
+/// can't use the generic `build_example()` which uses stable `cargo build`.
+fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/esp32/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "ESP32 example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    eprintln!("Building esp32/{}...", name);
+
+    let output = cmd!("cargo", "+nightly", "build", "--release")
+        .dir(&example_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(
+            String::from_utf8_lossy(&output.stdout).to_string(),
+        ));
+    }
+
+    let binary_path = example_dir.join(format!(
+        "target/riscv32imc-unknown-none-elf/release/{}",
+        binary_name
+    ));
+
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+/// Build esp32-qemu-talker (cached)
+pub fn build_esp32_qemu_talker() -> TestResult<&'static Path> {
+    ESP32_QEMU_TALKER_BINARY
+        .get_or_try_init(|| build_esp32_qemu_example("qemu-talker", "esp32-qemu-talker"))
+        .map(|p| p.as_path())
+}
+
+/// Build esp32-qemu-listener (cached)
+pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
+    ESP32_QEMU_LISTENER_BINARY
+        .get_or_try_init(|| build_esp32_qemu_example("qemu-listener", "esp32-qemu-listener"))
+        .map(|p| p.as_path())
 }
 
 #[cfg(test)]

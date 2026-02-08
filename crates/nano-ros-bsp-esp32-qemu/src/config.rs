@@ -30,6 +30,8 @@ pub struct Config {
     pub gateway: [u8; 4],
     /// Zenoh router locator (null-terminated)
     pub zenoh_locator: &'static [u8],
+    /// ROS 2 domain ID (used in keyexpr: `<domain_id>/<topic>/<type>/...`)
+    pub domain_id: u32,
 }
 
 impl Default for Config {
@@ -40,6 +42,7 @@ impl Default for Config {
             prefix: 24,
             gateway: [192, 0, 3, 1],
             zenoh_locator: b"tcp/192.0.3.1:7447\0",
+            domain_id: 0,
         }
     }
 }
@@ -53,6 +56,7 @@ impl Config {
             prefix: 24,
             gateway: [192, 0, 3, 1],
             zenoh_locator: b"tcp/192.0.3.1:7447\0",
+            domain_id: 0,
         }
     }
 
@@ -78,6 +82,12 @@ impl Config {
     /// Builder: set gateway
     pub fn with_gateway(mut self, gateway: [u8; 4]) -> Self {
         self.gateway = gateway;
+        self
+    }
+
+    /// Builder: set ROS 2 domain ID
+    pub fn with_domain_id(mut self, domain_id: u32) -> Self {
+        self.domain_id = domain_id;
         self
     }
 }
