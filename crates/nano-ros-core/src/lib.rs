@@ -43,3 +43,6 @@ pub use types::{RosMessage, RosService};
 
 // Re-export serdes types for convenience
 pub use nano_ros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Serialize};
+
+// Re-export heapless for generated message types
+pub use heapless;
