@@ -49,8 +49,8 @@ impl<M: RosMessage> Publisher<M> {
         self.publish_raw(writer.as_slice())
     }
 
-    /// Publish pre-encoded CDR bytes (escape hatch)
-    pub fn publish_raw(&self, data: &[u8]) -> Result<()> {
+    /// Publish pre-encoded CDR bytes (internal)
+    fn publish_raw(&self, data: &[u8]) -> Result<()> {
         let ret = unsafe { zenoh_shim_publish(self.handle, data.as_ptr(), data.len()) };
         if ret < 0 {
             return Err(Error::Publish);
@@ -58,10 +58,6 @@ impl<M: RosMessage> Publisher<M> {
         Ok(())
     }
 
-    /// Get the raw handle (for debugging)
-    pub fn handle(&self) -> i32 {
-        self.handle
-    }
 }
 
 impl<M: RosMessage> Drop for Publisher<M> {

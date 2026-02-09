@@ -37,7 +37,7 @@ fn main() -> ! {
             // Declare publisher
             esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
             let publisher = node.create_publisher::<Int32>("/chatter")?;
-            esp_println::println!("Publisher declared (handle: {})", publisher.handle());
+            esp_println::println!("Publisher declared");
 
             // Publish messages
             esp_println::println!("");

@@ -32,10 +32,6 @@ impl<M: RosMessage> Subscription<M> {
         }
     }
 
-    /// Get the raw handle (for debugging)
-    pub fn handle(&self) -> i32 {
-        self.handle
-    }
 }
 
 impl<M: RosMessage> Drop for Subscription<M> {
