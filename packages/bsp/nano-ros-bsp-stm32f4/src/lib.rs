@@ -137,8 +137,8 @@ impl<M: RosMessage> Publisher<M> {
         self.publish_raw(writer.as_slice())
     }
 
-    /// Publish pre-encoded CDR bytes (escape hatch)
-    pub fn publish_raw(&self, data: &[u8]) -> Result<()> {
+    /// Publish pre-encoded CDR bytes (internal)
+    fn publish_raw(&self, data: &[u8]) -> Result<()> {
         let ret = unsafe {
             zenoh_pico_shim_sys::zenoh_shim_publish(self.handle, data.as_ptr(), data.len())
         };
