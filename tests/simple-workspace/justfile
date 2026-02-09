@@ -10,11 +10,11 @@
 #   - OR manually source the .envrc file
 #
 # Prerequisites (standalone mode):
-#   - cargo-nano-ros installed: cargo install --path ../../colcon-nano-ros/packages/cargo-nano-ros
+#   - cargo-nano-ros installed: cargo install --path ../../packages/codegen/packages/cargo-nano-ros
 #   - ROS 2 sourced: source /opt/ros/humble/setup.bash
 
 # Path to cargo-nano-ros (absolute, resolved at runtime)
-cargo_nano_ros := `realpath ../../colcon-nano-ros/packages/target/release/cargo-nano-ros 2>/dev/null || echo cargo-nano-ros`
+cargo_nano_ros := `realpath ../../packages/codegen/packages/target/release/cargo-nano-ros 2>/dev/null || echo cargo-nano-ros`
 
 # Default recipe
 default: build
@@ -60,10 +60,10 @@ run package:
 
 # Build cargo-nano-ros tool
 build-tool:
-    cargo build --release -p cargo-nano-ros --manifest-path ../../colcon-nano-ros/packages/Cargo.toml
+    cargo build --release -p cargo-nano-ros --manifest-path ../../packages/codegen/packages/Cargo.toml
 
 # Path to nano-ros crates (for patching in config.toml)
-nano_ros_crates := `realpath ../../crates 2>/dev/null || echo ""`
+nano_ros_crates := `realpath ../../packages 2>/dev/null || echo ""`
 
 # Generate bindings for a package using cargo nano-ros
 generate package:

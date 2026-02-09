@@ -50,11 +50,11 @@ trap cleanup EXIT
 # ============================================================================
 
 info "Building cargo-nano-ros..."
-cd "$PROJECT_ROOT/packages/codegen"
+cd "$PROJECT_ROOT/packages/codegen/packages"
 
 cargo build --release --package cargo-nano-ros
 
-GENERATOR="$PROJECT_ROOT/packages/codegen/target/release/cargo-nano-ros"
+GENERATOR="$PROJECT_ROOT/packages/codegen/packages/target/release/cargo-nano-ros"
 if [ ! -f "$GENERATOR" ]; then
     error "cargo-nano-ros not found at: $GENERATOR"
     exit 1
@@ -75,7 +75,7 @@ cargo build -p nano-ros-c --release
 
 # Build nano-ros-codegen-c staticlib (needed by CMake FindNanoRosCodegen)
 info "Building nano-ros-codegen-c staticlib..."
-cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/Cargo.toml
+cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
 
 NANO_ROS_C_LIB="$PROJECT_ROOT/target/release/libnano_ros_c.a"
 if [ ! -f "$NANO_ROS_C_LIB" ]; then

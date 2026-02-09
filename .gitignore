@@ -15,5 +15,5 @@ __pycache__/
 /zephyr-workspace
 
 # Generated message bindings in examples (recreated by: just generate-bindings)
-# NOTE: crates/rcl-interfaces/generated/ is NOT gitignored — it's a workspace member
+# NOTE: packages/interfaces/rcl-interfaces/generated/ is NOT gitignored — it's a workspace member
 examples/**/generated/

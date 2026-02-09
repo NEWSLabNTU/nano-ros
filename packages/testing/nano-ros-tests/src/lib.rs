@@ -270,6 +270,8 @@ pub fn project_root() -> std::path::PathBuf {
         .unwrap()
         .parent()
         .unwrap()
+        .parent()
+        .unwrap()
         .to_path_buf()
 }
 
@@ -281,7 +283,7 @@ mod tests {
     fn test_project_root() {
         let root = project_root();
         assert!(root.join("Cargo.toml").exists());
-        assert!(root.join("crates").exists());
+        assert!(root.join("packages").exists());
     }
 
     #[test]
