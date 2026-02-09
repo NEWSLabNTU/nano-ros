@@ -26,12 +26,12 @@ This phase focuses on creating comprehensive bare-metal testing infrastructure u
 | qemu-rs-lan9118         | ✅ Driver tests pass     | `examples/qemu-rs-lan9118/`               |
 | qemu-rs-talker          | ✅ TCP client (smoltcp)  | `examples/qemu-rs-talker/`                |
 | qemu-rs-listener        | ✅ TCP server (smoltcp)  | `examples/qemu-rs-listener/`              |
-| lan9118-smoltcp         | ✅ Complete driver       | `crates/lan9118-smoltcp/`                 |
+| lan9118-smoltcp         | ✅ Complete driver       | `packages/drivers/lan9118-smoltcp/`                 |
 | stm32f4-rs-* examples   | ✅ Hardware-specific     | `examples/stm32f4-rs-*/`                  |
 | native-c-baremetal-demo | ✅ Desktop simulation    | `examples/native-c-baremetal-demo/`       |
-| QemuProcess fixture     | ✅ Complete              | `crates/nano-ros-tests/src/qemu.rs`       |
-| QEMU emulator tests     | ✅ 14 tests (no network) | `crates/nano-ros-tests/tests/emulator.rs` |
-| smoltcp platform layer  | ✅ Exists                | `crates/zenoh-pico-shim-sys/`             |
+| QemuProcess fixture     | ✅ Complete              | `packages/testing/nano-ros-tests/src/qemu.rs`       |
+| QEMU emulator tests     | ✅ 14 tests (no network) | `packages/testing/nano-ros-tests/tests/emulator.rs` |
+| smoltcp platform layer  | ✅ Exists                | `packages/transport/zenoh-pico-shim-sys/`             |
 | QEMU network scripts    | ✅ Complete              | `scripts/qemu/`                           |
 | RTIC design             | ✅ Documented            | `docs/design/rtic-integration-design.md`  |
 
@@ -89,7 +89,7 @@ Implement a Rust driver for the LAN9118 Ethernet controller that integrates with
 **Tasks**:
 
 1. **Create driver crate**
-   - Location: `crates/lan9118-smoltcp/`
+   - Location: `packages/drivers/lan9118-smoltcp/`
    - Implement `smoltcp::phy::Device` trait
    - Memory-mapped register definitions
    - No external dependencies (bare-metal compatible)
@@ -112,7 +112,7 @@ Implement a Rust driver for the LAN9118 Ethernet controller that integrates with
    - Packet TX/RX verification
 
 **Deliverables**:
-- [x] `crates/lan9118-smoltcp/` - Driver crate
+- [x] `packages/drivers/lan9118-smoltcp/` - Driver crate
 - [x] Register definitions and accessors
 - [x] `smoltcp::phy::Device` implementation
 - [x] Basic integration test (`examples/qemu-rs-lan9118/`)
@@ -382,8 +382,8 @@ Enhance test framework for networked QEMU testing.
    - Cross-compilation support in fixtures
 
 **Deliverables**:
-- [ ] `crates/nano-ros-tests/src/qemu_network.rs` - Network fixtures
-- [ ] `crates/nano-ros-tests/src/cluster.rs` - Multi-node harness
+- [ ] `packages/testing/nano-ros-tests/src/qemu_network.rs` - Network fixtures
+- [ ] `packages/testing/nano-ros-tests/src/cluster.rs` - Multi-node harness
 - [ ] Enhanced `fixtures/binaries.rs` with QEMU builds
 
 ---
@@ -438,7 +438,7 @@ fn test_qemu_to_ros2_interop() {
 ```
 
 **Deliverables**:
-- [ ] `crates/nano-ros-tests/tests/qemu_interop.rs` - Interop test suite
+- [ ] `packages/testing/nano-ros-tests/tests/qemu_interop.rs` - Interop test suite
 - [ ] Test for each direction (QEMU→ROS2, ROS2→QEMU)
 - [ ] Documentation of test prerequisites
 

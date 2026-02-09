@@ -2,35 +2,35 @@
 resolver = "2"
 
 members = [
-    "crates/nano-ros",
-    "crates/nano-ros-core",
-    "crates/nano-ros-serdes",
-    "crates/nano-ros-macros",
-    "crates/nano-ros-params",
-    "crates/nano-ros-transport",
-    "crates/nano-ros-node",
+    "packages/core/nano-ros",
+    "packages/core/nano-ros-core",
+    "packages/core/nano-ros-serdes",
+    "packages/core/nano-ros-macros",
+    "packages/core/nano-ros-params",
+    "packages/core/nano-ros-transport",
+    "packages/core/nano-ros-node",
     # zenoh-pico shim for cross-platform support (POSIX, Zephyr, smoltcp)
-    "crates/zenoh-pico-shim-sys",
-    "crates/zenoh-pico-shim",
+    "packages/transport/zenoh-pico-shim-sys",
+    "packages/transport/zenoh-pico-shim",
     # Integration tests
-    "crates/nano-ros-tests",
+    "packages/testing/nano-ros-tests",
     # C API for embedded systems
-    "crates/nano-ros-c",
+    "packages/core/nano-ros-c",
     # LAN9118 Ethernet driver for smoltcp
-    "crates/lan9118-smoltcp",
+    "packages/drivers/lan9118-smoltcp",
     # Generated ROS 2 interface types (rcl_interfaces, builtin_interfaces).
     # Required by nano-ros-node's param-services feature. Checked into git because
     # cargo requires workspace member paths to exist on disk.
-    "crates/rcl-interfaces/generated/builtin_interfaces",
-    "crates/rcl-interfaces/generated/rcl_interfaces",
+    "packages/interfaces/rcl-interfaces/generated/builtin_interfaces",
+    "packages/interfaces/rcl-interfaces/generated/rcl_interfaces",
 ]
 
 # Examples are excluded from workspace - they are standalone packages
 # that generate their own bindings via `cargo nano-ros generate`
 exclude = [
     # Embedded crates (require cross-compilation)
-    "crates/nano-ros-bsp-qemu",
-    "crates/nano-ros-bsp-stm32f4",
+    "packages/bsp/nano-ros-bsp-qemu",
+    "packages/bsp/nano-ros-bsp-stm32f4",
     # Native examples (desktop/Linux)
     "examples/native/rs-talker",
     "examples/native/rs-listener",
@@ -54,17 +54,17 @@ exclude = [
     "examples/zephyr/rs-service-client",
     "examples/zephyr/rs-action-server",
     "examples/zephyr/rs-action-client",
-    # Platform integration (low-level reference implementations)
-    "examples/platform-integration/qemu-smoltcp-bridge",
-    "examples/platform-integration/qemu-lan9118",
-    "examples/platform-integration/stm32f4-smoltcp",
-    "examples/platform-integration/stm32f4-rtic",
-    "examples/platform-integration/stm32f4-polling",
-    "examples/platform-integration/stm32f4-embassy",
+    # Reference implementations (low-level platform examples)
+    "packages/reference/qemu-smoltcp-bridge",
+    "packages/reference/qemu-lan9118",
+    "packages/reference/stm32f4-smoltcp",
+    "packages/reference/stm32f4-rtic",
+    "packages/reference/stm32f4-polling",
+    "packages/reference/stm32f4-embassy",
     # ESP32 crates (RISC-V, require nightly + esp-hal)
-    "crates/nano-ros-bsp-esp32",
-    "crates/nano-ros-bsp-esp32-qemu",
-    "crates/openeth-smoltcp",
+    "packages/bsp/nano-ros-bsp-esp32",
+    "packages/bsp/nano-ros-bsp-esp32-qemu",
+    "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
     "examples/esp32/hello-world",
     "examples/esp32/bsp-talker",
@@ -82,12 +82,12 @@ rust-version = "1.75"
 
 [workspace.dependencies]
 # Internal crates (default-features = false for no_std flexibility)
-nano-ros-core = { path = "crates/nano-ros-core", default-features = false }
-nano-ros-serdes = { path = "crates/nano-ros-serdes", default-features = false }
-nano-ros-macros = { path = "crates/nano-ros-macros" }
-nano-ros-params = { path = "crates/nano-ros-params", default-features = false }
-nano-ros-transport = { path = "crates/nano-ros-transport", default-features = false }
-nano-ros-node = { path = "crates/nano-ros-node", default-features = false }
+nano-ros-core = { path = "packages/core/nano-ros-core", default-features = false }
+nano-ros-serdes = { path = "packages/core/nano-ros-serdes", default-features = false }
+nano-ros-macros = { path = "packages/core/nano-ros-macros" }
+nano-ros-params = { path = "packages/core/nano-ros-params", default-features = false }
+nano-ros-transport = { path = "packages/core/nano-ros-transport", default-features = false }
+nano-ros-node = { path = "packages/core/nano-ros-node", default-features = false }
 
 # no_std compatible
 heapless = "0.8"
@@ -134,5 +134,5 @@ opt-level = 1        # Some optimization even in dev for embedded
 
 # Patches for generated crates that use version = "*"
 [patch.crates-io]
-nano-ros-core = { path = "crates/nano-ros-core" }
-nano-ros-serdes = { path = "crates/nano-ros-serdes" }
+nano-ros-core = { path = "packages/core/nano-ros-core" }
+nano-ros-serdes = { path = "packages/core/nano-ros-serdes" }

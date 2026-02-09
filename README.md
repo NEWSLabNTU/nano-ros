@@ -47,7 +47,7 @@ Generate message bindings with `cargo nano-ros`:
 
 ```bash
 # Install the binding generator
-cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
+cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/cargo-nano-ros
 
 # Source ROS 2 and generate bindings
 source /opt/ros/humble/setup.bash
@@ -126,18 +126,26 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ## Project Structure
 
 ```
-crates/
-├── nano-ros/              # Unified API (re-exports all sub-crates)
-├── nano-ros-core/         # Core types, traits, node abstraction
-├── nano-ros-serdes/       # CDR serialization
-├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
-├── nano-ros-params/       # Parameter server
-├── nano-ros-transport/    # Transport abstraction (zenoh backend)
-├── nano-ros-node/         # High-level node API + parameter services
-├── nano-ros-c/            # C API (rclc-style)
-├── rcl-interfaces/        # Generated ROS 2 interface types
-├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
-└── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
+packages/
+├── core/                      # The nano-ros library stack
+│   ├── nano-ros/              # Unified API (re-exports all sub-crates)
+│   ├── nano-ros-core/         # Core types, traits, node abstraction
+│   ├── nano-ros-serdes/       # CDR serialization
+│   ├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
+│   ├── nano-ros-params/       # Parameter server
+│   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
+│   ├── nano-ros-node/         # High-level node API + parameter services
+│   └── nano-ros-c/            # C API (rclc-style)
+├── transport/                 # Zenoh transport backend
+│   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
+│   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
+├── interfaces/                # Generated ROS 2 types
+│   └── rcl-interfaces/        # rcl_interfaces + builtin_interfaces
+├── bsp/                       # Board Support Packages
+├── drivers/                   # Hardware drivers (lan9118, openeth)
+├── testing/                   # Integration test infrastructure
+├── reference/                 # Low-level platform reference implementations
+└── codegen/                   # Message binding generator (cargo nano-ros)
 ```
 
 ## Message Generation

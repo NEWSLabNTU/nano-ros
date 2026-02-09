@@ -208,7 +208,7 @@ The existing `just build-zenoh-pico-arm` builds for Cortex-M3 (`thumbv7m-none-ea
 **Tasks**:
 1. [ ] Create crate structure:
    ```
-   crates/nano-ros-bsp-pico-w/
+   packages/bsp/nano-ros-bsp-pico-w/
    ├── Cargo.toml
    ├── build.rs                 # Link prebuilt zenoh-pico
    ├── src/

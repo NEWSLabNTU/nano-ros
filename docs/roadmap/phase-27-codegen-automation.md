@@ -72,10 +72,10 @@ Inline mode uses `nano_ros_core::` prefixed imports instead of `nano_ros_serdes:
 
 ### Bundled Standard Interfaces
 
-Common `.msg`/`.srv` files ship in `colcon-nano-ros/interfaces/`:
+Common `.msg`/`.srv` files ship in `packages/codegen/interfaces/`:
 - `std_msgs` (Bool, Int32, String, Header, etc.)
 - `builtin_interfaces` (Time, Duration)
-- `rcl_interfaces` (already vendored in `crates/rcl-interfaces/`)
+- `rcl_interfaces` (already vendored in `packages/interfaces/rcl-interfaces/`)
 
 The ament index (from ROS 2 environment) takes precedence; bundled files fill gaps.
 
@@ -89,14 +89,14 @@ reference `nano_ros_core::heapless::String<256>` in inline mode.
 ### Phase 0: Bundle Standard Interface Files (Complete)
 
 **Files created**:
-- `colcon-nano-ros/interfaces/std_msgs/msg/*.msg` — Copied from ROS 2
-- `colcon-nano-ros/interfaces/std_msgs/package.xml`
-- `colcon-nano-ros/interfaces/builtin_interfaces/msg/*.msg` — Copied from ROS 2
-- `colcon-nano-ros/interfaces/builtin_interfaces/package.xml`
+- `packages/codegen/interfaces/std_msgs/msg/*.msg` — Copied from ROS 2
+- `packages/codegen/interfaces/std_msgs/package.xml`
+- `packages/codegen/interfaces/builtin_interfaces/msg/*.msg` — Copied from ROS 2
+- `packages/codegen/interfaces/builtin_interfaces/package.xml`
 
 **Files modified**:
-- `colcon-nano-ros/packages/rosidl-bindgen/src/ament.rs` — Added `from_directory()`, `merge()`
-- `colcon-nano-ros/packages/cargo-nano-ros/src/lib.rs` — Added `load_index_with_fallback()`
+- `packages/codegen/packages/rosidl-bindgen/src/ament.rs` — Added `from_directory()`, `merge()`
+- `packages/codegen/packages/cargo-nano-ros/src/lib.rs` — Added `load_index_with_fallback()`
 
 ### Phase 1: Inline Codegen Mode (Complete)
 
@@ -112,8 +112,8 @@ reference `nano_ros_core::heapless::String<256>` in inline mode.
 ### Phase 2: heapless Re-export (Complete)
 
 **Files modified**:
-- `crates/nano-ros-core/Cargo.toml` — Added `heapless = { workspace = true }`
-- `crates/nano-ros-core/src/lib.rs` — Added `pub use heapless;`
+- `packages/core/nano-ros-core/Cargo.toml` — Added `heapless = { workspace = true }`
+- `packages/core/nano-ros-core/src/lib.rs` — Added `pub use heapless;`
 
 ### Phase 4: CLI Rename (Complete)
 
@@ -122,10 +122,10 @@ Both binaries share the same library code. The standalone binary is simpler to i
 (`nano-ros generate-rust` vs `cargo nano-ros generate-rust`).
 
 **Files created**:
-- `colcon-nano-ros/packages/cargo-nano-ros/src/standalone.rs` — Standalone binary entry point
+- `packages/codegen/packages/cargo-nano-ros/src/standalone.rs` — Standalone binary entry point
 
 **Files modified**:
-- `colcon-nano-ros/packages/cargo-nano-ros/Cargo.toml` — Added second `[[bin]]` entry
+- `packages/codegen/packages/cargo-nano-ros/Cargo.toml` — Added second `[[bin]]` entry
 
 ### Phase 5: CMake Generator Discovery (Complete)
 
@@ -133,7 +133,7 @@ Updated CMake `_nano_ros_find_generator()` to prefer the standalone `nano-ros` b
 over `cargo-nano-ros`, simplifying the invocation (no `nano-ros` prefix arg needed).
 
 **Files modified**:
-- `crates/nano-ros-c/cmake/nano_ros_generate_interfaces.cmake` — Updated binary search order
+- `packages/core/nano-ros-c/cmake/nano_ros_generate_interfaces.cmake` — Updated binary search order
 
 ### Phase 6: Documentation (Complete)
 
@@ -188,7 +188,7 @@ Also rename the CLI `generate` subcommand to `generate-rust` for consistency wit
 
 ### Implementation
 
-**New crate:** `colcon-nano-ros/packages/nano-ros-codegen-c/`
+**New crate:** `packages/codegen/packages/nano-ros-codegen-c/`
 - `Cargo.toml` — staticlib crate depending on `cargo-nano-ros`
 - `src/lib.rs` — Single `extern "C"` function wrapping `generate_c_from_args_file()`
 - `include/nano_ros_codegen.h` — C header
@@ -200,28 +200,28 @@ Also rename the CLI `generate` subcommand to `generate-rust` for consistency wit
 - Sets `_NANO_ROS_CODEGEN_TOOL` cache variable
 
 **Modified files:**
-- `crates/nano-ros-c/cmake/nano_ros_generate_interfaces.cmake` — Uses `FindNanoRosCodegen`
+- `packages/core/nano-ros-c/cmake/nano_ros_generate_interfaces.cmake` — Uses `FindNanoRosCodegen`
   instead of `_nano_ros_find_generator()`
-- `colcon-nano-ros/packages/Cargo.toml` — Added `nano-ros-codegen-c` to workspace
-- `colcon-nano-ros/packages/cargo-nano-ros/src/standalone.rs` — `generate` → `generate-rust`
+- `packages/codegen/packages/Cargo.toml` — Added `nano-ros-codegen-c` to workspace
+- `packages/codegen/packages/cargo-nano-ros/src/standalone.rs` — `generate` → `generate-rust`
   with hidden backward-compat alias
-- `colcon-nano-ros/packages/cargo-nano-ros/src/main.rs` — Same rename
+- `packages/codegen/packages/cargo-nano-ros/src/main.rs` — Same rename
 - `justfile` — Added `build-codegen-lib` recipe
 
 ## Key Files
 
 | Component | File |
 |-----------|------|
-| Type resolution | `colcon-nano-ros/packages/rosidl-codegen/src/types.rs` |
-| Message template | `colcon-nano-ros/packages/rosidl-codegen/templates/message_nano_ros.rs.jinja` |
-| Template structs | `colcon-nano-ros/packages/rosidl-codegen/src/templates.rs` |
-| Generator functions | `colcon-nano-ros/packages/rosidl-codegen/src/generator.rs` |
-| CLI main | `colcon-nano-ros/packages/cargo-nano-ros/src/main.rs` |
-| CLI lib | `colcon-nano-ros/packages/cargo-nano-ros/src/lib.rs` |
-| CLI standalone | `colcon-nano-ros/packages/cargo-nano-ros/src/standalone.rs` |
-| CMake integration | `crates/nano-ros-c/cmake/nano_ros_generate_interfaces.cmake` |
+| Type resolution | `packages/codegen/packages/rosidl-codegen/src/types.rs` |
+| Message template | `packages/codegen/packages/rosidl-codegen/templates/message_nano_ros.rs.jinja` |
+| Template structs | `packages/codegen/packages/rosidl-codegen/src/templates.rs` |
+| Generator functions | `packages/codegen/packages/rosidl-codegen/src/generator.rs` |
+| CLI main | `packages/codegen/packages/cargo-nano-ros/src/main.rs` |
+| CLI lib | `packages/codegen/packages/cargo-nano-ros/src/lib.rs` |
+| CLI standalone | `packages/codegen/packages/cargo-nano-ros/src/standalone.rs` |
+| CMake integration | `packages/core/nano-ros-c/cmake/nano_ros_generate_interfaces.cmake` |
 | CMake codegen finder | `cmake/FindNanoRosCodegen.cmake` |
-| Codegen staticlib | `colcon-nano-ros/packages/nano-ros-codegen-c/` |
-| nano-ros-core lib | `crates/nano-ros-core/src/lib.rs` |
-| Bundled interfaces | `colcon-nano-ros/interfaces/` |
-| Ament index | `colcon-nano-ros/packages/rosidl-bindgen/src/ament.rs` |
+| Codegen staticlib | `packages/codegen/packages/nano-ros-codegen-c/` |
+| nano-ros-core lib | `packages/core/nano-ros-core/src/lib.rs` |
+| Bundled interfaces | `packages/codegen/interfaces/` |
+| Ament index | `packages/codegen/packages/rosidl-bindgen/src/ament.rs` |

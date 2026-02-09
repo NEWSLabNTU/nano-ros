@@ -11,7 +11,7 @@ path = "src/main.rs"
 
 [dependencies]
 # BSP handles all hardware setup
-nano-ros-bsp-stm32f4 = { path = "../../../crates/nano-ros-bsp-stm32f4" }
+nano-ros-bsp-stm32f4 = { path = "../../../packages/bsp/nano-ros-bsp-stm32f4" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

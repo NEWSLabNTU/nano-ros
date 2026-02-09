@@ -22,7 +22,7 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
-list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/crates/nano-ros-c/cmake")
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/packages/core/nano-ros-c/cmake")
 find_package(NanoRos REQUIRED)
 
 # Include the generate interfaces function

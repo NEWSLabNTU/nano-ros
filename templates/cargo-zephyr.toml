@@ -20,8 +20,8 @@ path = "src/lib.rs"
 
 [dependencies]
 # nano-ros core crates (no_std, no_alloc)
-nano-ros-core = { path = "../../nano-ros/crates/nano-ros-core", default-features = false }
-nano-ros-serdes = { path = "../../nano-ros/crates/nano-ros-serdes", default-features = false }
+nano-ros-core = { path = "../../nano-ros/packages/core/nano-ros-core", default-features = false }
+nano-ros-serdes = { path = "../../nano-ros/packages/core/nano-ros-serdes", default-features = false }
 
 # Zephyr-specific features (no zenoh - use C shim)
 # The zenoh-pico FFI is handled through a C shim layer because

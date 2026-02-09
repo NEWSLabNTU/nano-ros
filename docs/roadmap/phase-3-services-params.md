@@ -46,7 +46,7 @@ for a response from a service server.
 ### Work Items
 
 #### 3.1.1 Service Traits and Types - COMPLETE
-- [x] Create `crates/nano-ros-core/src/service.rs`
+- [x] Create `packages/core/nano-ros-core/src/service.rs`
 - [x] Define `RosService` trait with Request/Response associated types
 - [x] Define `ServiceServer` and `ServiceClient` traits
 - [x] Add service type definitions
@@ -209,7 +209,7 @@ similar to how `rclcpp` is the unified C++ API for ROS 2.
 
 ### Status: COMPLETE
 
-- [x] Create `crates/nano-ros/` with Cargo.toml
+- [x] Create `packages/core/nano-ros/` with Cargo.toml
 - [x] Re-export all sub-crate types
 - [x] Define feature flags: `std`, `alloc`, `zenoh`
 - [x] Create `prelude` module for common imports

@@ -23,14 +23,14 @@ target_sources(app PRIVATE src/main.c)
 # =============================================================================
 # nano-ros BSP
 # =============================================================================
-set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../crates/nano-ros-bsp-zephyr)
+set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/bsp/nano-ros-bsp-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
 
 # =============================================================================
 # zenoh-pico shim (provides transport layer)
 # =============================================================================
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../crates/zenoh-pico-shim-sys/c)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/transport/zenoh-pico-shim-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

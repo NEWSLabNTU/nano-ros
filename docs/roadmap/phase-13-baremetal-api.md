@@ -152,7 +152,7 @@ fn main() -> ! {
 ### Crate Structure
 
 ```
-crates/
+packages/
 ├── nano-ros-baremetal/              # NEW: High-level bare-metal API
 │   ├── Cargo.toml
 │   ├── src/
@@ -298,7 +298,7 @@ Create the high-level API crate.
 
 - [ ] **13.2.1** Create crate structure
   ```
-  crates/nano-ros-baremetal/
+  packages/core/nano-ros-baremetal/
   ├── Cargo.toml
   ├── src/
   │   ├── lib.rs
@@ -582,4 +582,4 @@ Phase 13.5 (Documentation) ─────────────────�
 - Current examples: `examples/qemu-rs-{talker,listener}/`
 - Phase 12: `docs/roadmap/phase-12-qemu-bare-metal-tests.md`
 - Phase 8: `docs/roadmap/phase-8-embedded-networking.md`
-- zenoh-pico-shim: `crates/zenoh-pico-shim/`
+- zenoh-pico-shim: `packages/transport/zenoh-pico-shim/`

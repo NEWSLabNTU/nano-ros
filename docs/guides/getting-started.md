@@ -74,7 +74,7 @@ nano-ros uses `package.xml` to declare which ROS 2 message types you need:
 
 ```bash
 # Install the binding generator (one-time)
-cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
+cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/cargo-nano-ros
 
 # Source ROS 2 environment
 source /opt/ros/humble/setup.bash
@@ -153,7 +153,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 cd /path/to/nano-ros
 cargo build -p nano-ros-c --release
 # Library at: target/release/libnano_ros_c.a
-# Headers at: crates/nano-ros-c/include/
+# Headers at: packages/core/nano-ros-c/include/
 ```
 
 ### 2. Create a CMake Project

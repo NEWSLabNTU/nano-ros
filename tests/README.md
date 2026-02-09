@@ -4,7 +4,7 @@ Integration tests for nano-ros communication, platform backends, and ROS 2 inter
 
 ## Overview
 
-nano-ros uses a Rust-based test framework with rstest fixtures in `crates/nano-ros-tests/`. This provides:
+nano-ros uses a Rust-based test framework with rstest fixtures in `packages/testing/nano-ros-tests/`. This provides:
 
 - **Type safety** - Compile-time error checking
 - **RAII cleanup** - Automatic process cleanup via `Drop` trait
@@ -54,7 +54,7 @@ tests/
 │   └── run-c.sh        # Zephyr C examples test
 └── simple-workspace/   # Standalone build verification
 
-crates/nano-ros-tests/  # Rust test crate
+packages/testing/nano-ros-tests/  # Rust test crate
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs          # Test utilities (wait_for_pattern, count_pattern)
@@ -205,7 +205,7 @@ sudo apt install qemu-system-arm
 
 ## Writing New Tests
 
-Create tests in `crates/nano-ros-tests/tests/`:
+Create tests in `packages/testing/nano-ros-tests/tests/`:
 
 ```rust
 use nano_ros_tests::fixtures::{zenohd_unique, ZenohRouter};

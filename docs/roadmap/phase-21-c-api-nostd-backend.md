@@ -25,7 +25,7 @@ The C API crate (`nano-ros-c`) has ~30 functions that return `NANO_ROS_RET_ERROR
 
 **Status: DONE**
 
-**File**: `crates/nano-ros-c/Cargo.toml`
+**File**: `packages/core/nano-ros-c/Cargo.toml`
 
 - [x] Add `alloc` feature: `["nano-ros/alloc", "nano-ros-transport/alloc"]`
 - [x] Make `std` imply `alloc`: `["alloc", "nano-ros/std", "nano-ros-transport/std"]`
@@ -41,7 +41,7 @@ Note: `alloc` and `shim-*` features already existed; the key changes were adding
 
 **Status: DONE**
 
-**File**: `crates/nano-ros-c/src/lib.rs`
+**File**: `packages/core/nano-ros-c/src/lib.rs`
 
 - [x] Add `compile_error!` for `alloc` without a transport backend
 
@@ -68,12 +68,12 @@ compile_error!(
 | `ZenohTransport`     | `ShimTransport`     |
 
 **Files to update:**
-- [x] `crates/nano-ros-c/src/support.rs`
-- [x] `crates/nano-ros-c/src/publisher.rs`
-- [x] `crates/nano-ros-c/src/subscription.rs`
-- [x] `crates/nano-ros-c/src/service.rs`
-- [x] `crates/nano-ros-c/src/action.rs`
-- [x] `crates/nano-ros-c/src/executor.rs`
+- [x] `packages/core/nano-ros-c/src/support.rs`
+- [x] `packages/core/nano-ros-c/src/publisher.rs`
+- [x] `packages/core/nano-ros-c/src/subscription.rs`
+- [x] `packages/core/nano-ros-c/src/service.rs`
+- [x] `packages/core/nano-ros-c/src/action.rs`
+- [x] `packages/core/nano-ros-c/src/executor.rs`
 
 ## 21.4 cfg Guard and Box Changes
 
@@ -149,11 +149,11 @@ The trait imports (`Publisher`, `Subscriber`, `Session`, `Transport`, `ServiceSe
 
 | File                                    | Change                                                                   |
 |-----------------------------------------|--------------------------------------------------------------------------|
-| `crates/nano-ros-c/Cargo.toml`          | Remove hardcoded `zenoh`, `std` implies `alloc`, `shim-posix` in default |
-| `crates/nano-ros-c/src/lib.rs`          | Add `compile_error!` guard                                               |
-| `crates/nano-ros-c/src/support.rs`      | cfg `alloc`, Box, `ShimSession`                                          |
-| `crates/nano-ros-c/src/publisher.rs`    | cfg `alloc`, Box, `ShimPublisher`                                        |
-| `crates/nano-ros-c/src/subscription.rs` | cfg `alloc`, Box, `ShimSubscriber`                                       |
-| `crates/nano-ros-c/src/service.rs`      | cfg `alloc`, Box, `ShimServiceServer/Client`                             |
-| `crates/nano-ros-c/src/action.rs`       | cfg `alloc`, Box, all action types                                       |
-| `crates/nano-ros-c/src/executor.rs`     | cfg `alloc`, `ShimSubscriber/ServiceServer`                              |
+| `packages/core/nano-ros-c/Cargo.toml`          | Remove hardcoded `zenoh`, `std` implies `alloc`, `shim-posix` in default |
+| `packages/core/nano-ros-c/src/lib.rs`          | Add `compile_error!` guard                                               |
+| `packages/core/nano-ros-c/src/support.rs`      | cfg `alloc`, Box, `ShimSession`                                          |
+| `packages/core/nano-ros-c/src/publisher.rs`    | cfg `alloc`, Box, `ShimPublisher`                                        |
+| `packages/core/nano-ros-c/src/subscription.rs` | cfg `alloc`, Box, `ShimSubscriber`                                       |
+| `packages/core/nano-ros-c/src/service.rs`      | cfg `alloc`, Box, `ShimServiceServer/Client`                             |
+| `packages/core/nano-ros-c/src/action.rs`       | cfg `alloc`, Box, all action types                                       |
+| `packages/core/nano-ros-c/src/executor.rs`     | cfg `alloc`, `ShimSubscriber/ServiceServer`                              |

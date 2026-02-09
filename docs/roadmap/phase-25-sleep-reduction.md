@@ -26,8 +26,8 @@ time in tests.
 **Priority: P0 — production latency**
 
 **Files:**
-- `crates/nano-ros-node/src/executor.rs` (BasicExecutor)
-- `crates/nano-ros-transport/src/zenoh/` (subscription callback)
+- `packages/core/nano-ros-node/src/executor.rs` (BasicExecutor)
+- `packages/core/nano-ros-transport/src/zenoh/` (subscription callback)
 
 **Current behavior:**
 
@@ -92,7 +92,7 @@ No change needed there.
 
 **Priority: P0 — production latency**
 
-**File:** `crates/zenoh-pico-shim-sys/c/shim/zenoh_shim.c`
+**File:** `packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.c`
 
 **Current behavior** (line 991):
 
@@ -152,8 +152,8 @@ The single-threaded path (`Z_FEATURE_MULTI_THREAD == 0`) keeps its existing
 **Priority: P1 — test speed**
 
 **Files:**
-- `crates/nano-ros-tests/src/lib.rs` (`wait_for_pattern`, `collect_output`)
-- `crates/nano-ros-tests/src/process.rs` (`wait_for_output`, `wait_for_all_output`)
+- `packages/testing/nano-ros-tests/src/lib.rs` (`wait_for_pattern`, `collect_output`)
+- `packages/testing/nano-ros-tests/src/process.rs` (`wait_for_output`, `wait_for_all_output`)
 
 **Current behavior:**
 
@@ -203,7 +203,7 @@ match rx.recv_timeout(remaining) {
 
 **Priority: P1 — test speed (saves 500 ms per fixture)**
 
-**File:** `crates/nano-ros-tests/src/fixtures/zenohd_router.rs`
+**File:** `packages/testing/nano-ros-tests/src/fixtures/zenohd_router.rs`
 
 **Current behavior** (line 68):
 
@@ -236,7 +236,7 @@ fn probe_zenohd(locator: &str, timeout: Duration) -> bool {
 
 **Priority: P1 — test speed (largest aggregate savings)**
 
-**Files:** All test suites in `crates/nano-ros-tests/tests/`
+**Files:** All test suites in `packages/testing/nano-ros-tests/tests/`
 
 **Current behavior:**
 
@@ -302,7 +302,7 @@ at ~100 ms subscriber setup time). The 10 s timeout is a safety net.
 
 **Priority: P2 — embedded boot time**
 
-**File:** `crates/nano-ros-bsp-zephyr/src/bsp_zephyr.c`
+**File:** `packages/bsp/nano-ros-bsp-zephyr/src/bsp_zephyr.c`
 
 **Current behavior** (line 59):
 
@@ -356,18 +356,18 @@ k_sem_take(&net_ready, K_MSEC(timeout));
 
 | File | Changes |
 |------|---------|
-| `crates/nano-ros-node/src/executor.rs` | Add condvar wake to BasicExecutor spin loop |
-| `crates/nano-ros-transport/src/zenoh/` | Signal executor wake from subscription callback |
-| `crates/zenoh-pico-shim-sys/c/shim/zenoh_shim.c` | Condvar wait in `zenoh_shim_get` |
-| `crates/nano-ros-tests/src/lib.rs` | `poll(2)` in wait_for_pattern, collect_output |
-| `crates/nano-ros-tests/src/process.rs` | `poll(2)` in wait_for_output |
-| `crates/nano-ros-tests/src/zephyr.rs` | `recv_timeout` instead of try_recv + sleep |
-| `crates/nano-ros-tests/src/fixtures/zenohd_router.rs` | Remove 500 ms sleep |
-| `crates/nano-ros-tests/tests/nano2nano.rs` | Event-driven sync |
-| `crates/nano-ros-tests/tests/services.rs` | Event-driven sync |
-| `crates/nano-ros-tests/tests/actions.rs` | Event-driven sync |
-| `crates/nano-ros-tests/tests/executor.rs` | Event-driven sync |
-| `crates/nano-ros-bsp-zephyr/src/bsp_zephyr.c` | net_if_is_up polling |
+| `packages/core/nano-ros-node/src/executor.rs` | Add condvar wake to BasicExecutor spin loop |
+| `packages/core/nano-ros-transport/src/zenoh/` | Signal executor wake from subscription callback |
+| `packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.c` | Condvar wait in `zenoh_shim_get` |
+| `packages/testing/nano-ros-tests/src/lib.rs` | `poll(2)` in wait_for_pattern, collect_output |
+| `packages/testing/nano-ros-tests/src/process.rs` | `poll(2)` in wait_for_output |
+| `packages/testing/nano-ros-tests/src/zephyr.rs` | `recv_timeout` instead of try_recv + sleep |
+| `packages/testing/nano-ros-tests/src/fixtures/zenohd_router.rs` | Remove 500 ms sleep |
+| `packages/testing/nano-ros-tests/tests/nano2nano.rs` | Event-driven sync |
+| `packages/testing/nano-ros-tests/tests/services.rs` | Event-driven sync |
+| `packages/testing/nano-ros-tests/tests/actions.rs` | Event-driven sync |
+| `packages/testing/nano-ros-tests/tests/executor.rs` | Event-driven sync |
+| `packages/bsp/nano-ros-bsp-zephyr/src/bsp_zephyr.c` | net_if_is_up polling |
 | `examples/native/rs-talker/src/main.rs` | Add ready marker |
 | `examples/native/rs-listener/src/main.rs` | Add ready marker |
 | `examples/native/rs-service-server/src/main.rs` | Add ready marker |

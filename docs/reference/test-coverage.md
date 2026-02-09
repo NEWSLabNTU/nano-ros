@@ -6,10 +6,10 @@ This document provides a comprehensive overview of test coverage across all plat
 
 | Component         | Location                       | Description                              |
 |-------------------|--------------------------------|------------------------------------------|
-| Integration Tests | `crates/nano-ros-tests/tests/` | Rust-based integration tests with rstest |
-| Unit Tests        | `crates/*/src/*.rs`            | Inline `#[test]` modules in each crate   |
+| Integration Tests | `packages/testing/nano-ros-tests/tests/` | Rust-based integration tests with rstest |
+| Unit Tests        | `packages/*/src/*.rs`            | Inline `#[test]` modules in each crate   |
 | Shell Scripts     | `tests/*.sh`                   | Legacy/supplementary test scripts        |
-| Test Utilities    | `crates/nano-ros-tests/src/`   | Fixtures, process management, helpers    |
+| Test Utilities    | `packages/testing/nano-ros-tests/src/`   | Fixtures, process management, helpers    |
 
 **Nextest Tests:** 548 total (553 including 5 skipped) across 27 binaries
 **QEMU Semihosting:** 14 tests (9 basic + 5 LAN9118) via `tests/run-test.sh`
@@ -218,7 +218,7 @@ Uses Espressif's QEMU fork (`qemu-system-riscv32 -M esp32c3`) with OpenCores Eth
 **Prerequisites (planned):**
 - Espressif QEMU fork (`qemu-system-riscv32` with `-M esp32c3`)
 - `espflash` or `esptool.py` for flash image creation
-- OpenETH smoltcp driver crate (`crates/openeth-smoltcp/`)
+- OpenETH smoltcp driver crate (`packages/drivers/openeth-smoltcp/`)
 
 ### 5. STM32F4 - Physical Hardware
 
@@ -389,7 +389,7 @@ No C examples exist for QEMU.
 
 **2. ESP32-C3 QEMU interop** — `esp32/qemu-talker`, `esp32/qemu-listener`
 - Uses Espressif QEMU fork with OpenCores Ethernet MAC (no WiFi hardware needed)
-- Requires: OpenETH smoltcp driver (`crates/openeth-smoltcp/`), ESP32-C3 QEMU BSP variant, flash image tooling
+- Requires: OpenETH smoltcp driver (`packages/drivers/openeth-smoltcp/`), ESP32-C3 QEMU BSP variant, flash image tooling
 - Test plan (all in Docker, CI-automatable):
   - ESP32-C3 talker → native listener (via zenohd, TAP network)
   - Native talker → ESP32-C3 listener (via zenohd, TAP network)

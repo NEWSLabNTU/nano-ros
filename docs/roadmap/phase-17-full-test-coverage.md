@@ -191,7 +191,7 @@ The bidirectional test shows asymmetric message counts:
 
 **Root Cause Identified:** The Zephyr talker's `spin_once()` timeout is ignored.
 
-In `zenoh_shim_spin_once()` (crates/zenoh-pico-shim-sys/c/shim/zenoh_shim.c:548):
+In `zenoh_shim_spin_once()` (packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.c:548):
 ```c
 (void)timeout_ms;  // Timeout handled by socket layer  <-- BUG: Ignored!
 ```
@@ -562,7 +562,7 @@ A platform × language matrix review (see `docs/reference/test-coverage.md`) ide
 ### 17.10.1: Native C baremetal demo build+run test
 
 **Example**: `native/c-baremetal-demo`
-**File**: `crates/nano-ros-tests/tests/c_api.rs`
+**File**: `packages/testing/nano-ros-tests/tests/c_api.rs`
 **Effort**: Low
 
 The C baremetal demo runs standalone without zenoh — it demonstrates the `no_std` C API.
@@ -596,7 +596,7 @@ fn test_c_baremetal_demo_runs() {
 
 **Status**: Complete
 **Examples**: `qemu/rs-talker`, `qemu/rs-listener`
-**File**: `crates/nano-ros-tests/tests/emulator.rs`
+**File**: `packages/testing/nano-ros-tests/tests/emulator.rs`
 
 - [x] Add `build_qemu_rs_talker()` and `build_qemu_rs_listener()` cached builders to `fixtures/binaries.rs`
 - [x] Add `is_docker_compose_available()` and `require_docker_compose()` to `process.rs`
@@ -622,7 +622,7 @@ fn test_c_baremetal_demo_runs() {
 ### 17.10.3: STM32F4 build verification
 
 **Examples**: `stm32f4/bsp-talker`, `stm32f4-rtic`, `stm32f4-embassy`, `stm32f4-polling`, `stm32f4-smoltcp`
-**File**: `crates/nano-ros-tests/tests/emulator.rs` (or new `stm32f4.rs`)
+**File**: `packages/testing/nano-ros-tests/tests/emulator.rs` (or new `stm32f4.rs`)
 **Effort**: Low (build only), not automatable for runtime
 
 Runtime tests require physical hardware + debug probe. However, **build verification**
@@ -744,7 +744,7 @@ test-rust-full-coverage: test-rust test-rust-phase17 test-qemu-bsp
 ## File Structure After Implementation
 
 ```
-crates/nano-ros-tests/tests/
+packages/testing/nano-ros-tests/tests/
 ├── actions.rs          # Existing
 ├── c_api.rs            # NEW (C integration tests, extends 17.10.1)
 ├── custom_msg.rs       # NEW (17.3)

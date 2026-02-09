@@ -252,7 +252,7 @@ sudo ./scripts/setup-zephyr-network.sh --down
 - [x] TAP networking script (`scripts/setup-zephyr-network.sh`)
 - [x] Configure static IPs (Zephyr: 192.0.2.1, Host: 192.0.2.2)
 - [x] User-owned TAP device (non-root Zephyr execution)
-- [x] Native subscriber test (`crates/zenoh-pico/examples/sub_test.rs`)
+- [x] Native subscriber test (`packages/transport/zenoh-pico/examples/sub_test.rs`)
 - [x] End-to-end test verified: Zephyr → zenohd → native Rust
 
 #### 2B.4 Hardware Validation ⏸️ DEFERRED TO PHASE 3
@@ -342,7 +342,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 
 | Component | Path |
 |-----------|------|
-| Core crates | `crates/` |
+| Core crates | `packages/` |
 | Native examples | `examples/native-rs-talker/`, `examples/native-rs-listener/` |
 | Zephyr Rust examples | `examples/zephyr-rs-talker-rs/`, `examples/zephyr-rs-listener-rs/` |
 | Zephyr C stubs | `examples/zephyr-rs-talker/`, `examples/zephyr-rs-listener/` |
@@ -352,7 +352,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 | West manifest | `west.yml` |
 | Zephyr module config | `zephyr/module.yml` |
 | Protocol docs | `docs/reference/rmw_zenoh_interop.md` |
-| Zenoh subscriber test | `crates/zenoh-pico/examples/sub_test.rs` |
+| Zenoh subscriber test | `packages/transport/zenoh-pico/examples/sub_test.rs` |
 
 ---
 

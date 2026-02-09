@@ -1,4 +1,4 @@
 [patch.crates-io]
-nano-ros-core = { path = "../../../crates/nano-ros-core" }
-nano-ros-serdes = { path = "../../../crates/nano-ros-serdes" }
+nano-ros-core = { path = "../../../packages/core/nano-ros-core" }
+nano-ros-serdes = { path = "../../../packages/core/nano-ros-serdes" }
 example_interfaces = { path = "generated/example_interfaces" }

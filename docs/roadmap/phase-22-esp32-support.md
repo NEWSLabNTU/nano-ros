@@ -211,7 +211,7 @@ fn main() -> ! {
 **Tasks**:
 1. [x] Create crate structure:
    ```
-   crates/nano-ros-bsp-esp32/
+   packages/bsp/nano-ros-bsp-esp32/
    ├── Cargo.toml
    ├── src/
    │   ├── lib.rs           # Public API, prelude
@@ -296,7 +296,7 @@ Same pattern as QEMU ARM (LAN9118) Docker E2E tests, but RISC-V with OpenETH.
 #### 22.5a: OpenETH smoltcp Driver
 
 **Tasks**:
-1. [x] Create `crates/openeth-smoltcp/` crate (like `crates/lan9118-smoltcp/`)
+1. [x] Create `packages/drivers/openeth-smoltcp/` crate (like `packages/drivers/lan9118-smoltcp/`)
 2. [x] Define OpenETH register constants (`MODER`, `INT_SOURCE`, `TX_BD_NUM`, etc. — ~15 registers at base `0x600CD000`)
 3. [x] Define TX/RX buffer descriptor structs (8 bytes each, at base + `0x400`)
 4. [x] Implement init: reset (`MODER.RST`), configure descriptors, allocate static DMA buffers (1600 bytes each), set MAC address, enable TX/RX
@@ -319,7 +319,7 @@ Same pattern as QEMU ARM (LAN9118) Docker E2E tests, but RISC-V with OpenETH.
 #### 22.5b: ESP32-C3 QEMU BSP Variant
 
 **Tasks**:
-1. [x] Create `crates/nano-ros-bsp-esp32-qemu/` (separate crate, no WiFi deps)
+1. [x] Create `packages/bsp/nano-ros-bsp-esp32-qemu/` (separate crate, no WiFi deps)
 2. [x] `node.rs`: Use OpenETH + smoltcp instead of WiFi (`esp-radio`) — skip WiFi init, DHCP, `esp-rtos`
 3. [x] `bridge.rs`: Reuse smoltcp↔zenoh-pico bridge (copied from WiFi BSP)
 4. [x] `clock.rs`: Reuse `esp_hal::time::Instant` (works in QEMU with `-icount 3`)
@@ -366,11 +366,11 @@ Same pattern as QEMU ARM (LAN9118) Docker E2E tests, but RISC-V with OpenETH.
 
 **Status**: Complete
 
-**Goal**: Automated E2E and interop tests using QEMU ESP32-C3, same pattern as existing QEMU ARM tests in `crates/nano-ros-tests/tests/emulator.rs`.
+**Goal**: Automated E2E and interop tests using QEMU ESP32-C3, same pattern as existing QEMU ARM tests in `packages/testing/nano-ros-tests/tests/emulator.rs`.
 
 **Tasks**:
-1. [x] Add `esp32_emulator.rs` test suite in `crates/nano-ros-tests/tests/`
-2. [x] Add ESP32-C3 QEMU process management (`crates/nano-ros-tests/src/esp32.rs`)
+1. [x] Add `esp32_emulator.rs` test suite in `packages/testing/nano-ros-tests/tests/`
+2. [x] Add ESP32-C3 QEMU process management (`packages/testing/nano-ros-tests/src/esp32.rs`)
 3. [x] Test: QEMU ESP32-C3 talker boots (BSP banner test, no networking)
 4. [x] Test: ESP32-C3 talker → ESP32-C3 listener (two QEMU instances, via zenohd)
 5. [x] Add `just test-qemu-esp32` recipe and nextest `max-threads=1` config

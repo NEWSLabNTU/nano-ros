@@ -32,7 +32,7 @@ When running Zephyr talker/listener with zenohd 1.7.2 and zenoh-pico 1.5.1:
 
 ### 2. ✅ Update zenoh-pico submodule
 ```bash
-cd crates/zenoh-pico-shim-sys/zenoh-pico
+cd packages/transport/zenoh-pico-shim-sys/zenoh-pico
 git fetch --tags
 git checkout 1.7.2
 ```
@@ -69,7 +69,7 @@ Native talker/listener communication works correctly with zenoh-pico 1.7.2:
 ./build-talker/zephyr/zephyr.exe --seed=67890
 ```
 
-**Fix Applied**: Updated `ZephyrProcess::start()` in `crates/nano-ros-tests/src/zephyr.rs` to automatically use unique seeds.
+**Fix Applied**: Updated `ZephyrProcess::start()` in `packages/testing/nano-ros-tests/src/zephyr.rs` to automatically use unique seeds.
 
 ### Issue 2: Zephyr Listener Crash on Message Receipt (FIXED)
 
@@ -127,10 +127,10 @@ nano_ros_bsp_create_subscriber(sub_ptr, ...);  // Pointer stays valid
 | File | Change |
 |------|--------|
 | `west.yml` | Updated zenoh-pico revision to 1.7.2 ✅ |
-| `crates/zenoh-pico-shim-sys/zenoh-pico` | Updated submodule to 1.7.2 ✅ |
+| `packages/transport/zenoh-pico-shim-sys/zenoh-pico` | Updated submodule to 1.7.2 ✅ |
 | `scripts/zephyr/setup.sh` | Patches config.h (unchanged, still works) ✅ |
-| `crates/nano-ros-tests/src/zephyr.rs` | Added unique seed support for native_sim ✅ |
-| `crates/nano-ros-tests/tests/zephyr.rs` | Fixed pattern matching for BSP log format ✅ |
+| `packages/testing/nano-ros-tests/src/zephyr.rs` | Added unique seed support for native_sim ✅ |
+| `packages/testing/nano-ros-tests/tests/zephyr.rs` | Fixed pattern matching for BSP log format ✅ |
 | `examples/zephyr/rs-listener/src/lib.rs` | Fixed callback crash using static storage ✅ |
 | `docs/guides/troubleshooting.md` | Added Rust/C FFI section ✅ |
 

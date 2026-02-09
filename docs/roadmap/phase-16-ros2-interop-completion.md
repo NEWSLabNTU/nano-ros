@@ -772,7 +772,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 
 **Problem**: Liveliness tokens hardcode QoS as `2:2:1,1:,:,:,,` regardless of actual settings.
 
-**Location**: `crates/nano-ros-transport/src/shim.rs:204,234`
+**Location**: `packages/core/nano-ros-transport/src/shim.rs:204,234`
 
 **Tasks**:
 - [x] Add `to_qos_string()` method to `QosSettings`
@@ -819,7 +819,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - [x] Add `NodeHandle::register_parameter_services()` for executor-based API
 
 **Implementation Notes**:
-- Generated crates at `crates/rcl-interfaces/generated/rcl_interfaces/` and `.../builtin_interfaces/`
+- Generated crates at `packages/interfaces/rcl-interfaces/generated/rcl_interfaces/` and `.../builtin_interfaces/`
 - `param-services` feature requires `zenoh` feature (implies `alloc`)
 - Service handlers return `Box<Response>` due to large heapless arrays in rcl_interfaces types
 - `ParameterValue` struct is ~18KB (due to `string_array_value: heapless::Vec<heapless::String<256>, 64>`)
@@ -882,7 +882,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 **Current State** (Humble - Working):
 - Data keyexpr: Uses `TypeHashNotSupported` (correct for Humble)
 - Liveliness tokens: Uses `RIHS01_<64 zeros>` placeholder
-- Generator at `colcon-nano-ros/packages/rosidl-codegen/src/generator.rs:628` uses placeholder
+- Generator at `packages/codegen/packages/rosidl-codegen/src/generator.rs:628` uses placeholder
 - **This is correct for ROS 2 Humble and works for nano-ros ↔ ROS 2 Humble interop**
 
 **Proposed Feature Flags**:
@@ -933,9 +933,9 @@ Implementation options for Iron+:
 Currently nano-ros serializes this attachment when publishing but doesn't deserialize it on receive.
 
 **Location**:
-- `crates/nano-ros-transport/src/shim.rs` - ShimSubscriber callback
-- `crates/nano-ros-transport/src/traits.rs` - Subscriber trait
-- `crates/nano-ros-node/src/connected.rs` - ConnectedSubscriber::try_recv_with_info()
+- `packages/core/nano-ros-transport/src/shim.rs` - ShimSubscriber callback
+- `packages/core/nano-ros-transport/src/traits.rs` - Subscriber trait
+- `packages/core/nano-ros-node/src/connected.rs` - ConnectedSubscriber::try_recv_with_info()
 
 **Tasks**:
 - [x] Extend zenoh-pico-shim C callback to pass attachment data alongside payload
@@ -1040,7 +1040,7 @@ Currently nano-ros serializes this attachment when publishing but doesn't deseri
 - [x] Create Rust test fixtures for binary builds (cached, RAII cleanup)
 - [x] Add latency and throughput benchmarks
 
-**Test Coverage (Rust - `crates/nano-ros-tests/tests/rmw_interop.rs`)**:
+**Test Coverage (Rust - `packages/testing/nano-ros-tests/tests/rmw_interop.rs`)**:
 - Pub/Sub: `test_nano_to_ros2`, `test_ros2_to_nano`, `test_communication_matrix`
 - Services: `test_service_nano_server_ros2_client`, `test_service_ros2_server_nano_client`
 - Actions: `test_action_nano_server_ros2_client`, `test_action_ros2_server_nano_client`

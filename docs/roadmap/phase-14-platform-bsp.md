@@ -101,7 +101,7 @@ run_node_with_config(
 
 **Files**:
 ```
-crates/nano-ros-bsp-qemu/
+packages/bsp/nano-ros-bsp-qemu/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs           # Public API, prelude
@@ -158,7 +158,7 @@ run_node_with_config(
 
 **Files**:
 ```
-crates/nano-ros-bsp-stm32f4/
+packages/bsp/nano-ros-bsp-stm32f4/
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs           # Public API
@@ -210,7 +210,7 @@ void main(void) {
 
 **Files**:
 ```
-crates/nano-ros-bsp-zephyr/
+packages/bsp/nano-ros-bsp-zephyr/
 ├── CMakeLists.txt
 ├── Kconfig
 ├── include/
@@ -371,7 +371,7 @@ examples/
 **Status**: Complete ✓
 
 **Tasks**:
-1. [x] Create crate structure (`crates/nano-ros-bsp-qemu/`)
+1. [x] Create crate structure (`packages/bsp/nano-ros-bsp-qemu/`)
 2. [x] Implement `run_node()` entry point (wraps `nano-ros-baremetal`)
 3. [x] Implement `Config` builder with sensible defaults
 4. [x] Add `Config::listener()` preset for subscriber nodes
@@ -400,7 +400,7 @@ examples/
 **Status**: Complete ✓
 
 **Tasks**:
-1. [x] Create Zephyr module structure (`crates/nano-ros-bsp-zephyr/`)
+1. [x] Create Zephyr module structure (`packages/bsp/nano-ros-bsp-zephyr/`)
 2. [x] Create Kconfig with zenoh locator, domain ID, init delay options
 3. [x] Implement `nano_ros_bsp_init()` and `nano_ros_bsp_init_with_locator()`
 4. [x] Implement `nano_ros_bsp_create_node()` and `_with_domain()`
@@ -424,7 +424,7 @@ examples/
 **Status**: Complete ✓
 
 **Tasks**:
-1. [x] Create crate structure (`crates/nano-ros-bsp-stm32f4/`)
+1. [x] Create crate structure (`packages/bsp/nano-ros-bsp-stm32f4/`)
 2. [x] Implement STM32F4 peripheral initialization (clocks, DWT)
 3. [x] Implement PHY auto-detection (scans common addresses, detects LAN8742A/DP83848/KSZ8081/LAN8720)
 4. [x] Add pin configurations for common boards (NucleoF429ZI, DiscoveryF407)
@@ -448,9 +448,9 @@ examples/
 3. [x] Move QEMU examples to `examples/qemu/`
 4. [x] Move STM32F4 examples to `examples/stm32f4/`
 5. [x] Move Zephyr examples to `examples/zephyr/`
-6. [x] Move low-level examples to `examples/platform-integration/`
+6. [x] Move low-level examples to `packages/reference/`
 7. [x] Create `examples/README.md` with categorization
-8. [x] Create `examples/platform-integration/README.md`
+8. [x] Create `packages/reference/README.md`
 9. [x] Update `justfile` recipes for new paths
 10. [x] Update test scripts (`c-tests.sh`, `c-msg-gen-tests.sh`, etc.)
 11. [x] Update `zephyr/setup.sh` and `setup-network.sh` paths

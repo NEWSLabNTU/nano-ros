@@ -34,7 +34,7 @@ This phase extends the existing test infrastructure to cover:
 ### Current Directory Structure
 
 ```
-crates/
+packages/testing/
 └── nano-ros-tests/              # Rust integration test crate
     ├── Cargo.toml
     ├── src/

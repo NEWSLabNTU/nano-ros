@@ -92,7 +92,7 @@ We have two separate concerns for embedded zenoh-pico support:
 ## Directory Structure
 
 ```
-crates/zenoh-pico-shim/
+packages/transport/zenoh-pico-shim/
 ├── Cargo.toml
 ├── build.rs                      # Compiles C code, links zenoh-pico
 ├── include/

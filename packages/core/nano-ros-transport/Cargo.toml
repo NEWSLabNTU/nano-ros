@@ -1,0 +1,47 @@
+[package]
+name = "nano-ros-transport"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Transport abstraction layer for nano-ros"
+
+[features]
+default = ["std"]
+std = ["nano-ros-core/std", "zenoh-pico-shim?/std", "log"]
+alloc = ["nano-ros-core/alloc", "zenoh-pico-shim?/alloc"]
+
+# Transport backend using zenoh-pico-shim
+# Select one platform: shim-posix (desktop), shim-zephyr, or shim-smoltcp (bare-metal)
+shim = ["dep:zenoh-pico-shim"]  # Base shim feature (requires platform selection)
+shim-posix = ["shim", "zenoh-pico-shim/posix"]  # POSIX platform (desktop testing)
+shim-zephyr = ["shim", "zenoh-pico-shim/zephyr"]  # Zephyr RTOS platform
+shim-smoltcp = ["shim", "zenoh-pico-shim/smoltcp"]  # smoltcp platform (bare-metal)
+
+# Backward compatibility alias - "zenoh" now uses shim-posix
+zenoh = ["shim-posix", "alloc"]
+
+# Executor backends (informational - affects sync primitive choice)
+rtic = []       # RTIC executor - uses critical sections, no background threads
+embassy = []    # Embassy executor - uses embassy-sync primitives
+polling = []    # Simple polling mode - no background threads, manual poll required
+
+# Synchronization backends (mutually exclusive for mutex implementation)
+# Default: spin::Mutex (works everywhere, but not RTIC-compatible)
+sync-spin = ["dep:spin"]
+# Critical section: uses cortex_m::interrupt::free (RTIC-compatible)
+sync-critical-section = ["dep:critical-section"]
+
+# Logging
+log = ["dep:log"]
+
+[dependencies]
+nano-ros-core = { workspace = true, default-features = false }
+heapless = { workspace = true }
+zenoh-pico-shim = { path = "../../transport/zenoh-pico-shim", optional = true, default-features = false }
+
+# Synchronization backends (optional)
+spin = { version = "0.9", optional = true, default-features = false, features = ["mutex", "spin_mutex"] }
+critical-section = { version = "1.1", optional = true }
+
+# Logging
+log = { workspace = true, optional = true }

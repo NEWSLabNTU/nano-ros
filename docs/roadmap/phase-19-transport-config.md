@@ -46,7 +46,7 @@ The ROS node API (`InitOptions`, `Context`) stays transport-agnostic. Backend-sp
 Add a generic properties slice to the existing struct:
 
 ```rust
-// crates/nano-ros-transport/src/traits.rs
+// packages/core/nano-ros-transport/src/traits.rs
 
 pub struct TransportConfig<'a> {
     pub locator: Option<&'a str>,
@@ -62,7 +62,7 @@ pub struct TransportConfig<'a> {
 Add a property pass-through to the builder:
 
 ```rust
-// crates/nano-ros-node/src/context.rs
+// packages/core/nano-ros-node/src/context.rs
 
 impl InitOptions {
     // Existing (transport-agnostic):
@@ -256,9 +256,9 @@ nano-ros uses key-value properties instead of file-based config because:
 
 | File                                             | Change                                                                                                                                             |
 |--------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|
-| `crates/nano-ros-transport/src/traits.rs`        | Add `properties` to `TransportConfig`                                                                                                              |
-| `crates/nano-ros-node/src/context.rs`            | Add `.property()` to `InitOptions`, wire to `TransportConfig`; implement `ROS_LOCALHOST_ONLY`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_STATIC_PEERS` |
-| `crates/zenoh-pico-shim-sys/c/shim/zenoh_shim.c` | Add `zenoh_shim_init_with_config()`                                                                                                                |
-| `crates/zenoh-pico-shim-sys/c/shim/zenoh_shim.h` | Declare new types and function                                                                                                                     |
-| `crates/zenoh-pico-shim/src/lib.rs`              | FFI binding for new init function                                                                                                                  |
-| `crates/nano-ros-transport/src/shim.rs`          | Pass properties through to C shim; read backend env vars                                                                                           |
+| `packages/core/nano-ros-transport/src/traits.rs`        | Add `properties` to `TransportConfig`                                                                                                              |
+| `packages/core/nano-ros-node/src/context.rs`            | Add `.property()` to `InitOptions`, wire to `TransportConfig`; implement `ROS_LOCALHOST_ONLY`, `ROS_AUTOMATIC_DISCOVERY_RANGE`, `ROS_STATIC_PEERS` |
+| `packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.c` | Add `zenoh_shim_init_with_config()`                                                                                                                |
+| `packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.h` | Declare new types and function                                                                                                                     |
+| `packages/transport/zenoh-pico-shim/src/lib.rs`              | FFI binding for new init function                                                                                                                  |
+| `packages/core/nano-ros-transport/src/shim.rs`          | Pass properties through to C shim; read backend env vars                                                                                           |

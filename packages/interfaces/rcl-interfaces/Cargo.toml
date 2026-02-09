@@ -1,0 +1,15 @@
+[package]
+name = "rcl-interfaces"
+version = "0.1.0"
+edition = "2021"
+description = "Generated rcl_interfaces bindings for nano-ros parameter services"
+license = "Apache-2.0"
+
+[features]
+default = []
+std = ["nano-ros-core/std", "nano-ros-serdes/std"]
+
+[dependencies]
+nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
+nano-ros-serdes = { path = "../../core/nano-ros-serdes", default-features = false }
+heapless = "0.8"

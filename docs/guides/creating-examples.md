@@ -111,7 +111,7 @@ default = []
 zenoh = ["nano-ros/zenoh"]
 
 [dependencies]
-nano-ros = { path = "../../../crates/nano-ros", default-features = false, features = ["std"] }
+nano-ros = { path = "../../../packages/core/nano-ros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
@@ -196,7 +196,7 @@ default = []
 docker = ["nano-ros-bsp-qemu/docker"]
 
 [dependencies]
-nano-ros-bsp-qemu = { path = "../../../crates/nano-ros-bsp-qemu" }
+nano-ros-bsp-qemu = { path = "../../../packages/bsp/nano-ros-bsp-qemu" }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 ```
@@ -214,8 +214,8 @@ runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihos
 rustflags = ["-C", "link-arg=-Tlink.x"]
 
 [patch.crates-io]
-nano-ros-core = { path = "../../../crates/nano-ros-core" }
-nano-ros-serdes = { path = "../../../crates/nano-ros-serdes" }
+nano-ros-core = { path = "../../../packages/core/nano-ros-core" }
+nano-ros-serdes = { path = "../../../packages/core/nano-ros-serdes" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```
@@ -301,7 +301,7 @@ Same pattern, but use `nano-ros-bsp-stm32f4` and `defmt` logging:
 
 ```toml
 [dependencies]
-nano-ros-bsp-stm32f4 = { path = "../../../crates/nano-ros-bsp-stm32f4" }
+nano-ros-bsp-stm32f4 = { path = "../../../packages/bsp/nano-ros-bsp-stm32f4" }
 std_msgs = { version = "*", default-features = false }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 defmt-rtt = "0.4"
@@ -375,15 +375,15 @@ Zephyr examples patch **all** nano-ros crates (not just core/serdes):
 
 ```toml
 [patch.crates-io]
-nano-ros = { path = "../../../crates/nano-ros" }
-nano-ros-core = { path = "../../../crates/nano-ros-core" }
-nano-ros-serdes = { path = "../../../crates/nano-ros-serdes" }
-nano-ros-node = { path = "../../../crates/nano-ros-node" }
-nano-ros-transport = { path = "../../../crates/nano-ros-transport" }
-nano-ros-params = { path = "../../../crates/nano-ros-params" }
-nano-ros-macros = { path = "../../../crates/nano-ros-macros" }
-zenoh-pico-shim = { path = "../../../crates/zenoh-pico-shim" }
-zenoh-pico-shim-sys = { path = "../../../crates/zenoh-pico-shim-sys" }
+nano-ros = { path = "../../../packages/core/nano-ros" }
+nano-ros-core = { path = "../../../packages/core/nano-ros-core" }
+nano-ros-serdes = { path = "../../../packages/core/nano-ros-serdes" }
+nano-ros-node = { path = "../../../packages/core/nano-ros-node" }
+nano-ros-transport = { path = "../../../packages/core/nano-ros-transport" }
+nano-ros-params = { path = "../../../packages/core/nano-ros-params" }
+nano-ros-macros = { path = "../../../packages/core/nano-ros-macros" }
+zenoh-pico-shim = { path = "../../../packages/transport/zenoh-pico-shim" }
+zenoh-pico-shim-sys = { path = "../../../packages/transport/zenoh-pico-shim-sys" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```
@@ -395,12 +395,12 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_example)
 
 # nano-ros BSP for Zephyr (C glue)
-set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/nano-ros-bsp-zephyr)
+set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/bsp/nano-ros-bsp-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
 
 # zenoh-pico C shim
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/zenoh-pico-shim-sys/c)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/transport/zenoh-pico-shim-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

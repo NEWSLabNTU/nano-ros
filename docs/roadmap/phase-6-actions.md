@@ -76,7 +76,7 @@ An action uses **5 separate communication primitives**:
 ### 2.1 Core Traits
 
 ```rust
-// crates/nano-ros-core/src/action.rs
+// packages/core/nano-ros-core/src/action.rs
 
 /// Trait for ROS 2 action types
 pub trait RosAction: Sized {
@@ -110,7 +110,7 @@ pub enum GoalStatus {
 ### 2.2 Action Server
 
 ```rust
-// crates/nano-ros-node/src/action_server.rs
+// packages/core/nano-ros-node/src/action_server.rs
 
 /// Server for handling action goals
 pub struct ActionServer<A: RosAction, const MAX_GOALS: usize = 4> {
@@ -154,7 +154,7 @@ impl<A: RosAction, const MAX_GOALS: usize> ActionServer<A, MAX_GOALS> {
 ### 2.3 Action Client
 
 ```rust
-// crates/nano-ros-node/src/action_client.rs
+// packages/core/nano-ros-node/src/action_client.rs
 
 /// Client for sending action goals
 pub struct ActionClient<A: RosAction> {
@@ -192,7 +192,7 @@ impl<A: RosAction> ActionClient<A> {
 ### 2.4 Node API
 
 ```rust
-// crates/nano-ros-node/src/connected.rs
+// packages/core/nano-ros-node/src/connected.rs
 
 impl<const MAX_TOKENS: usize> ConnectedNode<MAX_TOKENS> {
     /// Create an action server
@@ -314,7 +314,7 @@ The following dependency chain must be completed to enable Zephyr action example
 **Dependencies:** None
 **Enables:** 4.2, 4.4, 4.5
 
-- [x] Create `crates/nano-ros-core/src/action.rs`
+- [x] Create `packages/core/nano-ros-core/src/action.rs`
 - [x] Define `RosAction` trait with Goal/Result/Feedback associated types
 - [x] Define `GoalStatus` enum (matches action_msgs/msg/GoalStatus)
 - [x] Define `GoalId` type (UUID wrapper, 16 bytes)

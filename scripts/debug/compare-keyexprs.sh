@@ -6,7 +6,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 TALKER="$PROJECT_ROOT/target/release/talker"
-Z_SUB="$PROJECT_ROOT/crates/zenoh-pico-sys/zenoh-pico/build/examples/z_sub"
+Z_SUB="$PROJECT_ROOT/packages/transport/zenoh-pico-shim-sys/zenoh-pico/build/examples/z_sub"
 
 # Colors
 GREEN='\033[0;32m'

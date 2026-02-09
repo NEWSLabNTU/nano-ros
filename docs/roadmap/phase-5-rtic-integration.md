@@ -41,7 +41,7 @@ See [RTIC Integration Design](../rtic-integration-design.md) for detailed archit
   ```
 
 - [ ] **5.1.3** Gate existing `spin::Mutex` usage behind `sync-spin` feature
-  - File: `crates/nano-ros-transport/src/zenoh.rs`
+  - File: `packages/core/nano-ros-transport/src/zenoh.rs`
   - Locations: 8 instances of `spin::Mutex`
 
 - [ ] **5.1.4** Update CI to test all feature combinations
@@ -91,10 +91,10 @@ See [RTIC Integration Design](../rtic-integration-design.md) for detailed archit
   - Gate implementations behind features
 
 - [ ] **5.2.3** Refactor `SubscriberBuffer` to use trait-based mutex
-  - File: `crates/nano-ros-transport/src/zenoh.rs:350`
+  - File: `packages/core/nano-ros-transport/src/zenoh.rs:350`
 
 - [ ] **5.2.4** Refactor `ServiceServerBuffer` to use trait-based mutex
-  - File: `crates/nano-ros-transport/src/zenoh.rs:453`
+  - File: `packages/core/nano-ros-transport/src/zenoh.rs:453`
 
 - [ ] **5.2.5** Add lock-free alternative using pure atomics
   ```rust
@@ -197,7 +197,7 @@ See [RTIC Integration Design](../rtic-integration-design.md) for detailed archit
 ### Work Items
 
 - [ ] **5.4.1** Replace `Vec<LivelinessToken>` with `heapless::Vec`
-  - File: `crates/nano-ros-node/src/connected.rs`
+  - File: `packages/core/nano-ros-node/src/connected.rs`
   ```rust
   pub struct ConnectedNode<const MAX_TOKENS: usize = 16> {
       _entity_tokens: heapless::Vec<LivelinessToken, MAX_TOKENS>,

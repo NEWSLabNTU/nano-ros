@@ -63,10 +63,10 @@ The first three are fixable by moving platform concerns into BSP/support crates.
 ### build.rs that are fine (5 files)
 
 These use `include_bytes!()` on local files — no repo-root needed:
-- `examples/platform-integration/stm32f4-rtic/build.rs`
-- `examples/platform-integration/stm32f4-polling/build.rs`
-- `examples/platform-integration/stm32f4-smoltcp/build.rs`
-- `examples/platform-integration/qemu-lan9118/build.rs`
+- `packages/reference/stm32f4-rtic/build.rs`
+- `packages/reference/stm32f4-polling/build.rs`
+- `packages/reference/stm32f4-smoltcp/build.rs`
+- `packages/reference/qemu-lan9118/build.rs`
 - `examples/qemu/rs-test/build.rs`
 
 ### Unsafe code in examples
@@ -78,14 +78,14 @@ These use `include_bytes!()` on local files — no repo-root needed:
 - `examples/esp32/qemu-listener/src/main.rs` — `static mut LAST_VALUE`, `MSG_COUNT`
 
 **Platform internals in example code** (should be in BSP/support crate):
-- `examples/platform-integration/qemu-smoltcp-bridge/src/bridge.rs` — global socket table
-- `examples/platform-integration/qemu-smoltcp-bridge/src/libc_stubs.rs` — C stdlib stubs
-- `examples/platform-integration/qemu-smoltcp-bridge/src/clock.rs` — FFI time functions
+- `packages/reference/qemu-smoltcp-bridge/src/bridge.rs` — global socket table
+- `packages/reference/qemu-smoltcp-bridge/src/libc_stubs.rs` — C stdlib stubs
+- `packages/reference/qemu-smoltcp-bridge/src/clock.rs` — FFI time functions
 
 **Hardware layout** (inherent, kept in platform-integration):
-- `examples/platform-integration/stm32f4-rtic/src/main.rs` — `#[link_section = ".ethram"]`
-- `examples/platform-integration/stm32f4-polling/src/main.rs` — same
-- `examples/platform-integration/stm32f4-smoltcp/src/main.rs` — same
+- `packages/reference/stm32f4-rtic/src/main.rs` — `#[link_section = ".ethram"]`
+- `packages/reference/stm32f4-polling/src/main.rs` — same
+- `packages/reference/stm32f4-smoltcp/src/main.rs` — same
 
 **Zephyr FFI** (inherent, minimal):
 - `examples/zephyr/rs-{talker,listener,service-*,action-*}/src/lib.rs` — `#[unsafe(no_mangle)] extern "C" fn rust_main()`
@@ -102,12 +102,12 @@ Move zenoh-pico cross-compilation from external shell scripts and example build.
 **Approach**: `zenoh-pico-shim-sys/build.rs` detects embedded targets (`thumbv7m`, `thumbv7em`, `riscv32imc`) and builds zenoh-pico inline with `cc::Build`. This mirrors what `scripts/{qemu,esp32}/build-zenoh-pico.sh` did, but integrated into the cargo build. For RISC-V, a shadow `errno.h` avoids picolibc's TLS-based errno (which crashes on bare-metal ESP32-C3).
 
 **Changes**:
-- [x] `crates/zenoh-pico-shim-sys/build.rs` — `build_zenoh_pico_embedded()` compiles ~120 sources for embedded targets
+- [x] `packages/transport/zenoh-pico-shim-sys/build.rs` — `build_zenoh_pico_embedded()` compiles ~120 sources for embedded targets
 - [x] Remove zenoh-pico link logic from all 8 example build.rs files (files deleted entirely)
 - [x] Remove `ZENOH_PICO_LIB_DIR` env var from justfile, BSP build.rs files, and CLAUDE.md
 - [x] Remove `build-zenoh-pico-arm` / `build-zenoh-pico-riscv` as build dependencies (recipes kept for manual use)
-- [x] `crates/nano-ros-bsp-qemu/build.rs` — linker script only (no zenoh-pico linkage)
-- [x] `crates/nano-ros-bsp-esp32{,-qemu}/build.rs` — deleted (no longer needed)
+- [x] `packages/bsp/nano-ros-bsp-qemu/build.rs` — linker script only (no zenoh-pico linkage)
+- [x] `packages/bsp/nano-ros-bsp-esp32{,-qemu}/build.rs` — deleted (no longer needed)
 
 For users who need custom zenoh-pico configuration (different `Z_FEATURE_*` flags, patched source, etc.), the `system-zenohpico` feature on `zenoh-pico-shim-sys` allows using a pre-built library via the `ZENOH_PICO_DIR` environment variable. This is only supported for native targets.
 
@@ -124,11 +124,11 @@ For users who need custom zenoh-pico configuration (different `Z_FEATURE_*` flag
 The `mps2-an385.x` linker script is currently shared via `include_bytes!("../../platform-integration/qemu-smoltcp-bridge/mps2-an385.x")`. It should ship with the BSP crate.
 
 **Changes**:
-- [x] Copy `mps2-an385.x` into `crates/nano-ros-bsp-qemu/` (canonical location)
-- [x] `crates/nano-ros-bsp-qemu/build.rs` — write linker script to `OUT_DIR` and emit `cargo:rustc-link-search`
+- [x] Copy `mps2-an385.x` into `packages/bsp/nano-ros-bsp-qemu/` (canonical location)
+- [x] `packages/bsp/nano-ros-bsp-qemu/build.rs` — write linker script to `OUT_DIR` and emit `cargo:rustc-link-search`
 - [x] Remove linker script handling from QEMU example build.rs files (build.rs files deleted entirely)
 - [x] ESP32 BSP not applicable (esp-hal manages linker scripts)
-- [x] `examples/platform-integration/qemu-smoltcp-bridge/mps2-an385.x` — kept as reference, no longer imported by other examples
+- [x] `packages/reference/qemu-smoltcp-bridge/mps2-an385.x` — kept as reference, no longer imported by other examples
 
 **Acceptance criteria**:
 - QEMU examples have no `include_bytes!` referencing paths outside their own directory
@@ -186,33 +186,22 @@ static MSG_BUFFER: Mutex<RefCell<MsgBuffer>> = ...;
 
 ### 28.4: Move libc stubs to support crate
 
-**Status**: Not Started
+**Status**: Skipped
 **Priority**: Low
 
-`examples/platform-integration/qemu-smoltcp-bridge/src/libc_stubs.rs` (~250 lines) provides minimal C stdlib functions required by zenoh-pico on bare-metal. Every bare-metal example that links zenoh-pico needs these. They should not live in an example.
+`packages/reference/qemu-smoltcp-bridge/src/libc_stubs.rs` (~250 lines) provides minimal C stdlib functions required by zenoh-pico on bare-metal. The original plan was to centralize these into a shared crate or `zenoh-pico-shim-sys`.
 
-**Approach**: Create `crates/nano-ros-libc-stubs/` or fold into `zenoh-pico-shim-sys` build for bare-metal targets.
-
-**Changes**:
-- [ ] Decide location: new crate vs. conditional compilation in `zenoh-pico-shim-sys`
-- [ ] Move `libc_stubs.rs` content (strlen, memcpy, memmove, memset, memcmp, memchr, strcmp, strncmp, strncpy, strtoul, snprintf stubs)
-- [ ] Move `clock.rs` FFI functions if they are also platform infrastructure
-- [ ] Update `qemu-smoltcp-bridge` to depend on the new location
-- [ ] Update BSP crates to pull in stubs automatically
-
-**Acceptance criteria**:
-- No libc stub implementations in `examples/` directory
-- BSP crate dependency chain provides all required C symbols
+**Decision**: Skipped. Each BSP crate already owns its own copy of libc stubs (~260 lines of trivial C-compat code). The copies have legitimate platform differences (ESP32 WiFi delegates some stubs to `esp-wifi-sys`, QEMU needs `__assert_func`). The duplication is low-impact and rarely changes. Creating crate infrastructure to share them would couple BSPs that should remain independent. The `qemu-smoltcp-bridge` copy in `packages/reference/` is a reference implementation (see 28.5).
 
 ### 28.5: Document platform-integration as reference-only
 
 **Status**: Not Started
 **Priority**: Low
 
-The `examples/platform-integration/` directory contains low-level reference implementations (smoltcp bridge, STM32F4 networking). These are not meant to be copied — they exist to show how BSPs are built internally.
+The `packages/reference/` directory contains low-level reference implementations (smoltcp bridge, STM32F4 networking). These are not meant to be copied — they exist to show how BSPs are built internally.
 
 **Changes**:
-- [ ] Update `examples/platform-integration/README.md` to clearly state these are reference implementations for BSP developers, not application examples
+- [ ] Update `packages/reference/README.md` to clearly state these are reference implementations for BSP developers, not application examples
 - [ ] Note that the unsafe code (DMA buffers, socket tables) is intentional and expected at this level
 - [ ] Cross-reference the BSP examples (`qemu/bsp-*`, `stm32f4/bsp-*`) as the recommended starting point
 
@@ -225,14 +214,12 @@ The `examples/platform-integration/` directory contains low-level reference impl
 ## Dependencies
 
 ```
-28.1 (zenoh-pico linkage) ──┬──► 28.4 (libc stubs)
-                            │
-28.2 (linker scripts) ──────┤
-                            │
-28.3 (safe message storage) ┘    28.5 (docs) — independent
+28.1 (zenoh-pico linkage) ── Complete
+28.2 (linker scripts) ────── Complete
+28.3 (safe message storage)  Complete
+28.4 (libc stubs) ────────── Skipped (BSPs own their copies)
+28.5 (docs) ──────────────── independent
 ```
-
-28.1 and 28.2 can proceed in parallel. 28.3 is independent. 28.4 builds on the BSP changes from 28.1. 28.5 is standalone documentation.
 
 ## Success Metrics
 
@@ -240,6 +227,6 @@ The `examples/platform-integration/` directory contains low-level reference impl
 |--------|--------|-------|
 | Examples with repo-root walking in build.rs | 8 | 0 |
 | `static mut` in BSP examples | 4 files | 0 |
-| libc stubs in examples/ | 250 lines | 0 |
+| libc stubs in examples/ | 250 lines | 250 (kept in reference impl, see 28.5) |
 | Examples copyable outside repo | 0 | All BSP examples |
 | Unsafe blocks in BSP examples | ~20 lines | ~6 (Zephyr FFI only) |

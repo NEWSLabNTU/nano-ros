@@ -21,7 +21,7 @@ After a comprehensive study of the micro-ROS ecosystem (see [docs/micro-ros-comp
 - `external/Micro-XRCE-DDS-Client/` — transport abstraction patterns
 - `external/micro_ros_zephyr_module/` — Zephyr serial/USB transport
 - `external/zenoh/io/zenoh-links/zenoh-link-serial/` — zenoh Rust serial link (COBS + CRC32)
-- `crates/zenoh-pico-shim-sys/zenoh-pico/src/link/unicast/serial.c` — zenoh-pico native serial link
+- `packages/transport/zenoh-pico-shim-sys/zenoh-pico/src/link/unicast/serial.c` — zenoh-pico native serial link
 
 ### Design Principles
 
@@ -367,7 +367,7 @@ ROS 2 lifecycle nodes (REP-2002) provide a managed state machine for determinist
 
 ### 18.3.1 Lifecycle State Types
 
-- [x] Create `crates/nano-ros-core/src/lifecycle.rs`
+- [x] Create `packages/core/nano-ros-core/src/lifecycle.rs`
 - [x] Define `LifecycleState` enum (shared by Rust and C APIs)
 - [x] Define `LifecycleTransition` enum
 - [x] Define `TransitionResult` matching rclc callback return convention
@@ -406,7 +406,7 @@ pub enum TransitionResult {
 
 ### 18.3.2 Rust API — LifecycleNode (std)
 
-- [x] Create `crates/nano-ros-node/src/lifecycle.rs`
+- [x] Create `packages/core/nano-ros-node/src/lifecycle.rs`
 - [x] `LifecycleNode` wraps a `NodeHandle` and adds state machine
 - [ ] Builder pattern via `LifecycleNodeOptions` / `IntoLifecycleNodeOptions` (deferred — not needed for core functionality)
 - [x] Callback registration via builder (before construction) or setter (after)
@@ -683,7 +683,7 @@ micro-ROS's most-used transport on MCUs is UART serial. Many embedded boards lac
 
 Unlike micro-ROS which requires a separate agent/bridge process, zenoh-pico's serial link connects directly to `zenohd`. The router can listen on both TCP and serial simultaneously, so no bridge is needed.
 
-**zenoh-pico serial reference** (`crates/zenoh-pico-shim-sys/zenoh-pico/`):
+**zenoh-pico serial reference** (`packages/transport/zenoh-pico-shim-sys/zenoh-pico/`):
 - Feature flag: `Z_FEATURE_LINK_SERIAL` (disabled by default in CMakeLists.txt)
 - Locator format: `serial/<device>#baudrate=<rate>` (e.g., `serial//dev/ttyUSB0#baudrate=115200`)
 - Framing: COBS encoding + CRC32 error detection (`src/protocol/codec/serial.c`)
@@ -700,7 +700,7 @@ Unlike micro-ROS which requires a separate agent/bridge process, zenoh-pico's se
 - [x] Zephyr: update Kconfig locator help text to document serial format
 
 ```toml
-# crates/zenoh-pico-shim-sys/Cargo.toml
+# packages/transport/zenoh-pico-shim-sys/Cargo.toml
 [features]
 serial = []  # Enable Z_FEATURE_LINK_SERIAL in zenoh-pico build
 ```

@@ -106,7 +106,7 @@ Unlike micro-ROS's 3-layer stack (rclc → rcl → rmw → Micro XRCE-DDS), nano
 │  1. Cross-compile zenoh-pico → libzenohpico.a                  │
 │  2. Cross-compile nano-ros C shim → libnanoros_shim.a           │
 │  3. Bundle: libnanoros.a = libzenohpico.a + libnanoros_shim.a   │
-│  4. Copy headers from crates/nano-ros-c/include/               │
+│  4. Copy headers from packages/core/nano-ros-c/include/               │
 │  5. Package into Arduino library structure                      │
 │                                                                  │
 │  Output per board:                                              │
@@ -219,7 +219,7 @@ void loop() {
    ├── src/
    │   ├── nano_ros_arduino.h    # Transport setup (WiFi/Serial) + helper macros
    │   ├── nano_ros_arduino.cpp  # Transport setup implementation (~70 lines)
-   │   ├── nano_ros/             # C API headers (from crates/nano-ros-c/include/)
+   │   ├── nano_ros/             # C API headers (from packages/core/nano-ros-c/include/)
    │   │   ├── init.h
    │   │   ├── node.h
    │   │   ├── publisher.h
@@ -288,7 +288,7 @@ Both archives are bundled into a single `libnanoros.a` via `ar` so Arduino sketc
    - Output to `build/arduino/<board>/libnanoros.a`
 2. [ ] Create `scripts/arduino/package-arduino-lib.sh` — assemble the Arduino library:
    - Copy `libnanoros.a` for each board into `arduino/nano-ros/src/<board>/`
-   - Copy C headers from `crates/nano-ros-c/include/nano_ros/` into `arduino/nano-ros/src/nano_ros/`
+   - Copy C headers from `packages/core/nano-ros-c/include/nano_ros/` into `arduino/nano-ros/src/nano_ros/`
    - Copy transport setup files (`nano_ros_arduino.h`, `nano_ros_arduino.cpp`) into `arduino/nano-ros/src/`
    - Copy example sketches into `arduino/nano-ros/examples/`
    - Stamp version in `library.properties`
@@ -305,7 +305,7 @@ Both archives are bundled into a single `libnanoros.a` via `ar` so Arduino sketc
 **Acceptance Criteria**:
 - [ ] `libnanoros.a` built for ESP32-C3 (RISC-V) — primary target
 - [ ] `libnanoros.a` built for ESP32-S3 and ESP32 (Xtensa) — secondary
-- [ ] Headers copied verbatim from `crates/nano-ros-c/include/` (no cbindgen needed — headers are manually maintained)
+- [ ] Headers copied verbatim from `packages/core/nano-ros-c/include/` (no cbindgen needed — headers are manually maintained)
 - [ ] Distributable zip produced with correct Arduino library structure
 - [ ] Arduino IDE can compile sketches linking the library
 - [ ] `nm` verification passes (symbols present, no POSIX undefined refs)
@@ -396,7 +396,7 @@ Verify the existing C API test suite (`just test-c`) covers every `nano_ros_*` f
 
 **Tasks**:
 1. [ ] Audit example sketches → list every `nano_ros_*` C function they call
-2. [ ] Cross-reference with `crates/nano-ros-tests/tests/c_api.rs` — flag gaps
+2. [ ] Cross-reference with `packages/testing/nano-ros-tests/tests/c_api.rs` — flag gaps
 3. [ ] Add missing C API test cases (e.g., if `nano_ros_spin_once` or subscription callbacks aren't covered)
 
 **Acceptance Criteria**:
@@ -425,7 +425,7 @@ Test the precompiled `libnanoros.a` on the actual RISC-V target — in QEMU, not
    - Print `[PASS]` / `[FAIL]` markers for semihosting/UART capture
 2. [ ] Create build script: compile test program + link `libnanoros.a` for RISC-V, produce flash image via `espflash save-image`
 3. [ ] Create Docker Compose config for ESP32-C3 QEMU tests (zenohd + QEMU ESP32-C3 + native listener)
-4. [ ] Add `esp32_arduino.rs` test suite in `crates/nano-ros-tests/tests/` (or extend `esp32_emulator.rs` from 22.5d)
+4. [ ] Add `esp32_arduino.rs` test suite in `packages/testing/nano-ros-tests/tests/` (or extend `esp32_emulator.rs` from 22.5d)
 5. [ ] Add `just test-qemu-esp32-arduino` recipe
 
 **Acceptance Criteria**:

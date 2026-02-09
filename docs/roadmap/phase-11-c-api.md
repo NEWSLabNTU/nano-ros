@@ -440,15 +440,15 @@ int main(void) {
 **Status: COMPLETE**
 
 #### Work Items
-- [x] Create `crates/nano-ros-c/` crate structure
+- [x] Create `packages/core/nano-ros-c/` crate structure
 - [x] Create manually maintained C headers (cbindgen removed from build)
 - [x] Create CMake build integration
 - [x] Setup cross-compilation for ARM targets
 
 #### Deliverables
-- `crates/nano-ros-c/Cargo.toml`
-- `crates/nano-ros-c/src/lib.rs`
-- `crates/nano-ros-c/include/nano_ros/` (modular headers)
+- `packages/core/nano-ros-c/Cargo.toml`
+- `packages/core/nano-ros-c/src/lib.rs`
+- `packages/core/nano-ros-c/include/nano_ros/` (modular headers)
 
 ### 11.2 Core Types and Initialization
 
@@ -547,7 +547,7 @@ int main(void) {
 
 **Status: COMPLETE**
 
-C code generation templates exist in `colcon-nano-ros`, and CDR helper functions are
+C code generation templates exist in `packages/codegen`, and CDR helper functions are
 implemented in nano-ros-c. Generated C code can serialize/deserialize all ROS 2 primitive
 types, strings, and nested messages.
 
@@ -562,7 +562,7 @@ types, strings, and nested messages.
 - [x] Implement CDR helper functions in nano-ros-c
 
 #### CDR Helper Functions
-Implemented in `crates/nano-ros-c/src/cdr.rs` and exported in `nano_ros/cdr.h`:
+Implemented in `packages/core/nano-ros-c/src/cdr.rs` and exported in `nano_ros/cdr.h`:
 ```c
 // Write functions (all return 0 on success, -1 on buffer overflow)
 int32_t nano_ros_cdr_write_bool(uint8_t** ptr, const uint8_t* end, bool value);
@@ -594,13 +594,13 @@ int32_t nano_ros_cdr_read_string(const uint8_t** ptr, const uint8_t* end, char* 
 ```
 
 #### Deliverables
-- [x] `colcon-nano-ros/packages/rosidl-codegen/templates/message_c.h.jinja`
-- [x] `colcon-nano-ros/packages/rosidl-codegen/templates/message_c.c.jinja`
-- [x] `colcon-nano-ros/packages/rosidl-codegen/templates/service_c.h.jinja`
-- [x] `colcon-nano-ros/packages/rosidl-codegen/templates/service_c.c.jinja`
-- [x] `colcon-nano-ros/packages/rosidl-codegen/templates/action_c.h.jinja`
-- [x] `colcon-nano-ros/packages/rosidl-codegen/templates/action_c.c.jinja`
-- [x] CDR helper implementation in `crates/nano-ros-c/src/cdr.rs`
+- [x] `packages/codegen/packages/rosidl-codegen/templates/message_c.h.jinja`
+- [x] `packages/codegen/packages/rosidl-codegen/templates/message_c.c.jinja`
+- [x] `packages/codegen/packages/rosidl-codegen/templates/service_c.h.jinja`
+- [x] `packages/codegen/packages/rosidl-codegen/templates/service_c.c.jinja`
+- [x] `packages/codegen/packages/rosidl-codegen/templates/action_c.h.jinja`
+- [x] `packages/codegen/packages/rosidl-codegen/templates/action_c.c.jinja`
+- [x] CDR helper implementation in `packages/core/nano-ros-c/src/cdr.rs`
 
 #### Future Work
 - [ ] CLI integration to invoke C generation directly
@@ -663,7 +663,7 @@ requires no_std transport support in nano-ros-c.
 
 #### Final Structure
 ```
-crates/nano-ros-c/include/nano_ros/
+packages/core/nano-ros-c/include/nano_ros/
 ├── init.h              # nano_ros_support_init/fini
 ├── node.h              # nano_ros_node_*
 ├── publisher.h         # nano_ros_publisher_*, nano_ros_publish_*
@@ -708,8 +708,8 @@ crates/nano-ros-c/include/nano_ros/
 - [ ] Support time override for simulation (future: /clock topic subscription)
 
 #### Deliverables
-- `crates/nano-ros-c/include/nano_ros/clock.h`
-- `crates/nano-ros-c/src/clock.rs`
+- `packages/core/nano-ros-c/include/nano_ros/clock.h`
+- `packages/core/nano-ros-c/src/clock.rs`
 
 #### API
 ```c
@@ -786,8 +786,8 @@ nano_ros_clock_fini(&clock);
 - [ ] Array parameter types (future)
 
 #### Deliverables
-- `crates/nano-ros-c/include/nano_ros/parameter.h`
-- `crates/nano-ros-c/src/parameter.rs`
+- `packages/core/nano-ros-c/include/nano_ros/parameter.h`
+- `packages/core/nano-ros-c/src/parameter.rs`
 
 #### API
 ```c
@@ -871,8 +871,8 @@ nano_ros_param_server_fini(&params);
 - [x] Goal state machine (accepted → executing → succeeded/canceled/aborted)
 
 #### Files
-- **Header**: `crates/nano-ros-c/include/nano_ros/action.h`
-- **Implementation**: `crates/nano-ros-c/src/action.rs`
+- **Header**: `packages/core/nano-ros-c/include/nano_ros/action.h`
+- **Implementation**: `packages/core/nano-ros-c/src/action.rs`
 
 #### API Overview
 
@@ -1015,8 +1015,8 @@ const char *nano_ros_goal_status_to_string(nano_ros_goal_status_t status);
 - [x] Support multi-threaded trigger via atomic operations
 
 #### Files
-- **Header**: `crates/nano-ros-c/include/nano_ros/guard_condition.h`
-- **Implementation**: `crates/nano-ros-c/src/guard_condition.rs`
+- **Header**: `packages/core/nano-ros-c/include/nano_ros/guard_condition.h`
+- **Implementation**: `packages/core/nano-ros-c/src/guard_condition.rs`
 - **Executor integration**: Updated `executor.rs` and `executor.h`
 
 #### API Overview
@@ -1213,7 +1213,7 @@ int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex);
 ##### Platform Header Structure
 
 ```
-crates/nano-ros-c/include/nano_ros/
+packages/core/nano-ros-c/include/nano_ros/
 ├── platform.h                 # Platform selection logic
 └── platform/
     ├── posix.h               # Linux, macOS, other POSIX

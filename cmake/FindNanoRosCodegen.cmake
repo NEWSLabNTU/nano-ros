@@ -36,12 +36,12 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 
 # --- Locate the static library ----------------------------------------------
-set(_codegen_pkg_dir "${NANO_ROS_ROOT}/colcon-nano-ros/packages/nano-ros-codegen-c")
+set(_codegen_pkg_dir "${NANO_ROS_ROOT}/packages/codegen/packages/nano-ros-codegen-c")
 
 # Prefer release, fall back to debug
 set(_lib_path "")
 foreach(_profile release debug)
-  set(_candidate "${NANO_ROS_ROOT}/colcon-nano-ros/packages/target/${_profile}/libnano_ros_codegen_c.a")
+  set(_candidate "${NANO_ROS_ROOT}/packages/codegen/packages/target/${_profile}/libnano_ros_codegen_c.a")
   if(EXISTS "${_candidate}")
     set(_lib_path "${_candidate}")
     break()
@@ -55,7 +55,7 @@ if(NOT _lib_path)
       "libnano_ros_codegen_c.a not found.\n"
       "Build it with:\n"
       "  cd ${NANO_ROS_ROOT} && cargo build -p nano-ros-codegen-c --release "
-      "--manifest-path colcon-nano-ros/packages/Cargo.toml"
+      "--manifest-path packages/codegen/packages/Cargo.toml"
     )
   endif()
   return()

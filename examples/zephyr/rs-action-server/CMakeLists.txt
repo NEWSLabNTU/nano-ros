@@ -17,7 +17,7 @@ project(nano_ros_action_server_rs)
 
 # Use shared C shim from zenoh-pico-shim-sys
 # This provides the zenoh_shim_* API used by the Rust crate
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../crates/zenoh-pico-shim-sys/c)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/transport/zenoh-pico-shim-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

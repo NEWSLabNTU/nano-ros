@@ -14,7 +14,7 @@ default = []
 zenoh = ["nano-ros/zenoh"]
 
 [dependencies]
-nano-ros = { path = "../../../crates/nano-ros", default-features = false, features = ["std"] }
+nano-ros = { path = "../../../packages/core/nano-ros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 heapless = "0.8"
 log = "0.4"

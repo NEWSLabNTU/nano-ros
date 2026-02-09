@@ -4,7 +4,8 @@ CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable
 # Example lists (single source of truth for build/format/check/clean recipes)
 NATIVE_EXAMPLES := "rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client"
 EMBEDDED_EXAMPLES := "stm32f4-rtic stm32f4-embassy stm32f4-polling stm32f4-smoltcp"
-QEMU_EXAMPLES := "platform-integration/qemu-smoltcp-bridge qemu/rs-test platform-integration/qemu-lan9118"
+QEMU_EXAMPLES := "qemu/rs-test"
+QEMU_REFERENCE_EXAMPLES := "qemu-smoltcp-bridge qemu-lan9118"
 QEMU_ZENOH_EXAMPLES := "qemu/rs-talker qemu/rs-listener qemu/bsp-talker qemu/bsp-listener"
 
 LOG_DIR := "test-logs"
@@ -166,6 +167,9 @@ quality:
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
     done
+    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
+        (cd packages/reference/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    done
     if [ $qemu_failed -ne 0 ]; then
         echo "[FAIL] QEMU examples FAILED"
         failed=1
@@ -325,7 +329,7 @@ build-examples-embedded:
     set -e
     echo "Building embedded examples..."
     for ex in {{EMBEDDED_EXAMPLES}}; do
-        (cd examples/platform-integration/$ex && cargo build --release)
+        (cd packages/reference/$ex && cargo build --release)
     done
 
 # Format embedded examples
@@ -334,7 +338,7 @@ format-examples-embedded:
     set -e
     echo "Formatting embedded examples..."
     for ex in {{EMBEDDED_EXAMPLES}}; do
-        (cd examples/platform-integration/$ex && cargo +nightly fmt)
+        (cd packages/reference/$ex && cargo +nightly fmt)
     done
 
 # Check embedded examples
@@ -343,7 +347,7 @@ check-examples-embedded:
     set -e
     echo "Checking embedded examples..."
     for ex in {{EMBEDDED_EXAMPLES}}; do
-        (cd examples/platform-integration/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
+        (cd packages/reference/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
     done
 
 # Show embedded example binary sizes
@@ -351,16 +355,16 @@ size-examples-embedded: build-examples-embedded
     @echo ""
     @echo "Binary sizes (release):"
     @echo "======================="
-    @size examples/platform-integration/stm32f4-rtic/target/thumbv7em-none-eabihf/release/stm32f4-rtic-example 2>/dev/null || echo "RTIC: build failed"
-    @size examples/platform-integration/stm32f4-embassy/target/thumbv7em-none-eabihf/release/stm32f4-embassy-example 2>/dev/null || echo "Embassy: build failed"
-    @size examples/platform-integration/stm32f4-polling/target/thumbv7em-none-eabihf/release/stm32f4-polling-example 2>/dev/null || echo "Polling: build failed"
-    @size examples/platform-integration/stm32f4-smoltcp/target/thumbv7em-none-eabihf/release/stm32f4-smoltcp 2>/dev/null || echo "stm32f4-smoltcp: build failed"
+    @size packages/reference/stm32f4-rtic/target/thumbv7em-none-eabihf/release/stm32f4-rtic-example 2>/dev/null || echo "RTIC: build failed"
+    @size packages/reference/stm32f4-embassy/target/thumbv7em-none-eabihf/release/stm32f4-embassy-example 2>/dev/null || echo "Embassy: build failed"
+    @size packages/reference/stm32f4-polling/target/thumbv7em-none-eabihf/release/stm32f4-polling-example 2>/dev/null || echo "Polling: build failed"
+    @size packages/reference/stm32f4-smoltcp/target/thumbv7em-none-eabihf/release/stm32f4-smoltcp 2>/dev/null || echo "stm32f4-smoltcp: build failed"
 
 # Clean embedded example build artifacts
 clean-examples-embedded:
     #!/usr/bin/env bash
     for ex in {{EMBEDDED_EXAMPLES}}; do
-        rm -rf examples/platform-integration/$ex/target
+        rm -rf packages/reference/$ex/target
     done
     echo "Embedded example build artifacts cleaned"
 
@@ -377,6 +381,9 @@ clean-examples-qemu:
     #!/usr/bin/env bash
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         rm -rf examples/$ex/target
+    done
+    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
+        rm -rf packages/reference/$ex/target
     done
     echo "QEMU example build artifacts cleaned"
 
@@ -461,6 +468,9 @@ build-examples-qemu:
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo build --release)
     done
+    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
+        (cd packages/reference/$ex && cargo build --release)
+    done
 
 # Format QEMU examples
 format-examples-qemu:
@@ -470,6 +480,9 @@ format-examples-qemu:
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt)
     done
+    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
+        (cd packages/reference/$ex && cargo +nightly fmt)
+    done
 
 # Check QEMU examples
 check-examples-qemu:
@@ -478,6 +491,9 @@ check-examples-qemu:
     echo "Checking QEMU examples..."
     for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
         (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
+    done
+    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
+        (cd packages/reference/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
     done
 
 # Run all QEMU tests (non-networked)
@@ -599,7 +615,7 @@ test-qemu-lan9118 verbose="": build-examples-qemu _init-test-logs
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/platform-integration/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+            -kernel packages/reference/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Check if QEMU is installed
 check-qemu:
@@ -691,12 +707,12 @@ qemu-help:
 # Analyze stack usage (requires nightly)
 analyze-stack:
     @echo "Analyzing stack usage for RTIC example..."
-    cd examples/platform-integration/stm32f4-rtic && \
+    cd packages/reference/stm32f4-rtic && \
         RUSTFLAGS="-Z emit-stack-sizes" cargo +nightly build --release 2>&1 | head -20
     @echo ""
     @echo "Note: For full call graph analysis, install cargo-call-stack:"
     @echo "  cargo +nightly install cargo-call-stack"
-    @echo "  cd examples/platform-integration/stm32f4-rtic && cargo +nightly call-stack --release"
+    @echo "  cd packages/reference/stm32f4-rtic && cargo +nightly call-stack --release"
 
 # =============================================================================
 # Zenoh
@@ -721,8 +737,8 @@ clean-zenohd:
 # Build zenoh-pico C library (standalone, for debugging)
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
-    cd crates/zenoh-pico-shim-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
-    @echo "zenoh-pico built at: crates/zenoh-pico-shim-sys/zenoh-pico/build"
+    cd packages/transport/zenoh-pico-shim-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
+    @echo "zenoh-pico built at: packages/transport/zenoh-pico-shim-sys/zenoh-pico/build"
 
 # =============================================================================
 # Integration Tests (requires zenohd running on tcp/127.0.0.1:7447)
@@ -800,7 +816,7 @@ test-c verbose="": _init-test-logs
     cargo nextest run "${args[@]}"
     # C codegen tests
     ./tests/run-test.sh --name c-codegen --log {{LOG_DIR}}/latest/c-codegen.log $v -- \
-        bash -c 'cd colcon-nano-ros/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
+        bash -c 'cd packages/codegen/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
     ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh
 
 # Build C examples only (no tests)
@@ -827,12 +843,12 @@ clean-examples-c:
 # Build the codegen static library (for CMake C code generation)
 build-codegen-lib:
     @echo "Building nano-ros-codegen-c staticlib..."
-    cargo build -p nano-ros-codegen-c --release --manifest-path colcon-nano-ros/packages/Cargo.toml
+    cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
 
 # Install cargo-nano-ros (requires ROS 2 environment)
 install-cargo-nano-ros:
     @echo "Installing cargo-nano-ros..."
-    cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
+    cargo install --path packages/codegen/packages/cargo-nano-ros --locked
 
 # Regenerate Rust bindings in all examples and rcl-interfaces
 # Uses bundled interfaces (std_msgs, builtin_interfaces) — no ROS 2 environment required
@@ -840,13 +856,13 @@ generate-bindings:
     #!/usr/bin/env bash
     set -e
     echo "Building nano-ros codegen tool..."
-    cargo build --manifest-path colcon-nano-ros/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
-    NANO_ROS="$(pwd)/colcon-nano-ros/packages/target/debug/nano-ros"
+    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
+    NANO_ROS="$(pwd)/packages/codegen/packages/target/debug/nano-ros"
     echo "Regenerating Rust bindings..."
 
     # Internal crate (workspace member — checked into git)
     echo "  rcl-interfaces"
-    (cd crates/rcl-interfaces && $NANO_ROS generate-rust)
+    (cd packages/interfaces/rcl-interfaces && $NANO_ROS generate-rust)
 
     # Native examples
     for ex in rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client; do
@@ -1008,7 +1024,7 @@ setup:
     echo "=== [5/6] Installing cargo tools ==="
     cargo install cargo-nextest --locked
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
-    cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
+    cargo install --path packages/codegen/packages/cargo-nano-ros --locked
     echo ""
 
     echo "=== [6/6] Building Espressif QEMU (qemu-system-riscv32) ==="

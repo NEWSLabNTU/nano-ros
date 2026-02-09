@@ -1,0 +1,25 @@
+[package]
+name = "qemu-rs-lan9118"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "qemu-rs-lan9118"
+test = false
+bench = false
+
+[dependencies]
+lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp" }
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-udp",
+    "socket-tcp",
+] }
+
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+cortex-m-semihosting = "0.5"
+panic-semihosting = { version = "0.6", features = ["exit"] }

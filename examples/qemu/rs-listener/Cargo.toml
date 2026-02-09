@@ -17,7 +17,7 @@ docker = ["nano-ros-bsp-qemu/docker"]
 
 [dependencies]
 # Board Support Package - handles all bare-metal setup
-nano-ros-bsp-qemu = { path = "../../../crates/nano-ros-bsp-qemu" }
+nano-ros-bsp-qemu = { path = "../../../packages/bsp/nano-ros-bsp-qemu" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

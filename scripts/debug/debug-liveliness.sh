@@ -5,7 +5,7 @@ set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TALKER="$PROJECT_ROOT/target/release/talker"
-Z_SUB="$PROJECT_ROOT/crates/zenoh-pico-sys/zenoh-pico/build/examples/z_sub"
+Z_SUB="$PROJECT_ROOT/packages/transport/zenoh-pico-shim-sys/zenoh-pico/build/examples/z_sub"
 
 echo "=== Liveliness Token Debug ==="
 echo ""

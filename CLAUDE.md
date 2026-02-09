@@ -6,26 +6,41 @@ Lightweight ROS 2 client for embedded real-time systems (Zephyr, NuttX). `no_std
 
 ```
 nano-ros/
-├── crates/
-│   ├── nano-ros/              # Unified API (re-exports all sub-crates)
-│   ├── nano-ros-core/         # Core types, traits, node abstraction
-│   ├── nano-ros-serdes/       # CDR serialization
-│   ├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
-│   ├── nano-ros-params/       # Parameter server
-│   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
-│   ├── nano-ros-node/         # High-level node API + parameter_services
-│   ├── nano-ros-tests/        # Integration test crate
-│   ├── nano-ros-bsp-qemu/     # QEMU MPS2-AN385 Board Support Package
-│   ├── nano-ros-bsp-stm32f4/  # STM32F4 Board Support Package
-│   ├── nano-ros-bsp-zephyr/   # Zephyr RTOS Board Support Package (C)
-│   ├── rcl-interfaces/        # Generated ROS 2 interface types
-│   │   └── generated/         # cargo nano-ros generate-rust output
-│   │       ├── rcl_interfaces/    # Parameter service types
-│   │       └── builtin_interfaces/ # Time, Duration types
-│   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
-│   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
-├── colcon-nano-ros/           # Message binding generator (cargo nano-ros)
-├── examples/                  # Standalone example packages (see examples/README.md)
+├── packages/
+│   ├── core/                      # The nano-ros library stack
+│   │   ├── nano-ros/              # Unified API (re-exports all sub-crates)
+│   │   ├── nano-ros-core/         # Core types, traits, node abstraction
+│   │   ├── nano-ros-serdes/       # CDR serialization
+│   │   ├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
+│   │   ├── nano-ros-params/       # Parameter server
+│   │   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
+│   │   ├── nano-ros-node/         # High-level node API + parameter_services
+│   │   └── nano-ros-c/            # C API for embedded systems
+│   ├── transport/                 # Zenoh transport backend
+│   │   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
+│   │   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
+│   ├── bsp/                       # Board Support Packages
+│   │   ├── nano-ros-bsp-qemu/     # QEMU MPS2-AN385 BSP
+│   │   ├── nano-ros-bsp-esp32/    # ESP32-C3 WiFi BSP
+│   │   ├── nano-ros-bsp-esp32-qemu/ # ESP32-C3 QEMU BSP
+│   │   ├── nano-ros-bsp-stm32f4/  # STM32F4 BSP
+│   │   └── nano-ros-bsp-zephyr/   # Zephyr RTOS BSP (C)
+│   ├── drivers/                   # Hardware drivers
+│   │   ├── lan9118-smoltcp/       # LAN9118 Ethernet driver for smoltcp
+│   │   └── openeth-smoltcp/       # OpenCores Ethernet driver for smoltcp
+│   ├── interfaces/                # Generated ROS 2 types
+│   │   └── rcl-interfaces/        # rcl_interfaces + builtin_interfaces
+│   │       └── generated/         # cargo nano-ros generate-rust output
+│   ├── testing/                   # Test infrastructure
+│   │   └── nano-ros-tests/        # Integration test crate
+│   ├── reference/                 # Low-level platform reference implementations
+│   │   ├── qemu-smoltcp-bridge/   # smoltcp bridge library
+│   │   ├── qemu-lan9118/          # LAN9118 driver test binary
+│   │   └── stm32f4-*/             # STM32F4 networking examples
+│   └── codegen/                   # Message binding generator (cargo nano-ros)
+│       ├── packages/              # Cargo workspace (cargo-nano-ros, rosidl-*, etc.)
+│       └── interfaces/            # Bundled .msg/.srv files
+├── examples/                  # Standalone ROS API example packages
 │   ├── native/                # Desktop/Linux examples
 │   │   ├── rs-talker/            # Rust publisher
 │   │   ├── rs-listener/          # Rust subscriber
@@ -42,9 +57,10 @@ nano-ros/
 │   │   ├── c-talker/             # C BSP publisher
 │   │   ├── c-listener/           # C BSP subscriber
 │   │   └── rs-*/                 # Rust examples
-│   └── platform-integration/  # Low-level reference implementations
-│       ├── qemu-smoltcp-bridge/  # smoltcp bridge library
-│       └── stm32f4-*/            # STM32F4 networking examples
+│   └── esp32/                 # ESP32-C3 examples
+│       ├── bsp-talker/           # WiFi BSP publisher
+│       ├── bsp-listener/         # WiFi BSP subscriber
+│       └── qemu-*/               # QEMU BSP examples
 ├── scripts/zenohd/            # Zenohd build scripts
 │   ├── build.sh               # Build zenohd from submodule
 │   └── zenoh/                 # Zenoh 1.6.2 submodule
@@ -138,10 +154,10 @@ QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
 - Use `#[allow(dead_code)]` for test struct fields
 
 ### Testing
-- **Reusable tests** belong in `crates/nano-ros-tests/tests/` (Rust integration tests) or `tests/` (shell scripts)
+- **Reusable tests** belong in `packages/testing/nano-ros-tests/tests/` (Rust integration tests) or `tests/` (shell scripts)
 - **Temporary/exploratory tests** can be run directly in the Bash tool, but should be converted to proper test scripts once the feature is validated
 - Test scripts in `tests/` should have justfile entries for easy invocation (e.g., `just test-ros2-interop-debug`)
-- ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `crates/nano-ros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
+- ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `packages/testing/nano-ros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
 
 ### QEMU Networked Test Rules
 For QEMU tests involving pub/sub communication via zenohd + TAP networking:
@@ -184,9 +200,9 @@ just test-integration verbose   # Verbose: all test output streamed live
 
 ### Writing Tests
 
-**Integration tests** go in `crates/nano-ros-tests/tests/`. Each file is a test suite:
+**Integration tests** go in `packages/testing/nano-ros-tests/tests/`. Each file is a test suite:
 ```
-crates/nano-ros-tests/
+packages/testing/nano-ros-tests/
 ├── src/              # Test utilities and fixtures
 │   ├── lib.rs        # wait_for_pattern(), count_pattern(), etc.
 │   ├── fixtures/     # rstest fixtures (ZenohRouter, binary builders)
@@ -224,7 +240,7 @@ just test-report        # View JUnit XML report (needs junit-cli-report-viewer)
 ### Zenoh Version Unification
 All zenoh components are pinned to **1.6.2** for compatibility with rmw_zenoh_cpp (ros-humble-zenoh-cpp-vendor 0.1.8):
 - **zenohd**: Built from submodule at `scripts/zenohd/zenoh/` via `just build-zenohd` → `build/zenohd/zenohd`
-- **zenoh-pico**: Submodule at `crates/zenoh-pico-shim-sys/zenoh-pico/` (1.6.2)
+- **zenoh-pico**: Submodule at `packages/transport/zenoh-pico-shim-sys/zenoh-pico/` (1.6.2)
 - **rmw_zenoh_cpp**: Bundles zenoh-c 1.6.2
 
 Test infrastructure (`nano-ros-tests`) and shell scripts automatically use the local build at `build/zenohd/zenohd` when available, falling back to the system `zenohd`.
@@ -260,11 +276,11 @@ Generated per-project using `cargo nano-ros generate-rust` from `package.xml`. S
 
 **All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate-rust`. See [docs/guides/creating-examples.md](docs/guides/creating-examples.md) for the full guide.
 
-**Example `generated/` directories are gitignored** and recreated by `just generate-bindings` (called automatically by `just build`). Only `crates/rcl-interfaces/generated/` is checked into git (workspace member — cargo requires member paths on disk).
+**Example `generated/` directories are gitignored** and recreated by `just generate-bindings` (called automatically by `just build`). Only `packages/interfaces/rcl-interfaces/generated/` is checked into git (workspace member — cargo requires member paths on disk).
 
 **`.cargo/config.toml` is manually maintained** per example. Each contains `[patch.crates-io]` entries pointing to the local workspace crates, along with platform-specific `[build]` and `[target.*]` settings. The codegen tool does not touch these files.
 
-**Bundled interfaces**: Standard .msg files (`std_msgs`, `builtin_interfaces`) are shipped at `colcon-nano-ros/interfaces/` so codegen works without a ROS 2 environment. The ament index takes precedence when available; bundled files fill gaps.
+**Bundled interfaces**: Standard .msg files (`std_msgs`, `builtin_interfaces`) are shipped at `packages/codegen/interfaces/` so codegen works without a ROS 2 environment. The ament index takes precedence when available; bundled files fill gaps.
 
 **heapless re-export**: `nano-ros-core` re-exports `heapless` (`pub use heapless;`) so generated code can reference `nano_ros_core::heapless::String<256>` etc. without requiring a separate `heapless` dependency.
 
@@ -276,10 +292,10 @@ Generated per-project using `cargo nano-ros generate-rust` from `package.xml`. S
 just install-cargo-nano-ros
 
 # Or manually:
-cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
+cargo install --path packages/codegen/packages/cargo-nano-ros --locked
 
 # Or from git (external users):
-cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
+cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/cargo-nano-ros
 ```
 
 **Regenerating bindings:**
@@ -294,7 +310,7 @@ just build-codegen-lib
 ```
 
 ### C API and CMake Integration
-C examples use `FindNanoRos.cmake` (at `cmake/FindNanoRos.cmake`) which wraps the internal `FindNanoRosC.cmake` (at `crates/nano-ros-c/cmake/`). Usage:
+C examples use `FindNanoRos.cmake` (at `cmake/FindNanoRos.cmake`) which wraps the internal `FindNanoRosC.cmake` (at `packages/core/nano-ros-c/cmake/`). Usage:
 ```cmake
 list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
 find_package(NanoRos REQUIRED)
@@ -313,7 +329,7 @@ Enable with `param-services` feature in `nano-ros-node`:
 nano-ros-node = { version = "*", features = ["param-services"] }
 ```
 - Provides ROS 2 parameter service handlers (`~/get_parameters`, `~/set_parameters`, etc.)
-- Uses generated `rcl_interfaces` types from `crates/rcl-interfaces/generated/`
+- Uses generated `rcl_interfaces` types from `packages/interfaces/rcl-interfaces/generated/`
 - Handlers return `Box<Response>` due to large heapless arrays (~1MB per ParameterValue)
 
 ### ROS 2 Interop

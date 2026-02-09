@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 # Board Support Package - all you need for ESP32-C3 QEMU + OpenETH + zenoh
-nano-ros-bsp-esp32-qemu = { path = "../../../crates/nano-ros-bsp-esp32-qemu" }
+nano-ros-bsp-esp32-qemu = { path = "../../../packages/bsp/nano-ros-bsp-esp32-qemu" }
 
 # Required for #[main] proc macro (references esp_hal crate directly)
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }

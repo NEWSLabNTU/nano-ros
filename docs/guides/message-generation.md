@@ -4,7 +4,7 @@ nano-ros uses generated Rust bindings for ROS 2 message types. The `nano-ros gen
 
 ## Overview
 
-The binding generator lives in `colcon-nano-ros/packages/cargo-nano-ros/` and provides:
+The binding generator lives in `packages/codegen/packages/cargo-nano-ros/` and provides:
 - `nano-ros` standalone binary and `cargo nano-ros` subcommand
 - Pure Rust, `no_std` compatible output using `heapless` types
 - Automatic dependency resolution via ament index or bundled interfaces
@@ -35,10 +35,10 @@ The binding generator lives in `colcon-nano-ros/packages/cargo-nano-ros/` and pr
    just install-cargo-nano-ros
 
    # Or manually:
-   cargo install --path colcon-nano-ros/packages/cargo-nano-ros --locked
+   cargo install --path packages/codegen/packages/cargo-nano-ros --locked
 
    # Or from git (external users):
-   cargo install --git https://github.com/jerry73204/nano-ros --path colcon-nano-ros/packages/cargo-nano-ros
+   cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/cargo-nano-ros
    ```
 
 3. **ROS 2 environment** (optional for standard types)
@@ -222,7 +222,7 @@ ROS 2 environment:
 - `std_msgs` (Bool, Int32, String, Header, etc.)
 - `builtin_interfaces` (Time, Duration)
 
-These are located at `colcon-nano-ros/interfaces/`. When a ROS 2 environment is sourced,
+These are located at `packages/codegen/interfaces/`. When a ROS 2 environment is sourced,
 the ament index takes precedence over bundled files.
 
 ## Troubleshooting
@@ -247,7 +247,7 @@ and `.action` files. It uses a bundled codegen library — no external `nano-ros
 Build the codegen library once:
 ```bash
 just build-codegen-lib
-# or: cargo build -p nano-ros-codegen-c --release --manifest-path colcon-nano-ros/packages/Cargo.toml
+# or: cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
 ```
 
 ### Usage

@@ -33,9 +33,9 @@ stm32f4xx-hal = { version = "0.23", features = ["stm32f429"] }
 
 # nano-ros with RTIC support (works for polling too)
 # Option 1: Local paths (development)
-nano-ros-node = { path = "../crates/nano-ros-node", default-features = false, features = ["rtic"] }
-nano-ros-transport = { path = "../crates/nano-ros-transport", default-features = false, features = ["rtic", "sync-critical-section"] }
-nano-ros-types = { path = "../crates/nano-ros-types", default-features = false }
+nano-ros-node = { path = "../packages/core/nano-ros-node", default-features = false, features = ["rtic"] }
+nano-ros-transport = { path = "../packages/core/nano-ros-transport", default-features = false, features = ["rtic", "sync-critical-section"] }
+nano-ros-types = { path = "../packages/core/nano-ros-types", default-features = false }
 
 # Option 2: Git dependency (recommended for external projects)
 # nano-ros-node = { git = "https://github.com/user/nano-ros", default-features = false, features = ["rtic"] }

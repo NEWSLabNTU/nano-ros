@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 # Board Support Package - all you need for ESP32 WiFi + zenoh
-nano-ros-bsp-esp32 = { path = "../../../crates/nano-ros-bsp-esp32" }
+nano-ros-bsp-esp32 = { path = "../../../packages/bsp/nano-ros-bsp-esp32" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

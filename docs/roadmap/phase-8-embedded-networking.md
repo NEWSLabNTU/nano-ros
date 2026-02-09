@@ -122,9 +122,9 @@ See [modular-c-shim-design.md](../architecture/modular-c-shim-design.md) for det
 
 ### Work Items
 
-- [x] **8.2.1** Create `crates/zenoh-pico-shim/` directory structure
+- [x] **8.2.1** Create `packages/transport/zenoh-pico-shim/` directory structure
   ```
-  crates/zenoh-pico-shim/
+  packages/transport/zenoh-pico-shim/
   ├── Cargo.toml
   ├── build.rs
   ├── README.md
@@ -595,7 +595,7 @@ The new structure separates concerns:
 ### Directory Structure
 
 ```
-crates/
+packages/transport/
 ├── zenoh-pico-shim/                    # High-level Rust API
 │   ├── Cargo.toml
 │   └── src/
@@ -656,7 +656,7 @@ smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
 
 - [x] **8.4.5.1** Create `zenoh-pico-shim-sys` crate structure
   ```
-  crates/zenoh-pico-shim-sys/
+  packages/transport/zenoh-pico-shim-sys/
   ├── Cargo.toml
   ├── build.rs
   ├── cbindgen.toml
@@ -666,7 +666,7 @@ smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
 
 - [x] **8.4.5.2** Move zenoh-pico submodule to `zenoh-pico-shim-sys/zenoh-pico/`
   ```bash
-  git mv crates/zenoh-pico-sys/zenoh-pico crates/zenoh-pico-shim-sys/zenoh-pico
+  git mv packages/transport/zenoh-pico-sys/zenoh-pico packages/transport/zenoh-pico-shim-sys/zenoh-pico
   ```
 
 - [x] **8.4.5.3** Move C shim code to `zenoh-pico-shim-sys/c/shim/`
@@ -792,7 +792,7 @@ Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros app
 
 - [x] **8.5.1** Add `shim` feature to nano-ros-node
   ```toml
-  # crates/nano-ros-node/Cargo.toml
+  # packages/core/nano-ros-node/Cargo.toml
   [features]
   shim = ["nano-ros-transport/shim"]
   shim-posix = ["shim", "nano-ros-transport/shim-posix"]
@@ -801,7 +801,7 @@ Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros app
   ```
 
 - [x] **8.5.2** Create `ShimTransport` in nano-ros-transport
-  - `crates/nano-ros-transport/src/shim.rs`
+  - `packages/core/nano-ros-transport/src/shim.rs`
   - Implements `Transport` trait with `ShimSession`, `ShimPublisher`, `ShimSubscriber`
 
 - [x] **8.5.3** Implement `ShimTransportPublisher`
@@ -814,7 +814,7 @@ Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros app
   - Implements `Subscriber` trait
 
 - [x] **8.5.5** Create `ShimExecutor` for embedded polling
-  - `crates/nano-ros-node/src/shim.rs`
+  - `packages/core/nano-ros-node/src/shim.rs`
   - Provides `new(locator)`, `create_node()`, `spin_once()`, `poll()`
 
 - [x] **8.5.6** Create `ShimNode` with pub/sub support
@@ -1129,15 +1129,15 @@ The goal is a single unified API that works for both desktop and embedded platfo
   - Both `zenoh` and `shim` backends now have equivalent features
 
 - [x] **8.8.8** Remove legacy zenoh-pico crates
-  - Deleted `crates/zenoh-pico-sys/` directory
-  - Deleted `crates/zenoh-pico/` directory
+  - Deleted `packages/transport/zenoh-pico-sys/` directory
+  - Deleted `packages/transport/zenoh-pico/` directory
   - Deleted `examples/zenoh-sub-test/` (used old zenoh-pico)
   - Removed from workspace Cargo.toml
   - Made `zenoh` feature an alias for `shim-posix` in nano-ros-transport
   - Added backward-compatible type aliases (ZenohSession, ZenohPublisher, etc.)
 
 - [x] **8.8.9** Test infrastructure for zenoh-pico-shim
-  - Created `crates/zenoh-pico-shim/tests/integration.rs` with 13 tests
+  - Created `packages/transport/zenoh-pico-shim/tests/integration.rs` with 13 tests
   - Tests: session lifecycle, pub/sub, publishers, subscribers, liveliness, ZenohId
   - Run with: `cargo test -p zenoh-pico-shim --features "posix std" -- --test-threads=1`
   - Requires zenohd running on tcp/127.0.0.1:7447

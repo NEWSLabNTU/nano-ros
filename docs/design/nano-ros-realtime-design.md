@@ -156,7 +156,7 @@ To maintain portability while enabling real-time guarantees, nano-ros should use
 
 ```
 nano-ros/
-├── crates/
+├── packages/
 │   ├── nano-ros-core/
 │   │   ├── src/
 │   │   │   ├── lib.rs

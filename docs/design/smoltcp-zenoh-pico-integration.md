@@ -213,7 +213,7 @@ smoltcp = { version = "0.11", default-features = false, features = [
 ] }
 stm32-eth = { version = "0.6", features = ["stm32f429"] }
 embedded-alloc = "0.5"
-zenoh-pico-sys = { path = "../../crates/zenoh-pico-sys", features = ["smoltcp"] }
+zenoh-pico-sys = { path = "../../packages/transport/zenoh-pico-sys", features = ["smoltcp"] }
 ```
 
 ## Alternative: C Shim Pattern (Like Zephyr)
