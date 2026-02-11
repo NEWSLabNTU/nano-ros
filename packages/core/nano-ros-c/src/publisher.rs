@@ -466,3 +466,84 @@ pub unsafe extern "C" fn nano_ros_publisher_is_valid(
         0
     }
 }
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::error::*;
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn publisher_init_null_ptrs() {
+        let topic = b"/chatter\0";
+        let type_name = b"std_msgs::msg::dds_::Int32\0";
+        let type_hash = b"RIHS01_test\0";
+        let type_info = nano_ros_message_type_t {
+            type_name: type_name.as_ptr() as *const core::ffi::c_char,
+            type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
+            serialized_size_max: 4,
+        };
+
+        let mut node = crate::node::nano_ros_node_get_zero_initialized();
+
+        // NULL publisher → INVALID_ARGUMENT
+        assert_eq!(
+            unsafe {
+                nano_ros_publisher_init(
+                    core::ptr::null_mut(),
+                    &node,
+                    &type_info,
+                    topic.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL node → INVALID_ARGUMENT
+        let mut pub_ = nano_ros_publisher_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nano_ros_publisher_init(
+                    &mut pub_,
+                    core::ptr::null(),
+                    &type_info,
+                    topic.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL type_info → INVALID_ARGUMENT
+        let mut pub_ = nano_ros_publisher_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nano_ros_publisher_init(
+                    &mut pub_,
+                    &node,
+                    core::ptr::null(),
+                    topic.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL topic → INVALID_ARGUMENT
+        let mut pub_ = nano_ros_publisher_get_zero_initialized();
+        assert_eq!(
+            unsafe { nano_ros_publisher_init(&mut pub_, &node, &type_info, core::ptr::null()) },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn publisher_zero_initialized_state() {
+        let pub_ = nano_ros_publisher_get_zero_initialized();
+        assert_eq!(
+            pub_.state,
+            nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_UNINITIALIZED,
+        );
+        assert!(pub_.node.is_null());
+        assert!(pub_._internal.is_null());
+    }
+}

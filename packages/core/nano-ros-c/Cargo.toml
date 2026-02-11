@@ -25,5 +25,8 @@ nano-ros-transport = { path = "../nano-ros-transport", default-features = false 
 nano-ros-core = { path = "../nano-ros-core", default-features = false }
 paste = "1"
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [package.metadata.docs.rs]
 all-features = true

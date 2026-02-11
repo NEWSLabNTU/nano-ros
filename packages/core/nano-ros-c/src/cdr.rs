@@ -493,6 +493,376 @@ pub unsafe extern "C" fn nano_ros_cdr_read_string(
     0
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    // =========================================================================
+    // Null safety — write functions
+    // =========================================================================
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_u8_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        // NULL ptr → -1
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_u8(core::ptr::null_mut(), end, 0) },
+            -1
+        );
+        // NULL *ptr → -1
+        let mut null_inner: *mut u8 = core::ptr::null_mut();
+        let buf = [0u8; 4];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_u8(&mut null_inner, end, 0) },
+            -1
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_u32_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_u32(core::ptr::null_mut(), end, 0) },
+            -1
+        );
+        let mut null_inner: *mut u8 = core::ptr::null_mut();
+        let buf = [0u8; 8];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_u32(&mut null_inner, end, 0) },
+            -1
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn cdr_write_u64_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_u64(core::ptr::null_mut(), end, 0) },
+            -1
+        );
+        let mut null_inner: *mut u8 = core::ptr::null_mut();
+        let buf = [0u8; 16];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_u64(&mut null_inner, end, 0) },
+            -1
+        );
+    }
+
+    // =========================================================================
+    // Null safety — read functions
+    // =========================================================================
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_read_u8_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        let mut val: u8 = 0;
+        // NULL ptr → -1
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u8(core::ptr::null_mut(), end, &mut val) },
+            -1
+        );
+        // NULL *ptr → -1
+        let mut null_inner: *const u8 = core::ptr::null();
+        let buf = [0u8; 4];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u8(&mut null_inner, end, &mut val) },
+            -1
+        );
+        // NULL value → -1
+        let mut rptr: *const u8 = buf.as_ptr();
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u8(&mut rptr, end, core::ptr::null_mut()) },
+            -1
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_read_u32_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        let mut val: u32 = 0;
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u32(core::ptr::null_mut(), end, &mut val) },
+            -1
+        );
+        let mut null_inner: *const u8 = core::ptr::null();
+        let buf = [0u8; 8];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u32(&mut null_inner, end, &mut val) },
+            -1
+        );
+        let mut rptr: *const u8 = buf.as_ptr();
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u32(&mut rptr, end, core::ptr::null_mut()) },
+            -1
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn cdr_read_u64_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        let mut val: u64 = 0;
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u64(core::ptr::null_mut(), end, &mut val) },
+            -1
+        );
+        let mut null_inner: *const u8 = core::ptr::null();
+        let buf = [0u8; 16];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u64(&mut null_inner, end, &mut val) },
+            -1
+        );
+        let mut rptr: *const u8 = buf.as_ptr();
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_u64(&mut rptr, end, core::ptr::null_mut()) },
+            -1
+        );
+    }
+
+    // =========================================================================
+    // Buffer bounds — write functions (insufficient space → -1, no OOB write)
+    // =========================================================================
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_u8_bounds() {
+        // Zero-length buffer → -1
+        let mut buf = [0u8; 1];
+        let end = buf.as_ptr(); // end == start, zero capacity
+        let mut wptr = buf.as_mut_ptr();
+        assert_eq!(unsafe { nano_ros_cdr_write_u8(&mut wptr, end, 42) }, -1);
+    }
+
+    // NOTE: Buffer bounds and alignment harnesses for multi-byte types (u32, u64)
+    // are not included because:
+    //
+    // 1. align_ptr() uses pointer-to-integer-to-pointer round-trips for alignment
+    //    arithmetic (`*ptr as usize` → align → `aligned as *mut u8`), which CBMC's
+    //    pointer model cannot track across allocation boundaries.
+    //
+    // 2. Bounds-checking code uses `ptr.add(N) > end` where N may exceed the
+    //    allocation, which Kani flags as a pointer offset violation even though
+    //    the result is only used in a comparison.
+    //
+    // These properties are verified by the existing #[test] unit tests
+    // (test_alignment, test_write_read_u32, etc.) and by Miri (`just test-miri`
+    // on nano-ros-serdes which uses the same CDR logic in safe Rust).
+    //
+    // The round-trip harnesses below (u32, u64) succeed because they start at
+    // offset 0 where no alignment padding is needed.
+
+    // =========================================================================
+    // Round-trip correctness — write then read preserves value
+    // =========================================================================
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_u8() {
+        let mut buf = [0u8; 4];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let val: u8 = kani::any();
+
+        let mut wptr = buf.as_mut_ptr();
+        let wret = unsafe { nano_ros_cdr_write_u8(&mut wptr, end, val) };
+        assert_eq!(wret, 0);
+
+        let mut rptr: *const u8 = buf.as_ptr();
+        let mut out: u8 = 0;
+        let rret = unsafe { nano_ros_cdr_read_u8(&mut rptr, end, &mut out) };
+        assert_eq!(rret, 0);
+        assert_eq!(out, val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_bool() {
+        let mut buf = [0u8; 4];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let val: bool = kani::any();
+
+        let mut wptr = buf.as_mut_ptr();
+        let wret = unsafe { nano_ros_cdr_write_bool(&mut wptr, end, val) };
+        assert_eq!(wret, 0);
+
+        let mut rptr: *const u8 = buf.as_ptr();
+        let mut out: bool = false;
+        let rret = unsafe { nano_ros_cdr_read_bool(&mut rptr, end, &mut out) };
+        assert_eq!(rret, 0);
+        assert_eq!(out, val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_u32() {
+        let mut buf = [0u8; 16];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let val: u32 = kani::any();
+
+        let mut wptr = buf.as_mut_ptr();
+        let wret = unsafe { nano_ros_cdr_write_u32(&mut wptr, end, val) };
+        assert_eq!(wret, 0);
+
+        let mut rptr: *const u8 = buf.as_ptr();
+        let mut out: u32 = 0;
+        let rret = unsafe { nano_ros_cdr_read_u32(&mut rptr, end, &mut out) };
+        assert_eq!(rret, 0);
+        assert_eq!(out, val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn cdr_roundtrip_u64() {
+        let mut buf = [0u8; 16];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let val: u64 = kani::any();
+
+        let mut wptr = buf.as_mut_ptr();
+        let wret = unsafe { nano_ros_cdr_write_u64(&mut wptr, end, val) };
+        assert_eq!(wret, 0);
+
+        let mut rptr: *const u8 = buf.as_ptr();
+        let mut out: u64 = 0;
+        let rret = unsafe { nano_ros_cdr_read_u64(&mut rptr, end, &mut out) };
+        assert_eq!(rret, 0);
+        assert_eq!(out, val);
+    }
+
+    // =========================================================================
+    // String — null safety
+    // =========================================================================
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_string_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        // NULL ptr → -1
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_string(core::ptr::null_mut(), end, core::ptr::null()) },
+            -1
+        );
+        // NULL *ptr → -1
+        let mut null_inner: *mut u8 = core::ptr::null_mut();
+        let buf = [0u8; 64];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe {
+                nano_ros_cdr_write_string(&mut null_inner, end, b"hi\0".as_ptr() as *const c_char)
+            },
+            -1
+        );
+        // NULL value string → -1
+        let mut wptr = buf.as_ptr() as *mut u8;
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_string(&mut wptr, end, core::ptr::null()) },
+            -1
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_read_string_null_safety() {
+        let end: *const u8 = core::ptr::null();
+        let mut val = [0i8; 16];
+        // NULL ptr → -1
+        assert_eq!(
+            unsafe {
+                nano_ros_cdr_read_string(core::ptr::null_mut(), end, val.as_mut_ptr(), val.len())
+            },
+            -1
+        );
+        // NULL *ptr → -1
+        let mut null_inner: *const u8 = core::ptr::null();
+        let buf = [0u8; 64];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_string(&mut null_inner, end, val.as_mut_ptr(), val.len()) },
+            -1
+        );
+        // NULL value buffer → -1
+        let mut rptr: *const u8 = buf.as_ptr();
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_string(&mut rptr, end, core::ptr::null_mut(), 16) },
+            -1
+        );
+        // max_len == 0 → -1
+        let mut rptr: *const u8 = buf.as_ptr();
+        assert_eq!(
+            unsafe { nano_ros_cdr_read_string(&mut rptr, end, val.as_mut_ptr(), 0) },
+            -1
+        );
+    }
+
+    // =========================================================================
+    // String — buffer bounds
+    // =========================================================================
+
+    // NOTE: cdr_write_string_bounds is not included due to the same pointer
+    // offset limitation described above (the bounds-check `p.add(len+1) > end`
+    // creates an out-of-bounds intermediate pointer).
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn cdr_read_string_bounds() {
+        // Write a valid string then try to read with max_len too small
+        let mut buf = [0u8; 64];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+
+        // Write "Hello\0"
+        let mut wptr = buf.as_mut_ptr();
+        let s = b"Hello\0";
+        let wret =
+            unsafe { nano_ros_cdr_write_string(&mut wptr, end, s.as_ptr() as *const c_char) };
+        assert_eq!(wret, 0);
+
+        // Read with max_len = 2 (too small for "Hello" + null = 6 bytes; CDR len includes null = 6)
+        let mut rptr: *const u8 = buf.as_ptr();
+        let mut val = [0i8; 2];
+        let rret = unsafe { nano_ros_cdr_read_string(&mut rptr, end, val.as_mut_ptr(), val.len()) };
+        assert_eq!(rret, -1);
+    }
+
+    // =========================================================================
+    // String — round-trip
+    // =========================================================================
+
+    #[kani::proof]
+    #[kani::unwind(10)]
+    fn cdr_roundtrip_string() {
+        let mut buf = [0u8; 64];
+        let end = unsafe { buf.as_ptr().add(buf.len()) };
+
+        // Write "Hi\0"
+        let s = b"Hi\0";
+        let mut wptr = buf.as_mut_ptr();
+        let wret =
+            unsafe { nano_ros_cdr_write_string(&mut wptr, end, s.as_ptr() as *const c_char) };
+        assert_eq!(wret, 0);
+
+        // Read back
+        let mut rptr: *const u8 = buf.as_ptr();
+        let mut val = [0i8; 32];
+        let rret = unsafe { nano_ros_cdr_read_string(&mut rptr, end, val.as_mut_ptr(), val.len()) };
+        assert_eq!(rret, 0);
+
+        // Verify content preserved
+        assert_eq!(val[0], b'H' as i8);
+        assert_eq!(val[1], b'i' as i8);
+        // Verify null-terminated
+        assert_eq!(val[2], 0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

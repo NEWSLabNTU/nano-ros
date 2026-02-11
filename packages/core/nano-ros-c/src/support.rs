@@ -219,6 +219,32 @@ pub unsafe extern "C" fn nano_ros_support_is_valid(support: *const nano_ros_supp
     }
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::error::*;
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn support_init_null_ptr() {
+        // NULL support pointer → INVALID_ARGUMENT
+        let ret = unsafe { nano_ros_support_init(core::ptr::null_mut(), core::ptr::null(), 0) };
+        assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn support_zero_initialized_state() {
+        let support = nano_ros_support_get_zero_initialized();
+        assert_eq!(
+            support.state,
+            nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_UNINITIALIZED
+        );
+        assert_eq!(support.domain_id, 0);
+        assert!(support._internal.is_null());
+    }
+}
+
 impl nano_ros_support_t {
     /// Get the internal session pointer (for internal use)
     #[cfg(feature = "alloc")]

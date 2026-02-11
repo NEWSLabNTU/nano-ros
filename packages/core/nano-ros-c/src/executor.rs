@@ -1378,6 +1378,42 @@ pub unsafe extern "C" fn nano_ros_executor_get_remaining_services(
     (NANO_ROS_MAX_SERVICES - executor.service_count) as c_int
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::error::*;
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn executor_init_null_ptrs() {
+        // NULL executor → INVALID_ARGUMENT
+        let support = crate::support::nano_ros_support_get_zero_initialized();
+        assert_eq!(
+            unsafe { nano_ros_executor_init(core::ptr::null_mut(), &support, 4) },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL support → INVALID_ARGUMENT
+        let mut executor = nano_ros_executor_get_zero_initialized();
+        assert_eq!(
+            unsafe { nano_ros_executor_init(&mut executor, core::ptr::null(), 4) },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn executor_zero_initialized_state() {
+        let executor = nano_ros_executor_get_zero_initialized();
+        assert_eq!(
+            executor.state,
+            nano_ros_executor_state_t::NANO_ROS_EXECUTOR_STATE_UNINITIALIZED,
+        );
+        assert!(executor.support.is_null());
+        assert_eq!(executor.handle_count, 0);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

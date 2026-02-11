@@ -236,6 +236,85 @@ pub unsafe extern "C" fn nano_ros_node_get_namespace(
     node.namespace.as_ptr() as *const c_char
 }
 
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::error::*;
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn node_init_null_ptrs() {
+        let name = b"test\0";
+        let ns = b"/\0";
+
+        // NULL node → INVALID_ARGUMENT
+        let mut support = crate::support::nano_ros_support_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nano_ros_node_init(
+                    core::ptr::null_mut(),
+                    &support,
+                    name.as_ptr() as *const core::ffi::c_char,
+                    ns.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL support → INVALID_ARGUMENT
+        let mut node = nano_ros_node_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nano_ros_node_init(
+                    &mut node,
+                    core::ptr::null(),
+                    name.as_ptr() as *const core::ffi::c_char,
+                    ns.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL name → INVALID_ARGUMENT
+        assert_eq!(
+            unsafe {
+                nano_ros_node_init(
+                    &mut node,
+                    &support,
+                    core::ptr::null(),
+                    ns.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL namespace → INVALID_ARGUMENT
+        assert_eq!(
+            unsafe {
+                nano_ros_node_init(
+                    &mut node,
+                    &support,
+                    name.as_ptr() as *const core::ffi::c_char,
+                    core::ptr::null(),
+                )
+            },
+            NANO_ROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn node_zero_initialized_state() {
+        let node = nano_ros_node_get_zero_initialized();
+        assert_eq!(
+            node.state,
+            nano_ros_node_state_t::NANO_ROS_NODE_STATE_UNINITIALIZED
+        );
+        assert!(node.support.is_null());
+        assert!(node._internal.is_null());
+    }
+}
+
 impl nano_ros_node_t {
     /// Get the node name as a string slice
     pub(crate) fn get_name_str(&self) -> &str {
