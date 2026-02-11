@@ -4,7 +4,7 @@ CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable
 # Example lists (single source of truth for build/format/check/clean recipes)
 NATIVE_EXAMPLES := "rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client"
 EMBEDDED_EXAMPLES := "stm32f4-rtic stm32f4-embassy stm32f4-polling stm32f4-smoltcp"
-QEMU_EXAMPLES := "qemu/rs-test"
+QEMU_EXAMPLES := "qemu/rs-test qemu/rs-wcet-bench"
 QEMU_REFERENCE_EXAMPLES := "qemu-smoltcp-bridge qemu-lan9118"
 QEMU_ZENOH_EXAMPLES := "qemu/rs-talker qemu/rs-listener qemu/bsp-talker qemu/bsp-listener"
 
@@ -57,6 +57,7 @@ test verbose="":
     echo ""
     echo "=== QEMU Tests ==="
     just test-qemu-basic {{verbose}} || failed=1
+    just test-qemu-wcet {{verbose}} || failed=1
     just test-qemu-lan9118 {{verbose}} || failed=1
     echo ""
     echo "JUnit XML: target/nextest/default/junit.xml"
@@ -86,6 +87,7 @@ test-all verbose="":
     echo ""
     echo "=== QEMU Tests ==="
     just test-qemu-basic {{verbose}} || failed=1
+    just test-qemu-wcet {{verbose}} || failed=1
     just test-qemu-lan9118 {{verbose}} || failed=1
     echo ""
     echo "=== C API Tests ==="
@@ -503,6 +505,7 @@ test-qemu verbose="":
     failed=0
     just _init-test-logs
     just test-qemu-basic {{verbose}} || failed=1
+    just test-qemu-wcet {{verbose}} || failed=1
     just test-qemu-lan9118 {{verbose}} || failed=1
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some QEMU tests failed."
@@ -609,6 +612,14 @@ test-qemu-basic verbose="": build-examples-qemu _init-test-logs
             -semihosting-config enable=on,target=native \
             -kernel examples/qemu/rs-test/target/thumbv7m-none-eabi/release/qemu-rs-test
 
+# Run WCET benchmark on QEMU (DWT cycle counter)
+test-qemu-wcet verbose="": build-examples-qemu _init-test-logs
+    ./tests/run-test.sh --name qemu-wcet-bench --log {{LOG_DIR}}/latest/qemu-wcet-bench.log \
+        --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
+        qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
+            -semihosting-config enable=on,target=native \
+            -kernel examples/qemu/rs-wcet-bench/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
+
 # Run LAN9118 Ethernet driver test (mps2-an385)
 test-qemu-lan9118 verbose="": build-examples-qemu _init-test-logs
     ./tests/run-test.sh --name qemu-lan9118 --log {{LOG_DIR}}/latest/qemu-lan9118.log \
@@ -682,6 +693,7 @@ qemu-help:
     @echo "  just build-examples-qemu     # Build all QEMU examples"
     @echo "  just test-qemu               # Run all QEMU tests (no network)"
     @echo "  just test-qemu-basic         # Run basic serialization test"
+    @echo "  just test-qemu-wcet          # Run WCET benchmark"
     @echo "  just test-qemu-lan9118       # Run LAN9118 driver test"
     @echo ""
     @echo "Zenoh-pico (networked):"
@@ -871,7 +883,7 @@ generate-bindings:
     done
 
     # QEMU examples
-    for ex in rs-test rs-talker rs-listener bsp-talker bsp-listener; do
+    for ex in rs-test rs-wcet-bench rs-talker rs-listener bsp-talker bsp-listener; do
         echo "  qemu/$ex"
         (cd examples/qemu/$ex && $NANO_ROS generate-rust)
     done
@@ -908,6 +920,7 @@ clean-bindings:
         examples/native/rs-action-server/generated
         examples/native/rs-action-client/generated
         examples/qemu/rs-test/generated
+        examples/qemu/rs-wcet-bench/generated
         examples/qemu/rs-talker/generated
         examples/qemu/rs-listener/generated
         examples/qemu/bsp-talker/generated

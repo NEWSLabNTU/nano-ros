@@ -86,6 +86,7 @@ mod subscriber;
 // Public modules
 mod config;
 mod node;
+pub mod timing;
 
 // Re-export entry macro
 pub use cortex_m_rt::entry;
@@ -99,6 +100,7 @@ pub use error::{Error, Result};
 pub use node::{Node, run_node};
 pub use publisher::Publisher;
 pub use subscriber::Subscription;
+pub use timing::CycleCounter;
 
 // Re-export core traits needed for message type definitions
 pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
@@ -112,6 +114,7 @@ pub mod prelude {
     pub use crate::node::{Node, run_node};
     pub use crate::publisher::Publisher;
     pub use crate::subscriber::Subscription;
+    pub use crate::timing::CycleCounter;
     pub use cortex_m_rt::entry;
     pub use nano_ros_core::{Deserialize, RosMessage, Serialize};
 }

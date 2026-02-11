@@ -43,6 +43,7 @@ exclude = [
     "examples/qemu/rs-talker",
     "examples/qemu/rs-listener",
     "examples/qemu/rs-test",
+    "examples/qemu/rs-wcet-bench",
     "examples/qemu/bsp-talker",
     "examples/qemu/bsp-listener",
     # STM32F4 examples

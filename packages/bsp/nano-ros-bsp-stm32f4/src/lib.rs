@@ -58,12 +58,14 @@ pub mod node;
 pub mod phy;
 pub mod pins;
 pub mod platform;
+pub mod timing;
 
 // Re-exports for user convenience
 pub use config::Config;
 pub use cortex_m_rt::entry;
 pub use defmt;
 pub use node::{Node, run_node};
+pub use timing::CycleCounter;
 
 // Re-export core traits needed for message type definitions
 pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
@@ -106,6 +108,7 @@ pub mod prelude {
     pub use crate::node::{Node, run_node};
     pub use crate::phy::PhyType;
     pub use crate::pins::PinConfig;
+    pub use crate::timing::CycleCounter;
     pub use crate::{Error, Result};
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};

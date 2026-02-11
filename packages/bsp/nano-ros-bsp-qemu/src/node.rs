@@ -381,6 +381,9 @@ pub fn run_node<F>(config: Config, f: F) -> !
 where
     F: FnOnce(&mut Node) -> Result<()>,
 {
+    // Enable DWT cycle counter for timing measurements
+    crate::CycleCounter::enable();
+
     hprintln!("");
     hprintln!("========================================");
     hprintln!("  nano-ros QEMU BSP");

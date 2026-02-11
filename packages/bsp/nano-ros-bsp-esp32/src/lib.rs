@@ -65,6 +65,7 @@ mod subscriber;
 // Public modules
 mod config;
 mod node;
+pub mod timing;
 
 // Re-export entry macro from esp-hal
 pub use esp_hal::main as entry;
@@ -88,6 +89,7 @@ pub use error::Error;
 pub use node::{Node, run_node};
 pub use publisher::Publisher;
 pub use subscriber::Subscription;
+pub use timing::CycleCounter;
 
 // Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
 // ESP32-C3 is single-core, so portable-atomic uses compiler fences.
@@ -105,6 +107,7 @@ pub mod prelude {
     pub use crate::node::{Node, run_node};
     pub use crate::publisher::Publisher;
     pub use crate::subscriber::Subscription;
+    pub use crate::timing::CycleCounter;
     pub use esp_hal::main as entry;
     pub use nano_ros_core::{Deserialize, RosMessage, Serialize};
 }
