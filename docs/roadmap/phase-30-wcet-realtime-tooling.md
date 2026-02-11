@@ -197,6 +197,7 @@ Summary: 45 functions, max stack = 512 bytes
 - **30.2b — STM32F4 config fix:** Added `[build] target = "thumbv7em-none-eabihf"` and target-specific rustflags to `examples/stm32f4/bsp-talker/.cargo/config.toml`.
 - **30.2c — Zephyr/pre-built ELF support:** `--elf PATH` flag skips cargo build and analyzes a pre-built ELF directly. Usage: `just check-stack-elf build/zephyr/zephyr.elf`. Covers Zephyr Rust examples built via west.
 - **30.2d — C example support:** `scripts/stack-analysis-c.sh` builds C examples with `cmake -DCMAKE_C_FLAGS=-fstack-usage` and parses the `.su` files. Shows function, stack size, allocation type (static/dynamic/bounded), and source location. Usage: `just check-stack-c [example-dir]`.
+- **30.2e — Stack analysis improvements:** Installed `rustfilt` for proper Rust v0 symbol demangling. Added `--exclude PATTERN` option to both scripts for filtering dependency noise (e.g., `regex_automata`, `driftsort` from tracing infrastructure). Fixed `c-talker` and `c-listener` to use static allocation (matching `c-baremetal-demo` pattern), reducing their `main()` stack from ~10-12 KB to near-zero.
 
 **Limitations:**
 - Requires nightly Rust (`-Z emit-stack-sizes` is unstable)

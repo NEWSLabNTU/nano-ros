@@ -740,7 +740,7 @@ check-stack-all top="10":
     #!/usr/bin/env bash
     set -euo pipefail
     failed=0
-    # Rust examples (QEMU ARM + native)
+    # Rust examples (QEMU ARM — no exclude, show full picture)
     for example in \
         examples/qemu/rs-wcet-bench \
         examples/qemu/rs-test \
@@ -748,6 +748,13 @@ check-stack-all top="10":
         examples/qemu/rs-listener \
         examples/qemu/bsp-talker \
         examples/qemu/bsp-listener \
+    ; do
+        echo "================================================================"
+        ./scripts/stack-analysis.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
+        echo ""
+    done
+    # Rust examples (native — exclude tracing/regex infrastructure noise)
+    for example in \
         examples/native/rs-talker \
         examples/native/rs-listener \
         examples/native/rs-custom-msg \
@@ -757,7 +764,7 @@ check-stack-all top="10":
         examples/native/rs-action-client \
     ; do
         echo "================================================================"
-        ./scripts/stack-analysis.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
+        ./scripts/stack-analysis.sh "$example" --top {{top}} --exclude "regex_automata|regex_syntax|aho_corasick|env_filter|env_logger|driftsort" || { echo "[FAIL] $example"; failed=$((failed + 1)); }
         echo ""
     done
     # C examples (native)
@@ -1089,6 +1096,7 @@ setup:
     echo "=== [5/6] Installing cargo tools ==="
     cargo install cargo-nextest --locked
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
+    cargo install rustfilt --locked || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
     echo ""
 

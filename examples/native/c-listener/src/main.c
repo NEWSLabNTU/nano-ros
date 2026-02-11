@@ -57,6 +57,15 @@ typedef struct {
     int message_count;
 } listener_context_t;
 
+// Static allocation — all nano-ros structs live in .bss, not on the stack
+static struct {
+    nano_ros_support_t support;
+    nano_ros_node_t node;
+    listener_context_t listener_ctx;
+    nano_ros_subscription_t subscription;
+    nano_ros_executor_t executor;
+} app;
+
 static volatile sig_atomic_t g_running = 1;
 static nano_ros_executor_t* g_executor = NULL;
 
@@ -116,9 +125,11 @@ int main(int argc, char** argv) {
     printf("Locator: %s\n", locator);
     printf("Domain ID: %d\n", domain_id);
 
+    // Zero-initialize all static state (avoids return-by-value temporaries on stack)
+    memset(&app, 0, sizeof(app));
+
     // Initialize support context
-    nano_ros_support_t support = nano_ros_support_get_zero_initialized();
-    nano_ros_ret_t ret = nano_ros_support_init(&support, locator, domain_id);
+    nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
     if (ret != NANO_ROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
@@ -126,61 +137,58 @@ int main(int argc, char** argv) {
     printf("Support initialized\n");
 
     // Create node
-    nano_ros_node_t node = nano_ros_node_get_zero_initialized();
-    ret = nano_ros_node_init(&node, &support, "c_listener", "/");
+    ret = nano_ros_node_init(&app.node, &app.support, "c_listener", "/");
     if (ret != NANO_ROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nano_ros_support_fini(&support);
+        nano_ros_support_fini(&app.support);
         return 1;
     }
-    printf("Node created: %s\n", nano_ros_node_get_name(&node));
+    printf("Node created: %s\n", nano_ros_node_get_name(&app.node));
 
     // Create application context
-    listener_context_t listener_ctx = {
+    app.listener_ctx = (listener_context_t){
         .message_count = 0,
     };
 
     // Create subscription
-    nano_ros_subscription_t subscription = nano_ros_subscription_get_zero_initialized();
     ret = nano_ros_subscription_init(
-        &subscription,
-        &node,
+        &app.subscription,
+        &app.node,
         &std_msgs_Int32_type,
         "/chatter",
         subscription_callback,
-        &listener_ctx
+        &app.listener_ctx
     );
     if (ret != NANO_ROS_RET_OK) {
         fprintf(stderr, "Failed to initialize subscription: %d\n", ret);
-        nano_ros_node_fini(&node);
-        nano_ros_support_fini(&support);
+        nano_ros_node_fini(&app.node);
+        nano_ros_support_fini(&app.support);
         return 1;
     }
-    printf("Subscription created for topic: %s\n", nano_ros_subscription_get_topic_name(&subscription));
+    printf("Subscription created for topic: %s\n", nano_ros_subscription_get_topic_name(&app.subscription));
 
     // Create executor
-    nano_ros_executor_t executor = nano_ros_executor_get_zero_initialized();
-    ret = nano_ros_executor_init(&executor, &support, 4);
+    ret = nano_ros_executor_init(&app.executor, &app.support, 4);
     if (ret != NANO_ROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nano_ros_subscription_fini(&subscription);
-        nano_ros_node_fini(&node);
-        nano_ros_support_fini(&support);
+        nano_ros_subscription_fini(&app.subscription);
+        nano_ros_node_fini(&app.node);
+        nano_ros_support_fini(&app.support);
         return 1;
     }
-    g_executor = &executor;
+    g_executor = &app.executor;
 
     // Add subscription to executor
-    ret = nano_ros_executor_add_subscription(&executor, &subscription, NANO_ROS_EXECUTOR_ON_NEW_DATA);
+    ret = nano_ros_executor_add_subscription(&app.executor, &app.subscription, NANO_ROS_EXECUTOR_ON_NEW_DATA);
     if (ret != NANO_ROS_RET_OK) {
         fprintf(stderr, "Failed to add subscription to executor: %d\n", ret);
-        nano_ros_executor_fini(&executor);
-        nano_ros_subscription_fini(&subscription);
-        nano_ros_node_fini(&node);
-        nano_ros_support_fini(&support);
+        nano_ros_executor_fini(&app.executor);
+        nano_ros_subscription_fini(&app.subscription);
+        nano_ros_node_fini(&app.node);
+        nano_ros_support_fini(&app.support);
         return 1;
     }
-    printf("Executor created with %d handle(s)\n", nano_ros_executor_get_handle_count(&executor));
+    printf("Executor created with %d handle(s)\n", nano_ros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
@@ -189,18 +197,18 @@ int main(int argc, char** argv) {
     printf("\nWaiting for messages (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    ret = nano_ros_executor_spin_period(&executor, 100000000ULL);
+    ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NANO_ROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 
     // Cleanup
     printf("\nShutting down...\n");
-    printf("Total messages received: %d\n", listener_ctx.message_count);
-    nano_ros_executor_fini(&executor);
-    nano_ros_subscription_fini(&subscription);
-    nano_ros_node_fini(&node);
-    nano_ros_support_fini(&support);
+    printf("Total messages received: %d\n", app.listener_ctx.message_count);
+    nano_ros_executor_fini(&app.executor);
+    nano_ros_subscription_fini(&app.subscription);
+    nano_ros_node_fini(&app.node);
+    nano_ros_support_fini(&app.support);
 
     printf("Goodbye!\n");
     return 0;

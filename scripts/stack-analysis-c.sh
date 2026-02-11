@@ -19,6 +19,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 EXAMPLE_DIR=""
 TOP=30
 FILTER=""
+EXCLUDE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -30,6 +31,10 @@ while [[ $# -gt 0 ]]; do
             FILTER="$2"
             shift 2
             ;;
+        --exclude)
+            EXCLUDE="$2"
+            shift 2
+            ;;
         -h|--help)
             echo "Usage: $0 [example-dir] [--top N] [--filter PATTERN]"
             echo ""
@@ -37,6 +42,7 @@ while [[ $# -gt 0 ]]; do
             echo "                Relative paths are resolved from the repository root."
             echo "  --top N       Show top N functions by stack size (default: 30)"
             echo "  --filter PAT  Only show functions matching grep pattern"
+            echo "  --exclude PAT Exclude functions matching grep -E pattern"
             exit 0
             ;;
         -*)
@@ -137,6 +143,17 @@ if [[ -n "$FILTER" ]]; then
     mv "$FILTERED" "$TMPFILE"
     if [[ ! -s "$TMPFILE" ]]; then
         echo "No functions matching filter '$FILTER'"
+        exit 0
+    fi
+fi
+
+# Apply exclude if given (removes matching functions)
+if [[ -n "$EXCLUDE" ]]; then
+    FILTERED="$(mktemp)"
+    grep -v -E "$EXCLUDE" "$TMPFILE" > "$FILTERED" || true
+    mv "$FILTERED" "$TMPFILE"
+    if [[ ! -s "$TMPFILE" ]]; then
+        echo "No functions remaining after exclude '$EXCLUDE'"
         exit 0
     fi
 fi

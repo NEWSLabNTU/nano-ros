@@ -26,6 +26,7 @@ EXAMPLE_DIR=""
 ELF_FILE=""
 TOP=30
 FILTER=""
+EXCLUDE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -35,6 +36,10 @@ while [[ $# -gt 0 ]]; do
             ;;
         --filter)
             FILTER="$2"
+            shift 2
+            ;;
+        --exclude)
+            EXCLUDE="$2"
             shift 2
             ;;
         --elf)
@@ -52,6 +57,7 @@ while [[ $# -gt 0 ]]; do
             echo "                Useful for Zephyr examples built via west."
             echo "  --top N       Show top N functions by stack size (default: 30)"
             echo "  --filter PAT  Only show functions matching grep pattern (applied after demangling)"
+            echo "  --exclude PAT Exclude functions matching grep -E pattern (applied after demangling)"
             exit 0
             ;;
         -*)
@@ -273,6 +279,15 @@ if [[ -n "$FILTER" ]]; then
     PARSED="$(echo "$PARSED" | grep -i "$FILTER" || true)"
     if [[ -z "$PARSED" ]]; then
         echo "No functions matching filter '$FILTER'"
+        exit 0
+    fi
+fi
+
+# Apply exclude if given (removes matching functions)
+if [[ -n "$EXCLUDE" ]]; then
+    PARSED="$(echo "$PARSED" | grep -v -E "$EXCLUDE" || true)"
+    if [[ -z "$PARSED" ]]; then
+        echo "No functions remaining after exclude '$EXCLUDE'"
         exit 0
     fi
 fi
