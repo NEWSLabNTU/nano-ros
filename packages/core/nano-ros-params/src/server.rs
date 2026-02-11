@@ -588,3 +588,76 @@ mod tests {
         assert_eq!(server.get_integer("param"), Some(1)); // Unchanged
     }
 }
+
+// =============================================================================
+// Kani bounded model checking proofs
+// =============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    #[kani::proof]
+    fn server_new_is_empty() {
+        let server = ParameterServer::new();
+        assert!(server.is_empty());
+        assert_eq!(server.len(), 0);
+        assert!(!server.is_full());
+    }
+
+    #[kani::proof]
+    fn server_declare_get_roundtrip_integer() {
+        let mut server = ParameterServer::new();
+        let val: i64 = kani::any();
+        assert!(server.declare("test", ParameterValue::Integer(val)));
+        assert_eq!(server.get_integer("test"), Some(val));
+        assert!(server.has("test"));
+        assert_eq!(server.len(), 1);
+    }
+
+    #[kani::proof]
+    fn server_declare_get_roundtrip_bool() {
+        let mut server = ParameterServer::new();
+        let val: bool = kani::any();
+        assert!(server.declare("test", ParameterValue::Bool(val)));
+        assert_eq!(server.get_bool("test"), Some(val));
+    }
+
+    #[kani::proof]
+    fn server_set_requires_declare() {
+        let mut server = ParameterServer::new();
+        let val: i64 = kani::any();
+        // Set without declare should fail
+        let result = server.set("test", ParameterValue::Integer(val));
+        assert_eq!(result, SetParameterResult::NotFound);
+    }
+
+    #[kani::proof]
+    fn server_duplicate_declare_fails() {
+        let mut server = ParameterServer::new();
+        assert!(server.declare("test", ParameterValue::Integer(1)));
+        assert!(!server.declare("test", ParameterValue::Integer(2)));
+        // Original value preserved
+        assert_eq!(server.get_integer("test"), Some(1));
+    }
+
+    #[kani::proof]
+    fn server_remove_clears() {
+        let mut server = ParameterServer::new();
+        assert!(server.declare("test", ParameterValue::Integer(42)));
+        assert!(server.has("test"));
+        assert!(server.remove("test"));
+        assert!(!server.has("test"));
+        assert_eq!(server.len(), 0);
+    }
+
+    #[kani::proof]
+    fn server_get_nonexistent_returns_none() {
+        let server = ParameterServer::new();
+        assert!(server.get("nonexistent").is_none());
+        assert!(server.get_bool("nonexistent").is_none());
+        assert!(server.get_integer("nonexistent").is_none());
+        assert!(server.get_double("nonexistent").is_none());
+        assert!(server.get_string("nonexistent").is_none());
+    }
+}

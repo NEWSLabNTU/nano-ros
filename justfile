@@ -821,6 +821,25 @@ check-stack-all top="10":
     fi
     echo "[OK] All stack analyses complete"
 
+# Run Kani bounded model checking on core crates (requires kani-verifier)
+# Proves panic-freedom, roundtrip correctness, and bounded behavior
+verify-kani:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Kani Verification ==="
+    failed=0
+    for crate in nano-ros-serdes nano-ros-core nano-ros-params; do
+        echo ""
+        echo "--- Verifying $crate ---"
+        cargo kani -p "$crate" || { echo "[FAIL] $crate"; failed=$((failed + 1)); }
+    done
+    echo ""
+    if [ "$failed" -gt 0 ]; then
+        echo "[FAIL] $failed crate(s) failed verification"
+        exit 1
+    fi
+    echo "[OK] All Kani proofs verified"
+
 # =============================================================================
 # Zenoh
 # =============================================================================
@@ -1135,6 +1154,7 @@ setup:
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
+    cargo install --locked kani-verifier && cargo kani setup || echo "WARNING: kani install failed (non-fatal)"
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
     echo ""
 

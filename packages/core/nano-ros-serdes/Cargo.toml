@@ -10,5 +10,8 @@ default = ["std"]
 std = []
 alloc = []
 
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
 [dependencies]
 heapless = { workspace = true }

@@ -464,3 +464,287 @@ mod tests {
         assert_eq!(reader.read_u32().unwrap(), 0xDEADBEEF);
     }
 }
+
+// =============================================================================
+// Kani bounded model checking proofs
+// =============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    // ---- Primitive write/read panic-freedom ----
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_u8_no_panic() {
+        let mut buf = [0u8; 8];
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: u8 = kani::any();
+        let _ = writer.write_u8(val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_bool_no_panic() {
+        let mut buf = [0u8; 8];
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: bool = kani::any();
+        let _ = writer.write_bool(val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_i16_no_panic() {
+        let mut buf = [0u8; 16];
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: i16 = kani::any();
+        let _ = writer.write_i16(val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_i32_no_panic() {
+        let mut buf = [0u8; 16];
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: i32 = kani::any();
+        let _ = writer.write_i32(val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_i64_no_panic() {
+        let mut buf = [0u8; 16];
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: i64 = kani::any();
+        let _ = writer.write_i64(val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_f32_no_panic() {
+        let mut buf = [0u8; 16];
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: f32 = kani::any();
+        let _ = writer.write_f32(val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_f64_no_panic() {
+        let mut buf = [0u8; 16];
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: f64 = kani::any();
+        let _ = writer.write_f64(val);
+    }
+
+    // ---- Round-trip correctness: write then read produces the same value ----
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_u8() {
+        let mut buf = [0u8; 8];
+        let val: u8 = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            writer.write_u8(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new(&buf[..len]);
+        assert_eq!(reader.read_u8().unwrap(), val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_bool() {
+        let mut buf = [0u8; 8];
+        let val: bool = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            writer.write_bool(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new(&buf[..len]);
+        assert_eq!(reader.read_bool().unwrap(), val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_i16() {
+        let mut buf = [0u8; 16];
+        let val: i16 = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            writer.write_i16(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new(&buf[..len]);
+        assert_eq!(reader.read_i16().unwrap(), val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_i32() {
+        let mut buf = [0u8; 16];
+        let val: i32 = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            writer.write_i32(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new(&buf[..len]);
+        assert_eq!(reader.read_i32().unwrap(), val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_i64() {
+        let mut buf = [0u8; 16];
+        let val: i64 = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            writer.write_i64(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new(&buf[..len]);
+        assert_eq!(reader.read_i64().unwrap(), val);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_f32() {
+        let mut buf = [0u8; 16];
+        let val: f32 = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            writer.write_f32(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new(&buf[..len]);
+        let result = reader.read_f32().unwrap();
+        assert_eq!(val.to_bits(), result.to_bits());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_f64() {
+        let mut buf = [0u8; 16];
+        let val: f64 = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            writer.write_f64(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new(&buf[..len]);
+        let result = reader.read_f64().unwrap();
+        assert_eq!(val.to_bits(), result.to_bits());
+    }
+
+    // ---- CDR header round-trip ----
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_roundtrip_with_header_i32() {
+        let mut buf = [0u8; 16];
+        let val: i32 = kani::any();
+        let len = {
+            let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+            writer.write_i32(val).unwrap();
+            writer.position()
+        };
+        let mut reader = CdrReader::new_with_header(&buf[..len]).unwrap();
+        assert_eq!(reader.read_i32().unwrap(), val);
+    }
+
+    // ---- Buffer exhaustion returns Err, never panics ----
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_buffer_exhaustion_u32() {
+        let mut buf = [0u8; 3]; // Too small for u32
+        let mut writer = CdrWriter::new(&mut buf);
+        let val: u32 = kani::any();
+        let result = writer.write_u32(val);
+        assert!(result.is_err());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_write_header_buffer_too_small() {
+        let mut buf = [0u8; 3]; // Too small for 4-byte header
+        let result = CdrWriter::new_with_header(&mut buf);
+        assert!(result.is_err());
+    }
+
+    // ---- Deserialization of arbitrary bytes: Ok or Err, never panic ----
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_deserialize_arbitrary_bytes_i32() {
+        let mut buf = [0u8; 8];
+        buf[0] = kani::any();
+        buf[1] = kani::any();
+        buf[2] = kani::any();
+        buf[3] = kani::any();
+        buf[4] = kani::any();
+        buf[5] = kani::any();
+        buf[6] = kani::any();
+        buf[7] = kani::any();
+        let result = CdrReader::new_with_header(&buf);
+        if let Ok(mut reader) = result {
+            let _ = reader.read_i32(); // Ok or Err, not panic
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_deserialize_empty_buffer() {
+        let buf = [0u8; 0];
+        let mut reader = CdrReader::new(&buf);
+        assert!(reader.read_u8().is_err());
+        assert!(reader.read_u32().is_err());
+    }
+
+    // ---- Alignment arithmetic correctness ----
+
+    #[kani::proof]
+    fn cdr_alignment_no_overflow() {
+        let offset: usize = kani::any();
+        let alignment: usize = kani::any();
+        kani::assume(alignment > 0 && alignment <= 8);
+        kani::assume(offset <= 1024); // Realistic buffer size
+        let padding = (alignment - (offset % alignment)) % alignment;
+        let aligned = offset + padding;
+        assert!(aligned % alignment == 0);
+        assert!(aligned >= offset);
+        assert!(aligned < offset + alignment);
+    }
+
+    // ---- Position tracking consistency ----
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_writer_position_monotonic() {
+        let mut buf = [0u8; 32];
+        let mut writer = CdrWriter::new(&mut buf);
+        let pos0 = writer.position();
+
+        let val: u8 = kani::any();
+        if writer.write_u8(val).is_ok() {
+            assert!(writer.position() > pos0);
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn cdr_writer_remaining_consistent() {
+        const BUF_LEN: usize = 32;
+        let mut buf = [0u8; BUF_LEN];
+        let mut writer = CdrWriter::new(&mut buf);
+        assert_eq!(writer.position() + writer.remaining(), BUF_LEN);
+
+        let val: u32 = kani::any();
+        let _ = writer.write_u32(val);
+        assert_eq!(writer.position() + writer.remaining(), BUF_LEN);
+    }
+}

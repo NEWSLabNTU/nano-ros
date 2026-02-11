@@ -631,3 +631,127 @@ mod tests {
         assert!(!SetParameterResult::ReadOnly.is_success());
     }
 }
+
+// =============================================================================
+// Kani bounded model checking proofs
+// =============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    // ---- ParameterValue type conversions ----
+
+    #[kani::proof]
+    fn parameter_i64_roundtrip() {
+        let val: i64 = kani::any();
+        let pv = ParameterValue::from_integer(val);
+        assert_eq!(pv.as_integer(), Some(val));
+        assert_eq!(pv.param_type(), ParameterType::Integer);
+        assert!(pv.is_set());
+    }
+
+    #[kani::proof]
+    fn parameter_bool_roundtrip() {
+        let val: bool = kani::any();
+        let pv = ParameterValue::from_bool(val);
+        assert_eq!(pv.as_bool(), Some(val));
+        assert_eq!(pv.param_type(), ParameterType::Bool);
+        assert!(pv.is_set());
+    }
+
+    #[kani::proof]
+    fn parameter_double_roundtrip() {
+        let val: f64 = kani::any();
+        let pv = ParameterValue::from_double(val);
+        let result = pv.as_double();
+        assert!(result.is_some());
+        assert_eq!(result.unwrap().to_bits(), val.to_bits());
+        assert_eq!(pv.param_type(), ParameterType::Double);
+    }
+
+    #[kani::proof]
+    fn parameter_not_set_default() {
+        let pv = ParameterValue::default();
+        assert!(!pv.is_set());
+        assert_eq!(pv.param_type(), ParameterType::NotSet);
+        assert!(pv.as_bool().is_none());
+        assert!(pv.as_integer().is_none());
+        assert!(pv.as_double().is_none());
+        assert!(pv.as_string().is_none());
+    }
+
+    // ---- Type mismatch returns None ----
+
+    #[kani::proof]
+    fn parameter_type_mismatch_bool() {
+        let val: i64 = kani::any();
+        let pv = ParameterValue::from_integer(val);
+        assert!(pv.as_bool().is_none());
+        assert!(pv.as_double().is_none());
+        assert!(pv.as_string().is_none());
+    }
+
+    #[kani::proof]
+    fn parameter_type_mismatch_integer() {
+        let val: bool = kani::any();
+        let pv = ParameterValue::from_bool(val);
+        assert!(pv.as_integer().is_none());
+        assert!(pv.as_double().is_none());
+        assert!(pv.as_string().is_none());
+    }
+
+    // ---- IntegerRange ----
+
+    #[kani::proof]
+    fn integer_range_contains_bounds() {
+        let min: i64 = kani::any();
+        let max: i64 = kani::any();
+        // Constrain to bounded range to avoid subtraction overflow
+        kani::assume(min >= -1_000_000 && min <= 1_000_000);
+        kani::assume(max >= -1_000_000 && max <= 1_000_000);
+        kani::assume(min <= max);
+        let range = IntegerRange::new(min, max, 1);
+        // Endpoints must be contained
+        assert!(range.contains(min));
+        assert!(range.contains(max));
+    }
+
+    #[kani::proof]
+    fn integer_range_outside_bounds() {
+        let min: i64 = kani::any();
+        let max: i64 = kani::any();
+        kani::assume(min <= max);
+        kani::assume(min > i64::MIN); // So min-1 doesn't overflow
+        kani::assume(max < i64::MAX); // So max+1 doesn't overflow
+        let range = IntegerRange::new(min, max, 1);
+        assert!(!range.contains(min - 1));
+        assert!(!range.contains(max + 1));
+    }
+
+    // ---- FloatingPointRange ----
+
+    #[kani::proof]
+    fn float_range_contains_bounds() {
+        let min: f64 = kani::any();
+        let max: f64 = kani::any();
+        kani::assume(!min.is_nan() && !max.is_nan());
+        kani::assume(min <= max);
+        let range = FloatingPointRange::new(min, max, 0.0);
+        assert!(range.contains(min));
+        assert!(range.contains(max));
+    }
+
+    // ---- SetParameterResult ----
+
+    #[kani::proof]
+    fn set_result_success_only() {
+        // Only Success should return true from is_success()
+        assert!(SetParameterResult::Success.is_success());
+        assert!(!SetParameterResult::ReadOnly.is_success());
+        assert!(!SetParameterResult::TypeMismatch.is_success());
+        assert!(!SetParameterResult::OutOfRange.is_success());
+        assert!(!SetParameterResult::NotFound.is_success());
+        assert!(!SetParameterResult::StorageFull.is_success());
+    }
+}

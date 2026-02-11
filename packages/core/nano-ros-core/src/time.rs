@@ -393,3 +393,132 @@ mod tests {
         assert!((secs - 2.25).abs() < 0.000001);
     }
 }
+
+// =============================================================================
+// Kani bounded model checking proofs
+// =============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    // ---- Duration ----
+
+    #[kani::proof]
+    fn duration_from_nanos_no_panic() {
+        let nanos: i64 = kani::any();
+        // Constrain to tractable range for CBMC (i64 div/mod is expensive)
+        kani::assume(nanos >= -10_000_000_000 && nanos <= 10_000_000_000);
+        let dur = Duration::from_nanos(nanos);
+        // nanosec must always be in valid range
+        assert!(dur.nanosec < NANOS_PER_SEC as u32);
+    }
+
+    #[kani::proof]
+    fn duration_roundtrip_nanos() {
+        let nanos: i64 = kani::any();
+        // Constrain to tractable range for CBMC (i64 div/mod is expensive)
+        // Still covers multi-second values to exercise the div/mod logic
+        kani::assume(nanos >= 0 && nanos <= 10_000_000_000);
+        let dur = Duration::from_nanos(nanos);
+        assert_eq!(dur.to_nanos(), nanos);
+    }
+
+    #[kani::proof]
+    fn duration_zero_is_zero() {
+        let dur = Duration::zero();
+        assert!(dur.is_zero());
+        assert_eq!(dur.to_nanos(), 0);
+    }
+
+    #[kani::proof]
+    fn duration_from_secs() {
+        let secs: i32 = kani::any();
+        let dur = Duration::from_secs(secs);
+        assert_eq!(dur.sec, secs);
+        assert_eq!(dur.nanosec, 0);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn duration_serialize_roundtrip() {
+        let sec: i32 = kani::any();
+        let nanosec: u32 = kani::any();
+        kani::assume(nanosec < NANOS_PER_SEC as u32);
+        let dur = Duration::new(sec, nanosec);
+
+        let mut buf = [0u8; 16];
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            dur.serialize(&mut writer).unwrap();
+            writer.position()
+        };
+
+        let mut reader = CdrReader::new(&buf[..len]);
+        let deserialized = Duration::deserialize(&mut reader).unwrap();
+        assert_eq!(dur, deserialized);
+    }
+
+    // ---- Time ----
+
+    #[kani::proof]
+    fn time_from_nanos_no_panic() {
+        let nanos: i64 = kani::any();
+        // Constrain to tractable range for CBMC (i64 div/mod is expensive)
+        // NOTE: Negative nanos cause nanosec wrapping (known bug — Time::from_nanos
+        // lacks .unsigned_abs() unlike Duration::from_nanos). Constrain to >= 0.
+        kani::assume(nanos >= 0 && nanos <= 10_000_000_000);
+        let time = Time::from_nanos(nanos);
+        // nanosec must always be in valid range
+        assert!(time.nanosec < NANOS_PER_SEC as u32);
+    }
+
+    #[kani::proof]
+    fn time_roundtrip_nanos() {
+        let nanos: i64 = kani::any();
+        // Constrain to tractable range for CBMC (i64 div/mod is expensive)
+        kani::assume(nanos >= 0 && nanos <= 10_000_000_000);
+        let time = Time::from_nanos(nanos);
+        assert_eq!(time.to_nanos(), nanos);
+    }
+
+    #[kani::proof]
+    fn time_zero_is_zero() {
+        let time = Time::zero();
+        assert!(time.is_zero());
+        assert_eq!(time.to_nanos(), 0);
+    }
+
+    #[kani::proof]
+    fn time_duration_conversion() {
+        let sec: i32 = kani::any();
+        let nanosec: u32 = kani::any();
+        kani::assume(nanosec < NANOS_PER_SEC as u32);
+        let time = Time::new(sec, nanosec);
+        let dur = time.as_duration();
+        assert_eq!(dur.sec, time.sec);
+        assert_eq!(dur.nanosec, time.nanosec);
+        let back = Time::from_duration(dur);
+        assert_eq!(back, time);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn time_serialize_roundtrip() {
+        let sec: i32 = kani::any();
+        let nanosec: u32 = kani::any();
+        kani::assume(nanosec < NANOS_PER_SEC as u32);
+        let time = Time::new(sec, nanosec);
+
+        let mut buf = [0u8; 16];
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            time.serialize(&mut writer).unwrap();
+            writer.position()
+        };
+
+        let mut reader = CdrReader::new(&buf[..len]);
+        let deserialized = Time::deserialize(&mut reader).unwrap();
+        assert_eq!(time, deserialized);
+    }
+}

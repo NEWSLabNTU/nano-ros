@@ -722,3 +722,151 @@ mod tests {
         assert_eq!(original.status, deserialized.status);
     }
 }
+
+// =============================================================================
+// Kani bounded model checking proofs
+// =============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    // ---- GoalStatus ----
+
+    #[kani::proof]
+    fn goal_status_from_i8_valid_range() {
+        let val: i8 = kani::any();
+        let status = GoalStatus::from_i8(val);
+        if (0..=6).contains(&val) {
+            assert!(status.is_some());
+        } else {
+            assert!(status.is_none());
+        }
+    }
+
+    #[kani::proof]
+    fn goal_status_terminal_active_exclusive() {
+        let val: i8 = kani::any();
+        kani::assume((0..=6).contains(&val));
+        let status = GoalStatus::from_i8(val).unwrap();
+        // Terminal and active must be mutually exclusive
+        assert!(!(status.is_terminal() && status.is_active()));
+        // Unknown(0) is neither terminal nor active
+        if val == 0 {
+            assert!(!status.is_terminal());
+            assert!(!status.is_active());
+        }
+        // Active: 1, 2, 3
+        if (1..=3).contains(&val) {
+            assert!(status.is_active());
+            assert!(!status.is_terminal());
+        }
+        // Terminal: 4, 5, 6
+        if (4..=6).contains(&val) {
+            assert!(status.is_terminal());
+            assert!(!status.is_active());
+        }
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn goal_status_serialize_roundtrip() {
+        let val: i8 = kani::any();
+        kani::assume((0..=6).contains(&val));
+        let status = GoalStatus::from_i8(val).unwrap();
+
+        let mut buf = [0u8; 8];
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            status.serialize(&mut writer).unwrap();
+            writer.position()
+        };
+
+        let mut reader = CdrReader::new(&buf[..len]);
+        let deserialized = GoalStatus::deserialize(&mut reader).unwrap();
+        assert_eq!(status, deserialized);
+    }
+
+    // ---- GoalResponse ----
+
+    #[kani::proof]
+    fn goal_response_from_i8_valid_range() {
+        let val: i8 = kani::any();
+        let resp = GoalResponse::from_i8(val);
+        if (0..=2).contains(&val) {
+            assert!(resp.is_some());
+        } else {
+            assert!(resp.is_none());
+        }
+    }
+
+    #[kani::proof]
+    fn goal_response_is_accepted_consistent() {
+        let val: i8 = kani::any();
+        kani::assume((0..=2).contains(&val));
+        let resp = GoalResponse::from_i8(val).unwrap();
+        // Reject(0) → not accepted; AcceptAndExecute(1), AcceptAndDefer(2) → accepted
+        assert_eq!(resp.is_accepted(), val >= 1);
+    }
+
+    // ---- CancelResponse ----
+
+    #[kani::proof]
+    fn cancel_response_from_i8_valid_range() {
+        let val: i8 = kani::any();
+        let resp = CancelResponse::from_i8(val);
+        if (0..=3).contains(&val) {
+            assert!(resp.is_some());
+        } else {
+            assert!(resp.is_none());
+        }
+    }
+
+    // ---- GoalId ----
+
+    #[kani::proof]
+    fn goal_id_zero_is_zero() {
+        let id = GoalId::zero();
+        assert!(id.is_zero());
+    }
+
+    #[kani::proof]
+    fn goal_id_from_counter_deterministic() {
+        let counter: u64 = kani::any();
+        // Constrain for CBMC tractability (exercises same byte/bit logic)
+        kani::assume(counter <= 1_000_000);
+        let id1 = GoalId::from_counter(counter);
+        let id2 = GoalId::from_counter(counter);
+        assert_eq!(id1, id2);
+    }
+
+    #[kani::proof]
+    fn goal_id_from_counter_not_zero() {
+        let counter: u64 = kani::any();
+        kani::assume(counter > 0 && counter <= 1_000_000);
+        let id = GoalId::from_counter(counter);
+        assert!(!id.is_zero());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(20)]
+    fn goal_id_serialize_roundtrip() {
+        let mut uuid = [0u8; 16];
+        // Use a few arbitrary bytes (bounded for tractability)
+        uuid[0] = kani::any();
+        uuid[7] = kani::any();
+        uuid[15] = kani::any();
+        let id = GoalId::new(uuid);
+
+        let mut buf = [0u8; 32];
+        let len = {
+            let mut writer = CdrWriter::new(&mut buf);
+            id.serialize(&mut writer).unwrap();
+            writer.position()
+        };
+
+        let mut reader = CdrReader::new(&buf[..len]);
+        let deserialized = GoalId::deserialize(&mut reader).unwrap();
+        assert_eq!(id, deserialized);
+    }
+}
