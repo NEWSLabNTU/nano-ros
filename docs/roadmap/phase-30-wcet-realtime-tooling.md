@@ -12,7 +12,7 @@ The existing documentation covers theory (RMA, RTA, Priority Ceiling Protocol) a
 - **RAUK** and **RTIC-Scope** are dormant (last releases 2022, RTIC v1 only)
 - **No CI integration** — all analysis is manual
 - **No Zephyr/C coverage** — existing docs focus on RTIC (Rust) only
-- **No formal verification** — no Kani, CBMC, or Verus proofs exist
+- **Formal verification (Kani)** — 82 bounded proof harnesses across 4 crates (30.4/30.5 complete)
 
 ## Real-Time Verification Layers
 
@@ -324,16 +324,16 @@ verify-kani:
 
 1. **CDR FFI harnesses** (15 harnesses in `src/cdr.rs`):
 
-   | Category | Harnesses | Properties |
-   |---|---|---|
-   | Null safety (write) | `cdr_write_{u8,u32,u64}_null_safety` | Returns -1 for NULL ptr, NULL *ptr |
-   | Null safety (read) | `cdr_read_{u8,u32,u64}_null_safety` | Returns -1 for NULL ptr, NULL *ptr, NULL value |
-   | Buffer bounds (write) | `cdr_write_u8_bounds` | Returns -1 when insufficient space |
-   | Buffer bounds (read) | `cdr_read_{u8,u32}_bounds` | Returns -1 when insufficient data |
-   | Round-trip | `cdr_roundtrip_{u8,bool,u32,u64}` | write then read preserves symbolic value |
-   | String null safety | `cdr_write_string_null_safety`, `cdr_read_string_null_safety` | All NULL argument paths return -1 |
-   | String bounds | `cdr_read_string_bounds` | max_len enforcement returns -1 |
-   | String round-trip | `cdr_roundtrip_string` | Content preserved, null-terminated |
+   | Category              | Harnesses                                                     | Properties                                     |
+   |-----------------------|---------------------------------------------------------------|------------------------------------------------|
+   | Null safety (write)   | `cdr_write_{u8,u32,u64}_null_safety`                          | Returns -1 for NULL ptr, NULL *ptr             |
+   | Null safety (read)    | `cdr_read_{u8,u32,u64}_null_safety`                           | Returns -1 for NULL ptr, NULL *ptr, NULL value |
+   | Buffer bounds (write) | `cdr_write_u8_bounds`                                         | Returns -1 when insufficient space             |
+   | Buffer bounds (read)  | `cdr_read_{u8,u32}_bounds`                                    | Returns -1 when insufficient data              |
+   | Round-trip            | `cdr_roundtrip_{u8,bool,u32,u64}`                             | write then read preserves symbolic value       |
+   | String null safety    | `cdr_write_string_null_safety`, `cdr_read_string_null_safety` | All NULL argument paths return -1              |
+   | String bounds         | `cdr_read_string_bounds`                                      | max_len enforcement returns -1                 |
+   | String round-trip     | `cdr_roundtrip_string`                                        | Content preserved, null-terminated             |
 
    **Key difference from 30.4:** These harnesses operate on raw C pointers (`*mut *mut u8`, `*const u8`) via `unsafe extern "C"` functions, not the safe Rust `CdrWriter`/`CdrReader` API. They verify the FFI boundary that C callers interact with.
 
@@ -385,50 +385,17 @@ fn cdr_roundtrip_u32() {
 - `packages/core/nano-ros-c/src/executor.rs` — 2 executor harnesses
 - `justfile` — `nano-ros-c` added to `verify-kani` recipe
 
-### 30.6: Kani Contracts — Modular Verification at Transport Boundaries
+### 30.6: Kani Contracts — Discarded
 
-**Goal:** Verify the publish path and executor dispatch using function contracts, without whole-program model checking of large crates.
+**Original goal:** Modular verification of transport/node layers using Kani function contracts (`-Z function-contracts`).
 
-**Requires:** Kani experimental flag `-Zfunction-contracts`.
+**Why discarded:** Exploration revealed multiple blockers:
+- Kani contracts are behind unstable `-Z function-contracts` flag with no stabilization timeline
+- `extern "C"` functions cannot be used in contract expressions — blocks transport boundary verification
+- `dyn Trait` (used extensively in transport/executor) is unsupported in contract context
+- The practical scope was limited to ~18 pure logic functions already covered by 30.4 harnesses
 
-The transport layer (3,422 LOC) and node layer (11,453 LOC) are too large for whole-program BMC. Function contracts allow modular verification: prove each function satisfies its contract, then use verified contracts as stubs for callers.
-
-**Key contracts:**
-
-```rust
-// Publisher::publish — either succeeds or returns error, never panics
-#[kani::requires(/* message serializable, buffer allocated */)]
-#[kani::ensures(|result| result.is_ok() || result.is_err())]
-#[kani::modifies(/* internal buffer position */)]
-fn publish<M: RosMessage>(&self, msg: &M) -> Result<(), RclrsError> { ... }
-
-// Executor::spin_once — processes at most N callbacks
-#[kani::requires(timeout_ns >= 0)]
-#[kani::ensures(|result| /* bounded iteration count */)]
-fn spin_once(&mut self, timeout_ns: i64) -> Result<(), RclrsError> { ... }
-
-// ServiceServer::handle_request — decode failure → error response, not panic
-#[kani::requires(/* raw bytes from transport */)]
-#[kani::ensures(|result| /* always produces a response */)]
-fn handle_request<S: RosService>(&self, raw: &[u8]) -> Result<Vec<u8>, RclrsError> { ... }
-```
-
-**Stubbing zenoh-pico FFI:**
-
-```rust
-#[kani::stub(zenoh_pico_shim::Session::put, stub_session_put)]
-fn stub_session_put(_key: &str, _payload: &[u8]) -> Result<(), TransportError> {
-    if kani::any() { Ok(()) } else { Err(TransportError::SendFailed) }
-}
-```
-
-**Workflow:**
-1. Write contracts on leaf functions (serialization, transport put/get)
-2. Verify contracts with `#[kani::proof_for_contract(fn)]` harnesses
-3. Use `#[kani::stub_verified(fn)]` to replace verified functions with their contracts when verifying callers
-4. Build upward: serialize → transport put → publish → spin_once
-
-**What this proves for real-time:** The publish path from user code through serialization to transport handoff has bounded, predictable behavior. Every intermediate function either completes or returns an error — no hidden panics or infinite loops in the middleware.
+The transport/node verification goals are better served by Verus's `assume_specification` (30.9) for compositional reasoning on pure Rust code, and by Kani harnesses (30.4/30.5) for unsafe FFI code that Verus cannot handle.
 
 ### 30.7: Zephyr Tracing for C Examples
 
@@ -533,126 +500,56 @@ A margin of 1.1–1.3x between static WCET and measured worst-case indicates the
 - zenoh-pico C code has complex control flow (many loops, function pointers)
 - Useful for nano-ros core (serialization, keyexpr formatting) but impractical for full publish path including zenoh-pico transport
 
-### 30.9: Verus — Unbounded Deductive Verification (Stretch Goal)
+### ~~30.9~~ → Phase 31: Verus — Unbounded Deductive Verification
 
-**Goal:** Prove properties for **all inputs** (not just up to a bound) on the most safety-critical algorithms, using SMT-based deductive verification.
+Moved to **[Phase 31: Verus Unbounded Deductive Verification](phase-31-verus-verification.md)**.
 
-**Why Verus:** Kani proves properties up to a loop unwind bound. Verus proves them for all executions, forever. For safety-critical deployments (ISO 26262, DO-178C contexts), unbounded proofs provide the strongest assurance.
-
-**How Verus works:** Code is annotated with `requires`/`ensures` preconditions and postconditions inside `verus! { }` macro blocks. Verus generates verification conditions and discharges them via the Z3 SMT solver. Ghost code (specs, proofs) is erased after verification — the compiled binary is standard Rust.
-
-**Annotation burden:** Expect 4:1 to 7.5:1 lines of specification+proof per line of executable code. This is the highest-effort task in the plan.
-
-**Setup:**
-
-```bash
-# Install Verus (from source)
-git clone https://github.com/verus-lang/verus
-cd verus && tools/get-z3.sh && source tools/activate
-vargo build --release
-```
-
-**Target 1: CDR alignment logic (unbounded proof)**
-
-```rust
-verus! {
-    spec fn aligned(offset: nat, alignment: nat) -> nat {
-        let padding = (alignment - (offset % alignment)) % alignment;
-        offset + padding
-    }
-
-    proof fn alignment_always_valid()
-        ensures
-            forall|offset: nat, align: nat|
-                align > 0 ==>
-                    aligned(offset, align) % align == 0 &&
-                    aligned(offset, align) >= offset &&
-                    aligned(offset, align) < offset + align,
-    {
-        // SMT solver handles this automatically
-    }
-}
-```
-
-**Target 2: Action state machine (exhaustive transition proof)**
-
-```rust
-verus! {
-    spec fn valid_transition(from: GoalStatus, to: GoalStatus) -> bool {
-        match (from, to) {
-            (Accepted, Executing) => true,
-            (Executing, Succeeded) => true,
-            (Executing, Aborted) => true,
-            (Executing, Canceling) => true,
-            (Canceling, Canceled) => true,
-            (Canceling, Aborted) => true,
-            _ => false,
-        }
-    }
-
-    fn transition(&mut self, to: GoalStatus)
-        requires valid_transition(self.status, to)
-        ensures self.status == to
-    { self.status = to; }
-}
-```
-
-**Target 3: Parameter value bounded storage**
-- Prove `ParameterValue` never exceeds heapless bounds for all inputs
-- Prove type conversion round-trip fidelity (set i64, get i64 == original)
-
-**What this proves for real-time:** Mathematical certainty across all inputs that core algorithms are correct. Combined with WCET analysis (30.8), this gives: "this operation is correct AND completes within N cycles" — the strongest statement possible for a real-time system.
-
-**Limitations:**
-- High annotation burden (2-4 weeks for targets above)
-- Verus supports a subset of Rust (some complex borrowing patterns unsupported)
-- SMT solver can be unpredictable on complex proofs (timeouts)
-- No C support — only applies to Rust code
-- Does not verify timing properties directly
+Centralized `nano-ros-verification` crate (edition 2024, excluded from workspace) with ~25 unbounded proofs across CDR serialization, time arithmetic, GoalStatus FSM, parameter types, and trigger conditions. Complements Kani — same properties, stronger (unbounded) guarantees.
 
 ## Work Items
 
-| ID | Task | Effort | Priority | Layer |
-|----|------|--------|----------|-------|
-| 30.1 | DWT measurement infrastructure + baselines | 2 days | **Done** | L4 |
-| 30.2 | Static stack usage analysis (emit-stack-sizes) | 0.5 day | **Done** | L3 |
-| 30.2a | Stack analysis: native example support (host-triple fallback) | 0.5 day | **Done** | L3 |
-| 30.2b | Stack analysis: STM32F4 config fix (`[build] target`) | 10 min | **Done** | L3 |
-| 30.2c | Stack analysis: Zephyr staticlib support (`--elf` flag) | 0.5 day | **Done** | L3 |
-| 30.2d | Stack analysis: C examples (gcc `-fstack-usage` parser) | 1 day | **Done** | L3 |
-| 30.3 | cargo-show-asm recipes + critical function docs | 0.5 day | **Done** | L4 |
-| 30.4 | Kani proof harnesses for serdes/core/params | 2–3 days | **Done** | L1, L3 |
-| 30.5 | Kani proof harnesses for C FFI layer | 1 day | **Done** | L1, L2 |
-| 30.6 | Kani function contracts for transport/node | 3–4 days | Medium | L1, L3 |
-| 30.7 | Zephyr tracing overlay + C measurement code | 1 day | Medium | L4 |
-| 30.8 | Platin static WCET (with verified loop bounds) | 1–2 weeks | Medium | L4 |
-| 30.9 | Verus unbounded proofs for critical algorithms | 2–4 weeks | Low | L1, L2 |
+| ID    | Task                                                          | Effort    | Status       | Layer  |
+|-------|---------------------------------------------------------------|-----------|--------------|--------|
+| 30.1  | DWT measurement infrastructure + baselines                    | 2 days    | **Done**     | L4     |
+| 30.2  | Static stack usage analysis (emit-stack-sizes)                | 0.5 day   | **Done**     | L3     |
+| 30.2a | Stack analysis: native example support (host-triple fallback) | 0.5 day   | **Done**     | L3     |
+| 30.2b | Stack analysis: STM32F4 config fix (`[build] target`)         | 10 min    | **Done**     | L3     |
+| 30.2c | Stack analysis: Zephyr staticlib support (`--elf` flag)       | 0.5 day   | **Done**     | L3     |
+| 30.2d | Stack analysis: C examples (gcc `-fstack-usage` parser)       | 1 day     | **Done**     | L3     |
+| 30.3  | cargo-show-asm recipes + critical function docs               | 0.5 day   | **Done**     | L4     |
+| 30.4  | Kani proof harnesses for serdes/core/params                   | 2–3 days  | **Done**     | L1, L3 |
+| 30.5  | Kani proof harnesses for C FFI layer                          | 1 day     | **Done**     | L1, L2 |
+| 30.6  | ~~Kani function contracts for transport/node~~                | —         | **Discarded** | —     |
+| 30.7  | Zephyr tracing overlay + C measurement code                   | 1 day     | Medium       | L4     |
+| 30.8  | Platin static WCET (with verified loop bounds)                | 1–2 weeks | Medium       | L4     |
 
-**Recommended execution order:** 30.1 → 30.2 → 30.2a → 30.2b → 30.4 → 30.5 → 30.2c → 30.3 → 30.6 → 30.7 → 30.2d → 30.8 → 30.9
+Verus unbounded verification is now **[Phase 31](phase-31-verus-verification.md)**.
 
-Rationale: DWT measurements (30.1) and stack analysis (30.2) provide immediate diagnostic value. 30.2a/b are quick wins that extend stack coverage to native and STM32F4 examples. Kani (30.4) and CBMC (30.5) are the highest-ROI formal verification steps — low annotation burden, high coverage. 30.2c (Zephyr) fits after formal verification since Zephyr examples already have tracing (30.7). 30.2d (C examples) is low priority since CBMC (30.5) provides stronger guarantees. Platin (30.8) depends on 30.1 and 30.4/30.5 for loop bounds. Verus (30.9) is last because it has the highest effort, and Kani already covers the bounded case.
+**Recommended execution order:** 30.1 → 30.2 → 30.2a → 30.2b → 30.4 → 30.5 → 30.2c → 30.3 → 30.2d → 30.7 → 30.8
+
+Rationale: DWT measurements (30.1) and stack analysis (30.2) provide immediate diagnostic value. Kani (30.4/30.5) are the highest-ROI formal verification steps — low annotation burden, high coverage. 30.6 (Kani contracts) is discarded — blocked by `extern "C"` and `dyn Trait` limitations in the unstable `-Z function-contracts` flag. Platin (30.8) depends on 30.1 and 30.4/30.5 for loop bounds.
 
 ## Tool Coverage Matrix
 
-| Component | Kani (30.4) | CBMC (30.5) | Kani Contracts (30.6) | Verus (30.9) | Platin+DWT (30.1,30.8) |
-|-----------|:-----------:|:-----------:|:---------------------:|:------------:|:----------------------:|
-| `nano-ros-serdes` | Panic-free, roundtrip | — | — | Alignment proof | WCET bounds |
-| `nano-ros-core` | State machines, overflow | — | — | Action FSM proof | — |
-| `nano-ros-params` | Bounded collections | — | — | Type safety proof | — |
-| `nano-ros-c` | Null safety, bounds, roundtrip | — | — | — | — |
-| `nano-ros-transport` | — | — | Publish contract | — | — |
-| `nano-ros-node` | — | — | Executor contract | — | WCET bounds |
-| Full publish path | — | — | — | — | End-to-end WCET |
+| Component | Kani (30.4/30.5) | [Verus (Phase 31)](phase-31-verus-verification.md) | Platin+DWT (30.1/30.8) |
+|-----------|:----------------:|:--------------------------------------------------:|:----------------------:|
+| `nano-ros-serdes` | Panic-free, roundtrip (bounded) | Alignment, roundtrip (**unbounded**) | WCET bounds |
+| `nano-ros-core` | State machines, overflow (bounded) | Duration/Time arithmetic, GoalStatus FSM (**unbounded**) | — |
+| `nano-ros-params` | Bounded collections, type roundtrips | Range containment, type safety (**unbounded**) | — |
+| `nano-ros-c` | **Null safety, buffer bounds, FFI roundtrip** | — (unsafe/FFI, Kani only) | — |
+| `nano-ros-node` | — | TriggerCondition semantics | WCET bounds |
+| Full publish path | — | — | End-to-end WCET |
 
 ## Verification
 
 ```bash
 just quality              # Existing checks still pass
 just check-stack          # Stack analysis (30.2)
-just verify-kani          # Kani bounded proofs (30.4, 30.5)
+just verify-kani          # Kani bounded proofs (30.4, 30.5) — 82 harnesses
+just verify-verus         # Verus unbounded proofs (Phase 31) — ~25 proofs
 ```
 
-DWT measurements (30.1) and Zephyr tracing (30.7) require hardware or QEMU and are run manually or via `just test-qemu`. Verus (30.9) requires a separate toolchain: `vargo build && vargo verify`.
+DWT measurements (30.1) and Zephyr tracing (30.7) require hardware or QEMU and are run manually or via `just test-qemu`. Verus ([Phase 31](phase-31-verus-verification.md)) uses its own toolchain in an excluded workspace crate — no conflict with the main workspace.
 
 ## References
 
