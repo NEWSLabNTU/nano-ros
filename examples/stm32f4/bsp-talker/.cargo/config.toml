@@ -1,3 +1,12 @@
+[build]
+target = "thumbv7em-none-eabihf"
+
+[target.thumbv7em-none-eabihf]
+rustflags = [
+    "-C",
+    "link-arg=-Tlink.x",
+]
+
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"
 

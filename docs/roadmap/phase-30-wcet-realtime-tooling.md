@@ -144,7 +144,7 @@ Crate survey for formal verification prioritization:
 1. **`scripts/stack-analysis.sh`** — stack analysis script:
    - Builds any example with `cargo +nightly build --release` and `-Z emit-stack-sizes`
    - Auto-detects target triple from `.cargo/config.toml`
-   - Locates `llvm-readobj` from the nightly sysroot (falls back to system)
+   - Locates `llvm-readobj` from the nightly rustup sysroot
    - Parses `.stack_sizes` ELF section into sorted per-function table
    - Options: `--top N` (default 30), `--filter PATTERN`
    - Displays summary: total functions, max stack, count of functions > 256 bytes
@@ -180,10 +180,28 @@ Summary: 45 functions, max stack = 512 bytes
 - Stack depth exceeding configured limits (e.g., Zephyr's `CONFIG_MAIN_STACK_SIZE`)
 - Regression detection when comparing output across compiler versions
 
+**Current coverage:**
+
+| Platform | Examples | Status | Notes |
+|----------|----------|--------|-------|
+| QEMU ARM (`thumbv7m-none-eabi`) | 6 — rs-talker, rs-listener, rs-test, rs-wcet-bench, bsp-talker, bsp-listener | **Works** | All have `[build] target` in `.cargo/config.toml` |
+| ESP32-C3 (`riscv32imc-unknown-none-elf`) | 5 — bsp-talker, bsp-listener, qemu-talker, qemu-listener, hello-world | **Works** | Requires `rustup +nightly target add riscv32imc-unknown-none-elf` |
+| Native Rust (host x86_64) | 7 — rs-talker, rs-listener, rs-custom-msg, rs-service-{server,client}, rs-action-{server,client} | **Done** | Host-triple fallback when no `[build] target` set |
+| STM32F4 (`thumbv7em-none-eabihf`) | 1 — bsp-talker | **Done** | Added `[build] target` to `.cargo/config.toml` |
+| Zephyr Rust | 6 — rs-talker, rs-listener, rs-service-{server,client}, rs-action-{server,client} | **Done** | `--elf` flag analyzes pre-built ELFs from `west build` |
+| C examples (native + Zephyr) | 4 native — c-talker, c-listener, c-custom-msg, c-baremetal-demo | **Done** | `scripts/stack-analysis-c.sh` parses gcc `.su` files |
+
+**What was delivered (30.2a–d):**
+
+- **30.2a — Native example support:** `stack-analysis.sh` falls back to the host triple when no `[build] target` is set. Covers all 7 native Rust examples.
+- **30.2b — STM32F4 config fix:** Added `[build] target = "thumbv7em-none-eabihf"` and target-specific rustflags to `examples/stm32f4/bsp-talker/.cargo/config.toml`.
+- **30.2c — Zephyr/pre-built ELF support:** `--elf PATH` flag skips cargo build and analyzes a pre-built ELF directly. Usage: `just check-stack-elf build/zephyr/zephyr.elf`. Covers Zephyr Rust examples built via west.
+- **30.2d — C example support:** `scripts/stack-analysis-c.sh` builds C examples with `cmake -DCMAKE_C_FLAGS=-fstack-usage` and parses the `.su` files. Shows function, stack size, allocation type (static/dynamic/bounded), and source location. Usage: `just check-stack-c [example-dir]`.
+
 **Limitations:**
 - Requires nightly Rust (`-Z emit-stack-sizes` is unstable)
 - Shows per-function stack frames, not full call-chain stack depth
-- Cannot follow C FFI calls into zenoh-pico (only analyzes Rust code)
+- Cannot follow C FFI calls into zenoh-pico for embedded examples (only analyzes Rust code)
 
 **Files:**
 - `scripts/stack-analysis.sh` — stack analysis script
@@ -754,6 +772,10 @@ verus! {
 |----|------|--------|----------|-------|
 | 30.1 | DWT measurement infrastructure + baselines | 2 days | **Done** | L4 |
 | 30.2 | Static stack usage analysis (emit-stack-sizes) | 0.5 day | **Done** | L3 |
+| 30.2a | Stack analysis: native example support (host-triple fallback) | 0.5 day | **Done** | L3 |
+| 30.2b | Stack analysis: STM32F4 config fix (`[build] target`) | 10 min | **Done** | L3 |
+| 30.2c | Stack analysis: Zephyr staticlib support (`--elf` flag) | 0.5 day | **Done** | L3 |
+| 30.2d | Stack analysis: C examples (gcc `-fstack-usage` parser) | 1 day | **Done** | L3 |
 | 30.3 | cargo-show-asm recipes + critical function docs | 0.5 day | — |
 | 30.4 | Kani proof harnesses for serdes/core/params | 2–3 days | **High** | L1, L3 |
 | 30.5 | CBMC proof harnesses for C API | 3–5 days | **High** | L1, L2 |
@@ -762,9 +784,9 @@ verus! {
 | 30.8 | Platin static WCET (with verified loop bounds) | 1–2 weeks | Medium | L4 |
 | 30.9 | Verus unbounded proofs for critical algorithms | 2–4 weeks | Low | L1, L2 |
 
-**Recommended execution order:** 30.1 → 30.2 → 30.4 → 30.5 → 30.3 → 30.6 → 30.7 → 30.8 → 30.9
+**Recommended execution order:** 30.1 → 30.2 → 30.2a → 30.2b → 30.4 → 30.5 → 30.2c → 30.3 → 30.6 → 30.7 → 30.2d → 30.8 → 30.9
 
-Rationale: DWT measurements (30.1) and stack analysis (30.2) provide immediate diagnostic value. Kani (30.4) and CBMC (30.5) are the highest-ROI formal verification steps — low annotation burden, high coverage. Platin (30.8) depends on 30.1 and 30.4/30.5 for loop bounds. Verus (30.9) is last because it has the highest effort, and Kani already covers the bounded case.
+Rationale: DWT measurements (30.1) and stack analysis (30.2) provide immediate diagnostic value. 30.2a/b are quick wins that extend stack coverage to native and STM32F4 examples. Kani (30.4) and CBMC (30.5) are the highest-ROI formal verification steps — low annotation burden, high coverage. 30.2c (Zephyr) fits after formal verification since Zephyr examples already have tracing (30.7). 30.2d (C examples) is low priority since CBMC (30.5) provides stronger guarantees. Platin (30.8) depends on 30.1 and 30.4/30.5 for loop bounds. Verus (30.9) is last because it has the highest effort, and Kani already covers the bounded case.
 
 ## Tool Coverage Matrix
 

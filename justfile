@@ -722,6 +722,61 @@ qemu-help:
 check-stack example="examples/qemu/rs-wcet-bench" top="30":
     ./scripts/stack-analysis.sh {{example}} --top {{top}}
 
+# Analyze stack usage of a pre-built ELF (e.g. Zephyr west build output)
+# Usage: just check-stack-elf <path-to-elf> [top]
+check-stack-elf elf top="30":
+    ./scripts/stack-analysis.sh --elf {{elf}} --top {{top}}
+
+# Analyze stack usage of C examples (requires cmake + gcc)
+# Usage: just check-stack-c [example-dir] [top]
+# Default: examples/native/c-talker, top 30
+check-stack-c example="examples/native/c-talker" top="30":
+    ./scripts/stack-analysis-c.sh {{example}} --top {{top}}
+
+# Analyze stack usage of all examples (requires nightly + llvm-tools + cmake)
+# Covers: QEMU ARM, native Rust, and native C examples
+# ESP32/STM32F4 excluded (need platform-specific SDKs)
+check-stack-all top="10":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    failed=0
+    # Rust examples (QEMU ARM + native)
+    for example in \
+        examples/qemu/rs-wcet-bench \
+        examples/qemu/rs-test \
+        examples/qemu/rs-talker \
+        examples/qemu/rs-listener \
+        examples/qemu/bsp-talker \
+        examples/qemu/bsp-listener \
+        examples/native/rs-talker \
+        examples/native/rs-listener \
+        examples/native/rs-custom-msg \
+        examples/native/rs-service-server \
+        examples/native/rs-service-client \
+        examples/native/rs-action-server \
+        examples/native/rs-action-client \
+    ; do
+        echo "================================================================"
+        ./scripts/stack-analysis.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
+        echo ""
+    done
+    # C examples (native)
+    for example in \
+        examples/native/c-talker \
+        examples/native/c-listener \
+        examples/native/c-custom-msg \
+        examples/native/c-baremetal-demo \
+    ; do
+        echo "================================================================"
+        ./scripts/stack-analysis-c.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
+        echo ""
+    done
+    if [ "$failed" -gt 0 ]; then
+        echo "[WARN] $failed example(s) failed"
+        exit 1
+    fi
+    echo "[OK] All stack analyses complete"
+
 # =============================================================================
 # Zenoh
 # =============================================================================
