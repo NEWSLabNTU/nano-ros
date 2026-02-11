@@ -131,49 +131,63 @@ Crate survey for formal verification prioritization:
 - `examples/qemu/rs-wcet-bench/` — benchmark example (Cargo.toml, src/main.rs, etc.)
 - `justfile` — `test-qemu-wcet` recipe, QEMU_EXAMPLES updated
 
-### 30.2: cargo-call-stack Integration
+### 30.2: Static Stack Usage Analysis — Complete
 
-**Goal:** Automated stack usage analysis for all BSP crates in CI.
+**Goal:** Per-function stack usage analysis for embedded examples using `-Z emit-stack-sizes` and `llvm-readobj`.
 
-**Setup:**
+**Status:** Implemented. A shell script parses the `.stack_sizes` ELF section emitted by nightly rustc to display per-function stack usage, sorted by size.
 
-```bash
-# Install (requires nightly)
-cargo +nightly install cargo-call-stack
+**Why not cargo-call-stack:** The originally planned `cargo-call-stack` is pinned to nightly-2023-11-13 and crashes on current nightly. The `-Z emit-stack-sizes` + `llvm-readobj --stack-sizes` approach is simpler, more reliable, and uses only standard rustup components.
+
+**What was delivered:**
+
+1. **`scripts/stack-analysis.sh`** — stack analysis script:
+   - Builds any example with `cargo +nightly build --release` and `-Z emit-stack-sizes`
+   - Auto-detects target triple from `.cargo/config.toml`
+   - Locates `llvm-readobj` from the nightly sysroot (falls back to system)
+   - Parses `.stack_sizes` ELF section into sorted per-function table
+   - Options: `--top N` (default 30), `--filter PATTERN`
+   - Displays summary: total functions, max stack, count of functions > 256 bytes
+
+2. **`just check-stack` recipe** — replaces the old `analyze-stack` stub:
+   ```bash
+   just check-stack                              # Default: examples/qemu/rs-wcet-bench
+   just check-stack examples/qemu/rs-test        # Different example
+   just check-stack examples/qemu/rs-test 50     # Show top 50 functions
+   ```
+
+3. **`just setup` updated** — installs `llvm-tools` component and nightly thumbv7m target
+
+**Example output:**
 ```
+=== Stack Usage Analysis ===
+Example: examples/qemu/rs-wcet-bench
+Target:  thumbv7m-none-eabi
 
-**Usage on BSP crates:**
+STACK    FUNCTION
+-----    --------
+512      qemu_rs_wcet_bench::__cortex_m_rt_main
+256      nano_ros_serdes::writer::CdrWriter::...
+48       core::fmt::write
+...
 
-```bash
-# Stack analysis for QEMU BSP publisher example
-cargo +nightly call-stack \
-    --target thumbv7m-none-eabi \
-    --example qemu-bsp-talker \
-    -- -C link-arg=-Tlink.x \
-    > stack-report.dot
-
-# Convert to text summary
-dot -Tsvg stack-report.dot -o stack-report.svg
-```
-
-**CI integration (justfile recipe):**
-
-```just
-# Stack analysis for embedded targets
-check-stack:
-    cargo +nightly call-stack --target thumbv7m-none-eabi -p nano-ros-bsp-qemu 2>&1 \
-        | grep "Maximum call stack" || echo "See full .dot output"
+Summary: 45 functions, max stack = 512 bytes
+         3 functions with stack > 256 bytes
 ```
 
 **What it catches:**
-- Unexpected recursion in nano-ros or zenoh-pico call chains
+- Unexpectedly large stack frames in nano-ros or generated code
 - Stack depth exceeding configured limits (e.g., Zephyr's `CONFIG_MAIN_STACK_SIZE`)
-- Function pointer / dynamic dispatch indirection
+- Regression detection when comparing output across compiler versions
 
 **Limitations:**
-- Requires nightly Rust and may break with nightly updates
-- Cannot follow C FFI calls into zenoh-pico (only analyzes Rust LLVM IR)
-- Function pointers (`fn(&M)` callbacks) cause "unsolvable" warnings
+- Requires nightly Rust (`-Z emit-stack-sizes` is unstable)
+- Shows per-function stack frames, not full call-chain stack depth
+- Cannot follow C FFI calls into zenoh-pico (only analyzes Rust code)
+
+**Files:**
+- `scripts/stack-analysis.sh` — stack analysis script
+- `justfile` — `check-stack` recipe (replaces `analyze-stack`), `setup` updated
 
 ### 30.3: cargo-show-asm for Critical Path Inspection
 
@@ -739,7 +753,7 @@ verus! {
 | ID | Task | Effort | Priority | Layer |
 |----|------|--------|----------|-------|
 | 30.1 | DWT measurement infrastructure + baselines | 2 days | **Done** | L4 |
-| 30.2 | cargo-call-stack CI recipe | 0.5 day | High | L3 |
+| 30.2 | Static stack usage analysis (emit-stack-sizes) | 0.5 day | **Done** | L3 |
 | 30.3 | cargo-show-asm recipes + critical function docs | 0.5 day | — |
 | 30.4 | Kani proof harnesses for serdes/core/params | 2–3 days | **High** | L1, L3 |
 | 30.5 | CBMC proof harnesses for C API | 3–5 days | **High** | L1, L2 |

@@ -716,15 +716,11 @@ qemu-help:
 # Static Analysis
 # =============================================================================
 
-# Analyze stack usage (requires nightly)
-analyze-stack:
-    @echo "Analyzing stack usage for RTIC example..."
-    cd packages/reference/stm32f4-rtic && \
-        RUSTFLAGS="-Z emit-stack-sizes" cargo +nightly build --release 2>&1 | head -20
-    @echo ""
-    @echo "Note: For full call graph analysis, install cargo-call-stack:"
-    @echo "  cargo +nightly install cargo-call-stack"
-    @echo "  cd packages/reference/stm32f4-rtic && cargo +nightly call-stack --release"
+# Analyze per-function stack usage (requires nightly + llvm-tools)
+# Usage: just check-stack [example-dir] [top]
+# Default: examples/qemu/rs-wcet-bench, top 30
+check-stack example="examples/qemu/rs-wcet-bench" top="30":
+    ./scripts/stack-analysis.sh {{example}} --top {{top}}
 
 # =============================================================================
 # Zenoh
@@ -1025,13 +1021,14 @@ setup:
 
     echo "=== [3/6] Adding rustup components ==="
     rustup component add rustfmt clippy rust-src
-    rustup component add --toolchain nightly rustfmt miri rust-src
+    rustup component add --toolchain nightly rustfmt miri rust-src llvm-tools
     echo ""
 
     echo "=== [4/6] Adding cross-compilation targets ==="
     rustup target add thumbv7em-none-eabihf
     rustup target add thumbv7m-none-eabi
     rustup target add riscv32imc-unknown-none-elf
+    rustup +nightly target add thumbv7m-none-eabi
     echo ""
 
     echo "=== [5/6] Installing cargo tools ==="
