@@ -72,6 +72,8 @@ exclude = [
     "examples/esp32/bsp-listener",
     "examples/esp32/qemu-talker",
     "examples/esp32/qemu-listener",
+    # Verus verification crate (requires Verus toolchain, excluded from workspace)
+    "packages/verification/nano-ros-verification",
 ]
 
 [workspace.package]

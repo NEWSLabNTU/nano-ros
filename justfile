@@ -840,6 +840,23 @@ verify-kani:
     fi
     echo "[OK] All Kani proofs verified"
 
+# Run Verus unbounded deductive verification (requires Verus toolchain)
+# Proves properties for ALL inputs using Z3 SMT solver
+verify-verus:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Verus Verification ==="
+    VERUS_DIR="$(pwd)/tools"
+    if [ ! -x "$VERUS_DIR/verus" ]; then
+        echo "Verus not found at $VERUS_DIR/verus"
+        echo "Run 'just setup-verus' to install"
+        exit 1
+    fi
+    export PATH="$VERUS_DIR:$PATH"
+    cd packages/verification/nano-ros-verification
+    cargo verus verify
+    echo "[OK] All Verus proofs verified"
+
 # =============================================================================
 # Zenoh
 # =============================================================================
@@ -1064,6 +1081,55 @@ regenerate-bindings: clean-bindings generate-bindings
 # Setup & Cleanup
 # =============================================================================
 
+# Download Verus binary from GitHub releases to tools/verus
+setup-verus:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    echo "=== Verus Setup ==="
+    VERUS_DIR="tools"
+    VERUS_BIN="$VERUS_DIR/verus"
+    if [ -x "$VERUS_BIN" ]; then
+        echo "Verus already installed at $VERUS_BIN"
+        "$VERUS_BIN" --version
+        exit 0
+    fi
+    # Determine platform suffix for release asset
+    OS=$(uname -s)
+    ARCH=$(uname -m)
+    case "$OS-$ARCH" in
+        Linux-x86_64)   PLATFORM="x86-linux" ;;
+        Darwin-x86_64)  PLATFORM="x86-macos" ;;
+        Darwin-arm64)   PLATFORM="arm64-macos" ;;
+        Darwin-aarch64) PLATFORM="arm64-macos" ;;
+        *)              echo "Unsupported platform: $OS-$ARCH"; exit 1 ;;
+    esac
+    # Query GitHub API for latest release download URL
+    API_URL="https://api.github.com/repos/verus-lang/verus/releases/latest"
+    echo "Querying latest Verus release..."
+    DOWNLOAD_URL=$(curl -fsSL "$API_URL" | python3 -c "import sys,json;[print(a['browser_download_url']) for a in json.load(sys.stdin)['assets'] if a['name'].endswith('-${PLATFORM}.zip')]" | head -1)
+    if [ -z "$DOWNLOAD_URL" ]; then
+        echo "ERROR: No release asset found for platform $PLATFORM"
+        exit 1
+    fi
+    echo "Downloading $DOWNLOAD_URL..."
+    ZIPFILE="/tmp/verus-${PLATFORM}.zip"
+    curl -fsSL "$DOWNLOAD_URL" -o "$ZIPFILE"
+    # Extract to tools/ (zip contains verus-<platform>/ directory)
+    TMPDIR=$(mktemp -d)
+    unzip -q "$ZIPFILE" -d "$TMPDIR"
+    mkdir -p "$VERUS_DIR"
+    cp -r "$TMPDIR"/verus-${PLATFORM}/* "$VERUS_DIR/"
+    rm -rf "$TMPDIR" "$ZIPFILE"
+    chmod +x "$VERUS_BIN" "$VERUS_DIR/cargo-verus" "$VERUS_DIR/z3" "$VERUS_DIR/rust_verify"
+    # Install required Rust toolchain
+    REQUIRED_TC=$("$VERUS_BIN" --version 2>&1 | grep 'Toolchain:' | sed 's/.*Toolchain: //' || true)
+    if [ -n "$REQUIRED_TC" ]; then
+        echo "Installing required toolchain: $REQUIRED_TC"
+        rustup toolchain install "$REQUIRED_TC"
+    fi
+    "$VERUS_BIN" --version
+    echo "Verus setup complete."
+
 # Install toolchains and tools (interactive — lists actions and asks for confirmation)
 setup:
     #!/usr/bin/env bash
@@ -1080,10 +1146,12 @@ setup:
     echo "       - thumbv7em-none-eabihf  (ARM Cortex-M4F)"
     echo "       - thumbv7m-none-eabi     (ARM Cortex-M3)"
     echo "       - riscv32imc-unknown-none-elf (ESP32-C3 RISC-V)"
-    echo "  5. Install cargo tools:"
+    echo "  5. Install cargo tools + verification toolchains:"
     echo "       - cargo-nextest          (test runner)"
     echo "       - espflash               (ESP32 flash tool)"
     echo "       - cargo-nano-ros         (message binding generator)"
+    echo "       - kani-verifier          (bounded model checking)"
+    echo "       - verus                  (deductive verification)"
     echo "  6. Build Espressif QEMU from source → ~/.local/bin/qemu-system-riscv32"
     echo "     (ESP32-C3 emulator — requires git, ninja, python3, pkg-config,"
     echo "      libglib2.0-dev, libpixman-1-dev, libgcrypt20-dev, libslirp-dev)"
@@ -1149,12 +1217,13 @@ setup:
     rustup +nightly target add thumbv7m-none-eabi
     echo ""
 
-    echo "=== [5/6] Installing cargo tools ==="
+    echo "=== [5/6] Installing cargo tools + verification toolchains ==="
     cargo install cargo-nextest --locked
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
     cargo install --locked kani-verifier && cargo kani setup || echo "WARNING: kani install failed (non-fatal)"
+    just setup-verus || echo "WARNING: Verus setup failed (non-fatal)"
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
     echo ""
 

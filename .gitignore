@@ -17,3 +17,6 @@ __pycache__/
 # Generated message bindings in examples (recreated by: just generate-bindings)
 # NOTE: packages/interfaces/rcl-interfaces/generated/ is NOT gitignored — it's a workspace member
 examples/**/generated/
+
+# Verus binary (downloaded by: just setup-verus)
+tools/

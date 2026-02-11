@@ -1,0 +1,19 @@
+[package]
+name = "nano-ros-verification"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Verus deductive verification proofs for nano-ros"
+
+[package.metadata.verus]
+verify = true
+
+[lints.rust]
+unexpected_cfgs = { level = "allow", check-cfg = ['cfg(verus_keep_ghost_body)', 'cfg(verus_keep_ghost)'] }
+
+[dependencies]
+vstd = "0.0.0-2026-02-08-0120"
+nano-ros-serdes = { path = "../../core/nano-ros-serdes", default-features = false }
+nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
+nano-ros-params = { path = "../../core/nano-ros-params", default-features = false }
+nano-ros-node = { path = "../../core/nano-ros-node", default-features = false, features = ["alloc"] }
