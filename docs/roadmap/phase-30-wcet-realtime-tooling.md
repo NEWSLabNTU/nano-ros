@@ -208,32 +208,41 @@ Summary: 45 functions, max stack = 512 bytes
 - `scripts/stack-analysis.sh` — stack analysis script
 - `justfile` — `check-stack` recipe (replaces `analyze-stack`), `setup` updated
 
-### 30.3: cargo-show-asm for Critical Path Inspection
+### 30.3: cargo-show-asm for Critical Path Inspection — Complete
 
-**Goal:** Document generated assembly for timing-critical functions so developers can reason about cycle counts.
+**Goal:** Provide assembly inspection and throughput analysis for timing-critical functions.
+
+**Status:** Implemented. Justfile recipes wrap `cargo-show-asm` with ergonomic defaults for both host and embedded targets.
+
+**What was delivered:**
+
+1. **`cargo-show-asm` installed via `just setup`** — added to the cargo tools step (non-fatal if install fails).
+
+2. **Three justfile recipes:**
+   - `just show-asm <pkg> <fn> [target]` — show assembly with interleaved Rust source (`--rust`). When a `target` is specified, automatically passes `--no-default-features` for `no_std` compatibility.
+   - `just show-asm-mca <pkg> <fn> [target]` — run llvm-mca throughput analysis (`--mca`) on a function.
+   - `just show-asm-list <pkg> [target]` — list all non-inlined functions in a crate (useful for finding inspectable symbols).
+
+3. **Key finding:** Primitive CDR methods (`write_i32`, `write_u32`, `read_i32`, etc.) are fully inlined at release optimization — they don't appear as standalone symbols. The non-inlined CDR functions are `write_string`, `read_string`, `new_with_header`, and `as_slice`.
 
 **Usage:**
 
 ```bash
-# Inspect publish serialization
-cargo asm --target thumbv7m-none-eabi -p nano-ros-bsp-qemu \
-    'nano_ros_bsp_qemu::publisher::Publisher<M>::publish'
+# List available functions in a crate
+just show-asm-list nano-ros-serdes
+just show-asm-list nano-ros-serdes thumbv7m-none-eabi
 
-# Run llvm-mca for throughput estimate
-cargo asm --target thumbv7m-none-eabi -p nano-ros-bsp-qemu \
-    'nano_ros_bsp_qemu::publisher::Publisher<M>::publish' --llvm-mca
+# Inspect CDR string serialization (host x86_64)
+just show-asm nano-ros-serdes 'CdrWriter::write_string'
 
-# Inspect CDR serialization for a specific message type
-cargo asm --target thumbv7m-none-eabi -p nano-ros-core \
-    'nano_ros_core::CdrWriter::write_i32'
-```
+# Inspect CDR string serialization (embedded ARM Cortex-M)
+just show-asm nano-ros-serdes 'CdrWriter::write_string' thumbv7m-none-eabi
 
-**Justfile recipe:**
+# Throughput estimate for CDR reader
+just show-asm-mca nano-ros-serdes 'CdrReader::read_string'
 
-```just
-# Inspect assembly of critical functions
-show-asm target='thumbv7m-none-eabi' fn='':
-    cargo asm --target {{target}} {{fn}}
+# Inspect core types
+just show-asm nano-ros-core 'Duration::from_nanos'
 ```
 
 **When to use:**
@@ -777,7 +786,7 @@ verus! {
 | 30.2b | Stack analysis: STM32F4 config fix (`[build] target`) | 10 min | **Done** | L3 |
 | 30.2c | Stack analysis: Zephyr staticlib support (`--elf` flag) | 0.5 day | **Done** | L3 |
 | 30.2d | Stack analysis: C examples (gcc `-fstack-usage` parser) | 1 day | **Done** | L3 |
-| 30.3 | cargo-show-asm recipes + critical function docs | 0.5 day | — |
+| 30.3 | cargo-show-asm recipes + critical function docs | 0.5 day | **Done** | L4 |
 | 30.4 | Kani proof harnesses for serdes/core/params | 2–3 days | **High** | L1, L3 |
 | 30.5 | CBMC proof harnesses for C API | 3–5 days | **High** | L1, L2 |
 | 30.6 | Kani function contracts for transport/node | 3–4 days | Medium | L1, L3 |

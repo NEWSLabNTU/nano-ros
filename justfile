@@ -716,6 +716,43 @@ qemu-help:
 # Static Analysis
 # =============================================================================
 
+# Inspect generated assembly for a function (requires cargo-show-asm)
+# Usage: just show-asm <package> <function> [target]
+# Examples:
+#   just show-asm nano-ros-serdes 'CdrWriter::write_string'
+#   just show-asm nano-ros-serdes 'CdrWriter::write_string' thumbv7m-none-eabi
+#   just show-asm nano-ros-core 'Duration::from_nanos'
+show-asm pkg fn target="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(-p "{{pkg}}" --lib "{{fn}}" --rust)
+    if [[ -n "{{target}}" ]]; then
+        args+=(--target "{{target}}" --no-default-features)
+    fi
+    cargo asm "${args[@]}"
+
+# Show llvm-mca throughput analysis for a function (requires cargo-show-asm)
+# Usage: just show-asm-mca <package> <function> [target]
+show-asm-mca pkg fn target="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(-p "{{pkg}}" --lib "{{fn}}" --mca)
+    if [[ -n "{{target}}" ]]; then
+        args+=(--target "{{target}}" --no-default-features)
+    fi
+    cargo asm "${args[@]}"
+
+# List all non-inlined functions in a crate (useful for finding inspectable symbols)
+# Usage: just show-asm-list <package> [target]
+show-asm-list pkg target="":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    args=(-p "{{pkg}}" --lib)
+    if [[ -n "{{target}}" ]]; then
+        args+=(--target "{{target}}" --no-default-features)
+    fi
+    cargo asm "${args[@]}" || true
+
 # Analyze per-function stack usage (requires nightly + llvm-tools)
 # Usage: just check-stack [example-dir] [top]
 # Default: examples/qemu/rs-wcet-bench, top 30
@@ -1097,6 +1134,7 @@ setup:
     cargo install cargo-nextest --locked
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked || echo "WARNING: rustfilt install failed (non-fatal)"
+    cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
     echo ""
 
