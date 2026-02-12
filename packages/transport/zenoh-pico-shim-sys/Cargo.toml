@@ -19,8 +19,8 @@ default = []
 posix = []
 zephyr = []
 bare-metal = []
-# Backwards-compatible alias: smoltcp implies bare-metal + TCP + C shims
-smoltcp = ["bare-metal", "link-tcp", "c-network-shim", "c-system-shim"]
+# Backwards-compatible alias: smoltcp implies bare-metal + TCP
+smoltcp = ["bare-metal", "link-tcp"]
 # Include the C network.c shim (provides _z_open_tcp etc. in C).
 # Disable this when using nano-ros-transport-smoltcp (which provides them in Rust).
 c-network-shim = []
@@ -40,9 +40,10 @@ link-raweth = []
 # and include/zenoh-pico.h). Only supported for native targets.
 system-zenohpico = []
 # Include the default Rust platform implementation for smoltcp.
-# BSP crates that provide their own bridge.rs should NOT enable this
-# (they only need "smoltcp" for the C platform files).
-smoltcp-platform-rust = ["smoltcp"]
+# BSP crates that provide their own bridge.rs should NOT enable this.
+# Includes C shims because platform_smoltcp.rs provides smoltcp_* symbols
+# and system.c/network.c provide the z_* → smoltcp_* translation.
+smoltcp-platform-rust = ["smoltcp", "c-network-shim", "c-system-shim"]
 # Standard library support
 std = []
 

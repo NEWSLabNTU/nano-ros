@@ -37,9 +37,10 @@
 // ============================================================================
 
 #ifdef ZENOH_SHIM_SMOLTCP
-// External Rust FFI functions for smoltcp platform initialization
+// External Rust FFI functions for smoltcp platform
 extern int32_t smoltcp_init(void);
 extern void smoltcp_cleanup(void);
+extern uint64_t smoltcp_clock_now_ms(void);
 #endif
 
 // ============================================================================

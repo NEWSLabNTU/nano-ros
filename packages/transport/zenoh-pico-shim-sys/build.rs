@@ -295,8 +295,12 @@ fn main() {
 
     // Rerun triggers
     println!("cargo:rerun-if-changed=c/shim/zenoh_shim.c");
-    println!("cargo:rerun-if-changed=c/platform_smoltcp/system.c");
-    println!("cargo:rerun-if-changed=c/platform_smoltcp/network.c");
+    if use_c_system_shim {
+        println!("cargo:rerun-if-changed=c/platform_smoltcp/system.c");
+    }
+    if use_c_network_shim {
+        println!("cargo:rerun-if-changed=c/platform_smoltcp/network.c");
+    }
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_bare_metal_platform.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/errno_override.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_config.h");

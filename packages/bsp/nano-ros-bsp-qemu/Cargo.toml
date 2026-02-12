@@ -10,8 +10,8 @@ readme = "README.md"
 name = "nano_ros_bsp_qemu"
 
 [dependencies]
-# Zenoh FFI bindings for smoltcp platform
-zenoh-pico-shim-sys = { path = "../../transport/zenoh-pico-shim-sys", features = ["smoltcp"] }
+# Zenoh FFI bindings for smoltcp platform (C shims provide z_* → smoltcp_* translation)
+zenoh-pico-shim-sys = { path = "../../transport/zenoh-pico-shim-sys", features = ["smoltcp", "c-network-shim", "c-system-shim"] }
 lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp" }
 
 # Embedded dependencies

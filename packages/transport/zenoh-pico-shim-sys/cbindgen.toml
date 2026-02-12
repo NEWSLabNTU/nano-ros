@@ -49,8 +49,36 @@ include = ["ffi"]
 exclude = ["platform_smoltcp"]
 
 [export]
-# Include all exported items
-exclude = []
+# Exclude smoltcp platform FFI (provided by BSP bridge.rs or platform crates, not part of public API)
+exclude = [
+    "PollCallbackFn",
+    "smoltcp_alloc",
+    "smoltcp_realloc",
+    "smoltcp_free",
+    "smoltcp_random_u32",
+    "smoltcp_set_clock_ms",
+    "smoltcp_clock_now_ms",
+    "smoltcp_set_poll_callback",
+    "smoltcp_poll",
+    "smoltcp_init",
+    "smoltcp_cleanup",
+    "smoltcp_socket_open",
+    "smoltcp_socket_connect",
+    "smoltcp_socket_is_connected",
+    "smoltcp_socket_close",
+    "smoltcp_socket_can_recv",
+    "smoltcp_socket_can_send",
+    "smoltcp_socket_recv",
+    "smoltcp_socket_send",
+    "smoltcp_socket_push_rx",
+    "smoltcp_socket_pop_tx",
+    "smoltcp_socket_get_remote",
+    "smoltcp_socket_set_connected",
+    "POLL_CALLBACK",
+    "HEAP",
+    "HEAP_POS",
+    "RANDOM_STATE",
+]
 include = [
     # Shim API - Session lifecycle
     "zenoh_shim_init",
@@ -83,7 +111,6 @@ include = [
     # Types
     "ShimCallback",
     "ShimQueryCallback",
-    "PollCallback",
     # Constants
     "ZENOH_SHIM_MAX_PUBLISHERS",
     "ZENOH_SHIM_MAX_SUBSCRIBERS",
@@ -100,27 +127,4 @@ include = [
     "ZENOH_SHIM_ERR_FULL",
     "ZENOH_SHIM_ERR_INVALID",
     "ZENOH_SHIM_ERR_PUBLISH",
-    # smoltcp platform FFI
-    "smoltcp_alloc",
-    "smoltcp_realloc",
-    "smoltcp_free",
-    "smoltcp_random_u32",
-    "smoltcp_set_clock_ms",
-    "smoltcp_clock_now_ms",
-    "smoltcp_set_poll_callback",
-    "smoltcp_poll",
-    "smoltcp_init",
-    "smoltcp_cleanup",
-    "smoltcp_socket_open",
-    "smoltcp_socket_connect",
-    "smoltcp_socket_is_connected",
-    "smoltcp_socket_close",
-    "smoltcp_socket_can_recv",
-    "smoltcp_socket_can_send",
-    "smoltcp_socket_recv",
-    "smoltcp_socket_send",
-    "smoltcp_socket_push_rx",
-    "smoltcp_socket_pop_tx",
-    "smoltcp_socket_get_remote",
-    "smoltcp_socket_set_connected",
 ]

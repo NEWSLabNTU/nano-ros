@@ -223,48 +223,39 @@ heapless = "0.8"
 - [x] All zenoh-pico system symbols resolved at link time (no undefined symbol errors when linked with transport crate)
 - [x] `just quality` passes
 
-### 32.4: Remove C shim layer
+### 32.4: Decouple C shim layer — Complete
 
 **Effort:** 1 day
 **Dependencies:** 32.2, 32.3
 
-Remove the C shim files that translated between zenoh-pico symbols and custom `smoltcp_*` FFI. These are no longer needed because Rust crates implement zenoh-pico symbols directly.
+Decouple the C shim files (`system.c`, `network.c`) from the default bare-metal path. New platform/transport crates use `bare-metal` + `link-tcp` without C shims; old BSPs explicitly opt in to `c-network-shim` + `c-system-shim`. The `smoltcp_*` symbols were removed from the public API header (`zenoh_shim.h`).
 
-**Files to remove:**
-- `packages/transport/zenoh-pico-shim-sys/c/platform_smoltcp/system.c`
-- `packages/transport/zenoh-pico-shim-sys/c/platform_smoltcp/network.c`
-
-**Files to update:**
-- `zenoh-pico-shim-sys/build.rs` — stop compiling `system.c` and `network.c` when `bare-metal` feature is active
-- `zenoh-pico-shim-sys/cbindgen.toml` — remove `smoltcp_*` symbols from export list
-- `zenoh-pico-shim-sys/c/include/zenoh_shim.h` — remove `smoltcp_*` declarations
-
-**Preserve:**
-- `zenoh_bare_metal_platform.h` — still needed for platform type definitions
-- `zenoh_generic_platform.h` — redirect header
-- `zenoh_generic_config.h` — replaced by generated config header but keep for reference
-- `zenoh_shim.c` — nano-ros's own simplified wrapper (not part of the shim layer)
+**Note:** `system.c` and `network.c` are NOT deleted yet — BSPs still need them until migrated in 32.5-32.7. File deletion is deferred to 32.10 tidy.
 
 **Work items:**
 - [x] Add `c-system-shim` feature to `zenoh-pico-shim-sys/Cargo.toml` (gates `system.c`, parallel to `c-network-shim`) *(done in 32.3 as prerequisite)*
 - [x] Update `smoltcp` alias to include `c-system-shim` *(done in 32.3 as prerequisite)*
 - [x] Gate `system.c` compilation in `build_c_shim()` on `use_c_system_shim` *(done in 32.3 as prerequisite)*
 - [x] Gate `system.c` compilation in `build_zenoh_pico_embedded()` on `use_c_system_shim` *(done in 32.3 as prerequisite)*
-- [ ] Remove `c-network-shim` from `smoltcp` alias (32.2 already provides Rust TCP symbols)
-- [ ] Remove `c-system-shim` from `smoltcp` alias (32.3 provides Rust system symbols)
-- [ ] Verify no crate still enables the C shim features
-- [ ] Delete `c/platform_smoltcp/network.c`
-- [ ] Delete `c/platform_smoltcp/system.c`
-- [ ] Remove `smoltcp_*` symbols from `cbindgen.toml` export list
-- [ ] Remove `smoltcp_*` declarations from generated `zenoh_shim.h`
-- [ ] Update `build.rs` rerun-if-changed list (remove `network.c`, `system.c`)
+- [x] Remove `c-network-shim` and `c-system-shim` from `smoltcp` alias (`smoltcp = ["bare-metal", "link-tcp"]`)
+- [x] Add `c-network-shim` + `c-system-shim` to `smoltcp-platform-rust` alias (needs C shims for z_* → smoltcp_* translation)
+- [x] Add `c-network-shim` + `c-system-shim` explicitly to BSP Cargo.toml files (4 BSPs)
+- [x] Remove `smoltcp_*` cbindgen stubs from `ffi.rs` and `PollCallback` type
+- [x] Remove `smoltcp_*` entries from `cbindgen.toml` export list, add to exclude list
+- [x] Remove `PollCallback` re-export from `zenoh-pico-shim/src/lib.rs`
+- [x] Regenerate `zenoh_shim.h` — no `smoltcp_*` declarations
+- [x] Add `smoltcp_clock_now_ms` extern declaration to `zenoh_shim.c` (was previously in generated header)
+- [x] Gate `build.rs` rerun-if-changed for `system.c`/`network.c` on their respective features
+- [ ] ~~Delete `c/platform_smoltcp/network.c`~~ *(deferred to 32.10 — BSPs still need them)*
+- [ ] ~~Delete `c/platform_smoltcp/system.c`~~ *(deferred to 32.10 — BSPs still need them)*
 
 **Passing criteria:**
-- [ ] No `smoltcp_*` FFI symbols in `zenoh-pico-shim-sys` crate output
-- [ ] `network.c` and `system.c` deleted from source tree
-- [ ] `cargo check -p zenoh-pico-shim-sys --features bare-metal,link-tcp` succeeds (no C shim files needed)
-- [ ] QEMU BSP examples still build (BSP still has its own `bridge.rs` + `clock.rs` at this point)
-- [ ] `just quality` passes
+- [x] No `smoltcp_*` symbols in `zenoh_shim.h` (public API header)
+- [x] `cargo check -p zenoh-pico-shim-sys --features smoltcp` succeeds (smoltcp alias no longer includes C shims)
+- [x] `cargo check -p zenoh-pico-shim-sys --features bare-metal,link-tcp` succeeds (no C shim files)
+- [x] QEMU BSP examples still build (BSPs explicitly opt in to C shim features)
+- [x] Platform crate builds (`cargo check --target thumbv7m-none-eabi` in `nano-ros-platform-qemu`)
+- [x] `just quality` passes
 
 ### 32.5: Migrate `nano-ros-bsp-qemu` to wrapper
 
@@ -452,11 +443,13 @@ just test-c           # C API tests
 **Tidy jobs** (no backwards compat maintained after this phase):
 - Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys`
 - Remove `smoltcp` alias feature from `zenoh-pico-shim-sys` (done in 32.8)
+- Remove `c-network-shim` and `c-system-shim` features from `zenoh-pico-shim-sys` (done in 32.8)
 - Remove all `shim-*` feature names from `nano-ros`, `nano-ros-node`, `nano-ros-transport`
 - Delete BSP wrapper crates (`packages/bsp/nano-ros-bsp-{qemu,esp32,esp32-qemu,stm32f4}/`) — examples depend on platform+transport crates directly
 - Remove any remaining `smoltcp_*` symbol references
 - Remove static `zenoh_generic_config.h` from `c/platform_smoltcp/` (replaced by generated header)
 - Delete `c/platform_smoltcp/` directory entirely (C shim removed in 32.4)
+- Remove `c_network_shim` / `c_system_shim` cfg gates and `check-cfg` entries from `zenoh-pico-shim-sys`
 - Clean up unused imports and dead code across all touched crates
 - Remove `packages/bsp/` directory if empty (only `nano-ros-bsp-zephyr` may remain)
 - Audit `.cargo/config.toml` in examples for stale `[patch.crates-io]` entries referencing old BSP crates
@@ -468,6 +461,8 @@ just test-c           # C API tests
 - [ ] Run `just test-qemu-esp32` — ESP32-C3 QEMU tests
 - [ ] Run `just test-c` — C API tests
 - [ ] Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys` (if not done in 32.8)
+- [ ] Remove `c-network-shim` and `c-system-shim` features from `zenoh-pico-shim-sys` (if not done in 32.8)
+- [ ] Remove `c_network_shim` / `c_system_shim` cfg gates and `check-cfg` entries from `zenoh-pico-shim-sys`
 - [ ] Delete BSP wrapper crates: `packages/bsp/nano-ros-bsp-{qemu,esp32,esp32-qemu,stm32f4}/`
 - [ ] Delete `c/platform_smoltcp/` directory entirely (if not done in 32.4)
 - [ ] Remove any remaining `smoltcp_*` symbol references across codebase
@@ -484,6 +479,8 @@ just test-c           # C API tests
 - [ ] `just test-c` passes
 - [ ] `grep -r smoltcp_ packages/` returns zero hits (no `smoltcp_*` symbols remain)
 - [ ] `grep -r shim-posix packages/` returns zero hits (no `shim-*` features remain)
+- [ ] `grep -r c-network-shim packages/` returns zero hits (transitional features removed)
+- [ ] `grep -r c-system-shim packages/` returns zero hits (transitional features removed)
 - [ ] No BSP wrapper crates in `packages/bsp/` (except `nano-ros-bsp-zephyr`)
 - [ ] No `c/platform_smoltcp/` directory exists
 - [ ] Clean clippy output with zero warnings

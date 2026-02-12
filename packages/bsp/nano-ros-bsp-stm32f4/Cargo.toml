@@ -31,6 +31,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
 ] }
 
 # zenoh-pico shim with smoltcp platform backend
+# zenoh-pico-shim/smoltcp enables smoltcp-platform-rust which includes C shims
 zenoh-pico-shim = { path = "../../transport/zenoh-pico-shim", default-features = false, features = ["smoltcp"] }
 zenoh-pico-shim-sys = { path = "../../transport/zenoh-pico-shim-sys", default-features = false, features = ["smoltcp"] }
 
