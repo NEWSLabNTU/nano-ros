@@ -93,7 +93,7 @@ just doc            # Generate docs
 
 # Formal verification
 just verify-kani    # Kani bounded model checking (82 harnesses)
-just verify-verus   # Verus unbounded deductive proofs (57 proofs)
+just verify-verus   # Verus unbounded deductive proofs (65 proofs)
 just verify         # Both Kani + Verus
 
 # Message bindings
@@ -344,7 +344,7 @@ nano-ros-node = { version = "*", features = ["param-services"] }
 Two complementary verification tools are used:
 
 - **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 82 harnesses across nano-ros-serdes, nano-ros-core, nano-ros-params, nano-ros-c. Run with `just verify-kani`.
-- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nano-ros-verification/` (excluded from workspace). 57 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, and parameter types. E2E data path proofs (bug existence, publish chain, executor delivery) in progress. Run with `just verify-verus`.
+- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nano-ros-verification/` (excluded from workspace). 65 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, and parameter types. Includes 8 E2E data path proofs (bug existence, publish chain, executor delivery). Run with `just verify-verus`.
 
 ```bash
 just verify          # Run both Kani + Verus (requires both toolchains)

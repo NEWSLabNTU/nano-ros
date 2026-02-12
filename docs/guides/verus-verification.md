@@ -7,7 +7,7 @@ For architecture and proof targets, see [phase-31-verus-verification.md](../road
 
 ```bash
 just setup-verus     # Download Verus binary to tools/
-just verify-verus    # Run all Verus proofs (18 verified)
+just verify-verus    # Run all Verus proofs (67 verified)
 just verify          # Run both Kani + Verus
 ```
 
@@ -114,7 +114,9 @@ pub struct TimerGhost {
 ```
 
 Ghost models have weaker guarantees than `assume_specification`. Correctness
-relies on manual comparison with the production source code.
+relies on manual comparison with the production source code. See
+[Ghost Model Validation Strategy](../design/ghost-model-validation.md) for the
+three-layer approach to detecting drift between ghost models and production code.
 
 ## Trust Levels
 
@@ -190,7 +192,8 @@ packages/verification/nano-ros-verification/src/
 ├── cdr.rs            # CDR round-trip integrity proofs
 ├── time.rs           # Duration/Time arithmetic proofs
 ├── action.rs         # GoalStatus state machine proofs
-└── params.rs         # ParameterValue + range proofs
+├── params.rs         # ParameterValue + range proofs
+└── e2e.rs            # End-to-end data path proofs
 ```
 
 Proofs are organized by what they guarantee to the application developer, not

@@ -4,7 +4,7 @@
 
 Prove real-time scheduling guarantees, communication reliability properties, core algorithm correctness, and end-to-end data path properties for **all inputs** using [Verus](https://github.com/verus-lang/verus) SMT-based deductive verification. Complements Kani bounded model checking (Phase 30.4/30.5) — same properties, stronger guarantees.
 
-Phase 31.1–31.5 established 57 unbounded proofs across scheduling, CDR, time arithmetic, actions, and parameters. Phase 31.6–31.8 extends verification to the E2E data path: proving bug existence (before fix), fixing subscriber bugs, and proving correctness (after fix). See [E2E Verification Analysis](../design/e2e-verification-analysis.md) for the full data path trace and findings.
+Phase 31.1–31.5 established 57 unbounded proofs across scheduling, CDR, time arithmetic, actions, and parameters. Phase 31.6–31.8 extended verification to the E2E data path: proving bug existence (before fix), fixing subscriber bugs, and proving correctness (after fix) — bringing the total to **67 verified proofs**. See [E2E Verification Analysis](../design/e2e-verification-analysis.md) for the full data path trace and findings.
 
 ## Context
 
@@ -285,7 +285,7 @@ These underpin the tier 1 and 2 proofs — e.g., the timer drift proof relies on
 | `parameter_value_roundtrip`       | `Integer(v)` extracts to `v`, `Bool(v)` extracts to `v`   | Ghost  |
 | `parameter_value_type_tag`        | All 10 variants map to correct ParameterType discriminant | Ghost  |
 
-### Tier 4: E2E Data Path Properties (up to 10 proofs — Not started)
+### Tier 4: E2E Data Path Properties (up to 10 proofs — 8 Done)
 
 These prove properties across the full publish/subscribe data path. Based on the [E2E Verification Analysis](../design/e2e-verification-analysis.md) findings F1–F8.
 
@@ -295,24 +295,24 @@ Prove that known bugs exist, documenting them formally before they're fixed. Sam
 
 | Proof                     | Property                                                                              | Trust | Finding | Status      |
 |---------------------------|---------------------------------------------------------------------------------------|-------|---------|-------------|
-| `stuck_subscription_bug`  | `has_data ∧ stored_len > rx_buf_len` → Err returned without clearing `has_data` → stuck | Ghost | F4      | Not started |
-| `silent_truncation_bug`   | `msg_len > 1024` → `stored_len == 1024 < msg_len` with no error indication            | Ghost | F3      | Not started |
+| `stuck_subscription_bug`  | `has_data ∧ stored_len > rx_buf_len` → Err returned without clearing `has_data` → stuck | Ghost | F4      | **Done** |
+| `silent_truncation_bug`   | `msg_len > 1024` → `stored_len == 1024 < msg_len` with no error indication            | Ghost | F3      | **Done** |
 
 **Publish path properties** (`e2e.rs`, 2 proofs — ghost + math):
 
 | Proof                         | Property                                                                                       | Trust | Finding | Status      |
 |-------------------------------|------------------------------------------------------------------------------------------------|-------|---------|-------------|
-| `publish_error_propagation`   | If `publish()` returns `Ok(())`, then `publish_raw()` was called and returned `Ok`              | Ghost | F7      | Not started |
-| `sequence_number_monotonicity`| For sequential `publish_raw()` calls, `s1 < s2` (strictly increasing sequence numbers)          | Math  | F8      | Not started |
+| `publish_error_propagation`   | If `publish()` returns `Ok(())`, then `publish_raw()` was called and returned `Ok`              | Ghost | F7      | **Done** |
+| `sequence_number_monotonicity`| For sequential `publish_raw()` calls, `s1 < s2` (strictly increasing sequence numbers)          | Math  | F8      | **Done** |
 
 **Executor delivery guarantees** (`e2e.rs`, 4 proofs — linked + ghost):
 
 | Proof                           | Property                                                                                           | Trust  | Finding | Status      |
 |---------------------------------|----------------------------------------------------------------------------------------------------|--------|---------|-------------|
-| `default_trigger_delivers`      | Under `Any` trigger, if any subscription has data, subscriptions are processed                      | Linked | —       | Not started |
-| `all_trigger_starvation`        | Under `All` trigger, one inactive subscription blocks all subscription processing                   | Linked | F5      | Not started |
-| `timer_non_starvation`          | `process_timers()` is always invoked regardless of trigger or subscription errors                   | Ghost  | —       | Not started |
-| `executor_progress_under_any`   | Under `Any` trigger with data available and no errors, `subscriptions_processed >= 1`               | Ghost  | —       | Not started |
+| `default_trigger_delivers`      | Under `Any` trigger, if any subscription has data, subscriptions are processed                      | Linked | —       | **Done** |
+| `all_trigger_starvation`        | Under `All` trigger, one inactive subscription blocks all subscription processing                   | Linked | F5      | **Done** |
+| `timer_non_starvation`          | `process_timers()` is always invoked regardless of trigger or subscription errors                   | Ghost  | —       | **Done** |
+| `executor_progress_under_any`   | Under `Any` trigger with data available and no errors, `subscriptions_processed >= 1`               | Ghost  | —       | **Done** |
 
 **Post-fix correctness proofs** (`e2e.rs`, 2 proofs — ghost, depends on 31.6):
 
@@ -337,11 +337,11 @@ These verify that the subscriber bug fixes are correct. Only provable after 31.6
 | Time from_nanos bug              | Constrained non-negative | **Proves failure domain**            | Done |
 | GoalStatus FSM                   | Exhaustive enum          | **Transition system model**          | Done |
 | Serialization no-corruption      | Bounded buffer sizes     | **All buffer sizes**                 | Done |
-| Stuck subscription bug           | No Kani proof            | **Bug existence proof** (ghost)      | Not started |
-| Silent truncation bug            | No Kani proof            | **Bug existence proof** (ghost)      | Not started |
-| Publish error propagation        | No Kani proof            | **Compositional chain** (ghost)      | Not started |
-| Timer non-starvation             | No Kani proof            | **Control flow analysis** (ghost)    | Not started |
-| Sequence number monotonicity     | No Kani proof            | **Atomic increment** (math)          | Not started |
+| Stuck subscription bug           | No Kani proof            | **Bug existence proof** (ghost)      | Done |
+| Silent truncation bug            | No Kani proof            | **Bug existence proof** (ghost)      | Done |
+| Publish error propagation        | No Kani proof            | **Compositional chain** (ghost)      | Done |
+| Timer non-starvation             | No Kani proof            | **Control flow analysis** (ghost)    | Done |
+| Sequence number monotonicity     | No Kani proof            | **Atomic increment** (math)          | Done |
 
 ## Running Verification
 
@@ -349,7 +349,7 @@ These verify that the subscriber bug fixes are correct. Only provable after 31.6
 # Install Verus toolchain (downloads binary + required rustc)
 just setup-verus
 
-# Run Verus verification (currently: 57 verified, 0 errors)
+# Run Verus verification (currently: 65 verified, 0 errors)
 just verify-verus
 
 # Run both Kani and Verus
@@ -365,16 +365,16 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 
 ## Work Items
 
-| ID   | Task                                            | Effort  | Status      |
-|------|-------------------------------------------------|---------|-------------|
-| 31.1 | Verus toolchain setup + crate scaffolding       | 0.5 day | **Done**    |
-| 31.2 | Tier 1: Real-time scheduling proofs (16) + time smoke tests (2) | 1.5 day | **Done** (18 verified) |
-| 31.3 | Tier 2: Communication reliability proofs (14)   | 1 day   | **Done** (14 proofs in cdr.rs + communication.rs) |
-| 31.4 | Tier 3: Core algorithm correctness proofs (13)  | 1.5 day | **Done** (13 proofs in time.rs + action.rs + params.rs) |
-| 31.5 | Integration + documentation                     | 2 hours | **Done**    |
-| 31.6 | Fix subscriber path bugs (F3, F4)               | 0.5 day | **Done**    |
-| 31.7 | Tier 4a: E2E proofs — bug existence + data path (8) | 1 day | Not started |
-| 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)  | 0.5 day | Not started |
+| ID   | Task                                                            | Effort  | Status                                                  |
+|------|-----------------------------------------------------------------|---------|---------------------------------------------------------|
+| 31.1 | Verus toolchain setup + crate scaffolding                       | 0.5 day | **Done**                                                |
+| 31.2 | Tier 1: Real-time scheduling proofs (16) + time smoke tests (2) | 1.5 day | **Done** (18 verified)                                  |
+| 31.3 | Tier 2: Communication reliability proofs (14)                   | 1 day   | **Done** (14 proofs in cdr.rs + communication.rs)       |
+| 31.4 | Tier 3: Core algorithm correctness proofs (13)                  | 1.5 day | **Done** (13 proofs in time.rs + action.rs + params.rs) |
+| 31.5 | Integration + documentation                                     | 2 hours | **Done**                                                |
+| 31.6 | Fix subscriber path bugs (F3, F4)                               | 0.5 day | **Done**                                                |
+| 31.7 | Tier 4a: E2E proofs — bug existence + data path (8)             | 1 day   | **Done** (8 proofs in e2e.rs)                           |
+| 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)                  | 0.5 day | **Done** (2 proofs in e2e.rs)                           |
 
 ### 31.1: Verus Toolchain Setup + Crate Scaffolding
 
@@ -399,7 +399,7 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 - [x] Verification crate compiles: `cd packages/verification/nano-ros-verification && cargo verus verify` exits 0
 - [x] Smoke-test proof passes (`remainder_bounded` + `duration_to_nanos_bounded` in `time.rs`)
 - [x] `just quality` still passes (418 tests, Miri clean, QEMU examples build)
-- [x] `just verify-verus` runs end-to-end (57 verified, 0 errors)
+- [x] `just verify-verus` runs end-to-end (65 verified, 0 errors)
 
 ### 31.2: Tier 1 — Real-Time Scheduling Proofs (16) + Time Smoke Tests (2)
 
@@ -591,7 +591,7 @@ Fix: Add an overflow flag to `SubscriberBuffer`. When `len > data.len()`, set th
 
 ### 31.7: Tier 4a — E2E Proofs: Bug Existence + Data Path (8 proofs)
 
-**Depends on:** None (can run in parallel with 31.6) — **Status: Not started**
+**Depends on:** None (can run in parallel with 31.6) — **Status: Done** (8 proofs, 65 total verified)
 
 Prove E2E data path properties using Verus. These proofs work on the **current** code (before 31.6 fixes), including two bug existence proofs. All proofs go in a new `e2e.rs` module.
 
@@ -629,14 +629,14 @@ Prove E2E data path properties using Verus. These proofs work on the **current**
 
 **Acceptance criteria:**
 
-- [ ] All 8 proofs pass with `just verify-verus`
-- [ ] Bug existence proofs formally document F3 and F4
-- [ ] No `assume` statements (other than `assume_specification`)
-- [ ] `just quality` passes (workspace unaffected)
+- [x] All 8 proofs pass with `just verify-verus` (65 verified, 0 errors)
+- [x] Bug existence proofs formally document F3 and F4
+- [x] No `assume` statements (other than `assume_specification`)
+- [x] `just quality` passes (workspace unaffected)
 
 ### 31.8: Tier 4b — E2E Proofs: Post-Fix Correctness (2 proofs)
 
-**Depends on:** 31.6 (code fixes) + 31.7 (ghost models) — **Status: Not started**
+**Depends on:** 31.6 (code fixes) + 31.7 (ghost models) — **Status: Done**
 
 After the subscriber bugs are fixed in 31.6, prove that the fixes are correct. These proofs reuse the ghost models from 31.7, updated to reflect the fixed code.
 
@@ -656,9 +656,9 @@ After the subscriber bugs are fixed in 31.6, prove that the fixes are correct. T
 
 **Acceptance criteria:**
 
-- [ ] Both proofs pass with `just verify-verus`
-- [ ] Ghost model transitions match the fixed production code (auditable)
-- [ ] `just quality` passes
+- [x] Both proofs pass with `just verify-verus` (67 verified, 0 errors)
+- [x] Ghost model transitions match the fixed production code (auditable)
+- [x] `just quality` passes
 
 **Out of scope for Phase 31:**
 
