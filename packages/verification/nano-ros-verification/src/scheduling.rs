@@ -3,14 +3,43 @@
 /// Proves bounded, predictable behavior of the executor's timer and trigger
 /// subsystems. These are the prerequisite for WCET analysis and schedulability proofs.
 ///
-/// Approach: The real `TimerState` has private fields and callback types that Verus
-/// cannot model (`dyn FnMut`, function pointers). Instead, we define a ghost state
-/// machine that mirrors the algorithm and prove properties about it. The ghost model
-/// is linked to the implementation by matching the logic in `TimerState::update()`
-/// and `TimerState::fire()` line-by-line.
+/// ## Trust levels
+///
+/// **Formally linked** (via `assume_specification` or `external_type_specification`):
+/// - `TriggerCondition` enum — registered via `external_type_specification` (without
+///   `external_body`), making variants transparent. Verus can match on `Any`, `All`,
+///   `Always`, `One(usize)` directly.
+/// - `TriggerCondition::evaluate()` — linked to `trigger_eval_spec` via
+///   `assume_specification`. A human auditor should confirm the 4-line spec matches
+///   the 4-line production impl in `trigger.rs:107-112`.
+///
+/// **Ghost model** (manually audited mirror of production code):
+/// - `TimerGhost` / `TimerModeGhost` — mirrors `TimerState` / `TimerMode`.
+///   Correctness relies on line-by-line correspondence with source.
+///
+/// **Pure math** (no link to production code):
+/// - `spin_once_result_consistency` — proves arithmetic identity about the
+///   `any_work() ⟺ total() > 0` relationship.
+///
+/// ## Remaining limitations
+///
+/// - `SpinOnceResult` requires `zenoh` feature → C FFI deps → can't import.
+/// - `TimerState` fields are `pub(crate)` → can't access from external crate.
 use vstd::prelude::*;
+use nano_ros_node::TriggerCondition;
 
 verus! {
+
+// ======================================================================
+// TriggerCondition Type Specification
+// ======================================================================
+
+/// Register `TriggerCondition` with Verus as a transparent type.
+///
+/// Without `external_body`, Verus sees the enum's variant structure and allows
+/// pattern matching in spec functions and proofs.
+#[verifier::external_type_specification]
+pub struct ExTriggerCondition(TriggerCondition);
 
 // ======================================================================
 // Timer State Machine Model
@@ -214,7 +243,7 @@ proof fn timer_canceled_never_fires(s: TimerGhost, delta_ms: u64)
 }
 
 // ======================================================================
-// Trigger Condition Model
+// TriggerCondition Spec Functions
 // ======================================================================
 
 /// Model of `TriggerCondition::Any` — true iff any element in the ready mask is true.
@@ -231,14 +260,65 @@ pub open spec fn trigger_all(ready: Seq<bool>) -> bool {
     ready.len() > 0 && forall|i: int| 0 <= i < ready.len() ==> ready[i]
 }
 
+/// Model of `TriggerCondition::One(index)` — true iff `ready[index]` is true.
+///
+/// Mirrors: `ready.get(*index).copied().unwrap_or(false)` in `TriggerCondition::evaluate()`.
+pub open spec fn trigger_one(ready: Seq<bool>, index: usize) -> bool {
+    if (index as int) < ready.len() {
+        ready[index as int]
+    } else {
+        false
+    }
+}
+
+/// Unified spec for `TriggerCondition::evaluate()` — matches each variant
+/// to its spec function.
+///
+/// Possible because `external_type_specification` (without `external_body`)
+/// makes `TriggerCondition` transparent, allowing variant matching.
+pub open spec fn trigger_eval_spec(cond: TriggerCondition, ready: Seq<bool>) -> bool {
+    match cond {
+        TriggerCondition::Any => trigger_any(ready),
+        TriggerCondition::All => trigger_all(ready),
+        TriggerCondition::Always => true,
+        TriggerCondition::One(index) => trigger_one(ready, index),
+    }
+}
+
+// ======================================================================
+// Formally Linked Contract
+// ======================================================================
+
+/// **Trusted contract**: `TriggerCondition::evaluate()` matches `trigger_eval_spec`.
+///
+/// This axiomatically links the production function to the verified spec.
+/// A human auditor should compare the 4-line spec (`trigger_eval_spec`) against
+/// the 4-line production implementation in `trigger.rs:107-112`.
+pub assume_specification[ TriggerCondition::evaluate ](
+    self_: &TriggerCondition,
+    ready: &[bool],
+) -> (ret: bool)
+    ensures
+        ret == trigger_eval_spec(*self_, ready@);
+
 // ======================================================================
 // Trigger Proofs
 // ======================================================================
 
+/// The spec correctly dispatches to per-variant spec functions.
+proof fn trigger_eval_spec_complete(ready: Seq<bool>, index: usize)
+    ensures
+        trigger_eval_spec(TriggerCondition::Any, ready) == trigger_any(ready),
+        trigger_eval_spec(TriggerCondition::All, ready) == trigger_all(ready),
+        trigger_eval_spec(TriggerCondition::Always, ready) == true,
+        trigger_eval_spec(TriggerCondition::One(index), ready) == trigger_one(ready, index),
+{
+}
+
 /// **Proof 6: `trigger_any_semantics`**
 ///
-/// `Any.evaluate(ready)` is true if and only if there exists an index i
-/// where ready[i] is true.
+/// The `trigger_any` spec (which models `Any.evaluate()`) is true if and only
+/// if there exists an index i where ready[i] is true.
 ///
 /// Real-time relevance: Scheduling condition is logically correct.
 proof fn trigger_any_semantics(ready: Seq<bool>)
@@ -249,8 +329,8 @@ proof fn trigger_any_semantics(ready: Seq<bool>)
 
 /// **Proof 7: `trigger_all_semantics`**
 ///
-/// `All.evaluate(ready)` is true if and only if the mask is non-empty
-/// and every element is true.
+/// The `trigger_all` spec (which models `All.evaluate()`) is true if and only
+/// if the mask is non-empty and every element is true.
 ///
 /// Real-time relevance: Sensor fusion trigger works as documented.
 proof fn trigger_all_semantics(ready: Seq<bool>)
@@ -277,6 +357,62 @@ proof fn trigger_monotonicity(ready: Seq<bool>)
         assert(ready.len() > 0);
         assert(ready[0]);
     }
+}
+
+/// **Proof 8b: `trigger_one_in_bounds`**
+///
+/// `trigger_one` returns true only when the index is within bounds and
+/// the element is true. Out-of-bounds indices always return false.
+///
+/// Real-time relevance: Index-based triggers can't access invalid handles.
+proof fn trigger_one_in_bounds(ready: Seq<bool>, index: usize)
+    ensures
+        trigger_one(ready, index) ==> (index as int) < ready.len(),
+{
+}
+
+/// **Proof 8c: `trigger_one_out_of_bounds`**
+///
+/// `trigger_one` returns false for ALL empty masks, regardless of index.
+///
+/// Real-time relevance: One-based trigger is safe when no handles registered.
+proof fn trigger_one_out_of_bounds(index: usize)
+    ensures
+        !trigger_one(Seq::<bool>::empty(), index),
+{
+}
+
+/// **Proof 8d: `trigger_any_empty_false`**
+///
+/// `trigger_any` returns false for the empty mask.
+///
+/// Real-time relevance: No spurious wake when no handles registered.
+proof fn trigger_any_empty_false()
+    ensures
+        !trigger_any(Seq::<bool>::empty()),
+{
+}
+
+/// **Proof 8e: `trigger_all_empty_false`**
+///
+/// `trigger_all` returns false for the empty mask.
+///
+/// Real-time relevance: Empty mask can't satisfy All condition.
+proof fn trigger_all_empty_false()
+    ensures
+        !trigger_all(Seq::<bool>::empty()),
+{
+}
+
+/// **Proof: `trigger_always_unconditional`**
+///
+/// `Always` is unconditional — true for any mask (empty, partial, or full).
+///
+/// Real-time relevance: Timer-only executors always process callbacks.
+proof fn trigger_always_unconditional(ready: Seq<bool>)
+    ensures
+        trigger_eval_spec(TriggerCondition::Always, ready) == true,
+{
 }
 
 /// **Proof 9: `trigger_gating_correctness`**
