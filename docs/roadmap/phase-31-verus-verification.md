@@ -14,7 +14,7 @@ Verus proves properties for all executions, forever. For safety-critical deploym
 |----------------------|-------------------------------------------|---------------------------------------------------|
 | Approach             | Bounded model checking                    | Deductive verification (Z3 SMT)                   |
 | Proof strength       | Up to unwind bound                        | **All inputs, unbounded**                         |
-| Unsafe/FFI code      | Full support (raw pointers, `extern "C"`) | Cannot verify — uses `#[verifier::external_body]` |
+| Unsafe/FFI code      | Full support (raw pointers, `extern "C"`) | Cannot verify — THIR erasure crash on fn pointers |
 | Specification burden | Low (harness + assertions)                | High (requires/ensures + proof hints)             |
 | Integration          | `#[cfg(kani)]` — zero dependencies        | Separate crate — needs vstd + Verus toolchain     |
 | Counterexamples      | Concrete failing input                    | "Verification failed" (no witness)                |
@@ -39,6 +39,7 @@ packages/verification/nano-ros-verification/
 
 ### Why a separate crate (not in-crate like Kani)
 
+- **THIR erasure crash** — Verus panics at `erase.rs:237` when encountering function pointers, `dyn Trait`, or closures during the THIR erasure phase. This runs *before* `#[verifier::external]` annotations are processed, so problematic items cannot be excluded. Production crates like `nano-ros-node` contain `fn(&[bool]) -> bool` (TriggerFn), `Box<dyn Fn(...)>` (Trigger::Boxed), and closures (`ready.iter().any(|&r| r)`). Even `#[cfg(not(feature = "verus"))]` exclusion fails because `[package.metadata.verus] verify = true` causes cargo-verus to compile deps through the Verus pipeline too.
 - **Zero production impact** — no cfg flags, feature gates, or vstd references in production crates
 - **Toolchain isolation** — Verus bundles its own modified rustc; excluded from workspace avoids conflicts
 - **Cross-crate proofs** — properties spanning nano-ros-serdes + nano-ros-core + nano-ros-node live naturally in one place
@@ -85,30 +86,60 @@ nano-ros-node = { path = "../../core/nano-ros-node", default-features = false, f
 channel = "1.93.0"
 ```
 
-## Verification Approach: `assume_specification`
+## Verification Approach
 
-Contracts are declared on real nano-ros functions as trusted axioms, then proof functions verify mathematical properties:
+Every proof falls into one of three trust levels, depending on how it connects to production code:
+
+| Level | Mechanism | What's trusted | Strength |
+|-------|-----------|----------------|----------|
+| Formally linked | `assume_specification` + `external_type_specification` | The spec matches the impl (human audit of ~4 lines) | Strongest |
+| Ghost model | Manual struct/enum mirror | Line-by-line correspondence with production source | Medium |
+| Pure math | Arithmetic identities | Only the math itself | Weakest (no code link) |
+
+### External type specifications (transparent vs opaque)
+
+Types defined outside `verus! { }` must be registered with `external_type_specification`. The presence or absence of `external_body` controls Verus's access:
+
+- **Without `external_body`** → **transparent**: Verus sees the full variant/field structure. Enums can be pattern-matched in specs and proofs. Structs with public fields are field-accessible. This is the preferred approach for types with public interfaces.
+- **With `external_body`** → **opaque**: Verus treats the type as a black box. Cannot match on variants or access fields. Use for types with private fields, complex internals, or when you only need to pass them around.
+
+### `assume_specification` (formally linked)
+
+Axiomatically declares a contract on a production function. The contract is **trusted** — a human auditor must confirm the spec matches the implementation.
 
 ```rust
 use vstd::prelude::*;
+use nano_ros_node::TriggerCondition;
 use nano_ros_core::time::Duration;
 
 verus! {
 
-// Tell Verus about the external Duration type (pub fields become accessible)
+// Transparent enum — Verus can match on Any, All, Always, One(usize)
+#[verifier::external_type_specification]
+pub struct ExTriggerCondition(TriggerCondition);
+
+// Transparent struct — Verus can access pub fields (sec, nanosec)
 #[verifier::external_type_specification]
 pub struct ExDuration(nano_ros_core::time::Duration);
 
-// Trusted contract on the real function (not re-implemented)
-pub assume_specification[ Duration::from_nanos ](nanos: i64) -> (d: Duration)
-    ensures
-        0 <= d.nanosec < 1_000_000_000,
-        d.sec == ((nanos / 1_000_000_000) as i32);
+// Spec function that matches on enum variants (only possible with transparent type)
+pub open spec fn trigger_eval_spec(cond: TriggerCondition, ready: Seq<bool>) -> bool {
+    match cond {
+        TriggerCondition::Any => exists|i: int| 0 <= i < ready.len() && ready[i],
+        TriggerCondition::All => ready.len() > 0 && forall|i: int| 0 <= i < ready.len() ==> ready[i],
+        TriggerCondition::Always => true,
+        TriggerCondition::One(index) => if (index as int) < ready.len() { ready[index as int] } else { false },
+    }
+}
 
-// Note: &self becomes a named parameter in assume_specification
-pub assume_specification[ Duration::to_nanos ](self_: &Duration) -> (n: i64)
+// Trusted contract: links production fn to verified spec
+// Note: &self becomes self_: &Type (named parameter, not method syntax)
+pub assume_specification[ TriggerCondition::evaluate ](
+    self_: &TriggerCondition,
+    ready: &[bool],
+) -> (ret: bool)
     ensures
-        n == (self_.sec as i64) * 1_000_000_000i64 + (self_.nanosec as i64);
+        ret == trigger_eval_spec(*self_, ready@);  // ready@ converts &[bool] to Seq<bool>
 
 // Unbounded proof — holds for ALL Durations with valid nanosec
 proof fn duration_to_nanos_bounded(d: Duration)
@@ -124,33 +155,65 @@ proof fn duration_to_nanos_bounded(d: Duration)
 } // verus!
 ```
 
-## Proof Targets (~35 proofs)
+### Ghost models (medium trust)
+
+For types with `pub(crate)` fields or behind feature gates that prevent import, create a manually maintained mirror:
+
+```rust
+verus! {
+
+/// Ghost representation of TimerState (mirrors nano_ros_node::timer::TimerState).
+pub struct TimerGhost {
+    pub period_ms: u64,
+    pub elapsed_ms: u64,
+    pub mode: TimerModeGhost,
+    pub canceled: bool,
+}
+
+/// Model of TimerState::update() — auditor compares with timer.rs:302-310.
+pub open spec fn timer_update_ready(s: TimerGhost, delta_ms: u64) -> bool {
+    if s.canceled || s.mode is Inert { false }
+    else { sat_add(s.elapsed_ms, delta_ms) >= s.period_ms }
+}
+
+} // verus!
+```
+
+Ghost model correctness relies on manual comparison with the production source code. This is weaker than `assume_specification` because the mirror can drift from the real implementation.
+
+## Proof Targets
 
 Proofs are organized by what they guarantee to the application developer, not by source crate.
 
-### Tier 1: Real-Time Scheduling Guarantees (~10 proofs)
+### Tier 1: Real-Time Scheduling Guarantees (16 proofs — Done)
 
 These prove that the executor has **bounded, predictable behavior** — the prerequisite for WCET analysis and schedulability proofs. An embedded developer needs to know: "if I call `spin_once()`, how much work can it possibly do?"
 
-**Timer correctness** (nano-ros-node `timer.rs`):
+**Timer correctness** — ghost model (nano-ros-node `timer.rs`):
 
-| Proof                             | Property                                                               | Real-time relevance                                                |
-|-----------------------------------|------------------------------------------------------------------------|--------------------------------------------------------------------|
-| `timer_saturation_safety`         | `elapsed_ms.saturating_add(delta_ms)` never panics for all u64         | No overflow crash in timer accumulation                            |
-| `timer_oneshot_fires_once`        | OneShot: fire() → mode becomes Inert → update() returns false forever  | Safety-critical one-time actions can't repeat                      |
-| `timer_repeating_drift_free`      | Repeating: `elapsed -= period` preserves excess → no cumulative drift  | Control loops fire at t=0, P, 2P, 3P... not t≈0, t≈P+ε, t≈2P+2ε... |
-| `timer_repeating_elapsed_bounded` | After fire(), `elapsed_ms < period_ms` (excess is always < one period) | Timer state stays in a well-defined range                          |
-| `timer_canceled_never_fires`      | `canceled == true → update() returns false` regardless of elapsed      | Canceled timers are truly dead                                     |
+| Proof                             | Property                                                               | Real-time relevance                                                | Trust |
+|-----------------------------------|------------------------------------------------------------------------|--------------------------------------------------------------------|-------|
+| `timer_saturation_safety`         | `elapsed_ms.saturating_add(delta_ms)` never panics for all u64         | No overflow crash in timer accumulation                            | Ghost |
+| `timer_oneshot_fires_once`        | OneShot: fire() → mode becomes Inert → update() returns false forever  | Safety-critical one-time actions can't repeat                      | Ghost |
+| `timer_repeating_drift_free`      | Repeating: `elapsed -= period` preserves excess → no cumulative drift  | Control loops fire at t=0, P, 2P, 3P... not t≈0, t≈P+ε, t≈2P+2ε... | Ghost |
+| `timer_repeating_elapsed_bounded` | After fire(), `elapsed_ms < period_ms` (excess is always < one period) | Timer state stays in a well-defined range                          | Ghost |
+| `timer_canceled_never_fires`      | `canceled == true → update() returns false` regardless of elapsed      | Canceled timers are truly dead                                     | Ghost |
 
-**Trigger and scheduling** (nano-ros-node `trigger.rs`, `executor.rs`):
+**Trigger conditions** — formally linked (nano-ros-node `trigger.rs`):
 
-| Proof                          | Property                                                                               | Real-time relevance                                          |
-|--------------------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------|
-| `trigger_gating_correctness`   | trigger false → only timers fire, subscriptions_processed == 0 ∧ services_handled == 0 | Trigger controls callback scheduling without starving timers |
-| `trigger_any_semantics`        | `Any.evaluate(ready) ⟺ ∃i. ready[i]`                                                   | Scheduling condition is logically correct                    |
-| `trigger_all_semantics`        | `All.evaluate(ready) ⟺ (len > 0 ∧ ∀i. ready[i])`                                       | Sensor fusion trigger works as documented                    |
-| `trigger_monotonicity`         | `All` true → `Any` true (never the reverse)                                            | Condition hierarchy is consistent                            |
-| `spin_once_result_consistency` | `any_work() ⟺ total() > 0` and `total() == subs + services + timers` (saturating)      | Callers can trust the result for scheduling decisions        |
+| Proof                          | Property                                                                               | Real-time relevance                                          | Trust |
+|--------------------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------|-------|
+| `trigger_eval_spec_complete`   | Unified spec correctly dispatches to per-variant spec functions                        | Spec is complete and unambiguous                             | Linked |
+| `trigger_any_semantics`        | `Any.evaluate(ready) ⟺ ∃i. ready[i]`                                                   | Scheduling condition is logically correct                    | Linked |
+| `trigger_all_semantics`        | `All.evaluate(ready) ⟺ (len > 0 ∧ ∀i. ready[i])`                                       | Sensor fusion trigger works as documented                    | Linked |
+| `trigger_monotonicity`         | `All` true → `Any` true (never the reverse)                                            | Condition hierarchy is consistent                            | Linked |
+| `trigger_one_in_bounds`        | `One(i)` true → `i < len` (out-of-bounds always false)                                 | Index-based triggers can't access invalid handles            | Linked |
+| `trigger_one_out_of_bounds`    | `One(i)` false for empty mask, regardless of index                                     | One-based trigger safe when no handles registered            | Linked |
+| `trigger_any_empty_false`      | `Any` false for empty mask                                                             | No spurious wake when no handles registered                  | Linked |
+| `trigger_all_empty_false`      | `All` false for empty mask                                                             | Empty mask can't satisfy All condition                       | Linked |
+| `trigger_always_unconditional` | `Always` true for any mask (empty, partial, or full)                                   | Timer-only executors always process callbacks                | Linked |
+| `trigger_gating_correctness`   | trigger false → only timers fire, subscriptions_processed == 0 ∧ services_handled == 0 | Trigger controls callback scheduling without starving timers | Math  |
+| `spin_once_result_consistency` | `any_work() ⟺ total() > 0` and `total() == subs + services + timers` (saturating)      | Callers can trust the result for scheduling decisions        | Math  |
 
 ### Tier 2: Communication Reliability Guarantees (~10 proofs)
 
@@ -180,19 +243,21 @@ These prove properties about message handling that applications depend on for co
 | `capacity_enforcement`         | `subscriptions.len() >= MAX → create returns Err` (never silent overflow)                 | Resource exhaustion is always reported at setup time |
 | `param_server_count_invariant` | `count == entries.filter(Some).count()` and `count <= MAX_PARAMETERS` after any operation | Parameter server bookkeeping is correct              |
 
-### Tier 3: Core Algorithm Correctness (~15 proofs)
+### Tier 3: Core Algorithm Correctness (~15 proofs, 2 done)
 
 These underpin the tier 1 and 2 proofs — e.g., the timer drift proof relies on Duration arithmetic being correct.
 
-**Duration/Time arithmetic** (nano-ros-core `time.rs`):
+**Duration/Time arithmetic** — formally linked (nano-ros-core `time.rs`):
 
-| Proof                           | Property                                        | Kani Bound → Verus                                         |
-|---------------------------------|-------------------------------------------------|------------------------------------------------------------|
-| `duration_from_nanos_roundtrip` | `to_nanos(from_nanos(n)) == n`                  | ±10B → **all i64**                                         |
-| `duration_components_valid`     | `nanosec < 1e9` always                          | ±10B → **all i64**                                         |
-| `time_add_sub_inverse`          | `(t + d) - d == t`                              | bounded → **unbounded**                                    |
-| `time_ordering_consistent`      | `t1 < t2 ⟺ t1.to_nanos() < t2.to_nanos()`       | —                                                          |
-| `time_from_nanos_bug`           | Formally demonstrates missing `.unsigned_abs()` | constrained non-negative → **proves failure for negative** |
+| Proof                           | Property                                        | Kani Bound → Verus                                         | Status |
+|---------------------------------|-------------------------------------------------|------------------------------------------------------------|--------|
+| `remainder_bounded`             | `|n % 1e9| < 1e9` for all i64                   | — | **Done** |
+| `duration_to_nanos_bounded`     | `to_nanos` output in [i32::MIN*1e9, i32::MAX*1e9+999999999] | — | **Done** |
+| `duration_from_nanos_roundtrip` | `to_nanos(from_nanos(n)) == n`                  | ±10B → **all i64**                                         | Not started |
+| `duration_components_valid`     | `nanosec < 1e9` always                          | ±10B → **all i64**                                         | Not started |
+| `time_add_sub_inverse`          | `(t + d) - d == t`                              | bounded → **unbounded**                                    | Not started |
+| `time_ordering_consistent`      | `t1 < t2 ⟺ t1.to_nanos() < t2.to_nanos()`       | —                                                          | Not started |
+| `time_from_nanos_bug`           | Formally demonstrates missing `.unsigned_abs()` | constrained non-negative → **proves failure for negative** | Not started |
 
 **GoalStatus state machine** (nano-ros-core `action.rs`):
 
@@ -214,16 +279,18 @@ These underpin the tier 1 and 2 proofs — e.g., the timer drift proof relies on
 
 ## What Verus proves beyond Kani
 
-| Property                         | Kani (Phase 30)          | Verus (Phase 31)              |
-|----------------------------------|--------------------------|-------------------------------|
-| Timer drift-free scheduling      | No Kani proof            | **Proved for all u64 inputs** |
-| Timer oneshot fires exactly once | No Kani proof            | **State machine proof**       |
-| Trigger gating correctness       | No Kani proof            | **Scheduling invariant**      |
-| CDR align correctness            | offset ≤ 1024            | **All usize**                 |
-| Duration from_nanos roundtrip    | ±10B nanos               | **All i64**                   |
-| Time from_nanos bug              | Constrained non-negative | **Proves failure domain**     |
-| GoalStatus FSM                   | Exhaustive enum          | **Transition system model**   |
-| Serialization no-corruption      | Bounded buffer sizes     | **All buffer sizes**          |
+| Property                         | Kani (Phase 30)          | Verus (Phase 31)                     | Status |
+|----------------------------------|--------------------------|--------------------------------------|--------|
+| Timer drift-free scheduling      | No Kani proof            | **Proved for all u64 inputs** (ghost) | Done |
+| Timer oneshot fires exactly once | No Kani proof            | **State machine proof** (ghost)       | Done |
+| Trigger gating correctness       | No Kani proof            | **Scheduling invariant** (linked)     | Done |
+| Trigger semantics (all 4 variants) | No Kani proof          | **Formally linked** via `assume_specification` | Done |
+| Duration to_nanos bounded        | No Kani proof            | **All Durations** (linked)           | Done |
+| CDR align correctness            | offset ≤ 1024            | **All usize**                        | Not started |
+| Duration from_nanos roundtrip    | ±10B nanos               | **All i64**                          | Not started |
+| Time from_nanos bug              | Constrained non-negative | **Proves failure domain**            | Not started |
+| GoalStatus FSM                   | Exhaustive enum          | **Transition system model**          | Not started |
+| Serialization no-corruption      | Bounded buffer sizes     | **All buffer sizes**                 | Not started |
 
 ## Running Verification
 
@@ -231,24 +298,29 @@ These underpin the tier 1 and 2 proofs — e.g., the timer drift proof relies on
 # Install Verus toolchain (downloads binary + required rustc)
 just setup-verus
 
-# Run Verus verification
+# Run Verus verification (currently: 18 verified, 0 errors)
 just verify-verus
 
 # Run both Kani and Verus
+just verify
+
+# Or separately
 just verify-kani && just verify-verus
 ```
 
 The `verify-verus` recipe adds `tools/` to PATH and runs `cargo verus verify` in the verification crate. Verus requires `tools/cargo-verus`, `tools/verus`, `tools/rust_verify`, and `tools/z3` — all downloaded by `just setup-verus`.
+
+See [docs/guides/verus-verification.md](../guides/verus-verification.md) for coding practices (type specifications, trust levels, pitfalls).
 
 ## Work Items
 
 | ID   | Task                                            | Effort  | Status      |
 |------|-------------------------------------------------|---------|-------------|
 | 31.1 | Verus toolchain setup + crate scaffolding       | 0.5 day | **Done**    |
-| 31.2 | Tier 1: Real-time scheduling proofs (~10)       | 1.5 day | **Done**    |
+| 31.2 | Tier 1: Real-time scheduling proofs (16) + time smoke tests (2) | 1.5 day | **Done** (18 verified) |
 | 31.3 | Tier 2: Communication reliability proofs (~10)  | 1 day   | Not started |
-| 31.4 | Tier 3: Core algorithm correctness proofs (~15) | 1.5 day | Not started |
-| 31.5 | Integration + documentation                     | 2 hours | Not started |
+| 31.4 | Tier 3: Core algorithm correctness proofs (~13) | 1.5 day | Not started |
+| 31.5 | Integration + documentation                     | 2 hours | **Done**    |
 
 ### 31.1: Verus Toolchain Setup + Crate Scaffolding
 
@@ -273,77 +345,98 @@ The `verify-verus` recipe adds `tools/` to PATH and runs `cargo verus verify` in
 - [ ] `just quality` still passes (workspace not affected by excluded crate)
 - [ ] `just verify-verus` runs end-to-end
 
-### 31.2: Tier 1 — Real-Time Scheduling Proofs (~10)
+### 31.2: Tier 1 — Real-Time Scheduling Proofs (16) + Time Smoke Tests (2)
 
-**Depends on:** 31.1
+**Depends on:** 31.1 — **Status: Done** (18 verified, 0 errors)
 
-**Tasks:**
+**What was implemented:**
 
-1. Write `assume_specification` contracts for `TimerState::update()` and `TimerState::fire()` in `scheduling.rs`
-2. Implement timer proofs:
-   - `timer_saturation_safety` — `saturating_add` never panics for all u64
-   - `timer_oneshot_fires_once` — OneShot fire → Inert → update returns false forever
-   - `timer_repeating_drift_free` — excess preserved across fire, no cumulative drift
-   - `timer_repeating_elapsed_bounded` — after fire, `elapsed_ms < period_ms`
-   - `timer_canceled_never_fires` — canceled flag implies update returns false
-3. Write `assume_specification` contracts for `TriggerCondition::evaluate()` in `scheduling.rs`
-4. Implement trigger proofs:
-   - `trigger_any_semantics` — `Any.evaluate(ready) ⟺ ∃i. ready[i]`
-   - `trigger_all_semantics` — `All.evaluate(ready) ⟺ (len > 0 ∧ ∀i. ready[i])`
-   - `trigger_monotonicity` — All true → Any true
-   - `trigger_gating_correctness` — trigger false → only timers fire
-5. Implement `spin_once_result_consistency` — `any_work() ⟺ total() > 0`
+Timer proofs use **ghost models** (`TimerGhost`/`TimerModeGhost`) because `TimerState` has `pub(crate)` fields that cannot be accessed from an external crate. The ghost models mirror `timer.rs` field-by-field, with spec functions modeling `update()` and `fire()`.
+
+Trigger proofs use **formally linked** `assume_specification` on `TriggerCondition::evaluate()`, combined with **transparent** `external_type_specification` (without `external_body`). This allows Verus to match on all 4 enum variants (`Any`, `All`, `Always`, `One(usize)`) in spec functions — the strongest trust level.
+
+**Proofs in `scheduling.rs` (16):**
+
+1. `timer_saturation_safety` — `saturating_add` never panics for all u64 (ghost)
+2. `timer_oneshot_fires_once` — OneShot fire → Inert → update returns false forever (ghost)
+3. `timer_repeating_drift_free` — excess preserved across fire, no cumulative drift (ghost)
+4. `timer_repeating_elapsed_bounded` — after fire, `elapsed_ms < period_ms` (ghost)
+5. `timer_canceled_never_fires` — canceled flag implies update returns false (ghost)
+6. `trigger_eval_spec_complete` — unified spec correctly dispatches to per-variant specs (linked)
+7. `trigger_any_semantics` — `Any ⟺ ∃i. ready[i]` (linked)
+8. `trigger_all_semantics` — `All ⟺ (len > 0 ∧ ∀i. ready[i])` (linked)
+9. `trigger_monotonicity` — All true → Any true (linked)
+10. `trigger_one_in_bounds` — `One(i)` true → `i < len` (linked)
+11. `trigger_one_out_of_bounds` — `One(i)` false for empty mask (linked)
+12. `trigger_any_empty_false` — `Any` false for empty mask (linked)
+13. `trigger_all_empty_false` — `All` false for empty mask (linked)
+14. `trigger_always_unconditional` — `Always` true for any mask (linked)
+15. `trigger_gating_correctness` — trigger false → only timers fire (math)
+16. `spin_once_result_consistency` — `any_work() ⟺ total() > 0` (math)
+
+**Proofs in `time.rs` (2):**
+
+17. `remainder_bounded` — `|n % 1e9| < 1e9` for all i64 (linked)
+18. `duration_to_nanos_bounded` — `to_nanos` output bounded (linked)
 
 **Acceptance criteria:**
 
-- [ ] All 10 proofs listed in the Tier 1 tables pass with `just verify-verus`
-- [ ] Each proof function has `ensures` clauses matching the Property column
-- [ ] No `assume` statements (other than `assume_specification` on external functions)
+- [x] All 18 proofs pass with `just verify-verus`
+- [x] Each proof function has `ensures` clauses matching the Property column
+- [x] No `assume` statements (other than `assume_specification` on external functions)
+- [x] `just quality` passes (workspace unaffected)
 
 ### 31.3: Tier 2 — Communication Reliability Proofs (~10)
 
 **Depends on:** 31.1
 
+**Approach notes:** `CdrWriter` and `CdrReader` have `pub` fields (`buf`, `pos`), so they can use transparent `external_type_specification` — no ghost models needed. `assume_specification` can reference fields directly in ensures clauses.
+
 **Tasks:**
 
-1. Write `assume_specification` contracts for `CdrWriter::{write_u8, write_u16, write_u32, write_u64, write_i32, write_bool, write_string, align}` and `CdrReader::{read_u8, read_u16, read_u32, read_u64, read_i32, read_bool, read_string}` in `cdr.rs`
-2. Implement serialization safety proofs in `communication.rs`:
+1. Register `CdrWriter` and `CdrReader` as transparent types with `external_type_specification` (without `external_body`)
+2. Write `assume_specification` contracts for `CdrWriter::{write_u8, write_u16, write_u32, write_u64, write_i32, write_bool, write_string, align}` and `CdrReader::{read_u8, read_u16, read_u32, read_u64, read_i32, read_bool, read_string}` in `cdr.rs`
+3. Implement serialization safety proofs in `communication.rs`:
    - `serialize_never_corrupts` — overflow → Err, position unchanged
    - `position_invariant` — `position() + remaining() == buf.len()` after any op
    - `position_monotonicity` — successful writes only advance position
    - `align_correctness` — padding < alignment, result aligned, zero-filled
-3. Implement round-trip integrity proofs in `cdr.rs`:
+4. Implement round-trip integrity proofs in `cdr.rs`:
    - `roundtrip_{u8,u16,u32,u64,i32,bool}` — write then read preserves value for all inputs
    - `string_roundtrip` — content + null-termination preserved
    - `header_origin` — `new_with_header` sets origin=4, pos=4
-4. Implement resource capacity proofs in `communication.rs`:
+5. Implement resource capacity proofs in `communication.rs`:
    - `capacity_enforcement` — subscriptions at MAX → create returns Err
    - `param_server_count_invariant` — count bookkeeping correct after any op
 
 **Acceptance criteria:**
 
-- [ ] All 10 proofs listed in the Tier 2 tables pass with `just verify-verus`
+- [ ] All ~10 proofs listed in the Tier 2 tables pass with `just verify-verus`
 - [ ] CDR round-trip proofs cover all primitive types (u8, u16, u32, u64, i32, bool)
 - [ ] No `assume` statements (other than `assume_specification` on external functions)
 
-### 31.4: Tier 3 — Core Algorithm Correctness Proofs (~15)
+### 31.4: Tier 3 — Core Algorithm Correctness Proofs (~13)
 
 **Depends on:** 31.1
 
+**Approach notes:** `Duration` and `GoalStatus` are transparent types (pub fields / pub enum). Use `external_type_specification` without `external_body` — this is the same pattern that works for `TriggerCondition`. `ParameterValue` is also a pub enum. These should all be formally linked via `assume_specification` for the strongest guarantees.
+
+Two proofs (`remainder_bounded`, `duration_to_nanos_bounded`) are already done in `time.rs` from 31.2.
+
 **Tasks:**
 
-1. Implement Duration/Time arithmetic proofs in `time.rs`:
+1. Implement remaining Duration/Time arithmetic proofs in `time.rs`:
    - `duration_from_nanos_roundtrip` — `to_nanos(from_nanos(n)) == n` for all i64
    - `duration_components_valid` — `nanosec < 1_000_000_000` for all i64 input
    - `time_add_sub_inverse` — `(t + d) - d == t` unbounded
    - `time_ordering_consistent` — `t1 < t2 ⟺ t1.to_nanos() < t2.to_nanos()`
    - `time_from_nanos_bug` — proves failure domain for negative nanos without `.unsigned_abs()`
-2. Implement GoalStatus state machine proofs in `action.rs`:
+2. Register `GoalStatus` as transparent type and implement state machine proofs in `action.rs`:
    - `terminal_active_disjoint` — `is_terminal ∧ is_active` impossible
    - `valid_status_exhaustive` — `from_i8(s as i8) == Some(s)` for all 7 variants
    - `transition_validity` — valid transitions form a DAG
    - `from_i8_roundtrip` — `from_i8(to_i8(s)) == Some(s)`
-3. Implement parameter type proofs in `params.rs`:
+3. Register `ParameterValue` as transparent type and implement proofs in `params.rs`:
    - `integer_range_contains_boundary` — `contains(from) ∧ contains(to)`, step divides interval
    - `float_range_contains_boundary` — same for f64
    - `parameter_value_roundtrip` — `i64→ParameterValue→i64` identity
@@ -351,28 +444,29 @@ The `verify-verus` recipe adds `tools/` to PATH and runs `cargo verus verify` in
 
 **Acceptance criteria:**
 
-- [ ] All 15 proofs listed in the Tier 3 tables pass with `just verify-verus`
+- [ ] All ~13 proofs listed in the Tier 3 tables pass with `just verify-verus`
 - [ ] Duration/Time proofs use unbounded quantifiers (not bounded like Kani)
 - [ ] GoalStatus proofs cover all 7 variants exhaustively
 - [ ] No `assume` statements (other than `assume_specification` on external functions)
 
 ### 31.5: Integration + Documentation
 
-**Depends on:** 31.2, 31.3, 31.4
+**Depends on:** 31.2 — **Status: Done**
 
-**Tasks:**
+Completed early alongside 31.2 because Verus patterns and limitations needed documentation immediately.
 
-1. Update `just setup` banner text to mention Verus alongside Kani
-2. Mark Phase 31 complete in `CLAUDE.md` phases table
-3. Update Phase 30 doc: mark 30.9 cross-reference as complete
-4. Document any Verus subset limitations discovered during implementation (append to Limitations section)
-5. Verify full pipeline: `just verify-kani && just verify-verus`
+**What was done:**
 
-**Acceptance criteria:**
+1. Created `docs/guides/verus-verification.md` — coding practices guide covering type specifications, `assume_specification` syntax, ghost models, trust levels, pitfalls, and workflow
+2. Updated `CLAUDE.md` — verification section, commands, phase status, doc index
+3. Updated `MEMORY.md` — Verus patterns for session persistence
+4. `just verify-verus` and `just quality` both pass
 
-- [ ] `just setup` mentions Verus installation in its banner
-- [ ] `just verify-kani && just verify-verus` passes with all ~117 proofs (82 Kani + ~35 Verus)
-- [ ] Phase documentation is up to date
+**Remaining (after 31.3/31.4):**
+
+- Update `just setup` banner text to mention Verus alongside Kani
+- Mark Phase 31 complete in `CLAUDE.md` phases table
+- Final pipeline check: `just verify-kani && just verify-verus`
 
 ## Setup Integration
 
@@ -391,6 +485,14 @@ The Verus toolchain is installed via `just setup-verus` and integrated into `jus
 
 ## Limitations
 
+### Fundamental
+
+- **THIR erasure crash (`erase.rs:237`)** — Verus panics during `setup_verus_ctxt_for_thir_erasure` when encountering function pointers (`fn(&[bool]) -> bool`), `dyn Trait` (`Box<dyn Fn(...)>`), or closures (`.iter().any(|&r| r)`). This runs *before* `#[verifier::external]` annotations are processed. Consequence: **in-crate verification is not feasible** for production crates containing these constructs. The separate verification crate pattern is required, not optional.
+- **`[package.metadata.verus] verify = true` propagation** — when a crate has `verify = true`, cargo-verus also attempts to compile its dependencies through the Verus pipeline. Adding `verify = true` to any production crate that transitively depends on types with fn pointers/closures will trigger the THIR erasure crash. Only the dedicated verification crate should have `verify = true`.
+- **`pub(crate)` fields are inaccessible** — types like `TimerState` with `pub(crate)` fields cannot be registered as transparent types from an external verification crate. Ghost models (manual mirrors) are the only option, which is a weaker trust level.
+
+### Practical
+
 - High annotation burden (4:1 to 7:1 proof:code ratio)
 - Cannot verify unsafe/FFI code (nano-ros-c stays with Kani)
 - Verus supports a subset of Rust (no `dyn Trait`, limited complex borrowing)
@@ -399,6 +501,13 @@ The Verus toolchain is installed via `just setup-verus` and integrated into `jus
 - `cargo verus` is still maturing (known stability issues, fallback to direct binary)
 - Transport layer (zenoh-pico FFI) is outside verification scope — Verus proves properties of nano-ros's own logic, not network behavior
 - User callback execution time is unbounded by definition — proofs cover the framework, not application code
+
+### Mitigations discovered
+
+- **Transparent `external_type_specification`** (without `external_body`) makes public enums and structs fully accessible for matching and field access from the verification crate. This is the preferred approach for types with public interfaces.
+- **`assume_specification`** links production functions to verified specs without modifying production code. Combined with transparent types, this provides formally linked proofs at the strongest trust level.
+- **Ghost models** handle the `pub(crate)` case with medium trust. These require manual auditing against production source but still provide unbounded proofs over the model.
+- **vstd from crates.io** (`vstd = "0.0.0-2026-02-08-0120"`) works reliably. Path dependencies to `tools/vstd` do NOT work because the pre-built Verus release is missing `dependencies/prettyplease`.
 
 ## References
 
