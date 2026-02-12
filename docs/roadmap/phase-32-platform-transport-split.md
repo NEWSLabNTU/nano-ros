@@ -90,13 +90,21 @@ link-raweth = []       # sets Z_FEATURE_RAWETH_TRANSPORT=1
 
 Update `build.rs` to generate a config header from these features instead of using the hardcoded `zenoh_generic_config.h`. The `smoltcp` feature is a temporary alias for `bare-metal` + `link-tcp` until 32.8 removes it.
 
-**Deliverables:**
-- Updated `Cargo.toml` with new features
-- Updated `build.rs` to generate config header from Cargo features
-- `smoltcp` feature kept temporarily as alias (removed in 32.8)
-- Existing builds continue to work unchanged
+**Work items:**
+- [x] Add `bare-metal`, `link-tcp`, `link-udp-unicast`, `link-udp-multicast`, `link-serial`, `link-raweth` features to `Cargo.toml`
+- [x] Add `smoltcp` alias feature (`bare-metal` + `link-tcp`)
+- [x] Update `build.rs` to read `CARGO_FEATURE_LINK_*` env vars
+- [x] Generate `zenoh_generic_config.h` in `OUT_DIR` with `Z_FEATURE_LINK_*` values from Cargo features
+- [x] Ensure generated config header takes precedence over static one in include path
 
-### 32.2: Create `nano-ros-transport-smoltcp` crate
+**Passing criteria:**
+- [x] `cargo check -p zenoh-pico-shim-sys --features smoltcp` succeeds
+- [x] `cargo check -p zenoh-pico-shim-sys --features bare-metal,link-tcp` succeeds
+- [x] `cargo check -p zenoh-pico-shim-sys --features bare-metal,link-tcp,link-serial` succeeds
+- [x] QEMU BSP examples build unchanged (`cd examples/qemu/bsp-talker && cargo build --release`)
+- [x] `just quality` passes
+
+### 32.2: Create `nano-ros-transport-smoltcp` crate — Complete
 
 **Effort:** 2-3 days
 **Dependencies:** 32.1
@@ -109,12 +117,15 @@ Extract the TCP implementation from `nano-ros-bsp-qemu` into a standalone transp
 - TCP symbol implementations — rewrite to implement zenoh-pico symbols directly (`_z_open_tcp`, `_z_send_tcp`, etc.) instead of the custom `smoltcp_*` FFI
 
 **What's new:**
-- `poll.rs` — poll callback registration (`set_poll_callback(fn())`)
-- Direct `#[unsafe(no_mangle)] extern "C"` implementations of `_z_open_tcp`, `_z_close_tcp`, `_z_send_tcp`, `_z_read_tcp`, `_z_read_exact_tcp`, `_z_listen_tcp`, `_z_create_endpoint_tcp`, `_z_free_endpoint_tcp`
-- Uses `extern "C" { fn z_clock_now() -> u64; }` for timeouts (link-time resolution from platform crate)
+- Poll callback in `bridge.rs` — `set_poll_callback(fn())` + `smoltcp_poll()` FFI export
+- Direct `#[unsafe(no_mangle)] extern "C"` implementations of `_z_open_tcp`, `_z_close_tcp`, `_z_send_tcp`, `_z_read_tcp`, `_z_read_exact_tcp`, `_z_listen_tcp`, `_z_create_endpoint_tcp`, `_z_free_endpoint_tcp` in `tcp.rs`
+- Uses `extern "C" { fn smoltcp_clock_now_ms() -> u64; }` for timeouts (link-time resolution from platform crate)
+- Convenience functions: `get_socket_storage()`, `get_tcp_buffers()`, `create_and_register_sockets()`
+- Re-exports smoltcp types (`Interface`, `SocketSet`, `SocketStorage`, `TcpSocket`, `TcpSocketBuffer`, `Device`)
 
-**What's removed:**
-- All `smoltcp_*` custom FFI symbols (`smoltcp_socket_open`, `smoltcp_socket_connect`, etc.)
+**What stays in BSPs (until 32.5 migration):**
+- Legacy `smoltcp_*` FFI symbols exported from `bridge.rs` for backwards compat
+- `c-network-shim` feature in `zenoh-pico-shim-sys` gates `network.c` compilation
 
 ```toml
 # packages/transport/nano-ros-transport-smoltcp/Cargo.toml
@@ -126,11 +137,23 @@ zenoh-pico-shim-sys = { path = "../zenoh-pico-shim-sys", features = ["bare-metal
 smoltcp = { version = "0.12", default-features = false, features = ["medium-ethernet", "proto-ipv4", "socket-tcp"] }
 ```
 
-**Deliverables:**
-- New crate at `packages/transport/nano-ros-transport-smoltcp/`
-- Implements all TCP symbols from the zenoh-pico platform API
-- `SmoltcpBridge` with public `poll()` and `set_poll_callback()` API
-- Unit tests for bridge socket management
+**Work items:**
+- [x] Create `Cargo.toml` with `zenoh-pico-shim-sys` (bare-metal + link-tcp) and `smoltcp` deps
+- [x] Create `src/lib.rs` — `#![no_std]`, public API, smoltcp re-exports, convenience functions
+- [x] Create `src/bridge.rs` — `SmoltcpBridge` with socket table, staging buffers, `poll()`, internal socket ops, legacy FFI exports, poll callback
+- [x] Create `src/tcp.rs` — Rust implementations of `_z_open_tcp`, `_z_close_tcp`, `_z_read_tcp`, `_z_read_exact_tcp`, `_z_send_tcp`, `_z_listen_tcp`, `_z_create_endpoint_tcp`, `_z_free_endpoint_tcp`
+- [x] Add `c-network-shim` feature to `zenoh-pico-shim-sys/Cargo.toml`
+- [x] Update `smoltcp` alias to include `c-network-shim` (backwards compat)
+- [x] Gate `network.c` compilation in `build_c_shim()` on `use_c_network_shim`
+- [x] Gate `network.c` compilation in `build_zenoh_pico_embedded()` on `use_c_network_shim`
+- [x] Add crate to workspace `exclude` list in root `Cargo.toml`
+
+**Passing criteria:**
+- [x] `cargo check --target thumbv7m-none-eabi` in transport crate succeeds with zero warnings
+- [x] `cargo check -p zenoh-pico-shim-sys --features smoltcp` succeeds (includes `c-network-shim`)
+- [x] `cargo check -p zenoh-pico-shim-sys --features bare-metal,link-tcp` succeeds (no `network.c`)
+- [x] QEMU BSP examples build unchanged (`cd examples/qemu/bsp-talker && cargo build --release`)
+- [x] `just quality` passes (format + clippy + 418 unit tests + miri + QEMU examples)
 
 ### 32.3: Create `nano-ros-platform-qemu` crate
 
@@ -177,11 +200,28 @@ nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
 heapless = "0.8"
 ```
 
-**Deliverables:**
-- New crate at `packages/platform/nano-ros-platform-qemu/`
-- Implements all system symbols from the zenoh-pico platform API
-- Wires `nano-ros-transport-smoltcp::set_poll_callback()` in `z_sleep_ms`
-- `run_node()` API preserved (or improved) for application use
+**Work items:**
+- [ ] Create `packages/platform/nano-ros-platform-qemu/Cargo.toml` with deps on `zenoh-pico-shim-sys` (bare-metal, no `c-network-shim`), `nano-ros-transport-smoltcp`, `lan9118-smoltcp`
+- [ ] Create `src/lib.rs` — `#![no_std]`, module declarations, public API
+- [ ] Move `clock.rs` — rewrite `smoltcp_clock_now_ms` to `z_clock_now`, add `z_clock_elapsed_*`, `z_clock_advance_*`
+- [ ] Move `libc_stubs.rs` — `strlen`, `memcpy`, `memset`, `memcmp`, `strtoul`, etc.
+- [ ] Create `src/memory.rs` — `z_malloc`, `z_realloc`, `z_free` (bump allocator from BSP `bridge.rs`)
+- [ ] Create `src/random.rs` — `z_random_u8/u16/u32/u64`, `z_random_fill` (LFSR from BSP `bridge.rs`)
+- [ ] Create `src/time.rs` — `z_time_now`, `z_time_now_as_str`, `z_time_elapsed_*`, `_z_get_time_since_epoch`
+- [ ] Create `src/sleep.rs` — `z_sleep_us`, `z_sleep_ms`, `z_sleep_s` (calls `SmoltcpBridge::poll_network()` during busy-wait)
+- [ ] Create `src/socket.rs` — `_z_socket_close`, `_z_socket_wait_event`, `_z_socket_accept`, `_z_socket_set_non_blocking` (stubs)
+- [ ] Create `src/threading.rs` — `_z_task_*`, `_z_mutex_*`, `_z_condvar_*` stubs
+- [ ] Move `config.rs` — network configuration (IP, gateway, MAC)
+- [ ] Move `node.rs` — `run_node()` wiring (registers poll callback via `nano-ros-transport-smoltcp`)
+- [ ] Move `timing.rs` — DWT `CycleCounter`
+- [ ] Add crate to workspace `exclude` list
+
+**Passing criteria:**
+- [ ] `cargo check --target thumbv7m-none-eabi` in platform crate succeeds with zero warnings
+- [ ] Platform crate depends on `zenoh-pico-shim-sys` with `bare-metal` only (no `c-network-shim`)
+- [ ] Platform crate does NOT export any `smoltcp_*` symbols
+- [ ] All zenoh-pico system symbols resolved at link time (no undefined symbol errors when linked with transport crate)
+- [ ] `just quality` passes
 
 ### 32.4: Remove C shim layer
 
@@ -205,11 +245,26 @@ Remove the C shim files that translated between zenoh-pico symbols and custom `s
 - `zenoh_generic_config.h` — replaced by generated config header but keep for reference
 - `zenoh_shim.c` — nano-ros's own simplified wrapper (not part of the shim layer)
 
-**Deliverables:**
-- C shim files removed
-- `build.rs` updated to skip them for `bare-metal`
-- All `smoltcp_*` symbols eliminated from the codebase
-- `cbindgen.toml` export list cleaned up
+**Work items:**
+- [ ] Add `c-system-shim` feature to `zenoh-pico-shim-sys/Cargo.toml` (gates `system.c`, parallel to `c-network-shim`)
+- [ ] Update `smoltcp` alias to include `c-system-shim`
+- [ ] Gate `system.c` compilation in `build_c_shim()` on `use_c_system_shim`
+- [ ] Gate `system.c` compilation in `build_zenoh_pico_embedded()` on `use_c_system_shim`
+- [ ] Remove `c-network-shim` from `smoltcp` alias (32.2 already provides Rust TCP symbols)
+- [ ] Remove `c-system-shim` from `smoltcp` alias (32.3 provides Rust system symbols)
+- [ ] Verify no crate still enables the C shim features
+- [ ] Delete `c/platform_smoltcp/network.c`
+- [ ] Delete `c/platform_smoltcp/system.c`
+- [ ] Remove `smoltcp_*` symbols from `cbindgen.toml` export list
+- [ ] Remove `smoltcp_*` declarations from generated `zenoh_shim.h`
+- [ ] Update `build.rs` rerun-if-changed list (remove `network.c`, `system.c`)
+
+**Passing criteria:**
+- [ ] No `smoltcp_*` FFI symbols in `zenoh-pico-shim-sys` crate output
+- [ ] `network.c` and `system.c` deleted from source tree
+- [ ] `cargo check -p zenoh-pico-shim-sys --features bare-metal,link-tcp` succeeds (no C shim files needed)
+- [ ] QEMU BSP examples still build (BSP still has its own `bridge.rs` + `clock.rs` at this point)
+- [ ] `just quality` passes
 
 ### 32.5: Migrate `nano-ros-bsp-qemu` to wrapper
 
@@ -233,11 +288,19 @@ pub use nano_ros_transport_smoltcp::SmoltcpBridge;
 // Re-export everything examples currently use
 ```
 
-**Deliverables:**
-- `nano-ros-bsp-qemu` is now a thin re-export wrapper (deleted in 32.10 tidy)
-- QEMU examples updated to depend on `nano-ros-platform-qemu` + `nano-ros-transport-smoltcp` directly
-- `just test-qemu` passes
-- `just quality` passes
+**Work items:**
+- [ ] Update `nano-ros-bsp-qemu/Cargo.toml` to depend on `nano-ros-platform-qemu` + `nano-ros-transport-smoltcp`
+- [ ] Replace `nano-ros-bsp-qemu/src/lib.rs` with re-exports from platform + transport crates
+- [ ] Delete `bridge.rs`, `buffers.rs`, `clock.rs`, `libc_stubs.rs`, `timing.rs` from BSP (now in platform crate)
+- [ ] Update QEMU examples (`bsp-talker`, `bsp-listener`) to depend on platform + transport directly
+- [ ] Update QEMU Rust examples (`rs-talker`, `rs-listener`, `rs-test`, `rs-wcet-bench`) if they reference BSP internals
+- [ ] Update `.cargo/config.toml` in QEMU examples for new `[patch.crates-io]` entries
+
+**Passing criteria:**
+- [ ] `nano-ros-bsp-qemu` `lib.rs` is a thin re-export (< 20 lines)
+- [ ] All QEMU examples build: `cd examples/qemu/bsp-talker && cargo build --release`
+- [ ] `just test-qemu` passes (QEMU bare-metal tests)
+- [ ] `just quality` passes
 
 ### 32.6: Migrate ESP32-C3 BSPs
 
@@ -257,11 +320,24 @@ Apply the same platform/transport split to the ESP32-C3 BSPs:
 - ESP32-C3 QEMU BSP uses OpenETH driver instead of LAN9118
 - Heap allocation uses ESP32-specific allocator
 
-**Deliverables:**
-- Two new platform crates at `packages/platform/`
-- Both ESP32 BSP crates converted to thin wrappers
-- `just test-qemu-esp32` passes
-- ESP32 examples unchanged
+**Work items:**
+- [ ] Create `packages/platform/nano-ros-platform-esp32/` from `nano-ros-bsp-esp32`
+  - [ ] Extract system primitives (clock via `esp_hal::time::Instant`, WiFi-specific allocator, RNG)
+  - [ ] Wire `nano-ros-transport-smoltcp` poll callback
+- [ ] Create `packages/platform/nano-ros-platform-esp32-qemu/` from `nano-ros-bsp-esp32-qemu`
+  - [ ] Extract system primitives (clock, heap allocator, errno shadow)
+  - [ ] Use OpenETH driver instead of LAN9118
+- [ ] Convert `nano-ros-bsp-esp32` to thin re-export wrapper
+- [ ] Convert `nano-ros-bsp-esp32-qemu` to thin re-export wrapper
+- [ ] Update ESP32 examples to depend on platform + transport directly
+- [ ] Update `.cargo/config.toml` in ESP32 examples
+
+**Passing criteria:**
+- [ ] Both platform crates compile for `riscv32imc-unknown-none-elf` with zero warnings
+- [ ] `nano-ros-bsp-esp32` and `nano-ros-bsp-esp32-qemu` are thin re-exports (< 20 lines each)
+- [ ] ESP32 examples build: `cd examples/esp32/bsp-talker && cargo build --release`
+- [ ] `just test-qemu-esp32` passes
+- [ ] `just quality` passes
 
 ### 32.7: Migrate STM32F4 BSP
 
@@ -276,10 +352,19 @@ Apply the platform/transport split to the STM32F4 BSP:
 
 The STM32F4 BSP is simpler (no bridge.rs — it uses a different networking approach via `platform.rs` and `phy.rs`). The platform extraction is more straightforward.
 
-**Deliverables:**
-- New platform crate at `packages/platform/nano-ros-platform-stm32f4/`
-- STM32F4 BSP crate converted to thin wrapper
-- STM32F4 examples unchanged
+**Work items:**
+- [ ] Create `packages/platform/nano-ros-platform-stm32f4/` from `nano-ros-bsp-stm32f4`
+  - [ ] Extract system primitives (clock, allocator, RNG, libc stubs)
+  - [ ] Wire `nano-ros-transport-smoltcp` for networking
+- [ ] Convert `nano-ros-bsp-stm32f4` to thin re-export wrapper
+- [ ] Update STM32F4 examples to depend on platform + transport directly
+- [ ] Update `.cargo/config.toml` in STM32F4 examples
+
+**Passing criteria:**
+- [ ] Platform crate compiles for `thumbv7em-none-eabihf` with zero warnings
+- [ ] `nano-ros-bsp-stm32f4` is a thin re-export (< 20 lines)
+- [ ] STM32F4 examples build: `cd examples/stm32f4/bsp-talker && cargo build --release`
+- [ ] `just quality` passes
 
 ### 32.8: Update feature flag chain
 
@@ -303,10 +388,23 @@ nano-ros (top-level)
 - Remove old `shim-*` feature names (no aliases)
 - Rename `posix` / `zephyr` / `smoltcp` features in `zenoh-pico-shim-sys` to `posix` / `zephyr` / `bare-metal` (remove `smoltcp` alias)
 
-**Deliverables:**
-- New feature names used throughout the crate chain
-- Old `shim-*` and `smoltcp` feature names removed
-- `CLAUDE.md` updated with new feature names
+**Work items:**
+- [ ] Rename `shim-posix` to `platform-posix` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- [ ] Rename `shim-zephyr` to `platform-zephyr` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- [ ] Rename `shim-smoltcp` to `platform-bare-metal` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- [ ] Remove `smoltcp` alias feature from `zenoh-pico-shim-sys` (keep only `bare-metal`)
+- [ ] Remove `c-network-shim` and `c-system-shim` features from `zenoh-pico-shim-sys` (C shim deleted in 32.4)
+- [ ] Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys`
+- [ ] Update all example `Cargo.toml` files using old feature names
+- [ ] Update native examples (`rs-talker`, `rs-listener`, etc.) from `shim-posix` to `platform-posix`
+
+**Passing criteria:**
+- [ ] No `shim-*` feature names remain in any `Cargo.toml`
+- [ ] No `smoltcp` feature name in `zenoh-pico-shim-sys/Cargo.toml` (only `bare-metal`)
+- [ ] `cargo check --features zenoh,platform-posix` succeeds for workspace
+- [ ] All native examples build with new feature name
+- [ ] `CLAUDE.md` references new feature names
+- [ ] `just quality` passes
 
 ### 32.9: Update examples and documentation
 
@@ -321,10 +419,20 @@ Update all examples, documentation, and CLAUDE.md to use the new architecture:
 - Add a `packages/platform/README.md` explaining the platform/transport split
 - Update `docs/guides/creating-examples.md` if bare-metal example creation instructions change
 
-**Deliverables:**
-- All documentation reflects the new architecture
-- CLAUDE.md workspace structure updated
-- Examples use consistent crate naming
+**Work items:**
+- [ ] Update CLAUDE.md workspace structure to show `packages/platform/` directory
+- [ ] Update CLAUDE.md "Platform Backends" section with new feature names
+- [ ] Update `docs/design/platform-transport-architecture.md` to mark "Current State" as complete
+- [ ] Update `docs/guides/creating-examples.md` for bare-metal example creation with platform + transport deps
+- [ ] Update example `Cargo.toml` files to use new crate names directly (not BSP wrappers)
+- [ ] Add `packages/platform/README.md` explaining the platform/transport split
+- [ ] Update `docs/guides/getting-started.md` if BSP references changed
+
+**Passing criteria:**
+- [ ] CLAUDE.md workspace tree includes `packages/platform/` with all platform crates
+- [ ] No references to old BSP crate names in documentation (except historical notes)
+- [ ] `docs/guides/creating-examples.md` shows platform + transport dep pattern
+- [ ] `just quality` passes
 
 ### 32.10: Integration testing and tidy
 
@@ -353,11 +461,32 @@ just test-c           # C API tests
 - Remove `packages/bsp/` directory if empty (only `nano-ros-bsp-zephyr` may remain)
 - Audit `.cargo/config.toml` in examples for stale `[patch.crates-io]` entries referencing old BSP crates
 
-**Deliverables:**
-- All test suites pass
-- No deprecated symbols, features, or aliases remain
-- No BSP wrapper crates (direct platform+transport deps only)
-- Clean clippy output
+**Work items:**
+- [ ] Run `just quality` — format + clippy + unit tests + miri + QEMU examples
+- [ ] Run `just test-integration` — all Rust integration tests
+- [ ] Run `just test-qemu` — QEMU bare-metal tests
+- [ ] Run `just test-qemu-esp32` — ESP32-C3 QEMU tests
+- [ ] Run `just test-c` — C API tests
+- [ ] Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys` (if not done in 32.8)
+- [ ] Delete BSP wrapper crates: `packages/bsp/nano-ros-bsp-{qemu,esp32,esp32-qemu,stm32f4}/`
+- [ ] Delete `c/platform_smoltcp/` directory entirely (if not done in 32.4)
+- [ ] Remove any remaining `smoltcp_*` symbol references across codebase
+- [ ] Clean up unused imports and dead code across all touched crates
+- [ ] Remove `packages/bsp/` directory if empty (only `nano-ros-bsp-zephyr` may remain)
+- [ ] Audit `.cargo/config.toml` in examples for stale `[patch.crates-io]` entries referencing old BSP crates
+- [ ] Update workspace `exclude` list in root `Cargo.toml` (remove deleted BSPs, add platform crates)
+
+**Passing criteria:**
+- [ ] `just quality` passes
+- [ ] `just test-integration` passes
+- [ ] `just test-qemu` passes
+- [ ] `just test-qemu-esp32` passes
+- [ ] `just test-c` passes
+- [ ] `grep -r smoltcp_ packages/` returns zero hits (no `smoltcp_*` symbols remain)
+- [ ] `grep -r shim-posix packages/` returns zero hits (no `shim-*` features remain)
+- [ ] No BSP wrapper crates in `packages/bsp/` (except `nano-ros-bsp-zephyr`)
+- [ ] No `c/platform_smoltcp/` directory exists
+- [ ] Clean clippy output with zero warnings
 
 ## Dependency Graph
 
