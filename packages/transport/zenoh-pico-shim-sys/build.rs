@@ -103,7 +103,7 @@ fn main() {
     println!("cargo:rerun-if-changed=c/shim/zenoh_shim.c");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/system.c");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/network.c");
-    println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_smoltcp_platform.h");
+    println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_bare_metal_platform.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/errno_override.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_config.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_platform.h");

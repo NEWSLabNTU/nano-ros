@@ -352,7 +352,7 @@ The smoltcp platform layer uses callback-based integration:
   // etc.
   ```
 
-- [x] **8.4.5** Define socket type structures (`zenoh_smoltcp_platform.h`)
+- [x] **8.4.5** Define socket type structures (`zenoh_bare_metal_platform.h`)
   ```c
   typedef struct {
       uint8_t socket_handle;  // Index into smoltcp socket set
@@ -522,7 +522,7 @@ The smoltcp platform layer uses callback-based integration:
 ### Implementation Notes
 
 **Files Created:**
-- `platform_smoltcp/zenoh_smoltcp_platform.h` - Platform type definitions
+- `platform_smoltcp/zenoh_bare_metal_platform.h` - Platform type definitions
 - `platform_smoltcp/zenoh_generic_platform.h` - zenoh-pico include redirect
 - `platform_smoltcp/zenoh_generic_config.h` - zenoh-pico feature configuration
 - `platform_smoltcp/system.c` - System functions (memory, random, clock, threading)
@@ -623,7 +623,7 @@ packages/transport/
 │       └── platform_smoltcp/
 │           ├── zenoh_generic_platform.h
 │           ├── zenoh_generic_config.h
-│           ├── zenoh_smoltcp_platform.h
+│           ├── zenoh_bare_metal_platform.h
 │           ├── system.c                # z_malloc, z_clock, etc.
 │           └── network.c               # _z_open_tcp, _z_read_tcp, etc.
 │

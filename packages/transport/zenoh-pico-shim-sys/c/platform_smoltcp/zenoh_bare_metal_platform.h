@@ -1,14 +1,14 @@
 /**
- * zenoh-pico smoltcp Platform Type Definitions
+ * zenoh-pico Bare-Metal Platform Type Definitions
  *
  * This header defines the types required by zenoh-pico's platform abstraction
- * layer for use with smoltcp on bare-metal systems.
+ * layer for bare-metal systems (QEMU ARM, ESP32-C3, STM32F4, etc.).
  *
  * Included via ZENOH_GENERIC define pointing to this file.
  */
 
-#ifndef ZENOH_PICO_SYSTEM_SMOLTCP_TYPES_H
-#define ZENOH_PICO_SYSTEM_SMOLTCP_TYPES_H
+#ifndef ZENOH_PICO_SYSTEM_BARE_METAL_TYPES_H
+#define ZENOH_PICO_SYSTEM_BARE_METAL_TYPES_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -25,7 +25,7 @@ extern "C" {
 // ============================================================================
 
 #if Z_FEATURE_MULTI_THREAD == 1
-// smoltcp platform is single-threaded, but provide types if needed for compilation
+// Bare-metal platform is single-threaded, but provide types if needed for compilation
 typedef void *_z_task_t;
 typedef void *z_task_attr_t;
 typedef void *_z_mutex_t;
@@ -56,7 +56,7 @@ typedef uint64_t z_time_t;
 
 /**
  * Socket handle.
- * Index into the smoltcp SocketSet plus connection state.
+ * Generic handle index plus connection state.
  */
 typedef struct {
     int8_t _handle;     // Socket handle (-1 = invalid)
@@ -76,4 +76,4 @@ typedef struct {
 }
 #endif
 
-#endif /* ZENOH_PICO_SYSTEM_SMOLTCP_TYPES_H */
+#endif /* ZENOH_PICO_SYSTEM_BARE_METAL_TYPES_H */

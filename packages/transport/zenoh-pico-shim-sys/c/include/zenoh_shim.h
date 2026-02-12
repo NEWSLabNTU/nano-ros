@@ -8,7 +8,7 @@
  * subscribers with static storage.
  *
  * Platform-specific behavior (threading vs polling) is handled by the
- * backend interface in zenoh_smoltcp_platform.h
+ * backend interface in zenoh_bare_metal_platform.h
  */
 
 #ifndef ZENOH_SHIM_H
