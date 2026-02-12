@@ -360,20 +360,21 @@ Apply the platform/transport split to the STM32F4 BSP:
 The STM32F4 BSP is simpler (no bridge.rs — it uses a different networking approach via `platform.rs` and `phy.rs`). The platform extraction is more straightforward.
 
 **Work items:**
-- [ ] Create `packages/platform/nano-ros-platform-stm32f4/` from `nano-ros-bsp-stm32f4`
-  - [ ] Extract system primitives (clock, allocator, RNG, libc stubs)
-  - [ ] Wire `nano-ros-transport-smoltcp` for networking
-- [ ] Convert `nano-ros-bsp-stm32f4` to thin re-export wrapper
-- [ ] Migrate STM32F4 examples to depend on platform crate directly:
-  - [ ] `examples/stm32f4/bsp-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_stm32f4::`)
-  - [ ] Update `.cargo/config.toml` for new `[patch.crates-io]` entries
-  - [ ] Move linker script / `build.rs` to platform crate if needed
+- [x] Create `packages/platform/nano-ros-platform-stm32f4/` from `nano-ros-bsp-stm32f4`
+  - [x] Extract system primitives (clock, allocator, RNG, libc stubs)
+  - [x] Wire `nano-ros-transport-smoltcp` for networking
+  - [x] DWT-based clock with `update_from_dwt()` for hardware-accurate timing
+  - [x] PHY detection and pin configuration modules preserved
+  - [x] Chip variant features (stm32f407..stm32f479) forwarded through
+- [x] Convert `nano-ros-bsp-stm32f4` to thin re-export wrapper
+- [x] Migrate STM32F4 examples to depend on platform crate directly:
+  - [x] `examples/stm32f4/bsp-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_stm32f4::`)
 
 **Passing criteria:**
-- [ ] Platform crate compiles for `thumbv7em-none-eabihf` with zero warnings
-- [ ] `nano-ros-bsp-stm32f4` is a thin re-export (< 20 lines)
-- [ ] No STM32F4 examples depend on BSP crate (all use platform crate directly)
-- [ ] `just test-all` passes
+- [x] Platform crate compiles for `thumbv7em-none-eabihf` with zero warnings
+- [x] `nano-ros-bsp-stm32f4` is a thin re-export (< 20 lines)
+- [x] No STM32F4 examples depend on BSP crate (all use platform crate directly)
+- [x] `just quality` passes
 
 ### 32.8: Update feature flag chain
 
@@ -544,29 +545,29 @@ packages/
 
 ## Risk Assessment
 
-| Risk | Mitigation |
-|------|-----------|
+| Risk                                   | Mitigation                                                                     |
+|----------------------------------------|--------------------------------------------------------------------------------|
 | Symbol name conflicts during migration | Incremental approach: create new crates first, then migrate BSPs one at a time |
-| Breaking existing examples | BSP crates become thin wrappers — re-export everything, API unchanged |
-| Link-time resolution failures | Test each platform immediately after creating its platform/transport crates |
-| C shim removal breaks something | Remove C shim only after new Rust implementations are verified working |
-| Feature flag complexity | Remove old names outright in 32.8; no aliases maintained |
+| Breaking existing examples             | BSP crates become thin wrappers — re-export everything, API unchanged          |
+| Link-time resolution failures          | Test each platform immediately after creating its platform/transport crates    |
+| C shim removal breaks something        | Remove C shim only after new Rust implementations are verified working         |
+| Feature flag complexity                | Remove old names outright in 32.8; no aliases maintained                       |
 
 ## Estimated Total Effort
 
-| Phase | Days |
-|-------|------|
-| 32.1: link-* features | 0.5 |
-| 32.2: transport-smoltcp | 2-3 |
-| 32.3: platform-qemu | 2-3 |
-| 32.4: Remove C shim | 1 |
-| 32.5: Migrate bsp-qemu | 1-2 |
-| 32.6: Migrate ESP32 BSPs | 2-3 |
-| 32.7: Migrate STM32F4 BSP | 1-2 |
-| 32.8: Feature flags | 1 |
-| 32.9: Docs update | 1-2 |
-| 32.10: Testing & cleanup | 1-2 |
-| **Total** | **13-21 days** |
+| Phase                     | Days           |
+|---------------------------|----------------|
+| 32.1: link-* features     | 0.5            |
+| 32.2: transport-smoltcp   | 2-3            |
+| 32.3: platform-qemu       | 2-3            |
+| 32.4: Remove C shim       | 1              |
+| 32.5: Migrate bsp-qemu    | 1-2            |
+| 32.6: Migrate ESP32 BSPs  | 2-3            |
+| 32.7: Migrate STM32F4 BSP | 1-2            |
+| 32.8: Feature flags       | 1              |
+| 32.9: Docs update         | 1-2            |
+| 32.10: Testing & cleanup  | 1-2            |
+| **Total**                 | **13-21 days** |
 
 ## Future Work (Not in This Phase)
 

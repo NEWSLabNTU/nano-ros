@@ -4,13 +4,13 @@
 //! cycle counter that increments at the CPU clock rate (168 MHz on
 //! Nucleo-F429ZI).
 //!
-//! The DWT is already enabled by `platform::init()`, so `enable()` is a
+//! The DWT is already enabled by `run_node()`, so `enable()` is a
 //! defensive no-op re-enable.
 //!
 //! # Example
 //!
 //! ```ignore
-//! use nano_ros_bsp_stm32f4::CycleCounter;
+//! use nano_ros_platform_stm32f4::CycleCounter;
 //!
 //! let (result, cycles) = CycleCounter::measure(|| {
 //!     // operation to benchmark
@@ -24,7 +24,7 @@ pub struct CycleCounter;
 impl CycleCounter {
     /// Enable the DWT cycle counter.
     ///
-    /// On STM32F4, the DWT is already enabled by `platform::init()`.
+    /// On STM32F4, the DWT is already enabled by `run_node()`.
     /// This is a defensive re-enable using raw register writes.
     pub fn enable() {
         unsafe {

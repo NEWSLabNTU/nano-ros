@@ -1,11 +1,11 @@
-//! Configuration for STM32F4 BSP
+//! Configuration for STM32F4 platform
 //!
 //! Provides sensible defaults for common development boards and allows
 //! customization of network settings.
 
 use crate::pins::PinConfig;
 
-/// BSP configuration
+/// Platform configuration
 #[derive(Clone)]
 pub struct Config {
     /// MAC address (locally administered)

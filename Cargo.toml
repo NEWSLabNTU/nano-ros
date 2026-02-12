@@ -68,6 +68,7 @@ exclude = [
     "packages/platform/nano-ros-platform-qemu",
     "packages/platform/nano-ros-platform-esp32-qemu",
     "packages/platform/nano-ros-platform-esp32",
+    "packages/platform/nano-ros-platform-stm32f4",
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/bsp/nano-ros-bsp-esp32",
     "packages/bsp/nano-ros-bsp-esp32-qemu",

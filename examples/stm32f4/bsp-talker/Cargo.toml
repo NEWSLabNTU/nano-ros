@@ -10,8 +10,8 @@ name = "stm32f4-bsp-talker"
 path = "src/main.rs"
 
 [dependencies]
-# BSP handles all hardware setup
-nano-ros-bsp-stm32f4 = { path = "../../../packages/bsp/nano-ros-bsp-stm32f4" }
+# Platform crate handles all hardware setup
+nano-ros-platform-stm32f4 = { path = "../../../packages/platform/nano-ros-platform-stm32f4" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }
@@ -24,8 +24,8 @@ defmt-rtt = "0.4"
 
 [features]
 default = ["stm32f429"]
-stm32f429 = ["nano-ros-bsp-stm32f4/stm32f429"]
-stm32f407 = ["nano-ros-bsp-stm32f4/stm32f407"]
+stm32f429 = ["nano-ros-platform-stm32f4/stm32f429"]
+stm32f407 = ["nano-ros-platform-stm32f4/stm32f407"]
 
 [profile.release]
 codegen-units = 1
