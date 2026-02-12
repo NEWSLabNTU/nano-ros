@@ -33,6 +33,8 @@ nano-ros/
 │   │       └── generated/         # cargo nano-ros generate-rust output
 │   ├── testing/                   # Test infrastructure
 │   │   └── nano-ros-tests/        # Integration test crate
+│   ├── verification/              # Formal verification
+│   │   └── nano-ros-verification/ # Verus deductive proofs (excluded from workspace)
 │   ├── reference/                 # Low-level platform reference implementations
 │   │   ├── qemu-smoltcp-bridge/   # smoltcp bridge library
 │   │   ├── qemu-lan9118/          # LAN9118 driver test binary
@@ -88,6 +90,11 @@ just build-zenohd   # Build zenohd 1.6.2 from submodule (for integration tests)
 just check          # Format + clippy
 just quality        # Format + clippy + unit tests (no external deps)
 just doc            # Generate docs
+
+# Formal verification
+just verify-kani    # Kani bounded model checking (82 harnesses)
+just verify-verus   # Verus unbounded deductive proofs (18 proofs)
+just verify         # Both Kani + Verus
 
 # Message bindings
 just generate-bindings      # Regenerate all generated/ dirs (uses bundled interfaces)
@@ -332,6 +339,21 @@ nano-ros-node = { version = "*", features = ["param-services"] }
 - Uses generated `rcl_interfaces` types from `packages/interfaces/rcl-interfaces/generated/`
 - Handlers return `Box<Response>` due to large heapless arrays (~1MB per ParameterValue)
 
+### Formal Verification
+
+Two complementary verification tools are used:
+
+- **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 82 harnesses across nano-ros-serdes, nano-ros-core, nano-ros-params, nano-ros-c. Run with `just verify-kani`.
+- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nano-ros-verification/` (excluded from workspace). 18 proofs for timer scheduling, trigger conditions, and executor invariants. Run with `just verify-verus`.
+
+Key Verus patterns:
+- `external_type_specification` without `external_body` makes enums **transparent** (variant matching works)
+- `external_type_specification` with `external_body` makes types **opaque** (no variant matching)
+- `assume_specification[Type::method](self_: &Type, ...)` links production fn to spec — `&self` becomes `self_: &Type`
+- Never add `[package.metadata.verus] verify = true` to production crates with fn pointers or closures (causes THIR erasure crash)
+
+See [docs/guides/verus-verification.md](docs/guides/verus-verification.md) for full coding practices.
+
 ### ROS 2 Interop
 Uses rmw_zenoh-compatible protocol. Key format for Humble:
 - Data keyexpr: `<domain>/<topic>/<type>/TypeHashNotSupported`
@@ -368,7 +390,8 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 | 27 | Codegen automation | Complete |
 | 28 | Example portability + safety | Planning |
 | 29 | Directory reorganization | Complete |
-| 30 | WCET & real-time tooling | Planning |
+| 30 | WCET & real-time tooling | In Progress |
+| 31 | Verus unbounded verification | In Progress |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment
@@ -395,7 +418,7 @@ docs/
 └── roadmap/         # Phase planning (phase-1 through phase-27)
 ```
 
-Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [codegen automation](docs/roadmap/phase-27-codegen-automation.md), [tests/README](tests/README.md).
+Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [verus-verification](docs/guides/verus-verification.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [codegen automation](docs/roadmap/phase-27-codegen-automation.md), [tests/README](tests/README.md).
 
 ## Quick Reference
 
