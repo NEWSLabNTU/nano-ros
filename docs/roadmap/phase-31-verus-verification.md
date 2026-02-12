@@ -485,11 +485,12 @@ Completed early alongside 31.2 because Verus patterns and limitations needed doc
 3. Updated `MEMORY.md` — Verus patterns for session persistence
 4. `just verify-verus` and `just quality` both pass
 
-**Remaining (after 31.3/31.4):**
+**Remaining items (completed after 31.3/31.4):**
 
-- Update `just setup` banner text to mention Verus alongside Kani
-- Mark Phase 31 complete in `CLAUDE.md` phases table
-- Final pipeline check: `just verify-kani && just verify-verus`
+- [x] ~~Update `just setup` banner text to mention Verus alongside Kani~~ — already done in 31.1
+- [x] Mark Phase 31 complete in `CLAUDE.md` phases table
+- [x] Update `CLAUDE.md` verification description (18 → 57 proofs)
+- [x] Final pipeline check: `just verify-kani && just verify-verus`
 
 ## Setup Integration
 
