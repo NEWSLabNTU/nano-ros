@@ -16,12 +16,12 @@ ros-humble = []                  # ROS_LOCALHOST_ONLY (Humble+, default)
 ros-iron = ["ros-humble"]        # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEERS (Iron+)
 log = ["dep:log"]
 
-# Shim transport backend (for embedded platforms without full zenoh features)
-# Select one platform: shim-posix (desktop), shim-zephyr, or shim-smoltcp (bare-metal)
+# Transport backend (select one platform)
+# Select one platform: platform-posix (desktop), platform-zephyr, or platform-bare-metal
 shim = ["nano-ros-transport/shim"]  # Base shim feature
-shim-posix = ["shim", "nano-ros-transport/shim-posix"]  # POSIX platform (desktop testing)
-shim-zephyr = ["shim", "nano-ros-transport/shim-zephyr"]  # Zephyr RTOS platform
-shim-smoltcp = ["shim", "nano-ros-transport/shim-smoltcp"]  # smoltcp platform (bare-metal)
+platform-posix = ["shim", "nano-ros-transport/platform-posix"]  # POSIX platform (desktop testing)
+platform-zephyr = ["shim", "nano-ros-transport/platform-zephyr"]  # Zephyr RTOS platform
+platform-bare-metal = ["shim", "nano-ros-transport/platform-bare-metal"]  # Bare-metal platform (smoltcp)
 
 # Executor support
 rtic = ["nano-ros-transport/rtic"]    # RTIC executor - no background threads

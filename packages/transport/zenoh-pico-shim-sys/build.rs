@@ -172,10 +172,7 @@ fn main() {
     // Check which platform backend to use
     let use_posix = env::var("CARGO_FEATURE_POSIX").is_ok();
     let use_zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
-    // bare-metal is the canonical feature; smoltcp implies bare-metal
     let use_bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
-    // For backwards compat, treat smoltcp as bare-metal in all checks
-    let use_smoltcp = use_bare_metal;
 
     // Count enabled backends
     let backend_count = [use_posix, use_zephyr, use_bare_metal]
@@ -198,15 +195,11 @@ fn main() {
     // Read link-* features for bare-metal protocol selection
     let link_features = LinkFeatures::from_env();
 
-    // Whether to include the C network.c shim (provides _z_open_tcp etc. in C).
-    // When nano-ros-transport-smoltcp provides these symbols in Rust, this should
-    // be disabled to avoid duplicate symbol errors.
-    let use_c_network_shim = env::var("CARGO_FEATURE_C_NETWORK_SHIM").is_ok();
-
-    // Whether to include the C system.c shim (provides z_malloc, z_clock_now etc. in C).
-    // When a platform crate provides these symbols in Rust, this should be disabled
-    // to avoid duplicate symbol errors.
-    let use_c_system_shim = env::var("CARGO_FEATURE_C_SYSTEM_SHIM").is_ok();
+    // C network.c and system.c shims are no longer used:
+    // - nano-ros-transport-smoltcp provides TCP symbols in Rust
+    // - Platform crates provide system primitives (clock, memory, RNG) in Rust
+    let use_c_network_shim = false;
+    let use_c_system_shim = false;
 
     // Paths
     let zenoh_pico_src = manifest_dir.join("zenoh-pico");
@@ -250,14 +243,14 @@ fn main() {
                 &include_dir,
                 &zenoh_pico_include,
                 use_posix,
-                use_smoltcp,
+                use_bare_metal,
                 &target,
                 &link_features,
                 use_c_network_shim,
                 use_c_system_shim,
             );
         }
-    } else if use_smoltcp {
+    } else if use_bare_metal {
         // Embedded + bare-metal: build zenoh-pico + platform + shim all together with cc.
         // This replaces the external build-zenoh-pico.sh shell scripts.
         // Generate config header from Cargo link-* features before building.
@@ -277,30 +270,16 @@ fn main() {
     // For no-backend: nothing to build (minimal configuration for header generation).
 
     // Set cfg flags for Rust code
-    if use_c_network_shim {
-        println!("cargo:rustc-cfg=c_network_shim");
-    }
-    if use_c_system_shim {
-        println!("cargo:rustc-cfg=c_system_shim");
-    }
     if use_posix {
         println!("cargo:rustc-cfg=shim_backend=\"posix\"");
     } else if use_zephyr {
         println!("cargo:rustc-cfg=shim_backend=\"zephyr\"");
     } else if use_bare_metal {
-        // Emit both for backwards compatibility (code checking "smoltcp" still works)
-        println!("cargo:rustc-cfg=shim_backend=\"smoltcp\"");
         println!("cargo:rustc-cfg=shim_backend=\"bare-metal\"");
     }
 
     // Rerun triggers
     println!("cargo:rerun-if-changed=c/shim/zenoh_shim.c");
-    if use_c_system_shim {
-        println!("cargo:rerun-if-changed=c/platform_smoltcp/system.c");
-    }
-    if use_c_network_shim {
-        println!("cargo:rerun-if-changed=c/platform_smoltcp/network.c");
-    }
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_bare_metal_platform.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/errno_override.h");
     println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_config.h");
@@ -722,7 +701,7 @@ fn build_c_shim(
     include_dir: &Path,
     zenoh_pico_include: &Path,
     use_posix: bool,
-    use_smoltcp: bool,
+    use_bare_metal: bool,
     target: &str,
     link: &LinkFeatures,
     use_c_network_shim: bool,
@@ -743,7 +722,7 @@ fn build_c_shim(
         build.define("ZENOH_LINUX", None);
         #[cfg(target_os = "macos")]
         build.define("ZENOH_MACOS", None);
-    } else if use_smoltcp {
+    } else if use_bare_metal {
         let platform_dir = c_dir.join("platform_smoltcp");
 
         // Add platform sources

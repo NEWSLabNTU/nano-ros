@@ -23,7 +23,7 @@ log = "0.4"
 heapless = "0.8"
 
 # nano-ros unified API (patched to local via .cargo/config.toml)
-nano-ros = { version = "*", default-features = false, features = ["shim-zephyr"] }
+nano-ros = { version = "*", default-features = false, features = ["platform-zephyr"] }
 
 # Generated message types (patched to local via .cargo/config.toml)
 example_interfaces = { version = "*", default-features = false }

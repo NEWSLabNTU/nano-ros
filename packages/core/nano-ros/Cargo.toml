@@ -31,10 +31,10 @@ zenoh = [
 ros-humble = ["nano-ros-node/ros-humble"]
 ros-iron = ["nano-ros-node/ros-iron"]
 
-# Shim transport backends
-shim-posix = ["nano-ros-node/shim-posix", "nano-ros-transport/shim-posix"]
-shim-zephyr = ["nano-ros-node/shim-zephyr", "nano-ros-transport/shim-zephyr"]
-shim-smoltcp = ["nano-ros-node/shim-smoltcp", "nano-ros-transport/shim-smoltcp"]
+# Platform backends (select one)
+platform-posix = ["nano-ros-node/platform-posix", "nano-ros-transport/platform-posix"]
+platform-zephyr = ["nano-ros-node/platform-zephyr", "nano-ros-transport/platform-zephyr"]
+platform-bare-metal = ["nano-ros-node/platform-bare-metal", "nano-ros-transport/platform-bare-metal"]
 
 # Executor modes
 rtic = ["nano-ros-node/rtic"]

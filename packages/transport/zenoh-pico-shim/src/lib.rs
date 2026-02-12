@@ -8,7 +8,7 @@
 //! Select one backend via feature flags:
 //! - `posix` - Uses POSIX threads, for desktop testing
 //! - `zephyr` - Uses Zephyr RTOS threads
-//! - `smoltcp` - Uses polling with smoltcp network stack (bare-metal)
+//! - `bare-metal` - Uses polling (bare-metal platforms)
 //!
 //! # Example
 //!
@@ -28,9 +28,9 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 use core::ffi::c_void;
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 use core::marker::PhantomData;
 
 // Re-export FFI types and constants from sys crate
@@ -43,12 +43,11 @@ pub use zenoh_pico_shim_sys::{
     zenoh_shim_property_t,
 };
 
-// Re-export platform module for smoltcp
-#[cfg(feature = "smoltcp")]
-pub use zenoh_pico_shim_sys::platform_smoltcp;
+// Note: The old `platform_smoltcp` module has been superseded by
+// `nano-ros-transport-smoltcp` and platform crates.
 
 // Import FFI functions from sys crate
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 use zenoh_pico_shim_sys::{
     zenoh_shim_close, zenoh_shim_declare_liveliness, zenoh_shim_declare_publisher,
     zenoh_shim_declare_queryable, zenoh_shim_declare_subscriber,
@@ -89,7 +88,7 @@ pub enum ShimError {
     Timeout,
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp", test))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal", test))]
 impl ShimError {
     fn from_code(code: i32) -> Self {
         match code {
@@ -199,12 +198,12 @@ impl ShimZenohId {
 ///
 /// Note: The C shim manages tokens via static storage with integer handles,
 /// so the token does not need a lifetime parameter.
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 pub struct ShimLivelinessToken {
     handle: i32,
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl ShimLivelinessToken {
     /// Get the liveliness handle
     pub fn handle(&self) -> i32 {
@@ -212,7 +211,7 @@ impl ShimLivelinessToken {
     }
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl Drop for ShimLivelinessToken {
     fn drop(&mut self) {
         unsafe {
@@ -232,12 +231,12 @@ impl Drop for ShimLivelinessToken {
 ///
 /// Note: The C shim manages queryables via static storage with integer handles,
 /// so the queryable does not need a lifetime parameter.
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 pub struct ShimQueryable {
     handle: i32,
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl ShimQueryable {
     /// Get the queryable handle
     pub fn handle(&self) -> i32 {
@@ -245,7 +244,7 @@ impl ShimQueryable {
     }
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl Drop for ShimQueryable {
     fn drop(&mut self) {
         unsafe {
@@ -267,12 +266,12 @@ impl Drop for ShimQueryable {
 ///
 /// Only one `ShimContext` can exist at a time due to the global state
 /// in the C shim.
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 pub struct ShimContext {
     _private: PhantomData<*const ()>,
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl ShimContext {
     /// Create a new shim context with the given locator
     ///
@@ -646,7 +645,7 @@ impl ShimContext {
     }
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl Drop for ShimContext {
     fn drop(&mut self) {
         unsafe {
@@ -662,13 +661,13 @@ impl Drop for ShimContext {
 /// Publisher handle for sending data
 ///
 /// Created via `ShimContext::declare_publisher()`.
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 pub struct ShimPublisher<'a> {
     handle: i32,
     _ctx: PhantomData<&'a ShimContext>,
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl<'a> ShimPublisher<'a> {
     /// Publish data
     ///
@@ -723,7 +722,7 @@ impl<'a> ShimPublisher<'a> {
     }
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl<'a> Drop for ShimPublisher<'a> {
     fn drop(&mut self) {
         unsafe {
@@ -739,13 +738,13 @@ impl<'a> Drop for ShimPublisher<'a> {
 /// Subscriber handle for receiving data
 ///
 /// Created via `ShimContext::declare_subscriber_raw()`.
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 pub struct ShimSubscriber<'a> {
     handle: i32,
     _ctx: PhantomData<&'a ShimContext>,
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl<'a> ShimSubscriber<'a> {
     /// Get the subscriber handle
     pub fn handle(&self) -> i32 {
@@ -753,7 +752,7 @@ impl<'a> ShimSubscriber<'a> {
     }
 }
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 impl<'a> Drop for ShimSubscriber<'a> {
     fn drop(&mut self) {
         unsafe {

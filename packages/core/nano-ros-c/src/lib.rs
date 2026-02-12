@@ -28,10 +28,10 @@
 
 #[cfg(all(
     feature = "alloc",
-    not(any(feature = "shim-posix", feature = "shim-zephyr"))
+    not(any(feature = "platform-posix", feature = "platform-zephyr"))
 ))]
 compile_error!(
-    "nano-ros-c `alloc` requires a transport backend. Enable `shim-posix` or `shim-zephyr`."
+    "nano-ros-c `alloc` requires a transport backend. Enable `platform-posix` or `platform-zephyr`."
 );
 
 #[cfg(feature = "std")]

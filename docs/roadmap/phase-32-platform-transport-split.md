@@ -399,22 +399,22 @@ nano-ros (top-level)
 - Rename `posix` / `zephyr` / `smoltcp` features in `zenoh-pico-shim-sys` to `posix` / `zephyr` / `bare-metal` (remove `smoltcp` alias)
 
 **Work items:**
-- [ ] Rename `shim-posix` to `platform-posix` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
-- [ ] Rename `shim-zephyr` to `platform-zephyr` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
-- [ ] Rename `shim-smoltcp` to `platform-bare-metal` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
-- [ ] Remove `smoltcp` alias feature from `zenoh-pico-shim-sys` (keep only `bare-metal`)
-- [ ] Remove `c-network-shim` and `c-system-shim` features from `zenoh-pico-shim-sys` (C shim deleted in 32.4)
-- [ ] Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys`
-- [ ] Update all example `Cargo.toml` files using old feature names
-- [ ] Update native examples (`rs-talker`, `rs-listener`, etc.) from `shim-posix` to `platform-posix`
+- [x] Rename `shim-posix` to `platform-posix` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- [x] Rename `shim-zephyr` to `platform-zephyr` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- [x] Rename `shim-smoltcp` to `platform-bare-metal` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- [x] Remove `smoltcp` alias feature from `zenoh-pico-shim-sys` (keep only `bare-metal`)
+- [x] Remove `c-network-shim` and `c-system-shim` features from `zenoh-pico-shim-sys` (C shim deleted in 32.4)
+- [x] Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys`
+- [x] Update all example `Cargo.toml` files using old feature names
+- [x] Update native examples (use `zenoh` alias which maps to `platform-posix`)
 
 **Passing criteria:**
-- [ ] No `shim-*` feature names remain in any `Cargo.toml`
-- [ ] No `smoltcp` feature name in `zenoh-pico-shim-sys/Cargo.toml` (only `bare-metal`)
-- [ ] `cargo check --features zenoh,platform-posix` succeeds for workspace
-- [ ] All native examples build with new feature name
-- [ ] `CLAUDE.md` references new feature names
-- [ ] `just quality` passes
+- [x] No `shim-*` feature names remain in any `Cargo.toml`
+- [x] No `smoltcp` feature name in `zenoh-pico-shim-sys/Cargo.toml` (only `bare-metal`)
+- [x] `cargo check --features zenoh,platform-posix` succeeds for workspace
+- [x] All native examples build with new feature name
+- [x] `CLAUDE.md` references new feature names
+- [x] `just quality` passes
 
 ### 32.9: Update examples and documentation
 

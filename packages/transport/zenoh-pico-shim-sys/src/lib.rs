@@ -2,16 +2,15 @@
 //!
 //! This crate provides:
 //! - The compiled C shim library (zenoh_shim.c)
-//! - Platform-specific C code (system.c, network.c for smoltcp)
 //! - FFI constants and types
-//! - Platform Rust implementations (smoltcp_* functions)
+//! - zenoh-pico library (compiled from submodule)
 //!
 //! # Platform Backends
 //!
 //! Select one backend via feature flags:
 //! - `posix` - Uses POSIX threads, for desktop testing
 //! - `zephyr` - Uses Zephyr RTOS threads
-//! - `smoltcp` - Uses polling with smoltcp network stack (bare-metal)
+//! - `bare-metal` - Uses polling (bare-metal platforms)
 
 #![no_std]
 
@@ -21,12 +20,7 @@ extern crate std;
 // Note: The smoltcp platform uses a custom bump allocator for C FFI (zenoh-pico),
 // not Rust's global allocator. The `alloc` crate is NOT needed.
 
-#[cfg(any(
-    feature = "posix",
-    feature = "zephyr",
-    feature = "smoltcp",
-    feature = "bare-metal"
-))]
+#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
 use core::ffi::c_void;
 
 // ============================================================================
@@ -40,16 +34,10 @@ pub use ffi::*;
 // Platform-specific Modules
 // ============================================================================
 
-/// smoltcp platform layer for bare-metal systems
-///
-/// This module provides the Rust FFI functions that the C platform layer calls
-/// to interact with smoltcp for network I/O and system services.
-///
-/// Note: Excluded from cbindgen to avoid duplicate function declarations.
-/// The FFI declarations are in ffi.rs for header generation.
-#[cfg(not(cbindgen))]
-#[cfg(feature = "smoltcp-platform-rust")]
-pub mod platform_smoltcp;
+// Note: The old `platform_smoltcp` module has been superseded by
+// `nano-ros-transport-smoltcp` and platform crates. Platform crates
+// provide system primitives (clock, memory, RNG) and the transport
+// crate provides TCP symbols directly in Rust.
 
 // ============================================================================
 // Extern C Functions from the Shim
@@ -70,12 +58,7 @@ pub struct zenoh_shim_property_t {
 // Note: Excluded from cbindgen - these are Rust imports of C functions,
 // not declarations for the header file.
 #[cfg(all(
-    any(
-        feature = "posix",
-        feature = "zephyr",
-        feature = "smoltcp",
-        feature = "bare-metal"
-    ),
+    any(feature = "posix", feature = "zephyr", feature = "bare-metal"),
     not(cbindgen)
 ))]
 #[allow(improper_ctypes)]

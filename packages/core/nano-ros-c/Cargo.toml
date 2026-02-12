@@ -11,13 +11,13 @@ categories = ["embedded", "robotics", "api-bindings"]
 crate-type = ["staticlib", "cdylib"]
 
 [features]
-default = ["std", "shim-posix"]
+default = ["std", "platform-posix"]
 std = ["alloc", "nano-ros/std", "nano-ros-transport/std"]
 alloc = ["nano-ros/alloc", "nano-ros-transport/alloc"]
 
-# Transport backends (select one)
-shim-posix = ["nano-ros/shim-posix", "nano-ros-transport/shim-posix"]
-shim-zephyr = ["nano-ros/shim-zephyr", "nano-ros-transport/shim-zephyr"]
+# Platform backends (select one)
+platform-posix = ["nano-ros/platform-posix", "nano-ros-transport/platform-posix"]
+platform-zephyr = ["nano-ros/platform-zephyr", "nano-ros-transport/platform-zephyr"]
 
 [dependencies]
 nano-ros = { path = "../nano-ros", default-features = false }

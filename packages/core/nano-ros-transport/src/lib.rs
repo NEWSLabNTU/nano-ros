@@ -7,11 +7,11 @@
 //!
 //! - `std` - Enable standard library support
 //! - `alloc` - Enable heap allocation
-//! - `zenoh` - Enable zenoh backend (alias for `shim-posix`)
+//! - `zenoh` - Enable zenoh backend (alias for `platform-posix`)
 //! - `shim` - Base shim feature (requires platform selection)
-//! - `shim-posix` - POSIX platform (desktop testing)
-//! - `shim-zephyr` - Zephyr RTOS platform
-//! - `shim-smoltcp` - smoltcp platform (bare-metal)
+//! - `platform-posix` - POSIX platform (desktop testing)
+//! - `platform-zephyr` - Zephyr RTOS platform
+//! - `platform-bare-metal` - Bare-metal platform (smoltcp)
 //!
 //! # Executor Support
 //!
@@ -28,7 +28,7 @@
 
 #![no_std]
 
-// Compile-time check: zenoh requires alloc (zenoh implies shim-posix which works with alloc)
+// Compile-time check: zenoh requires alloc (zenoh implies platform-posix which works with alloc)
 #[cfg(all(feature = "zenoh", not(feature = "alloc")))]
 compile_error!(
     "The `zenoh` feature requires `alloc`. Enable the `alloc` feature or use `zenoh` feature which implies `alloc`."

@@ -105,9 +105,9 @@ pub use nano_ros_transport::{
 
 // Re-export shim-specific types for embedded platforms
 #[cfg(any(
-    feature = "shim-posix",
-    feature = "shim-zephyr",
-    feature = "shim-smoltcp"
+    feature = "platform-posix",
+    feature = "platform-zephyr",
+    feature = "platform-bare-metal"
 ))]
 pub use nano_ros_transport::{
     SHIM_RMW_GID_SIZE, ShimPublisher, ShimRmwAttachment, ShimRos2Liveliness, ShimServiceClient,
@@ -116,17 +116,17 @@ pub use nano_ros_transport::{
 
 // Re-export liveliness token for shim platforms
 #[cfg(any(
-    feature = "shim-posix",
-    feature = "shim-zephyr",
-    feature = "shim-smoltcp"
+    feature = "platform-posix",
+    feature = "platform-zephyr",
+    feature = "platform-bare-metal"
 ))]
 pub use nano_ros_transport::ShimLivelinessToken;
 
 // Re-export shim node types for embedded platforms
 #[cfg(any(
-    feature = "shim-posix",
-    feature = "shim-zephyr",
-    feature = "shim-smoltcp"
+    feature = "platform-posix",
+    feature = "platform-zephyr",
+    feature = "platform-bare-metal"
 ))]
 pub use nano_ros_node::{
     ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
@@ -137,9 +137,9 @@ pub use nano_ros_node::{
 // Clean type aliases for shim types (only when zenoh feature is NOT active to avoid conflicts)
 #[cfg(all(
     any(
-        feature = "shim-posix",
-        feature = "shim-zephyr",
-        feature = "shim-smoltcp"
+        feature = "platform-posix",
+        feature = "platform-zephyr",
+        feature = "platform-bare-metal"
     ),
     not(feature = "zenoh")
 ))]
@@ -166,9 +166,9 @@ mod shim_aliases {
 }
 #[cfg(all(
     any(
-        feature = "shim-posix",
-        feature = "shim-zephyr",
-        feature = "shim-smoltcp"
+        feature = "platform-posix",
+        feature = "platform-zephyr",
+        feature = "platform-bare-metal"
     ),
     not(feature = "zenoh")
 ))]
@@ -252,9 +252,9 @@ pub mod prelude {
 
     // Re-export shim node types
     #[cfg(any(
-        feature = "shim-posix",
-        feature = "shim-zephyr",
-        feature = "shim-smoltcp"
+        feature = "platform-posix",
+        feature = "platform-zephyr",
+        feature = "platform-bare-metal"
     ))]
     pub use crate::{
         ShimExecutor, ShimNode, ShimNodeActionClient, ShimNodeActionServer, ShimNodeError,
@@ -264,9 +264,9 @@ pub mod prelude {
     // Re-export clean type aliases
     #[cfg(all(
         any(
-            feature = "shim-posix",
-            feature = "shim-zephyr",
-            feature = "shim-smoltcp"
+            feature = "platform-posix",
+            feature = "platform-zephyr",
+            feature = "platform-bare-metal"
         ),
         not(feature = "zenoh")
     ))]
