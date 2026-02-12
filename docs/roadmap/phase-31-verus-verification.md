@@ -245,7 +245,7 @@ The `verify-verus` recipe adds `tools/` to PATH and runs `cargo verus verify` in
 | ID   | Task                                            | Effort  | Status      |
 |------|-------------------------------------------------|---------|-------------|
 | 31.1 | Verus toolchain setup + crate scaffolding       | 0.5 day | **Done**    |
-| 31.2 | Tier 1: Real-time scheduling proofs (~10)       | 1.5 day | Not started |
+| 31.2 | Tier 1: Real-time scheduling proofs (~10)       | 1.5 day | **Done**    |
 | 31.3 | Tier 2: Communication reliability proofs (~10)  | 1 day   | Not started |
 | 31.4 | Tier 3: Core algorithm correctness proofs (~15) | 1.5 day | Not started |
 | 31.5 | Integration + documentation                     | 2 hours | Not started |
