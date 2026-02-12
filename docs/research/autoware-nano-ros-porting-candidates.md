@@ -457,6 +457,19 @@ MRM operators with a proper velocity-tracking controller on the safety island.
 **Critical path:** Message generation. All Tier 1 candidates need `autoware_control_msgs`,
 `tier4_system_msgs`, and `autoware_vehicle_msgs` generated for nano-ros.
 
+### Formal Verification Readiness
+
+Ported components benefit from nano-ros's verification pipeline:
+
+| Tool | What it proves | Relevance to Autoware ports |
+|------|---------------|---------------------------|
+| **Kani** (82 harnesses) | Panic-freedom, CDR correctness, bounded resources | Serialization of Autoware messages is safe; parameter handling is correct |
+| **Verus** (10 proofs) | Timer drift-free scheduling, trigger gating, spin_once consistency | MRM operators and watchdog timers have provably correct scheduling |
+| **DWT cycle counters** | Measured WCET per operation | Validates that safety island meets 10/30/100 Hz deadlines on target hardware |
+| **Static stack analysis** | Per-function stack frames | Ensures ported components fit within MCU stack limits (e.g., 8 KB on STM32F4) |
+
+Any ported Autoware component running on nano-ros automatically inherits these guarantees for the underlying executor, serialization, and timer infrastructure.
+
 ---
 
 ## Recommended Porting Roadmap

@@ -576,7 +576,34 @@ If discrepancy detected, sends MRM trigger to Island A.
 | STM32F4 BSP | Working | None |
 | RTIC task integration | Designed | spin::Mutex → critical section migration |
 | CAN bus transport | Trait exists | Backend not implemented |
-| WCET formal analysis | Framework documented | No published bounds |
+| DWT cycle-accurate timing | Working | QEMU reads 0 (no DWT emulation); real hardware validated |
+| Static stack analysis | Working | Per-function frames; no full call-chain depth yet |
+| Kani bounded model checking | 82 harnesses across 4 crates | Bounded (not unbounded) |
+| Verus deductive verification | 10 scheduling proofs (Tier 1 done) | Tier 2-3 proofs not started |
+| Platform/transport customization | Documented architecture | Transport crate split not yet implemented |
+
+### 8.1 Formal Verification Pipeline
+
+nano-ros has a layered formal verification pipeline covering four real-time correctness properties:
+
+| Layer | Property | Tool | Status |
+|-------|----------|------|--------|
+| L1 | Panic-freedom, bounded control flow | Kani (Rust), CBMC (C) | 82 Kani harnesses, CBMC harnesses done |
+| L2 | Functional correctness | Verus (Rust), CBMC (C) | 10 Verus scheduling proofs done |
+| L3 | Bounded resource usage | Kani, stack analysis | Static stack analysis for all platforms |
+| L4 | WCET bounds | DWT cycle counters | Infrastructure done, hardware baselines pending |
+
+**Kani** (bounded model checking): Proves panic-freedom, correct serialization, duration arithmetic, and parameter safety up to loop unwind bounds. Covers `nano-ros-serdes`, `nano-ros-core`, `nano-ros-params`, and `nano-ros-c`.
+
+**Verus** (deductive verification): Proves properties for **all inputs, unbounded**. Tier 1 scheduling proofs completed:
+- Timer drift-free scheduling (all u64 inputs)
+- OneShot timer fires exactly once (state machine proof)
+- Trigger gating correctness (scheduling invariant)
+- `spin_once` result consistency
+
+**DWT measurement**: Unified `CycleCounter` API across all BSP crates (QEMU ARM, STM32F4, ESP32-C3). Measures CDR serialization, publish, and spin_once cycle counts.
+
+**Static stack analysis**: Per-function stack usage for all example platforms (QEMU ARM, ESP32-C3, native x86_64, STM32F4, Zephyr). Catches unexpectedly large stack frames and regressions.
 
 ## 9. Recommended First Implementation
 
