@@ -62,8 +62,8 @@ exclude = [
     "packages/reference/stm32f4-rtic",
     "packages/reference/stm32f4-polling",
     "packages/reference/stm32f4-embassy",
-    # smoltcp transport (embedded-only, requires cross-compilation)
-    "packages/transport/nano-ros-transport-smoltcp",
+    # smoltcp link layer (embedded-only, requires cross-compilation)
+    "packages/link/nano-ros-link-smoltcp",
     # Platform crates (embedded-only, require cross-compilation)
     "packages/platform/nano-ros-platform-qemu",
     "packages/platform/nano-ros-platform-esp32-qemu",

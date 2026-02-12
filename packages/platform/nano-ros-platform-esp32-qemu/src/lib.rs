@@ -16,7 +16,7 @@
 //! - **C library stubs** — `strlen`, `memcpy`, `strtoul`, etc.
 //! - **Node API** — `run_node()`, `Publisher`, `Subscription`
 //!
-//! Network transport is delegated to `nano-ros-transport-smoltcp` which provides
+//! Network transport is delegated to `nano-ros-link-smoltcp` which provides
 //! the zenoh-pico TCP symbols (`_z_open_tcp`, `_z_read_tcp`, etc.).
 
 #![no_std]

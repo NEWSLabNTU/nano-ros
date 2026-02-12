@@ -35,7 +35,7 @@ pub use ffi::*;
 // ============================================================================
 
 // Note: The old `platform_smoltcp` module has been superseded by
-// `nano-ros-transport-smoltcp` and platform crates. Platform crates
+// `nano-ros-link-smoltcp` and platform crates. Platform crates
 // provide system primitives (clock, memory, RNG) and the transport
 // crate provides TCP symbols directly in Rust.
 

@@ -19,6 +19,8 @@ nano-ros/
 │   ├── transport/                 # Zenoh transport backend
 │   │   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
 │   │   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
+│   ├── link/                      # Link protocol crates (bare-metal)
+│   │   └── nano-ros-link-smoltcp/ # TCP/UDP via smoltcp IP stack
 │   ├── bsp/                       # Board Support Packages
 │   │   ├── nano-ros-bsp-qemu/     # QEMU MPS2-AN385 BSP
 │   │   ├── nano-ros-bsp-esp32/    # ESP32-C3 WiFi BSP
@@ -328,7 +330,8 @@ This provides include dirs, static library, and platform link libs (pthread, dl,
 **C code generation** uses `nano_ros_generate_interfaces()` (from `nano_ros_generate_interfaces.cmake`). The codegen tool is bundled as `libnano_ros_codegen_c.a` — no external `nano-ros` binary needed. Build it with `just build-codegen-lib` before running CMake. The CMake module `FindNanoRosCodegen.cmake` compiles a thin C wrapper at configure time.
 
 ### Platform Backends
-Selected via feature flags: `posix` (desktop), `zephyr` (Zephyr RTOS), `smoltcp` (bare-metal).
+Selected via feature flags: `platform-posix` (desktop), `platform-zephyr` (Zephyr RTOS), `platform-bare-metal` (bare-metal).
+The `zenoh` feature is an alias for `platform-posix` + `alloc`.
 
 ### Parameter Services
 Enable with `param-services` feature in `nano-ros-node`:

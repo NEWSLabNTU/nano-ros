@@ -42,28 +42,34 @@ smoltcp_socket_close, smoltcp_socket_send, smoltcp_socket_recv, etc. (20+ custom
 ## Target State
 
 ```
-zenoh-pico-shim-sys[bare-metal]
-├── build.rs generates config header from Cargo features (link-tcp, link-serial, etc.)
-├── zenoh_bare_metal_platform.h (platform type definitions)
-├── zenoh_shim.c (nano-ros's simplified wrapper — unchanged)
-├── No C shim files (system.c, network.c removed)
-└── Compiles zenoh-pico with feature-gated Z_FEATURE_LINK_* flags
+packages/transport/
+  nano-ros-transport-zenoh-sys[bare-metal]     (renamed from zenoh-pico-shim-sys)
+  ├── build.rs generates config header from Cargo features (link-tcp, link-serial, etc.)
+  ├── zenoh_bare_metal_platform.h (platform type definitions)
+  ├── zenoh_shim.c (nano-ros's simplified wrapper — unchanged)
+  ├── No C shim files (system.c, network.c removed)
+  └── Compiles zenoh-pico with feature-gated Z_FEATURE_LINK_* flags
 
-nano-ros-platform-qemu (system primitives only)
-├── lib.rs          # z_malloc, z_random_*, z_clock_*, z_sleep_*, z_time_*
-│                     _z_task_* stubs, _z_mutex_* stubs, _z_condvar_* stubs
-│                     _z_socket_close, _z_socket_wait_event, _z_socket_accept, _z_socket_set_non_blocking
-├── libc_stubs.rs   # strlen, memcpy, strtoul, ...
-├── config.rs       # Network configuration
-├── node.rs         # run_node(), poll callback registration
-└── timing.rs       # DWT cycle counter
+  nano-ros-transport-zenoh                     (renamed from zenoh-pico-shim)
+  └── Safe Rust API wrapping zenoh-pico-shim-sys
 
-nano-ros-link-smoltcp (TCP/UDP via smoltcp IP stack)
-├── lib.rs          # _z_create_endpoint_tcp, _z_free_endpoint_tcp
-│                     _z_open_tcp, _z_listen_tcp, _z_close_tcp
-│                     _z_read_tcp, _z_read_exact_tcp, _z_send_tcp
-├── bridge.rs       # SmoltcpBridge: socket table, RX/TX buffers, poll()
-└── poll.rs         # Poll callback slot (Rust fn pointer, not FFI)
+packages/platform/
+  nano-ros-platform-qemu (system primitives only)
+  ├── lib.rs          # z_malloc, z_random_*, z_clock_*, z_sleep_*, z_time_*
+  │                     _z_task_* stubs, _z_mutex_* stubs, _z_condvar_* stubs
+  │                     _z_socket_close, _z_socket_wait_event, _z_socket_accept, _z_socket_set_non_blocking
+  ├── libc_stubs.rs   # strlen, memcpy, strtoul, ...
+  ├── config.rs       # Network configuration
+  ├── node.rs         # run_node(), poll callback registration
+  └── timing.rs       # DWT cycle counter
+
+packages/link/
+  nano-ros-link-smoltcp (TCP/UDP via smoltcp IP stack)
+  ├── lib.rs          # _z_create_endpoint_tcp, _z_free_endpoint_tcp
+  │                     _z_open_tcp, _z_listen_tcp, _z_close_tcp
+  │                     _z_read_tcp, _z_read_exact_tcp, _z_send_tcp
+  ├── bridge.rs       # SmoltcpBridge: socket table, RX/TX buffers, poll()
+  └── poll.rs         # Poll callback slot (Rust fn pointer, not FFI)
 
 Custom symbols: none. All FFI symbols are zenoh-pico's standard platform API.
 ```
@@ -230,7 +236,7 @@ heapless = "0.8"
 
 Decouple the C shim files (`system.c`, `network.c`) from the default bare-metal path. New platform/transport crates use `bare-metal` + `link-tcp` without C shims; old BSPs explicitly opt in to `c-network-shim` + `c-system-shim`. The `smoltcp_*` symbols were removed from the public API header (`zenoh_shim.h`).
 
-**Note:** `system.c` and `network.c` are NOT deleted yet — BSPs still need them until migrated in 32.5-32.7. File deletion is deferred to 32.11 tidy.
+**Note:** `system.c` and `network.c` are NOT deleted yet — BSPs still need them until migrated in 32.5-32.7. File deletion is deferred to 32.12 tidy.
 
 **Work items:**
 - [x] Add `c-system-shim` feature to `zenoh-pico-shim-sys/Cargo.toml` (gates `system.c`, parallel to `c-network-shim`) *(done in 32.3 as prerequisite)*
@@ -246,8 +252,8 @@ Decouple the C shim files (`system.c`, `network.c`) from the default bare-metal 
 - [x] Regenerate `zenoh_shim.h` — no `smoltcp_*` declarations
 - [x] Add `smoltcp_clock_now_ms` extern declaration to `zenoh_shim.c` (was previously in generated header)
 - [x] Gate `build.rs` rerun-if-changed for `system.c`/`network.c` on their respective features
-- [ ] ~~Delete `c/platform_smoltcp/network.c`~~ *(deferred to 32.11 — BSPs still need them)*
-- [ ] ~~Delete `c/platform_smoltcp/system.c`~~ *(deferred to 32.11 — BSPs still need them)*
+- [ ] ~~Delete `c/platform_smoltcp/network.c`~~ *(deferred to 32.12 — BSPs still need them)*
+- [ ] ~~Delete `c/platform_smoltcp/system.c`~~ *(deferred to 32.12 — BSPs still need them)*
 
 **Passing criteria:**
 - [x] No `smoltcp_*` symbols in `zenoh_shim.h` (public API header)
@@ -416,38 +422,78 @@ nano-ros (top-level)
 - [x] `CLAUDE.md` references new feature names
 - [x] `just quality` passes
 
-### 32.9: Rename `nano-ros-transport-smoltcp` to `nano-ros-link-smoltcp`
+### 32.9: Move link crate to `packages/link/` — Complete
 
 **Effort:** 0.5 day
 **Dependencies:** 32.8
 
-Rename the transport crate to use `link-*` naming, consistent with zenoh-pico's link layer terminology (see design doc). Our "transport" crates implement zenoh-pico's **link layer** (protocol-specific open/close/read/write), not the transport layer (sequencing, fragmentation). The `link-*` naming matches `zenoh-pico-shim-sys`'s existing `link-tcp`, `link-serial`, `link-raweth` features.
+Move `nano-ros-transport-smoltcp` out of `packages/transport/` into a new `packages/link/` directory and rename it to `nano-ros-link-smoltcp`. This separates link crates (protocol-specific open/close/read/write) from transport crates (middleware like zenoh). The `link-*` naming matches zenoh-pico's link layer terminology and `zenoh-pico-shim-sys`'s existing `link-tcp`, `link-serial`, `link-raweth` features.
 
 **Work items:**
-- [ ] Rename directory `packages/transport/nano-ros-transport-smoltcp/` → `packages/transport/nano-ros-link-smoltcp/`
-- [ ] Update `Cargo.toml` package name to `nano-ros-link-smoltcp`
-- [ ] Update workspace `exclude` list in root `Cargo.toml`
-- [ ] Update platform crate dependencies (4 crates):
-  - [ ] `nano-ros-platform-qemu/Cargo.toml` — dep name + path
-  - [ ] `nano-ros-platform-esp32/Cargo.toml` — dep name + path
-  - [ ] `nano-ros-platform-esp32-qemu/Cargo.toml` — dep name + path
-  - [ ] `nano-ros-platform-stm32f4/Cargo.toml` — dep name + path
-- [ ] Update `use nano_ros_transport_smoltcp` → `use nano_ros_link_smoltcp` in platform crate source files
-- [ ] Update doc comments referencing `nano-ros-transport-smoltcp` in platform crates and shim crates
-- [ ] Regenerate `Cargo.lock` files in all affected platform crates and examples
-- [ ] Update CLAUDE.md workspace structure and file locations
+- [x] Create `packages/link/` directory
+- [x] Move `packages/transport/nano-ros-transport-smoltcp/` → `packages/link/nano-ros-link-smoltcp/`
+- [x] Update `Cargo.toml` package name to `nano-ros-link-smoltcp`
+- [x] Update workspace `exclude` list in root `Cargo.toml`
+- [x] Update `zenoh-pico-shim-sys` dep path in the link crate (`../../transport/zenoh-pico-shim-sys`)
+- [x] Update platform crate dependencies (4 crates):
+  - [x] `nano-ros-platform-qemu/Cargo.toml` — dep name + path (`../../link/nano-ros-link-smoltcp`)
+  - [x] `nano-ros-platform-esp32/Cargo.toml` — dep name + path
+  - [x] `nano-ros-platform-esp32-qemu/Cargo.toml` — dep name + path
+  - [x] `nano-ros-platform-stm32f4/Cargo.toml` — dep name + path
+- [x] Update `use nano_ros_transport_smoltcp` → `use nano_ros_link_smoltcp` in platform crate source files
+- [x] Update doc comments referencing `nano-ros-transport-smoltcp` in platform crates and shim crates
+- [x] Regenerate `Cargo.lock` files in all affected platform crates and examples
+- [x] Update CLAUDE.md workspace structure and file locations
 
 **Passing criteria:**
-- [ ] `grep -r nano-ros-transport-smoltcp packages/` returns zero hits (excluding Cargo.lock)
-- [ ] `cargo check --target thumbv7m-none-eabi` succeeds in renamed crate
-- [ ] All platform crates compile for their respective targets
-- [ ] All QEMU examples build
+- [x] `packages/link/nano-ros-link-smoltcp/` exists, `packages/transport/nano-ros-transport-smoltcp/` does not
+- [x] `grep -r nano-ros-transport-smoltcp packages/` returns zero hits (excluding Cargo.lock)
+- [x] `cargo check --target thumbv7m-none-eabi` succeeds in the link crate
+- [x] All platform crates compile for their respective targets
+- [x] All QEMU examples build
+- [x] `just quality` passes
+
+### 32.10: Rename zenoh shim crates
+
+**Effort:** 1 day
+**Dependencies:** 32.9
+
+Rename the zenoh-pico shim crates to follow the `nano-ros-transport-*` naming convention. The `packages/transport/` directory is reserved for transport middleware crates — zenoh is the only transport today.
+
+| Old Name | New Name | Old Path | New Path |
+|----------|----------|----------|----------|
+| `zenoh-pico-shim` | `nano-ros-transport-zenoh` | `packages/transport/zenoh-pico-shim/` | `packages/transport/nano-ros-transport-zenoh/` |
+| `zenoh-pico-shim-sys` | `nano-ros-transport-zenoh-sys` | `packages/transport/zenoh-pico-shim-sys/` | `packages/transport/nano-ros-transport-zenoh-sys/` |
+
+**Work items:**
+- [ ] Rename directory `packages/transport/zenoh-pico-shim/` → `packages/transport/nano-ros-transport-zenoh/`
+- [ ] Rename directory `packages/transport/zenoh-pico-shim-sys/` → `packages/transport/nano-ros-transport-zenoh-sys/`
+- [ ] Update `Cargo.toml` package names in both crates
+- [ ] Update workspace members in root `Cargo.toml`
+- [ ] Update workspace `exclude` list (link crate, platform crates, BSP crates reference shim-sys)
+- [ ] Update dependency references across the workspace:
+  - [ ] `nano-ros-transport/Cargo.toml` — `zenoh-pico-shim` dep name + path
+  - [ ] `nano-ros-link-smoltcp/Cargo.toml` — `zenoh-pico-shim-sys` dep name + path
+  - [ ] All 4 platform crates — `zenoh-pico-shim-sys` dep name + path
+  - [ ] All BSP crates still referencing shim-sys — dep name + path
+  - [ ] `.cargo/config.toml` patch entries in examples referencing old crate names
+- [ ] Update `use zenoh_pico_shim` → `use nano_ros_transport_zenoh` in `nano-ros-transport/src/`
+- [ ] Update `use zenoh_pico_shim_sys` → `use nano_ros_transport_zenoh_sys` in source files
+- [ ] Update doc comments, CLAUDE.md file locations, and design docs
+- [ ] Ensure zenoh-pico git submodule path is updated (currently at `zenoh-pico-shim-sys/zenoh-pico/`)
+- [ ] Regenerate `Cargo.lock` files in all affected crates and examples
+
+**Passing criteria:**
+- [ ] No `zenoh-pico-shim` or `zenoh-pico-shim-sys` package names in any `Cargo.toml` (paths and dep names all updated)
+- [ ] `cargo check --features zenoh` succeeds for workspace
+- [ ] `cargo check --target thumbv7m-none-eabi` succeeds for link crate and platform crates
+- [ ] All examples build (native + QEMU + ESP32)
 - [ ] `just quality` passes
 
-### 32.10: Update examples and documentation
+### 32.11: Update examples and documentation
 
 **Effort:** 1-2 days
-**Dependencies:** 32.5, 32.6, 32.7, 32.8, 32.9
+**Dependencies:** 32.5, 32.6, 32.7, 32.8, 32.9, 32.10
 
 Update all examples, documentation, and CLAUDE.md to use the new architecture:
 
@@ -472,7 +518,7 @@ Update all examples, documentation, and CLAUDE.md to use the new architecture:
 - [ ] `docs/guides/creating-examples.md` shows platform + transport dep pattern
 - [ ] `just quality` passes
 
-### 32.11: Integration testing and tidy
+### 32.12: Integration testing and tidy
 
 **Effort:** 1-2 days
 **Dependencies:** All above
@@ -547,9 +593,11 @@ just test-c           # C API tests
   │       │         ├──→ 32.7 (STM32F4)    │
   │       │         └──→ 32.8 (features)   │
   │       │                   │            │
-  │       │                   └──→ 32.9 (rename link-smoltcp)
+  │       │                   └──→ 32.9 (move link crate)
   │       │                          │
-  │       └──────────────────────────┴──→ 32.10 (docs) ──→ 32.11 (testing)
+  │       │                          └──→ 32.10 (rename zenoh crates)
+  │       │                                 │
+  │       └─────────────────────────────────┴──→ 32.11 (docs) ──→ 32.12 (testing)
 ```
 
 ## New Directory Structure
@@ -561,10 +609,11 @@ packages/
 │   ├── nano-ros-platform-esp32/           # ESP32-C3 WiFi (from bsp-esp32)
 │   ├── nano-ros-platform-esp32-qemu/      # ESP32-C3 QEMU (from bsp-esp32-qemu)
 │   └── nano-ros-platform-stm32f4/         # STM32F4 (from bsp-stm32f4)
-├── transport/                             # Transport crates
-│   ├── nano-ros-link-smoltcp/        # NEW: TCP/UDP via smoltcp
-│   ├── zenoh-pico-shim/                   # Existing: safe Rust API
-│   └── zenoh-pico-shim-sys/               # Existing: FFI + zenoh-pico build
+├── transport/                             # Transport middleware crates
+│   ├── nano-ros-transport-zenoh/          # Safe Rust API (from zenoh-pico-shim)
+│   └── nano-ros-transport-zenoh-sys/      # FFI + zenoh-pico build (from zenoh-pico-shim-sys)
+├── link/                                  # NEW: Link protocol crates (bare-metal)
+│   └── nano-ros-link-smoltcp/             # TCP/UDP via smoltcp
 ├── bsp/                                   # BSP crates (only Zephyr remains)
 │   └── nano-ros-bsp-zephyr/               # Unchanged (Zephyr uses zenoh-pico's own backend)
 ├── drivers/                               # Hardware drivers (unchanged)
@@ -595,10 +644,11 @@ packages/
 | 32.6: Migrate ESP32 BSPs       | 2-3            |
 | 32.7: Migrate STM32F4 BSP      | 1-2            |
 | 32.8: Feature flags            | 1              |
-| 32.9: Rename link-smoltcp      | 0.5            |
-| 32.10: Docs update             | 1-2            |
-| 32.11: Testing & cleanup       | 1-2            |
-| **Total**                      | **13.5-21.5 days** |
+| 32.9: Move link crate          | 0.5            |
+| 32.10: Rename zenoh crates     | 1              |
+| 32.11: Docs update             | 1-2            |
+| 32.12: Testing & cleanup       | 1-2            |
+| **Total**                      | **14.5-22.5 days** |
 
 ## Future Work (Not in This Phase)
 

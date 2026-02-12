@@ -44,7 +44,7 @@ pub use zenoh_pico_shim_sys::{
 };
 
 // Note: The old `platform_smoltcp` module has been superseded by
-// `nano-ros-transport-smoltcp` and platform crates.
+// `nano-ros-link-smoltcp` and platform crates.
 
 // Import FFI functions from sys crate
 #[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]

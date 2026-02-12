@@ -196,7 +196,7 @@ fn main() {
     let link_features = LinkFeatures::from_env();
 
     // C network.c and system.c shims are no longer used:
-    // - nano-ros-transport-smoltcp provides TCP symbols in Rust
+    // - nano-ros-link-smoltcp provides TCP symbols in Rust
     // - Platform crates provide system primitives (clock, memory, RNG) in Rust
     let use_c_network_shim = false;
     let use_c_system_shim = false;
@@ -733,7 +733,7 @@ fn build_c_shim(
             build.file(platform_dir.join("system.c"));
         }
         // Only include network.c when c-network-shim is enabled.
-        // When nano-ros-transport-smoltcp provides _z_open_tcp etc. in Rust,
+        // When nano-ros-link-smoltcp provides _z_open_tcp etc. in Rust,
         // this must be disabled to avoid duplicate symbol errors.
         if use_c_network_shim {
             build.file(platform_dir.join("network.c"));

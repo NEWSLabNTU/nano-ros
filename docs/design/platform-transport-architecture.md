@@ -487,7 +487,7 @@ Compared to POSIX/Zephyr where zenoh-pico's own C files implement these symbols 
 | Simplified C API (`zenoh_shim_*`) | `zenoh-pico-shim-sys` (`c/shim/zenoh_shim.c`) | Session/publisher/subscriber management wrapper over zenoh-pico |
 | Platform type definitions         | `zenoh-pico-shim-sys` (C header)              | `_z_sys_net_socket_t`, `z_clock_t`, etc.                        |
 | System symbol implementations     | Platform crate (Rust `#[no_mangle]`)          | `z_malloc`, `z_clock_now`, `z_sleep_ms`, threading stubs        |
-| Network symbol implementations    | Link crate (Rust `#[no_mangle]`)         | `_z_open_tcp`, `_z_send_tcp`, `_z_close_tcp`, serial/raweth ops |
+| Network symbol implementations    | Link crate (Rust `#[no_mangle]`)              | `_z_open_tcp`, `_z_send_tcp`, `_z_close_tcp`, serial/raweth ops |
 | Hardware driver                   | Platform crate                                | Direct hardware access (Ethernet MAC, UART, clock)              |
 
 ### Migration Path
@@ -502,6 +502,16 @@ shim-smoltcp = ["platform-bare-metal"]
 ```
 
 The `zenoh` convenience feature continues to imply `platform-posix` for desktop use. For bare-metal, users migrate from `nano-ros-bsp-qemu` to separate `nano-ros-platform-qemu` + `nano-ros-link-smoltcp` dependencies.
+
+**Crate renames** (Phase 32.9-32.10): The directory layout is reorganized to match the three-layer architecture:
+
+| Old                          | New                            | Directory             |
+|------------------------------|--------------------------------|-----------------------|
+| `nano-ros-transport-smoltcp` | `nano-ros-link-smoltcp`        | `packages/link/`      |
+| `zenoh-pico-shim`            | `nano-ros-transport-zenoh`     | `packages/transport/` |
+| `zenoh-pico-shim-sys`        | `nano-ros-transport-zenoh-sys` | `packages/transport/` |
+
+After migration, the directory structure reflects the feature axes: `packages/transport/` holds middleware crates (zenoh), `packages/link/` holds link protocol crates (smoltcp, serial, raweth), and `packages/platform/` holds platform crates (qemu, esp32, stm32f4).
 
 ## Protocol Integration Details
 

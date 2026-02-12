@@ -11,8 +11,8 @@ name = "nano_ros_platform_qemu"
 [dependencies]
 # Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
 zenoh-pico-shim-sys = { path = "../../transport/zenoh-pico-shim-sys", features = ["bare-metal", "link-tcp"] }
-# TCP transport via smoltcp
-nano-ros-transport-smoltcp = { path = "../../transport/nano-ros-transport-smoltcp" }
+# TCP link layer via smoltcp
+nano-ros-link-smoltcp = { path = "../../link/nano-ros-link-smoltcp" }
 # LAN9118 Ethernet driver for QEMU MPS2-AN385
 lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp" }
 

@@ -1,6 +1,6 @@
 //! Simplified node API for QEMU bare-metal
 //!
-//! Uses `nano-ros-transport-smoltcp` for socket management instead of
+//! Uses `nano-ros-link-smoltcp` for socket management instead of
 //! the legacy BSP bridge.
 
 use core::ffi::{c_char, c_void};
@@ -12,7 +12,7 @@ use cortex_m_semihosting::hprintln;
 use heapless::String;
 use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
 use nano_ros_core::RosMessage;
-use nano_ros_transport_smoltcp::SmoltcpBridge;
+use nano_ros_link_smoltcp::SmoltcpBridge;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::phy::Device;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
@@ -107,7 +107,7 @@ impl<'a, D: EthernetDevice + 'static> InnerNode<'a, D> {
 
         // Create and register TCP sockets via transport crate
         unsafe {
-            nano_ros_transport_smoltcp::create_and_register_sockets(sockets);
+            nano_ros_link_smoltcp::create_and_register_sockets(sockets);
         }
 
         // Store global state for poll callback
@@ -116,7 +116,7 @@ impl<'a, D: EthernetDevice + 'static> InnerNode<'a, D> {
             GLOBAL_IFACE = iface as *mut Interface;
             GLOBAL_SOCKETS = sockets as *mut SocketSet<'static>;
 
-            nano_ros_transport_smoltcp::set_poll_callback(smoltcp_network_poll);
+            nano_ros_link_smoltcp::set_poll_callback(smoltcp_network_poll);
         }
 
         // Initialize zenoh session
@@ -242,7 +242,7 @@ fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
 
 /// Helper to create a socket set with pre-allocated storage
 unsafe fn create_socket_set() -> SocketSet<'static> {
-    let storage = unsafe { nano_ros_transport_smoltcp::get_socket_storage() };
+    let storage = unsafe { nano_ros_link_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
 }
 

@@ -389,6 +389,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-link-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
+ "zenoh-pico-shim-sys",
+]
+
+[[package]]
 name = "nano-ros-platform-qemu"
 version = "0.1.0"
 dependencies = [
@@ -398,7 +406,7 @@ dependencies = [
  "heapless",
  "lan9118-smoltcp",
  "nano-ros-core",
- "nano-ros-transport-smoltcp",
+ "nano-ros-link-smoltcp",
  "panic-semihosting",
  "smoltcp",
  "zenoh-pico-shim-sys",
@@ -409,14 +417,6 @@ name = "nano-ros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
-]
-
-[[package]]
-name = "nano-ros-transport-smoltcp"
-version = "0.1.0"
-dependencies = [
- "smoltcp",
- "zenoh-pico-shim-sys",
 ]
 
 [[package]]

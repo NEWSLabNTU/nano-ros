@@ -20,7 +20,7 @@ pub extern "C" fn z_sleep_ms(time_ms: usize) -> i8 {
     let start = clock::clock_ms();
     while clock::clock_ms().wrapping_sub(start) < time_ms as u64 {
         // smoltcp_poll is provided by the transport crate
-        nano_ros_transport_smoltcp::smoltcp_poll();
+        nano_ros_link_smoltcp::smoltcp_poll();
     }
     0 // _Z_RES_OK
 }

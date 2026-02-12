@@ -554,6 +554,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-link-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
+ "zenoh-pico-shim-sys",
+]
+
+[[package]]
 name = "nano-ros-platform-stm32f4"
 version = "0.1.0"
 dependencies = [
@@ -562,7 +570,7 @@ dependencies = [
  "defmt 0.3.100",
  "heapless",
  "nano-ros-core",
- "nano-ros-transport-smoltcp",
+ "nano-ros-link-smoltcp",
  "smoltcp",
  "stm32-eth",
  "stm32f4xx-hal",
@@ -574,14 +582,6 @@ name = "nano-ros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
-]
-
-[[package]]
-name = "nano-ros-transport-smoltcp"
-version = "0.1.0"
-dependencies = [
- "smoltcp",
- "zenoh-pico-shim-sys",
 ]
 
 [[package]]

@@ -1028,6 +1028,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-link-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
+ "zenoh-pico-shim-sys",
+]
+
+[[package]]
 name = "nano-ros-platform-esp32-qemu"
 version = "0.1.0"
 dependencies = [
@@ -1038,7 +1046,7 @@ dependencies = [
  "esp-println",
  "heapless 0.8.0",
  "nano-ros-core",
- "nano-ros-transport-smoltcp",
+ "nano-ros-link-smoltcp",
  "openeth-smoltcp",
  "portable-atomic",
  "smoltcp",
@@ -1050,14 +1058,6 @@ name = "nano-ros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
-]
-
-[[package]]
-name = "nano-ros-transport-smoltcp"
-version = "0.1.0"
-dependencies = [
- "smoltcp",
- "zenoh-pico-shim-sys",
 ]
 
 [[package]]

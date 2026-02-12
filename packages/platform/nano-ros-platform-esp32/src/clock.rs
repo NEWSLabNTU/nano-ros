@@ -89,7 +89,7 @@ pub extern "C" fn z_clock_advance_s(clock: *mut u64, duration: core::ffi::c_ulon
 // FFI export — transport crate needs this for smoltcp timestamping
 // ============================================================================
 
-/// Get current time in milliseconds (called by nano-ros-transport-smoltcp's bridge)
+/// Get current time in milliseconds (called by nano-ros-link-smoltcp's bridge)
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
     clock_ms()
