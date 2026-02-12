@@ -262,36 +262,39 @@ Decouple the C shim files (`system.c`, `network.c`) from the default bare-metal 
 **Effort:** 1-2 days
 **Dependencies:** 32.3
 
-Convert `nano-ros-bsp-qemu` from a monolithic implementation to a thin wrapper that re-exports from the new platform and transport crates. Examples are updated to use the new crate names directly.
+Convert `nano-ros-bsp-qemu` from a monolithic implementation to a thin wrapper, then migrate all QEMU examples to depend on `nano-ros-platform-qemu` directly instead of the BSP wrapper.
 
 ```toml
 # packages/bsp/nano-ros-bsp-qemu/Cargo.toml
 [dependencies]
 nano-ros-platform-qemu = { path = "../../platform/nano-ros-platform-qemu" }
-nano-ros-transport-smoltcp = { path = "../../transport/nano-ros-transport-smoltcp" }
-# ... other deps unchanged
 ```
 
 ```rust
-// packages/bsp/nano-ros-bsp-qemu/src/lib.rs
+// packages/bsp/nano-ros-bsp-qemu/src/lib.rs (11 lines total)
+#![no_std]
 pub use nano_ros_platform_qemu::*;
-pub use nano_ros_transport_smoltcp::SmoltcpBridge;
-// Re-export everything examples currently use
 ```
 
 **Work items:**
-- [ ] Update `nano-ros-bsp-qemu/Cargo.toml` to depend on `nano-ros-platform-qemu` + `nano-ros-transport-smoltcp`
-- [ ] Replace `nano-ros-bsp-qemu/src/lib.rs` with re-exports from platform + transport crates
-- [ ] Delete `bridge.rs`, `buffers.rs`, `clock.rs`, `libc_stubs.rs`, `timing.rs` from BSP (now in platform crate)
-- [ ] Update QEMU examples (`bsp-talker`, `bsp-listener`) to depend on platform + transport directly
-- [ ] Update QEMU Rust examples (`rs-talker`, `rs-listener`, `rs-test`, `rs-wcet-bench`) if they reference BSP internals
-- [ ] Update `.cargo/config.toml` in QEMU examples for new `[patch.crates-io]` entries
+- [x] Update `nano-ros-bsp-qemu/Cargo.toml` to depend only on `nano-ros-platform-qemu`
+- [x] Replace `nano-ros-bsp-qemu/src/lib.rs` with `pub use nano_ros_platform_qemu::*;` (11 lines)
+- [x] Delete all old source files: `bridge.rs`, `buffers.rs`, `clock.rs`, `config.rs`, `error.rs`, `libc_stubs.rs`, `node.rs`, `publisher.rs`, `subscriber.rs`, `timing.rs`
+- [x] Keep `build.rs` + `mps2-an385.x` (linker script needed by cortex-m-rt)
+- [ ] Migrate QEMU examples to depend on `nano-ros-platform-qemu` directly:
+  - [ ] `examples/qemu/bsp-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_qemu::`)
+  - [ ] `examples/qemu/bsp-listener` — `Cargo.toml` + `src/main.rs`
+  - [ ] `examples/qemu/rs-talker` — `Cargo.toml` + `src/main.rs`
+  - [ ] `examples/qemu/rs-listener` — `Cargo.toml` + `src/main.rs`
+  - [ ] `examples/qemu/rs-wcet-bench` — `src/main.rs` (references BSP crate)
+  - [ ] Update `.cargo/config.toml` in each example for new `[patch.crates-io]` entries
+  - [ ] Move `build.rs` + `mps2-an385.x` linker script to platform crate (examples no longer pull BSP)
 
 **Passing criteria:**
-- [ ] `nano-ros-bsp-qemu` `lib.rs` is a thin re-export (< 20 lines)
-- [ ] All QEMU examples build: `cd examples/qemu/bsp-talker && cargo build --release`
-- [ ] `just test-qemu` passes (QEMU bare-metal tests)
-- [ ] `just quality` passes
+- [x] `nano-ros-bsp-qemu` `lib.rs` is a thin re-export (11 lines)
+- [x] All 4 QEMU BSP examples build: `bsp-talker`, `bsp-listener`, `rs-talker`, `rs-listener`
+- [ ] No QEMU examples depend on `nano-ros-bsp-qemu` (all use `nano-ros-platform-qemu` directly)
+- [ ] `just test-all` passes
 
 ### 32.6: Migrate ESP32-C3 BSPs
 
@@ -320,15 +323,19 @@ Apply the same platform/transport split to the ESP32-C3 BSPs:
   - [ ] Use OpenETH driver instead of LAN9118
 - [ ] Convert `nano-ros-bsp-esp32` to thin re-export wrapper
 - [ ] Convert `nano-ros-bsp-esp32-qemu` to thin re-export wrapper
-- [ ] Update ESP32 examples to depend on platform + transport directly
-- [ ] Update `.cargo/config.toml` in ESP32 examples
+- [ ] Migrate ESP32 examples to depend on platform crates directly:
+  - [ ] `examples/esp32/bsp-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_esp32::`)
+  - [ ] `examples/esp32/bsp-listener` — `Cargo.toml` + `src/main.rs`
+  - [ ] `examples/esp32/qemu-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_esp32_qemu::`)
+  - [ ] `examples/esp32/qemu-listener` — `Cargo.toml` + `src/main.rs`
+  - [ ] Update `.cargo/config.toml` in each example for new `[patch.crates-io]` entries
+  - [ ] Move linker scripts / `build.rs` to platform crates if needed
 
 **Passing criteria:**
 - [ ] Both platform crates compile for `riscv32imc-unknown-none-elf` with zero warnings
 - [ ] `nano-ros-bsp-esp32` and `nano-ros-bsp-esp32-qemu` are thin re-exports (< 20 lines each)
-- [ ] ESP32 examples build: `cd examples/esp32/bsp-talker && cargo build --release`
-- [ ] `just test-qemu-esp32` passes
-- [ ] `just quality` passes
+- [ ] No ESP32 examples depend on BSP crates (all use platform crates directly)
+- [ ] `just test-all` passes
 
 ### 32.7: Migrate STM32F4 BSP
 
@@ -348,14 +355,16 @@ The STM32F4 BSP is simpler (no bridge.rs — it uses a different networking appr
   - [ ] Extract system primitives (clock, allocator, RNG, libc stubs)
   - [ ] Wire `nano-ros-transport-smoltcp` for networking
 - [ ] Convert `nano-ros-bsp-stm32f4` to thin re-export wrapper
-- [ ] Update STM32F4 examples to depend on platform + transport directly
-- [ ] Update `.cargo/config.toml` in STM32F4 examples
+- [ ] Migrate STM32F4 examples to depend on platform crate directly:
+  - [ ] `examples/stm32f4/bsp-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_stm32f4::`)
+  - [ ] Update `.cargo/config.toml` for new `[patch.crates-io]` entries
+  - [ ] Move linker script / `build.rs` to platform crate if needed
 
 **Passing criteria:**
 - [ ] Platform crate compiles for `thumbv7em-none-eabihf` with zero warnings
 - [ ] `nano-ros-bsp-stm32f4` is a thin re-export (< 20 lines)
-- [ ] STM32F4 examples build: `cd examples/stm32f4/bsp-talker && cargo build --release`
-- [ ] `just quality` passes
+- [ ] No STM32F4 examples depend on BSP crate (all use platform crate directly)
+- [ ] `just test-all` passes
 
 ### 32.8: Update feature flag chain
 

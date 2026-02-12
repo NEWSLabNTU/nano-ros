@@ -356,15 +356,7 @@ checksum = "f52b00d39961fc5b2736ea853c9cc86238e165017a493d1d5c8eac6bdc4cc273"
 name = "nano-ros-bsp-qemu"
 version = "0.1.0"
 dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "cortex-m-semihosting",
- "heapless",
- "lan9118-smoltcp",
- "nano-ros-core",
- "panic-semihosting",
- "smoltcp",
- "zenoh-pico-shim-sys",
+ "nano-ros-platform-qemu",
 ]
 
 [[package]]
@@ -377,10 +369,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-platform-qemu"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "cortex-m-semihosting",
+ "heapless",
+ "lan9118-smoltcp",
+ "nano-ros-core",
+ "nano-ros-transport-smoltcp",
+ "panic-semihosting",
+ "smoltcp",
+ "zenoh-pico-shim-sys",
+]
+
+[[package]]
 name = "nano-ros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nano-ros-transport-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
+ "zenoh-pico-shim-sys",
 ]
 
 [[package]]

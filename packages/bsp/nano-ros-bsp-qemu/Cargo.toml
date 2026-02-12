@@ -3,37 +3,17 @@ name = "nano-ros-bsp-qemu"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "QEMU MPS2-AN385 Board Support Package for nano-ros"
+description = "QEMU MPS2-AN385 Board Support Package for nano-ros (thin wrapper)"
 readme = "README.md"
 
 [lib]
 name = "nano_ros_bsp_qemu"
 
 [dependencies]
-# Zenoh FFI bindings for smoltcp platform (C shims provide z_* → smoltcp_* translation)
-zenoh-pico-shim-sys = { path = "../../transport/zenoh-pico-shim-sys", features = ["smoltcp", "c-network-shim", "c-system-shim"] }
-lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp" }
-
-# Embedded dependencies
-cortex-m = "0.7"
-cortex-m-rt = "0.7"
-smoltcp = { version = "0.12", default-features = false, features = [
-    "medium-ethernet",
-    "proto-ipv4",
-    "socket-tcp",
-] }
-
-# Semihosting for QEMU output
-cortex-m-semihosting = "0.5"
-panic-semihosting = "0.6"
-
-# Core types (RosMessage, CDR serialization)
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
-
-# Heapless collections (for keyexpr formatting)
-heapless = "0.8"
+# Platform crate provides system primitives + node API
+nano-ros-platform-qemu = { path = "../../platform/nano-ros-platform-qemu" }
 
 [features]
 default = []
 # Docker networking mode (container with NAT)
-docker = []
+docker = ["nano-ros-platform-qemu/docker"]
