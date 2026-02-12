@@ -1,0 +1,12 @@
+[package]
+name = "nano-ros-transport-smoltcp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "smoltcp TCP transport for nano-ros (bare-metal systems)"
+
+[dependencies]
+zenoh-pico-shim-sys = { path = "../zenoh-pico-shim-sys", features = ["bare-metal", "link-tcp"] }
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet", "proto-ipv4", "socket-tcp",
+] }

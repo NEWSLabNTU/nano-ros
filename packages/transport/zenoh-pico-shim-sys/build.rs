@@ -198,6 +198,11 @@ fn main() {
     // Read link-* features for bare-metal protocol selection
     let link_features = LinkFeatures::from_env();
 
+    // Whether to include the C network.c shim (provides _z_open_tcp etc. in C).
+    // When nano-ros-transport-smoltcp provides these symbols in Rust, this should
+    // be disabled to avoid duplicate symbol errors.
+    let use_c_network_shim = env::var("CARGO_FEATURE_C_NETWORK_SHIM").is_ok();
+
     // Paths
     let zenoh_pico_src = manifest_dir.join("zenoh-pico");
     let c_dir = manifest_dir.join("c");
@@ -243,6 +248,7 @@ fn main() {
                 use_smoltcp,
                 &target,
                 &link_features,
+                use_c_network_shim,
             );
         }
     } else if use_smoltcp {
@@ -257,12 +263,16 @@ fn main() {
             &out_dir,
             &target,
             &link_features,
+            use_c_network_shim,
         );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
     // For no-backend: nothing to build (minimal configuration for header generation).
 
     // Set cfg flags for Rust code
+    if use_c_network_shim {
+        println!("cargo:rustc-cfg=c_network_shim");
+    }
     if use_posix {
         println!("cargo:rustc-cfg=shim_backend=\"posix\"");
     } else if use_zephyr {
@@ -692,6 +702,7 @@ fn generate_version_header(build_dir: &Path) {
 /// Build the C shim library
 ///
 /// Note: For Zephyr, C code is built by Zephyr's build system, not here.
+#[allow(clippy::too_many_arguments)]
 fn build_c_shim(
     c_dir: &Path,
     include_dir: &Path,
@@ -700,6 +711,7 @@ fn build_c_shim(
     use_smoltcp: bool,
     target: &str,
     link: &LinkFeatures,
+    use_c_network_shim: bool,
 ) {
     let mut build = cc::Build::new();
 
@@ -721,7 +733,12 @@ fn build_c_shim(
 
         // Add platform sources
         build.file(platform_dir.join("system.c"));
-        build.file(platform_dir.join("network.c"));
+        // Only include network.c when c-network-shim is enabled.
+        // When nano-ros-transport-smoltcp provides _z_open_tcp etc. in Rust,
+        // this must be disabled to avoid duplicate symbol errors.
+        if use_c_network_shim {
+            build.file(platform_dir.join("network.c"));
+        }
 
         // Include platform headers
         build.include(&platform_dir);
@@ -776,6 +793,7 @@ fn build_c_shim(
 /// Compiles all zenoh-pico sources together with our smoltcp platform layer and
 /// shim into a single static library (`libzenohpico.a`). This replaces the
 /// external `scripts/{qemu,esp32}/build-zenoh-pico.sh` shell scripts.
+#[allow(clippy::too_many_arguments)]
 fn build_zenoh_pico_embedded(
     zenoh_pico_src: &Path,
     c_dir: &Path,
@@ -783,6 +801,7 @@ fn build_zenoh_pico_embedded(
     out_dir: &Path,
     target: &str,
     link: &LinkFeatures,
+    use_c_network_shim: bool,
 ) {
     let mut build = cc::Build::new();
     let platform_dir = c_dir.join("platform_smoltcp");
@@ -846,7 +865,10 @@ fn build_zenoh_pico_embedded(
 
     // smoltcp platform layer
     build.file(platform_dir.join("system.c"));
-    build.file(platform_dir.join("network.c"));
+    // Only include network.c when c-network-shim is enabled.
+    if use_c_network_shim {
+        build.file(platform_dir.join("network.c"));
+    }
 
     // Shim (high-level API wrapper)
     build.file(c_dir.join("shim").join("zenoh_shim.c"));

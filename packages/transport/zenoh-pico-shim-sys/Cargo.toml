@@ -8,7 +8,7 @@ links = "zenoh_shim"
 
 [lints.rust]
 # cbindgen sets cfg(cbindgen) when parsing - allow it without warnings
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "smoltcp", "bare-metal"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "smoltcp", "bare-metal"))', 'cfg(c_network_shim)'] }
 
 [lib]
 name = "zenoh_pico_shim_sys"
@@ -19,8 +19,11 @@ default = []
 posix = []
 zephyr = []
 bare-metal = []
-# Backwards-compatible alias: smoltcp implies bare-metal + TCP
-smoltcp = ["bare-metal", "link-tcp"]
+# Backwards-compatible alias: smoltcp implies bare-metal + TCP + C network shim
+smoltcp = ["bare-metal", "link-tcp", "c-network-shim"]
+# Include the C network.c shim (provides _z_open_tcp etc. in C).
+# Disable this when using nano-ros-transport-smoltcp (which provides them in Rust).
+c-network-shim = []
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.

@@ -1,0 +1,400 @@
+//! Zenoh-pico TCP platform symbols implemented in Rust
+//!
+//! Replaces `c/platform_smoltcp/network.c`. Each function matches the
+//! zenoh-pico platform API signature expected by the C library.
+
+use crate::bridge::SmoltcpBridge;
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+/// Timeout for TCP connect (milliseconds)
+const CONNECT_TIMEOUT_MS: u64 = 30_000;
+
+/// Timeout for TCP read/write operations (milliseconds)
+const SOCKET_TIMEOUT_MS: u64 = 10_000;
+
+// ============================================================================
+// C types matching zenoh_bare_metal_platform.h
+// ============================================================================
+
+/// Socket handle passed between zenoh-pico and platform layer.
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct ZSysNetSocket {
+    _handle: i8,
+    _connected: bool,
+}
+
+/// Network endpoint (IPv4 address + port).
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub(crate) struct ZSysNetEndpoint {
+    _ip: [u8; 4],
+    _port: u16,
+}
+
+/// zenoh-pico result type (i8)
+type ZResult = i8;
+const Z_RES_OK: ZResult = 0;
+const Z_ERR_GENERIC: ZResult = -1;
+const Z_ERR_TRANSPORT_TX_FAILED: ZResult = -1;
+
+// ============================================================================
+// Helper Functions
+// ============================================================================
+
+/// Parse a C string as an IPv4 dotted-decimal address into 4 bytes.
+///
+/// Returns `Some([a, b, c, d])` on success, `None` on parse error.
+///
+/// # Safety
+///
+/// `s` must be a valid null-terminated C string.
+unsafe fn parse_ip_address(s: *const u8) -> Option<[u8; 4]> {
+    if s.is_null() {
+        return None;
+    }
+
+    let mut octets = [0u8; 4];
+    let mut octet_idx = 0usize;
+    let mut value: u32 = 0;
+    let mut has_digit = false;
+    let mut p = s;
+
+    loop {
+        let ch = unsafe { *p };
+        if ch == 0 {
+            break;
+        }
+
+        if ch >= b'0' && ch <= b'9' {
+            value = value * 10 + (ch - b'0') as u32;
+            has_digit = true;
+            if value > 255 {
+                return None;
+            }
+        } else if ch == b'.' {
+            if !has_digit || octet_idx >= 3 {
+                return None;
+            }
+            octets[octet_idx] = value as u8;
+            octet_idx += 1;
+            value = 0;
+            has_digit = false;
+        } else {
+            return None;
+        }
+
+        p = unsafe { p.add(1) };
+    }
+
+    if !has_digit || octet_idx != 3 {
+        return None;
+    }
+    octets[3] = value as u8;
+
+    Some(octets)
+}
+
+/// Parse a C string as a port number (0–65535).
+///
+/// # Safety
+///
+/// `s` must be a valid null-terminated C string.
+unsafe fn parse_port(s: *const u8) -> Option<u16> {
+    if s.is_null() {
+        return None;
+    }
+
+    let mut value: u32 = 0;
+    let mut has_digit = false;
+    let mut p = s;
+
+    loop {
+        let ch = unsafe { *p };
+        if ch == 0 {
+            break;
+        }
+
+        if ch >= b'0' && ch <= b'9' {
+            value = value * 10 + (ch - b'0') as u32;
+            has_digit = true;
+            if value > 65535 {
+                return None;
+            }
+        } else {
+            return None;
+        }
+
+        p = unsafe { p.add(1) };
+    }
+
+    if !has_digit {
+        return None;
+    }
+
+    Some(value as u16)
+}
+
+// ============================================================================
+// Endpoint Functions
+// ============================================================================
+
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_create_endpoint_tcp(
+    ep: *mut ZSysNetEndpoint,
+    s_address: *const u8,
+    s_port: *const u8,
+) -> ZResult {
+    if ep.is_null() || s_address.is_null() || s_port.is_null() {
+        return Z_ERR_GENERIC;
+    }
+
+    let ip = match unsafe { parse_ip_address(s_address) } {
+        Some(ip) => ip,
+        None => return Z_ERR_GENERIC,
+    };
+
+    let port = match unsafe { parse_port(s_port) } {
+        Some(p) => p,
+        None => return Z_ERR_GENERIC,
+    };
+
+    unsafe {
+        (*ep)._ip = ip;
+        (*ep)._port = port;
+    }
+
+    Z_RES_OK
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_free_endpoint_tcp(_ep: *mut ZSysNetEndpoint) {
+    // No dynamic allocation, nothing to free
+}
+
+// ============================================================================
+// Socket Lifecycle Functions
+// ============================================================================
+
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_open_tcp(
+    sock: *mut ZSysNetSocket,
+    rep: ZSysNetEndpoint,
+    tout: u32,
+) -> ZResult {
+    if sock.is_null() {
+        return Z_ERR_GENERIC;
+    }
+
+    unsafe {
+        (*sock)._handle = -1;
+        (*sock)._connected = false;
+    }
+
+    // Allocate a socket from the bridge
+    let handle = SmoltcpBridge::socket_open();
+    if handle < 0 {
+        return Z_ERR_GENERIC;
+    }
+
+    unsafe {
+        (*sock)._handle = handle as i8;
+    }
+
+    // Initiate connection
+    if SmoltcpBridge::socket_connect(handle, &rep._ip, rep._port) < 0 {
+        SmoltcpBridge::socket_close(handle);
+        unsafe {
+            (*sock)._handle = -1;
+        }
+        return Z_ERR_GENERIC;
+    }
+
+    // Wait for connection with timeout
+    let timeout_ms = if tout > 0 {
+        tout as u64
+    } else {
+        CONNECT_TIMEOUT_MS
+    };
+    let start = SmoltcpBridge::clock_now_ms();
+
+    loop {
+        // Poll the network stack
+        SmoltcpBridge::poll_network();
+
+        // Check connection status
+        if SmoltcpBridge::socket_is_connected(handle) {
+            unsafe {
+                (*sock)._connected = true;
+            }
+            return Z_RES_OK;
+        }
+
+        // Check timeout
+        if SmoltcpBridge::clock_now_ms() - start > timeout_ms {
+            SmoltcpBridge::socket_close(handle);
+            unsafe {
+                (*sock)._handle = -1;
+            }
+            return Z_ERR_TRANSPORT_TX_FAILED;
+        }
+    }
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_listen_tcp(
+    _sock: *mut ZSysNetSocket,
+    _rep: ZSysNetEndpoint,
+) -> ZResult {
+    // Server-side listening not supported in client mode
+    Z_ERR_GENERIC
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_close_tcp(sock: *mut ZSysNetSocket) {
+    if sock.is_null() {
+        return;
+    }
+    unsafe {
+        let handle = (*sock)._handle;
+        if handle >= 0 {
+            SmoltcpBridge::socket_close(handle as i32);
+            (*sock)._handle = -1;
+            (*sock)._connected = false;
+        }
+    }
+}
+
+// ============================================================================
+// Socket I/O Functions
+// ============================================================================
+
+/// Read up to `len` bytes. Returns bytes read, or `usize::MAX` on error/timeout.
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_read_tcp(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> usize {
+    if sock._handle < 0 || ptr.is_null() || len == 0 {
+        return usize::MAX;
+    }
+
+    let handle = sock._handle as i32;
+    let start = SmoltcpBridge::clock_now_ms();
+
+    loop {
+        // Poll the network stack
+        SmoltcpBridge::poll_network();
+
+        // Try to receive data
+        if SmoltcpBridge::socket_can_recv(handle) {
+            let buf = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+            let received = SmoltcpBridge::socket_recv(handle, buf);
+            if received > 0 {
+                return received as usize;
+            }
+        }
+
+        // Check for connection closed
+        if !SmoltcpBridge::socket_is_connected(handle) {
+            return usize::MAX;
+        }
+
+        // Check timeout
+        if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
+            return usize::MAX;
+        }
+    }
+}
+
+/// Read exactly `len` bytes. Returns bytes read, or `usize::MAX` on error/timeout.
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_read_exact_tcp(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> usize {
+    if sock._handle < 0 || ptr.is_null() {
+        return usize::MAX;
+    }
+
+    if len == 0 {
+        return 0;
+    }
+
+    let handle = sock._handle as i32;
+    let mut total_read: usize = 0;
+    let mut start = SmoltcpBridge::clock_now_ms();
+
+    while total_read < len {
+        // Poll the network stack
+        SmoltcpBridge::poll_network();
+
+        // Try to receive data
+        if SmoltcpBridge::socket_can_recv(handle) {
+            let remaining = len - total_read;
+            let buf =
+                unsafe { core::slice::from_raw_parts_mut(ptr.add(total_read), remaining) };
+            let received = SmoltcpBridge::socket_recv(handle, buf);
+            if received > 0 {
+                total_read += received as usize;
+                // Reset timeout on progress
+                start = SmoltcpBridge::clock_now_ms();
+            }
+        }
+
+        // Check for connection closed
+        if !SmoltcpBridge::socket_is_connected(handle) {
+            return usize::MAX;
+        }
+
+        // Check timeout
+        if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
+            return usize::MAX;
+        }
+    }
+
+    total_read
+}
+
+/// Send `len` bytes. Returns bytes sent, or `usize::MAX` on error/timeout.
+#[unsafe(no_mangle)]
+pub extern "C" fn _z_send_tcp(sock: ZSysNetSocket, ptr: *const u8, len: usize) -> usize {
+    if sock._handle < 0 || ptr.is_null() {
+        return usize::MAX;
+    }
+
+    if len == 0 {
+        return 0;
+    }
+
+    let handle = sock._handle as i32;
+    let mut total_sent: usize = 0;
+    let mut start = SmoltcpBridge::clock_now_ms();
+
+    while total_sent < len {
+        // Poll the network stack
+        SmoltcpBridge::poll_network();
+
+        // Try to send data
+        if SmoltcpBridge::socket_can_send(handle) {
+            let remaining = len - total_sent;
+            let data =
+                unsafe { core::slice::from_raw_parts(ptr.add(total_sent), remaining) };
+            let sent = SmoltcpBridge::socket_send(handle, data);
+            if sent > 0 {
+                total_sent += sent as usize;
+                // Reset timeout on progress
+                start = SmoltcpBridge::clock_now_ms();
+            }
+        }
+
+        // Check for connection closed
+        if !SmoltcpBridge::socket_is_connected(handle) {
+            return usize::MAX;
+        }
+
+        // Check timeout
+        if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
+            return usize::MAX;
+        }
+    }
+
+    total_sent
+}
