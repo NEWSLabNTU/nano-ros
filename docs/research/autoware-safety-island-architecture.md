@@ -1,4 +1,4 @@
-# Autoware 1.5.0 Safety Island Analysis for nano-ros
+# Autoware Safety Island Architecture & Certification Analysis
 
 > Source: `~/repos/autoware/1.5.0-ws/src/` (Autoware 1.5.0)
 > Date: 2026-02-07
@@ -605,7 +605,126 @@ nano-ros has a layered formal verification pipeline covering four real-time corr
 
 **Static stack analysis**: Per-function stack usage for all example platforms (QEMU ARM, ESP32-C3, native x86_64, STM32F4, Zephyr). Catches unexpectedly large stack frames and regressions.
 
-## 9. Recommended First Implementation
+## 9. Automotive Safety Standards & Certification Gap
+
+### 9.1 Applicable Standards
+
+| Standard | Scope | Relevance |
+|----------|-------|-----------|
+| **ISO 26262** | Functional safety for road vehicle E/E systems | Core standard — defines ASIL levels, V-model lifecycle, verification requirements |
+| **ISO 21448 (SOTIF)** | Safety of the Intended Functionality | Covers hazards from correct-but-insufficient design (perception limits, algorithm gaps) |
+| **ISO/PAS 8800** | Safety for AI/ML in vehicles | ML lifecycle: data quality, model validation, runtime monitoring |
+| **ISO/SAE 21434** | Cybersecurity engineering | Threat analysis, secure development, incident response |
+| **UN R155/R156** | Cybersecurity & SW update regulations | Mandatory in EU/Japan for type approval |
+| **UL 4600** | Safety case framework for autonomous vehicles | Structured argument for overall system safety |
+| **ASPICE** | Automotive process maturity model | OEMs require Level 2-3 from suppliers |
+
+### 9.2 ISO 26262 V-Model and ASIL
+
+ISO 26262 defines a **V-model lifecycle** where each design phase maps to a corresponding verification phase:
+
+```
+Requirements ──────────────────────────────► System Validation
+    │                                              ▲
+    ▼                                              │
+System Design ─────────────────────────► Integration Testing
+    │                                              ▲
+    ▼                                              │
+SW Architecture ──────────────────────► SW Integration Test
+    │                                              ▲
+    ▼                                              │
+Unit Design ──────────────────────────► Unit Testing
+    │                                              ▲
+    ▼                                              │
+    └──────────── Implementation ──────────────────┘
+```
+
+**ASIL levels** (Automotive Safety Integrity Levels) classify risk by severity, exposure, and controllability:
+
+| ASIL | Risk Level | Example | Verification Rigor |
+|------|-----------|---------|-------------------|
+| QM | No safety requirement | Infotainment | Basic QA |
+| A | Low | Rear wiper | Functional testing |
+| B | Medium | Head/tail lights | + requirements coverage |
+| C | High | Cruise control | + formal methods recommended |
+| D | Highest | Steering, braking, airbags | + formal methods required, MC/DC coverage |
+
+**ISO 26262 Part 6 (SW development) requirements for ASIL C/D:**
+
+- Unit testing with **MC/DC** (Modified Condition/Decision Coverage)
+- **Static analysis** — no undefined behavior, MISRA-C/C++ compliance
+- **Formal verification** — highly recommended at ASIL C, recommended at ASIL D
+- **Requirements traceability** — every requirement maps to tests and code
+- **Fault injection testing** — prove the system handles hardware faults
+- **WCET analysis** — prove tasks meet deadlines
+- **Freedom from interference** — prove non-safety SW cannot corrupt safety SW
+- **Tool qualification** — compilers, test tools must be qualified (TCL 1/2/3)
+
+### 9.3 Production Automotive Verification Stack
+
+For ASIL D systems (steering, braking), the typical tool stack:
+
+| Category | Production Tools | Purpose |
+|----------|-----------------|---------|
+| RTOS | AUTOSAR Classic, QNX, SafeRTOS | Certified real-time operating system |
+| Compiler | Green Hills MULTI, IAR (TUV cert) | Qualified compiler toolchain |
+| Static analysis | Polyspace, Coverity, Astree | Prove absence of runtime errors (abstract interpretation) |
+| WCET | AbsInt aiT, RapiTime | Static/measurement-based WCET bounds |
+| MC/DC coverage | VectorCAST, LDRA, Tessy | Structural test coverage |
+| Formal methods | SPIN, NuSMV, Isabelle, Coq | Model checking and theorem proving |
+| Traceability | DOORS, Polarion, Jama | Requirements ↔ design ↔ tests ↔ code |
+| Safety case | GSN, CAE | Structured safety arguments |
+
+### 9.4 Autoware Certification Gap Analysis
+
+| ISO 26262 Requirement | Production Automotive | Autoware 1.5.0 | nano-ros Safety Island |
+|---|---|---|---|
+| **ASIL decomposition** | Formal HARA, ASIL per function | No HARA, no ASIL assignment | Island = ASIL D; main stack = QM |
+| **Certified RTOS** | AUTOSAR, QNX, SafeRTOS | Linux (not certifiable ASIL B+) | RTIC (compile-time deadlock-free) / Zephyr |
+| **WCET analysis** | aiT or RapiTime, proven bounds | None | DWT measurement done; static analysis planned |
+| **Formal verification** | Required for ASIL C/D | None | Kani (82 harnesses), Verus (10 proofs), CBMC |
+| **MC/DC coverage** | Required for ASIL D unit tests | Some tests, no coverage tracking | Feasible with `cargo-llvm-cov` |
+| **Static analysis** | Polyspace / Astree proving no UB | Clippy + limited linting | Miri UB detection, Kani panic-freedom proofs |
+| **Requirements traceability** | DOORS-level req→test→code | GitHub issues (informal) | Phase docs trace features to tests |
+| **Freedom from interference** | MMU/MPU separation, memory partitioning | Single Linux process (no isolation) | Separate MCU = physical isolation |
+| **Tool qualification** | ISO 26262 Part 8, TCL 1-3 | No qualified tools | Not yet (rustc, Kani, Verus unqualified) |
+| **Safety case** | GSN/CAE structured argument | None | Not yet |
+| **MISRA compliance** | Required for C/C++ code | Not followed | nano-ros-c could target MISRA-C subset |
+| **Cybersecurity** | ISO 21434, UN R155 | Minimal | zenoh has TLS; MCU has minimal attack surface |
+| **Redundancy** | Dual-path or watchdog monitoring | Single path | Safety island IS the redundant path |
+
+### 9.5 Why Autoware Needs a Safety Island
+
+Autoware's fundamental certification blockers are architectural, not just tooling:
+
+1. **Linux is not certifiable** for ASIL B+. The kernel has unbounded latency (scheduler preemption, page faults, GC in ROS 2 middleware). No amount of testing can prove bounded WCET on Linux.
+
+2. **No ASIL decomposition**. Autoware treats all 300+ packages as one monolithic system. Without decomposition, the entire stack must be certified at the highest ASIL — practically impossible for 1M+ LOC.
+
+3. **No redundancy architecture**. If the MPC controller crashes, there is no independent backup. ISO 26262 requires fault tolerance for ASIL C/D through redundant monitoring or safe degradation paths.
+
+4. **No formal verification**. No proofs that state machines are correct, no proofs that arithmetic cannot overflow, no proofs that serialization is safe.
+
+The safety island strategy resolves all four: move ASIL D functions (emergency stop, command gating, watchdog) to a separate MCU running a certifiable stack (RTIC/Zephyr + nano-ros). The main Autoware stack runs as QM — no certification needed. This is the same decomposition strategy used by production automotive (e.g., AUTOSAR safety partitions, lockstep Cortex-R cores).
+
+### 9.6 nano-ros Toward ISO 26262
+
+| Requirement | nano-ros Status | Remaining Work |
+|---|---|---|
+| Physical isolation | Separate MCU | None (architectural) |
+| Certified-capable RTOS | RTIC / Zephyr | Zephyr IEC 61508 cert in progress (upstream) |
+| Bounded WCET | DWT infra done | Collect hardware baselines; add Platin static analysis |
+| Panic-freedom proofs | Kani 82 harnesses | Extend to ported Autoware components |
+| Scheduling correctness | Verus 10 proofs | Complete Tier 2-3 proofs |
+| Stack boundedness | Static analysis all platforms | Add call-chain depth analysis |
+| MC/DC coverage | Not yet | Add `cargo-llvm-cov` with MC/DC flags |
+| Tool qualification | Not yet | Document tool confidence level (TCL assessment) |
+| Requirements traceability | Phase docs | Formalize with structured tool (e.g., Sphinx-needs) |
+| Safety case | Not yet | Build GSN argument for emergency stop island |
+
+The technical foundations (verification, measurement, isolation) are in place. The remaining gaps are process and documentation concerns required for certification but not code changes.
+
+## 10. Recommended First Implementation
 
 **Target**: MRM Emergency Stop + Watchdog on STM32F4
 

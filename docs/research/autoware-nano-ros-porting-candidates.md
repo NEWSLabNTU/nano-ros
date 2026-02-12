@@ -2,7 +2,7 @@
 
 > Source: `~/repos/autoware/1.5.0-ws/src/` (Autoware 1.5.0)
 > Date: 2026-02-07
-> Related: [autoware-safety-island-analysis.md](autoware-safety-island-analysis.md)
+> Related: [autoware-safety-island-architecture.md](autoware-safety-island-architecture.md)
 
 ## Evaluation Criteria
 
