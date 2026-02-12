@@ -276,9 +276,10 @@ Plus a devicetree UART entry (e.g., `&uart0 { status = "okay"; };`).
 
 ### Design Constraints
 
-1. **zenoh-pico is not modified.** Protocol availability on each platform is fixed by what zenoh-pico already implements.
-2. On OS platforms (POSIX, Zephyr), zenoh-pico's built-in backend provides the protocol implementations. nano-ros cannot add protocols without modifying zenoh-pico.
-3. On bare-metal, nano-ros provides the platform layer. BSP crates provide protocol backends via C callback functions that zenoh-pico calls.
+1. **zenoh is the only transport today.** The architecture supports multiple transports, but only zenoh (via zenoh-pico) is implemented. All platform and link layer details below are zenoh-specific.
+2. **zenoh-pico is not modified.** Protocol availability on each platform is fixed by what zenoh-pico already implements.
+3. On OS platforms (POSIX, Zephyr), zenoh-pico's built-in backend provides the protocol implementations. nano-ros cannot add protocols without modifying zenoh-pico.
+4. On bare-metal, nano-ros provides the platform layer. Platform and link crates provide protocol backends that zenoh-pico calls.
 
 ### What the Platform Determines
 
@@ -305,15 +306,22 @@ No backend features needed. BSP role is limited to board configuration (device t
 
 | Runtime Protocols | Requires                                                  |
 |-------------------|-----------------------------------------------------------|
-| TCP, UDP          | `transport-smoltcp` crate (platform provides Ethernet driver) |
-| Serial            | `transport-serial` crate (platform provides UART driver)      |
-| Raw Ethernet      | `transport-raweth` crate (platform provides frame-level Ethernet driver) |
+| TCP, UDP          | `link-smoltcp` crate (platform provides Ethernet driver) |
+| Serial            | `link-serial` crate (platform provides UART driver)      |
+| Raw Ethernet      | `link-raweth` crate (platform provides frame-level Ethernet driver) |
 
-Platform crates provide system primitives (memory, clock, RNG). Transport crates provide network symbol implementations. Both directly implement zenoh-pico's standard platform symbols — no custom intermediate FFI.
+Platform crates provide system primitives (memory, clock, RNG). Link crates provide network symbol implementations. Both directly implement zenoh-pico's standard platform symbols — no custom intermediate FFI.
 
 ### Feature Structure
 
+Three orthogonal feature axes control the build:
+
 ```
+Transport (select one middleware protocol):
+├── zenoh                  # zenoh-pico middleware (only transport today)
+│                            Implies: platform-posix + alloc (convenience default)
+│                            Future alternatives: dds, mqtt, ...
+│
 Platform (mutually exclusive, compile-time):
 ├── platform-posix         # zenoh-pico Unix backend
 │                            zenoh-pico provides ALL symbols (system + network)
@@ -332,19 +340,43 @@ Platform (mutually exclusive, compile-time):
     │   Implements: z_malloc, z_clock_now, z_random_u32, z_sleep_ms,
     │               threading stubs, socket helpers (_z_socket_close, etc.)
     │
-    └── Transport crate (one per protocol, composable):
-        ├── transport-smoltcp  # TCP/UDP via smoltcp IP stack
+    └── Link crate (one per protocol, composable):
+        ├── link-smoltcp  # TCP/UDP via smoltcp IP stack
         │   Implements: _z_open_tcp, _z_send_tcp, _z_read_tcp, etc.
         │   Activates: zenoh-pico-shim-sys/link-tcp
         │
-        ├── transport-serial   # UART serial link
+        ├── link-serial   # UART serial link
         │   Implements: _z_open_serial_from_pins, _z_read_serial_internal, etc.
         │   Activates: zenoh-pico-shim-sys/link-serial
         │
-        └── transport-raweth   # Layer 2 raw Ethernet frames
+        └── link-raweth   # Layer 2 raw Ethernet frames
             Implements: _z_open_raweth, _z_send_raweth, _z_receive_raweth, etc.
             Activates: zenoh-pico-shim-sys/link-raweth
 ```
+
+### Transport Features
+
+The **transport** axis selects the middleware protocol that carries ROS 2 messages. Currently only zenoh is implemented.
+
+| Feature | Middleware | Crate Dependency | Status |
+|---------|-----------|-----------------|--------|
+| `zenoh` | zenoh-pico | `zenoh-pico-shim` | Implemented |
+
+The `zenoh` feature is a convenience alias for `platform-posix` + `alloc` in the top-level `nano-ros` crate. For bare-metal, users don't use the `zenoh` feature — they depend on `zenoh-pico-shim-sys` (via platform + link crates) directly.
+
+If a second transport were added (e.g., DDS via Micro-XRCE-DDS, or MQTT), it would follow the same pattern:
+
+```toml
+# nano-ros/Cargo.toml (hypothetical)
+[features]
+zenoh = ["nano-ros-node/zenoh", "nano-ros-transport/zenoh"]
+dds   = ["nano-ros-node/dds", "nano-ros-transport/dds"]
+mqtt  = ["nano-ros-node/mqtt", "nano-ros-transport/mqtt"]
+```
+
+Each transport feature would gate a different backend in `nano-ros-transport`, selecting the middleware-specific session, publisher, and subscriber implementations. The `nano-ros-node` API (`Node`, `Publisher<M>`, `Subscription<M>`) stays transport-agnostic — transport selection only affects which concrete types back the trait objects.
+
+Transport and platform features are orthogonal: `zenoh` works with `platform-posix`, `platform-zephyr`, or `platform-bare-metal`. A future `dds` transport would similarly work across platforms that provide the required system primitives.
 
 ### Compile-Time Protocol Enablement
 
@@ -400,9 +432,10 @@ If the user passes a locator for a protocol that was not compiled in, zenoh-pico
 ### Usage Examples
 
 ```toml
-# Desktop (Linux) — TCP, UDP, Serial, Raw Ethernet, TLS all available
-# User selects at runtime: ZENOH_LOCATOR=tcp/127.0.0.1:7447
-nano-ros = { features = ["platform-posix"] }
+# Desktop (Linux) — zenoh transport, all link protocols available
+# "zenoh" = platform-posix + alloc (convenience alias)
+# User selects link protocol at runtime: ZENOH_LOCATOR=tcp/127.0.0.1:7447
+nano-ros = { features = ["zenoh"] }
 
 # Zephyr — TCP, UDP Multicast, Serial (device) available
 # User selects at runtime via locator
@@ -412,25 +445,25 @@ nano-ros = { features = ["platform-zephyr"] }
 # Bare-metal QEMU with Ethernet — TCP via smoltcp
 [dependencies]
 nano-ros-platform-qemu = { path = "..." }
-nano-ros-transport-smoltcp = { path = "..." }
+nano-ros-link-smoltcp = { path = "..." }
 
 # Bare-metal serial only — no IP stack, no Ethernet driver needed
 [dependencies]
 nano-ros-platform-qemu = { path = "..." }
-nano-ros-transport-serial = { path = "..." }
+nano-ros-link-serial = { path = "..." }
 
 # Bare-metal with TCP + Serial — two transports
 [dependencies]
 nano-ros-platform-qemu = { path = "..." }
-nano-ros-transport-smoltcp = { path = "..." }
-nano-ros-transport-serial = { path = "..." }
+nano-ros-link-smoltcp = { path = "..." }
+nano-ros-link-serial = { path = "..." }
 ```
 
 ### How Bare-Metal Provides Protocol Support
 
 On bare-metal, zenoh-pico is compiled from source by `zenoh-pico-shim-sys`. It calls platform functions (`z_malloc`, `_z_open_tcp`, etc.) that must be provided externally. Unlike POSIX and Zephyr where zenoh-pico provides its own implementations, bare-metal implementations come from nano-ros crates.
 
-**Key principle:** Platform and transport crates implement zenoh-pico's own symbols directly using `#[unsafe(no_mangle)] extern "C"`. No custom intermediate FFI symbols (no `smoltcp_socket_open`, no `nros_net_tcp_open`). The same symbols that zenoh-pico defines in its headers and implements for POSIX/Zephyr are implemented by our Rust crates for bare-metal.
+**Key principle:** Platform and link crates implement zenoh-pico's own symbols directly using `#[unsafe(no_mangle)] extern "C"`. No custom intermediate FFI symbols (no `smoltcp_socket_open`, no `nros_net_tcp_open`). The same symbols that zenoh-pico defines in its headers and implements for POSIX/Zephyr are implemented by our Rust crates for bare-metal.
 
 ```
 zenoh-pico C code
@@ -438,10 +471,10 @@ zenoh-pico C code
     ↓ (link-time symbol resolution)
 Rust #[unsafe(no_mangle)] extern "C" functions
   system symbols: implemented by platform crate (platform-qemu)
-  network symbols: implemented by transport crate (transport-smoltcp)
+  network symbols: implemented by link crate (link-smoltcp)
     ↓
 platform crate → hardware (clock, heap, RNG)
-transport crate → smoltcp → Ethernet driver → hardware
+link crate → smoltcp → Ethernet driver → hardware
 ```
 
 Compared to POSIX/Zephyr where zenoh-pico's own C files implement these symbols using OS APIs (`socket()`, `connect()`, `pthread_create()`, etc.), on bare-metal our Rust crates provide the implementations directly.
@@ -454,7 +487,7 @@ Compared to POSIX/Zephyr where zenoh-pico's own C files implement these symbols 
 | Simplified C API (`zenoh_shim_*`) | `zenoh-pico-shim-sys` (`c/shim/zenoh_shim.c`) | Session/publisher/subscriber management wrapper over zenoh-pico |
 | Platform type definitions         | `zenoh-pico-shim-sys` (C header)              | `_z_sys_net_socket_t`, `z_clock_t`, etc.                        |
 | System symbol implementations     | Platform crate (Rust `#[no_mangle]`)          | `z_malloc`, `z_clock_now`, `z_sleep_ms`, threading stubs        |
-| Network symbol implementations    | Transport crate (Rust `#[no_mangle]`)         | `_z_open_tcp`, `_z_send_tcp`, `_z_close_tcp`, serial/raweth ops |
+| Network symbol implementations    | Link crate (Rust `#[no_mangle]`)         | `_z_open_tcp`, `_z_send_tcp`, `_z_close_tcp`, serial/raweth ops |
 | Hardware driver                   | Platform crate                                | Direct hardware access (Ethernet MAC, UART, clock)              |
 
 ### Migration Path
@@ -468,7 +501,7 @@ shim-zephyr  = ["platform-zephyr"]
 shim-smoltcp = ["platform-bare-metal"]
 ```
 
-The `zenoh` convenience feature continues to imply `platform-posix` for desktop use. For bare-metal, users migrate from `nano-ros-bsp-qemu` to separate `nano-ros-platform-qemu` + `nano-ros-transport-smoltcp` dependencies.
+The `zenoh` convenience feature continues to imply `platform-posix` for desktop use. For bare-metal, users migrate from `nano-ros-bsp-qemu` to separate `nano-ros-platform-qemu` + `nano-ros-link-smoltcp` dependencies.
 
 ## Protocol Integration Details
 
@@ -478,7 +511,7 @@ The `zenoh` convenience feature continues to imply `platform-posix` for desktop 
 
 **On Zephyr**: Already works. zenoh-pico's Zephyr backend implements device-based serial via `uart_poll_in()`/`uart_poll_out()`. Requires device tree UART entry. Pass `serial/uart0#baudrate=115200` as the locator.
 
-**On bare-metal** (new, requires `backend-serial`):
+**On bare-metal** (new, requires `link-serial`):
 
 BSP implements the C functions that zenoh-pico's serial link calls:
 
@@ -516,7 +549,7 @@ zenoh-pico handles the COBS framing, CRC32, and connection handshake. The BSP on
 
 **On Zephyr**: UDP multicast works (scouting, group communication). UDP unicast listen is an upstream `@TODO`.
 
-**On bare-metal** (requires `backend-smoltcp`, new work):
+**On bare-metal** (requires `link-smoltcp`, new work):
 
 The current smoltcp bridge (`SmoltcpZenohBridge`) only implements TCP sockets. Adding UDP requires:
 - UDP socket slots in the bridge's socket table
@@ -531,7 +564,7 @@ UDP multicast on bare-metal would enable `ZENOH_MODE=peer` — direct peer-to-pe
 
 **On Zephyr**: Not available. zenoh-pico's Zephyr backend has `#error "not supported yet"`. Would need upstream contribution.
 
-**On bare-metal** (new, requires `backend-raweth`):
+**On bare-metal** (new, requires `link-raweth`):
 
 BSP implements frame-level send/receive:
 
@@ -556,7 +589,7 @@ Existing BSP Ethernet drivers (LAN9118, OpenCores OpenETH) already operate at th
 │  - MAC addressing, EtherType filtering   │
 │  - Optional VLAN tagging                 │
 ├──────────────────────────────────────────┤
-│  BSP Ethernet Driver (backend-raweth)    │
+│  BSP Ethernet Driver (link-raweth)    │
 │  - Raw frame TX/RX                       │
 │  - No IP stack needed                    │
 ├──────────────────────────────────────────┤
@@ -576,13 +609,13 @@ Existing BSP Ethernet drivers (LAN9118, OpenCores OpenETH) already operate at th
 
 **Not recommended for nano-ros** unless targeting Arduino ESP32 specifically. BLE bandwidth (~1 Mbps) and latency are poor for real-time ROS 2 traffic. Serial over UART is simpler and faster for short-range wired connections.
 
-## Platform / Transport Matrix
+## Platform / Link Matrix
 
-How each hardware target maps to platform and transport crates:
+How each hardware target maps to platform and link crates:
 
 ### Bare-metal Platforms
 
-| Platform Crate               | Hardware                            | Compatible Transports   | Notes                                                       |
+| Platform Crate               | Hardware                            | Compatible Links        | Notes                                                       |
 |------------------------------|-------------------------------------|-------------------------|-------------------------------------------------------------|
 | `platform-qemu` (ARM)        | LAN9118 Ethernet, QEMU virtual UART | smoltcp, serial, raweth | LAN9118 driver works at frame level                         |
 | `platform-esp32` (WiFi)      | WiFi (smoltcp), ESP32 UART          | smoltcp, serial         | No raweth (WiFi is IP-only)                                 |
@@ -592,7 +625,7 @@ How each hardware target maps to platform and transport crates:
 
 ### OS Platforms
 
-Protocols are handled entirely by zenoh-pico's built-in backends. No transport crate needed.
+Protocols are handled entirely by zenoh-pico's built-in backends. No link crate needed.
 
 | Platform          | Protocols Available at Runtime              | Role                                          |
 |-------------------|---------------------------------------------|-----------------------------------------------|
@@ -611,7 +644,7 @@ Some targets don't fit neatly into the current three platforms. These would reus
 
 These are alternatives to `platform-bare-metal` — they use zenoh-pico's built-in RTOS backends instead of nano-ros's custom smoltcp layer. The trade-off: more protocols available out of the box (zenoh-pico already implements them), but depends on the RTOS's networking stack.
 
-## Platform / Transport Crate Architecture
+## Platform / Link Crate Architecture
 
 ### Design Principle
 
@@ -620,7 +653,7 @@ zenoh-pico defines a standard platform API: C function symbols that every platfo
 On bare-metal, **nano-ros provides these same symbols** split across two crate types:
 
 - **Platform crates** implement system symbols (memory, clock, RNG, sleep, threading)
-- **Transport crates** implement network symbols (TCP, serial, raw Ethernet operations)
+- **Link crates** implement network symbols (TCP, serial, raw Ethernet operations)
 
 Both crate types implement zenoh-pico's own symbols directly via `#[unsafe(no_mangle)] extern "C"`. No C shim translation layer, no custom intermediate symbols.
 
@@ -641,7 +674,7 @@ zenoh-pico-shim-sys[bare-metal]
 │       These are nano-ros's OWN symbols (not zenoh-pico symbols) providing a simpler
 │       C API over zenoh-pico's complex session/publisher/subscriber management.
 ├── Does NOT implement any zenoh-pico platform symbols (z_malloc, _z_open_tcp, etc.)
-└── Platform symbols resolved at link time from platform + transport crates
+└── Platform symbols resolved at link time from platform + link crates
 
 platform-qemu (Rust crate, hardware-specific)
 ├── Implements system symbols: z_malloc, z_clock_now, z_random_u32, z_sleep_ms, ...
@@ -655,9 +688,9 @@ platform-qemu (Rust crate, hardware-specific)
 ├── Provides: libc stubs (strlen, memcpy, strtoul, ...)
 ├── Provides: hardware init (Ethernet driver, DWT cycle counter, semihosting)
 ├── Provides: run_node() / Node API
-└── Depends on transport crate via Cargo (for network polling in z_sleep_ms)
+└── Depends on link crate via Cargo (for network polling in z_sleep_ms)
 
-transport-smoltcp (Rust crate, protocol-specific)
+link-smoltcp (Rust crate, protocol-specific)
 ├── Implements TCP symbols: _z_open_tcp, _z_send_tcp, _z_read_tcp, _z_close_tcp, ...
 ├── Implements endpoint symbols: _z_create_endpoint_tcp, _z_free_endpoint_tcp
 ├── Depends on zenoh-pico-shim-sys = { features = ["link-tcp"] }
@@ -731,7 +764,7 @@ On POSIX and Zephyr, these live in `network.c` because they use OS socket APIs (
 - `_z_socket_accept`: returns error (bare-metal is client-only).
 - `_z_socket_set_non_blocking`: no-op (bare-metal is always non-blocking).
 
-This allows multiple transport crates to be linked without duplicate symbol conflicts.
+This allows multiple link crates to be linked without duplicate symbol conflicts.
 
 | Symbol                       | Signature                                                                              |
 |------------------------------|----------------------------------------------------------------------------------------|
@@ -858,10 +891,10 @@ Who provides each symbol set, comparing POSIX/Zephyr (zenoh-pico self-contained)
 | Sleep (`z_sleep_*`)              | zenoh-pico `unix/system.c`   | zenoh-pico `zephyr/system.c`   | **platform-qemu** (Rust)           |
 | Threading stubs                  | zenoh-pico `unix/system.c`   | zenoh-pico `zephyr/system.c`   | **platform-qemu** (Rust)           |
 | Socket helpers (`_z_socket_*`)   | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **platform crate** (Rust)          |
-| TCP (`_z_open_tcp`, ...)         | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **transport-smoltcp** (Rust)       |
-| UDP (`_z_open_udp_*`, ...)       | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **transport-smoltcp** (Rust)       |
-| Serial (`_z_open_serial_*`, ...) | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **transport-serial** (Rust)        |
-| Raw Ethernet                     | zenoh-pico `unix/network.c`  | N/A                            | **transport-raweth** (Rust)        |
+| TCP (`_z_open_tcp`, ...)         | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **link-smoltcp** (Rust)       |
+| UDP (`_z_open_udp_*`, ...)       | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **link-smoltcp** (Rust)       |
+| Serial (`_z_open_serial_*`, ...) | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **link-serial** (Rust)        |
+| Raw Ethernet                     | zenoh-pico `unix/network.c`  | N/A                            | **link-raweth** (Rust)        |
 | Platform type header             | zenoh-pico `platform/unix.h` | zenoh-pico `platform/zephyr.h` | **zenoh-pico-shim-sys** (C header) |
 
 ### Cross-Dependency Resolution
@@ -877,7 +910,7 @@ Both are resolved using **zenoh-pico's own symbols** — no custom FFI:
 **Transport → Platform** (clock): Transport-smoltcp declares `z_clock_now` as an extern and calls it. At link time, the symbol resolves to platform-qemu's implementation.
 
 ```rust
-// transport-smoltcp/src/tcp.rs
+// link-smoltcp/src/tcp.rs
 extern "C" { fn z_clock_now() -> u64; }
 
 #[unsafe(no_mangle)]
@@ -893,7 +926,7 @@ extern "C" fn _z_open_tcp(sock: *mut SysNetSocket, rep: SysNetEndpoint, tout: u3
 }
 ```
 
-**Platform → Transport** (poll): Platform-qemu depends on transport-smoltcp via Cargo. The transport crate exposes a Rust callback registration API (not an FFI symbol). Platform registers a poll function during init that has access to the hardware-specific Device, Interface, and SocketSet.
+**Platform → Transport** (poll): Platform-qemu depends on link-smoltcp via Cargo. The link crate exposes a Rust callback registration API (not an FFI symbol). Platform registers a poll function during init that has access to the hardware-specific Device, Interface, and SocketSet.
 
 ```rust
 // platform-qemu/src/node.rs
@@ -919,7 +952,7 @@ extern "C" fn z_sleep_ms(time_ms: usize) -> i8 {
 }
 ```
 
-The poll callback is a Rust `fn()` pointer stored in the transport crate — not a `#[no_mangle]` FFI symbol. The cross-dependency uses only zenoh-pico symbols (`z_clock_now`) and internal Rust APIs (`SmoltcpBridge::poll`, `set_poll_callback`).
+The poll callback is a Rust `fn()` pointer stored in the link crate — not a `#[no_mangle]` FFI symbol. The cross-dependency uses only zenoh-pico symbols (`z_clock_now`) and internal Rust APIs (`SmoltcpBridge::poll`, `set_poll_callback`).
 
 ### Current vs New: QEMU Example
 
@@ -959,7 +992,7 @@ platform-qemu/
 ├── node.rs         # run_node(), poll callback registration
 └── timing.rs       # DWT cycle counter
 
-transport-smoltcp/
+link-smoltcp/
 ├── lib.rs          # _z_create_endpoint_tcp, _z_free_endpoint_tcp
 │                     _z_open_tcp, _z_listen_tcp, _z_close_tcp
 │                     _z_read_tcp, _z_read_exact_tcp, _z_send_tcp
@@ -975,17 +1008,17 @@ zenoh-pico-shim-sys[bare-metal]/
 
 Custom symbols: **none**. All FFI symbols are zenoh-pico's standard platform API.
 
-### Multi-Transport Composition
+### Multi-Link Composition
 
-Multiple transport crates can be linked for a single bare-metal target. This section explains how conflicts are avoided.
+Multiple link crates can be linked for a single bare-metal target. This section explains how conflicts are avoided.
 
-**Protocol symbol isolation.** Each transport crate implements a disjoint set of zenoh-pico symbols:
+**Protocol symbol isolation.** Each link crate implements a disjoint set of zenoh-pico symbols:
 
 | Transport Crate   | Symbols Provided                                                                                                                                                                          |
 |-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| transport-smoltcp | `_z_open_tcp`, `_z_close_tcp`, `_z_send_tcp`, `_z_read_tcp`, `_z_read_exact_tcp`, `_z_listen_tcp`, `_z_create_endpoint_tcp`, `_z_free_endpoint_tcp` (+ UDP variants)                      |
-| transport-serial  | `_z_open_serial_from_pins`, `_z_open_serial_from_dev`, `_z_listen_serial_from_pins`, `_z_listen_serial_from_dev`, `_z_close_serial`, `_z_read_serial_internal`, `_z_send_serial_internal` |
-| transport-raweth  | `_z_open_raweth`, `_z_close_raweth`, `_z_send_raweth`, `_z_receive_raweth`, `_z_raweth_ntohs`, `_z_raweth_htons`                                                                          |
+| link-smoltcp | `_z_open_tcp`, `_z_close_tcp`, `_z_send_tcp`, `_z_read_tcp`, `_z_read_exact_tcp`, `_z_listen_tcp`, `_z_create_endpoint_tcp`, `_z_free_endpoint_tcp` (+ UDP variants)                      |
+| link-serial  | `_z_open_serial_from_pins`, `_z_open_serial_from_dev`, `_z_listen_serial_from_pins`, `_z_listen_serial_from_dev`, `_z_close_serial`, `_z_read_serial_internal`, `_z_send_serial_internal` |
+| link-raweth  | `_z_open_raweth`, `_z_close_raweth`, `_z_send_raweth`, `_z_receive_raweth`, `_z_raweth_ntohs`, `_z_raweth_htons`                                                                          |
 
 No overlap — each protocol has unique symbol names in zenoh-pico's API.
 
@@ -1013,14 +1046,14 @@ link-serial = []        # sets Z_FEATURE_LINK_SERIAL=1
 link-raweth = []        # sets Z_FEATURE_RAWETH_TRANSPORT=1
 ```
 
-Transport crates activate the features they implement:
+Link crates activate the features they implement:
 
 ```toml
-# transport-smoltcp/Cargo.toml
+# link-smoltcp/Cargo.toml
 [dependencies]
 zenoh-pico-shim-sys = { features = ["bare-metal", "link-tcp"] }
 
-# transport-serial/Cargo.toml
+# link-serial/Cargo.toml
 [dependencies]
 zenoh-pico-shim-sys = { features = ["bare-metal", "link-serial"] }
 ```
@@ -1031,8 +1064,8 @@ Cargo's feature unification merges them. When both are linked:
 # User's Cargo.toml
 [dependencies]
 nano-ros-platform-qemu = { path = "..." }
-nano-ros-transport-smoltcp = { path = "..." }
-nano-ros-transport-serial = { path = "..." }
+nano-ros-link-smoltcp = { path = "..." }
+nano-ros-link-serial = { path = "..." }
 # → zenoh-pico-shim-sys gets: bare-metal + link-tcp + link-serial
 # → zenoh-pico compiled with Z_FEATURE_LINK_TCP=1, Z_FEATURE_LINK_SERIAL=1
 # → Both symbol sets required and provided
@@ -1043,7 +1076,7 @@ When only one transport is linked:
 ```toml
 [dependencies]
 nano-ros-platform-qemu = { path = "..." }
-nano-ros-transport-serial = { path = "..." }
+nano-ros-link-serial = { path = "..." }
 # → zenoh-pico-shim-sys gets: bare-metal + link-serial
 # → zenoh-pico compiled with Z_FEATURE_LINK_TCP=0, Z_FEATURE_LINK_SERIAL=1
 # → Only serial symbols required and provided
@@ -1068,28 +1101,28 @@ A user with custom hardware (e.g., W5500 SPI Ethernet) writes:
 
 1. **Platform crate**: Implements system symbols (`z_malloc`, `z_clock_now`, etc.) for their hardware. Can use an existing platform as a template.
 
-2. **Transport selection**: Uses `transport-smoltcp` if their chip has a smoltcp driver, or writes a custom transport implementing the relevant `_z_open_*` / `_z_send_*` / `_z_read_*` symbols.
+2. **Transport selection**: Uses `link-smoltcp` if their chip has a smoltcp driver, or writes a custom transport implementing the relevant `_z_open_*` / `_z_send_*` / `_z_read_*` symbols.
 
 3. **Dependencies**:
    ```toml
    [dependencies]
    zenoh-pico-shim-sys = { features = ["bare-metal"] }
-   nano-ros-transport-smoltcp = { path = "..." }
+   nano-ros-link-smoltcp = { path = "..." }
    ```
 
 The contract is zenoh-pico's own platform API — no nano-ros-specific FFI to learn.
 
 ## Recommended Priority
 
-1. **Platform/transport split** — Extract platform-qemu and transport-smoltcp from the monolithic bsp-qemu. Prerequisite for all other transport work.
+1. **Platform/transport split** — Extract platform-qemu and link-smoltcp from the monolithic bsp-qemu. Prerequisite for all other transport work.
 
-2. **Serial on bare-metal** (`transport-serial`) — Lowest effort, highest impact. Enables any MCU with a UART to participate in a zenoh network without an IP stack.
+2. **Serial on bare-metal** (`link-serial`) — Lowest effort, highest impact. Enables any MCU with a UART to participate in a zenoh network without an IP stack.
 
 3. **Serial on POSIX/Zephyr** — Zero effort. Already works in zenoh-pico. Just needs documentation and testing with nano-ros locator configuration.
 
-4. **UDP on bare-metal** — Extend transport-smoltcp to support UDP sockets in the bridge. Enables peer mode (no router) on embedded.
+4. **UDP on bare-metal** — Extend link-smoltcp to support UDP sockets in the bridge. Enables peer mode (no router) on embedded.
 
-5. **Raw Ethernet on bare-metal** (`transport-raweth`) — Eliminates the IP stack for Ethernet-connected bare-metal devices. Existing driver crates already work at the frame level.
+5. **Raw Ethernet on bare-metal** (`link-raweth`) — Eliminates the IP stack for Ethernet-connected bare-metal devices. Existing driver crates already work at the frame level.
 
 6. **New platform backends** (FreeRTOS, ESP-IDF, RPi Pico) — Reuse zenoh-pico's existing backends. Provides more protocols out of the box than the custom bare-metal layer.
 
@@ -1121,5 +1154,5 @@ The `shim-smoltcp` feature conflates platform (bare-metal) with backend (smoltcp
 The proposed refactoring:
 - Replaces `shim-smoltcp` with `bare-metal` (platform only, no transport)
 - Removes C shim files — Rust crates implement zenoh-pico symbols directly
-- Splits BSP into platform crate (system symbols) + transport crate (network symbols)
-- Enables `transport-serial` and `transport-raweth` as independent alternatives
+- Splits BSP into platform crate (system symbols) + link crate (network symbols)
+- Enables `link-serial` and `link-raweth` as independent alternatives

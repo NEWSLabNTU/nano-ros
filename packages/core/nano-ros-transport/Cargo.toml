@@ -10,15 +10,15 @@ default = ["std"]
 std = ["nano-ros-core/std", "zenoh-pico-shim?/std", "log"]
 alloc = ["nano-ros-core/alloc", "zenoh-pico-shim?/alloc"]
 
-# Transport backend using zenoh-pico-shim
-# Select one platform: platform-posix (desktop), platform-zephyr, or platform-bare-metal
-shim = ["dep:zenoh-pico-shim"]  # Base shim feature (requires platform selection)
-platform-posix = ["shim", "zenoh-pico-shim/posix"]  # POSIX platform (desktop testing)
-platform-zephyr = ["shim", "zenoh-pico-shim/zephyr"]  # Zephyr RTOS platform
-platform-bare-metal = ["shim", "zenoh-pico-shim/bare-metal"]  # Bare-metal platform (smoltcp)
-
-# Backward compatibility alias - "zenoh" uses platform-posix
+# Transport: selects the middleware protocol (only zenoh today)
+# "zenoh" is a convenience alias for platform-posix + alloc (desktop default)
 zenoh = ["platform-posix", "alloc"]
+
+# Platform: selects the OS/HAL backend (mutually exclusive)
+shim = ["dep:zenoh-pico-shim"]  # Base shim feature (requires platform selection)
+platform-posix = ["shim", "zenoh-pico-shim/posix"]  # POSIX platform (desktop)
+platform-zephyr = ["shim", "zenoh-pico-shim/zephyr"]  # Zephyr RTOS platform
+platform-bare-metal = ["shim", "zenoh-pico-shim/bare-metal"]  # Bare-metal platform
 
 # Executor backends (informational - affects sync primitive choice)
 rtic = []       # RTIC executor - uses critical sections, no background threads

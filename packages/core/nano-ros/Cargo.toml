@@ -22,6 +22,7 @@ alloc = [
     "nano-ros-transport/alloc",
     "nano-ros-params/alloc",
 ]
+# Transport: selects the middleware protocol (only zenoh today)
 zenoh = [
     "nano-ros-node/zenoh",
     "nano-ros-transport/zenoh",
@@ -31,7 +32,7 @@ zenoh = [
 ros-humble = ["nano-ros-node/ros-humble"]
 ros-iron = ["nano-ros-node/ros-iron"]
 
-# Platform backends (select one)
+# Platform: selects the OS/HAL backend (mutually exclusive)
 platform-posix = ["nano-ros-node/platform-posix", "nano-ros-transport/platform-posix"]
 platform-zephyr = ["nano-ros-node/platform-zephyr", "nano-ros-transport/platform-zephyr"]
 platform-bare-metal = ["nano-ros-node/platform-bare-metal", "nano-ros-transport/platform-bare-metal"]
