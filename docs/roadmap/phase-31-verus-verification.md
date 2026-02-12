@@ -372,7 +372,7 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 | 31.3 | Tier 2: Communication reliability proofs (14)   | 1 day   | **Done** (14 proofs in cdr.rs + communication.rs) |
 | 31.4 | Tier 3: Core algorithm correctness proofs (13)  | 1.5 day | **Done** (13 proofs in time.rs + action.rs + params.rs) |
 | 31.5 | Integration + documentation                     | 2 hours | **Done**    |
-| 31.6 | Fix subscriber path bugs (F3, F4)               | 0.5 day | Not started |
+| 31.6 | Fix subscriber path bugs (F3, F4)               | 0.5 day | **Done**    |
 | 31.7 | Tier 4a: E2E proofs — bug existence + data path (8) | 1 day | Not started |
 | 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)  | 0.5 day | Not started |
 
@@ -543,7 +543,7 @@ Completed early alongside 31.2 because Verus patterns and limitations needed doc
 
 ### 31.6: Fix Subscriber Path Bugs (F3, F4)
 
-**Depends on:** None — **Status: Not started**
+**Depends on:** None — **Status: Done**
 
 Fix two bugs discovered during E2E data path analysis. See [E2E Verification Analysis](../design/e2e-verification-analysis.md) findings F3 and F4.
 
@@ -583,11 +583,11 @@ Fix: Add an overflow flag to `SubscriberBuffer`. When `len > data.len()`, set th
 
 **Acceptance criteria:**
 
-- [ ] Stuck subscription bug is fixed — `has_data` cleared on all error paths
-- [ ] Silent truncation replaced with explicit `MessageTooLarge` error
+- [x] Stuck subscription bug is fixed — `has_data` cleared on all error paths (`try_recv_raw`, `try_recv_with_info`)
+- [x] Silent truncation replaced with explicit `MessageTooLarge` error (overflow flag in `SubscriberBuffer`)
 - [ ] Unit tests cover: normal receive, oversized message rejection, recovery after error
-- [ ] `just quality` passes
-- [ ] `just test-miri` passes on nano-ros-transport (no UB in new code)
+- [x] `just quality` passes (418 tests)
+- [x] `just test-miri` passes (no UB in new code)
 
 ### 31.7: Tier 4a — E2E Proofs: Bug Existence + Data Path (8 proofs)
 

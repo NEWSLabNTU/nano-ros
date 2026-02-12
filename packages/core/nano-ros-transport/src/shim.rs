@@ -857,6 +857,10 @@ struct SubscriberBuffer {
     attachment: [u8; RMW_ATTACHMENT_SIZE],
     /// Flag indicating new data is available
     has_data: AtomicBool,
+    /// Flag indicating the incoming message exceeded the buffer capacity.
+    /// Set by the callback when `len > data.len()`. Checked by `try_recv_raw`
+    /// which returns `Err(MessageTooLarge)` and clears this flag.
+    overflow: AtomicBool,
     /// Length of valid payload data
     len: AtomicUsize,
     /// Length of valid attachment data
@@ -869,6 +873,7 @@ impl SubscriberBuffer {
             data: [0u8; 1024],
             attachment: [0u8; RMW_ATTACHMENT_SIZE],
             has_data: AtomicBool::new(false),
+            overflow: AtomicBool::new(false),
             len: AtomicUsize::new(0),
             attachment_len: AtomicUsize::new(0),
         }
@@ -910,25 +915,32 @@ extern "C" fn subscriber_callback_with_attachment(
     unsafe {
         let buffer = &mut SUBSCRIBER_BUFFERS[buffer_index];
 
-        // Copy payload data
-        let copy_len = len.min(buffer.data.len());
-        core::ptr::copy_nonoverlapping(data, buffer.data.as_mut_ptr(), copy_len);
-        buffer.len.store(copy_len, Ordering::Release);
-
-        // Copy attachment data if present
-        if !attachment.is_null() && attachment_len > 0 {
-            let att_copy_len = attachment_len.min(buffer.attachment.len());
-            core::ptr::copy_nonoverlapping(
-                attachment,
-                buffer.attachment.as_mut_ptr(),
-                att_copy_len,
-            );
-            buffer.attachment_len.store(att_copy_len, Ordering::Release);
+        if len > buffer.data.len() {
+            // Message exceeds static buffer capacity — flag as overflow instead of
+            // silently truncating. The consumer will see MessageTooLarge and can recover.
+            buffer.overflow.store(true, Ordering::Release);
+            buffer.has_data.store(true, Ordering::Release);
         } else {
-            buffer.attachment_len.store(0, Ordering::Release);
-        }
+            // Normal case: copy payload data
+            buffer.overflow.store(false, Ordering::Release);
+            core::ptr::copy_nonoverlapping(data, buffer.data.as_mut_ptr(), len);
+            buffer.len.store(len, Ordering::Release);
 
-        buffer.has_data.store(true, Ordering::Release);
+            // Copy attachment data if present
+            if !attachment.is_null() && attachment_len > 0 {
+                let att_copy_len = attachment_len.min(buffer.attachment.len());
+                core::ptr::copy_nonoverlapping(
+                    attachment,
+                    buffer.attachment.as_mut_ptr(),
+                    att_copy_len,
+                );
+                buffer.attachment_len.store(att_copy_len, Ordering::Release);
+            } else {
+                buffer.attachment_len.store(0, Ordering::Release);
+            }
+
+            buffer.has_data.store(true, Ordering::Release);
+        }
 
         // Wake the executor spin loop (if waiting)
         #[cfg(feature = "std")]
@@ -1016,8 +1028,18 @@ impl ShimSubscriber {
             return Ok(None);
         }
 
+        // Check for overflow (message exceeded static buffer capacity)
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
+
         let len = buffer.len.load(Ordering::Acquire);
         if len > buf.len() {
+            // Clear has_data to avoid permanently stuck subscription — the oversized
+            // message is dropped, but the subscription recovers on the next message.
+            buffer.has_data.store(false, Ordering::Release);
             return Err(TransportError::BufferTooSmall);
         }
 
@@ -1065,8 +1087,18 @@ impl Subscriber for ShimSubscriber {
             return Ok(None);
         }
 
+        // Check for overflow (message exceeded static buffer capacity)
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
+
         let len = buffer.len.load(Ordering::Acquire);
         if len > buf.len() {
+            // Clear has_data to avoid permanently stuck subscription — the oversized
+            // message is dropped, but the subscription recovers on the next message.
+            buffer.has_data.store(false, Ordering::Release);
             return Err(TransportError::BufferTooSmall);
         }
 

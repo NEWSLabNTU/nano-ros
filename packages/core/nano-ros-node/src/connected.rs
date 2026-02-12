@@ -94,6 +94,8 @@ pub enum ConnectedNodeError {
     DeserializationFailed,
     /// Buffer too small
     BufferTooSmall,
+    /// Incoming message exceeded the static subscriber buffer capacity
+    MessageTooLarge,
     /// No message available
     NoMessage,
     /// Service request failed
@@ -144,6 +146,7 @@ impl From<TransportError> for ConnectedNodeError {
             TransportError::SerializationError => ConnectedNodeError::SerializationFailed,
             TransportError::DeserializationError => ConnectedNodeError::DeserializationFailed,
             TransportError::BufferTooSmall => ConnectedNodeError::BufferTooSmall,
+            TransportError::MessageTooLarge => ConnectedNodeError::MessageTooLarge,
             TransportError::ServiceRequestFailed => ConnectedNodeError::ServiceRequestFailed,
             TransportError::ServiceReplyFailed => ConnectedNodeError::ServiceReplyFailed,
             TransportError::TaskStartFailed => ConnectedNodeError::TaskStartFailed,

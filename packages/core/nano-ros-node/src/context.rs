@@ -666,6 +666,8 @@ pub enum RclrsError {
     DeserializationFailed,
     /// Buffer too small
     BufferTooSmall,
+    /// Incoming message exceeded the static subscriber buffer capacity
+    MessageTooLarge,
     /// No message available
     NoMessage,
     /// Service request failed
@@ -737,6 +739,7 @@ impl From<crate::ConnectedNodeError> for RclrsError {
             ConnectedNodeError::SerializationFailed => RclrsError::SerializationFailed,
             ConnectedNodeError::DeserializationFailed => RclrsError::DeserializationFailed,
             ConnectedNodeError::BufferTooSmall => RclrsError::BufferTooSmall,
+            ConnectedNodeError::MessageTooLarge => RclrsError::MessageTooLarge,
             ConnectedNodeError::NoMessage => RclrsError::NoMessage,
             ConnectedNodeError::ServiceRequestFailed => RclrsError::ServiceRequestFailed,
             ConnectedNodeError::ServiceReplyFailed => RclrsError::ServiceReplyFailed,
