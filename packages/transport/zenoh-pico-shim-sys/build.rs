@@ -203,6 +203,11 @@ fn main() {
     // be disabled to avoid duplicate symbol errors.
     let use_c_network_shim = env::var("CARGO_FEATURE_C_NETWORK_SHIM").is_ok();
 
+    // Whether to include the C system.c shim (provides z_malloc, z_clock_now etc. in C).
+    // When a platform crate provides these symbols in Rust, this should be disabled
+    // to avoid duplicate symbol errors.
+    let use_c_system_shim = env::var("CARGO_FEATURE_C_SYSTEM_SHIM").is_ok();
+
     // Paths
     let zenoh_pico_src = manifest_dir.join("zenoh-pico");
     let c_dir = manifest_dir.join("c");
@@ -249,6 +254,7 @@ fn main() {
                 &target,
                 &link_features,
                 use_c_network_shim,
+                use_c_system_shim,
             );
         }
     } else if use_smoltcp {
@@ -264,6 +270,7 @@ fn main() {
             &target,
             &link_features,
             use_c_network_shim,
+            use_c_system_shim,
         );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
@@ -272,6 +279,9 @@ fn main() {
     // Set cfg flags for Rust code
     if use_c_network_shim {
         println!("cargo:rustc-cfg=c_network_shim");
+    }
+    if use_c_system_shim {
+        println!("cargo:rustc-cfg=c_system_shim");
     }
     if use_posix {
         println!("cargo:rustc-cfg=shim_backend=\"posix\"");
@@ -712,6 +722,7 @@ fn build_c_shim(
     target: &str,
     link: &LinkFeatures,
     use_c_network_shim: bool,
+    use_c_system_shim: bool,
 ) {
     let mut build = cc::Build::new();
 
@@ -732,7 +743,12 @@ fn build_c_shim(
         let platform_dir = c_dir.join("platform_smoltcp");
 
         // Add platform sources
-        build.file(platform_dir.join("system.c"));
+        // Only include system.c when c-system-shim is enabled.
+        // When a platform crate provides z_malloc, z_clock_now etc. in Rust,
+        // this must be disabled to avoid duplicate symbol errors.
+        if use_c_system_shim {
+            build.file(platform_dir.join("system.c"));
+        }
         // Only include network.c when c-network-shim is enabled.
         // When nano-ros-transport-smoltcp provides _z_open_tcp etc. in Rust,
         // this must be disabled to avoid duplicate symbol errors.
@@ -802,6 +818,7 @@ fn build_zenoh_pico_embedded(
     target: &str,
     link: &LinkFeatures,
     use_c_network_shim: bool,
+    use_c_system_shim: bool,
 ) {
     let mut build = cc::Build::new();
     let platform_dir = c_dir.join("platform_smoltcp");
@@ -864,7 +881,10 @@ fn build_zenoh_pico_embedded(
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
     // smoltcp platform layer
-    build.file(platform_dir.join("system.c"));
+    // Only include system.c when c-system-shim is enabled.
+    if use_c_system_shim {
+        build.file(platform_dir.join("system.c"));
+    }
     // Only include network.c when c-network-shim is enabled.
     if use_c_network_shim {
         build.file(platform_dir.join("network.c"));

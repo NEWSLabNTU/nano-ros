@@ -155,7 +155,7 @@ smoltcp = { version = "0.12", default-features = false, features = ["medium-ethe
 - [x] QEMU BSP examples build unchanged (`cd examples/qemu/bsp-talker && cargo build --release`)
 - [x] `just quality` passes (format + clippy + 418 unit tests + miri + QEMU examples)
 
-### 32.3: Create `nano-ros-platform-qemu` crate
+### 32.3: Create `nano-ros-platform-qemu` crate — Complete
 
 **Effort:** 2-3 days
 **Dependencies:** 32.2
@@ -201,27 +201,27 @@ heapless = "0.8"
 ```
 
 **Work items:**
-- [ ] Create `packages/platform/nano-ros-platform-qemu/Cargo.toml` with deps on `zenoh-pico-shim-sys` (bare-metal, no `c-network-shim`), `nano-ros-transport-smoltcp`, `lan9118-smoltcp`
-- [ ] Create `src/lib.rs` — `#![no_std]`, module declarations, public API
-- [ ] Move `clock.rs` — rewrite `smoltcp_clock_now_ms` to `z_clock_now`, add `z_clock_elapsed_*`, `z_clock_advance_*`
-- [ ] Move `libc_stubs.rs` — `strlen`, `memcpy`, `memset`, `memcmp`, `strtoul`, etc.
-- [ ] Create `src/memory.rs` — `z_malloc`, `z_realloc`, `z_free` (bump allocator from BSP `bridge.rs`)
-- [ ] Create `src/random.rs` — `z_random_u8/u16/u32/u64`, `z_random_fill` (LFSR from BSP `bridge.rs`)
-- [ ] Create `src/time.rs` — `z_time_now`, `z_time_now_as_str`, `z_time_elapsed_*`, `_z_get_time_since_epoch`
-- [ ] Create `src/sleep.rs` — `z_sleep_us`, `z_sleep_ms`, `z_sleep_s` (calls `SmoltcpBridge::poll_network()` during busy-wait)
-- [ ] Create `src/socket.rs` — `_z_socket_close`, `_z_socket_wait_event`, `_z_socket_accept`, `_z_socket_set_non_blocking` (stubs)
-- [ ] Create `src/threading.rs` — `_z_task_*`, `_z_mutex_*`, `_z_condvar_*` stubs
-- [ ] Move `config.rs` — network configuration (IP, gateway, MAC)
-- [ ] Move `node.rs` — `run_node()` wiring (registers poll callback via `nano-ros-transport-smoltcp`)
-- [ ] Move `timing.rs` — DWT `CycleCounter`
-- [ ] Add crate to workspace `exclude` list
+- [x] Create `packages/platform/nano-ros-platform-qemu/Cargo.toml` with deps on `zenoh-pico-shim-sys` (bare-metal, no `c-network-shim`), `nano-ros-transport-smoltcp`, `lan9118-smoltcp`
+- [x] Create `src/lib.rs` — `#![no_std]`, module declarations, public API
+- [x] Move `clock.rs` — rewrite `smoltcp_clock_now_ms` to `z_clock_now`, add `z_clock_elapsed_*`, `z_clock_advance_*`
+- [x] Move `libc_stubs.rs` — `strlen`, `memcpy`, `memset`, `memcmp`, `strtoul`, etc.
+- [x] Create `src/memory.rs` — `z_malloc`, `z_realloc`, `z_free` (bump allocator from BSP `bridge.rs`)
+- [x] Create `src/random.rs` — `z_random_u8/u16/u32/u64`, `z_random_fill` (LFSR from BSP `bridge.rs`)
+- [x] Create `src/time.rs` — `z_time_now`, `z_time_now_as_str`, `z_time_elapsed_*`, `_z_get_time_since_epoch`
+- [x] Create `src/sleep.rs` — `z_sleep_us`, `z_sleep_ms`, `z_sleep_s` (calls `SmoltcpBridge::poll_network()` during busy-wait)
+- [x] Create `src/socket.rs` — `_z_socket_close`, `_z_socket_wait_event`, `_z_socket_accept`, `_z_socket_set_non_blocking` (stubs)
+- [x] Create `src/threading.rs` — `_z_task_*`, `_z_mutex_*`, `_z_condvar_*` stubs
+- [x] Move `config.rs` — network configuration (IP, gateway, MAC)
+- [x] Move `node.rs` — `run_node()` wiring (registers poll callback via `nano-ros-transport-smoltcp`)
+- [x] Move `timing.rs` — DWT `CycleCounter`
+- [x] Add crate to workspace `exclude` list
 
 **Passing criteria:**
-- [ ] `cargo check --target thumbv7m-none-eabi` in platform crate succeeds with zero warnings
-- [ ] Platform crate depends on `zenoh-pico-shim-sys` with `bare-metal` only (no `c-network-shim`)
-- [ ] Platform crate does NOT export any `smoltcp_*` symbols
-- [ ] All zenoh-pico system symbols resolved at link time (no undefined symbol errors when linked with transport crate)
-- [ ] `just quality` passes
+- [x] `cargo check --target thumbv7m-none-eabi` in platform crate succeeds with zero warnings
+- [x] Platform crate depends on `zenoh-pico-shim-sys` with `bare-metal` only (no `c-network-shim`)
+- [x] Platform crate does NOT export any `smoltcp_*` symbols
+- [x] All zenoh-pico system symbols resolved at link time (no undefined symbol errors when linked with transport crate)
+- [x] `just quality` passes
 
 ### 32.4: Remove C shim layer
 
@@ -246,10 +246,10 @@ Remove the C shim files that translated between zenoh-pico symbols and custom `s
 - `zenoh_shim.c` — nano-ros's own simplified wrapper (not part of the shim layer)
 
 **Work items:**
-- [ ] Add `c-system-shim` feature to `zenoh-pico-shim-sys/Cargo.toml` (gates `system.c`, parallel to `c-network-shim`)
-- [ ] Update `smoltcp` alias to include `c-system-shim`
-- [ ] Gate `system.c` compilation in `build_c_shim()` on `use_c_system_shim`
-- [ ] Gate `system.c` compilation in `build_zenoh_pico_embedded()` on `use_c_system_shim`
+- [x] Add `c-system-shim` feature to `zenoh-pico-shim-sys/Cargo.toml` (gates `system.c`, parallel to `c-network-shim`) *(done in 32.3 as prerequisite)*
+- [x] Update `smoltcp` alias to include `c-system-shim` *(done in 32.3 as prerequisite)*
+- [x] Gate `system.c` compilation in `build_c_shim()` on `use_c_system_shim` *(done in 32.3 as prerequisite)*
+- [x] Gate `system.c` compilation in `build_zenoh_pico_embedded()` on `use_c_system_shim` *(done in 32.3 as prerequisite)*
 - [ ] Remove `c-network-shim` from `smoltcp` alias (32.2 already provides Rust TCP symbols)
 - [ ] Remove `c-system-shim` from `smoltcp` alias (32.3 provides Rust system symbols)
 - [ ] Verify no crate still enables the C shim features

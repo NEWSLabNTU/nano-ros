@@ -21,7 +21,12 @@ extern crate std;
 // Note: The smoltcp platform uses a custom bump allocator for C FFI (zenoh-pico),
 // not Rust's global allocator. The `alloc` crate is NOT needed.
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "smoltcp"))]
+#[cfg(any(
+    feature = "posix",
+    feature = "zephyr",
+    feature = "smoltcp",
+    feature = "bare-metal"
+))]
 use core::ffi::c_void;
 
 // ============================================================================
@@ -65,7 +70,12 @@ pub struct zenoh_shim_property_t {
 // Note: Excluded from cbindgen - these are Rust imports of C functions,
 // not declarations for the header file.
 #[cfg(all(
-    any(feature = "posix", feature = "zephyr", feature = "smoltcp"),
+    any(
+        feature = "posix",
+        feature = "zephyr",
+        feature = "smoltcp",
+        feature = "bare-metal"
+    ),
     not(cbindgen)
 ))]
 #[allow(improper_ctypes)]
