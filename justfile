@@ -857,6 +857,9 @@ verify-verus:
     cargo verus verify
     echo "[OK] All Verus proofs verified"
 
+# Run all verification: Kani bounded model checking + Verus deductive verification
+verify: verify-kani verify-verus
+
 # =============================================================================
 # Zenoh
 # =============================================================================
