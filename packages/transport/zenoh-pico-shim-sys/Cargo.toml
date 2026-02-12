@@ -8,7 +8,7 @@ links = "zenoh_shim"
 
 [lints.rust]
 # cbindgen sets cfg(cbindgen) when parsing - allow it without warnings
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "smoltcp"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "smoltcp", "bare-metal"))'] }
 
 [lib]
 name = "zenoh_pico_shim_sys"
@@ -18,7 +18,17 @@ default = []
 # Platform backends (mutually exclusive)
 posix = []
 zephyr = []
-smoltcp = []
+bare-metal = []
+# Backwards-compatible alias: smoltcp implies bare-metal + TCP
+smoltcp = ["bare-metal", "link-tcp"]
+# Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
+# Each feature enables the corresponding protocol code in zenoh-pico at compile time.
+# Transport crates activate the features they implement; Cargo unifies them.
+link-tcp = []
+link-udp-unicast = []
+link-udp-multicast = []
+link-serial = []
+link-raweth = []
 # Use a pre-built zenoh-pico instead of building from the submodule.
 # Set ZENOH_PICO_DIR to the CMake install prefix (must contain lib/libzenohpico.a
 # and include/zenoh-pico.h). Only supported for native targets.

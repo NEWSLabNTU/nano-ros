@@ -70,7 +70,7 @@ Custom symbols: none. All FFI symbols are zenoh-pico's standard platform API.
 
 ## Work Items
 
-### 32.1: Add `link-*` Cargo features to `zenoh-pico-shim-sys`
+### 32.1: Add `link-*` Cargo features to `zenoh-pico-shim-sys` — Complete
 
 **Effort:** 0.5 day
 **Dependencies:** None
@@ -88,12 +88,12 @@ link-serial = []       # sets Z_FEATURE_LINK_SERIAL=1
 link-raweth = []       # sets Z_FEATURE_RAWETH_TRANSPORT=1
 ```
 
-Update `build.rs` to generate a config header from these features instead of using the hardcoded `zenoh_generic_config.h`. The `smoltcp` feature remains as an alias for `bare-metal` during migration.
+Update `build.rs` to generate a config header from these features instead of using the hardcoded `zenoh_generic_config.h`. The `smoltcp` feature is a temporary alias for `bare-metal` + `link-tcp` until 32.8 removes it.
 
 **Deliverables:**
 - Updated `Cargo.toml` with new features
 - Updated `build.rs` to generate config header from Cargo features
-- `smoltcp` feature remains as backwards-compatible alias
+- `smoltcp` feature kept temporarily as alias (removed in 32.8)
 - Existing builds continue to work unchanged
 
 ### 32.2: Create `nano-ros-transport-smoltcp` crate
@@ -216,7 +216,7 @@ Remove the C shim files that translated between zenoh-pico symbols and custom `s
 **Effort:** 1-2 days
 **Dependencies:** 32.3
 
-Convert `nano-ros-bsp-qemu` from a monolithic implementation to a thin wrapper that re-exports from the new platform and transport crates. This preserves backwards compatibility for existing examples.
+Convert `nano-ros-bsp-qemu` from a monolithic implementation to a thin wrapper that re-exports from the new platform and transport crates. Examples are updated to use the new crate names directly.
 
 ```toml
 # packages/bsp/nano-ros-bsp-qemu/Cargo.toml
@@ -234,8 +234,8 @@ pub use nano_ros_transport_smoltcp::SmoltcpBridge;
 ```
 
 **Deliverables:**
-- `nano-ros-bsp-qemu` is now a thin re-export wrapper
-- All existing QEMU examples continue to build and run unchanged
+- `nano-ros-bsp-qemu` is now a thin re-export wrapper (deleted in 32.10 tidy)
+- QEMU examples updated to depend on `nano-ros-platform-qemu` + `nano-ros-transport-smoltcp` directly
 - `just test-qemu` passes
 - `just quality` passes
 
@@ -286,26 +286,26 @@ The STM32F4 BSP is simpler (no bridge.rs — it uses a different networking appr
 **Effort:** 1 day
 **Dependencies:** 32.5
 
-Update the feature flag chain across nano-ros crates:
+Replace the `shim-*` feature names with `platform-*` names across all crates:
 
 ```
 nano-ros (top-level)
 ├── zenoh             → nano-ros-node/zenoh → nano-ros-transport/zenoh
-├── platform-posix    → ... → zenoh-pico-shim-sys/posix    (alias: shim-posix)
-├── platform-zephyr   → ... → zenoh-pico-shim-sys/zephyr   (alias: shim-zephyr)
-├── platform-bare-metal → ... → zenoh-pico-shim-sys/bare-metal (alias: shim-smoltcp)
+├── platform-posix    → ... → zenoh-pico-shim-sys/posix
+├── platform-zephyr   → ... → zenoh-pico-shim-sys/zephyr
+├── platform-bare-metal → ... → zenoh-pico-shim-sys/bare-metal
 ├── polling           → nano-ros-node/polling
 └── rtic              → nano-ros-node/rtic
 ```
 
 **Changes:**
-- Add `platform-posix`, `platform-zephyr`, `platform-bare-metal` features to `nano-ros`, `nano-ros-node`, `nano-ros-transport`
-- Keep `shim-posix`, `shim-zephyr`, `shim-smoltcp` as deprecated aliases
-- Add `bare-metal` feature to `zenoh-pico-shim-sys` as alias for `smoltcp` (both activate the same build path initially)
+- Rename `shim-posix` → `platform-posix`, `shim-zephyr` → `platform-zephyr`, `shim-smoltcp` → `platform-bare-metal` in `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- Remove old `shim-*` feature names (no aliases)
+- Rename `posix` / `zephyr` / `smoltcp` features in `zenoh-pico-shim-sys` to `posix` / `zephyr` / `bare-metal` (remove `smoltcp` alias)
 
 **Deliverables:**
-- New feature names available throughout the crate chain
-- Old feature names still work (backwards compatible)
+- New feature names used throughout the crate chain
+- Old `shim-*` and `smoltcp` feature names removed
 - `CLAUDE.md` updated with new feature names
 
 ### 32.9: Update examples and documentation
@@ -326,7 +326,7 @@ Update all examples, documentation, and CLAUDE.md to use the new architecture:
 - CLAUDE.md workspace structure updated
 - Examples use consistent crate naming
 
-### 32.10: Integration testing and cleanup
+### 32.10: Integration testing and tidy
 
 **Effort:** 1-2 days
 **Dependencies:** All above
@@ -341,14 +341,22 @@ just test-qemu-esp32  # ESP32-C3 QEMU tests
 just test-c           # C API tests
 ```
 
-Remove deprecated code:
-- Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys` (no longer needed)
+**Tidy jobs** (no backwards compat maintained after this phase):
+- Remove `smoltcp-platform-rust` feature from `zenoh-pico-shim-sys`
+- Remove `smoltcp` alias feature from `zenoh-pico-shim-sys` (done in 32.8)
+- Remove all `shim-*` feature names from `nano-ros`, `nano-ros-node`, `nano-ros-transport`
+- Delete BSP wrapper crates (`packages/bsp/nano-ros-bsp-{qemu,esp32,esp32-qemu,stm32f4}/`) — examples depend on platform+transport crates directly
 - Remove any remaining `smoltcp_*` symbol references
-- Clean up unused imports and dead code
+- Remove static `zenoh_generic_config.h` from `c/platform_smoltcp/` (replaced by generated header)
+- Delete `c/platform_smoltcp/` directory entirely (C shim removed in 32.4)
+- Clean up unused imports and dead code across all touched crates
+- Remove `packages/bsp/` directory if empty (only `nano-ros-bsp-zephyr` may remain)
+- Audit `.cargo/config.toml` in examples for stale `[patch.crates-io]` entries referencing old BSP crates
 
 **Deliverables:**
 - All test suites pass
-- No deprecated symbols remain
+- No deprecated symbols, features, or aliases remain
+- No BSP wrapper crates (direct platform+transport deps only)
 - Clean clippy output
 
 ## Dependency Graph
@@ -382,11 +390,7 @@ packages/
 │   ├── nano-ros-transport-smoltcp/        # NEW: TCP/UDP via smoltcp
 │   ├── zenoh-pico-shim/                   # Existing: safe Rust API
 │   └── zenoh-pico-shim-sys/               # Existing: FFI + zenoh-pico build
-├── bsp/                                   # BSP crates (thin re-export wrappers)
-│   ├── nano-ros-bsp-qemu/                 # → re-exports platform-qemu + transport-smoltcp
-│   ├── nano-ros-bsp-esp32/                # → re-exports platform-esp32 + transport-smoltcp
-│   ├── nano-ros-bsp-esp32-qemu/           # → re-exports platform-esp32-qemu + transport-smoltcp
-│   ├── nano-ros-bsp-stm32f4/              # → re-exports platform-stm32f4 + transport-smoltcp
+├── bsp/                                   # BSP crates (only Zephyr remains)
 │   └── nano-ros-bsp-zephyr/               # Unchanged (Zephyr uses zenoh-pico's own backend)
 ├── drivers/                               # Hardware drivers (unchanged)
 │   ├── lan9118-smoltcp/
@@ -402,7 +406,7 @@ packages/
 | Breaking existing examples | BSP crates become thin wrappers — re-export everything, API unchanged |
 | Link-time resolution failures | Test each platform immediately after creating its platform/transport crates |
 | C shim removal breaks something | Remove C shim only after new Rust implementations are verified working |
-| Feature flag complexity | Keep old feature names as aliases; deprecate in a later phase |
+| Feature flag complexity | Remove old names outright in 32.8; no aliases maintained |
 
 ## Estimated Total Effort
 
@@ -428,5 +432,4 @@ These are enabled by the architecture split but out of scope for Phase 32:
 - **`nano-ros-transport-raweth`** — Raw Ethernet transport crate
 - **UDP support in transport-smoltcp** — Add UDP unicast/multicast to the smoltcp bridge
 - **New platform backends** — FreeRTOS, ESP-IDF, RPi Pico (reuse zenoh-pico's own backends)
-- **Remove BSP wrapper crates** — Once all examples are migrated to direct platform+transport deps
-- **Remove deprecated `shim-*` feature aliases** — After a transition period
+- **Remove BSP wrapper crates** — Delete the thin re-export wrappers once all examples use platform+transport deps directly
