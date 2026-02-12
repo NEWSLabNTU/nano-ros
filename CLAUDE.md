@@ -344,7 +344,7 @@ nano-ros-node = { version = "*", features = ["param-services"] }
 Two complementary verification tools are used:
 
 - **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 82 harnesses across nano-ros-serdes, nano-ros-core, nano-ros-params, nano-ros-c. Run with `just verify-kani`.
-- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nano-ros-verification/` (excluded from workspace). 57 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, and parameter types. Run with `just verify-verus`.
+- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nano-ros-verification/` (excluded from workspace). 57 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, and parameter types. E2E data path proofs (bug existence, publish chain, executor delivery) in progress. Run with `just verify-verus`.
 
 ```bash
 just verify          # Run both Kani + Verus (requires both toolchains)
@@ -401,7 +401,7 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 | 28 | Example portability + safety | Planning |
 | 29 | Directory reorganization | Complete |
 | 30 | WCET & real-time tooling | In Progress |
-| 31 | Verus unbounded verification | Complete |
+| 31 | Verus unbounded verification | In Progress |
 
 **Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
 - Integration tests requiring ROS 2 environment

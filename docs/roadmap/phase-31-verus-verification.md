@@ -2,7 +2,9 @@
 
 ## Summary
 
-Prove real-time scheduling guarantees, communication reliability properties, and core algorithm correctness for **all inputs** using [Verus](https://github.com/verus-lang/verus) SMT-based deductive verification. Complements Kani bounded model checking (Phase 30.4/30.5) — same properties, stronger guarantees.
+Prove real-time scheduling guarantees, communication reliability properties, core algorithm correctness, and end-to-end data path properties for **all inputs** using [Verus](https://github.com/verus-lang/verus) SMT-based deductive verification. Complements Kani bounded model checking (Phase 30.4/30.5) — same properties, stronger guarantees.
+
+Phase 31.1–31.5 established 57 unbounded proofs across scheduling, CDR, time arithmetic, actions, and parameters. Phase 31.6–31.8 extends verification to the E2E data path: proving bug existence (before fix), fixing subscriber bugs, and proving correctness (after fix). See [E2E Verification Analysis](../design/e2e-verification-analysis.md) for the full data path trace and findings.
 
 ## Context
 
@@ -34,7 +36,8 @@ packages/verification/nano-ros-verification/
     ├── cdr.rs          # CDR serialization correctness proofs
     ├── time.rs         # Duration/Time arithmetic proofs
     ├── action.rs       # GoalStatus state machine proofs
-    └── params.rs       # ParameterValue + range proofs
+    ├── params.rs       # ParameterValue + range proofs
+    └── e2e.rs          # E2E data path proofs (31.7 + 31.8)
 ```
 
 ### Why a separate crate (not in-crate like Kani)
@@ -282,6 +285,44 @@ These underpin the tier 1 and 2 proofs — e.g., the timer drift proof relies on
 | `parameter_value_roundtrip`       | `Integer(v)` extracts to `v`, `Bool(v)` extracts to `v`   | Ghost  |
 | `parameter_value_type_tag`        | All 10 variants map to correct ParameterType discriminant | Ghost  |
 
+### Tier 4: E2E Data Path Properties (up to 10 proofs — Not started)
+
+These prove properties across the full publish/subscribe data path. Based on the [E2E Verification Analysis](../design/e2e-verification-analysis.md) findings F1–F8.
+
+**Bug existence proofs** (`e2e.rs`, 2 proofs — ghost):
+
+Prove that known bugs exist, documenting them formally before they're fixed. Same pattern as `time_from_nanos_bug` in Tier 3.
+
+| Proof                     | Property                                                                              | Trust | Finding | Status      |
+|---------------------------|---------------------------------------------------------------------------------------|-------|---------|-------------|
+| `stuck_subscription_bug`  | `has_data ∧ stored_len > rx_buf_len` → Err returned without clearing `has_data` → stuck | Ghost | F4      | Not started |
+| `silent_truncation_bug`   | `msg_len > 1024` → `stored_len == 1024 < msg_len` with no error indication            | Ghost | F3      | Not started |
+
+**Publish path properties** (`e2e.rs`, 2 proofs — ghost + math):
+
+| Proof                         | Property                                                                                       | Trust | Finding | Status      |
+|-------------------------------|------------------------------------------------------------------------------------------------|-------|---------|-------------|
+| `publish_error_propagation`   | If `publish()` returns `Ok(())`, then `publish_raw()` was called and returned `Ok`              | Ghost | F7      | Not started |
+| `sequence_number_monotonicity`| For sequential `publish_raw()` calls, `s1 < s2` (strictly increasing sequence numbers)          | Math  | F8      | Not started |
+
+**Executor delivery guarantees** (`e2e.rs`, 4 proofs — linked + ghost):
+
+| Proof                           | Property                                                                                           | Trust  | Finding | Status      |
+|---------------------------------|----------------------------------------------------------------------------------------------------|--------|---------|-------------|
+| `default_trigger_delivers`      | Under `Any` trigger, if any subscription has data, subscriptions are processed                      | Linked | —       | Not started |
+| `all_trigger_starvation`        | Under `All` trigger, one inactive subscription blocks all subscription processing                   | Linked | F5      | Not started |
+| `timer_non_starvation`          | `process_timers()` is always invoked regardless of trigger or subscription errors                   | Ghost  | —       | Not started |
+| `executor_progress_under_any`   | Under `Any` trigger with data available and no errors, `subscriptions_processed >= 1`               | Ghost  | —       | Not started |
+
+**Post-fix correctness proofs** (`e2e.rs`, 2 proofs — ghost, depends on 31.6):
+
+These verify that the subscriber bug fixes are correct. Only provable after 31.6 is complete.
+
+| Proof                            | Property                                                                                       | Trust | Finding    | Status      |
+|----------------------------------|------------------------------------------------------------------------------------------------|-------|------------|-------------|
+| `no_stuck_subscription`          | After error, `has_data` is cleared → subscription recovers on next message                      | Ghost | F4 (fixed) | Not started |
+| `no_silent_truncation`           | Oversized messages set an error flag instead of truncating                                       | Ghost | F3 (fixed) | Not started |
+
 ## What Verus proves beyond Kani
 
 | Property                         | Kani (Phase 30)          | Verus (Phase 31)                     | Status |
@@ -296,6 +337,11 @@ These underpin the tier 1 and 2 proofs — e.g., the timer drift proof relies on
 | Time from_nanos bug              | Constrained non-negative | **Proves failure domain**            | Done |
 | GoalStatus FSM                   | Exhaustive enum          | **Transition system model**          | Done |
 | Serialization no-corruption      | Bounded buffer sizes     | **All buffer sizes**                 | Done |
+| Stuck subscription bug           | No Kani proof            | **Bug existence proof** (ghost)      | Not started |
+| Silent truncation bug            | No Kani proof            | **Bug existence proof** (ghost)      | Not started |
+| Publish error propagation        | No Kani proof            | **Compositional chain** (ghost)      | Not started |
+| Timer non-starvation             | No Kani proof            | **Control flow analysis** (ghost)    | Not started |
+| Sequence number monotonicity     | No Kani proof            | **Atomic increment** (math)          | Not started |
 
 ## Running Verification
 
@@ -326,6 +372,9 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 | 31.3 | Tier 2: Communication reliability proofs (14)   | 1 day   | **Done** (14 proofs in cdr.rs + communication.rs) |
 | 31.4 | Tier 3: Core algorithm correctness proofs (13)  | 1.5 day | **Done** (13 proofs in time.rs + action.rs + params.rs) |
 | 31.5 | Integration + documentation                     | 2 hours | **Done**    |
+| 31.6 | Fix subscriber path bugs (F3, F4)               | 0.5 day | Not started |
+| 31.7 | Tier 4a: E2E proofs — bug existence + data path (8) | 1 day | Not started |
+| 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)  | 0.5 day | Not started |
 
 ### 31.1: Verus Toolchain Setup + Crate Scaffolding
 
@@ -491,6 +540,131 @@ Completed early alongside 31.2 because Verus patterns and limitations needed doc
 - [x] Mark Phase 31 complete in `CLAUDE.md` phases table
 - [x] Update `CLAUDE.md` verification description (18 → 57 proofs)
 - [x] Final pipeline check: `just verify-kani && just verify-verus`
+
+### 31.6: Fix Subscriber Path Bugs (F3, F4)
+
+**Depends on:** None — **Status: Not started**
+
+Fix two bugs discovered during E2E data path analysis. See [E2E Verification Analysis](../design/e2e-verification-analysis.md) findings F3 and F4.
+
+**Bug 1: Stuck subscription (F4)**
+
+Location: `nano-ros-transport/src/shim.rs:1069-1070`
+
+When `try_recv_raw()` receives a message larger than the receive buffer, it returns `Err(BufferTooSmall)` without clearing `has_data`. The subscription is permanently stuck — every subsequent `spin_once()` hits the same oversized message.
+
+Fix: Clear `has_data` before returning the error. The oversized message is dropped (unavoidable with a fixed-size buffer), but the subscription recovers on the next incoming message.
+
+```rust
+if len > buf.len() {
+    buffer.has_data.store(false, Ordering::Release);  // drop message, unblock
+    return Err(TransportError::BufferTooSmall);
+}
+```
+
+Same fix needed in `try_recv_with_info` (shim.rs:1020-1021).
+
+**Bug 2: Silent truncation (F3)**
+
+Location: `nano-ros-transport/src/shim.rs:914`
+
+When the zenoh-pico callback receives a message larger than 1024 bytes, it truncates to 1024 bytes with no error indication. The consumer sees a "valid" message that may deserialize to wrong values.
+
+Fix: Add an overflow flag to `SubscriberBuffer`. When `len > data.len()`, set the flag instead of truncating. `try_recv_raw` checks the flag and returns `Err(MessageTooLarge)` (new variant), clearing both `has_data` and the overflow flag.
+
+**Tasks:**
+
+1. Fix `try_recv_raw` and `try_recv_with_info` — clear `has_data` on `BufferTooSmall` error
+2. Add `overflow` flag to `SubscriberBuffer`, set in callback when message exceeds buffer
+3. Add `MessageTooLarge` variant to `TransportError`
+4. Check overflow flag in `try_recv_raw` — return error and clear state
+5. Add unit tests for both scenarios
+6. `just quality` passes
+
+**Acceptance criteria:**
+
+- [ ] Stuck subscription bug is fixed — `has_data` cleared on all error paths
+- [ ] Silent truncation replaced with explicit `MessageTooLarge` error
+- [ ] Unit tests cover: normal receive, oversized message rejection, recovery after error
+- [ ] `just quality` passes
+- [ ] `just test-miri` passes on nano-ros-transport (no UB in new code)
+
+### 31.7: Tier 4a — E2E Proofs: Bug Existence + Data Path (8 proofs)
+
+**Depends on:** None (can run in parallel with 31.6) — **Status: Not started**
+
+Prove E2E data path properties using Verus. These proofs work on the **current** code (before 31.6 fixes), including two bug existence proofs. All proofs go in a new `e2e.rs` module.
+
+**Bug existence proofs (2):**
+
+| # | Proof | Property | Method |
+|---|-------|----------|--------|
+| 1 | `stuck_subscription_bug` | `has_data ∧ stored_len > rx_buf_len` → Err without clearing `has_data` → stuck forever | Ghost state machine (same pattern as `time_from_nanos_bug`) |
+| 2 | `silent_truncation_bug` | `msg_len > 1024` → `stored_len == 1024 < msg_len`, no error indication | Ghost model of callback |
+
+**Publish path proofs (2):**
+
+| # | Proof | Property | Method |
+|---|-------|----------|--------|
+| 3 | `publish_error_propagation` | `publish() == Ok` → `serialize() == Ok ∧ publish_raw() == Ok` | Ghost compositional chain |
+| 4 | `sequence_number_monotonicity` | Sequential `publish_raw()` calls produce `s1 < s2` | Math (atomic increment model) |
+
+**Executor delivery proofs (4):**
+
+| # | Proof | Property | Method |
+|---|-------|----------|--------|
+| 5 | `default_trigger_delivers` | Under `Any`, if any subscription has data, subscriptions are processed | Linked (extends `trigger_any_semantics`) |
+| 6 | `all_trigger_starvation` | Under `All`, one inactive subscription blocks all subscription processing | Linked (extends `trigger_all_semantics`) |
+| 7 | `timer_non_starvation` | `process_timers()` invoked on both trigger paths (case analysis) | Ghost model of `spin_once` control flow |
+| 8 | `executor_progress_under_any` | Under `Any` with data + no errors, `subscriptions_processed >= 1` | Ghost model of executor loop |
+
+**Tasks:**
+
+1. Create `src/e2e.rs` module, add to `lib.rs`
+2. Define `SubscriberBufferGhost` state machine (states: Empty, HasData, Stuck)
+3. Define `PublishChainGhost` for compositional error chain
+4. Define `ExecutorGhost` for `spin_once` control flow model
+5. Implement all 8 proofs
+6. `just verify-verus` passes (65 verified, 0 errors)
+
+**Acceptance criteria:**
+
+- [ ] All 8 proofs pass with `just verify-verus`
+- [ ] Bug existence proofs formally document F3 and F4
+- [ ] No `assume` statements (other than `assume_specification`)
+- [ ] `just quality` passes (workspace unaffected)
+
+### 31.8: Tier 4b — E2E Proofs: Post-Fix Correctness (2 proofs)
+
+**Depends on:** 31.6 (code fixes) + 31.7 (ghost models) — **Status: Not started**
+
+After the subscriber bugs are fixed in 31.6, prove that the fixes are correct. These proofs reuse the ghost models from 31.7, updated to reflect the fixed code.
+
+**Post-fix correctness proofs (2):**
+
+| # | Proof | Property | Method |
+|---|-------|----------|--------|
+| 1 | `no_stuck_subscription` | After `try_recv_raw` error, `has_data` is cleared → subscription recovers | Ghost state machine (updated transitions) |
+| 2 | `no_silent_truncation` | Oversized messages set overflow flag → `try_recv_raw` returns `MessageTooLarge` and clears state | Ghost model (updated callback + try_recv) |
+
+**Tasks:**
+
+1. Update `SubscriberBufferGhost` with new transitions reflecting 31.6 fixes
+2. Prove `no_stuck_subscription` — from any error state, `has_data → false`
+3. Prove `no_silent_truncation` — overflow flag → explicit error, no data loss without indication
+4. `just verify-verus` passes (67 verified, 0 errors)
+
+**Acceptance criteria:**
+
+- [ ] Both proofs pass with `just verify-verus`
+- [ ] Ghost model transitions match the fixed production code (auditable)
+- [ ] `just quality` passes
+
+**Out of scope for Phase 31:**
+
+- **P9: Reliable QoS no-drop** — Requires implementing QoS enforcement (ring buffer, congestion control passthrough to zenoh-pico). This is a significant feature, not a verification task. Should be a separate phase.
+- **Network delivery guarantees** — zenoh-pico internals are C code, outside Verus scope.
+- **Cross-thread data race freedom** — Requires memory model reasoning. Use Miri/loom instead.
 
 ## Setup Integration
 
