@@ -296,7 +296,7 @@ pub use nano_ros_platform_qemu::*;
 - [ ] No QEMU examples depend on `nano-ros-bsp-qemu` (all use `nano-ros-platform-qemu` directly)
 - [ ] `just test-all` passes
 
-### 32.6: Migrate ESP32-C3 BSPs
+### 32.6: Migrate ESP32-C3 BSPs — Complete
 
 **Effort:** 2-3 days
 **Dependencies:** 32.5
@@ -312,29 +312,38 @@ Apply the same platform/transport split to the ESP32-C3 BSPs:
 - ESP32 uses `esp_hal::time::Instant` instead of DWT for clock
 - ESP32-C3 WiFi BSP uses a WiFi driver instead of LAN9118
 - ESP32-C3 QEMU BSP uses OpenETH driver instead of LAN9118
-- Heap allocation uses ESP32-specific allocator
+- Heap allocation uses ESP32-specific allocator (32KB bump allocator for z_malloc + esp_alloc global allocator)
+- `as_nanos()` not available on `esp_hal::time::Duration` — `CycleCounter` uses `as_micros()` instead
+- WiFi BSP doesn't need snprintf/sprintf stubs (esp-radio provides them)
+- WiFi BSP needs additional deps: `esp-rtos`, `esp-radio`, `critical-section`, smoltcp DHCP features
 
 **Work items:**
-- [ ] Create `packages/platform/nano-ros-platform-esp32/` from `nano-ros-bsp-esp32`
-  - [ ] Extract system primitives (clock via `esp_hal::time::Instant`, WiFi-specific allocator, RNG)
-  - [ ] Wire `nano-ros-transport-smoltcp` poll callback
-- [ ] Create `packages/platform/nano-ros-platform-esp32-qemu/` from `nano-ros-bsp-esp32-qemu`
-  - [ ] Extract system primitives (clock, heap allocator, errno shadow)
-  - [ ] Use OpenETH driver instead of LAN9118
-- [ ] Convert `nano-ros-bsp-esp32` to thin re-export wrapper
-- [ ] Convert `nano-ros-bsp-esp32-qemu` to thin re-export wrapper
-- [ ] Migrate ESP32 examples to depend on platform crates directly:
-  - [ ] `examples/esp32/bsp-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_esp32::`)
-  - [ ] `examples/esp32/bsp-listener` — `Cargo.toml` + `src/main.rs`
-  - [ ] `examples/esp32/qemu-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_esp32_qemu::`)
-  - [ ] `examples/esp32/qemu-listener` — `Cargo.toml` + `src/main.rs`
-  - [ ] Update `.cargo/config.toml` in each example for new `[patch.crates-io]` entries
-  - [ ] Move linker scripts / `build.rs` to platform crates if needed
+- [x] Create `packages/platform/nano-ros-platform-esp32/` from `nano-ros-bsp-esp32`
+  - [x] Extract system primitives (clock via `esp_hal::time::Instant`, bump allocator, LFSR RNG)
+  - [x] Wire `nano-ros-transport-smoltcp` poll callback
+  - [x] WiFi-specific: `esp-rtos` scheduler, `esp-radio` WiFi init, DHCP polling
+  - [x] Config types: `WifiConfig`, `IpMode`, `NodeConfig`
+- [x] Create `packages/platform/nano-ros-platform-esp32-qemu/` from `nano-ros-bsp-esp32-qemu`
+  - [x] Extract system primitives (clock, 32KB bump allocator, errno shadow)
+  - [x] Use OpenETH driver instead of LAN9118
+  - [x] Zenoh open retry loop (5 attempts, for TAP networking stability)
+- [x] Convert `nano-ros-bsp-esp32` to thin re-export wrapper
+- [x] Convert `nano-ros-bsp-esp32-qemu` to thin re-export wrapper
+- [x] Migrate ESP32 examples to depend on platform crates directly:
+  - [x] `examples/esp32/bsp-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_esp32::`)
+  - [x] `examples/esp32/bsp-listener` — `Cargo.toml` + `src/main.rs`
+  - [x] `examples/esp32/qemu-talker` — `Cargo.toml` + `src/main.rs` (`use nano_ros_platform_esp32_qemu::`)
+  - [x] `examples/esp32/qemu-listener` — `Cargo.toml` + `src/main.rs`
+  - [x] `.cargo/config.toml` files didn't need changes (no BSP crate name references)
+  - [x] No linker scripts needed (ESP32 uses `linkall.x` from esp-hal, not from BSP)
+- [x] Add both platform crates to workspace `exclude` list in root `Cargo.toml`
 
 **Passing criteria:**
-- [ ] Both platform crates compile for `riscv32imc-unknown-none-elf` with zero warnings
-- [ ] `nano-ros-bsp-esp32` and `nano-ros-bsp-esp32-qemu` are thin re-exports (< 20 lines each)
-- [ ] No ESP32 examples depend on BSP crates (all use platform crates directly)
+- [x] Both platform crates compile for `riscv32imc-unknown-none-elf` with zero warnings
+- [x] `nano-ros-bsp-esp32` and `nano-ros-bsp-esp32-qemu` are thin re-exports (< 20 lines each)
+- [x] No ESP32 examples depend on BSP crates (all use platform crates directly)
+- [x] All 4 ESP32 examples compile: `bsp-talker`, `bsp-listener`, `qemu-talker`, `qemu-listener`
+- [x] `just quality` passes
 - [ ] `just test-all` passes
 
 ### 32.7: Migrate STM32F4 BSP

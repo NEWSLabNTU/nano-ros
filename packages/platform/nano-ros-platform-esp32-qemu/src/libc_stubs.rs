@@ -3,10 +3,6 @@
 //! These functions are required by zenoh-pico but not available in no_std.
 //! They provide minimal implementations sufficient for embedded use.
 //!
-//! Unlike the WiFi BSP (nano-ros-bsp-esp32), this QEMU BSP does NOT use
-//! esp-radio/esp-rtos, so we must provide snprintf/sprintf stubs ourselves
-//! (esp-wifi-sys normally provides these).
-//!
 //! # Safety
 //!
 //! All functions in this module are `unsafe` FFI functions that follow C conventions.

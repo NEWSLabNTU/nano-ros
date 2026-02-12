@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Simple WiFi publisher example using nano-ros-bsp-esp32"
+description = "Simple WiFi publisher example using nano-ros-platform-esp32"
 
 [[bin]]
 name = "esp32-bsp-talker"
@@ -12,8 +12,8 @@ test = false
 bench = false
 
 [dependencies]
-# Board Support Package - all you need for ESP32 WiFi + zenoh
-nano-ros-bsp-esp32 = { path = "../../../packages/bsp/nano-ros-bsp-esp32" }
+# Platform crate - all you need for ESP32 WiFi + zenoh
+nano-ros-platform-esp32 = { path = "../../../packages/platform/nano-ros-platform-esp32" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

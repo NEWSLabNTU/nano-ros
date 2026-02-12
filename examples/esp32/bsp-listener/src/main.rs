@@ -1,4 +1,4 @@
-//! Simple ESP32 WiFi Listener using nano-ros-bsp-esp32
+//! Simple ESP32 WiFi Listener using nano-ros-platform-esp32
 //!
 //! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with the QEMU bsp-listener to see the similar API.
@@ -19,9 +19,9 @@
 #![no_main]
 
 use esp_backtrace as _;
-use nano_ros_bsp_esp32::esp_println;
-use nano_ros_bsp_esp32::portable_atomic::{AtomicU32, Ordering};
-use nano_ros_bsp_esp32::prelude::*;
+use nano_ros_platform_esp32::esp_println;
+use nano_ros_platform_esp32::portable_atomic::{AtomicU32, Ordering};
+use nano_ros_platform_esp32::prelude::*;
 use std_msgs::msg::Int32;
 
 /// WiFi credentials (set via environment variables at compile time)
@@ -42,7 +42,7 @@ fn on_message(msg: &Int32) {
     MSG_COUNT.fetch_add(1, Ordering::Relaxed);
 }
 
-nano_ros_bsp_esp32::esp_bootloader_esp_idf::esp_app_desc!();
+nano_ros_platform_esp32::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {

@@ -1,12 +1,16 @@
-//! Error types for nano-ros-bsp-esp32-qemu
+//! Error types for nano-ros-platform-esp32
 
 use core::fmt;
 
-/// Error type for BSP operations
+/// Error type for platform operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
-    /// OpenETH initialization failed
-    OpenEthInit,
+    /// WiFi initialization failed
+    WifiInit,
+    /// WiFi connection failed
+    WifiConnect,
+    /// DHCP address acquisition failed
+    DhcpTimeout,
     /// Network interface error
     NetworkInterface,
     /// Failed to add route
@@ -23,22 +27,24 @@ pub enum Error {
     SubscriberDeclare,
     /// Publish operation failed
     Publish,
-    /// Socket limit reached
-    SocketLimit,
-    /// Invalid configuration
-    InvalidConfig,
-    /// Topic keyexpr too long for internal buffer
+    /// Topic keyexpr exceeds 256-byte buffer
     TopicTooLong,
     /// CDR serialization buffer too small
     BufferTooSmall,
     /// CDR serialization failed
     Serialize,
+    /// Socket limit reached
+    SocketLimit,
+    /// Invalid configuration
+    InvalidConfig,
 }
 
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Error::OpenEthInit => write!(f, "OpenETH initialization failed"),
+            Error::WifiInit => write!(f, "WiFi initialization failed"),
+            Error::WifiConnect => write!(f, "WiFi connection failed"),
+            Error::DhcpTimeout => write!(f, "DHCP address acquisition timed out"),
             Error::NetworkInterface => write!(f, "Network interface error"),
             Error::Route => write!(f, "Failed to add route"),
             Error::ZenohInit => write!(f, "zenoh-pico initialization failed"),
@@ -47,14 +53,14 @@ impl fmt::Display for Error {
             Error::PublisherDeclare => write!(f, "Publisher declaration failed"),
             Error::SubscriberDeclare => write!(f, "Subscriber declaration failed"),
             Error::Publish => write!(f, "Publish operation failed"),
-            Error::SocketLimit => write!(f, "Socket limit reached"),
-            Error::InvalidConfig => write!(f, "Invalid configuration"),
-            Error::TopicTooLong => write!(f, "Topic keyexpr too long for internal buffer"),
+            Error::TopicTooLong => write!(f, "Topic keyexpr exceeds 256-byte buffer"),
             Error::BufferTooSmall => write!(f, "CDR serialization buffer too small"),
             Error::Serialize => write!(f, "CDR serialization failed"),
+            Error::SocketLimit => write!(f, "Socket limit reached"),
+            Error::InvalidConfig => write!(f, "Invalid configuration"),
         }
     }
 }
 
-/// Result type for BSP operations
+/// Result type for platform operations
 pub type Result<T> = core::result::Result<T, Error>;

@@ -64,8 +64,10 @@ exclude = [
     "packages/reference/stm32f4-embassy",
     # smoltcp transport (embedded-only, requires cross-compilation)
     "packages/transport/nano-ros-transport-smoltcp",
-    # QEMU platform crate (embedded-only, requires cross-compilation)
+    # Platform crates (embedded-only, require cross-compilation)
     "packages/platform/nano-ros-platform-qemu",
+    "packages/platform/nano-ros-platform-esp32-qemu",
+    "packages/platform/nano-ros-platform-esp32",
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/bsp/nano-ros-bsp-esp32",
     "packages/bsp/nano-ros-bsp-esp32-qemu",

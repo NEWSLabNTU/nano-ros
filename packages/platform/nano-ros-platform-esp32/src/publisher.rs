@@ -57,7 +57,6 @@ impl<M: RosMessage> Publisher<M> {
         }
         Ok(())
     }
-
 }
 
 impl<M: RosMessage> Drop for Publisher<M> {

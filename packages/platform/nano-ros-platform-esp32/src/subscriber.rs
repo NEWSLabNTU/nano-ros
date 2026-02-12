@@ -31,7 +31,6 @@ impl<M: RosMessage> Subscription<M> {
             _marker: PhantomData,
         }
     }
-
 }
 
 impl<M: RosMessage> Drop for Subscription<M> {

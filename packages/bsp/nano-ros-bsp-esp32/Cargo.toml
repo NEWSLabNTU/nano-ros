@@ -3,49 +3,15 @@ name = "nano-ros-bsp-esp32"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "ESP32-C3 Board Support Package for nano-ros (WiFi + zenoh-pico)"
+description = "ESP32-C3 Board Support Package for nano-ros (thin wrapper)"
 readme = "README.md"
 
 [lib]
 name = "nano_ros_bsp_esp32"
 
 [dependencies]
-# Zenoh FFI bindings with smoltcp C platform files (but NOT platform_smoltcp.rs
-# Rust module - bridge.rs provides the Rust FFI implementation instead)
-zenoh-pico-shim-sys = { path = "../../transport/zenoh-pico-shim-sys", features = ["smoltcp", "c-network-shim", "c-system-shim"] }
-
-# ESP32-C3 HAL and support crates
-esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
-esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
-esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32c3"] }
-esp-println = { version = "~0.16.0", features = ["esp32c3"] }
-esp-alloc = { version = "~0.9.0" }
-
-# WiFi support (esp-wifi split into esp-radio + esp-rtos in 1.0 ecosystem)
-esp-rtos = { version = "~0.2.0", features = ["esp32c3", "esp-radio"] }
-esp-radio = { version = "~0.17.0", features = ["esp32c3", "wifi", "smoltcp", "unstable"] }
-
-# Network stack (version must match esp-radio's smoltcp dependency)
-smoltcp = { version = "0.12", default-features = false, features = [
-    "medium-ethernet",
-    "proto-ipv4",
-    "socket-tcp",
-    "socket-dhcpv4",
-    "proto-dhcpv4",
-] }
-
-# Atomics for riscv32imc (no hardware atomic support)
-# unsafe-assume-single-core is safe because ESP32-C3 is single-core
-portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
-
-# Critical section for safe interior mutability in statics
-critical-section = "1"
-
-# Core types (RosMessage, Serialize, Deserialize, CDR)
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
-
-# Stack-allocated strings for ROS 2 keyexpr formatting
-heapless = "0.8"
+# Platform crate provides system primitives + node API
+nano-ros-platform-esp32 = { path = "../../platform/nano-ros-platform-esp32" }
 
 [features]
 default = []

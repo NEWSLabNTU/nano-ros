@@ -1080,6 +1080,23 @@ checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 name = "nano-ros-bsp-esp32"
 version = "0.1.0"
 dependencies = [
+ "nano-ros-platform-esp32",
+]
+
+[[package]]
+name = "nano-ros-core"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+ "log",
+ "nano-ros-serdes",
+]
+
+[[package]]
+name = "nano-ros-platform-esp32"
+version = "0.1.0"
+dependencies = [
+ "critical-section",
  "esp-alloc",
  "esp-backtrace",
  "esp-bootloader-esp-idf",
@@ -1087,6 +1104,25 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "heapless 0.8.0",
+ "nano-ros-core",
+ "nano-ros-transport-smoltcp",
+ "portable-atomic",
+ "smoltcp",
+ "zenoh-pico-shim-sys",
+]
+
+[[package]]
+name = "nano-ros-serdes"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+]
+
+[[package]]
+name = "nano-ros-transport-smoltcp"
+version = "0.1.0"
+dependencies = [
  "smoltcp",
  "zenoh-pico-shim-sys",
 ]

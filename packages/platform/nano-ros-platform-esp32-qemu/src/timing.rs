@@ -7,7 +7,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use nano_ros_bsp_esp32_qemu::CycleCounter;
+//! use nano_ros_platform_esp32_qemu::CycleCounter;
 //!
 //! let (result, nanos) = CycleCounter::measure(|| {
 //!     // operation to benchmark
@@ -19,21 +19,21 @@ use esp_hal::time::Instant;
 
 /// Timing measurement using the hardware timer.
 ///
-/// Values returned by `read()` and `measure()` are in nanoseconds.
+/// Values returned by `read()` and `measure()` are in microseconds.
 pub struct CycleCounter;
 
 impl CycleCounter {
     /// No-op: the ESP32-C3 hardware timer always runs.
     pub fn enable() {}
 
-    /// Read the current timestamp (low 32 bits of nanoseconds).
+    /// Read the current timestamp (low 32 bits of microseconds).
     pub fn read() -> u32 {
-        Instant::now().duration_since_epoch().as_nanos() as u32
+        Instant::now().duration_since_epoch().as_micros() as u32
     }
 
-    /// Measure the elapsed nanoseconds of a closure.
+    /// Measure the elapsed microseconds of a closure.
     ///
-    /// Returns `(result, elapsed_nanos)`.
+    /// Returns `(result, elapsed_micros)`.
     pub fn measure<F: FnOnce() -> R, R>(f: F) -> (R, u32) {
         let start = Self::read();
         let result = f();

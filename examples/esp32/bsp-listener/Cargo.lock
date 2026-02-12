@@ -109,6 +109,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
+name = "builtin_interfaces"
+version = "1.2.1"
+dependencies = [
+ "heapless 0.8.0",
+ "nano-ros-core",
+ "nano-ros-serdes",
+]
+
+[[package]]
 name = "bytemuck"
 version = "1.25.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -780,7 +789,8 @@ version = "0.1.0"
 dependencies = [
  "esp-backtrace",
  "esp-hal",
- "nano-ros-bsp-esp32",
+ "nano-ros-platform-esp32",
+ "std_msgs",
 ]
 
 [[package]]
@@ -1086,7 +1096,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros-bsp-esp32"
+name = "nano-ros-core"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+ "log",
+ "nano-ros-serdes",
+]
+
+[[package]]
+name = "nano-ros-platform-esp32"
 version = "0.1.0"
 dependencies = [
  "critical-section",
@@ -1097,7 +1116,25 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
+ "heapless 0.8.0",
+ "nano-ros-core",
+ "nano-ros-transport-smoltcp",
  "portable-atomic",
+ "smoltcp",
+ "zenoh-pico-shim-sys",
+]
+
+[[package]]
+name = "nano-ros-serdes"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+]
+
+[[package]]
+name = "nano-ros-transport-smoltcp"
+version = "0.1.0"
+dependencies = [
  "smoltcp",
  "zenoh-pico-shim-sys",
 ]
@@ -1449,6 +1486,16 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "std_msgs"
+version = "4.2.4"
+dependencies = [
+ "builtin_interfaces",
+ "heapless 0.8.0",
+ "nano-ros-core",
+ "nano-ros-serdes",
+]
 
 [[package]]
 name = "strsim"

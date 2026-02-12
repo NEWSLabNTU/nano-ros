@@ -1,7 +1,7 @@
 //! Simplified node API for ESP32-C3 QEMU bare-metal
 //!
-//! Handles OpenETH initialization, smoltcp interface, and zenoh-pico session
-//! setup, exposing only ROS concepts to the user.
+//! Uses `nano-ros-transport-smoltcp` for socket management instead of
+//! the legacy BSP bridge.
 
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -11,9 +11,9 @@ use core::fmt::Write as _;
 use esp_hal::rng::Rng;
 use heapless::String;
 use nano_ros_core::RosMessage;
+use nano_ros_transport_smoltcp::SmoltcpBridge;
 use openeth_smoltcp::OpenEth;
 use smoltcp::iface::{Interface, SocketSet};
-use smoltcp::socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 use zenoh_pico_shim_sys::{
@@ -21,13 +21,11 @@ use zenoh_pico_shim_sys::{
     zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
 };
 
-use crate::bridge::SmoltcpZenohBridge;
-use crate::bridge::{smoltcp_register_socket, smoltcp_seed_random, smoltcp_set_poll_callback};
-use crate::buffers;
 use crate::clock;
 use crate::config::Config;
 use crate::error::Error;
 use crate::publisher::Publisher;
+use crate::random;
 use crate::subscriber::{Subscription, subscription_trampoline};
 
 // NOTE: We intentionally do NOT import `type Result<T>` in this module.
@@ -40,7 +38,7 @@ static mut GLOBAL_IFACE: *mut Interface = ptr::null_mut();
 static mut GLOBAL_SOCKETS: *mut SocketSet<'static> = ptr::null_mut();
 static mut GLOBAL_DEVICE: *mut () = ptr::null_mut();
 
-/// Network poll callback called by zenoh-pico
+/// Network poll callback called by the transport crate's smoltcp_poll()
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn smoltcp_network_poll() {
     unsafe {
@@ -52,7 +50,7 @@ pub unsafe extern "C" fn smoltcp_network_poll() {
         let iface = &mut *GLOBAL_IFACE;
         let sockets = &mut *GLOBAL_SOCKETS;
 
-        SmoltcpZenohBridge::poll(iface, device, sockets);
+        SmoltcpBridge::poll(iface, device, sockets);
     }
 }
 
@@ -69,13 +67,6 @@ impl Node {
     ///
     /// Constructs the ROS 2 keyexpr from topic name and `M::TYPE_NAME`:
     /// `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let pub_ = node.create_publisher::<Int32>("/chatter")?;
-    /// pub_.publish(&Int32 { data: 42 })?;
-    /// ```
     pub fn create_publisher<M: RosMessage>(
         &mut self,
         topic: &str,
@@ -97,15 +88,6 @@ impl Node {
     ///
     /// The callback is a function pointer (`fn(&M)`), not a closure.
     /// Use `static` variables for external state — the standard bare-metal pattern.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// fn on_message(msg: &Int32) {
-    ///     // handle message
-    /// }
-    /// let _sub = node.create_subscription::<Int32>("/chatter", on_message)?;
-    /// ```
     pub fn create_subscription<M: RosMessage>(
         &mut self,
         topic: &str,
@@ -176,9 +158,9 @@ fn format_ros2_keyexpr_wildcard(domain_id: u32, topic: &str, type_name: &str) ->
 }
 
 /// Helper to create a socket set with pre-allocated storage
-#[allow(static_mut_refs)]
 unsafe fn create_socket_set() -> SocketSet<'static> {
-    unsafe { SocketSet::new(&mut buffers::SOCKET_STORAGE[..]) }
+    let storage = unsafe { nano_ros_transport_smoltcp::get_socket_storage() };
+    SocketSet::new(&mut storage[..])
 }
 
 /// Run a node with the given configuration
@@ -187,63 +169,17 @@ unsafe fn create_socket_set() -> SocketSet<'static> {
 /// It handles all OpenETH, network, and zenoh initialization, then calls
 /// your application code with a ready-to-use `Node`.
 ///
-/// # Arguments
-///
-/// * `config` - Network configuration (IP, MAC, gateway, zenoh locator)
-/// * `f` - Application function that receives the initialized node
-///
 /// # Returns
 ///
 /// Never returns (`-> !`). Loops forever after the application function completes
 /// or on error.
-///
-/// # Example
-///
-/// ```ignore
-/// #![no_std]
-/// #![no_main]
-///
-/// use nano_ros_bsp_esp32_qemu::prelude::*;
-///
-/// mod msg {
-///     use nano_ros_bsp_esp32_qemu::{Deserialize, RosMessage, Serialize, nano_ros_core};
-///     pub struct Int32 { pub data: i32 }
-///     impl Serialize for Int32 {
-///         fn serialize(&self, w: &mut nano_ros_core::CdrWriter)
-///             -> core::result::Result<(), nano_ros_core::SerError> { w.write_i32(self.data) }
-///     }
-///     impl Deserialize for Int32 {
-///         fn deserialize(r: &mut nano_ros_core::CdrReader)
-///             -> core::result::Result<Self, nano_ros_core::DeserError> {
-///             Ok(Self { data: r.read_i32()? })
-///         }
-///     }
-///     impl RosMessage for Int32 {
-///         const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
-///         const TYPE_HASH: &'static str = "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
-///     }
-/// }
-/// use msg::Int32;
-///
-/// #[entry]
-/// fn main() -> ! {
-///     run_node(Config::default(), |node| {
-///         let publisher = node.create_publisher::<Int32>("/chatter")?;
-///         for i in 0i32..10 {
-///             for _ in 0..3 { node.spin_once(10); }
-///             publisher.publish(&Int32 { data: i })?;
-///         }
-///         Ok(())
-///     })
-/// }
-/// ```
 pub fn run_node<F>(config: Config, f: F) -> !
 where
     F: FnOnce(&mut Node) -> core::result::Result<(), Error>,
 {
     esp_println::println!("");
     esp_println::println!("========================================");
-    esp_println::println!("  nano-ros ESP32-C3 QEMU BSP");
+    esp_println::println!("  nano-ros ESP32-C3 QEMU Platform");
     esp_println::println!("========================================");
     esp_println::println!("");
 
@@ -257,6 +193,7 @@ where
     // Step 3: Initialize hardware RNG (for zenoh-pico session ID)
     let rng = Rng::new();
     let rng_seed = rng.random();
+    random::seed(rng_seed);
 
     // Step 4: Initialize OpenETH driver (replaces WiFi stack)
     esp_println::println!("Initializing OpenETH...");
@@ -307,21 +244,12 @@ where
         config.gateway[0], config.gateway[1], config.gateway[2], config.gateway[3]
     );
 
-    // Step 7: Initialize zenoh-pico bridge
-    SmoltcpZenohBridge::init();
+    // Step 7: Initialize transport bridge
+    SmoltcpBridge::init();
 
-    // Seed RNG with hardware random number
-    smoltcp_seed_random(rng_seed);
-
-    // Create and register TCP sockets
-    for i in 0..2 {
-        let (rx_buf, tx_buf) = unsafe { buffers::get_tcp_buffers(i) };
-        let tcp = TcpSocket::new(TcpSocketBuffer::new(rx_buf), TcpSocketBuffer::new(tx_buf));
-        let handle = sockets.add(tcp);
-
-        smoltcp_register_socket(unsafe {
-            core::mem::transmute::<smoltcp::iface::SocketHandle, usize>(handle)
-        });
+    // Create and register TCP sockets via transport crate
+    unsafe {
+        nano_ros_transport_smoltcp::create_and_register_sockets(&mut sockets);
     }
 
     // Store global state for poll callback
@@ -330,7 +258,7 @@ where
         GLOBAL_IFACE = &mut iface as *mut Interface;
         GLOBAL_SOCKETS = &mut sockets as *mut SocketSet<'static>;
 
-        smoltcp_set_poll_callback(Some(smoltcp_network_poll));
+        nano_ros_transport_smoltcp::set_poll_callback(smoltcp_network_poll);
     }
 
     // Step 8: Initialize zenoh session

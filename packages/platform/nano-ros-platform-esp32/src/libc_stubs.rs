@@ -253,10 +253,6 @@ pub unsafe extern "C" fn __errno() -> *mut c_int {
 // The ESP32 runtime (esp-backtrace) provides its own __assert_func.
 // Defining it here would cause duplicate symbol errors with LTO.
 
-// Note: snprintf is not implemented because it requires C variadic functions
-// which need nightly Rust. zenoh-pico's debug output is disabled so this
-// shouldn't be called. If it is needed, provide the function from C.
-
-// NOTE: sprintf and snprintf are NOT defined here for ESP32.
-// The ESP32 runtime (esp-wifi-sys) provides its own printf library.
+// NOTE: sprintf and snprintf are NOT defined here for ESP32 WiFi.
+// The ESP32 runtime (esp-radio) provides its own printf library.
 // Defining them here would cause duplicate symbol errors with LTO.

@@ -686,7 +686,7 @@ version = "0.1.0"
 dependencies = [
  "esp-backtrace",
  "esp-hal",
- "nano-ros-bsp-esp32-qemu",
+ "nano-ros-platform-esp32-qemu",
 ]
 
 [[package]]
@@ -992,23 +992,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros-bsp-esp32-qemu"
-version = "0.1.0"
-dependencies = [
- "esp-alloc",
- "esp-backtrace",
- "esp-bootloader-esp-idf",
- "esp-hal",
- "esp-println",
- "heapless 0.8.0",
- "nano-ros-core",
- "openeth-smoltcp",
- "portable-atomic",
- "smoltcp",
- "zenoh-pico-shim-sys",
-]
-
-[[package]]
 name = "nano-ros-core"
 version = "0.1.0"
 dependencies = [
@@ -1018,10 +1001,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-platform-esp32-qemu"
+version = "0.1.0"
+dependencies = [
+ "esp-alloc",
+ "esp-backtrace",
+ "esp-bootloader-esp-idf",
+ "esp-hal",
+ "esp-println",
+ "heapless 0.8.0",
+ "nano-ros-core",
+ "nano-ros-transport-smoltcp",
+ "openeth-smoltcp",
+ "portable-atomic",
+ "smoltcp",
+ "zenoh-pico-shim-sys",
+]
+
+[[package]]
 name = "nano-ros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
+]
+
+[[package]]
+name = "nano-ros-transport-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
+ "zenoh-pico-shim-sys",
 ]
 
 [[package]]

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Simple QEMU OpenETH subscriber example using nano-ros-bsp-esp32-qemu"
+description = "Simple QEMU OpenETH subscriber example using nano-ros-platform-esp32-qemu"
 
 [[bin]]
 name = "esp32-qemu-listener"
@@ -12,8 +12,8 @@ test = false
 bench = false
 
 [dependencies]
-# Board Support Package - all you need for ESP32-C3 QEMU + OpenETH + zenoh
-nano-ros-bsp-esp32-qemu = { path = "../../../packages/bsp/nano-ros-bsp-esp32-qemu" }
+# Platform crate - all you need for ESP32-C3 QEMU + OpenETH + zenoh
+nano-ros-platform-esp32-qemu = { path = "../../../packages/platform/nano-ros-platform-esp32-qemu" }
 
 # Required for #[main] proc macro (references esp_hal crate directly)
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }

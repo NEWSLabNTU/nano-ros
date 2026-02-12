@@ -1,14 +1,14 @@
-//! Configuration for ESP32 nodes
+//! Configuration for ESP32 WiFi nodes
 //!
 //! # WiFi Configuration
 //!
-//! The BSP requires WiFi credentials (SSID and password) to connect.
+//! Requires WiFi credentials (SSID and password) to connect.
 //! These can be provided at compile time via environment variables
 //! or hardcoded in source.
 //!
 //! # IP Configuration Modes
 //!
-//! The BSP supports two IP modes:
+//! Two IP modes are supported:
 //!
 //! 1. **DHCP** (default) - Automatically acquire IP from router
 //! 2. **Static IP** - Use a manually configured IP address
