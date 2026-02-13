@@ -1,6 +1,6 @@
 //! Shim transport backend
 //!
-//! Provides a transport backend using the zenoh-pico-shim wrapper.
+//! Provides a transport backend using the nano-ros-transport-zenoh wrapper.
 //! This is designed for embedded platforms that need a simpler API than
 //! the full zenoh-pico bindings.
 //!
@@ -43,12 +43,12 @@ use crate::traits::{
     Session, SessionMode, Subscriber, TopicInfo, Transport, TransportConfig, TransportError,
 };
 
-use zenoh_pico_shim::{
+use nano_ros_transport_zenoh::{
     ShimContext, ShimError, ShimLivelinessToken, ShimZenohId, ZENOH_SHIM_RMW_GID_SIZE,
 };
 
 // Re-export for convenience
-pub use zenoh_pico_shim::ShimZenohId as ZenohId;
+pub use nano_ros_transport_zenoh::ShimZenohId as ZenohId;
 
 // ============================================================================
 // Constants
@@ -477,7 +477,7 @@ impl Ros2Liveliness {
 
 /// Shim transport backend for embedded platforms
 ///
-/// Uses zenoh-pico-shim for a simplified API suitable for bare-metal systems.
+/// Uses nano-ros-transport-zenoh for a simplified API suitable for bare-metal systems.
 pub struct ShimTransport;
 
 impl Transport for ShimTransport {
@@ -493,7 +493,7 @@ impl Transport for ShimTransport {
 // ShimSession
 // ============================================================================
 
-/// Shim session wrapping zenoh-pico-shim ShimContext
+/// Shim session wrapping nano-ros-transport-zenoh ShimContext
 ///
 /// This session requires manual polling via `spin_once()` or `poll()`.
 /// There are no background threads.
@@ -544,7 +544,7 @@ impl ShimSession {
         // Each key/value is at most 64 bytes
         let mut key_bufs = [[0u8; 64]; 8];
         let mut val_bufs = [[0u8; 64]; 8];
-        let mut c_props: [zenoh_pico_shim::zenoh_shim_property_t; 8] =
+        let mut c_props: [nano_ros_transport_zenoh::zenoh_shim_property_t; 8] =
             unsafe { core::mem::zeroed() };
 
         let mut prop_count = 0usize;
@@ -561,7 +561,7 @@ impl ShimSession {
             key_bufs[prop_count][key_bytes.len()] = 0;
             val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
             val_bufs[prop_count][val_bytes.len()] = 0;
-            c_props[prop_count] = zenoh_pico_shim::zenoh_shim_property_t {
+            c_props[prop_count] = nano_ros_transport_zenoh::zenoh_shim_property_t {
                 key: key_bufs[prop_count].as_ptr().cast(),
                 value: val_bufs[prop_count].as_ptr().cast(),
             };
@@ -587,7 +587,7 @@ impl ShimSession {
                             key_bufs[prop_count][key_bytes.len()] = 0;
                             val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
                             val_bufs[prop_count][val_bytes.len()] = 0;
-                            c_props[prop_count] = zenoh_pico_shim::zenoh_shim_property_t {
+                            c_props[prop_count] = nano_ros_transport_zenoh::zenoh_shim_property_t {
                                 key: key_bufs[prop_count].as_ptr().cast(),
                                 value: val_bufs[prop_count].as_ptr().cast(),
                             };
@@ -729,11 +729,11 @@ impl Session for ShimSession {
 // ShimPublisher
 // ============================================================================
 
-/// Shim publisher wrapping zenoh-pico-shim ShimPublisher
+/// Shim publisher wrapping nano-ros-transport-zenoh ShimPublisher
 ///
 /// Includes RMW attachment support for rmw_zenoh compatibility.
 pub struct ShimPublisher {
-    publisher: zenoh_pico_shim::ShimPublisher<'static>,
+    publisher: nano_ros_transport_zenoh::ShimPublisher<'static>,
     /// RMW GID (generated once per publisher)
     rmw_gid: [u8; RMW_GID_SIZE],
     /// Sequence number counter (atomic for interior mutability)
@@ -769,8 +769,8 @@ impl ShimPublisher {
             let pub_result = context.declare_publisher(&keyexpr_buf);
             match pub_result {
                 Ok(p) => core::mem::transmute::<
-                    zenoh_pico_shim::ShimPublisher<'_>,
-                    zenoh_pico_shim::ShimPublisher<'static>,
+                    nano_ros_transport_zenoh::ShimPublisher<'_>,
+                    nano_ros_transport_zenoh::ShimPublisher<'static>,
                 >(p),
                 Err(e) => return Err(TransportError::from(e)),
             }
@@ -948,10 +948,10 @@ extern "C" fn subscriber_callback_with_attachment(
     }
 }
 
-/// Shim subscriber wrapping zenoh-pico-shim ShimSubscriber
+/// Shim subscriber wrapping nano-ros-transport-zenoh ShimSubscriber
 pub struct ShimSubscriber {
     /// The subscriber handle (kept alive to maintain subscription)
-    _subscriber: zenoh_pico_shim::ShimSubscriber<'static>,
+    _subscriber: nano_ros_transport_zenoh::ShimSubscriber<'static>,
     /// Index into the static buffer array
     buffer_index: usize,
     /// Phantom to indicate we don't own the buffer
@@ -994,8 +994,8 @@ impl ShimSubscriber {
             );
             match sub_result {
                 Ok(s) => core::mem::transmute::<
-                    zenoh_pico_shim::ShimSubscriber<'_>,
-                    zenoh_pico_shim::ShimSubscriber<'static>,
+                    nano_ros_transport_zenoh::ShimSubscriber<'_>,
+                    nano_ros_transport_zenoh::ShimSubscriber<'static>,
                 >(s),
                 Err(e) => return Err(TransportError::from(e)),
             }
@@ -1226,7 +1226,7 @@ extern "C" fn queryable_callback(
 /// Note: The reply mechanism is limited due to the callback model.
 pub struct ShimServiceServer {
     /// The queryable handle (kept alive to maintain registration)
-    _queryable: zenoh_pico_shim::ShimQueryable,
+    _queryable: nano_ros_transport_zenoh::ShimQueryable,
     /// Index into the static buffer array
     buffer_index: usize,
     /// Keyexpr buffer for replying (copied from last request)

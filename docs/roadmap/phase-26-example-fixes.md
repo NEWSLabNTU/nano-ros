@@ -136,5 +136,5 @@ Enable concurrent cross-architecture interop tests by using unique `ROS_DOMAIN_I
 
 - `nano-ros-core` — already has `RosMessage`, `CdrWriter`, `CdrReader`
 - `nano-ros-transport` — `TopicInfo` stays here (BSPs keep their local keyexpr formatting)
-- `zenoh-pico-shim` / `zenoh-pico-shim-sys` — unchanged
+- `nano-ros-transport-zenoh` / `nano-ros-transport-zenoh-sys` — unchanged
 - `nano-ros-bsp-zephyr` — C library, out of scope for this phase

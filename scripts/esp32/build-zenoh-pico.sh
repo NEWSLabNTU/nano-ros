@@ -19,8 +19,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build/esp32-zenoh-pico"
-ZENOH_PICO_DIR="$REPO_ROOT/packages/transport/zenoh-pico-shim-sys/zenoh-pico"
-PLATFORM_DIR="$REPO_ROOT/packages/transport/zenoh-pico-shim-sys/c/platform_smoltcp"
+ZENOH_PICO_DIR="$REPO_ROOT/packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico"
+PLATFORM_DIR="$REPO_ROOT/packages/transport/nano-ros-transport-zenoh-sys/c/platform_smoltcp"
 
 # Parse arguments
 if [ "$1" = "--clean" ]; then
@@ -159,7 +159,7 @@ SOURCES="$SOURCES $PLATFORM_DIR/system.c"
 SOURCES="$SOURCES $PLATFORM_DIR/network.c"
 
 # Add zenoh shim (high-level API wrapper)
-SHIM_DIR="$REPO_ROOT/packages/transport/zenoh-pico-shim-sys/c/shim"
+SHIM_DIR="$REPO_ROOT/packages/transport/nano-ros-transport-zenoh-sys/c/shim"
 SOURCES="$SOURCES $SHIM_DIR/zenoh_shim.c"
 
 # Compiler flags for ESP32-C3 (RISC-V RV32IMC)
@@ -177,7 +177,7 @@ CFLAGS="$CFLAGS -Wall -Wextra"
 INCLUDES="-I$ZENOH_PICO_DIR/include"
 INCLUDES="$INCLUDES -I$BUILD_DIR/include"
 INCLUDES="$INCLUDES -I$PLATFORM_DIR"
-INCLUDES="$INCLUDES -I$REPO_ROOT/packages/transport/zenoh-pico-shim-sys/c/include"
+INCLUDES="$INCLUDES -I$REPO_ROOT/packages/transport/nano-ros-transport-zenoh-sys/c/include"
 
 # Platform defines for smoltcp backend
 DEFINES="-DZENOH_GENERIC"

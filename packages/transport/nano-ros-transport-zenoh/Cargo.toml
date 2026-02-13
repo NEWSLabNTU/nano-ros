@@ -1,25 +1,25 @@
 [package]
-name = "zenoh-pico-shim"
+name = "nano-ros-transport-zenoh"
 version = "0.1.0"
 edition = "2024"
-description = "High-level C shim for zenoh-pico with platform backends"
+description = "High-level Rust API for zenoh-pico transport (nano-ros)"
 license = "Apache-2.0"
 readme = "README.md"
 
 [features]
 default = []
 # Platform backends (mutually exclusive)
-posix = ["zenoh-pico-shim-sys/posix"]
-zephyr = ["zenoh-pico-shim-sys/zephyr"]
-bare-metal = ["zenoh-pico-shim-sys/bare-metal"]
+posix = ["nano-ros-transport-zenoh-sys/posix"]
+zephyr = ["nano-ros-transport-zenoh-sys/zephyr"]
+bare-metal = ["nano-ros-transport-zenoh-sys/bare-metal"]
 # Standard library support
-std = ["alloc", "zenoh-pico-shim-sys/std"]
+std = ["alloc", "nano-ros-transport-zenoh-sys/std"]
 # Allocator support (for String in ZenohId)
 alloc = []
 
 [dependencies]
 # FFI bindings + C shim library
-zenoh-pico-shim-sys = { path = "../zenoh-pico-shim-sys" }
+nano-ros-transport-zenoh-sys = { path = "../nano-ros-transport-zenoh-sys" }
 
 [dev-dependencies]
 

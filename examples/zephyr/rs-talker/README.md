@@ -5,7 +5,7 @@ Zephyr RTOS example demonstrating nano-ros publisher using zenoh-pico.
 ## Overview
 
 This example shows how to use nano-ros with Zephyr RTOS:
-- Rust application using zenoh-pico-shim
+- Rust application using nano-ros-transport-zenoh
 - C shim compiled by Zephyr build system
 - Network connectivity via Zephyr's network stack
 - Publishes `std_msgs/msg/Int32` messages to `/chatter`
@@ -82,7 +82,7 @@ cargo run -p native-rs-listener --features zenoh -- --tcp 127.0.0.1:7447
 
 ## C Shim Integration
 
-The C shim (`zenoh_shim.c`) is provided by `zenoh-pico-shim-sys` and compiled
+The C shim (`zenoh_shim.c`) is provided by `nano-ros-transport-zenoh-sys` and compiled
 by Zephyr's CMake. The Rust code uses FFI to call the shim:
 
 ```rust

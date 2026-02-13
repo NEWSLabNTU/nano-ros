@@ -21,7 +21,7 @@ target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
 
 # Include zenoh shim (required by BSP)
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/transport/zenoh-pico-shim-sys/c)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/transport/nano-ros-transport-zenoh-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

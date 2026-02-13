@@ -1,4 +1,4 @@
-//! FFI declarations for zenoh-pico-shim
+//! FFI declarations for nano-ros-transport-zenoh-sys
 //!
 //! This module defines the C API that the shim implements and the
 //! platform FFI functions that Rust provides.

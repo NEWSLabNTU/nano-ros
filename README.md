@@ -144,8 +144,8 @@ packages/
 │   ├── nano-ros-node/         # High-level node API + parameter services
 │   └── nano-ros-c/            # C API (rclc-style)
 ├── transport/                 # Zenoh transport backend
-│   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
-│   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
+│   ├── nano-ros-transport-zenoh/     # Safe Rust API for zenoh-pico
+│   └── nano-ros-transport-zenoh-sys/ # FFI + C shim + zenoh-pico submodule
 ├── interfaces/                # Generated ROS 2 types
 │   └── rcl-interfaces/        # rcl_interfaces + builtin_interfaces
 ├── bsp/                       # Board Support Packages

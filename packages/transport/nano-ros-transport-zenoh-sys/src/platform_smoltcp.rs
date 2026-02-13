@@ -657,7 +657,7 @@ mod tests {
     use std::vec::Vec;
 
     // Note: These tests use the global state of the platform layer.
-    // They must be run single-threaded: cargo test -p zenoh-pico-shim-sys --features smoltcp -- --test-threads=1
+    // They must be run single-threaded: cargo test -p nano-ros-transport-zenoh-sys --features smoltcp -- --test-threads=1
 
     // ========================================================================
     // Allocator Tests

@@ -21,7 +21,7 @@ After a comprehensive study of the micro-ROS ecosystem (see [docs/micro-ros-comp
 - `external/Micro-XRCE-DDS-Client/` — transport abstraction patterns
 - `external/micro_ros_zephyr_module/` — Zephyr serial/USB transport
 - `external/zenoh/io/zenoh-links/zenoh-link-serial/` — zenoh Rust serial link (COBS + CRC32)
-- `packages/transport/zenoh-pico-shim-sys/zenoh-pico/src/link/unicast/serial.c` — zenoh-pico native serial link
+- `packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico/src/link/unicast/serial.c` — zenoh-pico native serial link
 
 ### Design Principles
 
@@ -683,7 +683,7 @@ micro-ROS's most-used transport on MCUs is UART serial. Many embedded boards lac
 
 Unlike micro-ROS which requires a separate agent/bridge process, zenoh-pico's serial link connects directly to `zenohd`. The router can listen on both TCP and serial simultaneously, so no bridge is needed.
 
-**zenoh-pico serial reference** (`packages/transport/zenoh-pico-shim-sys/zenoh-pico/`):
+**zenoh-pico serial reference** (`packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico/`):
 - Feature flag: `Z_FEATURE_LINK_SERIAL` (disabled by default in CMakeLists.txt)
 - Locator format: `serial/<device>#baudrate=<rate>` (e.g., `serial//dev/ttyUSB0#baudrate=115200`)
 - Framing: COBS encoding + CRC32 error detection (`src/protocol/codec/serial.c`)
@@ -694,13 +694,13 @@ Unlike micro-ROS which requires a separate agent/bridge process, zenoh-pico's se
 
 ### 18.4.1 Enable `Z_FEATURE_LINK_SERIAL` in Build
 
-- [x] ~~Add `serial` feature to `zenoh-pico-shim-sys` Cargo.toml~~ Serial is always enabled (no feature gate)
+- [x] ~~Add `serial` feature to `nano-ros-transport-zenoh-sys` Cargo.toml~~ Serial is always enabled (no feature gate)
 - [x] Pass `Z_FEATURE_LINK_SERIAL=1` in `build.rs` CMake invocation unconditionally
 - [x] Add serial config header entries for smoltcp platform (`Z_FEATURE_LINK_SERIAL=1` in `zenoh_generic_config.h`)
 - [x] Zephyr: update Kconfig locator help text to document serial format
 
 ```toml
-# packages/transport/zenoh-pico-shim-sys/Cargo.toml
+# packages/transport/nano-ros-transport-zenoh-sys/Cargo.toml
 [features]
 serial = []  # Enable Z_FEATURE_LINK_SERIAL in zenoh-pico build
 ```
@@ -730,7 +730,7 @@ config NANO_ROS_SERIAL_BAUD_RATE
 
 Since zenoh-pico serial is just another link type accessed via locator string, **no new `TransportConfig` variants or transport trait implementations are needed**. Users simply pass a `serial://...` locator instead of `tcp://...`.
 
-- [x] ~~Propagate `serial` feature through `zenoh-pico-shim` and `nano-ros-transport`~~ Serial always enabled, no feature propagation needed
+- [x] ~~Propagate `serial` feature through `nano-ros-transport-zenoh` and `nano-ros-transport`~~ Serial always enabled, no feature propagation needed
 - [x] Validate serial locator format in `TransportConfig` (`validate_locator()` + `locator_protocol()` in `traits.rs`)
 - [x] Document serial locator format and usage (Kconfig help text + roadmap examples)
 

@@ -267,8 +267,8 @@ Uses Espressif's QEMU fork (`qemu-system-riscv32 -M esp32c3`) with OpenCores Eth
 | `nano-ros-node`       | 110        | Connected (38), Context (18), Lifecycle (15), Trigger (10), Timer (8), Executor (8), Node (6), Options (6), Shim (1) |
 | `nano-ros-params`     | 30         | Typed parameters (14), server (10), types (6)                                                                    |
 | `nano-ros-c`          | 64         | Executor (22), Guard condition (18), Lifecycle (15), CDR (5), Platform (4)                                       |
-| `zenoh-pico-shim`     | 2          | Error display, error code conversion                                                                             |
-| `zenoh-pico-shim-sys` | 1          | Constants validation                                                                                             |
+| `nano-ros-transport-zenoh`     | 2          | Error display, error code conversion                                                                             |
+| `nano-ros-transport-zenoh-sys` | 1          | Constants validation                                                                                             |
 
 ### Integration Test Coverage by Crate
 
@@ -279,7 +279,7 @@ Tests in separate integration test binaries (`tests/` directories within each cr
 | `nano-ros-transport::rtic_integration`  | 7          | RTIC transport config, QoS, session mode, topic/service info |
 | `nano-ros-transport::zenoh_integration` | 13 (8 run) | Session open/close, CDR format, topic key generation         |
 | `nano-ros-node::rtic_integration`       | 6          | RTIC node/context integration                                |
-| `zenoh-pico-shim::integration`          | 13         | Session, pub/sub, liveliness, publisher limits               |
+| `nano-ros-transport-zenoh::integration`          | 13         | Session, pub/sub, liveliness, publisher limits               |
 
 ### Test Utility Coverage
 

@@ -1,10 +1,10 @@
-//! Integration tests for zenoh-pico-shim
+//! Integration tests for nano-ros-transport-zenoh
 //!
 //! These tests require a zenohd router running on tcp/127.0.0.1:7447.
 //! Start it with: zenohd --listen tcp/127.0.0.1:7447
 //!
 //! Note: Only one ShimContext can exist at a time due to global state in the C shim.
-//! Run tests with: cargo test -p zenoh-pico-shim --features posix --ignored -- --test-threads=1
+//! Run tests with: cargo test -p nano-ros-transport-zenoh --features posix --ignored -- --test-threads=1
 //!
 //! All tests are marked #[ignore] by default since they require external infrastructure.
 
@@ -12,7 +12,7 @@ use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::thread;
 use std::time::Duration;
 
-use zenoh_pico_shim::{ShimContext, ShimError};
+use nano_ros_transport_zenoh::{ShimContext, ShimError};
 
 /// Wait for the session to stabilize after opening
 fn wait_for_session() {

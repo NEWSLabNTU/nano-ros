@@ -16,7 +16,7 @@ use openeth_smoltcp::OpenEth;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use zenoh_pico_shim_sys::{
+use nano_ros_transport_zenoh_sys::{
     zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
     zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
 };

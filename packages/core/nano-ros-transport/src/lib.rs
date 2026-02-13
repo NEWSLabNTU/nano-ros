@@ -62,9 +62,9 @@ pub use shim::{
     ZenohId as ShimZenohId,
 };
 
-// Re-export zenoh-pico-shim types for liveliness support
+// Re-export nano-ros-transport-zenoh types for liveliness support
 #[cfg(feature = "shim")]
-pub use zenoh_pico_shim::ShimLivelinessToken;
+pub use nano_ros_transport_zenoh::ShimLivelinessToken;
 
 // Backward compatibility: When "zenoh" feature is enabled, re-export shim types with Zenoh* names
 // This allows existing code using ZenohTransport, ZenohSession, etc. to continue working
@@ -78,4 +78,4 @@ pub use shim::{
 
 // Re-export liveliness token with backward-compatible name
 #[cfg(feature = "zenoh")]
-pub use zenoh_pico_shim::ShimLivelinessToken as LivelinessToken;
+pub use nano_ros_transport_zenoh::ShimLivelinessToken as LivelinessToken;

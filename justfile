@@ -132,7 +132,7 @@ quality:
     echo ""
     echo "=== Clippy (embedded target) ==="
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude zenoh-pico-shim-sys \
+        --exclude nano-ros-transport-zenoh-sys \
         --exclude nano-ros-tests \
         --exclude nano-ros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
@@ -217,12 +217,12 @@ build-workspace:
     cargo nextest run --workspace --no-run
 
 # Build workspace for embedded target (Cortex-M4F)
-# Excludes zenoh-pico-shim-sys which requires native system headers for CMake build
+# Excludes nano-ros-transport-zenoh-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
 # Excludes nano-ros-c which currently requires std
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude zenoh-pico-shim-sys \
+        --exclude nano-ros-transport-zenoh-sys \
         --exclude nano-ros-tests \
         --exclude nano-ros-c
 
@@ -237,13 +237,13 @@ check-workspace:
     cargo clippy --workspace --no-default-features --exclude nano-ros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace for embedded target (Cortex-M4F)
-# Excludes zenoh-pico-shim-sys which requires native system headers for CMake build
+# Excludes nano-ros-transport-zenoh-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
 # Excludes nano-ros-c which currently requires std
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude zenoh-pico-shim-sys \
+        --exclude nano-ros-transport-zenoh-sys \
         --exclude nano-ros-tests \
         --exclude nano-ros-c -- {{CLIPPY_LINTS}}
 
@@ -462,7 +462,7 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU examples (zenoh-pico is built inline by zenoh-pico-shim-sys)
+# Build QEMU examples (zenoh-pico is built inline by nano-ros-transport-zenoh-sys)
 build-examples-qemu:
     #!/usr/bin/env bash
     set -e
@@ -883,8 +883,8 @@ clean-zenohd:
 # Build zenoh-pico C library (standalone, for debugging)
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
-    cd packages/transport/zenoh-pico-shim-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
-    @echo "zenoh-pico built at: packages/transport/zenoh-pico-shim-sys/zenoh-pico/build"
+    cd packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
+    @echo "zenoh-pico built at: packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico/build"
 
 # =============================================================================
 # Integration Tests (requires zenohd running on tcp/127.0.0.1:7447)

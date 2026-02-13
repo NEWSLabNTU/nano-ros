@@ -9,7 +9,7 @@ This example shows how to use nano-ros with:
 - smoltcp for TCP/IP networking
 - stm32-eth for Ethernet DMA
 - DWT cycle counter for timing
-- zenoh-pico-shim for ROS 2 compatible pub/sub
+- nano-ros-transport-zenoh for ROS 2 compatible pub/sub
 
 ## Hardware Requirements
 
@@ -89,7 +89,7 @@ Same as stm32f4-rs-rtic example - see `memory.x` for details.
 - smoltcp 0.12
 - cortex-m 0.7
 - cortex-m-rt 0.7
-- zenoh-pico-shim (smoltcp feature)
+- nano-ros-transport-zenoh (smoltcp feature)
 
 ## Debugging
 

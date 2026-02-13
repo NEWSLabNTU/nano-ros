@@ -9,9 +9,9 @@ members = [
     "packages/core/nano-ros-params",
     "packages/core/nano-ros-transport",
     "packages/core/nano-ros-node",
-    # zenoh-pico shim for cross-platform support (POSIX, Zephyr, smoltcp)
-    "packages/transport/zenoh-pico-shim-sys",
-    "packages/transport/zenoh-pico-shim",
+    # Zenoh transport for cross-platform support (POSIX, Zephyr, bare-metal)
+    "packages/transport/nano-ros-transport-zenoh-sys",
+    "packages/transport/nano-ros-transport-zenoh",
     # Integration tests
     "packages/testing/nano-ros-tests",
     # C API for embedded systems

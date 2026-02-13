@@ -31,7 +31,7 @@ This phase focuses on creating comprehensive bare-metal testing infrastructure u
 | native-c-baremetal-demo | ✅ Desktop simulation    | `examples/native-c-baremetal-demo/`       |
 | QemuProcess fixture     | ✅ Complete              | `packages/testing/nano-ros-tests/src/qemu.rs`       |
 | QEMU emulator tests     | ✅ 14 tests (no network) | `packages/testing/nano-ros-tests/tests/emulator.rs` |
-| smoltcp platform layer  | ✅ Exists                | `packages/transport/zenoh-pico-shim-sys/`             |
+| smoltcp platform layer  | ✅ Exists                | `packages/transport/nano-ros-transport-zenoh-sys/`             |
 | QEMU network scripts    | ✅ Complete              | `scripts/qemu/`                           |
 | RTIC design             | ✅ Documented            | `docs/design/rtic-integration-design.md`  |
 
@@ -166,7 +166,7 @@ Create Rust examples that run in QEMU with smoltcp networking.
 
 1. **qemu-rs-talker** - Publisher example
    - Target: `thumbv7m-none-eabi` (Cortex-M3)
-   - Stack: lan9118-smoltcp + smoltcp + zenoh-pico-shim
+   - Stack: lan9118-smoltcp + smoltcp + nano-ros-transport-zenoh
    - Publishes `std_msgs/Int32` to `/chatter`
    - Static IP: 192.0.2.1
 

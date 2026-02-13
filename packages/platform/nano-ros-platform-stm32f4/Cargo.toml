@@ -10,7 +10,7 @@ name = "nano_ros_platform_stm32f4"
 
 [dependencies]
 # Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
-zenoh-pico-shim-sys = { path = "../../transport/zenoh-pico-shim-sys", features = ["bare-metal", "link-tcp"] }
+nano-ros-transport-zenoh-sys = { path = "../../transport/nano-ros-transport-zenoh-sys", features = ["bare-metal", "link-tcp"] }
 # TCP link layer via smoltcp
 nano-ros-link-smoltcp = { path = "../../link/nano-ros-link-smoltcp" }
 

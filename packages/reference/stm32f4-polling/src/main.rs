@@ -1,4 +1,4 @@
-//! Bare-metal Polling Example for nano-ros on STM32F4 with zenoh-pico-shim
+//! Bare-metal Polling Example for nano-ros on STM32F4 with nano-ros-transport-zenoh
 //!
 //! This example demonstrates how to use nano-ros without any async runtime
 //! (no RTIC, no Embassy). It uses a simple polling loop that's suitable for:
@@ -63,8 +63,8 @@ use smoltcp::{
     wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
 };
 
-// Import zenoh-pico-shim (with smoltcp platform)
-use zenoh_pico_shim::platform_smoltcp;
+// Import nano-ros-transport-zenoh (with smoltcp platform)
+use nano_ros_transport_zenoh::platform_smoltcp;
 
 // ============================================================================
 // Network Configuration
@@ -181,7 +181,7 @@ impl SimpleTimer {
 
 #[entry]
 fn main() -> ! {
-    info!("nano-ros polling + zenoh-pico-shim example starting...");
+    info!("nano-ros polling + nano-ros-transport-zenoh example starting...");
 
     // Get access to device peripherals
     let dp = stm32f4xx_hal::pac::Peripherals::take().unwrap();
@@ -312,7 +312,7 @@ fn main() -> ! {
     let tcp_handle = sockets.add(tcp_socket);
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Initialize zenoh-pico-shim platform
+    // Initialize nano-ros-transport-zenoh platform
     // ═══════════════════════════════════════════════════════════════════════
 
     info!("Initializing zenoh-pico platform...");
@@ -332,7 +332,7 @@ fn main() -> ! {
     }
 
     // When zenoh-pico is available:
-    // use zenoh_pico_shim::ShimContext;
+    // use nano_ros_transport_zenoh::ShimContext;
     // let ctx = ShimContext::new(ZENOH_ROUTER).expect("Failed to connect");
     // let publisher = ctx.declare_publisher(b"nano_ros/polling/counter\0").unwrap();
 

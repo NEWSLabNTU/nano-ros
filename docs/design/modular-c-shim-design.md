@@ -1,6 +1,6 @@
-# zenoh-pico-shim Architecture
+# nano-ros-transport-zenoh Architecture
 
-This document describes the architecture of `zenoh-pico-shim`, a crate that provides zenoh-pico support for embedded platforms (Zephyr, smoltcp/bare-metal).
+This document describes the architecture of `nano-ros-transport-zenoh`, a crate that provides zenoh-pico support for embedded platforms (Zephyr, smoltcp/bare-metal).
 
 ## Problem Statement
 
@@ -49,7 +49,7 @@ We have two separate concerns for embedded zenoh-pico support:
                   │
                   ▼
             ┌─────────────────────────────────────────────────────┐
-            │ zenoh-pico-shim (NEW)                               │
+            │ nano-ros-transport-zenoh (NEW)                               │
             │                                                     │
             │ Features:                                           │
             │ - zephyr: uses Zephyr's built-in zenoh-pico         │
@@ -85,14 +85,14 @@ We have two separate concerns for embedded zenoh-pico support:
 ## Design Rationale
 
 1. **Existing crates unchanged** - `zenoh-pico-sys` and `zenoh-pico` remain stable
-2. **Clear separation** - `zenoh-pico` for std, `zenoh-pico-shim` for embedded
+2. **Clear separation** - `zenoh-pico` for std, `nano-ros-transport-zenoh` for embedded
 3. **Tightly coupled components together** - Platform impl and C shim are closely related for smoltcp (polling vs blocking)
 4. **Feature flags** - Clean separation between Zephyr (built-in platform) and smoltcp (custom platform)
 
 ## Directory Structure
 
 ```
-packages/transport/zenoh-pico-shim/
+packages/transport/nano-ros-transport-zenoh/
 ├── Cargo.toml
 ├── build.rs                      # Compiles C code, links zenoh-pico
 ├── include/
@@ -120,10 +120,10 @@ packages/transport/zenoh-pico-shim/
 
 ```toml
 [package]
-name = "zenoh-pico-shim"
+name = "nano-ros-transport-zenoh"
 version = "0.1.0"
 edition = "2021"
-links = "zenoh_pico_shim"         # Prevents multiple linking
+links = "nano_ros_transport_zenoh"         # Prevents multiple linking
 
 [features]
 default = []
@@ -461,7 +461,7 @@ impl Drop for ShimPublisher {
 ### Zephyr (uses shim for FFI, built-in platform)
 
 ```rust
-use zenoh_pico_shim::{ShimContext, ShimPublisher};
+use nano_ros_transport_zenoh::{ShimContext, ShimPublisher};
 
 let ctx = ShimContext::new(b"tcp/192.0.2.2:7447\0")?;
 let publisher = ctx.declare_publisher(b"/chatter\0")?;
@@ -476,7 +476,7 @@ loop {
 ### smoltcp/RTIC (uses shim + custom platform)
 
 ```rust
-use zenoh_pico_shim::{ShimContext, ShimPublisher, platform_smoltcp};
+use nano_ros_transport_zenoh::{ShimContext, ShimPublisher, platform_smoltcp};
 
 // Initialize smoltcp first (in RTIC init)
 unsafe {
@@ -499,9 +499,9 @@ loop {
 |-------|---------|--------|
 | `zenoh-pico-sys` | FFI bindings to zenoh-pico C lib | **Unchanged** |
 | `zenoh-pico` | Safe Rust wrapper for std targets | **Unchanged** |
-| `zenoh-pico-shim` | Embedded support | **New** |
+| `nano-ros-transport-zenoh` | Embedded support | **New** |
 
-The `zenoh-pico-shim` crate contains:
+The `nano-ros-transport-zenoh` crate contains:
 - **C shim layer** - High-level API avoiding FFI struct issues
 - **Platform backends** - Zephyr (threads), smoltcp (polling), POSIX (testing)
 - **smoltcp platform** - Custom z_* implementations for bare-metal

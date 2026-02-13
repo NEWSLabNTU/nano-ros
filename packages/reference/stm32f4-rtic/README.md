@@ -8,7 +8,7 @@ This example shows how to use nano-ros with:
 - RTIC 2.x for real-time task scheduling
 - smoltcp for TCP/IP networking
 - stm32-eth for Ethernet DMA
-- zenoh-pico-shim for ROS 2 compatible pub/sub
+- nano-ros-transport-zenoh for ROS 2 compatible pub/sub
 
 ## Hardware Requirements
 
@@ -59,7 +59,7 @@ cargo run --release
 ├─────────────────────────────────────────────────────────────────────┤
 │  nano-ros-node (ShimExecutor, ShimNode, ShimPublisher)              │
 ├─────────────────────────────────────────────────────────────────────┤
-│  zenoh-pico-shim (shim-smoltcp feature)                              │
+│  nano-ros-transport-zenoh (shim-smoltcp feature)                              │
 ├─────────────────────────────────────────────────────────────────────┤
 │  smoltcp + stm32-eth (Ethernet DMA)                                  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -87,7 +87,7 @@ MEMORY
 - smoltcp 0.12
 - rtic 2.1
 - rtic-monotonics 2.0
-- zenoh-pico-shim (smoltcp feature)
+- nano-ros-transport-zenoh (smoltcp feature)
 
 ## Debugging
 

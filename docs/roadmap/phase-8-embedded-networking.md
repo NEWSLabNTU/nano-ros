@@ -8,13 +8,13 @@
 
 This phase provides working network connectivity for embedded systems:
 - **Zephyr examples** (COMPLETE) - Using zenoh-pico via C shim
-- **zenoh-pico-shim crate** - Unified crate with C shim + platform backends
-- **RTIC/polling examples** - Using zenoh-pico-shim with smoltcp platform layer
+- **nano-ros-transport-zenoh crate** - Unified crate with C shim + platform backends
+- **RTIC/polling examples** - Using nano-ros-transport-zenoh with smoltcp platform layer
 - **Native examples** - Verify executor API integration works
 
 **Architecture Documents:**
 - [smoltcp-zenoh-pico-integration.md](../architecture/smoltcp-zenoh-pico-integration.md) - Network stack design
-- [modular-c-shim-design.md](../architecture/modular-c-shim-design.md) - zenoh-pico-shim architecture (Option C)
+- [modular-c-shim-design.md](../architecture/modular-c-shim-design.md) - nano-ros-transport-zenoh architecture (Option C)
 
 ## Architecture Overview
 
@@ -32,14 +32,14 @@ This phase provides working network connectivity for embedded systems:
 │                                 │                                        │
 │                                 ▼                                        │
 │               ┌────────────────────────────────────────┐                 │
-│               │  zenoh-pico-shim (High-level Rust API) │                 │
+│               │  nano-ros-transport-zenoh (High-level Rust API) │                 │
 │               │  ├── Session, Publisher, Subscriber    │                 │
 │               │  └── platform/smoltcp.rs (Rust FFI)    │                 │
 │               └────────────────────┬───────────────────┘                 │
 │                                    │                                     │
 │                                    ▼                                     │
 │               ┌────────────────────────────────────────┐                 │
-│               │  zenoh-pico-shim-sys (FFI + C code)    │                 │
+│               │  nano-ros-transport-zenoh-sys (FFI + C code)    │                 │
 │               │  ├── c/shim/zenoh_shim.c               │                 │
 │               │  ├── c/platform_smoltcp/*.c (optional) │                 │
 │               │  └── zenoh-pico/ (submodule)           │                 │
@@ -54,13 +54,13 @@ This phase provides working network connectivity for embedded systems:
 ```
 
 **Key Design Decisions:**
-- All applications use unified `zenoh-pico-shim` API
-- `zenoh-pico-shim-sys` contains all C code (shim + platform layers + zenoh-pico submodule)
+- All applications use unified `nano-ros-transport-zenoh` API
+- `nano-ros-transport-zenoh-sys` contains all C code (shim + platform layers + zenoh-pico submodule)
 - Platform selection via feature flags:
   - `posix` - Uses zenoh-pico native POSIX platform (desktop/Linux)
   - `zephyr` - Uses zenoh-pico native Zephyr platform
   - `smoltcp` - Uses custom platform layer for bare-metal
-- Clean separation: Rust code in `zenoh-pico-shim`, C code in `zenoh-pico-shim-sys`
+- Clean separation: Rust code in `nano-ros-transport-zenoh`, C code in `nano-ros-transport-zenoh-sys`
 - Legacy crates (`zenoh-pico`, `zenoh-pico-sys`) to be removed after feature migration (Phase 8.8.B)
 
 ---
@@ -108,12 +108,12 @@ This phase provides working network connectivity for embedded systems:
 
 ---
 
-## Phase 8.2: zenoh-pico-shim Crate
+## Phase 8.2: nano-ros-transport-zenoh Crate
 
 **Status**: Complete
 **Priority**: High
 
-Created the unified `zenoh-pico-shim` crate that provides:
+Created the unified `nano-ros-transport-zenoh` crate that provides:
 1. High-level C shim API (`zenoh_shim_*`) for simplified FFI
 2. Platform backend interface for different execution models (threaded vs polling)
 3. Stub backends for smoltcp and Zephyr (full implementation in Phase 8.4)
@@ -122,9 +122,9 @@ See [modular-c-shim-design.md](../architecture/modular-c-shim-design.md) for det
 
 ### Work Items
 
-- [x] **8.2.1** Create `packages/transport/zenoh-pico-shim/` directory structure
+- [x] **8.2.1** Create `packages/transport/nano-ros-transport-zenoh/` directory structure
   ```
-  packages/transport/zenoh-pico-shim/
+  packages/transport/nano-ros-transport-zenoh/
   ├── Cargo.toml
   ├── build.rs
   ├── README.md
@@ -190,17 +190,17 @@ See [modular-c-shim-design.md](../architecture/modular-c-shim-design.md) for det
   - `no_std` compatible with optional std support
   - Safe API with proper lifetime management
 
-- [x] **8.2.11** Migrate zephyr-rs-talker to use `zenoh-pico-shim` crate
+- [x] **8.2.11** Migrate zephyr-rs-talker to use `nano-ros-transport-zenoh` crate
   - Completed in Phase 8.5.9
 
-- [x] **8.2.12** Migrate zephyr-rs-listener to use `zenoh-pico-shim` crate
+- [x] **8.2.12** Migrate zephyr-rs-listener to use `nano-ros-transport-zenoh` crate
   - Completed in Phase 8.5.9
 
 - [ ] **8.2.13** Test Zephyr examples still work after migration
   - Deferred to Phase 8.6 (requires Zephyr hardware/QEMU)
 
 ### Acceptance Criteria
-- [x] `zenoh-pico-shim` crate compiles with `posix` feature
+- [x] `nano-ros-transport-zenoh` crate compiles with `posix` feature
 - [x] POSIX backend enables desktop testing (tests pass)
 - [x] Directory structure ready for smoltcp platform layer (Phase 8.4)
 - [x] `no_std` compatible (builds for thumbv7em-none-eabihf without backend)
@@ -283,15 +283,15 @@ Validate smoltcp + stm32-eth works on target hardware before integrating with ze
 
 ---
 
-## Phase 8.4: smoltcp Platform Layer in zenoh-pico-shim
+## Phase 8.4: smoltcp Platform Layer in nano-ros-transport-zenoh
 
 **Status**: Core Implementation Complete (Hardware Testing Pending)
 **Priority**: High
 **Depends on**: 8.2, 8.3
 
-Implement the zenoh-pico platform abstraction (`z_*` functions) using smoltcp within the `zenoh-pico-shim` crate. This provides the low-level socket and system operations needed by zenoh-pico on bare-metal.
+Implement the zenoh-pico platform abstraction (`z_*` functions) using smoltcp within the `nano-ros-transport-zenoh` crate. This provides the low-level socket and system operations needed by zenoh-pico on bare-metal.
 
-**Note:** The platform layer lives in `zenoh-pico-shim/platform_smoltcp/`, not in `zenoh-pico-sys`. This keeps `zenoh-pico-sys` as pure FFI bindings while `zenoh-pico-shim` owns all embedded-specific code.
+**Note:** The platform layer lives in `nano-ros-transport-zenoh/platform_smoltcp/`, not in `zenoh-pico-sys`. This keeps `zenoh-pico-sys` as pure FFI bindings while `nano-ros-transport-zenoh` owns all embedded-specific code.
 
 ### Implementation Architecture
 
@@ -489,7 +489,7 @@ The smoltcp platform layer uses callback-based integration:
   }
   ```
 
-- [x] **8.4.13** Update zenoh-pico-shim `build.rs` for smoltcp platform layer
+- [x] **8.4.13** Update nano-ros-transport-zenoh `build.rs` for smoltcp platform layer
   ```rust
   if cfg!(feature = "smoltcp") {
       // Backend (calls smoltcp FFI)
@@ -536,7 +536,7 @@ The application must provide:
 3. Integration code that moves data between smoltcp sockets and the shim's buffers
 
 ### Acceptance Criteria
-- [x] `zenoh-pico-shim` compiles with `smoltcp` feature for x86_64-linux
+- [x] `nano-ros-transport-zenoh` compiles with `smoltcp` feature for x86_64-linux
 - [x] Platform layer implements all required `z_*` functions
 - [x] smoltcp FFI functions callable from C platform code
 - [ ] Can create zenoh session using smoltcp as transport (moved to Phase 8.9)
@@ -544,7 +544,7 @@ The application must provide:
 
 ---
 
-## Phase 8.4.5: Library Restructure (zenoh-pico-shim Refactor)
+## Phase 8.4.5: Library Restructure (nano-ros-transport-zenoh Refactor)
 
 **Status**: Partially Complete (Core restructure done, transport migration pending)
 **Priority**: High
@@ -557,17 +557,17 @@ Restructure the zenoh-pico related crates to cleanly separate Rust and C code, a
 The current structure mixes Rust and C code in single crates:
 - `zenoh-pico-sys` - FFI bindings + builds zenoh-pico
 - `zenoh-pico` - Safe Rust wrapper
-- `zenoh-pico-shim` - C shim + Rust FFI + platform layers
+- `nano-ros-transport-zenoh` - C shim + Rust FFI + platform layers
 
 The new structure separates concerns:
-- `zenoh-pico-shim-sys` - All C code + FFI bindings (replaces zenoh-pico-sys)
-- `zenoh-pico-shim` - High-level Rust API (replaces zenoh-pico)
+- `nano-ros-transport-zenoh-sys` - All C code + FFI bindings (replaces zenoh-pico-sys)
+- `nano-ros-transport-zenoh` - High-level Rust API (replaces zenoh-pico)
 
 ### New Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        zenoh-pico-shim                              │
+│                        nano-ros-transport-zenoh                              │
 │                     (High-level Rust API)                           │
 │                                                                     │
 │  - Safe wrappers (Session, Publisher, Subscriber)                   │
@@ -578,7 +578,7 @@ The new structure separates concerns:
                     depends on   │
                                  ▼
 ┌─────────────────────────────────────────────────────────────────────┐
-│                      zenoh-pico-shim-sys                            │
+│                      nano-ros-transport-zenoh-sys                            │
 │                (FFI bindings + all C code)                          │
 │                                                                     │
 │  - zenoh-pico submodule (upstream C library)                        │
@@ -596,7 +596,7 @@ The new structure separates concerns:
 
 ```
 packages/transport/
-├── zenoh-pico-shim/                    # High-level Rust API
+├── nano-ros-transport-zenoh/                    # High-level Rust API
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs                      # Public API, re-exports
@@ -609,7 +609,7 @@ packages/transport/
 │           ├── mod.rs
 │           └── smoltcp.rs              # smoltcp_* Rust FFI implementations
 │
-├── zenoh-pico-shim-sys/                # FFI + all C code
+├── nano-ros-transport-zenoh-sys/                # FFI + all C code
 │   ├── Cargo.toml
 │   ├── build.rs                        # Compiles zenoh-pico + shim + platform
 │   ├── cbindgen.toml                   # Header generation config
@@ -633,7 +633,7 @@ packages/transport/
 ### Feature Flags
 
 ```toml
-# zenoh-pico-shim-sys/Cargo.toml
+# nano-ros-transport-zenoh-sys/Cargo.toml
 [features]
 default = []
 std = []
@@ -643,20 +643,20 @@ posix = []      # Uses zenoh-pico native POSIX platform (ZENOH_LINUX/ZENOH_MACOS
 zephyr = []     # Uses zenoh-pico native Zephyr platform (ZENOH_ZEPHYR)
 smoltcp = []    # Uses custom platform layer (ZENOH_GENERIC + system.c/network.c)
 
-# zenoh-pico-shim/Cargo.toml
+# nano-ros-transport-zenoh/Cargo.toml
 [features]
 default = []
-std = ["zenoh-pico-shim-sys/std"]
-posix = ["zenoh-pico-shim-sys/posix"]
-zephyr = ["zenoh-pico-shim-sys/zephyr"]
-smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
+std = ["nano-ros-transport-zenoh-sys/std"]
+posix = ["nano-ros-transport-zenoh-sys/posix"]
+zephyr = ["nano-ros-transport-zenoh-sys/zephyr"]
+smoltcp = ["nano-ros-transport-zenoh-sys/smoltcp"]
 ```
 
 ### Work Items
 
-- [x] **8.4.5.1** Create `zenoh-pico-shim-sys` crate structure
+- [x] **8.4.5.1** Create `nano-ros-transport-zenoh-sys` crate structure
   ```
-  packages/transport/zenoh-pico-shim-sys/
+  packages/transport/nano-ros-transport-zenoh-sys/
   ├── Cargo.toml
   ├── build.rs
   ├── cbindgen.toml
@@ -664,37 +664,37 @@ smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
   └── c/
   ```
 
-- [x] **8.4.5.2** Move zenoh-pico submodule to `zenoh-pico-shim-sys/zenoh-pico/`
+- [x] **8.4.5.2** Move zenoh-pico submodule to `nano-ros-transport-zenoh-sys/zenoh-pico/`
   ```bash
-  git mv packages/transport/zenoh-pico-sys/zenoh-pico packages/transport/zenoh-pico-shim-sys/zenoh-pico
+  git mv packages/transport/zenoh-pico-sys/zenoh-pico packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico
   ```
 
-- [x] **8.4.5.3** Move C shim code to `zenoh-pico-shim-sys/c/shim/`
+- [x] **8.4.5.3** Move C shim code to `nano-ros-transport-zenoh-sys/c/shim/`
   - `zenoh_shim.h` → `c/include/zenoh_shim.h` (auto-generated)
   - `zenoh_shim.c` → `c/shim/zenoh_shim.c`
 
-- [x] **8.4.5.4** Move platform C code to `zenoh-pico-shim-sys/c/platform_smoltcp/`
+- [x] **8.4.5.4** Move platform C code to `nano-ros-transport-zenoh-sys/c/platform_smoltcp/`
   - `system.c`, `network.c`, headers
 
-- [x] **8.4.5.5** Create `zenoh-pico-shim-sys/build.rs`
+- [x] **8.4.5.5** Create `nano-ros-transport-zenoh-sys/build.rs`
   - Compile zenoh-pico with appropriate platform defines
   - Compile shim C code
   - Compile platform C code (when smoltcp feature enabled)
   - Feature-based platform selection
 
-- [x] **8.4.5.6** Create `zenoh-pico-shim-sys/src/lib.rs`
+- [x] **8.4.5.6** Create `nano-ros-transport-zenoh-sys/src/lib.rs`
   - FFI declarations only (`extern "C" { ... }`)
   - No business logic
   - Constants and types re-exported from cbindgen
 
-- [x] **8.4.5.7** Restructure `zenoh-pico-shim` as high-level Rust API
+- [x] **8.4.5.7** Restructure `nano-ros-transport-zenoh` as high-level Rust API
   - `src/lib.rs` - Public API and re-exports from sys crate
   - ShimContext, ShimPublisher, ShimSubscriber wrappers
   - Error types
 
-- [x] **8.4.5.8** Move platform Rust code to `zenoh-pico-shim-sys/src/platform_smoltcp.rs`
+- [x] **8.4.5.8** Move platform Rust code to `nano-ros-transport-zenoh-sys/src/platform_smoltcp.rs`
   - smoltcp_* implementations in sys crate
-  - Re-exported from zenoh-pico-shim
+  - Re-exported from nano-ros-transport-zenoh
 
 - [ ] **8.4.5.9** Remove old crates (DEFERRED → 8.8.8)
   - Old crates kept for backward compatibility with nano-ros-transport
@@ -702,7 +702,7 @@ smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
   - Tracked in Phase 8.8.8 (after feature migration in 8.8.3-8.8.7)
 
 - [x] **8.4.5.10** Update workspace `Cargo.toml`
-  - Added `zenoh-pico-shim-sys` to members
+  - Added `nano-ros-transport-zenoh-sys` to members
   - Kept legacy crates with comments (for transport compatibility)
 
 - [ ] **8.4.5.11** Update dependent crates (DEFERRED → 8.8.7)
@@ -712,8 +712,8 @@ smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
 
 - [x] **8.4.5.12** Test build with all platform features
   ```bash
-  cargo check -p zenoh-pico-shim-sys --features posix  # ✓
-  cargo check -p zenoh-pico-shim --features posix      # ✓
+  cargo check -p nano-ros-transport-zenoh-sys --features posix  # ✓
+  cargo check -p nano-ros-transport-zenoh --features posix      # ✓
   # smoltcp feature builds but requires hardware test
   ```
 
@@ -726,7 +726,7 @@ smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
-│                    zenoh-pico-shim-sys/build.rs                     │
+│                    nano-ros-transport-zenoh-sys/build.rs                     │
 └─────────────────────────────────────────────────────────────────────┘
                                  │
          ┌───────────────────────┼───────────────────────┐
@@ -746,7 +746,7 @@ smoltcp = ["zenoh-pico-shim-sys/smoltcp"]
          └───────────────────────┴───────────────────────┘
                                  │
                                  ▼
-                    libzenoh_pico_shim.a (static library)
+                    libnano_ros_transport_zenoh.a (static library)
 ```
 
 ### Link-time Resolution (smoltcp)
@@ -761,7 +761,7 @@ For smoltcp platform, C code declares extern functions satisfied by Rust at link
               ┌──────────────────┴──────────────────┐
               ▼                                     ▼
 ┌──────────────────────────┐          ┌──────────────────────────────┐
-│  libzenoh_pico_shim.a    │          │  zenoh-pico-shim (Rust)      │
+│  libnano_ros_transport_zenoh.a    │          │  nano-ros-transport-zenoh (Rust)      │
 │  (from -sys crate)       │          │                              │
 │                          │          │  src/platform/smoltcp.rs:    │
 │  system.c:               │   ───►   │    #[no_mangle]              │
@@ -771,22 +771,22 @@ For smoltcp platform, C code declares extern functions satisfied by Rust at link
 ```
 
 ### Acceptance Criteria
-- [ ] `zenoh-pico-shim-sys` compiles with `posix` feature
-- [ ] `zenoh-pico-shim-sys` compiles with `smoltcp` feature
-- [ ] `zenoh-pico-shim` compiles with all platform features
+- [ ] `nano-ros-transport-zenoh-sys` compiles with `posix` feature
+- [ ] `nano-ros-transport-zenoh-sys` compiles with `smoltcp` feature
+- [ ] `nano-ros-transport-zenoh` compiles with all platform features
 - [ ] Old crates (`zenoh-pico-sys`, `zenoh-pico`) removed
 - [ ] No Rust/C mixing within single crate directories
 - [ ] All existing functionality preserved
 
 ---
 
-## Phase 8.5: nano-ros-node Integration with zenoh-pico-shim
+## Phase 8.5: nano-ros-node Integration with nano-ros-transport-zenoh
 
 **Status**: Complete
 **Priority**: High
 **Depends on**: 8.4.5
 
-Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros applications.
+Integrate `nano-ros-transport-zenoh` with `nano-ros-node` to enable embedded nano-ros applications.
 
 ### Work Items
 
@@ -805,11 +805,11 @@ Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros app
   - Implements `Transport` trait with `ShimSession`, `ShimPublisher`, `ShimSubscriber`
 
 - [x] **8.5.3** Implement `ShimTransportPublisher`
-  - Wraps `zenoh_pico_shim::ShimPublisher`
+  - Wraps `nano_ros_transport_zenoh::ShimPublisher`
   - Implements `Publisher` trait
 
 - [x] **8.5.4** Implement `ShimTransportSubscriber`
-  - Wraps `zenoh_pico_shim::ShimSubscriber`
+  - Wraps `nano_ros_transport_zenoh::ShimSubscriber`
   - Uses static buffer callback pattern for embedded compatibility
   - Implements `Subscriber` trait
 
@@ -825,21 +825,21 @@ Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros app
 - [x] **8.5.7** Add `shim` feature to nano-ros-transport
   ```toml
   [features]
-  shim = ["dep:zenoh-pico-shim"]
-  shim-posix = ["shim", "zenoh-pico-shim/posix"]
-  shim-zephyr = ["shim", "zenoh-pico-shim/zephyr"]
-  shim-smoltcp = ["shim", "zenoh-pico-shim/smoltcp"]
+  shim = ["dep:nano-ros-transport-zenoh"]
+  shim-posix = ["shim", "nano-ros-transport-zenoh/posix"]
+  shim-zephyr = ["shim", "nano-ros-transport-zenoh/zephyr"]
+  shim-smoltcp = ["shim", "nano-ros-transport-zenoh/smoltcp"]
   ```
 
-- [ ] **8.5.8** Migrate nano-ros-transport from zenoh-pico to zenoh-pico-shim (DEFERRED → 8.8.7)
+- [ ] **8.5.8** Migrate nano-ros-transport from zenoh-pico to nano-ros-transport-zenoh (DEFERRED → 8.8.7)
   - Note: Current `zenoh` feature still uses legacy `zenoh-pico` crate
   - New `shim` feature provides alternative path for embedded platforms
   - Full migration requires adding Liveliness tokens, ZenohId, Attachment to shim API
   - Tracked in Phase 8.8.B (8.8.3-8.8.7)
 
-- [x] **8.5.9** Update Zephyr examples to use zenoh-pico-shim crate
-  - **zephyr-rs-talker**: Updated CMakeLists.txt to use shared C shim from zenoh-pico-shim-sys
-  - **zephyr-rs-talker**: Updated Cargo.toml to depend on zenoh-pico-shim with zephyr feature
+- [x] **8.5.9** Update Zephyr examples to use nano-ros-transport-zenoh crate
+  - **zephyr-rs-talker**: Updated CMakeLists.txt to use shared C shim from nano-ros-transport-zenoh-sys
+  - **zephyr-rs-talker**: Updated Cargo.toml to depend on nano-ros-transport-zenoh with zephyr feature
   - **zephyr-rs-talker**: Simplified lib.rs to use ShimContext and ShimPublisher from crate
   - **zephyr-rs-talker**: Removed custom zenoh_shim.c (now using shared version)
   - **zephyr-rs-listener**: Same updates as zephyr-rs-talker
@@ -871,7 +871,7 @@ Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros app
 - [x] Can create publishers and subscribers through `ShimNode`
 - [x] Polling-based execution works without threads
 - [x] nano-ros-transport has `shim` features for embedded platforms
-- [x] Zephyr examples use zenoh-pico-shim crate (not inline C shim)
+- [x] Zephyr examples use nano-ros-transport-zenoh crate (not inline C shim)
 - [ ] Hardware/QEMU testing (deferred to Phase 8.6)
 
 ---
@@ -882,15 +882,15 @@ Integrate `zenoh-pico-shim` with `nano-ros-node` to enable embedded nano-ros app
 **Priority**: Medium
 **Depends on**: 8.5
 
-Updated RTIC and polling examples to use zenoh-pico-shim with smoltcp backend.
-Verified zenoh-pico-shim compiles with all platform features.
+Updated RTIC and polling examples to use nano-ros-transport-zenoh with smoltcp backend.
+Verified nano-ros-transport-zenoh compiles with all platform features.
 
 ### Work Items
 
 - [x] **8.6.1** Update `examples/stm32f4-rs-rtic/Cargo.toml`
   - Added stm32-eth 0.8, smoltcp 0.12 dependencies
   - Downgraded stm32f4xx-hal to 0.21 (required by stm32-eth)
-  - Added zenoh-pico-shim with smoltcp feature
+  - Added nano-ros-transport-zenoh with smoltcp feature
   - Updated memory.x with ethram section for DMA descriptors
 
 - [x] **8.6.2** Update stm32f4-rs-rtic main.rs with working network code
@@ -905,7 +905,7 @@ Verified zenoh-pico-shim compiles with all platform features.
   mod app {
       #[init]
       fn init(cx: init::Context) -> (Shared, Local) {
-          // Initialize Ethernet peripheral (handled by zenoh-pico-shim)
+          // Initialize Ethernet peripheral (handled by nano-ros-transport-zenoh)
           // Create executor with locator
           let executor = ShimExecutor::new(b"tcp/192.168.1.1:7447\0").unwrap();
           let node = executor.create_node("rtic_talker").unwrap();
@@ -926,7 +926,7 @@ Verified zenoh-pico-shim compiles with all platform features.
 - [x] **8.6.3** Update `examples/stm32f4-rs-polling/Cargo.toml`
   - Added stm32-eth 0.8, smoltcp 0.12 dependencies
   - Downgraded stm32f4xx-hal to 0.21 (required by stm32-eth)
-  - Added zenoh-pico-shim with smoltcp feature
+  - Added nano-ros-transport-zenoh with smoltcp feature
   - Updated memory.x with ethram section for DMA descriptors
 
 - [x] **8.6.4** Update stm32f4-rs-polling main.rs with working network code
@@ -946,17 +946,17 @@ Verified zenoh-pico-shim compiles with all platform features.
 - [ ] **8.6.7** Test polling example on NUCLEO-F429ZI
   - Moved to Phase 8.9
 
-- [x] **8.6.8** Verify zenoh-pico-shim compiles with all platform features
-  - `cargo check -p zenoh-pico-shim --features posix` - OK
-  - `cargo check -p zenoh-pico-shim --features zephyr` - OK
-  - `cargo check -p zenoh-pico-shim --features smoltcp` - OK
+- [x] **8.6.8** Verify nano-ros-transport-zenoh compiles with all platform features
+  - `cargo check -p nano-ros-transport-zenoh --features posix` - OK
+  - `cargo check -p nano-ros-transport-zenoh --features zephyr` - OK
+  - `cargo check -p nano-ros-transport-zenoh --features smoltcp` - OK
   - Full Zephyr testing requires west workspace setup
 
 ### Implementation Notes
 
 **Fixed Issues:**
 - Type mismatch in zenoh_shim.c: Changed `int` to `int32_t` for all shim API functions
-- Removed unused `extern crate alloc` from zenoh-pico-shim-sys (was causing global allocator requirement)
+- Removed unused `extern crate alloc` from nano-ros-transport-zenoh-sys (was causing global allocator requirement)
 
 **Architecture:**
 - RTIC example uses RTIC 2.x async tasks for network polling
@@ -975,7 +975,7 @@ The examples demonstrate the correct pattern for smoltcp + zenoh-pico integratio
 ### Acceptance Criteria
 - [x] RTIC example compiles for thumbv7em-none-eabihf
 - [x] Polling example compiles for thumbv7em-none-eabihf
-- [x] zenoh-pico-shim compiles with posix, zephyr, smoltcp features
+- [x] nano-ros-transport-zenoh compiles with posix, zephyr, smoltcp features
 - [ ] Hardware testing on NUCLEO-F429ZI (moved to Phase 8.9)
 - [ ] Zephyr examples work on native_sim/QEMU (moved to Phase 8.9)
 
@@ -1067,7 +1067,7 @@ Verified all native examples work correctly with executor API.
 ### 8.8.A: Dependency Cleanup (Complete)
 
 - [x] **8.8.1** Clean up unused dependencies
-  - Removed `cty` from zenoh-pico-shim-sys (not used)
+  - Removed `cty` from nano-ros-transport-zenoh-sys (not used)
   - Removed `byteorder` from nano-ros-serdes (not used)
   - Removed `heapless` from nano-ros-core (not used)
   - Removed `nano-ros-core` and `nano-ros-serdes` from nano-ros-params (not used)
@@ -1082,38 +1082,38 @@ Verified all native examples work correctly with executor API.
   - Removed unused `defmt` feature flags
   - All workspace crates pass `cargo machete` check
 
-### 8.8.B: zenoh-pico-shim Feature Migration
+### 8.8.B: nano-ros-transport-zenoh Feature Migration
 
-Migrate features from `zenoh-pico` to `zenoh-pico-shim` so we can remove the legacy crates.
+Migrate features from `zenoh-pico` to `nano-ros-transport-zenoh` so we can remove the legacy crates.
 The goal is a single unified API that works for both desktop and embedded platforms.
 
-**Current zenoh-pico features missing from zenoh-pico-shim:**
+**Current zenoh-pico features missing from nano-ros-transport-zenoh:**
 - ~~LivelinessToken (for ROS 2 discovery)~~ ✅ Complete
 - ~~ZenohId (session identifier)~~ ✅ Complete
 - ~~Queryable/Query (for ROS 2 services)~~ ✅ Complete
 - ~~RMW attachment support~~ ✅ Complete
 - Session task control (handled by platform backends, not needed in shim API)
 
-- [x] **8.8.3** Add LivelinessToken support to zenoh-pico-shim
+- [x] **8.8.3** Add LivelinessToken support to nano-ros-transport-zenoh
   - Added `zenoh_shim_declare_liveliness()` to C shim
   - Added `zenoh_shim_undeclare_liveliness()` to C shim
   - Added `ShimLivelinessToken` Rust wrapper with RAII drop
   - Exposed in `zenoh_shim.h` header
 
-- [x] **8.8.4** Add ZenohId support to zenoh-pico-shim
+- [x] **8.8.4** Add ZenohId support to nano-ros-transport-zenoh
   - Added `zenoh_shim_get_zid()` to C shim
   - Added `ShimZenohId` Rust type with `to_hex_bytes()` method
   - Supports LSB-first hex format for ROS 2 compatibility
   - Added `zid()` method to `ShimContext`
 
-- [x] **8.8.5** Add Queryable support to zenoh-pico-shim
+- [x] **8.8.5** Add Queryable support to nano-ros-transport-zenoh
   - Added `zenoh_shim_declare_queryable()` to C shim
   - Added `zenoh_shim_undeclare_queryable()` to C shim
   - Added `zenoh_shim_query_reply()` to C shim
   - Added `ShimQueryable` Rust wrapper
   - Note: Reply mechanism requires synchronous call within callback scope
 
-- [x] **8.8.6** Add RMW attachment support to zenoh-pico-shim
+- [x] **8.8.6** Add RMW attachment support to nano-ros-transport-zenoh
   - Added `zenoh_shim_publish_with_attachment()` to C shim
   - Added `ShimPublisher::publish_with_attachment()` method
   - Implemented 33-byte RMW attachment format in transport layer
@@ -1136,10 +1136,10 @@ The goal is a single unified API that works for both desktop and embedded platfo
   - Made `zenoh` feature an alias for `shim-posix` in nano-ros-transport
   - Added backward-compatible type aliases (ZenohSession, ZenohPublisher, etc.)
 
-- [x] **8.8.9** Test infrastructure for zenoh-pico-shim
-  - Created `packages/transport/zenoh-pico-shim/tests/integration.rs` with 13 tests
+- [x] **8.8.9** Test infrastructure for nano-ros-transport-zenoh
+  - Created `packages/transport/nano-ros-transport-zenoh/tests/integration.rs` with 13 tests
   - Tests: session lifecycle, pub/sub, publishers, subscribers, liveliness, ZenohId
-  - Run with: `cargo test -p zenoh-pico-shim --features "posix std" -- --test-threads=1`
+  - Run with: `cargo test -p nano-ros-transport-zenoh --features "posix std" -- --test-threads=1`
   - Requires zenohd running on tcp/127.0.0.1:7447
 
 ### 8.8.C: ROS 2 Interop Testing (Complete)
@@ -1169,7 +1169,7 @@ The goal is a single unified API that works for both desktop and embedded platfo
 ### 8.8.D: Documentation (Complete)
 
 - [x] **8.8.14** Update `docs/reference/embedded-integration.md`
-  - Document zenoh-pico-shim architecture and unified API
+  - Document nano-ros-transport-zenoh architecture and unified API
   - Document smoltcp + RTIC integration
   - Document smoltcp + polling integration
   - Added ROS 2 interoperability section
@@ -1181,7 +1181,7 @@ The goal is a single unified API that works for both desktop and embedded platfo
   - zephyr-rs-listener/README.md
 
 - [x] **8.8.16** Update CLAUDE.md
-  - Updated zenoh-pico bindings section to describe unified zenoh-pico-shim architecture
+  - Updated zenoh-pico bindings section to describe unified nano-ros-transport-zenoh architecture
   - Removed references to old zenoh-pico-sys/zenoh-pico crates
   - Updated crate dependency diagram
   - Documented C shim API
@@ -1196,7 +1196,7 @@ The goal is a single unified API that works for both desktop and embedded platfo
   - Updated exclusion lists for removed crates
 
 ### Acceptance Criteria
-- All features migrated from zenoh-pico to zenoh-pico-shim
+- All features migrated from zenoh-pico to nano-ros-transport-zenoh
 - Legacy crates removed (zenoh-pico-sys, zenoh-pico)
 - No dead code or unused dependencies in workspace
 - ROS 2 ↔ nano-ros pub/sub communication verified
@@ -1229,7 +1229,7 @@ All hardware-dependent testing consolidated into this phase.
   - Build libzenohpico.a for thumbv7em-none-eabihf
   - Document build process
 
-- [ ] **8.9.2** Update zenoh-pico-shim-sys build.rs for cross-compilation
+- [ ] **8.9.2** Update nano-ros-transport-zenoh-sys build.rs for cross-compilation
   - Detect target triple and select appropriate pre-built library
   - Or integrate CMake cross-build into Cargo build process
   - Test with `cargo build --target thumbv7em-none-eabihf`
@@ -1324,20 +1324,20 @@ All hardware-dependent testing consolidated into this phase.
 Phase 8.1 (Zephyr) ─────────────────┬─────────────────────────────────────────┐
      COMPLETE                       │                                         │
                                     ▼                                         │
-Phase 8.2 (zenoh-pico-shim) ────────┬─────────────────────────────────────────┤
+Phase 8.2 (nano-ros-transport-zenoh) ────────┬─────────────────────────────────────────┤
      C shim + backend interface     │                                         │
      Zephyr + POSIX backends        │                                         │
                                     │                                         │
                                     │    ┌────────────────────────────────┐   │
                                     ▼    ▼                                │   │
 Phase 8.3 (smoltcp validation)     Phase 8.4 (smoltcp platform)          │   │
-     Build verified                 z_* functions in zenoh-pico-shim     │   │
+     Build verified                 z_* functions in nano-ros-transport-zenoh     │   │
                                     smoltcp FFI layer                    │   │
                                     │                                    │   │
                                     ▼                                    │   │
                               Phase 8.4.5 (Library Restructure)          │   │
-                                    zenoh-pico-shim-sys (C code)         │   │
-                                    zenoh-pico-shim (Rust API)           │   │
+                                    nano-ros-transport-zenoh-sys (C code)         │   │
+                                    nano-ros-transport-zenoh (Rust API)           │   │
                                     │                                    │   │
                                     ▼                                    │   │
                               Phase 8.5 (nano-ros integration)           │   │
@@ -1353,7 +1353,7 @@ Phase 8.7 (native verification) ────┼───────────
                                     ▼                                        │
                               Phase 8.8 (Migration + Cleanup + Tests + Docs) │
                                     8.8.A: Dependency cleanup                │
-                                    8.8.B: zenoh-pico-shim migration         │
+                                    8.8.B: nano-ros-transport-zenoh migration         │
                                            (add features, migrate transport, │
                                             remove legacy crates)            │
                                     8.8.C: ROS 2 interop tests               │
@@ -1393,12 +1393,12 @@ Phase 8.7 (native verification) ────┼───────────
 │                                    ▼                                         │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
 │  │                       nano-ros-transport                             │    │
-│  │                    (zenoh feature → zenoh-pico-shim)                 │    │
+│  │                    (zenoh feature → nano-ros-transport-zenoh)                 │    │
 │  └─────────────────────────────────┬───────────────────────────────────┘    │
 │                                    │                                         │
 │                                    ▼                                         │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  zenoh-pico-shim (High-level Rust API)                               │    │
+│  │  nano-ros-transport-zenoh (High-level Rust API)                               │    │
 │  │  ├── src/lib.rs           - Public API, re-exports                   │    │
 │  │  ├── src/session.rs       - Session management                       │    │
 │  │  ├── src/publisher.rs     - Publisher                                │    │
@@ -1410,7 +1410,7 @@ Phase 8.7 (native verification) ────┼───────────
 │                                    │                                         │
 │                                    ▼                                         │
 │  ┌─────────────────────────────────────────────────────────────────────┐    │
-│  │  zenoh-pico-shim-sys (FFI + all C code)                              │    │
+│  │  nano-ros-transport-zenoh-sys (FFI + all C code)                              │    │
 │  │  ├── src/lib.rs                - FFI declarations only               │    │
 │  │  ├── c/shim/zenoh_shim.c       - C shim implementation               │    │
 │  │  ├── c/platform_smoltcp/*.c    - smoltcp platform (optional)         │    │
@@ -1425,8 +1425,8 @@ Phase 8.7 (native verification) ────┼───────────
 └─────────────────────────────────────────────────────────────────────────────┘
 
 Legacy crates (removed in Phase 8.8.8):
-- zenoh-pico-sys (merged into zenoh-pico-shim-sys)
-- zenoh-pico (merged into zenoh-pico-shim)
+- zenoh-pico-sys (merged into nano-ros-transport-zenoh-sys)
+- zenoh-pico (merged into nano-ros-transport-zenoh)
 ```
 
 ---

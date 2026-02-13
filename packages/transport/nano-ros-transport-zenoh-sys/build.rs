@@ -1,4 +1,4 @@
-//! Build script for zenoh-pico-shim-sys
+//! Build script for nano-ros-transport-zenoh-sys
 //!
 //! This builds:
 //! 1. zenoh-pico C library (via CMake for native, sources for embedded)

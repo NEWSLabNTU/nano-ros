@@ -938,7 +938,7 @@ Currently nano-ros serializes this attachment when publishing but doesn't deseri
 - `packages/core/nano-ros-node/src/connected.rs` - ConnectedSubscriber::try_recv_with_info()
 
 **Tasks**:
-- [x] Extend zenoh-pico-shim C callback to pass attachment data alongside payload
+- [x] Extend nano-ros-transport-zenoh C callback to pass attachment data alongside payload
 - [x] Update `SubscriberBuffer` to store attachment (33 bytes: 8+8+1+16)
 - [x] Add `try_recv_with_info()` method to `ShimSubscriber` (returns `MessageInfo`)
 - [x] Parse RMW attachment format in transport layer (VLE-encoded GID length)

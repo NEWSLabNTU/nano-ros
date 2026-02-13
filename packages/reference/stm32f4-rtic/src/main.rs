@@ -1,6 +1,6 @@
-//! RTIC Example for nano-ros on STM32F4 with zenoh-pico-shim
+//! RTIC Example for nano-ros on STM32F4 with nano-ros-transport-zenoh
 //!
-//! This example demonstrates nano-ros with zenoh-pico-shim on an STM32F4
+//! This example demonstrates nano-ros with nano-ros-transport-zenoh on an STM32F4
 //! microcontroller using smoltcp for TCP/IP networking.
 //!
 //! # Architecture
@@ -65,8 +65,8 @@ use smoltcp::{
     wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
 };
 
-// Import zenoh-pico-shim (with smoltcp platform)
-use zenoh_pico_shim::platform_smoltcp;
+// Import nano-ros-transport-zenoh (with smoltcp platform)
+use nano_ros_transport_zenoh::platform_smoltcp;
 
 // ============================================================================
 // Network Configuration
@@ -172,7 +172,7 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        info!("nano-ros RTIC + zenoh-pico-shim example starting...");
+        info!("nano-ros RTIC + nano-ros-transport-zenoh example starting...");
 
         let dp = cx.device;
 
@@ -290,7 +290,7 @@ mod app {
         let tcp_handle = sockets.add(tcp_socket);
 
         // ═══════════════════════════════════════════════════════════════════════
-        // Initialize zenoh-pico-shim platform
+        // Initialize nano-ros-transport-zenoh platform
         // ═══════════════════════════════════════════════════════════════════════
         info!("Initializing zenoh-pico platform...");
 
@@ -316,7 +316,7 @@ mod app {
         // Note: The following code requires zenoh-pico to be cross-compiled for
         // ARM Cortex-M. When available, uncomment this section:
         //
-        // use zenoh_pico_shim::ShimContext;
+        // use nano_ros_transport_zenoh::ShimContext;
         //
         // info!("Connecting to zenoh router...");
         // match ShimContext::new(ZENOH_ROUTER) {

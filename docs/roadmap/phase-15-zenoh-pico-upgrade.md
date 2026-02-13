@@ -32,7 +32,7 @@ When running Zephyr talker/listener with zenohd 1.7.2 and zenoh-pico 1.5.1:
 
 ### 2. ✅ Update zenoh-pico submodule
 ```bash
-cd packages/transport/zenoh-pico-shim-sys/zenoh-pico
+cd packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico
 git fetch --tags
 git checkout 1.7.2
 ```
@@ -127,7 +127,7 @@ nano_ros_bsp_create_subscriber(sub_ptr, ...);  // Pointer stays valid
 | File | Change |
 |------|--------|
 | `west.yml` | Updated zenoh-pico revision to 1.7.2 ✅ |
-| `packages/transport/zenoh-pico-shim-sys/zenoh-pico` | Updated submodule to 1.7.2 ✅ |
+| `packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico` | Updated submodule to 1.7.2 ✅ |
 | `scripts/zephyr/setup.sh` | Patches config.h (unchanged, still works) ✅ |
 | `packages/testing/nano-ros-tests/src/zephyr.rs` | Added unique seed support for native_sim ✅ |
 | `packages/testing/nano-ros-tests/tests/zephyr.rs` | Fixed pattern matching for BSP log format ✅ |

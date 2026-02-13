@@ -1,6 +1,6 @@
 //! Shim-based executor and node for embedded platforms
 //!
-//! This module provides a simplified executor and node API using zenoh-pico-shim.
+//! This module provides a simplified executor and node API using nano-ros-transport-zenoh.
 //! It's designed for embedded platforms that need manual polling without
 //! background threads.
 //!

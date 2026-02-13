@@ -1,4 +1,4 @@
-# zenoh-pico-shim
+# nano-ros-transport-zenoh
 
 High-level C shim for zenoh-pico with platform backends.
 
@@ -49,7 +49,7 @@ Select one backend via feature flags:
 ## Usage
 
 ```rust
-use zenoh_pico_shim::{ShimContext, ShimPublisher};
+use nano_ros_transport_zenoh::{ShimContext, ShimPublisher};
 
 // Create context with locator (null-terminated)
 let ctx = ShimContext::new(b"tcp/127.0.0.1:7447\0")?;

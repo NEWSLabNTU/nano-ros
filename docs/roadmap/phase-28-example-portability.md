@@ -92,24 +92,24 @@ These use `include_bytes!()` on local files — no repo-root needed:
 
 ## Work Items
 
-### 28.1: Inline zenoh-pico build in zenoh-pico-shim-sys
+### 28.1: Inline zenoh-pico build in nano-ros-transport-zenoh-sys
 
 **Status**: Complete
 **Priority**: High — this is the main portability blocker
 
-Move zenoh-pico cross-compilation from external shell scripts and example build.rs files into `zenoh-pico-shim-sys/build.rs`. For embedded + smoltcp targets, the build script compiles all zenoh-pico sources (core + platform + shim) using the `cc` crate. No pre-build step or environment variable needed.
+Move zenoh-pico cross-compilation from external shell scripts and example build.rs files into `nano-ros-transport-zenoh-sys/build.rs`. For embedded + smoltcp targets, the build script compiles all zenoh-pico sources (core + platform + shim) using the `cc` crate. No pre-build step or environment variable needed.
 
-**Approach**: `zenoh-pico-shim-sys/build.rs` detects embedded targets (`thumbv7m`, `thumbv7em`, `riscv32imc`) and builds zenoh-pico inline with `cc::Build`. This mirrors what `scripts/{qemu,esp32}/build-zenoh-pico.sh` did, but integrated into the cargo build. For RISC-V, a shadow `errno.h` avoids picolibc's TLS-based errno (which crashes on bare-metal ESP32-C3).
+**Approach**: `nano-ros-transport-zenoh-sys/build.rs` detects embedded targets (`thumbv7m`, `thumbv7em`, `riscv32imc`) and builds zenoh-pico inline with `cc::Build`. This mirrors what `scripts/{qemu,esp32}/build-zenoh-pico.sh` did, but integrated into the cargo build. For RISC-V, a shadow `errno.h` avoids picolibc's TLS-based errno (which crashes on bare-metal ESP32-C3).
 
 **Changes**:
-- [x] `packages/transport/zenoh-pico-shim-sys/build.rs` — `build_zenoh_pico_embedded()` compiles ~120 sources for embedded targets
+- [x] `packages/transport/nano-ros-transport-zenoh-sys/build.rs` — `build_zenoh_pico_embedded()` compiles ~120 sources for embedded targets
 - [x] Remove zenoh-pico link logic from all 8 example build.rs files (files deleted entirely)
 - [x] Remove `ZENOH_PICO_LIB_DIR` env var from justfile, BSP build.rs files, and CLAUDE.md
 - [x] Remove `build-zenoh-pico-arm` / `build-zenoh-pico-riscv` as build dependencies (recipes kept for manual use)
 - [x] `packages/bsp/nano-ros-bsp-qemu/build.rs` — linker script only (no zenoh-pico linkage)
 - [x] `packages/bsp/nano-ros-bsp-esp32{,-qemu}/build.rs` — deleted (no longer needed)
 
-For users who need custom zenoh-pico configuration (different `Z_FEATURE_*` flags, patched source, etc.), the `system-zenohpico` feature on `zenoh-pico-shim-sys` allows using a pre-built library via the `ZENOH_PICO_DIR` environment variable. This is only supported for native targets.
+For users who need custom zenoh-pico configuration (different `Z_FEATURE_*` flags, patched source, etc.), the `system-zenohpico` feature on `nano-ros-transport-zenoh-sys` allows using a pre-built library via the `ZENOH_PICO_DIR` environment variable. This is only supported for native targets.
 
 **Acceptance criteria**:
 - `cargo build --release` in any QEMU/ESP32 example builds zenoh-pico automatically
@@ -189,7 +189,7 @@ static MSG_BUFFER: Mutex<RefCell<MsgBuffer>> = ...;
 **Status**: Skipped
 **Priority**: Low
 
-`packages/reference/qemu-smoltcp-bridge/src/libc_stubs.rs` (~250 lines) provides minimal C stdlib functions required by zenoh-pico on bare-metal. The original plan was to centralize these into a shared crate or `zenoh-pico-shim-sys`.
+`packages/reference/qemu-smoltcp-bridge/src/libc_stubs.rs` (~250 lines) provides minimal C stdlib functions required by zenoh-pico on bare-metal. The original plan was to centralize these into a shared crate or `nano-ros-transport-zenoh-sys`.
 
 **Decision**: Skipped. Each BSP crate already owns its own copy of libc stubs (~260 lines of trivial C-compat code). The copies have legitimate platform differences (ESP32 WiFi delegates some stubs to `esp-wifi-sys`, QEMU needs `__assert_func`). The duplication is low-impact and rarely changes. Creating crate infrastructure to share them would couple BSPs that should remain independent. The `qemu-smoltcp-bridge` copy in `packages/reference/` is a reference implementation (see 28.5).
 

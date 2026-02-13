@@ -10,7 +10,7 @@ PUBLISH PATH:
     → Publisher::publish(msg)                    [nano-ros-node/shim.rs]
     → CdrWriter::serialize(msg)                  [nano-ros-serdes/cdr.rs]
     → ShimPublisher::publish_raw(bytes)           [nano-ros-transport/shim.rs]
-    → zenoh_shim_publish_with_attachment(...)     [zenoh-pico-shim-sys/c/shim/zenoh_shim.c]
+    → zenoh_shim_publish_with_attachment(...)     [nano-ros-transport-zenoh-sys/c/shim/zenoh_shim.c]
     → z_publisher_put(...)                        [zenoh-pico library]
     → network
 

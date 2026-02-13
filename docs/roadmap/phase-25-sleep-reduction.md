@@ -92,7 +92,7 @@ No change needed there.
 
 **Priority: P0 — production latency**
 
-**File:** `packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.c`
+**File:** `packages/transport/nano-ros-transport-zenoh-sys/c/shim/zenoh_shim.c`
 
 **Current behavior** (line 991):
 
@@ -358,7 +358,7 @@ k_sem_take(&net_ready, K_MSEC(timeout));
 |------|---------|
 | `packages/core/nano-ros-node/src/executor.rs` | Add condvar wake to BasicExecutor spin loop |
 | `packages/core/nano-ros-transport/src/zenoh/` | Signal executor wake from subscription callback |
-| `packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.c` | Condvar wait in `zenoh_shim_get` |
+| `packages/transport/nano-ros-transport-zenoh-sys/c/shim/zenoh_shim.c` | Condvar wait in `zenoh_shim_get` |
 | `packages/testing/nano-ros-tests/src/lib.rs` | `poll(2)` in wait_for_pattern, collect_output |
 | `packages/testing/nano-ros-tests/src/process.rs` | `poll(2)` in wait_for_output |
 | `packages/testing/nano-ros-tests/src/zephyr.rs` | `recv_timeout` instead of try_recv + sleep |

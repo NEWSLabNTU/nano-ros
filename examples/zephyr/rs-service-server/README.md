@@ -14,7 +14,7 @@ This example demonstrates:
 
 ```
 Rust Application (src/lib.rs)
-    └── zenoh-pico-shim (Rust wrapper)
+    └── nano-ros-transport-zenoh (Rust wrapper)
         └── zenoh_shim.c (C shim, compiled by Zephyr)
             └── zenoh-pico (C library)
                 └── Zephyr network stack

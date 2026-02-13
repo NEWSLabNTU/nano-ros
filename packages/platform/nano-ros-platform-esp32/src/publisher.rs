@@ -6,8 +6,8 @@ use nano_ros_core::{CdrWriter, RosMessage};
 
 use crate::error::{Error, Result};
 
-// Use FFI from zenoh-pico-shim-sys
-use zenoh_pico_shim_sys::{zenoh_shim_publish, zenoh_shim_undeclare_publisher};
+// Use FFI from nano-ros-transport-zenoh-sys
+use nano_ros_transport_zenoh_sys::{zenoh_shim_publish, zenoh_shim_undeclare_publisher};
 
 /// Publisher for sending typed messages to a topic
 ///

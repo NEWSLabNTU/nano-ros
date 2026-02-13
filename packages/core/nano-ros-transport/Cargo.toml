@@ -7,18 +7,18 @@ description = "Transport abstraction layer for nano-ros"
 
 [features]
 default = ["std"]
-std = ["nano-ros-core/std", "zenoh-pico-shim?/std", "log"]
-alloc = ["nano-ros-core/alloc", "zenoh-pico-shim?/alloc"]
+std = ["nano-ros-core/std", "nano-ros-transport-zenoh?/std", "log"]
+alloc = ["nano-ros-core/alloc", "nano-ros-transport-zenoh?/alloc"]
 
 # Transport: selects the middleware protocol (only zenoh today)
 # "zenoh" is a convenience alias for platform-posix + alloc (desktop default)
 zenoh = ["platform-posix", "alloc"]
 
 # Platform: selects the OS/HAL backend (mutually exclusive)
-shim = ["dep:zenoh-pico-shim"]  # Base shim feature (requires platform selection)
-platform-posix = ["shim", "zenoh-pico-shim/posix"]  # POSIX platform (desktop)
-platform-zephyr = ["shim", "zenoh-pico-shim/zephyr"]  # Zephyr RTOS platform
-platform-bare-metal = ["shim", "zenoh-pico-shim/bare-metal"]  # Bare-metal platform
+shim = ["dep:nano-ros-transport-zenoh"]  # Base shim feature (requires platform selection)
+platform-posix = ["shim", "nano-ros-transport-zenoh/posix"]  # POSIX platform (desktop)
+platform-zephyr = ["shim", "nano-ros-transport-zenoh/zephyr"]  # Zephyr RTOS platform
+platform-bare-metal = ["shim", "nano-ros-transport-zenoh/bare-metal"]  # Bare-metal platform
 
 # Executor backends (informational - affects sync primitive choice)
 rtic = []       # RTIC executor - uses critical sections, no background threads
@@ -37,7 +37,7 @@ log = ["dep:log"]
 [dependencies]
 nano-ros-core = { workspace = true, default-features = false }
 heapless = { workspace = true }
-zenoh-pico-shim = { path = "../../transport/zenoh-pico-shim", optional = true, default-features = false }
+nano-ros-transport-zenoh = { path = "../../transport/nano-ros-transport-zenoh", optional = true, default-features = false }
 
 # Synchronization backends (optional)
 spin = { version = "0.9", optional = true, default-features = false, features = ["mutex", "spin_mutex"] }

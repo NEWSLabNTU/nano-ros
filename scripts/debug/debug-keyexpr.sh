@@ -9,7 +9,7 @@ PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 # Paths
 TALKER="$PROJECT_ROOT/target/release/talker"
-Z_SUB="$PROJECT_ROOT/packages/transport/zenoh-pico-shim-sys/zenoh-pico/build/examples/z_sub"
+Z_SUB="$PROJECT_ROOT/packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico/build/examples/z_sub"
 LOCATOR="tcp/127.0.0.1:7447"
 
 # Check dependencies

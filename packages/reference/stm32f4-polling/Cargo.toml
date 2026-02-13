@@ -3,7 +3,7 @@ name = "stm32f4-rs-polling-example"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Bare-metal polling example for nano-ros on STM32F4 with zenoh-pico-shim"
+description = "Bare-metal polling example for nano-ros on STM32F4 with zenoh transport"
 
 [[bin]]
 name = "stm32f4-rs-polling-example"
@@ -30,8 +30,8 @@ smoltcp = { version = "0.12", default-features = false, features = [
 # nano-ros
 nano-ros = { path = "../../core/nano-ros", default-features = false }
 
-# zenoh-pico shim with smoltcp platform backend
-zenoh-pico-shim = { path = "../../transport/zenoh-pico-shim", default-features = false, features = ["smoltcp"] }
+# zenoh transport with smoltcp platform backend
+nano-ros-transport-zenoh = { path = "../../transport/nano-ros-transport-zenoh", default-features = false, features = ["bare-metal"] }
 
 # Logging
 defmt = "0.3"

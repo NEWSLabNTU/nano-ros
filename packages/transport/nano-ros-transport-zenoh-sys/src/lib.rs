@@ -1,4 +1,4 @@
-//! zenoh-pico-shim-sys: C shim library for zenoh-pico with FFI bindings
+//! nano-ros-transport-zenoh-sys: C shim library for zenoh-pico with FFI bindings
 //!
 //! This crate provides:
 //! - The compiled C shim library (zenoh_shim.c)

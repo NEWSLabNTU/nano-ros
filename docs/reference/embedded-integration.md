@@ -4,7 +4,7 @@ This document describes how to integrate nano-ros with embedded real-time system
 
 ## Architecture Overview
 
-nano-ros provides a unified architecture for both desktop and embedded platforms using the `zenoh-pico-shim` crate:
+nano-ros provides a unified architecture for both desktop and embedded platforms using the `nano-ros-transport-zenoh` crate:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -20,7 +20,7 @@ nano-ros provides a unified architecture for both desktop and embedded platforms
 │                                 │                                    │
 │                                 ▼                                    │
 │               ┌────────────────────────────────────────┐             │
-│               │  zenoh-pico-shim (High-level Rust API) │             │
+│               │  nano-ros-transport-zenoh (High-level Rust API) │             │
 │               │  ├── Session, Publisher, Subscriber    │             │
 │               │  ├── LivelinessToken, ZenohId          │             │
 │               │  └── Queryable (for ROS 2 services)    │             │
@@ -28,7 +28,7 @@ nano-ros provides a unified architecture for both desktop and embedded platforms
 │                                    │                                 │
 │                                    ▼                                 │
 │               ┌────────────────────────────────────────┐             │
-│               │  zenoh-pico-shim-sys (FFI + C code)    │             │
+│               │  nano-ros-transport-zenoh-sys (FFI + C code)    │             │
 │               │  ├── c/shim/zenoh_shim.c (C API)       │             │
 │               │  ├── c/platform_smoltcp/*.c (smoltcp)  │             │
 │               │  └── zenoh-pico/ (submodule)           │             │
@@ -77,12 +77,12 @@ Because zenoh-pico requires heap allocation:
 
 ## Integration Patterns
 
-### Pattern 1: zenoh-pico-shim (Unified API)
+### Pattern 1: nano-ros-transport-zenoh (Unified API)
 
-The `zenoh-pico-shim` crate provides a safe Rust API that works across all platforms:
+The `nano-ros-transport-zenoh` crate provides a safe Rust API that works across all platforms:
 
 ```rust
-use zenoh_pico_shim::{ShimContext, ShimError};
+use nano_ros_transport_zenoh::{ShimContext, ShimError};
 
 // Open session
 let ctx = ShimContext::new(b"tcp/192.168.1.1:7447\0")?;
@@ -110,7 +110,7 @@ publisher.publish_with_attachment(b"data", Some(&attachment))?;
 For Zephyr RTOS, the C shim is compiled by west/CMake rather than Cargo:
 
 ```c
-// zenoh_shim.c (provided by zenoh-pico-shim-sys)
+// zenoh_shim.c (provided by nano-ros-transport-zenoh-sys)
 int zenoh_shim_init_config(const char *locator);
 int zenoh_shim_open_session(void);
 int zenoh_shim_declare_publisher(const char *keyexpr);
@@ -165,7 +165,7 @@ For bare-metal systems with Ethernet (STM32, etc.), use the smoltcp platform lay
 │  ├── ShimExecutor, ShimNode API                                     │
 │  └── ShimPublisher, ShimSubscriber with CDR serialization           │
 ├─────────────────────────────────────────────────────────────────────┤
-│  zenoh-pico-shim (shim-smoltcp feature)                              │
+│  nano-ros-transport-zenoh (shim-smoltcp feature)                              │
 │  ├── Rust FFI for smoltcp_* functions                               │
 │  └── Bridges smoltcp sockets to zenoh-pico                          │
 ├─────────────────────────────────────────────────────────────────────┤
@@ -191,7 +191,7 @@ For bare-metal systems with Ethernet (STM32, etc.), use the smoltcp platform lay
 
 2. **Register poll callback**:
    ```rust
-   use zenoh_pico_shim::platform_smoltcp;
+   use nano_ros_transport_zenoh::platform_smoltcp;
 
    // Set callback that smoltcp platform layer will call
    platform_smoltcp::smoltcp_set_poll_callback(my_poll_callback);
@@ -293,21 +293,21 @@ See `examples/stm32f4-rs-polling/` for complete example.
 ### Zephyr RTOS
 
 Zephyr uses the C shim pattern with west build system. The C shim is provided by
-`zenoh-pico-shim-sys` and compiled by Zephyr's CMake build system.
+`nano-ros-transport-zenoh-sys` and compiled by Zephyr's CMake build system.
 
 ```
 examples/zephyr-rs-talker/
 ├── CMakeLists.txt      # Zephyr build config (includes zenoh_shim.c)
 ├── prj.conf            # Kconfig options
 ├── src/
-│   └── lib.rs          # Rust application using zenoh-pico-shim
-└── Cargo.toml          # Depends on zenoh-pico-shim with zephyr feature
+│   └── lib.rs          # Rust application using nano-ros-transport-zenoh
+└── Cargo.toml          # Depends on nano-ros-transport-zenoh with zephyr feature
 ```
 
-The Rust code uses the same `zenoh-pico-shim` API but with the `zephyr` feature:
+The Rust code uses the same `nano-ros-transport-zenoh` API but with the `zephyr` feature:
 
 ```rust
-use zenoh_pico_shim::{ShimContext, ShimPublisher};
+use nano_ros_transport_zenoh::{ShimContext, ShimPublisher};
 
 // FFI declarations for Zephyr (C shim compiled by Zephyr)
 extern "C" {

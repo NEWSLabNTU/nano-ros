@@ -576,8 +576,8 @@ dependencies = [
 name = "nano-ros-link-smoltcp"
 version = "0.1.0"
 dependencies = [
+ "nano-ros-transport-zenoh-sys",
  "smoltcp",
- "zenoh-pico-shim-sys",
 ]
 
 [[package]]
@@ -590,10 +590,10 @@ dependencies = [
  "heapless",
  "nano-ros-core",
  "nano-ros-link-smoltcp",
+ "nano-ros-transport-zenoh-sys",
  "smoltcp",
  "stm32-eth",
  "stm32f4xx-hal",
- "zenoh-pico-shim-sys",
 ]
 
 [[package]]
@@ -601,6 +601,15 @@ name = "nano-ros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nano-ros-transport-zenoh-sys"
+version = "0.1.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "cmake",
 ]
 
 [[package]]
@@ -1002,9 +1011,9 @@ dependencies = [
 
 [[package]]
 name = "toml_parser"
-version = "1.0.7+spec-1.1.0"
+version = "1.0.8+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "247eaa3197818b831697600aadf81514e577e0cba5eab10f7e064e78ae154df1"
+checksum = "0742ff5ff03ea7e67c8ae6c93cac239e0d9784833362da3f9a9c1da8dfefcbdc"
 dependencies = [
  "winnow",
 ]
@@ -1213,15 +1222,6 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
-]
-
-[[package]]
-name = "zenoh-pico-shim-sys"
-version = "0.1.0"
-dependencies = [
- "cbindgen",
- "cc",
- "cmake",
 ]
 
 [[package]]

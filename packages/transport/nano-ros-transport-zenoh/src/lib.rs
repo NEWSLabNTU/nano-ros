@@ -1,4 +1,4 @@
-//! zenoh-pico-shim: High-level Rust API for zenoh-pico
+//! nano-ros-transport-zenoh: High-level Rust API for zenoh-pico
 //!
 //! This crate provides a safe Rust wrapper around the zenoh-pico C shim,
 //! enabling embedded applications to use zenoh for communication.
@@ -13,7 +13,7 @@
 //! # Example
 //!
 //! ```ignore
-//! use zenoh_pico_shim::{ShimContext, ShimPublisher};
+//! use nano_ros_transport_zenoh::{ShimContext, ShimPublisher};
 //!
 //! let ctx = ShimContext::new(b"tcp/127.0.0.1:7447\0")?;
 //! let publisher = ctx.declare_publisher(b"demo/topic\0")?;
@@ -34,7 +34,7 @@ use core::ffi::c_void;
 use core::marker::PhantomData;
 
 // Re-export FFI types and constants from sys crate
-pub use zenoh_pico_shim_sys::{
+pub use nano_ros_transport_zenoh_sys::{
     ShimCallback, ShimCallbackWithAttachment, ShimQueryCallback, ZENOH_SHIM_ERR_CONFIG,
     ZENOH_SHIM_ERR_FULL, ZENOH_SHIM_ERR_GENERIC, ZENOH_SHIM_ERR_INVALID, ZENOH_SHIM_ERR_KEYEXPR,
     ZENOH_SHIM_ERR_PUBLISH, ZENOH_SHIM_ERR_SESSION, ZENOH_SHIM_ERR_TASK, ZENOH_SHIM_ERR_TIMEOUT,
@@ -48,7 +48,7 @@ pub use zenoh_pico_shim_sys::{
 
 // Import FFI functions from sys crate
 #[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
-use zenoh_pico_shim_sys::{
+use nano_ros_transport_zenoh_sys::{
     zenoh_shim_close, zenoh_shim_declare_liveliness, zenoh_shim_declare_publisher,
     zenoh_shim_declare_queryable, zenoh_shim_declare_subscriber,
     zenoh_shim_declare_subscriber_with_attachment, zenoh_shim_get, zenoh_shim_get_zid,
@@ -313,7 +313,7 @@ impl ShimContext {
     pub fn with_config(
         locator: Option<&[u8]>,
         mode: &[u8],
-        properties: &[zenoh_pico_shim_sys::zenoh_shim_property_t],
+        properties: &[nano_ros_transport_zenoh_sys::zenoh_shim_property_t],
     ) -> Result<Self> {
         let locator_ptr = match locator {
             Some(loc) => loc.as_ptr().cast(),

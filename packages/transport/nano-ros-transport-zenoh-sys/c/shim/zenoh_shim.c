@@ -1,5 +1,5 @@
 /**
- * zenoh-pico-shim Core Implementation
+ * nano-ros-transport-zenoh-sys Core Implementation
  *
  * This file implements the zenoh shim API using zenoh-pico.
  * Platform-specific behavior is handled by zenoh-pico's platform layer.

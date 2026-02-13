@@ -13,7 +13,7 @@ zephyr_library_sources(
 zephyr_include_directories(include)
 
 # Include zenoh shim headers
-zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../zenoh-pico-shim-sys/c/include)
+zephyr_include_directories(${CMAKE_CURRENT_SOURCE_DIR}/../../transport/nano-ros-transport-zenoh-sys/c/include)
 
 # Enable Z_FEATURE_INTEREST for proper message routing between clients on different networks
 zephyr_compile_definitions(Z_FEATURE_INTEREST=1 Z_FEATURE_MATCHING=1)

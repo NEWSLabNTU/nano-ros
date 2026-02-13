@@ -8,7 +8,7 @@
 
 This phase extends the existing test infrastructure to cover:
 - **Rust test framework** - Replace shell scripts with type-safe Rust integration tests
-- **Platform backends** - Verify zenoh-pico-shim works on POSIX, smoltcp, and Zephyr
+- **Platform backends** - Verify nano-ros-transport-zenoh works on POSIX, smoltcp, and Zephyr
 - **Emulator testing** - QEMU Cortex-M and Zephyr native_sim/QEMU
 - **Cross-platform communication** - nano-ros nodes on different platforms communicating
 - **Embedded ROS 2 interop** - Zephyr/smoltcp nodes talking to ROS 2

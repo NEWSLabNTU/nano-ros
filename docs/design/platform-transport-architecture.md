@@ -6,7 +6,7 @@ For the smoltcp+zenoh-pico integration design, see [smoltcp-zenoh-pico-integrati
 
 ## Protocol Overview
 
-Zenoh-pico supports 7 transport protocols, each controlled by a compile-time feature flag. nano-ros inherits these through the `zenoh-pico-shim-sys` crate.
+Zenoh-pico supports 7 transport protocols, each controlled by a compile-time feature flag. nano-ros inherits these through the `nano-ros-transport-zenoh-sys` crate.
 
 | Protocol      | Locator Format          | Flow     | Reliable    | Multicast | Feature Flag                   | Default |
 |---------------|-------------------------|----------|-------------|-----------|--------------------------------|---------|
@@ -22,7 +22,7 @@ TLS (`tls/host:port`) is also available as an encrypted wrapper over TCP, requir
 
 ## Current nano-ros Integration
 
-nano-ros uses **TCP only** for all current platforms. The zenoh-pico build in `zenoh-pico-shim-sys` enables:
+nano-ros uses **TCP only** for all current platforms. The zenoh-pico build in `nano-ros-transport-zenoh-sys` enables:
 
 ```cmake
 Z_FEATURE_LINK_TCP=1
@@ -343,15 +343,15 @@ Platform (mutually exclusive, compile-time):
     └── Link crate (one per protocol, composable):
         ├── link-smoltcp  # TCP/UDP via smoltcp IP stack
         │   Implements: _z_open_tcp, _z_send_tcp, _z_read_tcp, etc.
-        │   Activates: zenoh-pico-shim-sys/link-tcp
+        │   Activates: nano-ros-transport-zenoh-sys/link-tcp
         │
         ├── link-serial   # UART serial link
         │   Implements: _z_open_serial_from_pins, _z_read_serial_internal, etc.
-        │   Activates: zenoh-pico-shim-sys/link-serial
+        │   Activates: nano-ros-transport-zenoh-sys/link-serial
         │
         └── link-raweth   # Layer 2 raw Ethernet frames
             Implements: _z_open_raweth, _z_send_raweth, _z_receive_raweth, etc.
-            Activates: zenoh-pico-shim-sys/link-raweth
+            Activates: nano-ros-transport-zenoh-sys/link-raweth
 ```
 
 ### Transport Features
@@ -360,9 +360,9 @@ The **transport** axis selects the middleware protocol that carries ROS 2 messag
 
 | Feature | Middleware | Crate Dependency | Status |
 |---------|-----------|-----------------|--------|
-| `zenoh` | zenoh-pico | `zenoh-pico-shim` | Implemented |
+| `zenoh` | zenoh-pico | `nano-ros-transport-zenoh` | Implemented |
 
-The `zenoh` feature is a convenience alias for `platform-posix` + `alloc` in the top-level `nano-ros` crate. For bare-metal, users don't use the `zenoh` feature — they depend on `zenoh-pico-shim-sys` (via platform + link crates) directly.
+The `zenoh` feature is a convenience alias for `platform-posix` + `alloc` in the top-level `nano-ros` crate. For bare-metal, users don't use the `zenoh` feature — they depend on `nano-ros-transport-zenoh-sys` (via platform + link crates) directly.
 
 If a second transport were added (e.g., DDS via Micro-XRCE-DDS, or MQTT), it would follow the same pattern:
 
@@ -382,7 +382,7 @@ Transport and platform features are orthogonal: `zenoh` works with `platform-pos
 
 Protocol availability requires compile-time enablement at two levels, depending on the platform.
 
-**POSIX**: No compile-time configuration needed by the user. `zenoh-pico-shim-sys/build.rs` passes all relevant `Z_FEATURE_LINK_*` flags to CMake. All protocols zenoh-pico supports on Unix are compiled in.
+**POSIX**: No compile-time configuration needed by the user. `nano-ros-transport-zenoh-sys/build.rs` passes all relevant `Z_FEATURE_LINK_*` flags to CMake. All protocols zenoh-pico supports on Unix are compiled in.
 
 **Zephyr**: Two compile-time layers must agree:
 
@@ -416,7 +416,7 @@ CONFIG_ZENOH_PICO_LINK_SERIAL=y
 
 The `bsp-zephyr` crate provides default Kconfig fragments that enable the common protocols. Board-specific overlays can adjust these.
 
-**Bare-metal**: `zenoh-pico-shim-sys[bare-metal]` enables all `Z_FEATURE_LINK_*` flags unconditionally. LTO strips unused protocol code. The platform config header (`zenoh_generic_config.h`) can override individual flags if needed.
+**Bare-metal**: `nano-ros-transport-zenoh-sys[bare-metal]` enables all `Z_FEATURE_LINK_*` flags unconditionally. LTO strips unused protocol code. The platform config header (`zenoh_generic_config.h`) can override individual flags if needed.
 
 ### Runtime Protocol Selection
 
@@ -461,7 +461,7 @@ nano-ros-link-serial = { path = "..." }
 
 ### How Bare-Metal Provides Protocol Support
 
-On bare-metal, zenoh-pico is compiled from source by `zenoh-pico-shim-sys`. It calls platform functions (`z_malloc`, `_z_open_tcp`, etc.) that must be provided externally. Unlike POSIX and Zephyr where zenoh-pico provides its own implementations, bare-metal implementations come from nano-ros crates.
+On bare-metal, zenoh-pico is compiled from source by `nano-ros-transport-zenoh-sys`. It calls platform functions (`z_malloc`, `_z_open_tcp`, etc.) that must be provided externally. Unlike POSIX and Zephyr where zenoh-pico provides its own implementations, bare-metal implementations come from nano-ros crates.
 
 **Key principle:** Platform and link crates implement zenoh-pico's own symbols directly using `#[unsafe(no_mangle)] extern "C"`. No custom intermediate FFI symbols (no `smoltcp_socket_open`, no `nros_net_tcp_open`). The same symbols that zenoh-pico defines in its headers and implements for POSIX/Zephyr are implemented by our Rust crates for bare-metal.
 
@@ -483,9 +483,9 @@ Compared to POSIX/Zephyr where zenoh-pico's own C files implement these symbols 
 
 | Component                         | Provided By                                   | What It Does                                                    |
 |-----------------------------------|-----------------------------------------------|-----------------------------------------------------------------|
-| Protocol code (link/transport)    | zenoh-pico (compiled by zenoh-pico-shim-sys)  | Framing, sequencing, locator parsing                            |
-| Simplified C API (`zenoh_shim_*`) | `zenoh-pico-shim-sys` (`c/shim/zenoh_shim.c`) | Session/publisher/subscriber management wrapper over zenoh-pico |
-| Platform type definitions         | `zenoh-pico-shim-sys` (C header)              | `_z_sys_net_socket_t`, `z_clock_t`, etc.                        |
+| Protocol code (link/transport)    | zenoh-pico (compiled by nano-ros-transport-zenoh-sys)  | Framing, sequencing, locator parsing                            |
+| Simplified C API (`zenoh_shim_*`) | `nano-ros-transport-zenoh-sys` (`c/shim/zenoh_shim.c`) | Session/publisher/subscriber management wrapper over zenoh-pico |
+| Platform type definitions         | `nano-ros-transport-zenoh-sys` (C header)              | `_z_sys_net_socket_t`, `z_clock_t`, etc.                        |
 | System symbol implementations     | Platform crate (Rust `#[no_mangle]`)          | `z_malloc`, `z_clock_now`, `z_sleep_ms`, threading stubs        |
 | Network symbol implementations    | Link crate (Rust `#[no_mangle]`)              | `_z_open_tcp`, `_z_send_tcp`, `_z_close_tcp`, serial/raweth ops |
 | Hardware driver                   | Platform crate                                | Direct hardware access (Ethernet MAC, UART, clock)              |
@@ -508,8 +508,8 @@ The `zenoh` convenience feature continues to imply `platform-posix` for desktop 
 | Old                          | New                            | Directory             |
 |------------------------------|--------------------------------|-----------------------|
 | `nano-ros-transport-smoltcp` | `nano-ros-link-smoltcp`        | `packages/link/`      |
-| `zenoh-pico-shim`            | `nano-ros-transport-zenoh`     | `packages/transport/` |
-| `zenoh-pico-shim-sys`        | `nano-ros-transport-zenoh-sys` | `packages/transport/` |
+| `nano-ros-transport-zenoh`            | `nano-ros-transport-zenoh`     | `packages/transport/` |
+| `nano-ros-transport-zenoh-sys`        | `nano-ros-transport-zenoh-sys` | `packages/transport/` |
 
 After migration, the directory structure reflects the feature axes: `packages/transport/` holds middleware crates (zenoh), `packages/link/` holds link protocol crates (smoltcp, serial, raweth), and `packages/platform/` holds platform crates (qemu, esp32, stm32f4).
 
@@ -670,7 +670,7 @@ Both crate types implement zenoh-pico's own symbols directly via `#[unsafe(no_ma
 ### Crate Structure
 
 ```
-zenoh-pico-shim-sys[bare-metal]
+nano-ros-transport-zenoh-sys[bare-metal]
 ├── build.rs: compiles zenoh-pico C library from source
 │   └── Generates config header from Cargo features (link-tcp, link-serial, etc.)
 ├── Platform type definitions header (zenoh_bare_metal_platform.h)
@@ -703,7 +703,7 @@ platform-qemu (Rust crate, hardware-specific)
 link-smoltcp (Rust crate, protocol-specific)
 ├── Implements TCP symbols: _z_open_tcp, _z_send_tcp, _z_read_tcp, _z_close_tcp, ...
 ├── Implements endpoint symbols: _z_create_endpoint_tcp, _z_free_endpoint_tcp
-├── Depends on zenoh-pico-shim-sys = { features = ["link-tcp"] }
+├── Depends on nano-ros-transport-zenoh-sys = { features = ["link-tcp"] }
 ├── Contains: SmoltcpBridge (socket table, RX/TX buffers, poll logic)
 ├── Calls z_clock_now() via extern "C" declaration (link-time resolution)
 └── Registers poll callback with platform for network-stack driving
@@ -905,7 +905,7 @@ Who provides each symbol set, comparing POSIX/Zephyr (zenoh-pico self-contained)
 | UDP (`_z_open_udp_*`, ...)       | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **link-smoltcp** (Rust)       |
 | Serial (`_z_open_serial_*`, ...) | zenoh-pico `unix/network.c`  | zenoh-pico `zephyr/network.c`  | **link-serial** (Rust)        |
 | Raw Ethernet                     | zenoh-pico `unix/network.c`  | N/A                            | **link-raweth** (Rust)        |
-| Platform type header             | zenoh-pico `platform/unix.h` | zenoh-pico `platform/zephyr.h` | **zenoh-pico-shim-sys** (C header) |
+| Platform type header             | zenoh-pico `platform/unix.h` | zenoh-pico `platform/zephyr.h` | **nano-ros-transport-zenoh-sys** (C header) |
 
 ### Cross-Dependency Resolution
 
@@ -980,7 +980,7 @@ bsp-qemu/
 ├── node.rs         # run_node(), smoltcp_network_poll callback
 └── timing.rs       # DWT cycle counter
 
-zenoh-pico-shim-sys/c/platform_smoltcp/
+nano-ros-transport-zenoh-sys/c/platform_smoltcp/
 ├── system.c        # C shim: z_malloc→smoltcp_alloc, z_clock_now→smoltcp_clock_now_ms
 └── network.c       # C shim: _z_open_tcp→smoltcp_socket_open+smoltcp_socket_connect
 ```
@@ -1009,7 +1009,7 @@ link-smoltcp/
 ├── bridge.rs       # SmoltcpBridge: socket table, RX/TX buffers, poll()
 └── poll.rs         # Poll callback slot (Rust fn pointer, not FFI)
 
-zenoh-pico-shim-sys[bare-metal]/
+nano-ros-transport-zenoh-sys[bare-metal]/
 ├── build.rs generates config header from Cargo features (no C shim files)
 ├── Platform type header (zenoh_bare_metal_platform.h)
 ├── zenoh_shim C API (zenoh_shim.c — nano-ros's simplified wrapper)
@@ -1043,10 +1043,10 @@ Since only the platform crate provides these symbols, there is no duplication.
 
 **Feature flag coordination via Cargo.** zenoh-pico guards all protocol code behind `Z_FEATURE_LINK_*` compile-time flags. If a flag is disabled, zenoh-pico never compiles code calling those symbols — no linker error for missing implementations.
 
-`zenoh-pico-shim-sys` exposes Cargo features that control these flags:
+`nano-ros-transport-zenoh-sys` exposes Cargo features that control these flags:
 
 ```toml
-# zenoh-pico-shim-sys/Cargo.toml
+# nano-ros-transport-zenoh-sys/Cargo.toml
 [features]
 bare-metal = []
 link-tcp = []           # sets Z_FEATURE_LINK_TCP=1
@@ -1061,11 +1061,11 @@ Link crates activate the features they implement:
 ```toml
 # link-smoltcp/Cargo.toml
 [dependencies]
-zenoh-pico-shim-sys = { features = ["bare-metal", "link-tcp"] }
+nano-ros-transport-zenoh-sys = { features = ["bare-metal", "link-tcp"] }
 
 # link-serial/Cargo.toml
 [dependencies]
-zenoh-pico-shim-sys = { features = ["bare-metal", "link-serial"] }
+nano-ros-transport-zenoh-sys = { features = ["bare-metal", "link-serial"] }
 ```
 
 Cargo's feature unification merges them. When both are linked:
@@ -1076,7 +1076,7 @@ Cargo's feature unification merges them. When both are linked:
 nano-ros-platform-qemu = { path = "..." }
 nano-ros-link-smoltcp = { path = "..." }
 nano-ros-link-serial = { path = "..." }
-# → zenoh-pico-shim-sys gets: bare-metal + link-tcp + link-serial
+# → nano-ros-transport-zenoh-sys gets: bare-metal + link-tcp + link-serial
 # → zenoh-pico compiled with Z_FEATURE_LINK_TCP=1, Z_FEATURE_LINK_SERIAL=1
 # → Both symbol sets required and provided
 ```
@@ -1087,13 +1087,13 @@ When only one transport is linked:
 [dependencies]
 nano-ros-platform-qemu = { path = "..." }
 nano-ros-link-serial = { path = "..." }
-# → zenoh-pico-shim-sys gets: bare-metal + link-serial
+# → nano-ros-transport-zenoh-sys gets: bare-metal + link-serial
 # → zenoh-pico compiled with Z_FEATURE_LINK_TCP=0, Z_FEATURE_LINK_SERIAL=1
 # → Only serial symbols required and provided
 # → No TCP code compiled, no missing symbols
 ```
 
-**Build.rs implementation.** `zenoh-pico-shim-sys/build.rs` reads Cargo features and generates the config header:
+**Build.rs implementation.** `nano-ros-transport-zenoh-sys/build.rs` reads Cargo features and generates the config header:
 
 ```rust
 // build.rs (simplified)
@@ -1116,7 +1116,7 @@ A user with custom hardware (e.g., W5500 SPI Ethernet) writes:
 3. **Dependencies**:
    ```toml
    [dependencies]
-   zenoh-pico-shim-sys = { features = ["bare-metal"] }
+   nano-ros-transport-zenoh-sys = { features = ["bare-metal"] }
    nano-ros-link-smoltcp = { path = "..." }
    ```
 
@@ -1145,13 +1145,13 @@ Current transport-related feature flags across nano-ros crates (before refactori
 ```
 nano-ros (top-level)
 ├── zenoh          → nano-ros-node/zenoh → nano-ros-transport/zenoh
-├── shim-posix     → nano-ros-node/shim-posix → ... → zenoh-pico-shim-sys/posix
-├── shim-zephyr    → nano-ros-node/shim-zephyr → ... → zenoh-pico-shim-sys/zephyr
-├── shim-smoltcp   → nano-ros-node/shim-smoltcp → ... → zenoh-pico-shim-sys/smoltcp
+├── shim-posix     → nano-ros-node/shim-posix → ... → nano-ros-transport-zenoh-sys/posix
+├── shim-zephyr    → nano-ros-node/shim-zephyr → ... → nano-ros-transport-zenoh-sys/zephyr
+├── shim-smoltcp   → nano-ros-node/shim-smoltcp → ... → nano-ros-transport-zenoh-sys/smoltcp
 ├── polling        → nano-ros-node/polling (manual poll loop)
 └── rtic           → nano-ros-node/rtic (RTIC executor)
 
-zenoh-pico-shim-sys
+nano-ros-transport-zenoh-sys
 ├── posix          → builds with zenoh-pico Unix backend (self-contained)
 ├── zephyr         → builds with zenoh-pico Zephyr backend (self-contained)
 ├── smoltcp        → builds zenoh-pico + custom C shim with smoltcp_* FFI symbols

@@ -199,8 +199,8 @@ git submodule update --init --recursive
 
 **Solution**: Clean the build cache:
 ```bash
-cargo clean -p zenoh-pico-shim-sys
-touch packages/transport/zenoh-pico-shim-sys/build.rs
+cargo clean -p nano-ros-transport-zenoh-sys
+touch packages/transport/nano-ros-transport-zenoh-sys/build.rs
 cargo build
 ```
 

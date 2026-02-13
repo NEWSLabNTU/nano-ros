@@ -191,7 +191,7 @@ The bidirectional test shows asymmetric message counts:
 
 **Root Cause Identified:** The Zephyr talker's `spin_once()` timeout is ignored.
 
-In `zenoh_shim_spin_once()` (packages/transport/zenoh-pico-shim-sys/c/shim/zenoh_shim.c:548):
+In `zenoh_shim_spin_once()` (packages/transport/nano-ros-transport-zenoh-sys/c/shim/zenoh_shim.c:548):
 ```c
 (void)timeout_ms;  // Timeout handled by socket layer  <-- BUG: Ignored!
 ```
@@ -208,7 +208,7 @@ The `zp_read()` call blocks until the socket-level timeout (~10s on native_sim),
 The fix requires implementing proper timeout handling in `zenoh_shim_spin_once()`.
 
 Both directions work, confirming full cross-platform communication capability.
-The message throughput issue is a known limitation pending a zenoh-pico-shim fix.
+The message throughput issue is a known limitation pending a nano-ros-transport-zenoh fix.
 
 ### Completed Work Items
 

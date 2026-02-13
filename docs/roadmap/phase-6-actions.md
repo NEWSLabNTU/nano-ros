@@ -438,17 +438,17 @@ The following dependency chain must be completed to enable Zephyr action example
 - [x] Create `examples/zephyr-rs-action-server/` directory structure
   - [x] CMakeLists.txt with zenoh shim
   - [x] prj.conf with queryable + publication support
-  - [x] Cargo.toml with zenoh-pico-shim dependency
+  - [x] Cargo.toml with nano-ros-transport-zenoh dependency
   - [x] Copy generated example_interfaces bindings
 - [x] Create `examples/zephyr-rs-action-client/` directory structure
   - [x] CMakeLists.txt with zenoh shim
   - [x] prj.conf with query + subscription support
-  - [x] Cargo.toml with zenoh-pico-shim dependency
+  - [x] Cargo.toml with nano-ros-transport-zenoh dependency
   - [x] Copy generated example_interfaces bindings
-- [x] Implement ZephyrActionServer wrapper over zenoh-pico-shim
+- [x] Implement ZephyrActionServer wrapper over nano-ros-transport-zenoh
   - [x] Use `ShimQueryable` for send_goal, cancel_goal, get_result services
   - [x] Use `ShimPublisher` for feedback, status topics
-- [x] Implement ZephyrActionClient wrapper over zenoh-pico-shim
+- [x] Implement ZephyrActionClient wrapper over nano-ros-transport-zenoh
   - [x] Use `ShimContext::get()` for service calls
   - [x] Use `ShimSubscriber` for feedback, status topics
 - [x] Test on native_sim/native/64 target (Zephyr server ↔ Zephyr client verified)
@@ -460,7 +460,7 @@ The following dependency chain must be completed to enable Zephyr action example
 - [x] Zephyr service support (Phase 3.1.6)
 - [x] zenoh-pico queryable C shim (`zenoh_shim_declare_queryable`)
 - [x] zenoh-pico query C shim (`zenoh_shim_get`)
-- [x] Rust FFI wrappers in zenoh-pico-shim
+- [x] Rust FFI wrappers in nano-ros-transport-zenoh
 
 ### 4.7 Integration Tests
 

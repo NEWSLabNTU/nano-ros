@@ -1,5 +1,5 @@
 [package]
-name = "zenoh-pico-shim-sys"
+name = "nano-ros-transport-zenoh-sys"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
@@ -11,7 +11,7 @@ links = "zenoh_shim"
 unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "bare-metal"))'] }
 
 [lib]
-name = "zenoh_pico_shim_sys"
+name = "nano_ros_transport_zenoh_sys"
 
 [features]
 default = []

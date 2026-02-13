@@ -30,7 +30,7 @@ All 5 array parameter types are now supported in the C API using a pointer+lengt
 
 **File**: `packages/reference/stm32f4-embassy/src/main.rs:64`
 
-The Embassy example cannot use the full nano-ros executor because zenoh-pico-shim-sys requires a C cross-compilation toolchain visible to `bindgen` at build time.
+The Embassy example cannot use the full nano-ros executor because nano-ros-transport-zenoh-sys requires a C cross-compilation toolchain visible to `bindgen` at build time.
 
 **Work required**:
 - Document the required toolchain setup (arm-none-eabi-gcc in PATH)

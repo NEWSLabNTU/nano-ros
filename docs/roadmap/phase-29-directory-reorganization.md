@@ -26,8 +26,8 @@ packages/
 │   ├── nano-ros-node/
 │   └── nano-ros-c/
 ├── transport/                     # Zenoh transport backend
-│   ├── zenoh-pico-shim/
-│   └── zenoh-pico-shim-sys/
+│   ├── nano-ros-transport-zenoh/
+│   └── nano-ros-transport-zenoh-sys/
 ├── bsp/                           # Board Support Packages
 │   ├── nano-ros-bsp-qemu/
 │   ├── nano-ros-bsp-esp32/

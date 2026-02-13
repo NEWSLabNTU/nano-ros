@@ -17,8 +17,8 @@ nano-ros/
 │   │   ├── nano-ros-node/         # High-level node API + parameter_services
 │   │   └── nano-ros-c/            # C API for embedded systems
 │   ├── transport/                 # Zenoh transport backend
-│   │   ├── zenoh-pico-shim/       # Safe Rust API for zenoh-pico
-│   │   └── zenoh-pico-shim-sys/   # FFI + C shim + zenoh-pico submodule
+│   │   ├── nano-ros-transport-zenoh/     # Safe Rust API for zenoh-pico
+│   │   └── nano-ros-transport-zenoh-sys/ # FFI + C shim + zenoh-pico submodule
 │   ├── link/                      # Link protocol crates (bare-metal)
 │   │   └── nano-ros-link-smoltcp/ # TCP/UDP via smoltcp IP stack
 │   ├── bsp/                       # Board Support Packages
@@ -142,7 +142,7 @@ Build-time environment variables:
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zenoh-pico-shim-sys`) | Only with `system-zenohpico` |
+| `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `nano-ros-transport-zenoh-sys`) | Only with `system-zenohpico` |
 
 ## Development Practices
 
@@ -249,7 +249,7 @@ just test-report        # View JUnit XML report (needs junit-cli-report-viewer)
 ### Zenoh Version Unification
 All zenoh components are pinned to **1.6.2** for compatibility with rmw_zenoh_cpp (ros-humble-zenoh-cpp-vendor 0.1.8):
 - **zenohd**: Built from submodule at `scripts/zenohd/zenoh/` via `just build-zenohd` → `build/zenohd/zenohd`
-- **zenoh-pico**: Submodule at `packages/transport/zenoh-pico-shim-sys/zenoh-pico/` (1.6.2)
+- **zenoh-pico**: Submodule at `packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico/` (1.6.2)
 - **rmw_zenoh_cpp**: Bundles zenoh-c 1.6.2
 
 Test infrastructure (`nano-ros-tests`) and shell scripts automatically use the local build at `build/zenohd/zenohd` when available, falling back to the system `zenohd`.

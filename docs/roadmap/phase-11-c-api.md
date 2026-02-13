@@ -63,7 +63,7 @@ microcontrollers.
 │                      nano-ros (Rust core)                       │
 │  - nano-ros-node, nano-ros-transport, nano-ros-core             │
 ├─────────────────────────────────────────────────────────────────┤
-│                      zenoh-pico-shim                            │
+│                      nano-ros-transport-zenoh                            │
 │  - Safe Rust wrapper for zenoh-pico                             │
 ├─────────────────────────────────────────────────────────────────┤
 │                        zenoh-pico (C)                           │
@@ -1349,7 +1349,7 @@ CFLAGS += -DNANO_ROS_PLATFORM_$(PLATFORM)
 Currently nano-ros-c requires `std` feature. Full no_std support requires:
 - Platform abstraction layer implementation (C headers)
 - Rust code updates to call platform functions via FFI
-- Integration with zenoh-pico-shim for transport
+- Integration with nano-ros-transport-zenoh for transport
 - Static buffer allocation throughout
 
 ## Memory Model
