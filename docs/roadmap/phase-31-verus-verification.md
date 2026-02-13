@@ -4,7 +4,7 @@
 
 Prove real-time scheduling guarantees, communication reliability properties, core algorithm correctness, and end-to-end data path properties for **all inputs** using [Verus](https://github.com/verus-lang/verus) SMT-based deductive verification. Complements Kani bounded model checking (Phase 30.4/30.5) — same properties, stronger guarantees.
 
-Phase 31.1–31.5 established 57 unbounded proofs across scheduling, CDR, time arithmetic, actions, and parameters. Phase 31.6–31.8 extended verification to the E2E data path: proving bug existence (before fix), fixing subscriber bugs, and proving correctness (after fix) — bringing the total to **67 verified proofs**. See [E2E Verification Analysis](../design/e2e-verification-analysis.md) for the full data path trace and findings.
+Phase 31.1–31.5 established 57 unbounded proofs across scheduling, CDR, time arithmetic, actions, and parameters. Phase 31.6–31.8 extended verification to the E2E data path: proving bug existence (before fix), fixing subscriber bugs, and proving correctness (after fix) — bringing the total to **67 verified proofs**. Phase 31.9–31.10 adds ghost model validation infrastructure to detect drift between ghost models and production code. See [E2E Verification Analysis](../design/e2e-verification-analysis.md) for the data path trace, and [Ghost Model Validation Strategy](../design/ghost-model-validation.md) for the validation approach.
 
 ## Context
 
@@ -375,6 +375,8 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 | 31.6 | Fix subscriber path bugs (F3, F4)                               | 0.5 day | **Done**                                                |
 | 31.7 | Tier 4a: E2E proofs — bug existence + data path (8)             | 1 day   | **Done** (8 proofs in e2e.rs)                           |
 | 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)                  | 0.5 day | **Done** (2 proofs in e2e.rs)                           |
+| 31.9 | Ghost model validation: shared ghost type crate                 | 0.5 day | Not started |
+| 31.10 | Ghost model validation: structural + contract tests            | 1 day   | Not started |
 
 ### 31.1: Verus Toolchain Setup + Crate Scaffolding
 
@@ -597,26 +599,26 @@ Prove E2E data path properties using Verus. These proofs work on the **current**
 
 **Bug existence proofs (2):**
 
-| # | Proof | Property | Method |
-|---|-------|----------|--------|
+| # | Proof                    | Property                                                                               | Method                                                      |
+|---|--------------------------|----------------------------------------------------------------------------------------|-------------------------------------------------------------|
 | 1 | `stuck_subscription_bug` | `has_data ∧ stored_len > rx_buf_len` → Err without clearing `has_data` → stuck forever | Ghost state machine (same pattern as `time_from_nanos_bug`) |
-| 2 | `silent_truncation_bug` | `msg_len > 1024` → `stored_len == 1024 < msg_len`, no error indication | Ghost model of callback |
+| 2 | `silent_truncation_bug`  | `msg_len > 1024` → `stored_len == 1024 < msg_len`, no error indication                 | Ghost model of callback                                     |
 
 **Publish path proofs (2):**
 
-| # | Proof | Property | Method |
-|---|-------|----------|--------|
-| 3 | `publish_error_propagation` | `publish() == Ok` → `serialize() == Ok ∧ publish_raw() == Ok` | Ghost compositional chain |
-| 4 | `sequence_number_monotonicity` | Sequential `publish_raw()` calls produce `s1 < s2` | Math (atomic increment model) |
+| # | Proof                          | Property                                                      | Method                        |
+|---|--------------------------------|---------------------------------------------------------------|-------------------------------|
+| 3 | `publish_error_propagation`    | `publish() == Ok` → `serialize() == Ok ∧ publish_raw() == Ok` | Ghost compositional chain     |
+| 4 | `sequence_number_monotonicity` | Sequential `publish_raw()` calls produce `s1 < s2`            | Math (atomic increment model) |
 
 **Executor delivery proofs (4):**
 
-| # | Proof | Property | Method |
-|---|-------|----------|--------|
-| 5 | `default_trigger_delivers` | Under `Any`, if any subscription has data, subscriptions are processed | Linked (extends `trigger_any_semantics`) |
-| 6 | `all_trigger_starvation` | Under `All`, one inactive subscription blocks all subscription processing | Linked (extends `trigger_all_semantics`) |
-| 7 | `timer_non_starvation` | `process_timers()` invoked on both trigger paths (case analysis) | Ghost model of `spin_once` control flow |
-| 8 | `executor_progress_under_any` | Under `Any` with data + no errors, `subscriptions_processed >= 1` | Ghost model of executor loop |
+| # | Proof                         | Property                                                                  | Method                                   |
+|---|-------------------------------|---------------------------------------------------------------------------|------------------------------------------|
+| 5 | `default_trigger_delivers`    | Under `Any`, if any subscription has data, subscriptions are processed    | Linked (extends `trigger_any_semantics`) |
+| 6 | `all_trigger_starvation`      | Under `All`, one inactive subscription blocks all subscription processing | Linked (extends `trigger_all_semantics`) |
+| 7 | `timer_non_starvation`        | `process_timers()` invoked on both trigger paths (case analysis)          | Ghost model of `spin_once` control flow  |
+| 8 | `executor_progress_under_any` | Under `Any` with data + no errors, `subscriptions_processed >= 1`         | Ghost model of executor loop             |
 
 **Tasks:**
 
@@ -642,10 +644,10 @@ After the subscriber bugs are fixed in 31.6, prove that the fixes are correct. T
 
 **Post-fix correctness proofs (2):**
 
-| # | Proof | Property | Method |
-|---|-------|----------|--------|
-| 1 | `no_stuck_subscription` | After `try_recv_raw` error, `has_data` is cleared → subscription recovers | Ghost state machine (updated transitions) |
-| 2 | `no_silent_truncation` | Oversized messages set overflow flag → `try_recv_raw` returns `MessageTooLarge` and clears state | Ghost model (updated callback + try_recv) |
+| # | Proof                   | Property                                                                                         | Method                                    |
+|---|-------------------------|--------------------------------------------------------------------------------------------------|-------------------------------------------|
+| 1 | `no_stuck_subscription` | After `try_recv_raw` error, `has_data` is cleared → subscription recovers                        | Ghost state machine (updated transitions) |
+| 2 | `no_silent_truncation`  | Oversized messages set overflow flag → `try_recv_raw` returns `MessageTooLarge` and clears state | Ghost model (updated callback + try_recv) |
 
 **Tasks:**
 
@@ -659,6 +661,95 @@ After the subscriber bugs are fixed in 31.6, prove that the fixes are correct. T
 - [x] Both proofs pass with `just verify-verus` (67 verified, 0 errors)
 - [x] Ghost model transitions match the fixed production code (auditable)
 - [x] `just quality` passes
+
+### 31.9: Ghost Model Validation — Shared Ghost Type Crate
+
+**Depends on:** 31.1 (verification crate exists) — **Status: Not started**
+
+Create `packages/verification/nano-ros-ghost-types/` — a `#![no_std]` crate that
+defines ghost model types with all-public primitive fields. This is the single
+source of truth for ghost type definitions, shared between production crate tests
+(structural checks) and the Verus verification crate (proofs). See
+[Ghost Model Validation Strategy](../design/ghost-model-validation.md) for the
+full design.
+
+**Ghost types to move (8 types, all primitive fields):**
+
+| Ghost type | Fields | Current location |
+|---|---|---|
+| `CdrGhost` | `buf_len: usize`, `pos: usize`, `origin: usize` | cdr.rs |
+| `ParamServerGhost` | `count: usize`, `max: usize` | communication.rs |
+| `ParameterValueGhost` | 10-variant enum (`NotSet`, `Bool(bool)`, `Integer(i64)`, ...) | params.rs |
+| `SubscriberBufferGhost` | `has_data: bool`, `overflow: bool`, `stored_len: usize`, `buf_capacity: usize` | e2e.rs |
+| `PublishChainGhost` | `header_ok: bool`, `serialize_ok: bool`, `publish_raw_ok: bool` | e2e.rs |
+| `SpinOnceGhost` | `trigger_result: bool`, `subs_processed: usize`, `services_handled: usize`, `timers_fired: usize` | e2e.rs |
+| `TimerGhost` | `period_ms: u64`, `elapsed_ms: u64`, `mode: TimerModeGhost`, `canceled: bool` | scheduling.rs |
+| `TimerModeGhost` | `Repeating`, `OneShot`, `Inert` | scheduling.rs |
+
+**Cannot move (Verus-specific types):**
+
+| Ghost type | Reason |
+|---|---|
+| `FloatRangeGhost` | Fields use Verus `int` (arbitrary-precision) — no Rust equivalent |
+
+**Tasks:**
+
+1. Create `packages/verification/nano-ros-ghost-types/` crate (`#![no_std]`, no dependencies)
+2. Define the 8 ghost types with all-`pub` fields and doc comments citing production source
+3. Add crate to workspace members in root `Cargo.toml`
+4. In `nano-ros-verification/Cargo.toml`, add `nano-ros-ghost-types` as a path dependency
+5. In each verification module, replace inline ghost type definitions with
+   `external_type_specification` registrations of the shared types (transparent, no `external_body`)
+6. Remove inline ghost type definitions from verification modules
+7. `just verify-verus` passes (67 verified, 0 errors)
+8. `just quality` passes
+
+**Acceptance criteria:**
+
+- [ ] `nano-ros-ghost-types` crate exists with 8 types, `#![no_std]`, no dependencies
+- [ ] Verification crate imports from shared crate and registers via `external_type_specification`
+- [ ] All 67 proofs still pass
+- [ ] `just quality` passes (crate is a workspace member)
+
+### 31.10: Ghost Model Validation — Structural + Contract Tests
+
+**Depends on:** 31.9 (shared ghost type crate) — **Status: Not started**
+
+Add `nano-ros-ghost-types` as `[dev-dependencies]` to production crates and add
+`#[cfg(test)]` modules that construct ghost types from private fields and verify
+behavioral contracts. This catches structural and behavioral drift between ghost
+models and production code.
+
+**Production crates to instrument:**
+
+| Crate | Ghost types | Structural checks | Contract tests |
+|---|---|---|---|
+| nano-ros-serdes | `CdrGhost` | Construct from `CdrWriter` private fields | header_origin, position_invariant |
+| nano-ros-params | `ParamServerGhost`, `ParameterValueGhost` | Construct from `ParameterServer` private fields | count_invariant, param_type_spec |
+| nano-ros-transport | `SubscriberBufferGhost` | Construct from `SubscriberBuffer` private fields | callback_post_fix (overflow + normal), try_recv_post_fix (overflow, size_error, success) |
+| nano-ros-node | `TimerGhost`, `TimerModeGhost`, `PublishChainGhost`, `SpinOnceGhost` | Construct from `TimerState` private fields | timer_update, spin_once_invariant |
+
+**Tasks:**
+
+1. Add `nano-ros-ghost-types` as `[dev-dependencies]` to each production crate
+2. In `nano-ros-serdes/src/cdr.rs`: add `#[cfg(test)] mod ghost_checks` —
+   construct `CdrGhost` from `CdrWriter` private fields, verify initial state
+   and post-header state
+3. In `nano-ros-params/src/server.rs`: add ghost checks for `ParamServerGhost` —
+   construct from `ParameterServer` private fields, verify count after declare/remove
+4. In `nano-ros-transport/src/shim.rs`: add ghost checks for `SubscriberBufferGhost` —
+   construct from `SubscriberBuffer` private fields, verify callback overflow/normal
+   paths and try_recv error paths
+5. In `nano-ros-node`: add ghost checks for `TimerGhost` and control-flow ghosts —
+   construct from `TimerState` private fields, verify spin_once trigger gating
+6. `just quality` passes (all ghost check tests run in unit tests)
+
+**Acceptance criteria:**
+
+- [ ] Each ghost type has at least one structural check (construction from private fields)
+- [ ] Each spec function has at least one contract test (behavioral verification)
+- [ ] All tests pass with `just quality`
+- [ ] Ghost checks are documented in source (which spec function each test mirrors)
 
 **Out of scope for Phase 31:**
 

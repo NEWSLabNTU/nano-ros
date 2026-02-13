@@ -138,14 +138,14 @@ With the current single-slot buffer, the `while` loop runs at most once per subs
 
 Unlike the subscribe path, the publish path has no silent drops:
 
-| Layer | Function | Error handling |
-|-------|----------|----------------|
-| `ShimNodePublisher::publish()` | shim.rs:592 | `Result` propagated |
-| `CdrWriter::new_with_header()` | shim.rs:600 | `BufferTooSmall` error |
-| `msg.serialize()` | shim.rs:603 | `Serialization` error |
-| `publish_raw()` | shim.rs:608 | `TransportError` propagated |
-| `zenoh_shim_publish_with_attachment()` | zenoh_shim.c:792 | Error codes returned |
-| `z_publisher_put()` | zenoh-pico | Error code returned |
+| Layer                                  | Function         | Error handling              |
+|----------------------------------------|------------------|-----------------------------|
+| `ShimNodePublisher::publish()`         | shim.rs:592      | `Result` propagated         |
+| `CdrWriter::new_with_header()`         | shim.rs:600      | `BufferTooSmall` error      |
+| `msg.serialize()`                      | shim.rs:603      | `Serialization` error       |
+| `publish_raw()`                        | shim.rs:608      | `TransportError` propagated |
+| `zenoh_shim_publish_with_attachment()` | zenoh_shim.c:792 | Error codes returned        |
+| `z_publisher_put()`                    | zenoh-pico       | Error code returned         |
 
 If `publish()` returns `Ok(())`, the bytes were handed to `z_publisher_put()`. No silent drops exist in nano-ros's own code on the publish side.
 
@@ -353,13 +353,13 @@ if len > buf.len() {
 
 ### Tier C: Outside Verus scope
 
-| Property | Why | Alternative approach |
-|----------|-----|---------------------|
-| Network delivery guarantee | zenoh-pico internals (C library) | Integration tests, zenoh-pico's own test suite |
-| Cross-thread data race freedom | Requires memory model reasoning | Miri (`just test-miri`), loom, ThreadSanitizer |
-| zenoh-pico congestion control behavior | Foreign C code | Code review, integration tests |
-| User callback execution time bounds | Application-dependent | WCET analysis (Phase 30) |
-| End-to-end latency bounds | Depends on OS scheduler, network | Measurement-based analysis |
+| Property                               | Why                              | Alternative approach                           |
+|----------------------------------------|----------------------------------|------------------------------------------------|
+| Network delivery guarantee             | zenoh-pico internals (C library) | Integration tests, zenoh-pico's own test suite |
+| Cross-thread data race freedom         | Requires memory model reasoning  | Miri (`just test-miri`), loom, ThreadSanitizer |
+| zenoh-pico congestion control behavior | Foreign C code                   | Code review, integration tests                 |
+| User callback execution time bounds    | Application-dependent            | WCET analysis (Phase 30)                       |
+| End-to-end latency bounds              | Depends on OS scheduler, network | Measurement-based analysis                     |
 
 ## Verification Methods
 
@@ -407,19 +407,19 @@ Build on Phase 31's 16 scheduling proofs. The trigger specs (`trigger_any_semant
 
 ## Summary Table
 
-| ID | Property | Type | Tier | Trust | Effort |
-|----|----------|------|------|-------|--------|
-| P1 | Publish error propagation | Safety | A | Ghost | Low |
-| P2 | Stuck subscription (bug proof) | Liveness | A | Ghost | Low |
-| P3 | Silent truncation (bug proof) | Safety | A | Ghost | Low |
-| P4 | Default trigger delivers | Liveness | A | Linked | Low |
-| P5 | All-trigger starvation | Liveness | A | Linked | Low |
-| P6 | Timer non-starvation | Liveness | A | Ghost | Low |
-| P7 | Sequence monotonicity | Safety | A | Math | Low |
-| P8 | Executor progress | Liveness | A | Ghost | Medium |
-| P9 | Reliable QoS no-drop | Safety | B | Ghost | High |
-| P10 | No silent truncation (fix) | Safety | B | Ghost | Medium |
-| P11 | No stuck subscription (fix) | Liveness | B | Ghost | Low |
+| ID  | Property                       | Type     | Tier | Trust  | Effort |
+|-----|--------------------------------|----------|------|--------|--------|
+| P1  | Publish error propagation      | Safety   | A    | Ghost  | Low    |
+| P2  | Stuck subscription (bug proof) | Liveness | A    | Ghost  | Low    |
+| P3  | Silent truncation (bug proof)  | Safety   | A    | Ghost  | Low    |
+| P4  | Default trigger delivers       | Liveness | A    | Linked | Low    |
+| P5  | All-trigger starvation         | Liveness | A    | Linked | Low    |
+| P6  | Timer non-starvation           | Liveness | A    | Ghost  | Low    |
+| P7  | Sequence monotonicity          | Safety   | A    | Math   | Low    |
+| P8  | Executor progress              | Liveness | A    | Ghost  | Medium |
+| P9  | Reliable QoS no-drop           | Safety   | B    | Ghost  | High   |
+| P10 | No silent truncation (fix)     | Safety   | B    | Ghost  | Medium |
+| P11 | No stuck subscription (fix)    | Liveness | B    | Ghost  | Low    |
 
 ## Discovered Bugs
 
