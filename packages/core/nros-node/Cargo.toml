@@ -26,6 +26,9 @@ platform-bare-metal = ["shim", "nros-rmw-zenoh/platform-bare-metal"]
 rtic = ["nros-rmw-zenoh?/rtic"]
 polling = ["nros-rmw-zenoh?/polling"]
 
+# E2E safety protocol (CRC-32 + sequence tracking)
+safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+
 # Parameter services (ros2 param CLI support)
 param-services = ["dep:nros-rcl-interfaces", "zenoh"]
 

@@ -30,6 +30,9 @@ zenoh = [
     "nros-rmw-zenoh/platform-posix",
 ]
 
+# E2E safety protocol (CRC-32 + sequence tracking)
+safety-e2e = ["nros-node/safety-e2e", "nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+
 # Parameter services for ROS 2 interop (ros2 param list/get/set)
 param-services = ["nros-node/param-services"]
 

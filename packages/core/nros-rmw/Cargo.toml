@@ -19,6 +19,9 @@ sync-critical-section = ["dep:critical-section"]
 # Logging
 log = ["dep:log"]
 
+# E2E safety protocol (CRC-32 + sequence tracking)
+safety-e2e = []
+
 [dependencies]
 nros-core = { workspace = true, default-features = false }
 heapless = { workspace = true }

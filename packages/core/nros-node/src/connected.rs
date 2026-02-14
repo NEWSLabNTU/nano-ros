@@ -1905,6 +1905,35 @@ impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
     pub const fn buffer_size(&self) -> usize {
         RX_BUF
     }
+
+    /// Try to receive a message with E2E safety integrity status (non-blocking).
+    ///
+    /// Returns `Ok(Some((msg, status)))` if a message was received, where
+    /// `status` indicates CRC validity and sequence continuity. The caller
+    /// should check `status.is_valid()` before trusting the data.
+    ///
+    /// Returns `Ok(None)` if no message is available.
+    #[cfg(feature = "safety-e2e")]
+    pub fn try_recv_safe(
+        &mut self,
+    ) -> Result<Option<(M, nros_rmw::IntegrityStatus)>, ConnectedNodeError> {
+        use nros_core::CdrReader;
+
+        match self
+            .subscriber
+            .try_recv_validated(&mut self.rx_buffer)
+            .map_err(|_| ConnectedNodeError::DeserializationFailed)?
+        {
+            Some((len, status)) => {
+                let mut reader = CdrReader::new_with_header(&self.rx_buffer[..len])
+                    .map_err(|_| ConnectedNodeError::DeserializationFailed)?;
+                let msg = M::deserialize(&mut reader)
+                    .map_err(|_| ConnectedNodeError::DeserializationFailed)?;
+                Ok(Some((msg, status)))
+            }
+            None => Ok(None),
+        }
+    }
 }
 
 /// A connected service server that can handle service requests

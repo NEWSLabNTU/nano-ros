@@ -97,6 +97,10 @@ pub use nros_rmw::{
     SessionMode, TopicInfo, TransportConfig, TransportError,
 };
 
+// Re-export safety types when feature is enabled
+#[cfg(feature = "safety-e2e")]
+pub use nros_rmw::{IntegrityStatus, SafetyValidator};
+
 // Re-export zenoh-specific types
 #[cfg(feature = "zenoh")]
 pub use nros_rmw_zenoh::{

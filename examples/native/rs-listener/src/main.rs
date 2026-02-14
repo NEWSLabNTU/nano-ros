@@ -22,20 +22,91 @@
 //! RUST_LOG=debug cargo run -p native-rs-listener --features zenoh
 //! ```
 
+#[cfg(all(feature = "zenoh", feature = "safety-e2e"))]
+use log::info;
 #[cfg(not(feature = "zenoh"))]
 use log::{debug, error, info};
-#[cfg(feature = "zenoh")]
+#[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
 use log::{debug, error, info, trace};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-#[cfg(feature = "zenoh")]
+#[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[cfg(feature = "zenoh")]
+#[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
 static MESSAGE_COUNT: AtomicU64 = AtomicU64::new(0);
 
-#[cfg(feature = "zenoh")]
+#[cfg(all(feature = "zenoh", feature = "safety-e2e"))]
+fn main() {
+    env_logger::init();
+
+    info!("nros Native Listener (Zenoh + Safety E2E)");
+    info!("=============================================");
+
+    // Use ConnectedNode directly for manual polling with try_recv_safe()
+    let locator = std::env::var("ZENOH_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
+
+    #[allow(deprecated)]
+    let mut node: ConnectedNode = match ConnectedNode::new(
+        NodeConfig::new("listener", "/demo"),
+        &nros::TransportConfig {
+            locator: Some(&locator),
+            mode: SessionMode::Client,
+            properties: &[],
+        },
+    ) {
+        Ok(n) => {
+            info!("Node created: listener in namespace /demo");
+            n
+        }
+        Err(e) => {
+            log::error!("Failed to create node: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    let mut subscriber = match node.create_subscriber_sized::<Int32, 1024>(
+        SubscriberOptions::new("/chatter").reliable().keep_last(10),
+    ) {
+        Ok(s) => {
+            info!("Subscriber created for topic: /chatter");
+            s
+        }
+        Err(e) => {
+            log::error!("Failed to create subscriber: {:?}", e);
+            std::process::exit(1);
+        }
+    };
+
+    info!("Waiting for Int32 messages on /chatter (safety-e2e mode)...");
+    info!("(Press Ctrl+C to exit)");
+
+    let mut count = 0u64;
+    loop {
+        match subscriber.try_recv_safe() {
+            Ok(Some((msg, status))) => {
+                count += 1;
+                let crc_str = match status.crc_valid {
+                    Some(true) => "ok",
+                    Some(false) => "FAIL",
+                    None => "none",
+                };
+                info!(
+                    "[{}] Received: data={} [SAFETY] seq_gap={} dup={} crc={}",
+                    count, msg.data, status.gap, status.duplicate, crc_str,
+                );
+            }
+            Ok(None) => {}
+            Err(e) => {
+                log::error!("Receive error: {:?}", e);
+            }
+        }
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+}
+
+#[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
 fn main() {
     env_logger::init();
 

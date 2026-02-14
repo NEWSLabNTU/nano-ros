@@ -12,6 +12,7 @@ path = "src/main.rs"
 [features]
 default = []
 zenoh = ["nros/zenoh", "nros/param-services"]
+safety-e2e = ["nros/safety-e2e"]
 
 [dependencies]
 nros = { path = "../../../packages/core/nros", default-features = false, features = ["std"] }

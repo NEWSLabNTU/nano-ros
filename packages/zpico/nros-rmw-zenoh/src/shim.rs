@@ -66,9 +66,17 @@ pub use crate::zpico::ShimZenohId as ZenohId;
 /// RMW GID size for attachment serialization (16 bytes for Humble)
 pub const RMW_GID_SIZE: usize = ZENOH_SHIM_RMW_GID_SIZE;
 
-/// Size of serialized RMW attachment
+/// Size of serialized RMW attachment (without safety CRC)
 /// Format: sequence_number (8) + timestamp (8) + VLE length (1) + gid (16) = 33 bytes
 const RMW_ATTACHMENT_SIZE: usize = 8 + 8 + 1 + RMW_GID_SIZE;
+
+/// Size of the CRC-32 field appended when safety-e2e is enabled
+#[cfg(feature = "safety-e2e")]
+const SAFETY_CRC_SIZE: usize = 4;
+
+/// Total attachment size with safety CRC (37 bytes)
+#[cfg(feature = "safety-e2e")]
+const RMW_ATTACHMENT_SIZE_WITH_CRC: usize = RMW_ATTACHMENT_SIZE + SAFETY_CRC_SIZE;
 
 // ============================================================================
 // Executor Wake Signal (std only)
@@ -861,24 +869,54 @@ impl Publisher for ShimPublisher {
         let seq: i64 = (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
         let ts = self.current_timestamp();
 
-        // Serialize the attachment
-        let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE];
-        self.serialize_attachment(seq, ts, &mut att_buf);
+        // Without safety-e2e: 33-byte attachment
+        #[cfg(not(feature = "safety-e2e"))]
+        {
+            let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE];
+            self.serialize_attachment(seq, ts, &mut att_buf);
 
-        #[cfg(feature = "std")]
-        log::trace!(
-            "Publishing {} bytes with attachment: seq={}, ts={}, gid={:02x?}, raw={:02x?}",
-            data.len(),
-            seq,
-            ts,
-            &self.rmw_gid[..4],
-            &att_buf[..]
-        );
+            #[cfg(feature = "std")]
+            log::trace!(
+                "Publishing {} bytes with attachment: seq={}, ts={}, gid={:02x?}",
+                data.len(),
+                seq,
+                ts,
+                &self.rmw_gid[..4],
+            );
 
-        // Publish with attachment
-        self.publisher
-            .publish_with_attachment(data, Some(&att_buf))
-            .map_err(TransportError::from)
+            self.publisher
+                .publish_with_attachment(data, Some(&att_buf))
+                .map_err(TransportError::from)
+        }
+
+        // With safety-e2e: 37-byte attachment (33 + 4-byte CRC of payload)
+        #[cfg(feature = "safety-e2e")]
+        {
+            let mut att_buf = [0u8; RMW_ATTACHMENT_SIZE_WITH_CRC];
+            self.serialize_attachment(
+                seq,
+                ts,
+                (&mut att_buf[..RMW_ATTACHMENT_SIZE]).try_into().unwrap(),
+            );
+
+            // Compute CRC-32 over CDR payload and append
+            let crc = nros_rmw::crc32(data);
+            att_buf[RMW_ATTACHMENT_SIZE..RMW_ATTACHMENT_SIZE_WITH_CRC]
+                .copy_from_slice(&crc.to_le_bytes());
+
+            #[cfg(feature = "std")]
+            log::trace!(
+                "Publishing {} bytes with safety attachment: seq={}, ts={}, crc={:#010x}",
+                data.len(),
+                seq,
+                ts,
+                crc,
+            );
+
+            self.publisher
+                .publish_with_attachment(data, Some(&att_buf))
+                .map_err(TransportError::from)
+        }
     }
 
     fn buffer_error(&self) -> Self::Error {
@@ -894,6 +932,12 @@ impl Publisher for ShimPublisher {
 // ShimSubscriber
 // ============================================================================
 
+/// Attachment buffer size: 33 bytes normally, 37 with safety CRC
+#[cfg(not(feature = "safety-e2e"))]
+const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE;
+#[cfg(feature = "safety-e2e")]
+const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
+
 /// Shared buffer for subscriber callbacks
 ///
 /// This buffer stores the most recent message received by the subscriber,
@@ -902,8 +946,8 @@ impl Publisher for ShimPublisher {
 struct SubscriberBuffer {
     /// Buffer for received payload data (statically allocated)
     data: [u8; 1024],
-    /// Buffer for received attachment data (RMW attachment is 33 bytes)
-    attachment: [u8; RMW_ATTACHMENT_SIZE],
+    /// Buffer for received attachment data (33 or 37 bytes depending on safety-e2e)
+    attachment: [u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE],
     /// Flag indicating new data is available
     has_data: AtomicBool,
     /// Flag indicating the incoming message exceeded the buffer capacity.
@@ -920,7 +964,7 @@ impl SubscriberBuffer {
     const fn new() -> Self {
         Self {
             data: [0u8; 1024],
-            attachment: [0u8; RMW_ATTACHMENT_SIZE],
+            attachment: [0u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE],
             has_data: AtomicBool::new(false),
             overflow: AtomicBool::new(false),
             len: AtomicUsize::new(0),
@@ -1003,6 +1047,9 @@ pub struct ShimSubscriber {
     _subscriber: crate::zpico::ShimSubscriber<'static>,
     /// Index into the static buffer array
     buffer_index: usize,
+    /// E2E safety validator (tracks sequence numbers, validates CRC)
+    #[cfg(feature = "safety-e2e")]
+    safety_validator: nros_rmw::SafetyValidator,
     /// Phantom to indicate we don't own the buffer
     _phantom: PhantomData<()>,
 }
@@ -1053,12 +1100,91 @@ impl ShimSubscriber {
         Ok(Self {
             _subscriber: subscriber,
             buffer_index,
+            #[cfg(feature = "safety-e2e")]
+            safety_validator: nros_rmw::SafetyValidator::new(),
             _phantom: PhantomData,
         })
     }
 }
 
 impl ShimSubscriber {
+    /// Try to receive a validated message with E2E integrity status.
+    ///
+    /// Checks CRC-32 integrity and sequence continuity. Returns
+    /// `(payload_len, IntegrityStatus)` so the caller can decide whether
+    /// to trust the data.
+    ///
+    /// The payload bytes are written to `buf[..len]`.
+    #[cfg(feature = "safety-e2e")]
+    pub fn try_recv_validated(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, TransportError> {
+        // Safety: We own this buffer index and access is atomic
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+
+        if !buffer.has_data.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+
+        // Check for overflow
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
+
+        let len = buffer.len.load(Ordering::Acquire);
+        if len > buf.len() {
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::BufferTooSmall);
+        }
+
+        // Copy payload data
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                SUBSCRIBER_BUFFERS[self.buffer_index].data.as_ptr(),
+                buf.as_mut_ptr(),
+                len,
+            );
+        }
+
+        // Parse attachment for sequence number and CRC
+        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        let (message_seq, crc_valid) = if attachment_len >= RMW_ATTACHMENT_SIZE {
+            // Extract sequence number (bytes 0..8, LE)
+            let att = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].attachment };
+            let seq = i64::from_le_bytes([
+                att[0], att[1], att[2], att[3], att[4], att[5], att[6], att[7],
+            ]);
+
+            // Check for CRC (bytes 33..37)
+            let crc_result = if attachment_len >= RMW_ATTACHMENT_SIZE + SAFETY_CRC_SIZE {
+                let received_crc = u32::from_le_bytes([
+                    att[RMW_ATTACHMENT_SIZE],
+                    att[RMW_ATTACHMENT_SIZE + 1],
+                    att[RMW_ATTACHMENT_SIZE + 2],
+                    att[RMW_ATTACHMENT_SIZE + 3],
+                ]);
+                let computed_crc = nros_rmw::crc32(&buf[..len]);
+                Some(received_crc == computed_crc)
+            } else {
+                // No CRC in attachment (sender doesn't have safety-e2e)
+                None
+            };
+
+            (seq, crc_result)
+        } else {
+            // No attachment at all — cannot validate
+            (0, None)
+        };
+
+        buffer.has_data.store(false, Ordering::Release);
+
+        let status = self.safety_validator.validate(message_seq, crc_valid);
+        Ok(Some((len, status)))
+    }
+
     /// Try to receive raw data along with message info from attachment
     ///
     /// Returns `Ok(Some((len, info)))` if data is available, where:
@@ -1896,5 +2022,229 @@ mod ghost_checks {
         let buffer = SubscriberBuffer::new();
         let ghost = ghost_from_buffer(&buffer);
         assert_eq!(ghost.buf_capacity, 1024);
+    }
+
+    // ========================================================================
+    // E2E Safety Protocol Unit Tests
+    // ========================================================================
+
+    /// Helper: build a valid 37-byte safety attachment from seq, timestamp, and payload CRC.
+    #[cfg(feature = "safety-e2e")]
+    fn build_safety_attachment(
+        seq: i64,
+        ts: i64,
+        payload: &[u8],
+    ) -> [u8; RMW_ATTACHMENT_SIZE_WITH_CRC] {
+        let crc = nros_rmw::crc32(payload);
+        let mut att = [0u8; RMW_ATTACHMENT_SIZE_WITH_CRC];
+        att[0..8].copy_from_slice(&seq.to_le_bytes());
+        att[8..16].copy_from_slice(&ts.to_le_bytes());
+        att[16] = RMW_GID_SIZE as u8; // VLE GID length
+        // GID bytes 17..33 left as zero
+        att[RMW_ATTACHMENT_SIZE..RMW_ATTACHMENT_SIZE_WITH_CRC].copy_from_slice(&crc.to_le_bytes());
+        att
+    }
+
+    /// Helper: parse attachment bytes and validate CRC against payload.
+    ///
+    /// This mirrors the logic in `try_recv_validated()` but is testable
+    /// without creating a full `ShimSubscriber` (which requires a zenoh session).
+    #[cfg(feature = "safety-e2e")]
+    fn validate_from_buffers(
+        payload: &[u8],
+        attachment: &[u8],
+        validator: &mut nros_rmw::SafetyValidator,
+    ) -> nros_rmw::IntegrityStatus {
+        let (message_seq, crc_valid) = if attachment.len() >= RMW_ATTACHMENT_SIZE {
+            let seq = i64::from_le_bytes([
+                attachment[0],
+                attachment[1],
+                attachment[2],
+                attachment[3],
+                attachment[4],
+                attachment[5],
+                attachment[6],
+                attachment[7],
+            ]);
+
+            let crc_result = if attachment.len() >= RMW_ATTACHMENT_SIZE + SAFETY_CRC_SIZE {
+                let received_crc = u32::from_le_bytes([
+                    attachment[RMW_ATTACHMENT_SIZE],
+                    attachment[RMW_ATTACHMENT_SIZE + 1],
+                    attachment[RMW_ATTACHMENT_SIZE + 2],
+                    attachment[RMW_ATTACHMENT_SIZE + 3],
+                ]);
+                let computed_crc = nros_rmw::crc32(payload);
+                Some(received_crc == computed_crc)
+            } else {
+                None
+            };
+
+            (seq, crc_result)
+        } else {
+            (0, None)
+        };
+
+        validator.validate(message_seq, crc_valid)
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_validate_happy_path() {
+        let payload = b"\x00\x01\x00\x00\x2a\x00\x00\x00"; // CDR-encoded Int32(42)
+        let attachment = build_safety_attachment(0, 1000, payload);
+
+        let mut validator = nros_rmw::SafetyValidator::new();
+        let status = validate_from_buffers(payload, &attachment, &mut validator);
+
+        assert!(status.is_valid());
+        assert_eq!(status.crc_valid, Some(true));
+        assert_eq!(status.gap, 0);
+        assert!(!status.duplicate);
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_validate_sequential_messages() {
+        let mut validator = nros_rmw::SafetyValidator::new();
+
+        for seq in 0..10i64 {
+            let payload = seq.to_le_bytes();
+            let attachment = build_safety_attachment(seq, seq * 1000, &payload);
+            let status = validate_from_buffers(&payload, &attachment, &mut validator);
+
+            assert!(status.is_valid(), "failed at seq {}: {:?}", seq, status);
+            assert_eq!(status.gap, 0);
+            assert!(!status.duplicate);
+            assert_eq!(status.crc_valid, Some(true));
+        }
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_validate_tampered_crc() {
+        let payload = b"hello world CDR data";
+        let mut attachment = build_safety_attachment(0, 1000, payload);
+
+        // Tamper with the CRC (flip a bit)
+        attachment[RMW_ATTACHMENT_SIZE] ^= 0x01;
+
+        let mut validator = nros_rmw::SafetyValidator::new();
+        let status = validate_from_buffers(payload, &attachment, &mut validator);
+
+        assert!(!status.is_valid());
+        assert_eq!(status.crc_valid, Some(false));
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_validate_tampered_payload() {
+        let payload = b"original payload data";
+        let attachment = build_safety_attachment(0, 1000, payload);
+
+        // Tamper with the payload (simulating transport corruption)
+        let mut tampered_payload = *payload;
+        tampered_payload[0] ^= 0xFF;
+
+        let mut validator = nros_rmw::SafetyValidator::new();
+        let status = validate_from_buffers(&tampered_payload, &attachment, &mut validator);
+
+        assert!(!status.is_valid());
+        assert_eq!(status.crc_valid, Some(false));
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_validate_sequence_gap() {
+        let mut validator = nros_rmw::SafetyValidator::new();
+
+        // First message: seq 0
+        let payload0 = b"msg0";
+        let att0 = build_safety_attachment(0, 0, payload0);
+        let status = validate_from_buffers(payload0, &att0, &mut validator);
+        assert!(status.is_valid());
+
+        // seq 1
+        let payload1 = b"msg1";
+        let att1 = build_safety_attachment(1, 1000, payload1);
+        let status = validate_from_buffers(payload1, &att1, &mut validator);
+        assert!(status.is_valid());
+
+        // Skip to seq 5 (gap of 3)
+        let payload5 = b"msg5";
+        let att5 = build_safety_attachment(5, 5000, payload5);
+        let status = validate_from_buffers(payload5, &att5, &mut validator);
+
+        assert!(!status.is_valid());
+        assert_eq!(status.gap, 3);
+        assert!(!status.duplicate);
+        assert_eq!(status.crc_valid, Some(true));
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_validate_duplicate() {
+        let mut validator = nros_rmw::SafetyValidator::new();
+
+        // seq 0, 1, 2
+        for seq in 0..3i64 {
+            let payload = seq.to_le_bytes();
+            let att = build_safety_attachment(seq, seq * 1000, &payload);
+            validate_from_buffers(&payload, &att, &mut validator);
+        }
+
+        // Receive seq 1 again (duplicate)
+        let payload1 = 1i64.to_le_bytes();
+        let att1 = build_safety_attachment(1, 1000, &payload1);
+        let status = validate_from_buffers(&payload1, &att1, &mut validator);
+
+        assert!(!status.is_valid());
+        assert!(status.duplicate);
+        assert_eq!(status.crc_valid, Some(true));
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_validate_no_crc_interop() {
+        // Simulate a 33-byte attachment (sender without safety-e2e)
+        let payload = b"some data";
+        let mut attachment = [0u8; RMW_ATTACHMENT_SIZE]; // Only 33 bytes, no CRC
+        attachment[0..8].copy_from_slice(&0i64.to_le_bytes());
+        attachment[8..16].copy_from_slice(&1000i64.to_le_bytes());
+        attachment[16] = RMW_GID_SIZE as u8;
+
+        let mut validator = nros_rmw::SafetyValidator::new();
+        let status = validate_from_buffers(payload, &attachment, &mut validator);
+
+        assert!(status.is_valid()); // No CRC is acceptable (interop)
+        assert_eq!(status.crc_valid, None);
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    #[test]
+    fn test_safety_attachment_format() {
+        let payload = b"test payload for CRC";
+        let expected_crc = nros_rmw::crc32(payload);
+
+        let attachment = build_safety_attachment(42, 999999, payload);
+
+        // Verify format: 37 bytes total
+        assert_eq!(attachment.len(), 37);
+
+        // Bytes 0..8: sequence number (LE)
+        assert_eq!(i64::from_le_bytes(attachment[0..8].try_into().unwrap()), 42);
+
+        // Bytes 8..16: timestamp (LE)
+        assert_eq!(
+            i64::from_le_bytes(attachment[8..16].try_into().unwrap()),
+            999999
+        );
+
+        // Byte 16: GID VLE length
+        assert_eq!(attachment[16], 16);
+
+        // Bytes 33..37: CRC-32 of payload (LE)
+        let crc = u32::from_le_bytes(attachment[33..37].try_into().unwrap());
+        assert_eq!(crc, expected_crc);
     }
 }

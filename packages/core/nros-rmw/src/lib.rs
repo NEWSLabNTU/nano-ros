@@ -26,6 +26,13 @@ extern crate alloc;
 pub mod sync;
 pub mod traits;
 
+#[cfg(feature = "safety-e2e")]
+pub mod safety;
+
+// Re-export safety types when feature is enabled
+#[cfg(feature = "safety-e2e")]
+pub use safety::{IntegrityStatus, SafetyValidator, crc32};
+
 // Re-export main types
 pub use traits::{
     ActionInfo, LocatorProtocol, Publisher, QosDurabilityPolicy, QosHistoryPolicy,

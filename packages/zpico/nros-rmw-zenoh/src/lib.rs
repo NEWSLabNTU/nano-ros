@@ -68,6 +68,10 @@ pub use shim::{signal_executor_wake, wait_for_executor_wake};
 // Re-export extension traits
 pub use keyexpr::{QosKeyExpr, ServiceKeyExpr, TopicKeyExpr};
 
+// Re-export safety types when feature is enabled
+#[cfg(feature = "safety-e2e")]
+pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
+
 // Backward compatibility aliases
 #[cfg(any(
     feature = "platform-posix",
