@@ -65,11 +65,16 @@ exclude = [
     "packages/reference/stm32f4-embassy",
     # smoltcp link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-smoltcp",
-    # Platform crates (embedded-only, require cross-compilation)
-    "packages/platform/nano-ros-platform-qemu",
-    "packages/platform/nano-ros-platform-esp32-qemu",
-    "packages/platform/nano-ros-platform-esp32",
-    "packages/platform/nano-ros-platform-stm32f4",
+    # zpico platform crates (embedded-only, require cross-compilation)
+    "packages/zpico/zpico-platform-qemu",
+    "packages/zpico/zpico-platform-esp32",
+    "packages/zpico/zpico-platform-esp32-qemu",
+    "packages/zpico/zpico-platform-stm32f4",
+    # Board crates (embedded-only, require cross-compilation)
+    "packages/boards/nros-qemu",
+    "packages/boards/nros-esp32",
+    "packages/boards/nros-esp32-qemu",
+    "packages/boards/nros-stm32f4",
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)

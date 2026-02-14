@@ -47,7 +47,7 @@ cd examples/native/rs-listener && cargo run
 
 ### QEMU (`qemu/`)
 
-Bare-metal ARM Cortex-M examples running on QEMU MPS2-AN385. Uses `nano-ros-platform-qemu` for simplified setup.
+Bare-metal ARM Cortex-M examples running on QEMU MPS2-AN385. Uses `nros-qemu` for simplified setup.
 
 | Example | Description |
 |---------|-------------|
@@ -71,7 +71,7 @@ just docker-qemu-test
 
 ### STM32F4 (`stm32f4/`)
 
-STM32F4 microcontroller examples using `nano-ros-platform-stm32f4`.
+STM32F4 microcontroller examples using `nros-stm32f4`.
 
 | Example | Description |
 |---------|-------------|
@@ -87,7 +87,7 @@ cargo run --release
 
 ### Zephyr (`zephyr/`)
 
-Zephyr RTOS examples using `nano-ros-bsp-zephyr` (C) or the Rust API.
+Zephyr RTOS examples using `zpico-zephyr` (C) or the Rust API.
 
 | Example | Language | Description |
 |---------|----------|-------------|

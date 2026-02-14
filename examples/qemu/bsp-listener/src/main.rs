@@ -1,4 +1,4 @@
-//! Simple QEMU Listener using nano-ros-platform-qemu
+//! Simple QEMU Listener using nros-qemu
 //!
 //! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with qemu-rs-listener to see the reduced boilerplate.
@@ -8,8 +8,8 @@
 
 use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
-use nano_ros_platform_qemu::prelude::*;
-use nano_ros_platform_qemu::println;
+use nros_qemu::prelude::*;
+use nros_qemu::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 

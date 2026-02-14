@@ -28,7 +28,7 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
-use nano_ros_platform_stm32f4::prelude::*;
+use nros_stm32f4::prelude::*;
 use std_msgs::msg::Int32;
 
 /// Poll interval in milliseconds

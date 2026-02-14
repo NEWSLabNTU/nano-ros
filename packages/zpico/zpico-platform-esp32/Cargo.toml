@@ -1,0 +1,30 @@
+[package]
+name = "zpico-platform-esp32"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Zenoh-pico system primitives for ESP32-C3 WiFi (no nros dependency)"
+
+[lib]
+name = "zpico_platform_esp32"
+
+[dependencies]
+# Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
+zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp"] }
+# TCP link layer via smoltcp
+zpico-smoltcp = { path = "../zpico-smoltcp" }
+
+# ESP32-C3 HAL (for clock/timing)
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+
+# WiFi device type (needed by network poll callback)
+esp-radio = { version = "~0.17.0", features = ["esp32c3", "wifi", "smoltcp", "unstable"] }
+
+# Network stack
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-tcp",
+    "socket-dhcpv4",
+    "proto-dhcpv4",
+] }

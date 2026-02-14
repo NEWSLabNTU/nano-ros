@@ -13,11 +13,11 @@ bench = false
 [features]
 default = []
 # Use Docker network configuration (different IPs for container-based testing)
-docker = ["nano-ros-platform-qemu/docker"]
+docker = ["nros-qemu/docker"]
 
 [dependencies]
 # Platform crate - handles all bare-metal setup
-nano-ros-platform-qemu = { path = "../../../packages/platform/nano-ros-platform-qemu" }
+nros-qemu = { path = "../../../packages/boards/nros-qemu" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

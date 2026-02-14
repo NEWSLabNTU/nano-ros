@@ -389,22 +389,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros-platform-qemu"
-version = "0.1.0"
-dependencies = [
- "cortex-m",
- "cortex-m-rt",
- "cortex-m-semihosting",
- "heapless",
- "lan9118-smoltcp",
- "nros-core",
- "panic-semihosting",
- "smoltcp",
- "zpico-smoltcp",
- "zpico-sys",
-]
-
-[[package]]
 name = "nb"
 version = "0.1.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -426,6 +410,23 @@ dependencies = [
  "heapless",
  "log",
  "nros-serdes",
+]
+
+[[package]]
+name = "nros-qemu"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "cortex-m-rt",
+ "cortex-m-semihosting",
+ "heapless",
+ "lan9118-smoltcp",
+ "nros-core",
+ "panic-semihosting",
+ "smoltcp",
+ "zpico-platform-qemu",
+ "zpico-smoltcp",
+ "zpico-sys",
 ]
 
 [[package]]
@@ -480,7 +481,7 @@ dependencies = [
 name = "qemu-rs-listener"
 version = "0.1.0"
 dependencies = [
- "nano-ros-platform-qemu",
+ "nros-qemu",
  "panic-semihosting",
  "std_msgs",
 ]
@@ -904,6 +905,17 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[package]]
+name = "zpico-platform-qemu"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "lan9118-smoltcp",
+ "smoltcp",
+ "zpico-smoltcp",
+ "zpico-sys",
+]
 
 [[package]]
 name = "zpico-smoltcp"

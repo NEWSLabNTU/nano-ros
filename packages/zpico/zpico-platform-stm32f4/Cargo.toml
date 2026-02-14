@@ -1,0 +1,44 @@
+[package]
+name = "zpico-platform-stm32f4"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Zenoh-pico system primitives for STM32F4 Ethernet (no nros dependency)"
+
+[lib]
+name = "zpico_platform_stm32f4"
+
+[dependencies]
+# Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
+zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp"] }
+# TCP link layer via smoltcp
+zpico-smoltcp = { path = "../zpico-smoltcp" }
+
+# Cortex-M runtime
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+
+# STM32 Ethernet (for EthernetDMA type in network poll callback)
+stm32-eth = { version = "0.8", features = ["smoltcp-phy"] }
+
+# TCP/IP stack
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-tcp",
+] }
+
+# Logging (needed by phy.rs)
+defmt = "0.3"
+
+[features]
+default = ["stm32f429"]
+
+# STM32F4 chip variants
+stm32f407 = ["stm32-eth/stm32f407"]
+stm32f417 = ["stm32-eth/stm32f417"]
+stm32f427 = ["stm32-eth/stm32f427"]
+stm32f429 = ["stm32-eth/stm32f429"]
+stm32f437 = ["stm32-eth/stm32f437"]
+stm32f439 = ["stm32-eth/stm32f439"]
+stm32f469 = ["stm32-eth/stm32f469"]
+stm32f479 = ["stm32-eth/stm32f479"]

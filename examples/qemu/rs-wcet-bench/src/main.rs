@@ -23,7 +23,7 @@ use std_msgs::msg::Int32;
 const ITERATIONS: u32 = 100;
 
 /// Enable the DWT cycle counter via raw register writes.
-/// (Same logic as nano-ros-platform-qemu::CycleCounter::enable())
+/// (Same logic as zpico_platform_qemu::timing::CycleCounter::enable())
 fn enable_cycle_counter() {
     unsafe {
         let demcr = 0xE000_EDFC as *mut u32;

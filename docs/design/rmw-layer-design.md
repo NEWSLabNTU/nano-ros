@@ -80,7 +80,7 @@ ROS 2 selects implementations at **runtime** via `dlopen()`. This is inappropria
 
 For a detailed analysis of rmw.h's limitations for embedded and what nros adopts vs avoids, see `docs/reference/rmw-h-analysis.md`.
 
-## Proposed Design
+## Design (Implemented)
 
 ### Naming Principles
 
@@ -132,16 +132,16 @@ nros-qemu (user-facing, composes everything)
 | **Zenoh-pico internals (NO nros deps)**      |                                 |                     |                                                           |
 | `nano-ros-transport-zenoh-sys`               | **`zpico-sys`**                 | none                | FFI + C shim + zenoh-pico submodule                       |
 | `nano-ros-link-smoltcp`                      | **`zpico-smoltcp`**             | none                | TCP via smoltcp (`_z_open_tcp` etc.)                      |
-| NEW (split from platform crates)             | **`zpico-platform-qemu`**       | none                | System symbols for QEMU (727 lines)                       |
-| NEW (split from platform crates)             | **`zpico-platform-esp32`**      | none                | System symbols for ESP32                                  |
-| NEW (split from platform crates)             | **`zpico-platform-esp32-qemu`** | none                | System symbols for ESP32 QEMU                             |
-| NEW (split from platform crates)             | **`zpico-platform-stm32f4`**    | none                | System symbols for STM32F4                                |
+| split from `nano-ros-platform-qemu`          | **`zpico-platform-qemu`**       | none                | System symbols for QEMU (727 lines)                       |
+| split from `nano-ros-platform-esp32`         | **`zpico-platform-esp32`**      | none                | System symbols for ESP32                                  |
+| split from `nano-ros-platform-esp32-qemu`    | **`zpico-platform-esp32-qemu`** | none                | System symbols for ESP32 QEMU                             |
+| split from `nano-ros-platform-stm32f4`       | **`zpico-platform-stm32f4`**    | none                | System symbols for STM32F4                                |
 | `nano-ros-bsp-zephyr`                        | **`zpico-zephyr`**              | none                | Zephyr C integration (wraps zenoh_shim.h)                 |
 | **User-facing platform API (nros deps)**     |                                 |                     |                                                           |
-| `nano-ros-platform-qemu` (after split)       | **`nros-qemu`**                 | nros-core, nros-rmw | QEMU user API: `Publisher<M>`, `run_node()`               |
-| `nano-ros-platform-esp32` (after split)      | **`nros-esp32`**                | nros-core, nros-rmw | ESP32 WiFi user API                                       |
-| `nano-ros-platform-esp32-qemu` (after split) | **`nros-esp32-qemu`**           | nros-core, nros-rmw | ESP32 QEMU user API                                       |
-| `nano-ros-platform-stm32f4` (after split)    | **`nros-stm32f4`**              | nros-core, nros-rmw | STM32F4 user API                                          |
+| `nano-ros-platform-qemu` (user API portion)  | **`nros-qemu`**                 | nros-core, nros-rmw | QEMU user API: `Publisher<M>`, `run_node()`               |
+| `nano-ros-platform-esp32` (user API portion) | **`nros-esp32`**                | nros-core, nros-rmw | ESP32 WiFi user API                                       |
+| `nano-ros-platform-esp32-qemu` (user API)    | **`nros-esp32-qemu`**           | nros-core, nros-rmw | ESP32 QEMU user API                                       |
+| `nano-ros-platform-stm32f4` (user API)       | **`nros-stm32f4`**              | nros-core, nros-rmw | STM32F4 user API                                          |
 | **Removed**                                  |                                 |                     |                                                           |
 | `nano-ros-bsp-qemu`                          | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
 | `nano-ros-bsp-esp32`                         | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
@@ -235,7 +235,7 @@ lan9118   Hardware (allocator, clock, RNG)
 
 ### Platform Crate Split Detail
 
-Each current platform crate splits into two:
+Each former platform crate was split into two:
 
 **Example: QEMU**
 

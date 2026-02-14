@@ -1,4 +1,4 @@
-//! Simple ESP32-C3 QEMU Listener using nano-ros-platform-esp32-qemu
+//! Simple ESP32-C3 QEMU Listener using nros-esp32-qemu
 //!
 //! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with qemu-bsp-listener — this is the ESP32-C3 equivalent.
@@ -20,12 +20,12 @@
 #![no_main]
 
 use esp_backtrace as _;
-use nano_ros_platform_esp32_qemu::esp_println;
-use nano_ros_platform_esp32_qemu::portable_atomic::{AtomicI32, AtomicU32, Ordering};
-use nano_ros_platform_esp32_qemu::prelude::*;
+use nros_esp32_qemu::esp_println;
+use nros_esp32_qemu::portable_atomic::{AtomicI32, AtomicU32, Ordering};
+use nros_esp32_qemu::prelude::*;
 
 mod msg {
-    use nano_ros_platform_esp32_qemu::{Deserialize, RosMessage, Serialize, nros_core};
+    use nros_esp32_qemu::{Deserialize, RosMessage, Serialize, nros_core};
 
     pub struct Int32 {
         pub data: i32,
@@ -71,7 +71,7 @@ fn on_message(msg: &Int32) {
     MSG_COUNT.fetch_add(1, Ordering::Relaxed);
 }
 
-nano_ros_platform_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
+nros_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {

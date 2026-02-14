@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Simple WiFi subscriber example using nano-ros-platform-esp32"
+description = "Simple WiFi subscriber example using nros-esp32"
 
 [[bin]]
 name = "esp32-bsp-listener"
@@ -13,7 +13,7 @@ bench = false
 
 [dependencies]
 # Platform crate - all you need for ESP32 WiFi + zenoh
-nano-ros-platform-esp32 = { path = "../../../packages/platform/nano-ros-platform-esp32" }
+nros-esp32 = { path = "../../../packages/boards/nros-esp32" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

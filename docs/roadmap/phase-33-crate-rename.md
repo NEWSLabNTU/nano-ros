@@ -1,6 +1,6 @@
 # Phase 33: Crate Rename (`nros-*` / `zpico-*`)
 
-**Status: 33.1 Complete, 33.2 Complete, 33.3 Not Started**
+**Status: 33.1 Complete, 33.2 Complete, 33.3 Complete**
 
 **Design doc:** `docs/design/rmw-layer-design.md`
 
@@ -56,11 +56,11 @@ Rename the workspace-member core crates. These are the most referenced names.
 - `nros-rmw` directory: `packages/core/nros-rmw/`
 - `nros-rmw-zenoh` directory: `packages/zpico/nros-rmw-zenoh/`
 
-### 33.3: Split and rename platform crates
+### 33.3: Split and rename platform crates (Complete)
 
-Each current platform crate is a mix of zpico system symbols (55 `z_*`/`_z_*` FFI exports, no nros deps) and user-facing ROS API (Publisher\<M\>, Subscription\<M\>, run_node()). These must be split so the `nros-*` name is honest — middleware-agnostic user API only.
+Each former platform crate was a mix of zpico system symbols (55 `z_*`/`_z_*` FFI exports, no nros deps) and user-facing ROS API (Publisher\<M\>, Subscription\<M\>, run_node()). These were split so the `nros-*` name is honest — middleware-agnostic user API only.
 
-**Extract zpico system symbols into `zpico-platform-*` crates:**
+**Extracted zpico system symbols into `zpico-platform-*` crates:**
 
 | Source                         | New zpico crate             | Modules extracted                                                             |
 |--------------------------------|-----------------------------|-------------------------------------------------------------------------------|
@@ -75,7 +75,7 @@ Each `zpico-platform-*` crate:
 - Provides 55 `#[unsafe(no_mangle)]` FFI symbols required by zenoh-pico
 - Is excluded from the default workspace (embedded-only, cross-compiled)
 
-**Rename remaining platform code to `nros-*` board crates:**
+**Renamed remaining platform code to `nros-*` board crates:**
 
 | Source (after extraction)      | New nros crate    | Modules remaining                                            |
 |--------------------------------|-------------------|--------------------------------------------------------------|
@@ -90,10 +90,10 @@ Each `nros-*` board crate:
 - Links `zpico-platform-*` + `zpico-smoltcp` for zenoh backend (via Cargo deps)
 - Is excluded from the default workspace (embedded-only, cross-compiled)
 
-**Update examples to depend on split crates:**
+**Updated examples to depend on split crates:**
 - QEMU examples: depend on `nros-qemu` (which pulls in `zpico-platform-qemu` etc.)
 - ESP32 examples: same pattern
-- Update `.cargo/config.toml` patch entries
+- Updated `.cargo/config.toml` patch entries
 
 ### 33.4: Rename testing, verification, and interfaces crates
 

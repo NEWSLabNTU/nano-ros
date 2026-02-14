@@ -19,8 +19,17 @@ nano-ros/
 │   ├── zpico/                     # Zenoh-pico transport backend
 │   │   ├── nros-rmw-zenoh/        # Safe Rust API for zenoh-pico
 │   │   ├── zpico-sys/             # FFI + C shim + zenoh-pico submodule
-│   │   └── zpico-smoltcp/         # TCP/UDP via smoltcp IP stack
-│   │   └── zpico-zephyr/            # Zephyr RTOS BSP (C, CMake)
+│   │   ├── zpico-smoltcp/         # TCP/UDP via smoltcp IP stack
+│   │   ├── zpico-zephyr/          # Zephyr RTOS BSP (C, CMake)
+│   │   ├── zpico-platform-qemu/   # QEMU ARM FFI symbols (no nros deps)
+│   │   ├── zpico-platform-esp32/  # ESP32-C3 WiFi FFI symbols
+│   │   ├── zpico-platform-esp32-qemu/ # ESP32-C3 QEMU FFI symbols
+│   │   └── zpico-platform-stm32f4/   # STM32F4 FFI symbols
+│   ├── boards/                    # Board support crates (user API)
+│   │   ├── nros-qemu/             # QEMU ARM board (Node API)
+│   │   ├── nros-esp32/            # ESP32-C3 WiFi board
+│   │   ├── nros-esp32-qemu/       # ESP32-C3 QEMU board
+│   │   └── nros-stm32f4/          # STM32F4 board
 │   ├── drivers/                   # Hardware drivers
 │   │   ├── lan9118-smoltcp/       # LAN9118 Ethernet driver for smoltcp
 │   │   └── openeth-smoltcp/       # OpenCores Ethernet driver for smoltcp
@@ -46,11 +55,11 @@ nano-ros/
 │   │   ├── rs-service-*/         # Rust service examples
 │   │   ├── rs-action-*/          # Rust action examples
 │   │   └── c-*/                  # C language examples
-│   ├── qemu/                  # QEMU bare-metal ARM (uses platform-qemu)
+│   ├── qemu/                  # QEMU bare-metal ARM (uses nros-qemu)
 │   │   ├── bsp-talker/           # Simplified platform publisher
 │   │   ├── bsp-listener/         # Simplified platform subscriber
 │   │   └── rs-*/                 # Full Rust examples
-│   ├── stm32f4/               # STM32F4 microcontrollers (uses bsp-stm32f4)
+│   ├── stm32f4/               # STM32F4 microcontrollers (uses nros-stm32f4)
 │   │   └── bsp-talker/           # Simplified BSP publisher
 │   ├── zephyr/                # Zephyr RTOS (uses bsp-zephyr)
 │   │   ├── c-talker/             # C BSP publisher
@@ -380,12 +389,12 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
 | 31 | Verus unbounded verification | In Progress |
-| 33 | Crate rename (`nros-*` / `zpico-*`) | Not Started |
+| 33 | Crate rename (`nros-*` / `zpico-*`) | In Progress |
 | 34 | RMW abstraction + XRCE-DDS | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
-**Phase 33**: Rename all crates from `nano-ros-*` to `nros-*` / `zpico-*`. Split transport into `nros-rmw` (traits) + `nros-rmw-zenoh` (zenoh impl). See `docs/design/rmw-layer-design.md`.
+**Phase 33**: Rename all crates from `nano-ros-*` to `nros-*` / `zpico-*`. 33.1 (core renames) and 33.2 (transport split into `nros-rmw` + `nros-rmw-zenoh`) complete. 33.3 (platform crate split into `zpico-platform-*` + `nros-*` board crates) complete. See `docs/design/rmw-layer-design.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

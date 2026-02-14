@@ -56,6 +56,6 @@ The following Phase 32 items are superseded by [Phase 33](phase-33-crate-rename.
 
 ## Future Work (moved to Phase 33+)
 
-- Crate rename: `nano-ros-*` → `nros-*` / `zpico-*` — see Phase 33
-- Platform crate split: `nano-ros-platform-*` → `zpico-platform-*` + `nros-*` — see Phase 33
+- Crate rename: `nano-ros-*` → `nros-*` / `zpico-*` — see Phase 33 (complete)
+- Platform crate split: `nano-ros-platform-*` → `zpico-platform-*` + `nros-*` — see Phase 33.3 (complete)
 - RMW trait abstraction — see `docs/design/rmw-layer-design.md`

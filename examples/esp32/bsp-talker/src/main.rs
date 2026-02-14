@@ -1,4 +1,4 @@
-//! Simple ESP32 WiFi Talker using nano-ros-platform-esp32
+//! Simple ESP32 WiFi Talker using nros-esp32
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with the QEMU bsp-talker to see the similar API.
@@ -19,15 +19,15 @@
 #![no_main]
 
 use esp_backtrace as _;
-use nano_ros_platform_esp32::esp_println;
-use nano_ros_platform_esp32::prelude::*;
+use nros_esp32::esp_println;
+use nros_esp32::prelude::*;
 use std_msgs::msg::Int32;
 
 /// WiFi credentials (set via environment variables at compile time)
 const SSID: &str = env!("SSID");
 const PASSWORD: &str = env!("PASSWORD");
 
-nano_ros_platform_esp32::esp_bootloader_esp_idf::esp_app_desc!();
+nros_esp32::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
