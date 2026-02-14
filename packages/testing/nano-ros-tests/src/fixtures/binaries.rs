@@ -402,7 +402,7 @@ pub fn qemu_bsp_listener_binary() -> PathBuf {
 
 /// Build the nros-c static library (cached).
 ///
-/// Runs `cargo build -p nros-c --release` and returns the path to `libnano_ros_c.a`.
+/// Runs `cargo build -p nros-c --release` and returns the path to `libnros_c.a`.
 pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
     NANO_ROS_C_LIB
         .get_or_try_init(|| {
@@ -424,7 +424,7 @@ pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
                 ));
             }
 
-            let lib_path = root.join("target/release/libnano_ros_c.a");
+            let lib_path = root.join("target/release/libnros_c.a");
             if !lib_path.exists() {
                 return Err(TestError::BuildFailed(format!(
                     "Library not found after build: {}",

@@ -77,7 +77,7 @@ cargo build -p nros-c --release
 info "Building nano-ros-codegen-c staticlib..."
 cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
 
-NANO_ROS_C_LIB="$PROJECT_ROOT/target/release/libnano_ros_c.a"
+NANO_ROS_C_LIB="$PROJECT_ROOT/target/release/libnros_c.a"
 if [ ! -f "$NANO_ROS_C_LIB" ]; then
     error "nros-c library not found at: $NANO_ROS_C_LIB"
     exit 1
@@ -155,7 +155,7 @@ fi
 
 info "Verifying generated files..."
 
-GEN_DIR="$BUILD_DIR/nros_c/native_c_custom_msg"
+GEN_DIR="$BUILD_DIR/nano_ros_c/native_c_custom_msg"
 
 # Check for expected generated files
 EXPECTED_FILES=(
