@@ -37,6 +37,9 @@ nano-ros = { path = "../../core/nano-ros", default-features = false }
 # zenoh transport with smoltcp platform backend
 nano-ros-transport-zenoh = { path = "../../transport/nano-ros-transport-zenoh", default-features = false, features = ["bare-metal"] }
 
+# smoltcp TCP bridge for zenoh-pico
+nano-ros-link-smoltcp = { path = "../../link/nano-ros-link-smoltcp" }
+
 # Logging
 defmt = "0.3"
 defmt-rtt = "0.4"

@@ -608,6 +608,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-link-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "nano-ros-transport-zenoh-sys",
+ "smoltcp",
+]
+
+[[package]]
 name = "nano-ros-macros"
 version = "0.1.0"
 dependencies = [
@@ -1027,6 +1035,7 @@ dependencies = [
  "defmt-rtt",
  "heapless",
  "nano-ros",
+ "nano-ros-link-smoltcp",
  "nano-ros-transport-zenoh",
  "panic-halt",
  "panic-probe",

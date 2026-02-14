@@ -44,7 +44,7 @@
 #![no_std]
 #![no_main]
 
-use defmt::{debug, error, info, warn};
+use defmt::info;
 use defmt_rtt as _;
 use panic_probe as _;
 
@@ -60,13 +60,12 @@ use stm32_eth::{
 
 use smoltcp::{
     iface::{Config, Interface, SocketSet},
-    socket::tcp::{Socket as TcpSocket, SocketBuffer as TcpSocketBuffer},
     time::Instant,
     wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
 };
 
-// Import nano-ros-transport-zenoh (with smoltcp platform)
-use nano_ros_transport_zenoh::platform_smoltcp;
+// Import nano-ros-link-smoltcp for TCP bridge
+use nano_ros_link_smoltcp::SmoltcpBridge;
 
 // ============================================================================
 // Network Configuration
@@ -95,14 +94,9 @@ const RX_DESC_COUNT: usize = 4;
 /// Number of TX DMA descriptors
 const TX_DESC_COUNT: usize = 4;
 
-/// TCP socket RX buffer size
-const TCP_RX_BUFFER_SIZE: usize = 2048;
-
-/// TCP socket TX buffer size
-const TCP_TX_BUFFER_SIZE: usize = 2048;
-
-/// Maximum number of sockets
-const MAX_SOCKETS: usize = 2;
+/// Maximum number of sockets (matches nano-ros-link-smoltcp::MAX_SOCKETS)
+#[allow(dead_code)] // Used in documentation only; actual value comes from link crate
+const MAX_SOCKETS: usize = 4;
 
 /// Poll interval in milliseconds
 const POLL_INTERVAL_MS: u32 = 10;
@@ -116,13 +110,15 @@ static mut RX_RING: [RxRingEntry; RX_DESC_COUNT] = [RxRingEntry::INIT; RX_DESC_C
 #[unsafe(link_section = ".ethram")]
 static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_COUNT];
 
-// TCP socket buffers for zenoh
-static mut TCP_RX_BUFFER: [u8; TCP_RX_BUFFER_SIZE] = [0u8; TCP_RX_BUFFER_SIZE];
-static mut TCP_TX_BUFFER: [u8; TCP_TX_BUFFER_SIZE] = [0u8; TCP_TX_BUFFER_SIZE];
+// Clock state for smoltcp_clock_now_ms (updated by poll task)
+static mut CLOCK_MS: u64 = 0;
 
-// Socket storage
-static mut SOCKET_STORAGE: [smoltcp::iface::SocketStorage<'static>; MAX_SOCKETS] =
-    [smoltcp::iface::SocketStorage::EMPTY; MAX_SOCKETS];
+/// Provide the millisecond clock for nano-ros-link-smoltcp's bridge.
+/// Called internally by `SmoltcpBridge::poll()` for smoltcp timestamping.
+#[unsafe(no_mangle)]
+pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
+    unsafe { CLOCK_MS }
+}
 
 // ============================================================================
 // Platform Callback for smoltcp Integration
@@ -166,9 +162,7 @@ mod app {
     }
 
     #[local]
-    struct Local {
-        tcp_handle: smoltcp::iface::SocketHandle,
-    }
+    struct Local {}
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
@@ -278,36 +272,25 @@ mod app {
             IP_ADDRESS[0], IP_ADDRESS[1], IP_ADDRESS[2], IP_ADDRESS[3]
         );
 
-        // Create socket set
-        let sockets = unsafe { SocketSet::new(&mut SOCKET_STORAGE[..]) };
-
-        // Create TCP socket for zenoh connection
-        let tcp_rx_buffer = unsafe { TcpSocketBuffer::new(&mut TCP_RX_BUFFER[..]) };
-        let tcp_tx_buffer = unsafe { TcpSocketBuffer::new(&mut TCP_TX_BUFFER[..]) };
-        let tcp_socket = TcpSocket::new(tcp_rx_buffer, tcp_tx_buffer);
-
-        let mut sockets = sockets;
-        let tcp_handle = sockets.add(tcp_socket);
+        // Create socket set using link crate's pre-allocated storage
+        let storage = unsafe { nano_ros_link_smoltcp::get_socket_storage() };
+        let mut sockets = SocketSet::new(&mut storage[..]);
 
         // ═══════════════════════════════════════════════════════════════════════
-        // Initialize nano-ros-transport-zenoh platform
+        // Initialize nano-ros-link-smoltcp bridge
         // ═══════════════════════════════════════════════════════════════════════
-        info!("Initializing zenoh-pico platform...");
+        info!("Initializing smoltcp bridge...");
 
-        // Set the platform clock (will be updated in poll task)
-        platform_smoltcp::smoltcp_set_clock_ms(0);
+        SmoltcpBridge::init();
+
+        // Create TCP sockets and register with the bridge
+        unsafe { nano_ros_link_smoltcp::create_and_register_sockets(&mut sockets) };
 
         // Set the network poll callback
-        // Note: The actual polling is done in poll_network task
-        platform_smoltcp::smoltcp_set_poll_callback(Some(network_poll_callback));
+        // Note: The actual polling is done in poll_network task via SmoltcpBridge::poll()
+        nano_ros_link_smoltcp::set_poll_callback(network_poll_callback);
 
-        // Initialize the platform
-        let ret = platform_smoltcp::smoltcp_init();
-        if ret < 0 {
-            error!("Failed to initialize smoltcp platform: {}", ret);
-        } else {
-            info!("smoltcp platform initialized");
-        }
+        info!("smoltcp bridge initialized");
 
         // ═══════════════════════════════════════════════════════════════════════
         // Initialize zenoh-pico shim session
@@ -351,78 +334,30 @@ mod app {
                 sockets,
                 counter: 0,
             },
-            Local { tcp_handle },
+            Local {},
         )
     }
 
     /// Periodic network polling task
     ///
-    /// Polls the smoltcp interface and bridges data between smoltcp sockets
-    /// and the zenoh-pico platform's socket buffers.
-    #[task(shared = [eth_dma, iface, sockets], local = [tcp_handle], priority = 2)]
+    /// Calls `SmoltcpBridge::poll()` which handles both smoltcp interface
+    /// polling and data transfer between smoltcp sockets and zenoh-pico's
+    /// staging buffers.
+    #[task(shared = [eth_dma, iface, sockets], priority = 2)]
     async fn poll_network(mut cx: poll_network::Context) {
-        let tcp_handle = *cx.local.tcp_handle;
-
         loop {
-            // Get current timestamp
-            let now = Mono::now();
-            let timestamp = Instant::from_millis(now.ticks() as i64);
-
             // Update platform clock for zenoh-pico
-            platform_smoltcp::smoltcp_set_clock_ms(now.ticks() as u64);
+            let now = Mono::now();
+            unsafe { CLOCK_MS = now.ticks() as u64 };
 
-            // Poll the network interface
+            // Poll smoltcp + bridge data to/from zenoh-pico staging buffers
             (
                 &mut cx.shared.eth_dma,
                 &mut cx.shared.iface,
                 &mut cx.shared.sockets,
             )
                 .lock(|mut eth_dma, iface, sockets| {
-                    // Poll smoltcp
-                    let _activity = iface.poll(timestamp, &mut eth_dma, sockets);
-
-                    // Bridge smoltcp socket to zenoh-pico platform buffers
-                    let socket = sockets.get_mut::<TcpSocket>(tcp_handle);
-
-                    if socket.is_active() {
-                        // Read from smoltcp socket → push to shim RX buffer
-                        if socket.can_recv() {
-                            let mut buf = [0u8; 256];
-                            match socket.recv_slice(&mut buf) {
-                                Ok(n) if n > 0 => {
-                                    debug!("Received {} bytes from TCP", n);
-                                    // Push to zenoh-pico platform buffer
-                                    // Note: Handle 0 is the first zenoh socket
-                                    let ret = platform_smoltcp::smoltcp_socket_push_rx(
-                                        0,
-                                        buf.as_ptr(),
-                                        n,
-                                    );
-                                    if ret < 0 {
-                                        warn!("Failed to push RX data to shim");
-                                    }
-                                }
-                                Ok(_) => {}
-                                Err(_) => warn!("TCP recv error"),
-                            }
-                        }
-
-                        // Pop from shim TX buffer → send through smoltcp socket
-                        if socket.can_send() {
-                            let mut buf = [0u8; 256];
-                            let n = platform_smoltcp::smoltcp_socket_pop_tx(
-                                0,
-                                buf.as_mut_ptr(),
-                                buf.len(),
-                            );
-                            if n > 0 {
-                                debug!("Sending {} bytes via TCP", n);
-                                if socket.send_slice(&buf[..n as usize]).is_err() {
-                                    warn!("TCP send error");
-                                }
-                            }
-                        }
-                    }
+                    SmoltcpBridge::poll(iface, &mut eth_dma, sockets);
                 });
 
             Mono::delay(POLL_INTERVAL_MS.millis()).await;
@@ -448,7 +383,7 @@ mod app {
             // }
 
             // For now, just poll the platform layer
-            let ret = platform_smoltcp::smoltcp_poll();
+            let ret = nano_ros_link_smoltcp::smoltcp_poll();
             if ret < 0 {
                 // Poll callback not set or error - expected for stub
             }
