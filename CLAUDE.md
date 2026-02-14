@@ -372,7 +372,7 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 
 ## Development Phases
 
-Completed phases (1-15, 17-18, 20-21, 25-29) are archived in `docs/roadmap/archived/`.
+Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/archived/`.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
@@ -381,11 +381,11 @@ Completed phases (1-15, 17-18, 20-21, 25-29) are archived in `docs/roadmap/archi
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
 | 31 | Verus unbounded verification | In Progress |
-| 32 | RMW architecture + crate rename | In Progress |
+| 33 | Crate rename (`nros-*` / `zpico-*`) | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
-**Phase 32**: Platform/transport split complete (32.1-32.10). BSP wrappers removed. Next: crate rename (`nros-*`, `zpico-*`) per `docs/design/rmw-layer-design.md`.
+**Phase 33**: Rename all crates from `nano-ros-*` to `nros-*` / `zpico-*`. Split transport into `nros-rmw` (traits) + `nros-rmw-zenoh` (zenoh impl). See `docs/design/rmw-layer-design.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
