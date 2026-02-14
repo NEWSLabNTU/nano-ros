@@ -32,6 +32,7 @@ nano-ros/
 │   ├── testing/                   # Test infrastructure
 │   │   └── nano-ros-tests/        # Integration test crate
 │   ├── verification/              # Formal verification
+│   │   ├── nano-ros-ghost-types/  # Ghost model types (workspace member)
 │   │   └── nano-ros-verification/ # Verus deductive proofs (excluded from workspace)
 │   ├── reference/                 # Low-level platform reference implementations
 │   │   ├── qemu-smoltcp-bridge/   # smoltcp bridge library
@@ -382,6 +383,7 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 | 24 | RPi Pico W platform support | Not Started |
 | 31 | Verus unbounded verification | In Progress |
 | 33 | Crate rename (`nros-*` / `zpico-*`) | Not Started |
+| 34 | RMW abstraction + XRCE-DDS | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
