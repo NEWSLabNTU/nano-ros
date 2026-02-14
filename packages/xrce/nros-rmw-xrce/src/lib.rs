@@ -1,0 +1,1098 @@
+//! XRCE-DDS RMW backend for nros.
+//!
+//! Maps the XRCE-DDS entity hierarchy to `nros-rmw` traits, allowing board
+//! crates to swap between zenoh and XRCE-DDS with a feature flag change.
+//!
+//! # Architecture
+//!
+//! All state is held in module-level statics (single session model, matching
+//! XRCE-DDS's design). Board crates call [`init_transport()`] to register
+//! custom transport callbacks (from `xrce-smoltcp`), then
+//! [`XrceRmw::open()`] to create the DDS session and participant.
+//!
+//! Topic/service callbacks dispatch by `object_id` to static buffer slots,
+//! using atomic flags for callback→consumer data flow (same pattern as
+//! the zenoh backend).
+
+#![no_std]
+#![allow(static_mut_refs)]
+
+mod naming;
+
+use core::ffi::{c_char, c_int, c_void};
+use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+
+use nros_rmw::{
+    Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, Rmw,
+    RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
+    Subscriber, TopicInfo, TransportError,
+};
+use xrce_sys::{
+    SampleIdentity, UXR_DATAREADER_ID, UXR_DATAWRITER_ID, UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+    UXR_MAX_ELAPSED_TIME_UNLIMITED, UXR_MAX_SAMPLES_UNLIMITED, UXR_PARTICIPANT_ID,
+    UXR_PUBLISHER_ID, UXR_REPLACE, UXR_REPLIER_ID, UXR_REQUESTER_ID, UXR_SUBSCRIBER_ID,
+    UXR_TOPIC_ID, ucdrBuffer, uxrCustomTransport, uxrDeliveryControl, uxrObjectId, uxrQoS_t,
+    uxrSession, uxrStreamId,
+};
+
+// ============================================================================
+// Configuration
+// ============================================================================
+
+/// Maximum subscribers that can be created simultaneously.
+const MAX_SUBSCRIBERS: usize = 8;
+
+/// Maximum service servers that can be created simultaneously.
+const MAX_SERVICE_SERVERS: usize = 4;
+
+/// Maximum service clients that can be created simultaneously.
+const MAX_SERVICE_CLIENTS: usize = 4;
+
+/// Size of each receive buffer slot (bytes).
+const BUFFER_SIZE: usize = 1024;
+
+/// Stream buffer size (bytes). Must match XRCE-DDS MTU expectations.
+const STREAM_BUFFER_SIZE: usize = 512;
+
+/// Timeout for entity creation confirmation (milliseconds).
+const ENTITY_CREATION_TIMEOUT_MS: c_int = 1000;
+
+/// Timeout for service client reply (milliseconds).
+const SERVICE_REPLY_TIMEOUT_MS: c_int = 1000;
+
+/// Maximum number of retries for service client replies.
+const SERVICE_REPLY_RETRIES: usize = 5;
+
+// ============================================================================
+// Global State
+// ============================================================================
+
+static mut TRANSPORT: uxrCustomTransport = uxrCustomTransport::zeroed();
+static mut SESSION: uxrSession = uxrSession::zeroed();
+static mut OUTPUT_RELIABLE: uxrStreamId = zeroed_stream_id();
+static mut INPUT_RELIABLE: uxrStreamId = zeroed_stream_id();
+static mut PARTICIPANT_ID: uxrObjectId = zeroed_object_id();
+static mut NEXT_ENTITY_ID: u16 = 2; // ID 1 = participant
+static mut INITIALIZED: bool = false;
+
+// Stream buffers (history=1)
+static mut OUTPUT_RELIABLE_BUF: [u8; STREAM_BUFFER_SIZE] = [0u8; STREAM_BUFFER_SIZE];
+static mut INPUT_RELIABLE_BUF: [u8; STREAM_BUFFER_SIZE] = [0u8; STREAM_BUFFER_SIZE];
+
+const fn zeroed_stream_id() -> uxrStreamId {
+    uxrStreamId {
+        raw: 0,
+        index: 0,
+        type_: 0,
+        direction: 0,
+    }
+}
+
+const fn zeroed_object_id() -> uxrObjectId {
+    uxrObjectId { id: 0, type_: 0 }
+}
+
+const fn zeroed_sample_identity() -> SampleIdentity {
+    SampleIdentity {
+        writer_guid: xrce_sys::GUID_t {
+            guid_prefix: xrce_sys::GuidPrefix_t { data: [0u8; 12] },
+            entity_id: xrce_sys::EntityId_t {
+                entity_key: [0u8; 3],
+                entity_kind: 0,
+            },
+        },
+        sequence_number: xrce_sys::SequenceNumber_t { high: 0, low: 0 },
+    }
+}
+
+// ============================================================================
+// Subscriber Slots
+// ============================================================================
+
+struct SubscriberSlot {
+    data: [u8; BUFFER_SIZE],
+    has_data: AtomicBool,
+    len: AtomicUsize,
+    overflow: AtomicBool,
+    datareader_id: u16,
+    active: bool,
+}
+
+impl SubscriberSlot {
+    const fn new() -> Self {
+        Self {
+            data: [0u8; BUFFER_SIZE],
+            has_data: AtomicBool::new(false),
+            len: AtomicUsize::new(0),
+            overflow: AtomicBool::new(false),
+            datareader_id: 0,
+            active: false,
+        }
+    }
+}
+
+static mut SUBSCRIBER_SLOTS: [SubscriberSlot; MAX_SUBSCRIBERS] = [
+    SubscriberSlot::new(),
+    SubscriberSlot::new(),
+    SubscriberSlot::new(),
+    SubscriberSlot::new(),
+    SubscriberSlot::new(),
+    SubscriberSlot::new(),
+    SubscriberSlot::new(),
+    SubscriberSlot::new(),
+];
+
+// ============================================================================
+// Service Server Slots
+// ============================================================================
+
+struct ServiceServerSlot {
+    data: [u8; BUFFER_SIZE],
+    has_request: AtomicBool,
+    len: AtomicUsize,
+    sample_id: SampleIdentity,
+    replier_id: u16,
+    active: bool,
+}
+
+impl ServiceServerSlot {
+    const fn new() -> Self {
+        Self {
+            data: [0u8; BUFFER_SIZE],
+            has_request: AtomicBool::new(false),
+            len: AtomicUsize::new(0),
+            sample_id: zeroed_sample_identity(),
+            replier_id: 0,
+            active: false,
+        }
+    }
+}
+
+static mut SERVICE_SERVER_SLOTS: [ServiceServerSlot; MAX_SERVICE_SERVERS] = [
+    ServiceServerSlot::new(),
+    ServiceServerSlot::new(),
+    ServiceServerSlot::new(),
+    ServiceServerSlot::new(),
+];
+
+// ============================================================================
+// Service Client Slots
+// ============================================================================
+
+struct ServiceClientSlot {
+    data: [u8; BUFFER_SIZE],
+    has_reply: AtomicBool,
+    len: AtomicUsize,
+    requester_id: u16,
+    active: bool,
+}
+
+impl ServiceClientSlot {
+    const fn new() -> Self {
+        Self {
+            data: [0u8; BUFFER_SIZE],
+            has_reply: AtomicBool::new(false),
+            len: AtomicUsize::new(0),
+            requester_id: 0,
+            active: false,
+        }
+    }
+}
+
+static mut SERVICE_CLIENT_SLOTS: [ServiceClientSlot; MAX_SERVICE_CLIENTS] = [
+    ServiceClientSlot::new(),
+    ServiceClientSlot::new(),
+    ServiceClientSlot::new(),
+    ServiceClientSlot::new(),
+];
+
+// ============================================================================
+// Helpers
+// ============================================================================
+
+/// Write a string into a stack buffer with a null terminator.
+/// Returns a pointer suitable for C FFI `*const c_char`.
+fn to_c_str(s: &str, buf: &mut [u8]) -> *const c_char {
+    let len = s.len().min(buf.len() - 1);
+    buf[..len].copy_from_slice(&s.as_bytes()[..len]);
+    buf[len] = 0;
+    buf.as_ptr() as *const c_char
+}
+
+/// Allocate the next entity ID and return an `uxrObjectId`.
+///
+/// # Safety
+///
+/// Must only be called when the session is initialized (single-threaded context).
+unsafe fn alloc_entity_id(type_: u8) -> uxrObjectId {
+    unsafe {
+        let id = NEXT_ENTITY_ID;
+        NEXT_ENTITY_ID += 1;
+        xrce_sys::uxr_object_id(id, type_)
+    }
+}
+
+/// Simple hash of a byte slice to produce a session key.
+fn hash_session_key(name: &str) -> u32 {
+    let mut hash: u32 = 5381;
+    for &b in name.as_bytes() {
+        hash = hash.wrapping_mul(33).wrapping_add(b as u32);
+    }
+    // Ensure non-zero (XRCE-DDS may treat 0 specially)
+    if hash == 0 { 1 } else { hash }
+}
+
+/// Map nros QoS settings to XRCE-DDS QoS.
+fn map_qos(qos: &QosSettings) -> uxrQoS_t {
+    uxrQoS_t {
+        durability: match qos.durability {
+            QosDurabilityPolicy::Volatile => xrce_sys::UXR_DURABILITY_VOLATILE,
+            QosDurabilityPolicy::TransientLocal => xrce_sys::UXR_DURABILITY_TRANSIENT_LOCAL,
+        },
+        reliability: match qos.reliability {
+            QosReliabilityPolicy::Reliable => xrce_sys::UXR_RELIABILITY_RELIABLE,
+            QosReliabilityPolicy::BestEffort => xrce_sys::UXR_RELIABILITY_BEST_EFFORT,
+        },
+        history: match qos.history {
+            QosHistoryPolicy::KeepLast => xrce_sys::UXR_HISTORY_KEEP_LAST,
+            QosHistoryPolicy::KeepAll => xrce_sys::UXR_HISTORY_KEEP_ALL,
+        },
+        depth: qos.depth as u16,
+    }
+}
+
+/// Wait for all entity creation statuses to be confirmed.
+///
+/// # Safety
+///
+/// `request_ids` and `statuses` must be valid arrays of at least `count` elements.
+unsafe fn confirm_entities(
+    request_ids: &[u16],
+    statuses: &mut [u8],
+    count: usize,
+) -> Result<(), TransportError> {
+    unsafe {
+        let ok = xrce_sys::uxr_run_session_until_all_status(
+            &raw mut SESSION,
+            ENTITY_CREATION_TIMEOUT_MS,
+            request_ids.as_ptr(),
+            statuses.as_mut_ptr(),
+            count,
+        );
+        if ok {
+            // Check all statuses are OK or OK_MATCHED
+            for &status in &statuses[..count] {
+                if status != xrce_sys::UXR_STATUS_OK
+                    && status != xrce_sys::UXR_STATUS_OK_MATCHED
+                {
+                    return Err(TransportError::ConnectionFailed);
+                }
+            }
+            Ok(())
+        } else {
+            Err(TransportError::ConnectionFailed)
+        }
+    }
+}
+
+// ============================================================================
+// Transport Initialization
+// ============================================================================
+
+/// Register custom transport callbacks before calling [`XrceRmw::open()`].
+///
+/// Board crates call this with callbacks from `xrce-smoltcp` (or another
+/// transport provider) to set up the underlying communication channel.
+///
+/// # Safety
+///
+/// Must be called before `XrceRmw::open()`. The callback function pointers
+/// must remain valid for the lifetime of the session.
+pub unsafe fn init_transport(
+    open: xrce_sys::open_custom_func,
+    close: xrce_sys::close_custom_func,
+    write: xrce_sys::write_custom_func,
+    read: xrce_sys::read_custom_func,
+) {
+    unsafe {
+        xrce_sys::uxr_set_custom_transport_callbacks(
+            &raw mut TRANSPORT,
+            false,
+            open,
+            close,
+            write,
+            read,
+        );
+        xrce_sys::uxr_init_custom_transport(&raw mut TRANSPORT, core::ptr::null_mut());
+    }
+}
+
+// ============================================================================
+// Callbacks
+// ============================================================================
+
+/// Topic data callback — dispatches by datareader object_id to subscriber slots.
+///
+/// # Safety
+///
+/// Called from XRCE-DDS session processing. Must not panic.
+unsafe extern "C" fn topic_callback(
+    _session: *mut uxrSession,
+    object_id: uxrObjectId,
+    _request_id: u16,
+    _stream_id: uxrStreamId,
+    ub: *mut ucdrBuffer,
+    length: u16,
+    _args: *mut c_void,
+) {
+    unsafe {
+        let len = length as usize;
+        for slot in &mut SUBSCRIBER_SLOTS {
+            if slot.active && slot.datareader_id == object_id.id {
+                if len > BUFFER_SIZE {
+                    slot.overflow.store(true, Ordering::Release);
+                    return;
+                }
+                let src = core::slice::from_raw_parts((*ub).iterator, len);
+                slot.data[..len].copy_from_slice(src);
+                slot.len.store(len, Ordering::Release);
+                slot.has_data.store(true, Ordering::Release);
+                return;
+            }
+        }
+    }
+}
+
+/// Service request callback — dispatches by replier object_id to server slots.
+///
+/// # Safety
+///
+/// Called from XRCE-DDS session processing. Must not panic.
+unsafe extern "C" fn request_callback(
+    _session: *mut uxrSession,
+    object_id: uxrObjectId,
+    _request_id: u16,
+    sample_id: *mut SampleIdentity,
+    ub: *mut ucdrBuffer,
+    length: u16,
+    _args: *mut c_void,
+) {
+    unsafe {
+        let len = length as usize;
+        for slot in &mut SERVICE_SERVER_SLOTS {
+            if slot.active && slot.replier_id == object_id.id {
+                if len > BUFFER_SIZE {
+                    return;
+                }
+                let src = core::slice::from_raw_parts((*ub).iterator, len);
+                slot.data[..len].copy_from_slice(src);
+                slot.len.store(len, Ordering::Release);
+                slot.sample_id = *sample_id;
+                slot.has_request.store(true, Ordering::Release);
+                return;
+            }
+        }
+    }
+}
+
+/// Service reply callback — dispatches by requester object_id to client slots.
+///
+/// # Safety
+///
+/// Called from XRCE-DDS session processing. Must not panic.
+unsafe extern "C" fn reply_callback(
+    _session: *mut uxrSession,
+    object_id: uxrObjectId,
+    _request_id: u16,
+    _reply_id: u16,
+    ub: *mut ucdrBuffer,
+    length: u16,
+    _args: *mut c_void,
+) {
+    unsafe {
+        let len = length as usize;
+        for slot in &mut SERVICE_CLIENT_SLOTS {
+            if slot.active && slot.requester_id == object_id.id {
+                if len > BUFFER_SIZE {
+                    return;
+                }
+                let src = core::slice::from_raw_parts((*ub).iterator, len);
+                slot.data[..len].copy_from_slice(src);
+                slot.len.store(len, Ordering::Release);
+                slot.has_reply.store(true, Ordering::Release);
+                return;
+            }
+        }
+    }
+}
+
+// ============================================================================
+// XrceRmw (Rmw trait)
+// ============================================================================
+
+/// XRCE-DDS RMW backend.
+///
+/// Board crates select this backend via feature flag:
+/// ```rust,ignore
+/// #[cfg(feature = "xrce")]
+/// type DefaultRmw = nros_rmw_xrce::XrceRmw;
+/// ```
+pub struct XrceRmw;
+
+impl Rmw for XrceRmw {
+    type Session = XrceSession;
+    type Error = TransportError;
+
+    fn open(config: &RmwConfig) -> Result<XrceSession, TransportError> {
+        unsafe {
+            if INITIALIZED {
+                return Err(TransportError::InvalidConfig);
+            }
+
+            // Cast uxrCustomTransport → uxrCommunication* (first field)
+            let comm = &raw mut TRANSPORT as *mut xrce_sys::uxrCommunication;
+
+            // Initialize session with a key derived from node name
+            let key = hash_session_key(config.node_name);
+            xrce_sys::uxr_init_session(&raw mut SESSION, comm, key);
+
+            // Register callbacks
+            xrce_sys::uxr_set_topic_callback(
+                &raw mut SESSION,
+                Some(topic_callback),
+                core::ptr::null_mut(),
+            );
+            xrce_sys::uxr_set_request_callback(
+                &raw mut SESSION,
+                Some(request_callback),
+                core::ptr::null_mut(),
+            );
+            xrce_sys::uxr_set_reply_callback(
+                &raw mut SESSION,
+                Some(reply_callback),
+                core::ptr::null_mut(),
+            );
+
+            // Create session (with retries for unreliable transports)
+            if !xrce_sys::uxr_create_session_retries(&raw mut SESSION, 10) {
+                return Err(TransportError::ConnectionFailed);
+            }
+
+            // Create reliable streams
+            OUTPUT_RELIABLE = xrce_sys::uxr_create_output_reliable_stream(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE_BUF.as_mut_ptr(),
+                STREAM_BUFFER_SIZE,
+                1, // history = 1
+            );
+            INPUT_RELIABLE = xrce_sys::uxr_create_input_reliable_stream(
+                &raw mut SESSION,
+                INPUT_RELIABLE_BUF.as_mut_ptr(),
+                STREAM_BUFFER_SIZE,
+                1, // history = 1
+            );
+
+            // Create DDS participant
+            PARTICIPANT_ID = xrce_sys::uxr_object_id(1, UXR_PARTICIPANT_ID);
+            let mut name_buf = [0u8; 64];
+            let name_ptr = to_c_str(config.node_name, &mut name_buf);
+
+            let req = xrce_sys::uxr_buffer_create_participant_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                PARTICIPANT_ID,
+                config.domain_id as u16,
+                name_ptr,
+                UXR_REPLACE,
+            );
+
+            // Confirm participant creation
+            let mut statuses = [0u8; 1];
+            let requests = [req];
+            confirm_entities(&requests, &mut statuses, 1)?;
+
+            // Reset entity state
+            NEXT_ENTITY_ID = 2;
+            for slot in &mut SUBSCRIBER_SLOTS {
+                slot.active = false;
+                slot.has_data.store(false, Ordering::Release);
+                slot.overflow.store(false, Ordering::Release);
+            }
+            for slot in &mut SERVICE_SERVER_SLOTS {
+                slot.active = false;
+                slot.has_request.store(false, Ordering::Release);
+            }
+            for slot in &mut SERVICE_CLIENT_SLOTS {
+                slot.active = false;
+                slot.has_reply.store(false, Ordering::Release);
+            }
+
+            INITIALIZED = true;
+            Ok(XrceSession)
+        }
+    }
+}
+
+// ============================================================================
+// XrceSession (Session trait)
+// ============================================================================
+
+/// XRCE-DDS session handle.
+///
+/// Zero-size — all state is in module-level statics (single session model).
+pub struct XrceSession;
+
+impl XrceSession {
+    /// Process XRCE-DDS I/O and dispatch callbacks.
+    ///
+    /// Board crates call this from their executor loop. Returns `true` if
+    /// the session is still active.
+    pub fn spin_once(&mut self, timeout_ms: i32) -> bool {
+        unsafe { xrce_sys::uxr_run_session_time(&raw mut SESSION, timeout_ms) }
+    }
+}
+
+impl Session for XrceSession {
+    type Error = TransportError;
+    type PublisherHandle = XrcePublisher;
+    type SubscriberHandle = XrceSubscriber;
+    type ServiceServerHandle = XrceServiceServer;
+    type ServiceClientHandle = XrceServiceClient;
+
+    fn create_publisher(
+        &mut self,
+        topic: &TopicInfo,
+        qos: QosSettings,
+    ) -> Result<XrcePublisher, TransportError> {
+        unsafe {
+            // Allocate 3 entity IDs
+            let topic_obj_id = alloc_entity_id(UXR_TOPIC_ID);
+            let pub_obj_id = alloc_entity_id(UXR_PUBLISHER_ID);
+            let dw_obj_id = alloc_entity_id(UXR_DATAWRITER_ID);
+
+            // Format DDS topic name
+            let dds_topic: heapless::String<128> = naming::dds_topic_name(topic.name);
+            let mut topic_name_buf = [0u8; 128];
+            let topic_name_ptr = to_c_str(dds_topic.as_str(), &mut topic_name_buf);
+
+            let mut type_name_buf = [0u8; 128];
+            let type_name_ptr = to_c_str(topic.type_name, &mut type_name_buf);
+
+            let xrce_qos = map_qos(&qos);
+
+            // Buffer entity creation requests
+            let req_topic = xrce_sys::uxr_buffer_create_topic_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                topic_obj_id,
+                PARTICIPANT_ID,
+                topic_name_ptr,
+                type_name_ptr,
+                UXR_REPLACE,
+            );
+
+            let req_pub = xrce_sys::uxr_buffer_create_publisher_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                pub_obj_id,
+                PARTICIPANT_ID,
+                UXR_REPLACE,
+            );
+
+            let req_dw = xrce_sys::uxr_buffer_create_datawriter_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                dw_obj_id,
+                pub_obj_id,
+                topic_obj_id,
+                xrce_qos,
+                UXR_REPLACE,
+            );
+
+            // Confirm all 3 entities
+            let requests = [req_topic, req_pub, req_dw];
+            let mut statuses = [0u8; 3];
+            confirm_entities(&requests, &mut statuses, 3)
+                .map_err(|_| TransportError::PublisherCreationFailed)?;
+
+            Ok(XrcePublisher {
+                datawriter_id: dw_obj_id,
+            })
+        }
+    }
+
+    fn create_subscriber(
+        &mut self,
+        topic: &TopicInfo,
+        qos: QosSettings,
+    ) -> Result<XrceSubscriber, TransportError> {
+        unsafe {
+            // Find a free subscriber slot
+            let slot_index = SUBSCRIBER_SLOTS
+                .iter()
+                .position(|s| !s.active)
+                .ok_or(TransportError::SubscriberCreationFailed)?;
+
+            // Allocate 3 entity IDs
+            let topic_obj_id = alloc_entity_id(UXR_TOPIC_ID);
+            let sub_obj_id = alloc_entity_id(UXR_SUBSCRIBER_ID);
+            let dr_obj_id = alloc_entity_id(UXR_DATAREADER_ID);
+
+            // Format DDS topic name
+            let dds_topic: heapless::String<128> = naming::dds_topic_name(topic.name);
+            let mut topic_name_buf = [0u8; 128];
+            let topic_name_ptr = to_c_str(dds_topic.as_str(), &mut topic_name_buf);
+
+            let mut type_name_buf = [0u8; 128];
+            let type_name_ptr = to_c_str(topic.type_name, &mut type_name_buf);
+
+            let xrce_qos = map_qos(&qos);
+
+            // Buffer entity creation requests
+            let req_topic = xrce_sys::uxr_buffer_create_topic_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                topic_obj_id,
+                PARTICIPANT_ID,
+                topic_name_ptr,
+                type_name_ptr,
+                UXR_REPLACE,
+            );
+
+            let req_sub = xrce_sys::uxr_buffer_create_subscriber_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                sub_obj_id,
+                PARTICIPANT_ID,
+                UXR_REPLACE,
+            );
+
+            let req_dr = xrce_sys::uxr_buffer_create_datareader_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                dr_obj_id,
+                sub_obj_id,
+                topic_obj_id,
+                xrce_qos,
+                UXR_REPLACE,
+            );
+
+            // Confirm all 3 entities
+            let requests = [req_topic, req_sub, req_dr];
+            let mut statuses = [0u8; 3];
+            confirm_entities(&requests, &mut statuses, 3)
+                .map_err(|_| TransportError::SubscriberCreationFailed)?;
+
+            // Register datareader ID in slot for callback dispatch
+            let slot = &mut SUBSCRIBER_SLOTS[slot_index];
+            slot.datareader_id = dr_obj_id.id;
+            slot.has_data.store(false, Ordering::Release);
+            slot.overflow.store(false, Ordering::Release);
+            slot.len.store(0, Ordering::Release);
+            slot.active = true;
+
+            // Request continuous data delivery
+            let delivery = uxrDeliveryControl {
+                max_samples: UXR_MAX_SAMPLES_UNLIMITED,
+                max_elapsed_time: UXR_MAX_ELAPSED_TIME_UNLIMITED,
+                max_bytes_per_second: UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+                min_pace_period: 0,
+            };
+            xrce_sys::uxr_buffer_request_data(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                dr_obj_id,
+                INPUT_RELIABLE,
+                &delivery,
+            );
+
+            Ok(XrceSubscriber { slot_index })
+        }
+    }
+
+    fn create_service_server(
+        &mut self,
+        service: &ServiceInfo,
+    ) -> Result<XrceServiceServer, TransportError> {
+        unsafe {
+            // Find a free server slot
+            let slot_index = SERVICE_SERVER_SLOTS
+                .iter()
+                .position(|s| !s.active)
+                .ok_or(TransportError::ServiceServerCreationFailed)?;
+
+            // Allocate 1 entity ID (replier)
+            let replier_id = alloc_entity_id(UXR_REPLIER_ID);
+
+            // Format DDS names
+            let mut service_name_buf = [0u8; 128];
+            let service_name_ptr = to_c_str(service.name, &mut service_name_buf);
+
+            let req_type: heapless::String<128> = naming::dds_request_type(service.type_name);
+            let mut req_type_buf = [0u8; 128];
+            let req_type_ptr = to_c_str(req_type.as_str(), &mut req_type_buf);
+
+            let reply_type: heapless::String<128> = naming::dds_reply_type(service.type_name);
+            let mut reply_type_buf = [0u8; 128];
+            let reply_type_ptr = to_c_str(reply_type.as_str(), &mut reply_type_buf);
+
+            let req_topic: heapless::String<128> = naming::dds_request_topic(service.name);
+            let mut req_topic_buf = [0u8; 128];
+            let req_topic_ptr = to_c_str(req_topic.as_str(), &mut req_topic_buf);
+
+            let reply_topic: heapless::String<128> = naming::dds_reply_topic(service.name);
+            let mut reply_topic_buf = [0u8; 128];
+            let reply_topic_ptr = to_c_str(reply_topic.as_str(), &mut reply_topic_buf);
+
+            let qos = map_qos(&QosSettings::services_default());
+
+            let req = xrce_sys::uxr_buffer_create_replier_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                replier_id,
+                PARTICIPANT_ID,
+                service_name_ptr,
+                req_type_ptr,
+                reply_type_ptr,
+                req_topic_ptr,
+                reply_topic_ptr,
+                qos,
+                UXR_REPLACE,
+            );
+
+            // Confirm replier creation
+            let requests = [req];
+            let mut statuses = [0u8; 1];
+            confirm_entities(&requests, &mut statuses, 1)
+                .map_err(|_| TransportError::ServiceServerCreationFailed)?;
+
+            // Register in slot
+            let slot = &mut SERVICE_SERVER_SLOTS[slot_index];
+            slot.replier_id = replier_id.id;
+            slot.has_request.store(false, Ordering::Release);
+            slot.len.store(0, Ordering::Release);
+            slot.active = true;
+
+            // Request data delivery for incoming requests
+            let delivery = uxrDeliveryControl {
+                max_samples: UXR_MAX_SAMPLES_UNLIMITED,
+                max_elapsed_time: UXR_MAX_ELAPSED_TIME_UNLIMITED,
+                max_bytes_per_second: UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+                min_pace_period: 0,
+            };
+            xrce_sys::uxr_buffer_request_data(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                replier_id,
+                INPUT_RELIABLE,
+                &delivery,
+            );
+
+            Ok(XrceServiceServer {
+                slot_index,
+                replier_id,
+                last_sample_id: zeroed_sample_identity(),
+            })
+        }
+    }
+
+    fn create_service_client(
+        &mut self,
+        service: &ServiceInfo,
+    ) -> Result<XrceServiceClient, TransportError> {
+        unsafe {
+            // Find a free client slot
+            let slot_index = SERVICE_CLIENT_SLOTS
+                .iter()
+                .position(|s| !s.active)
+                .ok_or(TransportError::ServiceClientCreationFailed)?;
+
+            // Allocate 1 entity ID (requester)
+            let requester_id = alloc_entity_id(UXR_REQUESTER_ID);
+
+            // Format DDS names
+            let mut service_name_buf = [0u8; 128];
+            let service_name_ptr = to_c_str(service.name, &mut service_name_buf);
+
+            let req_type: heapless::String<128> = naming::dds_request_type(service.type_name);
+            let mut req_type_buf = [0u8; 128];
+            let req_type_ptr = to_c_str(req_type.as_str(), &mut req_type_buf);
+
+            let reply_type: heapless::String<128> = naming::dds_reply_type(service.type_name);
+            let mut reply_type_buf = [0u8; 128];
+            let reply_type_ptr = to_c_str(reply_type.as_str(), &mut reply_type_buf);
+
+            let req_topic: heapless::String<128> = naming::dds_request_topic(service.name);
+            let mut req_topic_buf = [0u8; 128];
+            let req_topic_ptr = to_c_str(req_topic.as_str(), &mut req_topic_buf);
+
+            let reply_topic: heapless::String<128> = naming::dds_reply_topic(service.name);
+            let mut reply_topic_buf = [0u8; 128];
+            let reply_topic_ptr = to_c_str(reply_topic.as_str(), &mut reply_topic_buf);
+
+            let qos = map_qos(&QosSettings::services_default());
+
+            let req = xrce_sys::uxr_buffer_create_requester_bin(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                requester_id,
+                PARTICIPANT_ID,
+                service_name_ptr,
+                req_type_ptr,
+                reply_type_ptr,
+                req_topic_ptr,
+                reply_topic_ptr,
+                qos,
+                UXR_REPLACE,
+            );
+
+            // Confirm requester creation
+            let requests = [req];
+            let mut statuses = [0u8; 1];
+            confirm_entities(&requests, &mut statuses, 1)
+                .map_err(|_| TransportError::ServiceClientCreationFailed)?;
+
+            // Register in slot
+            let slot = &mut SERVICE_CLIENT_SLOTS[slot_index];
+            slot.requester_id = requester_id.id;
+            slot.has_reply.store(false, Ordering::Release);
+            slot.len.store(0, Ordering::Release);
+            slot.active = true;
+
+            Ok(XrceServiceClient {
+                slot_index,
+                requester_id,
+            })
+        }
+    }
+
+    fn close(&mut self) -> Result<(), TransportError> {
+        unsafe {
+            if INITIALIZED {
+                xrce_sys::uxr_delete_session(&raw mut SESSION);
+                xrce_sys::uxr_close_custom_transport(&raw mut TRANSPORT);
+
+                // Reset all state
+                NEXT_ENTITY_ID = 2;
+                INITIALIZED = false;
+                for slot in &mut SUBSCRIBER_SLOTS {
+                    slot.active = false;
+                }
+                for slot in &mut SERVICE_SERVER_SLOTS {
+                    slot.active = false;
+                }
+                for slot in &mut SERVICE_CLIENT_SLOTS {
+                    slot.active = false;
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+// ============================================================================
+// XrcePublisher (Publisher trait)
+// ============================================================================
+
+/// XRCE-DDS publisher handle.
+pub struct XrcePublisher {
+    datawriter_id: uxrObjectId,
+}
+
+impl Publisher for XrcePublisher {
+    type Error = TransportError;
+
+    fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
+        unsafe {
+            let req = xrce_sys::uxr_buffer_topic(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                self.datawriter_id,
+                data.as_ptr() as *mut u8,
+                data.len(),
+            );
+            if req == xrce_sys::UXR_INVALID_REQUEST_ID {
+                return Err(TransportError::PublishFailed);
+            }
+            Ok(())
+        }
+    }
+
+    fn buffer_error(&self) -> TransportError {
+        TransportError::BufferTooSmall
+    }
+
+    fn serialization_error(&self) -> TransportError {
+        TransportError::SerializationError
+    }
+}
+
+// ============================================================================
+// XrceSubscriber (Subscriber trait)
+// ============================================================================
+
+/// XRCE-DDS subscriber handle.
+pub struct XrceSubscriber {
+    slot_index: usize,
+}
+
+impl Subscriber for XrceSubscriber {
+    type Error = TransportError;
+
+    fn has_data(&self) -> bool {
+        unsafe { SUBSCRIBER_SLOTS[self.slot_index].has_data.load(Ordering::Acquire) }
+    }
+
+    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+        unsafe {
+            let slot = &SUBSCRIBER_SLOTS[self.slot_index];
+
+            if !slot.has_data.load(Ordering::Acquire) {
+                return Ok(None);
+            }
+
+            // Check for overflow (message too large for slot buffer)
+            if slot.overflow.load(Ordering::Acquire) {
+                slot.overflow.store(false, Ordering::Release);
+                slot.has_data.store(false, Ordering::Release);
+                return Err(TransportError::MessageTooLarge);
+            }
+
+            let len = slot.len.load(Ordering::Acquire);
+            if len > buf.len() {
+                // User buffer too small — clear the slot and report error
+                slot.has_data.store(false, Ordering::Release);
+                return Err(TransportError::BufferTooSmall);
+            }
+
+            buf[..len].copy_from_slice(&slot.data[..len]);
+            slot.has_data.store(false, Ordering::Release);
+            Ok(Some(len))
+        }
+    }
+
+    fn deserialization_error(&self) -> TransportError {
+        TransportError::DeserializationError
+    }
+}
+
+// ============================================================================
+// XrceServiceServer (ServiceServerTrait)
+// ============================================================================
+
+/// XRCE-DDS service server handle.
+pub struct XrceServiceServer {
+    slot_index: usize,
+    replier_id: uxrObjectId,
+    last_sample_id: SampleIdentity,
+}
+
+impl ServiceServerTrait for XrceServiceServer {
+    type Error = TransportError;
+
+    fn has_request(&self) -> bool {
+        unsafe {
+            SERVICE_SERVER_SLOTS[self.slot_index]
+                .has_request
+                .load(Ordering::Acquire)
+        }
+    }
+
+    fn try_recv_request<'a>(
+        &mut self,
+        buf: &'a mut [u8],
+    ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
+        unsafe {
+            let slot = &SERVICE_SERVER_SLOTS[self.slot_index];
+
+            if !slot.has_request.load(Ordering::Acquire) {
+                return Ok(None);
+            }
+
+            let len = slot.len.load(Ordering::Acquire);
+            if len > buf.len() {
+                slot.has_request.store(false, Ordering::Release);
+                return Err(TransportError::BufferTooSmall);
+            }
+
+            buf[..len].copy_from_slice(&slot.data[..len]);
+            self.last_sample_id = slot.sample_id;
+            slot.has_request.store(false, Ordering::Release);
+
+            Ok(Some(ServiceRequest {
+                data: &buf[..len],
+                sequence_number: 0, // XRCE uses SampleIdentity, not sequence numbers
+            }))
+        }
+    }
+
+    fn send_reply(&mut self, _sequence_number: i64, data: &[u8]) -> Result<(), TransportError> {
+        unsafe {
+            let req = xrce_sys::uxr_buffer_reply(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                self.replier_id,
+                &raw mut self.last_sample_id,
+                data.as_ptr() as *mut u8,
+                data.len(),
+            );
+            if req == xrce_sys::UXR_INVALID_REQUEST_ID {
+                return Err(TransportError::ServiceReplyFailed);
+            }
+            Ok(())
+        }
+    }
+}
+
+// ============================================================================
+// XrceServiceClient (ServiceClientTrait)
+// ============================================================================
+
+/// XRCE-DDS service client handle.
+pub struct XrceServiceClient {
+    slot_index: usize,
+    requester_id: uxrObjectId,
+}
+
+impl ServiceClientTrait for XrceServiceClient {
+    type Error = TransportError;
+
+    fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, TransportError> {
+        unsafe {
+            let slot = &SERVICE_CLIENT_SLOTS[self.slot_index];
+
+            // Clear any stale reply
+            slot.has_reply.store(false, Ordering::Release);
+
+            // Send request
+            let req = xrce_sys::uxr_buffer_request(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                self.requester_id,
+                request.as_ptr() as *mut u8,
+                request.len(),
+            );
+            if req == xrce_sys::UXR_INVALID_REQUEST_ID {
+                return Err(TransportError::ServiceRequestFailed);
+            }
+
+            // Wait for reply with retries
+            for _ in 0..SERVICE_REPLY_RETRIES {
+                xrce_sys::uxr_run_session_time(&raw mut SESSION, SERVICE_REPLY_TIMEOUT_MS);
+
+                if slot.has_reply.load(Ordering::Acquire) {
+                    let len = slot.len.load(Ordering::Acquire);
+                    if len > reply_buf.len() {
+                        slot.has_reply.store(false, Ordering::Release);
+                        return Err(TransportError::BufferTooSmall);
+                    }
+                    reply_buf[..len].copy_from_slice(&slot.data[..len]);
+                    slot.has_reply.store(false, Ordering::Release);
+                    return Ok(len);
+                }
+            }
+
+            Err(TransportError::Timeout)
+        }
+    }
+}

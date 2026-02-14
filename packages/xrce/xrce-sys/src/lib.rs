@@ -593,7 +593,7 @@ unsafe extern "C" {
 
 impl uxrSession {
     /// Create a zeroed session blob. Must be initialized with `uxr_init_session`.
-    pub fn zeroed() -> Self {
+    pub const fn zeroed() -> Self {
         Self {
             _opaque: [0u8; UXR_SESSION_SIZE],
         }
@@ -603,7 +603,7 @@ impl uxrSession {
 impl uxrCustomTransport {
     /// Create a zeroed transport blob. Must be initialized via
     /// `uxr_set_custom_transport_callbacks` + `uxr_init_custom_transport`.
-    pub fn zeroed() -> Self {
+    pub const fn zeroed() -> Self {
         Self {
             _opaque: [0u8; UXR_CUSTOM_TRANSPORT_SIZE],
         }

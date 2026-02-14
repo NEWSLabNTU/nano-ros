@@ -69,6 +69,8 @@ exclude = [
     "packages/zpico/zpico-smoltcp",
     # XRCE-DDS smoltcp UDP transport (embedded-only, requires cross-compilation)
     "packages/xrce/xrce-smoltcp",
+    # XRCE-DDS RMW backend (embedded-only, requires xrce-sys linking)
+    "packages/xrce/nros-rmw-xrce",
     # zpico platform crates (embedded-only, require cross-compilation)
     "packages/zpico/zpico-platform-mps2-an385",
     "packages/zpico/zpico-platform-esp32",

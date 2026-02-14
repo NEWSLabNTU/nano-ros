@@ -1,6 +1,6 @@
 # Phase 34: RMW Abstraction & XRCE-DDS Integration
 
-**Status: In Progress** (34.1, 34.2, 34.3, 34.4, 34.5 complete)
+**Status: In Progress** (34.1, 34.2, 34.3, 34.4, 34.5, 34.6 complete)
 
 **Prerequisites:** Phase 33 (crate rename + platform split) is complete. Phase 34.1-34.3 (RMW traits + zenoh impl + board refactor) are complete.
 
@@ -237,7 +237,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
 Maps XRCE-DDS entities to `nros-rmw` traits. This is the core complexity — orchestrating the DDS entity hierarchy internally while presenting the same simple `Session::create_publisher()` API.
 
 **`XrceRmw` (implements `Rmw` trait):**
-- [ ] `XrceRmw::open(config: &RmwConfig)`:
+- [x] `XrceRmw::open(config: &RmwConfig)`:
   1. Parse `config.locator` (e.g., `"udp/192.168.1.1:2019"`) to extract agent IP + port
   2. Set up custom transport callbacks (from `xrce-smoltcp`)
   3. `uxr_init_custom_transport` → `uxr_init_session` → `uxr_create_session`
@@ -246,46 +246,46 @@ Maps XRCE-DDS entities to `nros-rmw` traits. This is the core complexity — orc
   6. Return `XrceSession`
 
 **`XrceSession` (implements `Session` trait):**
-- [ ] Holds `uxrSession`, stream IDs, participant ID, and entity ID counter
-- [ ] `create_publisher(topic, qos)`:
+- [x] Holds `uxrSession`, stream IDs, participant ID, and entity ID counter
+- [x] `create_publisher(topic, qos)`:
   1. Allocate next object IDs for topic, publisher, datawriter
   2. `uxr_buffer_create_topic_bin` with DDS topic name (`"rt/<topic>"`) and type name
   3. `uxr_buffer_create_publisher_bin` + `uxr_buffer_create_datawriter_bin` with QoS
   4. `uxr_run_session_until_all_status` to wait for agent confirmation
   5. Return `XrcePublisher` wrapping the datawriter ID
-- [ ] `create_subscriber(topic, qos)`:
+- [x] `create_subscriber(topic, qos)`:
   1. Allocate IDs for topic, subscriber, datareader
   2. Create entities via `_bin` calls + wait for confirmation
   3. `uxr_buffer_request_data` with `UXR_MAX_SAMPLES_UNLIMITED`
   4. Return `XrceSubscriber` wrapping the datareader ID + receive buffer
-- [ ] `spin_once(timeout)`: `uxr_run_session_time(timeout)` — processes I/O and dispatches callbacks
-- [ ] Entity ID management: track next available ID per type to avoid collisions
+- [x] `spin_once(timeout)`: `uxr_run_session_time(timeout)` — processes I/O and dispatches callbacks
+- [x] Entity ID management: track next available ID per type to avoid collisions
 
 **`XrcePublisher` (implements `Publisher` trait):**
-- [ ] `publish_raw(data)`: `uxr_buffer_topic(session, stream, datawriter_id, data, len)` — passes pre-serialized CDR bytes directly (no double-serialization through Micro-CDR)
+- [x] `publish_raw(data)`: `uxr_buffer_topic(session, stream, datawriter_id, data, len)` — passes pre-serialized CDR bytes directly (no double-serialization through Micro-CDR)
 
 **`XrceSubscriber` (implements `Subscriber` trait):**
-- [ ] `uxrOnTopicFunc` callback: copies received data from `ucdrBuffer` into static receive buffer, sets atomic flag
-- [ ] `try_recv_raw(buf)`: checks flag, copies from receive buffer to caller's buffer, clears flag
-- [ ] `has_data()`: checks atomic flag
+- [x] `uxrOnTopicFunc` callback: copies received data from `ucdrBuffer` into static receive buffer, sets atomic flag
+- [x] `try_recv_raw(buf)`: checks flag, copies from receive buffer to caller's buffer, clears flag
+- [x] `has_data()`: checks atomic flag
 
 **`XrceServiceServer` (implements `ServiceServerTrait`):**
-- [ ] Uses replier pattern: `uxr_buffer_create_replier_bin`
-- [ ] `uxrOnRequestFunc` callback: stores request + `SampleIdentity` correlation ID
-- [ ] `send_reply()`: `uxr_buffer_reply(session, stream, replier_id, sample_id, data, len)`
+- [x] Uses replier pattern: `uxr_buffer_create_replier_bin`
+- [x] `uxrOnRequestFunc` callback: stores request + `SampleIdentity` correlation ID
+- [x] `send_reply()`: `uxr_buffer_reply(session, stream, replier_id, sample_id, data, len)`
 
 **`XrceServiceClient` (implements `ServiceClientTrait`):**
-- [ ] Uses requester pattern: `uxr_buffer_create_requester_bin`
-- [ ] `call_raw()`: `uxr_buffer_request` + `uxr_run_session_until_data` for reply via `uxrOnReplyFunc`
+- [x] Uses requester pattern: `uxr_buffer_create_requester_bin`
+- [x] `call_raw()`: `uxr_buffer_request` + `uxr_run_session_until_data` for reply via `uxrOnReplyFunc`
 
 **DDS topic naming:**
-- [ ] `TopicInfo.name` `/chatter` → DDS `"rt/chatter"` (add `rt/` prefix)
-- [ ] `TopicInfo.type_name` `std_msgs::msg::Int32` → DDS `"std_msgs::msg::dds_::Int32_"` (add `dds_::` + trailing `_`)
+- [x] `TopicInfo.name` `/chatter` → DDS `"rt/chatter"` (add `rt/` prefix)
+- [x] `TopicInfo.type_name` `std_msgs::msg::Int32` → DDS `"std_msgs::msg::dds_::Int32_"` (add `dds_::` + trailing `_`)
 
 **Verification:**
-- [ ] All types compile on `no_std` without `alloc`
-- [ ] Unit tests for entity ID allocation and topic name formatting
-- [ ] `just quality` passes
+- [x] All types compile on `no_std` without `alloc`
+- [x] Unit tests for entity ID allocation and topic name formatting
+- [x] `just quality` passes
 
 **Acceptance criteria:**
 - Implements `Rmw`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`

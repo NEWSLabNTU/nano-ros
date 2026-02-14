@@ -1,0 +1,16 @@
+[package]
+name = "nros-rmw-xrce"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "XRCE-DDS RMW backend for nros"
+
+[features]
+default = []
+posix = ["xrce-sys/posix"]
+bare-metal = ["xrce-sys/bare-metal"]
+
+[dependencies]
+nros-rmw = { path = "../../core/nros-rmw", default-features = false }
+xrce-sys = { path = "../xrce-sys", default-features = false }
+heapless = "0.8"
