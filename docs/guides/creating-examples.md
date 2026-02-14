@@ -193,10 +193,10 @@ bench = false
 
 [features]
 default = []
-docker = ["nano-ros-bsp-qemu/docker"]
+docker = ["nano-ros-platform-qemu/docker"]
 
 [dependencies]
-nano-ros-bsp-qemu = { path = "../../../packages/bsp/nano-ros-bsp-qemu" }
+nano-ros-platform-qemu = { path = "../../../packages/platform/nano-ros-platform-qemu" }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 ```
@@ -228,8 +228,8 @@ Create the `[build]` and `[target.*]` sections **first**, then run `cargo nano-r
 #![no_std]
 #![no_main]
 
-use nano_ros_bsp_qemu::prelude::*;
-use nano_ros_bsp_qemu::println;
+use nano_ros_platform_qemu::prelude::*;
+use nano_ros_platform_qemu::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -258,8 +258,8 @@ fn main() -> ! {
 #![no_main]
 
 use core::sync::atomic::{AtomicU32, Ordering};
-use nano_ros_bsp_qemu::prelude::*;
-use nano_ros_bsp_qemu::println;
+use nano_ros_platform_qemu::prelude::*;
+use nano_ros_platform_qemu::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -290,25 +290,25 @@ fn main() -> ! {
 
 - `#![no_std]` + `#![no_main]` — bare-metal, no standard library
 - Entry point: `#[entry] fn main() -> !` (from `cortex-m-rt`)
-- BSP handles hardware init, networking, and zenoh transport
+- Platform crate handles hardware init, networking, and zenoh transport
 - `Config::default()` for talkers (IP `192.0.2.10`), `Config::listener()` for listeners (IP `192.0.2.11`)
 - Output via `println!` macro (semihosting)
 - `test = false` and `bench = false` in `[[bin]]` (no test harness for `no_std`)
 
 ### STM32F4 variant
 
-Same pattern, but use `nano-ros-bsp-stm32f4` and `defmt` logging:
+Same pattern, but use `nano-ros-platform-stm32f4` and `defmt` logging:
 
 ```toml
 [dependencies]
-nano-ros-bsp-stm32f4 = { path = "../../../packages/bsp/nano-ros-bsp-stm32f4" }
+nano-ros-platform-stm32f4 = { path = "../../../packages/platform/nano-ros-platform-stm32f4" }
 std_msgs = { version = "*", default-features = false }
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 defmt-rtt = "0.4"
 ```
 
 ```rust
-use nano_ros_bsp_stm32f4::prelude::*;
+use nano_ros_platform_stm32f4::prelude::*;
 use std_msgs::msg::Int32;
 
 #[entry]
@@ -497,15 +497,15 @@ fn run() -> Result<(), ShimNodeError> {
 
 ## Platform Comparison
 
-| | Native | BSP (QEMU/STM32F4) | Zephyr |
+| | Native | Platform (QEMU/STM32F4) | Zephyr |
 |---|---|---|---|
 | **Entry point** | `fn main()` | `#[entry] fn main() -> !` | `extern "C" fn rust_main()` |
 | **`std` support** | Yes | No | No |
 | **Source file** | `src/main.rs` | `src/main.rs` | `src/lib.rs` |
 | **Crate type** | Binary | Binary | Staticlib |
 | **Package name** | Any | Any | Must be `rustapp` |
-| **Main crate** | `nano-ros` | `nano-ros-bsp-qemu`/`stm32f4` | `nano-ros` (shim-zephyr) |
-| **Transport** | Feature-gated `zenoh` | Built into BSP | Built into BSP (C) |
+| **Main crate** | `nano-ros` | `nano-ros-platform-qemu`/`stm32f4` | `nano-ros` (shim-zephyr) |
+| **Transport** | Feature-gated `zenoh` | Built into platform crate | Built into BSP (C) |
 | **Logging** | `env_logger` | Semihosting / `defmt` | `zephyr::set_logger()` |
 | **Build system** | `cargo build` | `cargo build` | `west build` (CMake) |
 | **Generate flags** | `cargo nano-ros generate` | `--config --nano-ros-path` | `cargo nano-ros generate` |

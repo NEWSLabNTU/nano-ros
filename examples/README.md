@@ -47,12 +47,12 @@ cd examples/native/rs-listener && cargo run
 
 ### QEMU (`qemu/`)
 
-Bare-metal ARM Cortex-M examples running on QEMU MPS2-AN385. Uses `nano-ros-bsp-qemu` for simplified setup.
+Bare-metal ARM Cortex-M examples running on QEMU MPS2-AN385. Uses `nano-ros-platform-qemu` for simplified setup.
 
 | Example | Description |
 |---------|-------------|
-| `bsp-talker` | Simplified publisher using BSP (recommended starting point) |
-| `bsp-listener` | Simplified subscriber using BSP |
+| `bsp-talker` | Simplified publisher using platform crate (recommended starting point) |
+| `bsp-listener` | Simplified subscriber using platform crate |
 | `rs-talker` | Full publisher example |
 | `rs-listener` | Full subscriber example |
 | `rs-test` | Integration tests for CI |
@@ -71,11 +71,11 @@ just docker-qemu-test
 
 ### STM32F4 (`stm32f4/`)
 
-STM32F4 microcontroller examples using `nano-ros-bsp-stm32f4`.
+STM32F4 microcontroller examples using `nano-ros-platform-stm32f4`.
 
 | Example | Description |
 |---------|-------------|
-| `bsp-talker` | Publisher using STM32F4 BSP (for NUCLEO-F429ZI) |
+| `bsp-talker` | Publisher using STM32F4 platform crate (for NUCLEO-F429ZI) |
 
 **Building STM32F4 examples:**
 ```bash
@@ -126,7 +126,7 @@ Low-level reference implementations for BSP developers. These examples show how 
 | `stm32f4-polling` | Polling-based networking example |
 | `stm32f4-embassy` | Embassy async framework example |
 
-**Note:** These examples are for advanced users developing platform support. Most users should start with the BSP-based examples above.
+**Note:** These examples are for advanced users developing platform support. Most users should start with the platform-crate-based examples above.
 
 ## Quick Start
 

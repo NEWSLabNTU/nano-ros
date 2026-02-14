@@ -22,10 +22,6 @@ nano-ros/
 │   ├── link/                      # Link protocol crates (bare-metal)
 │   │   └── nano-ros-link-smoltcp/ # TCP/UDP via smoltcp IP stack
 │   ├── bsp/                       # Board Support Packages
-│   │   ├── nano-ros-bsp-qemu/     # QEMU MPS2-AN385 BSP
-│   │   ├── nano-ros-bsp-esp32/    # ESP32-C3 WiFi BSP
-│   │   ├── nano-ros-bsp-esp32-qemu/ # ESP32-C3 QEMU BSP
-│   │   ├── nano-ros-bsp-stm32f4/  # STM32F4 BSP
 │   │   └── nano-ros-bsp-zephyr/   # Zephyr RTOS BSP (C)
 │   ├── drivers/                   # Hardware drivers
 │   │   ├── lan9118-smoltcp/       # LAN9118 Ethernet driver for smoltcp
@@ -51,9 +47,9 @@ nano-ros/
 │   │   ├── rs-service-*/         # Rust service examples
 │   │   ├── rs-action-*/          # Rust action examples
 │   │   └── c-*/                  # C language examples
-│   ├── qemu/                  # QEMU bare-metal ARM (uses bsp-qemu)
-│   │   ├── bsp-talker/           # Simplified BSP publisher
-│   │   ├── bsp-listener/         # Simplified BSP subscriber
+│   ├── qemu/                  # QEMU bare-metal ARM (uses platform-qemu)
+│   │   ├── bsp-talker/           # Simplified platform publisher
+│   │   ├── bsp-listener/         # Simplified platform subscriber
 │   │   └── rs-*/                 # Full Rust examples
 │   ├── stm32f4/               # STM32F4 microcontrollers (uses bsp-stm32f4)
 │   │   └── bsp-talker/           # Simplified BSP publisher

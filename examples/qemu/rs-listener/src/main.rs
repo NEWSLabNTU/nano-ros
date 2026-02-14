@@ -8,8 +8,8 @@
 
 use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
 
-use nano_ros_bsp_qemu::prelude::*;
-use nano_ros_bsp_qemu::println;
+use nano_ros_platform_qemu::prelude::*;
+use nano_ros_platform_qemu::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 

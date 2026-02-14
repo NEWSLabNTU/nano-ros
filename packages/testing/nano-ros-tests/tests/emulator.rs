@@ -8,7 +8,7 @@
 //!
 //! ## BSP Tests
 //!
-//! The BSP (Board Support Package) tests verify the simplified nano-ros-bsp-qemu API:
+//! The BSP (Board Support Package) tests verify the simplified nano-ros-platform-qemu API:
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nano_ros_tests::fixtures::{
@@ -177,7 +177,7 @@ fn test_arm_toolchain_detection() {
 // QEMU BSP Tests (Phase 17.7)
 // =============================================================================
 //
-// Tests for the simplified nano-ros-bsp-qemu API (Board Support Package).
+// Tests for the simplified nano-ros-platform-qemu API (Board Support Package).
 // These examples use a higher-level API than the rs-* examples.
 
 /// Test that qemu-bsp-talker builds successfully

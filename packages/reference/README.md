@@ -2,7 +2,7 @@
 
 These examples are **low-level reference implementations** for developers creating new Board Support Packages (BSPs) or integrating nano-ros with new hardware platforms.
 
-**Most users should use the BSP-based examples instead:**
+**Most users should use the platform-crate-based examples instead:**
 - [qemu/](../qemu/) - QEMU bare-metal examples
 - [stm32f4/](../stm32f4/) - STM32F4 examples
 - [zephyr/](../zephyr/) - Zephyr RTOS examples
@@ -46,7 +46,7 @@ Use these examples when:
 User Application
        │
        ▼
-  nano-ros BSP (e.g., nano-ros-bsp-stm32f4)
+  nano-ros Platform (e.g., nano-ros-platform-stm32f4)
        │
        ▼
 ┌──────┴──────┐
@@ -79,5 +79,5 @@ cargo run --release
 
 ## See Also
 
-- [packages/bsp/nano-ros-bsp-qemu/](../../packages/bsp/nano-ros-bsp-qemu/) - QEMU BSP source
-- [packages/bsp/nano-ros-bsp-stm32f4/](../../packages/bsp/nano-ros-bsp-stm32f4/) - STM32F4 BSP source
+- [packages/platform/nano-ros-platform-qemu/](../../packages/platform/nano-ros-platform-qemu/) - QEMU platform crate source
+- [packages/platform/nano-ros-platform-stm32f4/](../../packages/platform/nano-ros-platform-stm32f4/) - STM32F4 platform crate source

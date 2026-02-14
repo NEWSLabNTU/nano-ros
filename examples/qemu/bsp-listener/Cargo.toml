@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 publish = false
-description = "Simple listener example using nano-ros-bsp-qemu"
+description = "Simple listener example using nano-ros-platform-qemu"
 
 [[bin]]
 name = "qemu-bsp-listener"
@@ -14,11 +14,11 @@ bench = false
 [features]
 default = []
 # Use Docker network configuration (different IPs for container-based testing)
-docker = ["nano-ros-bsp-qemu/docker"]
+docker = ["nano-ros-platform-qemu/docker"]
 
 [dependencies]
-# Board Support Package - all you need for QEMU bare-metal
-nano-ros-bsp-qemu = { path = "../../../packages/bsp/nano-ros-bsp-qemu" }
+# Platform crate - all you need for QEMU bare-metal
+nano-ros-platform-qemu = { path = "../../../packages/platform/nano-ros-platform-qemu" }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

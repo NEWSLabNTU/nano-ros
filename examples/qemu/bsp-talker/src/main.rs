@@ -1,14 +1,14 @@
-//! Simple QEMU Talker using nano-ros-bsp-qemu
+//! Simple QEMU Talker using nano-ros-platform-qemu
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with qemu-rs-talker — this is the same but demonstrates
-//! how little boilerplate the BSP requires.
+//! how little boilerplate the platform crate requires.
 
 #![no_std]
 #![no_main]
 
-use nano_ros_bsp_qemu::prelude::*;
-use nano_ros_bsp_qemu::println;
+use nano_ros_platform_qemu::prelude::*;
+use nano_ros_platform_qemu::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
