@@ -78,6 +78,8 @@ Key RMW functions:
 
 ROS 2 selects implementations at **runtime** via `dlopen()`. This is inappropriate for embedded — compile-time selection via feature flags and trait monomorphization is correct for `no_std`.
 
+For a detailed analysis of rmw.h's limitations for embedded and what nano-ros adopts vs avoids, see `docs/reference/rmw-h-analysis.md`.
+
 ## Proposed Design
 
 ### Naming Principles
@@ -114,40 +116,43 @@ nros-qemu (user-facing, composes everything)
 
 ### Crate Rename & Split Table
 
-| Current | New | nros deps? | Role |
-|---------|-----|------------|------|
-| **Core (middleware-agnostic)** | | | |
-| `nano-ros` | `nros` | — | Unified re-export crate |
-| `nano-ros-core` | `nros-core` | — | Core types, traits |
-| `nano-ros-serdes` | `nros-serdes` | — | CDR serialization |
-| `nano-ros-macros` | `nros-macros` | — | `#[derive(RosMessage)]` proc macros |
-| `nano-ros-params` | `nros-params` | — | Parameter server |
-| `nano-ros-transport` | **`nros-rmw`** | — | RMW abstraction traits |
-| `nano-ros-node` | `nros-node` | — | High-level node API (desktop) |
-| `nano-ros-c` | `nros-c` | — | C API (rclc-style) |
-| **RMW zenoh glue** | | | |
-| `nano-ros-transport-zenoh` + `shim.rs` | **`nros-rmw-zenoh`** | nros-rmw | Maps zpico-sys to nros-rmw traits |
-| **Zenoh-pico internals (NO nros deps)** | | | |
-| `nano-ros-transport-zenoh-sys` | **`zpico-sys`** | none | FFI + C shim + zenoh-pico submodule |
-| `nano-ros-link-smoltcp` | **`zpico-smoltcp`** | none | TCP via smoltcp (`_z_open_tcp` etc.) |
-| NEW (split from platform crates) | **`zpico-platform-qemu`** | none | System symbols for QEMU (727 lines) |
-| NEW (split from platform crates) | **`zpico-platform-esp32`** | none | System symbols for ESP32 |
-| NEW (split from platform crates) | **`zpico-platform-esp32-qemu`** | none | System symbols for ESP32 QEMU |
-| NEW (split from platform crates) | **`zpico-platform-stm32f4`** | none | System symbols for STM32F4 |
-| `nano-ros-bsp-zephyr` | **`zpico-zephyr`** | none | Zephyr C integration (wraps zenoh_shim.h) |
-| **User-facing platform API (nros deps)** | | | |
-| `nano-ros-platform-qemu` (after split) | **`nros-qemu`** | nros-core, nros-rmw | QEMU user API: `Publisher<M>`, `run_node()` |
-| `nano-ros-platform-esp32` (after split) | **`nros-esp32`** | nros-core, nros-rmw | ESP32 WiFi user API |
-| `nano-ros-platform-esp32-qemu` (after split) | **`nros-esp32-qemu`** | nros-core, nros-rmw | ESP32 QEMU user API |
-| `nano-ros-platform-stm32f4` (after split) | **`nros-stm32f4`** | nros-core, nros-rmw | STM32F4 user API |
-| **Removed** | | | |
-| `nano-ros-bsp-qemu` | REMOVED | — | Thin wrapper (11 lines) |
-| `nano-ros-bsp-esp32` | REMOVED | — | Thin wrapper (11 lines) |
-| `nano-ros-bsp-esp32-qemu` | REMOVED | — | Thin wrapper (11 lines) |
-| `nano-ros-bsp-stm32f4` | REMOVED | — | Thin wrapper (8 lines) |
-| **Drivers (unchanged)** | | | |
-| `lan9118-smoltcp` | `lan9118-smoltcp` | none | LAN9118 Ethernet driver |
-| `openeth-smoltcp` | `openeth-smoltcp` | none | OpenCores Ethernet driver |
+| Current                                      | New                             | nros deps?          | Role                                                      |
+|----------------------------------------------|---------------------------------|---------------------|-----------------------------------------------------------|
+| **Core (middleware-agnostic)**               |                                 |                     |                                                           |
+| `nano-ros`                                   | `nros`                          | —                   | Unified re-export crate                                   |
+| `nano-ros-core`                              | `nros-core`                     | —                   | Core types, traits                                        |
+| `nano-ros-serdes`                            | `nros-serdes`                   | —                   | CDR serialization                                         |
+| `nano-ros-macros`                            | `nros-macros`                   | —                   | `#[derive(RosMessage)]` proc macros                       |
+| `nano-ros-params`                            | `nros-params`                   | —                   | Parameter server                                          |
+| `nano-ros-transport`                         | **`nros-rmw`**                  | —                   | RMW abstraction traits                                    |
+| `nano-ros-node`                              | `nros-node`                     | —                   | High-level node API (desktop)                             |
+| `nano-ros-c`                                 | `nros-c`                        | —                   | C API (rclc-style)                                        |
+| **RMW zenoh glue**                           |                                 |                     |                                                           |
+| `nano-ros-transport-zenoh` + `shim.rs`       | **`nros-rmw-zenoh`**            | nros-rmw            | Maps zpico-sys to nros-rmw traits                         |
+| **Zenoh-pico internals (NO nros deps)**      |                                 |                     |                                                           |
+| `nano-ros-transport-zenoh-sys`               | **`zpico-sys`**                 | none                | FFI + C shim + zenoh-pico submodule                       |
+| `nano-ros-link-smoltcp`                      | **`zpico-smoltcp`**             | none                | TCP via smoltcp (`_z_open_tcp` etc.)                      |
+| NEW (split from platform crates)             | **`zpico-platform-qemu`**       | none                | System symbols for QEMU (727 lines)                       |
+| NEW (split from platform crates)             | **`zpico-platform-esp32`**      | none                | System symbols for ESP32                                  |
+| NEW (split from platform crates)             | **`zpico-platform-esp32-qemu`** | none                | System symbols for ESP32 QEMU                             |
+| NEW (split from platform crates)             | **`zpico-platform-stm32f4`**    | none                | System symbols for STM32F4                                |
+| `nano-ros-bsp-zephyr`                        | **`zpico-zephyr`**              | none                | Zephyr C integration (wraps zenoh_shim.h)                 |
+| **User-facing platform API (nros deps)**     |                                 |                     |                                                           |
+| `nano-ros-platform-qemu` (after split)       | **`nros-qemu`**                 | nros-core, nros-rmw | QEMU user API: `Publisher<M>`, `run_node()`               |
+| `nano-ros-platform-esp32` (after split)      | **`nros-esp32`**                | nros-core, nros-rmw | ESP32 WiFi user API                                       |
+| `nano-ros-platform-esp32-qemu` (after split) | **`nros-esp32-qemu`**           | nros-core, nros-rmw | ESP32 QEMU user API                                       |
+| `nano-ros-platform-stm32f4` (after split)    | **`nros-stm32f4`**              | nros-core, nros-rmw | STM32F4 user API                                          |
+| **Removed**                                  |                                 |                     |                                                           |
+| `nano-ros-bsp-qemu`                          | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
+| `nano-ros-bsp-esp32`                         | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
+| `nano-ros-bsp-esp32-qemu`                    | REMOVED                         | —                   | Thin wrapper (11 lines)                                   |
+| `nano-ros-bsp-stm32f4`                       | REMOVED                         | —                   | Thin wrapper (8 lines)                                    |
+| **Verification**                             |                                 |                     |                                                           |
+| `nano-ros-ghost-types`                       | `nros-ghost-types`              | none                | Ghost model types (shared between tests and Verus proofs) |
+| `nano-ros-verification`                      | `nros-verification`             | nros-*              | Verus deductive proofs (excluded from workspace)          |
+| **Drivers (unchanged)**                      |                                 |                     |                                                           |
+| `lan9118-smoltcp`                            | `lan9118-smoltcp`               | none                | LAN9118 Ethernet driver                                   |
+| `openeth-smoltcp`                            | `openeth-smoltcp`               | none                | OpenCores Ethernet driver                                 |
 
 ### Directory Layout
 
@@ -183,6 +188,9 @@ packages/
     rcl-interfaces/
   testing/                           # Test infrastructure
     nros-tests/
+  verification/                      # Formal verification
+    nros-ghost-types/                #   Ghost model types (workspace member)
+    nros-verification/               #   Verus proofs (excluded from workspace)
   codegen/                           # Message binding generator
 ```
 
@@ -251,23 +259,23 @@ nano-ros-platform-qemu (CURRENT: 1,314 lines, mixed)
 
 **What goes where:**
 
-| Module | zpico-platform-* | nros-* |
-|--------|-------------------|--------|
-| `memory.rs` (z_malloc, z_free) | ✅ | |
-| `clock.rs` (z_clock_now) | ✅ | |
-| `random.rs` (z_random_*) | ✅ | |
-| `sleep.rs` (z_sleep_*) | ✅ | |
-| `time.rs` (z_time_*) | ✅ | |
-| `threading.rs` (mutex/task stubs) | ✅ | |
-| `socket.rs` (socket stubs) | ✅ | |
-| `libc_stubs.rs` (strlen, memcpy) | ✅ | |
-| `config.rs` (Config, network settings) | | ✅ |
-| `error.rs` (Error enum) | | ✅ |
-| `timing.rs` (DWT cycle counter) | | ✅ |
-| `node.rs` (Node, run_node, keyexpr) | | ✅ |
-| `publisher.rs` (Publisher\<M\>) | | ✅ |
-| `subscriber.rs` (Subscription\<M\>) | | ✅ |
-| `lib.rs` (re-exports, prelude) | | ✅ |
+| Module                                 | zpico-platform-* | nros-* |
+|----------------------------------------|------------------|--------|
+| `memory.rs` (z_malloc, z_free)         | ✅               |        |
+| `clock.rs` (z_clock_now)               | ✅               |        |
+| `random.rs` (z_random_*)               | ✅               |        |
+| `sleep.rs` (z_sleep_*)                 | ✅               |        |
+| `time.rs` (z_time_*)                   | ✅               |        |
+| `threading.rs` (mutex/task stubs)      | ✅               |        |
+| `socket.rs` (socket stubs)             | ✅               |        |
+| `libc_stubs.rs` (strlen, memcpy)       | ✅               |        |
+| `config.rs` (Config, network settings) |                  | ✅     |
+| `error.rs` (Error enum)                |                  | ✅     |
+| `timing.rs` (DWT cycle counter)        |                  | ✅     |
+| `node.rs` (Node, run_node, keyexpr)    |                  | ✅     |
+| `publisher.rs` (Publisher\<M\>)        |                  | ✅     |
+| `subscriber.rs` (Subscription\<M\>)    |                  | ✅     |
+| `lib.rs` (re-exports, prelude)         |                  | ✅     |
 
 ### Zephyr BSP Classification
 
@@ -362,6 +370,53 @@ pub trait ServiceClient {
 
 ## Complexity Assessment: Adding Alternative Middleware
 
+### Adding XRCE-DDS (micro-ROS middleware)
+
+XRCE-DDS (DDS for eXtremely Resource Constrained Environments) is the middleware used by micro-ROS. It uses an agent-based model: a lightweight client library runs on the MCU and communicates with an agent process on a gateway host. The agent creates DDS entities on behalf of the client and bridges to the full DDS network.
+
+See `docs/reference/xrce-dds-analysis.md` for the full analysis (API mapping, platform requirements, feasibility).
+
+**New crates needed:**
+
+```
+packages/
+  xrce/                              # XRCE-DDS plumbing (like zpico/)
+    xrce-sys/                        #   FFI to Micro-XRCE-DDS-Client C library
+    xrce-smoltcp/                    #   UDP transport via smoltcp (4 callbacks)
+    xrce-platform-qemu/             #   Clock function for QEMU
+    nros-rmw-xrce/                   #   RMW glue: maps XRCE-DDS to nros-rmw traits
+```
+
+**Key differences from zenoh-pico:**
+
+| Aspect | zenoh-pico | XRCE-DDS |
+|--------|-----------|----------|
+| Bridge process | zenohd (generic router) | Agent (protocol translator) |
+| Entity creation | One call (`declare_publisher`) | Multi-step (participant + topic + publisher + datawriter) |
+| Client heap | Required (~16KB+) | **None** (fully static) |
+| Platform symbols | ~55 FFI exports | ~6 callbacks |
+| Transport impl | 8+ TCP socket functions | 4 callbacks (open/close/read/write) |
+
+**Protocol mapping:**
+
+| nros-rmw trait | XRCE-DDS operation |
+|---|---|
+| `Session::create_publisher` | 4 calls: create participant, topic, publisher, datawriter |
+| `Publisher::publish_raw` | `uxr_prepare_output_stream` + write bytes |
+| `Session::create_subscriber` | create datareader + `uxr_buffer_request_data` |
+| `Subscriber::try_recv_raw` | Read from callback-populated buffer |
+| `Session::spin_once` | `uxr_run_session_time(timeout)` |
+| `ServiceServer` | Replier pattern with callback buffers |
+| `ServiceClient::call_raw` | `uxr_buffer_request` + wait for reply |
+
+**Challenges:**
+- Agent is mandatory (operational complexity vs zenoh's optional router)
+- DDS entity hierarchy (participant > publisher > datawriter) adds internal complexity
+- Subscribing requires explicit `uxr_buffer_request_data` (vs zenoh's automatic data flow)
+- Board crates must be refactored to use nros-rmw traits before XRCE-DDS can work (Phase 34)
+
+**Estimated effort:** 5-6 weeks. See `docs/roadmap/phase-34-rmw-abstraction.md`.
+
 ### Adding MQTT-SN
 
 **New crates needed:**
@@ -408,16 +463,23 @@ For Linux/desktop targets, using the full Zenoh Rust library instead of zenoh-pi
 
 **Estimated effort:** 1-2 weeks. The zenoh Rust API maps directly to our traits.
 
+## Reference Documents
+
+- **RMW trait design inspiration**: `docs/reference/rmw-h-analysis.md` — Analysis of ROS 2's `rmw.h` for embedded, 6 limitations identified, what to adopt vs avoid
+- **XRCE-DDS feasibility**: `docs/reference/xrce-dds-analysis.md` — XRCE-DDS API analysis, platform requirements comparison, trait mapping
+- **Rename plan**: `docs/roadmap/phase-33-crate-rename.md` — Crate rename steps
+- **RMW abstraction plan**: `docs/roadmap/phase-34-rmw-abstraction.md` — Abstract RMW traits + XRCE-DDS integration
+
 ## Summary
 
 ### Three naming tiers
 
-| Tier | Prefix | nros deps? | Examples |
-|------|--------|------------|----------|
-| Core library | `nros-` | — | `nros-core`, `nros-rmw`, `nros-node` |
-| RMW glue | `nros-rmw-*` | nros-rmw | `nros-rmw-zenoh` |
-| Zenoh-pico plumbing | `zpico-` | none | `zpico-sys`, `zpico-smoltcp`, `zpico-platform-qemu` |
-| User-facing platforms | `nros-` | nros-core | `nros-qemu`, `nros-esp32` |
+| Tier                  | Prefix       | nros deps? | Examples                                            |
+|-----------------------|--------------|------------|-----------------------------------------------------|
+| Core library          | `nros-`      | —          | `nros-core`, `nros-rmw`, `nros-node`                |
+| RMW glue              | `nros-rmw-*` | nros-rmw   | `nros-rmw-zenoh`                                    |
+| Zenoh-pico plumbing   | `zpico-`     | none       | `zpico-sys`, `zpico-smoltcp`, `zpico-platform-qemu` |
+| User-facing platforms | `nros-`      | nros-core  | `nros-qemu`, `nros-esp32`                           |
 
 ### Key architectural decisions
 
