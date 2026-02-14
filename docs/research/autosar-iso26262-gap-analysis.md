@@ -318,6 +318,75 @@ P9 (HARA) ──→ P8 (Safety case)
 
 nano-ros's technical position is unusually strong for an open-source embedded project — the combination of 67 unbounded proofs, 82 bounded proofs, UB detection, and `no_std` architecture is competitive with commercial safety stacks. The remaining gaps are primarily process artifacts (HARA, safety case, traceability) and ecosystem dependencies (certified Rust compiler, certified MCU).
 
+## 11. Recommended Hardware Platform
+
+### Selection Criteria
+
+The target MCU must satisfy:
+1. **ASIL D capable** — lockstep cores, safety-certified silicon
+2. **ARM Cortex-M** — same architecture as current nano-ros STM32F4 port (`thumbv7em` target)
+3. **Rust-compatible** — stable Rust target triple, standard `cargo build`
+4. **Accessible** — dev boards available, free toolchain, reasonable cost
+5. **Zephyr support** — upstream board definition for near-term RTOS path
+
+### Platform Comparison
+
+| Criterion | NXP S32K344 | TI TMS570LS12x | Infineon AURIX TC375 | Renesas RH850 | NXP S32K144 |
+|-----------|-------------|----------------|---------------------|---------------|-------------|
+| **Core** | Cortex-M7 160 MHz | Cortex-R4F 180 MHz | TriCore 300 MHz | V850E3 400 MHz | Cortex-M4F 112 MHz |
+| **Safety** | **ASIL D** | **ASIL D / SIL 3** | **ASIL D** | **ASIL D** | ASIL B |
+| **Lockstep** | Yes (configurable) | Yes (always-on) | Yes (1 of 3 cores) | Yes | No |
+| **Rust target** | `thumbv7em` (stable) | `armebv7r` (nightly, BE) | None (proprietary) | None | `thumbv7em` (stable) |
+| **PAC on crates.io** | No (SVD available) | No | GitHub only | No | **Yes** (`s32k144-pac`) |
+| **Dev board cost** | ~$179 (MR-CANHUBK344) | ~$20-60 (LaunchPad) | ~$169 (ShieldBuddy) | ~$480 | ~$114 (EVB) |
+| **Free toolchain** | Yes (GCC ARM) | Yes (GCC ARM) | No (HighTec commercial) | Limited | Yes (GCC ARM) |
+| **Zephyr upstream** | **Yes** (MR-CANHUBK3) | No | No | No | **Yes** (S32K148EVB) |
+| **Distance from STM32F4** | Close (M7 vs M4) | Moderate (big-endian) | Incompatible (TriCore) | Incompatible (V850) | **Nearest** (same M4F) |
+
+### Recommendation: NXP S32K3 (S32K344)
+
+**Primary target for ASIL D production.** The S32K344 is the most practical path from nano-ros's current STM32F4 platform to a safety-certified automotive MCU:
+
+- **Same Rust target**: `thumbv7em-none-eabihf` — all nano-ros core code compiles unmodified
+- **ASIL D lockstep**: Dual Cortex-M7 with hardware comparison; FCCU (Fault Collection and Control Unit) fires on mismatch
+- **Automotive I/O**: 6x CAN-FD + 100BASE-T1 Ethernet on MR-CANHUBK344 board — directly relevant to Autoware vehicle bus
+- **Zephyr upstream**: MR-CANHUBK3 board has full Zephyr support, matching nano-ros's Zephyr BSP path
+- **NXP AUTOSAR MCAL**: Production-grade peripheral drivers available (C, for reference)
+
+**What's needed for S32K3 support:**
+1. Generate PAC from NXP SVD files using `svd2rust` (NXP provides CMSIS-Pack SVDs)
+2. Create `nano-ros-platform-s32k3` BSP crate (same pattern as `nano-ros-platform-stm32f4`)
+3. Write minimal HAL for GPIO, UART, Ethernet (or use Zephyr for peripheral access)
+
+### Stepping Stone: NXP S32K144
+
+**For ecosystem validation before committing to S32K3:**
+
+- **Identical architecture**: Cortex-M4F — same as STM32F4, same Rust target
+- **PAC exists**: `s32k144-pac` on crates.io (SVD-generated, community-maintained)
+- **ASIL B**: No lockstep, but adequate for body electronics validation
+- **Lower cost**: ~$114 dev board
+- **Same NXP peripheral model**: FlexCAN, LPSPI, LPUART — validates NXP driver patterns before S32K3
+
+### Platforms to Avoid
+
+| Platform | Reason |
+|----------|--------|
+| **TI TMS570** | Big-endian (Cortex-R4F in BE32 mode). Rust BE targets are Tier 3 (nightly only). nano-ros CDR serialization is little-endian — byte swapping would be needed throughout. Practical deal-breaker. |
+| **Renesas RH850** | Proprietary V850 ISA with no LLVM backend. No Rust target triple exists. Dead end for Rust. |
+| **Infineon AURIX** | TriCore ISA requires HighTec's proprietary Rust compiler (commercial license). Cannot use standard `cargo build`. Interesting long-term if LLVM gains TriCore support, but impractical for open-source work today. |
+
+### Migration Path
+
+```
+STM32F4 (current, QM, development)
+  → S32K144 (validate NXP ecosystem, ASIL B, PAC exists)
+    → S32K344 (production target, ASIL D, lockstep)
+      → S32K344 + Ferrocene (certified Rust compiler, full ASIL D stack)
+```
+
+The S32K family maintains the ARM Cortex-M ecosystem throughout — same Rust target, same Zephyr support, same JTAG/SWD debugging. The Ferrocene-qualified Rust toolchain (supporting Cortex-M7) could eventually provide the certified compilation step for ISO 26262 Part 8 tool qualification.
+
 ## References
 
 - ISO 26262:2018 Parts 1-12 — Road vehicles, Functional safety
@@ -327,3 +396,5 @@ nano-ros's technical position is unusually strong for an open-source embedded pr
 - DO-178C — Software Considerations in Airborne Systems and Equipment Certification
 - Ferrocene Language Specification — https://spec.ferrocene.dev/
 - rust-lang/rust#124032 — MC/DC instrumentation tracking issue
+- NXP S32K3 Product Page — https://www.nxp.com/products/processors-and-microcontrollers/s32-automotive-platform/s32k-auto-general-purpose-mcus
+- NXP MR-CANHUBK344 — https://www.nxp.com/design/design-center/development-boards-and-designs/automotive-development-platforms/s32k-mcu-platforms/s32k344-evaluation-board-for-mobile-robotics-with-100baset1-and-six-can-fd:MR-CANHUBK344
