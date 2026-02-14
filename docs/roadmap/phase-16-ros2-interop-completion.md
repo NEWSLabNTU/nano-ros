@@ -56,17 +56,17 @@ nros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_std`
 | Feature    | nros → nros | nros → ROS 2 | ROS 2 → nros |
 |------------|---------------------|------------------|------------------|
 | Pub/Sub    | ✅ Working          | ✅ Working        | ✅ Working        |
-| Services   | ✅ Working          | ⚠️ Partial        | ⚠️ Partial        |
-| Actions    | ✅ Working          | ⚠️ Partial        | ⚠️ Partial        |
-| Parameters | ✅ Working          | ⚠️ Untested       | ⚠️ Untested       |
-| Discovery  | N/A                 | ❌ Not Working   | ❌ Not Working   |
+| Services   | ✅ Working          | ✅ Working        | ✅ Working        |
+| Actions    | ✅ Working          | ✅ Working        | ✅ Working        |
+| Parameters | ✅ Working          | ✅ Working        | ✅ Working        |
+| Discovery  | N/A                 | ✅ Working        | ✅ Working        |
 
-### Root Causes
+### Root Causes (all resolved)
 
-1. **Discovery**: nros publishes liveliness tokens, but `ros2 node/topic/service list` does not see them. Likely liveliness token format or QoS metadata mismatch.
+1. ~~**Discovery**: nros publishes liveliness tokens, but `ros2 node/topic/service list` does not see them~~ → **RESOLVED**: Liveliness tokens now generated for all entity types (nodes, publishers, subscribers, service servers/clients, action components)
 2. ~~**Parameters**: ROS 2 parameter services not implemented~~ → **RESOLVED**: Parameter service servers now registered and processed during spin
-3. **Services**: `ros2 service call` sends request to nros server but receives no response. nros service client gets `ConnectionFailed` calling ROS 2 server. Service keyexpr or request/reply protocol mismatch suspected.
-4. **Actions**: `ros2 action send_goal` waits indefinitely for nros action server. nros action client gets `ConnectionFailed` calling ROS 2 action server. Discovery dependency (action relies on service discovery) likely involved.
+3. ~~**Services**: `ros2 service call` sends request to nros server but receives no response~~ → **RESOLVED**: Service and action interop fixed (commit d2627b6)
+4. ~~**Actions**: `ros2 action send_goal` waits indefinitely for nros action server~~ → **RESOLVED**: Action interop fixed alongside service interop
 5. ~~**QoS**: Hardcoded BEST_EFFORT in liveliness tokens regardless of actual settings~~ → **RESOLVED**: `to_qos_string()` generates correct QoS encoding
 
 ---
@@ -789,7 +789,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 **Passing Criteria**:
 - [x] RELIABLE publisher generates `1:...` in liveliness token
 - [x] BEST_EFFORT publisher generates `2:...` in liveliness token
-- [ ] ROS 2 `ros2 topic info` shows correct QoS (TODO: integration test)
+- [x] ROS 2 `ros2 topic info` shows correct QoS (integration test in `qos.rs`)
 
 ---
 
@@ -838,9 +838,9 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - [x] `register_parameter_services()` creates 6 service servers with correct names
 - [x] Parameter services processed during executor `spin_once()`
 - [x] `just quality` passes with all changes
-- [ ] `ros2 param list <node>` shows nros parameters (TODO: integration test)
-- [ ] `ros2 param get <node> <param>` returns correct value (TODO: integration test)
-- [ ] `ros2 param set <node> <param> <value>` updates parameter (TODO: integration test)
+- [x] `ros2 param list <node>` shows nros parameters (integration test in `params.rs`)
+- [x] `ros2 param get <node> <param>` returns correct value (integration test in `params.rs`)
+- [x] `ros2 param set <node> <param> <value>` updates parameter (integration test in `params.rs`)
 
 ---
 
@@ -854,7 +854,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - [x] Add liveliness tokens for service servers and clients in `create_service_sized()` and `create_client_sized()`
 - [x] Add liveliness tokens for action server components (3 SS + 2 MP)
 - [x] Add liveliness tokens for action client components (3 SC + 2 MS)
-- [ ] Test with ROS 2 action client/server (TODO: integration test)
+- [x] Test with ROS 2 action client/server (integration tests in `rmw_interop.rs`)
 
 **Implementation Notes**:
 - `Ros2Liveliness::service_server_keyexpr()` - format: `@ros2_lv/<domain>/<zid>/0/11/SS/%/%/<node>/<service>/<type>/<hash>/<qos>`
@@ -869,9 +869,9 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - [x] Service clients declare SC liveliness tokens
 - [x] Action servers declare all 5 component liveliness tokens
 - [x] Action clients declare all 5 component liveliness tokens
-- [ ] `ros2 action list` shows nros action servers (TODO: integration test)
-- [ ] `ros2 action send_goal` invokes nros action server (TODO: integration test)
-- [ ] nros action client can call ROS 2 action server (TODO: integration test)
+- [x] `ros2 action list` shows nros action servers (integration test in `rmw_interop.rs`)
+- [x] `ros2 action send_goal` invokes nros action server (integration test in `rmw_interop.rs`)
+- [x] nros action client can call ROS 2 action server (integration test in `rmw_interop.rs`)
 
 ---
 
@@ -1016,11 +1016,11 @@ Currently nros serializes this attachment when publishing but doesn't deserializ
 **Passing Criteria**:
 - [x] All 42 unit tests pass
 - [x] Protocol formats match rmw_zenoh_cpp specifications
-- [ ] `ros2 node list` shows nros nodes
-- [ ] `ros2 node info <node>` shows correct publishers/subscribers
-- [ ] Bidirectional pub/sub works at all QoS combinations
-- [ ] Services work bidirectionally
-- [ ] Discovery is reliable (no missing nodes/topics)
+- [x] `ros2 node list` shows nros nodes (integration test in `rmw_interop.rs`)
+- [x] `ros2 node info <node>` shows correct publishers/subscribers (integration test in `rmw_interop.rs`)
+- [x] Bidirectional pub/sub works at all QoS combinations (integration test in `qos.rs`)
+- [x] Services work bidirectionally (integration test in `rmw_interop.rs`)
+- [x] Discovery is reliable (integration tests for node/topic/service discovery)
 
 ---
 
@@ -1084,15 +1084,15 @@ discovery - topics, services
 | nros → nros pub/sub                     | ✅     |
 | `ros2 topic echo` receives nros messages    | ✅     |
 | nros subscriber receives `ros2 topic pub`   | ✅     |
-| `ros2 topic list` shows nros publishers     | ❌     |
-| `ros2 service list` shows nros services     | ❌     |
-| `ros2 service call` invokes nros server     | ⚠️ Sends request, no response |
-| nros client calls ROS 2 service             | ❌ ConnectionFailed |
-| `ros2 action list` shows nros actions       | ⬜     |
-| `ros2 action send_goal` invokes nros server | ❌ Waits for server |
-| nros client calls ROS 2 action server       | ❌ ConnectionFailed |
-| `ros2 param list` shows nros parameters     | ⬜     |
-| `ros2 param get/set` works with nros        | ⬜     |
+| `ros2 topic list` shows nros publishers     | ✅     |
+| `ros2 service list` shows nros services     | ✅     |
+| `ros2 service call` invokes nros server     | ✅     |
+| nros client calls ROS 2 service             | ✅     |
+| `ros2 action list` shows nros actions       | ✅     |
+| `ros2 action send_goal` invokes nros server | ✅     |
+| nros client calls ROS 2 action server       | ✅     |
+| `ros2 param list` shows nros parameters     | ✅     |
+| `ros2 param get/set` works with nros        | ✅     |
 
 ### MessageInfo / Attachment Tests
 
@@ -1103,8 +1103,8 @@ discovery - topics, services
 | Attachment parsing extracts GID correctly             | ✅     |
 | MessageInfo populated from nros publisher         | ✅     |
 | MessageInfo populated from ROS 2 publisher            | ✅     |
-| Sequence numbers increment correctly per-publisher    | ⬜     |
-| GID is consistent across messages from same publisher | ⬜     |
+| Sequence numbers increment correctly per-publisher    | ✅     |
+| GID is consistent across messages from same publisher | ✅     |
 
 ### Protocol Format Tests
 
@@ -1132,8 +1132,8 @@ discovery - topics, services
 | Rust: `node.create_service()` matches rclrs         | ✅     |
 | Rust: `node.create_client()` matches rclrs          | ✅     |
 | Rust: `ParameterBuilder` API matches rclrs          | ✅     |
-| C: `nano_ros_*_get_zero_initialized()` works        | ⬜     |
-| C: `nano_ros_*_init_default()` works                | ⬜     |
+| C: `nano_ros_*_get_zero_initialized()` works        | ✅     |
+| C: `nano_ros_*_init_default()` works                | ✅     |
 | C: `nano_ros_executor_init()` pre-allocates handles | ✅     |
 | C: `nano_ros_executor_spin_some()` works            | ✅     |
 | C: Context callbacks work correctly                 | ✅     |

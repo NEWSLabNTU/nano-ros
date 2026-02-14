@@ -150,11 +150,10 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
     if listener
         .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
         .is_err()
+        && !listener.is_running()
     {
-        if !listener.is_running() {
-            eprintln!("[INFO] Listener exited early - peer mode may not be supported");
-            return;
-        }
+        eprintln!("[INFO] Listener exited early - peer mode may not be supported");
+        return;
     }
 
     // Start talker in peer mode
@@ -195,6 +194,181 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
         eprintln!("[INFO] No messages received - peer discovery may require multicast support");
         eprintln!("[INFO] This is expected on some network configurations");
     }
+}
+
+// =============================================================================
+// MessageInfo Tests (sequence number, GID)
+// =============================================================================
+
+/// Test that sequence numbers increment monotonically per publisher
+#[rstest]
+fn test_sequence_number_increment(
+    zenohd_unique: ZenohRouter,
+    talker_binary: PathBuf,
+    listener_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_zenohd() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start listener with RUST_LOG=trace to get MessageInfo trace output
+    let mut listener_cmd = Command::new(&listener_binary);
+    listener_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "trace");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+        .expect("Failed to start listener");
+
+    // Wait for listener readiness
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
+
+    // Start talker
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    // Wait for several messages to be received
+    std::thread::sleep(Duration::from_secs(6));
+
+    // Kill processes and collect output
+    talker.kill();
+    listener.kill();
+    let listener_output = listener
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    eprintln!("Listener trace output:\n{}", listener_output);
+
+    // Parse seq= values from trace output
+    let seq_values: Vec<i64> = listener_output
+        .lines()
+        .filter_map(|line| {
+            if let Some(pos) = line.find("seq=") {
+                let rest = &line[pos + 4..];
+                let end = rest.find(' ').unwrap_or(rest.len());
+                rest[..end].parse::<i64>().ok()
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    eprintln!("Parsed sequence numbers: {:?}", seq_values);
+
+    assert!(
+        seq_values.len() >= 2,
+        "Need at least 2 sequence numbers to verify increment, got {}",
+        seq_values.len()
+    );
+
+    // Verify monotonic increment
+    for window in seq_values.windows(2) {
+        assert!(
+            window[1] > window[0],
+            "Sequence numbers should increment: {} should be > {}",
+            window[1],
+            window[0]
+        );
+    }
+
+    eprintln!(
+        "[PASS] Sequence numbers increment monotonically ({} messages)",
+        seq_values.len()
+    );
+}
+
+/// Test that publisher GID stays consistent across messages
+#[rstest]
+fn test_gid_consistency(
+    zenohd_unique: ZenohRouter,
+    talker_binary: PathBuf,
+    listener_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_zenohd() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Start listener with RUST_LOG=trace to get MessageInfo trace output
+    let mut listener_cmd = Command::new(&listener_binary);
+    listener_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "trace");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+        .expect("Failed to start listener");
+
+    // Wait for listener readiness
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
+
+    // Start talker
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd.env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    // Wait for several messages to be received
+    std::thread::sleep(Duration::from_secs(6));
+
+    // Kill processes and collect output
+    talker.kill();
+    listener.kill();
+    let listener_output = listener
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    eprintln!("Listener trace output:\n{}", listener_output);
+
+    // Parse gid= values from trace output
+    let gid_values: Vec<String> = listener_output
+        .lines()
+        .filter_map(|line| {
+            if let Some(pos) = line.find("gid=") {
+                let rest = &line[pos + 4..];
+                let end = rest.find(' ').unwrap_or(rest.len());
+                Some(rest[..end].to_string())
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    eprintln!("Parsed GIDs: {:?}", gid_values);
+
+    assert!(
+        gid_values.len() >= 2,
+        "Need at least 2 GID values to verify consistency, got {}",
+        gid_values.len()
+    );
+
+    // Verify all GIDs are identical
+    let first_gid = &gid_values[0];
+    for (i, gid) in gid_values.iter().enumerate() {
+        assert_eq!(
+            gid, first_gid,
+            "GID at message {} ({}) should match first GID ({})",
+            i, gid, first_gid
+        );
+    }
+
+    // Verify GID is not all zeros (should be a real publisher ID)
+    assert_ne!(
+        first_gid, "00000000",
+        "GID should not be all zeros (should contain real publisher ID)"
+    );
+
+    eprintln!(
+        "[PASS] Publisher GID is consistent across {} messages: {}",
+        gid_values.len(),
+        first_gid
+    );
 }
 
 // =============================================================================

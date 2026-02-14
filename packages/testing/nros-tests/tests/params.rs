@@ -2,8 +2,7 @@
 //!
 //! Tests for parameter declaration, get/set, and ROS 2 interoperability.
 //!
-//! Run with: `cargo test -p nano-ros-tests --test params -- --nocapture`
-//! Or: `just test-rust-params`
+//! Run with: `cargo nextest run -p nros-tests --test params`
 
 use nros_tests::fixtures::{
     ManagedProcess, ZenohRouter, build_native_talker, require_ros2, require_zenohd, zenohd_unique,
@@ -125,6 +124,46 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
 // ROS 2 Parameter Interop Tests (requires ROS 2 + rmw_zenoh_cpp)
 // =============================================================================
 
+/// Helper to start a talker and wait for parameter services to register
+fn start_talker_with_params(locator: &str) -> ManagedProcess {
+    let binary = build_native_talker().expect("Failed to build");
+
+    let mut cmd = Command::new(binary);
+    cmd.env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", locator)
+        .env("ZENOH_MODE", "client");
+
+    let mut talker = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
+
+    // Wait for talker to start publishing (ensures parameter services are registered)
+    let _ = talker.wait_for_output_pattern("Publishing", Duration::from_secs(5));
+
+    // Extra delay for parameter service discovery propagation through zenohd
+    std::thread::sleep(Duration::from_secs(2));
+
+    talker
+}
+
+/// Verify the nros node is discoverable via `ros2 node list`.
+/// Returns true if discoverable, false otherwise (prints skip message).
+fn require_node_discoverable(locator: &str) -> bool {
+    for attempt in 1..=3 {
+        if let Ok(output) = nros_tests::ros2::ros2_node_list(locator, "humble")
+            && output.contains("/demo/talker")
+        {
+            return true;
+        }
+        if attempt < 3 {
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    }
+    eprintln!(
+        "Skipping test: nros node /demo/talker not discoverable via ros2 \
+         (may be zenohd version mismatch or rmw_zenoh configuration issue)"
+    );
+    false
+}
+
 /// Test that ROS 2 can list parameters on nros node
 #[rstest]
 fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
@@ -132,63 +171,36 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
         return;
     }
 
-    let binary = build_native_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
+    let _talker = start_talker_with_params(&locator);
 
-    // Start nros talker
-    let mut talker_cmd = Command::new(binary);
-    talker_cmd
-        .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
-
-    let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
-
-    // Give talker time to start and register parameter services
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Run ros2 param list
-    let ros2_output = Command::new("bash")
-        .args([
-            "-c",
-            &format!(
-                "source /opt/ros/humble/setup.bash && \
-                 export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
-                 export ZENOH_ROUTER_CHECK_ATTEMPTS=1 && \
-                 timeout 10 ros2 param list /demo/talker 2>&1 || true"
-            ),
-        ])
-        .env("ZENOH_LOCATOR", &locator)
-        .output()
-        .expect("Failed to run ros2 param list");
-
-    let ros2_stdout = String::from_utf8_lossy(&ros2_output.stdout);
-    let ros2_stderr = String::from_utf8_lossy(&ros2_output.stderr);
-
-    println!("=== ros2 param list output ===");
-    println!("stdout: {}", ros2_stdout);
-    println!("stderr: {}", ros2_stderr);
-
-    // Get talker output for debugging
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    println!("=== Talker output ===");
-    println!("{}", talker_output);
-
-    // Check if ROS 2 found the node and its parameters
-    // Note: This may fail if parameter services aren't fully registered
-    let found_params = ros2_stdout.contains("start_value") || ros2_stdout.contains("use_sim_time"); // ROS 2 default param
-
-    if found_params {
-        println!("SUCCESS: ROS 2 can list nros parameters");
-    } else {
-        println!(
-            "INFO: ROS 2 param list didn't find parameters (parameter services may not be registered)"
-        );
-        // Don't fail - parameter services may not be fully implemented for interop
+    if !require_node_discoverable(&locator) {
+        return;
     }
+
+    // Retry up to 3 times since parameter services need discovery time
+    let mut ros2_stdout = String::new();
+    for attempt in 1..=3 {
+        ros2_stdout = nros_tests::ros2::ros2_param_list("/demo/talker", &locator, "humble")
+            .expect("Failed to run ros2 param list");
+
+        println!("=== ros2 param list attempt {} ===", attempt);
+        println!("{}", ros2_stdout);
+
+        if ros2_stdout.contains("start_value") {
+            break;
+        }
+
+        if attempt < 3 {
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    }
+
+    assert!(
+        ros2_stdout.contains("start_value"),
+        "ros2 param list should show 'start_value' parameter. Output:\n{}",
+        ros2_stdout
+    );
 }
 
 /// Test that ROS 2 can get parameter value from nros node
@@ -198,61 +210,80 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
         return;
     }
 
-    let binary = build_native_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
+    let _talker = start_talker_with_params(&locator);
 
-    // Start nros talker
-    let mut talker_cmd = Command::new(binary);
-    talker_cmd
-        .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
-
-    let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
-
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Run ros2 param get
-    let ros2_output = Command::new("bash")
-        .args([
-            "-c",
-            &format!(
-                "source /opt/ros/humble/setup.bash && \
-                 export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
-                 export ZENOH_ROUTER_CHECK_ATTEMPTS=1 && \
-                 timeout 10 ros2 param get /demo/talker start_value 2>&1 || true"
-            ),
-        ])
-        .env("ZENOH_LOCATOR", &locator)
-        .output()
-        .expect("Failed to run ros2 param get");
-
-    let ros2_stdout = String::from_utf8_lossy(&ros2_output.stdout);
-    let ros2_stderr = String::from_utf8_lossy(&ros2_output.stderr);
-
-    println!("=== ros2 param get output ===");
-    println!("stdout: {}", ros2_stdout);
-    println!("stderr: {}", ros2_stderr);
-
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    println!("=== Talker output ===");
-    println!("{}", talker_output);
-
-    // Check if ROS 2 got the parameter value
-    let got_value = ros2_stdout.contains("Integer value is: 0")
-        || ros2_stdout.contains("0")
-        || ros2_stdout.contains("start_value");
-
-    if got_value && !ros2_stdout.contains("error") && !ros2_stdout.contains("not found") {
-        println!("SUCCESS: ROS 2 can get nros parameter value");
-    } else {
-        println!(
-            "INFO: ROS 2 param get didn't retrieve value (parameter services may not be registered)"
-        );
+    if !require_node_discoverable(&locator) {
+        return;
     }
+
+    // Retry up to 3 times for discovery
+    let mut ros2_stdout = String::new();
+    for attempt in 1..=3 {
+        ros2_stdout =
+            nros_tests::ros2::ros2_param_get("/demo/talker", "start_value", &locator, "humble")
+                .expect("Failed to run ros2 param get");
+
+        println!("=== ros2 param get attempt {} ===", attempt);
+        println!("{}", ros2_stdout);
+
+        if ros2_stdout.contains("Integer value is: 0") {
+            break;
+        }
+
+        if attempt < 3 {
+            std::thread::sleep(Duration::from_secs(2));
+        }
+    }
+
+    assert!(
+        ros2_stdout.contains("Integer value is: 0"),
+        "ros2 param get should show 'Integer value is: 0'. Output:\n{}",
+        ros2_stdout
+    );
+}
+
+/// Test that ROS 2 can set and read back a parameter on nros node
+#[rstest]
+fn test_ros2_param_set(zenohd_unique: ZenohRouter) {
+    if !require_zenohd() || !require_ros2() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+    let _talker = start_talker_with_params(&locator);
+
+    if !require_node_discoverable(&locator) {
+        return;
+    }
+
+    // Set start_value to 42
+    let set_output =
+        nros_tests::ros2::ros2_param_set("/demo/talker", "start_value", "42", &locator, "humble")
+            .expect("Failed to run ros2 param set");
+
+    println!("=== ros2 param set output ===");
+    println!("{}", set_output);
+
+    assert!(
+        set_output.contains("Set parameter successful"),
+        "ros2 param set should succeed. Output:\n{}",
+        set_output
+    );
+
+    // Read back to verify
+    let get_output =
+        nros_tests::ros2::ros2_param_get("/demo/talker", "start_value", &locator, "humble")
+            .expect("Failed to run ros2 param get");
+
+    println!("=== ros2 param get (after set) output ===");
+    println!("{}", get_output);
+
+    assert!(
+        get_output.contains("Integer value is: 42"),
+        "ros2 param get should show updated value 42. Output:\n{}",
+        get_output
+    );
 }
 
 /// Test that ROS 2 can describe parameter on nros node
@@ -262,61 +293,43 @@ fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
         return;
     }
 
-    let binary = build_native_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
+    let _talker = start_talker_with_params(&locator);
 
-    // Start nros talker
-    let mut talker_cmd = Command::new(binary);
-    talker_cmd
-        .env("RUST_LOG", "info")
-        .env("ZENOH_LOCATOR", &locator)
-        .env("ZENOH_MODE", "client");
+    if !require_node_discoverable(&locator) {
+        return;
+    }
 
-    let mut talker =
-        ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
-
-    std::thread::sleep(Duration::from_secs(3));
-
-    // Run ros2 param describe
-    let ros2_output = Command::new("bash")
-        .args([
-            "-c",
-            &format!(
-                "source /opt/ros/humble/setup.bash && \
-                 export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
-                 export ZENOH_ROUTER_CHECK_ATTEMPTS=1 && \
-                 timeout 10 ros2 param describe /demo/talker start_value 2>&1 || true"
-            ),
-        ])
-        .env("ZENOH_LOCATOR", &locator)
-        .output()
+    // Retry up to 3 times for discovery
+    let mut ros2_stdout = String::new();
+    for attempt in 1..=3 {
+        ros2_stdout = nros_tests::ros2::ros2_param_describe(
+            "/demo/talker",
+            "start_value",
+            &locator,
+            "humble",
+        )
         .expect("Failed to run ros2 param describe");
 
-    let ros2_stdout = String::from_utf8_lossy(&ros2_output.stdout);
-    let ros2_stderr = String::from_utf8_lossy(&ros2_output.stderr);
+        println!("=== ros2 param describe attempt {} ===", attempt);
+        println!("{}", ros2_stdout);
 
-    println!("=== ros2 param describe output ===");
-    println!("stdout: {}", ros2_stdout);
-    println!("stderr: {}", ros2_stderr);
+        if ros2_stdout.contains("Type: integer") || ros2_stdout.contains("integer") {
+            break;
+        }
 
-    let talker_output = talker
-        .wait_for_output(Duration::from_secs(2))
-        .unwrap_or_default();
-    println!("=== Talker output ===");
-    println!("{}", talker_output);
-
-    // Check if ROS 2 got the parameter description
-    let got_description = ros2_stdout.contains("Description:")
-        || ros2_stdout.contains("Initial value")
-        || ros2_stdout.contains("integer");
-
-    if got_description {
-        println!("SUCCESS: ROS 2 can describe nros parameter");
-    } else {
-        println!(
-            "INFO: ROS 2 param describe didn't get description (parameter services may not be registered)"
-        );
+        if attempt < 3 {
+            std::thread::sleep(Duration::from_secs(2));
+        }
     }
+
+    assert!(
+        ros2_stdout.contains("Type: integer")
+            || ros2_stdout.contains("integer")
+            || ros2_stdout.contains("Description:"),
+        "ros2 param describe should show parameter type info. Output:\n{}",
+        ros2_stdout
+    );
 }
 
 // =============================================================================

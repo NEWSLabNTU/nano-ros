@@ -304,6 +304,76 @@ pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResul
     Ok(String::from_utf8_lossy(&output.stdout).to_string())
 }
 
+/// Run `ros2 param list` for a specific node
+pub fn ros2_param_list(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let cmd = format!("{env_setup} && timeout 15 ros2 param list {node_name} 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 param list: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run `ros2 param get` for a specific parameter on a node
+pub fn ros2_param_get(
+    node_name: &str,
+    param_name: &str,
+    locator: &str,
+    distro: &str,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let cmd = format!("{env_setup} && timeout 15 ros2 param get {node_name} {param_name} 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 param get: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run `ros2 param set` to set a parameter on a node
+pub fn ros2_param_set(
+    node_name: &str,
+    param_name: &str,
+    value: &str,
+    locator: &str,
+    distro: &str,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let cmd =
+        format!("{env_setup} && timeout 15 ros2 param set {node_name} {param_name} {value} 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 param set: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
+/// Run `ros2 param describe` for a specific parameter on a node
+pub fn ros2_param_describe(
+    node_name: &str,
+    param_name: &str,
+    locator: &str,
+    distro: &str,
+) -> TestResult<String> {
+    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let cmd =
+        format!("{env_setup} && timeout 15 ros2 param describe {node_name} {param_name} 2>&1");
+
+    let output = Command::new("bash")
+        .args(["-c", &cmd])
+        .output()
+        .map_err(|e| TestError::ProcessFailed(format!("Failed to run ros2 param describe: {e}")))?;
+
+    Ok(String::from_utf8_lossy(&output.stdout).to_string())
+}
+
 /// Run `ros2 topic info` for a specific topic
 pub fn ros2_topic_info(topic: &str, locator: &str, distro: &str) -> TestResult<String> {
     let env_setup = ros2_env_setup_with_locator(distro, locator);

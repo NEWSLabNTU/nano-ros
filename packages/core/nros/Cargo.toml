@@ -30,6 +30,9 @@ zenoh = [
     "nros-rmw-zenoh/platform-posix",
 ]
 
+# Parameter services for ROS 2 interop (ros2 param list/get/set)
+param-services = ["nros-node/param-services"]
+
 # ROS edition feature flags
 ros-humble = ["nros-node/ros-humble"]
 ros-iron = ["nros-node/ros-iron"]

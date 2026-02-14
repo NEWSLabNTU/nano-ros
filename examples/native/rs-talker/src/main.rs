@@ -78,6 +78,13 @@ fn main() {
 
     info!("Counter start value: {}", counter_start_value);
 
+    // Register parameter services so ros2 param list/get/set works
+    if let Err(e) = node.register_parameter_services() {
+        error!("Failed to register parameter services: {:?}", e);
+    } else {
+        info!("Parameter services registered");
+    }
+
     // Create a publisher for Int32 messages on /chatter topic
     // Using /chatter to match ROS 2 demo_nodes_cpp talker
     let publisher = match node
