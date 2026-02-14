@@ -1,6 +1,6 @@
 # Phase 34: RMW Abstraction & XRCE-DDS Integration
 
-**Status: In Progress** (34.1, 34.2, 34.3, 34.4, 34.5, 34.6 complete)
+**Status: In Progress** (34.1, 34.2, 34.3, 34.4, 34.5, 34.6, 34.7 complete)
 
 **Prerequisites:** Phase 33 (crate rename + platform split) is complete. Phase 34.1-34.3 (RMW traits + zenoh impl + board refactor) are complete.
 
@@ -294,38 +294,39 @@ Maps XRCE-DDS entities to `nros-rmw` traits. This is the core complexity — orc
 
 ---
 
-### 34.7: Create `xrce-platform-qemu` (bare-metal platform support)
+### 34.7: Create `xrce-platform-mps2-an385` (bare-metal platform support)
 
-**Directory:** `packages/xrce/xrce-platform-qemu/`
+**Directory:** `packages/xrce/xrce-platform-mps2-an385/`
 
-Provides the **single platform symbol** needed by XRCE-DDS on bare-metal: `clock_gettime()` for `uxr_nanos()` in `time.c`.
+Provides the platform symbols needed by XRCE-DDS on bare-metal. Since `time.c` is skipped for bare-metal builds (see `xrce-sys/build.rs`), the platform crate provides `uxr_millis()` and `uxr_nanos()` directly, plus `smoltcp_clock_now_ms()` for the transport layer.
 
-This is dramatically simpler than zpico-platform-mps2-an385 (1 symbol vs 55):
+This is dramatically simpler than zpico-platform-mps2-an385 (3 symbols vs 55):
 
-| | zpico-platform-mps2-an385 | xrce-platform-qemu |
-|---|---|---|
-| Memory | z_malloc, z_free, z_realloc | **None** (fully static) |
-| Clock | z_clock_now + 6 time functions | `clock_gettime` only |
-| Random | z_random_u8/u16/u32/u64/fill | **None** |
-| Sleep | z_sleep_us/ms/s | **None** |
-| Threading | 23 mutex/condvar/task stubs | **None** |
-| Sockets | TCP open/close/read/send stubs | **None** (custom transport) |
-| libc | strlen, memcpy, strtoul, snprintf, ... | `memcpy`, `memset`, `strlen` (from compiler builtins or newlib) |
-| **Total** | **~55 symbols** | **1 symbol** |
+|           | zpico-platform-mps2-an385              | xrce-platform-mps2-an385                                       |
+|-----------|----------------------------------------|-----------------------------------------------------------------|
+| Memory    | z_malloc, z_free, z_realloc            | **None** (fully static)                                         |
+| Clock     | z_clock_now + 6 time functions         | `uxr_millis` + `uxr_nanos` + `smoltcp_clock_now_ms`             |
+| Random    | z_random_u8/u16/u32/u64/fill           | **None**                                                        |
+| Sleep     | z_sleep_us/ms/s                        | **None**                                                        |
+| Threading | 23 mutex/condvar/task stubs            | **None**                                                        |
+| Sockets   | TCP open/close/read/send stubs         | **None** (custom transport)                                     |
+| libc      | strlen, memcpy, strtoul, snprintf, ... | `memcpy`, `memset`, `strlen` (from compiler builtins or newlib) |
+| **Total** | **~55 symbols**                        | **3 symbols**                                                   |
 
-- [ ] Implement `clock_gettime(CLOCK_REALTIME, &ts)` using Cortex-M DWT cycle counter (same timing source as zpico-platform-mps2-an385's `z_clock_now`)
-- [ ] Provide `memcpy`, `memset`, `strlen` if not available from the toolchain's newlib/picolibc (ARM `arm-none-eabi-gcc` provides these by default)
-- [ ] Builds for `thumbv7m-none-eabi`
+- [x] Implement `uxr_millis()` and `uxr_nanos()` using software millisecond counter (same pattern as zpico-platform-mps2-an385's `clock.rs`)
+- [x] Provide `smoltcp_clock_now_ms()` for xrce-smoltcp transport layer
+- [x] Provide `set_clock_ms()` and `clock_ms()` for board crate to update and read the clock
+- [x] Provide `memcpy`, `memset`, `strlen` if not available from the toolchain's newlib/picolibc (ARM `arm-none-eabi-gcc` provides these by default)
+- [x] Builds for `thumbv7m-none-eabi`
 
 **Dependencies:**
 ```toml
 xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
-cortex-m = "0.7"
 ```
 
 **Acceptance criteria:**
 - XRCE-DDS client links and initializes on QEMU MPS2-AN385
-- `uxr_nanos()` returns monotonically increasing nanosecond timestamps
+- `uxr_millis()` / `uxr_nanos()` return monotonically increasing timestamps
 - No heap allocation, no threading, no socket stubs
 
 ---
@@ -375,11 +376,12 @@ cortex-m = "0.7"
                                                │
 34.4 (xrce-sys) ──→ 34.5 (xrce-smoltcp) ──→ 34.6 (nros-rmw-xrce)
                                                       │
-                     34.7 (xrce-platform-qemu) ───────→ 34.8 (integration tests)
+                     34.7 (xrce-platform-mps2-an385) ───────→ 34.8 (integration tests)
 ```
 
 - **34.1 → 34.2 → 34.3** complete. RMW abstraction validated with zenoh backend.
 - **34.4** complete. FFI bindings to XRCE-DDS Client v3.0.1 + Micro-CDR v2.0.2.
-- **34.5 + 34.7** can be done in parallel after 34.4 (transport + platform are independent).
-- **34.6** depends on 34.4 + 34.5 (needs FFI + transport).
-- **34.8** requires all of 34.4-34.7.
+- **34.5** complete. smoltcp UDP transport for XRCE-DDS custom transport.
+- **34.6** complete. `nros-rmw-xrce` RMW trait implementation.
+- **34.7** complete. `xrce-platform-mps2-an385` platform symbols (uxr_millis, uxr_nanos, smoltcp_clock_now_ms).
+- **34.8** remaining. Integration testing with Micro-XRCE-DDS Agent.

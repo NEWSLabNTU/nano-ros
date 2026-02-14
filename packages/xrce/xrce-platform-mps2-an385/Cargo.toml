@@ -1,0 +1,9 @@
+[package]
+name = "xrce-platform-mps2-an385"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "XRCE-DDS platform symbols for QEMU MPS2-AN385 (clock, no heap)"
+
+[dependencies]
+xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
