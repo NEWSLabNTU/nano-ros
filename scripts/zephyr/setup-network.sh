@@ -20,7 +20,7 @@
 #      zenohd --listen tcp/0.0.0.0:7447
 #
 #   2. Build and run Zephyr examples (as regular user, no sudo needed):
-#      west build -b native_sim/native/64 nano-ros/examples/zephyr/rs-talker
+#      west build -b native_sim/native/64 nros/examples/zephyr/rs-talker
 #      ./build/zephyr/zephyr.exe
 #
 # To tear down:

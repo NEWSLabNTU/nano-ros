@@ -125,7 +125,7 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
 // ROS 2 Parameter Interop Tests (requires ROS 2 + rmw_zenoh_cpp)
 // =============================================================================
 
-/// Test that ROS 2 can list parameters on nano-ros node
+/// Test that ROS 2 can list parameters on nros node
 #[rstest]
 fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
     if !require_zenohd() || !require_ros2() {
@@ -135,7 +135,7 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
     let binary = build_native_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
 
-    // Start nano-ros talker
+    // Start nros talker
     let mut talker_cmd = Command::new(binary);
     talker_cmd
         .env("RUST_LOG", "info")
@@ -182,7 +182,7 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
     let found_params = ros2_stdout.contains("start_value") || ros2_stdout.contains("use_sim_time"); // ROS 2 default param
 
     if found_params {
-        println!("SUCCESS: ROS 2 can list nano-ros parameters");
+        println!("SUCCESS: ROS 2 can list nros parameters");
     } else {
         println!(
             "INFO: ROS 2 param list didn't find parameters (parameter services may not be registered)"
@@ -191,7 +191,7 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
     }
 }
 
-/// Test that ROS 2 can get parameter value from nano-ros node
+/// Test that ROS 2 can get parameter value from nros node
 #[rstest]
 fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
     if !require_zenohd() || !require_ros2() {
@@ -201,7 +201,7 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
     let binary = build_native_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
 
-    // Start nano-ros talker
+    // Start nros talker
     let mut talker_cmd = Command::new(binary);
     talker_cmd
         .env("RUST_LOG", "info")
@@ -247,7 +247,7 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
         || ros2_stdout.contains("start_value");
 
     if got_value && !ros2_stdout.contains("error") && !ros2_stdout.contains("not found") {
-        println!("SUCCESS: ROS 2 can get nano-ros parameter value");
+        println!("SUCCESS: ROS 2 can get nros parameter value");
     } else {
         println!(
             "INFO: ROS 2 param get didn't retrieve value (parameter services may not be registered)"
@@ -255,7 +255,7 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
     }
 }
 
-/// Test that ROS 2 can describe parameter on nano-ros node
+/// Test that ROS 2 can describe parameter on nros node
 #[rstest]
 fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
     if !require_zenohd() || !require_ros2() {
@@ -265,7 +265,7 @@ fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
     let binary = build_native_talker().expect("Failed to build");
     let locator = zenohd_unique.locator();
 
-    // Start nano-ros talker
+    // Start nros talker
     let mut talker_cmd = Command::new(binary);
     talker_cmd
         .env("RUST_LOG", "info")
@@ -311,7 +311,7 @@ fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
         || ros2_stdout.contains("integer");
 
     if got_description {
-        println!("SUCCESS: ROS 2 can describe nano-ros parameter");
+        println!("SUCCESS: ROS 2 can describe nros parameter");
     } else {
         println!(
             "INFO: ROS 2 param describe didn't get description (parameter services may not be registered)"

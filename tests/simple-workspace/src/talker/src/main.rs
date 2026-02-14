@@ -1,13 +1,13 @@
-//! nano-ros talker executable
+//! nros talker executable
 //!
 //! Demonstrates message serialization using generated std_msgs bindings.
 
-use nano_ros_core::{RosMessage, Serialize};
-use nano_ros_serdes::CdrWriter;
+use nros_core::{RosMessage, Serialize};
+use nros_serdes::CdrWriter;
 use std_msgs::msg::Int32;
 
 fn main() {
-    println!("nano-ros talker starting...");
+    println!("nros talker starting...");
     println!("Message type: {}", Int32::TYPE_NAME);
 
     let mut count: i32 = 0;

@@ -1,6 +1,6 @@
 /**
  * @file main.c
- * @brief Bare-metal platform demo for nano-ros-c
+ * @brief Bare-metal platform demo for nros-c
  *
  * This example demonstrates:
  * 1. How to use the platform abstraction layer
@@ -17,19 +17,19 @@
 #include <string.h>
 #include <signal.h>
 
-// Define platform BEFORE including nano-ros headers
+// Define platform BEFORE including nros headers
 // On real bare-metal: #define NANO_ROS_PLATFORM_BAREMETAL
 // For this demo, we simulate bare-metal on POSIX
 #define NANO_ROS_PLATFORM_POSIX
 
-// nano-ros modular includes
-#include <nano_ros/init.h>
-#include <nano_ros/node.h>
-#include <nano_ros/publisher.h>
-#include <nano_ros/timer.h>
-#include <nano_ros/executor.h>
-#include <nano_ros/guard_condition.h>
-#include <nano_ros/clock.h>
+// nros modular includes
+#include <nros/init.h>
+#include <nros/node.h>
+#include <nros/publisher.h>
+#include <nros/timer.h>
+#include <nros/executor.h>
+#include <nros/guard_condition.h>
+#include <nros/clock.h>
 
 // ============================================================================
 // Message Definition (statically allocated)
@@ -62,9 +62,9 @@ static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buff
 
 // Application state (would be in .bss section on embedded)
 static struct {
-    // nano-ros resources
+    // nros resources
     nano_ros_support_t support;
-    nano_ros_node_t node;
+    nros_node_t node;
     nano_ros_publisher_t publisher;
     nano_ros_timer_t timer;
     nano_ros_executor_t executor;
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
     (void)argv;
 
     printf("=========================================\n");
-    printf("nano-ros-c Bare-Metal Platform Demo\n");
+    printf("nros-c Bare-Metal Platform Demo\n");
     printf("=========================================\n");
     printf("\n");
     printf("This demo shows:\n");
@@ -252,13 +252,13 @@ int main(int argc, char** argv) {
     printf("Support initialized\n");
 
     // Initialize node
-    app.node = nano_ros_node_get_zero_initialized();
-    ret = nano_ros_node_init(&app.node, &app.support, "baremetal_demo", "/");
+    app.node = nros_node_get_zero_initialized();
+    ret = nros_node_init(&app.node, &app.support, "baremetal_demo", "/");
     if (ret != NANO_ROS_RET_OK) {
         fprintf(stderr, "Failed to init node: %d\n", ret);
         goto cleanup_support;
     }
-    printf("Node created: %s\n", nano_ros_node_get_name(&app.node));
+    printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Initialize publisher
     app.publisher = nano_ros_publisher_get_zero_initialized();
@@ -329,7 +329,7 @@ cleanup_publisher:
     printf("Publisher finalized\n");
 
 cleanup_node:
-    (void)nano_ros_node_fini(&app.node);
+    (void)nros_node_fini(&app.node);
     printf("Node finalized\n");
 
 cleanup_support:

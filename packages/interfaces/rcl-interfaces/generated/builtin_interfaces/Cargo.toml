@@ -5,10 +5,10 @@ edition = "2021"
 
 [features]
 default = []
-std = ["nano-ros-core/std", "nano-ros-serdes/std"]
+std = ["nros-core/std", "nros-serdes/std"]
 
 [dependencies]
-# nano-ros crates (patched to local via .cargo/config.toml during development)
-nano-ros-core = { version = "*", default-features = false }
-nano-ros-serdes = { version = "*", default-features = false }
+# nros crates (patched to local via .cargo/config.toml during development)
+nros-core = { version = "*", default-features = false }
+nros-serdes = { version = "*", default-features = false }
 heapless = "0.8"

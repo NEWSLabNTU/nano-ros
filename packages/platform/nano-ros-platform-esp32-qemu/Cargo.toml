@@ -3,7 +3,7 @@ name = "nano-ros-platform-esp32-qemu"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "ESP32-C3 QEMU platform crate for nano-ros (system primitives + node API)"
+description = "ESP32-C3 QEMU platform crate for nros (system primitives + node API)"
 
 [lib]
 name = "nano_ros_platform_esp32_qemu"
@@ -31,7 +31,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
 ] }
 
 # Core types (RosMessage, CDR serialization)
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
+nros-core = { path = "../../core/nros-core", default-features = false }
 
 # Heapless collections (for keyexpr formatting)
 heapless = "0.8"

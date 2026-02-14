@@ -1,7 +1,7 @@
 #!/bin/bash
-# nano-ros Zephyr Workspace Setup
+# nros Zephyr Workspace Setup
 #
-# This script creates a Zephyr workspace as a sibling to the nano-ros repository.
+# This script creates a Zephyr workspace as a sibling to the nros repository.
 # It installs all dependencies including:
 #   - Python tools (west, etc.)
 #   - Zephyr SDK (cross-compilers)
@@ -25,7 +25,7 @@
 #   ./scripts/zephyr/setup.sh
 #   source ../nano-ros-workspace/env.sh
 #   cd ../nano-ros-workspace
-#   west build -b native_sim/native/64 nano-ros/examples/zephyr/rs-talker
+#   west build -b native_sim/native/64 nros/examples/zephyr/rs-talker
 
 set -e
 
@@ -60,7 +60,7 @@ while [[ $# -gt 0 ]]; do
         --help|-h)
             echo "Usage: $0 [OPTIONS]"
             echo ""
-            echo "Create nano-ros Zephyr workspace at ../${NANO_ROS_NAME}-workspace/"
+            echo "Create nros Zephyr workspace at ../${NANO_ROS_NAME}-workspace/"
             echo ""
             echo "Options:"
             echo "  --force, -f        Overwrite existing workspace"
@@ -88,13 +88,13 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 
 echo ""
 echo "========================================"
-echo "  nano-ros Zephyr Workspace Setup"
+echo "  nros Zephyr Workspace Setup"
 echo "========================================"
 echo ""
 log_info "Workspace: $WORKSPACE_DIR"
 log_info "SDK directory: $SDK_INSTALL_DIR"
 log_info "Download cache: $DOWNLOAD_DIR"
-log_info "nano-ros: $NANO_ROS_ROOT"
+log_info "nros: $NANO_ROS_ROOT"
 echo ""
 
 # =============================================================================
@@ -254,8 +254,8 @@ create_env_script() {
     log_info "Creating environment script..."
     cat > "$WORKSPACE_DIR/env.sh" << ENVEOF
 #!/bin/bash
-# nano-ros Zephyr Environment
-# Usage: source ../nano-ros-workspace/env.sh (from nano-ros dir)
+# nros Zephyr Environment
+# Usage: source ../nano-ros-workspace/env.sh (from nros dir)
 #    or: source env.sh (from workspace dir)
 
 WORKSPACE="\$(cd "\$(dirname "\${BASH_SOURCE[0]}")" && pwd)"
@@ -267,13 +267,13 @@ source "\$WORKSPACE/zephyr/zephyr-env.sh"
 export ZEPHYR_SDK_INSTALL_DIR="$SDK_PATH"
 export ZEPHYR_TOOLCHAIN_VARIANT=zephyr
 
-# nano-ros paths
+# nros paths
 export NANO_ROS_ROOT="\$WORKSPACE/$NANO_ROS_NAME"
 
 # Local bin
 export PATH="\$HOME/.local/bin:\$PATH"
 
-echo "nano-ros Zephyr environment ready"
+echo "nros Zephyr environment ready"
 echo "  ZEPHYR_BASE: \$ZEPHYR_BASE"
 echo "  ZEPHYR_SDK: $SDK_PATH"
 echo "  NANO_ROS_ROOT: \$NANO_ROS_ROOT"
@@ -286,7 +286,7 @@ ENVEOF
 }
 
 # =============================================================================
-# Patch zenoh-pico for nano-ros compatibility
+# Patch zenoh-pico for nros compatibility
 # =============================================================================
 
 patch_zenoh_pico() {
@@ -298,7 +298,7 @@ patch_zenoh_pico() {
     fi
 
     # Check if already patched
-    if grep -q "nano-ros patch" "$ZENOH_PICO_CONFIG"; then
+    if grep -q "nros patch" "$ZENOH_PICO_CONFIG"; then
         log_info "zenoh-pico config.h already patched"
         return
     fi
@@ -307,8 +307,8 @@ patch_zenoh_pico() {
 
     # Patch config.h to disable Z_FEATURE_INTEREST and Z_FEATURE_MATCHING
     # These features cause issues when multiple clients connect to the same router
-    sed -i 's/^#define Z_FEATURE_INTEREST 1$/#define Z_FEATURE_INTEREST 0  \/\/ nano-ros patch: disabled for multi-client support/' "$ZENOH_PICO_CONFIG"
-    sed -i 's/^#define Z_FEATURE_MATCHING 1$/#define Z_FEATURE_MATCHING 0  \/\/ nano-ros patch: disabled (depends on INTEREST)/' "$ZENOH_PICO_CONFIG"
+    sed -i 's/^#define Z_FEATURE_INTEREST 1$/#define Z_FEATURE_INTEREST 0  \/\/ nros patch: disabled for multi-client support/' "$ZENOH_PICO_CONFIG"
+    sed -i 's/^#define Z_FEATURE_MATCHING 1$/#define Z_FEATURE_MATCHING 0  \/\/ nros patch: disabled (depends on INTEREST)/' "$ZENOH_PICO_CONFIG"
 
     log_success "zenoh-pico config.h patched"
 }
@@ -357,7 +357,7 @@ cp "$NANO_ROS_ROOT/west.yml" "$WORKSPACE_DIR/$NANO_ROS_NAME/west.yml"
 # Initialize west
 west init -l "$WORKSPACE_DIR/$NANO_ROS_NAME"
 
-# Replace with symlink to real nano-ros
+# Replace with symlink to real nros
 rm -rf "$WORKSPACE_DIR/$NANO_ROS_NAME"
 ln -sf "$NANO_ROS_ROOT" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 

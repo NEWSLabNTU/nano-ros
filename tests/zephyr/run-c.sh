@@ -1,7 +1,7 @@
 #!/bin/bash
 # Test: Zephyr C Examples (native_sim)
 #
-# This test verifies that the nano-ros C API examples (zephyr-c-talker)
+# This test verifies that the nros C API examples (zephyr-c-talker)
 # running on Zephyr RTOS (native_sim) can successfully publish messages
 # via zenoh.
 #
@@ -273,16 +273,16 @@ build_zephyr_examples() {
     export ZEPHYR_BASE="$ZEPHYR_WORKSPACE/zephyr"
 
     # Determine example path based on workspace type
-    # In-tree workspace: examples at nano-ros/examples/
+    # In-tree workspace: examples at nros/examples/
     # External workspace: examples at $PROJECT_ROOT/examples/
     local example_path
-    if [ -d "nano-ros/examples/zephyr/c-talker" ]; then
-        example_path="nano-ros/examples/zephyr/c-talker"
+    if [ -d "nros/examples/zephyr/c-talker" ]; then
+        example_path="nros/examples/zephyr/c-talker"
     elif [ -d "$PROJECT_ROOT/examples/zephyr/c-talker" ]; then
         example_path="$PROJECT_ROOT/examples/zephyr/c-talker"
     else
         log_error "Could not find c-talker example"
-        log_info "Expected at: nano-ros/examples/zephyr/c-talker or $PROJECT_ROOT/examples/zephyr/c-talker"
+        log_info "Expected at: nros/examples/zephyr/c-talker or $PROJECT_ROOT/examples/zephyr/c-talker"
         return 1
     fi
 

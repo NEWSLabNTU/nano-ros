@@ -1,6 +1,6 @@
 # Phase 24: Raspberry Pi Pico W Platform Support
 
-**Goal**: Add native Rust support for Raspberry Pi Pico W (RP2040 + CYW43 WiFi) using embassy-rp or rp-hal, enabling the cheapest WiFi-capable nano-ros node (~$6).
+**Goal**: Add native Rust support for Raspberry Pi Pico W (RP2040 + CYW43 WiFi) using embassy-rp or rp-hal, enabling the cheapest WiFi-capable nros node (~$6).
 
 **Status**: Not Started
 **Priority**: Medium
@@ -16,7 +16,7 @@ The Raspberry Pi Pico W is a $6 board with an RP2040 (dual ARM Cortex-M0+) and C
 - **Upstream Rust**: ARM Cortex-M0+ (`thumbv6m-none-eabi`) is a standard target
 - **Excellent Rust ecosystem**: `embassy-rp` provides async HAL, `cyw43` WiFi driver
 - **Education favorite**: Raspberry Pi is the most recognized brand in education
-- **nano-ros ARM proven**: Existing QEMU tests run on ARM Cortex-M3 — M0+ is similar
+- **nros ARM proven**: Existing QEMU tests run on ARM Cortex-M3 — M0+ is similar
 - **Existing zenoh-pico support**: Community project `zenoh_pico_rp2040` demonstrates feasibility
 
 ### Hardware Specifications
@@ -42,7 +42,7 @@ The Raspberry Pi Pico W is a $6 board with an RP2040 (dual ARM Cortex-M0+) and C
 | smoltcp buffers | ~8 KB | 264 KB RAM |
 | CYW43 WiFi firmware | ~230 KB | 2 MB flash (loaded from flash) |
 | CYW43 driver RAM | ~40 KB | 264 KB RAM |
-| Application + nano-ros | ~30 KB flash, ~20 KB RAM | 2 MB / 264 KB |
+| Application + nros | ~30 KB flash, ~20 KB RAM | 2 MB / 264 KB |
 | **Total RAM** | **~80 KB** | **264 KB** |
 | **Total Flash** | **~340 KB** | **2 MB** |
 
@@ -57,7 +57,7 @@ Fits with comfortable margins. RAM is tighter than ESP32-C3 but still has 3x hea
 └─────────────────────────────┬───────────────────────────────────┘
                               │
 ┌─────────────────────────────▼───────────────────────────────────┐
-│                     nano-ros / nano-ros-c                        │
+│                     nros / nros-c                        │
 │              (Node, Publisher, Subscriber, Executor)             │
 └─────────────────────────────┬───────────────────────────────────┘
                               │
@@ -367,7 +367,7 @@ The existing `just build-zenoh-pico-arm` builds for Cortex-M3 (`thumbv7m-none-ea
 | Rust ecosystem | embassy-rp | esp-hal | cortex-m | stm32-hal |
 | Debug | probe-rs / UF2 | espflash | QEMU | probe-rs |
 | Availability | Excellent | Excellent | Always | Good |
-| nano-ros BSP | This phase | Phase 22 | Complete | Complete |
+| nros BSP | This phase | Phase 22 | Complete | Complete |
 
 ## Future Extensions
 

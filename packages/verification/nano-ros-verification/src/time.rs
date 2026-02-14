@@ -16,7 +16,7 @@
 /// - `time_from_nanos_bug` — proves failure domain for Time::from_nanos
 ///   (which omits `.unsigned_abs()` on the remainder for negative inputs).
 use vstd::prelude::*;
-use nano_ros_core::time::{Duration, Time};
+use nros_core::time::{Duration, Time};
 
 verus! {
 
@@ -27,12 +27,12 @@ verus! {
 /// Register `Duration` with Verus as a transparent type.
 /// Pub fields: `sec: i32`, `nanosec: u32`.
 #[verifier::external_type_specification]
-pub struct ExDuration(nano_ros_core::time::Duration);
+pub struct ExDuration(nros_core::time::Duration);
 
 /// Register `Time` with Verus as a transparent type.
 /// Pub fields: `sec: i32`, `nanosec: u32` (same layout as Duration).
 #[verifier::external_type_specification]
-pub struct ExTime(nano_ros_core::time::Time);
+pub struct ExTime(nros_core::time::Time);
 
 // ======================================================================
 // Trusted Contracts

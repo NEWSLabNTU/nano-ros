@@ -1,0 +1,42 @@
+[package]
+name = "nros-node"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Node abstraction for nros"
+
+[features]
+default = ["std", "ros-humble"]
+std = ["alloc", "nros-core/std", "nano-ros-transport/std", "log"]
+alloc = ["nros-core/alloc"]
+zenoh = ["nano-ros-transport/zenoh", "alloc"]
+
+# ROS edition feature flags (controls which env vars are supported)
+ros-humble = []                  # ROS_LOCALHOST_ONLY (Humble+, default)
+ros-iron = ["ros-humble"]        # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEERS (Iron+)
+log = ["dep:log"]
+
+# Transport backend (select one platform)
+# Select one platform: platform-posix (desktop), platform-zephyr, or platform-bare-metal
+shim = ["nano-ros-transport/shim"]  # Base shim feature
+platform-posix = ["shim", "nano-ros-transport/platform-posix"]  # POSIX platform (desktop testing)
+platform-zephyr = ["shim", "nano-ros-transport/platform-zephyr"]  # Zephyr RTOS platform
+platform-bare-metal = ["shim", "nano-ros-transport/platform-bare-metal"]  # Bare-metal platform (smoltcp)
+
+# Executor support
+rtic = ["nano-ros-transport/rtic"]    # RTIC executor - no background threads
+polling = ["nano-ros-transport/polling"]  # Manual polling mode
+
+# Parameter services (ros2 param CLI support)
+param-services = ["dep:rcl_interfaces", "zenoh"]
+
+[dependencies]
+nros-core = { workspace = true, default-features = false }
+nano-ros-transport = { workspace = true, default-features = false }
+nros-params = { workspace = true, default-features = false }
+heapless = { workspace = true }
+log = { workspace = true, optional = true }
+rcl_interfaces = { path = "../../interfaces/rcl-interfaces/generated/rcl_interfaces", default-features = false, optional = true }
+
+[dev-dependencies]
+nano-ros-ghost-types = { path = "../../verification/nano-ros-ghost-types" }

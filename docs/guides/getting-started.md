@@ -1,6 +1,6 @@
-# Getting Started with nano-ros
+# Getting Started with nros
 
-This guide walks you through creating your first nano-ros application in Rust and C.
+This guide walks you through creating your first nros application in Rust and C.
 
 ## Prerequisites
 
@@ -10,11 +10,11 @@ This guide walks you through creating your first nano-ros application in Rust an
 
 ### Building zenohd
 
-nano-ros includes zenohd 1.6.2 as a git submodule:
+nros includes zenohd 1.6.2 as a git submodule:
 
 ```bash
 git clone https://github.com/jerry73204/nano-ros.git
-cd nano-ros
+cd nros
 just build-zenohd
 # Binary at: ./build/zenohd/zenohd
 ```
@@ -42,10 +42,10 @@ edition = "2024"
 
 [features]
 default = []
-zenoh = ["nano-ros/zenoh"]
+zenoh = ["nros/zenoh"]
 
 [dependencies]
-nano-ros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
+nros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
@@ -53,14 +53,14 @@ env_logger = "0.11"
 
 ### 3. Create `package.xml`
 
-nano-ros uses `package.xml` to declare which ROS 2 message types you need:
+nros uses `package.xml` to declare which ROS 2 message types you need:
 
 ```xml
 <?xml version="1.0"?>
 <package format="3">
   <name>my_talker</name>
   <version>0.1.0</version>
-  <description>My first nano-ros talker</description>
+  <description>My first nros talker</description>
   <maintainer email="you@example.com">Your Name</maintainer>
   <license>MIT</license>
   <depend>std_msgs</depend>
@@ -86,7 +86,7 @@ cargo nano-ros generate --config --nano-ros-git
 This creates:
 - `generated/std_msgs/` - Rust types for `std_msgs::msg::Int32`, `String`, etc.
 - `generated/builtin_interfaces/` - Time, Duration types
-- `.cargo/config.toml` - Patch entries pointing to generated code and nano-ros git
+- `.cargo/config.toml` - Patch entries pointing to generated code and nros git
 
 ### 5. Write the Publisher
 
@@ -94,7 +94,7 @@ Replace `src/main.rs`:
 
 ```rust
 use log::info;
-use nano_ros::prelude::*;
+use nros::prelude::*;
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -147,13 +147,13 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 
 ## C API
 
-### 1. Build the nano-ros C Library
+### 1. Build the nros C Library
 
 ```bash
-cd /path/to/nano-ros
-cargo build -p nano-ros-c --release
+cd /path/to/nros
+cargo build -p nros-c --release
 # Library at: target/release/libnano_ros_c.a
-# Headers at: packages/core/nano-ros-c/include/
+# Headers at: packages/core/nros-c/include/
 ```
 
 ### 2. Create a CMake Project
@@ -173,8 +173,8 @@ project(my_c_talker LANGUAGES C)
 
 set(CMAKE_C_STANDARD 11)
 
-# Point to nano-ros repository
-list(APPEND CMAKE_MODULE_PATH "/path/to/nano-ros/cmake")
+# Point to nros repository
+list(APPEND CMAKE_MODULE_PATH "/path/to/nros/cmake")
 find_package(NanoRos REQUIRED)
 
 add_executable(my_c_talker src/main.c)
@@ -190,11 +190,11 @@ Create `src/main.c`:
 #include <stdlib.h>
 #include <signal.h>
 
-#include <nano_ros/init.h>
-#include <nano_ros/node.h>
-#include <nano_ros/publisher.h>
-#include <nano_ros/timer.h>
-#include <nano_ros/executor.h>
+#include <nros/init.h>
+#include <nros/node.h>
+#include <nros/publisher.h>
+#include <nros/timer.h>
+#include <nros/executor.h>
 
 // Manual Int32 message definition
 // (auto-generated in full projects via CMake nano_ros_generate_interfaces)
@@ -246,8 +246,8 @@ int main(void) {
     nano_ros_support_t support = nano_ros_support_get_zero_initialized();
     if (nano_ros_support_init(&support, locator, 0) != NANO_ROS_RET_OK) return 1;
 
-    nano_ros_node_t node = nano_ros_node_get_zero_initialized();
-    nano_ros_node_init(&node, &support, "c_talker", "/");
+    nros_node_t node = nros_node_get_zero_initialized();
+    nros_node_init(&node, &support, "c_talker", "/");
 
     nano_ros_publisher_t pub = nano_ros_publisher_get_zero_initialized();
     nano_ros_publisher_init(&pub, &node, &std_msgs_Int32_type, "/chatter");
@@ -268,7 +268,7 @@ int main(void) {
     nano_ros_executor_fini(&exec);
     nano_ros_timer_fini(&timer);
     nano_ros_publisher_fini(&pub);
-    nano_ros_node_fini(&node);
+    nros_node_fini(&node);
     nano_ros_support_fini(&support);
     return 0;
 }
@@ -278,7 +278,7 @@ int main(void) {
 
 ```bash
 mkdir build && cd build
-cmake -DNANO_ROS_ROOT=/path/to/nano-ros ..
+cmake -DNANO_ROS_ROOT=/path/to/nros ..
 make
 
 # Terminal 1: zenohd

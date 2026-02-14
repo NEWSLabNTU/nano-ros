@@ -3,7 +3,7 @@
 use core::ffi::c_void;
 use core::marker::PhantomData;
 
-use nano_ros_core::{CdrReader, RosMessage};
+use nros_core::{CdrReader, RosMessage};
 
 // Use FFI from nano-ros-transport-zenoh-sys
 use nano_ros_transport_zenoh_sys::zenoh_shim_undeclare_subscriber;

@@ -2,11 +2,11 @@
 FindNanoRosCodegen
 ------------------
 
-Find (or build) the bundled nano-ros C code generation tool.
+Find (or build) the bundled nros C code generation tool.
 
 This module locates ``libnano_ros_codegen_c.a`` and its companion C wrapper
 source, then uses ``try_compile`` to produce a self-contained executable at
-CMake configure time.  No external ``nano-ros`` binary is required.
+CMake configure time.  No external ``nros`` binary is required.
 
 Result Variables
 ^^^^^^^^^^^^^^^^
@@ -21,7 +21,7 @@ Hints
 ^^^^^
 
 ``NANO_ROS_ROOT``
-  Path to the nano-ros repository root.
+  Path to the nros repository root.
 
 #]=======================================================================]
 
@@ -106,7 +106,7 @@ if(NOT _codegen_compiled)
 endif()
 
 set(_NANO_ROS_CODEGEN_TOOL "${_codegen_bin_dir}/nano_ros_codegen"
-  CACHE INTERNAL "Path to nano-ros C codegen tool")
+  CACHE INTERNAL "Path to nros C codegen tool")
 
 set(NanoRosCodegen_FOUND TRUE)
-message(STATUS "Built nano-ros codegen tool: ${_NANO_ROS_CODEGEN_TOOL}")
+message(STATUS "Built nros codegen tool: ${_NANO_ROS_CODEGEN_TOOL}")

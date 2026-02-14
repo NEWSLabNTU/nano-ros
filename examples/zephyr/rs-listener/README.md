@@ -1,10 +1,10 @@
 # Zephyr Listener Example
 
-Zephyr RTOS example demonstrating nano-ros subscriber using zenoh-pico.
+Zephyr RTOS example demonstrating nros subscriber using zenoh-pico.
 
 ## Overview
 
-This example shows how to use nano-ros with Zephyr RTOS:
+This example shows how to use nros with Zephyr RTOS:
 - Rust application using nano-ros-transport-zenoh
 - C shim compiled by Zephyr build system
 - Network connectivity via Zephyr's network stack
@@ -36,21 +36,21 @@ zephyr-rs-listener/
 
 ```bash
 # From Zephyr workspace root
-west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-listener
+west build -b native_sim/native/64 nros/examples/zephyr-rs-listener
 ./build/zephyr/zephyr.exe
 ```
 
 ### For QEMU
 
 ```bash
-west build -b qemu_cortex_m3 nano-ros/examples/zephyr-rs-listener
+west build -b qemu_cortex_m3 nros/examples/zephyr-rs-listener
 west build -t run
 ```
 
 ### For Hardware (e.g., NUCLEO-F429ZI)
 
 ```bash
-west build -b nucleo_f429zi nano-ros/examples/zephyr-rs-listener
+west build -b nucleo_f429zi nros/examples/zephyr-rs-listener
 west flash
 ```
 

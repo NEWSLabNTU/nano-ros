@@ -1,6 +1,6 @@
 # Scripts
 
-Utility scripts for nano-ros development and debugging.
+Utility scripts for nros development and debugging.
 
 > **Note:** Integration tests have been moved to `tests/`. See `tests/README.md`.
 
@@ -49,13 +49,13 @@ Checks what RIHS01 hash ROS 2 uses for a given message type.
 Python script to inspect ROS 2 type information.
 
 ### compare-keyexprs.sh
-Compares key expressions between nano-ros and ROS 2.
+Compares key expressions between nros and ROS 2.
 
 ### debug-keyexpr.sh
-Debug script to see what keyexpr nano-ros publishes on.
+Debug script to see what keyexpr nros publishes on.
 
 ### debug-liveliness.sh
-Captures and analyzes liveliness tokens from nano-ros and ROS 2.
+Captures and analyzes liveliness tokens from nros and ROS 2.
 
 ### debug-zenoh-keys.py
 Python script to analyze zenoh key expressions.

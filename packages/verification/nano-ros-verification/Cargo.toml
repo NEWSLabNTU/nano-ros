@@ -3,7 +3,7 @@ name = "nano-ros-verification"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Verus deductive verification proofs for nano-ros"
+description = "Verus deductive verification proofs for nros"
 
 [package.metadata.verus]
 verify = true
@@ -13,8 +13,8 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(verus_keep_ghost_body)', 
 
 [dependencies]
 vstd = "0.0.0-2026-02-08-0120"
-nano-ros-serdes = { path = "../../core/nano-ros-serdes", default-features = false }
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
-nano-ros-params = { path = "../../core/nano-ros-params", default-features = false }
-nano-ros-node = { path = "../../core/nano-ros-node", default-features = false, features = ["alloc"] }
+nros-serdes = { path = "../../core/nros-serdes", default-features = false }
+nros-core = { path = "../../core/nros-core", default-features = false }
+nros-params = { path = "../../core/nros-params", default-features = false }
+nros-node = { path = "../../core/nros-node", default-features = false, features = ["alloc"] }
 nano-ros-ghost-types = { path = "../nano-ros-ghost-types" }

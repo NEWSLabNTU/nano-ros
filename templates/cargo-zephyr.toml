@@ -1,10 +1,10 @@
-# nano-ros Zephyr Template
+# nros Zephyr Template
 #
 # This template is for Zephyr RTOS projects using west.
 # It should be placed in your Zephyr application directory.
 #
 # Prerequisites:
-# - Zephyr workspace with nano-ros as a west module
+# - Zephyr workspace with nros as a west module
 # - See examples/zephyr-rs-talker-rs/ for complete example
 
 [package]
@@ -12,16 +12,16 @@ name = "my-zephyr-project"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "nano-ros Zephyr project"
+description = "nros Zephyr project"
 
 [lib]
 crate-type = ["staticlib"]
 path = "src/lib.rs"
 
 [dependencies]
-# nano-ros core crates (no_std, no_alloc)
-nano-ros-core = { path = "../../nano-ros/packages/core/nano-ros-core", default-features = false }
-nano-ros-serdes = { path = "../../nano-ros/packages/core/nano-ros-serdes", default-features = false }
+# nros core crates (no_std, no_alloc)
+nros-core = { path = "../../nros/packages/core/nros-core", default-features = false }
+nros-serdes = { path = "../../nros/packages/core/nros-serdes", default-features = false }
 
 # Zephyr-specific features (no zenoh - use C shim)
 # The zenoh-pico FFI is handled through a C shim layer because

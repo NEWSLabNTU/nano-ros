@@ -3,7 +3,7 @@
 #
 # This script tests the full pipeline:
 # 1. Build cargo-nano-ros
-# 2. Build nano-ros-c library
+# 2. Build nros-c library
 # 3. Run CMake on native-c-custom-msg example
 # 4. Build and run the test executable
 #
@@ -63,15 +63,15 @@ fi
 info "cargo-nano-ros built successfully: $GENERATOR"
 
 # ============================================================================
-# Step 2: Build nano-ros-c and nano-ros-codegen-c libraries
+# Step 2: Build nros-c and nano-ros-codegen-c libraries
 # ============================================================================
 
-info "Building nano-ros-c library..."
+info "Building nros-c library..."
 
 cd "$PROJECT_ROOT"
 
-# Build nano-ros-c with Cargo (release mode)
-cargo build -p nano-ros-c --release
+# Build nros-c with Cargo (release mode)
+cargo build -p nros-c --release
 
 # Build nano-ros-codegen-c staticlib (needed by CMake FindNanoRosCodegen)
 info "Building nano-ros-codegen-c staticlib..."
@@ -79,11 +79,11 @@ cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/pac
 
 NANO_ROS_C_LIB="$PROJECT_ROOT/target/release/libnano_ros_c.a"
 if [ ! -f "$NANO_ROS_C_LIB" ]; then
-    error "nano-ros-c library not found at: $NANO_ROS_C_LIB"
+    error "nros-c library not found at: $NANO_ROS_C_LIB"
     exit 1
 fi
 
-info "nano-ros-c built successfully: $NANO_ROS_C_LIB"
+info "nros-c built successfully: $NANO_ROS_C_LIB"
 
 # ============================================================================
 # Step 3: Configure native-c-custom-msg example
@@ -155,7 +155,7 @@ fi
 
 info "Verifying generated files..."
 
-GEN_DIR="$BUILD_DIR/nano_ros_c/native_c_custom_msg"
+GEN_DIR="$BUILD_DIR/nros_c/native_c_custom_msg"
 
 # Check for expected generated files
 EXPECTED_FILES=(

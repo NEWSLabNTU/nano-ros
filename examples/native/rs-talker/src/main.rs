@@ -1,6 +1,6 @@
 //! Native Talker Example
 //!
-//! Demonstrates publishing messages using nano-ros on native x86.
+//! Demonstrates publishing messages using nros on native x86.
 //! Uses the unified executor API with spin_once() for manual control.
 //!
 //! # Without zenoh feature (simulation mode):
@@ -26,14 +26,14 @@
 use log::{debug, error, info};
 #[cfg(feature = "zenoh")]
 use log::{debug, error, info};
-use nano_ros::prelude::*;
+use nros::prelude::*;
 use std_msgs::msg::Int32;
 
 #[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Native Talker (Zenoh Transport)");
+    info!("nros Native Talker (Zenoh Transport)");
     info!("=========================================");
 
     // Create context using rclrs-style API
@@ -126,7 +126,7 @@ fn main() {
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Native Talker (Simulation Mode)");
+    info!("nros Native Talker (Simulation Mode)");
     info!("=========================================");
     info!("Note: Running without zenoh transport.");
     info!("To use real transport, run with: --features zenoh");

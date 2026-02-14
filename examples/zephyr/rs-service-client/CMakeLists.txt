@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-# nano-ros Zephyr Service Client Example (Rust)
+# nros Zephyr Service Client Example (Rust)
 #
-# A ROS 2 compatible service client running on Zephyr RTOS using nano-ros.
+# A ROS 2 compatible service client running on Zephyr RTOS using nros.
 #
 # Build:
 #   source ~/nano-ros-workspace/env.sh
-#   west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-service-client
+#   west build -b native_sim/native/64 nros/examples/zephyr-rs-service-client
 #
 # Run:
 #   ./build/zephyr/zephyr.exe
@@ -15,7 +15,7 @@ cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nano_ros_service_client_rs)
 
-# Include nano-ros BSP for Zephyr
+# Include nros BSP for Zephyr
 set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/bsp/nano-ros-bsp-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)

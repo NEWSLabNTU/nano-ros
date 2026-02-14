@@ -1,14 +1,14 @@
 # SPDX-License-Identifier: Apache-2.0
-# nano-ros Zephyr Service Server Example (Rust)
+# nros Zephyr Service Server Example (Rust)
 #
-# A ROS 2 compatible service server running on Zephyr RTOS using nano-ros API.
+# A ROS 2 compatible service server running on Zephyr RTOS using nros API.
 
 [package]
 # Name must be "rustapp" for zephyr-lang-rust integration
 name = "rustapp"
 version = "0.1.0"
 edition = "2024"
-description = "nano-ros service server for Zephyr RTOS"
+description = "nros service server for Zephyr RTOS"
 license = "Apache-2.0"
 
 [lib]
@@ -19,8 +19,8 @@ crate-type = ["staticlib"]
 zephyr = "0.1.0"
 log = "0.4"
 
-# nano-ros unified API (patched to local via .cargo/config.toml)
-nano-ros = { version = "*", default-features = false, features = ["platform-zephyr"] }
+# nros unified API (patched to local via .cargo/config.toml)
+nros = { version = "*", default-features = false, features = ["platform-zephyr"] }
 
 # Generated message types (patched to local via .cargo/config.toml)
 example_interfaces = { version = "*", default-features = false }

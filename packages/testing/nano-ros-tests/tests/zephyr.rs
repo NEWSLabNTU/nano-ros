@@ -1,6 +1,6 @@
 //! Zephyr native_sim integration tests
 //!
-//! These tests verify that nano-ros running on Zephyr RTOS (native_sim)
+//! These tests verify that nros running on Zephyr RTOS (native_sim)
 //! can communicate with native Rust applications via zenoh.
 //!
 //! # Prerequisites
@@ -191,11 +191,11 @@ fn test_zephyr_talker_to_listener_e2e() {
         eprintln!("Both sides connected and created pub/sub successfully");
     } else if talker_tx_failed && listener_created_sub {
         // Known zenoh-pico limitation: transport TX fails when multiple clients connect
-        // This is a zenoh-pico transport layer issue, not a nano-ros bug
+        // This is a zenoh-pico transport layer issue, not a nros bug
         eprintln!("\nWARNING: zenoh-pico transport TX failure (known limitation)");
         eprintln!("When multiple zenoh-pico clients connect to the same router,");
         eprintln!("the second client may fail to send messages due to transport issues.");
-        eprintln!("This is a zenoh-pico limitation, not a nano-ros issue.");
+        eprintln!("This is a zenoh-pico limitation, not a nros issue.");
         eprintln!("Listener successfully subscribed, talker failed to publish.");
         // Don't fail - this is a known limitation
     } else if talker_published {
@@ -300,7 +300,7 @@ fn test_zephyr_to_native_e2e() {
         // Known zenoh-pico limitation: transport TX fails when multiple clients connect
         eprintln!("\nWARNING: zenoh-pico transport TX failure (known limitation)");
         eprintln!("Zephyr talker connected and declared publisher, but failed to send.");
-        eprintln!("This is a zenoh-pico limitation, not a nano-ros issue.");
+        eprintln!("This is a zenoh-pico limitation, not a nros issue.");
         // Don't fail - this is a known limitation
     } else if !zephyr_connected {
         panic!("Zephyr talker failed to connect to zenohd");
@@ -403,7 +403,7 @@ fn test_native_to_zephyr_e2e() {
         // Known zenoh-pico limitation
         eprintln!("\nWARNING: zenoh-pico subscription failure (known limitation)");
         eprintln!("Zephyr listener connected but failed to subscribe.");
-        eprintln!("This is a zenoh-pico limitation, not a nano-ros issue.");
+        eprintln!("This is a zenoh-pico limitation, not a nros issue.");
     } else if zephyr_subscribed && talker_published && !has_received {
         // Both sides set up but messages not delivered - timing issue
         eprintln!("\nWARNING: Both sides ready but messages not delivered (timing issue?)");
@@ -583,7 +583,7 @@ fn test_bidirectional_native_zephyr_e2e() {
             eprintln!("\nKNOWN LIMITATION: zenoh-pico multi-client issues prevented communication");
             eprintln!("When multiple zenoh-pico clients connect simultaneously,");
             eprintln!("transport conflicts can prevent message delivery.");
-            eprintln!("This is a zenoh-pico limitation, not a nano-ros issue.");
+            eprintln!("This is a zenoh-pico limitation, not a nros issue.");
             // Don't fail - this is a known limitation
         } else {
             panic!("Bidirectional communication failed - no messages received in either direction");
@@ -619,7 +619,7 @@ fn test_zephyr_talker_smoke() {
     eprintln!("Zephyr output:\n{}", output);
 
     // The process should have started and produced some output
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr talker booted and initialized");
@@ -655,7 +655,7 @@ fn test_zephyr_listener_smoke() {
     eprintln!("Zephyr output:\n{}", output);
 
     // The process should have started and produced some output
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr listener booted and initialized");
@@ -792,7 +792,7 @@ fn test_zephyr_action_server_smoke() {
 
     eprintln!("Zephyr output:\n{}", output);
 
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr action server booted and initialized");
@@ -826,7 +826,7 @@ fn test_zephyr_action_client_smoke() {
 
     eprintln!("Zephyr output:\n{}", output);
 
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr action client booted and initialized");
@@ -1037,7 +1037,7 @@ fn test_zephyr_service_server_smoke() {
 
     eprintln!("Zephyr output:\n{}", output);
 
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr service server booted and initialized");
@@ -1074,7 +1074,7 @@ fn test_zephyr_service_client_smoke() {
 
     eprintln!("Zephyr output:\n{}", output);
 
-    let has_boot = output.contains("Booting Zephyr") || output.contains("nano-ros");
+    let has_boot = output.contains("Booting Zephyr") || output.contains("nros");
 
     if has_boot {
         eprintln!("SUCCESS: Zephyr service client booted and initialized");

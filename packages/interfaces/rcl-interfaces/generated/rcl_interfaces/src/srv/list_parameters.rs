@@ -1,9 +1,9 @@
-// nano-ros service type - pure Rust, no_std compatible
+// nros service type - pure Rust, no_std compatible
 // Package: rcl_interfaces
 // Service: ListParameters
 
-use nano_ros_core::{Deserialize, RosMessage, RosService, Serialize};
-use nano_ros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 pub const DEPTH_RECURSIVE: u64 = 0;
 
 /// ListParameters request message

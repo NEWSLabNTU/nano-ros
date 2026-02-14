@@ -1,4 +1,4 @@
-//! nano-ros STM32F4 Talker Example using BSP
+//! nros STM32F4 Talker Example using BSP
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`,
 //! compatible with ROS 2 nodes via rmw_zenoh.

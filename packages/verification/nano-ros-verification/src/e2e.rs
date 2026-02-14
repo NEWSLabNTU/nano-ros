@@ -32,7 +32,7 @@
 /// **Pure math** (no link to production code):
 /// - `sequence_number_monotonicity` — arithmetic identity on atomic increment.
 use vstd::prelude::*;
-use nano_ros_node::TriggerCondition;
+use nros_node::TriggerCondition;
 use nano_ros_ghost_types::{SubscriberBufferGhost, PublishChainGhost, SpinOnceGhost};
 use super::scheduling::{trigger_eval_spec, trigger_any, trigger_all};
 

@@ -21,7 +21,7 @@ Verus proves properties for all executions, forever. For safety-critical deploym
 | Integration          | `#[cfg(kani)]` — zero dependencies        | Separate crate — needs vstd + Verus toolchain     |
 | Counterexamples      | Concrete failing input                    | "Verification failed" (no witness)                |
 
-Kani stays for unsafe/FFI verification (nano-ros-c) and as a low-effort safety net. Verus adds unbounded proofs where Kani's bounds are a limitation.
+Kani stays for unsafe/FFI verification (nros-c) and as a low-effort safety net. Verus adds unbounded proofs where Kani's bounds are a limitation.
 
 ## Architecture: Centralized Verification Crate
 
@@ -42,15 +42,15 @@ packages/verification/nano-ros-verification/
 
 ### Why a separate crate (not in-crate like Kani)
 
-- **THIR erasure crash** — Verus panics at `erase.rs:237` when encountering function pointers, `dyn Trait`, or closures during the THIR erasure phase. This runs *before* `#[verifier::external]` annotations are processed, so problematic items cannot be excluded. Production crates like `nano-ros-node` contain `fn(&[bool]) -> bool` (TriggerFn), `Box<dyn Fn(...)>` (Trigger::Boxed), and closures (`ready.iter().any(|&r| r)`). Even `#[cfg(not(feature = "verus"))]` exclusion fails because `[package.metadata.verus] verify = true` causes cargo-verus to compile deps through the Verus pipeline too.
+- **THIR erasure crash** — Verus panics at `erase.rs:237` when encountering function pointers, `dyn Trait`, or closures during the THIR erasure phase. This runs *before* `#[verifier::external]` annotations are processed, so problematic items cannot be excluded. Production crates like `nros-node` contain `fn(&[bool]) -> bool` (TriggerFn), `Box<dyn Fn(...)>` (Trigger::Boxed), and closures (`ready.iter().any(|&r| r)`). Even `#[cfg(not(feature = "verus"))]` exclusion fails because `[package.metadata.verus] verify = true` causes cargo-verus to compile deps through the Verus pipeline too.
 - **Zero production impact** — no cfg flags, feature gates, or vstd references in production crates
 - **Toolchain isolation** — Verus bundles its own modified rustc; excluded from workspace avoids conflicts
-- **Cross-crate proofs** — properties spanning nano-ros-serdes + nano-ros-core + nano-ros-node live naturally in one place
+- **Cross-crate proofs** — properties spanning nros-serdes + nros-core + nros-node live naturally in one place
 - **Precedent** — matches the Asterinas [vostd](https://github.com/asterinas/vostd) pattern (OSDI 2024 best paper)
 
 ### Why edition 2024 works
 
-Verus's `rust_verify` driver and internal crates already use edition 2024 (since rustc 1.93.0). The `--edition` pass-through in the driver defaults to 2021 only when no edition is specified — `cargo verus` reads `edition = "2024"` from Cargo.toml natively. This means the verification crate uses the same edition as nano-ros, with direct path dependencies and no cross-edition concerns.
+Verus's `rust_verify` driver and internal crates already use edition 2024 (since rustc 1.93.0). The `--edition` pass-through in the driver defaults to 2021 only when no edition is specified — `cargo verus` reads `edition = "2024"` from Cargo.toml natively. This means the verification crate uses the same edition as nros, with direct path dependencies and no cross-edition concerns.
 
 ### Workspace integration
 
@@ -77,10 +77,10 @@ unexpected_cfgs = { level = "allow", check-cfg = ['cfg(verus_keep_ghost_body)', 
 
 [dependencies]
 vstd = "0.0.0-2026-02-08-0120"
-nano-ros-serdes = { path = "../../core/nano-ros-serdes", default-features = false }
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
-nano-ros-params = { path = "../../core/nano-ros-params", default-features = false }
-nano-ros-node = { path = "../../core/nano-ros-node", default-features = false, features = ["alloc"] }
+nros-serdes = { path = "../../core/nros-serdes", default-features = false }
+nros-core = { path = "../../core/nros-core", default-features = false }
+nros-params = { path = "../../core/nros-params", default-features = false }
+nros-node = { path = "../../core/nros-node", default-features = false, features = ["alloc"] }
 ```
 
 ```toml
@@ -112,8 +112,8 @@ Axiomatically declares a contract on a production function. The contract is **tr
 
 ```rust
 use vstd::prelude::*;
-use nano_ros_node::TriggerCondition;
-use nano_ros_core::time::Duration;
+use nros_node::TriggerCondition;
+use nros_core::time::Duration;
 
 verus! {
 
@@ -123,7 +123,7 @@ pub struct ExTriggerCondition(TriggerCondition);
 
 // Transparent struct — Verus can access pub fields (sec, nanosec)
 #[verifier::external_type_specification]
-pub struct ExDuration(nano_ros_core::time::Duration);
+pub struct ExDuration(nros_core::time::Duration);
 
 // Spec function that matches on enum variants (only possible with transparent type)
 pub open spec fn trigger_eval_spec(cond: TriggerCondition, ready: Seq<bool>) -> bool {
@@ -165,7 +165,7 @@ For types with `pub(crate)` fields or behind feature gates that prevent import, 
 ```rust
 verus! {
 
-/// Ghost representation of TimerState (mirrors nano_ros_node::timer::TimerState).
+/// Ghost representation of TimerState (mirrors nros_node::timer::TimerState).
 pub struct TimerGhost {
     pub period_ms: u64,
     pub elapsed_ms: u64,
@@ -192,7 +192,7 @@ Proofs are organized by what they guarantee to the application developer, not by
 
 These prove that the executor has **bounded, predictable behavior** — the prerequisite for WCET analysis and schedulability proofs. An embedded developer needs to know: "if I call `spin_once()`, how much work can it possibly do?"
 
-**Timer correctness** — ghost model (nano-ros-node `timer.rs`):
+**Timer correctness** — ghost model (nros-node `timer.rs`):
 
 | Proof                             | Property                                                               | Real-time relevance                                                | Trust |
 |-----------------------------------|------------------------------------------------------------------------|--------------------------------------------------------------------|-------|
@@ -202,7 +202,7 @@ These prove that the executor has **bounded, predictable behavior** — the prer
 | `timer_repeating_elapsed_bounded` | After fire(), `elapsed_ms < period_ms` (excess is always < one period) | Timer state stays in a well-defined range                          | Ghost |
 | `timer_canceled_never_fires`      | `canceled == true → update() returns false` regardless of elapsed      | Canceled timers are truly dead                                     | Ghost |
 
-**Trigger conditions** — formally linked (nano-ros-node `trigger.rs`):
+**Trigger conditions** — formally linked (nros-node `trigger.rs`):
 
 | Proof                          | Property                                                                               | Real-time relevance                                          | Trust |
 |--------------------------------|----------------------------------------------------------------------------------------|--------------------------------------------------------------|-------|
@@ -724,23 +724,23 @@ models and production code.
 
 | Crate              | Ghost types                                                          | Structural checks                                | Contract tests                                                                           |
 |--------------------|----------------------------------------------------------------------|--------------------------------------------------|------------------------------------------------------------------------------------------|
-| nano-ros-serdes    | `CdrGhost`                                                           | Construct from `CdrWriter` private fields        | header_origin, position_invariant                                                        |
-| nano-ros-params    | `ParamServerGhost`, `ParameterValueGhost`                            | Construct from `ParameterServer` private fields  | count_invariant, param_type_spec                                                         |
+| nros-serdes    | `CdrGhost`                                                           | Construct from `CdrWriter` private fields        | header_origin, position_invariant                                                        |
+| nros-params    | `ParamServerGhost`, `ParameterValueGhost`                            | Construct from `ParameterServer` private fields  | count_invariant, param_type_spec                                                         |
 | nano-ros-transport | `SubscriberBufferGhost`                                              | Construct from `SubscriberBuffer` private fields | callback_post_fix (overflow + normal), try_recv_post_fix (overflow, size_error, success) |
-| nano-ros-node      | `TimerGhost`, `TimerModeGhost`, `PublishChainGhost`, `SpinOnceGhost` | Construct from `TimerState` private fields       | timer_update, spin_once_invariant                                                        |
+| nros-node      | `TimerGhost`, `TimerModeGhost`, `PublishChainGhost`, `SpinOnceGhost` | Construct from `TimerState` private fields       | timer_update, spin_once_invariant                                                        |
 
 **Tasks:**
 
 1. Add `nano-ros-ghost-types` as `[dev-dependencies]` to each production crate
-2. In `nano-ros-serdes/src/cdr.rs`: add `#[cfg(test)] mod ghost_checks` —
+2. In `nros-serdes/src/cdr.rs`: add `#[cfg(test)] mod ghost_checks` —
    construct `CdrGhost` from `CdrWriter` private fields, verify initial state
    and post-header state
-3. In `nano-ros-params/src/server.rs`: add ghost checks for `ParamServerGhost` —
+3. In `nros-params/src/server.rs`: add ghost checks for `ParamServerGhost` —
    construct from `ParameterServer` private fields, verify count after declare/remove
 4. In `nano-ros-transport/src/shim.rs`: add ghost checks for `SubscriberBufferGhost` —
    construct from `SubscriberBuffer` private fields, verify callback overflow/normal
    paths and try_recv error paths
-5. In `nano-ros-node`: add ghost checks for `TimerGhost` and control-flow ghosts —
+5. In `nros-node`: add ghost checks for `TimerGhost` and control-flow ghosts —
    construct from `TimerState` private fields, verify spin_once trigger gating
 6. `just quality` passes (all ghost check tests run in unit tests)
 
@@ -783,12 +783,12 @@ The Verus toolchain is installed via `just setup-verus` and integrated into `jus
 ### Practical
 
 - High annotation burden (4:1 to 7:1 proof:code ratio)
-- Cannot verify unsafe/FFI code (nano-ros-c stays with Kani)
+- Cannot verify unsafe/FFI code (nros-c stays with Kani)
 - Verus supports a subset of Rust (no `dyn Trait`, limited complex borrowing)
 - SMT solver can be unpredictable on complex proofs (timeouts)
 - No C support — only applies to Rust code
 - `cargo verus` is still maturing (known stability issues, fallback to direct binary)
-- Transport layer (zenoh-pico FFI) is outside verification scope — Verus proves properties of nano-ros's own logic, not network behavior
+- Transport layer (zenoh-pico FFI) is outside verification scope — Verus proves properties of nros's own logic, not network behavior
 - User callback execution time is unbounded by definition — proofs cover the framework, not application code
 
 ### Mitigations discovered

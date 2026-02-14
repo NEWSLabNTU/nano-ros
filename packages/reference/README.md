@@ -1,6 +1,6 @@
 # Platform Integration Examples
 
-These examples are **low-level reference implementations** for developers creating new Board Support Packages (BSPs) or integrating nano-ros with new hardware platforms.
+These examples are **low-level reference implementations** for developers creating new Board Support Packages (BSPs) or integrating nros with new hardware platforms.
 
 **Most users should use the platform-crate-based examples instead:**
 - [qemu/](../qemu/) - QEMU bare-metal examples
@@ -21,7 +21,7 @@ These examples are **low-level reference implementations** for developers creati
 | Directory | Description |
 |-----------|-------------|
 | `stm32f4-smoltcp` | TCP echo server using RTIC + smoltcp. Validates Ethernet and networking without zenoh. |
-| `stm32f4-rtic` | Full nano-ros integration with RTIC framework. Shows task priorities and interrupt handling. |
+| `stm32f4-rtic` | Full nros integration with RTIC framework. Shows task priorities and interrupt handling. |
 | `stm32f4-polling` | Simple polling loop without RTIC. Minimal dependencies, suitable for bare-metal. |
 | `stm32f4-embassy` | Embassy async framework integration. Shows cooperative multitasking approach. |
 
@@ -37,7 +37,7 @@ These examples are **low-level reference implementations** for developers creati
 Use these examples when:
 - Developing a new BSP crate for a new platform
 - Debugging low-level networking issues
-- Understanding how nano-ros integrates with smoltcp/zenoh-pico
+- Understanding how nros integrates with smoltcp/zenoh-pico
 - Porting to a new MCU family
 
 ## Architecture
@@ -46,7 +46,7 @@ Use these examples when:
 User Application
        │
        ▼
-  nano-ros Platform (e.g., nano-ros-platform-stm32f4)
+  nros Platform (e.g., nano-ros-platform-stm32f4)
        │
        ▼
 ┌──────┴──────┐

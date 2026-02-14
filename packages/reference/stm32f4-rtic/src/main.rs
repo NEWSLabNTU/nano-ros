@@ -1,6 +1,6 @@
-//! RTIC Example for nano-ros on STM32F4 with nano-ros-transport-zenoh
+//! RTIC Example for nros on STM32F4 with nano-ros-transport-zenoh
 //!
-//! This example demonstrates nano-ros with nano-ros-transport-zenoh on an STM32F4
+//! This example demonstrates nros with nano-ros-transport-zenoh on an STM32F4
 //! microcontroller using smoltcp for TCP/IP networking.
 //!
 //! # Architecture
@@ -166,7 +166,7 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        info!("nano-ros RTIC + nano-ros-transport-zenoh example starting...");
+        info!("nros RTIC + nano-ros-transport-zenoh example starting...");
 
         let dp = cx.device;
 
@@ -307,9 +307,9 @@ mod app {
         //         info!("Connected to zenoh router!");
         //
         //         // Declare publisher
-        //         match ctx.declare_publisher(b"nano_ros/rtic/counter\0") {
+        //         match ctx.declare_publisher(b"nros/rtic/counter\0") {
         //             Ok(publisher) => {
-        //                 info!("Publisher declared for nano_ros/rtic/counter");
+        //                 info!("Publisher declared for nros/rtic/counter");
         //                 // Store publisher in shared resources
         //             }
         //             Err(e) => error!("Failed to declare publisher: {}", e),
@@ -407,8 +407,8 @@ mod app {
             // When zenoh-pico is available, this would publish:
             // if let Some(publisher) = &PUBLISHER {
             //     // Create Int32 message
-            //     use nano_ros_core::Serialize;
-            //     use nano_ros_serdes::CdrWriter;
+            //     use nros_core::Serialize;
+            //     use nros_serdes::CdrWriter;
             //     use std_msgs::msg::Int32;
             //
             //     let msg = Int32 { data: count as i32 };

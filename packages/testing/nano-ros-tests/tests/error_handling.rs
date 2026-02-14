@@ -1,6 +1,6 @@
 //! Error Handling and Edge Case Tests
 //!
-//! Tests for error paths, timeouts, and edge cases in nano-ros communication.
+//! Tests for error paths, timeouts, and edge cases in nros communication.
 //!
 //! Run with: `cargo test -p nano-ros-tests --test error_handling -- --nocapture`
 //! Or: `just test-rust-errors`

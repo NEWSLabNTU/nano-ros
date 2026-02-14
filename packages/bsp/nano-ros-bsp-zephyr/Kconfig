@@ -1,12 +1,12 @@
-# nano-ros BSP for Zephyr
-# Copyright (c) 2024 nano-ros contributors
+# nros BSP for Zephyr
+# Copyright (c) 2024 nros contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 menuconfig NANO_ROS_BSP
-    bool "nano-ros Board Support Package"
+    bool "nros Board Support Package"
     depends on ZENOH_PICO
     help
-      Enable nano-ros BSP for simplified ROS 2 node development.
+      Enable nros BSP for simplified ROS 2 node development.
       This provides a high-level API that hides zenoh-pico details.
 
 if NANO_ROS_BSP
@@ -27,7 +27,7 @@ config NANO_ROS_ZENOH_LOCATOR
 
 config NANO_ROS_NODE_NAME
     string "Default node name"
-    default "nano_ros_node"
+    default "nros_node"
     help
       Default name for the ROS 2 node.
 
@@ -79,7 +79,7 @@ config NANO_ROS_AUTO_INIT
     bool "Automatic initialization"
     default n
     help
-      Automatically initialize nano-ros BSP at boot.
+      Automatically initialize nros BSP at boot.
       If disabled, call nano_ros_bsp_init() manually.
 
 endif # NANO_ROS_BSP

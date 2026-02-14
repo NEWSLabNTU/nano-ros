@@ -1,4 +1,4 @@
-//! smoltcp TCP transport for nano-ros
+//! smoltcp TCP transport for nros
 //!
 //! Provides [`SmoltcpBridge`] for managing TCP socket state and data transfer
 //! between zenoh-pico and smoltcp, plus Rust implementations of the zenoh-pico

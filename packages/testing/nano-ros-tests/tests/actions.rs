@@ -1,6 +1,6 @@
 //! Action integration tests
 //!
-//! Tests for ROS 2 action communication between nano-ros nodes.
+//! Tests for ROS 2 action communication between nros nodes.
 
 use nano_ros_tests::fixtures::{
     ManagedProcess, ZenohRouter, action_client_binary, action_server_binary, require_zenohd,

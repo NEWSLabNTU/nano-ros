@@ -7,8 +7,8 @@ name = "builtin_interfaces"
 version = "1.2.1"
 dependencies = [
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -41,21 +41,21 @@ name = "listener"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
  "std_msgs",
 ]
 
 [[package]]
-name = "nano-ros-core"
+name = "nros-core"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-serdes",
+ "nros-serdes",
 ]
 
 [[package]]
-name = "nano-ros-serdes"
+name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
  "byteorder",
@@ -74,8 +74,8 @@ version = "4.2.4"
 dependencies = [
  "builtin_interfaces",
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -83,7 +83,7 @@ name = "talker"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
  "std_msgs",
 ]

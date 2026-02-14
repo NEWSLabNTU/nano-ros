@@ -4,11 +4,11 @@ Complete setup procedure for Zephyr native_sim testing with TAP networking.
 
 ## Overview
 
-nano-ros uses a **sibling Zephyr workspace** alongside the repository. A symlink inside nano-ros provides a stable path for scripts to locate the workspace.
+nros uses a **sibling Zephyr workspace** alongside the repository. A symlink inside nros provides a stable path for scripts to locate the workspace.
 
 ```
 repos/
-├── nano-ros/                     # Your repository
+├── nros/                     # Your repository
 │   ├── scripts/zephyr/
 │   │   ├── setup.sh              # Initialize workspace
 │   │   ├── setup-network.sh      # Configure TAP interface
@@ -21,7 +21,7 @@ repos/
 │   └── west.yml                  # West manifest
 │
 └── nano-ros-workspace/           # Created by setup script
-    ├── nano-ros -> ../nano-ros   # Symlink to your repo
+    ├── nros -> ../nros   # Symlink to your repo
     ├── zephyr/                   # Zephyr RTOS v3.7.0
     └── modules/                  # HALs, zenoh-pico, zephyr-lang-rust
 ```
@@ -56,7 +56,7 @@ This script automatically:
 - Verifies download with sha256sum
 - Installs SDK to `scripts/zephyr/sdk/`
 - Creates sibling workspace `../nano-ros-workspace/`
-- Symlinks nano-ros into the workspace
+- Symlinks nros into the workspace
 - Fetches Zephyr RTOS and all modules
 - Installs Rust embedded targets
 - Creates `env.sh` for environment setup
@@ -101,7 +101,7 @@ source ../nano-ros-workspace/env.sh
 
 # Build Zephyr talker
 cd ../nano-ros-workspace
-west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-talker
+west build -b native_sim/native/64 nros/examples/zephyr-rs-talker
 
 # Run (no sudo needed)
 ./build/zephyr/zephyr.exe
@@ -113,13 +113,13 @@ west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-talker
 # Terminal 1: Start zenoh router (listen on all interfaces)
 zenohd --listen tcp/0.0.0.0:7447
 
-# Terminal 2: Run native subscriber (from nano-ros dir)
+# Terminal 2: Run native subscriber (from nros dir)
 cargo run -p zenoh-pico --example sub_test --features std
 
 # Terminal 3: Run Zephyr talker
 source ../nano-ros-workspace/env.sh
 cd ../nano-ros-workspace
-west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-talker
+west build -b native_sim/native/64 nros/examples/zephyr-rs-talker
 ./build/zephyr/zephyr.exe
 ```
 
@@ -152,7 +152,7 @@ just test-zephyr
 │                         Host (Linux)                         │
 │                                                             │
 │  ┌─────────────┐    TCP/7447    ┌─────────────────────────┐ │
-│  │   zenohd    │◄──────────────►│  Native nano-ros apps   │ │
+│  │   zenohd    │◄──────────────►│  Native nros apps   │ │
 │  │ 0.0.0.0:7447│                │  (talker, listener)     │ │
 │  └──────┬──────┘                └─────────────────────────┘ │
 │         │                                                    │
@@ -169,7 +169,7 @@ just test-zephyr
 │ Zephyr native_sim│
 │   192.0.2.1     │
 │                 │
-│ nano-ros app    │
+│ nros app    │
 │ connects to     │
 │ 192.0.2.2:7447  │
 └─────────────────┘

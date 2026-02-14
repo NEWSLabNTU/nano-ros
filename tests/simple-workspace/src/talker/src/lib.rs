@@ -1,11 +1,11 @@
-//! nano-ros talker example (no_std)
+//! nros talker example (no_std)
 //!
 //! Demonstrates message serialization without std.
 
 #![no_std]
 
-use nano_ros_core::{RosMessage, Serialize};
-use nano_ros_serdes::CdrWriter;
+use nros_core::{RosMessage, Serialize};
+use nros_serdes::CdrWriter;
 use std_msgs::msg::Int32;
 
 /// Serialize an Int32 message to a buffer

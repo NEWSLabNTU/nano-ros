@@ -1,6 +1,6 @@
 //! Native Service Server Example
 //!
-//! Demonstrates a ROS 2 service server using nano-ros with the executor API.
+//! Demonstrates a ROS 2 service server using nros with the executor API.
 //! Uses callback-based service handling via spin().
 //!
 //! # Usage
@@ -24,13 +24,13 @@ use log::{error, info};
 #[cfg(feature = "zenoh")]
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
 #[cfg(feature = "zenoh")]
-use nano_ros::prelude::*;
+use nros::prelude::*;
 
 #[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Service Server Example");
+    info!("nros Service Server Example");
     info!("================================");
 
     // Create context using rclrs-style API
@@ -87,7 +87,7 @@ fn main() {
 #[cfg(not(feature = "zenoh"))]
 fn main() {
     env_logger::init();
-    info!("nano-ros Service Server Example");
+    info!("nros Service Server Example");
     info!("================================");
     info!("This example requires the 'zenoh' feature.");
     info!("Run with: cargo run -p native-rs-service-server --features zenoh");

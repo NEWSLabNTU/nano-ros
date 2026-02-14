@@ -1,4 +1,4 @@
-//! Platform-specific tests for nano-ros
+//! Platform-specific tests for nros
 //!
 //! Tests for Zephyr, embedded targets, and platform-specific functionality.
 
@@ -107,7 +107,7 @@ fn test_zephyr_talker_build() {
     };
 
     // Verify the example exists
-    let example_path = workspace.join("nano-ros/examples/zephyr/rs-talker");
+    let example_path = workspace.join("nros/examples/zephyr/rs-talker");
     if !example_path.exists() {
         eprintln!(
             "Skipping test: zephyr-rs-talker example not found at {}",
@@ -143,7 +143,7 @@ fn test_zephyr_listener_build() {
     };
 
     // Verify the example exists
-    let example_path = workspace.join("nano-ros/examples/zephyr/rs-listener");
+    let example_path = workspace.join("nros/examples/zephyr/rs-listener");
     if !example_path.exists() {
         eprintln!(
             "Skipping test: zephyr-rs-listener example not found at {}",

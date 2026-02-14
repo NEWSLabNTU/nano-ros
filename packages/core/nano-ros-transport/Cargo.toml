@@ -3,12 +3,12 @@ name = "nano-ros-transport"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
-description = "Transport abstraction layer for nano-ros"
+description = "Transport abstraction layer for nros"
 
 [features]
 default = ["std"]
-std = ["nano-ros-core/std", "nano-ros-transport-zenoh?/std", "log"]
-alloc = ["nano-ros-core/alloc", "nano-ros-transport-zenoh?/alloc"]
+std = ["nros-core/std", "nano-ros-transport-zenoh?/std", "log"]
+alloc = ["nros-core/alloc", "nano-ros-transport-zenoh?/alloc"]
 
 # Transport: selects the middleware protocol (only zenoh today)
 # "zenoh" is a convenience alias for platform-posix + alloc (desktop default)
@@ -35,7 +35,7 @@ sync-critical-section = ["dep:critical-section"]
 log = ["dep:log"]
 
 [dependencies]
-nano-ros-core = { workspace = true, default-features = false }
+nros-core = { workspace = true, default-features = false }
 heapless = { workspace = true }
 nano-ros-transport-zenoh = { path = "../../transport/nano-ros-transport-zenoh", optional = true, default-features = false }
 

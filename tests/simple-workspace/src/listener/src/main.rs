@@ -1,13 +1,13 @@
-//! nano-ros listener executable
+//! nros listener executable
 //!
 //! Demonstrates message deserialization using generated std_msgs bindings.
 
-use nano_ros_core::{Deserialize, RosMessage};
-use nano_ros_serdes::CdrReader;
+use nros_core::{Deserialize, RosMessage};
+use nros_serdes::CdrReader;
 use std_msgs::msg::Int32;
 
 fn main() {
-    println!("nano-ros listener starting...");
+    println!("nros listener starting...");
     println!("Message type: {}", Int32::TYPE_NAME);
 
     // Simulate receiving serialized messages

@@ -49,7 +49,7 @@ static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the esp32-qemu-listener binary (ELF)
 static ESP32_QEMU_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached: nano-ros-c library built
+/// Cached: nros-c library built
 static NANO_ROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the c-talker binary
@@ -400,17 +400,17 @@ pub fn qemu_bsp_listener_binary() -> PathBuf {
 // C Example Builders (CMake-based)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Build the nano-ros-c static library (cached).
+/// Build the nros-c static library (cached).
 ///
-/// Runs `cargo build -p nano-ros-c --release` and returns the path to `libnano_ros_c.a`.
+/// Runs `cargo build -p nros-c --release` and returns the path to `libnano_ros_c.a`.
 pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
     NANO_ROS_C_LIB
         .get_or_try_init(|| {
             let root = project_root();
 
-            eprintln!("Building nano-ros-c library...");
+            eprintln!("Building nros-c library...");
 
-            let output = cmd!("cargo", "build", "-p", "nano-ros-c", "--release")
+            let output = cmd!("cargo", "build", "-p", "nros-c", "--release")
                 .dir(&root)
                 .stderr_to_stdout()
                 .stdout_capture()
@@ -443,7 +443,7 @@ pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
 /// * `example_dir` - Path relative to `examples/` (e.g., "native/c-talker")
 /// * `binary_name` - Name of the output binary (e.g., "c_talker")
 ///
-/// This first ensures the nano-ros-c library is built, then runs cmake + cmake --build.
+/// This first ensures the nros-c library is built, then runs cmake + cmake --build.
 pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
     // Ensure the C library is built first
     build_nano_ros_c_lib()?;

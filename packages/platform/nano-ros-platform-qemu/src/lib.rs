@@ -1,6 +1,6 @@
 //! # nano-ros-platform-qemu
 //!
-//! Platform crate for running nano-ros on QEMU MPS2-AN385.
+//! Platform crate for running nros on QEMU MPS2-AN385.
 //!
 //! Provides all zenoh-pico system symbols in Rust (memory, clock, RNG, sleep,
 //! time, threading stubs, socket helpers) and a simplified node API that
@@ -53,7 +53,7 @@ pub use subscriber::Subscription;
 pub use timing::CycleCounter;
 
 // Re-export core traits needed for message type definitions
-pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
+pub use nros_core::{self, Deserialize, RosMessage, Serialize};
 
 /// Prelude for convenient imports
 ///
@@ -66,7 +66,7 @@ pub mod prelude {
     pub use crate::subscriber::Subscription;
     pub use crate::timing::CycleCounter;
     pub use cortex_m_rt::entry;
-    pub use nano_ros_core::{Deserialize, RosMessage, Serialize};
+    pub use nros_core::{Deserialize, RosMessage, Serialize};
 }
 
 /// Print to QEMU semihosting console

@@ -1,8 +1,8 @@
 /**
  * @file main.c
- * @brief Zephyr C listener example using nano-ros BSP
+ * @brief Zephyr C listener example using nros BSP
  *
- * This example demonstrates using nano-ros BSP for subscriptions on Zephyr.
+ * This example demonstrates using nros BSP for subscriptions on Zephyr.
  * The BSP handles zenoh initialization and ROS 2 keyexpr formatting.
  */
 
@@ -65,7 +65,7 @@ static void on_message(const uint8_t *data, size_t len, void *user_data)
 
 int main(void)
 {
-    LOG_INF("nano-ros Zephyr C Listener (BSP)");
+    LOG_INF("nros Zephyr C Listener (BSP)");
     LOG_INF("================================");
 
     /* Initialize BSP (uses Kconfig for zenoh locator) */
@@ -77,7 +77,7 @@ int main(void)
     }
 
     /* Create node */
-    nano_ros_node_t node;
+    nros_node_t node;
     ret = nano_ros_bsp_create_node(&ctx, &node, "zephyr_listener");
     if (ret != NANO_ROS_BSP_OK) {
         LOG_ERR("Node creation failed: %d", ret);

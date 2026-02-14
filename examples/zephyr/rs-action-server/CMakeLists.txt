@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-# nano-ros Zephyr Action Server Example (Rust)
+# nros Zephyr Action Server Example (Rust)
 #
-# A ROS 2 compatible action server running on Zephyr RTOS using nano-ros.
+# A ROS 2 compatible action server running on Zephyr RTOS using nros.
 #
 # Build:
 #   source ~/nano-ros-workspace/env.sh
-#   west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-action-server
+#   west build -b native_sim/native/64 nros/examples/zephyr-rs-action-server
 #
 # Run:
 #   ./build/zephyr/zephyr.exe

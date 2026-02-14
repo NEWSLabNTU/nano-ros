@@ -21,19 +21,19 @@ Rename the workspace-member core crates. These are the most referenced names.
 
 | Current           | New           | Notes               |
 |-------------------|---------------|---------------------|
-| `nano-ros-core`   | `nros-core`   | Core types, traits  |
-| `nano-ros-serdes` | `nros-serdes` | CDR serialization   |
-| `nano-ros-macros` | `nros-macros` | Proc macros         |
-| `nano-ros-params` | `nros-params` | Parameter server    |
-| `nano-ros-node`   | `nros-node`   | High-level node API |
-| `nano-ros-c`      | `nros-c`      | C API               |
-| `nano-ros`        | `nros`        | Unified re-export   |
+| `nros-core`   | `nros-core`   | Core types, traits  |
+| `nros-serdes` | `nros-serdes` | CDR serialization   |
+| `nros-macros` | `nros-macros` | Proc macros         |
+| `nros-params` | `nros-params` | Parameter server    |
+| `nros-node`   | `nros-node`   | High-level node API |
+| `nros-c`      | `nros-c`      | C API               |
+| `nros`        | `nros`        | Unified re-export   |
 
 **Per-crate rename procedure:**
-1. Rename directory (`packages/core/nano-ros-core/` → `packages/core/nros-core/`)
+1. Rename directory (`packages/core/nros-core/` → `packages/core/nros-core/`)
 2. Update `Cargo.toml` (`name`, internal deps)
 3. Update `lib.rs` crate-level attributes if any
-4. Rename Rust module references (`nano_ros_core` → `nros_core`) in all dependents
+4. Rename Rust module references (`nros_core` → `nros_core`) in all dependents
 5. Update root `Cargo.toml` workspace members list
 6. Update `.cargo/config.toml` `[patch.crates-io]` in all examples
 7. Update `package.xml` dependency names in examples (codegen uses these)
@@ -105,7 +105,7 @@ Each `nros-*` board crate:
 | Update codegen output    | —                    | Generated code references `nros_core::` etc.          |
 | `rcl-interfaces`         | `rcl-interfaces`     | Keep name (it's a ROS 2 package name)                 |
 
-**Verification detail:** `nros-verification` depends on core crates via path. Its `Cargo.toml` deps (`nano-ros-serdes`, `nano-ros-core`, `nano-ros-params`, `nano-ros-node`, `nano-ros-ghost-types`) must all update to new names. Verus `assume_specification` and `external_type_specification` references use Rust module paths (`nros_core::`, `nros_node::`, etc.) — all must be updated in proof modules.
+**Verification detail:** `nros-verification` depends on core crates via path. Its `Cargo.toml` deps (`nros-serdes`, `nros-core`, `nros-params`, `nros-node`, `nano-ros-ghost-types`) must all update to new names. Verus `assume_specification` and `external_type_specification` references use Rust module paths (`nros_core::`, `nros_node::`, etc.) — all must be updated in proof modules.
 
 ### 33.5: Directory restructuring
 

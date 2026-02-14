@@ -1,13 +1,13 @@
-//! nano-ros Zephyr Action Client Example (Rust)
+//! nros Zephyr Action Client Example (Rust)
 //!
-//! A ROS 2 compatible action client running on Zephyr RTOS using the nano-ros API.
+//! A ROS 2 compatible action client running on Zephyr RTOS using the nros API.
 //! The client sends a Fibonacci goal and receives feedback as the sequence
 //! is computed.
 
 #![no_std]
 
 use log::{error, info, warn};
-use nano_ros::{ShimExecutor, ShimNodeError};
+use nros::{ShimExecutor, ShimNodeError};
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 
 #[unsafe(no_mangle)]
@@ -16,7 +16,7 @@ extern "C" fn rust_main() {
         zephyr::set_logger().ok();
     }
 
-    info!("nano-ros Zephyr Action Client");
+    info!("nros Zephyr Action Client");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
     info!("Action: Fibonacci");
 

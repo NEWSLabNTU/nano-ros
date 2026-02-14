@@ -1,6 +1,6 @@
-//! Embassy Example for nano-ros on STM32F4
+//! Embassy Example for nros on STM32F4
 //!
-//! This example demonstrates how to use nano-ros with Embassy on an STM32F4
+//! This example demonstrates how to use nros with Embassy on an STM32F4
 //! microcontroller. It shows:
 //!
 //! - Async task-based architecture
@@ -26,9 +26,9 @@
 //! cargo run --release  # Uses probe-rs
 //! ```
 
-//! Embassy Example for nano-ros on STM32F4
+//! Embassy Example for nros on STM32F4
 //!
-//! This example demonstrates how to use nano-ros with Embassy on an STM32F4
+//! This example demonstrates how to use nros with Embassy on an STM32F4
 //! microcontroller. It shows:
 //!
 //! - Async task-based architecture
@@ -63,7 +63,7 @@ use embassy_stm32::gpio::{Level, Output, Speed};
 use embassy_time::{Duration, Timer};
 // TODO: To use the full executor, a C cross-compilation toolchain (e.g. arm-none-eabi-gcc)
 // must be installed and visible to bindgen.
-// use nano_ros_node::{Context, Executor, InitOptions, NodeHandle, NodeNameExt, PollingExecutor};
+// use nros_node::{Context, Executor, InitOptions, NodeHandle, NodeNameExt, PollingExecutor};
 use panic_halt as _;
 
 /// Timing constants for Embassy tasks
@@ -72,7 +72,7 @@ const POLL_INTERVAL_MS: u64 = 10;
 /// Main entry point - spawns all async tasks
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    defmt::info!("nano-ros Embassy example starting...");
+    defmt::info!("nros Embassy example starting...");
 
     // Initialize Embassy HAL
     let p = embassy_stm32::init(Default::default());

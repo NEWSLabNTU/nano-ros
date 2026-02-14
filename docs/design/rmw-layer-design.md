@@ -1,10 +1,10 @@
-# RMW Layer Design: Middleware Abstraction for nano-ros
+# RMW Layer Design: Middleware Abstraction for nros
 
 ## Problem Statement
 
 ### 1. Link packages are zenoh-specific
 
-`nano-ros-link-smoltcp` depends on `nano-ros-transport-zenoh-sys` (features: `bare-metal`, `link-tcp`). It implements zenoh-pico's platform TCP symbols (`_z_open_tcp`, `_z_close_tcp`, etc.) — functions defined by zenoh-pico's C API. If nano-ros supported a non-zenoh middleware, this link crate would be useless because those symbols are zenoh-pico specific.
+`nano-ros-link-smoltcp` depends on `nano-ros-transport-zenoh-sys` (features: `bare-metal`, `link-tcp`). It implements zenoh-pico's platform TCP symbols (`_z_open_tcp`, `_z_close_tcp`, etc.) — functions defined by zenoh-pico's C API. If nros supported a non-zenoh middleware, this link crate would be useless because those symbols are zenoh-pico specific.
 
 The naming `nano-ros-link-*` implies a transport-agnostic "link layer" concept, but these crates are tightly coupled to zenoh-pico's C platform interface.
 
@@ -78,7 +78,7 @@ Key RMW functions:
 
 ROS 2 selects implementations at **runtime** via `dlopen()`. This is inappropriate for embedded — compile-time selection via feature flags and trait monomorphization is correct for `no_std`.
 
-For a detailed analysis of rmw.h's limitations for embedded and what nano-ros adopts vs avoids, see `docs/reference/rmw-h-analysis.md`.
+For a detailed analysis of rmw.h's limitations for embedded and what nros adopts vs avoids, see `docs/reference/rmw-h-analysis.md`.
 
 ## Proposed Design
 
@@ -119,14 +119,14 @@ nros-qemu (user-facing, composes everything)
 | Current                                      | New                             | nros deps?          | Role                                                      |
 |----------------------------------------------|---------------------------------|---------------------|-----------------------------------------------------------|
 | **Core (middleware-agnostic)**               |                                 |                     |                                                           |
-| `nano-ros`                                   | `nros`                          | —                   | Unified re-export crate                                   |
-| `nano-ros-core`                              | `nros-core`                     | —                   | Core types, traits                                        |
-| `nano-ros-serdes`                            | `nros-serdes`                   | —                   | CDR serialization                                         |
-| `nano-ros-macros`                            | `nros-macros`                   | —                   | `#[derive(RosMessage)]` proc macros                       |
-| `nano-ros-params`                            | `nros-params`                   | —                   | Parameter server                                          |
+| `nros`                                   | `nros`                          | —                   | Unified re-export crate                                   |
+| `nros-core`                              | `nros-core`                     | —                   | Core types, traits                                        |
+| `nros-serdes`                            | `nros-serdes`                   | —                   | CDR serialization                                         |
+| `nros-macros`                            | `nros-macros`                   | —                   | `#[derive(RosMessage)]` proc macros                       |
+| `nros-params`                            | `nros-params`                   | —                   | Parameter server                                          |
 | `nano-ros-transport`                         | **`nros-rmw`**                  | —                   | RMW abstraction traits                                    |
-| `nano-ros-node`                              | `nros-node`                     | —                   | High-level node API (desktop)                             |
-| `nano-ros-c`                                 | `nros-c`                        | —                   | C API (rclc-style)                                        |
+| `nros-node`                              | `nros-node`                     | —                   | High-level node API (desktop)                             |
+| `nros-c`                                 | `nros-c`                        | —                   | C API (rclc-style)                                        |
 | **RMW zenoh glue**                           |                                 |                     |                                                           |
 | `nano-ros-transport-zenoh` + `shim.rs`       | **`nros-rmw-zenoh`**            | nros-rmw            | Maps zpico-sys to nros-rmw traits                         |
 | **Zenoh-pico internals (NO nros deps)**      |                                 |                     |                                                           |

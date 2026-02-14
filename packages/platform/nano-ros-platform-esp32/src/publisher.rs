@@ -2,7 +2,7 @@
 
 use core::marker::PhantomData;
 
-use nano_ros_core::{CdrWriter, RosMessage};
+use nros_core::{CdrWriter, RosMessage};
 
 use crate::error::{Error, Result};
 

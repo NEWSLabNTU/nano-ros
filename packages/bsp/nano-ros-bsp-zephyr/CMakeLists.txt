@@ -1,5 +1,5 @@
-# nano-ros BSP for Zephyr
-# Copyright (c) 2024 nano-ros contributors
+# nros BSP for Zephyr
+# Copyright (c) 2024 nros contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
 if(CONFIG_NANO_ROS_BSP)

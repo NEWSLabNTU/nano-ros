@@ -26,7 +26,7 @@
 /// - `SpinOnceResult` requires `zenoh` feature → C FFI deps → can't import.
 /// - `TimerState` fields are `pub(crate)` → can't access from external crate.
 use vstd::prelude::*;
-use nano_ros_node::TriggerCondition;
+use nros_node::TriggerCondition;
 use nano_ros_ghost_types::{TimerGhost, TimerModeGhost};
 
 verus! {

@@ -116,8 +116,8 @@ name = "builtin_interfaces"
 version = "1.2.1"
 dependencies = [
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -456,76 +456,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros"
-version = "0.1.0"
-dependencies = [
- "nano-ros-core",
- "nano-ros-macros",
- "nano-ros-node",
- "nano-ros-params",
- "nano-ros-transport",
-]
-
-[[package]]
-name = "nano-ros-c"
-version = "0.1.0"
-dependencies = [
- "nano-ros",
- "nano-ros-core",
- "nano-ros-transport",
- "paste",
-]
-
-[[package]]
-name = "nano-ros-core"
-version = "0.1.0"
-dependencies = [
- "heapless",
- "log",
- "nano-ros-serdes",
-]
-
-[[package]]
 name = "nano-ros-ghost-types"
 version = "0.1.0"
-
-[[package]]
-name = "nano-ros-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn",
-]
-
-[[package]]
-name = "nano-ros-node"
-version = "0.1.0"
-dependencies = [
- "heapless",
- "log",
- "nano-ros-core",
- "nano-ros-ghost-types",
- "nano-ros-params",
- "nano-ros-transport",
- "rcl_interfaces",
-]
-
-[[package]]
-name = "nano-ros-params"
-version = "0.1.0"
-dependencies = [
- "heapless",
- "nano-ros-ghost-types",
-]
-
-[[package]]
-name = "nano-ros-serdes"
-version = "0.1.0"
-dependencies = [
- "heapless",
- "nano-ros-ghost-types",
-]
 
 [[package]]
 name = "nano-ros-tests"
@@ -534,8 +466,8 @@ dependencies = [
  "assert_cmd",
  "duct",
  "libc",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
  "once_cell",
  "parking_lot",
  "predicates",
@@ -551,9 +483,9 @@ dependencies = [
  "critical-section",
  "heapless",
  "log",
- "nano-ros-core",
  "nano-ros-ghost-types",
  "nano-ros-transport-zenoh",
+ "nros-core",
  "spin",
 ]
 
@@ -578,6 +510,74 @@ name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "61807f77802ff30975e01f4f071c8ba10c022052f98b3294119f3e615d13e5be"
+
+[[package]]
+name = "nros"
+version = "0.1.0"
+dependencies = [
+ "nano-ros-transport",
+ "nros-core",
+ "nros-macros",
+ "nros-node",
+ "nros-params",
+]
+
+[[package]]
+name = "nros-c"
+version = "0.1.0"
+dependencies = [
+ "nano-ros-transport",
+ "nros",
+ "nros-core",
+ "paste",
+]
+
+[[package]]
+name = "nros-core"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "log",
+ "nros-serdes",
+]
+
+[[package]]
+name = "nros-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "nros-node"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "log",
+ "nano-ros-ghost-types",
+ "nano-ros-transport",
+ "nros-core",
+ "nros-params",
+ "rcl_interfaces",
+]
+
+[[package]]
+name = "nros-params"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nano-ros-ghost-types",
+]
+
+[[package]]
+name = "nros-serdes"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nano-ros-ghost-types",
+]
 
 [[package]]
 name = "num-traits"
@@ -730,8 +730,8 @@ version = "1.2.1"
 dependencies = [
  "builtin_interfaces",
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]

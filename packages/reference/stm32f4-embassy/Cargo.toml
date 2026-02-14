@@ -3,7 +3,7 @@ name = "stm32f4-rs-embassy-example"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Embassy example for nano-ros on STM32F4"
+description = "Embassy example for nros on STM32F4"
 
 [[bin]]
 name = "stm32f4-rs-embassy-example"
@@ -21,9 +21,9 @@ cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 
-# nano-ros (no zenoh - this is a demo of the Embassy pattern)
-# For actual nano-ros usage, you would add zenoh-pico via C shim (see zephyr examples)
-nano-ros = { path = "../../core/nano-ros", default-features = false }
+# nros (no zenoh - this is a demo of the Embassy pattern)
+# For actual nros usage, you would add zenoh-pico via C shim (see zephyr examples)
+nros = { path = "../../core/nros", default-features = false }
 
 # Logging (optional, for debugging)
 defmt = "0.3"

@@ -1,6 +1,6 @@
 # nano-ros-bsp-zephyr
 
-Board Support Package for running nano-ros on Zephyr RTOS.
+Board Support Package for running nros on Zephyr RTOS.
 
 This library provides a simplified C API that abstracts away zenoh-pico configuration and provides ROS 2 compatible topic naming.
 
@@ -22,7 +22,7 @@ void main(void) {
     nano_ros_bsp_init(&ctx);
 
     // Create node
-    nano_ros_node_t node;
+    nros_node_t node;
     nano_ros_bsp_create_node(&ctx, &node, "my_talker");
 
     // Create publisher
@@ -45,7 +45,7 @@ void main(void) {
 ## Configuration (prj.conf)
 
 ```ini
-# Enable nano-ros BSP
+# Enable nros BSP
 CONFIG_NANO_ROS_BSP=y
 
 # Zenoh router address
@@ -65,10 +65,10 @@ Add to your Zephyr workspace's `west.yml`:
 ```yaml
 manifest:
   projects:
-    - name: nano-ros
-      url: https://github.com/example/nano-ros
+    - name: nros
+      url: https://github.com/example/nros
       revision: main
-      path: modules/nano-ros
+      path: modules/nros
 ```
 
 Then in your CMakeLists.txt:

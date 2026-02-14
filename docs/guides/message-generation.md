@@ -1,11 +1,11 @@
 # Message Binding Generation
 
-nano-ros uses generated Rust bindings for ROS 2 message types. The `nano-ros generate-rust` (or `cargo nano-ros generate-rust`) command generates `no_std` compatible bindings from `package.xml` dependencies.
+nros uses generated Rust bindings for ROS 2 message types. The `nros generate-rust` (or `cargo nano-ros generate-rust`) command generates `no_std` compatible bindings from `package.xml` dependencies.
 
 ## Overview
 
 The binding generator lives in `packages/codegen/packages/cargo-nano-ros/` and provides:
-- `nano-ros` standalone binary and `cargo nano-ros` subcommand
+- `nros` standalone binary and `cargo nano-ros` subcommand
 - Pure Rust, `no_std` compatible output using `heapless` types
 - Automatic dependency resolution via ament index or bundled interfaces
 - `.cargo/config.toml` generation for crate patches
@@ -18,7 +18,7 @@ The binding generator lives in `packages/codegen/packages/cargo-nano-ros/` and p
    <package format="3">
      <name>my_package</name>
      <version>0.1.0</version>
-     <description>My nano-ros package</description>
+     <description>My nros package</description>
      <maintainer email="dev@example.com">Developer</maintainer>
      <license>Apache-2.0</license>
      <depend>std_msgs</depend>
@@ -29,9 +29,9 @@ The binding generator lives in `packages/codegen/packages/cargo-nano-ros/` and p
    </package>
    ```
 
-2. **nano-ros tool installed**
+2. **nros tool installed**
    ```bash
-   # From the nano-ros repository root
+   # From the nros repository root
    just install-cargo-nano-ros
 
    # Or manually:
@@ -43,7 +43,7 @@ The binding generator lives in `packages/codegen/packages/cargo-nano-ros/` and p
 
 3. **ROS 2 environment** (optional for standard types)
 
-   Standard interfaces (`std_msgs`, `builtin_interfaces`) are bundled with nano-ros
+   Standard interfaces (`std_msgs`, `builtin_interfaces`) are bundled with nros
    and work without ROS 2. For additional packages (e.g., `geometry_msgs`, `sensor_msgs`),
    source a ROS 2 environment:
    ```bash
@@ -64,7 +64,7 @@ Declare your ROS interface dependencies in `<depend>` tags:
 
 ```bash
 cd my_project
-nano-ros generate-rust              # standalone binary
+nros generate-rust              # standalone binary
 # or: cargo nano-ros generate-rust  # cargo subcommand (equivalent)
 ```
 
@@ -87,12 +87,12 @@ The `.cargo/config.toml` patches redirect these to local paths.
 
 ## Git Dependency Workflow
 
-For projects that consume nano-ros as a **git dependency** (not from within the nano-ros repo), use `--nano-ros-git` instead of `--nano-ros-path`:
+For projects that consume nros as a **git dependency** (not from within the nros repo), use `--nano-ros-git` instead of `--nano-ros-path`:
 
 **Step 1:** Add git dependency to `Cargo.toml`:
 ```toml
 [dependencies]
-nano-ros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
+nros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 ```
 
@@ -107,8 +107,8 @@ cargo nano-ros generate-rust --config --nano-ros-git
 This generates `.cargo/config.toml` with git-based patches:
 ```toml
 [patch.crates-io]
-nano-ros-core = { git = "https://github.com/jerry73204/nano-ros" }
-nano-ros-serdes = { git = "https://github.com/jerry73204/nano-ros" }
+nros-core = { git = "https://github.com/jerry73204/nano-ros" }
+nros-serdes = { git = "https://github.com/jerry73204/nano-ros" }
 std_msgs = { path = "generated/std_msgs" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 ```
@@ -125,15 +125,15 @@ let msg = Int32 { data: 42 };
 ## Command Options
 
 ```bash
-nano-ros generate-rust [OPTIONS]
+nros generate-rust [OPTIONS]
 # or: cargo nano-ros generate-rust [OPTIONS]
 
 Options:
       --manifest-path <PATH>  Path to package.xml [default: package.xml]
   -o, --output <DIR>          Output directory [default: generated]
       --config                Generate .cargo/config.toml with [patch.crates-io] entries
-      --nano-ros-path <PATH>  Path to nano-ros crates (for config patches, local dev)
-      --nano-ros-git          Use nano-ros git repo for config patches (external users)
+      --nano-ros-path <PATH>  Path to nros crates (for config patches, local dev)
+      --nano-ros-git          Use nros git repo for config patches (external users)
       --force                 Overwrite existing bindings
   -v, --verbose               Enable verbose output
 ```
@@ -173,7 +173,7 @@ pub mod msg;
 ```toml
 [features]
 default = []
-std = ["nano-ros-core/std", "nano-ros-serdes/std"]
+std = ["nros-core/std", "nros-serdes/std"]
 ```
 
 **heapless types for embedded:**
@@ -216,7 +216,7 @@ cargo nano-ros generate-rust --force
 
 ## Bundled Interfaces
 
-nano-ros ships standard `.msg` files for common packages so codegen works without a
+nros ships standard `.msg` files for common packages so codegen works without a
 ROS 2 environment:
 
 - `std_msgs` (Bool, Int32, String, Header, etc.)
@@ -235,12 +235,12 @@ the ament index takes precedence over bundled files.
 
 **Build errors with generated code**
 - Regenerate with `--force` flag
-- Check nano-ros crate compatibility
+- Check nros crate compatibility
 
 ## C Code Generation (CMake)
 
 The `nano_ros_generate_interfaces()` CMake function generates C bindings for `.msg`, `.srv`,
-and `.action` files. It uses a bundled codegen library — no external `nano-ros` binary needed.
+and `.action` files. It uses a bundled codegen library — no external `nros` binary needed.
 
 ### Prerequisites
 

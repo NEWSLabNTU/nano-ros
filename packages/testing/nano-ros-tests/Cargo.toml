@@ -3,7 +3,7 @@ name = "nano-ros-tests"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Integration tests for nano-ros"
+description = "Integration tests for nros"
 
 [dependencies]
 # Test framework
@@ -23,12 +23,12 @@ parking_lot = "0.12"
 libc = "0.2"
 
 # Workspace dependencies for type access (optional)
-nano-ros-core = { path = "../../core/nano-ros-core", optional = true }
-nano-ros-serdes = { path = "../../core/nano-ros-serdes", optional = true }
+nros-core = { path = "../../core/nros-core", optional = true }
+nros-serdes = { path = "../../core/nros-serdes", optional = true }
 
 [features]
 default = []
-types = ["nano-ros-core", "nano-ros-serdes"]
+types = ["nros-core", "nros-serdes"]
 
 [lib]
 name = "nano_ros_tests"

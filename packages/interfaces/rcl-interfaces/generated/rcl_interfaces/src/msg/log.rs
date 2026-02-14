@@ -1,9 +1,9 @@
-// nano-ros message type - pure Rust, no_std compatible
+// nros message type - pure Rust, no_std compatible
 // Package: rcl_interfaces
 // Message: Log
 
-use nano_ros_core::{Deserialize, RosMessage, Serialize};
-use nano_ros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
+use nros_core::{Deserialize, RosMessage, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 pub const DEBUG: u8 = 10;
 pub const INFO: u8 = 20;
 pub const WARN: u8 = 30;

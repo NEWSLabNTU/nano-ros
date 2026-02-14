@@ -1,6 +1,6 @@
 //! Native Action Client Example
 //!
-//! Demonstrates a ROS 2 action client using nano-ros.
+//! Demonstrates a ROS 2 action client using nros.
 //! This example sends a Fibonacci action goal and receives feedback
 //! as the sequence is computed.
 //!
@@ -25,13 +25,13 @@ use log::{error, info, warn};
 #[cfg(feature = "zenoh")]
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 #[cfg(feature = "zenoh")]
-use nano_ros::prelude::*;
+use nros::prelude::*;
 
 #[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Action Client Example");
+    info!("nros Action Client Example");
     info!("================================");
 
     // Create context
@@ -136,7 +136,7 @@ fn main() {
 #[cfg(not(feature = "zenoh"))]
 fn main() {
     env_logger::init();
-    info!("nano-ros Action Client Example");
+    info!("nros Action Client Example");
     info!("================================");
     info!("This example requires the 'zenoh' feature.");
     info!("Run with: cargo run -p native-rs-action-client --features zenoh");

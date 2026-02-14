@@ -10,7 +10,7 @@ use core::fmt::Write as _;
 
 use esp_hal::rng::Rng;
 use heapless::String;
-use nano_ros_core::RosMessage;
+use nros_core::RosMessage;
 use nano_ros_link_smoltcp::SmoltcpBridge;
 use openeth_smoltcp::OpenEth;
 use smoltcp::iface::{Interface, SocketSet};
@@ -179,7 +179,7 @@ where
 {
     esp_println::println!("");
     esp_println::println!("========================================");
-    esp_println::println!("  nano-ros ESP32-C3 QEMU Platform");
+    esp_println::println!("  nros ESP32-C3 QEMU Platform");
     esp_println::println!("========================================");
     esp_println::println!("");
 

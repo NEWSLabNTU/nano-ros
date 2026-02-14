@@ -1,6 +1,6 @@
 # Creating Examples
 
-This guide explains how to create new nano-ros examples for each supported platform. All examples should use **generated message bindings** from `cargo nano-ros generate` — never hand-write message types.
+This guide explains how to create new nros examples for each supported platform. All examples should use **generated message bindings** from `cargo nano-ros generate` — never hand-write message types.
 
 ## Message Generation (All Platforms)
 
@@ -108,10 +108,10 @@ path = "src/main.rs"
 
 [features]
 default = []
-zenoh = ["nano-ros/zenoh"]
+zenoh = ["nros/zenoh"]
 
 [dependencies]
-nano-ros = { path = "../../../packages/core/nano-ros", default-features = false, features = ["std"] }
+nros = { path = "../../../packages/core/nros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
@@ -121,7 +121,7 @@ env_logger = "0.11"
 
 ```rust
 use log::info;
-use nano_ros::prelude::*;
+use nros::prelude::*;
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -150,7 +150,7 @@ fn main() {
 
 ### Key points
 
-- Use `nano-ros` with `features = ["std"]` and gate real transport behind `zenoh` feature
+- Use `nros` with `features = ["std"]` and gate real transport behind `zenoh` feature
 - Entry point is a standard `fn main()`
 - Use `Context::from_env()` to read `ROS_DOMAIN_ID`, `ZENOH_LOCATOR`, `ZENOH_MODE`
 - Logging via `log` + `env_logger` (`RUST_LOG=info cargo run`)
@@ -214,8 +214,8 @@ runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihos
 rustflags = ["-C", "link-arg=-Tlink.x"]
 
 [patch.crates-io]
-nano-ros-core = { path = "../../../packages/core/nano-ros-core" }
-nano-ros-serdes = { path = "../../../packages/core/nano-ros-serdes" }
+nros-core = { path = "../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../packages/core/nros-serdes" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```
@@ -342,7 +342,7 @@ examples/zephyr/my-example/
 │   ├── builtin_interfaces/
 │   └── std_msgs/
 └── .cargo/
-    └── config.toml     # patches for ALL nano-ros crates
+    └── config.toml     # patches for ALL nros crates
 ```
 
 ### `Cargo.toml`
@@ -361,7 +361,7 @@ crate-type = ["staticlib"]
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
-nano-ros = { version = "*", default-features = false, features = ["shim-zephyr"] }
+nros = { version = "*", default-features = false, features = ["shim-zephyr"] }
 std_msgs = { version = "*", default-features = false }
 
 [profile.release]
@@ -371,17 +371,17 @@ lto = true
 
 ### `.cargo/config.toml`
 
-Zephyr examples patch **all** nano-ros crates (not just core/serdes):
+Zephyr examples patch **all** nros crates (not just core/serdes):
 
 ```toml
 [patch.crates-io]
-nano-ros = { path = "../../../packages/core/nano-ros" }
-nano-ros-core = { path = "../../../packages/core/nano-ros-core" }
-nano-ros-serdes = { path = "../../../packages/core/nano-ros-serdes" }
-nano-ros-node = { path = "../../../packages/core/nano-ros-node" }
+nros = { path = "../../../packages/core/nros" }
+nros-core = { path = "../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../packages/core/nros-serdes" }
+nros-node = { path = "../../../packages/core/nros-node" }
 nano-ros-transport = { path = "../../../packages/core/nano-ros-transport" }
-nano-ros-params = { path = "../../../packages/core/nano-ros-params" }
-nano-ros-macros = { path = "../../../packages/core/nano-ros-macros" }
+nros-params = { path = "../../../packages/core/nros-params" }
+nros-macros = { path = "../../../packages/core/nros-macros" }
 nano-ros-transport-zenoh = { path = "../../../packages/transport/nano-ros-transport-zenoh" }
 nano-ros-transport-zenoh-sys = { path = "../../../packages/transport/nano-ros-transport-zenoh-sys" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
@@ -394,7 +394,7 @@ std_msgs = { path = "generated/std_msgs" }
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_example)
 
-# nano-ros BSP for Zephyr (C glue)
+# nros BSP for Zephyr (C glue)
 set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/bsp/nano-ros-bsp-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
@@ -454,14 +454,14 @@ CONFIG_NET_CONFIG_MY_IPV4_GW="192.0.2.2"
 #![no_std]
 
 use log::{error, info};
-use nano_ros::{ShimExecutor, ShimNodeError};
+use nros::{ShimExecutor, ShimNodeError};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
     unsafe { zephyr::set_logger().ok(); }
 
-    info!("nano-ros Zephyr Example");
+    info!("nros Zephyr Example");
 
     if let Err(e) = run() {
         error!("Error: {:?}", e);
@@ -488,7 +488,7 @@ fn run() -> Result<(), ShimNodeError> {
 - **Package name must be `rustapp`** — the `zephyr-lang-rust` build system expects this
 - Source file is `src/lib.rs` (staticlib), not `src/main.rs`
 - Entry point: `#[unsafe(no_mangle)] extern "C" fn rust_main()`
-- Use `nano-ros` with `features = ["shim-zephyr"]`
+- Use `nros` with `features = ["shim-zephyr"]`
 - Zenoh locator is a null-terminated byte string: `b"tcp/192.0.2.2:7447\0"`
 - `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` is critical — zenoh-pico needs ~8+ POSIX mutexes
 - Build via `west build`, not `cargo build`
@@ -504,7 +504,7 @@ fn run() -> Result<(), ShimNodeError> {
 | **Source file** | `src/main.rs` | `src/main.rs` | `src/lib.rs` |
 | **Crate type** | Binary | Binary | Staticlib |
 | **Package name** | Any | Any | Must be `rustapp` |
-| **Main crate** | `nano-ros` | `nano-ros-platform-qemu`/`stm32f4` | `nano-ros` (shim-zephyr) |
+| **Main crate** | `nros` | `nano-ros-platform-qemu`/`stm32f4` | `nros` (shim-zephyr) |
 | **Transport** | Feature-gated `zenoh` | Built into platform crate | Built into BSP (C) |
 | **Logging** | `env_logger` | Semihosting / `defmt` | `zephyr::set_logger()` |
 | **Build system** | `cargo build` | `cargo build` | `west build` (CMake) |

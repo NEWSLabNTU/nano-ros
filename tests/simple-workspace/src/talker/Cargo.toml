@@ -13,13 +13,13 @@ path = "src/lib.rs"
 
 [features]
 default = ["std"]
-std = ["nano-ros-core/std", "nano-ros-serdes/std", "std_msgs/std"]
+std = ["nros-core/std", "nros-serdes/std", "std_msgs/std"]
 
 [dependencies]
 # Message bindings (patched to local generated via .cargo/config.toml)
 std_msgs = { version = "*", default-features = false }
 
-# nano-ros runtime (patched via .cargo/config.toml)
-nano-ros-core = { version = "*", default-features = false }
-nano-ros-serdes = { version = "*", default-features = false }
+# nros runtime (patched via .cargo/config.toml)
+nros-core = { version = "*", default-features = false }
+nros-serdes = { version = "*", default-features = false }
 heapless = "0.8"

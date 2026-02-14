@@ -24,7 +24,7 @@ use nano_ros_platform_esp32_qemu::esp_println;
 use nano_ros_platform_esp32_qemu::prelude::*;
 
 mod msg {
-    use nano_ros_platform_esp32_qemu::{Deserialize, RosMessage, Serialize, nano_ros_core};
+    use nano_ros_platform_esp32_qemu::{Deserialize, RosMessage, Serialize, nros_core};
 
     pub struct Int32 {
         pub data: i32,
@@ -33,16 +33,16 @@ mod msg {
     impl Serialize for Int32 {
         fn serialize(
             &self,
-            w: &mut nano_ros_core::CdrWriter,
-        ) -> core::result::Result<(), nano_ros_core::SerError> {
+            w: &mut nros_core::CdrWriter,
+        ) -> core::result::Result<(), nros_core::SerError> {
             w.write_i32(self.data)
         }
     }
 
     impl Deserialize for Int32 {
         fn deserialize(
-            r: &mut nano_ros_core::CdrReader,
-        ) -> core::result::Result<Self, nano_ros_core::DeserError> {
+            r: &mut nros_core::CdrReader,
+        ) -> core::result::Result<Self, nros_core::DeserError> {
             Ok(Self {
                 data: r.read_i32()?,
             })

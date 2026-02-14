@@ -50,7 +50,7 @@ print('SHA-256:', hash_obj.hexdigest())
 "
 
 echo ""
-echo "=== nano-ros Int32 hash ==="
+echo "=== nros Int32 hash ==="
 echo "b6578ded3c58c626cfe8d1a6fb6e04f706f97e9f03d2727c9ff4e74b1cef0deb"
 
 echo ""

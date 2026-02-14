@@ -1,6 +1,6 @@
 //! Native Listener Example
 //!
-//! Demonstrates subscribing to messages using nano-ros on native x86.
+//! Demonstrates subscribing to messages using nros on native x86.
 //! Uses the unified executor API with callback-based subscriptions.
 //!
 //! # Without zenoh feature (simulation mode):
@@ -26,7 +26,7 @@
 use log::{debug, error, info};
 #[cfg(feature = "zenoh")]
 use log::{debug, error, info};
-use nano_ros::prelude::*;
+use nros::prelude::*;
 use std_msgs::msg::Int32;
 
 #[cfg(feature = "zenoh")]
@@ -39,7 +39,7 @@ static MESSAGE_COUNT: AtomicU64 = AtomicU64::new(0);
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Native Listener (Zenoh Transport)");
+    info!("nros Native Listener (Zenoh Transport)");
     info!("==========================================");
 
     // Create context using rclrs-style API
@@ -100,7 +100,7 @@ fn main() {
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Native Listener (Simulation Mode)");
+    info!("nros Native Listener (Simulation Mode)");
     info!("==========================================");
     info!("Note: Running without zenoh transport.");
     info!("To use real transport, run with: --features zenoh");

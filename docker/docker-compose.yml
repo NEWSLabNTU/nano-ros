@@ -1,4 +1,4 @@
-# nano-ros Docker Compose Configuration
+# nros Docker Compose Configuration
 #
 # Usage:
 #   docker compose -f docker/docker-compose.yml up -d qemu

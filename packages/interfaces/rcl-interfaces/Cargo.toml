@@ -2,14 +2,14 @@
 name = "rcl-interfaces"
 version = "0.1.0"
 edition = "2021"
-description = "Generated rcl_interfaces bindings for nano-ros parameter services"
+description = "Generated rcl_interfaces bindings for nros parameter services"
 license = "Apache-2.0"
 
 [features]
 default = []
-std = ["nano-ros-core/std", "nano-ros-serdes/std"]
+std = ["nros-core/std", "nros-serdes/std"]
 
 [dependencies]
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
-nano-ros-serdes = { path = "../../core/nano-ros-serdes", default-features = false }
+nros-core = { path = "../../core/nros-core", default-features = false }
+nros-serdes = { path = "../../core/nros-serdes", default-features = false }
 heapless = "0.8"

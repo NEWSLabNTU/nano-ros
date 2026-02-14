@@ -14,16 +14,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 option(BUILD_FOR_EMBEDDED "Build for embedded systems" OFF)
 
 # ============================================================================
-# nano-ros-cpp dependency
+# nros-cpp dependency
 # ============================================================================
-set(NANO_ROS_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nano-ros-cpp")
+set(NANO_ROS_CPP_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../core/nros-cpp")
 
-# Configure nano-ros-cpp for embedded if requested
+# Configure nros-cpp for embedded if requested
 if(BUILD_FOR_EMBEDDED)
     set(NANO_ROS_EMBEDDED ON CACHE BOOL "" FORCE)
 endif()
 
-add_subdirectory(${NANO_ROS_CPP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/nano-ros-cpp)
+add_subdirectory(${NANO_ROS_CPP_DIR} ${CMAKE_CURRENT_BINARY_DIR}/nros-cpp)
 
 # ============================================================================
 # Message generation (embedded mode)
@@ -60,7 +60,7 @@ target_link_libraries(cpp_embedded_listener
         nano_ros_cpp
 )
 
-# Add generated headers and nano_ros includes
+# Add generated headers and nros includes
 target_include_directories(cpp_embedded_listener
     PRIVATE
         ${NANO_ROS_CPP_DIR}/include

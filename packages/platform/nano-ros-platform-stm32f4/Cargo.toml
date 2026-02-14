@@ -3,7 +3,7 @@ name = "nano-ros-platform-stm32f4"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "STM32F4 platform crate for nano-ros (system primitives + node API)"
+description = "STM32F4 platform crate for nros (system primitives + node API)"
 
 [lib]
 name = "nano_ros_platform_stm32f4"
@@ -35,7 +35,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
 defmt = "0.3"
 
 # Core types (RosMessage, CDR serialization)
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
+nros-core = { path = "../../core/nros-core", default-features = false }
 
 # Heapless collections (for keyexpr formatting)
 heapless = "0.8"

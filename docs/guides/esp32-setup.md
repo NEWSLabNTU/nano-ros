@@ -1,6 +1,6 @@
 # ESP32-C3 Development Setup
 
-Guide for setting up ESP32-C3 development with nano-ros.
+Guide for setting up ESP32-C3 development with nros.
 
 ## Hardware
 
@@ -86,7 +86,7 @@ This builds, flashes, and opens the serial monitor (`espflash flash --monitor` i
 
 ### Build zenoh-pico for RISC-V
 
-Required for networked nano-ros examples (WiFi + zenoh):
+Required for networked nros examples (WiFi + zenoh):
 
 ```bash
 just build-zenoh-pico-riscv

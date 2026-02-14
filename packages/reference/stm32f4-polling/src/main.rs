@@ -1,6 +1,6 @@
-//! Bare-metal Polling Example for nano-ros on STM32F4 with nano-ros-transport-zenoh
+//! Bare-metal Polling Example for nros on STM32F4 with nano-ros-transport-zenoh
 //!
-//! This example demonstrates how to use nano-ros without any async runtime
+//! This example demonstrates how to use nros without any async runtime
 //! (no RTIC, no Embassy). It uses a simple polling loop that's suitable for:
 //!
 //! - Very simple systems with minimal overhead
@@ -177,7 +177,7 @@ impl SimpleTimer {
 
 #[entry]
 fn main() -> ! {
-    info!("nano-ros polling + nano-ros-transport-zenoh example starting...");
+    info!("nros polling + nano-ros-transport-zenoh example starting...");
 
     // Get access to device peripherals
     let dp = stm32f4xx_hal::pac::Peripherals::take().unwrap();
@@ -320,7 +320,7 @@ fn main() -> ! {
     // When zenoh-pico is available:
     // use nano_ros_transport_zenoh::ShimContext;
     // let ctx = ShimContext::new(ZENOH_ROUTER).expect("Failed to connect");
-    // let publisher = ctx.declare_publisher(b"nano_ros/polling/counter\0").unwrap();
+    // let publisher = ctx.declare_publisher(b"nros/polling/counter\0").unwrap();
 
     // ═══════════════════════════════════════════════════════════════════════
     // Main Polling Loop

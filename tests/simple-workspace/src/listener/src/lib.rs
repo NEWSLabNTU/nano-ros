@@ -1,11 +1,11 @@
-//! nano-ros listener example (no_std)
+//! nros listener example (no_std)
 //!
 //! Demonstrates message deserialization without std.
 
 #![no_std]
 
-use nano_ros_core::{Deserialize, RosMessage};
-use nano_ros_serdes::CdrReader;
+use nros_core::{Deserialize, RosMessage};
+use nros_serdes::CdrReader;
 use std_msgs::msg::Int32;
 
 /// Deserialize an Int32 message from a buffer

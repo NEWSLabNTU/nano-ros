@@ -1,8 +1,8 @@
 /**
  * @file bsp_zephyr.c
- * @brief nano-ros BSP implementation for Zephyr RTOS
+ * @brief nros BSP implementation for Zephyr RTOS
  *
- * @copyright Copyright (c) 2024 nano-ros contributors
+ * @copyright Copyright (c) 2024 nros contributors
  * @license MIT OR Apache-2.0
  */
 
@@ -72,7 +72,7 @@ int32_t nano_ros_bsp_init_with_locator(nano_ros_bsp_context_t *ctx, const char *
         }
     }
 
-    LOG_INF("Initializing nano-ros BSP");
+    LOG_INF("Initializing nros BSP");
     LOG_INF("  Locator: %s", locator);
 
     /* Initialize zenoh shim */
@@ -111,7 +111,7 @@ void nano_ros_bsp_shutdown(nano_ros_bsp_context_t *ctx)
     }
 
     ctx->initialized = false;
-    LOG_INF("nano-ros BSP shutdown");
+    LOG_INF("nros BSP shutdown");
 }
 
 bool nano_ros_bsp_is_ready(const nano_ros_bsp_context_t *ctx)
@@ -125,7 +125,7 @@ bool nano_ros_bsp_is_ready(const nano_ros_bsp_context_t *ctx)
 
 int32_t nano_ros_bsp_create_node(
     nano_ros_bsp_context_t *ctx,
-    nano_ros_node_t *node,
+    nros_node_t *node,
     const char *name)
 {
 #ifdef CONFIG_NANO_ROS_DOMAIN_ID
@@ -137,7 +137,7 @@ int32_t nano_ros_bsp_create_node(
 
 int32_t nano_ros_bsp_create_node_with_domain(
     nano_ros_bsp_context_t *ctx,
-    nano_ros_node_t *node,
+    nros_node_t *node,
     const char *name,
     int32_t domain_id)
 {
@@ -159,7 +159,7 @@ int32_t nano_ros_bsp_create_node_with_domain(
  * ============================================================================ */
 
 int32_t nano_ros_bsp_create_publisher(
-    nano_ros_node_t *node,
+    nros_node_t *node,
     nano_ros_publisher_t *pub,
     const char *topic,
     const char *type_name)
@@ -232,7 +232,7 @@ void nano_ros_bsp_destroy_publisher(nano_ros_publisher_t *pub)
  * ============================================================================ */
 
 int32_t nano_ros_bsp_create_subscriber(
-    nano_ros_node_t *node,
+    nros_node_t *node,
     nano_ros_subscriber_t *sub,
     const char *topic,
     const char *type_name,

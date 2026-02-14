@@ -1,6 +1,6 @@
 //! Native Service Client Example
 //!
-//! Demonstrates a ROS 2 service client using nano-ros with the executor API.
+//! Demonstrates a ROS 2 service client using nros with the executor API.
 //! Service clients use blocking calls, so no spin() is needed.
 //!
 //! # Usage
@@ -24,13 +24,13 @@ use log::{error, info};
 #[cfg(feature = "zenoh")]
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 #[cfg(feature = "zenoh")]
-use nano_ros::prelude::*;
+use nros::prelude::*;
 
 #[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Service Client Example");
+    info!("nros Service Client Example");
     info!("================================");
 
     // Create context using rclrs-style API
@@ -98,7 +98,7 @@ fn main() {
 #[cfg(not(feature = "zenoh"))]
 fn main() {
     env_logger::init();
-    info!("nano-ros Service Client Example");
+    info!("nros Service Client Example");
     info!("================================");
     info!("This example requires the 'zenoh' feature.");
     info!("Run with: cargo run -p native-rs-service-client --features zenoh");

@@ -1,6 +1,6 @@
 //! Custom Message Example
 //!
-//! Demonstrates how to define and use custom message types with nano-ros.
+//! Demonstrates how to define and use custom message types with nros.
 //!
 //! This example shows two approaches:
 //! 1. Manually defining message types (for learning/prototyping)
@@ -31,7 +31,7 @@
 use heapless::String as HString;
 #[cfg(feature = "zenoh")]
 use log::info;
-use nano_ros::{CdrReader, CdrWriter, DeserError, Deserialize, RosMessage, SerError, Serialize};
+use nros::{CdrReader, CdrWriter, DeserError, Deserialize, RosMessage, SerError, Serialize};
 
 // =============================================================================
 // Custom Message Type Definitions
@@ -165,7 +165,7 @@ fn test_roundtrip<T: RosMessage + Serialize + Deserialize + PartialEq + std::fmt
 fn main() {
     env_logger::init();
 
-    println!("nano-ros Custom Message Example (Rust)");
+    println!("nros Custom Message Example (Rust)");
     println!("======================================");
     println!();
 
@@ -204,7 +204,7 @@ fn main() {
     // =========================================================================
     #[cfg(feature = "zenoh")]
     {
-        use nano_ros::prelude::*;
+        use nros::prelude::*;
         use std::sync::atomic::{AtomicU64, Ordering};
         use std::time::Duration;
 

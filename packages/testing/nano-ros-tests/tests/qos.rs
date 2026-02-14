@@ -434,7 +434,7 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
 
 /// Test that the QoS liveliness keyexpr contains expected QoS information
 ///
-/// The nano-ros implementation encodes QoS in the liveliness keyexpr.
+/// The nros implementation encodes QoS in the liveliness keyexpr.
 /// This test verifies the QoS encoding is present.
 #[rstest]
 fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {

@@ -1,6 +1,6 @@
-//! nano-ros to nano-ros communication tests
+//! nros to nros communication tests
 //!
-//! Tests communication between native nano-ros binaries via zenoh.
+//! Tests communication between native nros binaries via zenoh.
 
 use nano_ros_tests::fixtures::{
     ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, require_zenohd,
@@ -131,7 +131,7 @@ fn test_talker_listener_communication(
 
 /// Test peer-to-peer communication without a zenohd router
 ///
-/// In peer mode, nano-ros nodes can discover each other via multicast
+/// In peer mode, nros nodes can discover each other via multicast
 /// without requiring a central router.
 #[rstest]
 fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf) {

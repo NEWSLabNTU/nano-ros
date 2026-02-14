@@ -219,7 +219,7 @@ packages/xrce/xrce-platform-qemu/
 Test XRCE-DDS backend with the [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent):
 
 1. **QEMU + Agent**: Run XRCE agent on host, QEMU board crate connects via UDP
-2. **Cross-backend**: nano-ros (zenoh) ↔ nano-ros (XRCE-DDS) via DDS bridge
+2. **Cross-backend**: nros (zenoh) ↔ nros (XRCE-DDS) via DDS bridge
 3. **ROS 2 interop**: micro-ROS Agent bridges to ROS 2 DDS network
 
 Test infrastructure additions:

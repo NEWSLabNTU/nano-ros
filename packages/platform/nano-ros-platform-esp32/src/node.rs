@@ -15,7 +15,7 @@ use esp_hal::rng::Rng;
 use esp_hal::time::Instant;
 use esp_radio::wifi::{self, ClientConfig, ModeConfig, WifiDevice};
 use heapless::String;
-use nano_ros_core::RosMessage;
+use nros_core::RosMessage;
 use nano_ros_link_smoltcp::SmoltcpBridge;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::socket::dhcpv4;
@@ -184,7 +184,7 @@ where
 {
     esp_println::println!("");
     esp_println::println!("========================================");
-    esp_println::println!("  nano-ros ESP32-C3 WiFi Platform");
+    esp_println::println!("  nros ESP32-C3 WiFi Platform");
     esp_println::println!("========================================");
     esp_println::println!("");
 

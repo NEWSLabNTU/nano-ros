@@ -11,10 +11,10 @@ path = "src/main.rs"
 
 [features]
 default = []
-zenoh = ["nano-ros/zenoh"]
+zenoh = ["nros/zenoh"]
 
 [dependencies]
-nano-ros = { path = "../../../packages/core/nano-ros", default-features = false, features = ["std"] }
+nros = { path = "../../../packages/core/nros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

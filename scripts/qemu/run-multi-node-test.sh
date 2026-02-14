@@ -2,8 +2,8 @@
 # Multi-node test runner
 #
 # This script demonstrates the multi-node communication scenario:
-# - QEMU node (Cortex-M3) running nano-ros
-# - Native x86 node running nano-ros
+# - QEMU node (Cortex-M3) running nros
+# - Native x86 node running nros
 #
 # For actual zenoh communication, both nodes need zenoh transport
 # enabled. Currently this demonstrates the concept.
@@ -14,7 +14,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
 
 echo "========================================"
-echo "  nano-ros Multi-Node Test"
+echo "  nros Multi-Node Test"
 echo "========================================"
 echo ""
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-ROS 2's `rmw.h` defines the C function interface (~60 functions) that every middleware implementation must provide. This document analyzes rmw.h's suitability as a reference for nano-ros's `nros-rmw` trait abstraction, identifying what to adopt and what to avoid for `no_std` embedded targets.
+ROS 2's `rmw.h` defines the C function interface (~60 functions) that every middleware implementation must provide. This document analyzes rmw.h's suitability as a reference for nros's `nros-rmw` trait abstraction, identifying what to adopt and what to avoid for `no_std` embedded targets.
 
 ## rmw.h Function Categories
 
@@ -34,7 +34,7 @@ rmw_send_request(client, ros_request, sequence_id)
 rmw_take_response(client, request_header, ros_response, taken)
 ```
 
-Two modes: typed (`void* ros_message` + runtime type support) and serialized (`rmw_serialized_message_t`). The serialized mode maps directly to nano-ros's `publish_raw`/`try_recv_raw`.
+Two modes: typed (`void* ros_message` + runtime type support) and serialized (`rmw_serialized_message_t`). The serialized mode maps directly to nros's `publish_raw`/`try_recv_raw`.
 
 ### Central Polling
 
@@ -89,7 +89,7 @@ On single-threaded bare-metal, blocking means the entire system freezes. No kern
 
 `rmw_publish` takes `const rosidl_message_type_support_t* type_support` -- a vtable of function pointers for runtime serialization/deserialization. This enables language-agnostic message handling (C, C++, Python share the same rmw calls).
 
-nano-ros uses compile-time generics: `Publisher<M: RosMessage>` monomorphizes at build time. No function pointer overhead, no runtime type dispatch, compatible with `no_std`.
+nros uses compile-time generics: `Publisher<M: RosMessage>` monomorphizes at build time. No function pointer overhead, no runtime type dispatch, compatible with `no_std`.
 
 **nros-rmw adaptation:** Trait methods operate on raw bytes (`&[u8]`). Typed serialization (`publish<M>`, `try_recv<M>`) happens at a higher layer (board crates or `nros-node`), not in the RMW traits. This separates CDR concerns from middleware concerns.
 

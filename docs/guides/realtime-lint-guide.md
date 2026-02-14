@@ -1,4 +1,4 @@
-# Real-Time Anti-Pattern Detection for nano-ros
+# Real-Time Anti-Pattern Detection for nros
 
 This guide describes static analysis methods and tools for detecting anti-patterns that violate real-time guarantees in Rust embedded applications.
 
@@ -406,7 +406,7 @@ jobs:
         with:
           components: miri
       - name: Run Miri
-        run: cargo +nightly miri test -p nano-ros-serdes -p nano-ros-core
+        run: cargo +nightly miri test -p nros-serdes -p nros-core
 ```
 
 ### Just Recipe for Local Checks
@@ -430,7 +430,7 @@ check-realtime:
 # Full static analysis suite
 static-analysis: check-realtime
     @echo "Running Miri..."
-    cargo +nightly miri test -p nano-ros-serdes -p nano-ros-core
+    cargo +nightly miri test -p nros-serdes -p nros-core
     @echo "All static analysis passed!"
 ```
 

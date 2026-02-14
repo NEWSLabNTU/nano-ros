@@ -1,8 +1,8 @@
-# nano-ros
+# nros
 
 A `no_std` ROS 2 client library for bare-metal and RTOS targets, written in Rust. Built on [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico) for lightweight pub/sub, services, and actions over TCP, serial, or raw Ethernet.
 
-nano-ros runs directly on microcontrollers without an OS, on RTOS kernels like Zephyr, and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 and ESP32-C3, enabling full integration testing without hardware.
+nros runs directly on microcontrollers without an OS, on RTOS kernels like Zephyr, and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 and ESP32-C3, enabling full integration testing without hardware.
 
 The project integrates formal verification (Kani bounded model checking, CBMC for the C API) and WCET measurement (DWT cycle counters, static stack analysis) into the build pipeline, providing a foundation for schedulability analysis in safety-critical systems.
 
@@ -42,11 +42,11 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 
 ### As a Git Dependency
 
-Add nano-ros to your project's `Cargo.toml`:
+Add nros to your project's `Cargo.toml`:
 
 ```toml
 [dependencies]
-nano-ros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
+nros = { git = "https://github.com/jerry73204/nano-ros", default-features = false, features = ["std"] }
 std_msgs = { version = "*", default-features = false }
 ```
 
@@ -69,7 +69,7 @@ See [Getting Started](docs/guides/getting-started.md) for a complete walkthrough
 
 ```bash
 git clone https://github.com/jerry73204/nano-ros.git
-cd nano-ros
+cd nros
 just setup         # Install toolchains + tools
 just build-zenohd  # Build zenohd 1.6.2 from submodule
 ```
@@ -89,24 +89,24 @@ cd examples/native/rs-listener && RUST_LOG=info cargo run --features zenoh
 
 ## Quick Start (C API)
 
-Build the nano-ros C library and link against it with CMake:
+Build the nros C library and link against it with CMake:
 
 ```bash
 # Build the static library
-cd nano-ros
-cargo build -p nano-ros-c --release
+cd nros
+cargo build -p nros-c --release
 
 # Build a C example
 cd examples/native/c-talker
 mkdir -p build && cd build
-cmake -DNANO_ROS_ROOT=/path/to/nano-ros ..
+cmake -DNANO_ROS_ROOT=/path/to/nros ..
 make
 ```
 
 A `FindNanoRos.cmake` module is provided at `cmake/FindNanoRos.cmake` for easy integration:
 
 ```cmake
-list(APPEND CMAKE_MODULE_PATH "/path/to/nano-ros/cmake")
+list(APPEND CMAKE_MODULE_PATH "/path/to/nros/cmake")
 find_package(NanoRos REQUIRED)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
@@ -115,13 +115,13 @@ See [Getting Started](docs/guides/getting-started.md) for a complete C walkthrou
 
 ## ROS 2 Interoperability
 
-nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
+nros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 
 ```bash
 # Terminal 1: zenohd
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
-# Terminal 2: nano-ros talker
+# Terminal 2: nros talker
 cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener
@@ -134,15 +134,15 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 
 ```
 packages/
-├── core/                      # The nano-ros library stack
-│   ├── nano-ros/              # Unified API (re-exports all sub-crates)
-│   ├── nano-ros-core/         # Core types, traits, node abstraction
-│   ├── nano-ros-serdes/       # CDR serialization
-│   ├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
-│   ├── nano-ros-params/       # Parameter server
+├── core/                      # The nros library stack
+│   ├── nros/              # Unified API (re-exports all sub-crates)
+│   ├── nros-core/         # Core types, traits, node abstraction
+│   ├── nros-serdes/       # CDR serialization
+│   ├── nros-macros/       # #[derive(RosMessage)] proc macros
+│   ├── nros-params/       # Parameter server
 │   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
-│   ├── nano-ros-node/         # High-level node API + parameter services
-│   └── nano-ros-c/            # C API (rclc-style)
+│   ├── nros-node/         # High-level node API + parameter services
+│   └── nros-c/            # C API (rclc-style)
 ├── transport/                 # Zenoh transport backend
 │   ├── nano-ros-transport-zenoh/     # Safe Rust API for zenoh-pico
 │   └── nano-ros-transport-zenoh-sys/ # FFI + C shim + zenoh-pico submodule
@@ -157,7 +157,7 @@ packages/
 
 ## Message Generation
 
-nano-ros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
+nros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
 
 ## Documentation
 

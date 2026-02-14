@@ -1,9 +1,9 @@
-// nano-ros service type - pure Rust, no_std compatible
+// nros service type - pure Rust, no_std compatible
 // Package: rcl_interfaces
 // Service: SetParameters
 
-use nano_ros_core::{Deserialize, RosMessage, RosService, Serialize};
-use nano_ros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 
 /// SetParameters request message
 #[derive(Debug, Clone, Default, PartialEq)]

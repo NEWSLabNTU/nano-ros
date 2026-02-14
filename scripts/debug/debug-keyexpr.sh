@@ -1,5 +1,5 @@
 #!/bin/bash
-# Debug script to see what keyexpr nano-ros is publishing on
+# Debug script to see what keyexpr nros is publishing on
 # Uses GNU Parallel to run talker and z_sub concurrently
 
 set -e
@@ -37,7 +37,7 @@ trap "rm -rf $TMPDIR" EXIT
 
 # Function to run talker
 run_talker() {
-    echo "[talker] Starting nano-ros talker..."
+    echo "[talker] Starting nros talker..."
     timeout 6 "$TALKER" --tcp 127.0.0.1:7447 2>&1 || true
 }
 

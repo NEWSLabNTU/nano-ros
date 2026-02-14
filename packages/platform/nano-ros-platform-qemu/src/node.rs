@@ -11,7 +11,7 @@ use core::ptr;
 use cortex_m_semihosting::hprintln;
 use heapless::String;
 use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
-use nano_ros_core::RosMessage;
+use nros_core::RosMessage;
 use nano_ros_link_smoltcp::SmoltcpBridge;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::phy::Device;
@@ -297,7 +297,7 @@ where
 
     hprintln!("");
     hprintln!("========================================");
-    hprintln!("  nano-ros QEMU Platform");
+    hprintln!("  nros QEMU Platform");
     hprintln!("========================================");
     hprintln!("");
 

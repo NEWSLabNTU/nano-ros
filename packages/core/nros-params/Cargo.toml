@@ -1,0 +1,20 @@
+[package]
+name = "nros-params"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "ROS 2 parameter server for nros"
+
+[features]
+default = ["std"]
+std = []
+alloc = []
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[dependencies]
+heapless = { workspace = true }
+
+[dev-dependencies]
+nano-ros-ghost-types = { path = "../../verification/nano-ros-ghost-types" }

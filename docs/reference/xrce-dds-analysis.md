@@ -1,8 +1,8 @@
-# XRCE-DDS Analysis for nano-ros RMW Integration
+# XRCE-DDS Analysis for nros RMW Integration
 
 ## Overview
 
-DDS-XRCE (DDS for eXtremely Resource Constrained Environments) is the middleware used by micro-ROS. The client library (Micro-XRCE-DDS-Client) runs on MCUs and communicates with an Agent process on a gateway host. This document analyzes XRCE-DDS as a potential second RMW backend for nano-ros, following the architecture in `docs/design/rmw-layer-design.md`.
+DDS-XRCE (DDS for eXtremely Resource Constrained Environments) is the middleware used by micro-ROS. The client library (Micro-XRCE-DDS-Client) runs on MCUs and communicates with an Agent process on a gateway host. This document analyzes XRCE-DDS as a potential second RMW backend for nros, following the architecture in `docs/design/rmw-layer-design.md`.
 
 ## Architecture: Agent-Based Model
 
@@ -127,7 +127,7 @@ typedef size_t (*read_func)(uxrCustomTransport* transport, uint8_t* buf, size_t 
 
 For bare-metal with smoltcp, an `xrce-smoltcp` crate would implement these 4 callbacks using smoltcp UDP sockets. This is simpler than `zpico-smoltcp` which implements 8+ TCP socket management functions.
 
-**Serial transport** is valuable for MCUs without networking. zenoh-pico also supports serial but nano-ros hasn't implemented it. XRCE-DDS's serial transport with HDLC framing is well-tested and widely used in micro-ROS deployments.
+**Serial transport** is valuable for MCUs without networking. zenoh-pico also supports serial but nros hasn't implemented it. XRCE-DDS's serial transport with HDLC framing is well-tested and widely used in micro-ROS deployments.
 
 ## Mapping to nros-rmw Traits
 
@@ -162,14 +162,14 @@ The proposed `nros-rmw` traits map to XRCE-DDS operations:
 - **Trait signatures are compatible.** The core `Session`, `Publisher`, `Subscriber`, `ServiceServer`, `ServiceClient` trait methods map cleanly to XRCE-DDS operations.
 - **Raw bytes interface.** Both zenoh-pico and XRCE-DDS ultimately send/receive CDR-encoded byte buffers. The `publish_raw`/`try_recv_raw` abstraction is correct.
 - **Static memory model.** XRCE-DDS's fully static allocation is even more embedded-friendly than zenoh-pico's heap-based approach. No `z_malloc` needed.
-- **Serial transport.** Opens up MCUs without Ethernet/WiFi -- a major gap in nano-ros today.
+- **Serial transport.** Opens up MCUs without Ethernet/WiFi -- a major gap in nros today.
 
 ### Challenges
 
 - **Agent deployment.** Users must run a separate agent process. This adds operational complexity vs zenoh-pico's direct peer model.
 - **DDS entity hierarchy.** The participant > publisher > datawriter hierarchy adds internal complexity to `nros-rmw-xrce`, but this is hidden from users.
-- **Discovery.** XRCE-DDS doesn't do client-side discovery -- the agent handles it. If nano-ros wants to expose `ros2 topic list` visibility, the agent must be configured to advertise.
-- **QoS subset.** XRCE-DDS supports a limited QoS subset (reliability, durability, history). This aligns with nano-ros's minimal `QosSettings`, but may limit advanced use cases.
+- **Discovery.** XRCE-DDS doesn't do client-side discovery -- the agent handles it. If nros wants to expose `ros2 topic list` visibility, the agent must be configured to advertise.
+- **QoS subset.** XRCE-DDS supports a limited QoS subset (reliability, durability, history). This aligns with nros's minimal `QosSettings`, but may limit advanced use cases.
 - **Board crate coupling.** Currently `nros-qemu` calls `zenoh_shim_*` FFI directly (bypassing `nros-rmw` traits). Before XRCE-DDS can work, board crates must be refactored to use abstract RMW traits (Phase 34 work).
 
 ### Estimated effort

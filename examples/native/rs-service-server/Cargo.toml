@@ -2,16 +2,16 @@
 name = "native-rs-service-server"
 version = "0.1.0"
 edition = "2024"
-description = "Example ROS 2 service server using nano-ros"
+description = "Example ROS 2 service server using nros"
 
 [features]
 default = ["zenoh"]
 zenoh = [
-    "nano-ros/zenoh",
+    "nros/zenoh",
 ]
 
 [dependencies]
-nano-ros = { path = "../../../packages/core/nano-ros", default-features = false, features = ["std"] }
+nros = { path = "../../../packages/core/nros", default-features = false, features = ["std"] }
 example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.10"

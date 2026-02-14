@@ -1,4 +1,4 @@
-//! Emulator tests for nano-ros
+//! Emulator tests for nros
 //!
 //! Tests that run on QEMU Cortex-M3 emulator without physical hardware.
 //! These verify CDR serialization, Node API, and type metadata work on embedded targets.

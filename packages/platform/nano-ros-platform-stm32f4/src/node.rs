@@ -8,7 +8,7 @@ use core::fmt::Write as _;
 use core::ptr;
 
 use heapless::String;
-use nano_ros_core::RosMessage;
+use nros_core::RosMessage;
 use nano_ros_link_smoltcp::SmoltcpBridge;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
@@ -203,7 +203,7 @@ pub fn run_node<F>(config: Config, f: F) -> !
 where
     F: FnOnce(&mut Node) -> Result<()>,
 {
-    defmt::info!("nano-ros STM32F4 platform starting...");
+    defmt::info!("nros STM32F4 platform starting...");
     defmt::info!(
         "  IP: {}.{}.{}.{}",
         config.ip[0],

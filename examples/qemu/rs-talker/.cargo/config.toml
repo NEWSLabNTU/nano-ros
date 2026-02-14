@@ -4,11 +4,11 @@ target = "thumbv7m-none-eabi"
 [patch.crates-io.builtin_interfaces]
 path = "generated/builtin_interfaces"
 
-[patch.crates-io.nano-ros-core]
-path = "../../../packages/core/nano-ros-core"
+[patch.crates-io.nros-core]
+path = "../../../packages/core/nros-core"
 
-[patch.crates-io.nano-ros-serdes]
-path = "../../../packages/core/nano-ros-serdes"
+[patch.crates-io.nros-serdes]
+path = "../../../packages/core/nros-serdes"
 
 [patch.crates-io.std_msgs]
 path = "generated/std_msgs"

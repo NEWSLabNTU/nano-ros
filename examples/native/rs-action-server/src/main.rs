@@ -1,6 +1,6 @@
 //! Native Action Server Example
 //!
-//! Demonstrates a ROS 2 action server using nano-ros.
+//! Demonstrates a ROS 2 action server using nros.
 //! This example implements a Fibonacci action that computes the Fibonacci
 //! sequence up to a given order, sending feedback as it computes.
 //!
@@ -25,13 +25,13 @@ use log::{error, info};
 #[cfg(feature = "zenoh")]
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciGoal, FibonacciResult};
 #[cfg(feature = "zenoh")]
-use nano_ros::prelude::*;
+use nros::prelude::*;
 
 #[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
-    info!("nano-ros Action Server Example");
+    info!("nros Action Server Example");
     info!("================================");
 
     // Create context
@@ -145,7 +145,7 @@ fn main() {
 #[cfg(not(feature = "zenoh"))]
 fn main() {
     env_logger::init();
-    info!("nano-ros Action Server Example");
+    info!("nros Action Server Example");
     info!("================================");
     info!("This example requires the 'zenoh' feature.");
     info!("Run with: cargo run -p native-rs-action-server --features zenoh");

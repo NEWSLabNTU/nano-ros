@@ -1,0 +1,19 @@
+[package]
+name = "nros-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Core types, traits, and node abstraction for nros"
+
+[features]
+default = ["std"]
+std = ["nros-serdes/std"]
+alloc = ["nros-serdes/alloc"]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+
+[dependencies]
+log = { version = "0.4", default-features = false }
+nros-serdes = { workspace = true, default-features = false }
+heapless = { workspace = true }

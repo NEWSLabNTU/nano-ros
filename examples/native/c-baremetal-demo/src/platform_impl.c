@@ -1,6 +1,6 @@
 /**
  * @file platform_impl.c
- * @brief Example bare-metal platform implementation for nano-ros-c
+ * @brief Example bare-metal platform implementation for nros-c
  *
  * This file demonstrates how users would implement the platform abstraction
  * layer for their specific embedded platform. In a real embedded system,

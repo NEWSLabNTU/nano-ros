@@ -4,16 +4,16 @@ project(baremetal_demo C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Find nano-ros-c library (built from Rust)
-# The library should be pre-built with: cargo build --release -p nano-ros-c
+# Find nros-c library (built from Rust)
+# The library should be pre-built with: cargo build --release -p nros-c
 #
-# Pass -DNANO_ROS_ROOT=/path/to/nano-ros when configuring:
-#   cmake -DNANO_ROS_ROOT=/path/to/nano-ros ..
+# Pass -DNANO_ROS_ROOT=/path/to/nros when configuring:
+#   cmake -DNANO_ROS_ROOT=/path/to/nros ..
 if(NOT DEFINED NANO_ROS_ROOT)
     message(FATAL_ERROR
         "NANO_ROS_ROOT not set.\n"
-        "Please specify the path to your nano-ros workspace:\n"
-        "  cmake -DNANO_ROS_ROOT=/path/to/nano-ros .."
+        "Please specify the path to your nros workspace:\n"
+        "  cmake -DNANO_ROS_ROOT=/path/to/nros .."
     )
 endif()
 

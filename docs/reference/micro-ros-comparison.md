@@ -1,4 +1,4 @@
-# Micro-ROS vs nano-ros: Architecture Comparison & Lessons Learned
+# Micro-ROS vs nros: Architecture Comparison & Lessons Learned
 
 ## Repositories Studied
 
@@ -46,7 +46,7 @@ All cloned to `external/`:
 
 **Key: Agent-based architecture.** The MCU runs a lightweight XRCE-DDS client that communicates with an Agent process on a more powerful machine. The Agent bridges to the full DDS network.
 
-### nano-ros Architecture
+### nros Architecture
 
 ```
 ┌─────────────────────────┐     ┌──────────────────────┐
@@ -55,7 +55,7 @@ All cloned to `external/`:
 │  ┌───────────────────┐  │     │  ┌────────────────┐  │
 │  │  User Application │  │     │  │   ROS 2 Node   │  │
 │  ├───────────────────┤  │     │  └───────┬────────┘  │
-│  │    nano-ros       │  │     │          │           │
+│  │    nros       │  │     │          │           │
 │  ├───────────────────┤  │     │    ┌─────▼─────┐     │
 │  │  transport (zenoh)  │  │     │    │ rmw_zenoh │     │
 │  ├───────────────────┤  │     │    └─────┬─────┘     │
@@ -73,7 +73,7 @@ All cloned to `external/`:
 
 ### 1. Middleware Protocol
 
-| Aspect            | micro-ROS                    | nano-ros                     |
+| Aspect            | micro-ROS                    | nros                     |
 |-------------------|------------------------------|------------------------------|
 | **Protocol**      | DDS-XRCE (binary, compact)   | Zenoh (native)               |
 | **Bridge needed** | Yes (micro-ROS Agent)        | No (direct zenoh-pico)       |
@@ -82,11 +82,11 @@ All cloned to `external/`:
 | **Complexity**    | 6+ software layers           | 3-4 layers                   |
 | **Transport**     | Serial, UDP, TCP, custom     | UDP (posix, smoltcp, zephyr) |
 
-**Lesson:** nano-ros's agent-less design is simpler to deploy and has lower latency. However, micro-ROS's serial transport is valuable for MCUs without networking — worth considering for nano-ros.
+**Lesson:** nros's agent-less design is simpler to deploy and has lower latency. However, micro-ROS's serial transport is valuable for MCUs without networking — worth considering for nros.
 
 ### 2. CDR Serialization
 
-| Aspect            | Micro-CDR                    | nano-ros serdes           |
+| Aspect            | Micro-CDR                    | nros serdes           |
 |-------------------|------------------------------|---------------------------|
 | **Language**      | C99                          | Rust                      |
 | **Size**          | ~615 lines core              | Rust proc-macro generated |
@@ -98,12 +98,12 @@ All cloned to `external/`:
 | **Quality level** | ROS 2 REP-2004 Level 1       | Not certified             |
 
 **Lessons:**
-- **Fragmentation callbacks**: Micro-CDR's `on_full_buffer` callback lets serialization span multiple small buffers. This is useful for DMA-based networking with ring buffers. nano-ros could benefit from similar streaming serialization for large messages.
-- **Per-operation endianness override**: Micro-CDR allows overriding endianness per serialize call. nano-ros currently handles this at the buffer level, which is sufficient for ROS 2 (always little-endian).
+- **Fragmentation callbacks**: Micro-CDR's `on_full_buffer` callback lets serialization span multiple small buffers. This is useful for DMA-based networking with ring buffers. nros could benefit from similar streaming serialization for large messages.
+- **Per-operation endianness override**: Micro-CDR allows overriding endianness per serialize call. nros currently handles this at the buffer level, which is sufficient for ROS 2 (always little-endian).
 
 ### 3. Memory Management
 
-| Aspect               | micro-ROS                                       | nano-ros                        |
+| Aspect               | micro-ROS                                       | nros                        |
 |----------------------|-------------------------------------------------|---------------------------------|
 | **Strategy**         | Static pools, compile-time sized                | Static buffers, Rust ownership  |
 | **Pool system**      | Linked-list free/allocated pools                | No pool (stack/static alloc)    |
@@ -113,12 +113,12 @@ All cloned to `external/`:
 | **Configurability**  | colcon.meta / CMake / Kconfig                   | Cargo features / const generics |
 
 **Lessons:**
-- **Compile-time entity limits**: micro-ROS's approach of configuring max entity counts (nodes, publishers, subscribers) via build system is practical for embedded. nano-ros currently doesn't enforce such limits, relying on Rust's ownership model. Could add optional compile-time bounds for safety-critical systems.
-- **Memory pool pattern**: micro-ROS's `rmw_uxrce_mempool_t` (linked-list of pre-allocated items) is a proven pattern for deterministic allocation. nano-ros could adopt this for C API resource management.
+- **Compile-time entity limits**: micro-ROS's approach of configuring max entity counts (nodes, publishers, subscribers) via build system is practical for embedded. nros currently doesn't enforce such limits, relying on Rust's ownership model. Could add optional compile-time bounds for safety-critical systems.
+- **Memory pool pattern**: micro-ROS's `rmw_uxrce_mempool_t` (linked-list of pre-allocated items) is a proven pattern for deterministic allocation. nros could adopt this for C API resource management.
 
 ### 4. Executor Model
 
-| Aspect            | rclc Executor                              | nano-ros Executor                    |
+| Aspect            | rclc Executor                              | nros Executor                    |
 |-------------------|--------------------------------------------|--------------------------------------|
 | **Language**      | C                                          | Rust (with C API)                    |
 | **Handle types**  | Sub, Timer, Service, Client, Action, Guard | Sub, Timer, Service, Guard           |
@@ -129,13 +129,13 @@ All cloned to `external/`:
 | **Invocation**    | `ON_NEW_DATA`, `ALWAYS`                    | `ON_NEW_DATA`, `ALWAYS`              |
 
 **Lessons:**
-- **Trigger conditions**: rclc's custom trigger functions (execute only when ALL handles ready, or specific handle ready) are useful for sensor fusion. nano-ros could add this.
-- **Action handles**: rclc's executor natively supports action client/server handles. nano-ros already has action support but should ensure executor integration matches.
-- **`spin_period()`**: rclc has explicit periodic spin with precise timing. nano-ros has `spin_once()` but could add `spin_period()` for fixed-rate control loops.
+- **Trigger conditions**: rclc's custom trigger functions (execute only when ALL handles ready, or specific handle ready) are useful for sensor fusion. nros could add this.
+- **Action handles**: rclc's executor natively supports action client/server handles. nros already has action support but should ensure executor integration matches.
+- **`spin_period()`**: rclc has explicit periodic spin with precise timing. nros has `spin_once()` but could add `spin_period()` for fixed-rate control loops.
 
 ### 5. Zephyr Integration
 
-| Aspect                | micro-ROS Zephyr Module        | nano-ros BSP Zephyr       |
+| Aspect                | micro-ROS Zephyr Module        | nros BSP Zephyr       |
 |-----------------------|--------------------------------|---------------------------|
 | **Integration**       | Zephyr module (module.yml)     | Zephyr module + C BSP     |
 | **Build system**      | CMake + Makefile + colcon      | CMake + Cargo             |
@@ -146,9 +146,9 @@ All cloned to `external/`:
 | **Ring buffers**      | 2KB per direction (serial)     | Not applicable (UDP only) |
 
 **Lessons:**
-- **Serial transport**: micro-ROS's UART transport with ring buffers and interrupt-driven RX is well-tested and widely used. nano-ros only supports UDP currently. Adding serial transport would greatly expand MCU support (many boards lack Ethernet/WiFi).
+- **Serial transport**: micro-ROS's UART transport with ring buffers and interrupt-driven RX is well-tested and widely used. nros only supports UDP currently. Adding serial transport would greatly expand MCU support (many boards lack Ethernet/WiFi).
 - **USB-CDC transport**: micro-ROS supports USB CDC-ACM with DTR handshaking. Very useful for development.
-- **Kconfig integration**: micro-ROS's Kconfig menus for entity limits, transport selection, and tuning are excellent UX. nano-ros could improve its Kconfig integration.
+- **Kconfig integration**: micro-ROS's Kconfig menus for entity limits, transport selection, and tuning are excellent UX. nros could improve its Kconfig integration.
 - **WiFi configuration**: micro-ROS's Zephyr module has Kconfig entries for WiFi SSID/password. Practical touch.
 
 ### 6. API Ergonomics
@@ -172,7 +172,7 @@ rclc_executor_add_timer(&executor, &timer);
 rclc_executor_spin(&executor);
 ```
 
-**nano-ros (Rust, ~30 lines for publisher):**
+**nros (Rust, ~30 lines for publisher):**
 ```rust
 let context = Context::from_env()?;
 let mut executor = context.create_basic_executor();
@@ -181,26 +181,26 @@ let publisher = node.create_publisher::<Int32>("chatter")?;
 executor.spin(|| { publisher.publish(&msg); });
 ```
 
-**nano-ros (C API, rclc-compatible, ~80 lines):**
+**nros (C API, rclc-compatible, ~80 lines):**
 ```c
 nano_ros_support_t support;
 nano_ros_support_init(&support, &context);
 
-nano_ros_node_t node;
-nano_ros_node_init(&node, &support, "my_node", "/ns");
+nros_node_t node;
+nros_node_init(&node, &support, "my_node", "/ns");
 
 nano_ros_publisher_t publisher;
 nano_ros_publisher_init(&publisher, &node, "topic", "std_msgs/msg/Int32", ...);
 ```
 
 **Lessons:**
-- nano-ros's Rust API is significantly more ergonomic (type-safe generics, RAII, builder pattern).
-- nano-ros's C API already mirrors rclc conventions, which is good for migration.
-- micro-ROS's `RCCHECK()` / `RCSOFTCHECK()` macros for error handling are practical. nano-ros C examples could adopt similar patterns.
+- nros's Rust API is significantly more ergonomic (type-safe generics, RAII, builder pattern).
+- nros's C API already mirrors rclc conventions, which is good for migration.
+- micro-ROS's `RCCHECK()` / `RCSOFTCHECK()` macros for error handling are practical. nros C examples could adopt similar patterns.
 
 ### 7. Message Generation
 
-| Aspect                    | micro-ROS                             | nano-ros                               |
+| Aspect                    | micro-ROS                             | nros                               |
 |---------------------------|---------------------------------------|----------------------------------------|
 | **Tool**                  | rosidl + colcon (standard ROS 2)      | `cargo nano-ros generate`              |
 | **Input**                 | .msg/.srv/.action files via ament     | package.xml → resolve from ROS 2       |
@@ -210,12 +210,12 @@ nano_ros_publisher_init(&publisher, &node, "topic", "std_msgs/msg/Int32", ...);
 | **Offline support**       | Requires ROS 2 workspace              | Caches resolved interfaces             |
 
 **Lessons:**
-- micro-ROS relies on the full colcon/ament toolchain for message generation, which requires a ROS 2 installation. nano-ros's `cargo nano-ros generate` is more self-contained.
-- micro-ROS's pre-compiled library approach (Arduino) ships pre-built message types. nano-ros could consider similar pre-built packages for common message sets.
+- micro-ROS relies on the full colcon/ament toolchain for message generation, which requires a ROS 2 installation. nros's `cargo nano-ros generate` is more self-contained.
+- micro-ROS's pre-compiled library approach (Arduino) ships pre-built message types. nros could consider similar pre-built packages for common message sets.
 
 ### 8. Platform Support
 
-| Platform                  | micro-ROS         | nano-ros      |
+| Platform                  | micro-ROS         | nros      |
 |---------------------------|-------------------|---------------|
 | **Linux (desktop)**       | Yes               | Yes           |
 | **FreeRTOS**              | Yes (primary)     | No            |
@@ -230,10 +230,10 @@ nano_ros_publisher_init(&publisher, &node, "topic", "std_msgs/msg/Int32", ...);
 
 **Lessons:**
 - micro-ROS has broader RTOS support (FreeRTOS, NuttX, ESP-IDF) due to its C codebase and RTOS-friendly threading model.
-- nano-ros has unique bare-metal support (QEMU, RTIC) that micro-ROS lacks.
+- nros has unique bare-metal support (QEMU, RTIC) that micro-ROS lacks.
 - Arduino support gives micro-ROS massive reach in the hobbyist/education market.
 
-## Key Takeaways for nano-ros
+## Key Takeaways for nros
 
 ### Things We Do Better
 

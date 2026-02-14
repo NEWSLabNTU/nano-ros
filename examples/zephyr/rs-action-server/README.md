@@ -1,6 +1,6 @@
-# nano-ros Zephyr Action Server Example (Rust)
+# nros Zephyr Action Server Example (Rust)
 
-A ROS 2 compatible action server running on Zephyr RTOS using nano-ros.
+A ROS 2 compatible action server running on Zephyr RTOS using nros.
 Implements the Fibonacci action - computing Fibonacci sequences with progress feedback.
 
 ## Architecture
@@ -27,7 +27,7 @@ The Fibonacci action server uses 5 communication channels:
 
 ## Prerequisites
 
-1. Zephyr workspace set up with nano-ros module
+1. Zephyr workspace set up with nros module
 2. zenoh router running on host
 3. TAP interface configured for Zephyr networking
 
@@ -38,14 +38,14 @@ The Fibonacci action server uses 5 communication channels:
 source ~/nano-ros-workspace/env.sh
 
 # Build for native_sim
-west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-action-server
+west build -b native_sim/native/64 nros/examples/zephyr-rs-action-server
 ```
 
 ## Run
 
 ```bash
 # Terminal 1: Set up TAP interface (one-time)
-sudo ./nano-ros/scripts/setup-zephyr-network.sh
+sudo ./nros/scripts/setup-zephyr-network.sh
 
 # Terminal 2: Start zenoh router
 zenohd --listen tcp/0.0.0.0:7447
@@ -67,7 +67,7 @@ The server will:
 
 Expected output:
 ```
-[00:00:03.000,000] <inf> rustapp: nano-ros Zephyr Action Server Starting
+[00:00:03.000,000] <inf> rustapp: nros Zephyr Action Server Starting
 [00:00:03.000,000] <inf> rustapp: Action: Fibonacci
 [00:00:03.100,000] <inf> rustapp: Session opened
 [00:00:03.200,000] <inf> rustapp: Action server ready: /demo/fibonacci

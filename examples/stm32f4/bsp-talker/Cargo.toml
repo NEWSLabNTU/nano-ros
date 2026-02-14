@@ -3,7 +3,7 @@ name = "stm32f4-bsp-talker"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "Simplified nano-ros talker example for STM32F4 using BSP"
+description = "Simplified nros talker example for STM32F4 using BSP"
 
 [[bin]]
 name = "stm32f4-bsp-talker"

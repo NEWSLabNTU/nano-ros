@@ -1,10 +1,10 @@
 # RTIC STM32F4 Example
 
-RTIC 2.x example demonstrating nano-ros with smoltcp network stack on STM32F429ZI.
+RTIC 2.x example demonstrating nros with smoltcp network stack on STM32F429ZI.
 
 ## Overview
 
-This example shows how to use nano-ros with:
+This example shows how to use nros with:
 - RTIC 2.x for real-time task scheduling
 - smoltcp for TCP/IP networking
 - stm32-eth for Ethernet DMA
@@ -57,7 +57,7 @@ cargo run --release
 │  ├── publisher task (priority 1) - Publishes Int32 messages         │
 │  └── network task (priority 3) - Polls smoltcp interface            │
 ├─────────────────────────────────────────────────────────────────────┤
-│  nano-ros-node (ShimExecutor, ShimNode, ShimPublisher)              │
+│  nros-node (ShimExecutor, ShimNode, ShimPublisher)              │
 ├─────────────────────────────────────────────────────────────────────┤
 │  nano-ros-transport-zenoh (shim-smoltcp feature)                              │
 ├─────────────────────────────────────────────────────────────────────┤

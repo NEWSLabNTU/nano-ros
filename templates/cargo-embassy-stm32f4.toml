@@ -1,8 +1,8 @@
-# nano-ros Embassy Template for STM32F4
+# nros Embassy Template for STM32F4
 #
 # Copy this file to your project as Cargo.toml and update:
 # - Package name and metadata
-# - Paths to nano-ros crates (or use git dependency)
+# - Paths to nros crates (or use git dependency)
 #
 # Required files:
 # - .cargo/config.toml (copy from examples/stm32f4-rs-embassy/.cargo/)
@@ -14,7 +14,7 @@ name = "my-embassy-project"
 version = "0.1.0"
 edition = "2021"
 license = "MIT OR Apache-2.0"
-description = "nano-ros Embassy project"
+description = "nros Embassy project"
 
 [[bin]]
 name = "my-embassy-project"
@@ -32,14 +32,14 @@ cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 cortex-m-rt = "0.7"
 panic-halt = "0.2"
 
-# nano-ros with RTIC support (works for Embassy too)
+# nros with RTIC support (works for Embassy too)
 # Option 1: Local paths (development)
-nano-ros-node = { path = "../packages/core/nano-ros-node", default-features = false, features = ["rtic"] }
+nros-node = { path = "../packages/core/nros-node", default-features = false, features = ["rtic"] }
 nano-ros-transport = { path = "../packages/core/nano-ros-transport", default-features = false, features = ["rtic", "sync-critical-section"] }
 nano-ros-types = { path = "../packages/core/nano-ros-types", default-features = false }
 
 # Option 2: Git dependency (recommended for external projects)
-# nano-ros-node = { git = "https://github.com/user/nano-ros", default-features = false, features = ["rtic"] }
+# nros-node = { git = "https://github.com/user/nano-ros", default-features = false, features = ["rtic"] }
 # nano-ros-transport = { git = "https://github.com/user/nano-ros", default-features = false, features = ["rtic", "sync-critical-section"] }
 
 # Logging (optional)

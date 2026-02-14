@@ -69,8 +69,8 @@ name = "builtin_interfaces"
 version = "1.2.1"
 dependencies = [
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -304,27 +304,27 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros"
+name = "nros"
 version = "0.1.0"
 dependencies = [
- "nano-ros-core",
- "nano-ros-macros",
- "nano-ros-node",
- "nano-ros-params",
+ "nros-core",
+ "nros-macros",
+ "nros-node",
+ "nros-params",
  "nano-ros-transport",
 ]
 
 [[package]]
-name = "nano-ros-core"
+name = "nros-core"
 version = "0.1.0"
 dependencies = [
  "heapless",
  "log",
- "nano-ros-serdes",
+ "nros-serdes",
 ]
 
 [[package]]
-name = "nano-ros-macros"
+name = "nros-macros"
 version = "0.1.0"
 dependencies = [
  "proc-macro2",
@@ -333,24 +333,24 @@ dependencies = [
 ]
 
 [[package]]
-name = "nano-ros-node"
+name = "nros-node"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-core",
- "nano-ros-params",
+ "nros-core",
+ "nros-params",
  "nano-ros-transport",
 ]
 
 [[package]]
-name = "nano-ros-params"
+name = "nros-params"
 version = "0.1.0"
 dependencies = [
  "heapless",
 ]
 
 [[package]]
-name = "nano-ros-serdes"
+name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
@@ -361,7 +361,7 @@ name = "nano-ros-transport"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-core",
+ "nros-core",
  "nano-ros-transport-zenoh",
 ]
 
@@ -432,7 +432,7 @@ name = "rustapp"
 version = "0.1.0"
 dependencies = [
  "log",
- "nano-ros",
+ "nros",
  "std_msgs",
  "zephyr",
 ]
@@ -526,8 +526,8 @@ version = "4.2.4"
 dependencies = [
  "builtin_interfaces",
  "heapless",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]

@@ -1,6 +1,6 @@
 # Phase 22: ESP32-C3 Platform Support
 
-**Goal**: Add native Rust support for ESP32-C3 (RISC-V) using esp-hal + esp-wifi, enabling WiFi-connected nano-ros nodes on the most popular IoT chip family.
+**Goal**: Add native Rust support for ESP32-C3 (RISC-V) using esp-hal + esp-wifi, enabling WiFi-connected nros nodes on the most popular IoT chip family.
 
 **Status**: In Progress (22.1–22.4 complete, 22.5a–d complete, 22.6 deferred)
 **Priority**: High
@@ -8,13 +8,13 @@
 
 ## Overview
 
-The ESP32-C3 is a RISC-V-based WiFi/BLE SoC from Espressif. It is the most accessible WiFi-capable microcontroller for nano-ros because:
+The ESP32-C3 is a RISC-V-based WiFi/BLE SoC from Espressif. It is the most accessible WiFi-capable microcontroller for nros because:
 
 - **Upstream Rust**: RISC-V target (`riscv32imc-unknown-none-elf`) uses standard `rustc` — no forked compiler
 - **WiFi built-in**: No external module or shield needed
 - **Affordable**: ~$8 for ESP32-C3-DevKitC, ~$20 for Arduino Nano ESP32 (S3)
 - **Huge community**: ESP32 is the most popular IoT chip, massive ecosystem
-- **smoltcp integration**: `esp-wifi` uses smoltcp internally — matches nano-ros's existing `platform_smoltcp` backend
+- **smoltcp integration**: `esp-wifi` uses smoltcp internally — matches nros's existing `platform_smoltcp` backend
 
 ### Target Hardware
 
@@ -34,7 +34,7 @@ ESP32-C3 is the primary target. ESP32-S3 (Xtensa) requires the Espressif forked 
 | zenoh-pico code        | ~80 KB      | 4 MB flash         |
 | smoltcp buffers        | ~8 KB       | 400 KB RAM         |
 | WiFi driver (esp-wifi) | ~60 KB      | 4 MB flash         |
-| Application + nano-ros | ~40 KB      | 4 MB flash         |
+| Application + nros | ~40 KB      | 4 MB flash         |
 | **Total RAM**          | **~80 KB**  | **400 KB**         |
 | **Total Flash**        | **~180 KB** | **4 MB**           |
 
@@ -49,7 +49,7 @@ Fits comfortably. ESP32-C3 has 20x more flash and 5x more RAM than needed.
 └─────────────────────────────┬───────────────────────────────────┘
                               │
 ┌─────────────────────────────▼───────────────────────────────────┐
-│                     nano-ros / nano-ros-c                        │
+│                     nros / nros-c                        │
 │              (Node, Publisher, Subscriber, Executor)             │
 └─────────────────────────────┬───────────────────────────────────┘
                               │
@@ -71,7 +71,7 @@ Fits comfortably. ESP32-C3 has 20x more flash and 5x more RAM than needed.
 
 ### Key Integration Point
 
-`esp-wifi` already uses smoltcp internally for its network stack. nano-ros has an existing `platform_smoltcp` backend in `nano-ros-transport-zenoh-sys/c/platform_smoltcp/`. The ESP32 BSP bridges these two by:
+`esp-wifi` already uses smoltcp internally for its network stack. nros has an existing `platform_smoltcp` backend in `nano-ros-transport-zenoh-sys/c/platform_smoltcp/`. The ESP32 BSP bridges these two by:
 
 1. Initializing WiFi via `esp-wifi` to get a connected smoltcp interface
 2. Passing that interface to `nano-ros-transport-zenoh-sys` platform_smoltcp functions

@@ -1,10 +1,10 @@
-# nano-ros Integration Tests
+# nros Integration Tests
 
-Integration tests for nano-ros communication, platform backends, and ROS 2 interoperability.
+Integration tests for nros communication, platform backends, and ROS 2 interoperability.
 
 ## Overview
 
-nano-ros uses a Rust-based test framework with rstest fixtures in `packages/testing/nano-ros-tests/`. This provides:
+nros uses a Rust-based test framework with rstest fixtures in `packages/testing/nano-ros-tests/`. This provides:
 
 - **Type safety** - Compile-time error checking
 - **RAII cleanup** - Automatic process cleanup via `Drop` trait
@@ -68,7 +68,7 @@ packages/testing/nano-ros-tests/  # Rust test crate
 └── tests/
     ├── emulator.rs         # QEMU Cortex-M3 tests (ARM)
     ├── esp32_emulator.rs   # QEMU ESP32-C3 tests (RISC-V)
-    ├── nano2nano.rs        # nano-ros ↔ nano-ros tests
+    ├── nano2nano.rs        # nros ↔ nros tests
     ├── platform.rs         # Platform detection tests
     └── rmw_interop.rs      # ROS 2 interop tests
 ```
@@ -98,7 +98,7 @@ just test-qemu-esp32    # Run all ESP32 QEMU tests
 ```
 
 ### nano2nano
-Tests communication between nano-ros nodes:
+Tests communication between nros nodes:
 - Basic pub/sub with zenohd router
 - Message delivery verification
 
@@ -117,24 +117,24 @@ Tests platform and toolchain detection:
 Tests interoperability with ROS 2 using rmw_zenoh_cpp:
 
 **Pub/Sub Tests:**
-- nano-ros → ROS 2 communication
-- ROS 2 → nano-ros communication
+- nros → ROS 2 communication
+- ROS 2 → nros communication
 - Communication matrix (all directions)
 - Key expression format verification
 
 **Service Tests:**
-- nano-ros server → ROS 2 client
-- ROS 2 server → nano-ros client
+- nros server → ROS 2 client
+- ROS 2 server → nros client
 - Service discovery
 
 **Action Tests:**
-- nano-ros action server ↔ ROS 2 action client
-- ROS 2 action server ↔ nano-ros action client
+- nros action server ↔ ROS 2 action client
+- ROS 2 action server ↔ nros action client
 
 **Discovery Tests:**
-- `ros2 node list` shows nano-ros nodes
-- `ros2 topic list` shows nano-ros topics
-- `ros2 service list` shows nano-ros services
+- `ros2 node list` shows nros nodes
+- `ros2 topic list` shows nros topics
+- `ros2 service list` shows nros services
 
 **QoS Tests:**
 - BEST_EFFORT ↔ BEST_EFFORT (works)

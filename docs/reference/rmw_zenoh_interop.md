@@ -1,16 +1,16 @@
 # ROS 2 rmw_zenoh Interoperability
 
-This document describes how nano-ros communicates with standard ROS 2 nodes using `rmw_zenoh_cpp`.
+This document describes how nros communicates with standard ROS 2 nodes using `rmw_zenoh_cpp`.
 
 ## Status: WORKING
 
-nano-ros ↔ ROS 2 rmw_zenoh communication is fully operational as of January 2025.
+nros ↔ ROS 2 rmw_zenoh communication is fully operational as of January 2025.
 
 ## Architecture
 
 ```
 ┌─────────────────────────┐          ┌─────────────────────────┐
-│   ROS 2 Node            │          │   nano-ros Node         │
+│   ROS 2 Node            │          │   nros Node         │
 │   (rmw_zenoh_cpp)       │◄────────►│   (zenoh-pico)          │
 │                         │  Zenoh   │                         │
 │   ros2 topic echo       │  Router  │   native-rs-talker         │
@@ -26,7 +26,7 @@ Both nodes connect to the same Zenoh router (zenohd) or communicate directly in 
 # Terminal 1: Start zenoh router
 zenohd --listen tcp/127.0.0.1:7447
 
-# Terminal 2: Run nano-ros talker
+# Terminal 2: Run nros talker
 cargo run -p native-rs-talker --features zenoh -- --tcp 127.0.0.1:7447
 
 # Terminal 3: Run ROS 2 listener
@@ -59,7 +59,7 @@ Implementation: `TopicInfo::to_key()` in the transport traits module
 
 ### 2. Liveliness Token Format
 
-rmw_zenoh uses Zenoh liveliness tokens for discovery. Without these, `ros2 topic list` won't show nano-ros topics.
+rmw_zenoh uses Zenoh liveliness tokens for discovery. Without these, `ros2 topic list` won't show nros topics.
 
 **Node Liveliness Token:**
 ```
@@ -158,7 +158,7 @@ fn to_hex_string(&self) -> String {
 
 ### Issue: Topic not visible in ros2 topic list
 
-**Symptom:** nano-ros publishes but ROS 2 doesn't see the topic.
+**Symptom:** nros publishes but ROS 2 doesn't see the topic.
 
 **Cause:** Liveliness token format incorrect.
 
@@ -196,7 +196,7 @@ export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:74
 # Debug with verbose zenohd logging
 ./scripts/test-rmw-debug.sh
 
-# nano-ros to nano-ros (no ROS 2)
+# nros to nros (no ROS 2)
 ./scripts/test-pubsub.sh
 ```
 

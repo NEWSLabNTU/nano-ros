@@ -2,7 +2,7 @@
 name = "nano-ros-transport-zenoh"
 version = "0.1.0"
 edition = "2024"
-description = "High-level Rust API for zenoh-pico transport (nano-ros)"
+description = "High-level Rust API for zenoh-pico transport (nros)"
 license = "Apache-2.0"
 readme = "README.md"
 

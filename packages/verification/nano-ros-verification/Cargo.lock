@@ -56,12 +56,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "nano-ros-core"
+name = "nros-core"
 version = "0.1.0"
 dependencies = [
  "heapless",
  "log",
- "nano-ros-serdes",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -69,24 +69,24 @@ name = "nano-ros-ghost-types"
 version = "0.1.0"
 
 [[package]]
-name = "nano-ros-node"
+name = "nros-node"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-core",
- "nano-ros-params",
+ "nros-core",
+ "nros-params",
  "nano-ros-transport",
 ]
 
 [[package]]
-name = "nano-ros-params"
+name = "nros-params"
 version = "0.1.0"
 dependencies = [
  "heapless",
 ]
 
 [[package]]
-name = "nano-ros-serdes"
+name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
@@ -97,18 +97,18 @@ name = "nano-ros-transport"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-core",
+ "nros-core",
 ]
 
 [[package]]
 name = "nano-ros-verification"
 version = "0.1.0"
 dependencies = [
- "nano-ros-core",
+ "nros-core",
  "nano-ros-ghost-types",
- "nano-ros-node",
- "nano-ros-params",
- "nano-ros-serdes",
+ "nros-node",
+ "nros-params",
+ "nros-serdes",
  "vstd",
 ]
 

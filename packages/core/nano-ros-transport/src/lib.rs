@@ -1,6 +1,6 @@
-//! Transport abstraction layer for nano-ros
+//! Transport abstraction layer for nros
 //!
-//! This crate provides the transport layer abstraction for nano-ros,
+//! This crate provides the transport layer abstraction for nros,
 //! allowing different backends to be used interchangeably.
 //!
 //! # Features

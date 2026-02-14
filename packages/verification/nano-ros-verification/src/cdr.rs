@@ -32,11 +32,11 @@ verus! {
 /// Without `external_body`, Verus sees the enum's variant structure and allows
 /// pattern matching in spec functions and proofs.
 #[verifier::external_type_specification]
-pub struct ExSerError(nano_ros_serdes::SerError);
+pub struct ExSerError(nros_serdes::SerError);
 
 /// Register `DeserError` with Verus as a transparent type.
 #[verifier::external_type_specification]
-pub struct ExDeserError(nano_ros_serdes::DeserError);
+pub struct ExDeserError(nros_serdes::DeserError);
 
 // ======================================================================
 // CDR Ghost Model (from nano-ros-ghost-types)

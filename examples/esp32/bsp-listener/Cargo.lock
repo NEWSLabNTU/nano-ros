@@ -113,8 +113,8 @@ name = "builtin_interfaces"
 version = "1.2.1"
 dependencies = [
  "heapless 0.8.0",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -1126,12 +1126,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros-core"
+name = "nros-core"
 version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
  "log",
- "nano-ros-serdes",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -1155,7 +1155,7 @@ dependencies = [
  "esp-radio",
  "esp-rtos",
  "heapless 0.8.0",
- "nano-ros-core",
+ "nros-core",
  "nano-ros-link-smoltcp",
  "nano-ros-transport-zenoh-sys",
  "portable-atomic",
@@ -1163,7 +1163,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nano-ros-serdes"
+name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
@@ -1548,8 +1548,8 @@ version = "4.2.4"
 dependencies = [
  "builtin_interfaces",
  "heapless 0.8.0",
- "nano-ros-core",
- "nano-ros-serdes",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]

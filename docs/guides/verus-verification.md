@@ -1,6 +1,6 @@
 # Verus Verification Coding Practices
 
-Practical guide for writing and maintaining Verus deductive proofs in nano-ros.
+Practical guide for writing and maintaining Verus deductive proofs in nros.
 For architecture and proof targets, see [phase-31-verus-verification.md](../roadmap/phase-31-verus-verification.md).
 
 ## Quick Reference
@@ -24,7 +24,7 @@ the type as transparent or opaque.
 Use `external_type_specification` **without** `external_body`:
 
 ```rust
-use nano_ros_node::TriggerCondition;
+use nros_node::TriggerCondition;
 
 verus! {
 
@@ -68,7 +68,7 @@ accessible in specs:
 
 ```rust
 #[verifier::external_type_specification]
-pub struct ExDuration(nano_ros_core::time::Duration);
+pub struct ExDuration(nros_core::time::Duration);
 
 // Fields are accessible:
 pub assume_specification[ Duration::to_nanos ](self_: &Duration) -> (n: i64)
@@ -104,7 +104,7 @@ For types that can't be imported (private fields, feature-gated behind C FFI,
 etc.), create a ghost model — a manually maintained mirror:
 
 ```rust
-/// Ghost representation of TimerState (mirrors nano_ros_node::timer::TimerState).
+/// Ghost representation of TimerState (mirrors nros_node::timer::TimerState).
 pub struct TimerGhost {
     pub period_ms: u64,
     pub elapsed_ms: u64,
@@ -165,7 +165,7 @@ touches.
 ### Edition 2024
 
 Verus's bundled rustc (1.93.0) supports edition 2024. The verification crate
-uses `edition = "2024"` to match the nano-ros workspace. No special
+uses `edition = "2024"` to match the nros workspace. No special
 configuration is needed.
 
 ## Adding a New Proof

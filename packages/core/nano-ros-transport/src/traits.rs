@@ -2,7 +2,7 @@
 //!
 //! These traits define the interface for transport backends (zenoh-pico, etc.)
 
-use nano_ros_core::{Deserialize, RosMessage, RosService, Serialize};
+use nros_core::{Deserialize, RosMessage, RosService, Serialize};
 
 /// Topic information for pub/sub
 #[derive(Debug, Clone)]
@@ -728,7 +728,7 @@ pub trait Publisher {
 
     /// Publish a typed message (serializes automatically)
     fn publish<M: RosMessage>(&self, msg: &M, buf: &mut [u8]) -> Result<(), Self::Error> {
-        use nano_ros_core::CdrWriter;
+        use nros_core::CdrWriter;
 
         let mut writer = CdrWriter::new_with_header(buf).map_err(|_| self.buffer_error())?;
         msg.serialize(&mut writer)
@@ -764,7 +764,7 @@ pub trait Subscriber {
 
     /// Try to receive a typed message (non-blocking)
     fn try_recv<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error> {
-        use nano_ros_core::CdrReader;
+        use nros_core::CdrReader;
 
         match self.try_recv_raw(buf)? {
             Some(len) => {
@@ -823,7 +823,7 @@ pub trait ServiceServerTrait {
     where
         Self::Error: From<TransportError>,
     {
-        use nano_ros_core::{CdrReader, CdrWriter};
+        use nros_core::{CdrReader, CdrWriter};
 
         // First, try to receive a request and extract necessary data
         let (data_len, sequence_number) = match self.try_recv_request(req_buf)? {
@@ -869,7 +869,7 @@ pub trait ServiceServerTrait {
     where
         Self::Error: From<TransportError>,
     {
-        use nano_ros_core::{CdrReader, CdrWriter};
+        use nros_core::{CdrReader, CdrWriter};
 
         let (data_len, sequence_number) = match self.try_recv_request(req_buf)? {
             Some(request) => (request.data.len(), request.sequence_number),
@@ -913,7 +913,7 @@ pub trait ServiceClientTrait {
     where
         Self::Error: From<TransportError>,
     {
-        use nano_ros_core::{CdrReader, CdrWriter};
+        use nros_core::{CdrReader, CdrWriter};
 
         // Serialize request
         let mut writer =

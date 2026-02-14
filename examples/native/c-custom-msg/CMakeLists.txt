@@ -8,21 +8,21 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ============================================================================
-# nano-ros-c setup
+# nros-c setup
 # ============================================================================
 
-# Pass -DNANO_ROS_ROOT=/path/to/nano-ros when configuring:
-#   cmake -DNANO_ROS_ROOT=/path/to/nano-ros ..
+# Pass -DNANO_ROS_ROOT=/path/to/nros when configuring:
+#   cmake -DNANO_ROS_ROOT=/path/to/nros ..
 if(NOT DEFINED NANO_ROS_ROOT)
     message(FATAL_ERROR
         "NANO_ROS_ROOT not set.\n"
-        "Please specify the path to your nano-ros workspace:\n"
-        "  cmake -DNANO_ROS_ROOT=/path/to/nano-ros .."
+        "Please specify the path to your nros workspace:\n"
+        "  cmake -DNANO_ROS_ROOT=/path/to/nros .."
     )
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
-list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/packages/core/nano-ros-c/cmake")
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/packages/core/nros-c/cmake")
 find_package(NanoRos REQUIRED)
 
 # Include the generate interfaces function

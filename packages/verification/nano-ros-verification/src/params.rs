@@ -17,7 +17,7 @@
 /// - `FloatRangeGhost` — mirrors `FloatingPointRange` using int fields because
 ///   Verus does not support f64 reasoning. Cannot move to shared crate.
 use vstd::prelude::*;
-use nano_ros_params::{IntegerRange, ParameterType};
+use nros_params::{IntegerRange, ParameterType};
 use nano_ros_ghost_types::ParameterValueGhost;
 
 verus! {

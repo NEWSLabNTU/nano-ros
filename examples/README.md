@@ -1,6 +1,6 @@
-# nano-ros Examples
+# nros Examples
 
-This directory contains examples demonstrating nano-ros on various platforms.
+This directory contains examples demonstrating nros on various platforms.
 
 ## Directory Structure
 
@@ -17,7 +17,7 @@ examples/
 
 ### Native (`native/`)
 
-Desktop/Linux examples using the full nano-ros Rust API. Best for learning nano-ros concepts and developing applications before deploying to embedded targets.
+Desktop/Linux examples using the full nros Rust API. Best for learning nros concepts and developing applications before deploying to embedded targets.
 
 | Example | Language | Description |
 |---------|----------|-------------|
@@ -28,10 +28,10 @@ Desktop/Linux examples using the full nano-ros Rust API. Best for learning nano-
 | `rs-action-server` | Rust | ROS 2 action server example |
 | `rs-action-client` | Rust | ROS 2 action client example |
 | `rs-custom-msg` | Rust | Custom message types |
-| `c-talker` | C | C language talker using nano-ros-c |
-| `c-listener` | C | C language listener using nano-ros-c |
-| `cpp-talker` | C++ | C++ talker using nano-ros-cpp |
-| `cpp-listener` | C++ | C++ listener using nano-ros-cpp |
+| `c-talker` | C | C language talker using nros-c |
+| `c-listener` | C | C language listener using nros-c |
+| `cpp-talker` | C++ | C++ talker using nros-cpp |
+| `cpp-listener` | C++ | C++ listener using nros-cpp |
 
 **Running native examples:**
 ```bash
@@ -107,7 +107,7 @@ Zephyr RTOS examples using `nano-ros-bsp-zephyr` (C) or the Rust API.
 source ~/nano-ros-workspace/env.sh
 
 # Build for native_sim
-west build -b native_sim/native/64 nano-ros/examples/zephyr/c-talker
+west build -b native_sim/native/64 nros/examples/zephyr/c-talker
 
 # Run
 ./build/zephyr/zephyr.exe
@@ -115,7 +115,7 @@ west build -b native_sim/native/64 nano-ros/examples/zephyr/c-talker
 
 ### Platform Integration (`platform-integration/`)
 
-Low-level reference implementations for BSP developers. These examples show how to integrate nano-ros with different network stacks and hardware platforms.
+Low-level reference implementations for BSP developers. These examples show how to integrate nros with different network stacks and hardware platforms.
 
 | Example | Description |
 |---------|-------------|
@@ -130,20 +130,20 @@ Low-level reference implementations for BSP developers. These examples show how 
 
 ## Quick Start
 
-1. **New to nano-ros?** Start with `native/rs-talker` and `native/rs-listener`
+1. **New to nros?** Start with `native/rs-talker` and `native/rs-listener`
 2. **Targeting QEMU?** Use `qemu/bsp-talker` and `qemu/bsp-listener`
 3. **Targeting STM32F4?** Use `stm32f4/bsp-talker`
 4. **Targeting Zephyr?** Use `zephyr/c-talker` (C) or `zephyr/rs-talker` (Rust)
 
 ## ROS 2 Interoperability
 
-nano-ros examples are compatible with ROS 2 nodes using rmw_zenoh. To test interop:
+nros examples are compatible with ROS 2 nodes using rmw_zenoh. To test interop:
 
 ```bash
 # Terminal 1: zenoh router
 zenohd --listen tcp/127.0.0.1:7447
 
-# Terminal 2: nano-ros talker
+# Terminal 2: nros talker
 cd examples/native/rs-talker && cargo run
 
 # Terminal 3: ROS 2 listener

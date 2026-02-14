@@ -11,7 +11,7 @@ test = false
 bench = false
 
 [dependencies]
-nano-ros = { path = "../../../packages/core/nano-ros", default-features = false }
+nros = { path = "../../../packages/core/nros", default-features = false }
 std_msgs = { version = "*", default-features = false }
 builtin_interfaces = { version = "*", default-features = false }
 

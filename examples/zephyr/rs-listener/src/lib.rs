@@ -1,11 +1,11 @@
-//! nano-ros Zephyr Listener Example (Rust)
+//! nros Zephyr Listener Example (Rust)
 //!
-//! A ROS 2 compatible subscriber running on Zephyr RTOS using the nano-ros API.
+//! A ROS 2 compatible subscriber running on Zephyr RTOS using the nros API.
 
 #![no_std]
 
 use log::{error, info};
-use nano_ros::{ShimExecutor, ShimNodeError};
+use nros::{ShimExecutor, ShimNodeError};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
@@ -14,7 +14,7 @@ extern "C" fn rust_main() {
         zephyr::set_logger().ok();
     }
 
-    info!("nano-ros Zephyr Listener");
+    info!("nros Zephyr Listener");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
 
     if let Err(e) = run() {

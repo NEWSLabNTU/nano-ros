@@ -1,6 +1,6 @@
-# nano-ros Zephyr Service Client (Rust)
+# nros Zephyr Service Client (Rust)
 
-A ROS 2 compatible service client running on Zephyr RTOS using nano-ros.
+A ROS 2 compatible service client running on Zephyr RTOS using nros.
 
 ## Overview
 
@@ -31,7 +31,7 @@ Rust Application (src/lib.rs)
 
 ```bash
 source ~/nano-ros-workspace/env.sh
-west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-service-client
+west build -b native_sim/native/64 nros/examples/zephyr-rs-service-client
 ```
 
 ## Run
@@ -40,11 +40,11 @@ First, start a service server:
 
 ```bash
 # Option 1: Native service server
-cd nano-ros/examples/native-rs-service-server
+cd nros/examples/native-rs-service-server
 cargo run --features zenoh
 
 # Option 2: Zephyr service server (in another terminal)
-west build -b native_sim/native/64 nano-ros/examples/zephyr-rs-service-server
+west build -b native_sim/native/64 nros/examples/zephyr-rs-service-server
 ./build/zephyr/zephyr.exe
 ```
 

@@ -1,13 +1,13 @@
-//! nano-ros Zephyr Action Server Example (Rust)
+//! nros Zephyr Action Server Example (Rust)
 //!
-//! A ROS 2 compatible action server running on Zephyr RTOS using the nano-ros API.
+//! A ROS 2 compatible action server running on Zephyr RTOS using the nros API.
 //! The server implements the Fibonacci action - computing Fibonacci sequences
 //! with progress feedback.
 
 #![no_std]
 
 use log::{error, info};
-use nano_ros::{
+use nros::{
     CancelResponse, GoalResponse, GoalStatus, ShimExecutor, ShimNodeError,
 };
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
@@ -18,7 +18,7 @@ extern "C" fn rust_main() {
         zephyr::set_logger().ok();
     }
 
-    info!("nano-ros Zephyr Action Server");
+    info!("nros Zephyr Action Server");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
     info!("Action: Fibonacci");
 

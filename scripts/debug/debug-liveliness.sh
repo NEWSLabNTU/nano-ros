@@ -18,7 +18,7 @@ if ! pgrep -x zenohd > /dev/null; then
 fi
 
 echo "Subscribing to liveliness tokens (@ros2_lv/**)..."
-echo "Will show tokens from nano-ros and ROS 2 nodes"
+echo "Will show tokens from nros and ROS 2 nodes"
 echo ""
 echo "In another terminal, run:"
 echo "  $TALKER --tcp 127.0.0.1:7447"

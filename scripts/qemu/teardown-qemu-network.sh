@@ -14,7 +14,7 @@ SUBNET="192.0.3.0/24"
 
 echo ""
 echo "=========================================="
-echo "  nano-ros QEMU Network Teardown"
+echo "  nros QEMU Network Teardown"
 echo "=========================================="
 echo ""
 

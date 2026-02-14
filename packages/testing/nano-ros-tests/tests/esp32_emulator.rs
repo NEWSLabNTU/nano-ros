@@ -119,11 +119,11 @@ fn test_esp32_qemu_talker_boots() {
         start_esp32_qemu(&flash_image, None, None).expect("Failed to start ESP32-C3 QEMU");
 
     let output = qemu
-        .wait_for_output_pattern("nano-ros ESP32-C3 QEMU BSP", Duration::from_secs(30))
+        .wait_for_output_pattern("nros ESP32-C3 QEMU BSP", Duration::from_secs(30))
         .expect("QEMU timed out waiting for BSP banner");
 
     assert!(
-        output.contains("nano-ros ESP32-C3 QEMU BSP"),
+        output.contains("nros ESP32-C3 QEMU BSP"),
         "Expected BSP banner in output.\nOutput:\n{}",
         output
     );
@@ -275,7 +275,7 @@ fn test_esp32_talker_listener_e2e() {
 // =============================================================================
 //
 // These tests verify that ESP32 QEMU examples can communicate with native
-// nano-ros examples via CDR-encoded Int32 on the /chatter ROS 2 topic.
+// nros examples via CDR-encoded Int32 on the /chatter ROS 2 topic.
 //
 // Both ESP32 and native processes connect to the same zenohd on port 7448:
 // - ESP32 via TAP bridge at 192.0.3.1:7448

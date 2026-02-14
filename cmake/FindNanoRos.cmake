@@ -2,30 +2,30 @@
 FindNanoRos
 -----------
 
-Find the nano-ros C library (nano-ros-c).
+Find the nros C library (nros-c).
 
 This is a top-level convenience module. It wraps the internal
-``FindNanoRosC`` module located in ``packages/core/nano-ros-c/cmake/`` and
+``FindNanoRosC`` module located in ``packages/core/nros-c/cmake/`` and
 exposes a cleaner imported target name for external users.
 
 Imported Targets
 ^^^^^^^^^^^^^^^^
 
 ``NanoRos::NanoRos``
-  The nano-ros C library (static), with include directories and
+  The nros C library (static), with include directories and
   platform-specific link libraries already configured.
 
 Result Variables
 ^^^^^^^^^^^^^^^^
 
 ``NanoRos_FOUND``
-  True if nano-ros was found.
+  True if nros was found.
 
 Hints
 ^^^^^
 
 ``NANO_ROS_ROOT``
-  Path to nano-ros repository root. If not set, this module infers
+  Path to nros repository root. If not set, this module infers
   it from its own location (``<root>/cmake/FindNanoRos.cmake``).
 
 ``NANO_ROS_C_BUILD_TYPE``
@@ -36,7 +36,7 @@ Example
 
 .. code-block:: cmake
 
-  list(APPEND CMAKE_MODULE_PATH "/path/to/nano-ros/cmake")
+  list(APPEND CMAKE_MODULE_PATH "/path/to/nros/cmake")
   find_package(NanoRos REQUIRED)
   target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 
@@ -48,7 +48,7 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 
 # Add internal cmake module path so FindNanoRosC is available
-list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/packages/core/nano-ros-c/cmake")
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/packages/core/nros-c/cmake")
 
 # Delegate to FindNanoRosC
 find_package(NanoRosC QUIET)
@@ -56,20 +56,20 @@ find_package(NanoRosC QUIET)
 if(NanoRosC_FOUND)
   set(NanoRos_FOUND TRUE)
 
-  # Create NanoRos::NanoRos as an interface that links to nano_ros_c::nano_ros_c
+  # Create NanoRos::NanoRos as an interface that links to nros_c::nros_c
   if(NOT TARGET NanoRos::NanoRos)
     add_library(NanoRos::NanoRos INTERFACE IMPORTED)
     set_target_properties(NanoRos::NanoRos PROPERTIES
-      INTERFACE_LINK_LIBRARIES "nano_ros_c::nano_ros_c"
+      INTERFACE_LINK_LIBRARIES "nros_c::nros_c"
     )
   endif()
 else()
   set(NanoRos_FOUND FALSE)
   if(NanoRos_FIND_REQUIRED)
     message(FATAL_ERROR
-      "nano-ros-c library not found.\n"
+      "nros-c library not found.\n"
       "Make sure NANO_ROS_ROOT is set and the library is built:\n"
-      "  cd ${NANO_ROS_ROOT} && cargo build -p nano-ros-c --release"
+      "  cd ${NANO_ROS_ROOT} && cargo build -p nros-c --release"
     )
   endif()
 endif()

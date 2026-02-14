@@ -380,12 +380,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros-core"
+name = "nros-core"
 version = "0.1.0"
 dependencies = [
  "heapless",
  "log",
- "nano-ros-serdes",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -405,7 +405,7 @@ dependencies = [
  "cortex-m-semihosting",
  "heapless",
  "lan9118-smoltcp",
- "nano-ros-core",
+ "nros-core",
  "nano-ros-link-smoltcp",
  "nano-ros-transport-zenoh-sys",
  "panic-semihosting",
@@ -413,7 +413,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nano-ros-serdes"
+name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",

@@ -1,6 +1,6 @@
 //! # nano-ros-platform-esp32
 //!
-//! Platform crate for running nano-ros on ESP32-C3 with WiFi.
+//! Platform crate for running nros on ESP32-C3 with WiFi.
 //!
 //! Provides all zenoh-pico system symbols in Rust (memory, clock, RNG, sleep,
 //! time, threading stubs, socket helpers) and a simplified node API that
@@ -62,7 +62,7 @@ pub use subscriber::Subscription;
 pub use timing::CycleCounter;
 
 // Re-export core traits needed for message type definitions
-pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
+pub use nros_core::{self, Deserialize, RosMessage, Serialize};
 
 // Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
 // ESP32-C3 is single-core, so portable-atomic uses compiler fences.
@@ -82,5 +82,5 @@ pub mod prelude {
     pub use crate::subscriber::Subscription;
     pub use crate::timing::CycleCounter;
     pub use esp_hal::main as entry;
-    pub use nano_ros_core::{Deserialize, RosMessage, Serialize};
+    pub use nros_core::{Deserialize, RosMessage, Serialize};
 }

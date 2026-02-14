@@ -1,6 +1,6 @@
 //! # nano-ros-platform-stm32f4
 //!
-//! Platform crate for running nano-ros on STM32F4 family microcontrollers
+//! Platform crate for running nros on STM32F4 family microcontrollers
 //! with Ethernet.
 //!
 //! Provides all zenoh-pico system symbols in Rust (memory, clock, RNG, sleep,
@@ -68,7 +68,7 @@ pub use subscriber::Subscription;
 pub use timing::CycleCounter;
 
 // Re-export core traits needed for message type definitions
-pub use nano_ros_core::{self, Deserialize, RosMessage, Serialize};
+pub use nros_core::{self, Deserialize, RosMessage, Serialize};
 
 /// Convenient prelude module
 ///
@@ -84,5 +84,5 @@ pub mod prelude {
     pub use crate::timing::CycleCounter;
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};
-    pub use nano_ros_core::{Deserialize, RosMessage, Serialize};
+    pub use nros_core::{Deserialize, RosMessage, Serialize};
 }

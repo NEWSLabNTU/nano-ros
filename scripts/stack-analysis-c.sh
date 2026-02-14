@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stack Usage Analysis for nano-ros C examples
+# Stack Usage Analysis for nros C examples
 #
 # Builds a C example with gcc -fstack-usage, then parses the .su files
 # to show per-function stack usage.

@@ -1,6 +1,6 @@
-//! QEMU test binary for nano-ros on Cortex-M3
+//! QEMU test binary for nros on Cortex-M3
 //!
-//! This test verifies that nano-ros works correctly on embedded targets.
+//! This test verifies that nros works correctly on embedded targets.
 //! Run with: `just qemu-rs-test`
 
 #![no_std]
@@ -11,7 +11,7 @@ use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
 
 use builtin_interfaces::msg::Time;
-use nano_ros::{
+use nros::{
     CdrReader, CdrWriter, Deserialize, NodeConfig, RosMessage, Serialize, StandaloneNode as Node,
 };
 use std_msgs::msg::{Float64, Int32};
@@ -102,22 +102,21 @@ fn test_node_creation() -> bool {
 /// Test publisher creation via Node
 fn test_node_publisher() -> bool {
     let mut node = Node::<4, 4>::default();
-    let result = node.create_publisher::<Int32>(nano_ros::PublisherOptions::new("/counter"));
+    let result = node.create_publisher::<Int32>(nros::PublisherOptions::new("/counter"));
     result.is_ok() && node.publisher_count() == 1
 }
 
 /// Test subscriber creation via Node
 fn test_node_subscriber() -> bool {
     let mut node = Node::<4, 4>::default();
-    let result = node.create_subscriber::<Int32>(nano_ros::SubscriberOptions::new("/counter"));
+    let result = node.create_subscriber::<Int32>(nros::SubscriberOptions::new("/counter"));
     result.is_ok() && node.subscriber_count() == 1
 }
 
 /// Test message serialization via Node
 fn test_node_serialize() -> bool {
     let mut node = Node::<4, 4>::default();
-    let pub_handle = match node.create_publisher::<Int32>(nano_ros::PublisherOptions::new("/test"))
-    {
+    let pub_handle = match node.create_publisher::<Int32>(nros::PublisherOptions::new("/test")) {
         Ok(h) => h,
         Err(_) => return false,
     };
@@ -136,7 +135,7 @@ fn test_node_serialize() -> bool {
 fn main() -> ! {
     hprintln!("");
     hprintln!("========================================");
-    hprintln!("  nano-ros QEMU Test Suite (Cortex-M3)");
+    hprintln!("  nros QEMU Test Suite (Cortex-M3)");
     hprintln!("========================================");
     hprintln!("");
 

@@ -3,7 +3,7 @@ name = "stm32f4-rs-rtic-example"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "RTIC example for nano-ros on STM32F4 with zenoh transport"
+description = "RTIC example for nros on STM32F4 with zenoh transport"
 
 [[bin]]
 name = "stm32f4-rs-rtic-example"
@@ -31,8 +31,8 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "socket-tcp",
 ] }
 
-# nano-ros
-nano-ros = { path = "../../core/nano-ros", default-features = false }
+# nros
+nros = { path = "../../core/nros", default-features = false }
 
 # zenoh transport with smoltcp platform backend
 nano-ros-transport-zenoh = { path = "../../transport/nano-ros-transport-zenoh", default-features = false, features = ["bare-metal"] }

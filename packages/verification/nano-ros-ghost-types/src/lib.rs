@@ -1,4 +1,4 @@
-//! Ghost model types for nano-ros verification.
+//! Ghost model types for nros verification.
 //!
 //! This crate defines ghost model types — manually audited mirrors of production
 //! types with private fields. Ghost types have all-public fields with primitive
@@ -21,7 +21,7 @@
 
 /// Ghost model of `CdrWriter<'a>` / `CdrReader<'a>`.
 ///
-/// Mirrors private fields in `nano-ros-serdes/src/cdr.rs`:
+/// Mirrors private fields in `nros-serdes/src/cdr.rs`:
 /// - `buf: &'a mut [u8]` (writer) / `buf: &'a [u8]` (reader) → modeled as `buf_len: usize`
 /// - `pos: usize` → `pos: usize`
 /// - `origin: usize` → `origin: usize`
@@ -82,7 +82,7 @@ pub struct SubscriberBufferGhost {
 ///
 /// Models the result of each layer in the publish path:
 ///
-/// Source (nano-ros-node/src/shim.rs:596-609):
+/// Source (nros-node/src/shim.rs:596-609):
 /// ```ignore
 /// pub fn publish_with_buffer<const BUF: usize>(...) -> Result<(), ShimNodeError> {
 ///     let mut writer = CdrWriter::new_with_header(&mut buffer)
@@ -133,7 +133,7 @@ pub struct SpinOnceGhost {
 // Timer State Machine
 // ======================================================================
 
-/// Ghost model of timer mode (mirrors `nano_ros_node::timer::TimerMode`).
+/// Ghost model of timer mode (mirrors `nros_node::timer::TimerMode`).
 ///
 /// Source (timer.rs):
 /// ```ignore
@@ -150,7 +150,7 @@ pub enum TimerModeGhost {
     Inert,
 }
 
-/// Ghost model of timer state (mirrors `nano_ros_node::timer::TimerState`).
+/// Ghost model of timer state (mirrors `nros_node::timer::TimerState`).
 ///
 /// Only includes the fields relevant to scheduling correctness — callbacks are
 /// excluded because they don't affect when/whether a timer fires.
@@ -182,7 +182,7 @@ pub struct TimerGhost {
 
 /// Ghost model of `ParameterServer` state.
 ///
-/// Mirrors private fields in `nano-ros-params/src/server.rs`:
+/// Mirrors private fields in `nros-params/src/server.rs`:
 ///
 /// Source (server.rs:47-52):
 /// ```ignore
@@ -202,7 +202,7 @@ pub struct ParamServerGhost {
 
 /// Ghost model of `ParameterValue` discriminant structure.
 ///
-/// Mirrors 10 variants from `nano-ros-params/src/types.rs:52-81`.
+/// Mirrors 10 variants from `nros-params/src/types.rs:52-81`.
 /// Array and string payloads are abstracted (heapless types not importable
 /// into Verus). Scalar payloads (bool, i64) are preserved for roundtrip proofs.
 ///

@@ -1,6 +1,6 @@
 //! Service integration tests
 //!
-//! Tests for ROS 2 service communication between nano-ros nodes.
+//! Tests for ROS 2 service communication between nros nodes.
 //! Uses the AddTwoInts service from example_interfaces.
 
 use nano_ros_tests::count_pattern;

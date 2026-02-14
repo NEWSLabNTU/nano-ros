@@ -15,7 +15,7 @@
 /// **Pure math** (no link to production code):
 /// - `transition_validity` — transition DAG property proved via ranking function.
 use vstd::prelude::*;
-use nano_ros_core::GoalStatus;
+use nros_core::GoalStatus;
 
 verus! {
 

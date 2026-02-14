@@ -1,12 +1,12 @@
-//! nano-ros Zephyr Service Server Example (Rust)
+//! nros Zephyr Service Server Example (Rust)
 //!
-//! A ROS 2 compatible service server running on Zephyr RTOS using the nano-ros API.
+//! A ROS 2 compatible service server running on Zephyr RTOS using the nros API.
 //! The server responds to AddTwoInts service requests.
 
 #![no_std]
 
 use log::{error, info};
-use nano_ros::{ShimExecutor, ShimNodeError};
+use nros::{ShimExecutor, ShimNodeError};
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 
 #[unsafe(no_mangle)]
@@ -15,7 +15,7 @@ extern "C" fn rust_main() {
         zephyr::set_logger().ok();
     }
 
-    info!("nano-ros Zephyr Service Server");
+    info!("nros Zephyr Service Server");
     info!("Board: {}", zephyr::kconfig::CONFIG_BOARD);
 
     if let Err(e) = run() {

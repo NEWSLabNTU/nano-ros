@@ -1,8 +1,8 @@
 #!/bin/bash
-# Setup QEMU network bridge for nano-ros Zephyr testing
+# Setup QEMU network bridge for nros Zephyr testing
 #
 # This script creates a network bridge and TAP interface for
-# QEMU-to-host communication, enabling nano-ros on Zephyr to
+# QEMU-to-host communication, enabling nros on Zephyr to
 # communicate with ROS 2 nodes on the host.
 #
 # Network Configuration:
@@ -23,7 +23,7 @@ SUBNET="192.0.3.0/24"
 
 echo ""
 echo "=========================================="
-echo "  nano-ros QEMU Network Setup"
+echo "  nros QEMU Network Setup"
 echo "=========================================="
 echo ""
 
@@ -110,7 +110,7 @@ echo "  1. Start zenoh router on host:"
 echo "     zenohd --listen tcp/0.0.0.0:7447"
 echo ""
 echo "  2. Build and run Zephyr example:"
-echo "     west build -b qemu_x86 nano-ros/examples/zephyr/rs-talker"
+echo "     west build -b qemu_x86 nros/examples/zephyr/rs-talker"
 echo "     west build -t run"
 echo ""
 echo "  3. Test with ROS 2:"

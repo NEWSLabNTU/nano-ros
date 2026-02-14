@@ -121,7 +121,7 @@ quality:
     echo ""
     echo "=== Clippy (workspace, no_std) ==="
     cargo clippy --workspace --no-default-features \
-        --exclude nano-ros-c -- {{CLIPPY_LINTS}}
+        --exclude nros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
         echo "[FAIL] Clippy (workspace) FAILED"
         failed=1
@@ -134,7 +134,7 @@ quality:
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude nano-ros-transport-zenoh-sys \
         --exclude nano-ros-tests \
-        --exclude nano-ros-c -- {{CLIPPY_LINTS}}
+        --exclude nros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
         echo "[FAIL] Clippy (embedded) FAILED"
         failed=1
@@ -211,41 +211,41 @@ test-report:
 # =============================================================================
 
 # Build workspace (no_std, native)
-# Excludes nano-ros-c which currently requires std
+# Excludes nros-c which currently requires std
 build-workspace:
-    cargo build --workspace --no-default-features --exclude nano-ros-c
+    cargo build --workspace --no-default-features --exclude nros-c
     cargo nextest run --workspace --no-run
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes nano-ros-transport-zenoh-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
-# Excludes nano-ros-c which currently requires std
+# Excludes nros-c which currently requires std
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude nano-ros-transport-zenoh-sys \
         --exclude nano-ros-tests \
-        --exclude nano-ros-c
+        --exclude nros-c
 
 # Format workspace code
 format-workspace:
     cargo +nightly fmt
 
 # Check workspace: formatting and clippy (no_std, native)
-# Excludes nano-ros-c which currently requires std
+# Excludes nros-c which currently requires std
 check-workspace:
     cargo +nightly fmt --check
-    cargo clippy --workspace --no-default-features --exclude nano-ros-c -- {{CLIPPY_LINTS}}
+    cargo clippy --workspace --no-default-features --exclude nros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes nano-ros-transport-zenoh-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
-# Excludes nano-ros-c which currently requires std
+# Excludes nros-c which currently requires std
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude nano-ros-transport-zenoh-sys \
         --exclude nano-ros-tests \
-        --exclude nano-ros-c -- {{CLIPPY_LINTS}}
+        --exclude nros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace with various feature combinations
 check-workspace-features:
@@ -253,7 +253,7 @@ check-workspace-features:
     @echo "  - transport: rtic + sync-critical-section"
     cargo clippy -p nano-ros-transport --no-default-features --features "rtic,sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - node: rtic"
-    cargo clippy -p nano-ros-node --no-default-features --features "rtic" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-node --no-default-features --features "rtic" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - zenoh transport (std)"
     cargo clippy -p nano-ros-transport --features "zenoh,std" -- {{CLIPPY_LINTS}}
     @echo "All feature checks passed!"
@@ -272,7 +272,7 @@ test-workspace verbose="":
 # Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
 test-miri:
     @echo "Running Miri on embedded-safe crates..."
-    CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo +nightly miri test -p nano-ros-serdes -p nano-ros-core -p nano-ros-params
+    CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo +nightly miri test -p nros-serdes -p nros-core -p nros-params
 
 # =============================================================================
 # Examples
@@ -413,17 +413,17 @@ build-zephyr:
     echo "Building Zephyr Rust examples in $WORKSPACE..."
     cd "$WORKSPACE"
     echo "  Building zephyr/rs-talker -> build-talker/"
-    west build -b native_sim/native/64 -d build-talker -p auto nano-ros/examples/zephyr/rs-talker
+    west build -b native_sim/native/64 -d build-talker -p auto nros/examples/zephyr/rs-talker
     echo "  Building zephyr/rs-listener -> build-listener/"
-    west build -b native_sim/native/64 -d build-listener -p auto nano-ros/examples/zephyr/rs-listener
+    west build -b native_sim/native/64 -d build-listener -p auto nros/examples/zephyr/rs-listener
     echo "  Building zephyr/rs-service-server -> build-service-server/"
-    west build -b native_sim/native/64 -d build-service-server -p auto nano-ros/examples/zephyr/rs-service-server
+    west build -b native_sim/native/64 -d build-service-server -p auto nros/examples/zephyr/rs-service-server
     echo "  Building zephyr/rs-service-client -> build-service-client/"
-    west build -b native_sim/native/64 -d build-service-client -p auto nano-ros/examples/zephyr/rs-service-client
+    west build -b native_sim/native/64 -d build-service-client -p auto nros/examples/zephyr/rs-service-client
     echo "  Building zephyr/rs-action-server -> build-action-server/"
-    west build -b native_sim/native/64 -d build-action-server -p auto nano-ros/examples/zephyr/rs-action-server
+    west build -b native_sim/native/64 -d build-action-server -p auto nros/examples/zephyr/rs-action-server
     echo "  Building zephyr/rs-action-client -> build-action-client/"
-    west build -b native_sim/native/64 -d build-action-client -p auto nano-ros/examples/zephyr/rs-action-client
+    west build -b native_sim/native/64 -d build-action-client -p auto nros/examples/zephyr/rs-action-client
     echo "Zephyr Rust examples built successfully!"
 
 # Build Zephyr C examples
@@ -439,9 +439,9 @@ build-zephyr-c:
     echo "Building Zephyr C examples in $WORKSPACE..."
     cd "$WORKSPACE"
     echo "  Building zephyr/c-talker -> build-c-talker/"
-    west build -b native_sim/native/64 -d build-c-talker -p auto nano-ros/examples/zephyr/c-talker
+    west build -b native_sim/native/64 -d build-c-talker -p auto nros/examples/zephyr/c-talker
     echo "  Building zephyr/c-listener -> build-c-listener/"
-    west build -b native_sim/native/64 -d build-c-listener -p auto nano-ros/examples/zephyr/c-listener
+    west build -b native_sim/native/64 -d build-c-listener -p auto nros/examples/zephyr/c-listener
     echo "Zephyr C examples built successfully!"
 
 # Build all Zephyr examples (Rust + C)
@@ -587,7 +587,7 @@ test-qemu-esp32-basic: build-examples-esp32-qemu
         > "$tmpfile" 2>&1 || true
     cat "$tmpfile"
     echo ""
-    if grep -q "nano-ros ESP32-C3 QEMU BSP" "$tmpfile"; then
+    if grep -q "nros ESP32-C3 QEMU BSP" "$tmpfile"; then
         echo "[PASS] ESP32-C3 QEMU boot test - BSP initialized"
     else
         echo "[FAIL] ESP32-C3 QEMU boot test - BSP banner not found"
@@ -604,7 +604,7 @@ test-qemu-esp32 verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-# Run basic QEMU test (nano-ros serialization on Cortex-M3)
+# Run basic QEMU test (nros serialization on Cortex-M3)
 test-qemu-basic verbose="": build-examples-qemu _init-test-logs
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
@@ -719,9 +719,9 @@ qemu-help:
 # Inspect generated assembly for a function (requires cargo-show-asm)
 # Usage: just show-asm <package> <function> [target]
 # Examples:
-#   just show-asm nano-ros-serdes 'CdrWriter::write_string'
-#   just show-asm nano-ros-serdes 'CdrWriter::write_string' thumbv7m-none-eabi
-#   just show-asm nano-ros-core 'Duration::from_nanos'
+#   just show-asm nros-serdes 'CdrWriter::write_string'
+#   just show-asm nros-serdes 'CdrWriter::write_string' thumbv7m-none-eabi
+#   just show-asm nros-core 'Duration::from_nanos'
 show-asm pkg fn target="":
     #!/usr/bin/env bash
     set -euo pipefail
@@ -828,7 +828,7 @@ verify-kani:
     set -euo pipefail
     echo "=== Kani Verification ==="
     failed=0
-    for crate in nano-ros-serdes nano-ros-core nano-ros-params nano-ros-c; do
+    for crate in nros-serdes nros-core nros-params nros-c; do
         echo ""
         echo "--- Verifying $crate ---"
         cargo kani -p "$crate" || { echo "[FAIL] $crate"; failed=$((failed + 1)); }
@@ -967,8 +967,8 @@ test-c verbose="": _init-test-logs
 
 # Build C examples only (no tests)
 build-examples-c: build-codegen-lib
-    @echo "Building nano-ros-c library..."
-    cargo build -p nano-ros-c --release
+    @echo "Building nros-c library..."
+    cargo build -p nros-c --release
     @echo "Building native/c-talker..."
     cd examples/native/c-talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
     @echo "Building native/c-listener..."
@@ -1137,7 +1137,7 @@ setup-verus:
 setup:
     #!/usr/bin/env bash
     set -e
-    echo "=== nano-ros setup ==="
+    echo "=== nros setup ==="
     echo ""
     echo "This will:"
     echo "  1. Install system packages via apt (may prompt for sudo):"
@@ -1285,10 +1285,10 @@ zephyr-help:
     @echo "  just test-zephyr-c          # Run Zephyr C examples test"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
-    @echo "  west build -b native_sim/native/64 -d build-talker nano-ros/examples/zephyr/rs-talker"
-    @echo "  west build -b native_sim/native/64 -d build-listener nano-ros/examples/zephyr/rs-listener"
-    @echo "  west build -b native_sim/native/64 -d build-action-server nano-ros/examples/zephyr/rs-action-server"
-    @echo "  west build -b native_sim/native/64 -d build-action-client nano-ros/examples/zephyr/rs-action-client"
+    @echo "  west build -b native_sim/native/64 -d build-talker nros/examples/zephyr/rs-talker"
+    @echo "  west build -b native_sim/native/64 -d build-listener nros/examples/zephyr/rs-listener"
+    @echo "  west build -b native_sim/native/64 -d build-action-server nros/examples/zephyr/rs-action-server"
+    @echo "  west build -b native_sim/native/64 -d build-action-client nros/examples/zephyr/rs-action-client"
 
 # =============================================================================
 # Docker
@@ -1306,8 +1306,8 @@ docker-shell:
     docker run -it --rm \
         -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
         -v $(pwd):/work \
-        -v nano-ros-cargo-registry:/cargo/registry \
-        -v nano-ros-cargo-git:/cargo/git \
+        -v nros-cargo-registry:/cargo/registry \
+        -v nros-cargo-git:/cargo/git \
         nano-ros-qemu
 
 # Start Docker container with TAP networking support
@@ -1318,8 +1318,8 @@ docker-shell-network:
         --device=/dev/net/tun \
         -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
         -v $(pwd):/work \
-        -v nano-ros-cargo-registry:/cargo/registry \
-        -v nano-ros-cargo-git:/cargo/git \
+        -v nros-cargo-registry:/cargo/registry \
+        -v nros-cargo-git:/cargo/git \
         nano-ros-qemu
 
 # Run bare-metal QEMU talker/listener test using Docker Compose (rs-* examples)
@@ -1346,8 +1346,8 @@ docker-build-qemu: docker-build
     docker run --rm \
         -e HOST_UID=$(id -u) -e HOST_GID=$(id -g) \
         -v $(pwd):/work \
-        -v nano-ros-cargo-registry:/cargo/registry \
-        -v nano-ros-cargo-git:/cargo/git \
+        -v nros-cargo-registry:/cargo/registry \
+        -v nros-cargo-git:/cargo/git \
         nano-ros-qemu \
         bash -c "cd /work && just build-examples-qemu"
 

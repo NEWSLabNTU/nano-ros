@@ -24,7 +24,7 @@ fn main() -> ! {
     let delay = Delay::new();
 
     esp_println::println!("ESP32-C3 hello world!");
-    esp_println::println!("nano-ros ESP32 dev environment ready.");
+    esp_println::println!("nros ESP32 dev environment ready.");
 
     let mut counter: u32 = 0;
     loop {

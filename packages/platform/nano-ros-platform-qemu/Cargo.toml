@@ -3,7 +3,7 @@ name = "nano-ros-platform-qemu"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "QEMU MPS2-AN385 platform crate for nano-ros (system primitives + node API)"
+description = "QEMU MPS2-AN385 platform crate for nros (system primitives + node API)"
 
 [lib]
 name = "nano_ros_platform_qemu"
@@ -30,7 +30,7 @@ cortex-m-semihosting = "0.5"
 panic-semihosting = "0.6"
 
 # Core types (RosMessage, CDR serialization)
-nano-ros-core = { path = "../../core/nano-ros-core", default-features = false }
+nros-core = { path = "../../core/nros-core", default-features = false }
 
 # Heapless collections (for keyexpr formatting)
 heapless = "0.8"

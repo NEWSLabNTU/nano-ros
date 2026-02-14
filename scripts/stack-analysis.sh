@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Stack Usage Analysis for nano-ros examples
+# Stack Usage Analysis for nros examples
 #
 # Builds a Rust example with nightly + -Z emit-stack-sizes, then parses
 # the .stack_sizes ELF section via llvm-readobj to show per-function

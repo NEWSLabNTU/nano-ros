@@ -1,11 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
-# nano-ros Zephyr Talker Example (C) using BSP
+# nros Zephyr Talker Example (C) using BSP
 #
-# A ROS 2 compatible publisher running on Zephyr RTOS using nano-ros BSP.
+# A ROS 2 compatible publisher running on Zephyr RTOS using nros BSP.
 #
 # Build:
 #   source ~/nano-ros-workspace/env.sh
-#   west build -b native_sim/native/64 nano-ros/examples/zephyr-c-talker
+#   west build -b native_sim/native/64 nros/examples/zephyr-c-talker
 #
 # Run:
 #   ./build/zephyr/zephyr.exe
@@ -21,7 +21,7 @@ project(nano_ros_talker_c)
 target_sources(app PRIVATE src/main.c)
 
 # =============================================================================
-# nano-ros BSP
+# nros BSP
 # =============================================================================
 set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/bsp/nano-ros-bsp-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)

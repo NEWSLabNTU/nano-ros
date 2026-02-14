@@ -1,6 +1,6 @@
 # Bare-Metal Platform Demo
 
-This example demonstrates how to use nano-ros-c with bare-metal/embedded platform patterns.
+This example demonstrates how to use nros-c with bare-metal/embedded platform patterns.
 
 ## Features Demonstrated
 
@@ -13,8 +13,8 @@ This example demonstrates how to use nano-ros-c with bare-metal/embedded platfor
 ## Building
 
 ```bash
-# First, build the nano-ros-c library
-cargo build --release -p nano-ros-c
+# First, build the nros-c library
+cargo build --release -p nros-c
 
 # Then build the example
 cd examples/native-c-baremetal-demo

@@ -1,6 +1,6 @@
-//! Integration test framework for nano-ros
+//! Integration test framework for nros
 //!
-//! This crate provides fixtures and utilities for testing nano-ros components:
+//! This crate provides fixtures and utilities for testing nros components:
 //! - Process management (zenohd, QEMU, Zephyr)
 //! - Binary building helpers
 //! - Output assertion utilities

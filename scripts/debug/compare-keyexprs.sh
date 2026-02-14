@@ -1,5 +1,5 @@
 #!/bin/bash
-# Compare keyexprs used by nano-ros vs ROS 2
+# Compare keyexprs used by nros vs ROS 2
 
 set -e
 
@@ -29,18 +29,18 @@ zenohd --listen tcp/127.0.0.1:7447 > /tmp/zenohd.log 2>&1 &
 sleep 2
 
 echo ""
-echo "=== Part 1: nano-ros publisher keyexpr ==="
+echo "=== Part 1: nros publisher keyexpr ==="
 echo ""
 
-# Start nano-ros talker briefly
+# Start nros talker briefly
 timeout 3 "$TALKER" --tcp 127.0.0.1:7447 > /tmp/talker.log 2>&1 &
 sleep 2
 
 # Subscribe to all data keys (not liveliness) to see what keyexpr is used
-log_info "Subscribing to 0/** to capture nano-ros messages..."
+log_info "Subscribing to 0/** to capture nros messages..."
 timeout 3 "$Z_SUB" -m client -e tcp/127.0.0.1:7447 -k '0/**' 2>&1 | head -10 || true
 
-# Kill nano-ros talker
+# Kill nros talker
 pkill -f "target/release/talker" 2>/dev/null || true
 sleep 1
 

@@ -1,10 +1,10 @@
-# API Comparison: rclrs 0.6.0 vs nano-ros
+# API Comparison: rclrs 0.6.0 vs nros
 
-This document compares the rclrs 0.6.0 API with nano-ros to identify differences and guide refactoring efforts to align nano-ros with the rclrs API patterns.
+This document compares the rclrs 0.6.0 API with nros to identify differences and guide refactoring efforts to align nros with the rclrs API patterns.
 
 ## Executive Summary
 
-| Aspect | rclrs 0.6.0 | nano-ros | Recommendation |
+| Aspect | rclrs 0.6.0 | nros | Recommendation |
 |--------|-------------|----------|----------------|
 | Node type | `Arc<NodeState>` (type alias `Node`) | `ConnectedNode<MAX_TOKENS>` | Consider using `Node` type alias |
 | Context | Separate `Context` type | Implicit in `ConnectedNode` | Add explicit `Context` |
@@ -39,7 +39,7 @@ let node = executor.create_node("my_node")?;
 let node = executor.create_node("my_node".namespace("/ns"))?;
 ```
 
-### nano-ros
+### nros
 ```rust
 // Direct node creation (no explicit context)
 let config = NodeConfig::new("my_node", "/ns")
@@ -51,9 +51,9 @@ let node = ConnectedNode::connect_peer(config)?;
 ```
 
 ### Differences
-1. **No separate Context**: nano-ros combines context and node
-2. **No Executor**: nano-ros uses manual polling or background threads
-3. **Transport embedded**: nano-ros requires transport locator at node creation
+1. **No separate Context**: nros combines context and node
+2. **No Executor**: nros uses manual polling or background threads
+3. **Transport embedded**: nros requires transport locator at node creation
 4. **No InitOptions**: Configuration is in NodeConfig
 
 ### Recommendation
@@ -85,7 +85,7 @@ node.get_clock()
 node.logger()
 ```
 
-### nano-ros
+### nros
 ```rust
 // Separate config object
 let config = NodeConfig::new("my_node", "/my_namespace")
@@ -102,10 +102,10 @@ node.domain_id()
 ```
 
 ### Differences
-1. **No string-to-options conversion**: nano-ros uses explicit NodeConfig
-2. **No Clock API**: nano-ros lacks clock abstraction
-3. **No Logger API**: nano-ros uses external logging (env_logger)
-4. **No graph callbacks**: nano-ros lacks notify_on_graph_change
+1. **No string-to-options conversion**: nros uses explicit NodeConfig
+2. **No Clock API**: nros lacks clock abstraction
+3. **No Logger API**: nros uses external logging (env_logger)
+4. **No graph callbacks**: nros lacks notify_on_graph_change
 
 ### Recommendation
 - Implement `IntoNodeOptions` trait for string conversion
@@ -139,7 +139,7 @@ pub.notify_on_subscriber_ready()
 pub.borrow_loaned_message()  // Zero-copy
 ```
 
-### nano-ros
+### nros
 ```rust
 // Creation with separate QoS
 let pub = node.create_publisher::<MyMsg>("/topic")?;
@@ -156,8 +156,8 @@ pub.publish_with_buffer(&msg, &mut buf)?;
 ```
 
 ### Differences
-1. **No builder pattern for QoS**: nano-ros uses separate method
-2. **No MessageCow**: nano-ros only accepts references
+1. **No builder pattern for QoS**: nros uses separate method
+2. **No MessageCow**: nros only accepts references
 3. **No introspection**: Missing topic_name, subscription_count
 4. **No graph notifications**: Missing notify_on_subscriber_ready
 5. **No zero-copy**: Missing loaned messages
@@ -204,7 +204,7 @@ sub.topic_name()
 sub.set_callback(...)  // Runtime callback change
 ```
 
-### nano-ros
+### nros
 ```rust
 // Poll-based only
 let mut sub = node.create_subscriber::<MyMsg>("/topic")?;
@@ -224,10 +224,10 @@ let len = sub.try_recv_raw(&mut buf)?;
 ```
 
 ### Differences
-1. **Poll-based vs callback-based**: nano-ros uses polling, rclrs uses callbacks
-2. **No Worker pattern**: nano-ros lacks state sharing abstraction
-3. **No async callbacks**: nano-ros is synchronous only
-4. **No runtime callback change**: nano-ros callbacks are fixed
+1. **Poll-based vs callback-based**: nros uses polling, rclrs uses callbacks
+2. **No Worker pattern**: nros lacks state sharing abstraction
+3. **No async callbacks**: nros is synchronous only
+4. **No runtime callback change**: nros callbacks are fixed
 
 ### Recommendation
 - Add callback-based subscription API alongside polling
@@ -275,7 +275,7 @@ let (response, id) = client.call(request)?.await?;
 let (response, info) = client.call(request)?.await?;
 ```
 
-### nano-ros
+### nros
 ```rust
 // Server with handler closure
 let mut server = node.create_service::<MySvc>("/service")?;
@@ -296,10 +296,10 @@ let response = client.call(&request)?;  // Blocks
 ```
 
 ### Differences
-1. **No async service**: nano-ros is synchronous
-2. **No Promise type**: nano-ros blocks on call
+1. **No async service**: nros is synchronous
+2. **No Promise type**: nros blocks on call
 3. **No ServiceInfo in callbacks**: Missing request metadata
-4. **Simpler callback signatures**: nano-ros only supports basic form
+4. **Simpler callback signatures**: nros only supports basic form
 
 ### Recommendation
 - Add async service support
@@ -337,7 +337,7 @@ let server = node.create_action_server::<MyAction, _>(
 let receiver = node.create_goal_receiver::<MyAction>("action")?;
 ```
 
-### nano-ros
+### nros
 ```rust
 // Client - basic goal sending
 let mut client = node.create_action_client::<MyAction>("/action")?;
@@ -354,10 +354,10 @@ if let Some(goal_id) = server.try_accept_goal(|goal| GoalResponse::Accept)? {
 ```
 
 ### Differences
-1. **Less fluent client API**: nano-ros is more manual
+1. **Less fluent client API**: nros is more manual
 2. **No status watcher**: Missing watch_status
 3. **No cancel API**: Missing cancel_goal, cancel_all_goals
-4. **No async server callback**: nano-ros is synchronous
+4. **No async server callback**: nros is synchronous
 5. **No RequestedGoal/TerminatedGoal**: Different abstraction
 
 ### Recommendation
@@ -393,7 +393,7 @@ QoS_PROFILE_SENSOR_DATA
 QoS_PROFILE_SERVICES_DEFAULT
 ```
 
-### nano-ros
+### nros
 ```rust
 pub struct QosSettings {
     pub reliable: bool,
@@ -407,7 +407,7 @@ impl QosSettings {
 ```
 
 ### Differences
-1. **Much simpler QoS**: nano-ros only has reliability and depth
+1. **Much simpler QoS**: nros only has reliability and depth
 2. **No deadline/lifespan/liveliness**: Missing advanced QoS
 3. **No predefined profiles**: Only BEST_EFFORT and RELIABLE
 4. **No builder pattern**: Direct struct construction
@@ -445,7 +445,7 @@ let value = param.get();
 param.set(new_value)?;
 ```
 
-### nano-ros
+### nros
 ```rust
 // Basic parameter server
 let mut server = ParameterServer::new();
@@ -458,7 +458,7 @@ if let Some(param) = server.get_parameter("my_param") {
 ```
 
 ### Differences
-1. **No typed parameters**: nano-ros uses ParameterValue enum
+1. **No typed parameters**: nros uses ParameterValue enum
 2. **No builder pattern**: Direct method calls
 3. **No parameter categories**: Missing Mandatory/Optional/ReadOnly
 4. **Separate server**: Not integrated into Node
@@ -485,7 +485,7 @@ timer.is_ready()?;
 timer.time_until_next_call()?;
 ```
 
-### nano-ros
+### nros
 - **No Timer API**
 
 ### Recommendation
@@ -515,7 +515,7 @@ commands.query(async { ... })?;
 commands.run(async { ... })?;
 ```
 
-### nano-ros
+### nros
 ```rust
 // Manual polling (no executor)
 loop {
@@ -529,7 +529,7 @@ let node = ConnectedNode::connect(config, locator)?;
 ```
 
 ### Differences
-1. **No Executor type**: nano-ros uses manual polling
+1. **No Executor type**: nros uses manual polling
 2. **No spin model**: User implements their own loop
 3. **No SpinOptions**: No control over spin behavior
 4. **No ExecutorCommands**: No runtime node management
@@ -560,7 +560,7 @@ let sub = worker.create_subscription("topic", |data, msg| { ... })?;
 let srv = worker.create_service("srv", |data, req| { ... })?;
 ```
 
-### nano-ros
+### nros
 - **No Worker pattern**
 
 ### Recommendation
@@ -578,13 +578,13 @@ let srv = worker.create_service("srv", |data, req| { ... })?;
 - Async callbacks for subscriptions/services
 - spin_async for non-blocking execution
 
-### nano-ros
+### nros
 - Synchronous only
 - Blocking calls
 - Poll-based message reception
 
-### nano-ros Decision
-- nano-ros is synchronous by design for embedded compatibility
+### nros Decision
+- nros is synchronous by design for embedded compatibility
 - `spin_async()` was removed — it spawned OS threads, incompatible with RTOS/bare-metal
 - Use `spin_once()` from RTIC/Embassy async tasks for async integration
 - Async callbacks and Promise<T> are not planned (zenoh-pico types are `!Send`)
@@ -607,7 +607,7 @@ log!(logger.throttle(Duration::from_secs(5)), "Throttled");
 log_warn!(node.warn().skip_first(), "Skip first");
 ```
 
-### nano-ros
+### nros
 ```rust
 // Uses external crate
 use log::{info, error, warn};
@@ -617,7 +617,7 @@ info!("Message");
 ```
 
 ### Differences
-1. **No integrated logging**: nano-ros uses log crate
+1. **No integrated logging**: nros uses log crate
 2. **No throttling/once/skip_first**: Missing advanced features
 3. **No node-scoped logger**: No per-node logging
 
@@ -632,19 +632,19 @@ info!("Message");
 ## 14. Type System Differences
 
 ### Node Type
-| rclrs | nano-ros | Recommendation |
+| rclrs | nros | Recommendation |
 |-------|----------|----------------|
 | `type Node = Arc<NodeState>` | `ConnectedNode<MAX_T>` | Add `Node` alias |
 
 ### Return Types
-| rclrs | nano-ros | Recommendation |
+| rclrs | nros | Recommendation |
 |-------|----------|----------------|
 | `Arc<PublisherState<T>>` | `ConnectedPublisher<T>` | Consider Arc wrapper |
 | `Arc<Subscription<T>>` | `ConnectedSubscriber<T>` | Consider Arc wrapper |
 | `Promise<T>` | `Result<T>` (blocking) | Add Promise type |
 
 ### Error Types
-| rclrs | nano-ros | Recommendation |
+| rclrs | nros | Recommendation |
 |-------|----------|----------------|
 | `RclrsError` | `ConnectedNodeError` | Rename to `RclrsError`? |
 
@@ -677,7 +677,7 @@ info!("Message");
 
 ## 16. Backwards Compatibility Strategy
 
-To maintain compatibility with existing nano-ros users while adopting rclrs patterns:
+To maintain compatibility with existing nros users while adopting rclrs patterns:
 
 1. **Keep existing API** - Don't remove current methods
 2. **Add new API alongside** - New methods follow rclrs patterns

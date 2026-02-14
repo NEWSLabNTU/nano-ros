@@ -1,6 +1,6 @@
 # QEMU Bare-Metal Testing
 
-This document describes how to run bare-metal nano-ros applications in QEMU with network connectivity.
+This document describes how to run bare-metal nros applications in QEMU with network connectivity.
 
 ## Overview
 
@@ -169,7 +169,7 @@ Launches QEMU mps2-an385 with optional networking.
 
 ### `qemu-rs-test`
 
-Basic nano-ros test on Cortex-M3 (lm3s6965evb machine, no networking).
+Basic nros test on Cortex-M3 (lm3s6965evb machine, no networking).
 
 - Tests CDR serialization
 - Tests Node API

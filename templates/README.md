@@ -1,4 +1,4 @@
-# nano-ros Embedded Templates
+# nros Embedded Templates
 
 This directory contains Cargo.toml templates for common embedded configurations.
 
@@ -15,7 +15,7 @@ This directory contains Cargo.toml templates for common embedded configurations.
 
 1. Copy the appropriate template to your project as `Cargo.toml`
 2. Update the `[package]` section with your project name
-3. Adjust paths in `[dependencies]` for nano-ros crates
+3. Adjust paths in `[dependencies]` for nros crates
 4. Copy the corresponding `.cargo/config.toml` from `examples/`
 
 ## Example
@@ -23,16 +23,16 @@ This directory contains Cargo.toml templates for common embedded configurations.
 ```bash
 # Create new RTIC project
 mkdir my-rtic-project && cd my-rtic-project
-cp path/to/nano-ros/templates/cargo-stm32f4-rs-rtic.toml Cargo.toml
+cp path/to/nros/templates/cargo-stm32f4-rs-rtic.toml Cargo.toml
 mkdir -p .cargo
-cp path/to/nano-ros/examples/stm32f4-rs-rtic/.cargo/config.toml .cargo/
+cp path/to/nros/examples/stm32f4-rs-rtic/.cargo/config.toml .cargo/
 mkdir -p src
 # Edit Cargo.toml and create your main.rs
 ```
 
 ## Feature Flags
 
-All templates use these nano-ros features:
+All templates use these nros features:
 
 - `default-features = false` - Disables std/alloc
 - `features = ["rtic"]` - Enables static buffer allocation

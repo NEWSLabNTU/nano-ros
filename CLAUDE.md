@@ -8,14 +8,14 @@ Lightweight ROS 2 client for embedded real-time systems (Zephyr, NuttX). `no_std
 nano-ros/
 ├── packages/
 │   ├── core/                      # The nano-ros library stack
-│   │   ├── nano-ros/              # Unified API (re-exports all sub-crates)
-│   │   ├── nano-ros-core/         # Core types, traits, node abstraction
-│   │   ├── nano-ros-serdes/       # CDR serialization
-│   │   ├── nano-ros-macros/       # #[derive(RosMessage)] proc macros
-│   │   ├── nano-ros-params/       # Parameter server
+│   │   ├── nros/              # Unified API (re-exports all sub-crates)
+│   │   ├── nros-core/         # Core types, traits, node abstraction
+│   │   ├── nros-serdes/       # CDR serialization
+│   │   ├── nros-macros/       # #[derive(RosMessage)] proc macros
+│   │   ├── nros-params/       # Parameter server
 │   │   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
-│   │   ├── nano-ros-node/         # High-level node API + parameter_services
-│   │   └── nano-ros-c/            # C API for embedded systems
+│   │   ├── nros-node/         # High-level node API + parameter_services
+│   │   └── nros-c/            # C API for embedded systems
 │   ├── transport/                 # Zenoh transport backend
 │   │   ├── nano-ros-transport-zenoh/     # Safe Rust API for zenoh-pico
 │   │   └── nano-ros-transport-zenoh-sys/ # FFI + C shim + zenoh-pico submodule
@@ -102,7 +102,7 @@ just regenerate-bindings    # clean-bindings + generate-bindings
 
 # Test groups (by infrastructure requirement)
 just test-unit          # Unit tests only (no external deps)
-just test-miri          # Miri UB detection (nano-ros-serdes, nano-ros-core, nano-ros-params)
+just test-miri          # Miri UB detection (nros-serdes, nros-core, nros-params)
 just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
 just test-qemu-esp32    # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
 just test-integration   # All Rust integration tests (builds zenohd automatically)
@@ -217,7 +217,7 @@ packages/testing/nano-ros-tests/
 │   ├── ros2.rs       # ROS 2 process helpers
 │   └── zephyr.rs     # Zephyr native_sim helpers
 └── tests/            # Integration test suites
-    ├── nano2nano.rs  # nano-ros ↔ nano-ros pub/sub
+    ├── nano2nano.rs  # nros ↔ nros pub/sub
     ├── services.rs   # Service server/client tests
     ├── actions.rs    # Action server/client tests
     ├── emulator.rs   # QEMU bare-metal tests
@@ -258,11 +258,11 @@ All crates use Rust edition 2024. Key syntax changes from edition 2021:
 - **no_mangle requires `unsafe`**: `#[unsafe(no_mangle)]`
 - **Unsafe fn bodies require explicit blocks**: Unsafe operations inside `unsafe fn` need `unsafe { ... }` blocks
 
-The `nano-ros-c` crate keeps `#![allow(unsafe_op_in_unsafe_fn)]` because it's a pure C FFI wrapper with 420+ unsafe operations where adding explicit blocks would add verbosity without safety improvement.
+The `nros-c` crate keeps `#![allow(unsafe_op_in_unsafe_fn)]` because it's a pure C FFI wrapper with 420+ unsafe operations where adding explicit blocks would add verbosity without safety improvement.
 
 ### API Alignment
 
-The nano-ros API follows established ROS 2 client library conventions:
+The nros API follows established ROS 2 client library conventions:
 
 - **Rust API**: Follows [rclrs](external/ros2_rust) (ROS 2 Rust client) 0.7.0 naming
 - **C API**: Follows rclc (ROS 2 C client) naming
@@ -288,13 +288,13 @@ Generated per-project using `cargo nano-ros generate-rust` from `package.xml`. S
 
 **Bundled interfaces**: Standard .msg files (`std_msgs`, `builtin_interfaces`) are shipped at `packages/codegen/interfaces/` so codegen works without a ROS 2 environment. The ament index takes precedence when available; bundled files fill gaps.
 
-**heapless re-export**: `nano-ros-core` re-exports `heapless` (`pub use heapless;`) so generated code can reference `nano_ros_core::heapless::String<256>` etc. without requiring a separate `heapless` dependency.
+**heapless re-export**: `nros-core` re-exports `heapless` (`pub use heapless;`) so generated code can reference `nros_core::heapless::String<256>` etc. without requiring a separate `heapless` dependency.
 
-**Inline codegen mode**: `rosidl-codegen` supports an inline mode (`NanoRosCodegenMode::Inline`) where generated code uses `nano_ros_core::` prefixed imports and `super::` relative paths for cross-package references. This is used for single-crate scenarios; the standard `cargo nano-ros generate-rust` (separate crates per package) remains the primary workflow.
+**Inline codegen mode**: `rosidl-codegen` supports an inline mode (`NanoRosCodegenMode::Inline`) where generated code uses `nros_core::` prefixed imports and `super::` relative paths for cross-package references. This is used for single-crate scenarios; the standard `cargo nano-ros generate-rust` (separate crates per package) remains the primary workflow.
 
 **Installing cargo-nano-ros:**
 ```bash
-# From the nano-ros repository root
+# From the nros repository root
 just install-cargo-nano-ros
 
 # Or manually:
@@ -316,7 +316,7 @@ just build-codegen-lib
 ```
 
 ### C API and CMake Integration
-C examples use `FindNanoRos.cmake` (at `cmake/FindNanoRos.cmake`) which wraps the internal `FindNanoRosC.cmake` (at `packages/core/nano-ros-c/cmake/`). Usage:
+C examples use `FindNanoRos.cmake` (at `cmake/FindNanoRos.cmake`) which wraps the internal `FindNanoRosC.cmake` (at `packages/core/nros-c/cmake/`). Usage:
 ```cmake
 list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
 find_package(NanoRos REQUIRED)
@@ -324,16 +324,16 @@ target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
 This provides include dirs, static library, and platform link libs (pthread, dl, m) automatically.
 
-**C code generation** uses `nano_ros_generate_interfaces()` (from `nano_ros_generate_interfaces.cmake`). The codegen tool is bundled as `libnano_ros_codegen_c.a` — no external `nano-ros` binary needed. Build it with `just build-codegen-lib` before running CMake. The CMake module `FindNanoRosCodegen.cmake` compiles a thin C wrapper at configure time.
+**C code generation** uses `nano_ros_generate_interfaces()` (from `nano_ros_generate_interfaces.cmake`). The codegen tool is bundled as `libnano_ros_codegen_c.a` — no external `nros` binary needed. Build it with `just build-codegen-lib` before running CMake. The CMake module `FindNanoRosCodegen.cmake` compiles a thin C wrapper at configure time.
 
 ### Platform Backends
 Selected via feature flags: `platform-posix` (desktop), `platform-zephyr` (Zephyr RTOS), `platform-bare-metal` (bare-metal).
 The `zenoh` feature is an alias for `platform-posix` + `alloc`.
 
 ### Parameter Services
-Enable with `param-services` feature in `nano-ros-node`:
+Enable with `param-services` feature in `nros-node`:
 ```toml
-nano-ros-node = { version = "*", features = ["param-services"] }
+nros-node = { version = "*", features = ["param-services"] }
 ```
 - Provides ROS 2 parameter service handlers (`~/get_parameters`, `~/set_parameters`, etc.)
 - Uses generated `rcl_interfaces` types from `packages/interfaces/rcl-interfaces/generated/`
@@ -343,7 +343,7 @@ nano-ros-node = { version = "*", features = ["param-services"] }
 
 Two complementary verification tools are used:
 
-- **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 82 harnesses across nano-ros-serdes, nano-ros-core, nano-ros-params, nano-ros-c. Run with `just verify-kani`.
+- **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 82 harnesses across nros-serdes, nros-core, nros-params, nros-c. Run with `just verify-kani`.
 - **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nano-ros-verification/` (excluded from workspace). 67 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, parameter types, and E2E data path. Includes 10 E2E proofs (bug existence, publish chain, executor delivery, post-fix correctness). Run with `just verify-verus`.
 
 ```bash
@@ -394,8 +394,8 @@ See [docs/roadmap/](docs/roadmap/) for details.
 ### Distribution UX (Future)
 
 Planned improvements for toolchain distribution:
-- **crates.io publishing**: `cargo-nano-ros`, `nano-ros-core`, `nano-ros-serdes`, pre-generated standard message crates — eliminates `[patch.crates-io]`
-- **Pre-built binaries**: GitHub releases for `nano-ros` binary
+- **crates.io publishing**: `cargo-nano-ros`, `nros-core`, `nros-serdes`, pre-generated standard message crates — eliminates `[patch.crates-io]`
+- **Pre-built binaries**: GitHub releases for `nros` binary
 - **`cargo nano-ros init`**: Template scaffolding for new projects
 - **C single-archive release**: library + headers + cmake modules + codegen binary
 
@@ -436,7 +436,7 @@ cd examples/native/rs-listener && RUST_LOG=info cargo run --features zenoh
 # Terminal 1: Router
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
-# Terminal 2: nano-ros talker
+# Terminal 2: nros talker
 cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener

@@ -1,8 +1,8 @@
 /**
  * @file main.c
- * @brief Zephyr C talker example using nano-ros BSP
+ * @brief Zephyr C talker example using nros BSP
  *
- * This example demonstrates using nano-ros BSP on Zephyr RTOS.
+ * This example demonstrates using nros BSP on Zephyr RTOS.
  * The BSP handles zenoh initialization and ROS 2 keyexpr formatting.
  */
 
@@ -49,7 +49,7 @@ static int32_t std_msgs_Int32_serialize(const std_msgs_Int32 *msg, uint8_t *buff
 
 int main(void)
 {
-    LOG_INF("nano-ros Zephyr C Talker (BSP)");
+    LOG_INF("nros Zephyr C Talker (BSP)");
     LOG_INF("==============================");
 
     /* Initialize BSP (uses Kconfig for zenoh locator) */
@@ -61,7 +61,7 @@ int main(void)
     }
 
     /* Create node */
-    nano_ros_node_t node;
+    nros_node_t node;
     ret = nano_ros_bsp_create_node(&ctx, &node, "zephyr_talker");
     if (ret != NANO_ROS_BSP_OK) {
         LOG_ERR("Node creation failed: %d", ret);

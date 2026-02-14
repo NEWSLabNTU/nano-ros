@@ -1,6 +1,6 @@
-//! WCET benchmark for nano-ros on QEMU Cortex-M3
+//! WCET benchmark for nros on QEMU Cortex-M3
 //!
-//! Measures cycle counts of core nano-ros operations using the DWT
+//! Measures cycle counts of core nros operations using the DWT
 //! cycle counter. On QEMU the DWT may not increment (reads as 0) —
 //! the infrastructure is validated on real hardware (STM32F4).
 //!
@@ -14,7 +14,7 @@ use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
 
 use builtin_interfaces::msg::Time;
-use nano_ros::{
+use nros::{
     CdrReader, CdrWriter, Deserialize, NodeConfig, PublisherOptions, Serialize,
     StandaloneNode as Node,
 };
@@ -300,7 +300,7 @@ fn print_result(name: &str, stats: &Stats) {
 fn main() -> ! {
     hprintln!("");
     hprintln!("========================================");
-    hprintln!("  nano-ros WCET Benchmark (Cortex-M3)");
+    hprintln!("  nros WCET Benchmark (Cortex-M3)");
     hprintln!("========================================");
     hprintln!("");
 

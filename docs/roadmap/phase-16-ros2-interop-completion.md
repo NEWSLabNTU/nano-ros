@@ -2,11 +2,11 @@
 
 **Status**: IN PROGRESS
 **Priority**: HIGH
-**Goal**: Achieve full bidirectional ROS 2 ↔ nano-ros interoperability with API alignment to rclrs 0.7.0 and rclc
+**Goal**: Achieve full bidirectional ROS 2 ↔ nros interoperability with API alignment to rclrs 0.7.0 and rclc
 
 ## Overview
 
-This phase addresses the remaining gaps preventing full interoperability between nano-ros and ROS 2 nodes using rmw_zenoh. Additionally, we align the nano-ros API with the official ROS 2 client libraries:
+This phase addresses the remaining gaps preventing full interoperability between nros and ROS 2 nodes using rmw_zenoh. Additionally, we align the nros API with the official ROS 2 client libraries:
 
 - **Rust API**: Align with [rclrs 0.7.0](https://github.com/ros2-rust/ros2_rust) (release-humble branch)
 - **C API**: Align with [rclc](https://github.com/ros2/rclc) (micro-ROS executor)
@@ -17,9 +17,9 @@ Reference implementations are available at:
 
 ### Embedded Constraints: Intentional Divergences from rclrs
 
-nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_std` support. This requires intentional divergences from rclrs patterns that assume `std` features:
+nros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_std` support. This requires intentional divergences from rclrs patterns that assume `std` features:
 
-| rclrs Pattern       | nano-ros Pattern                     | Reason                                    |
+| rclrs Pattern       | nros Pattern                     | Reason                                    |
 |---------------------|--------------------------------------|-------------------------------------------|
 | `Arc<NodeState>`    | `&mut NodeHandle` / direct ownership | Arc requires heap allocation + atomic ops |
 | `Arc<Publisher<T>>` | `PublisherHandle` / direct ownership | Same - no heap on bare-metal              |
@@ -29,9 +29,9 @@ nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_
 
 **Key Design Decisions:**
 
-1. **Ownership Model**: nano-ros uses **direct ownership by executor** with **borrowed handles** for nodes/publishers/subscriptions. This matches rclc patterns exactly and is correct for embedded:
+1. **Ownership Model**: nros uses **direct ownership by executor** with **borrowed handles** for nodes/publishers/subscriptions. This matches rclc patterns exactly and is correct for embedded:
    ```rust
-   // nano-ros (embedded-friendly)
+   // nros (embedded-friendly)
    let mut executor = context.create_basic_executor();
    let mut node = executor.create_node("my_node")?;  // Returns NodeHandle (borrowed)
 
@@ -53,7 +53,7 @@ nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_
 
 ### Current State
 
-| Feature    | nano-ros → nano-ros | nano-ros → ROS 2 | ROS 2 → nano-ros |
+| Feature    | nros → nros | nros → ROS 2 | ROS 2 → nros |
 |------------|---------------------|------------------|------------------|
 | Pub/Sub    | ✅ Working          | ✅ Working        | ✅ Working        |
 | Services   | ✅ Working          | ⚠️ Partial        | ⚠️ Partial        |
@@ -63,10 +63,10 @@ nano-ros targets bare-metal and RTOS systems (Zephyr, NuttX, FreeRTOS) with `no_
 
 ### Root Causes
 
-1. **Discovery**: nano-ros publishes liveliness tokens, but `ros2 node/topic/service list` does not see them. Likely liveliness token format or QoS metadata mismatch.
+1. **Discovery**: nros publishes liveliness tokens, but `ros2 node/topic/service list` does not see them. Likely liveliness token format or QoS metadata mismatch.
 2. ~~**Parameters**: ROS 2 parameter services not implemented~~ → **RESOLVED**: Parameter service servers now registered and processed during spin
-3. **Services**: `ros2 service call` sends request to nano-ros server but receives no response. nano-ros service client gets `ConnectionFailed` calling ROS 2 server. Service keyexpr or request/reply protocol mismatch suspected.
-4. **Actions**: `ros2 action send_goal` waits indefinitely for nano-ros action server. nano-ros action client gets `ConnectionFailed` calling ROS 2 action server. Discovery dependency (action relies on service discovery) likely involved.
+3. **Services**: `ros2 service call` sends request to nros server but receives no response. nros service client gets `ConnectionFailed` calling ROS 2 server. Service keyexpr or request/reply protocol mismatch suspected.
+4. **Actions**: `ros2 action send_goal` waits indefinitely for nros action server. nros action client gets `ConnectionFailed` calling ROS 2 action server. Discovery dependency (action relies on service discovery) likely involved.
 5. ~~**QoS**: Hardcoded BEST_EFFORT in liveliness tokens regardless of actual settings~~ → **RESOLVED**: `to_qos_string()` generates correct QoS encoding
 
 ---
@@ -109,7 +109,7 @@ executor.spin()?;
 
 **rclrs Reference** (`external/rclrs/rclrs/src/node.rs`):
 ```rust
-pub type Node = Arc<NodeState>;  // N/A for embedded - nano-ros uses NodeHandle
+pub type Node = Arc<NodeState>;  // N/A for embedded - nros uses NodeHandle
 
 impl NodeState {
     pub fn name(&self) -> &str;
@@ -146,7 +146,7 @@ impl NodeState {
 
 **rclrs Reference** (`external/rclrs/rclrs/src/publisher.rs`):
 ```rust
-pub type Publisher<T> = Arc<PublisherState<T>>;  // N/A for embedded - nano-ros uses PublisherHandle
+pub type Publisher<T> = Arc<PublisherState<T>>;  // N/A for embedded - nros uses PublisherHandle
 
 impl<T: Message> PublisherState<T> {
     pub fn publish(&self, message: impl MessageCow<'_, T>) -> Result<()>;
@@ -175,7 +175,7 @@ impl<T: Message> PublisherState<T> {
 
 **rclrs Reference** (`external/rclrs/rclrs/src/subscription.rs`):
 ```rust
-pub type Subscription<T> = Arc<SubscriptionState<T>>;  // N/A for embedded - nano-ros uses SubscriptionHandle
+pub type Subscription<T> = Arc<SubscriptionState<T>>;  // N/A for embedded - nros uses SubscriptionHandle
 
 // Callback can be:
 // - FnMut(T)
@@ -214,8 +214,8 @@ pub type Subscription<T> = Arc<SubscriptionState<T>>;  // N/A for embedded - nan
 
 **rclrs Reference** (`external/rclrs/rclrs/src/service.rs`, `client.rs`):
 ```rust
-pub type Service<T> = Arc<ServiceState<T>>;  // N/A for embedded - nano-ros uses ServiceHandle
-pub type Client<T> = Arc<ClientState<T>>;    // N/A for embedded - nano-ros uses ClientHandle
+pub type Service<T> = Arc<ServiceState<T>>;  // N/A for embedded - nros uses ServiceHandle
+pub type Client<T> = Arc<ClientState<T>>;    // N/A for embedded - nros uses ClientHandle
 
 impl<T: ServiceIDL> ClientState<T> {
     pub fn call(&self, request: T::Request) -> Promise<T::Response>;  // Async - N/A for embedded
@@ -267,7 +267,7 @@ impl<T: ServiceIDL> ClientState<T> {
 
 **rclrs Reference** (`external/rclrs/rclrs/src/timer.rs`):
 ```rust
-pub type Timer = Arc<TimerState>;  // N/A for embedded - nano-ros uses TimerHandle
+pub type Timer = Arc<TimerState>;  // N/A for embedded - nros uses TimerHandle
 
 impl Node {
     pub fn create_timer_repeating(&self, period: Duration, callback: impl FnMut()) -> Result<Timer>;
@@ -409,7 +409,7 @@ node.logger().once().warn("Only logged once");
 node.logger().throttle(Duration::from_secs(1)).debug("Rate limited");
 ```
 
-**nano-ros Implementation** (embedded-friendly, no heap):
+**nros Implementation** (embedded-friendly, no heap):
 ```rust
 // Basic logging
 let logger = Logger::new("my_node");
@@ -436,7 +436,7 @@ logger.info_throttle(&mut last_log_ms, current_time_ms, 1000, "Rate limited to 1
 - [x] Add `*_skip_first()` methods to skip first occurrence
 - [x] Add `*_throttle()` methods for rate-limited logging
 - [x] Integrate with `log` crate facade for embedded (defmt bridge documented)
-- [x] Export `OnceFlag` from `nano-ros-core`
+- [x] Export `OnceFlag` from `nros-core`
 - [x] Add 7 unit tests for Logger and OnceFlag
 
 **Implementation Notes**:
@@ -468,9 +468,9 @@ pub enum RclrsError {
 }
 ```
 
-**nano-ros Implementation**:
+**nros Implementation**:
 ```rust
-use nano_ros_core::{NanoRosError, RclReturnCode, NanoRosErrorFilter};
+use nros_core::{NanoRosError, RclReturnCode, NanoRosErrorFilter};
 
 // Create errors with context
 let err = NanoRosError::topic_name_invalid("/bad topic");
@@ -533,7 +533,7 @@ rcl_ret_t rclc_executor_init(rclc_executor_t * e, rcl_context_t * ctx, size_t nu
 ```
 
 **Tasks**:
-- [x] Add `nano_ros_node_get_zero_initialized()` returning zeroed struct
+- [x] Add `nros_node_get_zero_initialized()` returning zeroed struct
 - [x] Add `nano_ros_publisher_get_zero_initialized()`
 - [x] Add `nano_ros_subscription_get_zero_initialized()`
 - [x] Add `nano_ros_executor_get_zero_initialized()`
@@ -651,7 +651,7 @@ rcl_ret_t rclc_executor_add_subscription_with_context(
 - [x] Timer callbacks include context via guard condition pattern
 
 **Implementation Notes**:
-- nano-ros uses a unified callback pattern where context is always available
+- nros uses a unified callback pattern where context is always available
 - `nano_ros_subscription_callback_t = fn(data: *const u8, len: usize, context: *mut c_void)`
 - `nano_ros_service_callback_t` includes context for request handling
 - Context pointer stored in subscription/service struct and passed to callback
@@ -795,12 +795,12 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 
 ### C.2 Parameter Services (HIGH) - COMPLETE
 
-**Problem**: ROS 2 CLI tools cannot interact with nano-ros parameters.
+**Problem**: ROS 2 CLI tools cannot interact with nros parameters.
 
 **Tasks**:
 - [x] Generate `rcl_interfaces` message types via `cargo nano-ros generate`
 - [x] Generate `builtin_interfaces` dependency types
-- [x] Create `parameter_services.rs` module in `nano-ros-node`
+- [x] Create `parameter_services.rs` module in `nros-node`
 - [x] Implement type conversion functions: `to_rcl_value()`, `from_rcl_value()`, `to_rcl_descriptor()`, `to_rcl_set_result()`
 - [x] Implement service handlers:
   - `handle_get_parameters()` - retrieve parameter values by name
@@ -809,7 +809,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
   - `handle_list_parameters()` - list all parameters with optional prefix filter
   - `handle_describe_parameters()` - get parameter descriptors
   - `handle_get_parameter_types()` - get parameter types
-- [x] Add `param-services` feature flag to `nano-ros-node`
+- [x] Add `param-services` feature flag to `nros-node`
 - [x] Handler return types use `Box<Response>` to avoid stack overflow (generated types ~1MB+)
 - [x] 8 unit tests for parameter service handlers
 - [x] Add `handle_request_boxed` to `ServiceServerTrait` and `ConnectedServiceServer`
@@ -838,7 +838,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - [x] `register_parameter_services()` creates 6 service servers with correct names
 - [x] Parameter services processed during executor `spin_once()`
 - [x] `just quality` passes with all changes
-- [ ] `ros2 param list <node>` shows nano-ros parameters (TODO: integration test)
+- [ ] `ros2 param list <node>` shows nros parameters (TODO: integration test)
 - [ ] `ros2 param get <node> <param>` returns correct value (TODO: integration test)
 - [ ] `ros2 param set <node> <param> <value>` updates parameter (TODO: integration test)
 
@@ -846,7 +846,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 
 ### C.3 Action ROS 2 Interop (MEDIUM) - COMPLETE
 
-**Problem**: Actions work nano-ros ↔ nano-ros but not with ROS 2.
+**Problem**: Actions work nros ↔ nros but not with ROS 2.
 
 **Tasks**:
 - [x] Verify action key expression format matches rmw_zenoh
@@ -869,9 +869,9 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - [x] Service clients declare SC liveliness tokens
 - [x] Action servers declare all 5 component liveliness tokens
 - [x] Action clients declare all 5 component liveliness tokens
-- [ ] `ros2 action list` shows nano-ros action servers (TODO: integration test)
-- [ ] `ros2 action send_goal` invokes nano-ros action server (TODO: integration test)
-- [ ] nano-ros action client can call ROS 2 action server (TODO: integration test)
+- [ ] `ros2 action list` shows nros action servers (TODO: integration test)
+- [ ] `ros2 action send_goal` invokes nros action server (TODO: integration test)
+- [ ] nros action client can call ROS 2 action server (TODO: integration test)
 
 ---
 
@@ -883,7 +883,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 - Data keyexpr: Uses `TypeHashNotSupported` (correct for Humble)
 - Liveliness tokens: Uses `RIHS01_<64 zeros>` placeholder
 - Generator at `packages/codegen/packages/rosidl-codegen/src/generator.rs:628` uses placeholder
-- **This is correct for ROS 2 Humble and works for nano-ros ↔ ROS 2 Humble interop**
+- **This is correct for ROS 2 Humble and works for nros ↔ ROS 2 Humble interop**
 
 **Proposed Feature Flags**:
 ```toml
@@ -930,12 +930,12 @@ Implementation options for Iron+:
 - `timestamp` (i64) - nanoseconds since epoch
 - `gid` (16 bytes) - publisher Global Identifier
 
-Currently nano-ros serializes this attachment when publishing but doesn't deserialize it on receive.
+Currently nros serializes this attachment when publishing but doesn't deserialize it on receive.
 
 **Location**:
 - `packages/core/nano-ros-transport/src/shim.rs` - ShimSubscriber callback
 - `packages/core/nano-ros-transport/src/traits.rs` - Subscriber trait
-- `packages/core/nano-ros-node/src/connected.rs` - ConnectedSubscriber::try_recv_with_info()
+- `packages/core/nros-node/src/connected.rs` - ConnectedSubscriber::try_recv_with_info()
 
 **Tasks**:
 - [x] Extend nano-ros-transport-zenoh C callback to pass attachment data alongside payload
@@ -965,7 +965,7 @@ Currently nano-ros serializes this attachment when publishing but doesn't deseri
 
 ### C.6 RMW Zenoh Protocol Verification (HIGH) - COMPLETE
 
-**Problem**: Need comprehensive verification that nano-ros protocol implementation matches rmw_zenoh_cpp exactly.
+**Problem**: Need comprehensive verification that nros protocol implementation matches rmw_zenoh_cpp exactly.
 
 **Reference**: `docs/reference/rmw_zenoh_interop.md`, rmw_zenoh_cpp source
 
@@ -1016,7 +1016,7 @@ Currently nano-ros serializes this attachment when publishing but doesn't deseri
 **Passing Criteria**:
 - [x] All 42 unit tests pass
 - [x] Protocol formats match rmw_zenoh_cpp specifications
-- [ ] `ros2 node list` shows nano-ros nodes
+- [ ] `ros2 node list` shows nros nodes
 - [ ] `ros2 node info <node>` shows correct publishers/subscribers
 - [ ] Bidirectional pub/sub works at all QoS combinations
 - [ ] Services work bidirectionally
@@ -1032,8 +1032,8 @@ Currently nano-ros serializes this attachment when publishing but doesn't deseri
 - [x] Create test infrastructure (`tests/` directory, Rust test crate)
 - [x] Add shell test script `tests/ros2-interop.sh` that:
   - Starts zenohd router automatically
-  - Launches nano-ros publisher, verifies ROS 2 subscriber receives
-  - Launches ROS 2 publisher, verifies nano-ros subscriber receives
+  - Launches nros publisher, verifies ROS 2 subscriber receives
+  - Launches ROS 2 publisher, verifies nros subscriber receives
   - Tests service call in both directions
   - Reports pass/fail for each test case
 - [x] Add CI job documentation to `tests/README.md` (GitHub Actions example)
@@ -1081,18 +1081,18 @@ discovery - topics, services
 
 | Test                                            | Status |
 |-------------------------------------------------|--------|
-| nano-ros → nano-ros pub/sub                     | ✅     |
-| `ros2 topic echo` receives nano-ros messages    | ✅     |
-| nano-ros subscriber receives `ros2 topic pub`   | ✅     |
-| `ros2 topic list` shows nano-ros publishers     | ❌     |
-| `ros2 service list` shows nano-ros services     | ❌     |
-| `ros2 service call` invokes nano-ros server     | ⚠️ Sends request, no response |
-| nano-ros client calls ROS 2 service             | ❌ ConnectionFailed |
-| `ros2 action list` shows nano-ros actions       | ⬜     |
-| `ros2 action send_goal` invokes nano-ros server | ❌ Waits for server |
-| nano-ros client calls ROS 2 action server       | ❌ ConnectionFailed |
-| `ros2 param list` shows nano-ros parameters     | ⬜     |
-| `ros2 param get/set` works with nano-ros        | ⬜     |
+| nros → nros pub/sub                     | ✅     |
+| `ros2 topic echo` receives nros messages    | ✅     |
+| nros subscriber receives `ros2 topic pub`   | ✅     |
+| `ros2 topic list` shows nros publishers     | ❌     |
+| `ros2 service list` shows nros services     | ❌     |
+| `ros2 service call` invokes nros server     | ⚠️ Sends request, no response |
+| nros client calls ROS 2 service             | ❌ ConnectionFailed |
+| `ros2 action list` shows nros actions       | ⬜     |
+| `ros2 action send_goal` invokes nros server | ❌ Waits for server |
+| nros client calls ROS 2 action server       | ❌ ConnectionFailed |
+| `ros2 param list` shows nros parameters     | ⬜     |
+| `ros2 param get/set` works with nros        | ⬜     |
 
 ### MessageInfo / Attachment Tests
 
@@ -1101,7 +1101,7 @@ discovery - topics, services
 | Attachment parsing extracts sequence_number correctly | ✅     |
 | Attachment parsing extracts timestamp correctly       | ✅     |
 | Attachment parsing extracts GID correctly             | ✅     |
-| MessageInfo populated from nano-ros publisher         | ✅     |
+| MessageInfo populated from nros publisher         | ✅     |
 | MessageInfo populated from ROS 2 publisher            | ✅     |
 | Sequence numbers increment correctly per-publisher    | ⬜     |
 | GID is consistent across messages from same publisher | ⬜     |

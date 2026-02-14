@@ -1,6 +1,6 @@
 /**
  * @file nano_ros_bsp_zephyr.h
- * @brief nano-ros Board Support Package for Zephyr RTOS
+ * @brief nros Board Support Package for Zephyr RTOS
  *
  * This library provides a simplified API for creating ROS 2 nodes on Zephyr.
  * It abstracts away zenoh-pico configuration and provides ROS 2 compatible
@@ -16,7 +16,7 @@
  *     nano_ros_bsp_init(&ctx);
  *
  *     // Create node
- *     nano_ros_node_t node;
+ *     nros_node_t node;
  *     nano_ros_bsp_create_node(&ctx, &node, "my_node");
  *
  *     // Create publisher
@@ -33,7 +33,7 @@
  * }
  * @endcode
  *
- * @copyright Copyright (c) 2024 nano-ros contributors
+ * @copyright Copyright (c) 2024 nros contributors
  * @license MIT OR Apache-2.0
  */
 
@@ -79,15 +79,15 @@ typedef struct nano_ros_bsp_context {
 } nano_ros_bsp_context_t;
 
 /** Node handle */
-typedef struct nano_ros_node {
+typedef struct nros_node {
     nano_ros_bsp_context_t *ctx;
     const char *name;
     int32_t domain_id;
-} nano_ros_node_t;
+} nros_node_t;
 
 /** Publisher handle */
 typedef struct nano_ros_publisher {
-    nano_ros_node_t *node;
+    nros_node_t *node;
     int32_t handle;
     char keyexpr[256];
 } nano_ros_publisher_t;
@@ -101,7 +101,7 @@ typedef void (*nano_ros_subscriber_callback_t)(
 
 /** Subscriber handle */
 typedef struct nano_ros_subscriber {
-    nano_ros_node_t *node;
+    nros_node_t *node;
     int32_t handle;
     char keyexpr[256];
     nano_ros_subscriber_callback_t callback;
@@ -113,7 +113,7 @@ typedef struct nano_ros_subscriber {
  * ============================================================================ */
 
 /**
- * @brief Initialize the nano-ros BSP
+ * @brief Initialize the nros BSP
  *
  * This initializes the zenoh-pico transport using configuration from Kconfig:
  * - CONFIG_NANO_ROS_ZENOH_LOCATOR: Router address
@@ -162,7 +162,7 @@ bool nano_ros_bsp_is_ready(const nano_ros_bsp_context_t *ctx);
  */
 int32_t nano_ros_bsp_create_node(
     nano_ros_bsp_context_t *ctx,
-    nano_ros_node_t *node,
+    nros_node_t *node,
     const char *name
 );
 
@@ -177,7 +177,7 @@ int32_t nano_ros_bsp_create_node(
  */
 int32_t nano_ros_bsp_create_node_with_domain(
     nano_ros_bsp_context_t *ctx,
-    nano_ros_node_t *node,
+    nros_node_t *node,
     const char *name,
     int32_t domain_id
 );
@@ -196,7 +196,7 @@ int32_t nano_ros_bsp_create_node_with_domain(
  * @return NANO_ROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_create_publisher(
-    nano_ros_node_t *node,
+    nros_node_t *node,
     nano_ros_publisher_t *pub,
     const char *topic,
     const char *type_name
@@ -239,7 +239,7 @@ void nano_ros_bsp_destroy_publisher(nano_ros_publisher_t *pub);
  * @return NANO_ROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_create_subscriber(
-    nano_ros_node_t *node,
+    nros_node_t *node,
     nano_ros_subscriber_t *sub,
     const char *topic,
     const char *type_name,

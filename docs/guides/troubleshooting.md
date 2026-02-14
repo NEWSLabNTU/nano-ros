@@ -1,6 +1,6 @@
 # Troubleshooting
 
-Common issues and solutions when working with nano-ros.
+Common issues and solutions when working with nros.
 
 ## zenoh-pico Multiple Client Issues
 
@@ -40,7 +40,7 @@ if (_Z_RC_IS_NULL(&ctx->zn)) {
 
 ### Solution
 
-nano-ros disables `Z_FEATURE_INTEREST` by default for all builds:
+nros disables `Z_FEATURE_INTEREST` by default for all builds:
 
 **Native builds** (build.rs):
 ```rust
@@ -68,7 +68,7 @@ Or manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:
 
 Then rebuild with `--pristine`:
 ```bash
-west build -b native_sim/native/64 nano-ros/examples/zephyr/rs-talker -d build-talker --pristine
+west build -b native_sim/native/64 nros/examples/zephyr/rs-talker -d build-talker --pristine
 ```
 
 Note: `Z_FEATURE_MATCHING` depends on `Z_FEATURE_INTEREST`, so both must be disabled.
@@ -146,7 +146,7 @@ The `--seed` parameter initializes the test entropy source with a different valu
 
 **Cause**: Both Zephyr and QEMU were using the same subnet (192.0.2.0/24).
 
-**Solution**: nano-ros uses separate subnets:
+**Solution**: nros uses separate subnets:
 - **Zephyr (native_sim)**: 192.0.2.0/24
   - Bridge: `zeth-br` at 192.0.2.2
   - Talker: 192.0.2.1
@@ -245,7 +245,7 @@ ip addr show zeth-br
 
 **Solution**: Ensure the Zephyr workspace is properly configured:
 ```bash
-# The workspace should be at ../nano-ros-workspace relative to nano-ros
+# The workspace should be at ../nano-ros-workspace relative to nros
 ls -la zephyr-workspace  # Should be a symlink
 
 # Or set explicitly
