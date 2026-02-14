@@ -1,0 +1,15 @@
+[package]
+name = "xrce-sys"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+links = "xrce_client"
+
+[features]
+default = []
+posix = []
+bare-metal = []
+std = []
+
+[build-dependencies]
+cc = "1.0"

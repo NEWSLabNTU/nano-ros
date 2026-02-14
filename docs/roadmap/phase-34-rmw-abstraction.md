@@ -1,6 +1,6 @@
 # Phase 34: RMW Abstraction & XRCE-DDS Integration
 
-**Status: In Progress** (34.1, 34.2, 34.3 complete)
+**Status: In Progress** (34.1, 34.2, 34.3, 34.4 complete)
 
 **Prerequisites:** Phase 33 (crate rename + platform split) is complete. Phase 34.1-34.3 (RMW traits + zenoh impl + board refactor) are complete.
 
@@ -23,9 +23,9 @@
 - `nros-rmw-zenoh` — `ZenohRmw` implements `Rmw` trait, `ShimSession`/`ShimPublisher`/`ShimSubscriber` implement session/pub/sub traits
 - All 4 board crates (`nros-mps2-an385`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) use `nros-rmw` traits exclusively — no direct `zpico-sys` imports
 
-**Remaining (34.4-34.8):**
+**Remaining (34.5-34.8):**
 - XRCE-DDS as second RMW backend, proving the abstraction works
-- Source code studied: `external/Micro-XRCE-DDS-Client/` and `external/Micro-CDR/`
+- `xrce-sys` FFI bindings complete (34.4): `packages/xrce/xrce-sys/`
 
 ## Steps
 
@@ -161,37 +161,32 @@ pub struct RmwConfig<'a> {
 - **Minimal libc** — only `memcpy`, `memset`, `strlen` needed (no heap, no printf/snprintf)
 
 **Submodules:**
-- [ ] Add Micro-XRCE-DDS-Client as git submodule at `packages/xrce/xrce-sys/micro-xrce-dds-client/`
-- [ ] Add Micro-CDR v2.0.2 as git submodule at `packages/xrce/xrce-sys/micro-cdr/`
+- [x] Add Micro-XRCE-DDS-Client v3.0.1 as git submodule at `packages/xrce/xrce-sys/micro-xrce-dds-client/`
+- [x] Add Micro-CDR v2.0.2 as git submodule at `packages/xrce/xrce-sys/micro-cdr/`
 
 **Build system (`build.rs`):**
-- [ ] Generate `config.h` in `OUT_DIR` from Cargo features:
-  - `UCLIENT_PROFILE_CUSTOM_TRANSPORT` (always enabled for bare-metal)
-  - `UXR_CONFIG_CUSTOM_TRANSPORT_MTU` (default 512)
-  - `UXR_CONFIG_MAX_*_STREAMS` (default 1 each)
-  - No platform defines for bare-metal (falls through to POSIX branch in `time.c`)
-- [ ] Generate Micro-CDR `config.h` with `UCDR_MACHINE_ENDIANNESS` (little-endian for ARM/RISC-V)
-- [ ] Compile 23 XRCE-DDS core files + 5 Micro-CDR files = 28 total via `cc::Build`
-- [ ] Set target-specific flags (ARM: `-mcpu=cortex-m3 -mthumb`, RISC-V: `-march=rv32imc`)
-- [ ] Support `posix` / `bare-metal` feature flags (mutually exclusive, like zpico-sys)
+- [x] Generate `config.h` in `OUT_DIR` from Cargo features:
+  - `UCLIENT_PROFILE_CUSTOM_TRANSPORT` (always enabled)
+  - `UXR_CONFIG_CUSTOM_TRANSPORT_MTU` (512)
+  - `UXR_CONFIG_MAX_*_STREAMS` (1 each)
+  - `UCLIENT_PLATFORM_POSIX` only when `posix` feature enabled
+- [x] Generate Micro-CDR `config.h` with `UCDR_MACHINE_ENDIANNESS = 1` (little-endian)
+- [x] Compile 27 XRCE-DDS core files + 5 Micro-CDR files via `cc::Build` (posix adds `time.c`)
+- [x] Compile-time `_Static_assert` size verification for opaque Rust blobs
+- [x] Support `posix` / `bare-metal` feature flags (mutually exclusive)
 
-**FFI bindings (`src/lib.rs` + `src/ffi.rs`):**
-- [ ] `#![no_std]` with optional `std` feature
-- [ ] `#[repr(C)]` types: `uxrSession`, `uxrObjectId`, `uxrStreamId`, `uxrQoS_t`, `uxrCustomTransport`, `uxrCommunication`, `uxrDeliveryControl`, `ucdrBuffer`, `SampleIdentity`, `uxrFramingIO`
-- [ ] Constants: `UXR_STATUS_*`, `UXR_*_ID` (object types), `UXR_REPLACE`/`UXR_REUSE`, `UXR_DURABILITY_*`, `UXR_RELIABILITY_*`, `UXR_HISTORY_*`
-- [ ] Callback types: `uxrOnTopicFunc`, `uxrOnStatusFunc`, `uxrOnRequestFunc`, `uxrOnReplyFunc`, `open_custom_func`, `close_custom_func`, `write_custom_func`, `read_custom_func`
-- [ ] Session API: `uxr_init_session`, `uxr_create_session`, `uxr_create_session_retries`, `uxr_delete_session`, `uxr_run_session_time`, `uxr_run_session_until_all_status`, `uxr_run_session_until_data`, `uxr_flash_output_streams`
-- [ ] Callback setters: `uxr_set_status_callback`, `uxr_set_topic_callback`, `uxr_set_request_callback`, `uxr_set_reply_callback`
-- [ ] Stream API: `uxr_create_output_best_effort_stream`, `uxr_create_output_reliable_stream`, `uxr_create_input_best_effort_stream`, `uxr_create_input_reliable_stream`
-- [ ] Entity API (binary format): `uxr_buffer_create_participant_bin`, `uxr_buffer_create_topic_bin`, `uxr_buffer_create_publisher_bin`, `uxr_buffer_create_subscriber_bin`, `uxr_buffer_create_datawriter_bin`, `uxr_buffer_create_datareader_bin`, `uxr_buffer_create_requester_bin`, `uxr_buffer_create_replier_bin`
-- [ ] Data API: `uxr_buffer_topic`, `uxr_buffer_request_data`, `uxr_buffer_cancel_data`, `uxr_buffer_request`, `uxr_buffer_reply`
-- [ ] Transport API: `uxr_set_custom_transport_callbacks`, `uxr_init_custom_transport`, `uxr_close_custom_transport`
-- [ ] Object ID API: `uxr_object_id`, `uxr_stream_id`
+**FFI bindings (`src/lib.rs`):**
+- [x] `#![no_std]` with optional `std` feature
+- [x] `#[repr(C)]` transparent types: `uxrObjectId`, `uxrStreamId`, `uxrQoS_t`, `uxrDeliveryControl`, `ucdrBuffer`, `SampleIdentity` (+ sub-types `GUID_t`, `GuidPrefix_t`, `EntityId_t`, `SequenceNumber_t`)
+- [x] Opaque blob types: `uxrSession` (512 bytes), `uxrCustomTransport` (768 bytes), `uxrCommunication` (pointer-only)
+- [x] Constants: `UXR_STATUS_*` (10), `UXR_*_ID` (9 object types), `UXR_REPLACE`/`UXR_REUSE`, `UXR_DURABILITY_*`/`UXR_RELIABILITY_*`/`UXR_HISTORY_*`, delivery limits, stream types/directions
+- [x] Callback types: `uxrOnStatusFunc`, `uxrOnTopicFunc`, `uxrOnRequestFunc`, `uxrOnReplyFunc`, `open_custom_func`, `close_custom_func`, `write_custom_func`, `read_custom_func`
+- [x] ~40 extern functions: session lifecycle (5), callbacks (4), streams (5), session run (7), entity creation (9), data (6), transport (3), helpers (3)
 
 **Verification:**
-- [ ] `cargo check -p xrce-sys --features bare-metal --target thumbv7m-none-eabi` passes
-- [ ] `cargo check -p xrce-sys --features posix` passes (host target)
-- [ ] `just quality` passes
+- [x] `cargo check -p xrce-sys --features bare-metal --target thumbv7m-none-eabi` passes
+- [x] `cargo check -p xrce-sys --features posix` passes (host target)
+- [x] `just quality` passes
 
 **Acceptance criteria:**
 - Compiles 28 C source files from submodules without CMake
@@ -383,7 +378,7 @@ cortex-m = "0.7"
 ```
 
 - **34.1 → 34.2 → 34.3** complete. RMW abstraction validated with zenoh backend.
-- **34.4** is the next step — FFI bindings to XRCE-DDS Client + Micro-CDR.
+- **34.4** complete. FFI bindings to XRCE-DDS Client v3.0.1 + Micro-CDR v2.0.2.
 - **34.5 + 34.7** can be done in parallel after 34.4 (transport + platform are independent).
 - **34.6** depends on 34.4 + 34.5 (needs FFI + transport).
 - **34.8** requires all of 34.4-34.7.
