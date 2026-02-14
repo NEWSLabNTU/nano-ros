@@ -51,7 +51,7 @@ pub use zpico::{
 ))]
 pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, ShimPublisher, ShimServiceClient,
-    ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport, ZenohId,
+    ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport, ZenohId, ZenohRmw,
 };
 
 // Re-export std-only executor wake functions

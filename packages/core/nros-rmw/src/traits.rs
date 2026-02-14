@@ -477,6 +477,54 @@ impl Default for TransportConfig<'_> {
     }
 }
 
+/// Middleware-agnostic session configuration.
+///
+/// Unlike [`TransportConfig`] which carries backend-specific properties,
+/// `RmwConfig` provides a uniform interface that any RMW backend can
+/// interpret. Backends map these fields to their own connection parameters.
+///
+/// # Examples
+///
+/// ```
+/// use nros_rmw::{RmwConfig, SessionMode};
+///
+/// let config = RmwConfig {
+///     locator: "tcp/192.168.1.1:7447",
+///     mode: SessionMode::Client,
+///     domain_id: 0,
+///     node_name: "talker",
+///     namespace: "",
+/// };
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct RmwConfig<'a> {
+    /// Middleware-specific connection string.
+    ///
+    /// - zenoh: `"tcp/192.168.1.1:7447"` or `"udp/224.0.0.224:7447"`
+    /// - XRCE-DDS: `"udp/192.168.1.1:2019"`
+    pub locator: &'a str,
+    /// Session mode (zenoh: client/peer; XRCE-DDS: always client)
+    pub mode: SessionMode,
+    /// ROS 2 domain ID (maps to DDS domain or zenoh key prefix)
+    pub domain_id: u32,
+    /// Node name (e.g., `"talker"`)
+    pub node_name: &'a str,
+    /// Node namespace (e.g., `""` or `"/ns1"`)
+    pub namespace: &'a str,
+}
+
+impl Default for RmwConfig<'_> {
+    fn default() -> Self {
+        Self {
+            locator: "tcp/127.0.0.1:7447",
+            mode: SessionMode::Client,
+            domain_id: 0,
+            node_name: "node",
+            namespace: "",
+        }
+    }
+}
+
 /// Locator transport protocol
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum LocatorProtocol {
@@ -812,7 +860,10 @@ pub trait ServiceClientTrait {
     }
 }
 
-/// Transport backend trait
+/// Transport backend trait (legacy).
+///
+/// Use [`Rmw`] for new code. This trait is retained for backward compatibility
+/// with existing code that uses [`TransportConfig`] directly.
 pub trait Transport {
     /// Error type for this transport
     type Error;
@@ -821,6 +872,31 @@ pub trait Transport {
 
     /// Open a new session with the given configuration
     fn open(config: &TransportConfig) -> Result<Self::Session, Self::Error>;
+}
+
+/// Factory trait for compile-time middleware selection.
+///
+/// Embedded crates select a backend via feature flag:
+/// ```rust,ignore
+/// #[cfg(feature = "zenoh")]
+/// type DefaultRmw = nros_rmw_zenoh::ZenohRmw;
+/// ```
+///
+/// Each backend provides its own `Rmw` implementation that bridges
+/// from the middleware-agnostic [`RmwConfig`] to backend-specific
+/// initialization.
+pub trait Rmw {
+    /// Session type returned by [`open`](Rmw::open)
+    type Session: Session;
+    /// Error type for session creation
+    type Error: core::fmt::Debug;
+
+    /// Open a new middleware session with the given configuration.
+    ///
+    /// The backend maps [`RmwConfig`] fields to its own connection
+    /// parameters (e.g., zenoh locator and session mode, XRCE-DDS
+    /// agent address).
+    fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error>;
 }
 
 #[cfg(test)]
@@ -1088,5 +1164,49 @@ mod tests {
     #[test]
     fn test_validate_unknown_protocol() {
         assert!(validate_locator("udp/127.0.0.1:7447").is_err());
+    }
+
+    // --- RmwConfig Tests ---
+
+    #[test]
+    fn test_rmw_config_default() {
+        let config = RmwConfig::default();
+        assert_eq!(config.locator, "tcp/127.0.0.1:7447");
+        assert_eq!(config.mode, SessionMode::Client);
+        assert_eq!(config.domain_id, 0);
+        assert_eq!(config.node_name, "node");
+        assert_eq!(config.namespace, "");
+    }
+
+    #[test]
+    fn test_rmw_config_custom() {
+        let config = RmwConfig {
+            locator: "tcp/192.168.1.1:7447",
+            mode: SessionMode::Peer,
+            domain_id: 42,
+            node_name: "talker",
+            namespace: "/ns1",
+        };
+        assert_eq!(config.locator, "tcp/192.168.1.1:7447");
+        assert_eq!(config.mode, SessionMode::Peer);
+        assert_eq!(config.domain_id, 42);
+        assert_eq!(config.node_name, "talker");
+        assert_eq!(config.namespace, "/ns1");
+    }
+
+    #[test]
+    fn test_rmw_config_is_copy() {
+        let config = RmwConfig::default();
+        let config2 = config; // Copy
+        assert_eq!(config.locator, config2.locator);
+        assert_eq!(config.domain_id, config2.domain_id);
+    }
+
+    #[test]
+    fn test_rmw_config_clone() {
+        let config = RmwConfig::default();
+        let cloned = RmwConfig { ..config };
+        assert_eq!(cloned.locator, config.locator);
+        assert_eq!(cloned.node_name, config.node_name);
     }
 }

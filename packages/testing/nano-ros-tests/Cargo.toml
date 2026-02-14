@@ -26,9 +26,14 @@ libc = "0.2"
 nros-core = { path = "../../core/nros-core", optional = true }
 nros-serdes = { path = "../../core/nros-serdes", optional = true }
 
+# RMW abstraction layer (optional, for in-process integration tests)
+nros-rmw = { path = "../../core/nros-rmw", optional = true }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix", "std"], optional = true }
+
 [features]
 default = []
 types = ["nros-core", "nros-serdes"]
+rmw = ["nros-rmw", "nros-rmw-zenoh", "nros-core", "nros-serdes"]
 
 [lib]
 name = "nano_ros_tests"
@@ -62,3 +67,8 @@ path = "tests/actions.rs"
 [[test]]
 name = "c_api"
 path = "tests/c_api.rs"
+
+[[test]]
+name = "rmw"
+path = "tests/rmw.rs"
+required-features = ["rmw"]

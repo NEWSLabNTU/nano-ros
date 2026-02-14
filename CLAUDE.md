@@ -197,8 +197,8 @@ just test-integration verbose   # Verbose: all test output streamed live
 - `.config/nextest.toml` — nextest profiles, JUnit output, test groups (e.g., zephyr max-threads=1)
 - `tests/run-test.sh` — wrapper for non-cargo tests
 
-### Temporary Scripts
-- Create temporary scripts in `$project/tmp/` directory (not `/tmp`)
+### Temporary Files
+- Create all temporary files (scripts, test data, scratch work) in `$project/tmp/` directory (not `/tmp`)
 - Use Write/Edit tools to create files (avoid cat + heredoc patterns)
 - The `tmp/` directory is git-ignored and can be cleaned freely
 

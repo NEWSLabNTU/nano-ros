@@ -46,8 +46,9 @@ type AtomicSeqCounter = core::sync::atomic::AtomicI64;
 type AtomicSeqCounter = core::sync::atomic::AtomicI32;
 
 use nros_rmw::{
-    Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait,
-    Session, SessionMode, Subscriber, TopicInfo, Transport, TransportConfig, TransportError,
+    Publisher, QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest,
+    ServiceServerTrait, Session, SessionMode, Subscriber, TopicInfo, Transport, TransportConfig,
+    TransportError,
 };
 
 use crate::keyexpr::{QosKeyExpr, ServiceKeyExpr, TopicKeyExpr};
@@ -494,6 +495,46 @@ impl Transport for ShimTransport {
 
     fn open(config: &TransportConfig) -> Result<Self::Session, Self::Error> {
         ShimSession::new(config)
+    }
+}
+
+// ============================================================================
+// ZenohRmw
+// ============================================================================
+
+/// Zenoh-pico RMW backend for compile-time middleware selection.
+///
+/// Implements the [`Rmw`] factory trait, bridging from the
+/// middleware-agnostic [`RmwConfig`] to zenoh-pico session initialization.
+///
+/// # Example
+///
+/// ```ignore
+/// use nros_rmw::{Rmw, RmwConfig, SessionMode};
+/// use nros_rmw_zenoh::ZenohRmw;
+///
+/// let config = RmwConfig {
+///     locator: "tcp/192.168.1.1:7447",
+///     mode: SessionMode::Client,
+///     domain_id: 0,
+///     node_name: "talker",
+///     namespace: "",
+/// };
+/// let session = ZenohRmw::open(&config).unwrap();
+/// ```
+pub struct ZenohRmw;
+
+impl Rmw for ZenohRmw {
+    type Session = ShimSession;
+    type Error = TransportError;
+
+    fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error> {
+        let transport_config = TransportConfig {
+            locator: Some(config.locator),
+            mode: config.mode,
+            properties: &[],
+        };
+        ShimSession::new(&transport_config)
     }
 }
 

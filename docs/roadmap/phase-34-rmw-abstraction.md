@@ -2,7 +2,7 @@
 
 **Status: Not Started**
 
-**Prerequisites:** Phase 33 (crate rename) must be complete — this phase uses `nros-*` / `zpico-*` names.
+**Prerequisites:** Phase 33.1 (core rename) and 33.2 (transport split) are complete. Phase 33.3 (platform crate split) is in progress in a separate work tree but is NOT a blocker — Phase 34 work on `nros-rmw` and `nros-rmw-zenoh` is independent of the platform crate restructuring.
 
 **Design docs:**
 - `docs/design/rmw-layer-design.md` — Overall architecture and RMW layer design
@@ -11,220 +11,245 @@
 
 ## Goal
 
-1. Formalize the `nros-rmw` trait interface so board crates (`nros-qemu`, etc.) are truly middleware-agnostic
-2. Refactor board crates to use `nros-rmw` traits instead of calling `zenoh_shim_*` FFI directly
-3. Implement XRCE-DDS as the second RMW backend, proving the abstraction works
+1. Add a factory trait (`Rmw`) to `nros-rmw` so middleware backends are compile-time selectable
+2. Make `nros-rmw-zenoh` implement the factory trait
+3. Refactor platform/board crates to use `nros-rmw` traits instead of calling `zpico-sys` FFI directly
+4. Implement XRCE-DDS as the second RMW backend, proving the abstraction works
 
-## Current State
+## Current State (post-Phase 33.2)
 
-Board crates call zenoh-pico FFI directly in two ways:
+**What exists:**
+- `nros-rmw` (`packages/core/nros-rmw/`) — has `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`, `Transport` traits, plus `TopicInfo`, `ServiceInfo`, `ActionInfo`, `QosSettings`, `TransportConfig`, `TransportError`
+- `nros-rmw-zenoh` (`packages/zpico/nros-rmw-zenoh/`) — has `shim.rs` (implements `nros-rmw` traits), `zpico.rs` (safe wrapper over `zpico-sys` FFI), `keyexpr.rs` (zenoh key expression formatting)
 
-1. **`zenoh_shim_*` FFI calls** (~10 functions in `node.rs`): `zenoh_shim_open_session`, `zenoh_shim_declare_publisher`, `zenoh_shim_put`, etc. — bypasses any trait abstraction
-2. **Keyexpr formatting** (~20 lines in `node.rs`): formats zenoh-specific key expressions like `<domain>/<topic>/<type>/TypeHashNotSupported`
-
-Until these are replaced with trait-based calls through `nros-rmw`, no alternative middleware can work.
+**What's missing:**
+- No `Rmw` factory trait — can't select middleware at compile time
+- No `RmwConfig` type — `TransportConfig` is zenoh-specific (locator strings, session modes)
+- Platform crates (`nano-ros-platform-{qemu,stm32f4,esp32,esp32-qemu}`) bypass `nros-rmw` entirely and call `zpico_sys::*` FFI directly in `node.rs`, `publisher.rs`, `subscriber.rs`
 
 ## Steps
 
-### 34.1: Formalize `nros-rmw` trait interface
+---
 
-Add factory traits to `nros-rmw/src/traits.rs` (design in `rmw-layer-design.md` "RMW Trait Changes"):
+### 34.1: Add `Rmw` factory trait and `RmwConfig` to `nros-rmw`
 
+**Files:** `packages/core/nros-rmw/src/traits.rs`
+
+- [x] Define `Rmw` factory trait with associated `Session` type
+- [x] Define `RmwConfig` struct (middleware-agnostic connection parameters)
+- [x] Reuse existing `TransportError` (no new error type needed — backends already use it)
+- [x] Add unit tests for `RmwConfig` construction and validation
+- [x] `just quality` passes
+
+**`Rmw` trait design:**
 ```rust
-/// Factory for creating middleware sessions
+/// Factory trait for compile-time middleware selection.
+///
+/// Embedded crates select a backend via feature flag:
+/// ```rust
+/// #[cfg(feature = "zenoh")]
+/// type DefaultRmw = nros_rmw_zenoh::ZenohRmw;
+/// ```
 pub trait Rmw {
     type Session: Session;
-    fn open(config: &RmwConfig) -> Result<Self::Session, RmwError>;
-}
+    type Error: core::fmt::Debug;
 
-/// Middleware session
-pub trait Session {
-    type Publisher: Publisher;
-    type Subscriber: Subscriber;
-    type ServiceServer: ServiceServer;
-    type ServiceClient: ServiceClient;
-
-    fn create_publisher(&mut self, topic: &TopicInfo, qos: &QosSettings)
-        -> Result<Self::Publisher, RmwError>;
-    fn create_subscriber(&mut self, topic: &TopicInfo, qos: &QosSettings)
-        -> Result<Self::Subscriber, RmwError>;
-    fn create_service_server(&mut self, service: &ServiceInfo, qos: &QosSettings)
-        -> Result<Self::ServiceServer, RmwError>;
-    fn create_service_client(&mut self, service: &ServiceInfo, qos: &QosSettings)
-        -> Result<Self::ServiceClient, RmwError>;
-    fn spin_once(&self, timeout_ms: u32) -> Result<(), RmwError>;
-    fn is_open(&self) -> bool;
+    /// Open a new middleware session with the given configuration
+    fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error>;
 }
 ```
 
-Key design decisions from `rmw-h-analysis.md`:
-- **No heap allocation** in trait methods (unlike rmw.h's `rmw_create_*` returning heap pointers)
-- **Non-blocking `spin_once`** instead of rmw.h's blocking `rmw_wait`
-- **Raw bytes interface** (`publish_raw(&[u8])`, `try_recv_raw(&mut [u8])`) — serialization is above the RMW layer
-- **Minimal QoS** (reliability, durability, history depth) — not rmw.h's full DDS QoS model
-- **No graph introspection** in core traits — requires `alloc`, optional for embedded
-
-Also define:
-- `RmwConfig` — generic middleware configuration (must accommodate both zenoh locator strings and XRCE-DDS agent IP+port)
-- `RmwError` — error enum covering both backends
-- `TopicInfo`, `ServiceInfo` — middleware-agnostic, no `to_key()` methods (keyexpr formatting stays in `nros-rmw-zenoh`)
-
-### 34.2: Implement `nros-rmw-zenoh` traits
-
-Make `nros-rmw-zenoh` implement the formalized `Rmw` and `Session` traits from 34.1:
-
+**`RmwConfig` design:**
 ```rust
-// nros-rmw-zenoh/src/lib.rs
-pub struct ZenohRmw;
-pub struct ZenohSession { /* wraps zpico-sys session handle */ }
-pub struct ZenohPublisher { /* wraps zpico-sys publisher handle */ }
-// ...
-
-impl Rmw for ZenohRmw {
-    type Session = ZenohSession;
-    fn open(config: &RmwConfig) -> Result<ZenohSession, RmwError> {
-        // Parse zenoh locator from config
-        // Call zenoh_shim_open_session
-    }
-}
-
-impl Session for ZenohSession {
-    type Publisher = ZenohPublisher;
-    // ...
-    fn create_publisher(&mut self, topic: &TopicInfo, qos: &QosSettings)
-        -> Result<ZenohPublisher, RmwError> {
-        // Format zenoh keyexpr from TopicInfo
-        // Call zenoh_shim_declare_publisher
-    }
+pub struct RmwConfig<'a> {
+    /// Middleware-specific connection string
+    /// zenoh: "tcp/192.168.1.1:7447"
+    /// XRCE-DDS: "udp/192.168.1.1:2019"
+    pub locator: &'a str,
+    /// Session mode (zenoh: "client"/"peer", XRCE-DDS: ignored)
+    pub mode: SessionMode,
+    /// ROS 2 domain ID
+    pub domain_id: u32,
+    /// Node name
+    pub node_name: &'a str,
+    /// Node namespace
+    pub namespace: &'a str,
 }
 ```
 
-This absorbs the `zenoh_shim_*` calls that are currently scattered in board crate `node.rs` files.
+**Acceptance criteria:**
+- `Rmw` trait compiles on `no_std` without `alloc`
+- `RmwConfig` is `#[derive(Debug, Clone)]` and constructible with `const fn`
+- Existing `Transport` trait remains for backward compatibility (can be deprecated later)
+- No breaking changes to existing `nros-rmw` public API
 
-### 34.3: Refactor board crates to use `nros-rmw` traits
+---
 
-Replace direct `zenoh_shim_*` FFI in each board crate with trait-based calls:
+### 34.2: Implement `Rmw` trait in `nros-rmw-zenoh`
 
-**Before (current):**
-```rust
-// nros-qemu/src/node.rs
-unsafe { zenoh_shim_open_session(locator.as_ptr(), mode) };
-let key = format_keyexpr(domain, topic, type_name);  // zenoh-specific
-unsafe { zenoh_shim_declare_publisher(key.as_ptr()) };
-unsafe { zenoh_shim_put(publisher_id, data.as_ptr(), data.len()) };
-```
+**Files:** `packages/zpico/nros-rmw-zenoh/src/lib.rs`, `shim.rs`
 
-**After:**
-```rust
-// nros-qemu/src/node.rs
-let session = ZenohRmw::open(&config)?;
-let publisher = session.create_publisher(&topic_info, &qos)?;
-publisher.publish_raw(data)?;
-```
+- [x] Create `ZenohRmw` unit struct implementing `Rmw` trait
+- [x] `ZenohRmw::open()` parses `RmwConfig`, calls existing session open logic
+- [x] Verify existing `ShimSession` satisfies `Session` associated type bound
+- [x] Ensure `ShimPublisher`, `ShimSubscriber`, etc. satisfy their respective trait bounds
+- [x] Add integration test: `ZenohRmw::open()` → create publisher → publish → close
+- [x] `just quality` passes
 
-Board crates become generic over `R: Rmw`:
-```rust
-pub struct Node<R: Rmw> {
-    session: R::Session,
-    // ...
-}
-```
+**Key constraint:** `ZenohRmw::open()` must bridge from `RmwConfig` (middleware-agnostic) to the zenoh-specific initialization that currently lives in `shim.rs`. The zenoh locator, session mode, and domain ID must be extracted from `RmwConfig` and passed to `zpico_sys`.
 
-Or, for embedded (no dynamic dispatch), use a concrete type alias:
-```rust
-#[cfg(feature = "zenoh")]
-type DefaultRmw = nros_rmw_zenoh::ZenohRmw;
-#[cfg(feature = "xrce")]
-type DefaultRmw = nros_rmw_xrce::XrceRmw;
-```
+**Acceptance criteria:**
+- `ZenohRmw` implements `Rmw` and the existing `Transport` trait
+- Existing code that uses `ShimTransport::open()` continues to work
+- All existing integration tests pass unchanged
+- `nros-rmw-zenoh` re-exports `ZenohRmw` as a public type
 
-Each board crate:
-- Remove all `zenoh_shim_*` FFI calls from `node.rs`
-- Remove keyexpr formatting code
-- Use `nros-rmw` trait methods exclusively
-- Select middleware backend via Cargo feature flag
+---
+
+### 34.3: Refactor platform crates to use `nros-rmw` traits
+
+**Files:** `packages/platform/nano-ros-platform-{qemu,stm32f4,esp32,esp32-qemu}/src/{node,publisher,subscriber}.rs`
+
+> **Note:** This step depends on Phase 33.3 (platform crate split into `zpico-platform-*` + `nros-*`). If 33.3 is not yet complete, this step refactors the existing unsplit platform crates. If 33.3 is complete, this step refactors the split `nros-*` board crates.
+
+**Per platform crate:**
+- [ ] Replace `zpico_sys::zenoh_shim_open_session()` with `ZenohRmw::open(&config)`
+- [ ] Replace `zpico_sys::zenoh_shim_declare_publisher()` with `session.create_publisher()`
+- [ ] Replace `zpico_sys::zenoh_shim_put()` with `publisher.publish_raw()`
+- [ ] Replace `zpico_sys::zenoh_shim_declare_subscriber()` with `session.create_subscriber()`
+- [ ] Remove all zenoh-specific keyexpr formatting from `node.rs` (now in `nros-rmw-zenoh/keyexpr.rs`)
+- [ ] Update `Cargo.toml`: add `nros-rmw` + `nros-rmw-zenoh` deps, remove direct `zpico-sys` dep
+- [ ] Platform-specific `Node` type uses concrete `ZenohRmw` (no dynamic dispatch, no generics needed for single-backend boards)
+
+**QEMU platform crate (refactor first — most tested):**
+- [ ] Refactor `nano-ros-platform-qemu/src/node.rs`
+- [ ] Refactor `nano-ros-platform-qemu/src/publisher.rs`
+- [ ] Refactor `nano-ros-platform-qemu/src/subscriber.rs`
+- [ ] All QEMU examples build and pass tests
+
+**STM32F4 platform crate:**
+- [ ] Refactor `nano-ros-platform-stm32f4/src/{node,publisher,subscriber}.rs`
+- [ ] STM32F4 examples build
+
+**ESP32 platform crates:**
+- [ ] Refactor `nano-ros-platform-esp32/src/{node,publisher,subscriber}.rs`
+- [ ] Refactor `nano-ros-platform-esp32-qemu/src/{node,publisher,subscriber}.rs`
+- [ ] ESP32 examples build
+
+**Final verification:**
+- [ ] `just quality` passes
+- [ ] `just test-qemu` passes (if QEMU available)
+- [ ] No direct `zpico_sys` imports remain in any platform crate
+
+**Acceptance criteria:**
+- All platform crates go through `nros-rmw` trait methods exclusively
+- `zpico-sys` is an implementation detail of `nros-rmw-zenoh`, not visible to platform crates
+- Adding a second middleware backend would require only changing a Cargo feature flag and `type DefaultRmw = ...` in each board crate — no FFI call changes
+
+---
 
 ### 34.4: Create `xrce-sys` (FFI bindings)
 
-Create FFI bindings to the [Micro-XRCE-DDS-Client](https://github.com/eProsima/Micro-XRCE-DDS-Client) C library.
+**Directory:** `packages/xrce/xrce-sys/`
 
-```
-packages/xrce/xrce-sys/
-  Cargo.toml
-  build.rs           # Compile Micro-XRCE-DDS-Client from submodule
-  src/lib.rs          # Raw FFI bindings (#[repr(C)] types, extern "C" functions)
-  Micro-XRCE-DDS-Client/  # Git submodule
-```
+- [ ] Add [Micro-XRCE-DDS-Client](https://github.com/eProsima/Micro-XRCE-DDS-Client) as git submodule
+- [ ] Write `build.rs` to compile client C library with CMake
+- [ ] Write `src/lib.rs` with raw FFI bindings (`#[repr(C)]` types, `unsafe extern "C"` functions)
+- [ ] Bind session API: `uxr_init_session`, `uxr_create_session`, `uxr_delete_session`, `uxr_run_session_time`
+- [ ] Bind stream API: `uxr_create_output_reliable_stream`, `uxr_create_input_reliable_stream`
+- [ ] Bind entity API: `uxr_buffer_create_participant_bin`, `_topic_bin`, `_publisher_bin`, `_datawriter_bin`, `_subscriber_bin`, `_datareader_bin`
+- [ ] Bind data API: `uxr_prepare_output_stream`, `uxr_buffer_request_data`, `uxr_set_topic_callback`
+- [ ] Bind service API: `uxr_buffer_create_requester_bin`, `uxr_buffer_create_replier_bin`
+- [ ] Builds for `thumbv7m-none-eabi` (QEMU) and host targets
+- [ ] `cargo check -p xrce-sys` passes
 
-Key API to bind:
-- Session: `uxr_init_session`, `uxr_create_session`, `uxr_delete_session`, `uxr_run_session_time`
-- Streams: `uxr_create_output_reliable_stream`, `uxr_create_input_reliable_stream`
-- Entities: `uxr_buffer_create_participant_bin`, `_topic_bin`, `_publisher_bin`, `_datawriter_bin`, `_subscriber_bin`, `_datareader_bin`
-- Data: `uxr_prepare_output_stream`, `uxr_buffer_request_data`, `uxr_set_topic_callback`
-- Services: `uxr_buffer_create_requester_bin`, `uxr_buffer_create_replier_bin`, `uxr_buffer_request`, `uxr_buffer_reply`
+**Acceptance criteria:**
+- Compiles C library from submodule without external dependencies
+- All 15+ core XRCE-DDS C functions are bindable from Rust
+- No heap allocation required by the C library itself (static allocation mode)
+
+---
 
 ### 34.5: Create `xrce-smoltcp` (UDP transport)
 
-Implement XRCE-DDS custom transport callbacks using smoltcp UDP sockets.
+**Directory:** `packages/xrce/xrce-smoltcp/`
 
-```
-packages/xrce/xrce-smoltcp/
-  Cargo.toml
-  src/lib.rs          # 4 callbacks: open, close, read, write
-```
+- [ ] Implement 4 XRCE-DDS custom transport callbacks using smoltcp UDP sockets:
+  - `open_func` → open UDP socket
+  - `close_func` → close UDP socket
+  - `write_func` → send UDP datagram
+  - `read_func` → receive UDP datagram with timeout
+- [ ] Static socket storage (no heap)
+- [ ] Builds for `thumbv7m-none-eabi`
+- [ ] Unit test with mock UDP socket
 
-XRCE-DDS custom transport interface (4 callbacks):
-```c
-open_func  → open UDP socket via smoltcp
-close_func → close UDP socket
-write_func → send UDP datagram
-read_func  → receive UDP datagram with timeout
-```
+**Acceptance criteria:**
+- All 4 callbacks compile and link against `xrce-sys`
+- UDP transport works on smoltcp `0.12` (same version as zpico-smoltcp)
+- No heap allocation
 
-This is much simpler than `zpico-smoltcp` (8+ TCP socket management functions) because XRCE-DDS uses UDP (connectionless) rather than TCP.
+---
 
 ### 34.6: Create `nros-rmw-xrce` (RMW trait implementation)
 
-Implement `nros-rmw` traits for XRCE-DDS.
+**Directory:** `packages/xrce/nros-rmw-xrce/`
 
-```
-packages/xrce/nros-rmw-xrce/
-  Cargo.toml
-  src/
-    lib.rs            # XrceRmw, XrceSession
-    session.rs        # Session management + stream creation
-    publisher.rs      # DDS entity hierarchy (participant + topic + publisher + datawriter)
-    subscriber.rs     # Datareader + request_data + callback buffer
-    service.rs        # Requester/replier patterns
-```
+- [ ] `XrceRmw` struct implementing `Rmw` trait
+- [ ] `XrceSession` implementing `Session` trait
+  - Manages DDS participant, wraps `uxr_run_session_time` in `spin_once`
+- [ ] `XrcePublisher` implementing `Publisher` trait
+  - Orchestrates 4 XRCE calls: participant → topic → publisher → datawriter
+  - `publish_raw()` → `uxr_prepare_output_stream`
+- [ ] `XrceSubscriber` implementing `Subscriber` trait
+  - Manages datareader + static receive buffer
+  - `try_recv_raw()` reads from callback buffer
+  - Re-requests data after processing (`uxr_buffer_request_data`)
+- [ ] `XrceServiceServer` implementing `ServiceServerTrait`
+  - Uses replier pattern
+- [ ] `XrceServiceClient` implementing `ServiceClientTrait`
+  - Uses requester pattern
+- [ ] All types compile on `no_std` without `alloc`
+- [ ] Unit tests for entity creation and session lifecycle
 
-Key implementation challenges:
-1. **Multi-step entity creation**: `create_publisher` must orchestrate 4 XRCE calls internally (participant, topic, publisher, datawriter)
-2. **Callback-based subscription**: XRCE delivers data via `uxr_set_topic_callback`. Need to buffer received data for `try_recv_raw`
-3. **Explicit data request**: Must call `uxr_buffer_request_data` after creating datareader, and re-request after processing
-4. **Session event loop**: `spin_once` maps to `uxr_run_session_time(timeout)` which processes both pub and sub
+**Acceptance criteria:**
+- Implements all 5 `nros-rmw` traits (`Rmw`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`)
+- Platform crate can swap `ZenohRmw` → `XrceRmw` with only a feature flag change
+- No heap allocation
+
+---
 
 ### 34.7: Create `xrce-platform-qemu` (platform support)
 
-Minimal platform crate for XRCE-DDS on QEMU. Much smaller than `zpico-platform-qemu` because XRCE-DDS needs only ~6 platform symbols vs zenoh-pico's 55.
+**Directory:** `packages/xrce/xrce-platform-qemu/`
 
-```
-packages/xrce/xrce-platform-qemu/
-  Cargo.toml
-  src/lib.rs          # clock_gettime (for session sync)
-```
+- [ ] Implement ~6 platform symbols needed by XRCE-DDS client:
+  - `clock_gettime` (for session synchronization)
+  - Any other platform-required C functions
+- [ ] Much smaller than zpico-platform-qemu (6 vs 55 symbols)
+- [ ] Builds for `thumbv7m-none-eabi`
+
+**Acceptance criteria:**
+- XRCE-DDS client links and initializes on QEMU MPS2-AN385
+
+---
 
 ### 34.8: Integration testing
 
-Test XRCE-DDS backend with the [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent):
+- [ ] Set up [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) build
+- [ ] Create `XrceAgent` fixture in `nano-ros-tests/src/fixtures/`
+- [ ] Create `nano-ros-tests/tests/xrce.rs` test suite
+- [ ] Test: QEMU XRCE publisher → Agent → verify data arrives
+- [ ] Test: Agent → QEMU XRCE subscriber → verify data received
+- [ ] Test: XRCE service server/client roundtrip
+- [ ] Test: Cross-backend interop (zenoh ↔ XRCE via DDS bridge) — if feasible
+- [ ] Add `just test-xrce` recipe to justfile
+- [ ] Document Agent setup in `tests/README.md`
 
-1. **QEMU + Agent**: Run XRCE agent on host, QEMU board crate connects via UDP
-2. **Cross-backend**: nros (zenoh) ↔ nros (XRCE-DDS) via DDS bridge
-3. **ROS 2 interop**: micro-ROS Agent bridges to ROS 2 DDS network
+**Acceptance criteria:**
+- At least pub/sub and service roundtrip work end-to-end on QEMU
+- Tests are automated (no manual Agent setup during `just test-xrce`)
 
-Test infrastructure additions:
-- `XrceAgent` fixture in `nano-ros-tests/src/fixtures/` — manages agent process lifecycle
-- New test suite: `nano-ros-tests/tests/xrce.rs`
+---
 
 ## Platform Requirements Comparison
 
@@ -237,50 +262,42 @@ Test infrastructure additions:
 | Transport impl complexity | 8+ TCP functions | 4 UDP callbacks |
 | Bridge process | zenohd (optional for peer mode) | Agent (**mandatory**) |
 
-## `RmwConfig` Design
+## Dependency on Phase 33.3
 
-Must accommodate both backends:
+Phase 33.3 splits each platform crate into `zpico-platform-*` (FFI symbols) + `nros-*` (user API). Phase 34.3 (refactor to use traits) applies to whichever shape the platform crates are in:
 
-```rust
-pub struct RmwConfig<'a> {
-    /// Middleware-specific connection string
-    /// zenoh: "tcp/192.168.1.1:7447"
-    /// XRCE-DDS: "udp/192.168.1.1:2019" (agent address)
-    pub locator: &'a str,
+| Phase 33.3 status | Phase 34.3 target |
+|---|---|
+| **Not started** | Refactor existing `nano-ros-platform-*` crates in-place |
+| **Complete** | Refactor split `nros-*` board crates (cleaner, less code) |
 
-    /// Session mode (middleware-interpreted)
-    /// zenoh: "client" or "peer"
-    /// XRCE-DDS: ignored (always client)
-    pub mode: &'a str,
+Either way, the refactoring work is the same: replace `zpico_sys::*` calls with `nros-rmw` trait calls. The split just determines file locations.
 
-    /// ROS 2 domain ID
-    pub domain_id: u32,
+## Execution Order
 
-    /// Node name
-    pub node_name: &'a str,
-
-    /// Node namespace
-    pub namespace: &'a str,
-}
 ```
+34.1 (Rmw trait) ──→ 34.2 (zenoh impl) ──→ 34.3 (platform refactor)
+                                               ↓
+                     34.4 (xrce-sys) ──→ 34.5 (xrce-smoltcp) ──→ 34.6 (nros-rmw-xrce)
+                                                                        ↓
+                                         34.7 (xrce-platform-qemu) ──→ 34.8 (integration tests)
+```
+
+- **34.1 → 34.2 → 34.3** is the critical path. Validates the abstraction with the existing backend.
+- **34.4 → 34.7** can start in parallel once 34.1 stabilizes the trait interface.
+- **34.8** requires both paths to converge.
+- **34.1 and 34.2 are independent of Phase 33.3** — they modify `nros-rmw` and `nros-rmw-zenoh` which are already split.
 
 ## Estimated Effort
 
-| Step | Description | Effort |
-|------|-------------|--------|
-| 34.1 | Formalize nros-rmw traits | 3 days |
-| 34.2 | Implement nros-rmw-zenoh traits | 1 week |
-| 34.3 | Refactor board crates | 1 week |
-| 34.4 | xrce-sys FFI bindings | 1 week |
-| 34.5 | xrce-smoltcp UDP transport | 3 days |
-| 34.6 | nros-rmw-xrce implementation | 2 weeks |
-| 34.7 | xrce-platform-qemu | 2 days |
-| 34.8 | Integration testing | 1 week |
-| **Total** | | **~7-8 weeks** |
-
-## Ordering Notes
-
-- **34.1-34.3 first**: Formalize traits and refactor board crates before starting XRCE-DDS. This validates the abstraction with the existing zenoh backend.
-- **34.4-34.7 independent**: XRCE-DDS crates can be developed in parallel once traits are stable.
-- **34.3 is the hardest step**: Board crates have deep zenoh assumptions. Must handle both `zenoh_shim_*` FFI calls and keyexpr formatting.
-- **34.8 requires external infrastructure**: Micro-XRCE-DDS Agent must be built and available in CI.
+| Step | Description | Effort | Parallelizable |
+|------|-------------|--------|----------------|
+| 34.1 | Add Rmw trait + RmwConfig | 2-3 days | No (foundation) |
+| 34.2 | Implement ZenohRmw | 3-5 days | After 34.1 |
+| 34.3 | Refactor 4 platform crates | 1 week | After 34.2 |
+| 34.4 | xrce-sys FFI bindings | 1 week | After 34.1 |
+| 34.5 | xrce-smoltcp UDP transport | 3 days | After 34.4 |
+| 34.6 | nros-rmw-xrce implementation | 2 weeks | After 34.1 + 34.4 |
+| 34.7 | xrce-platform-qemu | 2 days | After 34.5 |
+| 34.8 | Integration testing | 1 week | After 34.3 + 34.6 |
+| **Total** | | **~7-8 weeks** | |

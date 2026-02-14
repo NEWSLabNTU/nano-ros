@@ -902,6 +902,16 @@ test-integration verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run RMW abstraction integration tests (requires zenohd)
+test-rmw verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nano-ros-tests --test rmw --features rmw --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # =============================================================================
 # Zephyr Tests (requires west workspace + bridge network)
 # =============================================================================

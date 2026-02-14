@@ -467,6 +467,8 @@ dependencies = [
  "duct",
  "libc",
  "nros-core",
+ "nros-rmw",
+ "nros-rmw-zenoh",
  "nros-serdes",
  "once_cell",
  "parking_lot",

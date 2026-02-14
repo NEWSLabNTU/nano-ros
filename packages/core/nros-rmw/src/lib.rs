@@ -29,7 +29,7 @@ pub mod traits;
 // Re-export main types
 pub use traits::{
     ActionInfo, LocatorProtocol, Publisher, QosDurabilityPolicy, QosHistoryPolicy,
-    QosReliabilityPolicy, QosSettings, ServiceClientTrait, ServiceInfo, ServiceRequest,
-    ServiceServerTrait, Session, SessionMode, Subscriber, TopicInfo, Transport, TransportConfig,
-    TransportError, locator_protocol, validate_locator,
+    QosReliabilityPolicy, QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceInfo,
+    ServiceRequest, ServiceServerTrait, Session, SessionMode, Subscriber, TopicInfo, Transport,
+    TransportConfig, TransportError, locator_protocol, validate_locator,
 };
