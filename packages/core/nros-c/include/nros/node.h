@@ -10,9 +10,9 @@
 #ifndef NANO_ROS_NODE_H
 #define NANO_ROS_NODE_H
 
-#include "nano_ros/types.h"
-#include "nano_ros/visibility.h"
-#include "nano_ros/init.h"
+#include "nros/types.h"
+#include "nros/visibility.h"
+#include "nros/init.h"
 
 #ifdef __cplusplus
 extern "C" {

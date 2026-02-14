@@ -12,7 +12,7 @@ Imported Targets
 
 This module provides the following imported target:
 
-``nano_ros_c::nano_ros_c``
+``nros_c::nros_c``
   The nros-c library (static).
 
 Result Variables
@@ -51,7 +51,7 @@ endif()
 
 # Find include directory (look for modular header structure)
 find_path(NanoRosC_INCLUDE_DIR
-  NAMES nano_ros/types.h
+  NAMES nros/types.h
   HINTS
     "${NANO_ROS_ROOT}/packages/core/nros-c/include"
     "${CMAKE_INSTALL_PREFIX}/include"
@@ -76,20 +76,20 @@ if(NanoRosC_FOUND)
   set(NanoRosC_INCLUDE_DIRS "${NanoRosC_INCLUDE_DIR}")
   set(NanoRosC_LIBRARIES "${NanoRosC_LIBRARY}")
 
-  if(NOT TARGET nano_ros_c::nano_ros_c)
-    add_library(nano_ros_c::nano_ros_c STATIC IMPORTED)
-    set_target_properties(nano_ros_c::nano_ros_c PROPERTIES
+  if(NOT TARGET nros_c::nros_c)
+    add_library(nros_c::nros_c STATIC IMPORTED)
+    set_target_properties(nros_c::nros_c PROPERTIES
       IMPORTED_LOCATION "${NanoRosC_LIBRARY}"
       INTERFACE_INCLUDE_DIRECTORIES "${NanoRosC_INCLUDE_DIR}"
     )
 
     # Platform-specific link dependencies
     if(UNIX AND NOT APPLE)
-      set_property(TARGET nano_ros_c::nano_ros_c APPEND PROPERTY
+      set_property(TARGET nros_c::nros_c APPEND PROPERTY
         INTERFACE_LINK_LIBRARIES pthread dl m
       )
     elseif(APPLE)
-      set_property(TARGET nano_ros_c::nano_ros_c APPEND PROPERTY
+      set_property(TARGET nros_c::nros_c APPEND PROPERTY
         INTERFACE_LINK_LIBRARIES pthread dl m "-framework Security"
       )
     endif()

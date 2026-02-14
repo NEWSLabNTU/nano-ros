@@ -1,6 +1,6 @@
 //! Build script for nros-c
 //!
-//! The C headers in include/nano_ros/ are manually maintained.
+//! The C headers in include/nros/ are manually maintained.
 //! No code generation is needed at build time.
 
 fn main() {

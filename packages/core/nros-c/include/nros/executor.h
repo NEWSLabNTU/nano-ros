@@ -10,13 +10,13 @@
 #ifndef NANO_ROS_EXECUTOR_H
 #define NANO_ROS_EXECUTOR_H
 
-#include "nano_ros/types.h"
-#include "nano_ros/visibility.h"
-#include "nano_ros/init.h"
-#include "nano_ros/subscription.h"
-#include "nano_ros/timer.h"
-#include "nano_ros/service.h"
-#include "nano_ros/guard_condition.h"
+#include "nros/types.h"
+#include "nros/visibility.h"
+#include "nros/init.h"
+#include "nros/subscription.h"
+#include "nros/timer.h"
+#include "nros/service.h"
+#include "nros/guard_condition.h"
 
 #ifdef __cplusplus
 extern "C" {

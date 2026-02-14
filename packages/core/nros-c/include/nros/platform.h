@@ -38,13 +38,13 @@ extern "C" {
 // ============================================================================
 
 #if defined(NANO_ROS_PLATFORM_POSIX)
-    #include "nano_ros/platform/posix.h"
+    #include "nros/platform/posix.h"
 #elif defined(NANO_ROS_PLATFORM_ZEPHYR)
-    #include "nano_ros/platform/zephyr.h"
+    #include "nros/platform/zephyr.h"
 #elif defined(NANO_ROS_PLATFORM_FREERTOS)
-    #include "nano_ros/platform/freertos.h"
+    #include "nros/platform/freertos.h"
 #elif defined(NANO_ROS_PLATFORM_BAREMETAL)
-    #include "nano_ros/platform/baremetal.h"
+    #include "nros/platform/baremetal.h"
 #elif defined(NANO_ROS_PLATFORM_CUSTOM)
     // User must implement all platform functions externally
 #else
@@ -52,7 +52,7 @@ extern "C" {
     #ifndef NANO_ROS_PLATFORM_POSIX
         #define NANO_ROS_PLATFORM_POSIX
     #endif
-    #include "nano_ros/platform/posix.h"
+    #include "nros/platform/posix.h"
 #endif
 
 // ============================================================================

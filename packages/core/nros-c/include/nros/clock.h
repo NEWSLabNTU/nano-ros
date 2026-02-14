@@ -13,8 +13,8 @@
 #include <stdint.h>
 #include <stdbool.h>
 
-#include "nano_ros/types.h"
-#include "nano_ros/visibility.h"
+#include "nros/types.h"
+#include "nros/visibility.h"
 
 #ifdef __cplusplus
 extern "C" {

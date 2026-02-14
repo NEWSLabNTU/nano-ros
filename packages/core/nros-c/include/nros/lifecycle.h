@@ -12,8 +12,8 @@
 #ifndef NANO_ROS_LIFECYCLE_H
 #define NANO_ROS_LIFECYCLE_H
 
-#include "nano_ros/types.h"
-#include "nano_ros/node.h"
+#include "nros/types.h"
+#include "nros/node.h"
 
 #ifdef __cplusplus
 extern "C" {
