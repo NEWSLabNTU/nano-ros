@@ -9,16 +9,16 @@
 /// - `ParameterType` — transparent enum, 10 variants (NotSet through StringArray).
 /// - `IntegerRange::contains()` — linked to `integer_range_contains_spec`.
 ///
-/// **Ghost model** (manually audited mirror of production code):
+/// **Ghost model** (shared from `nano-ros-ghost-types`, validated by production tests):
 /// - `ParameterValueGhost` — mirrors `ParameterValue` discriminant structure.
-///   Array/string payloads are abstracted away (heapless types can't be imported
-///   into Verus). Correctness relies on line-by-line variant correspondence with
-///   `nano-ros-params/src/types.rs:52-81`.
+///   Registered via `external_type_specification`.
+///
+/// **Ghost model** (inline, uses Verus `int` type):
 /// - `FloatRangeGhost` — mirrors `FloatingPointRange` using int fields because
-///   Verus does not support f64 reasoning. Proves the same structural containment
-///   property.
+///   Verus does not support f64 reasoning. Cannot move to shared crate.
 use vstd::prelude::*;
 use nano_ros_params::{IntegerRange, ParameterType};
+use nano_ros_ghost_types::ParameterValueGhost;
 
 verus! {
 
@@ -114,32 +114,9 @@ pub open spec fn float_range_contains_ghost(range: FloatRangeGhost, value: int) 
     value >= range.min && value <= range.max
 }
 
-/// Ghost representation of `ParameterValue` discriminant structure.
-///
-/// Mirrors 10 variants from `nano-ros-params/src/types.rs:52-81`.
-/// Array and string payloads are abstracted (heapless types not importable
-/// into Verus). Scalar payloads (bool, i64) are preserved for roundtrip proofs.
-///
-/// Source (types.rs:52-81):
-/// ```ignore
-/// pub enum ParameterValue {
-///     NotSet, Bool(bool), Integer(i64), Double(f64),
-///     String(...), ByteArray(...), BoolArray(...),
-///     IntegerArray(...), DoubleArray(...), StringArray(...),
-/// }
-/// ```
-pub enum ParameterValueGhost {
-    NotSet,
-    Bool(bool),
-    Integer(i64),
-    Double,        // f64 payload abstracted (Verus has no f64 support)
-    String,        // heapless::String payload abstracted
-    ByteArray,     // heapless::Vec<u8> payload abstracted
-    BoolArray,     // heapless::Vec<bool> payload abstracted
-    IntegerArray,  // heapless::Vec<i64> payload abstracted
-    DoubleArray,   // heapless::Vec<f64> payload abstracted
-    StringArray,   // heapless::Vec<String> payload abstracted
-}
+/// Register `ParameterValueGhost` as a transparent type so Verus can match on variants.
+#[verifier::external_type_specification]
+pub struct ExParameterValueGhost(ParameterValueGhost);
 
 /// Spec: `ParameterValue::param_type()` — maps variant to ParameterType tag.
 ///

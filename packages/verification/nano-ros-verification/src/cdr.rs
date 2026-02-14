@@ -11,15 +11,15 @@
 /// - `DeserError` — simple pub enum with 5 variants. Verus can match on `UnexpectedEof`,
 ///   `InvalidData`, `InvalidUtf8`, `CapacityExceeded`, `InvalidHeader`.
 ///
-/// **Ghost model** (manually audited mirror of production code):
+/// **Ghost model** (shared from `nano-ros-ghost-types`, validated by production tests):
 /// - `CdrGhost` — mirrors `CdrWriter`/`CdrReader` private fields (`buf` as `buf_len`,
-///   `pos`, `origin`). Correctness relies on line-by-line correspondence with
-///   `nano-ros-serdes/src/cdr.rs`.
+///   `pos`, `origin`). Registered via `external_type_specification`.
 ///
 /// **Pure math** (no link to production code):
 /// - Little-endian encoding spec functions and round-trip proofs — prove that the
 ///   byte-level encoding is invertible for all values of each type.
 use vstd::prelude::*;
+use nano_ros_ghost_types::CdrGhost;
 
 verus! {
 
@@ -39,34 +39,12 @@ pub struct ExSerError(nano_ros_serdes::SerError);
 pub struct ExDeserError(nano_ros_serdes::DeserError);
 
 // ======================================================================
-// CDR Ghost Model
+// CDR Ghost Model (from nano-ros-ghost-types)
 // ======================================================================
 
-/// Ghost representation of CdrWriter/CdrReader state.
-///
-/// Mirrors private fields in `nano-ros-serdes/src/cdr.rs`:
-/// - `buf: &'a mut [u8]` (writer) / `buf: &'a [u8]` (reader) → modeled as `buf_len: usize`
-/// - `pos: usize` → `pos: usize`
-/// - `origin: usize` → `origin: usize`
-///
-/// Source (cdr.rs:6-13, 195-202):
-/// ```ignore
-/// pub struct CdrWriter<'a> {
-///     buf: &'a mut [u8],
-///     pos: usize,
-///     origin: usize,
-/// }
-/// pub struct CdrReader<'a> {
-///     buf: &'a [u8],
-///     pos: usize,
-///     origin: usize,
-/// }
-/// ```
-pub struct CdrGhost {
-    pub buf_len: usize,
-    pub pos: usize,
-    pub origin: usize,
-}
+/// Register `CdrGhost` as a transparent type so Verus can access fields.
+#[verifier::external_type_specification]
+pub struct ExCdrGhost(CdrGhost);
 
 // ======================================================================
 // Little-Endian Encoding Spec Functions

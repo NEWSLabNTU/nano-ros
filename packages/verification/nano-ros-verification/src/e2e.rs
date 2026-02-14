@@ -24,51 +24,35 @@
 /// - `default_trigger_delivers` and `all_trigger_starvation` build on the existing
 ///   `trigger_eval_spec` / `trigger_any_semantics` / `trigger_all_semantics` proofs.
 ///
-/// **Ghost model** (manually audited mirror of production code):
-/// - `SubscriberBufferGhost` — mirrors `SubscriberBuffer` state machine in
-///   `nano-ros-transport/src/shim.rs`.
+/// **Ghost model** (shared from `nano-ros-ghost-types`, validated by production tests):
+/// - `SubscriberBufferGhost` — mirrors `SubscriberBuffer` state machine.
 /// - `PublishChainGhost` — mirrors the publish call chain result propagation.
-/// - `SpinOnceGhost` — mirrors `spin_once()` control flow in
-///   `nano-ros-node/src/executor.rs`.
+/// - `SpinOnceGhost` — mirrors `spin_once()` control flow.
 ///
 /// **Pure math** (no link to production code):
 /// - `sequence_number_monotonicity` — arithmetic identity on atomic increment.
 use vstd::prelude::*;
 use nano_ros_node::TriggerCondition;
+use nano_ros_ghost_types::{SubscriberBufferGhost, PublishChainGhost, SpinOnceGhost};
 use super::scheduling::{trigger_eval_spec, trigger_any, trigger_all};
 
 verus! {
 
 // ======================================================================
-// Subscriber Buffer State Machine (Ghost Model)
+// Ghost Type Registrations (from nano-ros-ghost-types)
 // ======================================================================
 
-/// Ghost representation of `SubscriberBuffer` state.
-///
-/// Models the state machine of the subscriber's static buffer in
-/// `nano-ros-transport/src/shim.rs`. Each subscriber has one 1024-byte
-/// static buffer with atomic `has_data`, `overflow`, and `len` fields.
-///
-/// Source (shim.rs:853-876):
-/// ```ignore
-/// struct SubscriberBuffer {
-///     data: [u8; 1024],
-///     has_data: AtomicBool,
-///     overflow: AtomicBool,
-///     len: AtomicUsize,
-///     // ... attachment fields omitted ...
-/// }
-/// ```
-pub struct SubscriberBufferGhost {
-    /// Whether the buffer contains unprocessed data
-    pub has_data: bool,
-    /// Whether the last callback detected a message exceeding buffer capacity
-    pub overflow: bool,
-    /// Length of valid payload data in the buffer
-    pub stored_len: usize,
-    /// Static buffer capacity (always 1024 in production)
-    pub buf_capacity: usize,
-}
+/// Register `SubscriberBufferGhost` as a transparent type.
+#[verifier::external_type_specification]
+pub struct ExSubscriberBufferGhost(SubscriberBufferGhost);
+
+/// Register `PublishChainGhost` as a transparent type.
+#[verifier::external_type_specification]
+pub struct ExPublishChainGhost(PublishChainGhost);
+
+/// Register `SpinOnceGhost` as a transparent type.
+#[verifier::external_type_specification]
+pub struct ExSpinOnceGhost(SpinOnceGhost);
 
 /// State after the zenoh-pico callback writes to the buffer.
 ///
@@ -210,31 +194,6 @@ proof fn silent_truncation_bug(msg_len: usize, buf_capacity: usize)
 // Publish Path Proofs
 // ======================================================================
 
-/// Ghost model for the publish call chain.
-///
-/// Models the result of each layer in the publish path:
-///
-/// Source (nano-ros-node/src/shim.rs:596-609):
-/// ```ignore
-/// pub fn publish_with_buffer<const BUF: usize>(&self, msg: &M) -> Result<(), ShimNodeError> {
-///     let mut buffer = [0u8; BUF];
-///     let mut writer = CdrWriter::new_with_header(&mut buffer)
-///         .map_err(|_| ShimNodeError::BufferTooSmall)?;
-///     msg.serialize(&mut writer)
-///         .map_err(|_| ShimNodeError::Serialization)?;
-///     let len = writer.position();
-///     self.publisher.publish_raw(&buffer[..len]).map_err(|e| e.into())
-/// }
-/// ```
-pub struct PublishChainGhost {
-    /// Whether CdrWriter::new_with_header succeeded
-    pub header_ok: bool,
-    /// Whether msg.serialize() succeeded
-    pub serialize_ok: bool,
-    /// Whether publisher.publish_raw() succeeded
-    pub publish_raw_ok: bool,
-}
-
 /// Spec: the overall publish result is Ok iff all layers succeeded.
 pub open spec fn publish_result_ok(chain: PublishChainGhost) -> bool {
     chain.header_ok && chain.serialize_ok && chain.publish_raw_ok
@@ -305,45 +264,6 @@ proof fn sequence_number_monotonicity(counter_before: i64)
 // ======================================================================
 // Executor Delivery Proofs
 // ======================================================================
-
-/// Ghost model of `spin_once()` control flow.
-///
-/// Models the two execution paths in `PollingExecutor::spin_once()`
-/// (executor.rs:1178-1229):
-///
-/// ```ignore
-/// fn spin_once(&mut self, delta_ms: u64) -> SpinOnceResult {
-///     // ... build ready_mask ...
-///     if !self.trigger.evaluate(&ready_mask) {
-///         // PATH A: trigger false → only timers
-///         for node in &mut self.nodes {
-///             result.timers_fired += node.process_timers(delta_ms);
-///         }
-///         return result;
-///     }
-///     // PATH B: trigger true → subs + services + timers
-///     for node in &mut self.nodes {
-///         if let Ok(count) = node.process_subscriptions() {
-///             result.subscriptions_processed += count;
-///         }
-///         if let Ok(count) = node.process_services() {
-///             result.services_handled += count;
-///         }
-///         result.timers_fired += node.process_timers(delta_ms);
-///     }
-///     result
-/// }
-/// ```
-pub struct SpinOnceGhost {
-    /// Whether the trigger evaluated to true
-    pub trigger_result: bool,
-    /// Number of subscriptions processed (0 if trigger false)
-    pub subs_processed: usize,
-    /// Number of services handled (0 if trigger false)
-    pub services_handled: usize,
-    /// Number of timers fired (always processed)
-    pub timers_fired: usize,
-}
 
 /// Spec: `spin_once` invariant — when trigger is false, only timers fire.
 pub open spec fn spin_once_invariant(g: SpinOnceGhost) -> bool {

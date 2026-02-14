@@ -1,0 +1,9 @@
+[package]
+name = "nano-ros-ghost-types"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Ghost model types for nano-ros verification — shared between production crate tests and Verus proofs"
+
+[features]
+default = []

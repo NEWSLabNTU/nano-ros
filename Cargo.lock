@@ -486,6 +486,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-ghost-types"
+version = "0.1.0"
+
+[[package]]
 name = "nano-ros-macros"
 version = "0.1.0"
 dependencies = [

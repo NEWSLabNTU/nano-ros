@@ -375,7 +375,7 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 | 31.6 | Fix subscriber path bugs (F3, F4)                               | 0.5 day | **Done**                                                |
 | 31.7 | Tier 4a: E2E proofs — bug existence + data path (8)             | 1 day   | **Done** (8 proofs in e2e.rs)                           |
 | 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)                  | 0.5 day | **Done** (2 proofs in e2e.rs)                           |
-| 31.9 | Ghost model validation: shared ghost type crate                 | 0.5 day | Not started |
+| 31.9 | Ghost model validation: shared ghost type crate                 | 0.5 day | **Done** (8 types in nano-ros-ghost-types) |
 | 31.10 | Ghost model validation: structural + contract tests            | 1 day   | Not started |
 
 ### 31.1: Verus Toolchain Setup + Crate Scaffolding
@@ -664,7 +664,7 @@ After the subscriber bugs are fixed in 31.6, prove that the fixes are correct. T
 
 ### 31.9: Ghost Model Validation — Shared Ghost Type Crate
 
-**Depends on:** 31.1 (verification crate exists) — **Status: Not started**
+**Depends on:** 31.1 (verification crate exists) — **Status: Done**
 
 Create `packages/verification/nano-ros-ghost-types/` — a `#![no_std]` crate that
 defines ghost model types with all-public primitive fields. This is the single
@@ -675,21 +675,21 @@ full design.
 
 **Ghost types to move (8 types, all primitive fields):**
 
-| Ghost type | Fields | Current location |
-|---|---|---|
-| `CdrGhost` | `buf_len: usize`, `pos: usize`, `origin: usize` | cdr.rs |
-| `ParamServerGhost` | `count: usize`, `max: usize` | communication.rs |
-| `ParameterValueGhost` | 10-variant enum (`NotSet`, `Bool(bool)`, `Integer(i64)`, ...) | params.rs |
-| `SubscriberBufferGhost` | `has_data: bool`, `overflow: bool`, `stored_len: usize`, `buf_capacity: usize` | e2e.rs |
-| `PublishChainGhost` | `header_ok: bool`, `serialize_ok: bool`, `publish_raw_ok: bool` | e2e.rs |
-| `SpinOnceGhost` | `trigger_result: bool`, `subs_processed: usize`, `services_handled: usize`, `timers_fired: usize` | e2e.rs |
-| `TimerGhost` | `period_ms: u64`, `elapsed_ms: u64`, `mode: TimerModeGhost`, `canceled: bool` | scheduling.rs |
-| `TimerModeGhost` | `Repeating`, `OneShot`, `Inert` | scheduling.rs |
+| Ghost type              | Fields                                                                                            | Current location |
+|-------------------------|---------------------------------------------------------------------------------------------------|------------------|
+| `CdrGhost`              | `buf_len: usize`, `pos: usize`, `origin: usize`                                                   | cdr.rs           |
+| `ParamServerGhost`      | `count: usize`, `max: usize`                                                                      | communication.rs |
+| `ParameterValueGhost`   | 10-variant enum (`NotSet`, `Bool(bool)`, `Integer(i64)`, ...)                                     | params.rs        |
+| `SubscriberBufferGhost` | `has_data: bool`, `overflow: bool`, `stored_len: usize`, `buf_capacity: usize`                    | e2e.rs           |
+| `PublishChainGhost`     | `header_ok: bool`, `serialize_ok: bool`, `publish_raw_ok: bool`                                   | e2e.rs           |
+| `SpinOnceGhost`         | `trigger_result: bool`, `subs_processed: usize`, `services_handled: usize`, `timers_fired: usize` | e2e.rs           |
+| `TimerGhost`            | `period_ms: u64`, `elapsed_ms: u64`, `mode: TimerModeGhost`, `canceled: bool`                     | scheduling.rs    |
+| `TimerModeGhost`        | `Repeating`, `OneShot`, `Inert`                                                                   | scheduling.rs    |
 
 **Cannot move (Verus-specific types):**
 
-| Ghost type | Reason |
-|---|---|
+| Ghost type        | Reason                                                            |
+|-------------------|-------------------------------------------------------------------|
 | `FloatRangeGhost` | Fields use Verus `int` (arbitrary-precision) — no Rust equivalent |
 
 **Tasks:**
@@ -706,14 +706,14 @@ full design.
 
 **Acceptance criteria:**
 
-- [ ] `nano-ros-ghost-types` crate exists with 8 types, `#![no_std]`, no dependencies
-- [ ] Verification crate imports from shared crate and registers via `external_type_specification`
-- [ ] All 67 proofs still pass
-- [ ] `just quality` passes (crate is a workspace member)
+- [x] `nano-ros-ghost-types` crate exists with 8 types, `#![no_std]`, no dependencies
+- [x] Verification crate imports from shared crate and registers via `external_type_specification`
+- [x] All 67 proofs still pass
+- [x] `just quality` passes (crate is a workspace member)
 
 ### 31.10: Ghost Model Validation — Structural + Contract Tests
 
-**Depends on:** 31.9 (shared ghost type crate) — **Status: Not started**
+**Depends on:** 31.9 (shared ghost type crate, **Done**) — **Status: Not started**
 
 Add `nano-ros-ghost-types` as `[dev-dependencies]` to production crates and add
 `#[cfg(test)]` modules that construct ghost types from private fields and verify

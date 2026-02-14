@@ -13,9 +13,9 @@
 ///   `assume_specification`. A human auditor should confirm the 4-line spec matches
 ///   the 4-line production impl in `trigger.rs:107-112`.
 ///
-/// **Ghost model** (manually audited mirror of production code):
+/// **Ghost model** (shared from `nano-ros-ghost-types`, validated by production tests):
 /// - `TimerGhost` / `TimerModeGhost` — mirrors `TimerState` / `TimerMode`.
-///   Correctness relies on line-by-line correspondence with source.
+///   Registered via `external_type_specification`.
 ///
 /// **Pure math** (no link to production code):
 /// - `spin_once_result_consistency` — proves arithmetic identity about the
@@ -27,6 +27,7 @@
 /// - `TimerState` fields are `pub(crate)` → can't access from external crate.
 use vstd::prelude::*;
 use nano_ros_node::TriggerCondition;
+use nano_ros_ghost_types::{TimerGhost, TimerModeGhost};
 
 verus! {
 
@@ -42,26 +43,16 @@ verus! {
 pub struct ExTriggerCondition(TriggerCondition);
 
 // ======================================================================
-// Timer State Machine Model
+// Timer State Machine (from nano-ros-ghost-types)
 // ======================================================================
 
-/// Ghost representation of timer mode (mirrors `nano_ros_node::timer::TimerMode`).
-pub enum TimerModeGhost {
-    Repeating,
-    OneShot,
-    Inert,
-}
+/// Register `TimerModeGhost` as a transparent type so Verus can match on variants.
+#[verifier::external_type_specification]
+pub struct ExTimerModeGhost(TimerModeGhost);
 
-/// Ghost representation of timer state (mirrors `nano_ros_node::timer::TimerState`).
-///
-/// Only includes the fields relevant to scheduling correctness — callbacks are
-/// excluded because they don't affect when/whether a timer fires.
-pub struct TimerGhost {
-    pub period_ms: u64,
-    pub elapsed_ms: u64,
-    pub mode: TimerModeGhost,
-    pub canceled: bool,
-}
+/// Register `TimerGhost` as a transparent type so Verus can access fields.
+#[verifier::external_type_specification]
+pub struct ExTimerGhost(TimerGhost);
 
 /// Model of `u64::saturating_add` — returns `a + b` clamped to `u64::MAX`.
 /// Mirrors: `self.elapsed_ms = self.elapsed_ms.saturating_add(delta_ms)` in `update()`.

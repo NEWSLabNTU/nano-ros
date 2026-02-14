@@ -23,6 +23,8 @@ members = [
     # cargo requires workspace member paths to exist on disk.
     "packages/interfaces/rcl-interfaces/generated/builtin_interfaces",
     "packages/interfaces/rcl-interfaces/generated/rcl_interfaces",
+    # Ghost model types for verification (shared between production tests and Verus proofs)
+    "packages/verification/nano-ros-ghost-types",
 ]
 
 # Examples are excluded from workspace - they are standalone packages

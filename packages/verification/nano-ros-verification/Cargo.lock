@@ -65,6 +65,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nano-ros-ghost-types"
+version = "0.1.0"
+
+[[package]]
 name = "nano-ros-node"
 version = "0.1.0"
 dependencies = [
@@ -101,6 +105,7 @@ name = "nano-ros-verification"
 version = "0.1.0"
 dependencies = [
  "nano-ros-core",
+ "nano-ros-ghost-types",
  "nano-ros-node",
  "nano-ros-params",
  "nano-ros-serdes",

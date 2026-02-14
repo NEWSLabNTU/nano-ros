@@ -6,16 +6,14 @@
 ///
 /// ## Trust levels
 ///
-/// **Ghost model** (manually audited mirror of production code):
-/// - `CdrGhost` (defined in `cdr.rs`) — used here for position monotonicity
-///   and serialization safety proofs.
+/// **Ghost model** (shared from `nano-ros-ghost-types`, validated by production tests):
+/// - `CdrGhost` — used here for position monotonicity and serialization safety proofs.
 /// - `ParamServerGhost` — mirrors `ParameterServer` private fields (`count`, capacity).
-///   Production source: `nano-ros-params/src/server.rs:47-52`.
 ///
 /// **Pure math** (no link to production code):
 /// - CDR alignment padding spec function and its correctness proofs.
 use vstd::prelude::*;
-use super::cdr::CdrGhost;
+use nano_ros_ghost_types::{CdrGhost, ParamServerGhost};
 
 verus! {
 
@@ -173,26 +171,12 @@ proof fn position_monotonicity(g: CdrGhost, bytes_written: usize)
 }
 
 // ======================================================================
-// Parameter Server Resource Capacity (Ghost Model)
+// Parameter Server Resource Capacity (from nano-ros-ghost-types)
 // ======================================================================
 
-/// Ghost representation of ParameterServer state.
-///
-/// Mirrors private fields in `nano-ros-params/src/server.rs`:
-///
-/// Source (server.rs:47-52):
-/// ```ignore
-/// pub struct ParameterServer {
-///     entries: [Option<ParameterEntry>; MAX_PARAMETERS],
-///     count: usize,
-/// }
-/// ```
-///
-/// `MAX_PARAMETERS = 32` (server.rs:13).
-pub struct ParamServerGhost {
-    pub count: usize,
-    pub max: usize,
-}
+/// Register `ParamServerGhost` as a transparent type so Verus can access fields.
+#[verifier::external_type_specification]
+pub struct ExParamServerGhost(ParamServerGhost);
 
 /// **Proof 5: `param_server_count_invariant`**
 ///
