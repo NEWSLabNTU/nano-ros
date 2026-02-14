@@ -16,12 +16,12 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nano_ros_service_client_rs)
 
 # Include nros BSP for Zephyr
-set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/bsp/nano-ros-bsp-zephyr)
+set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/zpico/zpico-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
 
 # Include zenoh shim (required by BSP)
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/transport/nano-ros-transport-zenoh-sys/c)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/zpico/zpico-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

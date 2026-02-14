@@ -91,15 +91,15 @@ pub use nros_node::{
 #[cfg(all(feature = "zenoh", feature = "std"))]
 pub use nros_node::{BasicExecutor, Promise, SpinPeriodResult};
 
-// Re-export transport types
-pub use nano_ros_transport::{
+// Re-export transport types (middleware-agnostic)
+pub use nros_rmw::{
     QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, ServiceInfo,
     SessionMode, TopicInfo, TransportConfig, TransportError,
 };
 
 // Re-export zenoh-specific types
 #[cfg(feature = "zenoh")]
-pub use nano_ros_transport::{
+pub use nros_rmw_zenoh::{
     Ros2Liveliness, ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohTransport,
 };
 
@@ -109,9 +109,10 @@ pub use nano_ros_transport::{
     feature = "platform-zephyr",
     feature = "platform-bare-metal"
 ))]
-pub use nano_ros_transport::{
-    SHIM_RMW_GID_SIZE, ShimPublisher, ShimRmwAttachment, ShimRos2Liveliness, ShimServiceClient,
-    ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport, ShimZenohId,
+pub use nros_rmw_zenoh::{
+    RMW_GID_SIZE as SHIM_RMW_GID_SIZE, RmwAttachment as ShimRmwAttachment,
+    Ros2Liveliness as ShimRos2Liveliness, ShimPublisher, ShimServiceClient, ShimServiceServer,
+    ShimSession, ShimSubscriber, ShimTransport, ShimZenohId, ZenohId as ShimZenohId2,
 };
 
 // Re-export liveliness token for shim platforms
@@ -120,7 +121,7 @@ pub use nano_ros_transport::{
     feature = "platform-zephyr",
     feature = "platform-bare-metal"
 ))]
-pub use nano_ros_transport::ShimLivelinessToken;
+pub use nros_rmw_zenoh::ShimLivelinessToken;
 
 // Re-export shim node types for embedded platforms
 #[cfg(any(

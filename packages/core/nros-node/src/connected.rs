@@ -28,19 +28,19 @@ use nros_core::{
 use crate::timer::{
     DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
-use nano_ros_transport::{
+use nros_rmw::{
     ActionInfo, Publisher as PublisherTrait, QosSettings, ServiceClientTrait, ServiceInfo,
     ServiceServerTrait, Session, Subscriber as SubscriberTrait, TopicInfo, Transport,
     TransportConfig, TransportError,
 };
 
 #[cfg(feature = "zenoh")]
-use nano_ros_transport::{
+use nros_params::UndeclaredParameters;
+#[cfg(feature = "zenoh")]
+use nros_rmw_zenoh::{
     LivelinessToken, Ros2Liveliness, ZenohId, ZenohPublisher, ZenohServiceClient,
     ZenohServiceServer, ZenohSession, ZenohSubscriber, ZenohTransport,
 };
-#[cfg(feature = "zenoh")]
-use nros_params::UndeclaredParameters;
 
 use crate::NodeConfig;
 use crate::options::{PublisherOptions, SubscriberOptions};
@@ -2008,7 +2008,7 @@ impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
         seq_num: i64,
         reply_len: usize,
     ) -> Result<(), ConnectedNodeError> {
-        use nano_ros_transport::ServiceServerTrait;
+        use nros_rmw::ServiceServerTrait;
         self.server
             .send_reply(seq_num, &self.reply_buffer[..reply_len])
             .map_err(ConnectedNodeError::from)

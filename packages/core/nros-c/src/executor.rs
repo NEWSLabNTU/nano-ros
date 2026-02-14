@@ -682,7 +682,8 @@ const MESSAGE_BUFFER_SIZE: usize = 4096;
 /// Returns true if a message was processed, false otherwise.
 #[cfg(feature = "alloc")]
 unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bool {
-    use nano_ros_transport::{ShimSubscriber, Subscriber};
+    use nros_rmw::Subscriber;
+    use nros_rmw_zenoh::ShimSubscriber;
 
     let subscription_ref = &mut *subscription;
 
@@ -726,7 +727,8 @@ unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bo
 /// Returns true if a request was processed, false otherwise.
 #[cfg(feature = "alloc")]
 unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
-    use nano_ros_transport::{ServiceServerTrait, ShimServiceServer};
+    use nros_rmw::ServiceServerTrait;
+    use nros_rmw_zenoh::ShimServiceServer;
 
     let service_ref = &mut *service;
 
@@ -790,7 +792,8 @@ unsafe fn sample_subscription_for_let(
     subscription: *mut nano_ros_subscription_t,
     buffer: &mut [u8],
 ) -> Option<usize> {
-    use nano_ros_transport::{ShimSubscriber, Subscriber};
+    use nros_rmw::Subscriber;
+    use nros_rmw_zenoh::ShimSubscriber;
 
     let subscription_ref = &*subscription;
 

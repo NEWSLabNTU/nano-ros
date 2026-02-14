@@ -35,7 +35,7 @@ use crate::NodeConfig;
 use crate::ConnectedNode;
 
 #[cfg(feature = "zenoh")]
-use nano_ros_transport::{SessionMode, TransportConfig};
+use nros_rmw::{SessionMode, TransportConfig};
 
 #[cfg(all(feature = "zenoh", feature = "alloc"))]
 use crate::executor::{DEFAULT_MAX_NODES, PollingExecutor};
@@ -447,7 +447,7 @@ impl Context {
 ///
 /// ```ignore
 /// use nros_node::InitOptions;
-/// use nano_ros_transport::SessionMode;
+/// use nros_rmw::SessionMode;
 ///
 /// let options = InitOptions::new()
 ///     .with_domain_id(Some(0))

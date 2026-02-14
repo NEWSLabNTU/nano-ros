@@ -1,4 +1,4 @@
-//! Bare-metal Polling Example for nros on STM32F4 with nano-ros-transport-zenoh
+//! Bare-metal Polling Example for nros on STM32F4 with nros-rmw-zenoh
 //!
 //! This example demonstrates how to use nros without any async runtime
 //! (no RTIC, no Embassy). It uses a simple polling loop that's suitable for:
@@ -62,8 +62,8 @@ use smoltcp::{
     wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
 };
 
-// Import nano-ros-link-smoltcp for TCP bridge
-use nano_ros_link_smoltcp::SmoltcpBridge;
+// Import zpico-smoltcp for TCP bridge
+use zpico_smoltcp::SmoltcpBridge;
 
 // ============================================================================
 // Network Configuration
@@ -92,7 +92,7 @@ const RX_DESC_COUNT: usize = 4;
 /// Number of TX DMA descriptors
 const TX_DESC_COUNT: usize = 4;
 
-/// Maximum number of sockets (matches nano-ros-link-smoltcp::MAX_SOCKETS)
+/// Maximum number of sockets (matches zpico-smoltcp::MAX_SOCKETS)
 #[allow(dead_code)] // Used in documentation only; actual value comes from link crate
 const MAX_SOCKETS: usize = 4;
 
@@ -111,7 +111,7 @@ static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_C
 // Clock state for smoltcp_clock_now_ms (updated by main loop)
 static mut CLOCK_MS: u64 = 0;
 
-/// Provide the millisecond clock for nano-ros-link-smoltcp's bridge.
+/// Provide the millisecond clock for zpico-smoltcp's bridge.
 /// Called internally by `SmoltcpBridge::poll()` for smoltcp timestamping.
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
@@ -177,7 +177,7 @@ impl SimpleTimer {
 
 #[entry]
 fn main() -> ! {
-    info!("nros polling + nano-ros-transport-zenoh example starting...");
+    info!("nros polling + nros-rmw-zenoh example starting...");
 
     // Get access to device peripherals
     let dp = stm32f4xx_hal::pac::Peripherals::take().unwrap();
@@ -298,11 +298,11 @@ fn main() -> ! {
     );
 
     // Create socket set using link crate's pre-allocated storage
-    let storage = unsafe { nano_ros_link_smoltcp::get_socket_storage() };
+    let storage = unsafe { zpico_smoltcp::get_socket_storage() };
     let mut sockets = SocketSet::new(&mut storage[..]);
 
     // ═══════════════════════════════════════════════════════════════════════
-    // Initialize nano-ros-link-smoltcp bridge
+    // Initialize zpico-smoltcp bridge
     // ═══════════════════════════════════════════════════════════════════════
 
     info!("Initializing smoltcp bridge...");
@@ -310,15 +310,15 @@ fn main() -> ! {
     SmoltcpBridge::init();
 
     // Create TCP sockets and register with the bridge
-    unsafe { nano_ros_link_smoltcp::create_and_register_sockets(&mut sockets) };
+    unsafe { zpico_smoltcp::create_and_register_sockets(&mut sockets) };
 
     // Set the network poll callback (no-op — polling is done in main loop)
-    nano_ros_link_smoltcp::set_poll_callback(network_poll_callback);
+    zpico_smoltcp::set_poll_callback(network_poll_callback);
 
     info!("smoltcp bridge initialized");
 
     // When zenoh-pico is available:
-    // use nano_ros_transport_zenoh::ShimContext;
+    // use nros_rmw_zenoh::ShimContext;
     // let ctx = ShimContext::new(ZENOH_ROUTER).expect("Failed to connect");
     // let publisher = ctx.declare_publisher(b"nros/polling/counter\0").unwrap();
 

@@ -1,6 +1,6 @@
-//! RTIC Example for nros on STM32F4 with nano-ros-transport-zenoh
+//! RTIC Example for nros on STM32F4 with nros-rmw-zenoh
 //!
-//! This example demonstrates nros with nano-ros-transport-zenoh on an STM32F4
+//! This example demonstrates nros with nros-rmw-zenoh on an STM32F4
 //! microcontroller using smoltcp for TCP/IP networking.
 //!
 //! # Architecture
@@ -64,8 +64,8 @@ use smoltcp::{
     wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address},
 };
 
-// Import nano-ros-link-smoltcp for TCP bridge
-use nano_ros_link_smoltcp::SmoltcpBridge;
+// Import zpico-smoltcp for TCP bridge
+use zpico_smoltcp::SmoltcpBridge;
 
 // ============================================================================
 // Network Configuration
@@ -94,7 +94,7 @@ const RX_DESC_COUNT: usize = 4;
 /// Number of TX DMA descriptors
 const TX_DESC_COUNT: usize = 4;
 
-/// Maximum number of sockets (matches nano-ros-link-smoltcp::MAX_SOCKETS)
+/// Maximum number of sockets (matches zpico-smoltcp::MAX_SOCKETS)
 #[allow(dead_code)] // Used in documentation only; actual value comes from link crate
 const MAX_SOCKETS: usize = 4;
 
@@ -113,7 +113,7 @@ static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_C
 // Clock state for smoltcp_clock_now_ms (updated by poll task)
 static mut CLOCK_MS: u64 = 0;
 
-/// Provide the millisecond clock for nano-ros-link-smoltcp's bridge.
+/// Provide the millisecond clock for zpico-smoltcp's bridge.
 /// Called internally by `SmoltcpBridge::poll()` for smoltcp timestamping.
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
@@ -166,7 +166,7 @@ mod app {
 
     #[init]
     fn init(cx: init::Context) -> (Shared, Local) {
-        info!("nros RTIC + nano-ros-transport-zenoh example starting...");
+        info!("nros RTIC + nros-rmw-zenoh example starting...");
 
         let dp = cx.device;
 
@@ -273,22 +273,22 @@ mod app {
         );
 
         // Create socket set using link crate's pre-allocated storage
-        let storage = unsafe { nano_ros_link_smoltcp::get_socket_storage() };
+        let storage = unsafe { zpico_smoltcp::get_socket_storage() };
         let mut sockets = SocketSet::new(&mut storage[..]);
 
         // ═══════════════════════════════════════════════════════════════════════
-        // Initialize nano-ros-link-smoltcp bridge
+        // Initialize zpico-smoltcp bridge
         // ═══════════════════════════════════════════════════════════════════════
         info!("Initializing smoltcp bridge...");
 
         SmoltcpBridge::init();
 
         // Create TCP sockets and register with the bridge
-        unsafe { nano_ros_link_smoltcp::create_and_register_sockets(&mut sockets) };
+        unsafe { zpico_smoltcp::create_and_register_sockets(&mut sockets) };
 
         // Set the network poll callback
         // Note: The actual polling is done in poll_network task via SmoltcpBridge::poll()
-        nano_ros_link_smoltcp::set_poll_callback(network_poll_callback);
+        zpico_smoltcp::set_poll_callback(network_poll_callback);
 
         info!("smoltcp bridge initialized");
 
@@ -299,7 +299,7 @@ mod app {
         // Note: The following code requires zenoh-pico to be cross-compiled for
         // ARM Cortex-M. When available, uncomment this section:
         //
-        // use nano_ros_transport_zenoh::ShimContext;
+        // use nros_rmw_zenoh::ShimContext;
         //
         // info!("Connecting to zenoh router...");
         // match ShimContext::new(ZENOH_ROUTER) {
@@ -383,7 +383,7 @@ mod app {
             // }
 
             // For now, just poll the platform layer
-            let ret = nano_ros_link_smoltcp::smoltcp_poll();
+            let ret = zpico_smoltcp::smoltcp_poll();
             if ret < 0 {
                 // Poll callback not set or error - expected for stub
             }

@@ -17,7 +17,7 @@
 //! - **Hardware modules** — PHY detection, pin configuration, DWT timing
 //! - **Node API** — `run_node()`, `Publisher`, `Subscription`
 //!
-//! Network transport is delegated to `nano-ros-link-smoltcp` which provides
+//! Network transport is delegated to `zpico-smoltcp` which provides
 //! the zenoh-pico TCP symbols (`_z_open_tcp`, `_z_read_tcp`, etc.).
 //!
 //! # Features

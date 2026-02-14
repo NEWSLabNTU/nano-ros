@@ -86,8 +86,8 @@ pub static NANO_ROS_QOS_SERVICES: nano_ros_qos_t = nano_ros_qos_t {
 
 impl nano_ros_qos_t {
     /// Convert to nros QosSettings
-    pub(crate) fn to_qos_settings(self) -> nano_ros_transport::QosSettings {
-        use nano_ros_transport::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
+    pub(crate) fn to_qos_settings(self) -> nros_rmw::QosSettings {
+        use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
 
         let reliability = match self.reliability {
             nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_BEST_EFFORT => {
@@ -112,7 +112,7 @@ impl nano_ros_qos_t {
             nano_ros_qos_history_t::NANO_ROS_QOS_HISTORY_KEEP_ALL => QosHistoryPolicy::KeepAll,
         };
 
-        nano_ros_transport::QosSettings {
+        nros_rmw::QosSettings {
             reliability,
             durability,
             history,

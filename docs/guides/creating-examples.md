@@ -379,11 +379,11 @@ nros = { path = "../../../packages/core/nros" }
 nros-core = { path = "../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../packages/core/nros-serdes" }
 nros-node = { path = "../../../packages/core/nros-node" }
-nano-ros-transport = { path = "../../../packages/core/nano-ros-transport" }
+nros-rmw = { path = "../../../packages/core/nros-rmw" }
 nros-params = { path = "../../../packages/core/nros-params" }
 nros-macros = { path = "../../../packages/core/nros-macros" }
-nano-ros-transport-zenoh = { path = "../../../packages/transport/nano-ros-transport-zenoh" }
-nano-ros-transport-zenoh-sys = { path = "../../../packages/transport/nano-ros-transport-zenoh-sys" }
+nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }
+zpico-sys = { path = "../../../packages/zpico/zpico-sys" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```
@@ -400,7 +400,7 @@ target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
 
 # zenoh-pico C shim
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/transport/nano-ros-transport-zenoh-sys/c)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/zpico/zpico-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

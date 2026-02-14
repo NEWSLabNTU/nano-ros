@@ -7,9 +7,9 @@ description = "Node abstraction for nros"
 
 [features]
 default = ["std", "ros-humble"]
-std = ["alloc", "nros-core/std", "nano-ros-transport/std", "log"]
+std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "log"]
 alloc = ["nros-core/alloc"]
-zenoh = ["nano-ros-transport/zenoh", "alloc"]
+zenoh = ["platform-posix", "alloc"]
 
 # ROS edition feature flags (controls which env vars are supported)
 ros-humble = []                  # ROS_LOCALHOST_ONLY (Humble+, default)
@@ -17,22 +17,22 @@ ros-iron = ["ros-humble"]        # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEE
 log = ["dep:log"]
 
 # Transport backend (select one platform)
-# Select one platform: platform-posix (desktop), platform-zephyr, or platform-bare-metal
-shim = ["nano-ros-transport/shim"]  # Base shim feature
-platform-posix = ["shim", "nano-ros-transport/platform-posix"]  # POSIX platform (desktop testing)
-platform-zephyr = ["shim", "nano-ros-transport/platform-zephyr"]  # Zephyr RTOS platform
-platform-bare-metal = ["shim", "nano-ros-transport/platform-bare-metal"]  # Bare-metal platform (smoltcp)
+shim = ["dep:nros-rmw-zenoh"]  # Base shim feature
+platform-posix = ["shim", "nros-rmw-zenoh/platform-posix"]
+platform-zephyr = ["shim", "nros-rmw-zenoh/platform-zephyr"]
+platform-bare-metal = ["shim", "nros-rmw-zenoh/platform-bare-metal"]
 
 # Executor support
-rtic = ["nano-ros-transport/rtic"]    # RTIC executor - no background threads
-polling = ["nano-ros-transport/polling"]  # Manual polling mode
+rtic = ["nros-rmw-zenoh?/rtic"]
+polling = ["nros-rmw-zenoh?/polling"]
 
 # Parameter services (ros2 param CLI support)
 param-services = ["dep:rcl_interfaces", "zenoh"]
 
 [dependencies]
 nros-core = { workspace = true, default-features = false }
-nano-ros-transport = { workspace = true, default-features = false }
+nros-rmw = { workspace = true, default-features = false }
+nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 log = { workspace = true, optional = true }

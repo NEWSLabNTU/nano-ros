@@ -551,7 +551,7 @@ Fix two bugs discovered during E2E data path analysis. See [E2E Verification Ana
 
 **Bug 1: Stuck subscription (F4)**
 
-Location: `nano-ros-transport/src/shim.rs:1069-1070`
+Location: `nros-rmw/src/shim.rs:1069-1070`
 
 When `try_recv_raw()` receives a message larger than the receive buffer, it returns `Err(BufferTooSmall)` without clearing `has_data`. The subscription is permanently stuck — every subsequent `spin_once()` hits the same oversized message.
 
@@ -568,7 +568,7 @@ Same fix needed in `try_recv_with_info` (shim.rs:1020-1021).
 
 **Bug 2: Silent truncation (F3)**
 
-Location: `nano-ros-transport/src/shim.rs:914`
+Location: `nros-rmw/src/shim.rs:914`
 
 When the zenoh-pico callback receives a message larger than 1024 bytes, it truncates to 1024 bytes with no error indication. The consumer sees a "valid" message that may deserialize to wrong values.
 
@@ -726,7 +726,7 @@ models and production code.
 |--------------------|----------------------------------------------------------------------|--------------------------------------------------|------------------------------------------------------------------------------------------|
 | nros-serdes    | `CdrGhost`                                                           | Construct from `CdrWriter` private fields        | header_origin, position_invariant                                                        |
 | nros-params    | `ParamServerGhost`, `ParameterValueGhost`                            | Construct from `ParameterServer` private fields  | count_invariant, param_type_spec                                                         |
-| nano-ros-transport | `SubscriberBufferGhost`                                              | Construct from `SubscriberBuffer` private fields | callback_post_fix (overflow + normal), try_recv_post_fix (overflow, size_error, success) |
+| nros-rmw | `SubscriberBufferGhost`                                              | Construct from `SubscriberBuffer` private fields | callback_post_fix (overflow + normal), try_recv_post_fix (overflow, size_error, success) |
 | nros-node      | `TimerGhost`, `TimerModeGhost`, `PublishChainGhost`, `SpinOnceGhost` | Construct from `TimerState` private fields       | timer_update, spin_once_invariant                                                        |
 
 **Tasks:**
@@ -737,7 +737,7 @@ models and production code.
    and post-header state
 3. In `nros-params/src/server.rs`: add ghost checks for `ParamServerGhost` —
    construct from `ParameterServer` private fields, verify count after declare/remove
-4. In `nano-ros-transport/src/shim.rs`: add ghost checks for `SubscriberBufferGhost` —
+4. In `nros-rmw/src/shim.rs`: add ghost checks for `SubscriberBufferGhost` —
    construct from `SubscriberBuffer` private fields, verify callback overflow/normal
    paths and try_recv error paths
 5. In `nros-node`: add ghost checks for `TimerGhost` and control-flow ghosts —

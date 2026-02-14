@@ -9,7 +9,7 @@ This example shows how to use nros with:
 - smoltcp for TCP/IP networking
 - stm32-eth for Ethernet DMA
 - DWT cycle counter for timing
-- nano-ros-transport-zenoh for ROS 2 compatible pub/sub
+- nros-rmw-zenoh for ROS 2 compatible pub/sub
 
 ## Hardware Requirements
 
@@ -89,7 +89,7 @@ Same as stm32f4-rs-rtic example - see `memory.x` for details.
 - smoltcp 0.12
 - cortex-m 0.7
 - cortex-m-rt 0.7
-- nano-ros-transport-zenoh (smoltcp feature)
+- nros-rmw-zenoh (smoltcp feature)
 
 ## Debugging
 

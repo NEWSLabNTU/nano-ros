@@ -64,17 +64,17 @@ Fits comfortably. ESP32-C3 has 20x more flash and 5x more RAM than needed.
 └─────────────────────────────┬───────────────────────────────────┘
                               │ (hidden from users)
 ┌─────────────────────────────▼───────────────────────────────────┐
-│  esp-hal │ esp-wifi │ smoltcp │ nano-ros-transport-zenoh-sys             │
+│  esp-hal │ esp-wifi │ smoltcp │ zpico-sys             │
 │  (HAL)   │ (WiFi)   │ (TCP)   │ (zenoh-pico + C shim)          │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
 ### Key Integration Point
 
-`esp-wifi` already uses smoltcp internally for its network stack. nros has an existing `platform_smoltcp` backend in `nano-ros-transport-zenoh-sys/c/platform_smoltcp/`. The ESP32 BSP bridges these two by:
+`esp-wifi` already uses smoltcp internally for its network stack. nros has an existing `platform_smoltcp` backend in `zpico-sys/c/platform_smoltcp/`. The ESP32 BSP bridges these two by:
 
 1. Initializing WiFi via `esp-wifi` to get a connected smoltcp interface
-2. Passing that interface to `nano-ros-transport-zenoh-sys` platform_smoltcp functions
+2. Passing that interface to `zpico-sys` platform_smoltcp functions
 3. Polling both WiFi and zenoh-pico in a unified loop
 
 ### Comparison with QEMU BSP
@@ -191,7 +191,7 @@ fn main() -> ! {
 3. [x] Set zenoh-pico features: `Z_FEATURE_MULTI_THREAD=0`, `Z_FEATURE_LINK_TCP=1`, `Z_FEATURE_LINK_SERIAL=0`
 4. [x] Build `libzenohpico.a` for RISC-V (120 sources, 6.5 MiB)
 5. [x] Add `just build-zenoh-pico-riscv` and `just clean-zenoh-pico-riscv` recipes
-6. [x] Add RISC-V cross-compilation flags in `nano-ros-transport-zenoh-sys/build.rs`
+6. [x] Add RISC-V cross-compilation flags in `zpico-sys/build.rs`
 7. [x] Verify library links with esp-hal binary (verified in Phase 22.3/22.4)
 
 **Acceptance Criteria**:
@@ -227,7 +227,7 @@ fn main() -> ! {
    ```
 2. [x] Implement `WifiConfig` and `NodeConfig` types
 3. [x] Implement WiFi initialization using `esp-radio`
-4. [x] Bridge esp-radio's smoltcp interface to nano-ros-transport-zenoh-sys platform_smoltcp
+4. [x] Bridge esp-radio's smoltcp interface to zpico-sys platform_smoltcp
 5. [x] Implement `run_node()` entry point with WiFi + zenoh setup
 6. [x] Implement hardware RNG callbacks for zenoh-pico `z_random_*`
 7. [x] Implement hardware timer for `z_clock_*` functions
@@ -244,7 +244,7 @@ fn main() -> ! {
    smoltcp = { version = "0.12", default-features = false, features = [
        "medium-ethernet", "proto-ipv4", "socket-tcp", "proto-dhcpv4",
    ] }
-   nano-ros-transport-zenoh-sys = { path = "../nano-ros-transport-zenoh-sys", features = ["smoltcp"] }
+   zpico-sys = { path = "../zpico-sys", features = ["smoltcp"] }
    ```
    Note: `esp-wifi` has been split into `esp-radio` (WiFi/BLE) + `esp-rtos` (task scheduler) in the 1.0 ecosystem.
 

@@ -8,7 +8,7 @@ This example shows how to use nros with:
 - RTIC 2.x for real-time task scheduling
 - smoltcp for TCP/IP networking
 - stm32-eth for Ethernet DMA
-- nano-ros-transport-zenoh for ROS 2 compatible pub/sub
+- nros-rmw-zenoh for ROS 2 compatible pub/sub
 
 ## Hardware Requirements
 
@@ -59,7 +59,7 @@ cargo run --release
 ├─────────────────────────────────────────────────────────────────────┤
 │  nros-node (ShimExecutor, ShimNode, ShimPublisher)              │
 ├─────────────────────────────────────────────────────────────────────┤
-│  nano-ros-transport-zenoh (shim-smoltcp feature)                              │
+│  nros-rmw-zenoh (shim-smoltcp feature)                              │
 ├─────────────────────────────────────────────────────────────────────┤
 │  smoltcp + stm32-eth (Ethernet DMA)                                  │
 └─────────────────────────────────────────────────────────────────────┘
@@ -87,7 +87,7 @@ MEMORY
 - smoltcp 0.12
 - rtic 2.1
 - rtic-monotonics 2.0
-- nano-ros-transport-zenoh (smoltcp feature)
+- nros-rmw-zenoh (smoltcp feature)
 
 ## Debugging
 

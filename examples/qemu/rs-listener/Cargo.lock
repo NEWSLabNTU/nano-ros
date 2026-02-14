@@ -389,14 +389,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros-link-smoltcp"
-version = "0.1.0"
-dependencies = [
- "nano-ros-transport-zenoh-sys",
- "smoltcp",
-]
-
-[[package]]
 name = "nano-ros-platform-qemu"
 version = "0.1.0"
 dependencies = [
@@ -405,20 +397,11 @@ dependencies = [
  "cortex-m-semihosting",
  "heapless",
  "lan9118-smoltcp",
- "nano-ros-link-smoltcp",
- "nano-ros-transport-zenoh-sys",
  "nros-core",
  "panic-semihosting",
  "smoltcp",
-]
-
-[[package]]
-name = "nano-ros-transport-zenoh-sys"
-version = "0.1.0"
-dependencies = [
- "cbindgen",
- "cc",
- "cmake",
+ "zpico-smoltcp",
+ "zpico-sys",
 ]
 
 [[package]]
@@ -921,3 +904,20 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[package]]
+name = "zpico-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
+ "zpico-sys",
+]
+
+[[package]]
+name = "zpico-sys"
+version = "0.1.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "cmake",
+]

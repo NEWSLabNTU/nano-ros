@@ -72,7 +72,7 @@ Fits with comfortable margins. RAM is tighter than ESP32-C3 but still has 3x hea
 └─────────────────────────────┬───────────────────────────────────┘
                               │ (hidden from users)
 ┌─────────────────────────────▼───────────────────────────────────┐
-│  embassy-rp │ cyw43 │ smoltcp │ nano-ros-transport-zenoh-sys             │
+│  embassy-rp │ cyw43 │ smoltcp │ zpico-sys             │
 │  (HAL)      │ (WiFi) │ (TCP)  │ (zenoh-pico + C shim)          │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -83,7 +83,7 @@ The Pico W WiFi stack uses the `cyw43` crate which provides a smoltcp-compatible
 
 1. Initialize CYW43 WiFi chip and connect to AP
 2. Create smoltcp interface over CYW43 network device
-3. Bridge to nano-ros-transport-zenoh-sys platform_smoltcp
+3. Bridge to zpico-sys platform_smoltcp
 4. Poll WiFi + zenoh-pico in a unified loop
 
 ### Embassy vs Polling
@@ -224,7 +224,7 @@ The existing `just build-zenoh-pico-arm` builds for Cortex-M3 (`thumbv7m-none-ea
    │   └── error.rs             # Error types
    ```
 2. [ ] Implement CYW43 WiFi initialization
-3. [ ] Bridge CYW43's smoltcp device to nano-ros-transport-zenoh-sys platform_smoltcp
+3. [ ] Bridge CYW43's smoltcp device to zpico-sys platform_smoltcp
 4. [ ] Implement `run_node()` with polling loop
 5. [ ] Implement clock using RP2040 Timer peripheral
 6. [ ] Implement RNG using RP2040 ROSC randomness
@@ -238,7 +238,7 @@ The existing `just build-zenoh-pico-arm` builds for Cortex-M3 (`thumbv7m-none-ea
    smoltcp = { version = "0.12", default-features = false, features = [
        "medium-ethernet", "proto-ipv4", "socket-tcp", "proto-dhcpv4",
    ] }
-   nano-ros-transport-zenoh-sys = { path = "../nano-ros-transport-zenoh-sys", features = ["smoltcp"] }
+   zpico-sys = { path = "../zpico-sys", features = ["smoltcp"] }
    cortex-m = "0.7"
    cortex-m-rt = "0.7"
    defmt = "0.3"

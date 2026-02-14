@@ -3,7 +3,7 @@
 //! This module provides rclrs-style options types for creating publishers
 //! and subscribers with a fluent API pattern.
 
-use nano_ros_transport::QosSettings;
+use nros_rmw::QosSettings;
 
 /// Options for creating a publisher
 ///
@@ -185,7 +185,7 @@ impl<'a> IntoSubscriberOptions<'a> for SubscriberOptions<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use nano_ros_transport::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
+    use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
 
     #[test]
     fn test_publisher_options() {

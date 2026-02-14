@@ -224,7 +224,8 @@ pub unsafe extern "C" fn nano_ros_service_init(
     // Create the internal service server using zenoh
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceInfo, Session, ShimSession};
+        use nros_rmw::{ServiceInfo, Session};
+        use nros_rmw_zenoh::ShimSession;
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -300,7 +301,7 @@ pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t)
     #[cfg(feature = "alloc")]
     {
         if !service._internal.is_null() {
-            use nano_ros_transport::ShimServiceServer;
+            use nros_rmw_zenoh::ShimServiceServer;
             let _server = alloc::boxed::Box::from_raw(service._internal as *mut ShimServiceServer);
             // Server is dropped here
         }
@@ -353,7 +354,8 @@ pub unsafe extern "C" fn nano_ros_service_take_request(
 
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceServerTrait, ShimServiceServer};
+        use nros_rmw::ServiceServerTrait;
+        use nros_rmw_zenoh::ShimServiceServer;
 
         if service._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
@@ -413,7 +415,8 @@ pub unsafe extern "C" fn nano_ros_service_send_response(
 
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceServerTrait, ShimServiceServer};
+        use nros_rmw::ServiceServerTrait;
+        use nros_rmw_zenoh::ShimServiceServer;
 
         if service._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
@@ -633,7 +636,8 @@ pub unsafe extern "C" fn nano_ros_client_init(
     // Create the internal service client using zenoh
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceInfo, Session, ShimSession};
+        use nros_rmw::{ServiceInfo, Session};
+        use nros_rmw_zenoh::ShimSession;
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -709,7 +713,7 @@ pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) ->
     #[cfg(feature = "alloc")]
     {
         if !client._internal.is_null() {
-            use nano_ros_transport::ShimServiceClient;
+            use nros_rmw_zenoh::ShimServiceClient;
             let _client_handle =
                 alloc::boxed::Box::from_raw(client._internal as *mut ShimServiceClient);
             // Client is dropped here
@@ -767,7 +771,8 @@ pub unsafe extern "C" fn nano_ros_client_call(
 
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{ServiceClientTrait, ShimServiceClient};
+        use nros_rmw::ServiceClientTrait;
+        use nros_rmw_zenoh::ShimServiceClient;
 
         if client._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
@@ -782,7 +787,7 @@ pub unsafe extern "C" fn nano_ros_client_call(
                 *response_len = len;
                 NANO_ROS_RET_OK
             }
-            Err(nano_ros_transport::TransportError::Timeout) => NANO_ROS_RET_TIMEOUT,
+            Err(nros_rmw::TransportError::Timeout) => NANO_ROS_RET_TIMEOUT,
             Err(_) => NANO_ROS_RET_ERROR,
         }
     }

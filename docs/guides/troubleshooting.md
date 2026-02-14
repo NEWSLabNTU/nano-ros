@@ -200,8 +200,8 @@ git submodule update --init --recursive
 **Solution**: Clean the build cache:
 ```bash
 # Clean the zenoh-pico sys crate build cache
-cargo clean -p nano-ros-transport-zenoh-sys
-touch packages/transport/nano-ros-transport-zenoh-sys/build.rs  # update if crate is renamed
+cargo clean -p zpico-sys
+touch packages/zpico/zpico-sys/build.rs
 cargo build
 ```
 

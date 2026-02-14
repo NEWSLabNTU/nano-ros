@@ -23,14 +23,14 @@ target_sources(app PRIVATE src/main.c)
 # =============================================================================
 # nros BSP
 # =============================================================================
-set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/bsp/nano-ros-bsp-zephyr)
+set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/zpico/zpico-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
 
 # =============================================================================
-# nano-ros-transport-zenoh (provides transport layer)
+# zpico-sys (provides transport layer)
 # =============================================================================
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/transport/nano-ros-transport-zenoh-sys/c)
+set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../packages/zpico/zpico-sys/c)
 target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
 target_include_directories(app PRIVATE ${SHIM_DIR}/include)
 

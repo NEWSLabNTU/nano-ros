@@ -7,7 +7,7 @@ Implements the Fibonacci action - computing Fibonacci sequences with progress fe
 
 ```
 Rust Application (src/lib.rs)
-    └── nano-ros-transport-zenoh (Rust wrapper)
+    └── nros-rmw-zenoh (Rust wrapper)
         └── zenoh_shim.c (C shim, compiled by Zephyr)
             └── zenoh-pico (C library)
                 └── Zephyr network stack

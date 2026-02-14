@@ -1,6 +1,6 @@
 # Phase 33: Crate Rename (`nros-*` / `zpico-*`)
 
-**Status: Not Started**
+**Status: 33.1 Complete, 33.2 Complete, 33.3 Not Started**
 
 **Design doc:** `docs/design/rmw-layer-design.md`
 

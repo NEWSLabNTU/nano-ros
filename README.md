@@ -140,12 +140,13 @@ packages/
 │   ├── nros-serdes/       # CDR serialization
 │   ├── nros-macros/       # #[derive(RosMessage)] proc macros
 │   ├── nros-params/       # Parameter server
-│   ├── nano-ros-transport/    # Transport abstraction (zenoh backend)
+│   ├── nros-rmw/          # Transport abstraction (middleware traits)
 │   ├── nros-node/         # High-level node API + parameter services
 │   └── nros-c/            # C API (rclc-style)
-├── transport/                 # Zenoh transport backend
-│   ├── nano-ros-transport-zenoh/     # Safe Rust API for zenoh-pico
-│   └── nano-ros-transport-zenoh-sys/ # FFI + C shim + zenoh-pico submodule
+├── zpico/                     # Zenoh-pico transport backend
+│   ├── nros-rmw-zenoh/        # Safe Rust API for zenoh-pico
+│   ├── zpico-sys/             # FFI + C shim + zenoh-pico submodule
+│   └── zpico-smoltcp/         # TCP/UDP via smoltcp IP stack
 ├── interfaces/                # Generated ROS 2 types
 │   └── rcl-interfaces/        # rcl_interfaces + builtin_interfaces
 ├── bsp/                       # Board Support Packages

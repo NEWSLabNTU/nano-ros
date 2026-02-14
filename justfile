@@ -132,7 +132,7 @@ quality:
     echo ""
     echo "=== Clippy (embedded target) ==="
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude nano-ros-transport-zenoh-sys \
+        --exclude zpico-sys \
         --exclude nano-ros-tests \
         --exclude nros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
@@ -217,12 +217,12 @@ build-workspace:
     cargo nextest run --workspace --no-run
 
 # Build workspace for embedded target (Cortex-M4F)
-# Excludes nano-ros-transport-zenoh-sys which requires native system headers for CMake build
+# Excludes zpico-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
 # Excludes nros-c which currently requires std
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude nano-ros-transport-zenoh-sys \
+        --exclude zpico-sys \
         --exclude nano-ros-tests \
         --exclude nros-c
 
@@ -237,13 +237,13 @@ check-workspace:
     cargo clippy --workspace --no-default-features --exclude nros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace for embedded target (Cortex-M4F)
-# Excludes nano-ros-transport-zenoh-sys which requires native system headers for CMake build
+# Excludes zpico-sys which requires native system headers for CMake build
 # Excludes nano-ros-tests which requires std (test framework dependencies)
 # Excludes nros-c which currently requires std
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude nano-ros-transport-zenoh-sys \
+        --exclude zpico-sys \
         --exclude nano-ros-tests \
         --exclude nros-c -- {{CLIPPY_LINTS}}
 
@@ -251,11 +251,11 @@ check-workspace-embedded:
 check-workspace-features:
     @echo "Checking feature combinations..."
     @echo "  - transport: rtic + sync-critical-section"
-    cargo clippy -p nano-ros-transport --no-default-features --features "rtic,sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --no-default-features --features "rtic,sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - node: rtic"
     cargo clippy -p nros-node --no-default-features --features "rtic" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - zenoh transport (std)"
-    cargo clippy -p nano-ros-transport --features "zenoh,std" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --features "zenoh,std" -- {{CLIPPY_LINTS}}
     @echo "All feature checks passed!"
 
 # Run workspace unit tests (no external deps)
@@ -462,7 +462,7 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU examples (zenoh-pico is built inline by nano-ros-transport-zenoh-sys)
+# Build QEMU examples (zenoh-pico is built inline by zpico-sys)
 build-examples-qemu:
     #!/usr/bin/env bash
     set -e
@@ -866,11 +866,11 @@ verify: verify-kani verify-verus
 
 # Build zenoh transport
 build-zenoh:
-    cargo build -p nano-ros-transport --features zenoh,std
+    cargo build -p nros-rmw --features zenoh,std
 
 # Check zenoh transport
 check-zenoh:
-    cargo clippy -p nano-ros-transport --features zenoh,std -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --features zenoh,std -- {{CLIPPY_LINTS}}
 
 # Build zenohd 1.6.2 from submodule (version-matched to rmw_zenoh_cpp)
 build-zenohd:
@@ -883,8 +883,8 @@ clean-zenohd:
 # Build zenoh-pico C library (standalone, for debugging)
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
-    cd packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
-    @echo "zenoh-pico built at: packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico/build"
+    cd packages/zpico/zpico-sys/zenoh-pico && mkdir -p build && cd build && cmake .. -DBUILD_SHARED_LIBS=OFF && make
+    @echo "zenoh-pico built at: packages/zpico/zpico-sys/zenoh-pico/build"
 
 # =============================================================================
 # Integration Tests (requires zenohd running on tcp/127.0.0.1:7447)

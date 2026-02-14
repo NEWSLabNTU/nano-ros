@@ -271,7 +271,8 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
     // Create the internal publisher using zenoh
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{Session, ShimSession, TopicInfo};
+        use nros_rmw::{Session, TopicInfo};
+        use nros_rmw_zenoh::ShimSession;
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -357,7 +358,8 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
 
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{Publisher, ShimPublisher};
+        use nros_rmw::Publisher;
+        use nros_rmw_zenoh::ShimPublisher;
 
         if publisher._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
@@ -408,7 +410,7 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
     #[cfg(feature = "alloc")]
     {
         if !publisher._internal.is_null() {
-            use nano_ros_transport::ShimPublisher;
+            use nros_rmw_zenoh::ShimPublisher;
             let _pub = alloc::boxed::Box::from_raw(publisher._internal as *mut ShimPublisher);
             // Publisher is dropped here
         }

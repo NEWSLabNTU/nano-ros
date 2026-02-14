@@ -349,6 +349,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
+name = "native-rs-service-client"
+version = "0.1.0"
+dependencies = [
+ "env_logger",
+ "example_interfaces",
+ "log",
+ "nros",
+]
+
+[[package]]
 name = "nros"
 version = "0.1.0"
 dependencies = [
@@ -356,7 +366,8 @@ dependencies = [
  "nros-macros",
  "nros-node",
  "nros-params",
- "nano-ros-transport",
+ "nros-rmw",
+ "nros-rmw-zenoh",
 ]
 
 [[package]]
@@ -385,7 +396,8 @@ dependencies = [
  "log",
  "nros-core",
  "nros-params",
- "nano-ros-transport",
+ "nros-rmw",
+ "nros-rmw-zenoh",
 ]
 
 [[package]]
@@ -396,46 +408,30 @@ dependencies = [
 ]
 
 [[package]]
-name = "nros-serdes"
-version = "0.1.0"
-dependencies = [
- "heapless",
-]
-
-[[package]]
-name = "nano-ros-transport"
+name = "nros-rmw"
 version = "0.1.0"
 dependencies = [
  "heapless",
  "log",
  "nros-core",
- "nano-ros-transport-zenoh",
 ]
 
 [[package]]
-name = "nano-ros-transport-zenoh"
+name = "nros-rmw-zenoh"
 version = "0.1.0"
 dependencies = [
- "nano-ros-transport-zenoh-sys",
-]
-
-[[package]]
-name = "nano-ros-transport-zenoh-sys"
-version = "0.1.0"
-dependencies = [
- "cbindgen",
- "cc",
- "cmake",
-]
-
-[[package]]
-name = "native-rs-service-client"
-version = "0.1.0"
-dependencies = [
- "env_logger",
- "example_interfaces",
+ "heapless",
  "log",
- "nros",
+ "nros-core",
+ "nros-rmw",
+ "zpico-sys",
+]
+
+[[package]]
+name = "nros-serdes"
+version = "0.1.0"
+dependencies = [
+ "heapless",
 ]
 
 [[package]]
@@ -867,3 +863,12 @@ name = "zmij"
 version = "1.0.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
+
+[[package]]
+name = "zpico-sys"
+version = "0.1.0"
+dependencies = [
+ "cbindgen",
+ "cc",
+ "cmake",
+]

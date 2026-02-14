@@ -126,7 +126,8 @@ pub unsafe extern "C" fn nano_ros_support_init(
     // For now, we'll use the shim directly
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{SessionMode, ShimSession, TransportConfig};
+        use nros_rmw::{SessionMode, TransportConfig};
+        use nros_rmw_zenoh::ShimSession;
 
         let locator_str = core::str::from_utf8_unchecked(&support.locator[..support.locator_len]);
 
@@ -186,7 +187,7 @@ pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t)
     #[cfg(feature = "alloc")]
     {
         if !support._internal.is_null() {
-            use nano_ros_transport::ShimSession;
+            use nros_rmw_zenoh::ShimSession;
             let _session = alloc::boxed::Box::from_raw(support._internal as *mut ShimSession);
             // Session is dropped here
         }
@@ -248,23 +249,21 @@ mod verification {
 impl nano_ros_support_t {
     /// Get the internal session pointer (for internal use)
     #[cfg(feature = "alloc")]
-    pub(crate) unsafe fn get_session(&self) -> Option<&nano_ros_transport::ShimSession> {
+    pub(crate) unsafe fn get_session(&self) -> Option<&nros_rmw_zenoh::ShimSession> {
         if self._internal.is_null() {
             None
         } else {
-            Some(&*(self._internal as *const nano_ros_transport::ShimSession))
+            Some(&*(self._internal as *const nros_rmw_zenoh::ShimSession))
         }
     }
 
     /// Get the internal session pointer mutably (for internal use)
     #[cfg(feature = "alloc")]
-    pub(crate) unsafe fn get_session_mut(
-        &mut self,
-    ) -> Option<&mut nano_ros_transport::ShimSession> {
+    pub(crate) unsafe fn get_session_mut(&mut self) -> Option<&mut nros_rmw_zenoh::ShimSession> {
         if self._internal.is_null() {
             None
         } else {
-            Some(&mut *(self._internal as *mut nano_ros_transport::ShimSession))
+            Some(&mut *(self._internal as *mut nros_rmw_zenoh::ShimSession))
         }
     }
 

@@ -7,11 +7,12 @@ members = [
     "packages/core/nros-serdes",
     "packages/core/nros-macros",
     "packages/core/nros-params",
-    "packages/core/nano-ros-transport",
+    "packages/core/nros-rmw",
     "packages/core/nros-node",
-    # Zenoh transport for cross-platform support (POSIX, Zephyr, bare-metal)
-    "packages/transport/nano-ros-transport-zenoh-sys",
-    "packages/transport/nano-ros-transport-zenoh",
+    # Zenoh-pico FFI bindings
+    "packages/zpico/zpico-sys",
+    # Zenoh RMW backend (shim + zpico wrapper)
+    "packages/zpico/nros-rmw-zenoh",
     # Integration tests
     "packages/testing/nano-ros-tests",
     # C API for embedded systems
@@ -63,7 +64,7 @@ exclude = [
     "packages/reference/stm32f4-polling",
     "packages/reference/stm32f4-embassy",
     # smoltcp link layer (embedded-only, requires cross-compilation)
-    "packages/link/nano-ros-link-smoltcp",
+    "packages/zpico/zpico-smoltcp",
     # Platform crates (embedded-only, require cross-compilation)
     "packages/platform/nano-ros-platform-qemu",
     "packages/platform/nano-ros-platform-esp32-qemu",
@@ -94,7 +95,8 @@ nros-core = { path = "packages/core/nros-core", default-features = false }
 nros-serdes = { path = "packages/core/nros-serdes", default-features = false }
 nros-macros = { path = "packages/core/nros-macros" }
 nros-params = { path = "packages/core/nros-params", default-features = false }
-nano-ros-transport = { path = "packages/core/nano-ros-transport", default-features = false }
+nros-rmw = { path = "packages/core/nros-rmw", default-features = false }
+nros-rmw-zenoh = { path = "packages/zpico/nros-rmw-zenoh", default-features = false }
 nros-node = { path = "packages/core/nros-node", default-features = false }
 
 # no_std compatible

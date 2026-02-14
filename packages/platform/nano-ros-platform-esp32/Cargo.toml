@@ -10,9 +10,9 @@ name = "nano_ros_platform_esp32"
 
 [dependencies]
 # Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
-nano-ros-transport-zenoh-sys = { path = "../../transport/nano-ros-transport-zenoh-sys", features = ["bare-metal", "link-tcp"] }
+zpico-sys = { path = "../../zpico/zpico-sys", features = ["bare-metal", "link-tcp"] }
 # TCP link layer via smoltcp
-nano-ros-link-smoltcp = { path = "../../link/nano-ros-link-smoltcp" }
+zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
 
 # ESP32-C3 HAL and support crates
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }

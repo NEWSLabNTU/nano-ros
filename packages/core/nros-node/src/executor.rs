@@ -63,7 +63,7 @@ use crate::{
 };
 
 #[cfg(feature = "zenoh")]
-use nano_ros_transport::TransportConfig;
+use nros_rmw::TransportConfig;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SPIN RESULT AND OPTIONS
@@ -1465,9 +1465,7 @@ impl BasicExecutor {
             // near-zero latency dispatch. Falls back to polling interval
             // timeout when idle (same CPU usage as before).
             #[cfg(feature = "zenoh")]
-            nano_ros_transport::shim::wait_for_executor_wake(Duration::from_millis(
-                POLL_INTERVAL_MS,
-            ));
+            nros_rmw_zenoh::wait_for_executor_wake(Duration::from_millis(POLL_INTERVAL_MS));
             #[cfg(not(feature = "zenoh"))]
             std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
         }

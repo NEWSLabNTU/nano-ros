@@ -50,7 +50,7 @@ pub struct CdrGhost {
 /// Ghost model of `SubscriberBuffer` state.
 ///
 /// Models the state machine of the subscriber's static buffer in
-/// `nano-ros-transport/src/shim.rs`. Each subscriber has one 1024-byte
+/// `nros-rmw/src/shim.rs`. Each subscriber has one 1024-byte
 /// static buffer with atomic `has_data`, `overflow`, and `len` fields.
 ///
 /// Source (shim.rs:853-876):

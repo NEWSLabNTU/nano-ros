@@ -109,4 +109,4 @@ probe-rs run --chip STM32F429ZITx target/thumbv7em-none-eabihf/release/stm32f4-r
 ## Next Steps
 
 Once this example works, proceed to Phase 8.4 to integrate smoltcp with
-nano-ros-transport-zenoh for the full nros embedded networking stack.
+nros-rmw-zenoh for the full nros embedded networking stack.

@@ -772,7 +772,7 @@ rcl_ret_t rclc_executor_spin_period(rclc_executor_t * e, uint64_t period_ns);
 
 **Problem**: Liveliness tokens hardcode QoS as `2:2:1,1:,:,:,,` regardless of actual settings.
 
-**Location**: `packages/core/nano-ros-transport/src/shim.rs:204,234`
+**Location**: `packages/core/nros-rmw/src/shim.rs:204,234`
 
 **Tasks**:
 - [x] Add `to_qos_string()` method to `QosSettings`
@@ -909,7 +909,7 @@ Implementation options for Iron+:
 
 **Tasks**:
 - [x] Humble support working (current implementation)
-- [ ] Add `humble`/`iron` feature flags to nano-ros-transport and code generator
+- [ ] Add `humble`/`iron` feature flags to nros-rmw and code generator
 - [ ] (Iron) Research exact canonical type description format
 - [ ] (Iron) Implement RIHS01 hash computation
 - [ ] (Iron) Test against ROS 2 Iron+ nodes
@@ -933,12 +933,12 @@ Implementation options for Iron+:
 Currently nros serializes this attachment when publishing but doesn't deserialize it on receive.
 
 **Location**:
-- `packages/core/nano-ros-transport/src/shim.rs` - ShimSubscriber callback
-- `packages/core/nano-ros-transport/src/traits.rs` - Subscriber trait
+- `packages/core/nros-rmw/src/shim.rs` - ShimSubscriber callback
+- `packages/core/nros-rmw/src/traits.rs` - Subscriber trait
 - `packages/core/nros-node/src/connected.rs` - ConnectedSubscriber::try_recv_with_info()
 
 **Tasks**:
-- [x] Extend nano-ros-transport-zenoh C callback to pass attachment data alongside payload
+- [x] Extend nros-rmw-zenoh C callback to pass attachment data alongside payload
 - [x] Update `SubscriberBuffer` to store attachment (33 bytes: 8+8+1+16)
 - [x] Add `try_recv_with_info()` method to `ShimSubscriber` (returns `MessageInfo`)
 - [x] Parse RMW attachment format in transport layer (VLE-encoded GID length)

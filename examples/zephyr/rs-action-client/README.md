@@ -7,7 +7,7 @@ Sends Fibonacci action goals and receives feedback as the sequence is computed.
 
 ```
 Rust Application (src/lib.rs)
-    └── nano-ros-transport-zenoh (Rust wrapper)
+    └── nros-rmw-zenoh (Rust wrapper)
         └── zenoh_shim.c (C shim, compiled by Zephyr)
             └── zenoh-pico (C library)
                 └── Zephyr network stack

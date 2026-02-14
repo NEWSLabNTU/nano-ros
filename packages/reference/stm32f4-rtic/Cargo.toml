@@ -35,10 +35,10 @@ smoltcp = { version = "0.12", default-features = false, features = [
 nros = { path = "../../core/nros", default-features = false }
 
 # zenoh transport with smoltcp platform backend
-nano-ros-transport-zenoh = { path = "../../transport/nano-ros-transport-zenoh", default-features = false, features = ["bare-metal"] }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal"] }
 
 # smoltcp TCP bridge for zenoh-pico
-nano-ros-link-smoltcp = { path = "../../link/nano-ros-link-smoltcp" }
+zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
 
 # Logging
 defmt = "0.3"

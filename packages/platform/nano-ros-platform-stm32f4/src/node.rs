@@ -1,6 +1,6 @@
 //! High-level Node API and platform initialization for STM32F4
 //!
-//! Uses `nano-ros-link-smoltcp` for socket management instead of
+//! Uses `zpico-smoltcp` for socket management instead of
 //! the legacy BSP bridge approach.
 
 use core::ffi::{c_char, c_void};
@@ -9,7 +9,7 @@ use core::ptr;
 
 use heapless::String;
 use nros_core::RosMessage;
-use nano_ros_link_smoltcp::SmoltcpBridge;
+use zpico_smoltcp::SmoltcpBridge;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use stm32_eth::{
@@ -18,7 +18,7 @@ use stm32_eth::{
 };
 use stm32f4xx_hal::{gpio::GpioExt, pac, prelude::*, rcc::RccExt};
 
-use nano_ros_transport_zenoh_sys::{
+use zpico_sys::{
     zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
     zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
 };
@@ -232,7 +232,7 @@ where
 
     // Create and register TCP sockets via transport crate
     unsafe {
-        nano_ros_link_smoltcp::create_and_register_sockets(&mut sockets);
+        zpico_smoltcp::create_and_register_sockets(&mut sockets);
     }
 
     // Store global state for poll callback
@@ -241,7 +241,7 @@ where
         GLOBAL_IFACE = &mut iface as *mut Interface;
         GLOBAL_SOCKETS = &mut sockets as *mut SocketSet<'static>;
 
-        nano_ros_link_smoltcp::set_poll_callback(smoltcp_network_poll);
+        zpico_smoltcp::set_poll_callback(smoltcp_network_poll);
     }
 
     // Initialize zenoh session
@@ -446,7 +446,7 @@ unsafe fn init_hardware(
     );
 
     // Create socket set from transport crate's pre-allocated storage
-    let storage = unsafe { nano_ros_link_smoltcp::get_socket_storage() };
+    let storage = unsafe { zpico_smoltcp::get_socket_storage() };
     let sockets = SocketSet::new(&mut storage[..]);
 
     Ok((dma, iface, sockets))

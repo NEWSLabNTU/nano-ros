@@ -299,7 +299,8 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
     // Create the internal subscriber using zenoh
     #[cfg(feature = "alloc")]
     {
-        use nano_ros_transport::{Session, ShimSession, TopicInfo};
+        use nros_rmw::{Session, TopicInfo};
+        use nros_rmw_zenoh::ShimSession;
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -382,7 +383,7 @@ pub unsafe extern "C" fn nano_ros_subscription_fini(
     #[cfg(feature = "alloc")]
     {
         if !subscription._internal.is_null() {
-            use nano_ros_transport::ShimSubscriber;
+            use nros_rmw_zenoh::ShimSubscriber;
             let _sub = alloc::boxed::Box::from_raw(subscription._internal as *mut ShimSubscriber);
             // Subscriber is dropped here
         }

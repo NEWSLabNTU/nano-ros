@@ -22,7 +22,7 @@
 //!
 //! use rtic::app;
 //! use nros_node::{ConnectedNode, NodeConfig};
-//! use nano_ros_transport::SessionMode;
+//! use nros_rmw::SessionMode;
 //!
 //! #[app(device = stm32f4xx_hal::pac, dispatchers = [SPI1, SPI2])]
 //! mod app {
@@ -119,13 +119,13 @@
 //!
 //! # Feature Flags
 //!
-//! Enable these features in `nano-ros-transport`:
+//! Enable these features in `nros-rmw`:
 //! - `rtic` - RTIC executor support
 //! - `sync-critical-section` - RTIC-compatible mutex
 //!
 //! ```toml
 //! [dependencies]
-//! nano-ros-transport = { version = "0.1", features = ["zenoh", "rtic", "sync-critical-section"] }
+//! nros-rmw = { version = "0.1", features = ["zenoh", "rtic", "sync-critical-section"] }
 //! ```
 
 /// Recommended poll interval in milliseconds

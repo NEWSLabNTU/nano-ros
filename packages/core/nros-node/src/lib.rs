@@ -121,7 +121,7 @@ pub use publisher::PublisherHandle;
 pub use subscriber::SubscriberHandle;
 
 // Re-export transport types for convenience
-pub use nano_ros_transport::{
+pub use nros_rmw::{
     ActionInfo, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings,
     TopicInfo, TransportConfig, TransportError,
 };
@@ -191,7 +191,7 @@ pub use node::{PublisherOptions, SubscriberOptions};
 
 // Re-export zenoh transport types for convenience
 #[cfg(feature = "zenoh")]
-pub use nano_ros_transport::SessionMode;
+pub use nros_rmw::SessionMode;
 
 // Re-export timer types
 pub use timer::{

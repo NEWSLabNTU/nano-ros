@@ -56,6 +56,6 @@ pub extern "C" fn _z_socket_close(sock: *mut ZSysNetSocket) {
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_socket_wait_event(_peers: *mut core::ffi::c_void, _mutex: *mut ZMutexRecRef) -> i8 {
     // For single-threaded polling, just poll the network
-    nano_ros_link_smoltcp::smoltcp_poll();
+    zpico_smoltcp::smoltcp_poll();
     0
 }

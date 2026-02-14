@@ -1,6 +1,6 @@
 //! Shim-based executor and node for embedded platforms
 //!
-//! This module provides a simplified executor and node API using nano-ros-transport-zenoh.
+//! This module provides a simplified executor and node API using nros-rmw-zenoh.
 //! It's designed for embedded platforms that need manual polling without
 //! background threads.
 //!
@@ -40,12 +40,14 @@
 use core::marker::PhantomData;
 
 use heapless::String;
-use nano_ros_transport::{
-    ActionInfo, Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceServerTrait,
-    Session, ShimPublisher, ShimServiceClient, ShimServiceServer, ShimSession, ShimSubscriber,
-    ShimTransport, Subscriber, TopicInfo, Transport, TransportConfig, TransportError,
-};
 use nros_core::{CdrReader, CdrWriter, Deserialize, RosAction, RosMessage, RosService, Serialize};
+use nros_rmw::{
+    ActionInfo, Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceServerTrait,
+    Session, Subscriber, TopicInfo, Transport, TransportConfig, TransportError,
+};
+use nros_rmw_zenoh::{
+    ShimPublisher, ShimServiceClient, ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport,
+};
 
 // ============================================================================
 // Error Types
@@ -122,7 +124,7 @@ impl ShimExecutor {
 
         let config = TransportConfig {
             locator: Some(locator_str),
-            mode: nano_ros_transport::SessionMode::Client,
+            mode: nros_rmw::SessionMode::Client,
             properties: &[],
         };
 

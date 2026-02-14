@@ -12,16 +12,17 @@ crate-type = ["staticlib", "cdylib"]
 
 [features]
 default = ["std", "platform-posix"]
-std = ["alloc", "nros/std", "nano-ros-transport/std"]
-alloc = ["nros/alloc", "nano-ros-transport/alloc"]
+std = ["alloc", "nros/std", "nros-rmw/std", "nros-rmw-zenoh?/std"]
+alloc = ["nros/alloc", "nros-rmw/alloc"]
 
 # Platform backends (select one)
-platform-posix = ["nros/platform-posix", "nano-ros-transport/platform-posix"]
-platform-zephyr = ["nros/platform-zephyr", "nano-ros-transport/platform-zephyr"]
+platform-posix = ["nros/platform-posix", "dep:nros-rmw-zenoh", "nros-rmw-zenoh/platform-posix"]
+platform-zephyr = ["nros/platform-zephyr", "dep:nros-rmw-zenoh", "nros-rmw-zenoh/platform-zephyr"]
 
 [dependencies]
 nros = { path = "../nros", default-features = false }
-nano-ros-transport = { path = "../nano-ros-transport", default-features = false }
+nros-rmw = { path = "../nros-rmw", default-features = false }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
 nros-core = { path = "../nros-core", default-features = false }
 paste = "1"
 

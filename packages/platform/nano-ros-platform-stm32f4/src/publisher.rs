@@ -6,7 +6,7 @@ use nros_core::{CdrWriter, RosMessage};
 
 use crate::error::{Error, Result};
 
-use nano_ros_transport_zenoh_sys::{zenoh_shim_publish, zenoh_shim_undeclare_publisher};
+use zpico_sys::{zenoh_shim_publish, zenoh_shim_undeclare_publisher};
 
 /// Publisher for sending typed messages to a topic
 ///

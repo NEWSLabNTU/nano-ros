@@ -35,12 +35,12 @@ panic-halt = "0.2"
 # nros with RTIC support (works for Embassy too)
 # Option 1: Local paths (development)
 nros-node = { path = "../packages/core/nros-node", default-features = false, features = ["rtic"] }
-nano-ros-transport = { path = "../packages/core/nano-ros-transport", default-features = false, features = ["rtic", "sync-critical-section"] }
+nros-rmw = { path = "../packages/core/nros-rmw", default-features = false, features = ["rtic", "sync-critical-section"] }
 nano-ros-types = { path = "../packages/core/nano-ros-types", default-features = false }
 
 # Option 2: Git dependency (recommended for external projects)
 # nros-node = { git = "https://github.com/user/nano-ros", default-features = false, features = ["rtic"] }
-# nano-ros-transport = { git = "https://github.com/user/nano-ros", default-features = false, features = ["rtic", "sync-critical-section"] }
+# nros-rmw = { git = "https://github.com/user/nano-ros", default-features = false, features = ["rtic", "sync-critical-section"] }
 
 # Logging (optional)
 defmt = "0.3"

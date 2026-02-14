@@ -5,7 +5,7 @@ Zephyr RTOS example demonstrating nros subscriber using zenoh-pico.
 ## Overview
 
 This example shows how to use nros with Zephyr RTOS:
-- Rust application using nano-ros-transport-zenoh
+- Rust application using nros-rmw-zenoh
 - C shim compiled by Zephyr build system
 - Network connectivity via Zephyr's network stack
 - Subscribes to `std_msgs/msg/Int32` messages on `/chatter`

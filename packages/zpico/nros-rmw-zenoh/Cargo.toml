@@ -1,0 +1,29 @@
+[package]
+name = "nros-rmw-zenoh"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Zenoh-pico RMW backend for nros"
+
+[features]
+default = []
+platform-posix = ["zpico-sys/posix"]
+platform-zephyr = ["zpico-sys/zephyr"]
+platform-bare-metal = ["zpico-sys/bare-metal"]
+std = ["alloc", "zpico-sys/std", "nros-rmw/std", "log"]
+alloc = ["nros-rmw/alloc"]
+rtic = []
+polling = []
+sync-spin = ["nros-rmw/sync-spin"]
+sync-critical-section = ["nros-rmw/sync-critical-section"]
+log = ["dep:log"]
+
+[dependencies]
+nros-rmw = { path = "../../core/nros-rmw", default-features = false }
+nros-core = { workspace = true, default-features = false }
+zpico-sys = { path = "../zpico-sys" }
+heapless = { workspace = true }
+log = { workspace = true, optional = true }
+
+[dev-dependencies]
+nano-ros-ghost-types = { path = "../../verification/nano-ros-ghost-types" }

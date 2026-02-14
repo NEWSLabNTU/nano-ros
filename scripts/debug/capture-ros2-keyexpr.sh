@@ -5,7 +5,7 @@
 set -e
 
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-Z_SUB="$PROJECT_ROOT/packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico/build/examples/z_sub"
+Z_SUB="$PROJECT_ROOT/packages/zpico/zpico-sys/zenoh-pico/build/examples/z_sub"
 LOCATOR="tcp/127.0.0.1:7447"
 
 echo "=== Capture ROS 2 Topic Key Expression ==="

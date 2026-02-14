@@ -1,8 +1,8 @@
 //! Node implementation
 
 use heapless::Vec;
-use nano_ros_transport::{QosSettings, TopicInfo};
 use nros_core::RosMessage;
+use nros_rmw::{QosSettings, TopicInfo};
 
 use crate::publisher::PublisherHandle;
 use crate::subscriber::SubscriberHandle;

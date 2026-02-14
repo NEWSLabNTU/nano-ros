@@ -1,5 +1,5 @@
-[submodule "packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico"]
-	path = packages/transport/nano-ros-transport-zenoh-sys/zenoh-pico
+[submodule "packages/zpico/zpico-sys/zenoh-pico"]
+	path = packages/zpico/zpico-sys/zenoh-pico
 	url = https://github.com/jerry73204/zenoh-pico.git
 [submodule "colcon-cargo-ros2"]
 	path = packages/codegen
