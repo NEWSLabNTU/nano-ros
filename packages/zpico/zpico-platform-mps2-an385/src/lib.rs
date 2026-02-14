@@ -1,4 +1,4 @@
-//! # zpico-platform-qemu
+//! # zpico-platform-mps2-an385
 //!
 //! Zenoh-pico system primitives for QEMU MPS2-AN385 bare-metal.
 //!

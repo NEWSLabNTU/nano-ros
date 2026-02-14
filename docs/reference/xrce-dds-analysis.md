@@ -11,7 +11,7 @@ Source code studied: [Micro-XRCE-DDS-Client](https://github.com/eProsima/Micro-X
 ```
 MCU (XRCE Client)                     Gateway (XRCE Agent)
 ┌──────────────────┐                   ┌──────────────────────┐
-│  nros-qemu       │   XRCE Protocol   │  Micro-XRCE-DDS     │
+│  nros-mps2-an385       │   XRCE Protocol   │  Micro-XRCE-DDS     │
 │  nros-rmw-xrce   │◄─── UDP/Serial ──►│  Agent               │
 │  xrce-sys        │                   │  ┌──────────────┐    │
 │                  │                   │  │ DDS           │    │
@@ -438,7 +438,7 @@ int64_t uxr_nanos(void) {
 
 For bare-metal with no platform defined, this falls into the POSIX branch which calls `clock_gettime()`. The `xrce-platform-qemu` crate provides this symbol using the DWT cycle counter — **the only platform symbol needed**.
 
-This is dramatically simpler than zpico-platform-qemu's 55 FFI symbols (z_malloc, z_clock_now, z_random_*, z_sleep_*, socket stubs, libc stubs, etc.).
+This is dramatically simpler than zpico-platform-mps2-an385's 55 FFI symbols (z_malloc, z_clock_now, z_random_*, z_sleep_*, socket stubs, libc stubs, etc.).
 
 ## Platform Requirements Comparison
 

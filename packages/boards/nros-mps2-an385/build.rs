@@ -1,4 +1,4 @@
-//! Build script for nros-qemu
+//! Build script for nros-mps2-an385
 //!
 //! Copies the mps2-an385.x linker script to the output directory as memory.x
 //! so that cortex-m-rt can find it during linking.

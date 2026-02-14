@@ -47,7 +47,7 @@ cd examples/native/rs-listener && cargo run
 
 ### QEMU (`qemu/`)
 
-Bare-metal ARM Cortex-M examples running on QEMU MPS2-AN385. Uses `nros-qemu` for simplified setup.
+Bare-metal ARM Cortex-M examples running on QEMU MPS2-AN385. Uses `nros-mps2-an385` for simplified setup.
 
 | Example | Description |
 |---------|-------------|

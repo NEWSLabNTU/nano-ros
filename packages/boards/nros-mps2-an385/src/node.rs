@@ -13,7 +13,7 @@ use smoltcp::phy::Device;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use zpico_smoltcp::SmoltcpBridge;
 
-use zpico_platform_qemu::{clock, network, random};
+use zpico_platform_mps2_an385::{clock, network, random};
 
 use crate::config::Config;
 use crate::error::{Error, Result};
@@ -186,7 +186,7 @@ where
     F: FnOnce(&mut Node) -> Result<()>,
 {
     // Enable DWT cycle counter for timing measurements
-    zpico_platform_qemu::timing::CycleCounter::enable();
+    zpico_platform_mps2_an385::timing::CycleCounter::enable();
 
     hprintln!("");
     hprintln!("========================================");

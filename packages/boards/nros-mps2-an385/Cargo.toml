@@ -1,16 +1,16 @@
 [package]
-name = "nros-qemu"
+name = "nros-mps2-an385"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "QEMU MPS2-AN385 board crate for nros (simplified node API)"
 
 [lib]
-name = "nros_qemu"
+name = "nros_mps2_an385"
 
 [dependencies]
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
-zpico-platform-qemu = { path = "../../zpico/zpico-platform-qemu" }
+zpico-platform-mps2-an385 = { path = "../../zpico/zpico-platform-mps2-an385" }
 
 # RMW abstraction + zenoh backend
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }

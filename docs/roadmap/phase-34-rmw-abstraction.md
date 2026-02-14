@@ -21,7 +21,7 @@
 **Complete:**
 - `nros-rmw` — `Rmw` factory trait, `RmwConfig`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait` traits, `TopicInfo`, `ServiceInfo`, `ActionInfo`, `QosSettings`, `TransportError`
 - `nros-rmw-zenoh` — `ZenohRmw` implements `Rmw` trait, `ShimSession`/`ShimPublisher`/`ShimSubscriber` implement session/pub/sub traits
-- All 4 board crates (`nros-qemu`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) use `nros-rmw` traits exclusively — no direct `zpico-sys` imports
+- All 4 board crates (`nros-mps2-an385`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) use `nros-rmw` traits exclusively — no direct `zpico-sys` imports
 
 **Remaining (34.4-34.8):**
 - XRCE-DDS as second RMW backend, proving the abstraction works
@@ -122,9 +122,9 @@ pub struct RmwConfig<'a> {
 - [x] Board-specific `Node` type uses concrete `ZenohRmw` (no dynamic dispatch, no generics needed for single-backend boards)
 
 **QEMU board crate (refactored first — most tested):**
-- [x] Refactor `nros-qemu/src/node.rs`
-- [x] Refactor `nros-qemu/src/publisher.rs`
-- [x] Refactor `nros-qemu/src/subscriber.rs`
+- [x] Refactor `nros-mps2-an385/src/node.rs`
+- [x] Refactor `nros-mps2-an385/src/publisher.rs`
+- [x] Refactor `nros-mps2-an385/src/subscriber.rs`
 - [x] All QEMU examples build and pass tests
 
 **STM32F4 board crate:**
@@ -304,9 +304,9 @@ Maps XRCE-DDS entities to `nros-rmw` traits. This is the core complexity — orc
 
 Provides the **single platform symbol** needed by XRCE-DDS on bare-metal: `clock_gettime()` for `uxr_nanos()` in `time.c`.
 
-This is dramatically simpler than zpico-platform-qemu (1 symbol vs 55):
+This is dramatically simpler than zpico-platform-mps2-an385 (1 symbol vs 55):
 
-| | zpico-platform-qemu | xrce-platform-qemu |
+| | zpico-platform-mps2-an385 | xrce-platform-qemu |
 |---|---|---|
 | Memory | z_malloc, z_free, z_realloc | **None** (fully static) |
 | Clock | z_clock_now + 6 time functions | `clock_gettime` only |
@@ -317,7 +317,7 @@ This is dramatically simpler than zpico-platform-qemu (1 symbol vs 55):
 | libc | strlen, memcpy, strtoul, snprintf, ... | `memcpy`, `memset`, `strlen` (from compiler builtins or newlib) |
 | **Total** | **~55 symbols** | **1 symbol** |
 
-- [ ] Implement `clock_gettime(CLOCK_REALTIME, &ts)` using Cortex-M DWT cycle counter (same timing source as zpico-platform-qemu's `z_clock_now`)
+- [ ] Implement `clock_gettime(CLOCK_REALTIME, &ts)` using Cortex-M DWT cycle counter (same timing source as zpico-platform-mps2-an385's `z_clock_now`)
 - [ ] Provide `memcpy`, `memset`, `strlen` if not available from the toolchain's newlib/picolibc (ARM `arm-none-eabi-gcc` provides these by default)
 - [ ] Builds for `thumbv7m-none-eabi`
 

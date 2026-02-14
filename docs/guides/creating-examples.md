@@ -193,10 +193,10 @@ bench = false
 
 [features]
 default = []
-docker = ["nros-qemu/docker"]
+docker = ["nros-mps2-an385/docker"]
 
 [dependencies]
-nros-qemu = { path = "../../../packages/boards/nros-qemu" }
+nros-mps2-an385 = { path = "../../../packages/boards/nros-mps2-an385" }
 std_msgs = { version = "*", default-features = false }
 panic-semihosting = { version = "0.6", features = ["exit"] }
 ```
@@ -228,8 +228,8 @@ Create the `[build]` and `[target.*]` sections **first**, then run `cargo nano-r
 #![no_std]
 #![no_main]
 
-use nros_qemu::prelude::*;
-use nros_qemu::println;
+use nros_mps2_an385::prelude::*;
+use nros_mps2_an385::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -258,8 +258,8 @@ fn main() -> ! {
 #![no_main]
 
 use core::sync::atomic::{AtomicU32, Ordering};
-use nros_qemu::prelude::*;
-use nros_qemu::println;
+use nros_mps2_an385::prelude::*;
+use nros_mps2_an385::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
@@ -504,7 +504,7 @@ fn run() -> Result<(), ShimNodeError> {
 | **Source file** | `src/main.rs` | `src/main.rs` | `src/lib.rs` |
 | **Crate type** | Binary | Binary | Staticlib |
 | **Package name** | Any | Any | Must be `rustapp` |
-| **Main crate** | `nros` | `nros-qemu`/`nros-stm32f4` | `nros` (shim-zephyr) |
+| **Main crate** | `nros` | `nros-mps2-an385`/`nros-stm32f4` | `nros` (shim-zephyr) |
 | **Transport** | Feature-gated `zenoh` | Built into platform crate | Built into BSP (C) |
 | **Logging** | `env_logger` | Semihosting / `defmt` | `zephyr::set_logger()` |
 | **Build system** | `cargo build` | `cargo build` | `west build` (CMake) |

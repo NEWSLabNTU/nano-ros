@@ -1,4 +1,4 @@
-//! Simple QEMU Talker using nros-qemu
+//! Simple QEMU Talker using nros-mps2-an385
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`.
 //! Compare with qemu-rs-talker — this is the same but demonstrates
@@ -7,8 +7,8 @@
 #![no_std]
 #![no_main]
 
-use nros_qemu::prelude::*;
-use nros_qemu::println;
+use nros_mps2_an385::prelude::*;
+use nros_mps2_an385::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 

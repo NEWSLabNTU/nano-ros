@@ -1,6 +1,6 @@
-//! # nros-qemu
+//! # nros-mps2-an385
 //!
-//! Board crate for running nros on QEMU MPS2-AN385.
+//! Board crate for running nros on the MPS2-AN385 (Cortex-M3 + LAN9118).
 //!
 //! Provides a simplified node API that abstracts away hardware and
 //! network stack details. Users only need to focus on ROS concepts
@@ -8,7 +8,7 @@
 //!
 //! # Architecture
 //!
-//! This crate depends on `zpico-platform-qemu` for system primitives
+//! This crate depends on `zpico-platform-mps2-an385` for system primitives
 //! (zenoh-pico FFI symbols, clock, memory, RNG) and uses `nros-rmw-zenoh`
 //! for the transport layer.
 
@@ -28,7 +28,7 @@ pub use cortex_m_rt::entry;
 pub use cortex_m_semihosting;
 
 // Re-export zpico-platform for direct access to system primitives
-pub use zpico_platform_qemu;
+pub use zpico_platform_mps2_an385;
 
 // Re-export main types
 pub use config::Config;
@@ -36,14 +36,14 @@ pub use error::{Error, Result};
 pub use node::{Node, run_node};
 pub use publisher::Publisher;
 pub use subscriber::Subscription;
-pub use zpico_platform_qemu::timing::CycleCounter;
+pub use zpico_platform_mps2_an385::timing::CycleCounter;
 
 // Re-export core traits needed for message type definitions
 pub use nros_core::{self, Deserialize, RosMessage, Serialize};
 
 /// Prelude for convenient imports
 ///
-/// Use with: `use nros_qemu::prelude::*;`
+/// Use with: `use nros_mps2_an385::prelude::*;`
 pub mod prelude {
     pub use crate::config::Config;
     pub use crate::error::{Error, Result};
@@ -52,7 +52,7 @@ pub mod prelude {
     pub use crate::subscriber::Subscription;
     pub use cortex_m_rt::entry;
     pub use nros_core::{Deserialize, RosMessage, Serialize};
-    pub use zpico_platform_qemu::timing::CycleCounter;
+    pub use zpico_platform_mps2_an385::timing::CycleCounter;
 }
 
 /// Print to QEMU semihosting console

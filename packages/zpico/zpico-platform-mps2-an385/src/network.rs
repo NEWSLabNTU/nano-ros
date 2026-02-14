@@ -1,7 +1,7 @@
-//! Network poll callback and global state for QEMU MPS2-AN385
+//! Network poll callback and global state for MPS2-AN385
 //!
 //! Provides the `smoltcp_network_poll()` FFI callback invoked by
-//! zpico-smoltcp during network operations. The board crate (nros-qemu)
+//! zpico-smoltcp during network operations. The board crate (nros-mps2-an385)
 //! calls `set_network_state()` during init to populate the globals.
 
 use core::ptr;
@@ -15,7 +15,7 @@ static mut GLOBAL_IFACE: *mut Interface = ptr::null_mut();
 static mut GLOBAL_SOCKETS: *mut SocketSet<'static> = ptr::null_mut();
 static mut GLOBAL_DEVICE: *mut () = ptr::null_mut();
 
-/// Set the network state pointers (called by nros-qemu during node init)
+/// Set the network state pointers (called by nros-mps2-an385 during node init)
 ///
 /// # Safety
 ///
@@ -32,7 +32,7 @@ pub unsafe fn set_network_state(
     }
 }
 
-/// Clear network state (called by nros-qemu on node drop)
+/// Clear network state (called by nros-mps2-an385 on node drop)
 ///
 /// # Safety
 ///

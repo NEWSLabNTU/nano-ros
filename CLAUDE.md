@@ -21,12 +21,12 @@ nano-ros/
 │   │   ├── zpico-sys/             # FFI + C shim + zenoh-pico submodule
 │   │   ├── zpico-smoltcp/         # TCP/UDP via smoltcp IP stack
 │   │   ├── zpico-zephyr/          # Zephyr RTOS BSP (C, CMake)
-│   │   ├── zpico-platform-qemu/   # QEMU ARM FFI symbols (no nros deps)
+│   │   ├── zpico-platform-mps2-an385/ # QEMU ARM FFI symbols (no nros deps)
 │   │   ├── zpico-platform-esp32/  # ESP32-C3 WiFi FFI symbols
 │   │   ├── zpico-platform-esp32-qemu/ # ESP32-C3 QEMU FFI symbols
 │   │   └── zpico-platform-stm32f4/   # STM32F4 FFI symbols
 │   ├── boards/                    # Board support crates (user API)
-│   │   ├── nros-qemu/             # QEMU ARM board (Node API)
+│   │   ├── nros-mps2-an385/       # QEMU ARM board (Node API)
 │   │   ├── nros-esp32/            # ESP32-C3 WiFi board
 │   │   ├── nros-esp32-qemu/       # ESP32-C3 QEMU board
 │   │   └── nros-stm32f4/          # STM32F4 board
@@ -55,7 +55,7 @@ nano-ros/
 │   │   ├── rs-service-*/         # Rust service examples
 │   │   ├── rs-action-*/          # Rust action examples
 │   │   └── c-*/                  # C language examples
-│   ├── qemu/                  # QEMU bare-metal ARM (uses nros-qemu)
+│   ├── qemu/                  # QEMU bare-metal ARM (uses nros-mps2-an385)
 │   │   ├── bsp-talker/           # Simplified platform publisher
 │   │   ├── bsp-listener/         # Simplified platform subscriber
 │   │   └── rs-*/                 # Full Rust examples

@@ -1,12 +1,12 @@
 [package]
-name = "zpico-platform-qemu"
+name = "zpico-platform-mps2-an385"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "Zenoh-pico system primitives for QEMU MPS2-AN385 (no nros dependency)"
 
 [lib]
-name = "zpico_platform_qemu"
+name = "zpico_platform_mps2_an385"
 
 [dependencies]
 # Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)

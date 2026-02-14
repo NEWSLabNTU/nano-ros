@@ -64,7 +64,7 @@ Each former platform crate was a mix of zpico system symbols (55 `z_*`/`_z_*` FF
 
 | Source                         | New zpico crate             | Modules extracted                                                             |
 |--------------------------------|-----------------------------|-------------------------------------------------------------------------------|
-| `nano-ros-platform-qemu`       | `zpico-platform-qemu`       | clock, memory, random, sleep, socket, threading, time, libc_stubs (727 lines) |
+| `nano-ros-platform-qemu`       | `zpico-platform-mps2-an385`       | clock, memory, random, sleep, socket, threading, time, libc_stubs (727 lines) |
 | `nano-ros-platform-esp32`      | `zpico-platform-esp32`      | Same 8 modules                                                                |
 | `nano-ros-platform-esp32-qemu` | `zpico-platform-esp32-qemu` | Same 8 modules                                                                |
 | `nano-ros-platform-stm32f4`    | `zpico-platform-stm32f4`    | Same 8 modules                                                                |
@@ -79,7 +79,7 @@ Each `zpico-platform-*` crate:
 
 | Source (after extraction)      | New nros crate    | Modules remaining                                            |
 |--------------------------------|-------------------|--------------------------------------------------------------|
-| `nano-ros-platform-qemu`       | `nros-qemu`       | node, publisher, subscriber, config, error, timing + hw init |
+| `nano-ros-platform-qemu`       | `nros-mps2-an385`       | node, publisher, subscriber, config, error, timing + hw init |
 | `nano-ros-platform-esp32`      | `nros-esp32`      | Same pattern                                                 |
 | `nano-ros-platform-esp32-qemu` | `nros-esp32-qemu` | Same pattern                                                 |
 | `nano-ros-platform-stm32f4`    | `nros-stm32f4`    | Same + phy, pins                                             |
@@ -91,7 +91,7 @@ Each `nros-*` board crate:
 - Is excluded from the default workspace (embedded-only, cross-compiled)
 
 **Updated examples to depend on split crates:**
-- QEMU examples: depend on `nros-qemu` (which pulls in `zpico-platform-qemu` etc.)
+- QEMU examples: depend on `nros-mps2-an385` (which pulls in `zpico-platform-mps2-an385` etc.)
 - ESP32 examples: same pattern
 - Updated `.cargo/config.toml` patch entries
 
@@ -159,14 +159,14 @@ packages/
   zpico/                             # Zenoh-pico internals (NO nros deps)
     zpico-sys/                       #   FFI + C shim + zenoh-pico submodule
     zpico-smoltcp/                   #   TCP via smoltcp for zenoh-pico
-    zpico-platform-qemu/             #   System symbols for QEMU (z_malloc, etc.)
+    zpico-platform-mps2-an385/             #   System symbols for QEMU (z_malloc, etc.)
     zpico-platform-esp32/            #   System symbols for ESP32 WiFi
     zpico-platform-esp32-qemu/       #   System symbols for ESP32 QEMU
     zpico-platform-stm32f4/          #   System symbols for STM32F4
     zpico-zephyr/                    #   Zephyr C convenience library
     nros-rmw-zenoh/                  #   RMW glue (bridges zpico ↔ nros-rmw)
   boards/                            # User-facing platform packages (nros deps)
-    nros-qemu/                       #   QEMU: Publisher<M>, run_node(), Config
+    nros-mps2-an385/                       #   QEMU: Publisher<M>, run_node(), Config
     nros-esp32/                      #   ESP32-C3 WiFi user API
     nros-esp32-qemu/                 #   ESP32-C3 QEMU user API
     nros-stm32f4/                    #   STM32F4 user API
