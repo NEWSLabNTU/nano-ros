@@ -389,12 +389,12 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
 | 31 | Verus unbounded verification | In Progress |
-| 33 | Crate rename (`nros-*` / `zpico-*`) | In Progress |
+| 33 | Crate rename (`nros-*` / `zpico-*`) | Complete |
 | 34 | RMW abstraction + XRCE-DDS | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
-**Phase 33**: Rename all crates from `nano-ros-*` to `nros-*` / `zpico-*`. 33.1 (core renames) and 33.2 (transport split into `nros-rmw` + `nros-rmw-zenoh`) complete. 33.3 (platform crate split into `zpico-platform-*` + `nros-*` board crates) complete. See `docs/design/rmw-layer-design.md`.
+**Phase 33**: Complete. All crates renamed from `nano-ros-*` to `nros-*` / `zpico-*`. Transport split into `nros-rmw` + `nros-rmw-zenoh`. Platform crates split into `zpico-platform-*` + `nros-*` board crates. See `docs/design/rmw-layer-design.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

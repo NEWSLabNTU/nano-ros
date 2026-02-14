@@ -34,8 +34,8 @@ pub use ffi::*;
 // Platform-specific Modules
 // ============================================================================
 
-// Note: The old `platform_smoltcp` module has been superseded by
-// `zpico-smoltcp` and platform crates. Platform crates
+// Note: The C platform layer (`c/platform/`) provides bare-metal
+// headers and optional C shims. Platform crates (`zpico-platform-*`)
 // provide system primitives (clock, memory, RNG) and the transport
 // crate provides TCP symbols directly in Rust.
 

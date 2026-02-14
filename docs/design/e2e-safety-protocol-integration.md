@@ -203,33 +203,33 @@ trait MonotonicClock {
 
 ### Feature flag: `safety-e2e`
 
-A compile-time feature flag on `nano-ros-transport` that:
+A compile-time feature flag on `nros-rmw` that:
 - Publisher: computes CRC-32 over CDR payload, appends to attachment
 - Subscriber: validates CRC, tracks sequences, reports `IntegrityStatus`
 - Zero cost when disabled (no code compiled)
 
 The feature propagates through the crate hierarchy:
 ```
-nano-ros (top-level) → nano-ros-node → nano-ros-transport
-  safety-e2e              safety-e2e       safety-e2e
+nros (top-level) → nros-node → nros-rmw
+  safety-e2e        safety-e2e   safety-e2e
 ```
 
 ### Changes by layer
 
-**`nano-ros-transport`** (core changes):
+**`nros-rmw`** (core changes):
 - New `safety` module: CRC-32 function, `IntegrityStatus` type, `SafetyValidator` state tracker
 - `ShimPublisher::publish_raw()`: behind `#[cfg(feature = "safety-e2e")]`, compute CRC and extend attachment from 33 to 37 bytes
 - `SubscriberBuffer`: increase attachment buffer from 33 to 37 bytes when feature enabled
 - `ShimSubscriber`: add `SafetyValidator` field, add `try_recv_validated()` method
 
-**`nano-ros-node`** (API surface):
+**`nros-node`** (API surface):
 - `ShimNodeSubscription`: add `try_recv_safe()` method returning `(M, IntegrityStatus)` when feature enabled
 
 **No changes to**:
-- CDR serialization (`nano-ros-serdes`) — payload format unchanged
-- Core types (`nano-ros-core`) — no new traits needed
+- CDR serialization (`nros-serdes`) — payload format unchanged
+- Core types (`nros-core`) — no new traits needed
 - Transport traits (`traits.rs`) — shim-specific, not trait-level
-- Zenoh backend (`nano-ros-transport-zenoh`) — attachment handling already supports variable sizes
+- Zenoh backend (`nros-rmw-zenoh`) — attachment handling already supports variable sizes
 - Existing `try_recv()` API — remains available, unchanged behavior
 
 ### Memory impact

@@ -72,7 +72,7 @@ Comprehensive gap analysis mapping nano-ros capabilities to ISO 26262 ASIL A thr
 
 ### 35.1: Implement CRC-32 module
 
-Add `safety` module to `nano-ros-transport` with:
+Add `safety` module to `nros-rmw` with:
 - CRC-32/ISO-HDLC implementation (1KB const lookup table, `no_std`)
 - `IntegrityStatus` type (CRC result, sequence gap, duplicate flag)
 - `SafetyValidator` subscriber-side state tracker
@@ -99,7 +99,7 @@ In `ShimSubscriber`, behind `#[cfg(feature = "safety-e2e")]`:
 
 In `nano-ros-node`, behind `#[cfg(feature = "safety-e2e")]`:
 - Add `ShimNodeSubscription::try_recv_safe()` → `(M, IntegrityStatus)`
-- Feature flag wiring: `nano-ros → nano-ros-node → nano-ros-transport`
+- Feature flag wiring: `nros → nros-node → nros-rmw`
 
 ### 35.5: MC/DC coverage infrastructure
 

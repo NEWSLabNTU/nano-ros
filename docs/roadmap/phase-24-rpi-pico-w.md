@@ -62,7 +62,7 @@ Fits with comfortable margins. RAM is tighter than ESP32-C3 but still has 3x hea
 └─────────────────────────────┬───────────────────────────────────┘
                               │
 ┌─────────────────────────────▼───────────────────────────────────┐
-│                     nano-ros-bsp-pico-w                          │
+│                     nros-pico-w                          │
 │                                                                  │
 │  - WiFi initialization (cyw43 driver)                           │
 │  - smoltcp TCP stack over CYW43                                 │
@@ -201,14 +201,14 @@ The existing `just build-zenoh-pico-arm` builds for Cortex-M3 (`thumbv7m-none-ea
 - [ ] Library links with embassy-rp test binary
 - [ ] No Thumb2 instruction faults on M0+
 
-### 24.3: Create `nano-ros-bsp-pico-w` Crate
+### 24.3: Create `nros-pico-w` Crate
 
 **Status**: Not Started
 
 **Tasks**:
 1. [ ] Create crate structure:
    ```
-   packages/bsp/nano-ros-bsp-pico-w/
+   packages/boards/nros-pico-w/
    ├── Cargo.toml
    ├── build.rs                 # Link prebuilt zenoh-pico
    ├── src/

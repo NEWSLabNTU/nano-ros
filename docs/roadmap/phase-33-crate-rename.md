@@ -1,6 +1,6 @@
 # Phase 33: Crate Rename (`nros-*` / `zpico-*`)
 
-**Status: 33.1 Complete, 33.2 Complete, 33.3 Complete, 33.4 Complete**
+**Status: Complete (33.1–33.6)**
 
 **Design doc:** `docs/design/rmw-layer-design.md`
 
@@ -130,7 +130,9 @@ Each `nros-*` board crate:
 | Update justfile recipe names if needed                                   |
 | Update test infrastructure (fixture paths, binary names)                 |
 | Update CMake integration (`FindNanoRos.cmake` → adapt for new lib names) |
-| Delete `c/platform_smoltcp/` (superseded by `zpico-smoltcp`)             |
+| Rename `c/platform_smoltcp/` → `c/platform/` (generic bare-metal headers)|
+| Delete legacy `c/platform/system.c` and `c/platform/network.c`          |
+| Remove dead `use_c_network_shim`/`use_c_system_shim` code from build.rs |
 | Final `just quality` verification                                        |
 
 ## Future Work (not in Phase 33)

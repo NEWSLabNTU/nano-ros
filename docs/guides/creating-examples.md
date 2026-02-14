@@ -395,7 +395,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_example)
 
 # nros BSP for Zephyr (C glue)
-set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/bsp/nano-ros-bsp-zephyr)
+set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/zpico/zpico-zephyr)
 target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
 target_include_directories(app PRIVATE ${BSP_DIR}/include)
 

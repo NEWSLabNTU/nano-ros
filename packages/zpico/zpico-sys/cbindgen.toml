@@ -46,7 +46,7 @@ clean = true
 # Only parse ffi.rs (not lib.rs which has the extern block imports)
 include = ["ffi"]
 # Exclude platform implementation modules
-exclude = ["platform_smoltcp"]
+exclude = ["platform"]
 
 [export]
 # Exclude smoltcp platform FFI (provided by BSP bridge.rs or platform crates, not part of public API)

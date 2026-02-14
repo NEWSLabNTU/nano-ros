@@ -3,8 +3,7 @@
 //! This builds:
 //! 1. zenoh-pico C library (via CMake for native, sources for embedded)
 //! 2. The C shim layer (zenoh_shim.c)
-//! 3. Platform-specific C code (system.c, network.c for smoltcp)
-//! 4. Generates C header from Rust FFI declarations (cbindgen)
+//! 3. Generates C header from Rust FFI declarations (cbindgen)
 
 use std::env;
 use std::fmt::Write as _;
@@ -195,12 +194,6 @@ fn main() {
     // Read link-* features for bare-metal protocol selection
     let link_features = LinkFeatures::from_env();
 
-    // C network.c and system.c shims are no longer used:
-    // - zpico-smoltcp provides TCP symbols in Rust
-    // - Platform crates provide system primitives (clock, memory, RNG) in Rust
-    let use_c_network_shim = false;
-    let use_c_system_shim = false;
-
     // Paths
     let zenoh_pico_src = manifest_dir.join("zenoh-pico");
     let c_dir = manifest_dir.join("c");
@@ -246,8 +239,6 @@ fn main() {
                 use_bare_metal,
                 &target,
                 &link_features,
-                use_c_network_shim,
-                use_c_system_shim,
             );
         }
     } else if use_bare_metal {
@@ -262,8 +253,6 @@ fn main() {
             &out_dir,
             &target,
             &link_features,
-            use_c_network_shim,
-            use_c_system_shim,
         );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
@@ -280,10 +269,10 @@ fn main() {
 
     // Rerun triggers
     println!("cargo:rerun-if-changed=c/shim/zenoh_shim.c");
-    println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_bare_metal_platform.h");
-    println!("cargo:rerun-if-changed=c/platform_smoltcp/errno_override.h");
-    println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_config.h");
-    println!("cargo:rerun-if-changed=c/platform_smoltcp/zenoh_generic_platform.h");
+    println!("cargo:rerun-if-changed=c/platform/zenoh_bare_metal_platform.h");
+    println!("cargo:rerun-if-changed=c/platform/errno_override.h");
+    println!("cargo:rerun-if-changed=c/platform/zenoh_generic_config.h");
+    println!("cargo:rerun-if-changed=c/platform/zenoh_generic_platform.h");
     println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
     println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
     println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
@@ -695,7 +684,6 @@ fn generate_version_header(build_dir: &Path) {
 /// Build the C shim library
 ///
 /// Note: For Zephyr, C code is built by Zephyr's build system, not here.
-#[allow(clippy::too_many_arguments)]
 fn build_c_shim(
     c_dir: &Path,
     include_dir: &Path,
@@ -704,8 +692,6 @@ fn build_c_shim(
     use_bare_metal: bool,
     target: &str,
     link: &LinkFeatures,
-    use_c_network_shim: bool,
-    use_c_system_shim: bool,
 ) {
     let mut build = cc::Build::new();
 
@@ -723,21 +709,7 @@ fn build_c_shim(
         #[cfg(target_os = "macos")]
         build.define("ZENOH_MACOS", None);
     } else if use_bare_metal {
-        let platform_dir = c_dir.join("platform_smoltcp");
-
-        // Add platform sources
-        // Only include system.c when c-system-shim is enabled.
-        // When a platform crate provides z_malloc, z_clock_now etc. in Rust,
-        // this must be disabled to avoid duplicate symbol errors.
-        if use_c_system_shim {
-            build.file(platform_dir.join("system.c"));
-        }
-        // Only include network.c when c-network-shim is enabled.
-        // When zpico-smoltcp provides _z_open_tcp etc. in Rust,
-        // this must be disabled to avoid duplicate symbol errors.
-        if use_c_network_shim {
-            build.file(platform_dir.join("network.c"));
-        }
+        let platform_dir = c_dir.join("platform");
 
         // Include platform headers
         build.include(&platform_dir);
@@ -789,10 +761,9 @@ fn build_c_shim(
 
 /// Build zenoh-pico + platform layer + shim for embedded targets using cc.
 ///
-/// Compiles all zenoh-pico sources together with our smoltcp platform layer and
+/// Compiles all zenoh-pico sources together with our platform headers and
 /// shim into a single static library (`libzenohpico.a`). This replaces the
 /// external `scripts/{qemu,esp32}/build-zenoh-pico.sh` shell scripts.
-#[allow(clippy::too_many_arguments)]
 fn build_zenoh_pico_embedded(
     zenoh_pico_src: &Path,
     c_dir: &Path,
@@ -800,11 +771,9 @@ fn build_zenoh_pico_embedded(
     out_dir: &Path,
     target: &str,
     link: &LinkFeatures,
-    use_c_network_shim: bool,
-    use_c_system_shim: bool,
 ) {
     let mut build = cc::Build::new();
-    let platform_dir = c_dir.join("platform_smoltcp");
+    let platform_dir = c_dir.join("platform");
 
     // Generate version header in OUT_DIR
     let version_include_dir = out_dir.join("zenoh-pico-version");
@@ -822,7 +791,7 @@ fn build_zenoh_pico_embedded(
         std::fs::create_dir_all(&errno_dir).unwrap();
         std::fs::write(
             errno_dir.join("errno.h"),
-            include_bytes!("c/platform_smoltcp/errno_override.h"),
+            include_bytes!("c/platform/errno_override.h"),
         )
         .unwrap();
         // errno override must be searched BEFORE picolibc headers
@@ -862,16 +831,6 @@ fn build_zenoh_pico_embedded(
     }
     // Common system sources (shared across all platforms)
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
-
-    // smoltcp platform layer
-    // Only include system.c when c-system-shim is enabled.
-    if use_c_system_shim {
-        build.file(platform_dir.join("system.c"));
-    }
-    // Only include network.c when c-network-shim is enabled.
-    if use_c_network_shim {
-        build.file(platform_dir.join("network.c"));
-    }
 
     // Shim (high-level API wrapper)
     build.file(c_dir.join("shim").join("zenoh_shim.c"));
