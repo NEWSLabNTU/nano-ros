@@ -1,25 +1,17 @@
 //! Simplified node API for QEMU bare-metal
 //!
-//! Uses `zpico-smoltcp` for socket management instead of
-//! the legacy BSP bridge.
-
-use core::ffi::{c_char, c_void};
-use core::fmt::Write as _;
-use core::marker::PhantomData;
+//! Uses `nros-rmw-zenoh` for transport and `zpico-smoltcp` for socket management.
 
 use cortex_m_semihosting::hprintln;
-use heapless::String;
 use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
 use nros_core::RosMessage;
-use zpico_smoltcp::SmoltcpBridge;
+use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
+use nros_rmw_zenoh::ZenohRmw;
+use nros_rmw_zenoh::shim::ShimSession;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::phy::Device;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-
-use zpico_sys::{
-    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
-    zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
-};
+use zpico_smoltcp::SmoltcpBridge;
 
 use zpico_platform_qemu::{clock, network, random};
 
@@ -27,7 +19,7 @@ use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::exit_failure;
 use crate::publisher::Publisher;
-use crate::subscriber::{Subscription, subscription_trampoline};
+use crate::subscriber::Subscription;
 
 /// Trait for Ethernet devices that can be used with Node
 pub trait EthernetDevice: Device {
@@ -42,168 +34,58 @@ impl EthernetDevice for Lan9118 {
     }
 }
 
-/// Internal node state (manages bare-metal resources)
-struct InnerNode<'a, D: EthernetDevice> {
-    _marker: PhantomData<&'a mut D>,
-}
-
-impl<'a, D: EthernetDevice + 'static> InnerNode<'a, D> {
-    /// Create a new inner node
-    fn new(
-        eth: &'a mut D,
-        iface: &'a mut Interface,
-        sockets: &'a mut SocketSet<'static>,
-        ip: [u8; 4],
-        gateway: [u8; 4],
-        prefix: u8,
-        zenoh_locator: &[u8],
-    ) -> Result<Self> {
-        // Configure IP address
-        let ip_addr = Ipv4Address::new(ip[0], ip[1], ip[2], ip[3]);
-        iface.update_ip_addrs(|addrs| {
-            addrs
-                .push(IpCidr::new(IpAddress::Ipv4(ip_addr), prefix))
-                .ok();
-        });
-
-        // Set default gateway (skip if 0.0.0.0, which indicates link-local mode)
-        if gateway != [0, 0, 0, 0] {
-            let gw = Ipv4Address::new(gateway[0], gateway[1], gateway[2], gateway[3]);
-            iface
-                .routes_mut()
-                .add_default_ipv4_route(gw)
-                .map_err(|_| Error::Route)?;
-        }
-
-        // Initialize the transport crate's bridge
-        SmoltcpBridge::init();
-
-        // Seed RNG with IP to avoid zenoh ID collisions
-        let ip_seed = u32::from_be_bytes(ip);
-        random::seed(ip_seed);
-
-        // Create and register TCP sockets via transport crate
-        unsafe {
-            zpico_smoltcp::create_and_register_sockets(sockets);
-        }
-
-        // Store global state for poll callback
-        unsafe {
-            network::set_network_state(
-                iface as *mut Interface,
-                sockets as *mut SocketSet<'static>,
-                eth as *mut D as *mut (),
-            );
-
-            zpico_smoltcp::set_poll_callback(network::smoltcp_network_poll);
-        }
-
-        // Initialize zenoh session
-        let ret = unsafe { zenoh_shim_init(zenoh_locator.as_ptr() as *const c_char) };
-        if ret < 0 {
-            return Err(Error::ZenohInit);
-        }
-
-        let ret = unsafe { zenoh_shim_open() };
-        if ret < 0 {
-            return Err(Error::ZenohOpen);
-        }
-
-        // Verify session is open
-        if unsafe { zenoh_shim_is_open() } == 0 {
-            return Err(Error::ZenohNotOpen);
-        }
-
-        Ok(Self {
-            _marker: PhantomData,
-        })
-    }
-
-    /// Create a publisher for a raw keyexpr
-    fn create_publisher_raw(&mut self, topic: &[u8]) -> Result<i32> {
-        let handle = unsafe { zenoh_shim_declare_publisher(topic.as_ptr() as *const c_char) };
-        if handle < 0 {
-            return Err(Error::PublisherDeclare);
-        }
-        Ok(handle)
-    }
-
-    /// Create a subscriber for a raw keyexpr
-    unsafe fn create_subscriber_raw(
-        &mut self,
-        topic: &[u8],
-        callback: extern "C" fn(*const u8, usize, *mut c_void),
-        context: *mut c_void,
-    ) -> Result<i32> {
-        let handle = unsafe {
-            zenoh_shim_declare_subscriber(topic.as_ptr() as *const c_char, callback, context)
-        };
-        if handle < 0 {
-            return Err(Error::SubscriberDeclare);
-        }
-        Ok(handle)
-    }
-
-    /// Spin once
-    fn spin_once(&mut self, timeout_ms: u32) {
-        unsafe {
-            zenoh_shim_spin_once(timeout_ms);
-        }
-    }
-}
-
-impl<'a, D: EthernetDevice> Drop for InnerNode<'a, D> {
-    fn drop(&mut self) {
-        unsafe {
-            zenoh_shim_close();
-            network::clear_network_state();
-        }
-    }
-}
-
 // ============================================================================
 // Public API
 // ============================================================================
 
 /// Simplified node for QEMU bare-metal applications
-pub struct Node<'a> {
-    inner: InnerNode<'a, Lan9118>,
+pub struct Node {
+    session: ShimSession,
     domain_id: u32,
 }
 
-impl<'a> Node<'a> {
+impl Node {
     /// Create a typed publisher for a ROS 2 topic
     pub fn create_publisher<M: RosMessage>(&mut self, topic: &str) -> Result<Publisher<M>> {
-        let mut key = format_ros2_keyexpr(self.domain_id, topic, M::TYPE_NAME);
-        key.push('\0').map_err(|_| Error::TopicTooLong)?;
-        let handle = self.inner.create_publisher_raw(key.as_bytes())?;
-        Ok(unsafe { Publisher::from_handle(handle) })
+        let topic_info = TopicInfo {
+            name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: "TypeHashNotSupported",
+            domain_id: self.domain_id,
+        };
+        let publisher = self.session.create_publisher(&topic_info, QosSettings::default())?;
+        Ok(Publisher::new(publisher))
     }
 
-    /// Create a typed subscription for a ROS 2 topic
+    /// Create a typed subscription for a ROS 2 topic (pull-based)
+    ///
+    /// Returns a `Subscription` that you poll with `try_recv()` in your main loop.
     pub fn create_subscription<M: RosMessage>(
         &mut self,
         topic: &str,
-        callback: fn(&M),
     ) -> Result<Subscription<M>> {
-        let mut key = format_ros2_keyexpr_wildcard(self.domain_id, topic, M::TYPE_NAME);
-        key.push('\0').map_err(|_| Error::TopicTooLong)?;
-        let ctx = callback as *mut c_void;
-        let handle = unsafe {
-            self.inner
-                .create_subscriber_raw(key.as_bytes(), subscription_trampoline::<M>, ctx)
-        }?;
-        Ok(unsafe { Subscription::from_handle(handle) })
+        let topic_info = TopicInfo {
+            name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: "TypeHashNotSupported",
+            domain_id: self.domain_id,
+        };
+        let subscriber = self.session.create_subscriber(&topic_info, QosSettings::default())?;
+        Ok(Subscription::new(subscriber))
     }
 
     /// Process network events and dispatch callbacks
     pub fn spin_once(&mut self, timeout_ms: u32) {
-        self.inner.spin_once(timeout_ms);
+        let _ = self.session.spin_once(timeout_ms);
     }
 
     /// Shutdown the node gracefully
     pub fn shutdown(self) {
-        drop(self.inner);
+        // ShimSession closes on drop
+        drop(self.session);
+        unsafe {
+            network::clear_network_state();
+        }
     }
 }
 
@@ -222,26 +104,6 @@ unsafe fn create_socket_set() -> SocketSet<'static> {
     SocketSet::new(&mut storage[..])
 }
 
-/// Format a ROS 2 data keyexpr: `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
-fn format_ros2_keyexpr(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
-    let mut key = String::<256>::new();
-    let topic_stripped = topic.trim_matches('/');
-    let _ = write!(
-        key,
-        "{}/{}/{}/TypeHashNotSupported",
-        domain_id, topic_stripped, type_name
-    );
-    key
-}
-
-/// Format a ROS 2 subscriber keyexpr with wildcard: `<domain_id>/<topic>/<type_name>/*`
-fn format_ros2_keyexpr_wildcard(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
-    let mut key = String::<256>::new();
-    let topic_stripped = topic.trim_matches('/');
-    let _ = write!(key, "{}/{}/{}/*", domain_id, topic_stripped, type_name);
-    key
-}
-
 /// Create LAN9118 Ethernet driver for QEMU MPS2-AN385
 fn create_ethernet(mac: [u8; 6]) -> Result<Lan9118> {
     let config = EthConfig {
@@ -253,6 +115,61 @@ fn create_ethernet(mac: [u8; 6]) -> Result<Lan9118> {
     eth.init().map_err(|_| Error::EthernetInit)?;
 
     Ok(eth)
+}
+
+/// Initialize network stack (IP, gateway, smoltcp bridge, sockets)
+fn init_network<D: EthernetDevice + 'static>(
+    eth: &mut D,
+    iface: &mut Interface,
+    sockets: &mut SocketSet<'static>,
+    config: &Config,
+) -> Result<()> {
+    // Configure IP address
+    let ip_addr = Ipv4Address::new(config.ip[0], config.ip[1], config.ip[2], config.ip[3]);
+    iface.update_ip_addrs(|addrs| {
+        addrs
+            .push(IpCidr::new(IpAddress::Ipv4(ip_addr), config.prefix))
+            .ok();
+    });
+
+    // Set default gateway (skip if 0.0.0.0, which indicates link-local mode)
+    if config.gateway != [0, 0, 0, 0] {
+        let gw = Ipv4Address::new(
+            config.gateway[0],
+            config.gateway[1],
+            config.gateway[2],
+            config.gateway[3],
+        );
+        iface
+            .routes_mut()
+            .add_default_ipv4_route(gw)
+            .map_err(|_| Error::Route)?;
+    }
+
+    // Initialize the transport crate's bridge
+    SmoltcpBridge::init();
+
+    // Seed RNG with IP to avoid zenoh ID collisions
+    let ip_seed = u32::from_be_bytes(config.ip);
+    random::seed(ip_seed);
+
+    // Create and register TCP sockets via transport crate
+    unsafe {
+        zpico_smoltcp::create_and_register_sockets(sockets);
+    }
+
+    // Store global state for poll callback
+    unsafe {
+        network::set_network_state(
+            iface as *mut Interface,
+            sockets as *mut SocketSet<'static>,
+            eth as *mut D as *mut (),
+        );
+
+        zpico_smoltcp::set_poll_callback(network::smoltcp_network_poll);
+    }
+
+    Ok(())
 }
 
 /// Run a node with the given configuration
@@ -311,22 +228,28 @@ where
         config.ip[3]
     );
 
-    // Create inner node
+    // Initialize network stack
+    if let Err(e) = init_network(&mut eth, &mut iface, &mut sockets, &config) {
+        hprintln!("Error initializing network: {:?}", e);
+        exit_failure();
+    }
+
+    // Open zenoh session via RMW layer
     hprintln!("");
     hprintln!("Connecting to zenoh router...");
 
-    let inner = match InnerNode::new(
-        &mut eth,
-        &mut iface,
-        &mut sockets,
-        config.ip,
-        config.gateway,
-        config.prefix,
-        config.zenoh_locator,
-    ) {
-        Ok(n) => n,
+    let rmw_config = RmwConfig {
+        locator: config.zenoh_locator,
+        mode: SessionMode::Client,
+        domain_id: config.domain_id,
+        node_name: "node",
+        namespace: "",
+    };
+
+    let session = match ZenohRmw::open(&rmw_config) {
+        Ok(s) => s,
         Err(e) => {
-            hprintln!("Error creating node: {:?}", e);
+            hprintln!("Error opening session: {:?}", e);
             exit_failure();
         }
     };
@@ -336,7 +259,7 @@ where
 
     // Create wrapper node
     let mut node = Node {
-        inner,
+        session,
         domain_id: config.domain_id,
     };
 

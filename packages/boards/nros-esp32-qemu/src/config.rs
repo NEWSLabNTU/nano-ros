@@ -16,7 +16,7 @@
 ///
 /// ```ignore
 /// let config = Config::default()
-///     .with_zenoh_locator(b"tcp/10.0.0.1:7448\0");
+///     .with_zenoh_locator("tcp/10.0.0.1:7448");
 /// ```
 #[derive(Clone)]
 pub struct Config {
@@ -28,8 +28,8 @@ pub struct Config {
     pub prefix: u8,
     /// Gateway IPv4 address
     pub gateway: [u8; 4],
-    /// Zenoh router locator (null-terminated)
-    pub zenoh_locator: &'static [u8],
+    /// Zenoh router locator (Rust string, null termination handled internally)
+    pub zenoh_locator: &'static str,
     /// ROS 2 domain ID (used in keyexpr: `<domain_id>/<topic>/<type>/...`)
     pub domain_id: u32,
 }
@@ -41,7 +41,7 @@ impl Default for Config {
             ip: [192, 0, 3, 10],
             prefix: 24,
             gateway: [192, 0, 3, 1],
-            zenoh_locator: b"tcp/192.0.3.1:7448\0",
+            zenoh_locator: "tcp/192.0.3.1:7448",
             domain_id: 0,
         }
     }
@@ -55,13 +55,13 @@ impl Config {
             ip: [192, 0, 3, 11],
             prefix: 24,
             gateway: [192, 0, 3, 1],
-            zenoh_locator: b"tcp/192.0.3.1:7448\0",
+            zenoh_locator: "tcp/192.0.3.1:7448",
             domain_id: 0,
         }
     }
 
-    /// Builder: set zenoh router locator (must be null-terminated)
-    pub fn with_zenoh_locator(mut self, locator: &'static [u8]) -> Self {
+    /// Builder: set zenoh router locator
+    pub fn with_zenoh_locator(mut self, locator: &'static str) -> Self {
         self.zenoh_locator = locator;
         self
     }

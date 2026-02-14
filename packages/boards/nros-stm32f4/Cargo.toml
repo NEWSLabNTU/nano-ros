@@ -12,8 +12,9 @@ name = "nros_stm32f4"
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
 zpico-platform-stm32f4 = { path = "../../zpico/zpico-platform-stm32f4" }
 
-# Zenoh FFI bindings
-zpico-sys = { path = "../../zpico/zpico-sys", features = ["bare-metal", "link-tcp"] }
+# RMW abstraction + zenoh backend
+nros-rmw = { path = "../../core/nros-rmw", default-features = false }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "link-tcp"] }
 # TCP link layer via smoltcp
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
 
@@ -39,9 +40,6 @@ defmt = "0.3"
 
 # Core types (RosMessage, CDR serialization)
 nros-core = { path = "../../core/nros-core", default-features = false }
-
-# Heapless collections (for keyexpr formatting)
-heapless = "0.8"
 
 [features]
 default = ["stm32f429"]

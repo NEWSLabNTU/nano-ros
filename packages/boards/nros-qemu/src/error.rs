@@ -11,18 +11,8 @@ pub enum Error {
     NetworkInterface,
     /// Failed to add route
     Route,
-    /// zenoh-pico initialization failed
-    ZenohInit,
-    /// zenoh session open failed
-    ZenohOpen,
-    /// zenoh session not open
-    ZenohNotOpen,
-    /// Publisher declaration failed
-    PublisherDeclare,
-    /// Subscriber declaration failed
-    SubscriberDeclare,
-    /// Publish operation failed
-    Publish,
+    /// Transport layer error (zenoh session, publisher, subscriber)
+    Transport(nros_rmw::TransportError),
     /// Socket limit reached
     SocketLimit,
     /// Invalid configuration
@@ -33,6 +23,14 @@ pub enum Error {
     BufferTooSmall,
     /// CDR serialization failed
     Serialize,
+    /// CDR deserialization failed
+    Deserialize,
+}
+
+impl From<nros_rmw::TransportError> for Error {
+    fn from(e: nros_rmw::TransportError) -> Self {
+        Error::Transport(e)
+    }
 }
 
 impl fmt::Display for Error {
@@ -41,17 +39,13 @@ impl fmt::Display for Error {
             Error::EthernetInit => write!(f, "Ethernet driver initialization failed"),
             Error::NetworkInterface => write!(f, "Network interface error"),
             Error::Route => write!(f, "Failed to add route"),
-            Error::ZenohInit => write!(f, "zenoh-pico initialization failed"),
-            Error::ZenohOpen => write!(f, "zenoh session open failed"),
-            Error::ZenohNotOpen => write!(f, "zenoh session not open"),
-            Error::PublisherDeclare => write!(f, "Publisher declaration failed"),
-            Error::SubscriberDeclare => write!(f, "Subscriber declaration failed"),
-            Error::Publish => write!(f, "Publish operation failed"),
+            Error::Transport(e) => write!(f, "Transport error: {:?}", e),
             Error::SocketLimit => write!(f, "Socket limit reached"),
             Error::InvalidConfig => write!(f, "Invalid configuration"),
             Error::TopicTooLong => write!(f, "Topic keyexpr too long for internal buffer"),
             Error::BufferTooSmall => write!(f, "CDR serialization buffer too small"),
             Error::Serialize => write!(f, "CDR serialization failed"),
+            Error::Deserialize => write!(f, "CDR deserialization failed"),
         }
     }
 }

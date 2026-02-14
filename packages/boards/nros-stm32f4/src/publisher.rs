@@ -3,29 +3,25 @@
 use core::marker::PhantomData;
 
 use nros_core::{CdrWriter, RosMessage};
+use nros_rmw::Publisher as PublisherTrait;
+use nros_rmw_zenoh::shim::ShimPublisher;
 
 use crate::error::{Error, Result};
-
-use zpico_sys::{zenoh_shim_publish, zenoh_shim_undeclare_publisher};
 
 /// Publisher for sending typed messages to a topic
 ///
 /// Created via [`Node::create_publisher`](crate::Node::create_publisher).
 /// Automatically undeclared when dropped.
 pub struct Publisher<M: RosMessage> {
-    handle: i32,
+    inner: ShimPublisher,
     _marker: PhantomData<M>,
 }
 
 impl<M: RosMessage> Publisher<M> {
-    /// Create a new publisher with the given handle
-    ///
-    /// # Safety
-    ///
-    /// The handle must be a valid publisher handle from zenoh_shim_declare_publisher.
-    pub(crate) unsafe fn from_handle(handle: i32) -> Self {
+    /// Create a new publisher wrapping a ShimPublisher
+    pub(crate) fn new(inner: ShimPublisher) -> Self {
         Self {
-            handle,
+            inner,
             _marker: PhantomData,
         }
     }
@@ -45,23 +41,7 @@ impl<M: RosMessage> Publisher<M> {
             CdrWriter::new_with_header(&mut buf).map_err(|_| Error::BufferTooSmall)?;
         msg.serialize(&mut writer)
             .map_err(|_| Error::Serialize)?;
-        self.publish_raw(writer.as_slice())
-    }
-
-    /// Publish pre-encoded CDR bytes (internal)
-    fn publish_raw(&self, data: &[u8]) -> Result<()> {
-        let ret = unsafe { zenoh_shim_publish(self.handle, data.as_ptr(), data.len()) };
-        if ret < 0 {
-            return Err(Error::Publish);
-        }
+        self.inner.publish_raw(writer.as_slice())?;
         Ok(())
-    }
-}
-
-impl<M: RosMessage> Drop for Publisher<M> {
-    fn drop(&mut self) {
-        unsafe {
-            zenoh_shim_undeclare_publisher(self.handle);
-        }
     }
 }

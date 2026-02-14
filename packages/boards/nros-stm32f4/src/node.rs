@@ -1,13 +1,11 @@
 //! High-level Node API and platform initialization for STM32F4
 //!
-//! Uses `zpico-smoltcp` for socket management instead of
-//! the legacy BSP bridge approach.
+//! Uses `nros-rmw-zenoh` for transport and `zpico-smoltcp` for socket management.
 
-use core::ffi::{c_char, c_void};
-use core::fmt::Write as _;
-
-use heapless::String;
 use nros_core::RosMessage;
+use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
+use nros_rmw_zenoh::ZenohRmw;
+use nros_rmw_zenoh::shim::ShimSession;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use stm32_eth::{
@@ -17,18 +15,13 @@ use stm32_eth::{
 use stm32f4xx_hal::{gpio::GpioExt, pac, prelude::*, rcc::RccExt};
 use zpico_smoltcp::SmoltcpBridge;
 
-use zpico_sys::{
-    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
-    zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
-};
-
 use zpico_platform_stm32f4::clock;
 use crate::config::Config;
 use crate::error::{Error, Result};
 use zpico_platform_stm32f4::phy;
 use zpico_platform_stm32f4::random;
 use crate::publisher::Publisher;
-use crate::subscriber::{Subscription, subscription_trampoline};
+use crate::subscriber::Subscription;
 
 // ============================================================================
 // Static Buffer Allocation
@@ -52,72 +45,51 @@ static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_C
 
 /// High-level node handle for pub/sub operations
 pub struct Node {
+    session: ShimSession,
     domain_id: u32,
 }
 
 impl Node {
     /// Create a typed publisher for a ROS 2 topic
-    ///
-    /// Constructs the ROS 2 keyexpr from topic name and `M::TYPE_NAME`:
-    /// `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
     pub fn create_publisher<M: RosMessage>(&mut self, topic: &str) -> Result<Publisher<M>> {
-        let mut key = format_ros2_keyexpr(self.domain_id, topic, M::TYPE_NAME);
-        key.push('\0').map_err(|_| Error::TopicTooLong)?;
-        let handle =
-            unsafe { zenoh_shim_declare_publisher(key.as_bytes().as_ptr() as *const c_char) };
-        if handle < 0 {
-            defmt::error!("Failed to create publisher: {}", handle);
-            return Err(Error::PublisherDeclare);
-        }
-        defmt::info!("Publisher created (handle={})", handle);
-        Ok(unsafe { Publisher::from_handle(handle) })
+        let topic_info = TopicInfo {
+            name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: "TypeHashNotSupported",
+            domain_id: self.domain_id,
+        };
+        let publisher = self.session.create_publisher(&topic_info, QosSettings::default())?;
+        Ok(Publisher::new(publisher))
     }
 
-    /// Create a typed subscription for a ROS 2 topic
+    /// Create a typed subscription for a ROS 2 topic (pull-based)
     ///
-    /// Messages are deserialized from CDR and delivered to the callback.
-    ///
-    /// # Limitations
-    ///
-    /// The callback is a function pointer (`fn(&M)`), not a closure.
-    /// Use `static` variables for external state — the standard bare-metal pattern.
+    /// Returns a `Subscription` that you poll with `try_recv()` in your main loop.
     pub fn create_subscription<M: RosMessage>(
         &mut self,
         topic: &str,
-        callback: fn(&M),
     ) -> Result<Subscription<M>> {
-        let mut key = format_ros2_keyexpr_wildcard(self.domain_id, topic, M::TYPE_NAME);
-        key.push('\0').map_err(|_| Error::TopicTooLong)?;
-        let ctx = callback as *mut c_void;
-        let handle = unsafe {
-            zenoh_shim_declare_subscriber(
-                key.as_bytes().as_ptr() as *const c_char,
-                subscription_trampoline::<M>,
-                ctx,
-            )
+        let topic_info = TopicInfo {
+            name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: "TypeHashNotSupported",
+            domain_id: self.domain_id,
         };
-        if handle < 0 {
-            defmt::error!("Failed to create subscriber: {}", handle);
-            return Err(Error::SubscriberDeclare);
-        }
-        defmt::info!("Subscriber created (handle={})", handle);
-        Ok(unsafe { Subscription::from_handle(handle) })
+        let subscriber = self.session.create_subscriber(&topic_info, QosSettings::default())?;
+        Ok(Subscription::new(subscriber))
     }
 
     /// Process network events and callbacks
     ///
     /// This must be called periodically to:
     /// - Handle network traffic
-    /// - Dispatch subscriber callbacks
     /// - Process zenoh protocol messages
     ///
     /// # Arguments
     ///
     /// * `timeout_ms` - Maximum time to spend processing (0 = non-blocking)
     pub fn spin_once(&mut self, timeout_ms: u32) {
-        unsafe {
-            zenoh_shim_spin_once(timeout_ms);
-        }
+        let _ = self.session.spin_once(timeout_ms);
     }
 
     /// Get current uptime in milliseconds
@@ -129,8 +101,8 @@ impl Node {
 impl Drop for Node {
     fn drop(&mut self) {
         defmt::info!("Shutting down node...");
+        // ShimSession closes on drop (handled by the session field)
         unsafe {
-            zenoh_shim_close();
             zpico_platform_stm32f4::network::clear_network_state();
         }
     }
@@ -215,35 +187,32 @@ where
         zpico_smoltcp::set_poll_callback(zpico_platform_stm32f4::network::smoltcp_network_poll);
     }
 
-    // Initialize zenoh session
+    // Open zenoh session via RMW layer
     defmt::info!("Connecting to zenoh router...");
-    let ret = unsafe { zenoh_shim_init(config.zenoh_locator.as_ptr() as *const c_char) };
-    if ret < 0 {
-        defmt::error!("zenoh_shim_init failed: {}", ret);
-        loop {
-            cortex_m::asm::wfi();
-        }
-    }
 
-    let ret = unsafe { zenoh_shim_open() };
-    if ret < 0 {
-        defmt::error!("zenoh_shim_open failed: {}", ret);
-        loop {
-            cortex_m::asm::wfi();
-        }
-    }
+    let rmw_config = RmwConfig {
+        locator: config.zenoh_locator,
+        mode: SessionMode::Client,
+        domain_id: config.domain_id,
+        node_name: "node",
+        namespace: "",
+    };
 
-    // Verify session is open
-    if unsafe { zenoh_shim_is_open() } == 0 {
-        defmt::error!("zenoh session not open after open()");
-        loop {
-            cortex_m::asm::wfi();
+    let session = match ZenohRmw::open(&rmw_config) {
+        Ok(s) => s,
+        Err(e) => {
+            defmt::error!("Error opening session: {:?}", defmt::Debug2Format(&e));
+            loop {
+                cortex_m::asm::wfi();
+            }
         }
-    }
+    };
+
     defmt::info!("Zenoh session opened");
 
     // Create node
     let mut node = Node {
+        session,
         domain_id: config.domain_id,
     };
 
@@ -421,28 +390,4 @@ unsafe fn init_hardware(
     let sockets = SocketSet::new(&mut storage[..]);
 
     Ok((dma, iface, sockets))
-}
-
-// ============================================================================
-// Helpers
-// ============================================================================
-
-/// Format a ROS 2 data keyexpr: `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
-fn format_ros2_keyexpr(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
-    let mut key = String::<256>::new();
-    let topic_stripped = topic.trim_matches('/');
-    let _ = write!(
-        key,
-        "{}/{}/{}/TypeHashNotSupported",
-        domain_id, topic_stripped, type_name
-    );
-    key
-}
-
-/// Format a ROS 2 subscriber keyexpr with wildcard: `<domain_id>/<topic>/<type_name>/*`
-fn format_ros2_keyexpr_wildcard(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
-    let mut key = String::<256>::new();
-    let topic_stripped = topic.trim_matches('/');
-    let _ = write!(key, "{}/{}/{}/*", domain_id, topic_stripped, type_name);
-    key
 }

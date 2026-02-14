@@ -6,24 +6,10 @@
 #![no_std]
 #![no_main]
 
-use core::sync::atomic::{AtomicI32, AtomicU32, Ordering};
-
 use nros_qemu::prelude::*;
 use nros_qemu::println;
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
-
-/// Last received Int32 value (atomic for safe callback access)
-static LAST_VALUE: AtomicI32 = AtomicI32::new(0);
-
-/// Message count (atomic for safe callback access)
-static MSG_COUNT: AtomicU32 = AtomicU32::new(0);
-
-/// Typed subscriber callback
-fn on_message(msg: &Int32) {
-    LAST_VALUE.store(msg.data, Ordering::Relaxed);
-    MSG_COUNT.fetch_add(1, Ordering::SeqCst);
-}
 
 #[entry]
 fn main() -> ! {
@@ -31,25 +17,23 @@ fn main() -> ! {
     run_node(Config::listener(), |node| {
         println!("Subscribing to /chatter (std_msgs/Int32)");
 
-        let _subscription = node.create_subscription::<Int32>("/chatter", on_message)?;
+        let mut subscription = node.create_subscription::<Int32>("/chatter")?;
 
         println!("Subscriber declared");
         println!("");
         println!("Waiting for messages...");
 
-        let mut last_count = 0u32;
+        let mut msg_count = 0u32;
         let mut poll_count = 0u32;
 
         loop {
             node.spin_once(10);
 
-            let current_count = MSG_COUNT.load(Ordering::SeqCst);
-            if current_count > last_count {
-                let value = LAST_VALUE.load(Ordering::Relaxed);
-                println!("Received [{}]: {}", current_count, value);
-                last_count = current_count;
+            if let Some(msg) = subscription.try_recv()? {
+                msg_count += 1;
+                println!("Received [{}]: {}", msg_count, msg.data);
 
-                if current_count >= 10 {
+                if msg_count >= 10 {
                     println!("");
                     println!("Received 10 messages.");
                     break;

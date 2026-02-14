@@ -12,8 +12,9 @@ name = "nros_esp32_qemu"
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
 zpico-platform-esp32-qemu = { path = "../../zpico/zpico-platform-esp32-qemu" }
 
-# Zenoh FFI bindings
-zpico-sys = { path = "../../zpico/zpico-sys", features = ["bare-metal", "link-tcp"] }
+# RMW abstraction + zenoh backend
+nros-rmw = { path = "../../core/nros-rmw", default-features = false }
+nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "link-tcp"] }
 # TCP link layer via smoltcp
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
 # OpenCores Ethernet MAC driver (for QEMU open_eth NIC)
@@ -35,9 +36,6 @@ smoltcp = { version = "0.12", default-features = false, features = [
 
 # Core types (RosMessage, CDR serialization)
 nros-core = { path = "../../core/nros-core", default-features = false }
-
-# Heapless collections (for keyexpr formatting)
-heapless = "0.8"
 
 # Atomics for riscv32imc (no hardware atomic support)
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }

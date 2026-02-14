@@ -419,13 +419,31 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "cortex-m-semihosting",
- "heapless",
  "lan9118-smoltcp",
  "nros-core",
+ "nros-rmw",
+ "nros-rmw-zenoh",
  "panic-semihosting",
  "smoltcp",
  "zpico-platform-qemu",
  "zpico-smoltcp",
+]
+
+[[package]]
+name = "nros-rmw"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+]
+
+[[package]]
+name = "nros-rmw-zenoh"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-rmw",
  "zpico-sys",
 ]
 

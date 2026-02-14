@@ -9,8 +9,8 @@
 //! # Architecture
 //!
 //! This crate depends on `zpico-platform-qemu` for system primitives
-//! (zenoh-pico FFI symbols, clock, memory, RNG) and adds the nros
-//! user-facing API on top.
+//! (zenoh-pico FFI symbols, clock, memory, RNG) and uses `nros-rmw-zenoh`
+//! for the transport layer.
 
 #![no_std]
 

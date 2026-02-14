@@ -33,8 +33,8 @@ pub struct Config {
     pub prefix: u8,
     /// Gateway IP
     pub gateway: [u8; 4],
-    /// Zenoh locator (null-terminated)
-    pub zenoh_locator: &'static [u8],
+    /// Zenoh locator (Rust string, null termination handled internally)
+    pub zenoh_locator: &'static str,
     /// ROS 2 domain ID (default: 0)
     pub domain_id: u32,
 }
@@ -48,7 +48,7 @@ impl Default for Config {
                 ip: [192, 168, 100, 10],
                 prefix: 24,
                 gateway: [192, 168, 100, 1],
-                zenoh_locator: b"tcp/172.20.0.2:7447\0",
+                zenoh_locator: "tcp/172.20.0.2:7447",
                 domain_id: 0,
             }
         }
@@ -60,7 +60,7 @@ impl Default for Config {
                 ip: [192, 0, 3, 10],
                 prefix: 24,
                 gateway: [192, 0, 3, 1],
-                zenoh_locator: b"tcp/192.0.3.1:7447\0",
+                zenoh_locator: "tcp/192.0.3.1:7447",
                 domain_id: 0,
             }
         }
@@ -69,7 +69,7 @@ impl Default for Config {
 
 impl Config {
     /// Create a new config with custom settings
-    pub fn new(mac: [u8; 6], ip: [u8; 4], gateway: [u8; 4], zenoh_locator: &'static [u8]) -> Self {
+    pub fn new(mac: [u8; 6], ip: [u8; 4], gateway: [u8; 4], zenoh_locator: &'static str) -> Self {
         Self {
             mac,
             ip,
@@ -89,7 +89,7 @@ impl Config {
                 ip: [192, 168, 100, 11],
                 prefix: 24,
                 gateway: [192, 168, 100, 1],
-                zenoh_locator: b"tcp/172.20.0.2:7447\0",
+                zenoh_locator: "tcp/172.20.0.2:7447",
                 domain_id: 0,
             }
         }
@@ -101,7 +101,7 @@ impl Config {
                 ip: [192, 0, 3, 11],
                 prefix: 24,
                 gateway: [192, 0, 3, 1],
-                zenoh_locator: b"tcp/192.0.3.1:7447\0",
+                zenoh_locator: "tcp/192.0.3.1:7447",
                 domain_id: 0,
             }
         }
@@ -137,7 +137,7 @@ impl Config {
     }
 
     /// Builder: set zenoh locator
-    pub fn with_zenoh_locator(mut self, locator: &'static [u8]) -> Self {
+    pub fn with_zenoh_locator(mut self, locator: &'static str) -> Self {
         self.zenoh_locator = locator;
         self
     }
@@ -164,10 +164,10 @@ impl Config {
         let gateway = [0, 0, 0, 0];
 
         #[cfg(feature = "docker")]
-        let zenoh_locator: &'static [u8] = b"tcp/172.20.0.2:7447\0";
+        let zenoh_locator: &'static str = "tcp/172.20.0.2:7447";
 
         #[cfg(not(feature = "docker"))]
-        let zenoh_locator: &'static [u8] = b"tcp/192.0.3.1:7447\0";
+        let zenoh_locator: &'static str = "tcp/192.0.3.1:7447";
 
         Self {
             mac,

@@ -58,7 +58,7 @@ pub enum IpMode {
 ///
 /// ```ignore
 /// let config = NodeConfig::new(WifiConfig::new("MyNetwork", "password123"))
-///     .with_zenoh_locator(b"tcp/10.0.0.1:7447\0")
+///     .with_zenoh_locator("tcp/10.0.0.1:7447")
 ///     .with_static_ip([10, 0, 0, 100], 24, [10, 0, 0, 1]);
 /// ```
 #[derive(Clone)]
@@ -67,8 +67,8 @@ pub struct NodeConfig {
     pub wifi: WifiConfig,
     /// IP address mode
     pub ip_mode: IpMode,
-    /// Zenoh router locator (null-terminated)
-    pub zenoh_locator: &'static [u8],
+    /// Zenoh router locator (Rust string, null termination handled internally)
+    pub zenoh_locator: &'static str,
     /// ROS 2 domain ID (used in keyexpr formatting)
     pub domain_id: u32,
 }
@@ -79,13 +79,13 @@ impl NodeConfig {
         Self {
             wifi,
             ip_mode: IpMode::Dhcp,
-            zenoh_locator: b"tcp/192.168.1.1:7447\0",
+            zenoh_locator: "tcp/192.168.1.1:7447",
             domain_id: 0,
         }
     }
 
-    /// Builder: set zenoh router locator (must be null-terminated)
-    pub fn with_zenoh_locator(mut self, locator: &'static [u8]) -> Self {
+    /// Builder: set zenoh router locator
+    pub fn with_zenoh_locator(mut self, locator: &'static str) -> Self {
         self.zenoh_locator = locator;
         self
     }

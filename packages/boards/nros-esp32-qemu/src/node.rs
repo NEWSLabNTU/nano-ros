@@ -1,31 +1,23 @@
 //! Simplified node API for ESP32-C3 QEMU bare-metal
 //!
-//! Uses `zpico-smoltcp` for socket management instead of
-//! the legacy BSP bridge.
-
-use core::ffi::{c_char, c_void};
-
-use core::fmt::Write as _;
+//! Uses `nros-rmw-zenoh` for transport and `zpico-smoltcp` for socket management.
 
 use esp_hal::rng::Rng;
-use heapless::String;
 use nros_core::RosMessage;
+use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
+use nros_rmw_zenoh::ZenohRmw;
+use nros_rmw_zenoh::shim::ShimSession;
 use zpico_smoltcp::SmoltcpBridge;
 use openeth_smoltcp::OpenEth;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-
-use zpico_sys::{
-    zenoh_shim_close, zenoh_shim_declare_publisher, zenoh_shim_declare_subscriber,
-    zenoh_shim_init, zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_spin_once,
-};
 
 use zpico_platform_esp32_qemu::clock;
 use crate::config::Config;
 use crate::error::Error;
 use crate::publisher::Publisher;
 use zpico_platform_esp32_qemu::random;
-use crate::subscriber::{Subscription, subscription_trampoline};
+use crate::subscriber::Subscription;
 
 // NOTE: We intentionally do NOT import `type Result<T>` in this module.
 // The `esp_println::println!` macro uses `?` internally which expands to
@@ -37,54 +29,41 @@ use crate::subscriber::{Subscription, subscription_trampoline};
 /// This hides all low-level OpenETH/smoltcp details.
 /// Users interact only with ROS concepts (publishers, subscriptions).
 pub struct Node {
+    session: ShimSession,
     domain_id: u32,
 }
 
 impl Node {
     /// Create a typed publisher for a ROS 2 topic
-    ///
-    /// Constructs the ROS 2 keyexpr from topic name and `M::TYPE_NAME`:
-    /// `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
     pub fn create_publisher<M: RosMessage>(
         &mut self,
         topic: &str,
     ) -> core::result::Result<Publisher<M>, Error> {
-        let mut key = format_ros2_keyexpr(self.domain_id, topic, M::TYPE_NAME);
-        key.push('\0').map_err(|_| Error::TopicTooLong)?;
-        let handle = unsafe { zenoh_shim_declare_publisher(key.as_bytes().as_ptr() as *const c_char) };
-        if handle < 0 {
-            return Err(Error::PublisherDeclare);
-        }
-        Ok(unsafe { Publisher::from_handle(handle) })
+        let topic_info = TopicInfo {
+            name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: "TypeHashNotSupported",
+            domain_id: self.domain_id,
+        };
+        let publisher = self.session.create_publisher(&topic_info, QosSettings::default())?;
+        Ok(Publisher::new(publisher))
     }
 
-    /// Create a typed subscription for a ROS 2 topic
+    /// Create a typed subscription for a ROS 2 topic (pull-based)
     ///
-    /// Messages are deserialized from CDR and delivered to the callback.
-    ///
-    /// # Limitations
-    ///
-    /// The callback is a function pointer (`fn(&M)`), not a closure.
-    /// Use `static` variables for external state — the standard bare-metal pattern.
+    /// Returns a `Subscription` that you poll with `try_recv()` in your main loop.
     pub fn create_subscription<M: RosMessage>(
         &mut self,
         topic: &str,
-        callback: fn(&M),
     ) -> core::result::Result<Subscription<M>, Error> {
-        let mut key = format_ros2_keyexpr_wildcard(self.domain_id, topic, M::TYPE_NAME);
-        key.push('\0').map_err(|_| Error::TopicTooLong)?;
-        let ctx = callback as *mut c_void;
-        let handle = unsafe {
-            zenoh_shim_declare_subscriber(
-                key.as_bytes().as_ptr() as *const c_char,
-                subscription_trampoline::<M>,
-                ctx,
-            )
+        let topic_info = TopicInfo {
+            name: topic,
+            type_name: M::TYPE_NAME,
+            type_hash: "TypeHashNotSupported",
+            domain_id: self.domain_id,
         };
-        if handle < 0 {
-            return Err(Error::SubscriberDeclare);
-        }
-        Ok(unsafe { Subscription::from_handle(handle) })
+        let subscriber = self.session.create_subscriber(&topic_info, QosSettings::default())?;
+        Ok(Subscription::new(subscriber))
     }
 
     /// Process network events and dispatch callbacks
@@ -99,38 +78,17 @@ impl Node {
     ///
     /// * `timeout_ms` - Max wait time (0 = non-blocking)
     pub fn spin_once(&mut self, timeout_ms: u32) {
-        unsafe {
-            zenoh_shim_spin_once(timeout_ms);
-        }
+        let _ = self.session.spin_once(timeout_ms);
     }
 
     /// Shutdown the node gracefully
     pub fn shutdown(self) {
+        // ShimSession closes on drop
+        drop(self.session);
         unsafe {
-            zenoh_shim_close();
             zpico_platform_esp32_qemu::network::clear_network_state();
         }
     }
-}
-
-/// Format a ROS 2 data keyexpr: `<domain_id>/<topic>/<type_name>/TypeHashNotSupported`
-fn format_ros2_keyexpr(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
-    let mut key = String::<256>::new();
-    let topic_stripped = topic.trim_matches('/');
-    let _ = write!(
-        key,
-        "{}/{}/{}/TypeHashNotSupported",
-        domain_id, topic_stripped, type_name
-    );
-    key
-}
-
-/// Format a ROS 2 subscriber keyexpr with wildcard: `<domain_id>/<topic>/<type_name>/*`
-fn format_ros2_keyexpr_wildcard(domain_id: u32, topic: &str, type_name: &str) -> String<256> {
-    let mut key = String::<256>::new();
-    let topic_stripped = topic.trim_matches('/');
-    let _ = write!(key, "{}/{}/{}/*", domain_id, topic_stripped, type_name);
-    key
 }
 
 /// Helper to create a socket set with pre-allocated storage
@@ -239,57 +197,68 @@ where
         zpico_smoltcp::set_poll_callback(zpico_platform_esp32_qemu::network::smoltcp_network_poll);
     }
 
-    // Step 8: Initialize zenoh session
+    // Step 8: Open zenoh session via RMW layer
+    // Retry z_open -- on consecutive QEMU runs the TAP/bridge may need
+    // time to resettle, causing the first TCP connect attempt to fail.
     esp_println::println!("");
     esp_println::println!("Connecting to zenoh router...");
 
-    let ret = unsafe { zenoh_shim_init(config.zenoh_locator.as_ptr() as *const c_char) };
-    if ret < 0 {
-        esp_println::println!("ERROR: zenoh init failed ({})", ret);
-        loop {
-            core::hint::spin_loop();
+    let rmw_config = RmwConfig {
+        locator: config.zenoh_locator,
+        mode: SessionMode::Client,
+        domain_id: config.domain_id,
+        node_name: "node",
+        namespace: "",
+    };
+
+    const MAX_OPEN_RETRIES: u32 = 5;
+    let mut session_opt: Option<ShimSession> = None;
+
+    for attempt in 1..=MAX_OPEN_RETRIES {
+        match ZenohRmw::open(&rmw_config) {
+            Ok(s) => {
+                session_opt = Some(s);
+                break;
+            }
+            Err(e) => {
+                esp_println::println!(
+                    "  zenoh open attempt {}/{} failed ({:?}), retrying...",
+                    attempt,
+                    MAX_OPEN_RETRIES,
+                    e
+                );
+                // Poll network stack and delay ~1s before retrying
+                for _ in 0..100 {
+                    unsafe {
+                        zpico_platform_esp32_qemu::network::smoltcp_network_poll();
+                    }
+                    for _ in 0..250_000 {
+                        core::hint::spin_loop();
+                    }
+                }
+            }
         }
     }
 
-    // Retry z_open — on consecutive QEMU runs the TAP/bridge may need
-    // time to resettle, causing the first TCP connect attempt to fail.
-    const MAX_OPEN_RETRIES: u32 = 5;
-    let mut connected = false;
-    for attempt in 1..=MAX_OPEN_RETRIES {
-        let ret = unsafe { zenoh_shim_open() };
-        if ret >= 0 && unsafe { zenoh_shim_is_open() } != 0 {
-            connected = true;
-            break;
-        }
-        esp_println::println!(
-            "  zenoh open attempt {}/{} failed ({}), retrying...",
-            attempt,
-            MAX_OPEN_RETRIES,
-            ret
-        );
-        // Poll network stack and delay ~1s before retrying
-        for _ in 0..100 {
-            unsafe { zpico_platform_esp32_qemu::network::smoltcp_network_poll() };
-            for _ in 0..250_000 {
+    let session = match session_opt {
+        Some(s) => s,
+        None => {
+            esp_println::println!(
+                "ERROR: zenoh open failed after {} attempts",
+                MAX_OPEN_RETRIES
+            );
+            loop {
                 core::hint::spin_loop();
             }
         }
-        // Re-init zenoh config for next attempt
-        let _ = unsafe { zenoh_shim_init(config.zenoh_locator.as_ptr() as *const c_char) };
-    }
-
-    if !connected {
-        esp_println::println!("ERROR: zenoh open failed after {} attempts", MAX_OPEN_RETRIES);
-        loop {
-            core::hint::spin_loop();
-        }
-    }
+    };
 
     esp_println::println!("Connected!");
     esp_println::println!("");
 
     // Step 9: Create node and run user application
     let mut node = Node {
+        session,
         domain_id: config.domain_id,
     };
 

@@ -1,60 +1,57 @@
-//! Subscription handle for receiving typed messages
+//! Subscription handle for receiving typed messages (pull-based)
 
-use core::ffi::c_void;
 use core::marker::PhantomData;
 
 use nros_core::{CdrReader, RosMessage};
+use nros_rmw::Subscriber as SubscriberTrait;
+use nros_rmw_zenoh::shim::ShimSubscriber;
 
-// Use FFI from zpico-sys
-use zpico_sys::zenoh_shim_undeclare_subscriber;
+use crate::error::{Error, Result};
 
 /// Subscription for receiving typed messages from a topic
 ///
 /// Created via [`Node::create_subscription`](crate::Node::create_subscription).
+/// Uses pull-based reception -- call [`try_recv`](Self::try_recv) in your main loop.
 /// Automatically undeclared when dropped.
-///
-/// Messages are delivered via the callback registered during creation.
 pub struct Subscription<M: RosMessage> {
-    handle: i32,
+    inner: ShimSubscriber,
     _marker: PhantomData<M>,
 }
 
 impl<M: RosMessage> Subscription<M> {
-    /// Create a new subscription with the given handle
-    ///
-    /// # Safety
-    ///
-    /// The handle must be a valid subscriber handle from zenoh_shim_declare_subscriber.
-    pub(crate) unsafe fn from_handle(handle: i32) -> Self {
+    /// Create a new subscription wrapping a ShimSubscriber
+    pub(crate) fn new(inner: ShimSubscriber) -> Self {
         Self {
-            handle,
+            inner,
             _marker: PhantomData,
         }
     }
-}
 
-impl<M: RosMessage> Drop for Subscription<M> {
-    fn drop(&mut self) {
-        unsafe {
-            zenoh_shim_undeclare_subscriber(self.handle);
+    /// Try to receive the next message (pull-based)
+    ///
+    /// Uses a 1024-byte stack buffer. For larger messages, use
+    /// [`try_recv_with_buffer`](Self::try_recv_with_buffer).
+    pub fn try_recv(&mut self) -> Result<Option<M>> {
+        self.try_recv_with_buffer::<1024>()
+    }
+
+    /// Try to receive with a custom buffer size
+    pub fn try_recv_with_buffer<const BUF: usize>(&mut self) -> Result<Option<M>> {
+        let mut buf = [0u8; BUF];
+        match self.inner.try_recv_raw(&mut buf)? {
+            Some(len) => {
+                let mut reader = CdrReader::new_with_header(&buf[..len])
+                    .map_err(|_| Error::Deserialize)?;
+                let msg = M::deserialize(&mut reader)
+                    .map_err(|_| Error::Deserialize)?;
+                Ok(Some(msg))
+            }
+            None => Ok(None),
         }
     }
-}
 
-/// Generic trampoline: deserializes CDR and calls user's typed `fn(&M)`
-///
-/// This is registered as the `extern "C"` zenoh callback. Each monomorphization
-/// knows the concrete `M` to deserialize.
-pub(crate) extern "C" fn subscription_trampoline<M: RosMessage>(
-    data: *const u8,
-    len: usize,
-    ctx: *mut c_void,
-) {
-    let callback: fn(&M) = unsafe { core::mem::transmute(ctx) };
-    let bytes = unsafe { core::slice::from_raw_parts(data, len) };
-    if let Ok(mut reader) = CdrReader::new_with_header(bytes) {
-        if let Ok(msg) = M::deserialize(&mut reader) {
-            callback(&msg);
-        }
+    /// Check if data is available without consuming it
+    pub fn has_data(&self) -> bool {
+        self.inner.has_data()
     }
 }

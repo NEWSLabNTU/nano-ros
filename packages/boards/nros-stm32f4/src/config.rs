@@ -16,8 +16,8 @@ pub struct Config {
     pub prefix: u8,
     /// Gateway IP address
     pub gateway: [u8; 4],
-    /// Zenoh router locator (null-terminated C string)
-    pub zenoh_locator: &'static [u8],
+    /// Zenoh router locator (Rust string, null termination handled internally)
+    pub zenoh_locator: &'static str,
     /// External oscillator frequency in MHz (board-specific)
     pub hse_freq_mhz: u8,
     /// Pin configuration preset
@@ -39,7 +39,7 @@ impl Config {
             ip: [192, 168, 1, 10],
             prefix: 24,
             gateway: [192, 168, 1, 1],
-            zenoh_locator: b"tcp/192.168.1.1:7447\0",
+            zenoh_locator: "tcp/192.168.1.1:7447",
             hse_freq_mhz: 8, // NUCLEO-F429ZI uses 8 MHz HSE
             pins: PinConfig::NucleoF429ZI,
             domain_id: 0,
@@ -56,7 +56,7 @@ impl Config {
             ip: [192, 168, 1, 11],
             prefix: 24,
             gateway: [192, 168, 1, 1],
-            zenoh_locator: b"tcp/192.168.1.1:7447\0",
+            zenoh_locator: "tcp/192.168.1.1:7447",
             hse_freq_mhz: 8, // Discovery uses 8 MHz HSE
             pins: PinConfig::DiscoveryF407,
             domain_id: 0,
@@ -70,7 +70,7 @@ impl Config {
             ip: [192, 168, 1, 10],
             prefix: 24,
             gateway: [192, 168, 1, 1],
-            zenoh_locator: b"tcp/192.168.1.1:7447\0",
+            zenoh_locator: "tcp/192.168.1.1:7447",
             hse_freq_mhz: 8,
             pins,
             domain_id: 0,
@@ -103,8 +103,8 @@ impl Config {
 
     /// Set zenoh router locator
     ///
-    /// Must be a null-terminated byte string, e.g., `b"tcp/192.168.1.1:7447\0"`
-    pub fn zenoh_locator(mut self, locator: &'static [u8]) -> Self {
+    /// e.g., `"tcp/192.168.1.1:7447"`
+    pub fn zenoh_locator(mut self, locator: &'static str) -> Self {
         self.zenoh_locator = locator;
         self
     }

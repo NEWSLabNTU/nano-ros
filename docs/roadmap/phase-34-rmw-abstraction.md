@@ -1,6 +1,6 @@
 # Phase 34: RMW Abstraction & XRCE-DDS Integration
 
-**Status: Not Started**
+**Status: In Progress** (34.1, 34.2, 34.3 complete)
 
 **Prerequisites:** Phase 33.1 (core rename) and 33.2 (transport split) are complete. Phase 33.3 (platform crate split) is in progress in a separate work tree but is NOT a blocker — Phase 34 work on `nros-rmw` and `nros-rmw-zenoh` is independent of the platform crate restructuring.
 
@@ -108,38 +108,38 @@ pub struct RmwConfig<'a> {
 
 ### 34.3: Refactor platform crates to use `nros-rmw` traits
 
-**Files:** `packages/platform/nano-ros-platform-{qemu,stm32f4,esp32,esp32-qemu}/src/{node,publisher,subscriber}.rs`
+**Files:** `packages/boards/nros-{qemu,stm32f4,esp32,esp32-qemu}/src/{node,publisher,subscriber}.rs`
 
-> **Note:** This step depends on Phase 33.3 (platform crate split into `zpico-platform-*` + `nros-*`). If 33.3 is not yet complete, this step refactors the existing unsplit platform crates. If 33.3 is complete, this step refactors the split `nros-*` board crates.
+> **Note:** Phase 33.3 (platform crate split) is complete. Board crates are at `packages/boards/nros-*`.
 
-**Per platform crate:**
-- [ ] Replace `zpico_sys::zenoh_shim_open_session()` with `ZenohRmw::open(&config)`
-- [ ] Replace `zpico_sys::zenoh_shim_declare_publisher()` with `session.create_publisher()`
-- [ ] Replace `zpico_sys::zenoh_shim_put()` with `publisher.publish_raw()`
-- [ ] Replace `zpico_sys::zenoh_shim_declare_subscriber()` with `session.create_subscriber()`
-- [ ] Remove all zenoh-specific keyexpr formatting from `node.rs` (now in `nros-rmw-zenoh/keyexpr.rs`)
-- [ ] Update `Cargo.toml`: add `nros-rmw` + `nros-rmw-zenoh` deps, remove direct `zpico-sys` dep
-- [ ] Platform-specific `Node` type uses concrete `ZenohRmw` (no dynamic dispatch, no generics needed for single-backend boards)
+**Per board crate:**
+- [x] Replace `zpico_sys::zenoh_shim_open_session()` with `ZenohRmw::open(&config)`
+- [x] Replace `zpico_sys::zenoh_shim_declare_publisher()` with `session.create_publisher()`
+- [x] Replace `zpico_sys::zenoh_shim_put()` with `publisher.publish_raw()`
+- [x] Replace `zpico_sys::zenoh_shim_declare_subscriber()` with `session.create_subscriber()`
+- [x] Remove all zenoh-specific keyexpr formatting from `node.rs` (now in `nros-rmw-zenoh/keyexpr.rs`)
+- [x] Update `Cargo.toml`: add `nros-rmw` + `nros-rmw-zenoh` deps, remove direct `zpico-sys` dep
+- [x] Board-specific `Node` type uses concrete `ZenohRmw` (no dynamic dispatch, no generics needed for single-backend boards)
 
-**QEMU platform crate (refactor first — most tested):**
-- [ ] Refactor `nano-ros-platform-qemu/src/node.rs`
-- [ ] Refactor `nano-ros-platform-qemu/src/publisher.rs`
-- [ ] Refactor `nano-ros-platform-qemu/src/subscriber.rs`
-- [ ] All QEMU examples build and pass tests
+**QEMU board crate (refactored first — most tested):**
+- [x] Refactor `nros-qemu/src/node.rs`
+- [x] Refactor `nros-qemu/src/publisher.rs`
+- [x] Refactor `nros-qemu/src/subscriber.rs`
+- [x] All QEMU examples build and pass tests
 
-**STM32F4 platform crate:**
-- [ ] Refactor `nano-ros-platform-stm32f4/src/{node,publisher,subscriber}.rs`
-- [ ] STM32F4 examples build
+**STM32F4 board crate:**
+- [x] Refactor `nros-stm32f4/src/{node,publisher,subscriber}.rs`
+- [x] STM32F4 examples build
 
-**ESP32 platform crates:**
-- [ ] Refactor `nano-ros-platform-esp32/src/{node,publisher,subscriber}.rs`
-- [ ] Refactor `nano-ros-platform-esp32-qemu/src/{node,publisher,subscriber}.rs`
-- [ ] ESP32 examples build
+**ESP32 board crates:**
+- [x] Refactor `nros-esp32/src/{node,publisher,subscriber}.rs`
+- [x] Refactor `nros-esp32-qemu/src/{node,publisher,subscriber}.rs`
+- [x] ESP32 examples build
 
 **Final verification:**
-- [ ] `just quality` passes
+- [x] `just quality` passes
 - [ ] `just test-qemu` passes (if QEMU available)
-- [ ] No direct `zpico_sys` imports remain in any platform crate
+- [x] No direct `zpico_sys` imports remain in any board crate
 
 **Acceptance criteria:**
 - All platform crates go through `nros-rmw` trait methods exclusively

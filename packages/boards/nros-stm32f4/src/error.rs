@@ -1,7 +1,7 @@
 //! Error types for the STM32F4 platform crate
 
 /// Error type for platform operations
-#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Error {
     /// Failed to initialize hardware
     HardwareInit,
@@ -9,18 +9,8 @@ pub enum Error {
     NetworkInit,
     /// Failed to add route
     Route,
-    /// Failed to connect to zenoh router
-    ZenohInit,
-    /// zenoh session open failed
-    ZenohOpen,
-    /// zenoh session not open
-    ZenohNotOpen,
-    /// Failed to create publisher
-    PublisherDeclare,
-    /// Failed to create subscriber
-    SubscriberDeclare,
-    /// Failed to publish message
-    Publish,
+    /// Transport layer error (zenoh session, publisher, subscriber)
+    Transport(nros_rmw::TransportError),
     /// Invalid configuration
     InvalidConfig,
     /// Timeout waiting for operation
@@ -33,6 +23,32 @@ pub enum Error {
     BufferTooSmall,
     /// CDR serialization failed
     Serialize,
+    /// CDR deserialization failed
+    Deserialize,
+}
+
+impl From<nros_rmw::TransportError> for Error {
+    fn from(e: nros_rmw::TransportError) -> Self {
+        Error::Transport(e)
+    }
+}
+
+impl defmt::Format for Error {
+    fn format(&self, f: defmt::Formatter) {
+        match self {
+            Error::HardwareInit => defmt::write!(f, "Hardware init failed"),
+            Error::NetworkInit => defmt::write!(f, "Network init failed"),
+            Error::Route => defmt::write!(f, "Failed to add route"),
+            Error::Transport(e) => defmt::write!(f, "Transport error: {:?}", defmt::Debug2Format(e)),
+            Error::InvalidConfig => defmt::write!(f, "Invalid configuration"),
+            Error::Timeout => defmt::write!(f, "Timeout"),
+            Error::ResourceExhausted => defmt::write!(f, "Resource exhausted"),
+            Error::TopicTooLong => defmt::write!(f, "Topic keyexpr too long"),
+            Error::BufferTooSmall => defmt::write!(f, "Buffer too small"),
+            Error::Serialize => defmt::write!(f, "Serialization failed"),
+            Error::Deserialize => defmt::write!(f, "Deserialization failed"),
+        }
+    }
 }
 
 /// Result type for platform operations
