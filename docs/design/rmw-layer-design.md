@@ -374,48 +374,75 @@ pub trait ServiceClient {
 
 XRCE-DDS (DDS for eXtremely Resource Constrained Environments) is the middleware used by micro-ROS. It uses an agent-based model: a lightweight client library runs on the MCU and communicates with an agent process on a gateway host. The agent creates DDS entities on behalf of the client and bridges to the full DDS network.
 
-See `docs/reference/xrce-dds-analysis.md` for the full analysis (API mapping, platform requirements, feasibility).
+See `docs/reference/xrce-dds-analysis.md` for the full source code analysis (API, build system, platform requirements, libc needs).
 
 **New crates needed:**
 
 ```
 packages/
   xrce/                              # XRCE-DDS plumbing (like zpico/)
-    xrce-sys/                        #   FFI to Micro-XRCE-DDS-Client C library
-    xrce-smoltcp/                    #   UDP transport via smoltcp (4 callbacks)
-    xrce-platform-qemu/             #   Clock function for QEMU
+    xrce-sys/                        #   Direct FFI to Micro-XRCE-DDS-Client C API
+    │  ├── micro-xrce-dds-client/    #     Git submodule
+    │  └── micro-cdr/                #     Git submodule (Micro-CDR v2.0.2)
+    xrce-smoltcp/                    #   4 UDP transport callbacks via smoltcp
+    xrce-platform-qemu/              #   clock_gettime() for QEMU (1 symbol)
     nros-rmw-xrce/                   #   RMW glue: maps XRCE-DDS to nros-rmw traits
 ```
 
-**Key differences from zenoh-pico:**
+**Architecture (with XRCE-DDS backend):**
 
-| Aspect | zenoh-pico | XRCE-DDS |
+```
+nros-qemu (user-facing, composes everything)
+  ├── nros-core                    (message types, traits)
+  ├── nros-rmw                     (RMW trait interface)
+  │     └── nros-rmw-xrce          (XRCE-DDS RMW impl: entity lifecycle, callbacks)
+  │           └── xrce-sys          (direct C FFI, no shim — 28 source files)
+  │                 ├── micro-xrce-dds-client/  (submodule)
+  │                 └── micro-cdr/              (submodule)
+  ├── xrce-platform-qemu           (link-time: clock_gettime only)
+  ├── xrce-smoltcp                 (link-time: 4 UDP transport callbacks)
+  └── lan9118-smoltcp              (hardware driver)
+```
+
+**Key differences from zenoh-pico (verified from source study):**
+
+| Aspect | zpico-sys | xrce-sys |
 |--------|-----------|----------|
-| Bridge process | zenohd (generic router) | Agent (protocol translator) |
-| Entity creation | One call (`declare_publisher`) | Multi-step (participant + topic + publisher + datawriter) |
-| Client heap | Required (~16KB+) | **None** (fully static) |
-| Platform symbols | ~55 FFI exports | ~6 callbacks |
-| Transport impl | 8+ TCP socket functions | 4 callbacks (open/close/read/write) |
+| C shim layer | `zenoh_shim.c` (1200+ lines) | **None** — direct FFI binding |
+| Submodules | 1 (zenoh-pico) | 2 (XRCE-DDS Client + Micro-CDR) |
+| C source files to compile | ~100+ | **28** |
+| Platform symbols | ~55 FFI exports | **1** (`clock_gettime`) |
+| Transport bridge | TCP (8+ callbacks) | UDP (4 callbacks) |
+| Client heap | Required (~16KB) | **None** (fully static) |
+| Config #defines | 20+ | ~8 |
+| libc stubs | 14 (strlen, snprintf, strtoul, ...) | 3 (`memcpy`, `memset`, `strlen`) |
 
 **Protocol mapping:**
 
 | nros-rmw trait | XRCE-DDS operation |
 |---|---|
-| `Session::create_publisher` | 4 calls: create participant, topic, publisher, datawriter |
-| `Publisher::publish_raw` | `uxr_prepare_output_stream` + write bytes |
-| `Session::create_subscriber` | create datareader + `uxr_buffer_request_data` |
-| `Subscriber::try_recv_raw` | Read from callback-populated buffer |
+| `Rmw::open(config)` | set transport callbacks + init session + create streams + create participant |
+| `Session::create_publisher` | create topic + publisher + datawriter (participant shared) |
+| `Publisher::publish_raw` | `uxr_buffer_topic(data, len)` — pre-serialized CDR, no double-serialization |
+| `Session::create_subscriber` | create datareader + `uxr_buffer_request_data(UNLIMITED)` |
+| `Subscriber::try_recv_raw` | Read from `uxrOnTopicFunc` callback buffer |
 | `Session::spin_once` | `uxr_run_session_time(timeout)` |
-| `ServiceServer` | Replier pattern with callback buffers |
-| `ServiceClient::call_raw` | `uxr_buffer_request` + wait for reply |
+| `ServiceServer` | Replier pattern: `uxrOnRequestFunc` callback + `uxr_buffer_reply` |
+| `ServiceClient::call_raw` | `uxr_buffer_request` + `uxr_run_session_until_data` for reply |
+
+**Build approach:**
+- `build.rs` generates `config.h` from Cargo features (same pattern as zpico-sys)
+- `cc::Build` compiles 28 C files directly — no CMake needed
+- Feature flags: `bare-metal` / `posix` (mutually exclusive)
+- Target-specific flags: ARM (`-mcpu=cortex-m3 -mthumb`), RISC-V (`-march=rv32imc`)
 
 **Challenges:**
 - Agent is mandatory (operational complexity vs zenoh's optional router)
-- DDS entity hierarchy (participant > publisher > datawriter) adds internal complexity
+- DDS entity hierarchy (participant > publisher > datawriter) adds internal complexity to `nros-rmw-xrce` — but hidden behind `Session::create_publisher()`
 - Subscribing requires explicit `uxr_buffer_request_data` (vs zenoh's automatic data flow)
-- Board crates must be refactored to use nros-rmw traits before XRCE-DDS can work (Phase 34)
+- Entity ID management — must track allocated IDs to avoid collisions
 
-**Estimated effort:** 5-6 weeks. See `docs/roadmap/phase-34-rmw-abstraction.md`.
+See `docs/roadmap/phase-34-rmw-abstraction.md` for implementation plan (steps 34.4-34.8).
 
 ### Adding MQTT-SN
 

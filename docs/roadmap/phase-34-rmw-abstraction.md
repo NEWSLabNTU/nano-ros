@@ -2,12 +2,12 @@
 
 **Status: In Progress** (34.1, 34.2, 34.3 complete)
 
-**Prerequisites:** Phase 33.1 (core rename) and 33.2 (transport split) are complete. Phase 33.3 (platform crate split) is in progress in a separate work tree but is NOT a blocker — Phase 34 work on `nros-rmw` and `nros-rmw-zenoh` is independent of the platform crate restructuring.
+**Prerequisites:** Phase 33 (crate rename + platform split) is complete. Phase 34.1-34.3 (RMW traits + zenoh impl + board refactor) are complete.
 
 **Design docs:**
 - `docs/design/rmw-layer-design.md` — Overall architecture and RMW layer design
 - `docs/reference/rmw-h-analysis.md` — ROS 2 rmw.h analysis (limitations, what to adopt)
-- `docs/reference/xrce-dds-analysis.md` — XRCE-DDS feasibility analysis
+- `docs/reference/xrce-dds-analysis.md` — XRCE-DDS source code analysis (API, build system, platform requirements)
 
 ## Goal
 
@@ -16,16 +16,16 @@
 3. Refactor platform/board crates to use `nros-rmw` traits instead of calling `zpico-sys` FFI directly
 4. Implement XRCE-DDS as the second RMW backend, proving the abstraction works
 
-## Current State (post-Phase 33.2)
+## Current State (post-Phase 34.3)
 
-**What exists:**
-- `nros-rmw` (`packages/core/nros-rmw/`) — has `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`, `Transport` traits, plus `TopicInfo`, `ServiceInfo`, `ActionInfo`, `QosSettings`, `TransportConfig`, `TransportError`
-- `nros-rmw-zenoh` (`packages/zpico/nros-rmw-zenoh/`) — has `shim.rs` (implements `nros-rmw` traits), `zpico.rs` (safe wrapper over `zpico-sys` FFI), `keyexpr.rs` (zenoh key expression formatting)
+**Complete:**
+- `nros-rmw` — `Rmw` factory trait, `RmwConfig`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait` traits, `TopicInfo`, `ServiceInfo`, `ActionInfo`, `QosSettings`, `TransportError`
+- `nros-rmw-zenoh` — `ZenohRmw` implements `Rmw` trait, `ShimSession`/`ShimPublisher`/`ShimSubscriber` implement session/pub/sub traits
+- All 4 board crates (`nros-qemu`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) use `nros-rmw` traits exclusively — no direct `zpico-sys` imports
 
-**What's missing:**
-- No `Rmw` factory trait — can't select middleware at compile time
-- No `RmwConfig` type — `TransportConfig` is zenoh-specific (locator strings, session modes)
-- Platform crates (`nano-ros-platform-{qemu,stm32f4,esp32,esp32-qemu}`) bypass `nros-rmw` entirely and call `zpico_sys::*` FFI directly in `node.rs`, `publisher.rs`, `subscriber.rs`
+**Remaining (34.4-34.8):**
+- XRCE-DDS as second RMW backend, proving the abstraction works
+- Source code studied: `external/Micro-XRCE-DDS-Client/` and `external/Micro-CDR/`
 
 ## Steps
 
@@ -152,41 +152,85 @@ pub struct RmwConfig<'a> {
 
 **Directory:** `packages/xrce/xrce-sys/`
 
-- [ ] Add [Micro-XRCE-DDS-Client](https://github.com/eProsima/Micro-XRCE-DDS-Client) as git submodule
-- [ ] Write `build.rs` to compile client C library with CMake
-- [ ] Write `src/lib.rs` with raw FFI bindings (`#[repr(C)]` types, `unsafe extern "C"` functions)
-- [ ] Bind session API: `uxr_init_session`, `uxr_create_session`, `uxr_delete_session`, `uxr_run_session_time`
-- [ ] Bind stream API: `uxr_create_output_reliable_stream`, `uxr_create_input_reliable_stream`
-- [ ] Bind entity API: `uxr_buffer_create_participant_bin`, `_topic_bin`, `_publisher_bin`, `_datawriter_bin`, `_subscriber_bin`, `_datareader_bin`
-- [ ] Bind data API: `uxr_prepare_output_stream`, `uxr_buffer_request_data`, `uxr_set_topic_callback`
-- [ ] Bind service API: `uxr_buffer_create_requester_bin`, `uxr_buffer_create_replier_bin`
-- [ ] Builds for `thumbv7m-none-eabi` (QEMU) and host targets
-- [ ] `cargo check -p xrce-sys` passes
+**Source study complete:** Micro-XRCE-DDS-Client and Micro-CDR cloned to `external/`. API, build system, and platform requirements analyzed in `docs/reference/xrce-dds-analysis.md`.
+
+**Key design decisions from source study:**
+- **No C shim layer** — unlike zpico-sys (`zenoh_shim.c`, 1200+ lines), XRCE-DDS's C API is clean enough to bind directly from Rust FFI via `unsafe extern "C"` blocks
+- **cc::Build, not CMake** — compile 28 C source files directly via `cc::Build` in `build.rs`, generate `config.h` from Cargo features (same pattern as zpico-sys)
+- **Two git submodules** — `micro-xrce-dds-client/` (XRCE-DDS Client) + `micro-cdr/` (Micro-CDR v2.0.2, the only dependency)
+- **Minimal libc** — only `memcpy`, `memset`, `strlen` needed (no heap, no printf/snprintf)
+
+**Submodules:**
+- [ ] Add Micro-XRCE-DDS-Client as git submodule at `packages/xrce/xrce-sys/micro-xrce-dds-client/`
+- [ ] Add Micro-CDR v2.0.2 as git submodule at `packages/xrce/xrce-sys/micro-cdr/`
+
+**Build system (`build.rs`):**
+- [ ] Generate `config.h` in `OUT_DIR` from Cargo features:
+  - `UCLIENT_PROFILE_CUSTOM_TRANSPORT` (always enabled for bare-metal)
+  - `UXR_CONFIG_CUSTOM_TRANSPORT_MTU` (default 512)
+  - `UXR_CONFIG_MAX_*_STREAMS` (default 1 each)
+  - No platform defines for bare-metal (falls through to POSIX branch in `time.c`)
+- [ ] Generate Micro-CDR `config.h` with `UCDR_MACHINE_ENDIANNESS` (little-endian for ARM/RISC-V)
+- [ ] Compile 23 XRCE-DDS core files + 5 Micro-CDR files = 28 total via `cc::Build`
+- [ ] Set target-specific flags (ARM: `-mcpu=cortex-m3 -mthumb`, RISC-V: `-march=rv32imc`)
+- [ ] Support `posix` / `bare-metal` feature flags (mutually exclusive, like zpico-sys)
+
+**FFI bindings (`src/lib.rs` + `src/ffi.rs`):**
+- [ ] `#![no_std]` with optional `std` feature
+- [ ] `#[repr(C)]` types: `uxrSession`, `uxrObjectId`, `uxrStreamId`, `uxrQoS_t`, `uxrCustomTransport`, `uxrCommunication`, `uxrDeliveryControl`, `ucdrBuffer`, `SampleIdentity`, `uxrFramingIO`
+- [ ] Constants: `UXR_STATUS_*`, `UXR_*_ID` (object types), `UXR_REPLACE`/`UXR_REUSE`, `UXR_DURABILITY_*`, `UXR_RELIABILITY_*`, `UXR_HISTORY_*`
+- [ ] Callback types: `uxrOnTopicFunc`, `uxrOnStatusFunc`, `uxrOnRequestFunc`, `uxrOnReplyFunc`, `open_custom_func`, `close_custom_func`, `write_custom_func`, `read_custom_func`
+- [ ] Session API: `uxr_init_session`, `uxr_create_session`, `uxr_create_session_retries`, `uxr_delete_session`, `uxr_run_session_time`, `uxr_run_session_until_all_status`, `uxr_run_session_until_data`, `uxr_flash_output_streams`
+- [ ] Callback setters: `uxr_set_status_callback`, `uxr_set_topic_callback`, `uxr_set_request_callback`, `uxr_set_reply_callback`
+- [ ] Stream API: `uxr_create_output_best_effort_stream`, `uxr_create_output_reliable_stream`, `uxr_create_input_best_effort_stream`, `uxr_create_input_reliable_stream`
+- [ ] Entity API (binary format): `uxr_buffer_create_participant_bin`, `uxr_buffer_create_topic_bin`, `uxr_buffer_create_publisher_bin`, `uxr_buffer_create_subscriber_bin`, `uxr_buffer_create_datawriter_bin`, `uxr_buffer_create_datareader_bin`, `uxr_buffer_create_requester_bin`, `uxr_buffer_create_replier_bin`
+- [ ] Data API: `uxr_buffer_topic`, `uxr_buffer_request_data`, `uxr_buffer_cancel_data`, `uxr_buffer_request`, `uxr_buffer_reply`
+- [ ] Transport API: `uxr_set_custom_transport_callbacks`, `uxr_init_custom_transport`, `uxr_close_custom_transport`
+- [ ] Object ID API: `uxr_object_id`, `uxr_stream_id`
+
+**Verification:**
+- [ ] `cargo check -p xrce-sys --features bare-metal --target thumbv7m-none-eabi` passes
+- [ ] `cargo check -p xrce-sys --features posix` passes (host target)
+- [ ] `just quality` passes
 
 **Acceptance criteria:**
-- Compiles C library from submodule without external dependencies
-- All 15+ core XRCE-DDS C functions are bindable from Rust
-- No heap allocation required by the C library itself (static allocation mode)
+- Compiles 28 C source files from submodules without CMake
+- All ~30 core XRCE-DDS C functions are bindable from Rust
+- Zero heap allocation — fully static memory model
+- Feature-gated platform selection (`posix` / `bare-metal`)
 
 ---
 
-### 34.5: Create `xrce-smoltcp` (UDP transport)
+### 34.5: Create `xrce-smoltcp` (UDP transport via smoltcp)
 
 **Directory:** `packages/xrce/xrce-smoltcp/`
 
-- [ ] Implement 4 XRCE-DDS custom transport callbacks using smoltcp UDP sockets:
-  - `open_func` → open UDP socket
-  - `close_func` → close UDP socket
-  - `write_func` → send UDP datagram
-  - `read_func` → receive UDP datagram with timeout
-- [ ] Static socket storage (no heap)
+Implements the 4 XRCE-DDS custom transport callbacks using smoltcp UDP sockets. Much simpler than zpico-smoltcp (4 UDP callbacks vs 8+ TCP callbacks).
+
+- [ ] Static UDP socket buffer storage (no heap):
+  - `UDP_RX_BUFFER: [u8; 1024]` — receive buffer
+  - `UDP_TX_BUFFER: [u8; 1024]` — transmit buffer (metadata)
+- [ ] Implement `open_custom_func`: bind smoltcp UDP socket to a local port, store agent endpoint address
+- [ ] Implement `close_custom_func`: close UDP socket
+- [ ] Implement `write_custom_func`: send UDP datagram to agent via smoltcp, return bytes written
+- [ ] Implement `read_custom_func`: poll smoltcp for incoming UDP datagram, respect timeout parameter, return bytes read
+- [ ] Global state management: store smoltcp `Interface`/`SocketSet` references for the poll callback (same pattern as zpico-smoltcp's `SmoltcpBridge`)
+- [ ] Poll callback: `xrce_smoltcp_poll()` — called from the network poll loop to process smoltcp events
 - [ ] Builds for `thumbv7m-none-eabi`
-- [ ] Unit test with mock UDP socket
+
+**Dependencies:**
+```toml
+xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet", "proto-ipv4", "socket-udp",
+] }
+```
 
 **Acceptance criteria:**
 - All 4 callbacks compile and link against `xrce-sys`
-- UDP transport works on smoltcp `0.12` (same version as zpico-smoltcp)
+- UDP transport works on smoltcp 0.12 (same version as zpico-smoltcp)
 - No heap allocation
+- Socket storage is static (supports 1 UDP socket for agent communication)
 
 ---
 
@@ -194,51 +238,113 @@ pub struct RmwConfig<'a> {
 
 **Directory:** `packages/xrce/nros-rmw-xrce/`
 
-- [ ] `XrceRmw` struct implementing `Rmw` trait
-- [ ] `XrceSession` implementing `Session` trait
-  - Manages DDS participant, wraps `uxr_run_session_time` in `spin_once`
-- [ ] `XrcePublisher` implementing `Publisher` trait
-  - Orchestrates 4 XRCE calls: participant → topic → publisher → datawriter
-  - `publish_raw()` → `uxr_prepare_output_stream`
-- [ ] `XrceSubscriber` implementing `Subscriber` trait
-  - Manages datareader + static receive buffer
-  - `try_recv_raw()` reads from callback buffer
-  - Re-requests data after processing (`uxr_buffer_request_data`)
-- [ ] `XrceServiceServer` implementing `ServiceServerTrait`
-  - Uses replier pattern
-- [ ] `XrceServiceClient` implementing `ServiceClientTrait`
-  - Uses requester pattern
+Maps XRCE-DDS entities to `nros-rmw` traits. This is the core complexity — orchestrating the DDS entity hierarchy internally while presenting the same simple `Session::create_publisher()` API.
+
+**`XrceRmw` (implements `Rmw` trait):**
+- [ ] `XrceRmw::open(config: &RmwConfig)`:
+  1. Parse `config.locator` (e.g., `"udp/192.168.1.1:2019"`) to extract agent IP + port
+  2. Set up custom transport callbacks (from `xrce-smoltcp`)
+  3. `uxr_init_custom_transport` → `uxr_init_session` → `uxr_create_session`
+  4. Create output reliable stream + input reliable stream (user-provided static buffers)
+  5. Create DDS participant via `uxr_buffer_create_participant_bin` + wait for confirmation
+  6. Return `XrceSession`
+
+**`XrceSession` (implements `Session` trait):**
+- [ ] Holds `uxrSession`, stream IDs, participant ID, and entity ID counter
+- [ ] `create_publisher(topic, qos)`:
+  1. Allocate next object IDs for topic, publisher, datawriter
+  2. `uxr_buffer_create_topic_bin` with DDS topic name (`"rt/<topic>"`) and type name
+  3. `uxr_buffer_create_publisher_bin` + `uxr_buffer_create_datawriter_bin` with QoS
+  4. `uxr_run_session_until_all_status` to wait for agent confirmation
+  5. Return `XrcePublisher` wrapping the datawriter ID
+- [ ] `create_subscriber(topic, qos)`:
+  1. Allocate IDs for topic, subscriber, datareader
+  2. Create entities via `_bin` calls + wait for confirmation
+  3. `uxr_buffer_request_data` with `UXR_MAX_SAMPLES_UNLIMITED`
+  4. Return `XrceSubscriber` wrapping the datareader ID + receive buffer
+- [ ] `spin_once(timeout)`: `uxr_run_session_time(timeout)` — processes I/O and dispatches callbacks
+- [ ] Entity ID management: track next available ID per type to avoid collisions
+
+**`XrcePublisher` (implements `Publisher` trait):**
+- [ ] `publish_raw(data)`: `uxr_buffer_topic(session, stream, datawriter_id, data, len)` — passes pre-serialized CDR bytes directly (no double-serialization through Micro-CDR)
+
+**`XrceSubscriber` (implements `Subscriber` trait):**
+- [ ] `uxrOnTopicFunc` callback: copies received data from `ucdrBuffer` into static receive buffer, sets atomic flag
+- [ ] `try_recv_raw(buf)`: checks flag, copies from receive buffer to caller's buffer, clears flag
+- [ ] `has_data()`: checks atomic flag
+
+**`XrceServiceServer` (implements `ServiceServerTrait`):**
+- [ ] Uses replier pattern: `uxr_buffer_create_replier_bin`
+- [ ] `uxrOnRequestFunc` callback: stores request + `SampleIdentity` correlation ID
+- [ ] `send_reply()`: `uxr_buffer_reply(session, stream, replier_id, sample_id, data, len)`
+
+**`XrceServiceClient` (implements `ServiceClientTrait`):**
+- [ ] Uses requester pattern: `uxr_buffer_create_requester_bin`
+- [ ] `call_raw()`: `uxr_buffer_request` + `uxr_run_session_until_data` for reply via `uxrOnReplyFunc`
+
+**DDS topic naming:**
+- [ ] `TopicInfo.name` `/chatter` → DDS `"rt/chatter"` (add `rt/` prefix)
+- [ ] `TopicInfo.type_name` `std_msgs::msg::Int32` → DDS `"std_msgs::msg::dds_::Int32_"` (add `dds_::` + trailing `_`)
+
+**Verification:**
 - [ ] All types compile on `no_std` without `alloc`
-- [ ] Unit tests for entity creation and session lifecycle
+- [ ] Unit tests for entity ID allocation and topic name formatting
+- [ ] `just quality` passes
 
 **Acceptance criteria:**
-- Implements all 5 `nros-rmw` traits (`Rmw`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`)
-- Platform crate can swap `ZenohRmw` → `XrceRmw` with only a feature flag change
-- No heap allocation
+- Implements `Rmw`, `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`
+- Board crate can swap `ZenohRmw` → `XrceRmw` with only a Cargo feature change
+- No heap allocation — all buffers are static or stack-allocated
 
 ---
 
-### 34.7: Create `xrce-platform-qemu` (platform support)
+### 34.7: Create `xrce-platform-qemu` (bare-metal platform support)
 
 **Directory:** `packages/xrce/xrce-platform-qemu/`
 
-- [ ] Implement ~6 platform symbols needed by XRCE-DDS client:
-  - `clock_gettime` (for session synchronization)
-  - Any other platform-required C functions
-- [ ] Much smaller than zpico-platform-qemu (6 vs 55 symbols)
+Provides the **single platform symbol** needed by XRCE-DDS on bare-metal: `clock_gettime()` for `uxr_nanos()` in `time.c`.
+
+This is dramatically simpler than zpico-platform-qemu (1 symbol vs 55):
+
+| | zpico-platform-qemu | xrce-platform-qemu |
+|---|---|---|
+| Memory | z_malloc, z_free, z_realloc | **None** (fully static) |
+| Clock | z_clock_now + 6 time functions | `clock_gettime` only |
+| Random | z_random_u8/u16/u32/u64/fill | **None** |
+| Sleep | z_sleep_us/ms/s | **None** |
+| Threading | 23 mutex/condvar/task stubs | **None** |
+| Sockets | TCP open/close/read/send stubs | **None** (custom transport) |
+| libc | strlen, memcpy, strtoul, snprintf, ... | `memcpy`, `memset`, `strlen` (from compiler builtins or newlib) |
+| **Total** | **~55 symbols** | **1 symbol** |
+
+- [ ] Implement `clock_gettime(CLOCK_REALTIME, &ts)` using Cortex-M DWT cycle counter (same timing source as zpico-platform-qemu's `z_clock_now`)
+- [ ] Provide `memcpy`, `memset`, `strlen` if not available from the toolchain's newlib/picolibc (ARM `arm-none-eabi-gcc` provides these by default)
 - [ ] Builds for `thumbv7m-none-eabi`
+
+**Dependencies:**
+```toml
+xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
+cortex-m = "0.7"
+```
 
 **Acceptance criteria:**
 - XRCE-DDS client links and initializes on QEMU MPS2-AN385
+- `uxr_nanos()` returns monotonically increasing nanosecond timestamps
+- No heap allocation, no threading, no socket stubs
 
 ---
 
 ### 34.8: Integration testing
 
-- [ ] Set up [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) build
+- [ ] Build [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) from source (cloned to `external/Micro-XRCE-DDS-Agent/`)
+  - Add `just build-xrce-agent` recipe
+  - Output to `build/xrce-agent/MicroXRCEAgent`
 - [ ] Create `XrceAgent` fixture in `nros-tests/src/fixtures/`
+  - Starts agent on configurable UDP port
+  - Auto-discovers DDS domain
+  - Cleans up on drop
 - [ ] Create `nros-tests/tests/xrce.rs` test suite
-- [ ] Test: QEMU XRCE publisher → Agent → verify data arrives
+- [ ] Test: QEMU XRCE publisher → Agent → verify data arrives (via DDS subscriber or agent log)
 - [ ] Test: Agent → QEMU XRCE subscriber → verify data received
 - [ ] Test: XRCE service server/client roundtrip
 - [ ] Test: Cross-backend interop (zenoh ↔ XRCE via DDS bridge) — if feasible
@@ -258,46 +364,26 @@ pub struct RmwConfig<'a> {
 | Client heap | Required (~16KB+) | **None** (fully static) |
 | Client RAM | ~16KB+ | ~3KB |
 | Client Flash | ~100KB+ | ~75KB |
-| Platform symbols | ~55 FFI exports | ~6 callbacks |
-| Transport impl complexity | 8+ TCP functions | 4 UDP callbacks |
+| C source files to compile | ~100+ | **28** |
+| C shim layer | `zenoh_shim.c` (1200+ lines) | **None** (direct FFI binding) |
+| Platform symbols | ~55 FFI exports | **1** (`clock_gettime`) |
+| Transport impl | 8+ TCP functions | 4 UDP callbacks |
+| libc stubs needed | 14 (strlen, snprintf, strtoul, ...) | 3 (`memcpy`, `memset`, `strlen`) |
+| Config #defines | 20+ | ~8 |
 | Bridge process | zenohd (optional for peer mode) | Agent (**mandatory**) |
-
-## Dependency on Phase 33.3
-
-Phase 33.3 splits each platform crate into `zpico-platform-*` (FFI symbols) + `nros-*` (user API). Phase 34.3 (refactor to use traits) applies to whichever shape the platform crates are in:
-
-| Phase 33.3 status | Phase 34.3 target |
-|---|---|
-| **Not started** | Refactor existing `nano-ros-platform-*` crates in-place |
-| **Complete** | Refactor split `nros-*` board crates (cleaner, less code) |
-
-Either way, the refactoring work is the same: replace `zpico_sys::*` calls with `nros-rmw` trait calls. The split just determines file locations.
 
 ## Execution Order
 
 ```
-34.1 (Rmw trait) ──→ 34.2 (zenoh impl) ──→ 34.3 (platform refactor)
-                                               ↓
-                     34.4 (xrce-sys) ──→ 34.5 (xrce-smoltcp) ──→ 34.6 (nros-rmw-xrce)
-                                                                        ↓
-                                         34.7 (xrce-platform-qemu) ──→ 34.8 (integration tests)
+34.1 (Rmw trait) ──→ 34.2 (zenoh impl) ──→ 34.3 (board refactor)    ✅ COMPLETE
+                                               │
+34.4 (xrce-sys) ──→ 34.5 (xrce-smoltcp) ──→ 34.6 (nros-rmw-xrce)
+                                                      │
+                     34.7 (xrce-platform-qemu) ───────→ 34.8 (integration tests)
 ```
 
-- **34.1 → 34.2 → 34.3** is the critical path. Validates the abstraction with the existing backend.
-- **34.4 → 34.7** can start in parallel once 34.1 stabilizes the trait interface.
-- **34.8** requires both paths to converge.
-- **34.1 and 34.2 are independent of Phase 33.3** — they modify `nros-rmw` and `nros-rmw-zenoh` which are already split.
-
-## Estimated Effort
-
-| Step | Description | Effort | Parallelizable |
-|------|-------------|--------|----------------|
-| 34.1 | Add Rmw trait + RmwConfig | 2-3 days | No (foundation) |
-| 34.2 | Implement ZenohRmw | 3-5 days | After 34.1 |
-| 34.3 | Refactor 4 platform crates | 1 week | After 34.2 |
-| 34.4 | xrce-sys FFI bindings | 1 week | After 34.1 |
-| 34.5 | xrce-smoltcp UDP transport | 3 days | After 34.4 |
-| 34.6 | nros-rmw-xrce implementation | 2 weeks | After 34.1 + 34.4 |
-| 34.7 | xrce-platform-qemu | 2 days | After 34.5 |
-| 34.8 | Integration testing | 1 week | After 34.3 + 34.6 |
-| **Total** | | **~7-8 weeks** | |
+- **34.1 → 34.2 → 34.3** complete. RMW abstraction validated with zenoh backend.
+- **34.4** is the next step — FFI bindings to XRCE-DDS Client + Micro-CDR.
+- **34.5 + 34.7** can be done in parallel after 34.4 (transport + platform are independent).
+- **34.6** depends on 34.4 + 34.5 (needs FFI + transport).
+- **34.8** requires all of 34.4-34.7.
