@@ -67,6 +67,8 @@ exclude = [
     "packages/reference/stm32f4-embassy",
     # smoltcp link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-smoltcp",
+    # XRCE-DDS smoltcp UDP transport (embedded-only, requires cross-compilation)
+    "packages/xrce/xrce-smoltcp",
     # zpico platform crates (embedded-only, require cross-compilation)
     "packages/zpico/zpico-platform-mps2-an385",
     "packages/zpico/zpico-platform-esp32",

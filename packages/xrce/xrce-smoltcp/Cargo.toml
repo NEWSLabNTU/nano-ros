@@ -1,0 +1,12 @@
+[package]
+name = "xrce-smoltcp"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "smoltcp UDP transport for XRCE-DDS custom transport"
+
+[dependencies]
+xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
+smoltcp = { version = "0.12", default-features = false, features = [
+    "medium-ethernet", "proto-ipv4", "socket-udp",
+] }

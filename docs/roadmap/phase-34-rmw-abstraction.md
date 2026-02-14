@@ -1,6 +1,6 @@
 # Phase 34: RMW Abstraction & XRCE-DDS Integration
 
-**Status: In Progress** (34.1, 34.2, 34.3, 34.4 complete)
+**Status: In Progress** (34.1, 34.2, 34.3, 34.4, 34.5 complete)
 
 **Prerequisites:** Phase 33 (crate rename + platform split) is complete. Phase 34.1-34.3 (RMW traits + zenoh impl + board refactor) are complete.
 
@@ -23,9 +23,10 @@
 - `nros-rmw-zenoh` — `ZenohRmw` implements `Rmw` trait, `ShimSession`/`ShimPublisher`/`ShimSubscriber` implement session/pub/sub traits
 - All 4 board crates (`nros-mps2-an385`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) use `nros-rmw` traits exclusively — no direct `zpico-sys` imports
 
-**Remaining (34.5-34.8):**
+**Remaining (34.6-34.8):**
 - XRCE-DDS as second RMW backend, proving the abstraction works
 - `xrce-sys` FFI bindings complete (34.4): `packages/xrce/xrce-sys/`
+- `xrce-smoltcp` UDP transport complete (34.5): `packages/xrce/xrce-smoltcp/`
 
 ## Steps
 
@@ -202,16 +203,16 @@ pub struct RmwConfig<'a> {
 
 Implements the 4 XRCE-DDS custom transport callbacks using smoltcp UDP sockets. Much simpler than zpico-smoltcp (4 UDP callbacks vs 8+ TCP callbacks).
 
-- [ ] Static UDP socket buffer storage (no heap):
+- [x] Static UDP socket buffer storage (no heap):
   - `UDP_RX_BUFFER: [u8; 1024]` — receive buffer
   - `UDP_TX_BUFFER: [u8; 1024]` — transmit buffer (metadata)
-- [ ] Implement `open_custom_func`: bind smoltcp UDP socket to a local port, store agent endpoint address
-- [ ] Implement `close_custom_func`: close UDP socket
-- [ ] Implement `write_custom_func`: send UDP datagram to agent via smoltcp, return bytes written
-- [ ] Implement `read_custom_func`: poll smoltcp for incoming UDP datagram, respect timeout parameter, return bytes read
-- [ ] Global state management: store smoltcp `Interface`/`SocketSet` references for the poll callback (same pattern as zpico-smoltcp's `SmoltcpBridge`)
-- [ ] Poll callback: `xrce_smoltcp_poll()` — called from the network poll loop to process smoltcp events
-- [ ] Builds for `thumbv7m-none-eabi`
+- [x] Implement `open_custom_func`: bind smoltcp UDP socket to a local port, store agent endpoint address
+- [x] Implement `close_custom_func`: close UDP socket
+- [x] Implement `write_custom_func`: send UDP datagram to agent via smoltcp, return bytes written
+- [x] Implement `read_custom_func`: poll smoltcp for incoming UDP datagram, respect timeout parameter, return bytes read
+- [x] Global state management: store smoltcp `Interface`/`SocketSet` references for the poll callback (same pattern as zpico-smoltcp's `SmoltcpBridge`)
+- [x] Poll callback: `XrceSmoltcpTransport::poll()` — called from the network poll loop to process smoltcp events
+- [x] Builds for `thumbv7m-none-eabi`
 
 **Dependencies:**
 ```toml
