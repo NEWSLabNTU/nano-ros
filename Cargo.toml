@@ -24,8 +24,8 @@ members = [
     # Generated ROS 2 interface types (rcl_interfaces, builtin_interfaces).
     # Required by nros-node's param-services feature. Checked into git because
     # cargo requires workspace member paths to exist on disk.
-    "packages/interfaces/rcl-interfaces/generated/builtin_interfaces",
-    "packages/interfaces/rcl-interfaces/generated/rcl_interfaces",
+    "packages/interfaces/rcl-interfaces/generated/nros-builtin-interfaces",
+    "packages/interfaces/rcl-interfaces/generated/nros-rcl-interfaces",
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
 ]

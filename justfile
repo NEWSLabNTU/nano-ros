@@ -1016,9 +1016,9 @@ generate-bindings:
     NANO_ROS="$(pwd)/packages/codegen/packages/target/debug/nano-ros"
     echo "Regenerating Rust bindings..."
 
-    # Internal crate (workspace member — checked into git)
-    echo "  rcl-interfaces"
-    (cd packages/interfaces/rcl-interfaces && $NANO_ROS generate-rust)
+    # Internal crate (workspace member — manually maintained, do not auto-regenerate)
+    # To update: run `cargo nano-ros generate-rust` in packages/interfaces/rcl-interfaces/
+    # then apply nros- prefix rename to generated Cargo.toml and source files
 
     # Native examples
     for ex in rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client; do

@@ -8,7 +8,7 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, SerError};
 /// ParameterEvent message type
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParameterEvent {
-    pub stamp: builtin_interfaces::msg::Time,
+    pub stamp: nros_builtin_interfaces::msg::Time,
     pub node: heapless::String<256>,
     pub new_parameters: heapless::Vec<crate::msg::Parameter, 64>,
     pub changed_parameters: heapless::Vec<crate::msg::Parameter, 64>,

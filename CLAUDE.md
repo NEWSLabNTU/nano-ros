@@ -34,8 +34,8 @@ nano-ros/
 │   │   ├── lan9118-smoltcp/       # LAN9118 Ethernet driver for smoltcp
 │   │   └── openeth-smoltcp/       # OpenCores Ethernet driver for smoltcp
 │   ├── interfaces/                # Generated ROS 2 types
-│   │   └── rcl-interfaces/        # rcl_interfaces + builtin_interfaces
-│   │       └── generated/         # cargo nano-ros generate-rust output
+│   │   └── rcl-interfaces/        # nros-rcl-interfaces + nros-builtin-interfaces
+│   │       └── generated/         # manually maintained (nros- prefixed)
 │   ├── testing/                   # Test infrastructure
 │   │   └── nros-tests/            # Integration test crate
 │   ├── verification/              # Formal verification
@@ -289,7 +289,7 @@ Generated per-project using `cargo nano-ros generate-rust` from `package.xml`. S
 
 **All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate-rust`. See [docs/guides/creating-examples.md](docs/guides/creating-examples.md) for the full guide.
 
-**Example `generated/` directories are gitignored** and recreated by `just generate-bindings` (called automatically by `just build`). Only `packages/interfaces/rcl-interfaces/generated/` is checked into git (workspace member — cargo requires member paths on disk).
+**Example `generated/` directories are gitignored** and recreated by `just generate-bindings` (called automatically by `just build`). Only `packages/interfaces/rcl-interfaces/generated/` is checked into git (workspace member — cargo requires member paths on disk). These internal packages use `nros-` prefixed names (`nros-builtin-interfaces`, `nros-rcl-interfaces`) to avoid lockfile collisions with user-generated packages of the same ROS 2 name.
 
 **`.cargo/config.toml` is manually maintained** per example. Each contains `[patch.crates-io]` entries pointing to the local workspace crates, along with platform-specific `[build]` and `[target.*]` settings. The codegen tool does not touch these files.
 
@@ -343,7 +343,7 @@ Enable with `param-services` feature in `nros-node`:
 nros-node = { version = "*", features = ["param-services"] }
 ```
 - Provides ROS 2 parameter service handlers (`~/get_parameters`, `~/set_parameters`, etc.)
-- Uses generated `rcl_interfaces` types from `packages/interfaces/rcl-interfaces/generated/`
+- Uses generated `nros-rcl-interfaces` types from `packages/interfaces/rcl-interfaces/generated/`
 - Handlers return `Box<Response>` due to large heapless arrays (~1MB per ParameterValue)
 
 ### Formal Verification

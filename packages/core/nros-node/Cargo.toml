@@ -27,7 +27,7 @@ rtic = ["nros-rmw-zenoh?/rtic"]
 polling = ["nros-rmw-zenoh?/polling"]
 
 # Parameter services (ros2 param CLI support)
-param-services = ["dep:rcl_interfaces", "zenoh"]
+param-services = ["dep:nros-rcl-interfaces", "zenoh"]
 
 [dependencies]
 nros-core = { workspace = true, default-features = false }
@@ -36,7 +36,7 @@ nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 log = { workspace = true, optional = true }
-rcl_interfaces = { path = "../../interfaces/rcl-interfaces/generated/rcl_interfaces", default-features = false, optional = true }
+nros-rcl-interfaces = { path = "../../interfaces/rcl-interfaces/generated/nros-rcl-interfaces", default-features = false, optional = true }
 
 [dev-dependencies]
 nros-ghost-types = { path = "../../verification/nros-ghost-types" }

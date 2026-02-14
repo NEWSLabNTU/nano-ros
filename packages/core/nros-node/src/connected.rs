@@ -812,37 +812,37 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         };
 
         let get = self.create_service_sized::<
-            rcl_interfaces::srv::GetParameters,
+            nros_rcl_interfaces::srv::GetParameters,
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >(make_name("get_parameters").as_str())?;
 
         let set = self.create_service_sized::<
-            rcl_interfaces::srv::SetParameters,
+            nros_rcl_interfaces::srv::SetParameters,
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >(make_name("set_parameters").as_str())?;
 
         let set_atomic = self.create_service_sized::<
-            rcl_interfaces::srv::SetParametersAtomically,
+            nros_rcl_interfaces::srv::SetParametersAtomically,
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >(make_name("set_parameters_atomically").as_str())?;
 
         let list = self.create_service_sized::<
-            rcl_interfaces::srv::ListParameters,
+            nros_rcl_interfaces::srv::ListParameters,
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >(make_name("list_parameters").as_str())?;
 
         let describe = self.create_service_sized::<
-            rcl_interfaces::srv::DescribeParameters,
+            nros_rcl_interfaces::srv::DescribeParameters,
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >(make_name("describe_parameters").as_str())?;
 
         let get_types = self.create_service_sized::<
-            rcl_interfaces::srv::GetParameterTypes,
+            nros_rcl_interfaces::srv::GetParameterTypes,
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >(make_name("get_parameter_types").as_str())?;

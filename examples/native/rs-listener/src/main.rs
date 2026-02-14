@@ -25,7 +25,7 @@
 #[cfg(not(feature = "zenoh"))]
 use log::{debug, error, info};
 #[cfg(feature = "zenoh")]
-use log::{debug, error, info};
+use log::{debug, error, info, trace};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
@@ -70,11 +70,20 @@ fn main() {
 
     // Create a subscription with callback for Int32 messages on /chatter topic
     // Using /chatter to match ROS 2 demo_nodes_cpp talker
-    match node.create_subscription::<Int32, _>(
+    match node.create_subscription_with_info::<Int32, _>(
         SubscriberOptions::new("/chatter").reliable().keep_last(10),
-        |msg: &Int32| {
+        |msg: &Int32, info: &MessageInfo| {
             let count = MESSAGE_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
             info!("[{}] Received: data={}", count, msg.data);
+            trace!(
+                "  seq={} gid={:02x}{:02x}{:02x}{:02x} ts={}",
+                info.publication_sequence_number(),
+                info.publisher_gid()[0],
+                info.publisher_gid()[1],
+                info.publisher_gid()[2],
+                info.publisher_gid()[3],
+                info.source_timestamp().to_nanos(),
+            );
         },
     ) {
         Ok(_handle) => {

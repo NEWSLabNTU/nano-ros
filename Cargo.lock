@@ -112,15 +112,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "builtin_interfaces"
-version = "1.2.1"
-dependencies = [
- "heapless",
- "nros-core",
- "nros-serdes",
-]
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -474,6 +465,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-builtin-interfaces"
+version = "1.2.1"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
+]
+
+[[package]]
 name = "nros-c"
 version = "0.1.0"
 dependencies = [
@@ -515,9 +515,9 @@ dependencies = [
  "nros-core",
  "nros-ghost-types",
  "nros-params",
+ "nros-rcl-interfaces",
  "nros-rmw",
  "nros-rmw-zenoh",
- "rcl_interfaces",
 ]
 
 [[package]]
@@ -526,6 +526,16 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "nros-ghost-types",
+]
+
+[[package]]
+name = "nros-rcl-interfaces"
+version = "1.2.1"
+dependencies = [
+ "heapless",
+ "nros-builtin-interfaces",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -723,16 +733,6 @@ name = "r-efi"
 version = "5.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "69cdb34c158ceb288df11e18b4bd39de994f6657d83847bdffdbd7f346754b0f"
-
-[[package]]
-name = "rcl_interfaces"
-version = "1.2.1"
-dependencies = [
- "builtin_interfaces",
- "heapless",
- "nros-core",
- "nros-serdes",
-]
 
 [[package]]
 name = "redox_syscall"

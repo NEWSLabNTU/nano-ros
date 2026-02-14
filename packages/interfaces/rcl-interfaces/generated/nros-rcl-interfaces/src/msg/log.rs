@@ -13,7 +13,7 @@ pub const FATAL: u8 = 50;
 /// Log message type
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct Log {
-    pub stamp: builtin_interfaces::msg::Time,
+    pub stamp: nros_builtin_interfaces::msg::Time,
     pub level: u8,
     pub name: heapless::String<256>,
     pub msg: heapless::String<256>,

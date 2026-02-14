@@ -40,12 +40,12 @@ use nros_params::{
     ParameterValue as InternalValue, SetParameterResult,
 };
 
-// Re-export rcl_interfaces types
-pub use rcl_interfaces::msg::{
+// Re-export nros-rcl-interfaces types
+pub use nros_rcl_interfaces::msg::{
     FloatingPointRange, IntegerRange, ListParametersResult, Parameter, ParameterDescriptor,
     ParameterValue, SetParametersResult,
 };
-pub use rcl_interfaces::srv::{
+pub use nros_rcl_interfaces::srv::{
     DescribeParameters, DescribeParametersRequest, DescribeParametersResponse, GetParameterTypes,
     GetParameterTypesRequest, GetParameterTypesResponse, GetParameters, GetParametersRequest,
     GetParametersResponse, ListParameters, ListParametersRequest, ListParametersResponse,
@@ -57,7 +57,7 @@ pub use rcl_interfaces::srv::{
 pub const MAX_PARAMS_PER_REQUEST: usize = 64;
 
 // ═══════════════════════════════════════════════════════════════════════════
-// TYPE CONVERSIONS: Internal ↔ rcl_interfaces
+// TYPE CONVERSIONS: Internal ↔ nros-rcl-interfaces
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Convert internal ParameterValue to rcl_interfaces ParameterValue
