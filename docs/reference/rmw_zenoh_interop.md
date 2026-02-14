@@ -55,7 +55,7 @@ Example:
 
 **Note:** Newer ROS 2 versions (Iron+) use `RIHS01_<hash>` format with actual type hashes.
 
-Implementation: `TopicInfo::to_key()` in `nano-ros-transport/src/traits.rs`
+Implementation: `TopicInfo::to_key()` in the transport traits module
 
 ### 2. Liveliness Token Format
 
@@ -81,7 +81,7 @@ Key differences from data keyexprs:
 - Topic names use `%` instead of `/` (e.g., `%chatter` not `/chatter`)
 - ZenohId must be in LSB-first hex format
 
-Implementation: `Ros2Liveliness` in `nano-ros-transport/src/zenoh.rs`
+Implementation: `Ros2Liveliness` in the transport/zenoh module
 
 ### 3. QoS String Format
 
@@ -110,7 +110,7 @@ Messages use CDR (Common Data Representation) little-endian encoding:
 [... CDR payload ...]     // Message data
 ```
 
-Implementation: `nano-ros-serdes` crate
+Implementation: the serdes crate
 
 ### 5. RMW Attachment Format
 
@@ -207,7 +207,7 @@ export ZENOH_CONFIG_OVERRIDE='mode="client";connect/endpoints=["tcp/127.0.0.1:74
 | Data keyexpr format | ✅ Done | `TopicInfo::to_key()` |
 | Liveliness tokens | ✅ Done | `Ros2Liveliness` |
 | QoS format | ✅ Done | `2:2:1,1:,:,:,,` |
-| CDR serialization | ✅ Done | `nano-ros-serdes` |
+| CDR serialization | ✅ Done | serdes crate |
 | RMW attachment | ✅ Done | `serialize_rmw_attachment()` |
 | ZenohId format | ✅ Done | `ZenohId::to_hex_string()` |
 | Node integration | ✅ Done | `ConnectedNode` |

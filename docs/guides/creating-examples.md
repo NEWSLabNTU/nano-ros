@@ -46,7 +46,7 @@ source /opt/ros/humble/setup.sh
 cargo nano-ros generate
 ```
 
-The `--config` flag uses `ConfigPatcher` to add `[patch.crates-io]` entries idempotently, preserving existing `[build]` and `[target.*]` sections. The `--nano-ros-path` flag also patches `nano-ros-core` and `nano-ros-serdes` to use local crate paths.
+The `--config` flag uses `ConfigPatcher` to add `[patch.crates-io]` entries idempotently, preserving existing `[build]` and `[target.*]` sections. The `--nano-ros-path` flag also patches core and serdes crates to use local paths.
 
 This produces `generated/builtin_interfaces/` and `generated/std_msgs/` (plus any other transitive dependencies).
 

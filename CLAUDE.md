@@ -372,39 +372,20 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 
 ## Development Phases
 
+Completed phases (1-15, 17-18, 20-21, 25-29) are archived in `docs/roadmap/archived/`.
+
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 1 | CDR, types, proc macros | Complete |
-| 2A | ROS 2 Interoperability | Complete |
-| 2B | Zephyr integration | Complete |
-| 3 | Services, parameters | Complete |
-| 4 | Message generation | Complete |
-| 5 | RTIC integration | Complete |
-| 6 | Actions | Complete |
-| 7 | API alignment (rclrs) | Complete |
-| 8 | Embedded networking | Complete |
-| 9 | Test infrastructure | Complete |
-| 12 | QEMU bare-metal tests | Complete |
-| 13 | Bare-metal API simplification | Complete |
-| 14 | Platform BSP libraries | Planning |
 | 16 | ROS 2 Interop Completion | In Progress |
-| 17 | Full test coverage | Complete |
-| 19 | Transport session configuration | Planning |
-| 20 | Remaining work (TODO audit) | Planning |
-| 21 | C API `no_std` backend | In Progress |
-| 22 | ESP32-C3 platform support | Not Started |
+| 22 | ESP32-C3 platform support | In Progress |
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
-| 26 | Typed BSP API + example migration | Complete |
-| 27 | Codegen automation | Complete |
-| 28 | Example portability + safety | Planning |
-| 29 | Directory reorganization | Complete |
-| 30 | WCET & real-time tooling | In Progress |
 | 31 | Verus unbounded verification | In Progress |
+| 32 | RMW architecture + crate rename | In Progress |
 
-**Phase 16 Status**: Core implementation complete (Rust API, C API, protocol). Parameter service registration wired into executor (C.2 complete). Remaining:
-- Integration tests requiring ROS 2 environment
-- Iron+ type hash support (future work)
+**Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
+
+**Phase 32**: Platform/transport split complete (32.1-32.10). BSP wrappers removed. Next: crate rename (`nros-*`, `zpico-*`) per `docs/design/rmw-layer-design.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
@@ -421,13 +402,15 @@ Planned improvements for toolchain distribution:
 ```
 docs/
 ├── guides/          # Getting started, setup, how-to
-├── reference/       # Protocol specs, comparisons, coverage
-├── design/          # Architecture, real-time analysis
+├── reference/       # Protocol specs, comparisons
+├── design/          # Active architecture docs
+│   └── archived/    # Superseded design docs
 ├── research/        # Autoware porting analysis
-└── roadmap/         # Phase planning (phase-1 through phase-27)
+└── roadmap/         # Active phases (16, 22-24, 32)
+    └── archived/    # Completed phases (1-15, 17-21, 25-31)
 ```
 
-Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [verus-verification](docs/guides/verus-verification.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [codegen automation](docs/roadmap/phase-27-codegen-automation.md), [tests/README](tests/README.md).
+Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw-layer-design](docs/design/rmw-layer-design.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [tests/README](tests/README.md).
 
 ## Quick Reference
 
