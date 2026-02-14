@@ -49,6 +49,12 @@ static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the esp32-qemu-listener binary (ELF)
 static ESP32_QEMU_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the xrce-talker binary
+static XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the xrce-listener binary
+static XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached: nros-c library built
 static NANO_ROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
 
@@ -393,6 +399,90 @@ pub fn qemu_bsp_talker_binary() -> PathBuf {
 pub fn qemu_bsp_listener_binary() -> PathBuf {
     build_qemu_bsp_listener()
         .expect("Failed to build qemu-bsp-listener")
+        .to_path_buf()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// XRCE-DDS Test Binary Builders
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build an XRCE-DDS test binary from `packages/testing/xrce-native-test`.
+///
+/// These are standalone binaries (excluded from workspace) that link against
+/// the XRCE-DDS C library via xrce-sys.
+fn build_xrce_test_binary(binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let crate_dir = root.join("packages/testing/xrce-native-test");
+
+    if !crate_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "xrce-native-test crate not found: {}",
+            crate_dir.display()
+        )));
+    }
+
+    eprintln!("Building xrce-native-test::{}...", binary_name);
+
+    let output = cmd!(
+        "cargo",
+        "build",
+        "--release",
+        "--bin",
+        binary_name,
+        "--manifest-path",
+        crate_dir.join("Cargo.toml").to_str().unwrap()
+    )
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run()
+    .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(
+            String::from_utf8_lossy(&output.stdout).to_string(),
+        ));
+    }
+
+    let binary_path = crate_dir.join(format!("target/release/{}", binary_name));
+
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+/// Build the xrce-talker test binary (cached).
+pub fn build_xrce_talker() -> TestResult<&'static Path> {
+    XRCE_TALKER_BINARY
+        .get_or_try_init(|| build_xrce_test_binary("xrce-talker"))
+        .map(|p| p.as_path())
+}
+
+/// Build the xrce-listener test binary (cached).
+pub fn build_xrce_listener() -> TestResult<&'static Path> {
+    XRCE_LISTENER_BINARY
+        .get_or_try_init(|| build_xrce_test_binary("xrce-listener"))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the xrce-talker binary path.
+#[rstest::fixture]
+pub fn xrce_talker_binary() -> PathBuf {
+    build_xrce_talker()
+        .expect("Failed to build xrce-talker")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the xrce-listener binary path.
+#[rstest::fixture]
+pub fn xrce_listener_binary() -> PathBuf {
+    build_xrce_listener()
+        .expect("Failed to build xrce-listener")
         .to_path_buf()
 }
 

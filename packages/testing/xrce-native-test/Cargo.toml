@@ -1,0 +1,20 @@
+[package]
+name = "xrce-native-test"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "XRCE-DDS native test binaries for integration testing"
+
+[[bin]]
+name = "xrce-talker"
+path = "src/bin/xrce-talker.rs"
+
+[[bin]]
+name = "xrce-listener"
+path = "src/bin/xrce-listener.rs"
+
+[dependencies]
+nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", features = ["posix"] }
+nros-rmw = { path = "../../core/nros-rmw" }
+xrce-sys = { path = "../../xrce/xrce-sys", features = ["posix"] }

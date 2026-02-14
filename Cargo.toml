@@ -73,6 +73,8 @@ exclude = [
     "packages/xrce/nros-rmw-xrce",
     # XRCE-DDS platform symbols for MPS2-AN385 (embedded-only)
     "packages/xrce/xrce-platform-mps2-an385",
+    # XRCE-DDS native test binaries (requires XRCE Agent)
+    "packages/testing/xrce-native-test",
     # zpico platform crates (embedded-only, require cross-compilation)
     "packages/zpico/zpico-platform-mps2-an385",
     "packages/zpico/zpico-platform-esp32",

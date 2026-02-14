@@ -880,6 +880,14 @@ build-zenohd:
 clean-zenohd:
     ./scripts/zenohd/build.sh --clean
 
+# Build Micro-XRCE-DDS Agent from source (for XRCE integration tests)
+build-xrce-agent:
+    ./scripts/xrce-agent/build.sh
+
+# Clean XRCE Agent build
+clean-xrce-agent:
+    ./scripts/xrce-agent/build.sh --clean
+
 # Build zenoh-pico C library (standalone, for debugging)
 build-zenoh-pico:
     @echo "Building zenoh-pico..."
@@ -960,6 +968,16 @@ test-ros2-shell:
 # =============================================================================
 
 # Run all C tests (integration + codegen)
+# Run XRCE-DDS integration tests (requires: just build-xrce-agent)
+test-xrce verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --no-fail-fast -E 'binary(xrce)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 test-c verbose="": _init-test-logs
     #!/usr/bin/env bash
     set -e

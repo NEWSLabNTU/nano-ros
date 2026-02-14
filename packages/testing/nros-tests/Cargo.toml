@@ -72,3 +72,7 @@ path = "tests/c_api.rs"
 name = "rmw"
 path = "tests/rmw.rs"
 required-features = ["rmw"]
+
+[[test]]
+name = "xrce"
+path = "tests/xrce.rs"

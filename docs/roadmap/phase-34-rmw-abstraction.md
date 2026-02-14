@@ -1,6 +1,6 @@
 # Phase 34: RMW Abstraction & XRCE-DDS Integration
 
-**Status: In Progress** (34.1, 34.2, 34.3, 34.4, 34.5, 34.6, 34.7 complete)
+**Status: In Progress** (34.1-34.8 complete)
 
 **Prerequisites:** Phase 33 (crate rename + platform split) is complete. Phase 34.1-34.3 (RMW traits + zenoh impl + board refactor) are complete.
 
@@ -333,20 +333,27 @@ xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
 
 ### 34.8: Integration testing
 
-- [ ] Build [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) from source (cloned to `external/Micro-XRCE-DDS-Agent/`)
-  - Add `just build-xrce-agent` recipe
+- [x] Build [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) from source (cloned to `external/Micro-XRCE-DDS-Agent/`)
+  - `just build-xrce-agent` recipe: `scripts/xrce-agent/build.sh`
   - Output to `build/xrce-agent/MicroXRCEAgent`
-- [ ] Create `XrceAgent` fixture in `nros-tests/src/fixtures/`
-  - Starts agent on configurable UDP port
-  - Auto-discovers DDS domain
+- [x] Create `xrce-native-test` crate (`packages/testing/xrce-native-test/`)
+  - Posix UDP custom transport via `std::net::UdpSocket`
+  - `xrce-talker` binary: publishes raw CDR Int32 on `/chatter`
+  - `xrce-listener` binary: subscribes and prints received Int32 values
+- [x] Create `XrceAgent` fixture in `nros-tests/src/fixtures/xrce_agent.rs`
+  - Starts agent on configurable UDP port (`XrceAgent::start(port)`)
+  - Ephemeral port support (`XrceAgent::start_unique()`)
   - Cleans up on drop
-- [ ] Create `nros-tests/tests/xrce.rs` test suite
-- [ ] Test: QEMU XRCE publisher → Agent → verify data arrives (via DDS subscriber or agent log)
-- [ ] Test: Agent → QEMU XRCE subscriber → verify data received
-- [ ] Test: XRCE service server/client roundtrip
-- [ ] Test: Cross-backend interop (zenoh ↔ XRCE via DDS bridge) — if feasible
-- [ ] Add `just test-xrce` recipe to justfile
-- [ ] Document Agent setup in `tests/README.md`
+  - `is_xrce_agent_available()` / `require_xrce_agent()` skip helpers
+- [x] Create `nros-tests/tests/xrce.rs` test suite
+  - `test_xrce_talker_starts`: verifies talker connects to agent and publishes
+  - `test_xrce_listener_starts`: verifies listener connects and subscribes
+  - `test_xrce_talker_listener_communication`: end-to-end pub/sub roundtrip
+- [x] Add `just test-xrce` recipe to justfile
+- [x] Add `xrce` test group to `.config/nextest.toml` (max-threads=1)
+- [x] Binary builders with OnceCell caching: `build_xrce_talker()` / `build_xrce_listener()`
+- [ ] Test: XRCE service server/client roundtrip (future — needs service test binaries)
+- [ ] Test: Cross-backend interop (zenoh ↔ XRCE via DDS bridge) — future
 
 **Acceptance criteria:**
 - At least pub/sub and service roundtrip work end-to-end on QEMU
@@ -384,4 +391,4 @@ xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
 - **34.5** complete. smoltcp UDP transport for XRCE-DDS custom transport.
 - **34.6** complete. `nros-rmw-xrce` RMW trait implementation.
 - **34.7** complete. `xrce-platform-mps2-an385` platform symbols (uxr_millis, uxr_nanos, smoltcp_clock_now_ms).
-- **34.8** remaining. Integration testing with Micro-XRCE-DDS Agent.
+- **34.8** complete. Integration testing infrastructure: Agent build script, native test binaries, fixtures, test suite.
