@@ -466,6 +466,55 @@ mod tests {
 }
 
 // =============================================================================
+// Ghost model validation
+// =============================================================================
+
+#[cfg(test)]
+mod ghost_checks {
+    use super::*;
+    use nano_ros_ghost_types::CdrGhost;
+
+    /// Structural check: construct CdrGhost from CdrWriter private fields.
+    /// If a field is renamed or retyped, this fails to compile.
+    fn ghost_from_writer(w: &CdrWriter) -> CdrGhost {
+        CdrGhost {
+            buf_len: w.buf.len(),
+            pos: w.pos,
+            origin: w.origin,
+        }
+    }
+
+    #[test]
+    fn ghost_new_state() {
+        let mut buf = [0u8; 64];
+        let writer = CdrWriter::new(&mut buf);
+        let ghost = ghost_from_writer(&writer);
+        assert_eq!(ghost.pos, 0);
+        assert_eq!(ghost.origin, 0);
+        assert_eq!(ghost.buf_len, 64);
+    }
+
+    #[test]
+    fn ghost_header_origin() {
+        let mut buf = [0u8; 64];
+        let writer = CdrWriter::new_with_header(&mut buf).unwrap();
+        let ghost = ghost_from_writer(&writer);
+        assert_eq!(ghost.pos, 4);
+        assert_eq!(ghost.origin, 4);
+    }
+
+    #[test]
+    fn ghost_position_invariant() {
+        let mut buf = [0u8; 64];
+        let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+        writer.write_u32(42).unwrap();
+        let ghost = ghost_from_writer(&writer);
+        // After header: pos + remaining == buf_len
+        assert_eq!(ghost.pos + writer.remaining(), ghost.buf_len);
+    }
+}
+
+// =============================================================================
 // Kani bounded model checking proofs
 // =============================================================================
 

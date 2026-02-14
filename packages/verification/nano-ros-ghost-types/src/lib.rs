@@ -143,7 +143,7 @@ pub struct SpinOnceGhost {
 ///     Inert,
 /// }
 /// ```
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum TimerModeGhost {
     Repeating,
     OneShot,

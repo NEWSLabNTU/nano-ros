@@ -37,3 +37,6 @@ nano-ros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 log = { workspace = true, optional = true }
 rcl_interfaces = { path = "../../interfaces/rcl-interfaces/generated/rcl_interfaces", default-features = false, optional = true }
+
+[dev-dependencies]
+nano-ros-ghost-types = { path = "../../verification/nano-ros-ghost-types" }

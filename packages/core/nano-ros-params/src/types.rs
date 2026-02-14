@@ -633,6 +633,60 @@ mod tests {
 }
 
 // =============================================================================
+// Ghost model validation
+// =============================================================================
+
+#[cfg(test)]
+mod ghost_checks {
+    use super::*;
+    use nano_ros_ghost_types::ParameterValueGhost;
+
+    /// Structural check: exhaustive match maps all 10 variants.
+    /// If a variant is added or removed, this fails to compile.
+    fn ghost_from_value(v: &ParameterValue) -> ParameterValueGhost {
+        match v {
+            ParameterValue::NotSet => ParameterValueGhost::NotSet,
+            ParameterValue::Bool(b) => ParameterValueGhost::Bool(*b),
+            ParameterValue::Integer(i) => ParameterValueGhost::Integer(*i),
+            ParameterValue::Double(_) => ParameterValueGhost::Double,
+            ParameterValue::String(_) => ParameterValueGhost::String,
+            ParameterValue::ByteArray(_) => ParameterValueGhost::ByteArray,
+            ParameterValue::BoolArray(_) => ParameterValueGhost::BoolArray,
+            ParameterValue::IntegerArray(_) => ParameterValueGhost::IntegerArray,
+            ParameterValue::DoubleArray(_) => ParameterValueGhost::DoubleArray,
+            ParameterValue::StringArray(_) => ParameterValueGhost::StringArray,
+        }
+    }
+
+    #[test]
+    fn ghost_variant_coverage() {
+        // Exhaustive match compiles — all 10 variants exist in both types
+        let _ = ghost_from_value(&ParameterValue::NotSet);
+        let _ = ghost_from_value(&ParameterValue::Bool(true));
+        let _ = ghost_from_value(&ParameterValue::Integer(0));
+        let _ = ghost_from_value(&ParameterValue::Double(0.0));
+        let _ = ghost_from_value(&ParameterValue::String(String::new()));
+        let _ = ghost_from_value(&ParameterValue::ByteArray(Vec::new()));
+        let _ = ghost_from_value(&ParameterValue::BoolArray(Vec::new()));
+        let _ = ghost_from_value(&ParameterValue::IntegerArray(Vec::new()));
+        let _ = ghost_from_value(&ParameterValue::DoubleArray(Vec::new()));
+        let _ = ghost_from_value(&ParameterValue::StringArray(Vec::new()));
+    }
+
+    #[test]
+    fn ghost_bool_preserves() {
+        let ghost = ghost_from_value(&ParameterValue::Bool(true));
+        assert!(matches!(ghost, ParameterValueGhost::Bool(true)));
+    }
+
+    #[test]
+    fn ghost_integer_preserves() {
+        let ghost = ghost_from_value(&ParameterValue::Integer(42));
+        assert!(matches!(ghost, ParameterValueGhost::Integer(42)));
+    }
+}
+
+// =============================================================================
 // Kani bounded model checking proofs
 // =============================================================================
 

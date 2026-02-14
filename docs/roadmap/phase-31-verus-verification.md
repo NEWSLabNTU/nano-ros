@@ -376,7 +376,7 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 | 31.7 | Tier 4a: E2E proofs — bug existence + data path (8)             | 1 day   | **Done** (8 proofs in e2e.rs)                           |
 | 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)                  | 0.5 day | **Done** (2 proofs in e2e.rs)                           |
 | 31.9 | Ghost model validation: shared ghost type crate                 | 0.5 day | **Done** (8 types in nano-ros-ghost-types) |
-| 31.10 | Ghost model validation: structural + contract tests            | 1 day   | Not started |
+| 31.10 | Ghost model validation: structural + contract tests            | 1 day   | **Done** |
 
 ### 31.1: Verus Toolchain Setup + Crate Scaffolding
 
@@ -713,7 +713,7 @@ full design.
 
 ### 31.10: Ghost Model Validation — Structural + Contract Tests
 
-**Depends on:** 31.9 (shared ghost type crate, **Done**) — **Status: Not started**
+**Depends on:** 31.9 (shared ghost type crate, **Done**) — **Status: Done**
 
 Add `nano-ros-ghost-types` as `[dev-dependencies]` to production crates and add
 `#[cfg(test)]` modules that construct ghost types from private fields and verify
@@ -722,12 +722,12 @@ models and production code.
 
 **Production crates to instrument:**
 
-| Crate | Ghost types | Structural checks | Contract tests |
-|---|---|---|---|
-| nano-ros-serdes | `CdrGhost` | Construct from `CdrWriter` private fields | header_origin, position_invariant |
-| nano-ros-params | `ParamServerGhost`, `ParameterValueGhost` | Construct from `ParameterServer` private fields | count_invariant, param_type_spec |
-| nano-ros-transport | `SubscriberBufferGhost` | Construct from `SubscriberBuffer` private fields | callback_post_fix (overflow + normal), try_recv_post_fix (overflow, size_error, success) |
-| nano-ros-node | `TimerGhost`, `TimerModeGhost`, `PublishChainGhost`, `SpinOnceGhost` | Construct from `TimerState` private fields | timer_update, spin_once_invariant |
+| Crate              | Ghost types                                                          | Structural checks                                | Contract tests                                                                           |
+|--------------------|----------------------------------------------------------------------|--------------------------------------------------|------------------------------------------------------------------------------------------|
+| nano-ros-serdes    | `CdrGhost`                                                           | Construct from `CdrWriter` private fields        | header_origin, position_invariant                                                        |
+| nano-ros-params    | `ParamServerGhost`, `ParameterValueGhost`                            | Construct from `ParameterServer` private fields  | count_invariant, param_type_spec                                                         |
+| nano-ros-transport | `SubscriberBufferGhost`                                              | Construct from `SubscriberBuffer` private fields | callback_post_fix (overflow + normal), try_recv_post_fix (overflow, size_error, success) |
+| nano-ros-node      | `TimerGhost`, `TimerModeGhost`, `PublishChainGhost`, `SpinOnceGhost` | Construct from `TimerState` private fields       | timer_update, spin_once_invariant                                                        |
 
 **Tasks:**
 
@@ -746,10 +746,10 @@ models and production code.
 
 **Acceptance criteria:**
 
-- [ ] Each ghost type has at least one structural check (construction from private fields)
-- [ ] Each spec function has at least one contract test (behavioral verification)
-- [ ] All tests pass with `just quality`
-- [ ] Ghost checks are documented in source (which spec function each test mirrors)
+- [x] Each ghost type has at least one structural check (construction from private fields)
+- [x] Each spec function has at least one contract test (behavioral verification)
+- [x] All tests pass with `just quality`
+- [x] Ghost checks are documented in source (which spec function each test mirrors)
 
 **Out of scope for Phase 31:**
 

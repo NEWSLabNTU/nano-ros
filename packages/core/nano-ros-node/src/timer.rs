@@ -509,3 +509,102 @@ mod tests {
         assert_eq!(handle.index(), 5);
     }
 }
+
+// =============================================================================
+// Ghost model validation
+// =============================================================================
+
+#[cfg(test)]
+mod ghost_checks {
+    use super::*;
+    use nano_ros_ghost_types::{TimerGhost, TimerModeGhost};
+
+    /// Structural check: map TimerMode to TimerModeGhost.
+    /// If a variant is added or removed, this fails to compile.
+    fn ghost_mode(m: &TimerMode) -> TimerModeGhost {
+        match m {
+            TimerMode::Repeating => TimerModeGhost::Repeating,
+            TimerMode::OneShot => TimerModeGhost::OneShot,
+            TimerMode::Inert => TimerModeGhost::Inert,
+        }
+    }
+
+    /// Structural check: construct TimerGhost from TimerState private fields.
+    /// If a field is renamed or retyped, this fails to compile.
+    fn ghost_from_timer(t: &TimerState) -> TimerGhost {
+        TimerGhost {
+            period_ms: t.period_ms,
+            elapsed_ms: t.elapsed_ms,
+            mode: ghost_mode(&t.mode),
+            canceled: t.canceled,
+        }
+    }
+
+    fn test_callback() {}
+
+    #[test]
+    fn ghost_new_state() {
+        let state = TimerState::new_with_fn(
+            TimerDuration::from_millis(100),
+            TimerMode::Repeating,
+            test_callback,
+        );
+        let ghost = ghost_from_timer(&state);
+        assert_eq!(ghost.period_ms, 100);
+        assert_eq!(ghost.elapsed_ms, 0);
+        assert_eq!(ghost.mode, TimerModeGhost::Repeating);
+        assert!(!ghost.canceled);
+    }
+
+    #[test]
+    fn ghost_update_accumulates() {
+        let mut state = TimerState::new_with_fn(
+            TimerDuration::from_millis(100),
+            TimerMode::Repeating,
+            test_callback,
+        );
+        state.update(30);
+        let ghost = ghost_from_timer(&state);
+        assert_eq!(ghost.elapsed_ms, 30);
+
+        state.update(25);
+        let ghost2 = ghost_from_timer(&state);
+        assert_eq!(ghost2.elapsed_ms, 55);
+    }
+
+    #[test]
+    fn ghost_canceled_no_fire() {
+        let mut state = TimerState::new_with_fn(
+            TimerDuration::from_millis(100),
+            TimerMode::Repeating,
+            test_callback,
+        );
+        state.cancel();
+        let fired = state.update(200);
+        assert!(!fired);
+        let ghost = ghost_from_timer(&state);
+        assert!(ghost.canceled);
+    }
+
+    #[test]
+    fn ghost_inert_no_fire() {
+        let mut state = TimerState::new_inert(TimerDuration::from_millis(100));
+        let fired = state.update(200);
+        assert!(!fired);
+        let ghost = ghost_from_timer(&state);
+        assert_eq!(ghost.mode, TimerModeGhost::Inert);
+    }
+
+    #[test]
+    fn ghost_oneshot_becomes_inert() {
+        let mut state = TimerState::new_with_fn(
+            TimerDuration::from_millis(100),
+            TimerMode::OneShot,
+            test_callback,
+        );
+        state.update(100);
+        state.fire();
+        let ghost = ghost_from_timer(&state);
+        assert_eq!(ghost.mode, TimerModeGhost::Inert);
+    }
+}

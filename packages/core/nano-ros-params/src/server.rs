@@ -590,6 +590,69 @@ mod tests {
 }
 
 // =============================================================================
+// Ghost model validation
+// =============================================================================
+
+#[cfg(test)]
+mod ghost_checks {
+    use super::*;
+    use nano_ros_ghost_types::ParamServerGhost;
+
+    /// Structural check: construct ParamServerGhost from ParameterServer private fields.
+    /// If a field is renamed or retyped, this fails to compile.
+    fn ghost_from_server(s: &ParameterServer) -> ParamServerGhost {
+        ParamServerGhost {
+            count: s.count,
+            max: MAX_PARAMETERS,
+        }
+    }
+
+    #[test]
+    fn ghost_new_count() {
+        let server = ParameterServer::new();
+        let ghost = ghost_from_server(&server);
+        assert_eq!(ghost.count, 0);
+        assert_eq!(ghost.max, 32);
+    }
+
+    #[test]
+    fn ghost_declare_increments() {
+        let mut server = ParameterServer::new();
+        let before = ghost_from_server(&server).count;
+        assert!(server.declare("test", ParameterValue::Integer(1)));
+        let after = ghost_from_server(&server).count;
+        assert_eq!(after, before + 1);
+    }
+
+    #[test]
+    fn ghost_remove_decrements() {
+        let mut server = ParameterServer::new();
+        server.declare("test", ParameterValue::Integer(1));
+        let before = ghost_from_server(&server).count;
+        assert!(server.remove("test"));
+        let after = ghost_from_server(&server).count;
+        assert_eq!(after, before - 1);
+    }
+
+    #[test]
+    fn ghost_count_bounded() {
+        let mut server = ParameterServer::new();
+        for i in 0..MAX_PARAMETERS {
+            let mut name = heapless::String::<64>::new();
+            let _ = core::fmt::write(&mut name, format_args!("p{}", i));
+            server.declare(name.as_str(), ParameterValue::Integer(i as i64));
+        }
+        let ghost = ghost_from_server(&server);
+        assert!(ghost.count <= ghost.max);
+        assert_eq!(ghost.count, MAX_PARAMETERS);
+        // Next declare should fail — count stays bounded
+        assert!(!server.declare("overflow", ParameterValue::Integer(0)));
+        let ghost2 = ghost_from_server(&server);
+        assert!(ghost2.count <= ghost2.max);
+    }
+}
+
+// =============================================================================
 // Kani bounded model checking proofs
 // =============================================================================
 

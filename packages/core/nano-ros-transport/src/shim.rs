@@ -1811,3 +1811,41 @@ mod tests {
         assert_eq!(hex, "100f0e0d0c0b0a090807060504030201");
     }
 }
+
+// =============================================================================
+// Ghost model validation
+// =============================================================================
+
+#[cfg(test)]
+mod ghost_checks {
+    use super::*;
+    use nano_ros_ghost_types::SubscriberBufferGhost;
+
+    /// Structural check: construct SubscriberBufferGhost from SubscriberBuffer private fields.
+    /// If a field is renamed or retyped, this fails to compile.
+    fn ghost_from_buffer(b: &SubscriberBuffer) -> SubscriberBufferGhost {
+        SubscriberBufferGhost {
+            has_data: b.has_data.load(Ordering::Relaxed),
+            overflow: b.overflow.load(Ordering::Relaxed),
+            stored_len: b.len.load(Ordering::Relaxed),
+            buf_capacity: b.data.len(),
+        }
+    }
+
+    #[test]
+    fn ghost_new_state() {
+        let buffer = SubscriberBuffer::new();
+        let ghost = ghost_from_buffer(&buffer);
+        assert!(!ghost.has_data);
+        assert!(!ghost.overflow);
+        assert_eq!(ghost.stored_len, 0);
+        assert_eq!(ghost.buf_capacity, 1024);
+    }
+
+    #[test]
+    fn ghost_capacity_constant() {
+        let buffer = SubscriberBuffer::new();
+        let ghost = ghost_from_buffer(&buffer);
+        assert_eq!(ghost.buf_capacity, 1024);
+    }
+}
