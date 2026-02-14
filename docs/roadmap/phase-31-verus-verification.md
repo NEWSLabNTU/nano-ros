@@ -26,7 +26,7 @@ Kani stays for unsafe/FFI verification (nros-c) and as a low-effort safety net. 
 ## Architecture: Centralized Verification Crate
 
 ```
-packages/verification/nano-ros-verification/
+packages/verification/nros-verification/
 ├── Cargo.toml          # edition = "2024", depends on nano-ros-* via path
 ├── rust-toolchain.toml # Verus-pinned rustc (currently 1.93.0)
 └── src/
@@ -58,14 +58,14 @@ Verus's `rust_verify` driver and internal crates already use edition 2024 (since
 # Root Cargo.toml — excluded from main workspace
 exclude = [
     # ... existing excludes ...
-    "packages/verification/nano-ros-verification",
+    "packages/verification/nros-verification",
 ]
 ```
 
 ```toml
-# packages/verification/nano-ros-verification/Cargo.toml
+# packages/verification/nros-verification/Cargo.toml
 [package]
-name = "nano-ros-verification"
+name = "nros-verification"
 version = "0.1.0"
 edition = "2024"
 
@@ -84,7 +84,7 @@ nros-node = { path = "../../core/nros-node", default-features = false, features 
 ```
 
 ```toml
-# packages/verification/nano-ros-verification/rust-toolchain.toml
+# packages/verification/nros-verification/rust-toolchain.toml
 [toolchain]
 channel = "1.93.0"
 ```
@@ -375,7 +375,7 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 | 31.6 | Fix subscriber path bugs (F3, F4)                               | 0.5 day | **Done**                                                |
 | 31.7 | Tier 4a: E2E proofs — bug existence + data path (8)             | 1 day   | **Done** (8 proofs in e2e.rs)                           |
 | 31.8 | Tier 4b: E2E proofs — post-fix correctness (2)                  | 0.5 day | **Done** (2 proofs in e2e.rs)                           |
-| 31.9 | Ghost model validation: shared ghost type crate                 | 0.5 day | **Done** (8 types in nano-ros-ghost-types) |
+| 31.9 | Ghost model validation: shared ghost type crate                 | 0.5 day | **Done** (8 types in nros-ghost-types) |
 | 31.10 | Ghost model validation: structural + contract tests            | 1 day   | **Done** |
 
 ### 31.1: Verus Toolchain Setup + Crate Scaffolding
@@ -384,12 +384,12 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 
 1. Add `just setup-verus` recipe — downloads Verus binary from [GitHub releases](https://github.com/verus-lang/verus/releases) to `tools/verus`, makes it executable
 2. Update `just setup` step 5 ("Installing cargo tools") to call `just setup-verus` alongside Kani
-3. Create verification crate at `packages/verification/nano-ros-verification/`:
+3. Create verification crate at `packages/verification/nros-verification/`:
    - `Cargo.toml` — edition 2024, depends on vstd + nano-ros-{serdes,core,params,node} via path
    - `rust-toolchain.toml` — `channel = "1.93.0"`
    - `src/lib.rs` — top-level module declarations
    - Empty module stubs: `scheduling.rs`, `communication.rs`, `cdr.rs`, `time.rs`, `action.rs`, `params.rs`
-4. Add `"packages/verification/nano-ros-verification"` to root `Cargo.toml` `exclude` list
+4. Add `"packages/verification/nros-verification"` to root `Cargo.toml` `exclude` list
 5. Add `just verify-verus` recipe (see [Running Verification](#running-verification))
 6. Write one smoke-test proof (e.g., `duration_from_nanos_roundtrip`) to validate the full toolchain pipeline
 
@@ -398,7 +398,7 @@ See [docs/guides/verus-verification.md](../guides/verus-verification.md) for cod
 **Acceptance criteria:**
 
 - [x] `just setup-verus` downloads Verus binary; `./tools/verus --version` succeeds (v0.2026.02.06.4a2b93e)
-- [x] Verification crate compiles: `cd packages/verification/nano-ros-verification && cargo verus verify` exits 0
+- [x] Verification crate compiles: `cd packages/verification/nros-verification && cargo verus verify` exits 0
 - [x] Smoke-test proof passes (`remainder_bounded` + `duration_to_nanos_bounded` in `time.rs`)
 - [x] `just quality` still passes (418 tests, Miri clean, QEMU examples build)
 - [x] `just verify-verus` runs end-to-end (65 verified, 0 errors)
@@ -666,7 +666,7 @@ After the subscriber bugs are fixed in 31.6, prove that the fixes are correct. T
 
 **Depends on:** 31.1 (verification crate exists) — **Status: Done**
 
-Create `packages/verification/nano-ros-ghost-types/` — a `#![no_std]` crate that
+Create `packages/verification/nros-ghost-types/` — a `#![no_std]` crate that
 defines ghost model types with all-public primitive fields. This is the single
 source of truth for ghost type definitions, shared between production crate tests
 (structural checks) and the Verus verification crate (proofs). See
@@ -694,10 +694,10 @@ full design.
 
 **Tasks:**
 
-1. Create `packages/verification/nano-ros-ghost-types/` crate (`#![no_std]`, no dependencies)
+1. Create `packages/verification/nros-ghost-types/` crate (`#![no_std]`, no dependencies)
 2. Define the 8 ghost types with all-`pub` fields and doc comments citing production source
 3. Add crate to workspace members in root `Cargo.toml`
-4. In `nano-ros-verification/Cargo.toml`, add `nano-ros-ghost-types` as a path dependency
+4. In `nros-verification/Cargo.toml`, add `nros-ghost-types` as a path dependency
 5. In each verification module, replace inline ghost type definitions with
    `external_type_specification` registrations of the shared types (transparent, no `external_body`)
 6. Remove inline ghost type definitions from verification modules
@@ -706,7 +706,7 @@ full design.
 
 **Acceptance criteria:**
 
-- [x] `nano-ros-ghost-types` crate exists with 8 types, `#![no_std]`, no dependencies
+- [x] `nros-ghost-types` crate exists with 8 types, `#![no_std]`, no dependencies
 - [x] Verification crate imports from shared crate and registers via `external_type_specification`
 - [x] All 67 proofs still pass
 - [x] `just quality` passes (crate is a workspace member)
@@ -715,7 +715,7 @@ full design.
 
 **Depends on:** 31.9 (shared ghost type crate, **Done**) — **Status: Done**
 
-Add `nano-ros-ghost-types` as `[dev-dependencies]` to production crates and add
+Add `nros-ghost-types` as `[dev-dependencies]` to production crates and add
 `#[cfg(test)]` modules that construct ghost types from private fields and verify
 behavioral contracts. This catches structural and behavioral drift between ghost
 models and production code.
@@ -731,7 +731,7 @@ models and production code.
 
 **Tasks:**
 
-1. Add `nano-ros-ghost-types` as `[dev-dependencies]` to each production crate
+1. Add `nros-ghost-types` as `[dev-dependencies]` to each production crate
 2. In `nros-serdes/src/cdr.rs`: add `#[cfg(test)] mod ghost_checks` —
    construct `CdrGhost` from `CdrWriter` private fields, verify initial state
    and post-header state

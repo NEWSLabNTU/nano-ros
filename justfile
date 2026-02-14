@@ -32,7 +32,7 @@ check: check-workspace check-workspace-embedded check-workspace-features check-e
 # Run unit tests only (no external dependencies)
 test-unit verbose="":
     #!/usr/bin/env bash
-    args=(--workspace --exclude nano-ros-tests --no-fail-fast)
+    args=(--workspace --exclude nros-tests --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -133,7 +133,7 @@ quality:
     echo "=== Clippy (embedded target) ==="
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
-        --exclude nano-ros-tests \
+        --exclude nros-tests \
         --exclude nros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
         echo "[FAIL] Clippy (embedded) FAILED"
@@ -144,8 +144,8 @@ quality:
 
     echo ""
     echo "=== Unit Tests ==="
-    # Exclude nano-ros-tests crate which contains integration tests requiring external setup
-    cargo nextest run --workspace --exclude nano-ros-tests --no-fail-fast
+    # Exclude nros-tests crate which contains integration tests requiring external setup
+    cargo nextest run --workspace --exclude nros-tests --no-fail-fast
     if [ $? -ne 0 ]; then
         echo "[FAIL] Unit tests FAILED"
         failed=1
@@ -218,12 +218,12 @@ build-workspace:
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys which requires native system headers for CMake build
-# Excludes nano-ros-tests which requires std (test framework dependencies)
+# Excludes nros-tests which requires std (test framework dependencies)
 # Excludes nros-c which currently requires std
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
-        --exclude nano-ros-tests \
+        --exclude nros-tests \
         --exclude nros-c
 
 # Format workspace code
@@ -238,13 +238,13 @@ check-workspace:
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys which requires native system headers for CMake build
-# Excludes nano-ros-tests which requires std (test framework dependencies)
+# Excludes nros-tests which requires std (test framework dependencies)
 # Excludes nros-c which currently requires std
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
-        --exclude nano-ros-tests \
+        --exclude nros-tests \
         --exclude nros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace with various feature combinations
@@ -259,11 +259,11 @@ check-workspace-features:
     @echo "All feature checks passed!"
 
 # Run workspace unit tests (no external deps)
-# Excludes nano-ros-tests which contains integration tests requiring zenohd/Zephyr/ROS 2
+# Excludes nros-tests which contains integration tests requiring zenohd/Zephyr/ROS 2
 test-workspace verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(--workspace --exclude nano-ros-tests --no-fail-fast)
+    args=(--workspace --exclude nros-tests --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -598,7 +598,7 @@ test-qemu-esp32-basic: build-examples-esp32-qemu
 test-qemu-esp32 verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(-p nano-ros-tests --test esp32_emulator --no-fail-fast)
+    args=(-p nros-tests --test esp32_emulator --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -853,7 +853,7 @@ verify-verus:
         exit 1
     fi
     export PATH="$VERUS_DIR:$PATH"
-    cd packages/verification/nano-ros-verification
+    cd packages/verification/nros-verification
     cargo verus verify
     echo "[OK] All Verus proofs verified"
 
@@ -895,7 +895,7 @@ build-zenoh-pico:
 test-integration verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(-p nano-ros-tests --no-fail-fast
+    args=(-p nros-tests --no-fail-fast
           -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(esp32_emulator)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -906,7 +906,7 @@ test-integration verbose="":
 test-rmw verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(-p nano-ros-tests --test rmw --features rmw --no-fail-fast)
+    args=(-p nros-tests --test rmw --features rmw --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -921,7 +921,7 @@ test-rmw verbose="":
 test-zephyr verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(-p nano-ros-tests --test zephyr --no-fail-fast)
+    args=(-p nros-tests --test zephyr --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     else
@@ -945,7 +945,7 @@ test-zephyr-c:
 test-ros2 verbose="":
     #!/usr/bin/env bash
     set -e
-    args=(-p nano-ros-tests --test rmw_interop --no-fail-fast)
+    args=(-p nros-tests --test rmw_interop --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -965,7 +965,7 @@ test-c verbose="": _init-test-logs
     set -e
     v="{{ if verbose != "" { "--verbose" } else { "" } }}"
     # C API integration tests (build + communication via nextest)
-    args=(-p nano-ros-tests --no-fail-fast -E 'binary(c_api)')
+    args=(-p nros-tests --no-fail-fast -E 'binary(c_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

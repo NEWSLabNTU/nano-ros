@@ -14,7 +14,7 @@ members = [
     # Zenoh RMW backend (shim + zpico wrapper)
     "packages/zpico/nros-rmw-zenoh",
     # Integration tests
-    "packages/testing/nano-ros-tests",
+    "packages/testing/nros-tests",
     # C API for embedded systems
     "packages/core/nros-c",
     # LAN9118 Ethernet driver for smoltcp
@@ -25,7 +25,7 @@ members = [
     "packages/interfaces/rcl-interfaces/generated/builtin_interfaces",
     "packages/interfaces/rcl-interfaces/generated/rcl_interfaces",
     # Ghost model types for verification (shared between production tests and Verus proofs)
-    "packages/verification/nano-ros-ghost-types",
+    "packages/verification/nros-ghost-types",
 ]
 
 # Examples are excluded from workspace - they are standalone packages
@@ -84,7 +84,7 @@ exclude = [
     "examples/esp32/qemu-talker",
     "examples/esp32/qemu-listener",
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
-    "packages/verification/nano-ros-verification",
+    "packages/verification/nros-verification",
 ]
 
 [workspace.package]

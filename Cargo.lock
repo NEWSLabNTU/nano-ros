@@ -456,29 +456,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8ca58f447f06ed17d5fc4043ce1b10dd205e060fb3ce5b979b8ed8e59ff3f79"
 
 [[package]]
-name = "nano-ros-ghost-types"
-version = "0.1.0"
-
-[[package]]
-name = "nano-ros-tests"
-version = "0.1.0"
-dependencies = [
- "assert_cmd",
- "duct",
- "libc",
- "nros-core",
- "nros-rmw",
- "nros-rmw-zenoh",
- "nros-serdes",
- "once_cell",
- "parking_lot",
- "predicates",
- "rstest",
- "tempfile",
- "thiserror",
-]
-
-[[package]]
 name = "normalize-line-endings"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -517,6 +494,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-ghost-types"
+version = "0.1.0"
+
+[[package]]
 name = "nros-macros"
 version = "0.1.0"
 dependencies = [
@@ -531,8 +512,8 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "log",
- "nano-ros-ghost-types",
  "nros-core",
+ "nros-ghost-types",
  "nros-params",
  "nros-rmw",
  "nros-rmw-zenoh",
@@ -544,7 +525,7 @@ name = "nros-params"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-ghost-types",
+ "nros-ghost-types",
 ]
 
 [[package]]
@@ -554,8 +535,8 @@ dependencies = [
  "critical-section",
  "heapless",
  "log",
- "nano-ros-ghost-types",
  "nros-core",
+ "nros-ghost-types",
  "spin",
 ]
 
@@ -565,8 +546,8 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "log",
- "nano-ros-ghost-types",
  "nros-core",
+ "nros-ghost-types",
  "nros-rmw",
  "zpico-sys",
 ]
@@ -576,7 +557,26 @@ name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
- "nano-ros-ghost-types",
+ "nros-ghost-types",
+]
+
+[[package]]
+name = "nros-tests"
+version = "0.1.0"
+dependencies = [
+ "assert_cmd",
+ "duct",
+ "libc",
+ "nros-core",
+ "nros-rmw",
+ "nros-rmw-zenoh",
+ "nros-serdes",
+ "once_cell",
+ "parking_lot",
+ "predicates",
+ "rstest",
+ "tempfile",
+ "thiserror",
 ]
 
 [[package]]

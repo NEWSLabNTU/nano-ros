@@ -517,7 +517,7 @@ mod tests {
 #[cfg(test)]
 mod ghost_checks {
     use super::*;
-    use nano_ros_ghost_types::{TimerGhost, TimerModeGhost};
+    use nros_ghost_types::{TimerGhost, TimerModeGhost};
 
     /// Structural check: map TimerMode to TimerModeGhost.
     /// If a variant is added or removed, this fails to compile.

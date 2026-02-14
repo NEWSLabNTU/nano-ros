@@ -1,6 +1,6 @@
 # Phase 33: Crate Rename (`nros-*` / `zpico-*`)
 
-**Status: 33.1 Complete, 33.2 Complete, 33.3 Complete**
+**Status: 33.1 Complete, 33.2 Complete, 33.3 Complete, 33.4 Complete**
 
 **Design doc:** `docs/design/rmw-layer-design.md`
 
@@ -105,7 +105,7 @@ Each `nros-*` board crate:
 | Update codegen output    | —                    | Generated code references `nros_core::` etc.          |
 | `rcl-interfaces`         | `rcl-interfaces`     | Keep name (it's a ROS 2 package name)                 |
 
-**Verification detail:** `nros-verification` depends on core crates via path. Its `Cargo.toml` deps (`nros-serdes`, `nros-core`, `nros-params`, `nros-node`, `nano-ros-ghost-types`) must all update to new names. Verus `assume_specification` and `external_type_specification` references use Rust module paths (`nros_core::`, `nros_node::`, etc.) — all must be updated in proof modules.
+**Verification detail:** `nros-verification` depends on core crates via path. Its `Cargo.toml` deps (`nros-serdes`, `nros-core`, `nros-params`, `nros-node`, `nros-ghost-types`) must all update to new names. Verus `assume_specification` and `external_type_specification` references use Rust module paths (`nros_core::`, `nros_node::`, etc.) — all must be updated in proof modules.
 
 ### 33.5: Directory restructuring
 

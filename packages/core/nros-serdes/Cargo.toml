@@ -17,4 +17,4 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 heapless = { workspace = true }
 
 [dev-dependencies]
-nano-ros-ghost-types = { path = "../../verification/nano-ros-ghost-types" }
+nros-ghost-types = { path = "../../verification/nros-ghost-types" }

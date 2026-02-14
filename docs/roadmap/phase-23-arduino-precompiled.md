@@ -396,7 +396,7 @@ Verify the existing C API test suite (`just test-c`) covers every `nano_ros_*` f
 
 **Tasks**:
 1. [ ] Audit example sketches → list every `nano_ros_*` C function they call
-2. [ ] Cross-reference with `packages/testing/nano-ros-tests/tests/c_api.rs` — flag gaps
+2. [ ] Cross-reference with `packages/testing/nros-tests/tests/c_api.rs` — flag gaps
 3. [ ] Add missing C API test cases (e.g., if `nano_ros_spin_once` or subscription callbacks aren't covered)
 
 **Acceptance Criteria**:
@@ -425,7 +425,7 @@ Test the precompiled `libnanoros.a` on the actual RISC-V target — in QEMU, not
    - Print `[PASS]` / `[FAIL]` markers for semihosting/UART capture
 2. [ ] Create build script: compile test program + link `libnanoros.a` for RISC-V, produce flash image via `espflash save-image`
 3. [ ] Create Docker Compose config for ESP32-C3 QEMU tests (zenohd + QEMU ESP32-C3 + native listener)
-4. [ ] Add `esp32_arduino.rs` test suite in `packages/testing/nano-ros-tests/tests/` (or extend `esp32_emulator.rs` from 22.5d)
+4. [ ] Add `esp32_arduino.rs` test suite in `packages/testing/nros-tests/tests/` (or extend `esp32_emulator.rs` from 22.5d)
 5. [ ] Add `just test-qemu-esp32-arduino` recipe
 
 **Acceptance Criteria**:

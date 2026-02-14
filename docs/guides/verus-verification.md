@@ -11,7 +11,7 @@ just verify-verus    # Run all Verus proofs (67 verified)
 just verify          # Run both Kani + Verus
 ```
 
-Verification crate: `packages/verification/nano-ros-verification/`
+Verification crate: `packages/verification/nros-verification/`
 
 ## Type Specifications
 
@@ -138,7 +138,7 @@ Document the trust level of each proof in the module-level doc comment.
 that contains function pointers, `dyn Trait`, or closures. Verus will attempt
 THIR erasure on all items in the crate and panic at `erase.rs:237`.
 
-Only the verification crate (`nano-ros-verification`) should have `verify = true`.
+Only the verification crate (`nros-verification`) should have `verify = true`.
 Production crates are used as regular dependencies — Verus compiles them with
 standard rustc without attempting verification.
 
@@ -185,7 +185,7 @@ configuration is needed.
 ## File Organization
 
 ```
-packages/verification/nano-ros-verification/src/
+packages/verification/nros-verification/src/
 ├── lib.rs            # Module declarations
 ├── scheduling.rs     # Timer + trigger + executor proofs
 ├── communication.rs  # CDR serialization safety proofs

@@ -4,7 +4,7 @@ Integration tests for nros communication, platform backends, and ROS 2 interoper
 
 ## Overview
 
-nros uses a Rust-based test framework with rstest fixtures in `packages/testing/nano-ros-tests/`. This provides:
+nros uses a Rust-based test framework with rstest fixtures in `packages/testing/nros-tests/`. This provides:
 
 - **Type safety** - Compile-time error checking
 - **RAII cleanup** - Automatic process cleanup via `Drop` trait
@@ -27,7 +27,7 @@ just test
 just test-all
 
 # Run integration tests via cargo directly
-cargo test -p nano-ros-tests --tests -- --nocapture
+cargo test -p nros-tests --tests -- --nocapture
 ```
 
 ### Test Groups
@@ -54,7 +54,7 @@ tests/
 │   └── run-c.sh        # Zephyr C examples test
 └── simple-workspace/   # Standalone build verification
 
-packages/testing/nano-ros-tests/  # Rust test crate
+packages/testing/nros-tests/  # Rust test crate
 ├── Cargo.toml
 ├── src/
 │   ├── lib.rs          # Test utilities (wait_for_pattern, count_pattern)
@@ -205,10 +205,10 @@ sudo apt install qemu-system-arm
 
 ## Writing New Tests
 
-Create tests in `packages/testing/nano-ros-tests/tests/`:
+Create tests in `packages/testing/nros-tests/tests/`:
 
 ```rust
-use nano_ros_tests::fixtures::{zenohd_unique, ZenohRouter};
+use nros_tests::fixtures::{zenohd_unique, ZenohRouter};
 use rstest::rstest;
 
 #[rstest]
@@ -303,7 +303,7 @@ test-group = "esp32-emulator"
 ### Test Utilities
 
 ```rust
-use nano_ros_tests::{wait_for_pattern, count_pattern};
+use nros_tests::{wait_for_pattern, count_pattern};
 
 // Wait for pattern in output
 let found = wait_for_pattern(&output, "Received:", Duration::from_secs(10));
@@ -340,7 +340,7 @@ ros2-interop-tests:
     - name: Run interop tests (Rust)
       run: |
         source /opt/ros/humble/setup.bash
-        cargo test -p nano-ros-tests --test rmw_interop -- --nocapture
+        cargo test -p nros-tests --test rmw_interop -- --nocapture
 ```
 
 ### Test Categories for CI

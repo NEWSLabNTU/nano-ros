@@ -37,10 +37,10 @@ nano-ros/
 │   │   └── rcl-interfaces/        # rcl_interfaces + builtin_interfaces
 │   │       └── generated/         # cargo nano-ros generate-rust output
 │   ├── testing/                   # Test infrastructure
-│   │   └── nano-ros-tests/        # Integration test crate
+│   │   └── nros-tests/            # Integration test crate
 │   ├── verification/              # Formal verification
-│   │   ├── nano-ros-ghost-types/  # Ghost model types (workspace member)
-│   │   └── nano-ros-verification/ # Verus deductive proofs (excluded from workspace)
+│   │   ├── nros-ghost-types/      # Ghost model types (workspace member)
+│   │   └── nros-verification/     # Verus deductive proofs (excluded from workspace)
 │   ├── reference/                 # Low-level platform reference implementations
 │   │   ├── qemu-smoltcp-bridge/   # smoltcp bridge library
 │   │   ├── qemu-lan9118/          # LAN9118 driver test binary
@@ -167,10 +167,10 @@ QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
 - Use `#[allow(dead_code)]` for test struct fields
 
 ### Testing
-- **Reusable tests** belong in `packages/testing/nano-ros-tests/tests/` (Rust integration tests) or `tests/` (shell scripts)
+- **Reusable tests** belong in `packages/testing/nros-tests/tests/` (Rust integration tests) or `tests/` (shell scripts)
 - **Temporary/exploratory tests** can be run directly in the Bash tool, but should be converted to proper test scripts once the feature is validated
 - Test scripts in `tests/` should have justfile entries for easy invocation (e.g., `just test-ros2-interop-debug`)
-- ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `packages/testing/nano-ros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
+- ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `packages/testing/nros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
 
 ### QEMU Networked Test Rules
 For QEMU tests involving pub/sub communication via zenohd + TAP networking:
@@ -213,9 +213,9 @@ just test-integration verbose   # Verbose: all test output streamed live
 
 ### Writing Tests
 
-**Integration tests** go in `packages/testing/nano-ros-tests/tests/`. Each file is a test suite:
+**Integration tests** go in `packages/testing/nros-tests/tests/`. Each file is a test suite:
 ```
-packages/testing/nano-ros-tests/
+packages/testing/nros-tests/
 ├── src/              # Test utilities and fixtures
 │   ├── lib.rs        # wait_for_pattern(), count_pattern(), etc.
 │   ├── fixtures/     # rstest fixtures (ZenohRouter, binary builders)
@@ -256,7 +256,7 @@ All zenoh components are pinned to **1.6.2** for compatibility with rmw_zenoh_cp
 - **zenoh-pico**: Submodule at `packages/zpico/zpico-sys/zenoh-pico/` (1.6.2)
 - **rmw_zenoh_cpp**: Bundles zenoh-c 1.6.2
 
-Test infrastructure (`nano-ros-tests`) and shell scripts automatically use the local build at `build/zenohd/zenohd` when available, falling back to the system `zenohd`.
+Test infrastructure (`nros-tests`) and shell scripts automatically use the local build at `build/zenohd/zenohd` when available, falling back to the system `zenohd`.
 
 ### Rust Edition 2024
 All crates use Rust edition 2024. Key syntax changes from edition 2021:
@@ -351,7 +351,7 @@ nros-node = { version = "*", features = ["param-services"] }
 Two complementary verification tools are used:
 
 - **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 82 harnesses across nros-serdes, nros-core, nros-params, nros-c. Run with `just verify-kani`.
-- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nano-ros-verification/` (excluded from workspace). 67 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, parameter types, and E2E data path. Includes 10 E2E proofs (bug existence, publish chain, executor delivery, post-fix correctness). Run with `just verify-verus`.
+- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nros-verification/` (excluded from workspace). 67 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, parameter types, and E2E data path. Includes 10 E2E proofs (bug existence, publish chain, executor delivery, post-fix correctness). Run with `just verify-verus`.
 
 ```bash
 just verify          # Run both Kani + Verus (requires both toolchains)

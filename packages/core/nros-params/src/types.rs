@@ -639,7 +639,7 @@ mod tests {
 #[cfg(test)]
 mod ghost_checks {
     use super::*;
-    use nano_ros_ghost_types::ParameterValueGhost;
+    use nros_ghost_types::ParameterValueGhost;
 
     /// Structural check: exhaustive match maps all 10 variants.
     /// If a variant is added or removed, this fails to compile.

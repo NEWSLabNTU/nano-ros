@@ -39,4 +39,4 @@ log = { workspace = true, optional = true }
 rcl_interfaces = { path = "../../interfaces/rcl-interfaces/generated/rcl_interfaces", default-features = false, optional = true }
 
 [dev-dependencies]
-nano-ros-ghost-types = { path = "../../verification/nano-ros-ghost-types" }
+nros-ghost-types = { path = "../../verification/nros-ghost-types" }

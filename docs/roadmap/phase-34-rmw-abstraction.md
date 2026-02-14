@@ -236,8 +236,8 @@ pub struct RmwConfig<'a> {
 ### 34.8: Integration testing
 
 - [ ] Set up [Micro-XRCE-DDS Agent](https://github.com/eProsima/Micro-XRCE-DDS-Agent) build
-- [ ] Create `XrceAgent` fixture in `nano-ros-tests/src/fixtures/`
-- [ ] Create `nano-ros-tests/tests/xrce.rs` test suite
+- [ ] Create `XrceAgent` fixture in `nros-tests/src/fixtures/`
+- [ ] Create `nros-tests/tests/xrce.rs` test suite
 - [ ] Test: QEMU XRCE publisher → Agent → verify data arrives
 - [ ] Test: Agent → QEMU XRCE subscriber → verify data received
 - [ ] Test: XRCE service server/client roundtrip

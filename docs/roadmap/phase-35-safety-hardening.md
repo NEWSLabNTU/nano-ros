@@ -141,5 +141,5 @@ Several fixup items were resolved during the research and analysis for this phas
 | Ghost model validation | Phase 31.10 — 17 new structural and behavioral tests for ghost models | `729d569` |
 | Linker script fix | Restore missing `mps2-an385.x` to `nano-ros-platform-qemu` after BSP deletion | `2d90ee9` |
 | STM32F4 compile fix | Fix compile errors in stm32f4-{polling,rtic} after package renaming | `00381d1` |
-| Ghost type infrastructure | Create `nano-ros-ghost-types` shared crate for verification | `b88d7e4` |
+| Ghost type infrastructure | Create `nros-ghost-types` shared crate for verification | `b88d7e4` |
 | Ghost model strategy | Design doc for validating ghost models against production types | `08ecc21`, `ac5c292` |

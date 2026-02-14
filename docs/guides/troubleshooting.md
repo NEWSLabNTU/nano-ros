@@ -134,7 +134,7 @@ cargo install zenoh --version 1.5.1 --features=zenohd
 
 The `--seed` parameter initializes the test entropy source with a different value, producing different random numbers and thus different ephemeral ports.
 
-**For automated tests**: The test framework (`packages/testing/nano-ros-tests`) automatically assigns unique seeds to each process.
+**For automated tests**: The test framework (`packages/testing/nros-tests`) automatically assigns unique seeds to each process.
 
 ---
 

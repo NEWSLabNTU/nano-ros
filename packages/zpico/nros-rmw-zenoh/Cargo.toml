@@ -27,4 +27,4 @@ heapless = { workspace = true }
 log = { workspace = true, optional = true }
 
 [dev-dependencies]
-nano-ros-ghost-types = { path = "../../verification/nano-ros-ghost-types" }
+nros-ghost-types = { path = "../../verification/nros-ghost-types" }

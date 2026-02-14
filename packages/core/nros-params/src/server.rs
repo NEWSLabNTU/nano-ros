@@ -596,7 +596,7 @@ mod tests {
 #[cfg(test)]
 mod ghost_checks {
     use super::*;
-    use nano_ros_ghost_types::ParamServerGhost;
+    use nros_ghost_types::ParamServerGhost;
 
     /// Structural check: construct ParamServerGhost from ParameterServer private fields.
     /// If a field is renamed or retyped, this fails to compile.

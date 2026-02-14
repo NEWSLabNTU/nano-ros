@@ -472,7 +472,7 @@ mod tests {
 #[cfg(test)]
 mod ghost_checks {
     use super::*;
-    use nano_ros_ghost_types::CdrGhost;
+    use nros_ghost_types::CdrGhost;
 
     /// Structural check: construct CdrGhost from CdrWriter private fields.
     /// If a field is renamed or retyped, this fails to compile.
