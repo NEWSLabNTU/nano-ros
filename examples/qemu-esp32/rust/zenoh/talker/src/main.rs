@@ -22,41 +22,7 @@
 use esp_backtrace as _;
 use nros_esp32_qemu::esp_println;
 use nros_esp32_qemu::prelude::*;
-
-mod msg {
-    use nros_esp32_qemu::{Deserialize, RosMessage, Serialize, nros_core};
-
-    pub struct Int32 {
-        pub data: i32,
-    }
-
-    impl Serialize for Int32 {
-        fn serialize(
-            &self,
-            w: &mut nros_core::CdrWriter,
-        ) -> core::result::Result<(), nros_core::SerError> {
-            w.write_i32(self.data)
-        }
-    }
-
-    impl Deserialize for Int32 {
-        fn deserialize(
-            r: &mut nros_core::CdrReader,
-        ) -> core::result::Result<Self, nros_core::DeserError> {
-            Ok(Self {
-                data: r.read_i32()?,
-            })
-        }
-    }
-
-    impl RosMessage for Int32 {
-        const TYPE_NAME: &'static str = "std_msgs::msg::dds_::Int32_";
-        const TYPE_HASH: &'static str =
-            "RIHS01_0000000000000000000000000000000000000000000000000000000000000000";
-    }
-}
-
-use msg::Int32;
+use std_msgs::msg::Int32;
 
 nros_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 

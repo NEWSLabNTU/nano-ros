@@ -15,6 +15,9 @@ bench = false
 # Platform crate - all you need for ESP32-C3 QEMU + OpenETH + zenoh
 nros-esp32-qemu = { path = "../../../../../packages/boards/nros-esp32-qemu" }
 
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
 # Required for #[main] proc macro (references esp_hal crate directly)
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
 
