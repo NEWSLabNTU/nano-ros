@@ -17,4 +17,9 @@ path = "src/bin/xrce-listener.rs"
 [dependencies]
 nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", features = ["posix"] }
 nros-rmw = { path = "../../core/nros-rmw" }
+nros-core = { path = "../../core/nros-core", default-features = false, features = ["std"] }
 xrce-sys = { path = "../../xrce/xrce-sys", features = ["posix"] }
+
+# Generated message types
+std_msgs = { version = "*", default-features = false }
+example_interfaces = { version = "*", default-features = false }

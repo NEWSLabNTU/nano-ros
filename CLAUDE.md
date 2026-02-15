@@ -390,11 +390,16 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 | 24 | RPi Pico W platform support | Not Started |
 | 31 | Verus unbounded verification | In Progress |
 | 33 | Crate rename (`nros-*` / `zpico-*`) | Complete |
-| 34 | RMW abstraction + XRCE-DDS | Not Started |
+| 34 | RMW abstraction + XRCE-DDS | In Progress |
+| 36 | Multi-backend integration tests | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
 **Phase 33**: Complete. All crates renamed from `nano-ros-*` to `nros-*` / `zpico-*`. Transport split into `nros-rmw` + `nros-rmw-zenoh`. Platform crates split into `zpico-platform-*` + `nros-*` board crates. See `docs/design/rmw-layer-design.md`.
+
+**Phase 34**: 34.1-34.8 complete. RMW factory trait, zenoh backend, board refactor, XRCE-DDS FFI (`xrce-sys`), UDP transport (`xrce-smoltcp`), RMW implementation (`nros-rmw-xrce`), platform symbols, integration test infrastructure.
+
+**Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

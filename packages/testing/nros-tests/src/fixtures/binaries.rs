@@ -473,20 +473,13 @@ fn build_xrce_test_binary(binary_name: &str) -> TestResult<PathBuf> {
 
     eprintln!("Building xrce-native-test::{}...", binary_name);
 
-    let output = cmd!(
-        "cargo",
-        "build",
-        "--release",
-        "--bin",
-        binary_name,
-        "--manifest-path",
-        crate_dir.join("Cargo.toml").to_str().unwrap()
-    )
-    .stderr_to_stdout()
-    .stdout_capture()
-    .unchecked()
-    .run()
-    .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+    let output = cmd!("cargo", "build", "--release", "--bin", binary_name)
+        .dir(&crate_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
 
     if !output.status.success() {
         return Err(TestError::BuildFailed(

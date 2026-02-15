@@ -1,7 +1,6 @@
 //! POSIX UDP transport for XRCE-DDS native integration tests.
 //!
-//! Provides UDP custom transport callbacks using `std::net::UdpSocket`
-//! and CDR serialization helpers for Int32 messages.
+//! Provides UDP custom transport callbacks using `std::net::UdpSocket`.
 
 #![allow(static_mut_refs)]
 
@@ -132,60 +131,5 @@ unsafe extern "C" fn transport_read(
             *error_code = 1;
             0
         }
-    }
-}
-
-// ============================================================================
-// CDR Helpers (hand-coded for Int32)
-// ============================================================================
-
-/// Encode an i32 as CDR with 4-byte XCDR1 header.
-///
-/// Returns 8 bytes: `[CDR header (4B)] + [i32 LE (4B)]`.
-pub fn encode_int32_cdr(value: i32) -> [u8; 8] {
-    let mut buf = [0u8; 8];
-    // CDR header: XCDR1, Little-Endian
-    buf[0] = 0x00;
-    buf[1] = 0x01;
-    buf[2] = 0x00;
-    buf[3] = 0x00;
-    // Payload
-    buf[4..8].copy_from_slice(&value.to_le_bytes());
-    buf
-}
-
-/// Decode an i32 from CDR data (with 4-byte header).
-pub fn decode_int32_cdr(data: &[u8]) -> Option<i32> {
-    if data.len() < 8 {
-        return None;
-    }
-    // Skip CDR header (4 bytes)
-    let bytes = [data[4], data[5], data[6], data[7]];
-    Some(i32::from_le_bytes(bytes))
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_int32_cdr_roundtrip() {
-        for value in [0, 1, -1, 42, i32::MIN, i32::MAX] {
-            let encoded = encode_int32_cdr(value);
-            let decoded = decode_int32_cdr(&encoded);
-            assert_eq!(decoded, Some(value));
-        }
-    }
-
-    #[test]
-    fn test_int32_cdr_header() {
-        let encoded = encode_int32_cdr(0);
-        assert_eq!(&encoded[..4], &[0x00, 0x01, 0x00, 0x00]);
-    }
-
-    #[test]
-    fn test_decode_too_short() {
-        assert_eq!(decode_int32_cdr(&[0; 7]), None);
-        assert_eq!(decode_int32_cdr(&[]), None);
     }
 }

@@ -4,9 +4,11 @@
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
+use nros_core::RosMessage;
 use nros_rmw::{Publisher, QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
 use nros_rmw_xrce::XrceRmw;
-use xrce_native_test::{encode_int32_cdr, init_posix_udp_transport};
+use std_msgs::msg::Int32;
+use xrce_native_test::init_posix_udp_transport;
 
 fn main() {
     let agent_addr = std::env::var("XRCE_AGENT_ADDR")
@@ -36,7 +38,7 @@ fn main() {
     eprintln!("Session created");
 
     // Create publisher
-    let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "");
+    let topic = TopicInfo::new("/chatter", Int32::TYPE_NAME, "");
     let publisher = session
         .create_publisher(&topic, QosSettings::RELIABLE)
         .expect("Failed to create publisher");
@@ -44,9 +46,10 @@ fn main() {
 
     // Publishing loop
     println!("Publishing Int32 messages...");
+    let mut buf = [0u8; 256];
     for i in 0i32..20 {
-        let data = encode_int32_cdr(i);
-        match publisher.publish_raw(&data) {
+        let msg = Int32 { data: i };
+        match publisher.publish(&msg, &mut buf) {
             Ok(()) => {
                 println!("Published: {}", i);
             }

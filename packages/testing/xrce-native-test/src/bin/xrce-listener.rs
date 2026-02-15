@@ -5,10 +5,12 @@
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_MSG_COUNT   — Messages to receive before exiting (default: 5)
 
+use nros_core::RosMessage;
 use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, Subscriber, TopicInfo};
 use nros_rmw_xrce::XrceRmw;
 use std::time::Instant;
-use xrce_native_test::{decode_int32_cdr, init_posix_udp_transport};
+use std_msgs::msg::Int32;
+use xrce_native_test::init_posix_udp_transport;
 
 fn main() {
     let agent_addr = std::env::var("XRCE_AGENT_ADDR")
@@ -45,7 +47,7 @@ fn main() {
     eprintln!("Session created");
 
     // Create subscriber
-    let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "");
+    let topic = TopicInfo::new("/chatter", Int32::TYPE_NAME, "");
     let mut subscriber = session
         .create_subscriber(&topic, QosSettings::RELIABLE)
         .expect("Failed to create subscriber");
@@ -62,15 +64,11 @@ fn main() {
         // Drive the XRCE session
         session.spin_once(100);
 
-        // Try to receive
-        match subscriber.try_recv_raw(&mut buf) {
-            Ok(Some(len)) => {
-                if let Some(value) = decode_int32_cdr(&buf[..len]) {
-                    println!("Received: {}", value);
-                    received += 1;
-                } else {
-                    eprintln!("Failed to decode Int32 from {} bytes", len);
-                }
+        // Try to receive a typed message
+        match subscriber.try_recv::<Int32>(&mut buf) {
+            Ok(Some(msg)) => {
+                println!("Received: {}", msg.data);
+                received += 1;
             }
             Ok(None) => {}
             Err(e) => {

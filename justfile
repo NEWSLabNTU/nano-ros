@@ -1066,6 +1066,10 @@ generate-bindings:
         (cd examples/zephyr/$ex && $NANO_ROS generate-rust)
     done
 
+    # Test infrastructure
+    echo "  testing/xrce-native-test"
+    (cd packages/testing/xrce-native-test && $NANO_ROS generate-rust)
+
     echo "All bindings regenerated!"
 
 # Remove generated/ directories in examples (not rcl-interfaces — it's a workspace member)
@@ -1096,6 +1100,7 @@ clean-bindings:
         examples/zephyr/rs-service-client/generated
         examples/zephyr/rs-action-server/generated
         examples/zephyr/rs-action-client/generated
+        packages/testing/xrce-native-test/generated
     )
     for d in "${dirs[@]}"; do
         if [ -d "$d" ]; then
