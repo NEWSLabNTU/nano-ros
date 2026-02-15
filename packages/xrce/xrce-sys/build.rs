@@ -84,6 +84,9 @@ fn main() {
         build.file(uxr_src.join("util/time.c"));
     }
 
+    // Rust FFI shim (field accessor helpers)
+    build.file(manifest_dir.join("src/shim.c"));
+
     build.compile("xrce_client");
 
     // Generate compile-time size check

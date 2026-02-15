@@ -349,6 +349,14 @@ unsafe extern "C" {
 
     pub fn uxr_close_custom_transport(transport: *mut uxrCustomTransport) -> bool;
 
+    // --- Shim helpers (src/shim.c) ---
+
+    /// Return a pointer to the embedded `uxrCommunication` within a `uxrCustomTransport`.
+    ///
+    /// Needed because `uxrCustomTransport` is opaque on the Rust side and the `comm`
+    /// field is at a non-zero offset.
+    pub fn uxr_custom_transport_comm(transport: *mut uxrCustomTransport) -> *mut uxrCommunication;
+
     // --- Session lifecycle (session.h) ---
 
     pub fn uxr_init_session(session: *mut uxrSession, comm: *mut uxrCommunication, key: u32);

@@ -51,8 +51,14 @@ const MAX_SERVICE_CLIENTS: usize = 4;
 /// Size of each receive buffer slot (bytes).
 const BUFFER_SIZE: usize = 1024;
 
-/// Stream buffer size (bytes). Must match XRCE-DDS MTU expectations.
-const STREAM_BUFFER_SIZE: usize = 512;
+/// Stream buffer size (bytes). With history=4, each slot is STREAM_BUFFER_SIZE/4.
+/// Must be large enough for the largest XRCE message * history depth.
+const STREAM_BUFFER_SIZE: usize = 2048;
+
+/// Stream history depth. Must be >= 2 — XRCE reliable streams with history=1
+/// fail to recycle the single slot between separate `run_session_until_all_status`
+/// calls, causing second+ entity creation batches to time out.
+const STREAM_HISTORY: u16 = 4;
 
 /// Timeout for entity creation confirmation (milliseconds).
 const ENTITY_CREATION_TIMEOUT_MS: c_int = 1000;
@@ -75,7 +81,7 @@ static mut PARTICIPANT_ID: uxrObjectId = zeroed_object_id();
 static mut NEXT_ENTITY_ID: u16 = 2; // ID 1 = participant
 static mut INITIALIZED: bool = false;
 
-// Stream buffers (history=1)
+// Stream buffers (history=4, 512 bytes per slot)
 static mut OUTPUT_RELIABLE_BUF: [u8; STREAM_BUFFER_SIZE] = [0u8; STREAM_BUFFER_SIZE];
 static mut INPUT_RELIABLE_BUF: [u8; STREAM_BUFFER_SIZE] = [0u8; STREAM_BUFFER_SIZE];
 
@@ -449,8 +455,9 @@ impl Rmw for XrceRmw {
                 return Err(TransportError::InvalidConfig);
             }
 
-            // Cast uxrCustomTransport → uxrCommunication* (first field)
-            let comm = &raw mut TRANSPORT as *mut xrce_sys::uxrCommunication;
+            // Get pointer to the embedded uxrCommunication field.
+            // comm is NOT at offset 0 in uxrCustomTransport — use the shim helper.
+            let comm = xrce_sys::uxr_custom_transport_comm(&raw mut TRANSPORT);
 
             // Initialize session with a key derived from node name
             let key = hash_session_key(config.node_name);
@@ -478,18 +485,18 @@ impl Rmw for XrceRmw {
                 return Err(TransportError::ConnectionFailed);
             }
 
-            // Create reliable streams
+            // Create reliable streams (history >= 2 required, see STREAM_HISTORY)
             OUTPUT_RELIABLE = xrce_sys::uxr_create_output_reliable_stream(
                 &raw mut SESSION,
                 OUTPUT_RELIABLE_BUF.as_mut_ptr(),
                 STREAM_BUFFER_SIZE,
-                1, // history = 1
+                STREAM_HISTORY,
             );
             INPUT_RELIABLE = xrce_sys::uxr_create_input_reliable_stream(
                 &raw mut SESSION,
                 INPUT_RELIABLE_BUF.as_mut_ptr(),
                 STREAM_BUFFER_SIZE,
-                1, // history = 1
+                STREAM_HISTORY,
             );
 
             // Create DDS participant
@@ -858,6 +865,21 @@ impl Session for XrceSession {
             slot.has_reply.store(false, Ordering::Release);
             slot.len.store(0, Ordering::Release);
             slot.active = true;
+
+            // Request data delivery for incoming replies
+            let delivery = uxrDeliveryControl {
+                max_samples: UXR_MAX_SAMPLES_UNLIMITED,
+                max_elapsed_time: UXR_MAX_ELAPSED_TIME_UNLIMITED,
+                max_bytes_per_second: UXR_MAX_BYTES_PER_SECOND_UNLIMITED,
+                min_pace_period: 0,
+            };
+            xrce_sys::uxr_buffer_request_data(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                requester_id,
+                INPUT_RELIABLE,
+                &delivery,
+            );
 
             Ok(XrceServiceClient {
                 slot_index,
