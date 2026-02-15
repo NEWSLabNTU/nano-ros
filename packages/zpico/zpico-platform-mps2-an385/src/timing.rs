@@ -15,16 +15,21 @@ pub struct CycleCounter;
 impl CycleCounter {
     /// Enable the DWT cycle counter (call once at startup).
     ///
-    /// Uses raw pointer writes to DEMCR and DWT_CTRL registers since
-    /// the platform crate does not take `cortex_m::Peripherals`.
+    /// Accesses DCB and DWT register blocks via the cortex-m typed
+    /// interface. Requires unsafe because the platform crate cannot
+    /// take `cortex_m::Peripherals` (singleton owned by the board
+    /// crate / application).
     pub fn enable() {
+        use cortex_m::peripheral::{DCB, DWT};
+
+        // SAFETY: Called once at startup before any concurrent DCB/DWT access.
+        // Platform crate cannot take Peripherals (singleton), so we access
+        // the register blocks directly through cortex-m typed pointers.
         unsafe {
-            // Set TRCENA in DEMCR (Debug Exception and Monitor Control Register)
-            let demcr = 0xE000_EDFC as *mut u32;
-            core::ptr::write_volatile(demcr, core::ptr::read_volatile(demcr) | (1 << 24));
-            // Set CYCCNTENA in DWT_CTRL
-            let dwt_ctrl = 0xE000_1000 as *mut u32;
-            core::ptr::write_volatile(dwt_ctrl, core::ptr::read_volatile(dwt_ctrl) | 1);
+            // Set TRCENA in DEMCR (enables the DWT unit)
+            (*DCB::PTR).demcr.modify(|w| w | (1 << 24));
+            // Set CYCCNTENA in DWT_CTRL (enables the cycle counter)
+            (*DWT::PTR).ctrl.modify(|w| w | 1);
         }
     }
 

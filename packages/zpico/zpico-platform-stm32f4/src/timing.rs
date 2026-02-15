@@ -25,13 +25,18 @@ impl CycleCounter {
     /// Enable the DWT cycle counter.
     ///
     /// On STM32F4, the DWT is already enabled by `run_node()`.
-    /// This is a defensive re-enable using raw register writes.
+    /// This is a defensive re-enable using the cortex-m typed interface.
     pub fn enable() {
+        use cortex_m::peripheral::{DCB, DWT};
+
+        // SAFETY: Called once at startup before any concurrent DCB/DWT access.
+        // Platform crate cannot take Peripherals (singleton), so we access
+        // the register blocks directly through cortex-m typed pointers.
         unsafe {
-            let demcr = 0xE000_EDFC as *mut u32;
-            core::ptr::write_volatile(demcr, core::ptr::read_volatile(demcr) | (1 << 24));
-            let dwt_ctrl = 0xE000_1000 as *mut u32;
-            core::ptr::write_volatile(dwt_ctrl, core::ptr::read_volatile(dwt_ctrl) | 1);
+            // Set TRCENA in DEMCR (enables the DWT unit)
+            (*DCB::PTR).demcr.modify(|w| w | (1 << 24));
+            // Set CYCCNTENA in DWT_CTRL (enables the cycle counter)
+            (*DWT::PTR).ctrl.modify(|w| w | 1);
         }
     }
 
