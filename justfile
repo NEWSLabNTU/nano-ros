@@ -813,6 +813,15 @@ build-zenoh-pico:
     @echo "zenoh-pico built at: packages/zpico/zpico-sys/zenoh-pico/build"
 
 # =============================================================================
+# Benchmarks
+# =============================================================================
+
+# Run executor fairness benchmark (requires zenohd on tcp/127.0.0.1:7447)
+bench-fairness:
+    cd examples/native/rust/zenoh/fairness-bench && \
+        RUST_LOG=warn cargo run --features zenoh --release
+
+# =============================================================================
 # Integration Tests (requires zenohd running on tcp/127.0.0.1:7447)
 # =============================================================================
 
