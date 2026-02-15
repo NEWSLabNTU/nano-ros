@@ -14,6 +14,14 @@ path = "src/bin/xrce-talker.rs"
 name = "xrce-listener"
 path = "src/bin/xrce-listener.rs"
 
+[[bin]]
+name = "xrce-service-server"
+path = "src/bin/xrce-service-server.rs"
+
+[[bin]]
+name = "xrce-service-client"
+path = "src/bin/xrce-service-client.rs"
+
 [dependencies]
 nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", features = ["posix"] }
 nros-rmw = { path = "../../core/nros-rmw" }

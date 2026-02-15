@@ -12,12 +12,12 @@ Create a comprehensive integration test matrix that validates all ROS patterns (
 
 ### What exists
 
-| Pattern | Zenoh (native) | Zenoh (QEMU) | Zenoh (Zephyr) | XRCE (native) |
-|---------|----------------|---------------|----------------|----------------|
-| Pub/sub | `nano2nano.rs` (8 tests) | `emulator.rs` (10+ tests) | `zephyr.rs` (8+ tests) | `xrce.rs` (3 tests) |
-| Services | `services.rs` (7 tests) | - | `zephyr.rs` (partial) | - |
-| Actions | `actions.rs` (5 tests) | - | `zephyr.rs` (partial) | - |
-| ROS 2 interop | `rmw_interop.rs` (15+ tests) | - | - | - |
+| Pattern       | Zenoh (native)               | Zenoh (QEMU)              | Zenoh (Zephyr)         | XRCE (native)       |
+|---------------|------------------------------|---------------------------|------------------------|---------------------|
+| Pub/sub       | `nano2nano.rs` (8 tests)     | `emulator.rs` (10+ tests) | `zephyr.rs` (8+ tests) | `xrce.rs` (3 tests) |
+| Services      | `services.rs` (7 tests)      | -                         | `zephyr.rs` (partial)  | -                   |
+| Actions       | `actions.rs` (5 tests)       | -                         | `zephyr.rs` (partial)  | -                   |
+| ROS 2 interop | `rmw_interop.rs` (15+ tests) | -                         | -                      | -                   |
 
 ### Gaps
 
@@ -95,21 +95,21 @@ Currently xrce-talker/listener hand-code CDR for `Int32`. This is fragile and ca
 Create service test binaries using `nros-rmw` `ServiceServerTrait`/`ServiceClientTrait` via XRCE-DDS.
 
 **xrce-service-server:**
-- [ ] Uses `example_interfaces::srv::AddTwoInts` (from generated bindings)
-- [ ] Creates XRCE session, creates service server via `session.create_service_server()`
-- [ ] Polls with `session.spin_once()` in a loop
-- [ ] Uses `handle_request::<AddTwoInts>()` for typed CDR deserialization + handler callback
-- [ ] Prints "Received request: a=X b=Y" and "Sent reply: sum=Z" for test pattern matching
-- [ ] Env vars: `XRCE_AGENT_ADDR`, `XRCE_DOMAIN_ID`
+- [x] Uses `example_interfaces::srv::AddTwoInts` (from generated bindings)
+- [x] Creates XRCE session, creates service server via `session.create_service_server()`
+- [x] Polls with `session.spin_once()` in a loop
+- [x] Uses `handle_request::<AddTwoInts>()` for typed CDR deserialization + handler callback
+- [x] Prints "Received request: a=X b=Y" and "Sent reply: sum=Z" for test pattern matching
+- [x] Env vars: `XRCE_AGENT_ADDR`, `XRCE_DOMAIN_ID`, `XRCE_TIMEOUT`
 
 **xrce-service-client:**
-- [ ] Creates XRCE session, creates service client via `session.create_service_client()`
-- [ ] Sends N requests using `call::<AddTwoInts>()` (typed wrapper)
-- [ ] Prints "Sent request: a=X b=Y" and "Received reply: sum=Z"
-- [ ] Env vars: `XRCE_AGENT_ADDR`, `XRCE_DOMAIN_ID`, `XRCE_REQUEST_COUNT` (default 3)
+- [x] Creates XRCE session, creates service client via `session.create_service_client()`
+- [x] Sends N requests using `call::<AddTwoInts>()` (typed wrapper)
+- [x] Prints "Sent request: a=X b=Y" and "Received reply: sum=Z"
+- [x] Env vars: `XRCE_AGENT_ADDR`, `XRCE_DOMAIN_ID`, `XRCE_REQUEST_COUNT` (default 3)
 
-- [ ] Add `[[bin]]` entries to `Cargo.toml`
-- [ ] Verify: `cargo build --release --bin xrce-service-server --bin xrce-service-client --manifest-path ...`
+- [x] Add `[[bin]]` entries to `Cargo.toml`
+- [x] Verify: `cargo build --release --bin xrce-service-server --bin xrce-service-client`
 
 ---
 
@@ -119,13 +119,13 @@ Create service test binaries using `nros-rmw` `ServiceServerTrait`/`ServiceClien
 
 Add service tests to the existing `xrce.rs` test suite.
 
-- [ ] Add `build_xrce_service_server()` / `build_xrce_service_client()` cached builders to `binaries.rs`
-- [ ] Add rstest fixtures: `xrce_service_server_binary`, `xrce_service_client_binary`
-- [ ] Add test: `test_xrce_service_server_starts` — starts server, waits for readiness marker
-- [ ] Add test: `test_xrce_service_client_starts` — starts client (expects timeout without server)
-- [ ] Add test: `test_xrce_service_request_response` — starts server, waits for ready, starts client with `XRCE_REQUEST_COUNT=3`, verifies client receives replies
-- [ ] Pattern: start server first, wait for readiness, start client, wait for "Received reply:" in client output
-- [ ] Verify: `just test-xrce`
+- [x] Add `build_xrce_service_server()` / `build_xrce_service_client()` cached builders to `binaries.rs`
+- [x] Add rstest fixtures: `xrce_service_server_binary`, `xrce_service_client_binary`
+- [x] Add test: `test_xrce_service_server_starts` — starts server, waits for readiness marker
+- [x] Add test: `test_xrce_service_client_starts` — starts client (expects timeout without server)
+- [x] Add test: `test_xrce_service_request_response` — starts server, waits for ready, starts client with `XRCE_REQUEST_COUNT=3`, verifies client receives replies
+- [x] Pattern: start server first, wait for readiness, start client, wait for "Received reply:" in client output
+- [x] Verify: `just test-xrce` — 6/6 tests pass
 
 ---
 

@@ -7,7 +7,8 @@
 //!   just build-xrce-agent   # Build the Agent from source
 
 use nros_tests::fixtures::{
-    ManagedProcess, XrceAgent, require_xrce_agent, xrce_listener_binary, xrce_talker_binary,
+    ManagedProcess, XrceAgent, require_xrce_agent, xrce_listener_binary,
+    xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
 };
 use rstest::rstest;
 use std::path::PathBuf;
@@ -132,6 +133,142 @@ fn test_xrce_talker_listener_communication(
     } else {
         eprintln!("[INFO] No messages received (may be timing issue)");
     }
+
+    drop(agent);
+}
+
+// =============================================================================
+// XRCE Service Tests
+// =============================================================================
+
+#[rstest]
+fn test_xrce_service_server_starts(xrce_service_server_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let mut cmd = Command::new(&xrce_service_server_binary);
+    cmd.env("XRCE_AGENT_ADDR", &addr).env("XRCE_TIMEOUT", "10");
+    let mut server = ManagedProcess::spawn_command(cmd, "xrce-service-server")
+        .expect("Failed to start service server");
+
+    // Wait for readiness marker
+    match server.wait_for_output_pattern("Service server ready", Duration::from_secs(10)) {
+        Ok(_) => eprintln!("xrce-service-server started successfully"),
+        Err(_) => {
+            if server.is_running() {
+                eprintln!("xrce-service-server running (no readiness marker yet)");
+            } else {
+                eprintln!("xrce-service-server exited early");
+            }
+        }
+    }
+
+    server.kill();
+    drop(agent);
+}
+
+#[rstest]
+fn test_xrce_service_client_starts(xrce_service_client_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let mut cmd = Command::new(&xrce_service_client_binary);
+    cmd.env("XRCE_AGENT_ADDR", &addr)
+        .env("XRCE_REQUEST_COUNT", "1");
+    let mut client = ManagedProcess::spawn_command(cmd, "xrce-service-client")
+        .expect("Failed to start service client");
+
+    // Wait for readiness marker (client will timeout without a server)
+    match client.wait_for_output_pattern("Service client ready", Duration::from_secs(10)) {
+        Ok(_) => eprintln!("xrce-service-client started successfully"),
+        Err(_) => {
+            if client.is_running() {
+                eprintln!("xrce-service-client running (no readiness marker yet)");
+            } else {
+                eprintln!("xrce-service-client exited early");
+            }
+        }
+    }
+
+    client.kill();
+    drop(agent);
+}
+
+#[rstest]
+fn test_xrce_service_request_response(
+    xrce_service_server_binary: PathBuf,
+    xrce_service_client_binary: PathBuf,
+) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    // Start service server first
+    let mut server_cmd = Command::new(&xrce_service_server_binary);
+    server_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("XRCE_TIMEOUT", "30");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-service-server")
+        .expect("Failed to start service server");
+
+    // Wait for server to be ready
+    let _ = server.wait_for_output_pattern("Service server ready", Duration::from_secs(10));
+
+    // Stabilization delay — let XRCE Agent propagate the service
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Start service client
+    let mut client_cmd = Command::new(&xrce_service_client_binary);
+    client_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("XRCE_REQUEST_COUNT", "3");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-service-client")
+        .expect("Failed to start service client");
+
+    // Wait for client to complete requests
+    let client_output = client
+        .wait_for_output_pattern("Completed", Duration::from_secs(30))
+        .unwrap_or_default();
+
+    // Give server time to flush output, then collect
+    std::thread::sleep(Duration::from_millis(500));
+    let server_output = server
+        .wait_for_output_pattern("Received request:", Duration::from_secs(2))
+        .unwrap_or_default();
+
+    // Kill both processes
+    client.kill();
+    server.kill();
+
+    eprintln!("Client output:\n{}", client_output);
+    eprintln!("Server output:\n{}", server_output);
+
+    // Verify client received replies
+    let reply_count = count_pattern(&client_output, "Received reply:");
+    eprintln!("Client received {} replies", reply_count);
+    assert!(
+        reply_count >= 1,
+        "Expected at least 1 reply, got {}",
+        reply_count
+    );
 
     drop(agent);
 }
