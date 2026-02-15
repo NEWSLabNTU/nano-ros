@@ -45,6 +45,11 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
         .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
         .expect("Listener did not start");
 
+    // Stabilization delay: let subscription propagate through zenohd before
+    // the talker starts publishing. Without this, early messages are lost
+    // under parallel test load (zenoh subscription discovery is async).
+    std::thread::sleep(Duration::from_secs(3));
+
     // Start talker
     let mut talker_cmd = Command::new(talker_path);
     talker_cmd
@@ -56,9 +61,10 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     // Wait for listener to receive multiple safety-validated messages.
     // The listener prints lines like:
     //   [N] Received: data=M [SAFETY] seq_gap=0 dup=false crc=ok
-    // We wait up to 20s for enough messages (talker publishes every 1s).
+    // Allow 30s: under heavy parallel load, zenoh session establishment
+    // can take several seconds (talker publishes every 1s).
     let output = listener
-        .wait_for_all_output(Duration::from_secs(20))
+        .wait_for_all_output(Duration::from_secs(30))
         .expect("Failed to collect listener output");
 
     let safety_ok_count = output.matches("crc=ok").count();
@@ -124,6 +130,9 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
         .wait_for_output_pattern("Waiting for", Duration::from_secs(10))
         .expect("Standard listener did not start");
 
+    // Stabilization delay: let subscription propagate through zenohd
+    std::thread::sleep(Duration::from_secs(3));
+
     // Start safety-e2e talker
     let mut talker_cmd = Command::new(talker_path);
     talker_cmd
@@ -133,8 +142,9 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
         .expect("Failed to start safety talker");
 
     // Standard listener should receive messages (prints "Received: data=")
+    // Allow 30s for session establishment under parallel test load.
     let output = listener
-        .wait_for_all_output(Duration::from_secs(20))
+        .wait_for_all_output(Duration::from_secs(30))
         .expect("Failed to collect listener output");
 
     let received_count = output.matches("Received:").count();
