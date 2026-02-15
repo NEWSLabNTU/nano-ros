@@ -40,12 +40,10 @@ pub unsafe fn init_posix_udp_transport(agent_addr: &str) {
     }
 }
 
-unsafe extern "C" fn transport_open(
-    _transport: *mut xrce_sys::uxrCustomTransport,
-) -> bool {
+unsafe extern "C" fn transport_open(_transport: *mut xrce_sys::uxrCustomTransport) -> bool {
     unsafe {
-        let addr_str = core::str::from_utf8(&AGENT_ADDR[..AGENT_ADDR_LEN])
-            .unwrap_or("127.0.0.1:2019");
+        let addr_str =
+            core::str::from_utf8(&AGENT_ADDR[..AGENT_ADDR_LEN]).unwrap_or("127.0.0.1:2019");
         match UdpSocket::bind("0.0.0.0:0") {
             Ok(socket) => {
                 if socket.connect(addr_str).is_ok() {
@@ -64,9 +62,7 @@ unsafe extern "C" fn transport_open(
     }
 }
 
-unsafe extern "C" fn transport_close(
-    _transport: *mut xrce_sys::uxrCustomTransport,
-) -> bool {
+unsafe extern "C" fn transport_close(_transport: *mut xrce_sys::uxrCustomTransport) -> bool {
     unsafe {
         UDP_SOCKET = None;
         true

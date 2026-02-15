@@ -177,7 +177,7 @@ pub enum TransportError {
     DeserializationError,
     /// Buffer too small
     BufferTooSmall,
-    /// Incoming message exceeded the static subscriber buffer size (1024 bytes)
+    /// Incoming message exceeded the static buffer capacity
     MessageTooLarge,
     /// Timeout waiting for message
     Timeout,

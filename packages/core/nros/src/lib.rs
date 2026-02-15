@@ -104,6 +104,7 @@ pub use nros_node::{
 pub use nros_node::{
     ConnectedActionClient, ConnectedActionServer, ConnectedNode, ConnectedNodeError,
     ConnectedPublisher, ConnectedServiceClient, ConnectedServiceServer, ConnectedSubscriber,
+    DEFAULT_TX_BUFFER_SIZE,
 };
 
 // Re-export error types (available without alloc)

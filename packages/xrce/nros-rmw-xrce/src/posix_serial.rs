@@ -43,15 +43,12 @@ pub unsafe fn init_posix_serial_transport(pty_path: &str) {
     }
 }
 
-unsafe extern "C" fn serial_transport_open(
-    _transport: *mut xrce_sys::uxrCustomTransport,
-) -> bool {
+unsafe extern "C" fn serial_transport_open(_transport: *mut xrce_sys::uxrCustomTransport) -> bool {
     unsafe {
         let path_ptr = PTY_PATH.as_ptr() as *const libc::c_char;
         let fd = libc::open(path_ptr, libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK);
         if fd < 0 {
-            let path_str =
-                core::str::from_utf8(&PTY_PATH[..PTY_PATH_LEN]).unwrap_or("<invalid>");
+            let path_str = core::str::from_utf8(&PTY_PATH[..PTY_PATH_LEN]).unwrap_or("<invalid>");
             eprintln!("Failed to open PTY: {}", path_str);
             return false;
         }
@@ -85,9 +82,7 @@ unsafe extern "C" fn serial_transport_open(
     }
 }
 
-unsafe extern "C" fn serial_transport_close(
-    _transport: *mut xrce_sys::uxrCustomTransport,
-) -> bool {
+unsafe extern "C" fn serial_transport_close(_transport: *mut xrce_sys::uxrCustomTransport) -> bool {
     unsafe {
         if PTY_FD >= 0 {
             libc::close(PTY_FD);

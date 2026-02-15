@@ -48,6 +48,9 @@ use crate::options::{PublisherOptions, SubscriberOptions};
 /// Default receive buffer size for subscribers
 pub const DEFAULT_RX_BUFFER_SIZE: usize = 1024;
 
+/// Default transmit buffer size for publishers
+pub const DEFAULT_TX_BUFFER_SIZE: usize = 1024;
+
 /// Default request buffer size for services
 pub const DEFAULT_REQ_BUFFER_SIZE: usize = 1024;
 
@@ -640,7 +643,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         &mut self,
         topic: &str,
     ) -> Result<ConnectedPublisher<M>, ConnectedNodeError> {
-        self.create_publisher(PublisherOptions::new(topic))
+        self.create_publisher_sized::<M, DEFAULT_TX_BUFFER_SIZE>(PublisherOptions::new(topic))
     }
 
     /// Create a publisher with custom QoS settings
@@ -653,14 +656,25 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         topic: &str,
         qos: QosSettings,
     ) -> Result<ConnectedPublisher<M>, ConnectedNodeError> {
-        self.create_publisher(PublisherOptions { topic, qos })
+        self.create_publisher_sized::<M, DEFAULT_TX_BUFFER_SIZE>(PublisherOptions { topic, qos })
     }
 
     /// Create a publisher with the given options
+    ///
+    /// Uses the default transmit buffer size (1024 bytes).
+    /// For larger messages, use `create_publisher_sized`.
     pub fn create_publisher<M: RosMessage>(
         &mut self,
         options: PublisherOptions,
     ) -> Result<ConnectedPublisher<M>, ConnectedNodeError> {
+        self.create_publisher_sized::<M, DEFAULT_TX_BUFFER_SIZE>(options)
+    }
+
+    /// Create a publisher with custom buffer size
+    pub fn create_publisher_sized<M: RosMessage, const TX_BUF: usize>(
+        &mut self,
+        options: PublisherOptions,
+    ) -> Result<ConnectedPublisher<M, TX_BUF>, ConnectedNodeError> {
         let topic_info =
             TopicInfo::new(options.topic, M::TYPE_NAME, M::TYPE_HASH).with_domain(self.domain_id);
 
@@ -1742,8 +1756,13 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 }
 
 /// A connected publisher that can send messages via transport
+///
+/// # Type Parameters
+///
+/// - `M`: The ROS message type to publish
+/// - `TX_BUF`: Transmit buffer size in bytes (default: 1024)
 #[cfg(feature = "rmw-zenoh")]
-pub struct ConnectedPublisher<M> {
+pub struct ConnectedPublisher<M, const TX_BUF: usize = DEFAULT_TX_BUFFER_SIZE> {
     publisher: ZenohPublisher,
     /// Topic name for this publisher
     topic_name: heapless::String<256>,
@@ -1751,7 +1770,7 @@ pub struct ConnectedPublisher<M> {
 }
 
 #[cfg(feature = "rmw-zenoh")]
-impl<M: RosMessage> ConnectedPublisher<M> {
+impl<M: RosMessage, const TX_BUF: usize> ConnectedPublisher<M, TX_BUF> {
     /// Get the topic name for this publisher
     pub fn topic_name(&self) -> &str {
         self.topic_name.as_str()
@@ -1759,7 +1778,9 @@ impl<M: RosMessage> ConnectedPublisher<M> {
 
     /// Publish a message
     ///
-    /// Accepts both owned and borrowed messages via `Borrow<M>`.
+    /// Uses the `TX_BUF` const generic as the serialization buffer size.
+    /// For the default publisher (`ConnectedPublisher<M>`), this is 1024 bytes.
+    /// Use `create_publisher_sized` to create publishers with larger buffers.
     ///
     /// # Examples
     ///
@@ -1771,7 +1792,7 @@ impl<M: RosMessage> ConnectedPublisher<M> {
     /// publisher.publish(msg)?;
     /// ```
     pub fn publish(&self, msg: impl core::borrow::Borrow<M>) -> Result<(), ConnectedNodeError> {
-        let mut buf = [0u8; 1024];
+        let mut buf = [0u8; TX_BUF];
         self.publisher
             .publish(msg.borrow(), &mut buf)
             .map_err(|_| ConnectedNodeError::PublishFailed)
@@ -1779,7 +1800,8 @@ impl<M: RosMessage> ConnectedPublisher<M> {
 
     /// Publish with a custom buffer
     ///
-    /// Use this when you need a larger buffer for big messages.
+    /// Use this when you need a different buffer than the `TX_BUF` const generic.
+    #[deprecated(note = "Use create_publisher_sized::<M, BUF_SIZE>() instead")]
     pub fn publish_with_buffer(
         &self,
         msg: impl core::borrow::Borrow<M>,

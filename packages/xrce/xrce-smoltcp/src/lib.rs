@@ -37,7 +37,8 @@ pub use smoltcp::phy::Device;
 // ============================================================================
 
 /// UDP payload buffer size for both TX and RX.
-pub const UDP_BUFFER_SIZE: usize = 1024;
+/// Matches the XRCE transport MTU to avoid truncation.
+pub const UDP_BUFFER_SIZE: usize = xrce_sys::XRCE_TRANSPORT_MTU;
 
 /// Number of packet metadata slots per direction.
 const UDP_META_COUNT: usize = 4;

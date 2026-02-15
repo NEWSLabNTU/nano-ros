@@ -2,6 +2,15 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+/// Read a usize from an environment variable, falling back to a default.
+fn env_usize(name: &str, default: usize) -> usize {
+    println!("cargo:rerun-if-env-changed={name}");
+    env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 fn main() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").unwrap());
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -13,9 +22,14 @@ fn main() {
         panic!("Features `posix` and `bare-metal` are mutually exclusive");
     }
 
+    // Read MTU from environment variable with platform-appropriate default.
+    // Posix builds use 4096 for larger message support; embedded uses 512.
+    let default_mtu = if posix { 4096 } else { 512 };
+    let mtu = env_usize("XRCE_TRANSPORT_MTU", default_mtu);
+
     // Generate config headers
     generate_ucdr_config(&out_dir);
-    generate_uxr_config(&out_dir, posix);
+    generate_uxr_config(&out_dir, posix, mtu);
 
     // Compile C sources
     let mut build = cc::Build::new();
@@ -92,8 +106,8 @@ fn main() {
 
     build.compile("xrce_client");
 
-    // Generate compile-time size check
-    generate_size_check(&out_dir, &manifest_dir, posix);
+    // Generate compile-time size check and Rust constants
+    generate_size_check(&out_dir, &manifest_dir, posix, mtu);
 
     // Re-run if config changes
     println!("cargo:rerun-if-changed=build.rs");
@@ -122,7 +136,7 @@ fn generate_ucdr_config(out_dir: &Path) {
     .unwrap();
 }
 
-fn generate_uxr_config(out_dir: &Path, posix: bool) {
+fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
     let dir = out_dir.join("include/uxr/client");
     fs::create_dir_all(&dir).unwrap();
 
@@ -164,8 +178,8 @@ fn generate_uxr_config(out_dir: &Path, posix: bool) {
 #define UXR_CONFIG_MIN_SESSION_CONNECTION_INTERVAL    25
 #define UXR_CONFIG_MIN_HEARTBEAT_TIME_INTERVAL        100
 
-// Custom transport MTU
-#define UXR_CONFIG_CUSTOM_TRANSPORT_MTU               512
+// Custom transport MTU (configurable via XRCE_TRANSPORT_MTU env var)
+#define UXR_CONFIG_CUSTOM_TRANSPORT_MTU               {mtu}
 
 // Write limit tweak
 #define UCLIENT_TWEAK_XRCE_WRITE_LIMIT
@@ -177,10 +191,34 @@ fn generate_uxr_config(out_dir: &Path, posix: bool) {
     .unwrap();
 }
 
-fn generate_size_check(out_dir: &Path, manifest_dir: &Path, _posix: bool) {
-    // We generate a small C file with _Static_assert to verify our
-    // Rust opaque blob sizes are large enough for the actual C structs.
-    // This file is compiled as part of the build to catch config.h mismatches.
+fn generate_size_check(out_dir: &Path, manifest_dir: &Path, _posix: bool, mtu: usize) {
+    // Compute Rust blob sizes from the configured MTU.
+    // Transport struct embeds buffer[MTU]; session is MTU-independent.
+    let session_size = 512usize;
+    let transport_size = mtu + 256;
+
+    // Generate Rust constants for the blob sizes
+    let constants_path = out_dir.join("xrce_constants.rs");
+    fs::write(
+        &constants_path,
+        format!(
+            "\
+/// Configured XRCE transport MTU (from `XRCE_TRANSPORT_MTU` env var or platform default).
+pub const XRCE_TRANSPORT_MTU: usize = {mtu};
+
+/// Size of the opaque Rust blob for `uxrSession`.
+/// Session struct is MTU-independent (stream buffers are external).
+pub const UXR_SESSION_SIZE: usize = {session_size};
+
+/// Size of the opaque Rust blob for `uxrCustomTransport`.
+/// Includes embedded `buffer[MTU]` + framing I/O + callback pointers.
+pub const UXR_CUSTOM_TRANSPORT_SIZE: usize = {transport_size};
+"
+        ),
+    )
+    .unwrap();
+
+    // Compile _Static_assert to verify blob sizes at build time
     let check_src = out_dir.join("size_check.c");
     fs::write(
         &check_src,
@@ -189,21 +227,18 @@ fn generate_size_check(out_dir: &Path, manifest_dir: &Path, _posix: bool) {
 #include <uxr/client/core/session/session.h>
 #include <uxr/client/profile/transport/custom/custom_transport.h>
 
-// These must match the constants in src/lib.rs
 #define UXR_SESSION_RUST_SIZE {session_size}
 #define UXR_CUSTOM_TRANSPORT_RUST_SIZE {transport_size}
 
 _Static_assert(
     sizeof(uxrSession) <= UXR_SESSION_RUST_SIZE,
-    \"uxrSession exceeds Rust blob size — update UXR_SESSION_SIZE in lib.rs\"
+    \"uxrSession exceeds Rust blob size — increase XRCE_TRANSPORT_MTU overhead in build.rs\"
 );
 _Static_assert(
     sizeof(uxrCustomTransport) <= UXR_CUSTOM_TRANSPORT_RUST_SIZE,
-    \"uxrCustomTransport exceeds Rust blob size — update UXR_CUSTOM_TRANSPORT_SIZE in lib.rs\"
+    \"uxrCustomTransport exceeds Rust blob size — increase XRCE_TRANSPORT_MTU overhead in build.rs\"
 );
-",
-            session_size = 512,
-            transport_size = 768,
+"
         ),
     )
     .unwrap();

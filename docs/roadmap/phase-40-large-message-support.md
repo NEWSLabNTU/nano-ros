@@ -1,6 +1,6 @@
 # Phase 40 — Large Message Support
 
-## Status: Not Started
+## Status: In Progress (40.1 + 40.2 complete)
 
 ## Background
 
@@ -39,14 +39,15 @@ zenoh-pico network → defrag (Z_FRAG_MAX_SIZE)
 
 ### Bottleneck layers
 
-| Layer                                        | Native | Embedded | File                             |
-|----------------------------------------------|--------|----------|----------------------------------|
-| zenoh-pico defrag (`Z_FRAG_MAX_SIZE`)        | 4096¹  | 2048     | `zpico-sys/build.rs:80`          |
-| Shim static buffer (`SubscriberBuffer.data`) | 1024   | 1024     | `nros-rmw-zenoh/src/shim.rs:950` |
-| User receive buffer (`RX_BUF`)               | 1024   | 1024     | `nros-node/src/connected.rs:49`  |
+| Layer                                        | Native (posix) | Embedded | File                             |
+|----------------------------------------------|----------------|----------|----------------------------------|
+| zenoh-pico defrag (`Z_FRAG_MAX_SIZE`)        | 65536¹         | 2048     | `zpico-sys/build.rs`             |
+| zenoh-pico batch (`Z_BATCH_UNICAST_SIZE`)    | 65536¹         | 1024     | `zpico-sys/build.rs`             |
+| Shim static buffer (`SubscriberBuffer.data`) | 1024²          | 1024²    | `nros-rmw-zenoh/src/shim.rs`     |
+| User receive buffer (`RX_BUF`)               | 1024²          | 1024²    | `nros-node/src/connected.rs`     |
 
-¹ Native builds currently use the same embedded config (2048). 4096 is what
-zenoh-pico defaults to upstream.
+¹ Configurable via `ZPICO_FRAG_MAX_SIZE` / `ZPICO_BATCH_UNICAST_SIZE` env vars.
+² Per-entity buffer sizes are named constants; increasing them is a Phase 40.3+ concern.
 
 ### Fragmentation
 
@@ -56,10 +57,11 @@ silently dropped by the zenoh-pico defragmentation layer.
 
 ### Service buffer overflow
 
-The `ServiceBuffer` (`shim.rs:1306`) has no overflow flag. The callback at
-`shim.rs:1382` silently truncates: `let copy_len = payload_len.min(buffer.data.len())`.
-This means oversized service requests are accepted but corrupted without any
-error signal to the application.
+~~The `ServiceBuffer` had no overflow flag — the callback silently truncated
+oversized requests.~~ **Fixed in Phase 40.1**: Both zenoh and XRCE service
+buffers now have `overflow: AtomicBool` flags that are set when a request
+exceeds the buffer capacity. `try_recv_request()` checks the flag and returns
+`TransportError::MessageTooLarge` instead of silently delivering corrupted data.
 
 ## Current Architecture — XRCE-DDS Backend
 
@@ -73,12 +75,14 @@ XRCE Agent → UDP transport (512-byte MTU)
 
 ### Bottleneck layers
 
-| Layer                    | Value              | File                          |
-|--------------------------|--------------------|-------------------------------|
-| Transport MTU            | 512                | `xrce-sys/build.rs:168`       |
-| Stream buffer (reliable) | 2048 total (4×512) | `nros-rmw-xrce/src/lib.rs:62` |
-| Per-entity buffer        | 1024               | `nros-rmw-xrce/src/lib.rs:58` |
-| UDP staging              | 1024               | `xrce-smoltcp/src/lib.rs:40`  |
+| Layer                    | Native (posix) | Embedded     | File                          |
+|--------------------------|----------------|--------------|-------------------------------|
+| Transport MTU            | 4096¹          | 512¹         | `xrce-sys/build.rs`           |
+| Stream buffer (reliable) | 16384 (4×4096) | 2048 (4×512) | `nros-rmw-xrce/src/lib.rs`    |
+| Per-entity buffer        | 1024           | 1024         | `nros-rmw-xrce/src/lib.rs`    |
+| UDP staging              | = MTU          | = MTU        | `xrce-smoltcp/src/lib.rs`     |
+
+¹ Configurable via `XRCE_TRANSPORT_MTU` env var.
 
 ### Fragmentation
 
@@ -97,27 +101,29 @@ set, and the application never learns a request was lost.
 | Aspect                | Zenoh              | XRCE-DDS                |
 |-----------------------|--------------------|-------------------------|
 | Per-entity buffer     | 1024 B             | 1024 B                  |
-| Transport limit       | 2048 B (defrag)    | 512 B (MTU)             |
+| Transport limit       | 64 KB (posix) / 2 KB (embedded) | 4 KB (posix) / 512 B (embedded) |
 | Fragmentation used    | Yes (built-in)     | No (API exists, unused) |
 | Copies per receive    | 3                  | 1                       |
 | Sub overflow signal   | Yes (flag → error) | Yes (flag → error)      |
-| Svc overflow signal   | Silent truncation  | Silent discard          |
-| Practical max message | ~1024 B            | ~450-480 B              |
+| Svc overflow signal   | Yes (flag → error) | Yes (flag → error)      |
+| Practical max message | ~1024 B¹           | ~3.5-4 KB (posix) / ~450-480 B (embedded) |
+
+¹ Still limited by per-entity shim buffer (1024 B), not by transport layer.
 
 ## Issues
 
-| ID  | Issue                                                             | Backends | Severity |
-|-----|-------------------------------------------------------------------|----------|----------|
-| I1  | Hardcoded 1 KB shim/entity buffers                                | Both     | Critical |
-| I2  | Hardcoded 1 KB publish buffer in `ConnectedPublisher::publish()`  | Zenoh¹   | High     |
-| I3  | Three copies per received message                                 | Zenoh    | High     |
-| I4  | Silent truncation/discard on service buffers                      | Both     | High     |
-| I5  | Silent drop on zenoh defrag overflow                              | Zenoh    | Medium   |
-| I6  | Fixed static buffer count (8 sub, 8 svc)                          | Both     | Medium   |
-| I7  | `Z_FEATURE_LOCAL_SUBSCRIBER` disabled (no intra-process shortcut) | Zenoh    | Low      |
-| I8  | Embedded defrag limit too small (2 KB)                            | Zenoh    | Medium   |
-| I9  | 512-byte XRCE transport MTU                                       | XRCE     | Critical |
-| I10 | XRCE fragmented streams not used                                  | XRCE     | High     |
+| ID  | Issue                                                             | Backends | Severity | Status      |
+|-----|-------------------------------------------------------------------|----------|----------|-------------|
+| I1  | Hardcoded 1 KB shim/entity buffers                                | Both     | Critical | Named consts (40.1) |
+| I2  | Hardcoded 1 KB publish buffer in `ConnectedPublisher::publish()`  | Zenoh¹   | High     | Const generic (40.1) |
+| I3  | Three copies per received message                                 | Zenoh    | High     | Open        |
+| I4  | Silent truncation/discard on service buffers                      | Both     | High     | Fixed (40.1) |
+| I5  | Silent drop on zenoh defrag overflow                              | Zenoh    | Medium   | Mitigated (40.2) |
+| I6  | Fixed static buffer count (8 sub, 8 svc)                          | Both     | Medium   | Named consts (40.2) |
+| I7  | `Z_FEATURE_LOCAL_SUBSCRIBER` disabled (no intra-process shortcut) | Zenoh    | Low      | Open        |
+| I8  | Embedded defrag limit too small (2 KB)                            | Zenoh    | Medium   | Configurable (40.2) |
+| I9  | 512-byte XRCE transport MTU                                       | XRCE     | Critical | Configurable, 4096 posix (40.2) |
+| I10 | XRCE fragmented streams not used                                  | XRCE     | High     | Open        |
 
 ¹ The XRCE node API (`XrceNodePublisher::publish()`) already requires a
 caller-supplied buffer, so I2 does not apply to XRCE.
@@ -126,12 +132,12 @@ caller-supplied buffer, so I2 does not apply to XRCE.
 
 Make buffer sizes configurable without changing the static allocation model.
 
-- [ ] Make `SubscriberBuffer.data` size a const generic in zenoh shim (I1)
-- [ ] Make `BUFFER_SIZE` configurable in XRCE RMW (I1)
-- [ ] Add `overflow: bool` flag to zenoh `ServiceBuffer` (I4)
-- [ ] Add overflow flag to XRCE service server/client callbacks (I4)
-- [ ] Make `ConnectedPublisher::publish()` buffer size a const generic (I2)
-- [ ] Deprecate `publish_with_buffer()` workaround once generic publish lands (I2)
+- [x] Make `SubscriberBuffer.data` size a const generic in zenoh shim (I1)
+- [x] Make `BUFFER_SIZE` configurable in XRCE RMW (I1)
+- [x] Add `overflow: bool` flag to zenoh `ServiceBuffer` (I4)
+- [x] Add overflow flag to XRCE service server/client callbacks (I4)
+- [x] Make `ConnectedPublisher::publish()` buffer size a const generic (I2)
+- [x] Deprecate `publish_with_buffer()` workaround once generic publish lands (I2)
 
 ## Phase 40.2 — Platform-Appropriate Defaults
 
@@ -140,12 +146,12 @@ Set larger defaults for `platform-posix` builds while keeping
 targets. Per the orthogonality principle, platform features must not imply an
 RMW backend — defaults are scoped within each backend's build configuration.
 
-- [ ] Expose `Z_FRAG_MAX_SIZE` / `Z_BATCH_UNICAST_SIZE` as `build.rs` env vars (I5, I8)
-- [ ] Set `platform-posix` zenoh defrag default to 64 KB+ (I8)
-- [ ] Expose `UXR_CONFIG_CUSTOM_TRANSPORT_MTU` as configurable in `xrce-sys` (I9)
-- [ ] Increase `platform-posix` XRCE MTU default to 4096+ (I9)
-- [ ] Match `xrce-smoltcp` UDP staging buffers to new MTU (I9)
-- [ ] Make static buffer count configurable via const generic or feature (I6)
+- [x] Expose `Z_FRAG_MAX_SIZE` / `Z_BATCH_UNICAST_SIZE` as `build.rs` env vars (I5, I8)
+- [x] Set `platform-posix` zenoh defrag default to 64 KB+ (I8)
+- [x] Expose `UXR_CONFIG_CUSTOM_TRANSPORT_MTU` as configurable in `xrce-sys` (I9)
+- [x] Increase `platform-posix` XRCE MTU default to 4096+ (I9)
+- [x] Match `xrce-smoltcp` UDP staging buffers to new MTU (I9)
+- [x] Make static buffer count configurable via const generic or feature (I6)
 
 ## Phase 40.3 — XRCE Fragmented Streams
 

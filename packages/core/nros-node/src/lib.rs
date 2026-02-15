@@ -162,6 +162,7 @@ pub use connected::{
     DEFAULT_RESULT_BUFFER_SIZE,
     DEFAULT_RX_BUFFER_SIZE,
     DEFAULT_STATUS_BUFFER_SIZE,
+    DEFAULT_TX_BUFFER_SIZE,
     GoalHandle,
 };
 

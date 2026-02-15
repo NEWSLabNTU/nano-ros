@@ -50,8 +50,9 @@ pub use zpico::{
     feature = "platform-bare-metal"
 ))]
 pub use shim::{
-    MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, ShimPublisher, ShimServiceClient,
-    ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport, ZenohId, ZenohRmw,
+    MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,
+    SUBSCRIBER_BUFFER_SIZE, ShimPublisher, ShimServiceClient, ShimServiceServer, ShimSession,
+    ShimSubscriber, ShimTransport, ZenohId, ZenohRmw,
 };
 
 // Re-export std-only executor wake functions

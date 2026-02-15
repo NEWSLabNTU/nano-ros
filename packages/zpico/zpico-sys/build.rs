@@ -51,13 +51,56 @@ impl LinkFeatures {
     }
 }
 
+/// Buffer size configuration for zenoh-pico.
+///
+/// These values are read from environment variables at build time, with
+/// platform-appropriate defaults. Posix builds use large defaults suitable
+/// for desktop/server workloads, while embedded builds use small defaults
+/// to fit in constrained memory.
+struct ZenohBufferConfig {
+    frag_max_size: usize,
+    batch_unicast_size: usize,
+    batch_multicast_size: usize,
+}
+
+impl ZenohBufferConfig {
+    /// Read buffer config from environment variables with platform-appropriate defaults.
+    fn from_env(posix: bool) -> Self {
+        let (default_frag, default_batch_uni, default_batch_multi) = if posix {
+            // Posix: large defaults for desktop/server workloads
+            (65536, 65536, 8192)
+        } else {
+            // Embedded: small defaults for memory-constrained targets
+            (2048, 1024, 1024)
+        };
+
+        let frag_max_size = env_usize("ZPICO_FRAG_MAX_SIZE", default_frag);
+        let batch_unicast_size = env_usize("ZPICO_BATCH_UNICAST_SIZE", default_batch_uni);
+        let batch_multicast_size = env_usize("ZPICO_BATCH_MULTICAST_SIZE", default_batch_multi);
+
+        Self {
+            frag_max_size,
+            batch_unicast_size,
+            batch_multicast_size,
+        }
+    }
+}
+
+/// Read a usize from an environment variable, falling back to a default.
+fn env_usize(name: &str, default: usize) -> usize {
+    println!("cargo:rerun-if-env-changed={name}");
+    env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
+}
+
 /// Generate a zenoh-pico config header in OUT_DIR based on Cargo link-* features.
 ///
 /// This replaces the hardcoded `zenoh_generic_config.h` with a generated version
-/// where `Z_FEATURE_LINK_*` values are derived from Cargo features. All other
-/// configuration values (buffer sizes, core features, protocol features) are
-/// kept identical to the static header.
-fn generate_config_header(out_dir: &Path, link: &LinkFeatures) {
+/// where `Z_FEATURE_LINK_*` values are derived from Cargo features and buffer
+/// sizes are read from environment variables with platform-appropriate defaults.
+fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBufferConfig) {
     let config_dir = out_dir.join("zenoh-config");
     std::fs::create_dir_all(&config_dir).unwrap();
 
@@ -70,16 +113,31 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures) {
         " * Z_FEATURE_LINK_* values are derived from Cargo link-* features."
     )
     .unwrap();
+    writeln!(
+        header,
+        " * Buffer sizes are configurable via ZPICO_* environment variables."
+    )
+    .unwrap();
     writeln!(header, " * DO NOT EDIT — regenerated on every build.").unwrap();
     writeln!(header, " */").unwrap();
     writeln!(header).unwrap();
     writeln!(header, "#ifndef ZENOH_GENERIC_CONFIG_H").unwrap();
     writeln!(header, "#define ZENOH_GENERIC_CONFIG_H").unwrap();
     writeln!(header).unwrap();
-    writeln!(header, "// Buffer Sizes (optimized for embedded)").unwrap();
-    writeln!(header, "#define Z_FRAG_MAX_SIZE 2048").unwrap();
-    writeln!(header, "#define Z_BATCH_UNICAST_SIZE 1024").unwrap();
-    writeln!(header, "#define Z_BATCH_MULTICAST_SIZE 1024").unwrap();
+    writeln!(header, "// Buffer Sizes").unwrap();
+    writeln!(header, "#define Z_FRAG_MAX_SIZE {}", buf.frag_max_size).unwrap();
+    writeln!(
+        header,
+        "#define Z_BATCH_UNICAST_SIZE {}",
+        buf.batch_unicast_size
+    )
+    .unwrap();
+    writeln!(
+        header,
+        "#define Z_BATCH_MULTICAST_SIZE {}",
+        buf.batch_multicast_size
+    )
+    .unwrap();
     writeln!(header, "#define Z_CONFIG_SOCKET_TIMEOUT 100").unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE 10000").unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE_EXPIRE_FACTOR 3").unwrap();
@@ -222,13 +280,16 @@ fn main() {
     // Generate C header from Rust FFI declarations
     generate_header(&manifest_dir, &include_dir);
 
+    // Read buffer config with platform-appropriate defaults
+    let buf_config = ZenohBufferConfig::from_env(use_posix);
+
     // Build zenoh-pico and C shim
     if !is_embedded_target(&target) {
         // Native: build zenoh-pico via CMake (or use system library), then shim via cc
         let zenoh_pico_include = if use_system {
             use_system_zenoh_pico()
         } else {
-            build_zenoh_pico_native(&zenoh_pico_src, &out_dir)
+            build_zenoh_pico_native(&zenoh_pico_src, &out_dir, &buf_config)
         };
         if backend_count > 0 && !use_zephyr {
             build_c_shim(
@@ -245,7 +306,7 @@ fn main() {
         // Embedded + bare-metal: build zenoh-pico + platform + shim all together with cc.
         // This replaces the external build-zenoh-pico.sh shell scripts.
         // Generate config header from Cargo link-* features before building.
-        generate_config_header(&out_dir, &link_features);
+        generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_embedded(
             &zenoh_pico_src,
             &c_dir,
@@ -501,7 +562,11 @@ fn extract_typedef_name(line: &str) -> Option<String> {
 }
 
 /// Build zenoh-pico via CMake for native targets
-fn build_zenoh_pico_native(zenoh_pico_src: &Path, out_dir: &Path) -> PathBuf {
+fn build_zenoh_pico_native(
+    zenoh_pico_src: &Path,
+    out_dir: &Path,
+    buf: &ZenohBufferConfig,
+) -> PathBuf {
     let zenoh_pico_build = out_dir.join("zenoh-pico-build");
 
     // Copy source to build directory to avoid modifying source tree
@@ -524,6 +589,12 @@ fn build_zenoh_pico_native(zenoh_pico_src: &Path, out_dir: &Path) -> PathBuf {
         .define("Z_FEATURE_INTEREST", "1")
         .define("Z_FEATURE_MATCHING", "1")
         .define("Z_FEATURE_LINK_SERIAL", "1")
+        .define("Z_FRAG_MAX_SIZE", buf.frag_max_size.to_string())
+        .define("Z_BATCH_UNICAST_SIZE", buf.batch_unicast_size.to_string())
+        .define(
+            "Z_BATCH_MULTICAST_SIZE",
+            buf.batch_multicast_size.to_string(),
+        )
         .build();
 
     // Link the static library

@@ -118,8 +118,7 @@ mod tests {
 
     #[test]
     fn test_dds_request_type() {
-        let name: String<128> =
-            dds_request_type("example_interfaces::srv::dds_::AddTwoInts_");
+        let name: String<128> = dds_request_type("example_interfaces::srv::dds_::AddTwoInts_");
         assert_eq!(
             name.as_str(),
             "example_interfaces::srv::dds_::AddTwoInts_Request_"
@@ -128,8 +127,7 @@ mod tests {
 
     #[test]
     fn test_dds_reply_type() {
-        let name: String<128> =
-            dds_reply_type("example_interfaces::srv::dds_::AddTwoInts_");
+        let name: String<128> = dds_reply_type("example_interfaces::srv::dds_::AddTwoInts_");
         assert_eq!(
             name.as_str(),
             "example_interfaces::srv::dds_::AddTwoInts_Reply_"

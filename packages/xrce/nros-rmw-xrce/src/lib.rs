@@ -46,25 +46,26 @@ use xrce_sys::{
 // ============================================================================
 
 /// Maximum subscribers that can be created simultaneously.
-const MAX_SUBSCRIBERS: usize = 8;
+pub const MAX_SUBSCRIBERS: usize = 8;
 
 /// Maximum service servers that can be created simultaneously.
-const MAX_SERVICE_SERVERS: usize = 4;
+pub const MAX_SERVICE_SERVERS: usize = 4;
 
 /// Maximum service clients that can be created simultaneously.
-const MAX_SERVICE_CLIENTS: usize = 4;
+pub const MAX_SERVICE_CLIENTS: usize = 4;
 
 /// Size of each receive buffer slot (bytes).
-const BUFFER_SIZE: usize = 1024;
+pub const BUFFER_SIZE: usize = 1024;
 
 /// Stream buffer size (bytes). With history=4, each slot is STREAM_BUFFER_SIZE/4.
-/// Must be large enough for the largest XRCE message * history depth.
-const STREAM_BUFFER_SIZE: usize = 2048;
+/// Each slot must be >= MTU for reliable stream reassembly.
+const STREAM_BUFFER_SIZE: usize = xrce_sys::XRCE_TRANSPORT_MTU as usize * STREAM_HISTORY_USIZE;
 
 /// Stream history depth. Must be >= 2 — XRCE reliable streams with history=1
 /// fail to recycle the single slot between separate `run_session_until_all_status`
 /// calls, causing second+ entity creation batches to time out.
 const STREAM_HISTORY: u16 = 4;
+const STREAM_HISTORY_USIZE: usize = STREAM_HISTORY as usize;
 
 /// Timeout for entity creation confirmation (milliseconds).
 const ENTITY_CREATION_TIMEOUT_MS: c_int = 1000;
@@ -161,6 +162,7 @@ static mut SUBSCRIBER_SLOTS: [SubscriberSlot; MAX_SUBSCRIBERS] = [
 struct ServiceServerSlot {
     data: [u8; BUFFER_SIZE],
     has_request: AtomicBool,
+    overflow: AtomicBool,
     len: AtomicUsize,
     sample_id: SampleIdentity,
     replier_id: u16,
@@ -172,6 +174,7 @@ impl ServiceServerSlot {
         Self {
             data: [0u8; BUFFER_SIZE],
             has_request: AtomicBool::new(false),
+            overflow: AtomicBool::new(false),
             len: AtomicUsize::new(0),
             sample_id: zeroed_sample_identity(),
             replier_id: 0,
@@ -194,6 +197,7 @@ static mut SERVICE_SERVER_SLOTS: [ServiceServerSlot; MAX_SERVICE_SERVERS] = [
 struct ServiceClientSlot {
     data: [u8; BUFFER_SIZE],
     has_reply: AtomicBool,
+    overflow: AtomicBool,
     len: AtomicUsize,
     requester_id: u16,
     active: bool,
@@ -204,6 +208,7 @@ impl ServiceClientSlot {
         Self {
             data: [0u8; BUFFER_SIZE],
             has_reply: AtomicBool::new(false),
+            overflow: AtomicBool::new(false),
             len: AtomicUsize::new(0),
             requester_id: 0,
             active: false,
@@ -294,9 +299,7 @@ unsafe fn confirm_entities(
         if ok {
             // Check all statuses are OK or OK_MATCHED
             for &status in &statuses[..count] {
-                if status != xrce_sys::UXR_STATUS_OK
-                    && status != xrce_sys::UXR_STATUS_OK_MATCHED
-                {
+                if status != xrce_sys::UXR_STATUS_OK && status != xrce_sys::UXR_STATUS_OK_MATCHED {
                     return Err(TransportError::ConnectionFailed);
                 }
             }
@@ -398,8 +401,11 @@ unsafe extern "C" fn request_callback(
         for slot in &mut SERVICE_SERVER_SLOTS {
             if slot.active && slot.replier_id == object_id.id {
                 if len > BUFFER_SIZE {
+                    slot.overflow.store(true, Ordering::Release);
+                    slot.has_request.store(true, Ordering::Release);
                     return;
                 }
+                slot.overflow.store(false, Ordering::Release);
                 let src = core::slice::from_raw_parts((*ub).iterator, len);
                 slot.data[..len].copy_from_slice(src);
                 slot.len.store(len, Ordering::Release);
@@ -430,8 +436,11 @@ unsafe extern "C" fn reply_callback(
         for slot in &mut SERVICE_CLIENT_SLOTS {
             if slot.active && slot.requester_id == object_id.id {
                 if len > BUFFER_SIZE {
+                    slot.overflow.store(true, Ordering::Release);
+                    slot.has_reply.store(true, Ordering::Release);
                     return;
                 }
+                slot.overflow.store(false, Ordering::Release);
                 let src = core::slice::from_raw_parts((*ub).iterator, len);
                 slot.data[..len].copy_from_slice(src);
                 slot.len.store(len, Ordering::Release);
@@ -980,7 +989,11 @@ impl Subscriber for XrceSubscriber {
     type Error = TransportError;
 
     fn has_data(&self) -> bool {
-        unsafe { SUBSCRIBER_SLOTS[self.slot_index].has_data.load(Ordering::Acquire) }
+        unsafe {
+            SUBSCRIBER_SLOTS[self.slot_index]
+                .has_data
+                .load(Ordering::Acquire)
+        }
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
@@ -1047,6 +1060,13 @@ impl ServiceServerTrait for XrceServiceServer {
 
             if !slot.has_request.load(Ordering::Acquire) {
                 return Ok(None);
+            }
+
+            // Check for overflow (request exceeded static buffer capacity)
+            if slot.overflow.load(Ordering::Acquire) {
+                slot.overflow.store(false, Ordering::Release);
+                slot.has_request.store(false, Ordering::Release);
+                return Err(TransportError::MessageTooLarge);
             }
 
             let len = slot.len.load(Ordering::Acquire);
@@ -1121,6 +1141,12 @@ impl ServiceClientTrait for XrceServiceClient {
                 xrce_sys::uxr_run_session_time(&raw mut SESSION, SERVICE_REPLY_TIMEOUT_MS);
 
                 if slot.has_reply.load(Ordering::Acquire) {
+                    // Check for overflow (reply exceeded static buffer capacity)
+                    if slot.overflow.load(Ordering::Acquire) {
+                        slot.overflow.store(false, Ordering::Release);
+                        slot.has_reply.store(false, Ordering::Release);
+                        return Err(TransportError::MessageTooLarge);
+                    }
                     let len = slot.len.load(Ordering::Acquire);
                     if len > reply_buf.len() {
                         slot.has_reply.store(false, Ordering::Release);

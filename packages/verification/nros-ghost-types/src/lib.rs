@@ -82,18 +82,15 @@ pub struct SubscriberBufferGhost {
 ///
 /// Models the state machine of the service server's static buffer in
 /// `nros-rmw-zenoh/src/shim.rs`. Each service server has one 1024-byte
-/// static buffer with atomic `has_request` and `len` fields.
+/// static buffer with atomic `has_request`, `overflow`, and `len` fields.
 ///
-/// Unlike `SubscriberBuffer`, there is no `overflow` flag — oversized
-/// requests are silently truncated by the callback (the copy length is
-/// `min(payload_len, buf_capacity)`).
-///
-/// Source (shim.rs:1306-1319):
+/// Source (shim.rs):
 /// ```ignore
 /// struct ServiceBuffer {
-///     data: [u8; 1024],
+///     data: [u8; SERVICE_BUFFER_SIZE],
 ///     keyexpr: [u8; 256],
 ///     has_request: AtomicBool,
+///     overflow: AtomicBool,
 ///     len: AtomicUsize,
 ///     keyexpr_len: AtomicUsize,
 ///     sequence_number: AtomicSeqCounter,
@@ -102,6 +99,8 @@ pub struct SubscriberBufferGhost {
 pub struct ServiceBufferGhost {
     /// Whether the buffer contains an unprocessed request
     pub has_request: bool,
+    /// Whether the last callback detected a request exceeding buffer capacity
+    pub overflow: bool,
     /// Length of valid request data in the buffer
     pub stored_len: usize,
     /// Static buffer capacity (always 1024 in production)

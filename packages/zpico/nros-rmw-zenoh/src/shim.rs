@@ -55,7 +55,8 @@ use nros_rmw::{
 
 use crate::keyexpr::{QosKeyExpr, ServiceKeyExpr, TopicKeyExpr};
 use crate::zpico::{
-    ShimContext, ShimError, ShimLivelinessToken, ShimZenohId, ZENOH_SHIM_RMW_GID_SIZE,
+    ShimContext, ShimError, ShimLivelinessToken, ShimZenohId, ZENOH_SHIM_MAX_QUERYABLES,
+    ZENOH_SHIM_MAX_SUBSCRIBERS, ZENOH_SHIM_RMW_GID_SIZE,
 };
 
 // Re-export for convenience
@@ -942,6 +943,12 @@ const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE;
 #[cfg(feature = "safety-e2e")]
 const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
 
+/// Default size for subscriber payload buffers (bytes).
+pub const SUBSCRIBER_BUFFER_SIZE: usize = 1024;
+
+/// Default size for service request buffers (bytes).
+pub const SERVICE_BUFFER_SIZE: usize = 1024;
+
 /// Shared buffer for subscriber callbacks
 ///
 /// This buffer stores the most recent message received by the subscriber,
@@ -949,7 +956,7 @@ const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
 /// The callback writes to this buffer, and `try_recv_raw` reads from it.
 struct SubscriberBuffer {
     /// Buffer for received payload data (statically allocated)
-    data: [u8; 1024],
+    data: [u8; SUBSCRIBER_BUFFER_SIZE],
     /// Buffer for received attachment data (33 or 37 bytes depending on safety-e2e)
     attachment: [u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE],
     /// Flag indicating new data is available
@@ -967,7 +974,7 @@ struct SubscriberBuffer {
 impl SubscriberBuffer {
     const fn new() -> Self {
         Self {
-            data: [0u8; 1024],
+            data: [0u8; SUBSCRIBER_BUFFER_SIZE],
             attachment: [0u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE],
             has_data: AtomicBool::new(false),
             overflow: AtomicBool::new(false),
@@ -977,20 +984,13 @@ impl SubscriberBuffer {
     }
 }
 
-/// Static buffers for subscribers (limited by ZENOH_SHIM_MAX_SUBSCRIBERS)
+/// Static buffers for subscribers.
 ///
-/// We use static buffers because the shim callback mechanism requires
-/// a static context pointer. This limits us to a fixed number of subscribers.
-static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; 8] = [
-    SubscriberBuffer::new(),
-    SubscriberBuffer::new(),
-    SubscriberBuffer::new(),
-    SubscriberBuffer::new(),
-    SubscriberBuffer::new(),
-    SubscriberBuffer::new(),
-    SubscriberBuffer::new(),
-    SubscriberBuffer::new(),
-];
+/// Count matches `ZENOH_SHIM_MAX_SUBSCRIBERS` from zpico-sys (the C shim
+/// allocates the same number of subscriber entries). We use static buffers
+/// because the shim callback mechanism requires a static context pointer.
+static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZENOH_SHIM_MAX_SUBSCRIBERS] =
+    [const { SubscriberBuffer::new() }; ZENOH_SHIM_MAX_SUBSCRIBERS];
 
 /// Next available buffer index
 static NEXT_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
@@ -1307,11 +1307,15 @@ impl Subscriber for ShimSubscriber {
 /// Shared buffer for service server callbacks
 struct ServiceBuffer {
     /// Buffer for received request data
-    data: [u8; 1024],
+    data: [u8; SERVICE_BUFFER_SIZE],
     /// Buffer for keyexpr (for reply)
     keyexpr: [u8; 256],
     /// Flag indicating new request is available
     has_request: AtomicBool,
+    /// Flag indicating the incoming request exceeded the buffer capacity.
+    /// Set by the callback when `payload_len > data.len()`. Checked by
+    /// `try_recv_request` which returns `Err(MessageTooLarge)` and clears this flag.
+    overflow: AtomicBool,
     /// Length of valid data
     len: AtomicUsize,
     /// Length of keyexpr
@@ -1323,9 +1327,10 @@ struct ServiceBuffer {
 impl ServiceBuffer {
     const fn new() -> Self {
         Self {
-            data: [0u8; 1024],
+            data: [0u8; SERVICE_BUFFER_SIZE],
             keyexpr: [0u8; 256],
             has_request: AtomicBool::new(false),
+            overflow: AtomicBool::new(false),
             len: AtomicUsize::new(0),
             keyexpr_len: AtomicUsize::new(0),
             sequence_number: AtomicSeqCounter::new(0),
@@ -1333,17 +1338,11 @@ impl ServiceBuffer {
     }
 }
 
-/// Static buffers for service servers (limited by ZENOH_SHIM_MAX_QUERYABLES)
-static mut SERVICE_BUFFERS: [ServiceBuffer; 8] = [
-    ServiceBuffer::new(),
-    ServiceBuffer::new(),
-    ServiceBuffer::new(),
-    ServiceBuffer::new(),
-    ServiceBuffer::new(),
-    ServiceBuffer::new(),
-    ServiceBuffer::new(),
-    ServiceBuffer::new(),
-];
+/// Static buffers for service servers.
+///
+/// Count matches `ZENOH_SHIM_MAX_QUERYABLES` from zpico-sys.
+static mut SERVICE_BUFFERS: [ServiceBuffer; ZENOH_SHIM_MAX_QUERYABLES] =
+    [const { ServiceBuffer::new() }; ZENOH_SHIM_MAX_QUERYABLES];
 
 /// Next available service buffer index
 static NEXT_SERVICE_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
@@ -1380,18 +1379,27 @@ extern "C" fn queryable_callback(
             .keyexpr_len
             .store(keyexpr_copy_len, Ordering::Release);
 
-        // Copy payload
-        let copy_len = payload_len.min(buffer.data.len());
-        if !payload.is_null() && payload_len > 0 {
-            core::ptr::copy_nonoverlapping(payload, buffer.data.as_mut_ptr(), copy_len);
+        if payload_len > buffer.data.len() {
+            // Request exceeds static buffer capacity — flag as overflow.
+            // Store keyexpr + sequence_number for diagnostics, but skip payload.
+            buffer.overflow.store(true, Ordering::Release);
+            let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+            buffer.sequence_number.store(seq, Ordering::Release);
+            buffer.has_request.store(true, Ordering::Release);
+        } else {
+            // Normal case: copy payload
+            buffer.overflow.store(false, Ordering::Release);
+            if !payload.is_null() && payload_len > 0 {
+                core::ptr::copy_nonoverlapping(payload, buffer.data.as_mut_ptr(), payload_len);
+            }
+            buffer.len.store(payload_len, Ordering::Release);
+
+            // Set sequence number
+            let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+            buffer.sequence_number.store(seq, Ordering::Release);
+
+            buffer.has_request.store(true, Ordering::Release);
         }
-        buffer.len.store(copy_len, Ordering::Release);
-
-        // Set sequence number
-        let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
-        buffer.sequence_number.store(seq, Ordering::Release);
-
-        buffer.has_request.store(true, Ordering::Release);
 
         // Wake the executor spin loop (if waiting)
         #[cfg(feature = "std")]
@@ -1479,6 +1487,13 @@ impl ServiceServerTrait for ShimServiceServer {
 
         if !buffer.has_request.load(Ordering::Acquire) {
             return Ok(None);
+        }
+
+        // Check for overflow (request exceeded static buffer capacity)
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_request.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
         }
 
         let len = buffer.len.load(Ordering::Acquire);
@@ -2022,14 +2037,14 @@ mod ghost_checks {
         assert!(!ghost.has_data);
         assert!(!ghost.overflow);
         assert_eq!(ghost.stored_len, 0);
-        assert_eq!(ghost.buf_capacity, 1024);
+        assert_eq!(ghost.buf_capacity, SUBSCRIBER_BUFFER_SIZE);
     }
 
     #[test]
     fn ghost_capacity_constant() {
         let buffer = SubscriberBuffer::new();
         let ghost = ghost_from_buffer(&buffer);
-        assert_eq!(ghost.buf_capacity, 1024);
+        assert_eq!(ghost.buf_capacity, SUBSCRIBER_BUFFER_SIZE);
     }
 
     // ========================================================================
@@ -2041,6 +2056,7 @@ mod ghost_checks {
     fn ghost_from_service_buffer(b: &ServiceBuffer) -> ServiceBufferGhost {
         ServiceBufferGhost {
             has_request: b.has_request.load(Ordering::Relaxed),
+            overflow: b.overflow.load(Ordering::Relaxed),
             stored_len: b.len.load(Ordering::Relaxed),
             buf_capacity: b.data.len(),
         }
@@ -2051,15 +2067,28 @@ mod ghost_checks {
         let buffer = ServiceBuffer::new();
         let ghost = ghost_from_service_buffer(&buffer);
         assert!(!ghost.has_request);
+        assert!(!ghost.overflow);
         assert_eq!(ghost.stored_len, 0);
-        assert_eq!(ghost.buf_capacity, 1024);
+        assert_eq!(ghost.buf_capacity, SERVICE_BUFFER_SIZE);
     }
 
     #[test]
     fn ghost_service_capacity_constant() {
         let buffer = ServiceBuffer::new();
         let ghost = ghost_from_service_buffer(&buffer);
-        assert_eq!(ghost.buf_capacity, 1024);
+        assert_eq!(ghost.buf_capacity, SERVICE_BUFFER_SIZE);
+    }
+
+    #[test]
+    fn svc_buf_overflow_signals_error() {
+        let buffer = ServiceBuffer::new();
+        // Simulate the callback detecting an oversized request
+        buffer.overflow.store(true, Ordering::Release);
+        buffer.has_request.store(true, Ordering::Release);
+
+        let ghost = ghost_from_service_buffer(&buffer);
+        assert!(ghost.has_request);
+        assert!(ghost.overflow);
     }
 
     // ========================================================================

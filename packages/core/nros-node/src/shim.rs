@@ -49,6 +49,9 @@ use nros_rmw_zenoh::{
     ShimPublisher, ShimServiceClient, ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport,
 };
 
+/// Default transmit buffer size for the shim publisher (bytes).
+const DEFAULT_SHIM_TX_BUFFER_SIZE: usize = 1024;
+
 // ============================================================================
 // Error Types
 // ============================================================================
@@ -590,7 +593,7 @@ impl<M: RosMessage> ShimNodePublisher<M> {
     ///
     /// Ok(()) on success, error on failure
     pub fn publish(&self, msg: &M) -> Result<(), ShimNodeError> {
-        self.publish_with_buffer::<1024>(msg)
+        self.publish_with_buffer::<DEFAULT_SHIM_TX_BUFFER_SIZE>(msg)
     }
 
     /// Publish a message with custom buffer size
