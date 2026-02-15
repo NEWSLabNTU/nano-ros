@@ -338,10 +338,12 @@ This provides include dirs, static library, and platform link libs (pthread, dl,
 Features are organized into three orthogonal axes:
 - **RMW backend** (select one): `rmw-zenoh` (zenoh-pico), `rmw-xrce` (XRCE-DDS)
 - **Platform** (select one): `platform-posix` (desktop), `platform-zephyr` (Zephyr RTOS), `platform-bare-metal` (bare-metal)
-- **ROS edition**: `ros-humble` (default), `ros-iron`
+- **ROS edition**: `ros-humble`, `ros-iron`
+
+**Orthogonality principle:** The three axes (RMW, platform, ROS edition) are strictly independent. A feature on one axis must NEVER imply a feature on another axis. For example, `platform-posix` must not activate `rmw-zenoh` or `ros-humble`. Compile-time checks enforce mutual exclusivity within each axis (e.g., cannot enable both `rmw-zenoh` and `rmw-xrce`), but selecting zero features on an axis is valid — the crate compiles with reduced functionality. This applies to all crates: `nros`, `nros-node`, `nros-c`, and board crates.
 
 Platform features are forwarded to the active RMW backend via Cargo `?` syntax (e.g., `nros-rmw-zenoh?/platform-posix`).
-Default features: `std`, `rmw-zenoh`, `platform-posix`, `ros-humble`.
+Default features: `std` only. Users must explicitly select RMW backend, platform, and ROS edition.
 
 ### Parameter Services
 Enable with `param-services` feature in `nros-node`:

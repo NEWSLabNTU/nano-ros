@@ -878,7 +878,7 @@ pub trait Transport {
 ///
 /// Embedded crates select a backend via feature flag:
 /// ```rust,ignore
-/// #[cfg(feature = "zenoh")]
+/// #[cfg(feature = "rmw-zenoh")]
 /// type DefaultRmw = nros_rmw_zenoh::ZenohRmw;
 /// ```
 ///

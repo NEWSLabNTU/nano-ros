@@ -6,7 +6,7 @@ license.workspace = true
 description = "Node abstraction for nros"
 
 [features]
-default = ["std", "ros-humble"]
+default = ["std"]
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "log"]
 alloc = ["nros-core/alloc"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]

@@ -40,20 +40,38 @@
 //! Three orthogonal feature axes:
 //!
 //! **RMW backend** (select one):
-//! - `rmw-zenoh` (default) - zenoh-pico transport backend
+//! - `rmw-zenoh` - zenoh-pico transport backend
 //! - `rmw-xrce` - XRCE-DDS transport backend
 //!
 //! **Platform** (select one):
-//! - `platform-posix` (default) - Desktop/Linux
+//! - `platform-posix` - Desktop/Linux
 //! - `platform-zephyr` - Zephyr RTOS
 //! - `platform-bare-metal` - Bare-metal targets
+//!
+//! **ROS version** (select one):
+//! - `ros-humble` - ROS 2 Humble
+//! - `ros-iron` - ROS 2 Iron (implies `ros-humble`)
 //!
 //! **Other**:
 //! - `std` (default) - Enable standard library support
 //! - `alloc` - Enable heap allocation without full std
-//! - `ros-humble` (default) / `ros-iron` - ROS 2 edition
 
 #![no_std]
+
+// ── Feature validation (mutual exclusivity) ─────────────────────────────
+// At most one RMW backend.
+#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+compile_error!("`rmw-zenoh` and `rmw-xrce` are mutually exclusive — select one RMW backend.");
+
+// At most one platform.
+#[cfg(any(
+    all(feature = "platform-posix", feature = "platform-zephyr"),
+    all(feature = "platform-posix", feature = "platform-bare-metal"),
+    all(feature = "platform-zephyr", feature = "platform-bare-metal"),
+))]
+compile_error!(
+    "`platform-posix`, `platform-zephyr`, and `platform-bare-metal` are mutually exclusive."
+);
 
 #[cfg(feature = "std")]
 extern crate std;

@@ -113,6 +113,7 @@ quality:
 
     echo ""
     echo "=== Clippy (workspace, no_std) ==="
+    # nros-c excluded: staticlib/cdylib requires panic handler (needs std)
     cargo clippy --workspace --no-default-features \
         --exclude nros-c -- {{CLIPPY_LINTS}}
     if [ $? -ne 0 ]; then
@@ -124,6 +125,7 @@ quality:
 
     echo ""
     echo "=== Clippy (embedded target) ==="
+    # nros-c excluded: staticlib/cdylib requires panic handler (needs std)
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
         --exclude nros-tests \
@@ -137,7 +139,6 @@ quality:
 
     echo ""
     echo "=== Unit Tests ==="
-    # Exclude nros-tests crate which contains integration tests requiring external setup
     cargo nextest run --workspace --exclude nros-tests --no-fail-fast
     if [ $? -ne 0 ]; then
         echo "[FAIL] Unit tests FAILED"
@@ -202,15 +203,15 @@ test-report:
 # =============================================================================
 
 # Build workspace (no_std, native)
-# Excludes nros-c which currently requires std
+# nros-c excluded from no_std build: staticlib/cdylib requires panic handler (needs std)
 build-workspace:
     cargo build --workspace --no-default-features --exclude nros-c
     cargo nextest run --workspace --no-run
 
 # Build workspace for embedded target (Cortex-M4F)
-# Excludes zpico-sys which requires native system headers for CMake build
-# Excludes nros-tests which requires std (test framework dependencies)
-# Excludes nros-c which currently requires std
+# Excludes zpico-sys: requires native system headers for CMake build
+# Excludes nros-tests: requires std (test framework dependencies)
+# Excludes nros-c: staticlib/cdylib requires panic handler (needs std)
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
@@ -222,15 +223,15 @@ format-workspace:
     cargo +nightly fmt
 
 # Check workspace: formatting and clippy (no_std, native)
-# Excludes nros-c which currently requires std
+# nros-c excluded from no_std check: staticlib/cdylib requires panic handler (needs std)
 check-workspace:
     cargo +nightly fmt --check
     cargo clippy --workspace --no-default-features --exclude nros-c -- {{CLIPPY_LINTS}}
 
 # Check workspace for embedded target (Cortex-M4F)
-# Excludes zpico-sys which requires native system headers for CMake build
-# Excludes nros-tests which requires std (test framework dependencies)
-# Excludes nros-c which currently requires std
+# Excludes zpico-sys: requires native system headers for CMake build
+# Excludes nros-tests: requires std (test framework dependencies)
+# Excludes nros-c: staticlib/cdylib requires panic handler (needs std)
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
@@ -241,6 +242,12 @@ check-workspace-embedded:
 # Check workspace with various feature combinations
 check-workspace-features:
     @echo "Checking feature combinations..."
+    @echo "  - nros: zenoh + posix + humble"
+    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble" -- {{CLIPPY_LINTS}}
+    @echo "  - nros: zenoh + posix + iron"
+    cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-iron" -- {{CLIPPY_LINTS}}
+    @echo "  - nros-c: zenoh + posix + humble"
+    cargo clippy -p nros-c --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble" -- {{CLIPPY_LINTS}}
     @echo "  - transport: rtic + sync-critical-section"
     cargo clippy -p nros-rmw --no-default-features --features "rtic,sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - node: rtic"
@@ -746,11 +753,14 @@ verify-kani:
     set -euo pipefail
     echo "=== Kani Verification ==="
     failed=0
-    for crate in nros-serdes nros-core nros-params nros-c; do
+    for crate in nros-serdes nros-core nros-params; do
         echo ""
         echo "--- Verifying $crate ---"
         cargo kani -p "$crate" || { echo "[FAIL] $crate"; failed=$((failed + 1)); }
     done
+    echo ""
+    echo "--- Verifying nros-c ---"
+    cargo kani -p nros-c --features "rmw-zenoh,platform-posix,ros-humble" || { echo "[FAIL] nros-c"; failed=$((failed + 1)); }
     echo ""
     if [ "$failed" -gt 0 ]; then
         echo "[FAIL] $failed crate(s) failed verification"
@@ -923,7 +933,7 @@ test-c verbose="": _init-test-logs
 # Build C examples only (no tests)
 build-examples-c: build-codegen-lib
     @echo "Building nros-c library..."
-    cargo build -p nros-c --release
+    cargo build -p nros-c --release --features "rmw-zenoh,platform-posix,ros-humble"
     @echo "Building native/c/zenoh/talker..."
     cd examples/native/c/zenoh/talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
     @echo "Building native/c/zenoh/listener..."

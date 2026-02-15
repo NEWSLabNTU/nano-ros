@@ -11,13 +11,20 @@ categories = ["embedded", "robotics", "api-bindings"]
 crate-type = ["staticlib", "cdylib"]
 
 [features]
-default = ["std", "platform-posix"]
+default = ["std"]
 std = ["alloc", "nros/std", "nros-rmw/std", "nros-rmw-zenoh?/std"]
 alloc = ["nros/alloc", "nros-rmw/alloc"]
 
-# Platform backends (select one)
-platform-posix = ["nros/platform-posix", "nros/rmw-zenoh", "dep:nros-rmw-zenoh", "nros-rmw-zenoh/platform-posix"]
-platform-zephyr = ["nros/platform-zephyr", "nros/rmw-zenoh", "dep:nros-rmw-zenoh", "nros-rmw-zenoh/platform-zephyr"]
+# RMW backend (currently only zenoh is supported for the C API)
+rmw-zenoh = ["nros/rmw-zenoh", "dep:nros-rmw-zenoh"]
+
+# Platform backends (select one — orthogonal to RMW and ROS version)
+platform-posix = ["nros/platform-posix", "nros-rmw-zenoh?/platform-posix"]
+platform-zephyr = ["nros/platform-zephyr", "nros-rmw-zenoh?/platform-zephyr"]
+
+# ROS edition (orthogonal to RMW and platform)
+ros-humble = ["nros/ros-humble"]
+ros-iron = ["nros/ros-iron"]
 
 [dependencies]
 nros = { path = "../nros", default-features = false }
