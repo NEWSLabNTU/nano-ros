@@ -168,8 +168,8 @@ check-workspace-features:
     cargo clippy -p nros --no-default-features --features "std,rmw-zenoh,platform-posix,ros-iron" -- {{CLIPPY_LINTS}}
     @echo "  - nros-c: zenoh + posix + humble"
     cargo clippy -p nros-c --no-default-features --features "std,rmw-zenoh,platform-posix,ros-humble" -- {{CLIPPY_LINTS}}
-    @echo "  - transport: rtic + sync-critical-section"
-    cargo clippy -p nros-rmw --no-default-features --features "rtic,sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
+    @echo "  - transport: sync-critical-section"
+    cargo clippy -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - node: rtic"
     cargo clippy -p nros-node --no-default-features --features "rtic" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - zenoh transport (std)"
@@ -239,9 +239,14 @@ check-examples:
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
+        env_prefix=""
         if [ "$platform" != "native" ]; then flags="--release"; fi
+        # ESP32 WiFi examples need SSID/PASSWORD env vars and nightly toolchain
+        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32" ]; then
+            env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
+        fi
         echo "  check $dir"
-        (cd "$dir" && cargo +nightly fmt --check && cargo clippy $flags -- {{CLIPPY_LINTS}})
+        (cd "$dir" && cargo +nightly fmt --check && eval $env_prefix cargo clippy $flags -- {{CLIPPY_LINTS}})
     done
     echo "All examples check passed!"
 
