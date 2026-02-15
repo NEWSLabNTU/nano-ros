@@ -65,7 +65,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "nano-ros-ghost-types"
+name = "nros-ghost-types"
 version = "0.1.0"
 
 [[package]]
@@ -75,7 +75,7 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-params",
- "nano-ros-transport",
+ "nros-rmw",
 ]
 
 [[package]]
@@ -86,6 +86,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-rmw"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+]
+
+[[package]]
 name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
@@ -93,19 +101,11 @@ dependencies = [
 ]
 
 [[package]]
-name = "nano-ros-transport"
-version = "0.1.0"
-dependencies = [
- "heapless",
- "nros-core",
-]
-
-[[package]]
-name = "nano-ros-verification"
+name = "nros-verification"
 version = "0.1.0"
 dependencies = [
  "nros-core",
- "nano-ros-ghost-types",
+ "nros-ghost-types",
  "nros-node",
  "nros-params",
  "nros-serdes",

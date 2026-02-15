@@ -233,3 +233,47 @@ pub enum ParameterValueGhost {
     /// heapless::Vec<String> payload abstracted
     StringArray,
 }
+
+// ======================================================================
+// E2E Safety Protocol
+// ======================================================================
+
+/// Ghost model of `IntegrityStatus` (nros-rmw/src/safety.rs).
+///
+/// `crc_valid: Option<bool>` is decomposed into two bools since ghost types
+/// use only primitives (no Option).
+///
+/// Source (safety.rs:61-73):
+/// ```ignore
+/// pub struct IntegrityStatus {
+///     pub gap: i64,
+///     pub duplicate: bool,
+///     pub crc_valid: Option<bool>,
+/// }
+/// ```
+pub struct IntegrityStatusGhost {
+    /// Sequence gap (0 = normal, >0 = messages lost)
+    pub gap: i64,
+    /// True if this message is a duplicate or out-of-order
+    pub duplicate: bool,
+    /// Models `crc_valid.is_some()`
+    pub crc_known: bool,
+    /// Models `crc_valid == Some(true)` (only meaningful when crc_known)
+    pub crc_ok: bool,
+}
+
+/// Ghost model of `SafetyValidator` (nros-rmw/src/safety.rs).
+///
+/// Source (safety.rs:92-97):
+/// ```ignore
+/// pub struct SafetyValidator {
+///     expected_seq: i64,
+///     initialized: bool,
+/// }
+/// ```
+pub struct SafetyValidatorGhost {
+    /// Next expected sequence number
+    pub expected_seq: i64,
+    /// Whether we've received at least one message
+    pub initialized: bool,
+}

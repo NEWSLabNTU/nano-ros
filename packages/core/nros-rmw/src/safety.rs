@@ -400,4 +400,143 @@ mod tests {
         let status = v.validate(6, Some(true));
         assert!(status.is_valid());
     }
+
+    // --- Ghost model correspondence tests ---
+
+    #[test]
+    fn ghost_integrity_status_correspondence() {
+        use nros_ghost_types::IntegrityStatusGhost;
+
+        // Case 1: Valid with CRC ok
+        let prod = IntegrityStatus {
+            gap: 0,
+            duplicate: false,
+            crc_valid: Some(true),
+        };
+        let ghost = IntegrityStatusGhost {
+            gap: prod.gap,
+            duplicate: prod.duplicate,
+            crc_known: prod.crc_valid.is_some(),
+            crc_ok: prod.crc_valid == Some(true),
+        };
+        assert_eq!(ghost.gap, 0);
+        assert!(!ghost.duplicate);
+        assert!(ghost.crc_known);
+        assert!(ghost.crc_ok);
+
+        // Case 2: CRC mismatch
+        let prod = IntegrityStatus {
+            gap: 0,
+            duplicate: false,
+            crc_valid: Some(false),
+        };
+        let ghost = IntegrityStatusGhost {
+            gap: prod.gap,
+            duplicate: prod.duplicate,
+            crc_known: prod.crc_valid.is_some(),
+            crc_ok: prod.crc_valid == Some(true),
+        };
+        assert!(ghost.crc_known);
+        assert!(!ghost.crc_ok);
+
+        // Case 3: No CRC (interop)
+        let prod = IntegrityStatus {
+            gap: 0,
+            duplicate: false,
+            crc_valid: None,
+        };
+        let ghost = IntegrityStatusGhost {
+            gap: prod.gap,
+            duplicate: prod.duplicate,
+            crc_known: prod.crc_valid.is_some(),
+            crc_ok: prod.crc_valid == Some(true),
+        };
+        assert!(!ghost.crc_known);
+        assert!(!ghost.crc_ok);
+
+        // Verify is_valid correspondence for all cases
+        // is_valid: gap == 0 && !duplicate && crc_valid != Some(false)
+        // ghost:    gap == 0 && !duplicate && !(crc_known && !crc_ok)
+        let cases: &[(i64, bool, Option<bool>)] = &[
+            (0, false, Some(true)),  // valid
+            (0, false, Some(false)), // invalid: CRC bad
+            (0, false, None),        // valid: no CRC
+            (3, false, Some(true)),  // invalid: gap
+            (0, true, Some(true)),   // invalid: duplicate
+        ];
+        for &(gap, duplicate, crc_valid) in cases {
+            let prod = IntegrityStatus {
+                gap,
+                duplicate,
+                crc_valid,
+            };
+            let ghost = IntegrityStatusGhost {
+                gap: prod.gap,
+                duplicate: prod.duplicate,
+                crc_known: prod.crc_valid.is_some(),
+                crc_ok: prod.crc_valid == Some(true),
+            };
+            let prod_valid = prod.is_valid();
+            let ghost_valid =
+                ghost.gap == 0 && !ghost.duplicate && !(ghost.crc_known && !ghost.crc_ok);
+            assert_eq!(
+                prod_valid, ghost_valid,
+                "Mismatch for gap={}, dup={}, crc={:?}: prod={}, ghost={}",
+                gap, duplicate, crc_valid, prod_valid, ghost_valid
+            );
+        }
+    }
+
+    #[test]
+    fn ghost_validator_correspondence() {
+        use nros_ghost_types::SafetyValidatorGhost;
+
+        // Initial state
+        let v = SafetyValidator::new();
+        let ghost = SafetyValidatorGhost {
+            expected_seq: v.expected_seq,
+            initialized: v.initialized,
+        };
+        assert_eq!(ghost.expected_seq, 0);
+        assert!(!ghost.initialized);
+
+        // After first message (seq 5)
+        let mut v = SafetyValidator::new();
+        let status = v.validate(5, Some(true));
+        let ghost = SafetyValidatorGhost {
+            expected_seq: v.expected_seq,
+            initialized: v.initialized,
+        };
+        assert_eq!(ghost.expected_seq, 6);
+        assert!(ghost.initialized);
+        assert_eq!(status.gap, 0);
+
+        // Normal message (seq 6)
+        let status = v.validate(6, Some(true));
+        let ghost = SafetyValidatorGhost {
+            expected_seq: v.expected_seq,
+            initialized: v.initialized,
+        };
+        assert_eq!(ghost.expected_seq, 7);
+        assert!(status.gap == 0 && !status.duplicate);
+
+        // Gap (seq 10, expected 7 → gap 3)
+        let status = v.validate(10, Some(true));
+        let ghost = SafetyValidatorGhost {
+            expected_seq: v.expected_seq,
+            initialized: v.initialized,
+        };
+        assert_eq!(ghost.expected_seq, 11);
+        assert_eq!(status.gap, 3);
+
+        // Duplicate (seq 5, expected 11)
+        let status = v.validate(5, Some(true));
+        let ghost_after_dup = SafetyValidatorGhost {
+            expected_seq: v.expected_seq,
+            initialized: v.initialized,
+        };
+        // expected_seq unchanged on duplicate
+        assert_eq!(ghost_after_dup.expected_seq, ghost.expected_seq);
+        assert!(status.duplicate);
+    }
 }

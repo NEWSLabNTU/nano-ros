@@ -262,13 +262,13 @@ Validate the full safety protocol stack end-to-end. Tests are split into two cat
 - `IntegrityStatus::is_valid()` correctness proof (no false positives)
 
 **Work items:**
-- [ ] Add safety module ghost types to `nros-ghost-types`
-- [ ] Proof: `crc32_iso_hdlc(data) == crc32_iso_hdlc(data)` (determinism — same input → same output)
-- [ ] Proof: for all `data`, all `pos` in `0..data.len()*8`, flipping bit at `pos` changes CRC
-- [ ] Proof: `SafetyValidator` increments `expected_seq` monotonically on normal messages
-- [ ] Proof: gap detection is complete — if `msg_seq > expected_seq`, then `status.gap == msg_seq - expected_seq`
-- [ ] Proof: `is_valid()` returns `true` iff `gap == 0 && !duplicate && crc_valid != Some(false)`
-- [ ] All proofs pass `just verify-verus`
+- [x] Add safety module ghost types to `nros-ghost-types`
+- [x] Proof: `crc32_iso_hdlc(data) == crc32_iso_hdlc(data)` (determinism — same input → same output)
+- [x] Proof: for all `data`, all `pos` in `0..data.len()*8`, flipping bit at `pos` changes CRC
+- [x] Proof: `SafetyValidator` increments `expected_seq` monotonically on normal messages
+- [x] Proof: gap detection is complete — if `msg_seq > expected_seq`, then `status.gap == msg_seq - expected_seq`
+- [x] Proof: `is_valid()` returns `true` iff `gap == 0 && !duplicate && crc_valid != Some(false)`
+- [x] All proofs pass `just verify-verus`
 
 **Passing criteria:**
 - `just verify-verus` passes with all 5 new proofs (72+ total proofs)
