@@ -4,10 +4,7 @@
 //!   XRCE_SERIAL_PTY  — PTY device path (required)
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
-use nros_core::RosMessage;
-use nros_rmw::{Publisher, QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
-use nros_rmw_xrce::XrceRmw;
-use nros_rmw_xrce::posix_serial::init_posix_serial_transport;
+use nros::xrce::*;
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -20,27 +17,16 @@ fn main() {
 
     eprintln!("XRCE Serial Talker: pty={}, domain={}", pty_path, domain_id);
 
-    // Initialize serial transport
-    unsafe {
-        init_posix_serial_transport(&pty_path);
-    }
-
-    // Open RMW session
-    let config = RmwConfig {
-        locator: &pty_path,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_serial_talker",
-        namespace: "",
-    };
-
-    let mut session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    // Initialize transport and open session
+    init_posix_serial(&pty_path);
+    let mut executor = XrceExecutor::new("xrce_serial_talker", domain_id)
+        .expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create publisher
-    let topic = TopicInfo::new("/chatter", Int32::TYPE_NAME, "");
-    let publisher = session
-        .create_publisher(&topic, QosSettings::RELIABLE)
+    let mut node = executor.create_node();
+    let publisher = node
+        .create_publisher::<Int32>("/chatter")
         .expect("Failed to create publisher");
     eprintln!("Publisher created on /chatter");
 
@@ -54,16 +40,16 @@ fn main() {
                 println!("Published: {}", i);
             }
             Err(e) => {
-                eprintln!("Publish error: {:?}", e);
+                eprintln!("Publish error: {}", e);
             }
         }
 
         // Drive the XRCE session (flush output)
-        session.spin_once(100);
+        executor.spin_once(100);
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 
     // Clean up
-    let _ = session.close();
+    let _ = executor.close();
     eprintln!("Talker done");
 }

@@ -5,10 +5,7 @@
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_MSG_COUNT   — Messages to receive before exiting (default: 5)
 
-use nros_core::RosMessage;
-use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, Subscriber, TopicInfo};
-use nros_rmw_xrce::XrceRmw;
-use nros_rmw_xrce::posix_serial::init_posix_serial_transport;
+use nros::xrce::*;
 use std::time::Instant;
 use std_msgs::msg::Int32;
 
@@ -29,27 +26,16 @@ fn main() {
         pty_path, domain_id, msg_count
     );
 
-    // Initialize serial transport
-    unsafe {
-        init_posix_serial_transport(&pty_path);
-    }
-
-    // Open RMW session
-    let config = RmwConfig {
-        locator: &pty_path,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_serial_listener",
-        namespace: "",
-    };
-
-    let mut session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    // Initialize transport and open session
+    init_posix_serial(&pty_path);
+    let mut executor = XrceExecutor::new("xrce_serial_listener", domain_id)
+        .expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create subscriber
-    let topic = TopicInfo::new("/chatter", Int32::TYPE_NAME, "");
-    let mut subscriber = session
-        .create_subscriber(&topic, QosSettings::RELIABLE)
+    let mut node = executor.create_node();
+    let mut subscription = node
+        .create_subscription::<Int32>("/chatter")
         .expect("Failed to create subscriber");
     eprintln!("Subscriber created on /chatter");
 
@@ -62,17 +48,17 @@ fn main() {
 
     while received < msg_count && start.elapsed() < timeout {
         // Drive the XRCE session
-        session.spin_once(100);
+        executor.spin_once(100);
 
         // Try to receive a typed message
-        match subscriber.try_recv::<Int32>(&mut buf) {
+        match subscription.try_recv(&mut buf) {
             Ok(Some(msg)) => {
                 println!("Received: {}", msg.data);
                 received += 1;
             }
             Ok(None) => {}
             Err(e) => {
-                eprintln!("Receive error: {:?}", e);
+                eprintln!("Receive error: {}", e);
             }
         }
     }
@@ -85,5 +71,5 @@ fn main() {
     }
 
     // Clean up
-    let _ = session.close();
+    let _ = executor.close();
 }

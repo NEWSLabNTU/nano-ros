@@ -114,6 +114,9 @@ pub mod rtic;
 #[cfg(feature = "rmw-zenoh")]
 pub mod shim;
 
+#[cfg(feature = "rmw-xrce")]
+pub mod xrce;
+
 #[cfg(feature = "param-services")]
 pub mod parameter_services;
 
@@ -184,6 +187,9 @@ pub use executor::{
 
 #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use executor::{NodeHandle, NodeState, PollingExecutor, SpinPeriodPollingResult};
+
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc", feature = "safety-e2e"))]
+pub use executor::SubscriptionCallbackWithSafety;
 
 #[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 pub use executor::{BasicExecutor, SpinPeriodResult};

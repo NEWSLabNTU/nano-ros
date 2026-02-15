@@ -9,13 +9,11 @@
 //!   XRCE_DOMAIN_ID      — ROS domain ID (default: 0)
 //!   XRCE_FIBONACCI_ORDER — Fibonacci sequence order to request (default: 5)
 
-use nros_core::{CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, RosAction, Serialize};
-use nros_rmw::{
-    QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceInfo, Session, SessionMode, Subscriber,
-    TopicInfo,
+use nros::xrce::*;
+use nros::{
+    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, QosSettings, RosAction,
+    Serialize, ServiceClientTrait, ServiceInfo, Session, Subscriber, TopicInfo, XrceSession,
 };
-use nros_rmw_xrce::XrceRmw;
-use nros_rmw_xrce::posix_udp::init_posix_udp_transport;
 use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
@@ -37,19 +35,9 @@ fn main() {
         agent_addr, domain_id, order
     );
 
-    unsafe {
-        init_posix_udp_transport(&agent_addr);
-    }
-
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_action_client",
-        namespace: "",
-    };
-
-    let mut session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    init_posix_udp(&agent_addr);
+    let mut executor = XrceExecutor::new("xrce_action_client", domain_id)
+        .expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Build DDS type names for action sub-entities
@@ -58,21 +46,21 @@ fn main() {
     let get_result_type = format!("{}GetResult_", action_type);
     let feedback_type = format!("{}FeedbackMessage_", action_type);
 
-    // Create send_goal service client
+    // Create action sub-entities via raw session (action protocol is manual)
+    let session: &mut XrceSession = executor.session_mut();
+
     let send_goal_info = ServiceInfo::new("/fibonacci/_action/send_goal", &send_goal_type, "");
     let mut send_goal_client = session
         .create_service_client(&send_goal_info)
         .expect("Failed to create send_goal client");
     eprintln!("send_goal service client created");
 
-    // Create get_result service client
     let get_result_info = ServiceInfo::new("/fibonacci/_action/get_result", &get_result_type, "");
     let mut get_result_client = session
         .create_service_client(&get_result_info)
         .expect("Failed to create get_result client");
     eprintln!("get_result service client created");
 
-    // Create feedback subscriber
     let feedback_topic = TopicInfo::new("/fibonacci/_action/feedback", &feedback_type, "");
     let mut feedback_subscriber = session
         .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
@@ -109,7 +97,7 @@ fn main() {
             println!("Goal accepted: {:?}", server_goal_id);
         } else {
             println!("Goal rejected");
-            let _ = session.close();
+            let _ = executor.close();
             return;
         }
     }
@@ -120,7 +108,7 @@ fn main() {
     let feedback_timeout = std::time::Duration::from_secs(15);
 
     while start.elapsed() < feedback_timeout {
-        session.spin_once(100);
+        executor.spin_once(100);
 
         // Check for feedback: GoalId(16 bytes) + FibonacciFeedback
         match feedback_subscriber.try_recv_raw(&mut feedback_buf) {
@@ -152,7 +140,7 @@ fn main() {
 
     // Small delay to let server finish storing result
     for _ in 0..5 {
-        session.spin_once(100);
+        executor.spin_once(100);
     }
 
     // --- Step 3: Get result ---
@@ -180,5 +168,5 @@ fn main() {
     }
 
     println!("Action client done");
-    let _ = session.close();
+    let _ = executor.close();
 }

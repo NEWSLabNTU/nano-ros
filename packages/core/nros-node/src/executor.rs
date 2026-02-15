@@ -255,6 +255,41 @@ impl<M: RosMessage> SubscriptionCallbackWithInfo<M> for fn(&M, &MessageInfo) {
     }
 }
 
+/// Trait for subscription callbacks that also receive E2E safety integrity status
+///
+/// Implemented for:
+/// - Function pointers `fn(&M, &IntegrityStatus)` (no_std compatible, when alloc is disabled)
+/// - Any `FnMut(&M, &IntegrityStatus) + Send` (includes fn pointers and closures, requires alloc)
+///
+/// # Example
+///
+/// ```ignore
+/// node.create_subscription_with_safety::<Int32, _>("/topic", |msg, status| {
+///     println!("Received {} (valid={})", msg.data, status.is_valid());
+/// })?;
+/// ```
+#[cfg(feature = "safety-e2e")]
+pub trait SubscriptionCallbackWithSafety<M: RosMessage>: Send {
+    /// Invoke the callback with a message and its integrity status
+    fn call(&mut self, msg: &M, status: &nros_rmw::IntegrityStatus);
+}
+
+#[cfg(all(feature = "safety-e2e", feature = "alloc"))]
+impl<M: RosMessage, F: FnMut(&M, &nros_rmw::IntegrityStatus) + Send>
+    SubscriptionCallbackWithSafety<M> for F
+{
+    fn call(&mut self, msg: &M, status: &nros_rmw::IntegrityStatus) {
+        (self)(msg, status)
+    }
+}
+
+#[cfg(all(feature = "safety-e2e", not(feature = "alloc")))]
+impl<M: RosMessage> SubscriptionCallbackWithSafety<M> for fn(&M, &nros_rmw::IntegrityStatus) {
+    fn call(&mut self, msg: &M, status: &nros_rmw::IntegrityStatus) {
+        (self)(msg, status)
+    }
+}
+
 /// Trait for timer callbacks
 ///
 /// Implemented for:
@@ -447,6 +482,37 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
         match self.subscriber.try_recv_with_info() {
             Ok(Some((msg, info))) => {
                 self.callback.call(&msg, &info);
+                Ok(true)
+            }
+            Ok(None) => Ok(false),
+            Err(_) => Err(RclrsError::DeserializationFailed),
+        }
+    }
+}
+
+/// Subscription entry combining subscriber and callback with safety integrity status
+#[cfg(all(feature = "rmw-zenoh", feature = "safety-e2e"))]
+pub(crate) struct SubscriptionEntryWithSafety<
+    M: RosMessage,
+    const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE,
+    C: SubscriptionCallbackWithSafety<M> = fn(&M, &nros_rmw::IntegrityStatus),
+> {
+    pub subscriber: ConnectedSubscriber<M, RX_BUF>,
+    pub callback: C,
+}
+
+#[cfg(all(feature = "rmw-zenoh", feature = "safety-e2e"))]
+impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallbackWithSafety<M>>
+    ErasedCallback for SubscriptionEntryWithSafety<M, RX_BUF, C>
+{
+    fn has_data(&self) -> bool {
+        self.subscriber.has_data()
+    }
+
+    fn try_process(&mut self) -> Result<bool, RclrsError> {
+        match self.subscriber.try_recv_safe() {
+            Ok(Some((msg, status))) => {
+                self.callback.call(&msg, &status);
                 Ok(true)
             }
             Ok(None) => Ok(false),
@@ -788,6 +854,53 @@ impl<
             .map_err(|_| RclrsError::SubscriberCreationFailed)?;
 
         let entry = SubscriptionEntryWithInfo {
+            subscriber,
+            callback,
+        };
+
+        let index = self.node.subscriptions.len();
+        self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+
+        Ok(SubscriptionHandle::new(index))
+    }
+
+    /// Create a subscription with a callback that receives E2E safety integrity status.
+    ///
+    /// The callback will be invoked during `executor.spin_once()` when messages arrive.
+    /// The callback receives both the message and `IntegrityStatus` containing
+    /// sequence gap detection, duplicate detection, and CRC validation results.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// node.create_subscription_with_safety::<Int32, _>(
+    ///     SubscriberOptions::new("/chatter").reliable().keep_last(10),
+    ///     |msg, status| {
+    ///         println!("Received {} (valid={})", msg.data, status.is_valid());
+    ///     },
+    /// )?;
+    /// ```
+    #[cfg(all(feature = "alloc", feature = "safety-e2e"))]
+    pub fn create_subscription_with_safety<'b, M, C>(
+        &mut self,
+        options: impl IntoSubscriberOptions<'b>,
+        callback: C,
+    ) -> Result<SubscriptionHandle, RclrsError>
+    where
+        M: RosMessage + Deserialize + Send + 'static,
+        C: SubscriptionCallbackWithSafety<M> + 'static,
+    {
+        if self.node.subscriptions.len() >= MAX_SUBS {
+            return Err(RclrsError::SubscriptionStorageFull);
+        }
+
+        let subscriber = self
+            .node
+            .inner
+            .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(options.into_subscriber_options())
+            .map_err(|_| RclrsError::SubscriberCreationFailed)?;
+
+        let entry = SubscriptionEntryWithSafety {
             subscriber,
             callback,
         };

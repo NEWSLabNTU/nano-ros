@@ -26,7 +26,7 @@ alloc = [
 
 # RMW backend (select one)
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
-rmw-xrce = ["dep:nros-rmw-xrce"]
+rmw-xrce = ["dep:nros-rmw-xrce", "nros-node/rmw-xrce"]
 
 # Platform (select one; forwarded to active backend via ? syntax)
 platform-posix = [
@@ -42,8 +42,8 @@ platform-bare-metal = [
 ]
 
 # XRCE transport refinements (posix-only)
-xrce-udp = ["nros-rmw-xrce?/posix-udp"]
-xrce-serial = ["nros-rmw-xrce?/posix-serial"]
+xrce-udp = ["nros-rmw-xrce?/posix-udp", "nros-node/posix-udp"]
+xrce-serial = ["nros-rmw-xrce?/posix-serial", "nros-node/posix-serial"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-node/safety-e2e", "nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]

@@ -6,10 +6,7 @@
 //!   XRCE_REQUEST_COUNT   — Number of requests to send (default: 3)
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use nros_core::RosService;
-use nros_rmw::{Rmw, RmwConfig, ServiceClientTrait, ServiceInfo, Session, SessionMode};
-use nros_rmw_xrce::XrceRmw;
-use nros_rmw_xrce::posix_udp::init_posix_udp_transport;
+use nros::xrce::*;
 
 fn main() {
     let agent_addr =
@@ -28,27 +25,16 @@ fn main() {
         agent_addr, domain_id, request_count
     );
 
-    // Initialize transport
-    unsafe {
-        init_posix_udp_transport(&agent_addr);
-    }
-
-    // Open RMW session
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_service_client",
-        namespace: "",
-    };
-
-    let mut session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    // Initialize transport and open session
+    init_posix_udp(&agent_addr);
+    let mut executor = XrceExecutor::new("xrce_service_client", domain_id)
+        .expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create service client
-    let service_info = ServiceInfo::new("/add_two_ints", AddTwoInts::SERVICE_NAME, "");
-    let mut client = session
-        .create_service_client(&service_info)
+    let mut node = executor.create_node();
+    let mut client = node
+        .create_service_client::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create service client");
     eprintln!("Service client created for /add_two_ints");
 
@@ -68,15 +54,15 @@ fn main() {
         println!("Sent request: a={} b={}", a, b);
 
         // Drive session before call to ensure connectivity
-        session.spin_once(100);
+        executor.spin_once(100);
 
-        match client.call::<AddTwoInts>(&request, &mut req_buf, &mut reply_buf) {
+        match client.call(&request, &mut req_buf, &mut reply_buf) {
             Ok(reply) => {
                 println!("Received reply: sum={}", reply.sum);
                 success_count += 1;
             }
             Err(e) => {
-                eprintln!("Service call error: {:?}", e);
+                eprintln!("Service call error: {}", e);
             }
         }
 
@@ -87,5 +73,5 @@ fn main() {
     println!("Completed {}/{} requests", success_count, request_count);
 
     // Clean up
-    let _ = session.close();
+    let _ = executor.close();
 }

@@ -44,21 +44,23 @@ fn main() {
     info!("nros Native Listener (Zenoh + Safety E2E)");
     info!("=============================================");
 
-    // Use ConnectedNode directly for manual polling with try_recv_safe()
-    let locator = std::env::var("ZENOH_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
+    // Create context using rclrs-style API
+    let context = match Context::from_env() {
+        Ok(ctx) => ctx,
+        Err(e) => {
+            log::error!("Failed to create context: {:?}", e);
+            std::process::exit(1);
+        }
+    };
 
-    #[allow(deprecated)]
-    let mut node: ConnectedNode = match ConnectedNode::new(
-        NodeConfig::new("listener", "/demo"),
-        &nros::TransportConfig {
-            locator: Some(&locator),
-            mode: SessionMode::Client,
-            properties: &[],
-        },
-    ) {
-        Ok(n) => {
+    // Create executor
+    let mut executor = context.create_basic_executor();
+
+    // Create node through executor
+    let mut node = match executor.create_node("listener".namespace("/demo")) {
+        Ok(node) => {
             info!("Node created: listener in namespace /demo");
-            n
+            node
         }
         Err(e) => {
             log::error!("Failed to create node: {:?}", e);
@@ -66,43 +68,38 @@ fn main() {
         }
     };
 
-    let mut subscriber = match node.create_subscriber_sized::<Int32, 1024>(
+    // Create subscription with safety callback
+    let count = std::sync::atomic::AtomicU64::new(0);
+    match node.create_subscription_with_safety::<Int32, _>(
         SubscriberOptions::new("/chatter").reliable().keep_last(10),
+        move |msg: &Int32, status: &nros::IntegrityStatus| {
+            let n = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+            let crc_str = match status.crc_valid {
+                Some(true) => "ok",
+                Some(false) => "FAIL",
+                None => "none",
+            };
+            info!(
+                "[{}] Received: data={} [SAFETY] seq_gap={} dup={} crc={}",
+                n, msg.data, status.gap, status.duplicate, crc_str,
+            );
+        },
     ) {
-        Ok(s) => {
-            info!("Subscriber created for topic: /chatter");
-            s
+        Ok(_handle) => {
+            info!("Subscriber created for topic: /chatter (safety-e2e mode)");
         }
         Err(e) => {
             log::error!("Failed to create subscriber: {:?}", e);
             std::process::exit(1);
         }
-    };
+    }
 
     info!("Waiting for Int32 messages on /chatter (safety-e2e mode)...");
     info!("(Press Ctrl+C to exit)");
 
-    let mut count = 0u64;
-    loop {
-        match subscriber.try_recv_safe() {
-            Ok(Some((msg, status))) => {
-                count += 1;
-                let crc_str = match status.crc_valid {
-                    Some(true) => "ok",
-                    Some(false) => "FAIL",
-                    None => "none",
-                };
-                info!(
-                    "[{}] Received: data={} [SAFETY] seq_gap={} dup={} crc={}",
-                    count, msg.data, status.gap, status.duplicate, crc_str,
-                );
-            }
-            Ok(None) => {}
-            Err(e) => {
-                log::error!("Receive error: {:?}", e);
-            }
-        }
-        std::thread::sleep(std::time::Duration::from_millis(100));
+    // Run the executor - callbacks will be invoked automatically
+    if let Err(e) = executor.spin(SpinOptions::default()) {
+        log::error!("Spin error: {:?}", e);
     }
 }
 

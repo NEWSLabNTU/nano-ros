@@ -409,6 +409,7 @@ dependencies = [
  "nros-core",
  "nros-params",
  "nros-rmw",
+ "nros-rmw-xrce",
  "nros-rmw-zenoh",
 ]
 

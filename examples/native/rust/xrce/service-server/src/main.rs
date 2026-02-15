@@ -6,10 +6,7 @@
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
 use example_interfaces::srv::AddTwoInts;
-use nros_core::RosService;
-use nros_rmw::{Rmw, RmwConfig, ServiceInfo, ServiceServerTrait, Session, SessionMode};
-use nros_rmw_xrce::XrceRmw;
-use nros_rmw_xrce::posix_udp::init_posix_udp_transport;
+use nros::xrce::*;
 use std::time::Instant;
 
 fn main() {
@@ -29,27 +26,16 @@ fn main() {
         agent_addr, domain_id, timeout_secs
     );
 
-    // Initialize transport
-    unsafe {
-        init_posix_udp_transport(&agent_addr);
-    }
-
-    // Open RMW session
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_service_server",
-        namespace: "",
-    };
-
-    let mut session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    // Initialize transport and open session
+    init_posix_udp(&agent_addr);
+    let mut executor = XrceExecutor::new("xrce_service_server", domain_id)
+        .expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create service server
-    let service_info = ServiceInfo::new("/add_two_ints", AddTwoInts::SERVICE_NAME, "");
-    let mut server = session
-        .create_service_server(&service_info)
+    let mut node = executor.create_node();
+    let mut server = node
+        .create_service_server::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create service server");
     eprintln!("Service server created on /add_two_ints");
 
@@ -64,10 +50,10 @@ fn main() {
 
     while start.elapsed() < timeout {
         // Drive the XRCE session
-        session.spin_once(100);
+        executor.spin_once(100);
 
         // Try to handle a request
-        match server.handle_request::<AddTwoInts>(&mut req_buf, &mut reply_buf, |req| {
+        match server.handle_request(&mut req_buf, &mut reply_buf, |req| {
             println!("Received request: a={} b={}", req.a, req.b);
             let sum = req.a + req.b;
             let reply = example_interfaces::srv::AddTwoIntsResponse { sum };
@@ -76,15 +62,15 @@ fn main() {
         }) {
             Ok(true) => {
                 // Flush the reply
-                session.spin_once(100);
+                executor.spin_once(100);
             }
             Ok(false) => {}
             Err(e) => {
-                eprintln!("Handle request error: {:?}", e);
+                eprintln!("Handle request error: {}", e);
             }
         }
     }
 
     eprintln!("Server timeout, exiting");
-    let _ = session.close();
+    let _ = executor.close();
 }

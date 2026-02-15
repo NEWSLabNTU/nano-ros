@@ -9,15 +9,11 @@
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
-use nros_core::{
-    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, RosAction, Serialize, heapless,
+use nros::xrce::*;
+use nros::{
+    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, Publisher, QosSettings, RosAction,
+    Serialize, ServiceInfo, ServiceServerTrait, Session, TopicInfo, XrceSession,
 };
-use nros_rmw::{
-    Publisher, QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceServerTrait, Session, SessionMode,
-    TopicInfo,
-};
-use nros_rmw_xrce::XrceRmw;
-use nros_rmw_xrce::posix_udp::init_posix_udp_transport;
 use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
@@ -39,19 +35,9 @@ fn main() {
         agent_addr, domain_id, timeout_secs
     );
 
-    unsafe {
-        init_posix_udp_transport(&agent_addr);
-    }
-
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_action_server",
-        namespace: "",
-    };
-
-    let mut session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    init_posix_udp(&agent_addr);
+    let mut executor = XrceExecutor::new("xrce_action_server", domain_id)
+        .expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Build DDS type names for action sub-entities
@@ -60,21 +46,21 @@ fn main() {
     let get_result_type = format!("{}GetResult_", action_type);
     let feedback_type = format!("{}FeedbackMessage_", action_type);
 
-    // Create send_goal service server
+    // Create action sub-entities via raw session (action protocol is manual)
+    let session: &mut XrceSession = executor.session_mut();
+
     let send_goal_info = ServiceInfo::new("/fibonacci/_action/send_goal", &send_goal_type, "");
     let mut send_goal_server = session
         .create_service_server(&send_goal_info)
         .expect("Failed to create send_goal server");
     eprintln!("send_goal service server created");
 
-    // Create get_result service server
     let get_result_info = ServiceInfo::new("/fibonacci/_action/get_result", &get_result_type, "");
     let mut get_result_server = session
         .create_service_server(&get_result_info)
         .expect("Failed to create get_result server");
     eprintln!("get_result service server created");
 
-    // Create feedback publisher
     let feedback_topic = TopicInfo::new("/fibonacci/_action/feedback", &feedback_type, "");
     let feedback_publisher = session
         .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
@@ -94,7 +80,7 @@ fn main() {
     let mut feedback_buf = [0u8; 512];
 
     while start.elapsed() < timeout {
-        session.spin_once(100);
+        executor.spin_once(100);
 
         // --- Handle send_goal requests ---
         if let Some(request) = send_goal_server
@@ -126,10 +112,10 @@ fn main() {
                 send_goal_server.send_reply(seq, &reply_buf[..len]).unwrap();
 
                 println!("Goal accepted: {:?}", goal_id);
-                session.spin_once(100); // flush reply
+                executor.spin_once(100); // flush reply
 
                 // Execute Fibonacci computation with feedback
-                let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
+                let mut sequence: nros::heapless::Vec<i32, 64> = nros::heapless::Vec::new();
 
                 for i in 0..=order {
                     let val = if i <= 1 {
@@ -151,7 +137,7 @@ fn main() {
                     let _ = feedback_publisher.publish_raw(&feedback_buf[..fb_len]);
 
                     println!("Feedback: step={}, sequence_len={}", i, sequence.len());
-                    session.spin_once(100); // flush feedback
+                    executor.spin_once(100); // flush feedback
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
 
@@ -198,11 +184,11 @@ fn main() {
                 get_result_server
                     .send_reply(seq, &reply_buf[..len])
                     .unwrap();
-                session.spin_once(100);
+                executor.spin_once(100);
             }
         }
     }
 
     eprintln!("Server timeout, exiting");
-    let _ = session.close();
+    let _ = executor.close();
 }

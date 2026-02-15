@@ -67,6 +67,9 @@ pub use nros_core::{
     PUBLISHER_GID_SIZE, RosMessage, RosService, SerError, Serialize, Time,
 };
 
+// Re-export heapless for generated message types and examples
+pub use nros_core::heapless;
+
 // Re-export node types
 pub use nros_node::{
     NodeConfig, PublisherHandle, PublisherOptions, StandaloneNode, SubscriberHandle,
@@ -103,43 +106,55 @@ pub use nros_node::{
     SpinPeriodPollingResult, SubscriptionCallback, SubscriptionCallbackWithInfo,
 };
 
+// Re-export safety-e2e executor callback
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc", feature = "safety-e2e"))]
+pub use nros_node::SubscriptionCallbackWithSafety;
+
 // Re-export BasicExecutor, SpinPeriodResult, and Promise (with zenoh and std features)
 #[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 pub use nros_node::{BasicExecutor, Promise, SpinPeriodResult};
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{
-    QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, ServiceInfo,
-    SessionMode, TopicInfo, TransportConfig, TransportError,
+    Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, Rmw,
+    RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
+    SessionMode, Subscriber, TopicInfo, TransportError,
 };
+
+/// Transport configuration struct.
+#[deprecated(note = "Use Context::from_env() or Context::new(InitOptions) instead")]
+pub use nros_rmw::TransportConfig;
 
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 
-// Re-export zenoh-specific types
-#[cfg(feature = "rmw-zenoh")]
-pub use nros_rmw_zenoh::{
-    Ros2Liveliness, ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohTransport,
-};
-
-// Re-export XRCE-DDS-specific types
+// Re-export XRCE-DDS raw RMW types
 #[cfg(feature = "rmw-xrce")]
 pub use nros_rmw_xrce::{
     XrcePublisher, XrceRmw, XrceServiceClient, XrceServiceServer, XrceSession, XrceSubscriber,
 };
 
-// Re-export shim-specific types (zenoh transport layer)
-#[cfg(feature = "rmw-zenoh")]
-pub use nros_rmw_zenoh::{
-    RMW_GID_SIZE as SHIM_RMW_GID_SIZE, RmwAttachment as ShimRmwAttachment,
-    Ros2Liveliness as ShimRos2Liveliness, ShimPublisher, ShimServiceClient, ShimServiceServer,
-    ShimSession, ShimSubscriber, ShimTransport, ShimZenohId, ZenohId as ShimZenohId2,
-};
+// Re-export XRCE node API (typed wrappers)
+#[cfg(feature = "rmw-xrce")]
+pub mod xrce {
+    pub use nros_node::xrce::*;
+}
 
-// Re-export liveliness token
-#[cfg(feature = "rmw-zenoh")]
-pub use nros_rmw_zenoh::ShimLivelinessToken;
+/// Backend-specific internal types.
+///
+/// These types are implementation details of the transport backends.
+/// Most users should use the high-level APIs (`Context`, `Executor`, `ShimExecutor`, etc.)
+/// instead of these types directly.
+pub mod internals {
+    // Zenoh backend internal types
+    #[cfg(feature = "rmw-zenoh")]
+    pub use nros_rmw_zenoh::{
+        RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, ShimLivelinessToken, ShimPublisher,
+        ShimServiceClient, ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport,
+        ShimZenohId, ZenohId, ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohTransport,
+    };
+}
 
 // Re-export shim node types
 #[cfg(feature = "rmw-zenoh")]
@@ -212,8 +227,11 @@ pub mod prelude {
         CdrReader, CdrWriter, Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle,
         PublisherOptions, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings,
         RosMessage, RosService, Serialize, StandaloneNode, SubscriberHandle, SubscriberOptions,
-        TopicInfo, TransportConfig,
+        TopicInfo,
     };
+
+    #[allow(deprecated)]
+    pub use crate::TransportConfig;
 
     #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub use crate::{

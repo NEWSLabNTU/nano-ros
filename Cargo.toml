@@ -116,6 +116,7 @@ nros-macros = { path = "packages/core/nros-macros" }
 nros-params = { path = "packages/core/nros-params", default-features = false }
 nros-rmw = { path = "packages/core/nros-rmw", default-features = false }
 nros-rmw-zenoh = { path = "packages/zpico/nros-rmw-zenoh", default-features = false }
+nros-rmw-xrce = { path = "packages/xrce/nros-rmw-xrce", default-features = false }
 nros-node = { path = "packages/core/nros-node", default-features = false }
 
 # no_std compatible

@@ -10,7 +10,5 @@ name = "xrce-talker"
 path = "src/main.rs"
 
 [dependencies]
-nros-rmw-xrce = { path = "../../../../../packages/xrce/nros-rmw-xrce", features = ["posix-udp"] }
-nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
-nros-core = { path = "../../../../../packages/core/nros-core", default-features = false, features = ["std"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-xrce", "xrce-udp", "platform-posix", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
