@@ -28,13 +28,13 @@ smoltcp = { version = "0.12", default-features = false, features = [
 ] }
 
 # nros
-nros = { path = "../../../../../packages/core/nros", default-features = false }
+nros = { path = "../../../core/nros", default-features = false }
 
 # zenoh transport with smoltcp platform backend
-nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal"] }
+nros-rmw-zenoh = { path = "../../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal"] }
 
 # smoltcp TCP bridge for zenoh-pico
-zpico-smoltcp = { path = "../../../../../packages/zpico/zpico-smoltcp" }
+zpico-smoltcp = { path = "../../../zpico/zpico-smoltcp" }
 
 # Logging
 defmt = "0.3"
