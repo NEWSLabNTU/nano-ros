@@ -159,7 +159,7 @@ quality:
     echo ""
     echo "=== Embedded Examples ==="
     emb_failed=0
-    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/native/*' -not -path '*/zephyr/*' -not -path '*/esp32/*' -not -path '*/qemu-esp32/*'); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/native/*' -not -path '*/zephyr/*' -not -path '*/esp32/*' -not -path '*/qemu-esp32/*'); do
         dir="$(dirname "$toml")"
         (cd "$dir" && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || emb_failed=1
     done
@@ -274,7 +274,7 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building examples..."
-    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -296,7 +296,7 @@ format-examples:
     #!/usr/bin/env bash
     set -e
     echo "Formatting examples..."
-    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
         dir="$(dirname "$toml")"
         echo "  fmt $dir"
         (cd "$dir" && cargo +nightly fmt)
@@ -308,7 +308,7 @@ check-examples:
     #!/usr/bin/env bash
     set -e
     echo "Checking examples..."
-    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -331,7 +331,7 @@ size-examples-embedded: build-examples
 # Clean all example build artifacts
 clean-examples: clean-examples-c
     #!/usr/bin/env bash
-    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*'); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*'); do
         rm -rf "$(dirname "$toml")/target"
     done
     echo "All example build artifacts cleaned"
@@ -410,7 +410,7 @@ build-examples-qemu:
     #!/usr/bin/env bash
     set -e
     echo "Building QEMU ARM examples..."
-    for toml in $(find examples/qemu-arm -name Cargo.toml -mindepth 3 -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+    for toml in $(find examples/qemu-arm -mindepth 3 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
         dir="$(dirname "$toml")"
         echo "  build $dir"
         (cd "$dir" && cargo build --release)
