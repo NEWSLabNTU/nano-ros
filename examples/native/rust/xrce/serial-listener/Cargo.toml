@@ -1,0 +1,16 @@
+[package]
+name = "native-rs-xrce-serial-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "xrce-serial-listener"
+path = "src/main.rs"
+
+[dependencies]
+nros-rmw-xrce = { path = "../../../../../packages/xrce/nros-rmw-xrce", features = ["posix-serial"] }
+nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
+nros-core = { path = "../../../../../packages/core/nros-core", default-features = false, features = ["std"] }
+std_msgs = { version = "*", default-features = false }

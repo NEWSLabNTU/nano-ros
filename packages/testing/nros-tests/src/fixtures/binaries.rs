@@ -67,6 +67,12 @@ static XRCE_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the xrce-action-client binary
 static XRCE_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the xrce-serial-talker binary
+static XRCE_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the xrce-serial-listener binary
+static XRCE_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached: nros-c library built
 static NANO_ROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
 
@@ -563,6 +569,50 @@ pub fn xrce_action_server_binary() -> PathBuf {
 pub fn xrce_action_client_binary() -> PathBuf {
     build_xrce_action_client()
         .expect("Failed to build xrce-action-client")
+        .to_path_buf()
+}
+
+/// Build the xrce-serial-talker example binary (cached).
+pub fn build_xrce_serial_talker() -> TestResult<&'static Path> {
+    XRCE_SERIAL_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/serial-talker",
+                "xrce-serial-talker",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build the xrce-serial-listener example binary (cached).
+pub fn build_xrce_serial_listener() -> TestResult<&'static Path> {
+    XRCE_SERIAL_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/serial-listener",
+                "xrce-serial-listener",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the xrce-serial-talker binary path.
+#[rstest::fixture]
+pub fn xrce_serial_talker_binary() -> PathBuf {
+    build_xrce_serial_talker()
+        .expect("Failed to build xrce-serial-talker")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the xrce-serial-listener binary path.
+#[rstest::fixture]
+pub fn xrce_serial_listener_binary() -> PathBuf {
+    build_xrce_serial_listener()
+        .expect("Failed to build xrce-serial-listener")
         .to_path_buf()
 }
 

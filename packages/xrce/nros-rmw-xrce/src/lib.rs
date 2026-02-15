@@ -14,13 +14,16 @@
 //! using atomic flags for callback→consumer data flow (same pattern as
 //! the zenoh backend).
 
-#![cfg_attr(not(feature = "posix-udp"), no_std)]
+#![cfg_attr(not(any(feature = "posix-udp", feature = "posix-serial")), no_std)]
 #![allow(static_mut_refs)]
 
 mod naming;
 
 #[cfg(feature = "posix-udp")]
 pub mod posix_udp;
+
+#[cfg(feature = "posix-serial")]
+pub mod posix_serial;
 
 use core::ffi::{c_char, c_int, c_void};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
@@ -313,6 +316,9 @@ unsafe fn confirm_entities(
 /// Board crates call this with callbacks from `xrce-smoltcp` (or another
 /// transport provider) to set up the underlying communication channel.
 ///
+/// Set `framing` to `true` for byte-stream transports (serial/UART) that
+/// need HDLC framing. Use `false` for packet-oriented transports (UDP).
+///
 /// # Safety
 ///
 /// Must be called before `XrceRmw::open()`. The callback function pointers
@@ -322,11 +328,12 @@ pub unsafe fn init_transport(
     close: xrce_sys::close_custom_func,
     write: xrce_sys::write_custom_func,
     read: xrce_sys::read_custom_func,
+    framing: bool,
 ) {
     unsafe {
         xrce_sys::uxr_set_custom_transport_callbacks(
             &raw mut TRANSPORT,
-            false,
+            framing,
             open,
             close,
             write,

@@ -138,6 +138,192 @@ pub fn xrce_agent_unique() -> XrceAgent {
     XrceAgent::start_unique().expect("Failed to start XRCE Agent")
 }
 
+// ============================================================================
+// XRCE Serial Agent (multiserial mode via socat PTY pairs)
+// ============================================================================
+
+/// Managed XRCE-DDS Agent in serial/multiserial mode over socat PTY pairs.
+///
+/// Creates N socat PTY pairs and starts the Agent on the agent-side PTYs.
+/// Test binaries connect to the client-side PTYs via `client_pty_path()`.
+///
+/// For single-client tests, use `start(1)`. For multi-client tests (e.g.,
+/// talker + listener), use `start(2)` with `multiserial` mode.
+///
+/// # Example
+///
+/// ```ignore
+/// use nros_tests::fixtures::XrceSerialAgent;
+///
+/// // Single client
+/// let agent = XrceSerialAgent::start(1).unwrap();
+/// println!("Client PTY: {}", agent.client_pty_path(0));
+///
+/// // Two clients (talker + listener)
+/// let agent = XrceSerialAgent::start(2).unwrap();
+/// println!("Listener PTY: {}", agent.client_pty_path(0));
+/// println!("Talker PTY: {}", agent.client_pty_path(1));
+/// ```
+pub struct XrceSerialAgent {
+    socat_handles: Vec<Child>,
+    agent_handle: Child,
+    client_ptys: Vec<String>,
+    _tmp_dir: tempfile::TempDir,
+}
+
+impl XrceSerialAgent {
+    /// Start socat PTY pairs and an XRCE Agent in serial/multiserial mode.
+    ///
+    /// `num_ports` determines how many PTY pairs to create:
+    /// - 1: uses `serial -D <pty>` mode
+    /// - 2+: uses `multiserial -D "<pty1> <pty2> ..."` mode
+    pub fn start(num_ports: usize) -> TestResult<Self> {
+        assert!(num_ports >= 1, "need at least 1 port");
+
+        let tmp_dir = tempfile::tempdir()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to create temp dir: {}", e)))?;
+
+        let mut socat_handles = Vec::new();
+        let mut agent_ptys = Vec::new();
+        let mut client_ptys = Vec::new();
+
+        // Start socat instances to create PTY pairs
+        for i in 0..num_ports {
+            let agent_pty = tmp_dir.path().join(format!("agent{i}.pty"));
+            let client_pty = tmp_dir.path().join(format!("client{i}.pty"));
+
+            let socat_args = format!(
+                "pty,raw,echo=0,link={},b115200 pty,raw,echo=0,link={},b115200",
+                agent_pty.display(),
+                client_pty.display(),
+            );
+            let mut socat_cmd = std::process::Command::new("socat");
+            socat_cmd
+                .args(socat_args.split_whitespace())
+                .stdout(Stdio::null())
+                .stderr(Stdio::null());
+            #[cfg(unix)]
+            crate::process::set_new_process_group(&mut socat_cmd);
+            let handle = socat_cmd
+                .spawn()
+                .map_err(|e| TestError::ProcessFailed(format!("Failed to start socat {i}: {e}")))?;
+            socat_handles.push(handle);
+            agent_ptys.push(agent_pty);
+            client_ptys.push(client_pty);
+        }
+
+        // Wait for all socat PTY symlinks
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        loop {
+            let all_exist =
+                agent_ptys.iter().all(|p| p.exists()) && client_ptys.iter().all(|p| p.exists());
+            if all_exist {
+                break;
+            }
+            if std::time::Instant::now() > deadline {
+                return Err(TestError::ProcessFailed(
+                    "Timeout waiting for socat PTY symlinks".to_string(),
+                ));
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        std::thread::sleep(Duration::from_millis(200));
+
+        // Start MicroXRCEAgent
+        let binary = xrce_agent_binary_path();
+        let mut agent_cmd = std::process::Command::new(&binary);
+        if num_ports == 1 {
+            // Single port: serial mode
+            agent_cmd.args([
+                "serial",
+                "-D",
+                agent_ptys[0].to_str().unwrap(),
+                "-b",
+                "115200",
+            ]);
+        } else {
+            // Multiple ports: multiserial mode with space-separated device list
+            let devs: String = agent_ptys
+                .iter()
+                .map(|p| p.to_string_lossy().to_string())
+                .collect::<Vec<_>>()
+                .join(" ");
+            agent_cmd.args(["multiserial", "-D", &devs, "-b", "115200"]);
+        }
+        agent_cmd.stdout(Stdio::null()).stderr(Stdio::null());
+        #[cfg(unix)]
+        crate::process::set_new_process_group(&mut agent_cmd);
+        let agent_handle = agent_cmd.spawn().map_err(|e| {
+            TestError::ProcessFailed(format!(
+                "Failed to start XRCE Agent serial ({}): {e}",
+                binary.display(),
+            ))
+        })?;
+
+        // Give the Agent time to open PTYs and initialize
+        std::thread::sleep(Duration::from_millis(500));
+
+        let client_pty_strings: Vec<String> = client_ptys
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+
+        Ok(Self {
+            socat_handles,
+            agent_handle,
+            client_ptys: client_pty_strings,
+            _tmp_dir: tmp_dir,
+        })
+    }
+
+    /// Get the PTY path for client connection at index `i`.
+    pub fn client_pty_path(&self, i: usize) -> &str {
+        &self.client_ptys[i]
+    }
+
+    /// Check if the agent is still running.
+    pub fn is_running(&mut self) -> bool {
+        matches!(self.agent_handle.try_wait(), Ok(None))
+    }
+}
+
+impl Drop for XrceSerialAgent {
+    fn drop(&mut self) {
+        kill_process_group(&mut self.agent_handle);
+        for handle in &mut self.socat_handles {
+            kill_process_group(handle);
+        }
+    }
+}
+
+/// Check if `socat` is available on the system PATH.
+pub fn is_socat_available() -> bool {
+    std::process::Command::new("socat")
+        .arg("-V")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok()
+}
+
+/// Skip test if socat is not available.
+///
+/// Returns `false` (test should skip) if socat is not found.
+/// Returns `true` if socat is available and the test should proceed.
+pub fn require_socat() -> bool {
+    if !is_socat_available() {
+        eprintln!("Skipping test: socat not found (run `sudo apt install socat`)");
+        return false;
+    }
+    true
+}
+
+/// rstest fixture for XRCE Serial Agent with a single PTY pair.
+#[rstest::fixture]
+pub fn xrce_serial_agent() -> XrceSerialAgent {
+    XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

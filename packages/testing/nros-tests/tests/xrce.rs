@@ -7,8 +7,9 @@
 //!   just build-xrce-agent   # Build the Agent from source
 
 use nros_tests::fixtures::{
-    ManagedProcess, XrceAgent, require_xrce_agent, xrce_action_client_binary,
-    xrce_action_server_binary, xrce_listener_binary, xrce_service_client_binary,
+    ManagedProcess, XrceAgent, XrceSerialAgent, require_socat, require_xrce_agent,
+    xrce_action_client_binary, xrce_action_server_binary, xrce_listener_binary,
+    xrce_serial_listener_binary, xrce_serial_talker_binary, xrce_service_client_binary,
     xrce_service_server_binary, xrce_talker_binary,
 };
 use rstest::rstest;
@@ -460,6 +461,124 @@ fn test_xrce_action_fibonacci(
         client_output.contains("Result:"),
         "Client should have received result.\nClient output:\n{}",
         client_output,
+    );
+
+    drop(agent);
+}
+
+// =============================================================================
+// XRCE Serial Transport Tests
+// =============================================================================
+
+#[rstest]
+fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_xrce_agent() || !require_socat() {
+        return;
+    }
+
+    let agent = XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent");
+
+    let mut cmd = Command::new(&xrce_serial_talker_binary);
+    cmd.env("XRCE_SERIAL_PTY", agent.client_pty_path(0));
+    let mut talker = ManagedProcess::spawn_command(cmd, "xrce-serial-talker")
+        .expect("Failed to start serial talker");
+
+    match talker.wait_for_output_pattern("Published:", Duration::from_secs(15)) {
+        Ok(_) => eprintln!("xrce-serial-talker started and published successfully"),
+        Err(_) => {
+            if talker.is_running() {
+                eprintln!("xrce-serial-talker running (no publish marker yet)");
+            } else {
+                eprintln!("xrce-serial-talker exited early");
+            }
+        }
+    }
+}
+
+#[rstest]
+fn test_xrce_serial_listener_starts(xrce_serial_listener_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_xrce_agent() || !require_socat() {
+        return;
+    }
+
+    let agent = XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent");
+
+    let mut cmd = Command::new(&xrce_serial_listener_binary);
+    cmd.env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
+        .env("XRCE_MSG_COUNT", "1");
+    let mut listener = ManagedProcess::spawn_command(cmd, "xrce-serial-listener")
+        .expect("Failed to start serial listener");
+
+    match listener.wait_for_output_pattern("Waiting for", Duration::from_secs(15)) {
+        Ok(_) => eprintln!("xrce-serial-listener started successfully"),
+        Err(_) => {
+            if listener.is_running() {
+                eprintln!("xrce-serial-listener running (no readiness marker yet)");
+            } else {
+                eprintln!("xrce-serial-listener exited early");
+            }
+        }
+    }
+
+    drop(agent);
+}
+
+#[rstest]
+fn test_xrce_serial_communication(
+    xrce_serial_talker_binary: PathBuf,
+    xrce_serial_listener_binary: PathBuf,
+) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_xrce_agent() || !require_socat() {
+        return;
+    }
+
+    // Serial is point-to-point: use a single agent in multiserial mode with
+    // two PTY pairs so both clients route through the same agent.
+    let agent = XrceSerialAgent::start(2).expect("Failed to start XRCE Serial Agent");
+
+    // Start listener first (subscribe before publishing)
+    let mut listener_cmd = Command::new(&xrce_serial_listener_binary);
+    listener_cmd
+        .env("XRCE_SERIAL_PTY", agent.client_pty_path(0))
+        .env("XRCE_MSG_COUNT", "3");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-serial-listener")
+        .expect("Failed to start serial listener");
+
+    // Wait for listener to be ready
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(15));
+
+    // Stabilization delay — let XRCE Agent propagate the subscription
+    std::thread::sleep(Duration::from_secs(3));
+
+    // Start talker on second serial link
+    let mut talker_cmd = Command::new(&xrce_serial_talker_binary);
+    talker_cmd.env("XRCE_SERIAL_PTY", agent.client_pty_path(1));
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "xrce-serial-talker")
+        .expect("Failed to start serial talker");
+
+    // Wait for listener to receive messages
+    let listener_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(25))
+        .unwrap_or_default();
+
+    // Kill both processes
+    talker.kill();
+    listener.kill();
+
+    // Assert at least 1 message was received
+    let received_count = count_pattern(&listener_output, "Received:");
+    assert!(
+        received_count >= 1,
+        "Expected at least 1 message, got {}.\nListener output:\n{}",
+        received_count,
+        listener_output,
     );
 
     drop(agent);

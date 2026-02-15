@@ -28,15 +28,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "example_interfaces"
-version = "0.9.3"
-dependencies = [
- "heapless",
- "nros-core",
- "nros-serdes",
-]
-
-[[package]]
 name = "find-msvc-tools"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -74,6 +65,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
+name = "native-rs-xrce-serial-listener"
+version = "0.1.0"
+dependencies = [
+ "nros-core",
+ "nros-rmw",
+ "nros-rmw-xrce",
+ "std_msgs",
+]
+
+[[package]]
 name = "nros-core"
 version = "0.1.0"
 dependencies = [
@@ -96,6 +97,7 @@ name = "nros-rmw-xrce"
 version = "0.1.0"
 dependencies = [
  "heapless",
+ "libc",
  "nros-rmw",
  "xrce-sys",
 ]
@@ -127,19 +129,6 @@ dependencies = [
  "heapless",
  "nros-core",
  "nros-serdes",
-]
-
-[[package]]
-name = "xrce-native-test"
-version = "0.1.0"
-dependencies = [
- "example_interfaces",
- "libc",
- "nros-core",
- "nros-rmw",
- "nros-rmw-xrce",
- "std_msgs",
- "xrce-sys",
 ]
 
 [[package]]

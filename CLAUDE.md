@@ -124,13 +124,13 @@ just test-all           # Everything
 ### First-Time Setup
 
 ```bash
-just setup   # Installs: rustup targets, cargo-nextest, cargo-nano-ros
-             # Checks for: arm-none-eabi-gcc, qemu-system-arm, cmake
+just setup   # Installs: rustup targets, cargo-nextest, cargo-nano-ros,
+             # XRCE Agent, socat. Checks for: arm-none-eabi-gcc, qemu-system-arm, cmake
 ```
 
 For missing system dependencies on Ubuntu:
 ```bash
-sudo apt install gcc-arm-none-eabi qemu-system-arm cmake
+sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat
 ```
 
 ## Environment Variables

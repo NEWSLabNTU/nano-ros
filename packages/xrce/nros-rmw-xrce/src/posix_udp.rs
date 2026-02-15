@@ -35,6 +35,7 @@ pub unsafe fn init_posix_udp_transport(agent_addr: &str) {
             Some(transport_close),
             Some(transport_write),
             Some(transport_read),
+            false, // UDP is packet-oriented, no framing needed
         );
     }
 }

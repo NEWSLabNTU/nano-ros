@@ -10,8 +10,10 @@ default = []
 posix = ["xrce-sys/posix"]
 bare-metal = ["xrce-sys/bare-metal"]
 posix-udp = ["posix"]
+posix-serial = ["posix", "dep:libc"]
 
 [dependencies]
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }
 xrce-sys = { path = "../xrce-sys", default-features = false }
 heapless = "0.8"
+libc = { version = "0.2", optional = true }

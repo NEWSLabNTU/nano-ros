@@ -195,16 +195,21 @@ packages/xrce/xrce-serial/
 - Configurable baud rate, buffer sizes
 - Timeout-based read polling (same pattern as `xrce-smoltcp`)
 
+**Implementation approach (revised):** Rather than a separate `xrce-serial` crate, the serial transport is implemented using the existing custom transport callback mechanism with `framing=true`. The XRCE-DDS C library has built-in HDLC framing support — when enabled, the library automatically wraps/unwraps messages in HDLC frames. The transport callbacks just provide raw byte I/O.
+
 **Steps:**
-- [ ] Create `xrce-serial` crate with `XrceSerialTransport` struct
-- [ ] Implement 4 custom transport callbacks wrapping platform UART functions
-- [ ] Add HDLC framing (or use XRCE-DDS's built-in serial framing from `serial_transport_internal.h`)
-- [ ] Add `UartPlatform` trait: `open()`, `close()`, `write(&[u8]) -> usize`, `read(&mut [u8], timeout_ms) -> usize`
-- [ ] Create native POSIX implementation of `UartPlatform` (for testing on Linux with `/dev/ttyUSB*` or pty pairs)
-- [ ] Add integration test: XRCE Agent (serial mode) ↔ `xrce-serial` talker/listener over pty pair
-- [ ] Add workspace member to root `Cargo.toml`
-- [ ] Verify: `cargo build -p xrce-serial`
-- [ ] Verify: serial transport integration test passes
+- [x] Enable `UCLIENT_PROFILE_STREAM_FRAMING` in `xrce-sys` config.h and compile `stream_framing_protocol.c`
+- [x] Add `framing: bool` parameter to `nros-rmw-xrce::init_transport()` (pass to `uxr_set_custom_transport_callbacks`)
+- [x] Update existing callers (`xrce-native-test` UDP transport → `framing: false`)
+- [x] Add POSIX serial transport to `xrce-native-test/src/lib.rs` (`init_posix_serial_transport()` with PTY + termios + `framing: true`)
+- [x] Create `xrce-serial-talker.rs` and `xrce-serial-listener.rs` test binaries (same as UDP versions but using serial transport)
+- [x] Add `XrceSerialAgent` fixture (socat PTY pair + `MicroXRCEAgent pseudoterminal` mode)
+- [x] Add `require_socat()` availability check
+- [x] Add serial binary builders (`build_xrce_serial_talker/listener`) and rstest fixtures
+- [x] Add 3 serial integration tests: startup (talker), startup (listener), E2E communication (two agents for point-to-point serial)
+- [x] Verify: `cargo build -p xrce-native-test --release` — all binaries compile
+- [x] Verify: `cargo check -p nros-tests --tests` — integration tests compile
+- [x] Verify: `just quality` passes
 
 **Use cases unlocked:**
 - **OpenCR (STM32F746)**: UART to Raspberry Pi running Micro-XRCE-DDS Agent → ROS 2 network

@@ -79,6 +79,9 @@ fn main() {
     // Custom transport
     build.file(uxr_src.join("profile/transport/custom/custom_transport.c"));
 
+    // Stream framing protocol (HDLC framing for serial transports)
+    build.file(uxr_src.join("profile/transport/stream_framing/stream_framing_protocol.c"));
+
     // Platform-conditional: time.c (only with POSIX)
     if posix {
         build.file(uxr_src.join("util/time.c"));
@@ -143,6 +146,9 @@ fn generate_uxr_config(out_dir: &Path, posix: bool) {
 
 // Transport profiles: custom transport only
 #define UCLIENT_PROFILE_CUSTOM_TRANSPORT
+
+// Stream framing (HDLC) for serial transports
+#define UCLIENT_PROFILE_STREAM_FRAMING
 
 // Platform
 {platform_define}
