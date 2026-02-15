@@ -14,10 +14,13 @@
 //! using atomic flags for callback→consumer data flow (same pattern as
 //! the zenoh backend).
 
-#![no_std]
+#![cfg_attr(not(feature = "posix-udp"), no_std)]
 #![allow(static_mut_refs)]
 
 mod naming;
+
+#[cfg(feature = "posix-udp")]
+pub mod posix_udp;
 
 use core::ffi::{c_char, c_int, c_void};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};

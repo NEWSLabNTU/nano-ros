@@ -9,6 +9,7 @@ description = "XRCE-DDS RMW backend for nros"
 default = []
 posix = ["xrce-sys/posix"]
 bare-metal = ["xrce-sys/bare-metal"]
+posix-udp = ["posix"]
 
 [dependencies]
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }
