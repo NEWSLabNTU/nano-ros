@@ -135,10 +135,12 @@ Add service tests to the existing `xrce.rs` test suite.
 
 The existing `test_xrce_talker_listener_communication` is soft — it prints `[INFO]` instead of failing when no messages are received. Harden it.
 
-- [ ] Change the communication test to `assert!(received_count >= 1)` instead of just printing
-- [ ] Add retry logic: if first attempt gets 0 messages, retry once with longer timeout (timing-sensitive test)
-- [ ] Add test: `test_xrce_multiple_messages` — verify at least 3 messages received with `XRCE_MSG_COUNT=5`
-- [ ] Add test: `test_xrce_subscriber_before_publisher` — start listener first (already the pattern), verify receives messages after talker starts
+- [x] Change the communication test to `assert!(received_count >= 1)` instead of just printing
+- [x] Add test: `test_xrce_multiple_messages` — verify at least 3 messages received with `XRCE_MSG_COUNT=5`
+- [x] Verify: `just test-xrce` — 7/7 tests pass
+- [x] Verify: `just quality` passes
+
+Note: `test_xrce_subscriber_before_publisher` was not added as a separate test because `test_xrce_talker_listener_communication` and `test_xrce_multiple_messages` already start the listener first and assert on received messages. A separate retry-logic test was not needed since the 2s stabilization delay and 15-20s timeouts are sufficient.
 
 ---
 

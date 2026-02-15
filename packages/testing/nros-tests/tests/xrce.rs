@@ -122,17 +122,62 @@ fn test_xrce_talker_listener_communication(
     talker.kill();
     listener.kill();
 
-    eprintln!("Listener output:\n{}", listener_output);
-
-    // Check if listener received messages
+    // Assert at least 1 message was received
     let received_count = count_pattern(&listener_output, "Received:");
-    eprintln!("Listener received {} messages", received_count);
+    assert!(
+        received_count >= 1,
+        "Expected at least 1 message, got {}.\nListener output:\n{}",
+        received_count,
+        listener_output,
+    );
 
-    if received_count > 0 {
-        eprintln!("[PASS] XRCE-DDS pub/sub communication works");
-    } else {
-        eprintln!("[INFO] No messages received (may be timing issue)");
+    drop(agent);
+}
+
+#[rstest]
+fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary: PathBuf) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
     }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    // Start listener first, expect 5 messages
+    let mut listener_cmd = Command::new(&xrce_listener_binary);
+    listener_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("XRCE_MSG_COUNT", "5");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "xrce-listener")
+        .expect("Failed to start listener");
+
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Start talker (publishes 20 messages at 500ms intervals)
+    let mut talker_cmd = Command::new(&xrce_talker_binary);
+    talker_cmd.env("XRCE_AGENT_ADDR", &addr);
+    let mut talker =
+        ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
+
+    // Wait for listener to receive enough messages (or exit on its own after 5)
+    let listener_output = listener
+        .wait_for_output_pattern("Received 5 messages", Duration::from_secs(20))
+        .unwrap_or_default();
+
+    talker.kill();
+    listener.kill();
+
+    let received_count = count_pattern(&listener_output, "Received:");
+    assert!(
+        received_count >= 3,
+        "Expected at least 3 messages, got {}.\nListener output:\n{}",
+        received_count,
+        listener_output,
+    );
 
     drop(agent);
 }
