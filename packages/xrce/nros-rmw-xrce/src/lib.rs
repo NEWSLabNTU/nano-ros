@@ -712,6 +712,10 @@ impl Session for XrceSession {
                 INPUT_RELIABLE,
                 &delivery,
             );
+            // Flush the request_data message so it doesn't linger in the
+            // reliable stream and interfere with subsequent entity creation
+            // or service calls.
+            xrce_sys::uxr_run_session_time(&raw mut SESSION, 100);
 
             Ok(XrceSubscriber { slot_index })
         }
@@ -794,6 +798,8 @@ impl Session for XrceSession {
                 INPUT_RELIABLE,
                 &delivery,
             );
+            // Flush the request_data message immediately.
+            xrce_sys::uxr_run_session_time(&raw mut SESSION, 100);
 
             Ok(XrceServiceServer {
                 slot_index,
@@ -880,6 +886,8 @@ impl Session for XrceSession {
                 INPUT_RELIABLE,
                 &delivery,
             );
+            // Flush the request_data message immediately.
+            xrce_sys::uxr_run_session_time(&raw mut SESSION, 100);
 
             Ok(XrceServiceClient {
                 slot_index,
