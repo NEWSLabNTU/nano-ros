@@ -71,7 +71,8 @@ use nros_rmw::TransportConfig;
 
 /// Result of a single spin iteration
 ///
-/// Contains counts of how many items were processed during `spin_once()`.
+/// Contains counts of how many items were processed during `spin_once()`,
+/// plus error counts for transport failures that would otherwise be silently dropped.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct SpinOnceResult {
     /// Number of subscription callbacks invoked
@@ -80,6 +81,10 @@ pub struct SpinOnceResult {
     pub timers_fired: usize,
     /// Number of service requests handled
     pub services_handled: usize,
+    /// Number of subscription processing errors (e.g., BufferTooSmall, MessageTooLarge)
+    pub subscription_errors: usize,
+    /// Number of service processing errors (e.g., BufferTooSmall)
+    pub service_errors: usize,
 }
 
 impl SpinOnceResult {
@@ -89,17 +94,29 @@ impl SpinOnceResult {
             subscriptions_processed: 0,
             timers_fired: 0,
             services_handled: 0,
+            subscription_errors: 0,
+            service_errors: 0,
         }
     }
 
-    /// Check if any work was done
+    /// Check if any work was done (errors are not counted as work)
     pub const fn any_work(&self) -> bool {
         self.subscriptions_processed > 0 || self.timers_fired > 0 || self.services_handled > 0
     }
 
-    /// Total number of callbacks invoked
+    /// Total number of callbacks successfully invoked (errors excluded)
     pub const fn total(&self) -> usize {
         self.subscriptions_processed + self.timers_fired + self.services_handled
+    }
+
+    /// Check if any errors occurred during this spin iteration
+    pub const fn any_errors(&self) -> bool {
+        self.subscription_errors > 0 || self.service_errors > 0
+    }
+
+    /// Total number of errors across all handle types
+    pub const fn total_errors(&self) -> usize {
+        self.subscription_errors + self.service_errors
     }
 }
 
@@ -1211,14 +1228,16 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
         for node in &mut self.nodes {
             // Process subscriptions
             #[cfg(feature = "alloc")]
-            if let Ok(count) = node.process_subscriptions() {
-                result.subscriptions_processed += count;
+            match node.process_subscriptions() {
+                Ok(count) => result.subscriptions_processed += count,
+                Err(_) => result.subscription_errors += 1,
             }
 
             // Process services
             #[cfg(feature = "alloc")]
-            if let Ok(count) = node.process_services() {
-                result.services_handled += count;
+            match node.process_services() {
+                Ok(count) => result.services_handled += count,
+                Err(_) => result.service_errors += 1,
             }
 
             // Process timers
@@ -1379,14 +1398,16 @@ impl BasicExecutor {
         for node in &mut self.nodes {
             // Process subscriptions
             #[cfg(feature = "alloc")]
-            if let Ok(count) = node.process_subscriptions() {
-                result.subscriptions_processed += count;
+            match node.process_subscriptions() {
+                Ok(count) => result.subscriptions_processed += count,
+                Err(_) => result.subscription_errors += 1,
             }
 
             // Process services
             #[cfg(feature = "alloc")]
-            if let Ok(count) = node.process_services() {
-                result.services_handled += count;
+            match node.process_services() {
+                Ok(count) => result.services_handled += count,
+                Err(_) => result.service_errors += 1,
             }
 
             // Process timers
@@ -1601,16 +1622,36 @@ mod tests {
         assert_eq!(result.subscriptions_processed, 0);
         assert_eq!(result.timers_fired, 0);
         assert_eq!(result.services_handled, 0);
+        assert_eq!(result.subscription_errors, 0);
+        assert_eq!(result.service_errors, 0);
         assert!(!result.any_work());
+        assert!(!result.any_errors());
         assert_eq!(result.total(), 0);
+        assert_eq!(result.total_errors(), 0);
 
         let result = SpinOnceResult {
             subscriptions_processed: 2,
             timers_fired: 1,
             services_handled: 0,
+            subscription_errors: 0,
+            service_errors: 0,
         };
         assert!(result.any_work());
+        assert!(!result.any_errors());
         assert_eq!(result.total(), 3);
+
+        // Errors don't count as work
+        let result = SpinOnceResult {
+            subscriptions_processed: 0,
+            timers_fired: 0,
+            services_handled: 0,
+            subscription_errors: 1,
+            service_errors: 2,
+        };
+        assert!(!result.any_work());
+        assert!(result.any_errors());
+        assert_eq!(result.total(), 0);
+        assert_eq!(result.total_errors(), 3);
     }
 
     #[test]
@@ -1641,6 +1682,8 @@ mod tests {
                 subscriptions_processed: 1,
                 timers_fired: 2,
                 services_handled: 0,
+                subscription_errors: 0,
+                service_errors: 0,
             },
             overrun: false,
             elapsed: std::time::Duration::from_millis(5),

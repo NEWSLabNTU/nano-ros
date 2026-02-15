@@ -1481,6 +1481,9 @@ impl ServiceServerTrait for ShimServiceServer {
 
         let len = buffer.len.load(Ordering::Acquire);
         if len > buf.len() {
+            // Clear has_request to avoid permanently stuck service — the oversized
+            // request is dropped, but the service recovers on the next request.
+            buffer.has_request.store(false, Ordering::Release);
             return Err(TransportError::BufferTooSmall);
         }
 
@@ -2248,5 +2251,625 @@ mod ghost_checks {
         // Bytes 33..37: CRC-32 of payload (LE)
         let crc = u32::from_le_bytes(attachment[33..37].try_into().unwrap());
         assert_eq!(crc, expected_crc);
+    }
+
+    // ========================================================================
+    // Buffer state machine test helpers (37.1 / 37.1a)
+    // ========================================================================
+
+    // --- Subscription buffer helpers ---
+
+    /// Simulate a subscription callback by writing directly to SUBSCRIBER_BUFFERS[slot].
+    /// Mirrors the logic in `subscriber_callback_with_attachment`.
+    fn simulate_subscription_callback(slot: usize, payload: &[u8]) {
+        unsafe {
+            let buffer = &mut SUBSCRIBER_BUFFERS[slot];
+            if payload.len() > buffer.data.len() {
+                buffer.overflow.store(true, Ordering::Release);
+                buffer.has_data.store(true, Ordering::Release);
+            } else {
+                buffer.overflow.store(false, Ordering::Release);
+                buffer.data[..payload.len()].copy_from_slice(payload);
+                buffer.len.store(payload.len(), Ordering::Release);
+                buffer.attachment_len.store(0, Ordering::Release);
+                buffer.has_data.store(true, Ordering::Release);
+            }
+        }
+    }
+
+    /// Reset a subscriber buffer to idle state.
+    fn reset_subscriber_buffer(slot: usize) {
+        unsafe {
+            let buffer = &mut SUBSCRIBER_BUFFERS[slot];
+            buffer.has_data.store(false, Ordering::Release);
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.len.store(0, Ordering::Release);
+            buffer.attachment_len.store(0, Ordering::Release);
+        }
+    }
+
+    /// Try to receive from a subscriber buffer slot.
+    /// Replicates `try_recv_raw` logic for testing without a zenoh session.
+    fn try_recv_subscription(
+        slot: usize,
+        recv_buf: &mut [u8],
+    ) -> Result<Option<usize>, TransportError> {
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+
+        if !buffer.has_data.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
+
+        let len = buffer.len.load(Ordering::Acquire);
+        if len > recv_buf.len() {
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::BufferTooSmall);
+        }
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                SUBSCRIBER_BUFFERS[slot].data.as_ptr(),
+                recv_buf.as_mut_ptr(),
+                len,
+            );
+        }
+        buffer.has_data.store(false, Ordering::Release);
+
+        Ok(Some(len))
+    }
+
+    // --- Service buffer helpers ---
+
+    /// Simulate a service request callback by writing directly to SERVICE_BUFFERS[slot].
+    fn simulate_service_request(slot: usize, payload: &[u8], keyexpr: &[u8]) {
+        unsafe {
+            let buffer = &mut SERVICE_BUFFERS[slot];
+            let copy_len = payload.len().min(buffer.data.len());
+            buffer.data[..copy_len].copy_from_slice(&payload[..copy_len]);
+            buffer.len.store(copy_len, Ordering::Release);
+
+            let klen = keyexpr.len().min(buffer.keyexpr.len() - 1);
+            buffer.keyexpr[..klen].copy_from_slice(&keyexpr[..klen]);
+            buffer.keyexpr[klen] = 0;
+            buffer.keyexpr_len.store(klen, Ordering::Release);
+
+            let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+            buffer.sequence_number.store(seq, Ordering::Release);
+
+            buffer.has_request.store(true, Ordering::Release);
+        }
+    }
+
+    /// Reset a service buffer to idle state.
+    fn reset_service_buffer(slot: usize) {
+        unsafe {
+            let buffer = &mut SERVICE_BUFFERS[slot];
+            buffer.has_request.store(false, Ordering::Release);
+            buffer.len.store(0, Ordering::Release);
+            buffer.keyexpr_len.store(0, Ordering::Release);
+        }
+    }
+
+    /// Try to receive a service request from a buffer slot.
+    /// Replicates `try_recv_request` logic for testing without a zenoh queryable.
+    fn try_recv_service(slot: usize, recv_buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+
+        if !buffer.has_request.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+
+        let len = buffer.len.load(Ordering::Acquire);
+        if len > recv_buf.len() {
+            buffer.has_request.store(false, Ordering::Release);
+            return Err(TransportError::BufferTooSmall);
+        }
+
+        unsafe {
+            core::ptr::copy_nonoverlapping(
+                SERVICE_BUFFERS[slot].data.as_ptr(),
+                recv_buf.as_mut_ptr(),
+                len,
+            );
+        }
+
+        buffer.has_request.store(false, Ordering::Release);
+        Ok(Some(len))
+    }
+
+    /// Read the keyexpr from a service buffer slot (for keyexpr preservation tests).
+    fn read_service_keyexpr(slot: usize) -> heapless::Vec<u8, 256> {
+        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        let klen = buffer.keyexpr_len.load(Ordering::Acquire);
+        let mut v = heapless::Vec::new();
+        unsafe {
+            for i in 0..klen {
+                let _ = v.push(SERVICE_BUFFERS[slot].keyexpr[i]);
+            }
+        }
+        v
+    }
+
+    /// Read the sequence number from a service buffer slot.
+    fn read_service_seq(slot: usize) -> i64 {
+        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        buffer.sequence_number.load(Ordering::Acquire).into()
+    }
+
+    // ========================================================================
+    // 37.1: Service buffer bug fix tests
+    // ========================================================================
+
+    #[test]
+    fn service_buf_oversized_request_clears_has_request() {
+        let slot = 6;
+        reset_service_buffer(slot);
+
+        let payload = [0xABu8; 512];
+        simulate_service_request(slot, &payload, b"test/service");
+
+        let mut small_buf = [0u8; 256];
+        let result = try_recv_service(slot, &mut small_buf);
+        assert!(matches!(result, Err(TransportError::BufferTooSmall)));
+
+        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        assert!(
+            !buffer.has_request.load(Ordering::Acquire),
+            "has_request must be cleared after BufferTooSmall to avoid stuck state"
+        );
+
+        simulate_service_request(slot, b"hello", b"test/service");
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(5))));
+        assert_eq!(&recv_buf[..5], b"hello");
+
+        reset_service_buffer(slot);
+    }
+
+    #[test]
+    fn service_buf_normal_request_after_stuck_recovery() {
+        let slot = 5;
+        reset_service_buffer(slot);
+
+        simulate_service_request(slot, b"first", b"svc/a");
+        let mut buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut buf);
+        assert!(matches!(result, Ok(Some(5))));
+        assert_eq!(&buf[..5], b"first");
+
+        let result = try_recv_service(slot, &mut buf);
+        assert!(matches!(result, Ok(None)));
+
+        simulate_service_request(slot, b"second", b"svc/a");
+        let result = try_recv_service(slot, &mut buf);
+        assert!(matches!(result, Ok(Some(6))));
+        assert_eq!(&buf[..6], b"second");
+
+        reset_service_buffer(slot);
+    }
+
+    // ========================================================================
+    // 37.1a: Subscription buffer state machine tests
+    // ========================================================================
+
+    #[test]
+    fn sub_buf_idle_poll() {
+        let slot = 0;
+        reset_subscriber_buffer(slot);
+
+        let mut buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut buf);
+        assert!(matches!(result, Ok(None)));
+
+        // State unchanged
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(!buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.overflow.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn sub_buf_normal_delivery() {
+        let slot = 1;
+        reset_subscriber_buffer(slot);
+
+        let payload = [0x42u8; 100];
+        simulate_subscription_callback(slot, &payload);
+
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.overflow.load(Ordering::Acquire));
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(100))));
+        assert_eq!(&recv_buf[..100], &payload);
+
+        assert!(!buffer.has_data.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn sub_buf_max_payload() {
+        let slot = 2;
+        reset_subscriber_buffer(slot);
+
+        // Exactly 1024 bytes = max capacity
+        let payload = [0xFFu8; 1024];
+        simulate_subscription_callback(slot, &payload);
+
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.overflow.load(Ordering::Acquire));
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(1024))));
+        assert_eq!(&recv_buf, &payload);
+    }
+
+    #[test]
+    fn sub_buf_overflow_recovery() {
+        let slot = 3;
+        reset_subscriber_buffer(slot);
+
+        // 2000 bytes exceeds 1024 capacity → overflow
+        let payload = [0xAAu8; 2000];
+        simulate_subscription_callback(slot, &payload);
+
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(buffer.has_data.load(Ordering::Acquire));
+        assert!(buffer.overflow.load(Ordering::Acquire));
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Err(TransportError::MessageTooLarge)));
+
+        // Both flags cleared
+        assert!(!buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.overflow.load(Ordering::Acquire));
+
+        // Recovery: next normal callback is accepted
+        simulate_subscription_callback(slot, b"recovered");
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(9))));
+        assert_eq!(&recv_buf[..9], b"recovered");
+    }
+
+    #[test]
+    fn sub_buf_caller_too_small() {
+        let slot = 4;
+        reset_subscriber_buffer(slot);
+
+        // Store 512 bytes, try to receive into 256-byte buffer
+        let payload = [0xBBu8; 512];
+        simulate_subscription_callback(slot, &payload);
+
+        let mut small_buf = [0u8; 256];
+        let result = try_recv_subscription(slot, &mut small_buf);
+        assert!(matches!(result, Err(TransportError::BufferTooSmall)));
+
+        // has_data cleared (the oversized message is dropped)
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(!buffer.has_data.load(Ordering::Acquire));
+
+        // Recovery: next callback accepted
+        simulate_subscription_callback(slot, b"small");
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(5))));
+        assert_eq!(&recv_buf[..5], b"small");
+    }
+
+    #[test]
+    fn sub_buf_overwrite_unread() {
+        let slot = 5;
+        reset_subscriber_buffer(slot);
+
+        // Two callbacks without intervening recv
+        simulate_subscription_callback(slot, b"first_msg");
+        simulate_subscription_callback(slot, b"second_msg");
+
+        // Only second message delivered (last-message-wins)
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(10))));
+        assert_eq!(&recv_buf[..10], b"second_msg");
+    }
+
+    #[test]
+    fn sub_buf_double_consume() {
+        let slot = 6;
+        reset_subscriber_buffer(slot);
+
+        simulate_subscription_callback(slot, b"data");
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(4))));
+
+        // Second recv returns None
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(None)));
+    }
+
+    #[test]
+    fn sub_buf_overflow_then_normal() {
+        let slot = 7;
+        reset_subscriber_buffer(slot);
+
+        // Oversized → overflow error → normal → delivered
+        simulate_subscription_callback(slot, &[0u8; 2000]);
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Err(TransportError::MessageTooLarge)));
+
+        simulate_subscription_callback(slot, b"after_overflow");
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(14))));
+        assert_eq!(&recv_buf[..14], b"after_overflow");
+    }
+
+    #[test]
+    fn sub_buf_zero_length_payload() {
+        let slot = 0;
+        reset_subscriber_buffer(slot);
+
+        simulate_subscription_callback(slot, b"");
+
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(buffer.has_data.load(Ordering::Acquire));
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(0))));
+    }
+
+    #[test]
+    fn sub_buf_all_slots_independent() {
+        let slot_a = 0;
+        let slot_b = 7;
+        reset_subscriber_buffer(slot_a);
+        reset_subscriber_buffer(slot_b);
+
+        simulate_subscription_callback(slot_a, b"slot_zero");
+        simulate_subscription_callback(slot_b, b"slot_seven");
+
+        // Consume slot_b first
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_subscription(slot_b, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(10))));
+        assert_eq!(&recv_buf[..10], b"slot_seven");
+
+        // slot_a still has data
+        let buffer_a = unsafe { &SUBSCRIBER_BUFFERS[slot_a] };
+        assert!(buffer_a.has_data.load(Ordering::Acquire));
+
+        let result = try_recv_subscription(slot_a, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(9))));
+        assert_eq!(&recv_buf[..9], b"slot_zero");
+    }
+
+    // ========================================================================
+    // 37.1a: Service buffer state machine tests
+    // ========================================================================
+
+    #[test]
+    fn svc_buf_idle_poll() {
+        let slot = 0;
+        reset_service_buffer(slot);
+
+        let mut buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut buf);
+        assert!(matches!(result, Ok(None)));
+
+        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        assert!(!buffer.has_request.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn svc_buf_normal_request() {
+        let slot = 1;
+        reset_service_buffer(slot);
+
+        simulate_service_request(slot, b"request_data", b"svc/test");
+
+        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        assert!(buffer.has_request.load(Ordering::Acquire));
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(12))));
+        assert_eq!(&recv_buf[..12], b"request_data");
+
+        assert!(!buffer.has_request.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn svc_buf_max_payload() {
+        let slot = 2;
+        reset_service_buffer(slot);
+
+        // Exactly 1024 bytes = max capacity
+        let payload = [0xCCu8; 1024];
+        simulate_service_request(slot, &payload, b"svc/big");
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(1024))));
+        assert_eq!(&recv_buf, &payload);
+    }
+
+    #[test]
+    fn svc_buf_caller_too_small_recovery() {
+        let slot = 3;
+        reset_service_buffer(slot);
+
+        // Store 512 bytes, receive into 256-byte buffer
+        let payload = [0xDDu8; 512];
+        simulate_service_request(slot, &payload, b"svc/test");
+
+        let mut small_buf = [0u8; 256];
+        let result = try_recv_service(slot, &mut small_buf);
+        assert!(matches!(result, Err(TransportError::BufferTooSmall)));
+
+        // has_request cleared (post-fix behavior)
+        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        assert!(!buffer.has_request.load(Ordering::Acquire));
+
+        // Next request accepted
+        simulate_service_request(slot, b"ok", b"svc/test");
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(2))));
+        assert_eq!(&recv_buf[..2], b"ok");
+    }
+
+    #[test]
+    fn svc_buf_overwrite_unread() {
+        let slot = 4;
+        reset_service_buffer(slot);
+
+        simulate_service_request(slot, b"first_req", b"svc/a");
+        simulate_service_request(slot, b"second_req", b"svc/a");
+
+        // Only second request delivered
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(10))));
+        assert_eq!(&recv_buf[..10], b"second_req");
+    }
+
+    #[test]
+    fn svc_buf_double_consume() {
+        let slot = 0;
+        reset_service_buffer(slot);
+
+        simulate_service_request(slot, b"once", b"svc/a");
+
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(4))));
+
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(None)));
+    }
+
+    #[test]
+    fn svc_buf_sequence_numbers() {
+        let slot = 7;
+        reset_service_buffer(slot);
+
+        // Three sequential requests — sequence numbers should increment
+        simulate_service_request(slot, b"r1", b"svc/a");
+        let seq1 = read_service_seq(slot);
+
+        // Consume before next request
+        let mut buf = [0u8; 1024];
+        let _ = try_recv_service(slot, &mut buf);
+
+        simulate_service_request(slot, b"r2", b"svc/a");
+        let seq2 = read_service_seq(slot);
+        let _ = try_recv_service(slot, &mut buf);
+
+        simulate_service_request(slot, b"r3", b"svc/a");
+        let seq3 = read_service_seq(slot);
+        let _ = try_recv_service(slot, &mut buf);
+
+        assert!(seq2 > seq1, "seq2 ({seq2}) should be > seq1 ({seq1})");
+        assert!(seq3 > seq2, "seq3 ({seq3}) should be > seq2 ({seq2})");
+    }
+
+    #[test]
+    fn svc_buf_keyexpr_preserved() {
+        let slot = 1;
+        reset_service_buffer(slot);
+
+        let keyexpr = b"0/my_service/example_interfaces::srv::dds_::AddTwoInts/Reply";
+        simulate_service_request(slot, b"payload", keyexpr);
+
+        let stored = read_service_keyexpr(slot);
+        assert_eq!(stored.as_slice(), keyexpr);
+
+        // Consume and verify keyexpr was available during request
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(7))));
+    }
+
+    #[test]
+    fn svc_buf_all_slots_independent() {
+        let slot_a = 0;
+        let slot_b = 7;
+        reset_service_buffer(slot_a);
+        reset_service_buffer(slot_b);
+
+        simulate_service_request(slot_a, b"req_zero", b"svc/0");
+        simulate_service_request(slot_b, b"req_seven", b"svc/7");
+
+        // Consume slot_b first
+        let mut recv_buf = [0u8; 1024];
+        let result = try_recv_service(slot_b, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(9))));
+        assert_eq!(&recv_buf[..9], b"req_seven");
+
+        // slot_a still has request
+        let buffer_a = unsafe { &SERVICE_BUFFERS[slot_a] };
+        assert!(buffer_a.has_request.load(Ordering::Acquire));
+
+        let result = try_recv_service(slot_a, &mut recv_buf);
+        assert!(matches!(result, Ok(Some(8))));
+        assert_eq!(&recv_buf[..8], b"req_zero");
+    }
+
+    // ========================================================================
+    // 37.1a: Cross-buffer interaction tests
+    // ========================================================================
+
+    #[test]
+    fn sub_svc_independent() {
+        // Use slot 2 — subscription array and service array are separate
+        let slot = 2;
+        reset_subscriber_buffer(slot);
+        reset_service_buffer(slot);
+
+        simulate_subscription_callback(slot, b"sub_data");
+        simulate_service_request(slot, b"svc_data", b"svc/x");
+
+        let mut recv_buf = [0u8; 1024];
+        let sub_result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(sub_result, Ok(Some(8))));
+        assert_eq!(&recv_buf[..8], b"sub_data");
+
+        let svc_result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(svc_result, Ok(Some(8))));
+        assert_eq!(&recv_buf[..8], b"svc_data");
+    }
+
+    #[test]
+    fn sub_overflow_does_not_affect_svc() {
+        let slot = 3;
+        reset_subscriber_buffer(slot);
+        reset_service_buffer(slot);
+
+        // Subscription overflow
+        simulate_subscription_callback(slot, &[0u8; 2000]);
+        // Service normal request
+        simulate_service_request(slot, b"svc_ok", b"svc/x");
+
+        // Subscription has overflow error
+        let mut recv_buf = [0u8; 1024];
+        let sub_result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(sub_result, Err(TransportError::MessageTooLarge)));
+
+        // Service buffer unaffected
+        let svc_result = try_recv_service(slot, &mut recv_buf);
+        assert!(matches!(svc_result, Ok(Some(6))));
+        assert_eq!(&recv_buf[..6], b"svc_ok");
     }
 }

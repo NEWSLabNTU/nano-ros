@@ -14,8 +14,9 @@ Prove that the executor never silently drops available work. When a subscription
 
 This phase covers:
 1. **Service buffer bug fix** — `try_recv_request()` stuck state on oversized requests
-2. **Comprehensive progress proofs** — Verus proofs for all executor work item types
-3. **Fairness evaluation** — measure and address starvation under heavy loads
+2. **Error reporting** — extend `SpinOnceResult` to surface transport errors instead of silently dropping them
+3. **Comprehensive progress proofs** — Verus proofs for all executor work item types
+4. **Fairness evaluation** — measure and address starvation under heavy loads
 
 ## Context
 
@@ -29,11 +30,11 @@ Analysis of the executor control flow revealed:
 
 ### Known Issues
 
-| Issue | Location | Impact |
-|-------|----------|--------|
+| Issue                                                 | Location            | Impact                                                |
+|-------------------------------------------------------|---------------------|-------------------------------------------------------|
 | Service `has_request` not cleared on `BufferTooSmall` | `shim.rs:1482-1484` | Service permanently stuck after one oversized request |
-| Subscription tight loop | `executor.rs:517` | High-frequency topic[0] starves topic[1..N] |
-| Single service attempt per spin | `executor.rs:529` | Service request backlog grows under load |
+| Subscription tight loop                               | `executor.rs:517`   | High-frequency topic[0] starves topic[1..N]           |
+| Single service attempt per spin                       | `executor.rs:529`   | Service request backlog grows under load              |
 
 ## Steps
 
@@ -52,16 +53,160 @@ This means:
 4. The service is permanently stuck — no new requests can be received
 
 **Work items:**
-- [ ] In `ShimServiceServer::try_recv_request()`: clear `has_request` before returning `Err(BufferTooSmall)`
-- [ ] Add unit test: oversized request → `BufferTooSmall` error → `has_request` cleared → next request accepted
-- [ ] Add unit test: normal request after stuck recovery works correctly
-- [ ] Verify no regression: `cargo test -p nros-rmw-zenoh`
-- [ ] `just quality` passes
+- [x] In `ShimServiceServer::try_recv_request()`: clear `has_request` before returning `Err(BufferTooSmall)`
+- [x] Add unit test: oversized request → `BufferTooSmall` error → `has_request` cleared → next request accepted
+- [x] Add unit test: normal request after stuck recovery works correctly
+- [x] Verify no regression: `cargo test -p nros-rmw-zenoh`
+- [x] `just quality` passes
 
 **Passing criteria:**
-- All error paths in `try_recv_request()` clear `has_request` (no stuck state)
-- Unit tests verify recovery after oversized request
-- Existing service tests pass unchanged
+- [x] All error paths in `try_recv_request()` clear `has_request` (no stuck state)
+- [x] Unit tests verify recovery after oversized request
+- [x] Existing service tests pass unchanged
+
+### 37.1a: Buffer behavior test suite
+
+Systematic tests exercising every state transition in the subscription and service buffer state machines. These tests validate the invariant that buffers never get stuck, complement the unit tests in 37.1, and provide the empirical foundation for the Verus proofs in 37.2-37.3.
+
+**File:** `packages/zpico/nros-rmw-zenoh/src/shim.rs` — extend `#[cfg(test)] mod tests`
+
+#### Subscription buffer state machine tests
+
+The subscription buffer has 4 states based on `(has_data, overflow)`:
+- `(false, false)` — idle, no data
+- `(true, false)` — data ready, normal message in buffer
+- `(true, true)` — data ready, but message was oversized (overflow)
+- `(false, true)` — transient (cleared immediately by `try_recv_raw`)
+
+Tests:
+
+| #  | Test name                       | Scenario                                                                        | Expected                                                           |
+|----|---------------------------------|---------------------------------------------------------------------------------|--------------------------------------------------------------------|
+| 1  | `sub_buf_idle_poll`             | Poll empty buffer                                                               | `Ok(None)`, state unchanged                                        |
+| 2  | `sub_buf_normal_delivery`       | Callback stores 100-byte message, then `try_recv_raw`                           | Data copied, `has_data` cleared                                    |
+| 3  | `sub_buf_max_payload`           | Callback with exactly 1024 bytes (max capacity)                                 | Fits, delivered normally                                           |
+| 4  | `sub_buf_overflow_recovery`     | Callback with 2000 bytes (exceeds 1024), then `try_recv_raw`                    | `Err(MessageTooLarge)`, both flags cleared, next callback accepted |
+| 5  | `sub_buf_caller_too_small`      | Callback stores 512 bytes, `try_recv_raw` with 256-byte caller buffer           | `Err(BufferTooSmall)`, `has_data` cleared, next callback accepted  |
+| 6  | `sub_buf_overwrite_unread`      | Two callbacks without intervening `try_recv_raw`                                | Second overwrites first (last-message-wins), only second delivered |
+| 7  | `sub_buf_double_consume`        | `try_recv_raw` succeeds, then second `try_recv_raw` immediately                 | First returns data, second returns `Ok(None)`                      |
+| 8  | `sub_buf_overflow_then_normal`  | Oversized callback → `try_recv_raw` (clears) → normal callback → `try_recv_raw` | First returns overflow error, second delivers data                 |
+| 9  | `sub_buf_zero_length_payload`   | Callback with 0-byte payload                                                    | `has_data` set, `try_recv_raw` returns `Ok(Some(0))`               |
+| 10 | `sub_buf_all_slots_independent` | Store data in slot 0 and slot 7, consume slot 7 first                           | Each slot independent, slot 0 still has data                       |
+
+#### Service buffer state machine tests
+
+The service buffer has 2 states based on `has_request`:
+- `false` — idle
+- `true` — request ready
+
+Tests:
+
+| # | Test name                           | Scenario                                                           | Expected                                                                       |
+|---|-------------------------------------|--------------------------------------------------------------------|--------------------------------------------------------------------------------|
+| 1 | `svc_buf_idle_poll`                 | Poll empty service buffer                                          | `Ok(None)`, state unchanged                                                    |
+| 2 | `svc_buf_normal_request`            | Callback stores request, then `try_recv_request`                   | Request data + keyexpr copied, `has_request` cleared                           |
+| 3 | `svc_buf_max_payload`               | Callback with exactly 1024-byte request                            | Fits, delivered normally                                                       |
+| 4 | `svc_buf_caller_too_small_recovery` | Callback stores 512 bytes, `try_recv_request` with 256-byte buffer | `Err(BufferTooSmall)`, `has_request` cleared (post-fix), next request accepted |
+| 5 | `svc_buf_overwrite_unread`          | Two request callbacks without intervening consume                  | Second overwrites first, only second delivered                                 |
+| 6 | `svc_buf_double_consume`            | `try_recv_request` succeeds, then second immediately               | First returns request, second returns `Ok(None)`                               |
+| 7 | `svc_buf_sequence_numbers`          | Three sequential requests                                          | Sequence numbers increment monotonically                                       |
+| 8 | `svc_buf_keyexpr_preserved`         | Request with specific keyexpr                                      | Reply keyexpr matches original                                                 |
+| 9 | `svc_buf_all_slots_independent`     | Store request in slot 0 and slot 7                                 | Each slot independent                                                          |
+
+#### Cross-buffer interaction tests
+
+| # | Test name                          | Scenario                                               | Expected                                               |
+|---|------------------------------------|--------------------------------------------------------|--------------------------------------------------------|
+| 1 | `sub_svc_independent`              | Subscription data in slot 0, service request in slot 0 | Both delivered independently (different static arrays) |
+| 2 | `sub_overflow_does_not_affect_svc` | Subscription overflow on slot 0                        | Service buffer slot 0 unaffected                       |
+
+**Implementation notes:**
+- Tests manipulate the static `SUBSCRIBER_BUFFERS` / `SERVICE_BUFFERS` directly via unsafe (same pattern as existing ghost model tests)
+- Tests must be `#[serial]` or use distinct slot indices to avoid interference between parallel test threads
+- The `try_recv_raw` / `try_recv_request` functions read from static buffers, so tests simulate callbacks by writing to the buffer fields directly
+
+**Work items:**
+- [x] Implement 10 subscription buffer state machine tests
+- [x] Implement 9 service buffer state machine tests
+- [x] Implement 2 cross-buffer interaction tests
+- [x] All tests pass with `cargo test -p nros-rmw-zenoh`
+- [x] `just quality` passes
+
+**Passing criteria:**
+- [x] 21 new tests cover every state transition in both buffer types
+- [x] Every error path verified to clear its ready flag (no stuck states)
+- [x] Recovery after every error type confirmed (next callback + consume works)
+- [x] `just quality` passes
+
+### 37.1b: SpinOnceResult error reporting
+
+Currently, `spin_once()` silently discards transport errors from `process_subscriptions()` and `process_services()` via `if let Ok(count)`. This means oversized messages, buffer errors, and other transport failures are invisible to the user.
+
+**Problem:**
+
+```rust
+// executor.rs — current behavior
+if let Ok(count) = node.process_subscriptions() {
+    result.subscriptions_processed += count;
+}
+// Error path: silently ignored
+```
+
+The error propagation chain: `try_recv_request()` → `handle_request()` → `try_handle()` → `process_services()` → `spin_once()`. Errors from the transport layer reach `spin_once()` but are discarded by the `if let Ok(count)` pattern.
+
+**ROS 2 precedent:**
+
+- **rclrs**: `spin()` returns `Vec<RclrsError>` — collects all errors from one spin cycle
+- **rclcpp**: QoS event callbacks for incompatible QoS, lost messages, etc.
+- **nano-ros**: `SpinOnceResult` has counters only, no error information
+
+**Proposed fix:** Extend `SpinOnceResult` with error counters (no_std compatible, no heap allocation):
+
+```rust
+pub struct SpinOnceResult {
+    pub subscriptions_processed: usize,
+    pub timers_fired: usize,
+    pub services_handled: usize,
+    pub subscription_errors: usize,   // NEW
+    pub service_errors: usize,        // NEW
+}
+```
+
+And update `spin_once()` to count errors instead of discarding them:
+
+```rust
+// executor.rs — proposed behavior
+match node.process_subscriptions() {
+    Ok(count) => result.subscriptions_processed += count,
+    Err(_) => result.subscription_errors += 1,
+}
+match node.process_services() {
+    Ok(count) => result.services_handled += count,
+    Err(_) => result.service_errors += 1,
+}
+```
+
+**Files:**
+- `packages/core/nros-node/src/executor.rs` — extend `SpinOnceResult`, update `spin_once()`
+- `packages/core/nros-c/src/executor.rs` — extend C executor's `SpinOnceResult` if applicable
+- `packages/core/nros-c/include/nano_ros/executor.h` — update C header struct
+
+**Work items:**
+- [ ] Add `subscription_errors: usize` and `service_errors: usize` fields to `SpinOnceResult`
+- [x] Add `subscription_errors: usize` and `service_errors: usize` fields to `SpinOnceResult`
+- [x] Update `spin_once()` in Rust executor (PollingExecutor) to count errors via `match`
+- [x] Update `spin_once()` in Rust executor (BasicExecutor) to count errors via `match`
+- [x] Add `any_errors()` and `total_errors()` helper methods to `SpinOnceResult`
+- [x] C executor does not use `SpinOnceResult` (returns `nano_ros_ret_t`) — no changes needed
+- [x] Add unit test: error fields are zero by default, `any_errors()` false
+- [x] Add unit test: errors don't count as work (`any_work()` false, `any_errors()` true)
+- [x] `just quality` passes
+
+**Passing criteria:**
+- [x] Transport errors from subscriptions and services are counted, not silently dropped
+- [x] Users can inspect `SpinOnceResult` to detect dropped messages
+- [x] No breaking change to existing users who only check `subscriptions_processed` / `services_handled`
+- [x] `just quality` passes
 
 ### 37.2: Verus proofs for service buffer bug
 
@@ -106,14 +251,14 @@ Add Verus proofs covering all work item types in `spin_once()`. These prove that
 
 **Proofs:**
 
-| # | Name | Property |
-|---|------|----------|
-| 1 | `subscription_delivery_guarantee` | If `has_data[i] == true` and trigger fires, subscription[i]'s callback runs (data consumed) |
-| 2 | `service_delivery_guarantee` | If `has_request[i] == true` and trigger fires, service[i]'s handler runs |
-| 3 | `timer_unconditional_progress` | Timers fire on every `spin_once()` regardless of trigger result (extends existing `timer_non_starvation`) |
-| 4 | `no_silent_data_loss` | After `spin_once()` completes, every `has_data`/`has_request` that was true is either consumed or returned as an error — never silently ignored |
-| 5 | `trigger_always_progress` | Under `TriggerCondition::Always`, every ready item is processed (no trigger gating) |
-| 6 | `trigger_any_progress` | Under `TriggerCondition::Any`, if at least one item is ready, all ready items are processed |
+| # | Name                              | Property                                                                                                                                        |
+|---|-----------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1 | `subscription_delivery_guarantee` | If `has_data[i] == true` and trigger fires, subscription[i]'s callback runs (data consumed)                                                     |
+| 2 | `service_delivery_guarantee`      | If `has_request[i] == true` and trigger fires, service[i]'s handler runs                                                                        |
+| 3 | `timer_unconditional_progress`    | Timers fire on every `spin_once()` regardless of trigger result (extends existing `timer_non_starvation`)                                       |
+| 4 | `no_silent_data_loss`             | After `spin_once()` completes, every `has_data`/`has_request` that was true is either consumed or returned as an error — never silently ignored |
+| 5 | `trigger_always_progress`         | Under `TriggerCondition::Always`, every ready item is processed (no trigger gating)                                                             |
+| 6 | `trigger_any_progress`            | Under `TriggerCondition::Any`, if at least one item is ready, all ready items are processed                                                     |
 
 **Work items:**
 - [ ] Create `progress.rs` module with ghost types and spec functions
@@ -196,6 +341,14 @@ Implement fairness mitigations based on 37.4 findings. This step is conditional 
 cargo test -p nros-rmw-zenoh               # Service buffer tests
 just quality                                # Full quality check
 
+# After 37.1a (buffer behavior tests)
+cargo test -p nros-rmw-zenoh               # 21 new buffer state machine tests
+just quality                                # Full quality check
+
+# After 37.1b (error reporting)
+cargo test -p nros-node                     # SpinOnceResult error counter tests
+just quality                                # Full quality check
+
 # After 37.2 (bug proofs)
 just verify-verus                           # 82+ proofs pass
 
@@ -213,9 +366,9 @@ just verify-verus                           # Proofs still pass
 
 ## Risk Assessment
 
-| Risk | Likelihood | Mitigation |
-|------|-----------|------------|
-| Z3 timeout on complex progress proofs | Medium | Decompose into smaller lemmas; bound quantifiers |
-| Fairness fix breaks real-time determinism | Low | Benchmark before/after; keep changes minimal |
-| XRCE service buffer has same stuck-state bug | Medium | Check `nros-rmw-xrce` service implementation in 37.1 |
-| C executor diverges from Rust executor semantics | Low | Ghost models should cover both; test both paths |
+| Risk                                             | Likelihood | Mitigation                                           |
+|--------------------------------------------------|------------|------------------------------------------------------|
+| Z3 timeout on complex progress proofs            | Medium     | Decompose into smaller lemmas; bound quantifiers     |
+| Fairness fix breaks real-time determinism        | Low        | Benchmark before/after; keep changes minimal         |
+| XRCE service buffer has same stuck-state bug     | Medium     | Check `nros-rmw-xrce` service implementation in 37.1 |
+| C executor diverges from Rust executor semantics | Low        | Ghost models should cover both; test both paths      |
