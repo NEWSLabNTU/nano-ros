@@ -94,8 +94,8 @@ nano-ros/
 just setup          # Install toolchains, cargo tools, check system deps
 just build          # Generate bindings + build workspace (native + embedded) + examples
 just build-zenohd   # Build zenohd 1.6.2 from submodule (for integration tests)
-just check          # Format + clippy
-just quality        # Format + clippy + unit tests (no external deps)
+just check          # Format check + clippy (native + embedded + features + examples)
+just quality        # Format + check + test (= format check test)
 just doc            # Generate docs
 
 # Formal verification

@@ -95,89 +95,9 @@ test-all verbose="":
         echo "All tests passed!"
     fi
 
-# Run code quality checks (formatting + clippy + unit tests) - no integration tests
-# Runs all checks even if some fail, then reports all failures at the end
-quality:
-    #!/usr/bin/env bash
-    set +e  # Don't exit on first error
-    failed=0
-
-    echo "=== Format Check ==="
-    cargo +nightly fmt --check
-    if [ $? -ne 0 ]; then
-        echo "[FAIL] Format check FAILED"
-        failed=1
-    else
-        echo "[OK] Format check passed"
-    fi
-
-    echo ""
-    echo "=== Clippy (workspace, no_std) ==="
-    # nros-c excluded: staticlib/cdylib requires panic handler (needs std)
-    cargo clippy --workspace --no-default-features \
-        --exclude nros-c -- {{CLIPPY_LINTS}}
-    if [ $? -ne 0 ]; then
-        echo "[FAIL] Clippy (workspace) FAILED"
-        failed=1
-    else
-        echo "[OK] Clippy (workspace) passed"
-    fi
-
-    echo ""
-    echo "=== Clippy (embedded target) ==="
-    # nros-c excluded: staticlib/cdylib requires panic handler (needs std)
-    cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
-        --exclude zpico-sys \
-        --exclude nros-tests \
-        --exclude nros-c -- {{CLIPPY_LINTS}}
-    if [ $? -ne 0 ]; then
-        echo "[FAIL] Clippy (embedded) FAILED"
-        failed=1
-    else
-        echo "[OK] Clippy (embedded) passed"
-    fi
-
-    echo ""
-    echo "=== Unit Tests ==="
-    cargo nextest run --workspace --exclude nros-tests --no-fail-fast
-    if [ $? -ne 0 ]; then
-        echo "[FAIL] Unit tests FAILED"
-        failed=1
-    else
-        echo "[OK] Unit tests passed"
-    fi
-
-    echo ""
-    echo "=== Miri (UB detection) ==="
-    just test-miri
-    if [ $? -ne 0 ]; then
-        echo "[FAIL] Miri FAILED"
-        failed=1
-    else
-        echo "[OK] Miri passed"
-    fi
-
-    echo ""
-    echo "=== Embedded Examples ==="
-    emb_failed=0
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/native/*' -not -path '*/zephyr/*' -not -path '*/esp32/*' -not -path '*/qemu-esp32/*'); do
-        dir="$(dirname "$toml")"
-        (cd "$dir" && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || emb_failed=1
-    done
-    if [ $emb_failed -ne 0 ]; then
-        echo "[FAIL] Embedded examples FAILED"
-        failed=1
-    else
-        echo "[OK] Embedded examples passed"
-    fi
-
-    echo ""
-    if [ $failed -ne 0 ]; then
-        echo "[FAIL] Quality checks FAILED - see errors above"
-        exit 1
-    else
-        echo "[OK] All quality checks passed!"
-    fi
+# Run code quality checks: format + check (clippy/features/examples) + test (unit/miri/qemu)
+quality: format check test
+    @echo "All quality checks passed!"
 
 # Run full CI suite (quality + all integration tests)
 ci: check test
