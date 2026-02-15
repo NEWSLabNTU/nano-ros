@@ -46,16 +46,11 @@ if [ "$HOST_UID" != "0" ]; then
     echo "Running builds as UID=$HOST_UID GID=$HOST_GID"
 fi
 
-# Determine binary path based on example type
-if [ "$QEMU_EXAMPLE" = "bsp" ]; then
-    EXAMPLE_DIR="bsp-${QEMU_ROLE}"
-    BINARY_NAME="qemu-bsp-${QEMU_ROLE}"
-else
-    EXAMPLE_DIR="rs-${QEMU_ROLE}"
-    BINARY_NAME="qemu-rs-${QEMU_ROLE}"
-fi
+# Determine binary path
+BINARY_NAME="qemu-bsp-${QEMU_ROLE}"
+EXAMPLE_DIR="examples/qemu-arm/rust/zenoh/${QEMU_ROLE}"
 
-BINARY="/work/examples/qemu/${EXAMPLE_DIR}/target/thumbv7m-none-eabi/release/${BINARY_NAME}"
+BINARY="/work/${EXAMPLE_DIR}/target/thumbv7m-none-eabi/release/${BINARY_NAME}"
 
 echo "============================================"
 echo "  QEMU Container: ${QEMU_ROLE} (${QEMU_EXAMPLE})"
@@ -75,7 +70,7 @@ if [ ! -f "$BINARY" ]; then
     echo "Building example with Docker network configuration..."
 
     # Build with docker feature (as host user to avoid root-owned artifacts)
-    cd "/work/examples/qemu/${EXAMPLE_DIR}"
+    cd "/work/${EXAMPLE_DIR}"
     $RUNAS cargo build --release --features docker
 
     if [ ! -f "$BINARY" ]; then

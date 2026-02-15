@@ -37,12 +37,6 @@ static NATIVE_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-custom-msg binary
 static NATIVE_CUSTOM_MSG_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached path to the qemu-rs-talker binary
-static QEMU_RS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
-/// Cached path to the qemu-rs-listener binary
-static QEMU_RS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
-
 /// Cached path to the qemu-bsp-talker binary
 static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -89,7 +83,7 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
     QEMU_TEST_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/qemu/rs-test");
+            let example_dir = root.join("examples/qemu-arm/rust/core/cdr-test");
 
             eprintln!("Building qemu-test...");
 
@@ -203,14 +197,23 @@ pub fn build_example(
 /// Build native-rs-talker with zenoh feature (cached)
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
-        .get_or_try_init(|| build_example("native/rs-talker", "talker", Some(&["zenoh"]), None))
+        .get_or_try_init(|| {
+            build_example("native/rust/zenoh/talker", "talker", Some(&["zenoh"]), None)
+        })
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-listener with zenoh feature (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
-        .get_or_try_init(|| build_example("native/rs-listener", "listener", Some(&["zenoh"]), None))
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/listener",
+                "listener",
+                Some(&["zenoh"]),
+                None,
+            )
+        })
         .map(|p| p.as_path())
 }
 
@@ -243,7 +246,7 @@ pub fn build_native_action_server() -> TestResult<&'static Path> {
     NATIVE_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rs-action-server",
+                "native/rust/zenoh/action-server",
                 "native-rs-action-server",
                 Some(&["zenoh"]),
                 None,
@@ -257,7 +260,7 @@ pub fn build_native_action_client() -> TestResult<&'static Path> {
     NATIVE_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rs-action-client",
+                "native/rust/zenoh/action-client",
                 "native-rs-action-client",
                 Some(&["zenoh"]),
                 None,
@@ -271,7 +274,7 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
     NATIVE_TALKER_SAFETY_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rs-talker",
+                "native/rust/zenoh/talker",
                 "talker",
                 Some(&["zenoh", "safety-e2e"]),
                 None,
@@ -285,7 +288,7 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
     NATIVE_LISTENER_SAFETY_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rs-listener",
+                "native/rust/zenoh/listener",
                 "listener",
                 Some(&["zenoh", "safety-e2e"]),
                 None,
@@ -331,7 +334,7 @@ pub fn build_native_service_server() -> TestResult<&'static Path> {
     NATIVE_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rs-service-server",
+                "native/rust/zenoh/service-server",
                 "native-rs-service-server",
                 Some(&["zenoh"]),
                 None,
@@ -345,7 +348,7 @@ pub fn build_native_service_client() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
-                "native/rs-service-client",
+                "native/rust/zenoh/service-client",
                 "native-rs-service-client",
                 Some(&["zenoh"]),
                 None,
@@ -374,14 +377,19 @@ pub fn service_client_binary() -> PathBuf {
 pub fn build_native_custom_msg() -> TestResult<&'static Path> {
     NATIVE_CUSTOM_MSG_BINARY
         .get_or_try_init(|| {
-            build_example("native/rs-custom-msg", "custom_msg", Some(&["zenoh"]), None)
+            build_example(
+                "native/rust/zenoh/custom-msg",
+                "custom_msg",
+                Some(&["zenoh"]),
+                None,
+            )
         })
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-custom-msg without zenoh feature (for serialization tests)
 pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
-    build_example("native/rs-custom-msg", "custom_msg", None, None)
+    build_example("native/rust/zenoh/custom-msg", "custom_msg", None, None)
 }
 
 /// rstest fixture that provides the native-rs-custom-msg binary path (with zenoh)
@@ -392,40 +400,12 @@ pub fn custom_msg_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build qemu-rs-talker (cached)
-pub fn build_qemu_rs_talker() -> TestResult<&'static Path> {
-    QEMU_RS_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu/rs-talker",
-                "qemu-rs-talker",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
-        .map(|p| p.as_path())
-}
-
-/// Build qemu-rs-listener (cached)
-pub fn build_qemu_rs_listener() -> TestResult<&'static Path> {
-    QEMU_RS_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "qemu/rs-listener",
-                "qemu-rs-listener",
-                None,
-                Some("thumbv7m-none-eabi"),
-            )
-        })
-        .map(|p| p.as_path())
-}
-
 /// Build qemu-bsp-talker (cached)
 pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
     QEMU_BSP_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu/bsp-talker",
+                "qemu-arm/rust/zenoh/talker",
                 "qemu-bsp-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -439,7 +419,7 @@ pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
     QEMU_BSP_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu/bsp-listener",
+                "qemu-arm/rust/zenoh/listener",
                 "qemu-bsp-listener",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -465,63 +445,20 @@ pub fn qemu_bsp_listener_binary() -> PathBuf {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// XRCE-DDS Test Binary Builders
+// XRCE-DDS Example Builders
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Build an XRCE-DDS test binary from `packages/testing/xrce-native-test`.
-///
-/// These are standalone binaries (excluded from workspace) that link against
-/// the XRCE-DDS C library via xrce-sys.
-fn build_xrce_test_binary(binary_name: &str) -> TestResult<PathBuf> {
-    let root = project_root();
-    let crate_dir = root.join("packages/testing/xrce-native-test");
-
-    if !crate_dir.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "xrce-native-test crate not found: {}",
-            crate_dir.display()
-        )));
-    }
-
-    eprintln!("Building xrce-native-test::{}...", binary_name);
-
-    let output = cmd!("cargo", "build", "--release", "--bin", binary_name)
-        .dir(&crate_dir)
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-    if !output.status.success() {
-        return Err(TestError::BuildFailed(
-            String::from_utf8_lossy(&output.stdout).to_string(),
-        ));
-    }
-
-    let binary_path = crate_dir.join(format!("target/release/{}", binary_name));
-
-    if !binary_path.exists() {
-        return Err(TestError::BuildFailed(format!(
-            "Binary not found after build: {}",
-            binary_path.display()
-        )));
-    }
-
-    Ok(binary_path)
-}
-
-/// Build the xrce-talker test binary (cached).
+/// Build the xrce-talker example binary (cached).
 pub fn build_xrce_talker() -> TestResult<&'static Path> {
     XRCE_TALKER_BINARY
-        .get_or_try_init(|| build_xrce_test_binary("xrce-talker"))
+        .get_or_try_init(|| build_example("native/rust/xrce/talker", "xrce-talker", None, None))
         .map(|p| p.as_path())
 }
 
-/// Build the xrce-listener test binary (cached).
+/// Build the xrce-listener example binary (cached).
 pub fn build_xrce_listener() -> TestResult<&'static Path> {
     XRCE_LISTENER_BINARY
-        .get_or_try_init(|| build_xrce_test_binary("xrce-listener"))
+        .get_or_try_init(|| build_example("native/rust/xrce/listener", "xrce-listener", None, None))
         .map(|p| p.as_path())
 }
 
@@ -541,17 +478,31 @@ pub fn xrce_listener_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build the xrce-service-server test binary (cached).
+/// Build the xrce-service-server example binary (cached).
 pub fn build_xrce_service_server() -> TestResult<&'static Path> {
     XRCE_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_xrce_test_binary("xrce-service-server"))
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/service-server",
+                "xrce-service-server",
+                None,
+                None,
+            )
+        })
         .map(|p| p.as_path())
 }
 
-/// Build the xrce-service-client test binary (cached).
+/// Build the xrce-service-client example binary (cached).
 pub fn build_xrce_service_client() -> TestResult<&'static Path> {
     XRCE_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_xrce_test_binary("xrce-service-client"))
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/service-client",
+                "xrce-service-client",
+                None,
+                None,
+            )
+        })
         .map(|p| p.as_path())
 }
 
@@ -571,17 +522,31 @@ pub fn xrce_service_client_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build the xrce-action-server test binary (cached).
+/// Build the xrce-action-server example binary (cached).
 pub fn build_xrce_action_server() -> TestResult<&'static Path> {
     XRCE_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_xrce_test_binary("xrce-action-server"))
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/action-server",
+                "xrce-action-server",
+                None,
+                None,
+            )
+        })
         .map(|p| p.as_path())
 }
 
-/// Build the xrce-action-client test binary (cached).
+/// Build the xrce-action-client example binary (cached).
 pub fn build_xrce_action_client() -> TestResult<&'static Path> {
     XRCE_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_xrce_test_binary("xrce-action-client"))
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/action-client",
+                "xrce-action-client",
+                None,
+                None,
+            )
+        })
         .map(|p| p.as_path())
 }
 
@@ -645,7 +610,7 @@ pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
 /// Build a CMake-based C example.
 ///
 /// # Arguments
-/// * `example_dir` - Path relative to `examples/` (e.g., "native/c-talker")
+/// * `example_dir` - Path relative to `examples/` (e.g., "native/c/zenoh/talker")
 /// * `binary_name` - Name of the output binary (e.g., "c_talker")
 ///
 /// This first ensures the nros-c library is built, then runs cmake + cmake --build.
@@ -722,14 +687,14 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
 /// Build c-talker example (cached)
 pub fn build_c_talker() -> TestResult<&'static Path> {
     C_TALKER_BINARY
-        .get_or_try_init(|| build_c_example("native/c-talker", "c_talker"))
+        .get_or_try_init(|| build_c_example("native/c/zenoh/talker", "c_talker"))
         .map(|p| p.as_path())
 }
 
 /// Build c-listener example (cached)
 pub fn build_c_listener() -> TestResult<&'static Path> {
     C_LISTENER_BINARY
-        .get_or_try_init(|| build_c_example("native/c-listener", "c_listener"))
+        .get_or_try_init(|| build_c_example("native/c/zenoh/listener", "c_listener"))
         .map(|p| p.as_path())
 }
 
@@ -759,7 +724,7 @@ pub fn c_listener_binary() -> PathBuf {
 /// can't use the generic `build_example()` which uses stable `cargo build`.
 fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/esp32/{}", name));
+    let example_dir = root.join(format!("examples/qemu-esp32/rust/zenoh/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -768,7 +733,7 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
         )));
     }
 
-    eprintln!("Building esp32/{}...", name);
+    eprintln!("Building qemu-esp32/rust/zenoh/{}...", name);
 
     let output = cmd!("cargo", "+nightly", "build", "--release")
         .dir(&example_dir)
@@ -802,14 +767,14 @@ fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf
 /// Build esp32-qemu-talker (cached)
 pub fn build_esp32_qemu_talker() -> TestResult<&'static Path> {
     ESP32_QEMU_TALKER_BINARY
-        .get_or_try_init(|| build_esp32_qemu_example("qemu-talker", "esp32-qemu-talker"))
+        .get_or_try_init(|| build_esp32_qemu_example("talker", "esp32-qemu-talker"))
         .map(|p| p.as_path())
 }
 
 /// Build esp32-qemu-listener (cached)
 pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
     ESP32_QEMU_LISTENER_BINARY
-        .get_or_try_init(|| build_esp32_qemu_example("qemu-listener", "esp32-qemu-listener"))
+        .get_or_try_init(|| build_esp32_qemu_example("listener", "esp32-qemu-listener"))
         .map(|p| p.as_path())
 }
 

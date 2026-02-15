@@ -276,13 +276,13 @@ build_zephyr_examples() {
     # In-tree workspace: examples at nros/examples/
     # External workspace: examples at $PROJECT_ROOT/examples/
     local example_path
-    if [ -d "nros/examples/zephyr/c-talker" ]; then
-        example_path="nros/examples/zephyr/c-talker"
-    elif [ -d "$PROJECT_ROOT/examples/zephyr/c-talker" ]; then
-        example_path="$PROJECT_ROOT/examples/zephyr/c-talker"
+    if [ -d "nros/examples/zephyr/c/zenoh/talker" ]; then
+        example_path="nros/examples/zephyr/c/zenoh/talker"
+    elif [ -d "$PROJECT_ROOT/examples/zephyr/c/zenoh/talker" ]; then
+        example_path="$PROJECT_ROOT/examples/zephyr/c/zenoh/talker"
     else
         log_error "Could not find c-talker example"
-        log_info "Expected at: nros/examples/zephyr/c-talker or $PROJECT_ROOT/examples/zephyr/c-talker"
+        log_info "Expected at: nros/examples/zephyr/c/zenoh/talker or $PROJECT_ROOT/examples/zephyr/c/zenoh/talker"
         return 1
     fi
 

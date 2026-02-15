@@ -1,0 +1,24 @@
+[build]
+target = "thumbv7m-none-eabi"
+
+[env]
+DEFMT_LOG = "trace"
+
+[patch.crates-io.builtin_interfaces]
+path = "generated/builtin_interfaces"
+
+[patch.crates-io.nros-core]
+path = "../../../../../packages/core/nros-core"
+
+[patch.crates-io.nros-serdes]
+path = "../../../../../packages/core/nros-serdes"
+
+[patch.crates-io.std_msgs]
+path = "generated/std_msgs"
+
+[target.thumbv7m-none-eabi]
+runner = "qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel"
+rustflags = [
+    "-C",
+    "link-arg=-Tlink.x",
+]

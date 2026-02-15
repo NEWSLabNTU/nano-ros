@@ -1,4 +1,0 @@
-[patch.crates-io]
-nros-core = { path = "../../../packages/core/nros-core" }
-nros-serdes = { path = "../../../packages/core/nros-serdes" }
-example_interfaces = { path = "generated/example_interfaces" }

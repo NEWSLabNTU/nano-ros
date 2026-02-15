@@ -81,10 +81,10 @@ Run the demo:
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Talker
-cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: Listener
-cd examples/native/rs-listener && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zenoh
 ```
 
 ## Quick Start (C API)
@@ -97,7 +97,7 @@ cd nros
 cargo build -p nros-c --release
 
 # Build a C example
-cd examples/native/c-talker
+cd examples/native/c/zenoh/talker
 mkdir -p build && cd build
 cmake -DNANO_ROS_ROOT=/path/to/nros ..
 make
@@ -122,7 +122,7 @@ nros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: nros talker
-cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash

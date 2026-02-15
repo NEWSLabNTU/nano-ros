@@ -1,0 +1,28 @@
+[package]
+name = "esp32-qemu-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Simple QEMU OpenETH subscriber example using nros-esp32-qemu"
+
+[[bin]]
+name = "esp32-qemu-listener"
+test = false
+bench = false
+
+[dependencies]
+# Platform crate - all you need for ESP32-C3 QEMU + OpenETH + zenoh
+nros-esp32-qemu = { path = "../../../../../packages/boards/nros-esp32-qemu" }
+
+# Required for #[main] proc macro (references esp_hal crate directly)
+esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
+
+# Panic handler (required for no_std)
+esp-backtrace = { version = "~0.18.0", features = ["esp32c3", "panic-handler", "println"] }
+
+[profile.release]
+debug = true
+debug-assertions = true
+lto = "fat"
+codegen-units = 1

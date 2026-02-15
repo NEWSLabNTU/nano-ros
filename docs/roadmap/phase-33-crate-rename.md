@@ -1,8 +1,10 @@
 # Phase 33: Crate Rename (`nros-*` / `zpico-*`)
 
-**Status: Complete (33.1–33.6)**
+**Status: Complete (33.1–33.7)**
 
-**Design doc:** `docs/design/rmw-layer-design.md`
+**Design docs:**
+- `docs/design/rmw-layer-design.md` — crate rename plan
+- `docs/design/example-directory-layout.md` — example directory reorganization
 
 ## Goal
 
@@ -19,8 +21,8 @@ This paves the way for the RMW abstraction layer (alternative middleware backend
 
 Rename the workspace-member core crates. These are the most referenced names.
 
-| Current           | New           | Notes               |
-|-------------------|---------------|---------------------|
+| Current       | New           | Notes               |
+|---------------|---------------|---------------------|
 | `nros-core`   | `nros-core`   | Core types, traits  |
 | `nros-serdes` | `nros-serdes` | CDR serialization   |
 | `nros-macros` | `nros-macros` | Proc macros         |
@@ -134,6 +136,202 @@ Each `nros-*` board crate:
 | Delete legacy `c/platform/system.c` and `c/platform/network.c`          |
 | Remove dead `use_c_network_shim`/`use_c_system_shim` code from build.rs |
 | Final `just quality` verification                                        |
+
+### 33.7: Reorganize examples directory
+
+Restructure `examples/` from flat `platform/example-name` to `platform/language/rmw/use-case` hierarchy. Move example binaries out of `packages/reference/` into `examples/`. Delete dead C++ examples.
+
+**Design doc:** `docs/design/example-directory-layout.md`
+
+**Moves (30 examples):**
+
+| Current                             | New                                          |
+|-------------------------------------|----------------------------------------------|
+| `examples/native/rs-talker`         | `examples/native/rust/zenoh/talker`          |
+| `examples/native/rs-listener`       | `examples/native/rust/zenoh/listener`        |
+| `examples/native/rs-service-server` | `examples/native/rust/zenoh/service-server`  |
+| `examples/native/rs-service-client` | `examples/native/rust/zenoh/service-client`  |
+| `examples/native/rs-action-server`  | `examples/native/rust/zenoh/action-server`   |
+| `examples/native/rs-action-client`  | `examples/native/rust/zenoh/action-client`   |
+| `examples/native/rs-custom-msg`     | `examples/native/rust/zenoh/custom-msg`      |
+| `examples/native/c-talker`          | `examples/native/c/zenoh/talker`             |
+| `examples/native/c-listener`        | `examples/native/c/zenoh/listener`           |
+| `examples/native/c-custom-msg`      | `examples/native/c/zenoh/custom-msg`         |
+| `examples/native/c-baremetal-demo`  | `examples/native/c/zenoh/baremetal-demo`     |
+| `examples/qemu/bsp-talker`          | `examples/qemu-arm/rust/zenoh/talker`        |
+| `examples/qemu/bsp-listener`        | `examples/qemu-arm/rust/zenoh/listener`      |
+| `examples/qemu/rs-test`             | `examples/qemu-arm/rust/core/cdr-test`       |
+| `examples/qemu/rs-wcet-bench`       | `examples/qemu-arm/rust/core/wcet-bench`     |
+| `examples/esp32/bsp-talker`         | `examples/esp32/rust/zenoh/talker`           |
+| `examples/esp32/bsp-listener`       | `examples/esp32/rust/zenoh/listener`         |
+| `examples/esp32/hello-world`        | `examples/esp32/rust/standalone/hello-world` |
+| `examples/esp32/qemu-talker`        | `examples/qemu-esp32/rust/zenoh/talker`      |
+| `examples/esp32/qemu-listener`      | `examples/qemu-esp32/rust/zenoh/listener`    |
+| `examples/stm32f4/bsp-talker`       | `examples/stm32f4/rust/zenoh/talker`         |
+| `examples/zephyr/rs-talker`         | `examples/zephyr/rust/zenoh/talker`          |
+| `examples/zephyr/rs-listener`       | `examples/zephyr/rust/zenoh/listener`        |
+| `examples/zephyr/rs-service-server` | `examples/zephyr/rust/zenoh/service-server`  |
+| `examples/zephyr/rs-service-client` | `examples/zephyr/rust/zenoh/service-client`  |
+| `examples/zephyr/rs-action-server`  | `examples/zephyr/rust/zenoh/action-server`   |
+| `examples/zephyr/rs-action-client`  | `examples/zephyr/rust/zenoh/action-client`   |
+| `examples/zephyr/c-talker`          | `examples/zephyr/c/zenoh/talker`             |
+| `examples/zephyr/c-listener`        | `examples/zephyr/c/zenoh/listener`           |
+
+**Moves from `packages/reference/` (5 examples):**
+
+| Current                              | New                                         |
+|--------------------------------------|---------------------------------------------|
+| `packages/reference/qemu-lan9118`    | `examples/qemu-arm/rust/standalone/lan9118` |
+| `packages/reference/stm32f4-polling` | `examples/stm32f4/rust/zenoh/polling`       |
+| `packages/reference/stm32f4-rtic`    | `examples/stm32f4/rust/zenoh/rtic`          |
+| `packages/reference/stm32f4-embassy` | `examples/stm32f4/rust/core/embassy`        |
+| `packages/reference/stm32f4-smoltcp` | `examples/stm32f4/rust/standalone/smoltcp`  |
+
+**Deletions (4 items):**
+
+| Path                                       | Reason                                                  |
+|--------------------------------------------|---------------------------------------------------------|
+| `examples/qemu/rs-talker`                  | Duplicate of `bsp-talker` (identical deps and source)   |
+| `examples/qemu/rs-listener`                | Duplicate of `bsp-listener` (identical deps and source) |
+| `packages/reference/embedded-cpp-talker`   | Depends on non-existent `nros-cpp` crate                |
+| `packages/reference/embedded-cpp-listener` | Depends on non-existent `nros-cpp` crate                |
+
+**Unchanged:**
+
+| Path                                     | Reason                                 |
+|------------------------------------------|----------------------------------------|
+| `packages/reference/qemu-smoltcp-bridge` | Library (`src/lib.rs`), not an example |
+
+**Work items:**
+- [x] Move all 35 examples per the tables above (`git mv`)
+- [x] Delete 4 dead/duplicate items
+- [x] Update `Cargo.toml` path dependencies in each moved example (adjust `../` depth)
+- [x] Update `.cargo/config.toml` `[patch.crates-io]` paths in each moved Rust example
+- [x] Update `CMakeLists.txt` paths in moved C examples
+- [x] Revise `justfile` recipes (see **Justfile Recipe Revision** below)
+- [x] Update `CLAUDE.md` workspace structure tree
+- [x] Update integration test fixtures referencing example binary paths (`nros-tests`)
+- [x] Update doc references to example paths (`CLAUDE.md`, `tests/README.md`, phase docs)
+- [x] Update `packages/reference/README.md` (remove moved entries, note library remains)
+- [x] Run `just quality` after each platform group
+
+**Passing criteria:**
+- All moved examples build: `just build-examples`
+- All tests pass: `just test`
+- `just format-examples` discovers and formats all examples
+- No references to old paths in `justfile`, `CLAUDE.md`, or test fixtures
+- `packages/reference/` contains only `qemu-smoltcp-bridge` (library) and `README.md`
+
+#### Justfile Recipe Revision
+
+The current justfile uses 5 hardcoded example lists (lines 5–9) and per-platform recipes with different base directories. After the move to the 4-level `platform/language/rmw/use-case` structure, these must be revised.
+
+**Current hardcoded lists (to be removed):**
+
+| Variable                  | Current value                                    | Where used                                                                        |
+|---------------------------|--------------------------------------------------|-----------------------------------------------------------------------------------|
+| `NATIVE_EXAMPLES`         | `rs-talker rs-listener ...` (7 items)            | `build/format/check/clean-examples-native`                                        |
+| `EMBEDDED_EXAMPLES`       | `stm32f4-rtic stm32f4-embassy ...` (4 items)     | `build/format/check/clean-examples-embedded` (base: `packages/reference/`)        |
+| `QEMU_EXAMPLES`           | `qemu/rs-test qemu/rs-wcet-bench`                | `build/format/check/clean-examples-qemu`, `quality`                               |
+| `QEMU_REFERENCE_EXAMPLES` | `qemu-smoltcp-bridge qemu-lan9118`               | `build/format/check/clean-examples-qemu`, `quality` (base: `packages/reference/`) |
+| `QEMU_ZENOH_EXAMPLES`     | `qemu/rs-talker ... qemu/bsp-listener` (4 items) | `build/format/check/clean-examples-qemu`, `quality`                               |
+
+**Strategy: Replace hardcoded lists with `find`-based auto-discovery.**
+
+After the move, all Rust examples live under `examples/` at depth 4–5:
+```
+examples/{platform}/{language}/{rmw}/{use-case}/Cargo.toml
+```
+
+The new glob pattern is:
+```bash
+find examples -name Cargo.toml -mindepth 4
+```
+
+**Recipe changes:**
+
+1. **Remove all 5 hardcoded variables** (`NATIVE_EXAMPLES`, `EMBEDDED_EXAMPLES`, `QEMU_EXAMPLES`, `QEMU_REFERENCE_EXAMPLES`, `QEMU_ZENOH_EXAMPLES`).
+
+2. **`format-examples`** — already uses auto-discovery (`_format-examples-auto`). Update glob from `examples/*/*/Cargo.toml` to `find examples -name Cargo.toml -mindepth 4`. Remove `format-examples-embedded` dependency (embedded examples move into `examples/`). Remove the per-platform `format-examples-native`, `format-examples-embedded`, `format-examples-qemu` recipes.
+
+3. **`check-examples`** — replace the chain of `check-examples-native check-examples-embedded check-examples-qemu` with a single auto-discovery recipe. Build mode (debug vs release) is determined by platform:
+   - `native/` → `cargo clippy` (debug)
+   - `qemu-arm/`, `qemu-esp32/`, `esp32/`, `stm32f4/` → `cargo clippy --release`
+   - `zephyr/` → separate (built via `west`, not cargo clippy)
+   ```bash
+   for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/zephyr/*'); do
+       dir="$(dirname "$toml")"
+       platform="$(echo "$dir" | cut -d/ -f2)"
+       flags=""
+       if [ "$platform" != "native" ]; then flags="--release"; fi
+       (cd "$dir" && cargo +nightly fmt --check && cargo clippy $flags -- $CLIPPY_LINTS)
+   done
+   ```
+
+4. **`build-examples`** — same auto-discovery pattern as `check-examples`. Replace the chain of `build-examples-native build-examples-embedded build-examples-qemu`. Build mode varies by platform (same native=debug, embedded=release rule). Exclude `zephyr/` and C examples (built separately via `west`/`cmake`).
+
+5. **`clean-examples`** — auto-discover and `rm -rf` target dirs:
+   ```bash
+   for toml in $(find examples -name Cargo.toml -mindepth 4); do
+       rm -rf "$(dirname "$toml")/target"
+   done
+   ```
+
+6. **`quality` recipe (QEMU examples section, lines 167–180)** — replace the hardcoded `QEMU_EXAMPLES`/`QEMU_ZENOH_EXAMPLES`/`QEMU_REFERENCE_EXAMPLES` loops with auto-discovery of `examples/qemu-arm/`:
+   ```bash
+   for toml in $(find examples/qemu-arm -name Cargo.toml -mindepth 3); do
+       dir="$(dirname "$toml")"
+       (cd "$dir" && cargo +nightly fmt --check && cargo clippy --release -- $CLIPPY_LINTS)
+   done
+   ```
+
+7. **`size-examples-embedded`** — update binary paths from `packages/reference/stm32f4-*/target/...` to `examples/stm32f4/rust/*/target/...`:
+   | Old path | New path |
+   |---|---|
+   | `packages/reference/stm32f4-rtic/target/.../stm32f4-rtic-example` | `examples/stm32f4/rust/zenoh/rtic/target/.../stm32f4-rtic-example` |
+   | `packages/reference/stm32f4-embassy/target/.../stm32f4-embassy-example` | `examples/stm32f4/rust/core/embassy/target/.../stm32f4-embassy-example` |
+   | `packages/reference/stm32f4-polling/target/.../stm32f4-polling-example` | `examples/stm32f4/rust/zenoh/polling/target/.../stm32f4-polling-example` |
+   | `packages/reference/stm32f4-smoltcp/target/.../stm32f4-smoltcp` | `examples/stm32f4/rust/standalone/smoltcp/target/.../stm32f4-smoltcp` |
+
+8. **QEMU test recipes** — update hardcoded `-kernel` paths:
+   | Recipe              | Old `-kernel` path                                           | New `-kernel` path                                                     |
+   |---------------------|--------------------------------------------------------------|------------------------------------------------------------------------|
+   | `test-qemu-basic`   | `examples/qemu/rs-test/target/.../qemu-rs-test`              | `examples/qemu-arm/rust/core/cdr-test/target/.../qemu-rs-test`         |
+   | `test-qemu-wcet`    | `examples/qemu/rs-wcet-bench/target/.../qemu-rs-wcet-bench`  | `examples/qemu-arm/rust/core/wcet-bench/target/.../qemu-rs-wcet-bench` |
+   | `test-qemu-lan9118` | `packages/reference/qemu-lan9118/target/.../qemu-rs-lan9118` | `examples/qemu-arm/rust/standalone/lan9118/target/.../qemu-rs-lan9118` |
+
+   Note: binary names (after last `/`) stay the same — they come from `[[bin]]` or `name` in each example's `Cargo.toml`.
+
+9. **ESP32 build recipes** — update paths:
+   | Recipe                      | Old pattern                                  | New pattern                                        |
+   |-----------------------------|----------------------------------------------|----------------------------------------------------|
+   | `build-examples-esp32`      | `examples/esp32/{bsp-talker,bsp-listener}`   | `examples/esp32/rust/zenoh/{talker,listener}`      |
+   | `build-examples-esp32-qemu` | `examples/esp32/{qemu-talker,qemu-listener}` | `examples/qemu-esp32/rust/zenoh/{talker,listener}` |
+   | `test-qemu-esp32-basic`     | `build/esp32-qemu/esp32-qemu-talker.bin`     | Same (build output path, not source path)          |
+
+10. **Zephyr recipes** — paths stay as `zephyr-workspace/` managed by `west`. The `examples/zephyr/` source paths change but are referenced through the west manifest, not directly in justfile.
+
+11. **C example recipes** — C examples (`native/c/zenoh/*`, `zephyr/c/zenoh/*`) are built by CMake, not cargo. Their justfile recipes (`test-c`, `build-zephyr-c`) reference CMakeLists.txt paths that need updating.
+
+**Recipes to delete (absorbed into auto-discovery):**
+- `format-examples-native`
+- `format-examples-embedded`
+- `format-examples-qemu`
+- `check-examples-native`
+- `check-examples-embedded`
+- `check-examples-qemu`
+- `build-examples-native`
+- `build-examples-embedded`
+- `clean-examples-native`
+- `clean-examples-embedded`
+- `clean-examples-qemu`
+
+**Recipes to keep (platform-specific build logic):**
+- `build-examples-qemu` (needs `--release` + specific target)
+- `build-examples-esp32` / `build-examples-esp32-qemu` (needs `+nightly`, env vars)
+- `build-zephyr` / `build-zephyr-c` (uses `west build`)
+- All `test-qemu-*` recipes (hardcoded QEMU launch commands)
+- `size-examples-embedded` (specific binary paths)
 
 ## Future Work (not in Phase 33)
 

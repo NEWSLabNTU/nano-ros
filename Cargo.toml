@@ -33,38 +33,35 @@ members = [
 # Examples are excluded from workspace - they are standalone packages
 # that generate their own bindings via `cargo nano-ros generate`
 exclude = [
-    # Embedded crates (require cross-compilation)
-    # Native examples (desktop/Linux)
-    "examples/native/rs-talker",
-    "examples/native/rs-listener",
-    "examples/native/rs-custom-msg",
-    "examples/native/rs-service-server",
-    "examples/native/rs-service-client",
-    "examples/native/rs-action-server",
-    "examples/native/rs-action-client",
-    # QEMU examples (bare-metal ARM)
-    "examples/qemu/rs-talker",
-    "examples/qemu/rs-listener",
-    "examples/qemu/rs-test",
-    "examples/qemu/rs-wcet-bench",
-    "examples/qemu/bsp-talker",
-    "examples/qemu/bsp-listener",
+    # Native Rust examples (desktop/Linux)
+    "examples/native/rust/zenoh/talker",
+    "examples/native/rust/zenoh/listener",
+    "examples/native/rust/zenoh/custom-msg",
+    "examples/native/rust/zenoh/service-server",
+    "examples/native/rust/zenoh/service-client",
+    "examples/native/rust/zenoh/action-server",
+    "examples/native/rust/zenoh/action-client",
+    # QEMU ARM examples (bare-metal Cortex-M3)
+    "examples/qemu-arm/rust/zenoh/talker",
+    "examples/qemu-arm/rust/zenoh/listener",
+    "examples/qemu-arm/rust/core/cdr-test",
+    "examples/qemu-arm/rust/core/wcet-bench",
+    "examples/qemu-arm/rust/standalone/lan9118",
     # STM32F4 examples
-    "examples/stm32f4/bsp-talker",
+    "examples/stm32f4/rust/zenoh/talker",
+    "examples/stm32f4/rust/zenoh/polling",
+    "examples/stm32f4/rust/zenoh/rtic",
+    "examples/stm32f4/rust/core/embassy",
+    "examples/stm32f4/rust/standalone/smoltcp",
     # Zephyr examples
-    "examples/zephyr/rs-talker",
-    "examples/zephyr/rs-listener",
-    "examples/zephyr/rs-service-server",
-    "examples/zephyr/rs-service-client",
-    "examples/zephyr/rs-action-server",
-    "examples/zephyr/rs-action-client",
-    # Reference implementations (low-level platform examples)
+    "examples/zephyr/rust/zenoh/talker",
+    "examples/zephyr/rust/zenoh/listener",
+    "examples/zephyr/rust/zenoh/service-server",
+    "examples/zephyr/rust/zenoh/service-client",
+    "examples/zephyr/rust/zenoh/action-server",
+    "examples/zephyr/rust/zenoh/action-client",
+    # Reference implementations (library, not an example)
     "packages/reference/qemu-smoltcp-bridge",
-    "packages/reference/qemu-lan9118",
-    "packages/reference/stm32f4-smoltcp",
-    "packages/reference/stm32f4-rtic",
-    "packages/reference/stm32f4-polling",
-    "packages/reference/stm32f4-embassy",
     # smoltcp link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-smoltcp",
     # XRCE-DDS smoltcp UDP transport (embedded-only, requires cross-compilation)
@@ -73,8 +70,13 @@ exclude = [
     "packages/xrce/nros-rmw-xrce",
     # XRCE-DDS platform symbols for MPS2-AN385 (embedded-only)
     "packages/xrce/xrce-platform-mps2-an385",
-    # XRCE-DDS native test binaries (requires XRCE Agent)
-    "packages/testing/xrce-native-test",
+    # Native XRCE-DDS examples (requires XRCE Agent)
+    "examples/native/rust/xrce/talker",
+    "examples/native/rust/xrce/listener",
+    "examples/native/rust/xrce/service-server",
+    "examples/native/rust/xrce/service-client",
+    "examples/native/rust/xrce/action-server",
+    "examples/native/rust/xrce/action-client",
     # zpico platform crates (embedded-only, require cross-compilation)
     "packages/zpico/zpico-platform-mps2-an385",
     "packages/zpico/zpico-platform-esp32",
@@ -88,11 +90,11 @@ exclude = [
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
-    "examples/esp32/hello-world",
-    "examples/esp32/bsp-talker",
-    "examples/esp32/bsp-listener",
-    "examples/esp32/qemu-talker",
-    "examples/esp32/qemu-listener",
+    "examples/esp32/rust/standalone/hello-world",
+    "examples/esp32/rust/zenoh/talker",
+    "examples/esp32/rust/zenoh/listener",
+    "examples/qemu-esp32/rust/zenoh/talker",
+    "examples/qemu-esp32/rust/zenoh/listener",
     # Verus verification crate (requires Verus toolchain, excluded from workspace)
     "packages/verification/nros-verification",
 ]

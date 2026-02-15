@@ -68,7 +68,7 @@ Or manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:
 
 Then rebuild with `--pristine`:
 ```bash
-west build -b native_sim/native/64 nros/examples/zephyr/rs-talker -d build-talker --pristine
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker -d build-talker --pristine
 ```
 
 Note: `Z_FEATURE_MATCHING` depends on `Z_FEATURE_INTEREST`, so both must be disabled.

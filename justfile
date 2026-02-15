@@ -1,13 +1,6 @@
 # Common clippy lints for real-time safety
 CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable_condition -D clippy::never_loop -D clippy::empty_loop -D clippy::unconditional_recursion -W clippy::large_stack_arrays -W clippy::large_types_passed_by_value"
 
-# Example lists (single source of truth for build/format/check/clean recipes)
-NATIVE_EXAMPLES := "rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client"
-EMBEDDED_EXAMPLES := "stm32f4-rtic stm32f4-embassy stm32f4-polling stm32f4-smoltcp"
-QEMU_EXAMPLES := "qemu/rs-test qemu/rs-wcet-bench"
-QEMU_REFERENCE_EXAMPLES := "qemu-smoltcp-bridge qemu-lan9118"
-QEMU_ZENOH_EXAMPLES := "qemu/rs-talker qemu/rs-listener qemu/bsp-talker qemu/bsp-listener"
-
 LOG_DIR := "test-logs"
 
 default:
@@ -164,19 +157,17 @@ quality:
     fi
 
     echo ""
-    echo "=== QEMU Examples ==="
-    qemu_failed=0
-    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
-        (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
+    echo "=== Embedded Examples ==="
+    emb_failed=0
+    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/native/*' -not -path '*/zephyr/*' -not -path '*/esp32/*' -not -path '*/qemu-esp32/*'); do
+        dir="$(dirname "$toml")"
+        (cd "$dir" && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || emb_failed=1
     done
-    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
-        (cd packages/reference/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}}) || qemu_failed=1
-    done
-    if [ $qemu_failed -ne 0 ]; then
-        echo "[FAIL] QEMU examples FAILED"
+    if [ $emb_failed -ne 0 ]; then
+        echo "[FAIL] Embedded examples FAILED"
         failed=1
     else
-        echo "[OK] QEMU examples passed"
+        echo "[OK] Embedded examples passed"
     fi
 
     echo ""
@@ -275,123 +266,68 @@ test-miri:
     CARGO_PROFILE_DEV_OPT_LEVEL=0 cargo +nightly miri test -p nros-serdes -p nros-core -p nros-params
 
 # =============================================================================
-# Examples
+# Examples (auto-discovered from examples/{platform}/{lang}/{rmw}/{use-case}/)
 # =============================================================================
 
-# Build all examples
-build-examples: build-examples-native build-examples-embedded build-examples-qemu
-    @echo "All examples built!"
-
-# Format all examples
-format-examples: format-examples-native format-examples-embedded format-examples-qemu
-    @echo "All examples formatted!"
-
-# Check all examples
-check-examples: check-examples-native check-examples-embedded check-examples-qemu
-    @echo "All examples check passed!"
-
-# =============================================================================
-# Examples - Native
-# =============================================================================
-
-# Build native examples
-build-examples-native:
+# Build all Rust examples (auto-discovered, excludes zephyr which uses west)
+build-examples:
     #!/usr/bin/env bash
     set -e
-    echo "Building native examples..."
-    for ex in {{NATIVE_EXAMPLES}}; do
-        (cd examples/native/$ex && cargo build)
+    echo "Building examples..."
+    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+        dir="$(dirname "$toml")"
+        platform="$(echo "$dir" | cut -d/ -f2)"
+        flags=""
+        if [ "$platform" != "native" ]; then flags="--release"; fi
+        echo "  build $dir"
+        (cd "$dir" && cargo build $flags)
     done
+    echo "All examples built!"
 
-# Format native examples
-format-examples-native:
+# Format all Rust examples (auto-discovered)
+format-examples:
     #!/usr/bin/env bash
     set -e
-    echo "Formatting native examples..."
-    for ex in {{NATIVE_EXAMPLES}}; do
-        (cd examples/native/$ex && cargo +nightly fmt)
+    echo "Formatting examples..."
+    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+        dir="$(dirname "$toml")"
+        echo "  fmt $dir"
+        (cd "$dir" && cargo +nightly fmt)
     done
+    echo "All examples formatted!"
 
-# Check native examples
-check-examples-native:
+# Check all Rust examples (auto-discovered, excludes zephyr which uses west)
+check-examples:
     #!/usr/bin/env bash
     set -e
-    echo "Checking native examples..."
-    for ex in {{NATIVE_EXAMPLES}}; do
-        (cd examples/native/$ex && cargo +nightly fmt --check && cargo clippy -- {{CLIPPY_LINTS}})
+    echo "Checking examples..."
+    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+        dir="$(dirname "$toml")"
+        platform="$(echo "$dir" | cut -d/ -f2)"
+        flags=""
+        if [ "$platform" != "native" ]; then flags="--release"; fi
+        echo "  check $dir"
+        (cd "$dir" && cargo +nightly fmt --check && cargo clippy $flags -- {{CLIPPY_LINTS}})
     done
-
-# =============================================================================
-# Examples - Embedded (STM32F4)
-# =============================================================================
-
-# Build embedded examples
-build-examples-embedded:
-    #!/usr/bin/env bash
-    set -e
-    echo "Building embedded examples..."
-    for ex in {{EMBEDDED_EXAMPLES}}; do
-        (cd packages/reference/$ex && cargo build --release)
-    done
-
-# Format embedded examples
-format-examples-embedded:
-    #!/usr/bin/env bash
-    set -e
-    echo "Formatting embedded examples..."
-    for ex in {{EMBEDDED_EXAMPLES}}; do
-        (cd packages/reference/$ex && cargo +nightly fmt)
-    done
-
-# Check embedded examples
-check-examples-embedded:
-    #!/usr/bin/env bash
-    set -e
-    echo "Checking embedded examples..."
-    for ex in {{EMBEDDED_EXAMPLES}}; do
-        (cd packages/reference/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
-    done
+    echo "All examples check passed!"
 
 # Show embedded example binary sizes
-size-examples-embedded: build-examples-embedded
+size-examples-embedded: build-examples
     @echo ""
     @echo "Binary sizes (release):"
     @echo "======================="
-    @size packages/reference/stm32f4-rtic/target/thumbv7em-none-eabihf/release/stm32f4-rtic-example 2>/dev/null || echo "RTIC: build failed"
-    @size packages/reference/stm32f4-embassy/target/thumbv7em-none-eabihf/release/stm32f4-embassy-example 2>/dev/null || echo "Embassy: build failed"
-    @size packages/reference/stm32f4-polling/target/thumbv7em-none-eabihf/release/stm32f4-polling-example 2>/dev/null || echo "Polling: build failed"
-    @size packages/reference/stm32f4-smoltcp/target/thumbv7em-none-eabihf/release/stm32f4-smoltcp 2>/dev/null || echo "stm32f4-smoltcp: build failed"
-
-# Clean embedded example build artifacts
-clean-examples-embedded:
-    #!/usr/bin/env bash
-    for ex in {{EMBEDDED_EXAMPLES}}; do
-        rm -rf packages/reference/$ex/target
-    done
-    echo "Embedded example build artifacts cleaned"
-
-# Clean native example build artifacts
-clean-examples-native:
-    #!/usr/bin/env bash
-    for ex in {{NATIVE_EXAMPLES}}; do
-        rm -rf examples/native/$ex/target
-    done
-    echo "Native example build artifacts cleaned"
-
-# Clean QEMU example build artifacts
-clean-examples-qemu:
-    #!/usr/bin/env bash
-    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
-        rm -rf examples/$ex/target
-    done
-    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
-        rm -rf packages/reference/$ex/target
-    done
-    echo "QEMU example build artifacts cleaned"
+    @size examples/stm32f4/rust/zenoh/rtic/target/thumbv7em-none-eabihf/release/stm32f4-rs-rtic-example 2>/dev/null || echo "RTIC: build failed"
+    @size examples/stm32f4/rust/core/embassy/target/thumbv7em-none-eabihf/release/stm32f4-rs-embassy-example 2>/dev/null || echo "Embassy: build failed"
+    @size examples/stm32f4/rust/zenoh/polling/target/thumbv7em-none-eabihf/release/stm32f4-rs-polling-example 2>/dev/null || echo "Polling: build failed"
+    @size examples/stm32f4/rust/standalone/smoltcp/target/thumbv7em-none-eabihf/release/stm32f4-smoltcp 2>/dev/null || echo "stm32f4-smoltcp: build failed"
 
 # Clean all example build artifacts
-clean-examples: clean-examples-native clean-examples-embedded clean-examples-qemu clean-examples-c
-    @echo "All example build artifacts cleaned"
+clean-examples: clean-examples-c
+    #!/usr/bin/env bash
+    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/target/*' -not -path '*/generated/*'); do
+        rm -rf "$(dirname "$toml")/target"
+    done
+    echo "All example build artifacts cleaned"
 
 # =============================================================================
 # Examples - Zephyr (native_sim)
@@ -412,18 +348,18 @@ build-zephyr:
     fi
     echo "Building Zephyr Rust examples in $WORKSPACE..."
     cd "$WORKSPACE"
-    echo "  Building zephyr/rs-talker -> build-talker/"
-    west build -b native_sim/native/64 -d build-talker -p auto nros/examples/zephyr/rs-talker
-    echo "  Building zephyr/rs-listener -> build-listener/"
-    west build -b native_sim/native/64 -d build-listener -p auto nros/examples/zephyr/rs-listener
-    echo "  Building zephyr/rs-service-server -> build-service-server/"
-    west build -b native_sim/native/64 -d build-service-server -p auto nros/examples/zephyr/rs-service-server
-    echo "  Building zephyr/rs-service-client -> build-service-client/"
-    west build -b native_sim/native/64 -d build-service-client -p auto nros/examples/zephyr/rs-service-client
-    echo "  Building zephyr/rs-action-server -> build-action-server/"
-    west build -b native_sim/native/64 -d build-action-server -p auto nros/examples/zephyr/rs-action-server
-    echo "  Building zephyr/rs-action-client -> build-action-client/"
-    west build -b native_sim/native/64 -d build-action-client -p auto nros/examples/zephyr/rs-action-client
+    echo "  Building zephyr/rust/zenoh/talker -> build-talker/"
+    west build -b native_sim/native/64 -d build-talker -p auto nros/examples/zephyr/rust/zenoh/talker
+    echo "  Building zephyr/rust/zenoh/listener -> build-listener/"
+    west build -b native_sim/native/64 -d build-listener -p auto nros/examples/zephyr/rust/zenoh/listener
+    echo "  Building zephyr/rust/zenoh/service-server -> build-service-server/"
+    west build -b native_sim/native/64 -d build-service-server -p auto nros/examples/zephyr/rust/zenoh/service-server
+    echo "  Building zephyr/rust/zenoh/service-client -> build-service-client/"
+    west build -b native_sim/native/64 -d build-service-client -p auto nros/examples/zephyr/rust/zenoh/service-client
+    echo "  Building zephyr/rust/zenoh/action-server -> build-action-server/"
+    west build -b native_sim/native/64 -d build-action-server -p auto nros/examples/zephyr/rust/zenoh/action-server
+    echo "  Building zephyr/rust/zenoh/action-client -> build-action-client/"
+    west build -b native_sim/native/64 -d build-action-client -p auto nros/examples/zephyr/rust/zenoh/action-client
     echo "Zephyr Rust examples built successfully!"
 
 # Build Zephyr C examples
@@ -438,10 +374,10 @@ build-zephyr-c:
     fi
     echo "Building Zephyr C examples in $WORKSPACE..."
     cd "$WORKSPACE"
-    echo "  Building zephyr/c-talker -> build-c-talker/"
-    west build -b native_sim/native/64 -d build-c-talker -p auto nros/examples/zephyr/c-talker
-    echo "  Building zephyr/c-listener -> build-c-listener/"
-    west build -b native_sim/native/64 -d build-c-listener -p auto nros/examples/zephyr/c-listener
+    echo "  Building zephyr/c/zenoh/talker -> build-c-talker/"
+    west build -b native_sim/native/64 -d build-c-talker -p auto nros/examples/zephyr/c/zenoh/talker
+    echo "  Building zephyr/c/zenoh/listener -> build-c-listener/"
+    west build -b native_sim/native/64 -d build-c-listener -p auto nros/examples/zephyr/c/zenoh/listener
     echo "Zephyr C examples built successfully!"
 
 # Build all Zephyr examples (Rust + C)
@@ -462,41 +398,18 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU examples (zenoh-pico is built inline by zpico-sys)
+# Build QEMU ARM examples (auto-discovered from examples/qemu-arm/)
 build-examples-qemu:
     #!/usr/bin/env bash
     set -e
-    echo "Building QEMU examples..."
-    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
-        (cd examples/$ex && cargo build --release)
+    echo "Building QEMU ARM examples..."
+    for toml in $(find examples/qemu-arm -name Cargo.toml -mindepth 3 -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+        dir="$(dirname "$toml")"
+        echo "  build $dir"
+        (cd "$dir" && cargo build --release)
     done
-    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
-        (cd packages/reference/$ex && cargo build --release)
-    done
-
-# Format QEMU examples
-format-examples-qemu:
-    #!/usr/bin/env bash
-    set -e
-    echo "Formatting QEMU examples..."
-    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
-        (cd examples/$ex && cargo +nightly fmt)
-    done
-    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
-        (cd packages/reference/$ex && cargo +nightly fmt)
-    done
-
-# Check QEMU examples
-check-examples-qemu:
-    #!/usr/bin/env bash
-    set -e
-    echo "Checking QEMU examples..."
-    for ex in {{QEMU_EXAMPLES}} {{QEMU_ZENOH_EXAMPLES}}; do
-        (cd examples/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
-    done
-    for ex in {{QEMU_REFERENCE_EXAMPLES}}; do
-        (cd packages/reference/$ex && cargo +nightly fmt --check && cargo clippy --release -- {{CLIPPY_LINTS}})
-    done
+    # Also build qemu-smoltcp-bridge (library in packages/reference/)
+    (cd packages/reference/qemu-smoltcp-bridge && cargo build --release)
 
 # Run all QEMU tests (non-networked)
 test-qemu verbose="":
@@ -535,9 +448,9 @@ build-examples-esp32:
     #!/usr/bin/env bash
     set -e
     echo "Building ESP32 examples..."
-    for ex in bsp-talker bsp-listener; do
-        echo "  Building esp32/$ex..."
-        (cd examples/esp32/$ex && SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +nightly build --release)
+    for ex in talker listener; do
+        echo "  Building esp32/rust/zenoh/$ex..."
+        (cd examples/esp32/rust/zenoh/$ex && SSID="${SSID:-test}" PASSWORD="${PASSWORD:-test}" cargo +nightly build --release)
     done
     echo "ESP32 examples built!"
 
@@ -546,16 +459,16 @@ build-examples-esp32-qemu:
     #!/usr/bin/env bash
     set -e
     echo "Building ESP32 QEMU examples..."
-    for ex in qemu-talker qemu-listener; do
-        echo "  Building esp32/$ex..."
-        (cd examples/esp32/$ex && cargo +nightly build --release)
+    for ex in talker listener; do
+        echo "  Building qemu-esp32/rust/zenoh/$ex..."
+        (cd examples/qemu-esp32/rust/zenoh/$ex && cargo +nightly build --release)
     done
     echo ""
     echo "Creating flash images..."
     mkdir -p build/esp32-qemu
-    for ex in qemu-talker qemu-listener; do
-        bin_name="esp32-$ex"
-        elf="examples/esp32/$ex/target/riscv32imc-unknown-none-elf/release/$bin_name"
+    for ex in talker listener; do
+        bin_name="esp32-qemu-$ex"
+        elf="examples/qemu-esp32/rust/zenoh/$ex/target/riscv32imc-unknown-none-elf/release/$bin_name"
         out="build/esp32-qemu/$bin_name.bin"
         if command -v espflash &>/dev/null; then
             espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
@@ -610,7 +523,7 @@ test-qemu-basic verbose="": build-examples-qemu _init-test-logs
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu/rs-test/target/thumbv7m-none-eabi/release/qemu-rs-test
+            -kernel examples/qemu-arm/rust/core/cdr-test/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
 test-qemu-wcet verbose="": build-examples-qemu _init-test-logs
@@ -618,7 +531,7 @@ test-qemu-wcet verbose="": build-examples-qemu _init-test-logs
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu/rs-wcet-bench/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
+            -kernel examples/qemu-arm/rust/core/wcet-bench/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
 test-qemu-lan9118 verbose="": build-examples-qemu _init-test-logs
@@ -626,7 +539,7 @@ test-qemu-lan9118 verbose="": build-examples-qemu _init-test-logs
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel packages/reference/qemu-lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+            -kernel examples/qemu-arm/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Check if QEMU is installed
 check-qemu:
@@ -666,12 +579,12 @@ test-qemu-zenoh: build-examples-qemu
     echo ""
     echo "To run manually:"
     echo "  Terminal 1: zenohd --listen tcp/0.0.0.0:7447"
-    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
-    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
+    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-arm/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
+    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-arm/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
     echo ""
     echo "Binaries built at:"
-    echo "  examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker"
-    echo "  examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener"
+    echo "  examples/qemu-arm/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
+    echo "  examples/qemu-arm/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
     echo ""
     echo "Note: Automated test not yet implemented (requires QEMU 7.0+)"
     echo "============================================"
@@ -756,7 +669,7 @@ show-asm-list pkg target="":
 # Analyze per-function stack usage (requires nightly + llvm-tools)
 # Usage: just check-stack [example-dir] [top]
 # Default: examples/qemu/rs-wcet-bench, top 30
-check-stack example="examples/qemu/rs-wcet-bench" top="30":
+check-stack example="examples/qemu-arm/rust/core/wcet-bench" top="30":
     ./scripts/stack-analysis.sh {{example}} --top {{top}}
 
 # Analyze stack usage of a pre-built ELF (e.g. Zephyr west build output)
@@ -767,7 +680,7 @@ check-stack-elf elf top="30":
 # Analyze stack usage of C examples (requires cmake + gcc)
 # Usage: just check-stack-c [example-dir] [top]
 # Default: examples/native/c-talker, top 30
-check-stack-c example="examples/native/c-talker" top="30":
+check-stack-c example="examples/native/c/zenoh/talker" top="30":
     ./scripts/stack-analysis-c.sh {{example}} --top {{top}}
 
 # Analyze stack usage of all examples (requires nightly + llvm-tools + cmake)
@@ -779,12 +692,10 @@ check-stack-all top="10":
     failed=0
     # Rust examples (QEMU ARM — no exclude, show full picture)
     for example in \
-        examples/qemu/rs-wcet-bench \
-        examples/qemu/rs-test \
-        examples/qemu/rs-talker \
-        examples/qemu/rs-listener \
-        examples/qemu/bsp-talker \
-        examples/qemu/bsp-listener \
+        examples/qemu-arm/rust/core/wcet-bench \
+        examples/qemu-arm/rust/core/cdr-test \
+        examples/qemu-arm/rust/zenoh/talker \
+        examples/qemu-arm/rust/zenoh/listener \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
@@ -792,13 +703,13 @@ check-stack-all top="10":
     done
     # Rust examples (native — exclude tracing/regex infrastructure noise)
     for example in \
-        examples/native/rs-talker \
-        examples/native/rs-listener \
-        examples/native/rs-custom-msg \
-        examples/native/rs-service-server \
-        examples/native/rs-service-client \
-        examples/native/rs-action-server \
-        examples/native/rs-action-client \
+        examples/native/rust/zenoh/talker \
+        examples/native/rust/zenoh/listener \
+        examples/native/rust/zenoh/custom-msg \
+        examples/native/rust/zenoh/service-server \
+        examples/native/rust/zenoh/service-client \
+        examples/native/rust/zenoh/action-server \
+        examples/native/rust/zenoh/action-client \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis.sh "$example" --top {{top}} --exclude "regex_automata|regex_syntax|aho_corasick|env_filter|env_logger|driftsort" || { echo "[FAIL] $example"; failed=$((failed + 1)); }
@@ -806,10 +717,10 @@ check-stack-all top="10":
     done
     # C examples (native)
     for example in \
-        examples/native/c-talker \
-        examples/native/c-listener \
-        examples/native/c-custom-msg \
-        examples/native/c-baremetal-demo \
+        examples/native/c/zenoh/talker \
+        examples/native/c/zenoh/listener \
+        examples/native/c/zenoh/custom-msg \
+        examples/native/c/zenoh/baremetal-demo \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis-c.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }
@@ -997,17 +908,17 @@ test-c verbose="": _init-test-logs
 build-examples-c: build-codegen-lib
     @echo "Building nros-c library..."
     cargo build -p nros-c --release
-    @echo "Building native/c-talker..."
-    cd examples/native/c-talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
-    @echo "Building native/c-listener..."
-    cd examples/native/c-listener && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
-    @echo "Building native/c-custom-msg..."
-    cd examples/native/c-custom-msg && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../.. && pwd)" .. && make
+    @echo "Building native/c/zenoh/talker..."
+    cd examples/native/c/zenoh/talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    @echo "Building native/c/zenoh/listener..."
+    cd examples/native/c/zenoh/listener && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    @echo "Building native/c/zenoh/custom-msg..."
+    cd examples/native/c/zenoh/custom-msg && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
     @echo "C examples built!"
 
 # Clean C examples build
 clean-examples-c:
-    rm -rf examples/native/c-talker/build examples/native/c-listener/build examples/native/c-custom-msg/build
+    rm -rf examples/native/c/zenoh/talker/build examples/native/c/zenoh/listener/build examples/native/c/zenoh/custom-msg/build
     @echo "C examples build cleaned"
 
 # =============================================================================
@@ -1038,37 +949,12 @@ generate-bindings:
     # To update: run `cargo nano-ros generate-rust` in packages/interfaces/rcl-interfaces/
     # then apply nros- prefix rename to generated Cargo.toml and source files
 
-    # Native examples
-    for ex in rs-talker rs-listener rs-custom-msg rs-service-server rs-service-client rs-action-server rs-action-client; do
-        echo "  native/$ex"
-        (cd examples/native/$ex && $NANO_ROS generate-rust)
+    # Auto-discover all examples with package.xml (Rust only, not zephyr)
+    for pkg in $(find examples -name package.xml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+        dir="$(dirname "$pkg")"
+        echo "  $dir"
+        (cd "$dir" && $NANO_ROS generate-rust)
     done
-
-    # QEMU examples
-    for ex in rs-test rs-wcet-bench rs-talker rs-listener bsp-talker bsp-listener; do
-        echo "  qemu/$ex"
-        (cd examples/qemu/$ex && $NANO_ROS generate-rust)
-    done
-
-    # ESP32 WiFi examples
-    for ex in bsp-talker bsp-listener; do
-        echo "  esp32/$ex"
-        (cd examples/esp32/$ex && $NANO_ROS generate-rust)
-    done
-
-    # STM32F4 examples
-    echo "  stm32f4/bsp-talker"
-    (cd examples/stm32f4/bsp-talker && $NANO_ROS generate-rust)
-
-    # Zephyr examples
-    for ex in rs-talker rs-listener rs-service-server rs-service-client rs-action-server rs-action-client; do
-        echo "  zephyr/$ex"
-        (cd examples/zephyr/$ex && $NANO_ROS generate-rust)
-    done
-
-    # Test infrastructure
-    echo "  testing/xrce-native-test"
-    (cd packages/testing/xrce-native-test && $NANO_ROS generate-rust)
 
     echo "All bindings regenerated!"
 
@@ -1077,36 +963,10 @@ clean-bindings:
     #!/usr/bin/env bash
     set -e
     echo "Removing generated bindings..."
-    dirs=(
-        examples/native/rs-talker/generated
-        examples/native/rs-listener/generated
-        examples/native/rs-custom-msg/generated
-        examples/native/rs-service-server/generated
-        examples/native/rs-service-client/generated
-        examples/native/rs-action-server/generated
-        examples/native/rs-action-client/generated
-        examples/qemu/rs-test/generated
-        examples/qemu/rs-wcet-bench/generated
-        examples/qemu/rs-talker/generated
-        examples/qemu/rs-listener/generated
-        examples/qemu/bsp-talker/generated
-        examples/qemu/bsp-listener/generated
-        examples/esp32/bsp-talker/generated
-        examples/esp32/bsp-listener/generated
-        examples/stm32f4/bsp-talker/generated
-        examples/zephyr/rs-talker/generated
-        examples/zephyr/rs-listener/generated
-        examples/zephyr/rs-service-server/generated
-        examples/zephyr/rs-service-client/generated
-        examples/zephyr/rs-action-server/generated
-        examples/zephyr/rs-action-client/generated
-        packages/testing/xrce-native-test/generated
-    )
-    for d in "${dirs[@]}"; do
-        if [ -d "$d" ]; then
-            rm -rf "$d"
-            echo "  removed $d"
-        fi
+    # Auto-discover all generated/ directories under examples/
+    for d in $(find examples -name generated -type d -not -path '*/target/*' | sort); do
+        rm -rf "$d"
+        echo "  removed $d"
     done
     echo "All generated bindings removed."
 
@@ -1318,10 +1178,10 @@ zephyr-help:
     @echo "  just test-zephyr-c          # Run Zephyr C examples test"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
-    @echo "  west build -b native_sim/native/64 -d build-talker nros/examples/zephyr/rs-talker"
-    @echo "  west build -b native_sim/native/64 -d build-listener nros/examples/zephyr/rs-listener"
-    @echo "  west build -b native_sim/native/64 -d build-action-server nros/examples/zephyr/rs-action-server"
-    @echo "  west build -b native_sim/native/64 -d build-action-client nros/examples/zephyr/rs-action-client"
+    @echo "  west build -b native_sim/native/64 -d build-talker nros/examples/zephyr/rust/zenoh/talker"
+    @echo "  west build -b native_sim/native/64 -d build-listener nros/examples/zephyr/rust/zenoh/listener"
+    @echo "  west build -b native_sim/native/64 -d build-action-server nros/examples/zephyr/rust/zenoh/action-server"
+    @echo "  west build -b native_sim/native/64 -d build-action-client nros/examples/zephyr/rust/zenoh/action-client"
 
 # =============================================================================
 # Docker
@@ -1355,22 +1215,14 @@ docker-shell-network:
         -v nros-cargo-git:/cargo/git \
         nano-ros-qemu
 
-# Run bare-metal QEMU talker/listener test using Docker Compose (rs-* examples)
+# Run bare-metal QEMU talker/listener test using Docker Compose
 # Uses separate containers for zenohd, talker, and listener with isolated networking
 # Each container creates its own TAP/bridge and NATs to the Docker network
 test-docker-qemu: docker-build build-examples-qemu
-    @echo "Running bare-metal QEMU talker/listener test (rs-* examples)..."
+    @echo "Running bare-metal QEMU talker/listener test..."
     @echo "This starts 3 containers: zenohd, talker, and listener"
     @echo ""
-    HOST_UID=$(id -u) HOST_GID=$(id -g) QEMU_EXAMPLE=rs docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
-    @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
-
-# Run bare-metal QEMU talker/listener test using BSP examples
-test-docker-qemu-bsp: docker-build build-examples-qemu
-    @echo "Running bare-metal QEMU talker/listener test (bsp-* examples)..."
-    @echo "This starts 3 containers: zenohd, talker, and listener"
-    @echo ""
-    HOST_UID=$(id -u) HOST_GID=$(id -g) QEMU_EXAMPLE=bsp docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
+    HOST_UID=$(id -u) HOST_GID=$(id -g) docker compose -f tests/qemu-baremetal/docker-compose.yml up --build --abort-on-container-exit
     @docker compose -f tests/qemu-baremetal/docker-compose.yml down -v 2>/dev/null || true
 
 # Run QEMU build inside Docker container
@@ -1409,8 +1261,7 @@ docker-help:
     @echo "  just docker-shell-network   # Start with TAP networking support"
     @echo ""
     @echo "Run commands in Docker:"
-    @echo "  just test-docker-qemu       # Run QEMU talker/listener test (rs-* examples)"
-    @echo "  just test-docker-qemu-bsp   # Run QEMU talker/listener test (bsp-* examples)"
+    @echo "  just test-docker-qemu       # Run QEMU talker/listener test"
     @echo "  just docker-build-qemu      # Build QEMU examples in Docker"
     @echo ""
     @echo "Docker Compose:"

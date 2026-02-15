@@ -42,33 +42,34 @@ nano-ros/
 │   │   ├── nros-ghost-types/      # Ghost model types (workspace member)
 │   │   └── nros-verification/     # Verus deductive proofs (excluded from workspace)
 │   ├── reference/                 # Low-level platform reference implementations
-│   │   ├── qemu-smoltcp-bridge/   # smoltcp bridge library
-│   │   ├── qemu-lan9118/          # LAN9118 driver test binary
-│   │   └── stm32f4-*/             # STM32F4 networking examples
+│   │   └── qemu-smoltcp-bridge/   # smoltcp bridge library
 │   └── codegen/                   # Message binding generator (cargo nano-ros)
 │       ├── packages/              # Cargo workspace (cargo-nano-ros, rosidl-*, etc.)
 │       └── interfaces/            # Bundled .msg/.srv files
-├── examples/                  # Standalone ROS API example packages
+├── examples/                  # Standalone example packages (4-level: platform/lang/rmw/use-case)
 │   ├── native/                # Desktop/Linux examples
-│   │   ├── rs-talker/            # Rust publisher
-│   │   ├── rs-listener/          # Rust subscriber
-│   │   ├── rs-service-*/         # Rust service examples
-│   │   ├── rs-action-*/          # Rust action examples
-│   │   └── c-*/                  # C language examples
-│   ├── qemu/                  # QEMU bare-metal ARM (uses nros-mps2-an385)
-│   │   ├── bsp-talker/           # Simplified platform publisher
-│   │   ├── bsp-listener/         # Simplified platform subscriber
-│   │   └── rs-*/                 # Full Rust examples
-│   ├── stm32f4/               # STM32F4 microcontrollers (uses nros-stm32f4)
-│   │   └── bsp-talker/           # Simplified BSP publisher
-│   ├── zephyr/                # Zephyr RTOS (uses bsp-zephyr)
-│   │   ├── c-talker/             # C BSP publisher
-│   │   ├── c-listener/           # C BSP subscriber
-│   │   └── rs-*/                 # Rust examples
-│   └── esp32/                 # ESP32-C3 examples
-│       ├── bsp-talker/           # WiFi BSP publisher
-│       ├── bsp-listener/         # WiFi BSP subscriber
-│       └── qemu-*/               # QEMU BSP examples
+│   │   ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*, custom-msg)
+│   │   ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener, service-*, action-*)
+│   │   └── c/zenoh/              # C + zenoh (talker, listener, custom-msg)
+│   ├── qemu-arm/              # QEMU bare-metal ARM (MPS2-AN385)
+│   │   └── rust/
+│   │       ├── zenoh/            # Networked (talker, listener)
+│   │       ├── core/             # nros-core only (cdr-test, wcet-bench)
+│   │       └── standalone/       # No nros deps (lan9118)
+│   ├── qemu-esp32/            # QEMU ESP32-C3 (RISC-V)
+│   │   └── rust/zenoh/           # Networked (talker, listener)
+│   ├── esp32/                 # ESP32-C3 hardware
+│   │   └── rust/
+│   │       ├── zenoh/            # Networked (talker, listener)
+│   │       └── standalone/       # No nros deps (hello-world)
+│   ├── stm32f4/               # STM32F4 microcontrollers
+│   │   └── rust/
+│   │       ├── zenoh/            # Networked (talker, polling, rtic)
+│   │       ├── core/             # nros-core only (embassy)
+│   │       └── standalone/       # No nros deps (smoltcp)
+│   └── zephyr/                # Zephyr RTOS
+│       ├── rust/zenoh/           # Rust (talker, listener, service-*, action-*)
+│       └── c/zenoh/              # C (talker, listener)
 ├── scripts/zenohd/            # Zenohd build scripts
 │   ├── build.sh               # Build zenohd from submodule
 │   └── zenoh/                 # Zenoh 1.6.2 submodule
@@ -437,10 +438,10 @@ just build-zenohd
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Talker
-cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: Listener
-cd examples/native/rs-listener && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zenoh
 ```
 
 ### ROS 2 Interop
@@ -449,7 +450,7 @@ cd examples/native/rs-listener && RUST_LOG=info cargo run --features zenoh
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: nros talker
-cd examples/native/rs-talker && RUST_LOG=info cargo run --features zenoh
+cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener
 source /opt/ros/humble/setup.bash
@@ -465,10 +466,10 @@ ROS 2 actions support long-running tasks with feedback and cancellation.
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
 # Terminal 2: Action server (Fibonacci example)
-cd examples/native/rs-action-server && cargo run
+cd examples/native/rust/zenoh/action-server && cargo run
 
 # Terminal 3: Action client
-cd examples/native/rs-action-client && cargo run
+cd examples/native/rust/zenoh/action-client && cargo run
 ```
 
 **Zephyr action tests:**
@@ -558,11 +559,11 @@ just setup-qemu-network                    # Requires sudo
 
 # Terminal 2: Talker (192.0.2.10)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \
-    --binary examples/qemu/rs-talker/target/thumbv7m-none-eabi/release/qemu-rs-talker
+    --binary examples/qemu-arm/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker
 
 # Terminal 3: Listener (192.0.2.11)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 \
-    --binary examples/qemu/rs-listener/target/thumbv7m-none-eabi/release/qemu-rs-listener
+    --binary examples/qemu-arm/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener
 ```
 
 Run `just qemu-help` for more options.

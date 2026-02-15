@@ -51,7 +51,7 @@ fn test_esp32_qemu_talker_builds() {
             let err_str = format!("{:?}", e);
             if err_str.contains("Permission denied") {
                 eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!("Fix with: sudo rm -rf examples/esp32/qemu-talker/target");
+                eprintln!("Fix with: sudo rm -rf examples/qemu-esp32/rust/zenoh/talker/target");
                 eprintln!("Skipping test...");
             } else {
                 panic!("esp32-qemu-talker build failed: {:?}", e);
@@ -84,7 +84,7 @@ fn test_esp32_qemu_listener_builds() {
             let err_str = format!("{:?}", e);
             if err_str.contains("Permission denied") {
                 eprintln!("Build failed due to permission issues (likely from Docker build)");
-                eprintln!("Fix with: sudo rm -rf examples/esp32/qemu-listener/target");
+                eprintln!("Fix with: sudo rm -rf examples/qemu-esp32/rust/zenoh/listener/target");
                 eprintln!("Skipping test...");
             } else {
                 panic!("esp32-qemu-listener build failed: {:?}", e);

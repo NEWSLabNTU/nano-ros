@@ -1,0 +1,27 @@
+[package]
+name = "qemu-bsp-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Simple talker example using nros-mps2-an385"
+
+[[bin]]
+name = "qemu-bsp-talker"
+test = false
+bench = false
+
+[features]
+default = []
+# Use Docker network configuration (different IPs for container-based testing)
+docker = ["nros-mps2-an385/docker"]
+
+[dependencies]
+# Platform crate - all you need for QEMU bare-metal
+nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
+# Panic handler (required for no_std)
+panic-semihosting = { version = "0.6", features = ["exit"] }

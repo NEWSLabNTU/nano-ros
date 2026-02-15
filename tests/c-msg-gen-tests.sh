@@ -91,7 +91,7 @@ info "nros-c built successfully: $NANO_ROS_C_LIB"
 
 info "Configuring native-c-custom-msg example..."
 
-EXAMPLE_DIR="$PROJECT_ROOT/examples/native/c-custom-msg"
+EXAMPLE_DIR="$PROJECT_ROOT/examples/native/c/zenoh/custom-msg"
 BUILD_DIR="$EXAMPLE_DIR/build"
 
 # Clean any existing build

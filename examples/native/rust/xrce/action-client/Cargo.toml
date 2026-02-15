@@ -1,0 +1,16 @@
+[package]
+name = "native-rs-xrce-action-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "xrce-action-client"
+path = "src/main.rs"
+
+[dependencies]
+nros-rmw-xrce = { path = "../../../../../packages/xrce/nros-rmw-xrce", features = ["posix-udp"] }
+nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
+nros-core = { path = "../../../../../packages/core/nros-core", default-features = false, features = ["std"] }
+example_interfaces = { version = "*", default-features = false }
