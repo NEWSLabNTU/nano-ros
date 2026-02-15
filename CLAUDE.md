@@ -393,6 +393,7 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 | 33 | Crate rename (`nros-*` / `zpico-*`) | Complete |
 | 34 | RMW abstraction + XRCE-DDS | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
+| 37 | Executor progress guarantees | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -401,6 +402,8 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 **Phase 34**: 34.1-34.8 complete. RMW factory trait, zenoh backend, board refactor, XRCE-DDS FFI (`xrce-sys`), UDP transport (`xrce-smoltcp`), RMW implementation (`nros-rmw-xrce`), platform symbols, integration test infrastructure.
 
 **Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
+
+**Phase 37**: Executor progress guarantees. Fix service buffer stuck-state bug, add Verus progress proofs for all work item types, evaluate fairness under load. See `docs/roadmap/phase-37-executor-progress-guarantees.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
