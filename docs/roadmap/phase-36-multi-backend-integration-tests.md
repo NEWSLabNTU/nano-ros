@@ -14,9 +14,9 @@ Create a comprehensive integration test matrix that validates all ROS patterns (
 
 | Pattern       | Zenoh (native)               | Zenoh (QEMU)              | Zenoh (Zephyr)         | XRCE (native)       |
 |---------------|------------------------------|---------------------------|------------------------|---------------------|
-| Pub/sub       | `nano2nano.rs` (8 tests)     | `emulator.rs` (10+ tests) | `zephyr.rs` (8+ tests) | `xrce.rs` (3 tests) |
-| Services      | `services.rs` (7 tests)      | -                         | `zephyr.rs` (partial)  | -                   |
-| Actions       | `actions.rs` (5 tests)       | -                         | `zephyr.rs` (partial)  | -                   |
+| Pub/sub       | `nano2nano.rs` (8 tests)     | `emulator.rs` (10+ tests) | `zephyr.rs` (8+ tests) | `xrce.rs` (4 tests) |
+| Services      | `services.rs` (7 tests)      | -                         | `zephyr.rs` (partial)  | `xrce.rs` (3 tests) |
+| Actions       | `actions.rs` (5 tests)       | -                         | `zephyr.rs` (partial)  | `xrce.rs` (3 tests) |
 | ROS 2 interop | `rmw_interop.rs` (15+ tests) | -                         | -                      | -                   |
 
 ### Gaps
@@ -159,16 +159,61 @@ Actions compose from 5 channels (3 services + 2 topics). XRCE-DDS supports all r
 
 This is a significant amount of work. Defer if XRCE service tests prove the RMW traits work.
 
-- [ ] `xrce-action-server.rs` — Creates 2 service servers (send_goal, get_result) + 1 publisher (feedback)
-- [ ] `xrce-action-client.rs` — Creates 2 service clients + 1 subscriber (feedback)
-- [ ] Protocol: Fibonacci action from `example_interfaces`
-- [ ] Add integration tests to `xrce.rs`
-
-**Decision:** This step is optional for Phase 36 and may be deferred to Phase 37+ when the `nros-node` layer gains backend-agnostic action support.
+- [x] `xrce-action-server.rs` — Creates 2 service servers (send_goal, get_result) + 1 publisher (feedback)
+- [x] `xrce-action-client.rs` — Creates 2 service clients + 1 subscriber (feedback)
+- [x] Protocol: Fibonacci action from `example_interfaces`
+- [x] Add integration tests to `xrce.rs` (3 tests: server_starts, client_starts, fibonacci E2E)
+- [x] Fix: `uxr_buffer_request_data` must be flushed immediately with `uxr_run_session_time` to prevent reliable stream congestion when creating multiple entities (nros-rmw-xrce bug)
+- [x] Verify: `just test-xrce` — 10/10 tests pass
+- [x] Verify: `just quality` passes
 
 ---
 
-### 36.6: Add `xrce` feature to `nros` crate (foundation for future)
+### 36.6: XRCE-DDS serial transport (`xrce-serial`)
+
+**Files:** `packages/xrce/xrce-serial/` (new crate), `packages/xrce/xrce-sys/src/lib.rs`, `packages/xrce/xrce-sys/build.rs`
+
+Currently XRCE-DDS only supports UDP transport via `xrce-smoltcp`, which requires an IP-capable network interface (Ethernet or WiFi). Many embedded boards — notably the ROBOTIS OpenCR (STM32F746, TurtleBot3 controller) — lack a network interface but have UART. Adding serial transport enables nano-ros on these boards by communicating with a Micro-XRCE-DDS Agent over UART (the same approach micro-ROS uses).
+
+The upstream Micro-XRCE-DDS-Client library already includes a serial transport with framing protocol (`uxr_init_serial_transport`). The `nros-rmw-xrce` layer is transport-agnostic — it uses custom transport callbacks registered via `init_transport()`, so no changes are needed there.
+
+**Implementation approach: custom transport callbacks** (same pattern as `xrce-smoltcp`):
+
+Create an `xrce-serial` crate that implements the 4 XRCE custom transport callbacks (`open`, `close`, `write`, `read`) over a platform-provided UART. This gives full control over framing, DMA, and ring buffers, and avoids needing to expose the C library's platform-specific `uxrSerialPlatform` struct.
+
+```
+packages/xrce/xrce-serial/
+├── Cargo.toml
+└── src/
+    └── lib.rs    # XrceSerialTransport: open/close/write/read callbacks + HDLC framing
+```
+
+**Key design:**
+- Static TX/RX buffers (no heap, `no_std` compatible)
+- Platform crate provides UART open/close/read/write function pointers at init time
+- HDLC-like framing for reliable byte-stream transport (flag bytes, CRC, escaping)
+- Configurable baud rate, buffer sizes
+- Timeout-based read polling (same pattern as `xrce-smoltcp`)
+
+**Steps:**
+- [ ] Create `xrce-serial` crate with `XrceSerialTransport` struct
+- [ ] Implement 4 custom transport callbacks wrapping platform UART functions
+- [ ] Add HDLC framing (or use XRCE-DDS's built-in serial framing from `serial_transport_internal.h`)
+- [ ] Add `UartPlatform` trait: `open()`, `close()`, `write(&[u8]) -> usize`, `read(&mut [u8], timeout_ms) -> usize`
+- [ ] Create native POSIX implementation of `UartPlatform` (for testing on Linux with `/dev/ttyUSB*` or pty pairs)
+- [ ] Add integration test: XRCE Agent (serial mode) ↔ `xrce-serial` talker/listener over pty pair
+- [ ] Add workspace member to root `Cargo.toml`
+- [ ] Verify: `cargo build -p xrce-serial`
+- [ ] Verify: serial transport integration test passes
+
+**Use cases unlocked:**
+- **OpenCR (STM32F746)**: UART to Raspberry Pi running Micro-XRCE-DDS Agent → ROS 2 network
+- **Any MCU with UART**: Boards without Ethernet/WiFi can participate in ROS 2 via a host-side Agent
+- **USB CDC**: USB virtual serial ports (same byte-stream interface)
+
+---
+
+### 36.7: Add `xrce` feature to `nros` crate (foundation for future)
 
 **Files:** `packages/core/nros/Cargo.toml`, `packages/core/nros/src/lib.rs`
 
@@ -186,7 +231,7 @@ Lay the groundwork for examples that use the `nros` high-level API with XRCE bac
 
 ---
 
-### 36.7: Test matrix documentation
+### 36.8: Test matrix documentation
 
 **Files:** `tests/README.md` (update), `docs/roadmap/phase-36-multi-backend-integration-tests.md` (this file)
 
@@ -202,16 +247,16 @@ Document the complete test coverage matrix.
 
 After Phase 36 completion:
 
-| Pattern | Zenoh native | Zenoh QEMU | Zenoh Zephyr | XRCE native | XRCE QEMU |
-|---------|:------------:|:----------:|:------------:|:-----------:|:----------:|
-| Pub/sub | `nano2nano.rs` | `emulator.rs` | `zephyr.rs` | `xrce.rs` | Phase 37+ |
-| Services | `services.rs` | - | `zephyr.rs` | `xrce.rs` **NEW** | Phase 37+ |
-| Actions | `actions.rs` | - | `zephyr.rs` | 36.5 (stretch) | Phase 37+ |
-| ROS 2 interop | `rmw_interop.rs` | - | - | N/A (diff protocol) | - |
-| Custom msgs | `custom_msg.rs` | - | - | - | - |
-| Parameters | `params.rs` | - | - | N/A (no node layer) | - |
-| QoS | `qos.rs` | - | - | - | - |
-| Multi-node | `multi_node.rs` | - | - | - | - |
+| Pattern | Zenoh native | Zenoh QEMU | Zenoh Zephyr | XRCE native (UDP) | XRCE native (serial) | XRCE QEMU |
+|---------|:------------:|:----------:|:------------:|:-----------------:|:--------------------:|:----------:|
+| Pub/sub | `nano2nano.rs` | `emulator.rs` | `zephyr.rs` | `xrce.rs` | 36.6 **NEW** | Phase 37+ |
+| Services | `services.rs` | - | `zephyr.rs` | `xrce.rs` **NEW** | - | Phase 37+ |
+| Actions | `actions.rs` | - | `zephyr.rs` | `xrce.rs` | - | Phase 37+ |
+| ROS 2 interop | `rmw_interop.rs` | - | - | N/A (diff protocol) | N/A | - |
+| Custom msgs | `custom_msg.rs` | - | - | - | - | - |
+| Parameters | `params.rs` | - | - | N/A (no node layer) | N/A | - |
+| QoS | `qos.rs` | - | - | - | - | - |
+| Multi-node | `multi_node.rs` | - | - | - | - | - |
 
 Legend: `-` = not tested, `N/A` = not applicable for this backend
 
@@ -222,10 +267,11 @@ Legend: `-` = not tested, `N/A` = not applicable for this backend
 3. **36.3** (service tests) — Integration tests for services
 4. **36.4** (harden pub/sub tests) — Improve existing tests
 5. **36.5** (action binaries) — Optional stretch goal
-6. **36.6** (`nros` xrce feature) — Foundation for future phases
-7. **36.7** (documentation) — Final documentation
+6. **36.6** (serial transport) — XRCE-DDS over UART
+7. **36.7** (`nros` xrce feature) — Foundation for future phases
+8. **36.8** (documentation) — Final documentation
 
-Steps 36.2-36.4 can proceed in parallel after 36.1. Step 36.6 is independent.
+Steps 36.2-36.4 can proceed in parallel after 36.1. Steps 36.6 and 36.7 are independent of each other and of 36.2-36.5.
 
 ## Future Work (Phase 37+)
 
@@ -233,4 +279,6 @@ Steps 36.2-36.4 can proceed in parallel after 36.1. Step 36.6 is independent.
 - **Unified native examples**: Single rs-talker with `--features zenoh` or `--features xrce`
 - **XRCE QEMU board crate**: `xrce-platform-mps2-an385` is already created (Phase 34.7); need board crate (`nros-mps2-an385-xrce` or feature-gated `nros-mps2-an385`)
 - **XRCE-DDS ↔ ROS 2 interop**: XRCE Agent bridges to DDS, enabling ROS 2 interop via different protocol than zenoh
-- **CI matrix**: GitHub Actions job matrix with `{backend} × {platform}` axes
+- **OpenCR board crate**: `nros-opencr` using `xrce-serial` over UART to Raspberry Pi running Micro-XRCE-DDS Agent (enables TurtleBot3 with nano-ros)
+- **Serial transport on embedded boards**: `UartPlatform` implementations for STM32 HAL, Zephyr UART, ESP32 UART — any board with UART can participate in ROS 2 via host-side Agent
+- **CI matrix**: GitHub Actions job matrix with `{backend} × {platform} × {transport}` axes

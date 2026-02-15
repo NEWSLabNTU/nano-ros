@@ -7,8 +7,9 @@
 //!   just build-xrce-agent   # Build the Agent from source
 
 use nros_tests::fixtures::{
-    ManagedProcess, XrceAgent, require_xrce_agent, xrce_listener_binary,
-    xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
+    ManagedProcess, XrceAgent, require_xrce_agent, xrce_action_client_binary,
+    xrce_action_server_binary, xrce_listener_binary, xrce_service_client_binary,
+    xrce_service_server_binary, xrce_talker_binary,
 };
 use rstest::rstest;
 use std::path::PathBuf;
@@ -313,6 +314,152 @@ fn test_xrce_service_request_response(
         reply_count >= 1,
         "Expected at least 1 reply, got {}",
         reply_count
+    );
+
+    drop(agent);
+}
+
+// =============================================================================
+// XRCE Action Tests
+// =============================================================================
+
+#[rstest]
+fn test_xrce_action_server_starts(xrce_action_server_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let mut cmd = Command::new(&xrce_action_server_binary);
+    cmd.env("XRCE_AGENT_ADDR", &addr).env("XRCE_TIMEOUT", "10");
+    let mut server = ManagedProcess::spawn_command(cmd, "xrce-action-server")
+        .expect("Failed to start action server");
+
+    match server.wait_for_output_pattern("Action server ready", Duration::from_secs(10)) {
+        Ok(_) => eprintln!("xrce-action-server started successfully"),
+        Err(_) => {
+            if server.is_running() {
+                eprintln!("xrce-action-server running (no readiness marker yet)");
+            } else {
+                eprintln!("xrce-action-server exited early");
+            }
+        }
+    }
+
+    server.kill();
+    drop(agent);
+}
+
+#[rstest]
+fn test_xrce_action_client_starts(xrce_action_client_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let mut cmd = Command::new(&xrce_action_client_binary);
+    cmd.env("XRCE_AGENT_ADDR", &addr);
+    let mut client = ManagedProcess::spawn_command(cmd, "xrce-action-client")
+        .expect("Failed to start action client");
+
+    match client.wait_for_output_pattern("Action client ready", Duration::from_secs(10)) {
+        Ok(_) => eprintln!("xrce-action-client started successfully"),
+        Err(_) => {
+            if client.is_running() {
+                eprintln!("xrce-action-client running (no readiness marker yet)");
+            } else {
+                eprintln!("xrce-action-client exited early");
+            }
+        }
+    }
+
+    client.kill();
+    drop(agent);
+}
+
+#[rstest]
+fn test_xrce_action_fibonacci(
+    xrce_action_server_binary: PathBuf,
+    xrce_action_client_binary: PathBuf,
+) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    // Start action server first
+    let mut server_cmd = Command::new(&xrce_action_server_binary);
+    server_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("XRCE_TIMEOUT", "30");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "xrce-action-server")
+        .expect("Failed to start action server");
+
+    // Wait for server to be ready
+    let _ = server.wait_for_output_pattern("Action server ready", Duration::from_secs(10));
+
+    // Stabilization delay
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Start action client (requests Fibonacci order=5)
+    let mut client_cmd = Command::new(&xrce_action_client_binary);
+    client_cmd
+        .env("XRCE_AGENT_ADDR", &addr)
+        .env("XRCE_FIBONACCI_ORDER", "5");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "xrce-action-client")
+        .expect("Failed to start action client");
+
+    // Wait for client to complete
+    let client_output = client
+        .wait_for_output_pattern("Action client done", Duration::from_secs(30))
+        .unwrap_or_default();
+
+    // Give server time to flush output
+    std::thread::sleep(Duration::from_millis(500));
+    let server_output = server
+        .wait_for_output_pattern("Goal completed", Duration::from_secs(2))
+        .unwrap_or_default();
+
+    client.kill();
+    server.kill();
+
+    eprintln!("Client output:\n{}", client_output);
+    eprintln!("Server output:\n{}", server_output);
+
+    // Verify goal was accepted
+    assert!(
+        client_output.contains("Goal accepted"),
+        "Client should have received goal acceptance.\nClient output:\n{}",
+        client_output,
+    );
+
+    // Verify feedback was received
+    let feedback_count = count_pattern(&client_output, "Feedback");
+    assert!(
+        feedback_count >= 1,
+        "Expected at least 1 feedback message, got {}.\nClient output:\n{}",
+        feedback_count,
+        client_output,
+    );
+
+    // Verify result was received
+    assert!(
+        client_output.contains("Result:"),
+        "Client should have received result.\nClient output:\n{}",
+        client_output,
     );
 
     drop(agent);

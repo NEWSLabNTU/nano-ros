@@ -22,6 +22,14 @@ path = "src/bin/xrce-service-server.rs"
 name = "xrce-service-client"
 path = "src/bin/xrce-service-client.rs"
 
+[[bin]]
+name = "xrce-action-server"
+path = "src/bin/xrce-action-server.rs"
+
+[[bin]]
+name = "xrce-action-client"
+path = "src/bin/xrce-action-client.rs"
+
 [dependencies]
 nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", features = ["posix"] }
 nros-rmw = { path = "../../core/nros-rmw" }

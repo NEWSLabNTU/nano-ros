@@ -67,6 +67,12 @@ static XRCE_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the xrce-service-client binary
 static XRCE_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the xrce-action-server binary
+static XRCE_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the xrce-action-client binary
+static XRCE_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached: nros-c library built
 static NANO_ROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
 
@@ -562,6 +568,36 @@ pub fn xrce_service_server_binary() -> PathBuf {
 pub fn xrce_service_client_binary() -> PathBuf {
     build_xrce_service_client()
         .expect("Failed to build xrce-service-client")
+        .to_path_buf()
+}
+
+/// Build the xrce-action-server test binary (cached).
+pub fn build_xrce_action_server() -> TestResult<&'static Path> {
+    XRCE_ACTION_SERVER_BINARY
+        .get_or_try_init(|| build_xrce_test_binary("xrce-action-server"))
+        .map(|p| p.as_path())
+}
+
+/// Build the xrce-action-client test binary (cached).
+pub fn build_xrce_action_client() -> TestResult<&'static Path> {
+    XRCE_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| build_xrce_test_binary("xrce-action-client"))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the xrce-action-server binary path.
+#[rstest::fixture]
+pub fn xrce_action_server_binary() -> PathBuf {
+    build_xrce_action_server()
+        .expect("Failed to build xrce-action-server")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the xrce-action-client binary path.
+#[rstest::fixture]
+pub fn xrce_action_client_binary() -> PathBuf {
+    build_xrce_action_client()
+        .expect("Failed to build xrce-action-client")
         .to_path_buf()
 }
 
