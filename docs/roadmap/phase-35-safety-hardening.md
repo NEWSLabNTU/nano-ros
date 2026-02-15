@@ -241,12 +241,12 @@ Validate the full safety protocol stack end-to-end. Tests are split into two cat
 - Identify tool qualification gaps and mitigation strategies
 
 **Work items:**
-- [ ] Create `docs/research/tool-confidence-assessment.md`
-- [ ] Classify each tool by ISO 26262 Part 8 Table 4 (TI1/TI2 × TD1/TD2/TD3 → TCL1/TCL2/TCL3)
-- [ ] Tools to assess: `rustc`, `cargo-kani`, `verus`, `cargo-nextest`, `miri`, `cargo-llvm-cov`, `qemu-system-arm`
-- [ ] For each tool: document version, use case, failure impact, existing qualification evidence
-- [ ] Identify gaps: which tools need qualification kits, validation suites, or diversity arguments
-- [ ] Propose mitigation strategies (diverse compilation, back-to-back testing, tool output validation)
+- [x] Create `docs/research/tool-confidence-assessment.md`
+- [x] Classify each tool by ISO 26262 Part 8 Table 4 (TI1/TI2 × TD1/TD2/TD3 → TCL1/TCL2/TCL3)
+- [x] Tools to assess: `rustc`, `cargo-kani`, `verus`, `cargo-nextest`, `miri`, `cargo-llvm-cov`, `qemu-system-arm`
+- [x] For each tool: document version, use case, failure impact, existing qualification evidence
+- [x] Identify gaps: which tools need qualification kits, validation suites, or diversity arguments
+- [x] Propose mitigation strategies (diverse compilation, back-to-back testing, tool output validation)
 
 **Passing criteria:**
 - Assessment document exists with TCL classification for all 7 tools
