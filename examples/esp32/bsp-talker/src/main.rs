@@ -31,35 +31,32 @@ nros_esp32::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
-    run_node(
-        NodeConfig::new(WifiConfig::new(SSID, PASSWORD)),
-        |node| {
-            // Declare publisher
-            esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
-            let publisher = node.create_publisher::<Int32>("/chatter")?;
-            esp_println::println!("Publisher declared");
+    run_node(NodeConfig::new(WifiConfig::new(SSID, PASSWORD)), |node| {
+        // Declare publisher
+        esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
+        let publisher = node.create_publisher::<Int32>("/chatter")?;
+        esp_println::println!("Publisher declared");
 
-            // Publish messages
-            esp_println::println!("");
-            esp_println::println!("Publishing messages...");
+        // Publish messages
+        esp_println::println!("");
+        esp_println::println!("Publishing messages...");
 
-            for i in 0..10i32 {
-                // Poll to process network events
-                for _ in 0..100 {
-                    node.spin_once(10);
-                }
-
-                if let Err(e) = publisher.publish(&Int32 { data: i }) {
-                    esp_println::println!("Publish failed: {:?}", e);
-                } else {
-                    esp_println::println!("Published: {}", i);
-                }
+        for i in 0..10i32 {
+            // Poll to process network events
+            for _ in 0..100 {
+                node.spin_once(10);
             }
 
-            esp_println::println!("");
-            esp_println::println!("Done publishing 10 messages.");
+            if let Err(e) = publisher.publish(&Int32 { data: i }) {
+                esp_println::println!("Publish failed: {:?}", e);
+            } else {
+                esp_println::println!("Published: {}", i);
+            }
+        }
 
-            Ok(())
-        },
-    )
+        esp_println::println!("");
+        esp_println::println!("Done publishing 10 messages.");
+
+        Ok(())
+    })
 }

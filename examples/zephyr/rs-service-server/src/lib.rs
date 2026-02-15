@@ -5,9 +5,9 @@
 
 #![no_std]
 
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use log::{error, info};
 use nros::{ShimExecutor, ShimNodeError};
-use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {

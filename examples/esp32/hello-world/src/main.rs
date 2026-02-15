@@ -12,7 +12,11 @@
 #![no_main]
 
 use esp_backtrace as _;
-use esp_hal::{delay::Delay, gpio::{Level, Output, OutputConfig}, main};
+use esp_hal::{
+    delay::Delay,
+    gpio::{Level, Output, OutputConfig},
+    main,
+};
 
 esp_bootloader_esp_idf::esp_app_desc!();
 

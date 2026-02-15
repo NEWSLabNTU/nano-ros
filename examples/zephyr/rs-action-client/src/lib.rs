@@ -6,9 +6,9 @@
 
 #![no_std]
 
+use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use log::{error, info, warn};
 use nros::{ShimExecutor, ShimNodeError};
-use example_interfaces::action::{Fibonacci, FibonacciGoal};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
@@ -73,7 +73,11 @@ fn run() -> Result<(), ShimNodeError> {
             Ok(Some((fid, feedback))) => {
                 if fid.uuid == goal_id.uuid {
                     feedback_count += 1;
-                    info!("Feedback #{}: {:?}", feedback_count, feedback.sequence.as_slice());
+                    info!(
+                        "Feedback #{}: {:?}",
+                        feedback_count,
+                        feedback.sequence.as_slice()
+                    );
                     no_feedback_cycles = 0;
 
                     // Check if we have all feedback (order + 1 values)
@@ -103,7 +107,11 @@ fn run() -> Result<(), ShimNodeError> {
     // Get final result
     match action_client.get_result(&goal_id) {
         Ok((status, result)) => {
-            info!("Result: status={:?}, sequence={:?}", status, result.sequence.as_slice());
+            info!(
+                "Result: status={:?}, sequence={:?}",
+                status,
+                result.sequence.as_slice()
+            );
         }
         Err(e) => {
             error!("Failed to get result: {:?}", e);

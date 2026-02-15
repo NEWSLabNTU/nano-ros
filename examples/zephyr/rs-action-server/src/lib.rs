@@ -6,11 +6,9 @@
 
 #![no_std]
 
-use log::{error, info};
-use nros::{
-    CancelResponse, GoalResponse, GoalStatus, ShimExecutor, ShimNodeError,
-};
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
+use log::{error, info};
+use nros::{CancelResponse, GoalResponse, GoalStatus, ShimExecutor, ShimNodeError};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
