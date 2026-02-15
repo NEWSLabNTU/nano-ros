@@ -75,6 +75,40 @@ pub struct SubscriberBufferGhost {
 }
 
 // ======================================================================
+// Service Buffer
+// ======================================================================
+
+/// Ghost model of `ServiceBuffer` state.
+///
+/// Models the state machine of the service server's static buffer in
+/// `nros-rmw-zenoh/src/shim.rs`. Each service server has one 1024-byte
+/// static buffer with atomic `has_request` and `len` fields.
+///
+/// Unlike `SubscriberBuffer`, there is no `overflow` flag — oversized
+/// requests are silently truncated by the callback (the copy length is
+/// `min(payload_len, buf_capacity)`).
+///
+/// Source (shim.rs:1306-1319):
+/// ```ignore
+/// struct ServiceBuffer {
+///     data: [u8; 1024],
+///     keyexpr: [u8; 256],
+///     has_request: AtomicBool,
+///     len: AtomicUsize,
+///     keyexpr_len: AtomicUsize,
+///     sequence_number: AtomicSeqCounter,
+/// }
+/// ```
+pub struct ServiceBufferGhost {
+    /// Whether the buffer contains an unprocessed request
+    pub has_request: bool,
+    /// Length of valid request data in the buffer
+    pub stored_len: usize,
+    /// Static buffer capacity (always 1024 in production)
+    pub buf_capacity: usize,
+}
+
+// ======================================================================
 // Publish Call Chain
 // ======================================================================
 
@@ -127,6 +161,38 @@ pub struct SpinOnceGhost {
     pub services_handled: usize,
     /// Number of timers fired (always processed)
     pub timers_fired: usize,
+}
+
+// ======================================================================
+// Executor Progress (Phase 37.3)
+// ======================================================================
+
+/// Ghost model of `SpinOnceResult` with error counters.
+///
+/// Extends `SpinOnceGhost` with the error counters added in Phase 37.1b.
+/// Used by progress proofs to verify no-silent-data-loss invariant.
+///
+/// Source (executor.rs:77-88):
+/// ```ignore
+/// pub struct SpinOnceResult {
+///     pub subscriptions_processed: usize,
+///     pub timers_fired: usize,
+///     pub services_handled: usize,
+///     pub subscription_errors: usize,
+///     pub service_errors: usize,
+/// }
+/// ```
+pub struct SpinOnceResultGhost {
+    /// Number of subscriptions processed successfully
+    pub subs_processed: usize,
+    /// Number of timers fired
+    pub timers_fired: usize,
+    /// Number of services handled successfully
+    pub services_handled: usize,
+    /// Number of subscription processing errors
+    pub sub_errors: usize,
+    /// Number of service processing errors
+    pub svc_errors: usize,
 }
 
 // ======================================================================

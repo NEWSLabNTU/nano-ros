@@ -33,7 +33,7 @@
 /// - `sequence_number_monotonicity` — arithmetic identity on atomic increment.
 use vstd::prelude::*;
 use nros_node::TriggerCondition;
-use nros_ghost_types::{SubscriberBufferGhost, PublishChainGhost, SpinOnceGhost};
+use nros_ghost_types::{SubscriberBufferGhost, ServiceBufferGhost, PublishChainGhost, SpinOnceGhost};
 use super::scheduling::{trigger_eval_spec, trigger_any, trigger_all};
 
 verus! {
@@ -549,6 +549,184 @@ proof fn no_silent_truncation(msg_len: usize, buf_capacity: usize, rx_buf_len: u
                 // Both flags are cleared — subscription recovers
                 &&& !new_state.has_data
                 &&& !new_state.overflow
+            })
+        }),
+{
+}
+
+// ======================================================================
+// Service Buffer Ghost Type and Spec Functions (Phase 37.2)
+// ======================================================================
+
+/// Register `ServiceBufferGhost` as a transparent type.
+#[verifier::external_type_specification]
+pub struct ExServiceBufferGhost(ServiceBufferGhost);
+
+/// State after the queryable callback writes to the service buffer.
+///
+/// Models `queryable_callback` (shim.rs:1353-1393).
+///
+/// The service callback always truncates to `buf_capacity` without an overflow
+/// flag (unlike the subscription callback post-fix which sets `overflow`).
+/// This is acceptable because service request sizes are typically bounded by
+/// the service definition, but it means oversized requests are silently truncated.
+///
+/// ```ignore
+/// let copy_len = payload_len.min(buffer.data.len());
+/// // ... copy data ...
+/// buffer.len.store(copy_len, Ordering::Release);
+/// buffer.has_request.store(true, Ordering::Release);
+/// ```
+pub open spec fn service_callback_spec(req_len: usize, buf_capacity: usize) -> ServiceBufferGhost {
+    ServiceBufferGhost {
+        has_request: true,
+        stored_len: if req_len <= buf_capacity { req_len } else { buf_capacity },
+        buf_capacity,
+    }
+}
+
+/// State after the **pre-fix** `try_recv_request` reads from the service buffer.
+///
+/// Models the pre-fix behavior where `BufferTooSmall` does NOT clear `has_request`.
+///
+/// Pre-fix code (shim.rs, before 37.1 fix):
+/// ```ignore
+/// if len > buf.len() {
+///     return Err(BufferTooSmall);  // has_request NOT cleared
+/// }
+/// // ... copy data ...
+/// buffer.has_request.store(false, ...);
+/// Ok(Some(request))
+/// ```
+pub open spec fn try_recv_request_pre_fix(
+    buf: ServiceBufferGhost,
+    rx_buf_len: usize,
+) -> (ServiceBufferGhost, bool, bool) // (new_state, got_request, got_error)
+{
+    if !buf.has_request {
+        // No request available
+        (buf, false, false)
+    } else if buf.stored_len > rx_buf_len {
+        // BufferTooSmall — has_request NOT cleared (BUG: stuck service)
+        (buf, false, true)
+    } else {
+        // Success — has_request cleared
+        (ServiceBufferGhost {
+            has_request: false,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, true, false)
+    }
+}
+
+/// State after the **post-fix** `try_recv_request` reads from the service buffer.
+///
+/// Models the post-fix behavior (after 37.1 fix) where `BufferTooSmall`
+/// clears `has_request` to avoid the stuck-service bug.
+///
+/// Post-fix code (shim.rs:1471-1516):
+/// ```ignore
+/// if len > buf.len() {
+///     buffer.has_request.store(false, ...);  // FIXED: clear on error
+///     return Err(BufferTooSmall);
+/// }
+/// // ... copy data ...
+/// buffer.has_request.store(false, ...);
+/// Ok(Some(request))
+/// ```
+pub open spec fn try_recv_request_post_fix(
+    buf: ServiceBufferGhost,
+    rx_buf_len: usize,
+) -> (ServiceBufferGhost, bool, bool) // (new_state, got_request, got_error)
+{
+    if !buf.has_request {
+        // No request available
+        (buf, false, false)
+    } else if buf.stored_len > rx_buf_len {
+        // BufferTooSmall — has_request cleared (FIXED: no stuck service)
+        (ServiceBufferGhost {
+            has_request: false,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, false, true)
+    } else {
+        // Success — has_request cleared
+        (ServiceBufferGhost {
+            has_request: false,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, true, false)
+    }
+}
+
+// ======================================================================
+// Service Buffer Bug Existence Proof (Pre-Fix)
+// ======================================================================
+
+/// **Proof 11: `stuck_service_bug`**
+///
+/// Proves that in the pre-fix code, when `stored_len > rx_buf_len`, the
+/// `try_recv_request` error path leaves `has_request == true`. This means
+/// every subsequent call hits the same oversized request and returns the
+/// same error — the service is permanently stuck.
+///
+/// Mirrors `stuck_subscription_bug` (Proof 1) for the service buffer.
+///
+/// Real-time relevance: A liveness violation — a service becomes
+/// permanently unresponsive after encountering one oversized request.
+proof fn stuck_service_bug(stored_len: usize, rx_buf_len: usize, buf_capacity: usize)
+    requires
+        stored_len > rx_buf_len,         // request too large for receive buffer
+        stored_len <= buf_capacity,      // fits in static buffer (was stored by callback)
+    ensures
+        ({
+            let buf = service_callback_spec(stored_len, buf_capacity);
+            // try_recv_request returns error AND has_request stays true
+            let (new_state, got_request, got_error) = try_recv_request_pre_fix(buf, rx_buf_len);
+            &&& got_error             // error was returned
+            &&& !got_request          // no request was delivered
+            &&& new_state.has_request // has_request still true → STUCK
+            // Calling try_recv again hits the same error (stuck forever)
+            &&& ({
+                let (stuck_state, got_request2, got_error2) = try_recv_request_pre_fix(new_state, rx_buf_len);
+                &&& got_error2              // same error again
+                &&& !got_request2           // still no request
+                &&& stuck_state.has_request // still stuck
+            })
+        }),
+{
+}
+
+// ======================================================================
+// Service Buffer Post-Fix Correctness Proof
+// ======================================================================
+
+/// **Proof 12: `no_stuck_service`**
+///
+/// Proves that in the post-fix code, after **any** error path in
+/// `try_recv_request`, `has_request` is cleared to `false`. The next
+/// callback can store a new request and the service recovers.
+///
+/// Mirrors `no_stuck_subscription` (Proof 9) for the service buffer.
+///
+/// Real-time relevance: Liveness recovery — after any transient error,
+/// the service accepts new requests on the next callback invocation.
+proof fn no_stuck_service(req_len: usize, buf_capacity: usize, rx_buf_len: usize)
+    requires
+        buf_capacity > 0,
+    ensures
+        // For ANY request (normal or oversized), after callback + try_recv:
+        ({
+            let buf = service_callback_spec(req_len, buf_capacity);
+            let (new_state, got_request, got_error) =
+                try_recv_request_post_fix(buf, rx_buf_len);
+            // has_request is ALWAYS cleared (regardless of which path was taken)
+            &&& !new_state.has_request
+            // A subsequent callback can store a new request
+            &&& ({
+                let after_new_req = service_callback_spec(42, buf_capacity);
+                // The new callback sets has_request = true (service recovered)
+                after_new_req.has_request
             })
         }),
 {

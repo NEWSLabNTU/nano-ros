@@ -100,7 +100,7 @@ just doc            # Generate docs
 
 # Formal verification
 just verify-kani    # Kani bounded model checking (82 harnesses)
-just verify-verus   # Verus unbounded deductive proofs (67 proofs)
+just verify-verus   # Verus unbounded deductive proofs (92 proofs)
 just verify         # Both Kani + Verus
 
 # Message bindings
@@ -357,7 +357,7 @@ nros-node = { version = "*", features = ["param-services"] }
 Two complementary verification tools are used:
 
 - **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 82 harnesses across nros-serdes, nros-core, nros-params, nros-c. Run with `just verify-kani`.
-- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nros-verification/` (excluded from workspace). 67 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, parameter types, and E2E data path. Includes 10 E2E proofs (bug existence, publish chain, executor delivery, post-fix correctness). Run with `just verify-verus`.
+- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nros-verification/` (excluded from workspace). 92 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, parameter types, E2E data path, safety protocol, and executor progress guarantees. Includes 12 E2E proofs (bug existence, publish chain, executor delivery, post-fix correctness, service buffer), 8 safety proofs, and 8 progress proofs. Run with `just verify-verus`.
 
 ```bash
 just verify          # Run both Kani + Verus (requires both toolchains)

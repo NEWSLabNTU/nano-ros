@@ -1999,7 +1999,7 @@ mod tests {
 #[cfg(test)]
 mod ghost_checks {
     use super::*;
-    use nros_ghost_types::SubscriberBufferGhost;
+    use nros_ghost_types::{ServiceBufferGhost, SubscriberBufferGhost};
 
     /// Structural check: construct SubscriberBufferGhost from SubscriberBuffer private fields.
     /// If a field is renamed or retyped, this fails to compile.
@@ -2026,6 +2026,36 @@ mod ghost_checks {
     fn ghost_capacity_constant() {
         let buffer = SubscriberBuffer::new();
         let ghost = ghost_from_buffer(&buffer);
+        assert_eq!(ghost.buf_capacity, 1024);
+    }
+
+    // ========================================================================
+    // ServiceBufferGhost Correspondence
+    // ========================================================================
+
+    /// Structural check: construct ServiceBufferGhost from ServiceBuffer private fields.
+    /// If a field is renamed or retyped, this fails to compile.
+    fn ghost_from_service_buffer(b: &ServiceBuffer) -> ServiceBufferGhost {
+        ServiceBufferGhost {
+            has_request: b.has_request.load(Ordering::Relaxed),
+            stored_len: b.len.load(Ordering::Relaxed),
+            buf_capacity: b.data.len(),
+        }
+    }
+
+    #[test]
+    fn ghost_service_new_state() {
+        let buffer = ServiceBuffer::new();
+        let ghost = ghost_from_service_buffer(&buffer);
+        assert!(!ghost.has_request);
+        assert_eq!(ghost.stored_len, 0);
+        assert_eq!(ghost.buf_capacity, 1024);
+    }
+
+    #[test]
+    fn ghost_service_capacity_constant() {
+        let buffer = ServiceBuffer::new();
+        let ghost = ghost_from_service_buffer(&buffer);
         assert_eq!(ghost.buf_capacity, 1024);
     }
 

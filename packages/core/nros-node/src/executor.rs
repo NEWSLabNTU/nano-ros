@@ -1731,4 +1731,58 @@ mod tests {
     fn test_default_max_nodes() {
         assert_eq!(DEFAULT_MAX_NODES, 4);
     }
+
+    // ========================================================================
+    // Ghost Type Validation (SpinOnceResultGhost)
+    // ========================================================================
+
+    /// Structural check: construct SpinOnceResultGhost from SpinOnceResult fields.
+    /// If a field is renamed or retyped, this fails to compile.
+    #[test]
+    fn ghost_spin_once_result_correspondence() {
+        use nros_ghost_types::SpinOnceResultGhost;
+
+        let result = SpinOnceResult {
+            subscriptions_processed: 3,
+            timers_fired: 1,
+            services_handled: 2,
+            subscription_errors: 1,
+            service_errors: 0,
+        };
+
+        let ghost = SpinOnceResultGhost {
+            subs_processed: result.subscriptions_processed,
+            timers_fired: result.timers_fired,
+            services_handled: result.services_handled,
+            sub_errors: result.subscription_errors,
+            svc_errors: result.service_errors,
+        };
+
+        assert_eq!(ghost.subs_processed, 3);
+        assert_eq!(ghost.timers_fired, 1);
+        assert_eq!(ghost.services_handled, 2);
+        assert_eq!(ghost.sub_errors, 1);
+        assert_eq!(ghost.svc_errors, 0);
+    }
+
+    /// Ghost model of new/default state matches production defaults.
+    #[test]
+    fn ghost_spin_once_result_new_state() {
+        use nros_ghost_types::SpinOnceResultGhost;
+
+        let result = SpinOnceResult::new();
+        let ghost = SpinOnceResultGhost {
+            subs_processed: result.subscriptions_processed,
+            timers_fired: result.timers_fired,
+            services_handled: result.services_handled,
+            sub_errors: result.subscription_errors,
+            svc_errors: result.service_errors,
+        };
+
+        assert_eq!(ghost.subs_processed, 0);
+        assert_eq!(ghost.timers_fired, 0);
+        assert_eq!(ghost.services_handled, 0);
+        assert_eq!(ghost.sub_errors, 0);
+        assert_eq!(ghost.svc_errors, 0);
+    }
 }
