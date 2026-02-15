@@ -399,6 +399,7 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 | 34 | RMW abstraction + XRCE-DDS | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
 | 37 | Executor progress guarantees | Not Started |
+| 38 | Example cleanup | Complete |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -409,6 +410,8 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 **Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
 
 **Phase 37**: Executor progress guarantees. Fix service buffer stuck-state bug, add Verus progress proofs for all work item types, evaluate fairness under load. See `docs/roadmap/phase-37-executor-progress-guarantees.md`.
+
+**Phase 38**: Complete. Eliminated low-level API leaks from all 33 examples. Created XRCE node API (`XrceExecutor`/`XrceNode` in `nros-node`), ported 8 XRCE examples to `nros` unified API, replaced hand-written messages in ESP32 QEMU examples with generated bindings, moved STM32F4 porting references to `packages/reference/`, added `create_subscription_with_safety()` to executor, moved backend internals to `nros::internals`, deprecated `TransportConfig`. See `docs/roadmap/phase-38-example-cleanup.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
