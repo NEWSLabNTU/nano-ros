@@ -10,7 +10,7 @@
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
 use nros_core::{
-    heapless, CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, RosAction, Serialize,
+    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, RosAction, Serialize, heapless,
 };
 use nros_rmw::{
     Publisher, QosSettings, Rmw, RmwConfig, ServiceInfo, ServiceServerTrait, Session, SessionMode,
@@ -23,8 +23,8 @@ use std::time::Instant;
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
 
 fn main() {
-    let agent_addr = std::env::var("XRCE_AGENT_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:2019".to_string());
+    let agent_addr =
+        std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -61,24 +61,21 @@ fn main() {
     let feedback_type = format!("{}FeedbackMessage_", action_type);
 
     // Create send_goal service server
-    let send_goal_info =
-        ServiceInfo::new("/fibonacci/_action/send_goal", &send_goal_type, "");
+    let send_goal_info = ServiceInfo::new("/fibonacci/_action/send_goal", &send_goal_type, "");
     let mut send_goal_server = session
         .create_service_server(&send_goal_info)
         .expect("Failed to create send_goal server");
     eprintln!("send_goal service server created");
 
     // Create get_result service server
-    let get_result_info =
-        ServiceInfo::new("/fibonacci/_action/get_result", &get_result_type, "");
+    let get_result_info = ServiceInfo::new("/fibonacci/_action/get_result", &get_result_type, "");
     let mut get_result_server = session
         .create_service_server(&get_result_info)
         .expect("Failed to create get_result server");
     eprintln!("get_result service server created");
 
     // Create feedback publisher
-    let feedback_topic =
-        TopicInfo::new("/fibonacci/_action/feedback", &feedback_type, "");
+    let feedback_topic = TopicInfo::new("/fibonacci/_action/feedback", &feedback_type, "");
     let feedback_publisher = session
         .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
         .expect("Failed to create feedback publisher");
@@ -135,7 +132,9 @@ fn main() {
                 let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
 
                 for i in 0..=order {
-                    let val = if i <= 1 { i } else {
+                    let val = if i <= 1 {
+                        i
+                    } else {
                         let n = sequence.len();
                         sequence[n - 1] + sequence[n - 2]
                     };
@@ -196,7 +195,9 @@ fn main() {
                 }
 
                 let len = writer.position();
-                get_result_server.send_reply(seq, &reply_buf[..len]).unwrap();
+                get_result_server
+                    .send_reply(seq, &reply_buf[..len])
+                    .unwrap();
                 session.spin_once(100);
             }
         }

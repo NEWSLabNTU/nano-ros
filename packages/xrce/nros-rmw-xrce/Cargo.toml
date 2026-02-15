@@ -7,10 +7,10 @@ description = "XRCE-DDS RMW backend for nros"
 
 [features]
 default = []
-posix = ["xrce-sys/posix"]
-bare-metal = ["xrce-sys/bare-metal"]
-posix-udp = ["posix"]
-posix-serial = ["posix", "dep:libc"]
+platform-posix = ["xrce-sys/posix"]
+platform-bare-metal = ["xrce-sys/bare-metal"]
+posix-udp = ["platform-posix"]
+posix-serial = ["platform-posix", "dep:libc"]
 
 [dependencies]
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }

@@ -8,7 +8,7 @@ keywords = ["ros", "ros2", "embedded", "no_std"]
 categories = ["embedded", "no-std", "robotics"]
 
 [features]
-default = ["std", "zenoh", "ros-humble"]
+default = ["std", "rmw-zenoh", "platform-posix", "ros-humble"]
 std = [
     "alloc",  # std implies alloc
     "nros-core/std",
@@ -23,12 +23,27 @@ alloc = [
     "nros-rmw/alloc",
     "nros-params/alloc",
 ]
-# Transport: selects the middleware protocol (only zenoh today)
-zenoh = [
-    "nros-node/zenoh",
-    "dep:nros-rmw-zenoh",
-    "nros-rmw-zenoh/platform-posix",
+
+# RMW backend (select one)
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce"]
+
+# Platform (select one; forwarded to active backend via ? syntax)
+platform-posix = [
+    "nros-node/platform-posix",
+    "nros-rmw-zenoh?/platform-posix",
+    "nros-rmw-xrce?/platform-posix",
 ]
+platform-zephyr = ["nros-node/platform-zephyr", "nros-rmw-zenoh?/platform-zephyr"]
+platform-bare-metal = [
+    "nros-node/platform-bare-metal",
+    "nros-rmw-zenoh?/platform-bare-metal",
+    "nros-rmw-xrce?/platform-bare-metal",
+]
+
+# XRCE transport refinements (posix-only)
+xrce-udp = ["nros-rmw-xrce?/posix-udp"]
+xrce-serial = ["nros-rmw-xrce?/posix-serial"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-node/safety-e2e", "nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
@@ -39,11 +54,6 @@ param-services = ["nros-node/param-services"]
 # ROS edition feature flags
 ros-humble = ["nros-node/ros-humble"]
 ros-iron = ["nros-node/ros-iron"]
-
-# Platform: selects the OS/HAL backend (mutually exclusive)
-platform-posix = ["nros-node/platform-posix", "dep:nros-rmw-zenoh", "nros-rmw-zenoh/platform-posix"]
-platform-zephyr = ["nros-node/platform-zephyr", "dep:nros-rmw-zenoh", "nros-rmw-zenoh/platform-zephyr"]
-platform-bare-metal = ["nros-node/platform-bare-metal", "dep:nros-rmw-zenoh", "nros-rmw-zenoh/platform-bare-metal"]
 
 # Executor modes
 rtic = ["nros-node/rtic"]
@@ -56,6 +66,7 @@ nros-macros = { path = "../nros-macros" }
 nros-node = { path = "../nros-node", default-features = false }
 nros-rmw = { path = "../nros-rmw", default-features = false }
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
+nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
 nros-params = { path = "../nros-params", default-features = false }
 
 [dev-dependencies]

@@ -368,6 +368,7 @@ dependencies = [
  "nros-node",
  "nros-params",
  "nros-rmw",
+ "nros-rmw-xrce",
  "nros-rmw-zenoh",
 ]
 
@@ -415,6 +416,15 @@ dependencies = [
  "heapless",
  "log",
  "nros-core",
+]
+
+[[package]]
+name = "nros-rmw-xrce"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-rmw",
+ "xrce-sys",
 ]
 
 [[package]]
@@ -864,6 +874,13 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "xrce-sys"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

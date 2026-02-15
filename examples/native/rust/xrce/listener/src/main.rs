@@ -13,8 +13,8 @@ use std::time::Instant;
 use std_msgs::msg::Int32;
 
 fn main() {
-    let agent_addr = std::env::var("XRCE_AGENT_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:2019".to_string());
+    let agent_addr =
+        std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
         .ok()
         .and_then(|s| s.parse().ok())
@@ -80,10 +80,7 @@ fn main() {
     if received >= msg_count {
         println!("Received {} messages, exiting", received);
     } else {
-        eprintln!(
-            "Timeout: received only {}/{} messages",
-            received, msg_count
-        );
+        eprintln!("Timeout: received only {}/{} messages", received, msg_count);
         std::process::exit(1);
     }
 

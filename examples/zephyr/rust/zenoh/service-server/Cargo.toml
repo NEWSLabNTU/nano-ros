@@ -20,7 +20,7 @@ zephyr = "0.1.0"
 log = "0.4"
 
 # nros unified API (patched to local via .cargo/config.toml)
-nros = { version = "*", default-features = false, features = ["platform-zephyr"] }
+nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-zephyr"] }
 
 # Generated message types (patched to local via .cargo/config.toml)
 example_interfaces = { version = "*", default-features = false }

@@ -246,7 +246,7 @@ check-workspace-features:
     @echo "  - node: rtic"
     cargo clippy -p nros-node --no-default-features --features "rtic" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - zenoh transport (std)"
-    cargo clippy -p nros-rmw --features "zenoh,std" -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --features "std" -- {{CLIPPY_LINTS}}
     @echo "All feature checks passed!"
 
 # Run workspace unit tests (no external deps)
@@ -784,11 +784,11 @@ verify: verify-kani verify-verus
 
 # Build zenoh transport
 build-zenoh:
-    cargo build -p nros-rmw --features zenoh,std
+    cargo build -p nros-rmw --features std
 
 # Check zenoh transport
 check-zenoh:
-    cargo clippy -p nros-rmw --features zenoh,std -- {{CLIPPY_LINTS}}
+    cargo clippy -p nros-rmw --features std -- {{CLIPPY_LINTS}}
 
 # Build zenohd 1.6.2 from submodule (version-matched to rmw_zenoh_cpp)
 build-zenohd:

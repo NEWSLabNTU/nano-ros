@@ -9,18 +9,17 @@ description = "Node abstraction for nros"
 default = ["std", "ros-humble"]
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "log"]
 alloc = ["nros-core/alloc"]
-zenoh = ["platform-posix", "alloc"]
+rmw-zenoh = ["dep:nros-rmw-zenoh"]
 
 # ROS edition feature flags (controls which env vars are supported)
 ros-humble = []                  # ROS_LOCALHOST_ONLY (Humble+, default)
 ros-iron = ["ros-humble"]        # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEERS (Iron+)
 log = ["dep:log"]
 
-# Transport backend (select one platform)
-shim = ["dep:nros-rmw-zenoh"]  # Base shim feature
-platform-posix = ["shim", "nros-rmw-zenoh/platform-posix"]
-platform-zephyr = ["shim", "nros-rmw-zenoh/platform-zephyr"]
-platform-bare-metal = ["shim", "nros-rmw-zenoh/platform-bare-metal"]
+# Platform backend (select one; forwarded to active RMW backend)
+platform-posix = ["nros-rmw-zenoh?/platform-posix"]
+platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr"]
+platform-bare-metal = ["nros-rmw-zenoh?/platform-bare-metal"]
 
 # Executor support
 rtic = ["nros-rmw-zenoh?/rtic"]
@@ -30,7 +29,7 @@ polling = ["nros-rmw-zenoh?/polling"]
 safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 
 # Parameter services (ros2 param CLI support)
-param-services = ["dep:nros-rcl-interfaces", "zenoh"]
+param-services = ["dep:nros-rcl-interfaces", "rmw-zenoh", "alloc"]
 
 [dependencies]
 nros-core = { workspace = true, default-features = false }

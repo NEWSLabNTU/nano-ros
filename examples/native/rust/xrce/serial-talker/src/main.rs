@@ -18,10 +18,7 @@ fn main() {
         .and_then(|s| s.parse().ok())
         .unwrap_or(0);
 
-    eprintln!(
-        "XRCE Serial Talker: pty={}, domain={}",
-        pty_path, domain_id
-    );
+    eprintln!("XRCE Serial Talker: pty={}, domain={}", pty_path, domain_id);
 
     // Initialize serial transport
     unsafe {

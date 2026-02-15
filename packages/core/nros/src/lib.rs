@@ -37,9 +37,21 @@
 //!
 //! ## Crate Features
 //!
+//! Three orthogonal feature axes:
+//!
+//! **RMW backend** (select one):
+//! - `rmw-zenoh` (default) - zenoh-pico transport backend
+//! - `rmw-xrce` - XRCE-DDS transport backend
+//!
+//! **Platform** (select one):
+//! - `platform-posix` (default) - Desktop/Linux
+//! - `platform-zephyr` - Zephyr RTOS
+//! - `platform-bare-metal` - Bare-metal targets
+//!
+//! **Other**:
 //! - `std` (default) - Enable standard library support
 //! - `alloc` - Enable heap allocation without full std
-//! - `zenoh` (default) - Enable zenoh-pico transport backend
+//! - `ros-humble` (default) / `ros-iron` - ROS 2 edition
 
 #![no_std]
 
@@ -66,29 +78,33 @@ pub use nros_node::{
     DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
 
-// Re-export connected node types (with zenoh feature)
-#[cfg(feature = "zenoh")]
+// Re-export connected node types (requires rmw-zenoh + alloc)
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use nros_node::{
     ConnectedActionClient, ConnectedActionServer, ConnectedNode, ConnectedNodeError,
     ConnectedPublisher, ConnectedServiceClient, ConnectedServiceServer, ConnectedSubscriber,
 };
 
-// Re-export new rclrs-style API types (with zenoh feature)
-#[cfg(feature = "zenoh")]
+// Re-export error types (available without alloc)
+#[cfg(feature = "rmw-zenoh")]
+pub use nros_node::RclrsError;
+
+// Re-export new rclrs-style API types (requires rmw-zenoh + alloc)
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use nros_node::{
     Context, InitOptions, IntoNodeOptions, IntoPublisherOptions, IntoSubscriberOptions, Node,
-    NodeNameExt, NodeOptions, RclrsError,
+    NodeNameExt, NodeOptions,
 };
 
 // Re-export executor types (with zenoh and alloc features)
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use nros_node::{
     Executor, NodeHandle, NodeState, PollingExecutor, SpinOnceResult, SpinOptions,
     SpinPeriodPollingResult, SubscriptionCallback, SubscriptionCallbackWithInfo,
 };
 
 // Re-export BasicExecutor, SpinPeriodResult, and Promise (with zenoh and std features)
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 pub use nros_node::{BasicExecutor, Promise, SpinPeriodResult};
 
 // Re-export transport types (middleware-agnostic)
@@ -102,52 +118,40 @@ pub use nros_rmw::{
 pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 
 // Re-export zenoh-specific types
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub use nros_rmw_zenoh::{
     Ros2Liveliness, ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohTransport,
 };
 
-// Re-export shim-specific types for embedded platforms
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal"
-))]
+// Re-export XRCE-DDS-specific types
+#[cfg(feature = "rmw-xrce")]
+pub use nros_rmw_xrce::{
+    XrcePublisher, XrceRmw, XrceServiceClient, XrceServiceServer, XrceSession, XrceSubscriber,
+};
+
+// Re-export shim-specific types (zenoh transport layer)
+#[cfg(feature = "rmw-zenoh")]
 pub use nros_rmw_zenoh::{
     RMW_GID_SIZE as SHIM_RMW_GID_SIZE, RmwAttachment as ShimRmwAttachment,
     Ros2Liveliness as ShimRos2Liveliness, ShimPublisher, ShimServiceClient, ShimServiceServer,
     ShimSession, ShimSubscriber, ShimTransport, ShimZenohId, ZenohId as ShimZenohId2,
 };
 
-// Re-export liveliness token for shim platforms
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal"
-))]
+// Re-export liveliness token
+#[cfg(feature = "rmw-zenoh")]
 pub use nros_rmw_zenoh::ShimLivelinessToken;
 
-// Re-export shim node types for embedded platforms
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-zephyr",
-    feature = "platform-bare-metal"
-))]
+// Re-export shim node types
+#[cfg(feature = "rmw-zenoh")]
 pub use nros_node::{
     ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
     ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,
     ShimNodeServiceServer, ShimNodeSubscription,
 };
 
-// Clean type aliases for shim types (only when zenoh feature is NOT active to avoid conflicts)
-#[cfg(all(
-    any(
-        feature = "platform-posix",
-        feature = "platform-zephyr",
-        feature = "platform-bare-metal"
-    ),
-    not(feature = "zenoh")
-))]
+// Clean type aliases for shim types (when rmw-zenoh is active but alloc is not,
+// i.e., embedded use without the Connected* API)
+#[cfg(all(feature = "rmw-zenoh", not(feature = "alloc")))]
 mod shim_aliases {
     pub type Publisher<M> = super::ShimNodePublisher<M>;
     pub type Subscription<M, const N: usize = 1024> = super::ShimNodeSubscription<M, N>;
@@ -169,14 +173,7 @@ mod shim_aliases {
         const F: usize = 1024,
     > = super::ShimNodeActionClient<A, G, R, F>;
 }
-#[cfg(all(
-    any(
-        feature = "platform-posix",
-        feature = "platform-zephyr",
-        feature = "platform-bare-metal"
-    ),
-    not(feature = "zenoh")
-))]
+#[cfg(all(feature = "rmw-zenoh", not(feature = "alloc")))]
 pub use shim_aliases::*;
 
 // Re-export service types
@@ -195,7 +192,7 @@ pub use nros_node::{Trigger, TriggerCondition, TriggerFn};
 pub use nros_core::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use nros_node::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use nros_node::LifecycleNode;
 
 // Re-export parameter types
@@ -218,22 +215,26 @@ pub mod prelude {
         TopicInfo, TransportConfig,
     };
 
-    #[cfg(feature = "zenoh")]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub use crate::{
         ConnectedActionClient, ConnectedActionServer, ConnectedNode, ConnectedNodeError,
         ConnectedPublisher, ConnectedServiceClient, ConnectedServiceServer, ConnectedSubscriber,
         SessionMode,
     };
 
+    // Re-export error types
+    #[cfg(feature = "rmw-zenoh")]
+    pub use crate::RclrsError;
+
     // Re-export new rclrs-style API
-    #[cfg(feature = "zenoh")]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub use crate::{
         Context, InitOptions, IntoNodeOptions, IntoPublisherOptions, IntoSubscriberOptions, Node,
-        NodeNameExt, NodeOptions, RclrsError,
+        NodeNameExt, NodeOptions,
     };
 
     // Re-export executor types
-    #[cfg(all(feature = "zenoh", feature = "alloc"))]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub use crate::{
         Executor, PollingExecutor, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
         SubscriptionCallback, SubscriptionCallbackWithInfo,
@@ -248,33 +249,22 @@ pub mod prelude {
         LifecycleTransition, TransitionResult,
     };
 
-    #[cfg(all(feature = "zenoh", feature = "alloc"))]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub use crate::LifecycleNode;
 
     // Re-export BasicExecutor, SpinPeriodResult, and Promise
-    #[cfg(all(feature = "zenoh", feature = "std"))]
+    #[cfg(all(feature = "rmw-zenoh", feature = "std"))]
     pub use crate::{BasicExecutor, Promise, SpinPeriodResult};
 
     // Re-export shim node types
-    #[cfg(any(
-        feature = "platform-posix",
-        feature = "platform-zephyr",
-        feature = "platform-bare-metal"
-    ))]
+    #[cfg(feature = "rmw-zenoh")]
     pub use crate::{
         ShimExecutor, ShimNode, ShimNodeActionClient, ShimNodeActionServer, ShimNodeError,
         ShimNodePublisher, ShimNodeServiceClient, ShimNodeServiceServer, ShimNodeSubscription,
     };
 
-    // Re-export clean type aliases
-    #[cfg(all(
-        any(
-            feature = "platform-posix",
-            feature = "platform-zephyr",
-            feature = "platform-bare-metal"
-        ),
-        not(feature = "zenoh")
-    ))]
+    // Re-export clean type aliases (embedded without alloc)
+    #[cfg(all(feature = "rmw-zenoh", not(feature = "alloc")))]
     pub use crate::shim_aliases::*;
 
     // Re-export parameter types

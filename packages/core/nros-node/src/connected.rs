@@ -34,9 +34,9 @@ use nros_rmw::{
     TransportConfig, TransportError,
 };
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 use nros_params::UndeclaredParameters;
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 use nros_rmw_zenoh::{
     LivelinessToken, Ros2Liveliness, ZenohId, ZenohPublisher, ZenohServiceClient,
     ZenohServiceServer, ZenohSession, ZenohSubscriber, ZenohTransport,
@@ -383,7 +383,7 @@ pub const DEFAULT_MAX_TOKENS: usize = 16;
 ///   Each publisher and subscriber requires one token for ROS 2 discovery.
 ///   Default is 16, allowing up to 16 combined publishers and subscribers.
 /// - `MAX_TIMERS`: Maximum number of timers. Default is 8.
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct ConnectedNode<
     const MAX_TOKENS: usize = DEFAULT_MAX_TOKENS,
     const MAX_TIMERS: usize = DEFAULT_MAX_TIMERS,
@@ -403,7 +403,7 @@ pub struct ConnectedNode<
     /// Publisher/subscriber liveliness tokens (static allocation)
     _entity_tokens: heapless::Vec<LivelinessToken, MAX_TOKENS>,
     /// Parameter server for typed parameter support
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub(crate) parameter_server: nros_params::ParameterServer,
     /// Timers for periodic callbacks
     timers: heapless::Vec<TimerState, MAX_TIMERS>,
@@ -411,7 +411,7 @@ pub struct ConnectedNode<
     clock: Clock,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS, MAX_TIMERS> {
     /// Create a new connected node
     ///
@@ -458,7 +458,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             zid,
             _node_token: node_token,
             _entity_tokens: heapless::Vec::new(),
-            #[cfg(feature = "zenoh")]
+            #[cfg(feature = "rmw-zenoh")]
             parameter_server: nros_params::ParameterServer::new(),
             timers: heapless::Vec::new(),
             clock: Clock::ros_time(),
@@ -510,7 +510,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             zid,
             _node_token: node_token,
             _entity_tokens: heapless::Vec::new(),
-            #[cfg(feature = "zenoh")]
+            #[cfg(feature = "rmw-zenoh")]
             parameter_server: nros_params::ParameterServer::new(),
             timers: heapless::Vec::new(),
             clock: Clock::ros_time(),
@@ -1475,7 +1475,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
     ///     println!("Dynamic param: {}", value);
     /// }
     /// ```
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn use_undeclared_parameters(&mut self) -> UndeclaredParameters<'_> {
         UndeclaredParameters::new(&mut self.parameter_server)
     }
@@ -1742,7 +1742,7 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
 }
 
 /// A connected publisher that can send messages via transport
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct ConnectedPublisher<M> {
     publisher: ZenohPublisher,
     /// Topic name for this publisher
@@ -1750,7 +1750,7 @@ pub struct ConnectedPublisher<M> {
     _marker: core::marker::PhantomData<M>,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<M: RosMessage> ConnectedPublisher<M> {
     /// Get the topic name for this publisher
     pub fn topic_name(&self) -> &str {
@@ -1804,7 +1804,7 @@ impl<M: RosMessage> ConnectedPublisher<M> {
 ///
 /// - `M`: The ROS message type to receive
 /// - `RX_BUF`: Receive buffer size in bytes (default: 1024)
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct ConnectedSubscriber<M, const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE> {
     subscriber: ZenohSubscriber,
     rx_buffer: [u8; RX_BUF],
@@ -1815,7 +1815,7 @@ pub struct ConnectedSubscriber<M, const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE> 
     _marker: core::marker::PhantomData<M>,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
     /// Get the topic name for this subscriber
     pub fn topic_name(&self) -> &str {
@@ -1943,7 +1943,7 @@ impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
 /// - `S`: The ROS service type
 /// - `REQ_BUF`: Request buffer size in bytes (default: 1024)
 /// - `REPLY_BUF`: Reply buffer size in bytes (default: 1024)
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct ConnectedServiceServer<
     S: RosService,
     const REQ_BUF: usize = DEFAULT_REQ_BUFFER_SIZE,
@@ -1957,7 +1957,7 @@ pub struct ConnectedServiceServer<
     _marker: core::marker::PhantomData<S>,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ConnectedServiceServer<S, REQ_BUF, REPLY_BUF>
 {
@@ -2051,7 +2051,7 @@ impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
 /// - `S`: The ROS service type
 /// - `REQ_BUF`: Request buffer size in bytes (default: 1024)
 /// - `REPLY_BUF`: Reply buffer size in bytes (default: 1024)
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct ConnectedServiceClient<
     S: RosService,
     const REQ_BUF: usize = DEFAULT_REQ_BUFFER_SIZE,
@@ -2065,7 +2065,7 @@ pub struct ConnectedServiceClient<
     _marker: core::marker::PhantomData<S>,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ConnectedServiceClient<S, REQ_BUF, REPLY_BUF>
 {
@@ -2228,7 +2228,7 @@ pub struct CompletedGoal<A: RosAction> {
 /// - `RESULT_BUF`: Result message buffer size in bytes (default: 1024)
 /// - `FEEDBACK_BUF`: Feedback message buffer size in bytes (default: 1024)
 /// - `MAX_GOALS`: Maximum number of concurrent active goals (default: 8)
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct ConnectedActionServer<
     A: RosAction,
     const GOAL_BUF: usize = DEFAULT_GOAL_BUFFER_SIZE,
@@ -2262,7 +2262,7 @@ pub struct ConnectedActionServer<
     goal_counter: u64,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<
     A: RosAction,
     const GOAL_BUF: usize,
@@ -2763,7 +2763,7 @@ pub struct GoalHandle {
 /// - `GOAL_BUF`: Goal message buffer size in bytes (default: 1024)
 /// - `RESULT_BUF`: Result message buffer size in bytes (default: 1024)
 /// - `FEEDBACK_BUF`: Feedback message buffer size in bytes (default: 1024)
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct ConnectedActionClient<
     A: RosAction,
     const GOAL_BUF: usize = DEFAULT_GOAL_BUFFER_SIZE,
@@ -2794,7 +2794,7 @@ pub struct ConnectedActionClient<
     _marker: core::marker::PhantomData<A>,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ConnectedActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
@@ -3032,7 +3032,7 @@ impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBAC
     }
 }
 
-#[cfg(all(test, feature = "zenoh"))]
+#[cfg(all(test, feature = "rmw-zenoh"))]
 mod tests {
     extern crate std;
     use std::format;

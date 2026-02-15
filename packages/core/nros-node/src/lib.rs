@@ -91,24 +91,27 @@ mod publisher;
 mod subscriber;
 pub mod timer;
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
+mod error;
+
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 mod connected;
 
-#[cfg(feature = "zenoh")]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 mod context;
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 mod options;
 
 pub mod trigger;
 
-#[cfg(feature = "zenoh")]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub mod executor;
 
-#[cfg(all(feature = "zenoh", feature = "rtic"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "rtic"))]
 pub mod rtic;
 
-#[cfg(feature = "shim")]
+#[cfg(feature = "rmw-zenoh")]
 pub mod shim;
 
 #[cfg(feature = "param-services")]
@@ -130,8 +133,8 @@ pub use nros_rmw::{
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator};
 
-// Re-export connected types when zenoh feature is enabled
-#[cfg(feature = "zenoh")]
+// Re-export connected types (requires alloc for Box/Vec)
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use connected::{
     // Action types
     ActiveGoal,
@@ -160,41 +163,43 @@ pub use connected::{
 };
 
 // Re-export Promise type when zenoh and std features are enabled
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 pub use connected::Promise;
 
-// Re-export context types when zenoh feature is enabled (rclrs-style API)
-#[cfg(feature = "zenoh")]
-pub use context::{
-    Context, InitOptions, IntoNodeOptions, Node, NodeNameExt, NodeOptions, RclrsError,
-};
+// Re-export error types (available without alloc)
+#[cfg(feature = "rmw-zenoh")]
+pub use error::RclrsError;
 
-// Re-export executor types
-#[cfg(feature = "zenoh")]
+// Re-export context types (rclrs-style API, requires alloc)
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
+pub use context::{Context, InitOptions, IntoNodeOptions, Node, NodeNameExt, NodeOptions};
+
+// Re-export executor types (requires alloc for Connected types)
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use executor::{
     DEFAULT_MAX_NODES, DEFAULT_MAX_SERVICES, DEFAULT_MAX_SUBSCRIPTIONS, Executor,
     ExecutorTimerCallback, SpinOnceResult, SpinOptions, SubscriptionCallback,
     SubscriptionCallbackWithInfo, SubscriptionHandle,
 };
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use executor::{NodeHandle, NodeState, PollingExecutor, SpinPeriodPollingResult};
 
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 pub use executor::{BasicExecutor, SpinPeriodResult};
 
 // Re-export options types when zenoh feature is enabled
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub use options::{
     IntoPublisherOptions, IntoSubscriberOptions, PublisherOptions, SubscriberOptions,
 };
 
 // Re-export options for standalone node when zenoh feature is not enabled
-#[cfg(not(feature = "zenoh"))]
+#[cfg(not(feature = "rmw-zenoh"))]
 pub use node::{PublisherOptions, SubscriberOptions};
 
 // Re-export zenoh transport types for convenience
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub use nros_rmw::SessionMode;
 
 // Re-export timer types
@@ -208,11 +213,11 @@ pub use trigger::{Trigger, TriggerCondition, TriggerFn};
 // Re-export lifecycle types
 pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use lifecycle::LifecycleNode;
 
 // Re-export shim types when shim feature is enabled
-#[cfg(feature = "shim")]
+#[cfg(feature = "rmw-zenoh")]
 pub use shim::{
     ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
     ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,

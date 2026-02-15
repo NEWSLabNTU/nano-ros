@@ -49,20 +49,20 @@
 
 use nros_core::{Deserialize, MessageInfo, RosMessage, Time};
 
-use crate::context::RclrsError;
-#[cfg(feature = "zenoh")]
+use crate::error::RclrsError;
+#[cfg(feature = "rmw-zenoh")]
 use crate::options::{IntoPublisherOptions, IntoSubscriberOptions};
 use crate::timer::TimerDuration;
 use crate::trigger::{Trigger, TriggerCondition, TriggerFn};
 
-#[cfg(feature = "zenoh")]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 use crate::{
     ConnectedNode, ConnectedPublisher, ConnectedServiceServer, ConnectedSubscriber,
     DEFAULT_MAX_TIMERS, DEFAULT_MAX_TOKENS, DEFAULT_REPLY_BUFFER_SIZE, DEFAULT_REQ_BUFFER_SIZE,
     DEFAULT_RX_BUFFER_SIZE, IntoNodeOptions, NodeConfig,
 };
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 use nros_rmw::TransportConfig;
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -287,17 +287,17 @@ impl SubscriptionHandle {
     }
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 use nros_core::{RosAction, RosService};
 
 /// Trait for service callbacks
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub trait ServiceCallback<S: RosService>: Send {
     /// Invoke the callback with a request and return a reply
     fn call(&mut self, request: &S::Request) -> S::Reply;
 }
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 impl<S: RosService, F: FnMut(&S::Request) -> S::Reply + Send> ServiceCallback<S> for F {
     fn call(&mut self, request: &S::Request) -> S::Reply {
         (self)(request)
@@ -305,7 +305,7 @@ impl<S: RosService, F: FnMut(&S::Request) -> S::Reply + Send> ServiceCallback<S>
 }
 
 /// Type-erased service callback for storing in executor
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub(crate) trait ErasedServiceCallback {
     /// Check if a request is available without consuming it
     fn has_data(&self) -> bool;
@@ -314,7 +314,7 @@ pub(crate) trait ErasedServiceCallback {
 }
 
 /// Service entry combining server and callback
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub(crate) struct ServiceEntry<
     S: RosService,
     const REQ_BUF: usize = DEFAULT_REQ_BUFFER_SIZE,
@@ -325,7 +325,7 @@ pub(crate) struct ServiceEntry<
     pub callback: C,
 }
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 impl<
     S: RosService + Send,
     const REQ_BUF: usize,
@@ -345,13 +345,13 @@ impl<
 }
 
 /// Handle to a service created through NodeHandle
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ServiceHandle {
     index: usize,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl ServiceHandle {
     pub(crate) fn new(index: usize) -> Self {
         Self { index }
@@ -368,7 +368,7 @@ impl ServiceHandle {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Type-erased subscription callback for storing in executor
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub(crate) trait ErasedCallback {
     /// Check if data is available without consuming it
     fn has_data(&self) -> bool;
@@ -377,7 +377,7 @@ pub(crate) trait ErasedCallback {
 }
 
 /// Subscription entry combining subscriber and callback
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub(crate) struct SubscriptionEntry<
     M: RosMessage,
     const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE,
@@ -387,7 +387,7 @@ pub(crate) struct SubscriptionEntry<
     pub callback: C,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallback<M>>
     ErasedCallback for SubscriptionEntry<M, RX_BUF, C>
 {
@@ -408,7 +408,7 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
 }
 
 /// Subscription entry combining subscriber and callback with MessageInfo
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub(crate) struct SubscriptionEntryWithInfo<
     M: RosMessage,
     const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE,
@@ -418,7 +418,7 @@ pub(crate) struct SubscriptionEntryWithInfo<
     pub callback: C,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallbackWithInfo<M>>
     ErasedCallback for SubscriptionEntryWithInfo<M, RX_BUF, C>
 {
@@ -449,7 +449,7 @@ pub const DEFAULT_MAX_SUBSCRIPTIONS: usize = 8;
 pub const DEFAULT_MAX_SERVICES: usize = 4;
 
 /// Internal node state owned by executor
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct NodeState<
     const MAX_TOKENS: usize = DEFAULT_MAX_TOKENS,
     const MAX_TIMERS: usize = DEFAULT_MAX_TIMERS,
@@ -474,7 +474,7 @@ pub struct NodeState<
         Option<alloc::boxed::Box<crate::parameter_services::ParameterServiceServers>>,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<
     const MAX_TOKENS: usize,
     const MAX_TIMERS: usize,
@@ -562,7 +562,7 @@ impl<
 ///
 /// This handle provides access to create publishers, subscribers, timers, etc.
 /// The actual node data is owned by the executor.
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct NodeHandle<
     'a,
     const MAX_TOKENS: usize = DEFAULT_MAX_TOKENS,
@@ -573,7 +573,7 @@ pub struct NodeHandle<
     pub(crate) node: &'a mut NodeState<MAX_TOKENS, MAX_TIMERS, MAX_SUBS, MAX_SERVICES>,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<
     'a,
     const MAX_TOKENS: usize,
@@ -813,7 +813,7 @@ impl<
     }
 
     /// Create a service client.
-    #[cfg(feature = "zenoh")]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub fn create_client<S: RosService>(
         &mut self,
         service_name: &str,
@@ -825,7 +825,7 @@ impl<
     }
 
     /// Create an action server.
-    #[cfg(feature = "zenoh")]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub fn create_action_server<A: RosAction>(
         &mut self,
         action_name: &str,
@@ -837,7 +837,7 @@ impl<
     }
 
     /// Create an action client.
-    #[cfg(feature = "zenoh")]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub fn create_action_client<A: RosAction>(
         &mut self,
         action_name: &str,
@@ -934,7 +934,7 @@ impl<
     ///     println!("Dynamic param: {}", value);
     /// }
     /// ```
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn use_undeclared_parameters(&mut self) -> nros_params::UndeclaredParameters<'_> {
         nros_params::UndeclaredParameters::new(&mut self.node.inner.parameter_server)
     }
@@ -984,7 +984,7 @@ impl<
 ///     Ok(())
 /// }
 /// ```
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub trait Executor {
     /// Process one iteration of pending work
     ///
@@ -1001,7 +1001,7 @@ pub trait Executor {
 }
 
 /// Extended trait for executors with blocking/async spin (std only)
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 pub trait SpinExecutor: Executor {
     /// Blocking spin loop
     ///
@@ -1047,7 +1047,7 @@ pub const DEFAULT_MAX_NODES: usize = 4;
 ///     // platform delay...
 /// }
 /// ```
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub struct PollingExecutor<const MAX_NODES: usize = DEFAULT_MAX_NODES> {
     /// Domain ID for creating nodes
     domain_id: u32,
@@ -1059,7 +1059,7 @@ pub struct PollingExecutor<const MAX_NODES: usize = DEFAULT_MAX_NODES> {
     trigger: Trigger,
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
     /// Create a new polling executor
     pub(crate) fn new(domain_id: u32, transport_config: TransportConfig<'static>) -> Self {
@@ -1229,7 +1229,7 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
     }
 }
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl<const MAX_NODES: usize> Executor for PollingExecutor<MAX_NODES> {
     fn spin_once(&mut self, delta_ms: u64) -> SpinOnceResult {
         PollingExecutor::spin_once(self, delta_ms)
@@ -1259,7 +1259,7 @@ impl<const MAX_NODES: usize> Executor for PollingExecutor<MAX_NODES> {
 /// // Blocking spin
 /// executor.spin(SpinOptions::default());
 /// ```
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 pub struct BasicExecutor {
     /// Domain ID for creating nodes
     domain_id: u32,
@@ -1273,7 +1273,7 @@ pub struct BasicExecutor {
     trigger: Trigger,
 }
 
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 impl BasicExecutor {
     /// Create a new basic executor
     pub(crate) fn new(domain_id: u32, transport_config: TransportConfig<'static>) -> Self {
@@ -1464,9 +1464,9 @@ impl BasicExecutor {
             // callbacks when new subscription/service data arrives, giving
             // near-zero latency dispatch. Falls back to polling interval
             // timeout when idle (same CPU usage as before).
-            #[cfg(feature = "zenoh")]
+            #[cfg(feature = "rmw-zenoh")]
             nros_rmw_zenoh::wait_for_executor_wake(Duration::from_millis(POLL_INTERVAL_MS));
-            #[cfg(not(feature = "zenoh"))]
+            #[cfg(not(feature = "rmw-zenoh"))]
             std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS));
         }
 
@@ -1569,14 +1569,14 @@ impl BasicExecutor {
     }
 }
 
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 impl Executor for BasicExecutor {
     fn spin_once(&mut self, delta_ms: u64) -> SpinOnceResult {
         BasicExecutor::spin_once(self, delta_ms)
     }
 }
 
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 impl SpinExecutor for BasicExecutor {
     fn spin(&mut self, opts: SpinOptions) -> Result<(), RclrsError> {
         BasicExecutor::spin(self, opts)

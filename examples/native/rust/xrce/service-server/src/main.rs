@@ -13,8 +13,8 @@ use nros_rmw_xrce::posix_udp::init_posix_udp_transport;
 use std::time::Instant;
 
 fn main() {
-    let agent_addr = std::env::var("XRCE_AGENT_ADDR")
-        .unwrap_or_else(|_| "127.0.0.1:2019".to_string());
+    let agent_addr =
+        std::env::var("XRCE_AGENT_ADDR").unwrap_or_else(|_| "127.0.0.1:2019".to_string());
     let domain_id: u32 = std::env::var("XRCE_DOMAIN_ID")
         .ok()
         .and_then(|s| s.parse().ok())

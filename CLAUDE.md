@@ -335,8 +335,13 @@ This provides include dirs, static library, and platform link libs (pthread, dl,
 **C code generation** uses `nano_ros_generate_interfaces()` (from `nano_ros_generate_interfaces.cmake`). The codegen tool is bundled as `libnano_ros_codegen_c.a` — no external `nros` binary needed. Build it with `just build-codegen-lib` before running CMake. The CMake module `FindNanoRosCodegen.cmake` compiles a thin C wrapper at configure time.
 
 ### Platform Backends
-Selected via feature flags: `platform-posix` (desktop), `platform-zephyr` (Zephyr RTOS), `platform-bare-metal` (bare-metal).
-The `zenoh` feature is an alias for `platform-posix` + `alloc`.
+Features are organized into three orthogonal axes:
+- **RMW backend** (select one): `rmw-zenoh` (zenoh-pico), `rmw-xrce` (XRCE-DDS)
+- **Platform** (select one): `platform-posix` (desktop), `platform-zephyr` (Zephyr RTOS), `platform-bare-metal` (bare-metal)
+- **ROS edition**: `ros-humble` (default), `ros-iron`
+
+Platform features are forwarded to the active RMW backend via Cargo `?` syntax (e.g., `nros-rmw-zenoh?/platform-posix`).
+Default features: `std`, `rmw-zenoh`, `platform-posix`, `ros-humble`.
 
 ### Parameter Services
 Enable with `param-services` feature in `nros-node`:

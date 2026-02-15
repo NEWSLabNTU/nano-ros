@@ -31,16 +31,16 @@
 
 use crate::NodeConfig;
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 use crate::ConnectedNode;
 
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 use nros_rmw::{SessionMode, TransportConfig};
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 use crate::executor::{DEFAULT_MAX_NODES, PollingExecutor};
 
-#[cfg(all(feature = "zenoh", feature = "std"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
 use crate::executor::BasicExecutor;
 
 /// Context for creating executors and nodes
@@ -70,7 +70,7 @@ pub struct Context {
     /// ROS 2 domain ID (defaults to 0)
     domain_id: u32,
     /// Transport configuration for zenoh connections
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     transport_config: TransportConfig<'static>,
 }
 
@@ -90,7 +90,7 @@ impl Context {
     ///     .with_domain_id(Some(42))
     ///     .locator("tcp/127.0.0.1:7447"))?;
     /// ```
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn new(options: InitOptions) -> Result<Self, RclrsError> {
         let domain_id = options.domain_id.unwrap_or(0);
         let properties: &'static [(&'static str, &'static str)] = if options.properties.is_empty() {
@@ -111,7 +111,7 @@ impl Context {
     }
 
     /// Create a new context with the given options (non-zenoh version)
-    #[cfg(not(feature = "zenoh"))]
+    #[cfg(not(feature = "rmw-zenoh"))]
     pub fn new(options: InitOptions) -> Result<Self, RclrsError> {
         let domain_id = options.domain_id.unwrap_or(0);
         Ok(Self { domain_id })
@@ -148,7 +148,7 @@ impl Context {
     /// std::env::set_var("ROS_LOCALHOST_ONLY", "1");
     /// let context = Context::from_env()?;
     /// ```
-    #[cfg(all(feature = "std", feature = "zenoh"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh"))]
     pub fn from_env() -> Result<Self, RclrsError> {
         let domain_id = std::env::var("ROS_DOMAIN_ID")
             .ok()
@@ -274,7 +274,7 @@ impl Context {
     }
 
     /// Create a context from environment variables (non-zenoh version)
-    #[cfg(all(feature = "std", not(feature = "zenoh")))]
+    #[cfg(all(feature = "std", not(feature = "rmw-zenoh")))]
     pub fn from_env() -> Result<Self, RclrsError> {
         let domain_id = std::env::var("ROS_DOMAIN_ID")
             .ok()
@@ -293,7 +293,7 @@ impl Context {
     /// ```ignore
     /// let context = Context::default_from_env()?;
     /// ```
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn default_from_env() -> Result<Self, RclrsError> {
         let transport_config = TransportConfig {
             locator: Some("tcp/127.0.0.1:7447"),
@@ -307,7 +307,7 @@ impl Context {
     }
 
     /// Create a context with default settings (non-zenoh version)
-    #[cfg(not(feature = "zenoh"))]
+    #[cfg(not(feature = "rmw-zenoh"))]
     pub fn default_from_env() -> Result<Self, RclrsError> {
         Ok(Self { domain_id: 0 })
     }
@@ -350,13 +350,13 @@ impl Context {
     ///     // delay...
     /// }
     /// ```
-    #[cfg(all(feature = "zenoh", feature = "alloc"))]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub fn create_polling_executor<const MAX_NODES: usize>(&self) -> PollingExecutor<MAX_NODES> {
         PollingExecutor::new(self.domain_id, self.transport_config.clone())
     }
 
     /// Create a polling executor with default capacity
-    #[cfg(all(feature = "zenoh", feature = "alloc"))]
+    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub fn create_polling_executor_default(&self) -> PollingExecutor<DEFAULT_MAX_NODES> {
         self.create_polling_executor()
     }
@@ -380,7 +380,7 @@ impl Context {
     /// // Blocking spin
     /// executor.spin(SpinOptions::default());
     /// ```
-    #[cfg(all(feature = "zenoh", feature = "std"))]
+    #[cfg(all(feature = "rmw-zenoh", feature = "std"))]
     pub fn create_basic_executor(&self) -> BasicExecutor {
         BasicExecutor::new(self.domain_id, self.transport_config.clone())
     }
@@ -410,7 +410,7 @@ impl Context {
     /// let mut executor = context.create_basic_executor();
     /// let node = executor.create_node("my_node")?;
     /// ```
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     #[deprecated(
         since = "0.2.0",
         note = "Use create_polling_executor() or create_basic_executor() instead"
@@ -459,13 +459,13 @@ pub struct InitOptions {
     /// ROS 2 domain ID (None means use default of 0)
     pub(crate) domain_id: Option<u32>,
     /// Zenoh locator (e.g., "tcp/127.0.0.1:7447")
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub(crate) locator: Option<&'static str>,
     /// Session mode (Client or Peer)
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub(crate) session_mode: SessionMode,
     /// Additional transport properties (key-value pairs)
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub(crate) properties: heapless::Vec<(&'static str, &'static str), 8>,
 }
 
@@ -480,11 +480,11 @@ impl InitOptions {
     pub fn new() -> Self {
         Self {
             domain_id: None,
-            #[cfg(feature = "zenoh")]
+            #[cfg(feature = "rmw-zenoh")]
             locator: Some("tcp/127.0.0.1:7447"),
-            #[cfg(feature = "zenoh")]
+            #[cfg(feature = "rmw-zenoh")]
             session_mode: SessionMode::Client,
-            #[cfg(feature = "zenoh")]
+            #[cfg(feature = "rmw-zenoh")]
             properties: heapless::Vec::new(),
         }
     }
@@ -508,7 +508,7 @@ impl InitOptions {
     ///
     /// # Arguments
     /// * `locator` - Locator string (e.g., "tcp/127.0.0.1:7447")
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn locator(mut self, locator: &'static str) -> Self {
         self.locator = Some(locator);
         self
@@ -518,14 +518,14 @@ impl InitOptions {
     ///
     /// # Arguments
     /// * `mode` - Session mode (Client or Peer)
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn session_mode(mut self, mode: SessionMode) -> Self {
         self.session_mode = mode;
         self
     }
 
     /// Configure for peer mode (no router required)
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn peer_mode(mut self) -> Self {
         self.session_mode = SessionMode::Peer;
         self.locator = None;
@@ -543,7 +543,7 @@ impl InitOptions {
     /// - `"add_timestamp"` - `"true"` or `"false"`
     ///
     /// Up to 8 properties can be set. Additional properties are silently ignored.
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     pub fn property(mut self, key: &'static str, value: &'static str) -> Self {
         let _ = self.properties.push((key, value));
         self
@@ -632,90 +632,13 @@ impl<'a> NodeNameExt<'a> for &'a str {
 ///
 /// Currently returns raw ConnectedNode. In future phases, this will be
 /// wrapped with interior mutability (Mutex/RefCell) for shared ownership.
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 pub type Node<const MAX_TOKENS: usize = { crate::DEFAULT_MAX_TOKENS }> = ConnectedNode<MAX_TOKENS>;
 
-/// Error type for rclrs-style API
-///
-/// This will eventually replace ConnectedNodeError to match rclrs naming.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RclrsError {
-    /// Failed to create context
-    ContextCreationFailed,
-    /// Failed to create node
-    NodeCreationFailed,
-    /// Failed to connect to transport
-    ConnectionFailed,
-    /// Failed to create publisher
-    PublisherCreationFailed,
-    /// Failed to create subscriber
-    SubscriberCreationFailed,
-    /// Failed to create service server
-    ServiceServerCreationFailed,
-    /// Failed to create service client
-    ServiceClientCreationFailed,
-    /// Failed to create action server
-    ActionServerCreationFailed,
-    /// Failed to create action client
-    ActionClientCreationFailed,
-    /// Failed to publish message
-    PublishFailed,
-    /// Serialization failed
-    SerializationFailed,
-    /// Deserialization failed
-    DeserializationFailed,
-    /// Buffer too small
-    BufferTooSmall,
-    /// Incoming message exceeded the static subscriber buffer capacity
-    MessageTooLarge,
-    /// No message available
-    NoMessage,
-    /// Service request failed
-    ServiceRequestFailed,
-    /// Service reply failed
-    ServiceReplyFailed,
-    /// Failed to start background tasks
-    TaskStartFailed,
-    /// Failed to poll for incoming messages
-    PollFailed,
-    /// Failed to send keepalive
-    KeepaliveFailed,
-    /// Failed to send join message
-    JoinFailed,
-    /// Goal was rejected
-    GoalRejected,
-    /// Goal not found
-    GoalNotFound,
-    /// Action server is full (too many active goals)
-    ActionServerFull,
-    /// Failed to create timer
-    TimerCreationFailed,
-    /// Timer not found
-    TimerNotFound,
-    /// Timer storage is full (too many timers)
-    TimerStorageFull,
-    /// Executor is full (too many nodes)
-    ExecutorFull,
-    /// Service call timed out
-    ServiceTimeout,
-    /// Service call was cancelled
-    ServiceCancelled,
-    /// Subscription storage is full (too many subscriptions)
-    SubscriptionStorageFull,
-    /// Service storage is full (too many services)
-    ServiceStorageFull,
-}
+// RclrsError is defined in crate::error module (no alloc dependency)
+pub use crate::error::RclrsError;
 
-impl RclrsError {
-    /// Return the first error from a list, or Ok if the list is empty
-    ///
-    /// This is useful for error handling in spin loops.
-    pub fn first_error(errors: impl IntoIterator<Item = Self>) -> Result<(), Self> {
-        errors.into_iter().next().map(Err).unwrap_or(Ok(()))
-    }
-}
-
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 impl From<crate::ConnectedNodeError> for RclrsError {
     fn from(e: crate::ConnectedNodeError) -> Self {
         use crate::ConnectedNodeError;
@@ -780,7 +703,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_init_options_zenoh() {
         let options = InitOptions::new().locator("tcp/192.168.1.1:7447");
         assert_eq!(options.locator, Some("tcp/192.168.1.1:7447"));
@@ -791,7 +714,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_init_options_properties() {
         let options = InitOptions::new()
             .property("multicast_scouting", "false")
@@ -802,14 +725,14 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_init_options_properties_default_empty() {
         let options = InitOptions::new();
         assert!(options.properties.is_empty());
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_init_options_properties_overflow_silently_ignored() {
         // heapless::Vec<_, 8> can hold at most 8 entries; the 9th push is silently dropped
         let mut options = InitOptions::new();
@@ -833,7 +756,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_context_with_properties_stores_config() {
         let context = Context::new(
             InitOptions::new()
@@ -856,14 +779,14 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_context_without_properties_has_empty_config() {
         let context = Context::new(InitOptions::new()).unwrap();
         assert!(context.transport_config.properties.is_empty());
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_context_from_env_has_empty_properties() {
         // Clear env vars that could add properties
         // Safety: test-only env var manipulation, tests run serially via nextest
@@ -880,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "zenoh")]
+    #[cfg(feature = "rmw-zenoh")]
     fn test_context_default_from_env_has_empty_properties() {
         let context = Context::default_from_env().unwrap();
         assert!(context.transport_config.properties.is_empty());
@@ -891,7 +814,7 @@ mod tests {
     // =========================================================================
 
     #[test]
-    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-humble"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh", feature = "ros-humble"))]
     fn test_from_env_ros_localhost_only() {
         // Safety: test-only env var manipulation, tests run serially via nextest
         unsafe {
@@ -916,7 +839,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-humble"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh", feature = "ros-humble"))]
     fn test_from_env_ros_localhost_only_zero() {
         // Safety: test-only env var manipulation, tests run serially via nextest
         unsafe {
@@ -934,7 +857,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-humble"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh", feature = "ros-humble"))]
     fn test_from_env_ros_localhost_only_peer_mode_ignored() {
         // Safety: test-only env var manipulation, tests run serially via nextest
         unsafe {
@@ -958,7 +881,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh", feature = "ros-iron"))]
     fn test_from_env_discovery_range_localhost() {
         // Safety: test-only env var manipulation, tests run serially via nextest
         unsafe {
@@ -982,7 +905,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh", feature = "ros-iron"))]
     fn test_from_env_discovery_range_off() {
         // Safety: test-only env var manipulation, tests run serially via nextest
         unsafe {
@@ -1011,7 +934,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh", feature = "ros-iron"))]
     fn test_from_env_discovery_range_supersedes_localhost_only() {
         // Safety: test-only env var manipulation, tests run serially via nextest
         unsafe {
@@ -1036,7 +959,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(all(feature = "std", feature = "zenoh", feature = "ros-iron"))]
+    #[cfg(all(feature = "std", feature = "rmw-zenoh", feature = "ros-iron"))]
     fn test_from_env_static_peers() {
         // Safety: test-only env var manipulation, tests run serially via nextest
         unsafe {

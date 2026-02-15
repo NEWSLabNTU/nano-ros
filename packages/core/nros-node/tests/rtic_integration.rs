@@ -78,7 +78,7 @@ fn test_const_generics_compile() {
 
 /// Test RTIC timing constants (only when both zenoh and rtic features enabled)
 #[test]
-#[cfg(all(feature = "zenoh", feature = "rtic"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "rtic"))]
 fn test_timing_constants() {
     use nros_node::rtic::{KEEPALIVE_INTERVAL_MS, POLL_INTERVAL_MS};
 
@@ -94,7 +94,7 @@ fn test_timing_constants() {
 
 /// Test default buffer sizes (only when zenoh feature enabled)
 #[test]
-#[cfg(feature = "zenoh")]
+#[cfg(feature = "rmw-zenoh")]
 fn test_default_buffer_sizes() {
     use nros_node::{
         DEFAULT_MAX_TOKENS, DEFAULT_REPLY_BUFFER_SIZE, DEFAULT_REQ_BUFFER_SIZE,

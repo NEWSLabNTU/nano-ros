@@ -30,10 +30,10 @@ pub enum LifecycleError {
 // LIFECYCLE NODE (alloc — Box callbacks)
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 use alloc::boxed::Box;
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 use crate::executor::NodeHandle;
 
 /// Lifecycle-managed node with boxed callbacks.
@@ -55,7 +55,7 @@ use crate::executor::NodeHandle;
 /// lifecycle.activate()?;
 /// assert_eq!(lifecycle.state(), LifecycleState::Active);
 /// ```
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub struct LifecycleNode<'a> {
     node: NodeHandle<'a>,
     state: LifecycleState,
@@ -67,7 +67,7 @@ pub struct LifecycleNode<'a> {
     on_error: Option<Box<dyn FnMut() -> TransitionResult + Send>>,
 }
 
-#[cfg(all(feature = "zenoh", feature = "alloc"))]
+#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 impl<'a> LifecycleNode<'a> {
     /// Create a new lifecycle node wrapping an existing `NodeHandle`.
     ///

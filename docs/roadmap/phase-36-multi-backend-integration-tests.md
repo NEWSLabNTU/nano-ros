@@ -224,19 +224,160 @@ packages/xrce/xrce-serial/
 
 Lay the groundwork for examples that use the `nros` high-level API with XRCE backend.
 
-- [ ] Add `nros-rmw-xrce` as optional dependency
-- [ ] Add `xrce` feature: `["dep:nros-rmw-xrce", "nros-rmw-xrce/posix"]`
-- [ ] Add `xrce-bare-metal` feature: `["dep:nros-rmw-xrce", "nros-rmw-xrce/bare-metal"]`
-- [ ] Re-export `nros_rmw_xrce` under `#[cfg(feature = "xrce")]`
-- [ ] Document that `zenoh` and `xrce` are mutually exclusive (compile-time selection)
-- [ ] Verify: `cargo check -p nros --features xrce --no-default-features --features std`
-- [ ] Verify: `just quality`
+- [x] Add `nros-rmw-xrce` as optional dependency
+- [x] Add `xrce` feature: `["dep:nros-rmw-xrce", "nros-rmw-xrce/posix"]`
+- [x] Add `xrce-bare-metal` feature: `["dep:nros-rmw-xrce", "nros-rmw-xrce/bare-metal"]`
+- [x] Re-export `nros_rmw_xrce` under `#[cfg(any(feature = "xrce", feature = "xrce-bare-metal"))]`
+- [x] Document that `zenoh` and `xrce` are mutually exclusive (compile-time selection)
+- [x] Verify: `cargo check -p nros --no-default-features -F xrce -F std` passes
+- [x] Verify: `cargo check -p nros --no-default-features -F xrce-bare-metal` passes
+- [x] Verify: `just quality` passes
 
 **Note:** This does not yet make `Context`/`Executor` work with XRCE — that requires `nros-node` changes (Phase 37+). This step only makes the raw `nros-rmw-xrce` types available through the `nros` crate.
 
 ---
 
-### 36.8: Test matrix documentation
+### 36.8: Decouple RMW/platform/ROS-edition feature axes
+
+**Files:** `packages/core/nros/Cargo.toml`, `packages/core/nros/src/lib.rs`, `packages/core/nros-node/Cargo.toml`, `packages/core/nros-node/src/*.rs`, `packages/xrce/nros-rmw-xrce/Cargo.toml`, `packages/core/nros-c/Cargo.toml`, example `Cargo.toml` files, `CLAUDE.md`
+
+The `nros` crate's feature flags conflate three orthogonal decisions:
+
+1. **RMW backend** — `zenoh` implies `platform-posix`; `platform-*` implies `dep:nros-rmw-zenoh`
+2. **Platform** — `platform-zephyr` hard-codes zenoh; no way to express "XRCE on Zephyr"
+3. **ROS edition** — already clean (`ros-humble`, `ros-iron`)
+
+This step restructures features into three mandatory, orthogonal axes. Users must specify all three:
+
+```toml
+nros = { default-features = false, features = [
+    "rmw-zenoh",        # axis 1: RMW backend
+    "platform-posix",   # axis 2: platform
+    "ros-humble",       # axis 3: ROS edition
+    "std",              # memory model
+] }
+```
+
+Default: `["std", "rmw-zenoh", "platform-posix", "ros-humble"]` (same behavior as today for desktop users).
+
+#### Design: new feature layout
+
+**`nros/Cargo.toml`:**
+```toml
+[features]
+default = ["std", "rmw-zenoh", "platform-posix", "ros-humble"]
+
+# Memory model
+std = ["alloc", "nros-core/std", "nros-node/std", "nros-rmw/std",
+       "nros-rmw-zenoh?/std", "nros-params/std"]
+alloc = ["nros-core/alloc", "nros-node/alloc", "nros-rmw/alloc", "nros-params/alloc"]
+
+# RMW backend (select one)
+rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
+rmw-xrce = ["dep:nros-rmw-xrce"]
+
+# Platform (select one; forwarded to whichever RMW backend is active)
+platform-posix = ["nros-node/platform-posix",
+                  "nros-rmw-zenoh?/platform-posix", "nros-rmw-xrce?/platform-posix"]
+platform-zephyr = ["nros-node/platform-zephyr", "nros-rmw-zenoh?/platform-zephyr"]
+platform-bare-metal = ["nros-node/platform-bare-metal",
+                       "nros-rmw-zenoh?/platform-bare-metal", "nros-rmw-xrce?/platform-bare-metal"]
+
+# ROS edition
+ros-humble = ["nros-node/ros-humble"]
+ros-iron = ["nros-node/ros-iron"]
+
+# Cross-cutting
+safety-e2e = ["nros-node/safety-e2e", "nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+param-services = ["nros-node/param-services"]
+rtic = ["nros-node/rtic"]
+polling = ["nros-node/polling"]
+
+# XRCE transport refinements
+xrce-udp = ["nros-rmw-xrce?/posix-udp"]
+xrce-serial = ["nros-rmw-xrce?/posix-serial"]
+```
+
+Key changes from current layout:
+- `zenoh` → `rmw-zenoh` (no longer implies `platform-posix`)
+- `xrce` / `xrce-bare-metal` → `rmw-xrce` (platform choice is separate)
+- `platform-*` features are backend-agnostic (use `?` syntax to forward to active backend)
+
+**`nros-node/Cargo.toml`:**
+```toml
+# RMW backend
+rmw-zenoh = ["dep:nros-rmw-zenoh"]  # replaces both "zenoh" and "shim"
+
+# Platform (forwarded to active backend only)
+platform-posix = ["nros-rmw-zenoh?/platform-posix"]
+platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr"]
+platform-bare-metal = ["nros-rmw-zenoh?/platform-bare-metal"]
+
+# Executor modes
+rtic = ["nros-rmw-zenoh?/rtic"]
+polling = ["nros-rmw-zenoh?/polling"]
+
+# Safety & params
+safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
+param-services = ["dep:nros-rcl-interfaces", "rmw-zenoh", "alloc"]
+```
+
+Key changes: `zenoh` and `shim` both become `rmw-zenoh`. The `zenoh` feature no longer implies `platform-posix` or `alloc`.
+
+**`nros-rmw-xrce/Cargo.toml`:**
+```toml
+# Platform (renamed for consistency with other crates)
+platform-posix = ["xrce-sys/posix"]
+platform-bare-metal = ["xrce-sys/bare-metal"]
+posix-udp = ["platform-posix"]
+posix-serial = ["platform-posix", "dep:libc"]
+```
+
+Key changes: `posix` → `platform-posix`, `bare-metal` → `platform-bare-metal`.
+
+#### Work items
+
+**Cargo.toml changes (3 files):**
+- [x] `packages/core/nros/Cargo.toml` — rewrite features per design above
+- [x] `packages/core/nros-node/Cargo.toml` — rename `zenoh`/`shim` → `rmw-zenoh`, decouple platform
+- [x] `packages/xrce/nros-rmw-xrce/Cargo.toml` — rename `posix` → `platform-posix`, `bare-metal` → `platform-bare-metal`
+
+**cfg gate updates (6 files, ~120 occurrences):**
+- [x] `packages/core/nros/src/lib.rs` — `feature = "zenoh"` → `feature = "rmw-zenoh"`, `feature = "xrce"` / `feature = "xrce-bare-metal"` → `feature = "rmw-xrce"`
+- [x] `packages/core/nros-node/src/lib.rs` — `feature = "zenoh"` / `feature = "shim"` → `feature = "rmw-zenoh"`
+- [x] `packages/core/nros-node/src/connected.rs` — `feature = "zenoh"` → `feature = "rmw-zenoh"`
+- [x] `packages/core/nros-node/src/context.rs` — `feature = "zenoh"` → `feature = "rmw-zenoh"`
+- [x] `packages/core/nros-node/src/executor.rs` — `feature = "zenoh"` → `feature = "rmw-zenoh"`
+- [x] `packages/core/nros-node/src/lifecycle.rs` — `feature = "zenoh"` → `feature = "rmw-zenoh"`
+
+**Downstream crate updates:**
+- [x] `packages/core/nros-c/Cargo.toml` — platform features must explicitly activate `nros/rmw-zenoh`
+
+**Example Cargo.toml updates (~13 files):**
+- [x] 7 native zenoh examples — `"nros/zenoh"` → `"nros/rmw-zenoh", "nros/platform-posix"`
+- [x] 6 Zephyr examples — `features = ["platform-zephyr"]` → `features = ["rmw-zenoh", "platform-zephyr"]`
+
+**Documentation:**
+- [x] Update `CLAUDE.md` feature table and "Platform Backends" section
+
+**Additional changes (discovered during implementation):**
+- [x] Extracted `RclrsError` from `context.rs` into `error.rs` (no alloc dependency) so executor/shim work without alloc
+- [x] Gated `connected`, `context`, `executor` modules on `all(rmw-zenoh, alloc)` — Connected API needs alloc; Shim API works without
+- [x] Fixed `justfile` broken recipes (`nros-rmw --features zenoh,std` → `nros-rmw --features std`)
+- [x] Updated `rtic_integration.rs` test cfg gates
+
+**Verification:**
+- [x] `cargo check -p nros` — default features (`rmw-zenoh` + `platform-posix` + `std`)
+- [x] `cargo check -p nros --no-default-features -F rmw-zenoh,platform-posix,std,ros-humble`
+- [x] `cargo check -p nros --no-default-features -F rmw-xrce,platform-posix,std,ros-humble`
+- [x] `cargo check -p nros --no-default-features -F rmw-xrce,platform-bare-metal`
+- [x] `cargo check -p nros --no-default-features -F rmw-zenoh,platform-bare-metal`
+- [ ] `just build` — full build including all examples (requires `just build-zenoh-pico-arm`)
+- [x] `just quality` — format + clippy + tests
+
+---
+
+### 36.9: Test matrix documentation
 
 **Files:** `tests/README.md` (update), `docs/roadmap/phase-36-multi-backend-integration-tests.md` (this file)
 
@@ -245,6 +386,10 @@ Document the complete test coverage matrix.
 - [ ] Update `tests/README.md` with XRCE test section (prerequisites, how to run, what's tested)
 - [ ] Add test matrix table to this document showing: pattern × backend × platform → test file
 - [ ] Document which combinations are tested, planned, and not applicable
+
+---
+
+**Note:** 36.8 (feature decoupling) and 36.9 (documentation) can proceed in either order. 36.8 is a prerequisite for Phase 37 (backend-agnostic `nros-node`).
 
 ---
 
@@ -273,15 +418,16 @@ Legend: `-` = not tested, `N/A` = not applicable for this backend
 4. **36.4** (harden pub/sub tests) — Improve existing tests
 5. **36.5** (action binaries) — Optional stretch goal
 6. **36.6** (serial transport) — XRCE-DDS over UART
-7. **36.7** (`nros` xrce feature) — Foundation for future phases
-8. **36.8** (documentation) — Final documentation
+7. **36.7** (`nros` xrce feature) — Foundation for 36.8
+8. **36.8** (feature decoupling) — Decouple RMW/platform/ROS-edition axes
+9. **36.9** (documentation) — Final documentation
 
-Steps 36.2-36.4 can proceed in parallel after 36.1. Steps 36.6 and 36.7 are independent of each other and of 36.2-36.5.
+Steps 36.2-36.4 can proceed in parallel after 36.1. Steps 36.6 and 36.7 are independent of each other and of 36.2-36.5. Step 36.8 depends on 36.7 (rewrites the features 36.7 introduced).
 
 ## Future Work (Phase 37+)
 
-- **Backend-agnostic `nros-node`**: Make `Context`/`Executor`/`Node` work with XRCE (requires abstracting session initialization, `spin_once()` integration, transport callback registration)
-- **Unified native examples**: Single rs-talker with `--features zenoh` or `--features xrce`
+- **Backend-agnostic `nros-node`**: Make `Context`/`Executor`/`Node` work with XRCE (requires abstracting session initialization, `spin_once()` integration, transport callback registration). Prerequisite: 36.8 (feature decoupling) completed first.
+- **Unified native examples**: Single rs-talker with `--features rmw-zenoh` or `--features rmw-xrce`
 - **XRCE QEMU board crate**: `xrce-platform-mps2-an385` is already created (Phase 34.7); need board crate (`nros-mps2-an385-xrce` or feature-gated `nros-mps2-an385`)
 - **XRCE-DDS ↔ ROS 2 interop**: XRCE Agent bridges to DDS, enabling ROS 2 interop via different protocol than zenoh
 - **OpenCR board crate**: `nros-opencr` using `xrce-serial` over UART to Raspberry Pi running Micro-XRCE-DDS Agent (enables TurtleBot3 with nano-ros)

@@ -80,10 +80,7 @@ fn main() {
     if received >= msg_count {
         println!("Received {} messages, exiting", received);
     } else {
-        eprintln!(
-            "Timeout: received only {}/{} messages",
-            received, msg_count
-        );
+        eprintln!("Timeout: received only {}/{} messages", received, msg_count);
         std::process::exit(1);
     }
 
