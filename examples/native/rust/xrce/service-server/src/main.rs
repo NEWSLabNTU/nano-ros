@@ -28,8 +28,8 @@ fn main() {
 
     // Initialize transport and open session
     init_posix_udp(&agent_addr);
-    let mut executor = XrceExecutor::new("xrce_service_server", domain_id)
-        .expect("Failed to open XRCE session");
+    let mut executor =
+        XrceExecutor::new("xrce_service_server", domain_id).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create service server

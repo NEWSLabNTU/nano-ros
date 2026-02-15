@@ -845,6 +845,7 @@ impl ShimPublisher {
     /// Get current timestamp in nanoseconds (placeholder until platform time available)
     fn current_timestamp(&self) -> i64 {
         // Increment by 1ms equivalent
+        #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         self.timestamp_counter
             .fetch_add(1_000_000, Ordering::Relaxed)
             .into()
@@ -868,6 +869,7 @@ impl Publisher for ShimPublisher {
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error> {
         // Get next sequence number and timestamp atomically
+        #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         let seq: i64 = (self.sequence_counter.fetch_add(1, Ordering::Relaxed) + 1).into();
         let ts = self.current_timestamp();
 
@@ -1506,6 +1508,7 @@ impl ServiceServerTrait for ShimServiceServer {
             self.reply_keyexpr_len = keyexpr_len;
         }
 
+        #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         let seq: i64 = buffer.sequence_number.load(Ordering::Acquire).into();
         buffer.has_request.store(false, Ordering::Release);
 

@@ -707,7 +707,7 @@ impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     ) -> Result<bool, ShimNodeError> {
         self.server
             .handle_request::<S>(&mut self.req_buffer, &mut self.reply_buffer, handler)
-            .map_err(|e| ShimNodeError::Transport(e))
+            .map_err(ShimNodeError::Transport)
     }
 
     /// Check if a request is available
@@ -741,7 +741,7 @@ impl<S: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
     pub fn call(&mut self, request: &S::Request) -> Result<S::Reply, ShimNodeError> {
         self.client
             .call::<S>(request, &mut self.req_buffer, &mut self.reply_buffer)
-            .map_err(|e| ShimNodeError::Transport(e))
+            .map_err(ShimNodeError::Transport)
     }
 
     /// Set the timeout for service calls
@@ -830,6 +830,7 @@ impl<
 
         let data_len = request.data.len();
         let sequence_number = request.sequence_number;
+        #[allow(clippy::drop_non_drop)] // ends borrow on self.goal_buffer
         drop(request);
 
         // Deserialize: goal_id (UUID) + goal
@@ -879,7 +880,7 @@ impl<
 
         if accepted {
             let _ = self.active_goals.push(ShimActiveGoal {
-                goal_id: goal_id.clone(),
+                goal_id,
                 status: nros_core::GoalStatus::Accepted,
                 goal,
             });
@@ -949,7 +950,7 @@ impl<
 
         // Store in completed goals
         let _ = self.completed_goals.push(ShimCompletedGoal {
-            goal_id: goal_id.clone(),
+            goal_id: *goal_id,
             status,
             result,
         });
@@ -979,6 +980,7 @@ impl<
 
         let data_len = request.data.len();
         let sequence_number = request.sequence_number;
+        #[allow(clippy::drop_non_drop)] // ends borrow on self.cancel_buffer
         drop(request);
 
         // Deserialize goal_id from cancel request
@@ -1071,6 +1073,7 @@ impl<
 
         let data_len = request.data.len();
         let sequence_number = request.sequence_number;
+        #[allow(clippy::drop_non_drop)] // ends borrow on self.goal_buffer
         drop(request);
 
         // Deserialize goal_id

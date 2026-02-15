@@ -36,8 +36,8 @@ fn main() {
     );
 
     init_posix_udp(&agent_addr);
-    let mut executor = XrceExecutor::new("xrce_action_server", domain_id)
-        .expect("Failed to open XRCE session");
+    let mut executor =
+        XrceExecutor::new("xrce_action_server", domain_id).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Build DDS type names for action sub-entities

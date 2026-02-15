@@ -11,8 +11,8 @@
 
 use nros::xrce::*;
 use nros::{
-    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, QosSettings, RosAction,
-    Serialize, ServiceClientTrait, ServiceInfo, Session, Subscriber, TopicInfo, XrceSession,
+    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, QosSettings, RosAction, Serialize,
+    ServiceClientTrait, ServiceInfo, Session, Subscriber, TopicInfo, XrceSession,
 };
 use std::time::Instant;
 
@@ -36,8 +36,8 @@ fn main() {
     );
 
     init_posix_udp(&agent_addr);
-    let mut executor = XrceExecutor::new("xrce_action_client", domain_id)
-        .expect("Failed to open XRCE session");
+    let mut executor =
+        XrceExecutor::new("xrce_action_client", domain_id).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Build DDS type names for action sub-entities
