@@ -28,6 +28,9 @@
 use defmt_rtt as _;
 use panic_probe as _;
 
+// defmt 0.3 requires a timestamp function in each binary crate
+defmt::timestamp!("{=u64:us}", { 0 });
+
 use nros_stm32f4::prelude::*;
 use std_msgs::msg::Int32;
 

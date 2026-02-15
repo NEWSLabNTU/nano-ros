@@ -435,6 +435,7 @@ dependencies = [
  "log",
  "nros-core",
  "nros-rmw",
+ "portable-atomic",
  "zpico-sys",
 ]
 

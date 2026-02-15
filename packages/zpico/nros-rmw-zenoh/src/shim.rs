@@ -37,13 +37,15 @@
 //! ```
 
 use core::marker::PhantomData;
-use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
 
-// Use AtomicI64 on 64-bit targets, AtomicI32 on 32-bit (e.g. Cortex-M)
+// Use AtomicI64 on 64-bit targets, AtomicI32 on 32-bit (e.g. Cortex-M, riscv32)
+// portable-atomic provides fetch_add/fetch_sub even on targets without native
+// atomic RMW instructions (e.g. riscv32imc) via software fallback.
 #[cfg(target_has_atomic = "64")]
-type AtomicSeqCounter = core::sync::atomic::AtomicI64;
+type AtomicSeqCounter = portable_atomic::AtomicI64;
 #[cfg(not(target_has_atomic = "64"))]
-type AtomicSeqCounter = core::sync::atomic::AtomicI32;
+type AtomicSeqCounter = portable_atomic::AtomicI32;
 
 use nros_rmw::{
     Publisher, QosSettings, Rmw, RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest,

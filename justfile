@@ -278,9 +278,16 @@ build-examples:
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
+        env_prefix=""
+        toolchain=""
         if [ "$platform" != "native" ]; then flags="--release"; fi
+        # ESP32 WiFi examples need SSID/PASSWORD env vars and nightly toolchain
+        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32" ]; then
+            env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
+            toolchain="+nightly"
+        fi
         echo "  build $dir"
-        (cd "$dir" && cargo build $flags)
+        (cd "$dir" && eval $env_prefix cargo $toolchain build $flags)
     done
     echo "All examples built!"
 

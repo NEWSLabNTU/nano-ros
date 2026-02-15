@@ -1085,6 +1085,7 @@ dependencies = [
  "heapless 0.8.0",
  "nros-core",
  "nros-rmw",
+ "portable-atomic",
  "zpico-sys",
 ]
 

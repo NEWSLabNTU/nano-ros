@@ -19,7 +19,8 @@ std_msgs = { version = "*", default-features = false }
 # Panic handler
 panic-probe = { version = "0.3", features = ["print-defmt"] }
 
-# Logging backend
+# Logging
+defmt = "0.3"
 defmt-rtt = "0.4"
 
 [features]

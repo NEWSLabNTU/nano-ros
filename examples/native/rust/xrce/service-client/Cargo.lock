@@ -3,15 +3,6 @@
 version = 4
 
 [[package]]
-name = "builtin_interfaces"
-version = "1.2.1"
-dependencies = [
- "heapless",
- "nros-core",
- "nros-serdes",
-]
-
-[[package]]
 name = "byteorder"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -25,6 +16,15 @@ checksum = "aebf35691d1bfb0ac386a69bac2fde4dd276fb618cf8bf4f5318fe285e821bb2"
 dependencies = [
  "find-msvc-tools",
  "shlex",
+]
+
+[[package]]
+name = "example_interfaces"
+version = "0.9.3"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-serdes",
 ]
 
 [[package]]
@@ -59,13 +59,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 
 [[package]]
-name = "native-rs-xrce-talker"
+name = "native-rs-xrce-service-client"
 version = "0.1.0"
 dependencies = [
+ "example_interfaces",
  "nros-core",
  "nros-rmw",
  "nros-rmw-xrce",
- "std_msgs",
 ]
 
 [[package]]
@@ -113,16 +113,6 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
-
-[[package]]
-name = "std_msgs"
-version = "4.2.4"
-dependencies = [
- "builtin_interfaces",
- "heapless",
- "nros-core",
- "nros-serdes",
-]
 
 [[package]]
 name = "xrce-sys"

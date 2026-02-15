@@ -27,6 +27,7 @@ nros-rmw = { path = "../../core/nros-rmw", default-features = false }
 nros-core = { workspace = true, default-features = false }
 zpico-sys = { path = "../zpico-sys" }
 heapless = { workspace = true }
+portable-atomic = { version = "1", default-features = false }
 log = { workspace = true, optional = true }
 
 [dev-dependencies]
