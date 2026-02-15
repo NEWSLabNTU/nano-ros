@@ -9,28 +9,25 @@
 #![no_std]
 #![no_main]
 
+use cortex_m::peripheral::Peripherals;
 use cortex_m_rt::entry;
 use cortex_m_semihosting::hprintln;
 use panic_semihosting as _;
 
 use builtin_interfaces::msg::Time;
 use nros::{
-    CdrReader, CdrWriter, Deserialize, NodeConfig, PublisherOptions, Serialize,
-    StandaloneNode as Node,
+    CdrReader, CdrWriter, Deserialize, NodeConfig, PublisherOptions, SafetyValidator, Serialize,
+    StandaloneNode as Node, crc32,
 };
 use std_msgs::msg::Int32;
 
 const ITERATIONS: u32 = 100;
 
-/// Enable the DWT cycle counter via raw register writes.
-/// (Same logic as zpico_platform_mps2_an385::timing::CycleCounter::enable())
+/// Enable the DWT cycle counter using the cortex-m safe peripheral API.
 fn enable_cycle_counter() {
-    unsafe {
-        let demcr = 0xE000_EDFC as *mut u32;
-        core::ptr::write_volatile(demcr, core::ptr::read_volatile(demcr) | (1 << 24));
-        let dwt_ctrl = 0xE000_1000 as *mut u32;
-        core::ptr::write_volatile(dwt_ctrl, core::ptr::read_volatile(dwt_ctrl) | 1);
-    }
+    let mut cp = Peripherals::take().expect("cortex-m peripherals already taken");
+    cp.DCB.enable_trace();
+    cp.DWT.enable_cycle_counter();
 }
 
 /// Read DWT cycle count.
@@ -286,6 +283,99 @@ fn bench_node_serialize() -> Stats {
     stats
 }
 
+/// Benchmark: CRC-32 over N-byte buffer
+fn bench_crc32(size: usize) -> Stats {
+    let mut stats = Stats::new();
+    let buf = [0xA5u8; 1024];
+    let data = &buf[..size];
+
+    // Warmup
+    for _ in 0..10 {
+        let _ = crc32(data);
+    }
+
+    // Measure
+    for _ in 0..ITERATIONS {
+        let start = cycles();
+        let _ = crc32(data);
+        let elapsed = cycles().wrapping_sub(start);
+        stats.record(elapsed);
+    }
+    stats
+}
+
+/// Benchmark: SafetyValidator::validate() with incrementing sequence
+fn bench_safety_validate() -> Stats {
+    let mut stats = Stats::new();
+    let mut validator = SafetyValidator::new();
+
+    // Warmup (also initializes the validator)
+    for seq in 0..10i64 {
+        let _ = validator.validate(seq, Some(true));
+    }
+
+    // Measure
+    for i in 0..ITERATIONS {
+        let seq = 10 + i as i64;
+        let start = cycles();
+        let _ = validator.validate(seq, Some(true));
+        let elapsed = cycles().wrapping_sub(start);
+        stats.record(elapsed);
+    }
+    stats
+}
+
+/// Benchmark: Full safety pipeline (extract attachment, CRC, validate)
+///
+/// Simulates try_recv_validated: parse seq + CRC from a 37-byte attachment,
+/// compute CRC on a 128-byte payload, compare, then validate sequence.
+fn bench_safety_full_pipeline() -> Stats {
+    let mut stats = Stats::new();
+
+    // Prepare a synthetic 128-byte payload
+    let payload = [0x42u8; 128];
+    let payload_crc = crc32(&payload);
+
+    // Build a 37-byte attachment: [seq(8) | timestamp(8) | gid(13) | attachment_len(4) | crc(4)]
+    let mut attachment = [0u8; 37];
+    // seq = 0 at bytes 0..8 (little-endian i64)
+    // CRC at bytes 33..37
+    attachment[33..37].copy_from_slice(&payload_crc.to_le_bytes());
+
+    let mut validator = SafetyValidator::new();
+
+    // Warmup
+    for i in 0u64..10 {
+        attachment[0..8].copy_from_slice(&(i as i64).to_le_bytes());
+        attachment[33..37].copy_from_slice(&payload_crc.to_le_bytes());
+        let seq = i64::from_le_bytes(attachment[0..8].try_into().unwrap());
+        let att_crc = u32::from_le_bytes(attachment[33..37].try_into().unwrap());
+        let computed_crc = crc32(&payload);
+        let crc_ok = Some(att_crc == computed_crc);
+        let _ = validator.validate(seq, crc_ok);
+    }
+
+    // Measure
+    for i in 0..ITERATIONS {
+        let seq_val = 10 + i as i64;
+        attachment[0..8].copy_from_slice(&seq_val.to_le_bytes());
+
+        let start = cycles();
+        // Extract fields from attachment
+        let seq = i64::from_le_bytes(attachment[0..8].try_into().unwrap());
+        let att_crc = u32::from_le_bytes(attachment[33..37].try_into().unwrap());
+        // Compute CRC over payload
+        let computed_crc = crc32(&payload);
+        let crc_ok = Some(att_crc == computed_crc);
+        // Validate
+        let _ = validator.validate(seq, crc_ok);
+        let elapsed = cycles().wrapping_sub(start);
+
+        stats.record(elapsed);
+    }
+    stats
+}
+
 fn print_result(name: &str, stats: &Stats) {
     hprintln!(
         "  {}: min={} max={} avg={} cycles",
@@ -329,6 +419,14 @@ fn main() -> ! {
     print_result("Node::new()", &bench_node_creation());
     print_result("create_publisher()", &bench_create_publisher());
     print_result("serialize_message()", &bench_node_serialize());
+
+    hprintln!("");
+    hprintln!("--- Safety E2E ---");
+    print_result("crc32 (64B)", &bench_crc32(64));
+    print_result("crc32 (256B)", &bench_crc32(256));
+    print_result("crc32 (1024B)", &bench_crc32(1024));
+    print_result("validate()", &bench_safety_validate());
+    print_result("full pipeline (128B)", &bench_safety_full_pipeline());
 
     hprintln!("");
     hprintln!("========================================");

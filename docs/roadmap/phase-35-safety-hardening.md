@@ -221,13 +221,13 @@ Validate the full safety protocol stack end-to-end. Tests are split into two cat
 - Identify candidates for static WCET analysis (Platin / aiT)
 
 **Work items:**
-- [ ] Create WCET benchmark example in `examples/qemu/` using DWT cycle counter (Cortex-M3 CYCCNT)
-- [ ] Measure: `crc32_iso_hdlc()` for 64/256/1024-byte payloads
-- [ ] Measure: CDR serialize/deserialize for `std_msgs/Int32` and `ParameterValue`
-- [ ] Measure: single `try_recv_validated()` call (poll + CRC + sequence check)
-- [ ] Record min/max/mean cycles per function in a markdown table
-- [ ] Document baselines in `docs/reference/wcet-baselines.md`
-- [ ] Note candidates for static WCET tools (Platin / aiT / SWEET)
+- [x] Create WCET benchmark example in `examples/qemu/` using DWT cycle counter (Cortex-M3 CYCCNT)
+- [x] Measure: `crc32_iso_hdlc()` for 64/256/1024-byte payloads
+- [x] Measure: CDR serialize/deserialize for `std_msgs/Int32` and `ParameterValue`
+- [x] Measure: single `try_recv_validated()` call (poll + CRC + sequence check)
+- [x] Record min/max/mean cycles per function in a markdown table
+- [x] Document baselines in `docs/reference/wcet-baselines.md`
+- [x] Note candidates for static WCET tools (Platin / aiT / SWEET)
 
 **Passing criteria:**
 - WCET benchmark compiles and runs on QEMU MPS2-AN385 (`just test-qemu` or manual)

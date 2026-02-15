@@ -11,7 +11,7 @@ test = false
 bench = false
 
 [dependencies]
-nros = { path = "../../../packages/core/nros", default-features = false }
+nros = { path = "../../../packages/core/nros", default-features = false, features = ["safety-e2e"] }
 std_msgs = { version = "*", default-features = false }
 builtin_interfaces = { version = "*", default-features = false }
 

@@ -99,7 +99,7 @@ pub use nros_rmw::{
 
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
-pub use nros_rmw::{IntegrityStatus, SafetyValidator};
+pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 
 // Re-export zenoh-specific types
 #[cfg(feature = "zenoh")]
