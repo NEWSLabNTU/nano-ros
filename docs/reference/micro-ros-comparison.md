@@ -215,22 +215,23 @@ nano_ros_publisher_init(&publisher, &node, "topic", "std_msgs/msg/Int32", ...);
 
 ### 8. Platform Support
 
-| Platform                  | micro-ROS         | nros      |
-|---------------------------|-------------------|---------------|
-| **Linux (desktop)**       | Yes               | Yes           |
-| **FreeRTOS**              | Yes (primary)     | No            |
-| **Zephyr**                | Yes (module)      | Yes (BSP)     |
-| **NuttX**                 | Yes               | No            |
-| **Arduino**               | Yes (precompiled) | No            |
-| **ESP-IDF**               | Yes               | No            |
-| **QEMU bare-metal**       | No                | Yes           |
-| **Cortex-M (bare-metal)** | Partial           | Yes (smoltcp) |
-| **STM32F4**               | Via RTOS          | Yes (BSP)     |
-| **RTIC**                  | No                | Yes           |
+| Platform                  | micro-ROS         | nros             |
+|---------------------------|-------------------|------------------|
+| **Linux (desktop)**       | Yes               | Yes              |
+| **FreeRTOS**              | Yes (primary)     | No               |
+| **Zephyr**                | Yes (module)      | Yes (BSP)        |
+| **NuttX**                 | Yes               | No               |
+| **Arduino**               | Yes (precompiled) | No               |
+| **ESP-IDF**               | Yes               | No               |
+| **ESP32 (bare-metal)**    | Via ESP-IDF       | Yes (BSP + QEMU) |
+| **QEMU bare-metal**       | No                | Yes              |
+| **Cortex-M (bare-metal)** | Partial           | Yes (smoltcp)    |
+| **STM32F4**               | Via RTOS          | Yes (BSP)        |
+| **RTIC**                  | No                | Yes              |
 
 **Lessons:**
 - micro-ROS has broader RTOS support (FreeRTOS, NuttX, ESP-IDF) due to its C codebase and RTOS-friendly threading model.
-- nros has unique bare-metal support (QEMU, RTIC) that micro-ROS lacks.
+- nros has unique bare-metal support (QEMU, RTIC) that micro-ROS lacks, and now covers ESP32-C3 with a dedicated BSP crate (`nros-esp32`) plus QEMU-based E2E testing via OpenETH.
 - Arduino support gives micro-ROS massive reach in the hobbyist/education market.
 
 ## Key Takeaways for nros

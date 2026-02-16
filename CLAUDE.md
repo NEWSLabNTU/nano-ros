@@ -108,6 +108,12 @@ just generate-bindings      # Regenerate all generated/ dirs (uses bundled inter
 just clean-bindings         # Remove all generated/ dirs (including rcl-interfaces)
 just regenerate-bindings    # clean-bindings + generate-bindings
 
+# ESP32-C3 (RISC-V)
+just build-zenoh-pico-riscv    # Cross-compile zenoh-pico for ESP32-C3 RISC-V
+just build-examples-esp32      # Build WiFi ESP32 examples (needs SSID/PASSWORD env vars)
+just build-examples-esp32-qemu # Build QEMU ESP32 examples + flash images
+just test-qemu-esp32-basic     # ESP32-C3 QEMU boot test (no networking)
+
 # Test groups (by infrastructure requirement)
 just test-unit          # Unit tests only (no external deps)
 just test-miri          # Miri UB detection (nros-serdes, nros-core, nros-params)
@@ -148,6 +154,8 @@ Build-time environment variables:
 | Variable | Description | Required |
 |----------|-------------|----------|
 | `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zpico-sys`) | Only with `system-zenohpico` |
+| `SSID` | WiFi network name for ESP32 examples | Required for `build-examples-esp32` |
+| `PASSWORD` | WiFi password for ESP32 examples | Required for `build-examples-esp32` |
 
 Build-time buffer tuning (optional — platform-appropriate defaults apply if unset):
 
@@ -402,7 +410,7 @@ Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archi
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 16 | ROS 2 Interop Completion | In Progress |
-| 22 | ESP32-C3 platform support | In Progress |
+| 22 | ESP32-C3 platform support | Complete (22.6 deferred) |
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
 | 31 | Verus unbounded verification | Complete |
