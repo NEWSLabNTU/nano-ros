@@ -300,29 +300,97 @@ pub fn build_native_action_client() -> TestResult<&'static Path> {
 }
 
 /// Build native-rs-talker with zenoh + safety-e2e features (cached)
+///
+/// Uses a separate `target-safety` directory to avoid overwriting the
+/// standard talker binary that other parallel test processes use.
 pub fn build_native_talker_safety() -> TestResult<&'static Path> {
     NATIVE_TALKER_SAFETY_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/talker",
-                "talker",
-                Some(&["zenoh", "safety-e2e"]),
-                None,
+            let root = project_root();
+            let example_dir = root.join("examples/native/rust/zenoh/talker");
+            let target_dir = example_dir.join("target-safety");
+
+            eprintln!("Building native/rust/zenoh/talker (safety-e2e)...");
+
+            let output = cmd!(
+                "cargo",
+                "build",
+                "--release",
+                "--features",
+                "zenoh,safety-e2e",
+                "--target-dir",
+                target_dir.to_str().unwrap()
             )
+            .dir(&example_dir)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let binary_path = target_dir.join("release/talker");
+            if !binary_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Binary not found after build: {}",
+                    binary_path.display()
+                )));
+            }
+
+            Ok(binary_path)
         })
         .map(|p| p.as_path())
 }
 
 /// Build native-rs-listener with zenoh + safety-e2e features (cached)
+///
+/// Uses a separate `target-safety` directory to avoid overwriting the
+/// standard listener binary that other parallel test processes use.
 pub fn build_native_listener_safety() -> TestResult<&'static Path> {
     NATIVE_LISTENER_SAFETY_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/listener",
-                "listener",
-                Some(&["zenoh", "safety-e2e"]),
-                None,
+            let root = project_root();
+            let example_dir = root.join("examples/native/rust/zenoh/listener");
+            let target_dir = example_dir.join("target-safety");
+
+            eprintln!("Building native/rust/zenoh/listener (safety-e2e)...");
+
+            let output = cmd!(
+                "cargo",
+                "build",
+                "--release",
+                "--features",
+                "zenoh,safety-e2e",
+                "--target-dir",
+                target_dir.to_str().unwrap()
             )
+            .dir(&example_dir)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let binary_path = target_dir.join("release/listener");
+            if !binary_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Binary not found after build: {}",
+                    binary_path.display()
+                )));
+            }
+
+            Ok(binary_path)
         })
         .map(|p| p.as_path())
 }
@@ -344,15 +412,49 @@ pub fn listener_safety_binary() -> PathBuf {
 }
 
 /// Build native-rs-listener with zenoh + unstable-zenoh-api features (cached)
+///
+/// Uses a separate `target-zero-copy` directory to avoid overwriting the
+/// standard/safety listener binaries that other parallel test processes use.
 pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
     NATIVE_LISTENER_ZERO_COPY_BINARY
         .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/listener",
-                "listener",
-                Some(&["zenoh", "unstable-zenoh-api"]),
-                None,
+            let root = project_root();
+            let example_dir = root.join("examples/native/rust/zenoh/listener");
+            let target_dir = example_dir.join("target-zero-copy");
+
+            eprintln!("Building native/rust/zenoh/listener (zero-copy)...");
+
+            let output = cmd!(
+                "cargo",
+                "build",
+                "--release",
+                "--features",
+                "zenoh,unstable-zenoh-api",
+                "--target-dir",
+                target_dir.to_str().unwrap()
             )
+            .dir(&example_dir)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let binary_path = target_dir.join("release/listener");
+            if !binary_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Binary not found after build: {}",
+                    binary_path.display()
+                )));
+            }
+
+            Ok(binary_path)
         })
         .map(|p| p.as_path())
 }
