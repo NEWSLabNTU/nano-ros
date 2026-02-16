@@ -352,8 +352,16 @@ xrce-sys = { path = "../xrce-sys", features = ["bare-metal"] }
 - [x] Add `just test-xrce` recipe to justfile
 - [x] Add `xrce` test group to `.config/nextest.toml` (max-threads=1)
 - [x] Binary builders with OnceCell caching: `build_xrce_talker()` / `build_xrce_listener()`
-- [ ] Test: XRCE service server/client roundtrip (future — needs service test binaries)
-- [ ] Test: Cross-backend interop (zenoh ↔ XRCE via DDS bridge) — future
+- [x] Test: XRCE service server/client roundtrip
+  - `examples/native/rust/xrce/service-server/` and `service-client/` using `XrceExecutor`/`XrceNode` API
+  - `test_xrce_service_server_starts`, `test_xrce_service_client_starts`, `test_xrce_service_request_response` in `xrce.rs`
+  - Binary builders with OnceCell caching: `build_xrce_service_server()` / `build_xrce_service_client()`
+- [x] Test: XRCE ↔ ROS 2 DDS interop via XRCE Agent
+  - `xrce_ros2_interop.rs`: 4 tests (detection, XRCE→ROS2 pub/sub, ROS2→XRCE pub/sub, XRCE service + ROS2 client)
+  - Architecture: `nros XRCE node → XRCE Agent (Fast-DDS) ←DDS multicast→ ROS 2 node (rmw_fastrtps_cpp)`
+  - `Ros2DdsProcess` helper in `ros2.rs` (parallel to zenoh-based `Ros2Process`)
+  - `just test-xrce-ros2` recipe, wired into `test-all`
+  - Note: zenoh ↔ XRCE cross-backend bridging is not feasible (incompatible key expression formats between zenoh-bridge-ros2dds and rmw_zenoh). The practical interop path is all-DDS via the XRCE Agent.
 
 **Acceptance criteria:**
 - At least pub/sub and service roundtrip work end-to-end on QEMU

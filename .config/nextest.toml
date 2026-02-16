@@ -64,6 +64,15 @@ filter = "binary(c_xrce_api)"
 test-group = "c_api"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
+# XRCE ↔ ROS 2 DDS interop: needs XRCE Agent + ROS 2 + rmw_fastrtps
+[test-groups.xrce_ros2_interop]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(xrce_ros2_interop)"
+test-group = "xrce_ros2_interop"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 # Safety E2E tests: 3s stabilization + 30s collection = ~33s expected runtime
 [[profile.default.overrides]]
 filter = "binary(safety_e2e)"

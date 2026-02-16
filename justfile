@@ -39,7 +39,7 @@ test verbose="":
     failed=0
     just _init-test-logs
     args=(--workspace --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -88,6 +88,9 @@ test-all verbose="":
     echo ""
     echo "=== C XRCE API Tests ==="
     just test-c-xrce {{verbose}} || failed=1
+    echo ""
+    echo "=== XRCE ↔ ROS 2 DDS Interop ==="
+    just test-xrce-ros2 {{verbose}} || failed=1
     echo ""
     echo "JUnit XML:  target/nextest/default/junit.xml"
     echo "Other logs: {{LOG_DIR}}/latest/"
@@ -817,7 +820,7 @@ test-integration verbose="":
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(esp32_emulator)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -886,6 +889,16 @@ test-xrce verbose="":
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --no-fail-fast -E 'binary(xrce)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
+# XRCE ↔ ROS 2 DDS interop tests (needs XRCE Agent + ROS 2 + rmw_fastrtps)
+test-xrce-ros2 verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --no-fail-fast -E 'binary(xrce_ros2_interop)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

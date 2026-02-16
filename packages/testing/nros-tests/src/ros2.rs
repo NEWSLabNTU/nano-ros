@@ -505,6 +505,195 @@ rclpy.spin(node)
     }
 }
 
+// =============================================================================
+// DDS (rmw_fastrtps_cpp) Helpers — for XRCE-DDS ↔ ROS 2 interop tests
+// =============================================================================
+
+/// Check if rmw_fastrtps_cpp is available (default RMW in Humble)
+pub fn is_rmw_fastrtps_available() -> bool {
+    Command::new("bash")
+        .args([
+            "-c",
+            "source /opt/ros/humble/setup.bash && ros2 pkg list | grep -q rmw_fastrtps_cpp",
+        ])
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Require ROS 2 with DDS (rmw_fastrtps_cpp) for a test.
+///
+/// Returns true if both ROS 2 and rmw_fastrtps_cpp are available.
+/// Prints a skip message and returns false otherwise.
+pub fn require_ros2_dds() -> bool {
+    if !is_ros2_available() {
+        eprintln!("Skipping test: ROS 2 not found");
+        return false;
+    }
+    if !is_rmw_fastrtps_available() {
+        eprintln!("Skipping test: rmw_fastrtps_cpp not found");
+        return false;
+    }
+    true
+}
+
+/// Get ROS 2 environment setup command for DDS (rmw_fastrtps_cpp).
+///
+/// Unlike the zenoh variant, no locator or zenoh config is needed —
+/// DDS uses multicast discovery on the local network.
+pub fn ros2_env_setup_dds(distro: &str) -> String {
+    format!(
+        "source /opt/ros/{distro}/setup.bash && \
+         export RMW_IMPLEMENTATION=rmw_fastrtps_cpp"
+    )
+}
+
+/// Managed ROS 2 process using DDS (rmw_fastrtps_cpp).
+///
+/// Same pattern as `Ros2Process` but uses DDS multicast discovery
+/// instead of zenoh. No locator parameter needed.
+pub struct Ros2DdsProcess {
+    handle: Child,
+    name: String,
+}
+
+impl Ros2DdsProcess {
+    /// Spawn a bash command in its own process group.
+    fn spawn_bash(cmd: &str, name: impl Into<String>) -> TestResult<Self> {
+        let name = name.into();
+        let mut command = Command::new("bash");
+        command
+            .args(["-c", cmd])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut command);
+        let handle = command
+            .spawn()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
+        Ok(Self { handle, name })
+    }
+
+    /// Start a ROS 2 DDS topic echo subscriber
+    ///
+    /// # Arguments
+    /// * `topic` - Topic name (e.g., "/chatter")
+    /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn topic_echo(topic: &str, msg_type: &str, distro: &str) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds(distro);
+        let cmd = format!(
+            "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
+        );
+        Self::spawn_bash(&cmd, format!("ros2-dds topic echo {topic}"))
+    }
+
+    /// Start a ROS 2 DDS topic pub publisher
+    ///
+    /// # Arguments
+    /// * `topic` - Topic name (e.g., "/chatter")
+    /// * `msg_type` - Message type (e.g., "std_msgs/msg/Int32")
+    /// * `data` - Message data as YAML (e.g., "{data: 42}")
+    /// * `rate` - Publishing rate in Hz
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn topic_pub(
+        topic: &str,
+        msg_type: &str,
+        data: &str,
+        rate: u32,
+        distro: &str,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds(distro);
+        let cmd = format!(
+            "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
+        );
+        Self::spawn_bash(&cmd, format!("ros2-dds topic pub {topic}"))
+    }
+
+    /// Start a ROS 2 DDS service call
+    ///
+    /// # Arguments
+    /// * `service_name` - Service name (e.g., "/add_two_ints")
+    /// * `service_type` - Service type (e.g., "example_interfaces/srv/AddTwoInts")
+    /// * `request` - Request data as YAML (e.g., "{a: 5, b: 3}")
+    /// * `distro` - ROS distro (e.g., "humble")
+    pub fn service_call(
+        service_name: &str,
+        service_type: &str,
+        request: &str,
+        distro: &str,
+    ) -> TestResult<Self> {
+        let env_setup = ros2_env_setup_dds(distro);
+        let cmd = format!(
+            "{env_setup} && timeout 30 ros2 service call {service_name} {service_type} \"{request}\""
+        );
+        Self::spawn_bash(&cmd, format!("ros2-dds service call {service_name}"))
+    }
+
+    /// Wait for output and return it
+    pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
+        use std::io::Read;
+
+        let start = std::time::Instant::now();
+        let mut output = String::new();
+
+        let mut stdout = self
+            .handle
+            .stdout
+            .take()
+            .ok_or_else(|| TestError::ProcessFailed(format!("No stdout for {}", self.name)))?;
+
+        let mut buffer = [0u8; 4096];
+        loop {
+            if start.elapsed() > timeout {
+                kill_process_group(&mut self.handle);
+                if output.is_empty() {
+                    return Err(TestError::Timeout);
+                }
+                break;
+            }
+
+            match self.handle.try_wait() {
+                Ok(Some(_)) => {
+                    let _ = stdout.read_to_string(&mut output);
+                    break;
+                }
+                Ok(None) => match stdout.read(&mut buffer) {
+                    Ok(0) => std::thread::sleep(Duration::from_millis(50)),
+                    Ok(n) => {
+                        output.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(_) => break,
+                },
+                Err(_) => break,
+            }
+        }
+
+        Ok(output)
+    }
+
+    /// Kill the process
+    pub fn kill(&mut self) {
+        kill_process_group(&mut self.handle);
+    }
+
+    /// Check if process is still running
+    pub fn is_running(&mut self) -> bool {
+        matches!(self.handle.try_wait(), Ok(None))
+    }
+}
+
+impl Drop for Ros2DdsProcess {
+    fn drop(&mut self) {
+        self.kill();
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -514,6 +703,15 @@ mod tests {
         let setup = ros2_env_setup("humble");
         assert!(setup.contains("/opt/ros/humble"));
         assert!(setup.contains("rmw_zenoh_cpp"));
+    }
+
+    #[test]
+    fn test_ros2_env_setup_dds_format() {
+        let setup = ros2_env_setup_dds("humble");
+        assert!(setup.contains("/opt/ros/humble"));
+        assert!(setup.contains("rmw_fastrtps_cpp"));
+        // DDS setup should NOT contain zenoh config
+        assert!(!setup.contains("ZENOH"));
     }
 
     #[test]
@@ -527,5 +725,11 @@ mod tests {
     fn test_rmw_zenoh_detection() {
         let available = is_rmw_zenoh_available();
         eprintln!("rmw_zenoh_cpp available: {}", available);
+    }
+
+    #[test]
+    fn test_rmw_fastrtps_detection() {
+        let available = is_rmw_fastrtps_available();
+        eprintln!("rmw_fastrtps_cpp available: {}", available);
     }
 }
