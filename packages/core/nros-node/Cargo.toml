@@ -17,8 +17,8 @@ posix-udp = ["nros-rmw-xrce?/posix-udp"]
 posix-serial = ["nros-rmw-xrce?/posix-serial"]
 
 # ROS edition feature flags (controls which env vars are supported)
-ros-humble = []                  # ROS_LOCALHOST_ONLY (Humble+, default)
-ros-iron = ["ros-humble"]        # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEERS (Iron+)
+ros-humble = ["nros-rmw-zenoh?/ros-humble"]     # ROS_LOCALHOST_ONLY (Humble+, default)
+ros-iron = ["nros-rmw-zenoh?/ros-iron"]                # ROS_AUTOMATIC_DISCOVERY_RANGE, ROS_STATIC_PEERS (Iron+)
 log = ["dep:log"]
 
 # Platform backend (select one; forwarded to active RMW backend)

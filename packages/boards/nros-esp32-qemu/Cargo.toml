@@ -42,3 +42,7 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 
 [features]
 default = []
+
+# ROS edition (controls data keyexpr type hash format)
+ros-humble = ["nros-rmw-zenoh/ros-humble"]
+ros-iron = ["nros-rmw-zenoh/ros-iron"]

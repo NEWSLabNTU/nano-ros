@@ -42,7 +42,7 @@ impl Node {
         let topic_info = TopicInfo {
             name: topic,
             type_name: M::TYPE_NAME,
-            type_hash: "TypeHashNotSupported",
+            type_hash: M::TYPE_HASH,
             domain_id: self.domain_id,
         };
         let publisher = self.session.create_publisher(&topic_info, QosSettings::default())?;
@@ -59,7 +59,7 @@ impl Node {
         let topic_info = TopicInfo {
             name: topic,
             type_name: M::TYPE_NAME,
-            type_hash: "TypeHashNotSupported",
+            type_hash: M::TYPE_HASH,
             domain_id: self.domain_id,
         };
         let subscriber = self.session.create_subscriber(&topic_info, QosSettings::default())?;

@@ -11,7 +11,9 @@ use nros_rmw::{
 /// Extension trait for generating zenoh key expressions from `TopicInfo`
 pub trait TopicKeyExpr {
     /// Generate the full topic key in rmw_zenoh format
-    /// Format: `<domain_id>/<topic_name>/<type_name>/TypeHashNotSupported`
+    ///
+    /// - Humble (default): `<domain_id>/<topic_name>/<type_name>/TypeHashNotSupported`
+    /// - Iron (`ros-iron`): `<domain_id>/<topic_name>/<type_name>/<type_hash>`
     fn to_key<const N: usize>(&self) -> heapless::String<N>;
 
     /// Generate a wildcard topic key for subscribing
@@ -23,11 +25,20 @@ impl TopicKeyExpr for TopicInfo<'_> {
     fn to_key<const N: usize>(&self) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let topic_stripped = self.name.trim_matches('/');
+        #[cfg(not(feature = "ros-iron"))]
         let _ = core::fmt::write(
             &mut key,
             format_args!(
                 "{}/{}/{}/TypeHashNotSupported",
                 self.domain_id, topic_stripped, self.type_name
+            ),
+        );
+        #[cfg(feature = "ros-iron")]
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "{}/{}/{}/{}",
+                self.domain_id, topic_stripped, self.type_name, self.type_hash
             ),
         );
         key
@@ -47,7 +58,9 @@ impl TopicKeyExpr for TopicInfo<'_> {
 /// Extension trait for generating zenoh key expressions from `ServiceInfo`
 pub trait ServiceKeyExpr {
     /// Generate the service key in rmw_zenoh format
-    /// Format: `<domain_id>/<service_name>/<type_name>/TypeHashNotSupported`
+    ///
+    /// - Humble (default): `<domain_id>/<service_name>/<type_name>/TypeHashNotSupported`
+    /// - Iron (`ros-iron`): `<domain_id>/<service_name>/<type_name>/<type_hash>`
     fn to_key<const N: usize>(&self) -> heapless::String<N>;
 
     /// Generate a wildcard service key for client queries
@@ -59,11 +72,20 @@ impl ServiceKeyExpr for ServiceInfo<'_> {
     fn to_key<const N: usize>(&self) -> heapless::String<N> {
         let mut key = heapless::String::new();
         let service_stripped = self.name.trim_matches('/');
+        #[cfg(not(feature = "ros-iron"))]
         let _ = core::fmt::write(
             &mut key,
             format_args!(
                 "{}/{}/{}/TypeHashNotSupported",
                 self.domain_id, service_stripped, self.type_name
+            ),
+        );
+        #[cfg(feature = "ros-iron")]
+        let _ = core::fmt::write(
+            &mut key,
+            format_args!(
+                "{}/{}/{}/{}",
+                self.domain_id, service_stripped, self.type_name, self.type_hash
             ),
         );
         key
@@ -132,6 +154,7 @@ mod tests {
     use super::*;
 
     #[test]
+    #[cfg(not(feature = "ros-iron"))]
     fn test_topic_key_generation() {
         let topic =
             TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "abc123").with_domain(42);
@@ -142,6 +165,19 @@ mod tests {
     }
 
     #[test]
+    #[cfg(feature = "ros-iron")]
+    fn test_topic_key_generation_iron() {
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123")
+            .with_domain(42);
+        let key: heapless::String<128> = topic.to_key();
+        assert!(key.contains("42"));
+        assert!(key.contains("chatter"));
+        assert!(key.contains("RIHS01_abc123"));
+        assert!(!key.contains("TypeHashNotSupported"));
+    }
+
+    #[test]
+    #[cfg(not(feature = "ros-iron"))]
     fn test_topic_info_to_key_humble() {
         let topic = TopicInfo {
             name: "/chatter",
@@ -153,6 +189,22 @@ mod tests {
         assert_eq!(
             key.as_str(),
             "0/chatter/std_msgs::msg::dds_::Int32_/TypeHashNotSupported"
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "ros-iron")]
+    fn test_topic_info_to_key_iron() {
+        let topic = TopicInfo {
+            name: "/chatter",
+            type_name: "std_msgs::msg::dds_::Int32_",
+            type_hash: "RIHS01_deadbeef",
+            domain_id: 0,
+        };
+        let key: heapless::String<128> = topic.to_key();
+        assert_eq!(
+            key.as_str(),
+            "0/chatter/std_msgs::msg::dds_::Int32_/RIHS01_deadbeef"
         );
     }
 
@@ -169,6 +221,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(not(feature = "ros-iron"))]
     fn test_service_key() {
         let service = ServiceInfo {
             name: "/add_two_ints",
@@ -179,6 +232,21 @@ mod tests {
         let key: heapless::String<128> = service.to_key();
         assert!(key.contains("add_two_ints"));
         assert!(key.contains("TypeHashNotSupported"));
+    }
+
+    #[test]
+    #[cfg(feature = "ros-iron")]
+    fn test_service_key_iron() {
+        let service = ServiceInfo {
+            name: "/add_two_ints",
+            type_name: "example_interfaces::srv::dds_::AddTwoInts",
+            type_hash: "RIHS01_cafebabe",
+            domain_id: 0,
+        };
+        let key: heapless::String<128> = service.to_key();
+        assert!(key.contains("add_two_ints"));
+        assert!(key.contains("RIHS01_cafebabe"));
+        assert!(!key.contains("TypeHashNotSupported"));
     }
 
     #[test]

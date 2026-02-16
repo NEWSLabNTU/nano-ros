@@ -175,7 +175,7 @@ impl Context {
         let mut force_localhost = false;
 
         // ROS_LOCALHOST_ONLY (Humble+)
-        #[cfg(feature = "ros-humble")]
+        #[cfg(any(feature = "ros-humble", feature = "ros-iron"))]
         {
             let localhost_only = std::env::var("ROS_LOCALHOST_ONLY")
                 .map(|v| v == "1")

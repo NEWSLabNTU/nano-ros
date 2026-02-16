@@ -18,7 +18,7 @@ docker = ["nros-mps2-an385/docker"]
 
 [dependencies]
 # Platform crate - all you need for QEMU bare-metal
-nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385", features = ["ros-humble"] }
 
 # Generated message types (from package.xml via cargo nano-ros generate)
 std_msgs = { version = "*", default-features = false }

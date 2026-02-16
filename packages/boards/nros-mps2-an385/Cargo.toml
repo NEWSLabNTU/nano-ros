@@ -40,3 +40,7 @@ nros-core = { path = "../../core/nros-core", default-features = false }
 default = []
 # Docker networking mode (container with NAT)
 docker = []
+
+# ROS edition (controls data keyexpr type hash format)
+ros-humble = ["nros-rmw-zenoh/ros-humble"]
+ros-iron = ["nros-rmw-zenoh/ros-iron"]

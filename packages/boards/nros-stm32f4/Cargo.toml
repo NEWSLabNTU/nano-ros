@@ -53,3 +53,7 @@ stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32-eth/stm32f437", "zpico-platform-s
 stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32-eth/stm32f439", "zpico-platform-stm32f4/stm32f439"]
 stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32-eth/stm32f469", "zpico-platform-stm32f4/stm32f469"]
 stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32-eth/stm32f479", "zpico-platform-stm32f4/stm32f479"]
+
+# ROS edition (controls data keyexpr type hash format)
+ros-humble = ["nros-rmw-zenoh/ros-humble"]
+ros-iron = ["nros-rmw-zenoh/ros-iron"]

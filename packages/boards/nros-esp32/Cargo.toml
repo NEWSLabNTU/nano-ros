@@ -50,3 +50,7 @@ critical-section = "1"
 
 [features]
 default = []
+
+# ROS edition (controls data keyexpr type hash format)
+ros-humble = ["nros-rmw-zenoh/ros-humble"]
+ros-iron = ["nros-rmw-zenoh/ros-iron"]

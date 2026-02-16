@@ -50,7 +50,7 @@
 //!
 //! **ROS version** (select one):
 //! - `ros-humble` - ROS 2 Humble
-//! - `ros-iron` - ROS 2 Iron (implies `ros-humble`)
+//! - `ros-iron` - ROS 2 Iron
 //!
 //! **Other**:
 //! - `std` (default) - Enable standard library support
@@ -72,6 +72,10 @@ compile_error!("`rmw-zenoh` and `rmw-xrce` are mutually exclusive — select one
 compile_error!(
     "`platform-posix`, `platform-zephyr`, and `platform-bare-metal` are mutually exclusive."
 );
+
+// At most one ROS edition.
+#[cfg(all(feature = "ros-humble", feature = "ros-iron"))]
+compile_error!("`ros-humble` and `ros-iron` are mutually exclusive — select one ROS edition.");
 
 #[cfg(feature = "std")]
 extern crate std;

@@ -55,8 +55,8 @@ unstable-zenoh-api = ["nros-node/unstable-zenoh-api", "nros-rmw-zenoh?/unstable-
 param-services = ["nros-node/param-services"]
 
 # ROS edition feature flags
-ros-humble = ["nros-node/ros-humble"]
-ros-iron = ["nros-node/ros-iron"]
+ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble"]
+ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]
 
 # Executor modes
 rtic = ["nros-node/rtic"]
