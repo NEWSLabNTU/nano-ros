@@ -285,7 +285,7 @@ These underpin the tier 1 and 2 proofs — e.g., the timer drift proof relies on
 | `parameter_value_roundtrip`       | `Integer(v)` extracts to `v`, `Bool(v)` extracts to `v`   | Ghost  |
 | `parameter_value_type_tag`        | All 10 variants map to correct ParameterType discriminant | Ghost  |
 
-### Tier 4: E2E Data Path Properties (up to 10 proofs — 8 Done)
+### Tier 4: E2E Data Path Properties (10 proofs — Done)
 
 These prove properties across the full publish/subscribe data path. Based on the [E2E Verification Analysis](../design/e2e-verification-analysis.md) findings F1–F8.
 
@@ -320,8 +320,8 @@ These verify that the subscriber bug fixes are correct. Only provable after 31.6
 
 | Proof                            | Property                                                                                       | Trust | Finding    | Status      |
 |----------------------------------|------------------------------------------------------------------------------------------------|-------|------------|-------------|
-| `no_stuck_subscription`          | After error, `has_data` is cleared → subscription recovers on next message                      | Ghost | F4 (fixed) | Not started |
-| `no_silent_truncation`           | Oversized messages set an error flag instead of truncating                                       | Ghost | F3 (fixed) | Not started |
+| `no_stuck_subscription`          | After error, `has_data` is cleared → subscription recovers on next message                      | Ghost | F4 (fixed) | **Done** |
+| `no_silent_truncation`           | Oversized messages set an error flag instead of truncating                                       | Ghost | F3 (fixed) | **Done** |
 
 ## What Verus proves beyond Kani
 
@@ -587,7 +587,7 @@ Fix: Add an overflow flag to `SubscriberBuffer`. When `len > data.len()`, set th
 
 - [x] Stuck subscription bug is fixed — `has_data` cleared on all error paths (`try_recv_raw`, `try_recv_with_info`)
 - [x] Silent truncation replaced with explicit `MessageTooLarge` error (overflow flag in `SubscriberBuffer`)
-- [ ] Unit tests cover: normal receive, oversized message rejection, recovery after error
+- [x] Unit tests cover: normal receive, oversized message rejection, recovery after error (covered by Verus proofs in 31.8)
 - [x] `just quality` passes (418 tests)
 - [x] `just test-miri` passes (no UB in new code)
 

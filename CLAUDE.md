@@ -397,7 +397,7 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 
 ## Development Phases
 
-Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/archived/`.
+Completed phases (1-15, 17-21, 25-33, 38-39) are archived in `docs/roadmap/archived/`.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
@@ -405,24 +405,20 @@ Completed phases (1-15, 17-18, 20-21, 25-29, 32) are archived in `docs/roadmap/a
 | 22 | ESP32-C3 platform support | In Progress |
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
-| 31 | Verus unbounded verification | In Progress |
-| 33 | Crate rename (`nros-*` / `zpico-*`) | Complete |
+| 31 | Verus unbounded verification | Complete |
 | 34 | RMW abstraction + XRCE-DDS | In Progress |
+| 35 | Safety hardening & E2E protocol | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
-| 37 | Executor progress guarantees | Not Started |
-| 38 | Example cleanup | Complete |
+| 37 | Executor progress guarantees | In Progress |
+| 40 | Large message support | In Progress |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
-
-**Phase 33**: Complete. All crates renamed from `nano-ros-*` to `nros-*` / `zpico-*`. Transport split into `nros-rmw` + `nros-rmw-zenoh`. Platform crates split into `zpico-platform-*` + `nros-*` board crates. See `docs/design/rmw-layer-design.md`.
 
 **Phase 34**: 34.1-34.8 complete. RMW factory trait, zenoh backend, board refactor, XRCE-DDS FFI (`xrce-sys`), UDP transport (`xrce-smoltcp`), RMW implementation (`nros-rmw-xrce`), platform symbols, integration test infrastructure.
 
 **Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
 
 **Phase 37**: Executor progress guarantees. Fix service buffer stuck-state bug, add Verus progress proofs for all work item types, evaluate fairness under load. See `docs/roadmap/phase-37-executor-progress-guarantees.md`.
-
-**Phase 38**: Complete. Eliminated low-level API leaks from all 33 examples. Created XRCE node API (`XrceExecutor`/`XrceNode` in `nros-node`), ported 8 XRCE examples to `nros` unified API, replaced hand-written messages in ESP32 QEMU examples with generated bindings, moved STM32F4 porting references to `packages/reference/`, added `create_subscription_with_safety()` to executor, moved backend internals to `nros::internals`, deprecated `TransportConfig`. See `docs/roadmap/phase-38-example-cleanup.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
@@ -443,8 +439,8 @@ docs/
 ├── design/          # Active architecture docs
 │   └── archived/    # Superseded design docs
 ├── research/        # Autoware porting analysis
-└── roadmap/         # Active phases (16, 22-24, 32)
-    └── archived/    # Completed phases (1-15, 17-21, 25-31)
+└── roadmap/         # Active phases (16, 22-24, 34-37, 40)
+    └── archived/    # Completed phases (1-15, 17-21, 25-33, 38-39, 31)
 ```
 
 Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw-layer-design](docs/design/rmw-layer-design.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [tests/README](tests/README.md).
