@@ -70,6 +70,15 @@ static XRCE_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the xrce-large-msg-test binary
 static XRCE_LARGE_MSG_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the zenoh-stress-test binary
+static ZENOH_STRESS_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the xrce-stress-test binary
+static XRCE_STRESS_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-bsp-large-msg-test binary
+static QEMU_LARGE_MSG_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the xrce-serial-talker binary
 static XRCE_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -647,6 +656,76 @@ pub fn build_xrce_large_msg_test() -> TestResult<&'static Path> {
 pub fn xrce_large_msg_test_binary() -> PathBuf {
     build_xrce_large_msg_test()
         .expect("Failed to build xrce-large-msg-test")
+        .to_path_buf()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Stress Test & Large Message Builders
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build the zenoh-stress-test binary (cached).
+pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
+    ZENOH_STRESS_TEST_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/stress-test",
+                "zenoh-stress-test",
+                Some(&["zenoh"]),
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the zenoh-stress-test binary path.
+#[rstest::fixture]
+pub fn zenoh_stress_test_binary() -> PathBuf {
+    build_zenoh_stress_test()
+        .expect("Failed to build zenoh-stress-test")
+        .to_path_buf()
+}
+
+/// Build the xrce-stress-test binary (cached).
+pub fn build_xrce_stress_test() -> TestResult<&'static Path> {
+    XRCE_STRESS_TEST_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/stress-test",
+                "xrce-stress-test",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the xrce-stress-test binary path.
+#[rstest::fixture]
+pub fn xrce_stress_test_binary() -> PathBuf {
+    build_xrce_stress_test()
+        .expect("Failed to build xrce-stress-test")
+        .to_path_buf()
+}
+
+/// Build qemu-bsp-large-msg-test (cached).
+pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
+    QEMU_LARGE_MSG_TEST_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm/rust/zenoh/large-msg-test",
+                "qemu-bsp-large-msg-test",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the qemu-bsp-large-msg-test binary path.
+#[rstest::fixture]
+pub fn qemu_large_msg_test_binary() -> PathBuf {
+    build_qemu_large_msg_test()
+        .expect("Failed to build qemu-bsp-large-msg-test")
         .to_path_buf()
 }
 

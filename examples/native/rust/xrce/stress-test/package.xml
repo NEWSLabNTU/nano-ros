@@ -1,0 +1,15 @@
+<?xml version="1.0"?>
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
+  <name>native_xrce_stress_test</name>
+  <version>0.1.0</version>
+  <description>nros XRCE-DDS large message and throughput stress test</description>
+  <maintainer email="example@example.com">Developer</maintainer>
+  <license>MIT OR Apache-2.0</license>
+
+  <depend>std_msgs</depend>
+
+  <export>
+    <build_type>ament_cargo</build_type>
+  </export>
+</package>

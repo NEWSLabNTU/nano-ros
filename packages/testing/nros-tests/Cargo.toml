@@ -81,3 +81,7 @@ path = "tests/xrce.rs"
 [[test]]
 name = "safety_e2e"
 path = "tests/safety_e2e.rs"
+
+[[test]]
+name = "large_msg"
+path = "tests/large_msg.rs"

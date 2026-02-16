@@ -32,14 +32,14 @@ test-unit verbose="":
     cargo nextest run "${args[@]}"
 
 # Run standard tests (needs qemu-system-arm + zenohd)
-# Single nextest run (workspace + integration, excluding zephyr/ros2) + Miri + QEMU
+# Single nextest run (workspace + integration, excluding zephyr/ros2/large_msg) + Miri + QEMU
 test verbose="":
     #!/usr/bin/env bash
     set +e
     failed=0
     just _init-test-logs
     args=(--workspace --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(large_msg)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -91,6 +91,9 @@ test-all verbose="":
     echo ""
     echo "=== XRCE ↔ ROS 2 DDS Interop ==="
     just test-xrce-ros2 {{verbose}} || failed=1
+    echo ""
+    echo "=== Large Message & Throughput ==="
+    just test-large-msg {{verbose}} || failed=1
     echo ""
     echo "JUnit XML:  target/nextest/default/junit.xml"
     echo "Other logs: {{LOG_DIR}}/latest/"
@@ -815,12 +818,22 @@ bench-fairness:
 # =============================================================================
 
 # Run all Rust integration tests (requires zenohd)
-# Excludes zephyr and rmw_interop tests (run via test-zephyr / test-ros2)
+# Excludes zephyr, rmw_interop, large_msg tests (run via test-zephyr / test-ros2 / test-large-msg)
 test-integration verbose="":
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
+# Run large message & throughput stress tests (requires zenohd + XRCE Agent + qemu-system-arm)
+test-large-msg verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --test large_msg --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

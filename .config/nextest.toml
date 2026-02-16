@@ -78,6 +78,15 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 filter = "binary(safety_e2e)"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
+# Large message & throughput stress tests: sequential (shared zenohd/agent ports)
+[test-groups.large_msg]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(large_msg)"
+test-group = "large_msg"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
 [profile.ci]
 # CI profile with stricter timeouts
 slow-timeout = { period = "30s", terminate-after = 2 }

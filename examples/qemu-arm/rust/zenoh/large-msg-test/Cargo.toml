@@ -1,0 +1,21 @@
+[package]
+name = "qemu-bsp-large-msg-test"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "QEMU large message publish test using nros-mps2-an385"
+
+[[bin]]
+name = "qemu-bsp-large-msg-test"
+test = false
+bench = false
+
+[features]
+default = []
+docker = ["nros-mps2-an385/docker"]
+
+[dependencies]
+nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+std_msgs = { version = "*", default-features = false }
+panic-semihosting = { version = "0.6", features = ["exit"] }

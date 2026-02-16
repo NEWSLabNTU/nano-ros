@@ -44,4 +44,10 @@ impl<M: RosMessage> Publisher<M> {
         self.inner.publish_raw(writer.as_slice())?;
         Ok(())
     }
+
+    /// Publish raw bytes (already CDR-serialized)
+    pub fn publish_raw(&self, data: &[u8]) -> Result<()> {
+        self.inner.publish_raw(data)?;
+        Ok(())
+    }
 }

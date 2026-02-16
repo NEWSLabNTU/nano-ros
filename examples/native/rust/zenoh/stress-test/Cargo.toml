@@ -1,0 +1,18 @@
+[package]
+name = "native-rs-zenoh-stress-test"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "zenoh-stress-test"
+path = "src/main.rs"
+
+[features]
+default = []
+zenoh = ["nros/rmw-zenoh", "nros/platform-posix"]
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std"] }
+std_msgs = { version = "*", default-features = false }

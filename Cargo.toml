@@ -42,11 +42,13 @@ exclude = [
     "examples/native/rust/zenoh/action-server",
     "examples/native/rust/zenoh/action-client",
     "examples/native/rust/zenoh/fairness-bench",
+    "examples/native/rust/zenoh/stress-test",
     # QEMU ARM examples (bare-metal Cortex-M3)
     "examples/qemu-arm/rust/zenoh/talker",
     "examples/qemu-arm/rust/zenoh/listener",
     "examples/qemu-arm/rust/core/cdr-test",
     "examples/qemu-arm/rust/core/wcet-bench",
+    "examples/qemu-arm/rust/zenoh/large-msg-test",
     "examples/qemu-arm/rust/standalone/lan9118",
     # STM32F4 examples
     "examples/stm32f4/rust/zenoh/talker",
@@ -81,6 +83,7 @@ exclude = [
     "examples/native/rust/xrce/serial-talker",
     "examples/native/rust/xrce/serial-listener",
     "examples/native/rust/xrce/large-msg-test",
+    "examples/native/rust/xrce/stress-test",
     # zpico platform crates (embedded-only, require cross-compilation)
     "packages/zpico/zpico-platform-mps2-an385",
     "packages/zpico/zpico-platform-esp32",
