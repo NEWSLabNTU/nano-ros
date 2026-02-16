@@ -1,6 +1,6 @@
 # Phase 36: Multi-Backend Integration Tests
 
-**Status: Not Started**
+**Status: Complete**
 
 **Prerequisites:** Phase 34 (RMW abstraction + XRCE-DDS backend, 34.1-34.8 complete)
 
@@ -383,9 +383,9 @@ Key changes: `posix` → `platform-posix`, `bare-metal` → `platform-bare-metal
 
 Document the complete test coverage matrix.
 
-- [ ] Update `tests/README.md` with XRCE test section (prerequisites, how to run, what's tested)
-- [ ] Add test matrix table to this document showing: pattern × backend × platform → test file
-- [ ] Document which combinations are tested, planned, and not applicable
+- [x] Update `tests/README.md` with XRCE test section (prerequisites, how to run, what's tested)
+- [x] Add test matrix table to this document showing: pattern × backend × platform → test file
+- [x] Document which combinations are tested, planned, and not applicable
 
 ---
 
@@ -393,22 +393,58 @@ Document the complete test coverage matrix.
 
 ---
 
-## Test Coverage Matrix (Target)
+## Test Coverage Matrix
 
-After Phase 36 completion:
+Actual test coverage after Phase 36 completion:
 
-| Pattern | Zenoh native | Zenoh QEMU | Zenoh Zephyr | XRCE native (UDP) | XRCE native (serial) | XRCE QEMU |
-|---------|:------------:|:----------:|:------------:|:-----------------:|:--------------------:|:----------:|
-| Pub/sub | `nano2nano.rs` | `emulator.rs` | `zephyr.rs` | `xrce.rs` | 36.6 **NEW** | Phase 37+ |
-| Services | `services.rs` | - | `zephyr.rs` | `xrce.rs` **NEW** | - | Phase 37+ |
-| Actions | `actions.rs` | - | `zephyr.rs` | `xrce.rs` | - | Phase 37+ |
-| ROS 2 interop | `rmw_interop.rs` | - | - | N/A (diff protocol) | N/A | - |
-| Custom msgs | `custom_msg.rs` | - | - | - | - | - |
-| Parameters | `params.rs` | - | - | N/A (no node layer) | N/A | - |
-| QoS | `qos.rs` | - | - | - | - | - |
-| Multi-node | `multi_node.rs` | - | - | - | - | - |
+### By ROS pattern × RMW backend × platform
 
-Legend: `-` = not tested, `N/A` = not applicable for this backend
+| Pattern | Zenoh native | Zenoh QEMU ARM | Zenoh QEMU ESP32 | Zenoh Zephyr | XRCE native (UDP) | XRCE native (serial) | XRCE C API |
+|---------|:------------:|:--------------:|:-----------------:|:------------:|:-----------------:|:--------------------:|:----------:|
+| Pub/sub | `nano2nano.rs` (7) | `emulator.rs` (12) | `esp32_emulator.rs` (9) | `zephyr.rs` (20) | `xrce.rs` (5) | `xrce.rs` (3) | `c_xrce_api.rs` (5) |
+| Services | `services.rs` (8) | - | - | `zephyr.rs` (partial) | `xrce.rs` (3) | - | - |
+| Actions | `actions.rs` (4) | - | - | `zephyr.rs` (partial) | `xrce.rs` (3) | - | - |
+| Large msgs | - | - | - | - | `xrce.rs` (1) | - | - |
+| ROS 2 interop (zenoh) | `rmw_interop.rs` (17) | - | - | - | N/A | N/A | - |
+| ROS 2 interop (DDS) | N/A | N/A | N/A | N/A | `xrce_ros2_interop.rs` (4) | N/A | - |
+| Custom msgs | `custom_msg.rs` (7) | - | - | - | - | - | - |
+| Parameters | `params.rs` (8) | - | - | - | N/A | N/A | - |
+| QoS | `qos.rs` (6) | - | - | - | - | - | - |
+| Multi-node | `multi_node.rs` (8) | - | - | - | - | - | - |
+| Safety E2E | `safety_e2e.rs` (2) | - | - | - | - | - | - |
+| Executor | `executor.rs` (7) | - | - | - | - | - | - |
+| Error handling | `error_handling.rs` (8) | - | - | - | - | - | - |
+| C API (zenoh) | `c_api.rs` (5) | - | - | - | N/A | N/A | N/A |
+
+Numbers in parentheses are test counts. `-` = not tested. `N/A` = not applicable.
+
+### By test command × prerequisites
+
+| Command | Test file(s) | Prerequisites | Test group |
+|---------|-------------|---------------|------------|
+| `just test-unit` | Unit tests in each crate | None | - |
+| `just test-miri` | nros-serdes, nros-core, nros-params | None | - |
+| `just test-integration` | nano2nano, services, actions, custom_msg, params, qos, multi_node, safety_e2e, executor, error_handling, rmw, platform | zenohd | default |
+| `just test-qemu` | emulator.rs | qemu-system-arm | arm-emulator |
+| `just test-qemu-esp32` | esp32_emulator.rs | qemu-system-riscv32, espflash | esp32-emulator |
+| `just test-xrce` | xrce.rs | XRCE Agent, socat | xrce |
+| `just test-xrce-ros2` | xrce_ros2_interop.rs | XRCE Agent, ROS 2, rmw_fastrtps | xrce_ros2_interop |
+| `just test-zephyr` | zephyr.rs | west, TAP network | zephyr |
+| `just test-ros2` | rmw_interop.rs | ROS 2, rmw_zenoh_cpp | - |
+| `just test-c` | c_api.rs | cmake, zenohd | c_api |
+| `just test-c-xrce` | c_xrce_api.rs | cmake, XRCE Agent | c_api |
+
+### Combinations not tested (and why)
+
+| Combination | Reason |
+|-------------|--------|
+| XRCE + Zephyr | Board crate not yet XRCE-aware (Phase 37+) |
+| XRCE + QEMU | Board crate needs feature-gating (Phase 37+) |
+| XRCE + ESP32 | ESP32 XRCE platform symbols not implemented |
+| Zenoh services on QEMU | QEMU firmware lacks service binaries |
+| Zenoh actions on QEMU | QEMU firmware lacks action binaries |
+| XRCE serial + services/actions | Serial transport validated via pub/sub; services/actions use same underlying RMW traits |
+| XRCE parameters | Parameters are composed at `nros-node` layer which doesn't yet support XRCE backend |
 
 ## Execution Order
 
