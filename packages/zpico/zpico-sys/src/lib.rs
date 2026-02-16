@@ -109,6 +109,11 @@ unsafe extern "C" {
         callback: ShimNotifyCallback,
         ctx: *mut c_void,
     ) -> i32;
+    pub fn zenoh_shim_subscribe_zero_copy(
+        keyexpr: *const core::ffi::c_char,
+        callback: ShimZeroCopyCallback,
+        ctx: *mut c_void,
+    ) -> i32;
     pub fn zenoh_shim_undeclare_subscriber(handle: i32) -> i32;
 
     // Liveliness

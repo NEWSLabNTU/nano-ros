@@ -22,6 +22,9 @@ log = ["dep:log"]
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-rmw/safety-e2e"]
 
+# Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
+unstable-zenoh-api = ["zpico-sys/unstable-zenoh-api"]
+
 [dependencies]
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }
 nros-core = { workspace = true, default-features = false }

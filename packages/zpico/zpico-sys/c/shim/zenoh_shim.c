@@ -63,6 +63,10 @@ typedef struct {
     uint8_t *buf_ptr;      // Pointer into Rust SUBSCRIBER_BUFFERS[i].data
     size_t buf_capacity;   // Size of the Rust buffer
     const bool *locked_ptr; // Pointer to Rust SUBSCRIBER_BUFFERS[i].locked (AtomicBool)
+#if defined(Z_FEATURE_UNSTABLE_API)
+    bool zero_copy;        // true = zero-copy mode (borrows from zenoh-pico buffer)
+    ShimZeroCopyCallback zero_copy_cb;
+#endif
 } subscriber_entry_t;
 
 // Publisher entry
@@ -200,6 +204,37 @@ static void shim_sample_handler(z_loaned_sample_t *sample, void *arg) {
     // Get payload
     const z_loaned_bytes_t *payload = z_sample_payload(sample);
     size_t payload_len = z_bytes_len(payload);
+
+#if defined(Z_FEATURE_UNSTABLE_API)
+    if (entry->zero_copy) {
+        if (entry->zero_copy_cb == NULL) {
+            return;
+        }
+        // Get contiguous view — borrows directly from zenoh-pico's receive buffer
+        z_view_slice_t view;
+        if (z_bytes_get_contiguous_view(payload, &view) == 0) {
+            const uint8_t *data = z_slice_data(z_view_slice_loan(&view));
+            size_t len = z_slice_len(z_view_slice_loan(&view));
+
+            // Get attachment (small copy, 33-37 bytes)
+            const z_loaned_bytes_t *att = z_sample_attachment(sample);
+            if (att != NULL) {
+                z_owned_slice_t att_slice;
+                if (z_bytes_to_slice(att, &att_slice) == 0) {
+                    entry->zero_copy_cb(data, len,
+                        z_slice_data(z_slice_loan(&att_slice)),
+                        z_slice_len(z_slice_loan(&att_slice)), entry->ctx);
+                    z_slice_drop(z_slice_move(&att_slice));
+                } else {
+                    entry->zero_copy_cb(data, len, NULL, 0, entry->ctx);
+                }
+            } else {
+                entry->zero_copy_cb(data, len, NULL, 0, entry->ctx);
+            }
+        }
+        return;
+    }
+#endif
 
     if (entry->direct_write) {
         // Direct-write mode: read payload directly into Rust static buffer
@@ -671,6 +706,69 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
     g_subscribers[idx].active = true;
     return idx;
 }
+
+#if defined(Z_FEATURE_UNSTABLE_API)
+int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
+                                        ShimZeroCopyCallback callback,
+                                        void *ctx) {
+    if (!g_session_open) {
+        return ZENOH_SHIM_ERR_SESSION;
+    }
+
+    // Find free slot
+    int idx = -1;
+    for (int i = 0; i < ZENOH_SHIM_MAX_SUBSCRIBERS; i++) {
+        if (!g_subscribers[i].active) {
+            idx = i;
+            break;
+        }
+    }
+    if (idx < 0) {
+        return ZENOH_SHIM_ERR_FULL;
+    }
+
+    g_subscribers[idx].ctx = ctx;
+    g_subscribers[idx].with_attachment = false;
+    g_subscribers[idx].direct_write = false;
+    g_subscribers[idx].zero_copy = true;
+    g_subscribers[idx].zero_copy_cb = callback;
+
+    z_view_keyexpr_t ke;
+    if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
+        g_subscribers[idx].zero_copy = false;
+        g_subscribers[idx].zero_copy_cb = NULL;
+        g_subscribers[idx].ctx = NULL;
+        return ZENOH_SHIM_ERR_KEYEXPR;
+    }
+
+    // Create closure for callback, passing index as context
+    z_owned_closure_sample_t closure;
+    z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
+
+    int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
+                                       z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
+    if (sub_ret < 0) {
+        printk("zenoh_shim: z_declare_subscriber (zero_copy) failed: %d for '%s'\n", sub_ret, keyexpr);
+        g_subscribers[idx].zero_copy = false;
+        g_subscribers[idx].zero_copy_cb = NULL;
+        g_subscribers[idx].ctx = NULL;
+        return ZENOH_SHIM_ERR_GENERIC;
+    }
+
+    g_subscribers[idx].active = true;
+    return idx;
+}
+#else
+// Stub when unstable API is not enabled — returns error
+int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
+                                        ShimZeroCopyCallback callback,
+                                        void *ctx) {
+    (void)keyexpr;
+    (void)callback;
+    (void)ctx;
+    return ZENOH_SHIM_ERR_GENERIC;
+}
+#endif
 
 int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
     if (handle < 0 || handle >= ZENOH_SHIM_MAX_SUBSCRIBERS || !g_subscribers[handle].active) {

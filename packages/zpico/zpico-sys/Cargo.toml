@@ -33,6 +33,8 @@ link-raweth = []
 system-zenohpico = []
 # Standard library support
 std = []
+# Enable Z_FEATURE_UNSTABLE_API in zenoh-pico (for z_bytes_get_contiguous_view)
+unstable-zenoh-api = []
 
 [dependencies]
 # (none - all C code, no Rust deps)

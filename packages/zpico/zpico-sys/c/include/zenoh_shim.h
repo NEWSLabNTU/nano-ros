@@ -159,6 +159,23 @@ typedef void (*ShimNotifyCallback)(uintptr_t len,
                                    void *ctx);
 
 /**
+ * Zero-copy callback: data pointer is borrowed from zenoh-pico's receive buffer.
+ * Only valid during the callback invocation. Requires `unstable-zenoh-api` feature.
+ *
+ * # Parameters
+ * * `data` - Pointer to payload in zenoh-pico's internal buffer (borrowed, NOT owned)
+ * * `len` - Length of payload in bytes
+ * * `attachment` - Pointer to attachment buffer (may be NULL)
+ * * `attachment_len` - Length of attachment in bytes
+ * * `ctx` - User-provided context pointer
+ */
+typedef void (*ShimZeroCopyCallback)(const uint8_t *data,
+                                     uintptr_t len,
+                                     const uint8_t *attachment,
+                                     uintptr_t attachment_len,
+                                     void *ctx);
+
+/**
  * Callback function type for receiving queries (service requests).
  *
  * # Parameters
@@ -313,6 +330,25 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *_keyexpr,
                                                    const bool *_locked_ptr,
                                                    ShimNotifyCallback _callback,
                                                    void *_ctx);
+
+/**
+ * Declare a zero-copy subscriber for the given key expression.
+ *
+ * The callback receives a borrowed pointer directly into zenoh-pico's
+ * internal receive buffer. The pointer is only valid during the callback.
+ * Requires `Z_FEATURE_UNSTABLE_API` to be enabled.
+ *
+ * # Parameters
+ * * `keyexpr` - Key expression string, null-terminated.
+ * * `callback` - Zero-copy callback (borrowed data pointer + attachment)
+ * * `ctx` - User context pointer passed to callback
+ *
+ * # Returns
+ * Subscriber handle (>= 0) on success, negative error code on failure.
+ */
+int32_t zenoh_shim_subscribe_zero_copy(const char *_keyexpr,
+                                       ShimZeroCopyCallback _callback,
+                                       void *_ctx);
 
 /**
  * Undeclare a subscriber.

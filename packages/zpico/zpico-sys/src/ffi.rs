@@ -102,6 +102,23 @@ pub type ShimCallbackWithAttachment = extern "C" fn(
 pub type ShimNotifyCallback =
     extern "C" fn(len: usize, attachment: *const u8, attachment_len: usize, ctx: *mut c_void);
 
+/// Zero-copy callback: data pointer is borrowed from zenoh-pico's receive buffer.
+/// Only valid during the callback invocation. Requires `unstable-zenoh-api` feature.
+///
+/// # Parameters
+/// * `data` - Pointer to payload in zenoh-pico's internal buffer (borrowed, NOT owned)
+/// * `len` - Length of payload in bytes
+/// * `attachment` - Pointer to attachment buffer (may be NULL)
+/// * `attachment_len` - Length of attachment in bytes
+/// * `ctx` - User-provided context pointer
+pub type ShimZeroCopyCallback = extern "C" fn(
+    data: *const u8,
+    len: usize,
+    attachment: *const u8,
+    attachment_len: usize,
+    ctx: *mut c_void,
+);
+
 /// Callback function type for receiving queries (service requests).
 ///
 /// # Parameters
@@ -292,6 +309,28 @@ mod cbindgen_stubs {
         _buf_capacity: usize,
         _locked_ptr: *const bool,
         _callback: ShimNotifyCallback,
+        _ctx: *mut c_void,
+    ) -> i32 {
+        0
+    }
+
+    /// Declare a zero-copy subscriber for the given key expression.
+    ///
+    /// The callback receives a borrowed pointer directly into zenoh-pico's
+    /// internal receive buffer. The pointer is only valid during the callback.
+    /// Requires `Z_FEATURE_UNSTABLE_API` to be enabled.
+    ///
+    /// # Parameters
+    /// * `keyexpr` - Key expression string, null-terminated.
+    /// * `callback` - Zero-copy callback (borrowed data pointer + attachment)
+    /// * `ctx` - User context pointer passed to callback
+    ///
+    /// # Returns
+    /// Subscriber handle (>= 0) on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zenoh_shim_subscribe_zero_copy(
+        _keyexpr: *const c_char,
+        _callback: ShimZeroCopyCallback,
         _ctx: *mut c_void,
     ) -> i32 {
         0

@@ -19,11 +19,11 @@ use core::marker::PhantomData;
 // Re-export FFI types and constants from sys crate
 pub use zpico_sys::{
     ShimCallback, ShimCallbackWithAttachment, ShimNotifyCallback, ShimQueryCallback,
-    ZENOH_SHIM_ERR_CONFIG, ZENOH_SHIM_ERR_FULL, ZENOH_SHIM_ERR_GENERIC, ZENOH_SHIM_ERR_INVALID,
-    ZENOH_SHIM_ERR_KEYEXPR, ZENOH_SHIM_ERR_PUBLISH, ZENOH_SHIM_ERR_SESSION, ZENOH_SHIM_ERR_TASK,
-    ZENOH_SHIM_ERR_TIMEOUT, ZENOH_SHIM_MAX_LIVELINESS, ZENOH_SHIM_MAX_PUBLISHERS,
-    ZENOH_SHIM_MAX_QUERYABLES, ZENOH_SHIM_MAX_SUBSCRIBERS, ZENOH_SHIM_OK, ZENOH_SHIM_RMW_GID_SIZE,
-    ZENOH_SHIM_ZID_SIZE, zenoh_shim_property_t,
+    ShimZeroCopyCallback, ZENOH_SHIM_ERR_CONFIG, ZENOH_SHIM_ERR_FULL, ZENOH_SHIM_ERR_GENERIC,
+    ZENOH_SHIM_ERR_INVALID, ZENOH_SHIM_ERR_KEYEXPR, ZENOH_SHIM_ERR_PUBLISH, ZENOH_SHIM_ERR_SESSION,
+    ZENOH_SHIM_ERR_TASK, ZENOH_SHIM_ERR_TIMEOUT, ZENOH_SHIM_MAX_LIVELINESS,
+    ZENOH_SHIM_MAX_PUBLISHERS, ZENOH_SHIM_MAX_QUERYABLES, ZENOH_SHIM_MAX_SUBSCRIBERS,
+    ZENOH_SHIM_OK, ZENOH_SHIM_RMW_GID_SIZE, ZENOH_SHIM_ZID_SIZE, zenoh_shim_property_t,
 };
 
 // Import FFI functions from sys crate
@@ -39,8 +39,9 @@ use zpico_sys::{
     zenoh_shim_get, zenoh_shim_get_zid, zenoh_shim_init, zenoh_shim_init_with_config,
     zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_poll, zenoh_shim_publish,
     zenoh_shim_publish_with_attachment, zenoh_shim_query_reply, zenoh_shim_spin_once,
-    zenoh_shim_undeclare_liveliness, zenoh_shim_undeclare_publisher,
-    zenoh_shim_undeclare_queryable, zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
+    zenoh_shim_subscribe_zero_copy, zenoh_shim_undeclare_liveliness,
+    zenoh_shim_undeclare_publisher, zenoh_shim_undeclare_queryable,
+    zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
 };
 
 // ============================================================================
@@ -494,6 +495,33 @@ impl ShimContext {
                 ctx,
             )
         };
+        if handle < 0 {
+            return Err(ShimError::from_code(handle));
+        }
+
+        Ok(ShimSubscriber {
+            handle,
+            _ctx: PhantomData,
+        })
+    }
+
+    /// Declare a zero-copy subscriber for the given key expression.
+    ///
+    /// The callback receives a borrowed pointer directly into zenoh-pico's
+    /// internal receive buffer. The pointer is only valid during the callback.
+    ///
+    /// # Safety
+    ///
+    /// The callback and context must remain valid for the lifetime of the subscriber.
+    /// The data pointer passed to the callback is only valid during the callback invocation.
+    pub unsafe fn subscribe_zero_copy_raw<'a>(
+        &'a self,
+        keyexpr: &[u8],
+        callback: ShimZeroCopyCallback,
+        ctx: *mut c_void,
+    ) -> Result<ShimSubscriber<'a>> {
+        let handle =
+            unsafe { zenoh_shim_subscribe_zero_copy(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
             return Err(ShimError::from_code(handle));
         }

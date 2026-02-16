@@ -56,6 +56,7 @@ use crate::timer::TimerDuration;
 use crate::trigger::{Trigger, TriggerCondition, TriggerFn};
 
 #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
+#[allow(unused_imports)] // Some imports only used with specific feature combinations
 use crate::{
     ConnectedNode, ConnectedPublisher, ConnectedServiceServer, ConnectedSubscriber,
     DEFAULT_MAX_TIMERS, DEFAULT_MAX_TOKENS, DEFAULT_REPLY_BUFFER_SIZE, DEFAULT_REQ_BUFFER_SIZE,
@@ -429,7 +430,7 @@ pub(crate) trait ErasedCallback {
 }
 
 /// Subscription entry combining subscriber and callback
-#[cfg(feature = "rmw-zenoh")]
+#[cfg(all(feature = "rmw-zenoh", not(feature = "unstable-zenoh-api")))]
 pub(crate) struct SubscriptionEntry<
     M: RosMessage,
     const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE,
@@ -439,7 +440,7 @@ pub(crate) struct SubscriptionEntry<
     pub callback: C,
 }
 
-#[cfg(feature = "rmw-zenoh")]
+#[cfg(all(feature = "rmw-zenoh", not(feature = "unstable-zenoh-api")))]
 impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallback<M>>
     ErasedCallback for SubscriptionEntry<M, RX_BUF, C>
 {
@@ -458,7 +459,7 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
 }
 
 /// Subscription entry combining subscriber and callback with MessageInfo
-#[cfg(feature = "rmw-zenoh")]
+#[cfg(all(feature = "rmw-zenoh", not(feature = "unstable-zenoh-api")))]
 pub(crate) struct SubscriptionEntryWithInfo<
     M: RosMessage,
     const RX_BUF: usize = DEFAULT_RX_BUFFER_SIZE,
@@ -468,7 +469,7 @@ pub(crate) struct SubscriptionEntryWithInfo<
     pub callback: C,
 }
 
-#[cfg(feature = "rmw-zenoh")]
+#[cfg(all(feature = "rmw-zenoh", not(feature = "unstable-zenoh-api")))]
 impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCallbackWithInfo<M>>
     ErasedCallback for SubscriptionEntryWithInfo<M, RX_BUF, C>
 {
@@ -518,6 +519,39 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
             Ok(None) => Ok(false),
             Err(_) => Err(RclrsError::DeserializationFailed),
         }
+    }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ZERO-COPY SUBSCRIPTION ENTRY (unstable-zenoh-api)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Subscription entry for zero-copy mode.
+///
+/// Data is consumed inline by the callback during the zenoh-pico receive path.
+/// The executor only needs to keep this entry alive — `has_data()` always
+/// returns false because there is no buffer to poll.
+#[cfg(all(
+    feature = "rmw-zenoh",
+    feature = "unstable-zenoh-api",
+    feature = "alloc"
+))]
+pub(crate) struct SubscriptionEntryZeroCopy {
+    _subscriber: nros_rmw_zenoh::ShimZeroCopySubscriber,
+}
+
+#[cfg(all(
+    feature = "rmw-zenoh",
+    feature = "unstable-zenoh-api",
+    feature = "alloc"
+))]
+impl ErasedCallback for SubscriptionEntryZeroCopy {
+    fn has_data(&self) -> bool {
+        false // Data is consumed inline by the zero-copy callback
+    }
+
+    fn try_process(&mut self) -> Result<bool, RclrsError> {
+        Ok(false) // Nothing to poll — all processing happens in callback
     }
 }
 
@@ -798,21 +832,50 @@ impl<
             return Err(RclrsError::SubscriptionStorageFull);
         }
 
-        let subscriber = self
-            .node
-            .inner
-            .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(options.into_subscriber_options())
-            .map_err(|_| RclrsError::SubscriberCreationFailed)?;
+        let opts = options.into_subscriber_options();
 
-        let entry = SubscriptionEntry {
-            subscriber,
-            callback,
-        };
+        // Zero-copy path: deserialize directly from zenoh-pico's receive buffer
+        #[cfg(feature = "unstable-zenoh-api")]
+        {
+            let mut callback = callback;
+            let sub = self
+                .node
+                .inner
+                .create_zero_copy_subscriber::<M>(opts, move |raw, _info| {
+                    use nros_core::CdrReader;
+                    if let Ok(mut reader) = CdrReader::new_with_header(raw)
+                        && let Ok(msg) = M::deserialize(&mut reader)
+                    {
+                        callback.call(&msg);
+                    }
+                })
+                .map_err(|_| RclrsError::SubscriberCreationFailed)?;
 
-        let index = self.node.subscriptions.len();
-        self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+            let entry = SubscriptionEntryZeroCopy { _subscriber: sub };
+            let index = self.node.subscriptions.len();
+            self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+            Ok(SubscriptionHandle::new(index))
+        }
 
-        Ok(SubscriptionHandle::new(index))
+        // Standard poll-based path (direct-write + in-place deserialization)
+        #[cfg(not(feature = "unstable-zenoh-api"))]
+        {
+            let subscriber = self
+                .node
+                .inner
+                .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(opts)
+                .map_err(|_| RclrsError::SubscriberCreationFailed)?;
+
+            let entry = SubscriptionEntry {
+                subscriber,
+                callback,
+            };
+
+            let index = self.node.subscriptions.len();
+            self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+
+            Ok(SubscriptionHandle::new(index))
+        }
     }
 
     /// Create a subscription with a callback that also receives message metadata
@@ -847,21 +910,58 @@ impl<
             return Err(RclrsError::SubscriptionStorageFull);
         }
 
-        let subscriber = self
-            .node
-            .inner
-            .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(options.into_subscriber_options())
-            .map_err(|_| RclrsError::SubscriberCreationFailed)?;
+        let opts = options.into_subscriber_options();
 
-        let entry = SubscriptionEntryWithInfo {
-            subscriber,
-            callback,
-        };
+        // Zero-copy path: deserialize directly from zenoh-pico's receive buffer
+        #[cfg(feature = "unstable-zenoh-api")]
+        {
+            let mut callback = callback;
+            let sub = self
+                .node
+                .inner
+                .create_zero_copy_subscriber::<M>(opts, move |raw, info| {
+                    use nros_core::{CdrReader, Time};
+                    if let Ok(mut reader) = CdrReader::new_with_header(raw)
+                        && let Ok(msg) = M::deserialize(&mut reader)
+                    {
+                        let mut msg_info = MessageInfo::new();
+                        if let Some(ti) = info {
+                            let secs = (ti.timestamp_ns / 1_000_000_000) as i32;
+                            let nsecs = (ti.timestamp_ns % 1_000_000_000) as u32;
+                            msg_info.set_source_timestamp(Time::new(secs, nsecs));
+                            msg_info.set_publication_sequence_number(ti.sequence_number);
+                            msg_info.set_publisher_gid(ti.publisher_gid);
+                        }
+                        callback.call(&msg, &msg_info);
+                    }
+                })
+                .map_err(|_| RclrsError::SubscriberCreationFailed)?;
 
-        let index = self.node.subscriptions.len();
-        self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+            let entry = SubscriptionEntryZeroCopy { _subscriber: sub };
+            let index = self.node.subscriptions.len();
+            self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+            Ok(SubscriptionHandle::new(index))
+        }
 
-        Ok(SubscriptionHandle::new(index))
+        // Standard poll-based path
+        #[cfg(not(feature = "unstable-zenoh-api"))]
+        {
+            let subscriber = self
+                .node
+                .inner
+                .create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(opts)
+                .map_err(|_| RclrsError::SubscriberCreationFailed)?;
+
+            let entry = SubscriptionEntryWithInfo {
+                subscriber,
+                callback,
+            };
+
+            let index = self.node.subscriptions.len();
+            self.node.subscriptions.push(alloc::boxed::Box::new(entry));
+
+            Ok(SubscriptionHandle::new(index))
+        }
     }
 
     /// Create a subscription with a callback that receives E2E safety integrity status.

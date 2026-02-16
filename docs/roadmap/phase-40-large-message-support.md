@@ -593,46 +593,67 @@ confirms byte-level equivalence between the copy and in-place paths.
 - [x] Fix Verus proofs: add `locked` field to all `SubscriberBufferGhost` literals
 - [x] Add Verus proofs 13–15: lock correctness, process-in-place, data race prevention
 
-## Phase 40.5 — Zero-Copy Receive (Future)
+## Phase 40.5 — Zero-Copy Receive (`unstable-zenoh-api`)
 
-Explore eliminating the remaining copy (transport → static buffer) so user
-code deserializes directly from the transport's internal buffers.
+Opt-in feature that eliminates the last remaining payload copy in the zenoh
+receive path by deserializing directly from zenoh-pico's internal buffer.
 
-### Concept
+**Feature:** `unstable-zenoh-api` (propagated through `nros` → `nros-node` →
+`nros-rmw-zenoh` → `zpico-sys`)
 
-With 40.4, the receive path is: 1 copy (zenoh → static buffer) + in-place
-deserialization. The remaining copy is the write from the transport callback
-into the static buffer. Eliminating it requires user code to run inside the
-transport callback scope, before the transport drops the message.
+**Copy reduction:** 1 copy (Phase 40.4) → **0 payload copies**. One small
+attachment copy remains (~33-37 bytes, negligible).
 
-Two possible approaches:
+**Requires:** `alloc` feature (callback closure is heap-allocated).
 
-**A) Scatter-gather deserialization**: Instead of coalescing zenoh's fragmented
-arc-slices into a contiguous buffer, pass the fragment list to a `CdrReader`
-that chains reads across slices. This requires `z_bytes_get_slice_iterator()`
-from zenoh-pico and changes the FFI boundary.
+### Architecture
 
-**B) Contiguous view for small messages**: Use
-`z_bytes_get_contiguous_view()` for non-fragmented messages (zero-copy borrow)
-and fall back to the reader path for fragmented messages. Requires
-`Z_FEATURE_UNSTABLE_API`.
+Uses `z_bytes_get_contiguous_view()` (behind `Z_FEATURE_UNSTABLE_API` in
+zenoh-pico) to get a borrowed pointer directly into the receive buffer.
+Deserialization happens **inside** the C callback while the pointer is valid:
 
-### Design constraints
+```
+zenoh-pico recv → shim_sample_handler
+  → z_bytes_get_contiguous_view() → borrowed ptr
+  → call Rust trampoline(ptr, len, attachment, att_len, ctx)
+    → CdrReader::new_with_header(slice) → M::deserialize() → user_callback(&msg)
+  → return → zenoh-pico releases buffer
+```
 
-- User code would run on the zenoh-pico session thread, blocking network I/O
-- `z_loaned_sample_t` is stack-allocated by zenoh-pico's recv loop — cannot
-  extend its lifetime
-- Violates RTOS real-time scheduling expectations (user callback blocks
-  transport)
-- XRCE equivalent: `ucdrBuffer.iterator` points into the session's stream
-  buffer and is only valid during the callback — same lifetime constraint
+The zero-copy subscriber uses a **push model** (callback fires inline during
+receive) instead of the existing poll model (static buffer + `has_data()`
+flag). The executor entry reports `has_data() = false` — data is consumed
+inline by the callback, so no polling is needed.
 
-### Open questions
+### Threading
 
-- [ ] Evaluate scatter-gather `CdrReader` (chains reads across fragment slices)
-- [ ] Benchmark contiguous_view fallback path for fragmented messages
-- [ ] Determine if running user code on transport thread is acceptable
-- [ ] Assess `no_std` implications (callback from interrupt context on embedded)
+- **Embedded (polling):** `spin_once()` → `zp_read()` → callback fires
+  synchronously on the executor thread. Same behavior as the standard path.
+- **Posix (std):** Callbacks fire on zenoh-pico's background read thread.
+  User callbacks run there too. Acceptable behind an explicit opt-in feature.
+
+### Implementation
+
+| File | Change |
+|------|--------|
+| `zpico-sys/Cargo.toml` | `unstable-zenoh-api` feature |
+| `zpico-sys/build.rs` | `Z_FEATURE_UNSTABLE_API` define (header, CMake, cc) |
+| `zpico-sys/src/ffi.rs` | `ShimZeroCopyCallback` type + cbindgen stub |
+| `zpico-sys/c/shim/zenoh_shim.c` | Zero-copy fields, handler branch, `zenoh_shim_subscribe_zero_copy()` |
+| `nros-rmw-zenoh/src/zpico.rs` | `subscribe_zero_copy_raw()` on `ShimContext` |
+| `nros-rmw-zenoh/src/shim.rs` | `ShimZeroCopySubscriber`, trampoline, constructor |
+| `nros-node/src/executor.rs` | `SubscriptionEntryZeroCopy`, conditional `create_subscription` |
+| `nros-node/src/connected.rs` | `create_zero_copy_subscriber()` on `ConnectedNode` |
+
+### Checklist
+
+- [x] Feature flag chain (zpico-sys → nros-rmw-zenoh → nros-node → nros)
+- [x] C shim: `zenoh_shim_subscribe_zero_copy()` + handler branch
+- [x] Rust wrapper: `ShimContext::subscribe_zero_copy_raw()`
+- [x] `ShimZeroCopySubscriber` with trampoline + ManuallyDrop Box
+- [x] Executor: `SubscriptionEntryZeroCopy` (push model, no polling)
+- [x] `ConnectedNode::create_zero_copy_subscriber()` for manual use
+- [x] Re-export from `nros-rmw-zenoh/src/lib.rs`
 
 ## Testing
 

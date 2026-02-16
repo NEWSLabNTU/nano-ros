@@ -788,6 +788,52 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         })
     }
 
+    /// Create a zero-copy subscriber that deserializes directly from zenoh-pico's
+    /// internal buffer during the receive callback.
+    ///
+    /// The callback receives the raw CDR bytes (borrowed) and optional message info.
+    /// No payload copies are made.
+    ///
+    /// Requires the `unstable-zenoh-api` and `alloc` features.
+    #[cfg(all(feature = "unstable-zenoh-api", feature = "alloc"))]
+    pub(crate) fn create_zero_copy_subscriber<M: RosMessage>(
+        &mut self,
+        options: SubscriberOptions,
+        callback: impl FnMut(&[u8], Option<nros_rmw_zenoh::MessageInfo>) + Send + 'static,
+    ) -> Result<nros_rmw_zenoh::ShimZeroCopySubscriber, ConnectedNodeError> {
+        let topic_info =
+            TopicInfo::new(options.topic, M::TYPE_NAME, M::TYPE_HASH).with_domain(self.domain_id);
+
+        // Declare subscriber liveliness token for ROS 2 discovery
+        let sub_keyexpr: heapless::String<256> = Ros2Liveliness::subscriber_keyexpr(
+            self.domain_id,
+            &self.zid,
+            &self.namespace,
+            &self.name,
+            &topic_info,
+            &options.qos,
+        );
+        let mut keyexpr_buf = [0u8; 257];
+        let bytes = sub_keyexpr.as_bytes();
+        keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
+        if let Ok(token) = self
+            .session
+            .declare_liveliness(&keyexpr_buf[..=bytes.len()])
+        {
+            let _ = self._entity_tokens.push(token);
+        }
+
+        // Create the zero-copy subscriber on the session's inner context
+        let subscriber = nros_rmw_zenoh::ShimZeroCopySubscriber::new(
+            self.session.inner(),
+            &topic_info,
+            callback,
+        )
+        .map_err(|_| ConnectedNodeError::SubscriberCreationFailed)?;
+
+        Ok(subscriber)
+    }
+
     /// Get the session's Zenoh ID
     pub fn zid(&self) -> &ZenohId {
         &self.zid

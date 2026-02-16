@@ -199,6 +199,12 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_SCOUTING_UDP 0").unwrap();
     writeln!(header, "#endif").unwrap();
     writeln!(header).unwrap();
+    // Unstable API (from Cargo unstable-zenoh-api feature)
+    // Only define when enabled — zenoh-pico uses #cmakedefine (presence/absence flag)
+    if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
+        writeln!(header, "#define Z_FEATURE_UNSTABLE_API").unwrap();
+    }
+    writeln!(header).unwrap();
     writeln!(header, "// Protocol Features").unwrap();
     writeln!(header, "#define Z_FEATURE_FRAGMENTATION 1").unwrap();
     writeln!(header, "#define Z_FEATURE_ENCODING_VALUES 1").unwrap();
@@ -589,6 +595,14 @@ fn build_zenoh_pico_native(
         .define("Z_FEATURE_INTEREST", "1")
         .define("Z_FEATURE_MATCHING", "1")
         .define("Z_FEATURE_LINK_SERIAL", "1")
+        .define(
+            "Z_FEATURE_UNSTABLE_API",
+            if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
+                "1"
+            } else {
+                "0"
+            },
+        )
         .define("Z_FRAG_MAX_SIZE", buf.frag_max_size.to_string())
         .define("Z_BATCH_UNICAST_SIZE", buf.batch_unicast_size.to_string())
         .define(
@@ -609,7 +623,9 @@ fn build_zenoh_pico_native(
         println!("cargo:rustc-link-lib=ws2_32");
     }
 
-    zenoh_pico_build.join("include")
+    // Return installed include dir (not source dir) so the cc shim build gets
+    // the CMake-generated config.h with correct Z_FEATURE_* defines.
+    dst.join("include")
 }
 
 /// Use a pre-built zenoh-pico from ZENOH_PICO_DIR (system-zenohpico feature).
@@ -804,6 +820,9 @@ fn build_c_shim(
             if link.raweth { "1" } else { "0" },
         );
         build.define("Z_FEATURE_SCOUTING_UDP", "0");
+        if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
+            build.define("Z_FEATURE_UNSTABLE_API", "1");
+        }
 
         // ARM cross-compilation flags
         if target.contains("thumbv7em") {

@@ -110,6 +110,7 @@ include = [
     "zenoh_shim_query_reply",
     # Types
     "ShimCallback",
+    "ShimZeroCopyCallback",
     "ShimQueryCallback",
     # Constants
     "ZENOH_SHIM_MAX_PUBLISHERS",

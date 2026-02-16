@@ -33,6 +33,9 @@ polling = ["nros-rmw-zenoh?/polling"]
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 
+# Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
+unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
+
 # Parameter services (ros2 param CLI support)
 param-services = ["dep:nros-rcl-interfaces", "rmw-zenoh", "alloc"]
 
