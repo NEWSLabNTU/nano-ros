@@ -30,7 +30,7 @@ Rust Application (src/lib.rs)
 
 ```bash
 source ~/nano-ros-workspace/env.sh
-west build -b native_sim/native/64 nros/examples/zephyr-rs-service-server
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/service-server
 ```
 
 ## Run
@@ -49,7 +49,7 @@ The service server will:
 From another terminal, run the native service client:
 
 ```bash
-cd nros/examples/native-rs-service-client
+cd nros/examples/native/rust/zenoh/service-client
 cargo run --features zenoh
 ```
 

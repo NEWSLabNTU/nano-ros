@@ -101,7 +101,7 @@ source ../nano-ros-workspace/env.sh
 
 # Build Zephyr talker
 cd ../nano-ros-workspace
-west build -b native_sim/native/64 nros/examples/zephyr-rs-talker
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
 
 # Run (no sudo needed)
 ./build/zephyr/zephyr.exe
@@ -119,7 +119,7 @@ cargo run -p zenoh-pico --example sub_test --features std
 # Terminal 3: Run Zephyr talker
 source ../nano-ros-workspace/env.sh
 cd ../nano-ros-workspace
-west build -b native_sim/native/64 nros/examples/zephyr-rs-talker
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
 ./build/zephyr/zephyr.exe
 ```
 

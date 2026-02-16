@@ -417,14 +417,22 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
 /// Returns path relative to examples/ directory.
 fn example_path_for_name(example_name: &str) -> String {
     match example_name {
-        "zephyr-rs-talker" | "rs-talker" => "zephyr/rs-talker".to_string(),
-        "zephyr-rs-listener" | "rs-listener" => "zephyr/rs-listener".to_string(),
-        "zephyr-rs-action-server" | "rs-action-server" => "zephyr/rs-action-server".to_string(),
-        "zephyr-rs-action-client" | "rs-action-client" => "zephyr/rs-action-client".to_string(),
-        "zephyr-rs-service-server" | "rs-service-server" => "zephyr/rs-service-server".to_string(),
-        "zephyr-rs-service-client" | "rs-service-client" => "zephyr/rs-service-client".to_string(),
-        "zephyr-c-talker" | "c-talker" => "zephyr/c-talker".to_string(),
-        "zephyr-c-listener" | "c-listener" => "zephyr/c-listener".to_string(),
+        "zephyr-rs-talker" | "rs-talker" => "zephyr/rust/zenoh/talker".to_string(),
+        "zephyr-rs-listener" | "rs-listener" => "zephyr/rust/zenoh/listener".to_string(),
+        "zephyr-rs-action-server" | "rs-action-server" => {
+            "zephyr/rust/zenoh/action-server".to_string()
+        }
+        "zephyr-rs-action-client" | "rs-action-client" => {
+            "zephyr/rust/zenoh/action-client".to_string()
+        }
+        "zephyr-rs-service-server" | "rs-service-server" => {
+            "zephyr/rust/zenoh/service-server".to_string()
+        }
+        "zephyr-rs-service-client" | "rs-service-client" => {
+            "zephyr/rust/zenoh/service-client".to_string()
+        }
+        "zephyr-c-talker" | "c-talker" => "zephyr/c/zenoh/talker".to_string(),
+        "zephyr-c-listener" | "c-listener" => "zephyr/c/zenoh/listener".to_string(),
         // For any other name, assume it's a path relative to examples/
         _ => example_name.to_string(),
     }

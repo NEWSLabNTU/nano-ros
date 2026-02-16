@@ -39,7 +39,7 @@ zenohd --listen tcp/0.0.0.0:7447
 ## Building
 
 ```bash
-cd examples/stm32f4-rs-rtic
+cd packages/reference/stm32f4-porting/rtic
 
 # Build release binary
 cargo build --release
@@ -106,6 +106,6 @@ probe-rs run --chip STM32F429ZITx target/thumbv7em-none-eabihf/release/stm32f4-r
 
 ## See Also
 
-- `examples/stm32f4-rs-polling/` - Simpler polling-based example
-- `examples/stm32f4-rs-smoltcp/` - smoltcp validation without zenoh
+- `packages/reference/stm32f4-porting/polling/` - Simpler polling-based example
+- `examples/stm32f4/rust/standalone/smoltcp/` - smoltcp validation without zenoh
 - `docs/reference/embedded-integration.md` - Full embedded integration guide

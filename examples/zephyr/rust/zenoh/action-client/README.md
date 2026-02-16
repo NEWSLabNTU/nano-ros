@@ -34,7 +34,7 @@ Rust Application (src/lib.rs)
 source ~/nano-ros-workspace/env.sh
 
 # Build for native_sim
-west build -b native_sim/native/64 nros/examples/zephyr-rs-action-client
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/action-client
 ```
 
 ## Run

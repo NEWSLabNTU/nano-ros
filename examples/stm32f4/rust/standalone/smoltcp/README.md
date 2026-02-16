@@ -36,7 +36,7 @@ nmcli con add type ethernet con-name nros ifname eth0 ip4 192.168.1.1/24
 ## Building
 
 ```bash
-cd examples/stm32f4-rs-smoltcp
+cd examples/stm32f4/rust/standalone/smoltcp
 
 # Build
 cargo build --release

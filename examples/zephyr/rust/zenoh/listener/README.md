@@ -36,21 +36,21 @@ zephyr-rs-listener/
 
 ```bash
 # From Zephyr workspace root
-west build -b native_sim/native/64 nros/examples/zephyr-rs-listener
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/listener
 ./build/zephyr/zephyr.exe
 ```
 
 ### For QEMU
 
 ```bash
-west build -b qemu_cortex_m3 nros/examples/zephyr-rs-listener
+west build -b qemu_cortex_m3 nros/examples/zephyr/rust/zenoh/listener
 west build -t run
 ```
 
 ### For Hardware (e.g., NUCLEO-F429ZI)
 
 ```bash
-west build -b nucleo_f429zi nros/examples/zephyr-rs-listener
+west build -b nucleo_f429zi nros/examples/zephyr/rust/zenoh/listener
 west flash
 ```
 
@@ -87,6 +87,6 @@ extern "C" fn on_message(data: *const u8, len: usize, _ctx: *mut c_void) {
 
 ## See Also
 
-- `examples/zephyr-rs-talker/` - Publisher example
+- `examples/zephyr/rust/zenoh/talker/` - Publisher example
 - `docs/reference/embedded-integration.md` - Full embedded integration guide
 - Zephyr documentation: https://docs.zephyrproject.org/

@@ -31,7 +31,7 @@ Rust Application (src/lib.rs)
 
 ```bash
 source ~/nano-ros-workspace/env.sh
-west build -b native_sim/native/64 nros/examples/zephyr-rs-service-client
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/service-client
 ```
 
 ## Run
@@ -40,11 +40,11 @@ First, start a service server:
 
 ```bash
 # Option 1: Native service server
-cd nros/examples/native-rs-service-server
+cd nros/examples/native/rust/zenoh/service-server
 cargo run --features zenoh
 
 # Option 2: Zephyr service server (in another terminal)
-west build -b native_sim/native/64 nros/examples/zephyr-rs-service-server
+west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/service-server
 ./build/zephyr/zephyr.exe
 ```
 
