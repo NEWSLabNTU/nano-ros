@@ -81,27 +81,7 @@ typedef enum nano_ros_cancel_response_t {
     NANO_ROS_CANCEL_ACCEPT = 1,
 } nano_ros_cancel_response_t;
 
-// ============================================================================
-// Action Type Info
-// ============================================================================
-
-/**
- * Action type information.
- *
- * Contains type names and hashes for goal, result, and feedback messages.
- */
-typedef struct nano_ros_action_type_t {
-    /** Action type name (e.g., "example_interfaces::action::Fibonacci") */
-    const char *type_name;
-    /** Action type hash */
-    const char *type_hash;
-    /** Maximum serialized size of goal message */
-    size_t goal_serialized_size_max;
-    /** Maximum serialized size of result message */
-    size_t result_serialized_size_max;
-    /** Maximum serialized size of feedback message */
-    size_t feedback_serialized_size_max;
-} nano_ros_action_type_t;
+// nano_ros_action_type_t is defined in nros/types.h (included above)
 
 // ============================================================================
 // Goal UUID
