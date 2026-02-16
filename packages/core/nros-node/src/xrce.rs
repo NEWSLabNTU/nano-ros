@@ -331,6 +331,33 @@ impl<M: RosMessage + Deserialize> XrceNodeSubscription<M> {
             .map_err(XrceNodeError::Transport)
     }
 
+    /// Process the next message in-place without copying (non-blocking).
+    ///
+    /// Deserializes the message directly from the transport's internal buffer
+    /// and calls `f` with a reference to the typed message. The buffer is locked
+    /// during `f`, preventing the callback from overwriting it.
+    ///
+    /// Returns `Ok(true)` if a message was available and `f` was called,
+    /// `Ok(false)` if no message was available.
+    pub fn process_in_place(&mut self, f: impl FnOnce(&M)) -> Result<bool, XrceNodeError> {
+        use nros_rmw::Subscriber;
+        let mut deser_err = false;
+        let processed = self
+            .inner
+            .process_raw_in_place(|raw| {
+                match CdrReader::new_with_header(raw).and_then(|mut r| M::deserialize(&mut r)) {
+                    Ok(msg) => f(&msg),
+                    Err(_) => deser_err = true,
+                }
+            })
+            .map_err(XrceNodeError::Transport)?;
+
+        if deser_err {
+            return Err(XrceNodeError::Deserialization);
+        }
+        Ok(processed)
+    }
+
     /// Check if data is available without consuming it.
     pub fn has_data(&self) -> bool {
         self.inner.has_data()

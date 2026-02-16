@@ -18,12 +18,12 @@ use core::marker::PhantomData;
 
 // Re-export FFI types and constants from sys crate
 pub use zpico_sys::{
-    ShimCallback, ShimCallbackWithAttachment, ShimQueryCallback, ZENOH_SHIM_ERR_CONFIG,
-    ZENOH_SHIM_ERR_FULL, ZENOH_SHIM_ERR_GENERIC, ZENOH_SHIM_ERR_INVALID, ZENOH_SHIM_ERR_KEYEXPR,
-    ZENOH_SHIM_ERR_PUBLISH, ZENOH_SHIM_ERR_SESSION, ZENOH_SHIM_ERR_TASK, ZENOH_SHIM_ERR_TIMEOUT,
-    ZENOH_SHIM_MAX_LIVELINESS, ZENOH_SHIM_MAX_PUBLISHERS, ZENOH_SHIM_MAX_QUERYABLES,
-    ZENOH_SHIM_MAX_SUBSCRIBERS, ZENOH_SHIM_OK, ZENOH_SHIM_RMW_GID_SIZE, ZENOH_SHIM_ZID_SIZE,
-    zenoh_shim_property_t,
+    ShimCallback, ShimCallbackWithAttachment, ShimNotifyCallback, ShimQueryCallback,
+    ZENOH_SHIM_ERR_CONFIG, ZENOH_SHIM_ERR_FULL, ZENOH_SHIM_ERR_GENERIC, ZENOH_SHIM_ERR_INVALID,
+    ZENOH_SHIM_ERR_KEYEXPR, ZENOH_SHIM_ERR_PUBLISH, ZENOH_SHIM_ERR_SESSION, ZENOH_SHIM_ERR_TASK,
+    ZENOH_SHIM_ERR_TIMEOUT, ZENOH_SHIM_MAX_LIVELINESS, ZENOH_SHIM_MAX_PUBLISHERS,
+    ZENOH_SHIM_MAX_QUERYABLES, ZENOH_SHIM_MAX_SUBSCRIBERS, ZENOH_SHIM_OK, ZENOH_SHIM_RMW_GID_SIZE,
+    ZENOH_SHIM_ZID_SIZE, zenoh_shim_property_t,
 };
 
 // Import FFI functions from sys crate
@@ -35,12 +35,12 @@ pub use zpico_sys::{
 use zpico_sys::{
     zenoh_shim_close, zenoh_shim_declare_liveliness, zenoh_shim_declare_publisher,
     zenoh_shim_declare_queryable, zenoh_shim_declare_subscriber,
-    zenoh_shim_declare_subscriber_with_attachment, zenoh_shim_get, zenoh_shim_get_zid,
-    zenoh_shim_init, zenoh_shim_init_with_config, zenoh_shim_is_open, zenoh_shim_open,
-    zenoh_shim_poll, zenoh_shim_publish, zenoh_shim_publish_with_attachment,
-    zenoh_shim_query_reply, zenoh_shim_spin_once, zenoh_shim_undeclare_liveliness,
-    zenoh_shim_undeclare_publisher, zenoh_shim_undeclare_queryable,
-    zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
+    zenoh_shim_declare_subscriber_direct_write, zenoh_shim_declare_subscriber_with_attachment,
+    zenoh_shim_get, zenoh_shim_get_zid, zenoh_shim_init, zenoh_shim_init_with_config,
+    zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_poll, zenoh_shim_publish,
+    zenoh_shim_publish_with_attachment, zenoh_shim_query_reply, zenoh_shim_spin_once,
+    zenoh_shim_undeclare_liveliness, zenoh_shim_undeclare_publisher,
+    zenoh_shim_undeclare_queryable, zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
 };
 
 // ============================================================================
@@ -454,6 +454,45 @@ impl ShimContext {
     ) -> Result<ShimSubscriber<'a>> {
         let handle = unsafe {
             zenoh_shim_declare_subscriber_with_attachment(keyexpr.as_ptr().cast(), callback, ctx)
+        };
+        if handle < 0 {
+            return Err(ShimError::from_code(handle));
+        }
+
+        Ok(ShimSubscriber {
+            handle,
+            _ctx: PhantomData,
+        })
+    }
+
+    /// Declare a subscriber with direct-write to a Rust buffer.
+    ///
+    /// The C shim reads the payload directly into `buf_ptr` using
+    /// `z_bytes_reader_read()`, avoiding a malloc. The notify callback
+    /// is called after the write, providing only the length and attachment.
+    ///
+    /// # Safety
+    ///
+    /// `buf_ptr` must point to valid memory for `buf_capacity` bytes that
+    /// outlives the subscriber. `locked_ptr` must point to a valid `AtomicBool`.
+    pub unsafe fn declare_subscriber_direct_write_raw<'a>(
+        &'a self,
+        keyexpr: &[u8],
+        buf_ptr: *mut u8,
+        buf_capacity: usize,
+        locked_ptr: *const bool,
+        callback: ShimNotifyCallback,
+        ctx: *mut c_void,
+    ) -> Result<ShimSubscriber<'a>> {
+        let handle = unsafe {
+            zenoh_shim_declare_subscriber_direct_write(
+                keyexpr.as_ptr().cast(),
+                buf_ptr,
+                buf_capacity,
+                locked_ptr,
+                callback,
+                ctx,
+            )
         };
         if handle < 0 {
             return Err(ShimError::from_code(handle));

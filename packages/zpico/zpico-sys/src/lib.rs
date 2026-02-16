@@ -101,6 +101,14 @@ unsafe extern "C" {
         callback: ShimCallbackWithAttachment,
         ctx: *mut c_void,
     ) -> i32;
+    pub fn zenoh_shim_declare_subscriber_direct_write(
+        keyexpr: *const core::ffi::c_char,
+        buf_ptr: *mut u8,
+        buf_capacity: usize,
+        locked_ptr: *const bool,
+        callback: ShimNotifyCallback,
+        ctx: *mut c_void,
+    ) -> i32;
     pub fn zenoh_shim_undeclare_subscriber(handle: i32) -> i32;
 
     // Liveliness

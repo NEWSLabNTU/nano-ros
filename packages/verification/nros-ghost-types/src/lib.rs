@@ -53,12 +53,13 @@ pub struct CdrGhost {
 /// `nros-rmw/src/shim.rs`. Each subscriber has one 1024-byte
 /// static buffer with atomic `has_data`, `overflow`, and `len` fields.
 ///
-/// Source (shim.rs:853-876):
+/// Source (shim.rs):
 /// ```ignore
 /// struct SubscriberBuffer {
-///     data: [u8; 1024],
+///     data: [u8; SUBSCRIBER_BUFFER_SIZE],
 ///     has_data: AtomicBool,
 ///     overflow: AtomicBool,
+///     locked: AtomicBool,
 ///     len: AtomicUsize,
 ///     // ... attachment fields omitted ...
 /// }
@@ -68,6 +69,8 @@ pub struct SubscriberBufferGhost {
     pub has_data: bool,
     /// Whether the last callback detected a message exceeding buffer capacity
     pub overflow: bool,
+    /// Whether a reader is currently accessing this buffer (prevents callback writes)
+    pub locked: bool,
     /// Length of valid payload data in the buffer
     pub stored_len: usize,
     /// Static buffer capacity (always 1024 in production)

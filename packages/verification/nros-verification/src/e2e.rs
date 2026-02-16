@@ -81,6 +81,7 @@ pub open spec fn callback_pre_fix(msg_len: usize, buf_capacity: usize) -> Subscr
     SubscriberBufferGhost {
         has_data: true,
         overflow: false,  // pre-fix code had no overflow flag
+        locked: false,
         stored_len: if msg_len <= buf_capacity { msg_len } else { buf_capacity },
         buf_capacity,
     }
@@ -115,6 +116,7 @@ pub open spec fn try_recv_pre_fix(
         (SubscriberBufferGhost {
             has_data: false,
             overflow: buf.overflow,
+            locked: buf.locked,
             stored_len: buf.stored_len,
             buf_capacity: buf.buf_capacity,
         }, true, false)
@@ -427,6 +429,7 @@ pub open spec fn callback_post_fix(msg_len: usize, buf_capacity: usize) -> Subsc
         SubscriberBufferGhost {
             has_data: true,
             overflow: true,
+            locked: false,
             stored_len: 0,  // len not updated in overflow path
             buf_capacity,
         }
@@ -435,6 +438,7 @@ pub open spec fn callback_post_fix(msg_len: usize, buf_capacity: usize) -> Subsc
         SubscriberBufferGhost {
             has_data: true,
             overflow: false,
+            locked: false,
             stored_len: msg_len,
             buf_capacity,
         }
@@ -464,6 +468,7 @@ pub open spec fn try_recv_post_fix(
         (SubscriberBufferGhost {
             has_data: false,
             overflow: false,
+            locked: buf.locked,
             stored_len: buf.stored_len,
             buf_capacity: buf.buf_capacity,
         }, false, true, false)
@@ -472,6 +477,7 @@ pub open spec fn try_recv_post_fix(
         (SubscriberBufferGhost {
             has_data: false,
             overflow: buf.overflow,
+            locked: buf.locked,
             stored_len: buf.stored_len,
             buf_capacity: buf.buf_capacity,
         }, false, false, true)
@@ -480,6 +486,7 @@ pub open spec fn try_recv_post_fix(
         (SubscriberBufferGhost {
             has_data: false,
             overflow: buf.overflow,
+            locked: buf.locked,
             stored_len: buf.stored_len,
             buf_capacity: buf.buf_capacity,
         }, true, false, false)
@@ -555,6 +562,197 @@ proof fn no_silent_truncation(msg_len: usize, buf_capacity: usize, rx_buf_len: u
 }
 
 // ======================================================================
+// Phase 40.4 Lock Correctness Proofs
+// ======================================================================
+
+/// State after the **post-40.4** callback that checks `locked` before writing.
+///
+/// Models `subscriber_callback_with_attachment` after the 40.4 lock addition:
+/// ```ignore
+/// if buffer.locked.load(Ordering::Acquire) {
+///     return;  // drop message — reader is processing
+/// }
+/// // ... existing callback_post_fix behavior ...
+/// ```
+///
+/// When `locked == true`, the callback returns the buffer unchanged.
+/// When `locked == false`, it delegates to `callback_post_fix`.
+pub open spec fn callback_with_lock(
+    buf: SubscriberBufferGhost,
+    msg_len: usize,
+) -> SubscriberBufferGhost {
+    if buf.locked {
+        // Reader is processing — drop message, buffer unchanged
+        buf
+    } else {
+        // Normal callback — delegate to post-fix behavior
+        callback_post_fix(msg_len, buf.buf_capacity)
+    }
+}
+
+/// State after `process_raw_in_place` processes the buffer in-place.
+///
+/// Models `ShimSubscriber::process_raw_in_place` (shim.rs):
+/// ```ignore
+/// if !has_data → return Ok(false)
+/// if overflow → clear overflow+has_data, return Err(MessageTooLarge)
+/// locked = true; f(&data[..len]); locked = false; has_data = false;
+/// return Ok(true)
+/// ```
+///
+/// Returns `(new_state, processed)` where `processed` is true if `f` was called.
+/// On overflow, the function returns an error state (modeled as processed=false
+/// with has_data and overflow cleared).
+pub open spec fn process_in_place_spec(
+    buf: SubscriberBufferGhost,
+) -> (SubscriberBufferGhost, bool, bool) // (new_state, processed, overflow_error)
+{
+    if !buf.has_data {
+        // No data available
+        (buf, false, false)
+    } else if buf.overflow {
+        // Overflow — clear both flags, return error
+        (SubscriberBufferGhost {
+            has_data: false,
+            overflow: false,
+            locked: false,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, false, true)
+    } else {
+        // Normal: lock → f() → unlock → clear has_data
+        // Final state has locked=false (lock is released before return)
+        (SubscriberBufferGhost {
+            has_data: false,
+            overflow: false,
+            locked: false,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, true, false)
+    }
+}
+
+/// **Proof 13: `locked_callback_drops_message`**
+///
+/// When `locked == true`, a callback returns the buffer completely unchanged.
+/// `has_data`, `stored_len`, `overflow`, and `locked` are all preserved.
+///
+/// Real-time relevance: During in-place processing, concurrent callbacks
+/// cannot corrupt the buffer data. Messages are dropped (same as depth-1
+/// last-write-wins semantics) rather than causing a data race.
+proof fn locked_callback_drops_message(
+    buf: SubscriberBufferGhost,
+    msg_len: usize,
+)
+    requires
+        buf.locked,
+    ensures
+        ({
+            let result = callback_with_lock(buf, msg_len);
+            // Buffer is completely unchanged
+            &&& result.has_data == buf.has_data
+            &&& result.overflow == buf.overflow
+            &&& result.locked == buf.locked
+            &&& result.stored_len == buf.stored_len
+            &&& result.buf_capacity == buf.buf_capacity
+        }),
+{
+}
+
+/// **Proof 14: `process_in_place_clears_correctly`**
+///
+/// After `process_in_place_spec` completes (either success or overflow error),
+/// `locked == false` and `has_data == false`. This ensures:
+/// 1. The lock is always released (no deadlock).
+/// 2. The buffer accepts new callbacks immediately after processing.
+///
+/// Real-time relevance: Lock release is guaranteed — a bug that leaves the
+/// lock set would permanently disable the subscription (no new writes).
+proof fn process_in_place_clears_correctly(msg_len: usize, buf_capacity: usize)
+    requires
+        buf_capacity > 0,
+    ensures
+        ({
+            let buf = callback_post_fix(msg_len, buf_capacity);
+            let (new_state, processed, overflow_error) = process_in_place_spec(buf);
+            // Lock is always released
+            &&& !new_state.locked
+            // has_data is always cleared
+            &&& !new_state.has_data
+            // Buffer accepts new callbacks
+            &&& ({
+                let after_new_msg = callback_with_lock(new_state, 42);
+                after_new_msg.has_data  // new message stored
+            })
+        }),
+{
+}
+
+/// **Proof 15: `lock_prevents_data_race`**
+///
+/// Proves the full concurrent access sequence:
+/// 1. Callback stores a message (locked=false → has_data=true)
+/// 2. process_in_place begins (locked=true, closure runs)
+/// 3. During processing, a callback fires but is dropped (locked=true → no-op)
+/// 4. process_in_place completes (locked=false, has_data=false)
+/// 5. Next callback succeeds normally (locked=false → new data stored)
+///
+/// Real-time relevance: The buffer state machine correctly serializes
+/// writer (callback) and reader (executor) access. No data corruption
+/// occurs under concurrent access.
+proof fn lock_prevents_data_race(
+    msg_len: usize,
+    buf_capacity: usize,
+    concurrent_msg_len: usize,
+    next_msg_len: usize,
+)
+    requires
+        buf_capacity > 0,
+        msg_len <= buf_capacity,        // initial message fits
+        next_msg_len <= buf_capacity,   // follow-up message fits
+    ensures
+        ({
+            // Step 1: Callback stores initial message
+            let buf_after_cb = callback_post_fix(msg_len, buf_capacity);
+
+            // Step 2+3: During process_in_place, the buffer is locked.
+            // Model the locked state explicitly.
+            let locked_buf = SubscriberBufferGhost {
+                has_data: buf_after_cb.has_data,
+                overflow: buf_after_cb.overflow,
+                locked: true,  // simulating lock held during processing
+                stored_len: buf_after_cb.stored_len,
+                buf_capacity: buf_after_cb.buf_capacity,
+            };
+
+            // Concurrent callback during lock — must be dropped
+            let after_concurrent = callback_with_lock(locked_buf, concurrent_msg_len);
+            // Buffer unchanged (data preserved for the reader)
+            &&& after_concurrent.stored_len == msg_len
+            &&& after_concurrent.has_data
+
+            // Step 4: process_in_place completes on the original buffer
+            &&& ({
+                let (final_state, processed, _overflow) = process_in_place_spec(buf_after_cb);
+                // Message was processed
+                &&& processed
+                // Lock released, has_data cleared
+                &&& !final_state.locked
+                &&& !final_state.has_data
+
+                // Step 5: Next callback succeeds normally
+                &&& ({
+                    let after_next = callback_with_lock(final_state, next_msg_len);
+                    &&& after_next.has_data
+                    &&& after_next.stored_len == next_msg_len
+                    &&& !after_next.locked
+                })
+            })
+        }),
+{
+}
+
+// ======================================================================
 // Service Buffer Ghost Type and Spec Functions (Phase 37.2)
 // ======================================================================
 
@@ -580,6 +778,7 @@ pub struct ExServiceBufferGhost(ServiceBufferGhost);
 pub open spec fn service_callback_spec(req_len: usize, buf_capacity: usize) -> ServiceBufferGhost {
     ServiceBufferGhost {
         has_request: true,
+        overflow: false,  // pre-40.1 service callback had no overflow flag
         stored_len: if req_len <= buf_capacity { req_len } else { buf_capacity },
         buf_capacity,
     }
@@ -613,6 +812,7 @@ pub open spec fn try_recv_request_pre_fix(
         // Success — has_request cleared
         (ServiceBufferGhost {
             has_request: false,
+            overflow: buf.overflow,
             stored_len: buf.stored_len,
             buf_capacity: buf.buf_capacity,
         }, true, false)
@@ -646,6 +846,7 @@ pub open spec fn try_recv_request_post_fix(
         // BufferTooSmall — has_request cleared (FIXED: no stuck service)
         (ServiceBufferGhost {
             has_request: false,
+            overflow: buf.overflow,
             stored_len: buf.stored_len,
             buf_capacity: buf.buf_capacity,
         }, false, true)
@@ -653,6 +854,7 @@ pub open spec fn try_recv_request_post_fix(
         // Success — has_request cleared
         (ServiceBufferGhost {
             has_request: false,
+            overflow: buf.overflow,
             stored_len: buf.stored_len,
             buf_capacity: buf.buf_capacity,
         }, true, false)

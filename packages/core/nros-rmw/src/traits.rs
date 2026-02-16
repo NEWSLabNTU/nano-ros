@@ -701,6 +701,27 @@ pub trait Subscriber {
         }
     }
 
+    /// Process the received message in-place without copying.
+    ///
+    /// Calls `f` with a reference to the raw CDR bytes in the internal buffer.
+    /// The buffer is locked during `f` — the transport callback drops any
+    /// messages that arrive while the closure executes.
+    ///
+    /// Returns `Ok(true)` if a message was available and `f` was called,
+    /// `Ok(false)` if no message was available.
+    fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
+        // Default: fall back to try_recv_raw with a stack buffer.
+        // Backends override this with a zero-copy implementation.
+        let mut buf = [0u8; 1024];
+        match self.try_recv_raw(&mut buf)? {
+            Some(len) => {
+                f(&buf[..len]);
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
     /// Return a deserialization error (implementation specific)
     fn deserialization_error(&self) -> Self::Error;
 }

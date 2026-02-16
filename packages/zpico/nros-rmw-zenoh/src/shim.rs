@@ -965,6 +965,11 @@ struct SubscriberBuffer {
     /// Set by the callback when `len > data.len()`. Checked by `try_recv_raw`
     /// which returns `Err(MessageTooLarge)` and clears this flag.
     overflow: AtomicBool,
+    /// Flag indicating a reader is currently accessing this buffer.
+    /// Set by `try_recv_raw` / `process_raw_in_place` before reading, cleared
+    /// after. The callback checks this flag and drops the message if locked,
+    /// preventing a data race where the callback overwrites the buffer mid-read.
+    locked: AtomicBool,
     /// Length of valid payload data
     len: AtomicUsize,
     /// Length of valid attachment data
@@ -978,6 +983,7 @@ impl SubscriberBuffer {
             attachment: [0u8; SUBSCRIBER_ATTACHMENT_BUF_SIZE],
             has_data: AtomicBool::new(false),
             overflow: AtomicBool::new(false),
+            locked: AtomicBool::new(false),
             len: AtomicUsize::new(0),
             attachment_len: AtomicUsize::new(0),
         }
@@ -995,9 +1001,11 @@ static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZENOH_SHIM_MAX_SUBSCRIBERS] =
 /// Next available buffer index
 static NEXT_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
 
-/// Callback function invoked by the C shim when data arrives (with attachment)
-extern "C" fn subscriber_callback_with_attachment(
-    data: *const u8,
+/// Notify callback invoked by the C shim after direct-write to the static buffer.
+///
+/// The payload is already in `SUBSCRIBER_BUFFERS[buffer_index].data`. This callback
+/// only stores the length, attachment, and signals data availability.
+extern "C" fn subscriber_notify_callback(
     len: usize,
     attachment: *const u8,
     attachment_len: usize,
@@ -1013,14 +1021,12 @@ extern "C" fn subscriber_callback_with_attachment(
         let buffer = &mut SUBSCRIBER_BUFFERS[buffer_index];
 
         if len > buffer.data.len() {
-            // Message exceeds static buffer capacity — flag as overflow instead of
-            // silently truncating. The consumer will see MessageTooLarge and can recover.
+            // Overflow: the C shim called us with the oversized length so we can flag it.
             buffer.overflow.store(true, Ordering::Release);
             buffer.has_data.store(true, Ordering::Release);
         } else {
-            // Normal case: copy payload data
+            // Payload already written by C shim — just store metadata
             buffer.overflow.store(false, Ordering::Release);
-            core::ptr::copy_nonoverlapping(data, buffer.data.as_mut_ptr(), len);
             buffer.len.store(len, Ordering::Release);
 
             // Copy attachment data if present
@@ -1084,12 +1090,21 @@ impl ShimSubscriber {
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
 
-        // Create subscriber with callback (using attachment-enabled callback for RMW support)
-        // Safety: Similar to publisher, we transmute lifetime for storage
+        // Create subscriber with direct-write: the C shim reads payload directly
+        // into SUBSCRIBER_BUFFERS[buffer_index].data via z_bytes_reader_read(),
+        // avoiding the z_bytes_to_slice() malloc.
+        // Safety: SUBSCRIBER_BUFFERS is module-level static — fixed address.
         let subscriber = unsafe {
-            let sub_result = context.declare_subscriber_with_attachment_raw(
+            let buf_ptr = SUBSCRIBER_BUFFERS[buffer_index].data.as_mut_ptr();
+            let buf_capacity = SUBSCRIBER_BUFFERS[buffer_index].data.len();
+            // AtomicBool has the same layout as bool — cast is safe for __atomic_load_n
+            let locked_ptr = SUBSCRIBER_BUFFERS[buffer_index].locked.as_ptr() as *const bool;
+            let sub_result = context.declare_subscriber_direct_write_raw(
                 &keyexpr_buf,
-                subscriber_callback_with_attachment,
+                buf_ptr,
+                buf_capacity,
+                locked_ptr,
+                subscriber_notify_callback,
                 buffer_index as *mut core::ffi::c_void,
             );
             match sub_result {
@@ -1144,6 +1159,9 @@ impl ShimSubscriber {
             return Err(TransportError::BufferTooSmall);
         }
 
+        // Lock buffer to prevent callback from overwriting during copy
+        buffer.locked.store(true, Ordering::Release);
+
         // Copy payload data
         unsafe {
             core::ptr::copy_nonoverlapping(
@@ -1183,6 +1201,7 @@ impl ShimSubscriber {
             (0, None)
         };
 
+        buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
 
         let status = self.safety_validator.validate(message_seq, crc_valid);
@@ -1222,8 +1241,11 @@ impl ShimSubscriber {
             return Err(TransportError::BufferTooSmall);
         }
 
+        // Lock buffer to prevent callback from overwriting during copy
+        buffer.locked.store(true, Ordering::Release);
+
         // Copy payload data
-        // Safety: Data is valid up to len bytes
+        // Safety: Data is valid up to len bytes, buffer is locked
         unsafe {
             core::ptr::copy_nonoverlapping(
                 SUBSCRIBER_BUFFERS[self.buffer_index].data.as_ptr(),
@@ -1243,9 +1265,57 @@ impl ShimSubscriber {
             None
         };
 
+        buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
 
         Ok(Some((len, message_info)))
+    }
+
+    /// Process the received message in-place with message info, without copying.
+    ///
+    /// Calls `f` with a reference to the raw CDR bytes and optional message info.
+    /// The buffer is locked during `f`.
+    ///
+    /// Returns `Ok(true)` if a message was available and `f` was called.
+    pub fn process_raw_in_place_with_info(
+        &mut self,
+        f: impl FnOnce(&[u8], Option<MessageInfo>),
+    ) -> Result<bool, TransportError> {
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+
+        if !buffer.has_data.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
+
+        let len = buffer.len.load(Ordering::Acquire);
+
+        buffer.locked.store(true, Ordering::Release);
+
+        // Parse attachment while locked (attachment is small: 33-37 bytes)
+        let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
+        let message_info = if attachment_len > 0 {
+            let attachment_slice =
+                unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].attachment[..attachment_len] };
+            MessageInfo::from_attachment(attachment_slice)
+        } else {
+            None
+        };
+
+        f(
+            unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].data[..len] },
+            message_info,
+        );
+
+        buffer.locked.store(false, Ordering::Release);
+        buffer.has_data.store(false, Ordering::Release);
+
+        Ok(true)
     }
 }
 
@@ -1281,8 +1351,11 @@ impl Subscriber for ShimSubscriber {
             return Err(TransportError::BufferTooSmall);
         }
 
-        // Copy data and clear flag
-        // Safety: Data is valid up to len bytes
+        // Lock buffer to prevent callback from overwriting during copy
+        buffer.locked.store(true, Ordering::Release);
+
+        // Copy data
+        // Safety: Data is valid up to len bytes, buffer is locked
         unsafe {
             core::ptr::copy_nonoverlapping(
                 SUBSCRIBER_BUFFERS[self.buffer_index].data.as_ptr(),
@@ -1290,9 +1363,35 @@ impl Subscriber for ShimSubscriber {
                 len,
             );
         }
+
+        buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
 
         Ok(Some(len))
+    }
+
+    fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+
+        if !buffer.has_data.load(Ordering::Acquire) {
+            return Ok(false);
+        }
+
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
+
+        let len = buffer.len.load(Ordering::Acquire);
+
+        // Lock buffer, process in-place, then unlock
+        buffer.locked.store(true, Ordering::Release);
+        f(unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].data[..len] });
+        buffer.locked.store(false, Ordering::Release);
+        buffer.has_data.store(false, Ordering::Release);
+
+        Ok(true)
     }
 
     fn deserialization_error(&self) -> Self::Error {
@@ -2025,6 +2124,7 @@ mod ghost_checks {
         SubscriberBufferGhost {
             has_data: b.has_data.load(Ordering::Relaxed),
             overflow: b.overflow.load(Ordering::Relaxed),
+            locked: b.locked.load(Ordering::Relaxed),
             stored_len: b.len.load(Ordering::Relaxed),
             buf_capacity: b.data.len(),
         }
@@ -2036,6 +2136,7 @@ mod ghost_checks {
         let ghost = ghost_from_buffer(&buffer);
         assert!(!ghost.has_data);
         assert!(!ghost.overflow);
+        assert!(!ghost.locked);
         assert_eq!(ghost.stored_len, 0);
         assert_eq!(ghost.buf_capacity, SUBSCRIBER_BUFFER_SIZE);
     }
@@ -2322,10 +2423,16 @@ mod ghost_checks {
     // --- Subscription buffer helpers ---
 
     /// Simulate a subscription callback by writing directly to SUBSCRIBER_BUFFERS[slot].
-    /// Mirrors the logic in `subscriber_callback_with_attachment`.
+    /// Mirrors the logic in `subscriber_callback_with_attachment` (post-40.4: checks locked).
     fn simulate_subscription_callback(slot: usize, payload: &[u8]) {
         unsafe {
             let buffer = &mut SUBSCRIBER_BUFFERS[slot];
+
+            // Post-40.4: check locked flag — drop message if reader is processing
+            if buffer.locked.load(Ordering::Acquire) {
+                return;
+            }
+
             if payload.len() > buffer.data.len() {
                 buffer.overflow.store(true, Ordering::Release);
                 buffer.has_data.store(true, Ordering::Release);
@@ -2345,6 +2452,7 @@ mod ghost_checks {
             let buffer = &mut SUBSCRIBER_BUFFERS[slot];
             buffer.has_data.store(false, Ordering::Release);
             buffer.overflow.store(false, Ordering::Release);
+            buffer.locked.store(false, Ordering::Release);
             buffer.len.store(0, Ordering::Release);
             buffer.attachment_len.store(0, Ordering::Release);
         }
@@ -2933,5 +3041,160 @@ mod ghost_checks {
         let svc_result = try_recv_service(slot, &mut recv_buf);
         assert!(matches!(svc_result, Ok(Some(6))));
         assert_eq!(&recv_buf[..6], b"svc_ok");
+    }
+
+    // ========================================================================
+    // 40.4 Part E: In-place processing and lock correctness tests
+    // ========================================================================
+
+    /// Process subscription data in-place (mirrors `process_raw_in_place` logic).
+    /// Uses the lock pattern: check has_data/overflow, lock, call closure, unlock, clear.
+    /// Returns Ok(Some(bytes)) on success, Ok(None) if no data, Err on overflow.
+    fn process_in_place_subscription(
+        slot: usize,
+    ) -> Result<Option<alloc::vec::Vec<u8>>, TransportError> {
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+
+        if !buffer.has_data.load(Ordering::Acquire) {
+            return Ok(None);
+        }
+
+        if buffer.overflow.load(Ordering::Acquire) {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.has_data.store(false, Ordering::Release);
+            return Err(TransportError::MessageTooLarge);
+        }
+
+        let len = buffer.len.load(Ordering::Acquire);
+        buffer.locked.store(true, Ordering::Release);
+
+        // Read data in-place (equivalent to closure in process_raw_in_place)
+        let data = unsafe { SUBSCRIBER_BUFFERS[slot].data[..len].to_vec() };
+
+        buffer.locked.store(false, Ordering::Release);
+        buffer.has_data.store(false, Ordering::Release);
+
+        Ok(Some(data))
+    }
+
+    #[test]
+    fn sub_buf_in_place_matches_copy() {
+        let slot = 0;
+        reset_subscriber_buffer(slot);
+
+        // Write 100-byte payload, try_recv (copy path) → capture bytes
+        let payload = [0x42u8; 100];
+        simulate_subscription_callback(slot, &payload);
+
+        let mut recv_buf = [0u8; 1024];
+        let copy_result = try_recv_subscription(slot, &mut recv_buf);
+        assert!(matches!(copy_result, Ok(Some(100))));
+        let copy_bytes = recv_buf[..100].to_vec();
+
+        // Reset, write same payload, process_in_place → capture bytes
+        reset_subscriber_buffer(slot);
+        simulate_subscription_callback(slot, &payload);
+
+        let in_place_result = process_in_place_subscription(slot);
+        assert!(matches!(in_place_result, Ok(Some(_))));
+        let in_place_bytes = in_place_result.unwrap().unwrap();
+
+        // Both paths must produce identical data
+        assert_eq!(copy_bytes, in_place_bytes);
+    }
+
+    #[test]
+    fn sub_buf_in_place_overflow() {
+        let slot = 1;
+        reset_subscriber_buffer(slot);
+
+        // Write oversized payload (2000 bytes > 1024 capacity)
+        simulate_subscription_callback(slot, &[0xBBu8; 2000]);
+
+        let result = process_in_place_subscription(slot);
+        assert!(matches!(result, Err(TransportError::MessageTooLarge)));
+
+        // Both flags cleared after overflow
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(!buffer.has_data.load(Ordering::Acquire));
+        assert!(!buffer.overflow.load(Ordering::Acquire));
+    }
+
+    #[test]
+    fn sub_buf_locked_drops_message() {
+        let slot = 2;
+        reset_subscriber_buffer(slot);
+
+        // Write "original" payload
+        let original = [0x11u8; 100];
+        simulate_subscription_callback(slot, &original);
+        assert!(unsafe { SUBSCRIBER_BUFFERS[slot].has_data.load(Ordering::Acquire) });
+
+        // Manually set locked=true (simulating in-place processing)
+        unsafe {
+            SUBSCRIBER_BUFFERS[slot]
+                .locked
+                .store(true, Ordering::Release)
+        };
+
+        // Attempt callback with "replacement" — should be dropped
+        let replacement = [0x22u8; 100];
+        simulate_subscription_callback(slot, &replacement);
+
+        // Buffer still contains original data (100 bytes of 0x11)
+        let stored_len = unsafe { SUBSCRIBER_BUFFERS[slot].len.load(Ordering::Acquire) };
+        assert_eq!(stored_len, 100);
+        unsafe {
+            assert_eq!(&SUBSCRIBER_BUFFERS[slot].data[..100], &original);
+        }
+
+        // Unlock and verify next callback succeeds
+        unsafe {
+            SUBSCRIBER_BUFFERS[slot]
+                .locked
+                .store(false, Ordering::Release)
+        };
+
+        simulate_subscription_callback(slot, &replacement);
+        let stored_len = unsafe { SUBSCRIBER_BUFFERS[slot].len.load(Ordering::Acquire) };
+        assert_eq!(stored_len, 100);
+        unsafe {
+            assert_eq!(&SUBSCRIBER_BUFFERS[slot].data[..100], &replacement);
+        }
+
+        reset_subscriber_buffer(slot);
+    }
+
+    #[test]
+    fn sub_buf_locked_state_during_in_place() {
+        let slot = 3;
+        reset_subscriber_buffer(slot);
+
+        // Write payload to buffer
+        simulate_subscription_callback(slot, b"test_lock_state");
+
+        // Verify locked=false before processing
+        assert!(!unsafe { SUBSCRIBER_BUFFERS[slot].locked.load(Ordering::Acquire) });
+
+        // Process in-place — during the closure the buffer should be locked
+        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        assert!(buffer.has_data.load(Ordering::Acquire));
+
+        let len = buffer.len.load(Ordering::Acquire);
+        buffer.locked.store(true, Ordering::Release);
+
+        // While locked, verify the flag is set
+        assert!(buffer.locked.load(Ordering::Acquire));
+
+        // Read data (simulating closure)
+        let _data = unsafe { SUBSCRIBER_BUFFERS[slot].data[..len].to_vec() };
+
+        // Unlock and clear
+        buffer.locked.store(false, Ordering::Release);
+        buffer.has_data.store(false, Ordering::Release);
+
+        // After processing: locked=false, has_data=false
+        assert!(!buffer.locked.load(Ordering::Acquire));
+        assert!(!buffer.has_data.load(Ordering::Acquire));
     }
 }

@@ -142,6 +142,23 @@ typedef void (*ShimCallbackWithAttachment)(const uint8_t *data,
                                            void *ctx);
 
 /**
+ * Notify callback for direct-write subscribers.
+ *
+ * Called after the C shim has written the payload directly into the Rust
+ * static buffer. Only provides the payload length and attachment data.
+ *
+ * # Parameters
+ * * `len` - Length of payload already written to the buffer
+ * * `attachment` - Pointer to attachment buffer (may be NULL)
+ * * `attachment_len` - Length of attachment in bytes
+ * * `ctx` - User-provided context pointer
+ */
+typedef void (*ShimNotifyCallback)(uintptr_t len,
+                                   const uint8_t *attachment,
+                                   uintptr_t attachment_len,
+                                   void *ctx);
+
+/**
  * Callback function type for receiving queries (service requests).
  *
  * # Parameters
@@ -270,6 +287,32 @@ int32_t zenoh_shim_declare_subscriber(const char *_keyexpr, ShimCallback _callba
 int32_t zenoh_shim_declare_subscriber_with_attachment(const char *_keyexpr,
                                                       ShimCallbackWithAttachment _callback,
                                                       void *_ctx);
+
+/**
+ * Declare a subscriber with direct-write to a Rust buffer.
+ *
+ * The C shim reads the payload directly into `buf_ptr` using
+ * `z_bytes_reader_read()`, avoiding a malloc. The notify callback
+ * is called after the write completes, providing only the length
+ * and attachment.
+ *
+ * # Parameters
+ * * `keyexpr` - Key expression string, null-terminated.
+ * * `buf_ptr` - Pointer to the Rust static buffer for payload
+ * * `buf_capacity` - Size of the buffer in bytes
+ * * `locked_ptr` - Pointer to the AtomicBool lock flag
+ * * `callback` - Notify callback (payload length + attachment)
+ * * `ctx` - User context pointer passed to callback
+ *
+ * # Returns
+ * Subscriber handle (>= 0) on success, negative error code on failure.
+ */
+int32_t zenoh_shim_declare_subscriber_direct_write(const char *_keyexpr,
+                                                   uint8_t *_buf_ptr,
+                                                   uintptr_t _buf_capacity,
+                                                   const bool *_locked_ptr,
+                                                   ShimNotifyCallback _callback,
+                                                   void *_ctx);
 
 /**
  * Undeclare a subscriber.

@@ -146,6 +146,10 @@ struct SubscriberSlot {
     has_data: AtomicBool,
     len: AtomicUsize,
     overflow: AtomicBool,
+    /// Flag indicating a reader is currently accessing this slot.
+    /// The callback checks this flag and drops the message if locked,
+    /// preventing a data race where the callback overwrites the buffer mid-read.
+    locked: AtomicBool,
     datareader_id: u16,
     active: bool,
 }
@@ -157,6 +161,7 @@ impl SubscriberSlot {
             has_data: AtomicBool::new(false),
             len: AtomicUsize::new(0),
             overflow: AtomicBool::new(false),
+            locked: AtomicBool::new(false),
             datareader_id: 0,
             active: false,
         }
@@ -387,6 +392,10 @@ unsafe extern "C" fn topic_callback(
         let len = length as usize;
         for slot in &mut SUBSCRIBER_SLOTS {
             if slot.active && slot.datareader_id == object_id.id {
+                // Reader is currently processing — drop this message
+                if slot.locked.load(Ordering::Acquire) {
+                    return;
+                }
                 if len > BUFFER_SIZE {
                     slot.overflow.store(true, Ordering::Release);
                     return;
@@ -1003,11 +1012,7 @@ impl Publisher for XrcePublisher {
             // Serialize the payload into the fragmented stream. The ucdrBuffer's
             // on_full_buffer callback handles flushing and advancing to the next
             // fragment automatically.
-            let ok = xrce_sys::ucdr_serialize_array_uint8_t(
-                &raw mut ub,
-                data.as_ptr(),
-                data.len(),
-            );
+            let ok = xrce_sys::ucdr_serialize_array_uint8_t(&raw mut ub, data.as_ptr(), data.len());
             if !ok {
                 return Err(TransportError::PublishFailed);
             }
@@ -1070,9 +1075,38 @@ impl Subscriber for XrceSubscriber {
                 return Err(TransportError::BufferTooSmall);
             }
 
+            // Lock slot to prevent callback from overwriting during copy
+            slot.locked.store(true, Ordering::Release);
             buf[..len].copy_from_slice(&slot.data[..len]);
+            slot.locked.store(false, Ordering::Release);
             slot.has_data.store(false, Ordering::Release);
             Ok(Some(len))
+        }
+    }
+
+    fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, TransportError> {
+        unsafe {
+            let slot = &SUBSCRIBER_SLOTS[self.slot_index];
+
+            if !slot.has_data.load(Ordering::Acquire) {
+                return Ok(false);
+            }
+
+            if slot.overflow.load(Ordering::Acquire) {
+                slot.overflow.store(false, Ordering::Release);
+                slot.has_data.store(false, Ordering::Release);
+                return Err(TransportError::MessageTooLarge);
+            }
+
+            let len = slot.len.load(Ordering::Acquire);
+
+            // Lock slot, process in-place, then unlock
+            slot.locked.store(true, Ordering::Release);
+            f(&SUBSCRIBER_SLOTS[self.slot_index].data[..len]);
+            slot.locked.store(false, Ordering::Release);
+            slot.has_data.store(false, Ordering::Release);
+
+            Ok(true)
         }
     }
 

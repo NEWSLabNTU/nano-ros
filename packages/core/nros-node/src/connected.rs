@@ -1915,6 +1915,76 @@ impl<M: RosMessage, const RX_BUF: usize> ConnectedSubscriber<M, RX_BUF> {
         }
     }
 
+    /// Process the next message in-place without copying (non-blocking).
+    ///
+    /// Deserializes the message directly from the transport's internal buffer
+    /// and calls `f` with a reference to the typed message. The buffer is locked
+    /// during `f`, preventing the callback from overwriting it.
+    ///
+    /// Returns `Ok(true)` if a message was available and `f` was called,
+    /// `Ok(false)` if no message was available.
+    pub fn process_in_place(&mut self, f: impl FnOnce(&M)) -> Result<bool, ConnectedNodeError>
+    where
+        M: Deserialize,
+    {
+        use nros_core::CdrReader;
+        let mut deser_err = false;
+        let processed = self
+            .subscriber
+            .process_raw_in_place(|raw| {
+                match CdrReader::new_with_header(raw).and_then(|mut r| M::deserialize(&mut r)) {
+                    Ok(msg) => f(&msg),
+                    Err(_) => deser_err = true,
+                }
+            })
+            .map_err(|_| ConnectedNodeError::DeserializationFailed)?;
+
+        if deser_err {
+            return Err(ConnectedNodeError::DeserializationFailed);
+        }
+        Ok(processed)
+    }
+
+    /// Process the next message in-place with metadata (non-blocking).
+    ///
+    /// Like `process_in_place`, but also provides `MessageInfo` from the
+    /// transport attachment.
+    pub fn process_in_place_with_info(
+        &mut self,
+        f: impl FnOnce(&M, &nros_core::MessageInfo),
+    ) -> Result<bool, ConnectedNodeError>
+    where
+        M: Deserialize,
+    {
+        use nros_core::{CdrReader, Time};
+        let mut deser_err = false;
+        let processed =
+            self.subscriber
+                .process_raw_in_place_with_info(|raw, transport_info| {
+                    match CdrReader::new_with_header(raw).and_then(|mut r| M::deserialize(&mut r)) {
+                        Ok(msg) => {
+                            let mut info = nros_core::MessageInfo::new();
+                            if let Some(ti) = transport_info {
+                                let timestamp_ns = ti.timestamp_ns;
+                                let secs = (timestamp_ns / 1_000_000_000) as i32;
+                                let nsecs = (timestamp_ns % 1_000_000_000) as u32;
+                                info.set_source_timestamp(Time::new(secs, nsecs));
+                                info.set_publication_sequence_number(ti.sequence_number);
+                                info.set_publisher_gid(ti.publisher_gid);
+                            }
+                            f(&msg, &info);
+                        }
+                        Err(_) => deser_err = true,
+                    }
+                })
+                .map_err(|_| ConnectedNodeError::DeserializationFailed)?;
+
+        if deser_err {
+            return Err(ConnectedNodeError::DeserializationFailed);
+        }
+        Ok(processed)
+    }
+
     /// Check if data is available without consuming it
     ///
     /// Returns true if the subscriber has data ready to be received.

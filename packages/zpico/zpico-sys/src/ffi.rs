@@ -89,6 +89,19 @@ pub type ShimCallbackWithAttachment = extern "C" fn(
     ctx: *mut c_void,
 );
 
+/// Notify callback for direct-write subscribers.
+///
+/// Called after the C shim has written the payload directly into the Rust
+/// static buffer. Only provides the payload length and attachment data.
+///
+/// # Parameters
+/// * `len` - Length of payload already written to the buffer
+/// * `attachment` - Pointer to attachment buffer (may be NULL)
+/// * `attachment_len` - Length of attachment in bytes
+/// * `ctx` - User-provided context pointer
+pub type ShimNotifyCallback =
+    extern "C" fn(len: usize, attachment: *const u8, attachment_len: usize, ctx: *mut c_void);
+
 /// Callback function type for receiving queries (service requests).
 ///
 /// # Parameters
@@ -250,6 +263,35 @@ mod cbindgen_stubs {
     pub extern "C" fn zenoh_shim_declare_subscriber_with_attachment(
         _keyexpr: *const c_char,
         _callback: ShimCallbackWithAttachment,
+        _ctx: *mut c_void,
+    ) -> i32 {
+        0
+    }
+
+    /// Declare a subscriber with direct-write to a Rust buffer.
+    ///
+    /// The C shim reads the payload directly into `buf_ptr` using
+    /// `z_bytes_reader_read()`, avoiding a malloc. The notify callback
+    /// is called after the write completes, providing only the length
+    /// and attachment.
+    ///
+    /// # Parameters
+    /// * `keyexpr` - Key expression string, null-terminated.
+    /// * `buf_ptr` - Pointer to the Rust static buffer for payload
+    /// * `buf_capacity` - Size of the buffer in bytes
+    /// * `locked_ptr` - Pointer to the AtomicBool lock flag
+    /// * `callback` - Notify callback (payload length + attachment)
+    /// * `ctx` - User context pointer passed to callback
+    ///
+    /// # Returns
+    /// Subscriber handle (>= 0) on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zenoh_shim_declare_subscriber_direct_write(
+        _keyexpr: *const c_char,
+        _buf_ptr: *mut u8,
+        _buf_capacity: usize,
+        _locked_ptr: *const bool,
+        _callback: ShimNotifyCallback,
         _ctx: *mut c_void,
     ) -> i32 {
         0

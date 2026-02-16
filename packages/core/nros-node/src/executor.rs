@@ -448,14 +448,12 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
     }
 
     fn try_process(&mut self) -> Result<bool, RclrsError> {
-        match self.subscriber.try_recv() {
-            Ok(Some(msg)) => {
-                self.callback.call(&msg);
-                Ok(true)
-            }
-            Ok(None) => Ok(false),
-            Err(_) => Err(RclrsError::DeserializationFailed),
-        }
+        let callback = &mut self.callback;
+        self.subscriber
+            .process_in_place(|msg| {
+                callback.call(msg);
+            })
+            .map_err(|_| RclrsError::DeserializationFailed)
     }
 }
 
@@ -479,14 +477,12 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
     }
 
     fn try_process(&mut self) -> Result<bool, RclrsError> {
-        match self.subscriber.try_recv_with_info() {
-            Ok(Some((msg, info))) => {
-                self.callback.call(&msg, &info);
-                Ok(true)
-            }
-            Ok(None) => Ok(false),
-            Err(_) => Err(RclrsError::DeserializationFailed),
-        }
+        let callback = &mut self.callback;
+        self.subscriber
+            .process_in_place_with_info(|msg, info| {
+                callback.call(msg, info);
+            })
+            .map_err(|_| RclrsError::DeserializationFailed)
     }
 }
 
@@ -510,6 +506,10 @@ impl<M: RosMessage + Deserialize + Send, const RX_BUF: usize, C: SubscriptionCal
     }
 
     fn try_process(&mut self) -> Result<bool, RclrsError> {
+        // Safety-e2e still uses the copy-based path because try_recv_validated
+        // needs CRC verification on the buffer copy. In-place would require
+        // running the CRC check inside the lock window — acceptable but
+        // deferred to keep this change focused.
         match self.subscriber.try_recv_safe() {
             Ok(Some((msg, status))) => {
                 self.callback.call(&msg, &status);
