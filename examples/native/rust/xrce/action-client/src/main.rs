@@ -1,7 +1,7 @@
 //! XRCE-DDS action client — Fibonacci action via XRCE Agent.
 //!
 //! Composes the action protocol from 2 service clients (send_goal, get_result)
-//! + 1 subscriber (feedback). Matches the wire format used by `nros-node`'s
+//! and 1 subscriber (feedback). Matches the wire format used by `nros-node`'s
 //! `ConnectedActionClient`.
 //!
 //! Environment variables:
@@ -124,7 +124,7 @@ fn main() {
                         );
 
                         // Check if we have the final feedback (order + 1 elements)
-                        if feedback.sequence.len() as i32 >= order + 1 {
+                        if feedback.sequence.len() as i32 > order {
                             println!("All feedback received");
                             break;
                         }

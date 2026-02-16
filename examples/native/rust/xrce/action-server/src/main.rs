@@ -1,7 +1,7 @@
 //! XRCE-DDS action server — Fibonacci action via XRCE Agent.
 //!
 //! Composes the action protocol from 2 service servers (send_goal, get_result)
-//! + 1 publisher (feedback). Matches the wire format used by `nros-node`'s
+//! and 1 publisher (feedback). Matches the wire format used by `nros-node`'s
 //! `ConnectedActionServer`.
 //!
 //! Environment variables:
