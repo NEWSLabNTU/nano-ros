@@ -716,6 +716,54 @@ verify-verus:
 # Run all verification: Kani bounded model checking + Verus deductive verification
 verify: verify-kani verify-verus
 
+# Run branch coverage on safety-critical crates (requires nightly + cargo-llvm-cov)
+# MC/DC is attempted first; falls back to branch-only if unsupported
+coverage:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    if ! command -v cargo-llvm-cov &>/dev/null; then
+        echo "ERROR: cargo-llvm-cov not found. Install with: cargo install cargo-llvm-cov --locked"
+        exit 1
+    fi
+
+    CRATES=("nros-rmw --features safety-e2e" "nros-serdes" "nros-core")
+    OUTPUT_DIR="target/llvm-cov/html"
+
+    echo "=== Branch Coverage (safety-critical crates) ==="
+    echo ""
+
+    # Clean once at start so --no-clean preserves each crate's HTML output
+    cargo +nightly llvm-cov clean --workspace
+
+    for entry in "${CRATES[@]}"; do
+        crate=$(echo "$entry" | awk '{print $1}')
+        extra_args=$(echo "$entry" | cut -d' ' -sf2-)
+        report_dir="$OUTPUT_DIR/$crate"
+        mkdir -p "$report_dir"
+
+        echo "--- $crate ---"
+
+        # Try MC/DC first (--mcdc implies branch), fall back to branch-only
+        # --no-clean preserves HTML from prior crate runs
+        if cargo +nightly llvm-cov test --no-clean \
+            -p "$crate" $extra_args \
+            --mcdc \
+            --html --output-dir "$report_dir" 2>/dev/null; then
+            echo "  [OK] MC/DC + branch coverage → $report_dir/"
+        else
+            echo "  [INFO] MC/DC not supported on this toolchain, using branch coverage"
+            cargo +nightly llvm-cov test --no-clean \
+                -p "$crate" $extra_args \
+                --branch \
+                --html --output-dir "$report_dir"
+            echo "  [OK] Branch coverage → $report_dir/"
+        fi
+        echo ""
+    done
+
+    echo "=== Coverage reports: $OUTPUT_DIR/ ==="
+
 # =============================================================================
 # Zenoh
 # =============================================================================
@@ -1081,6 +1129,7 @@ setup:
 
     echo "=== [3/7] Adding rustup components ==="
     rustup component add rustfmt clippy rust-src
+    rustup component add llvm-tools
     rustup component add --toolchain nightly rustfmt miri rust-src llvm-tools
     echo ""
 
@@ -1093,6 +1142,7 @@ setup:
 
     echo "=== [5/7] Installing cargo tools + verification toolchains ==="
     cargo install cargo-nextest --locked
+    cargo install cargo-llvm-cov --locked
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"

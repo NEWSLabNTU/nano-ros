@@ -203,16 +203,16 @@ Validate the full safety protocol stack end-to-end. Tests are split into two cat
 - Document coverage targets per ASIL level
 
 **Work items:**
-- [ ] Add `just coverage` recipe using `cargo llvm-cov` with `--mcdc` flag on nightly
-- [ ] Target crates: `nros-rmw` (safety module), `nros-serdes` (CDR), `nros-core` (types)
-- [ ] Generate HTML coverage report to `target/llvm-cov/html/`
-- [ ] Record baseline branch + MC/DC coverage percentages for safety module
-- [ ] Document ASIL coverage targets in `docs/research/autosar-iso26262-gap-analysis.md`: ASIL A (statement), ASIL B (branch), ASIL C/D (MC/DC)
+- [x] Add `just coverage` recipe using `cargo llvm-cov` with `--mcdc` flag on nightly
+- [x] Target crates: `nros-rmw` (safety module), `nros-serdes` (CDR), `nros-core` (types)
+- [x] Generate HTML coverage report to `target/llvm-cov/html/`
+- [x] Record baseline branch + MC/DC coverage percentages for safety module
+- [x] Document ASIL coverage targets in `docs/research/autosar-iso26262-gap-analysis.md`: ASIL A (statement), ASIL B (branch), ASIL C/D (MC/DC)
 
 **Passing criteria:**
-- `just coverage` runs and produces HTML report without errors
-- Safety module (`nros-rmw/src/safety.rs`) achieves ≥90% branch coverage
-- Coverage targets documented per ASIL level
+- [x] `just coverage` runs and produces HTML report without errors
+- [x] Safety module (`nros-rmw/src/safety.rs`) achieves ≥90% branch coverage (measured: 90.00%)
+- [x] Coverage targets documented per ASIL level
 
 ### 35.6: WCET baseline collection
 

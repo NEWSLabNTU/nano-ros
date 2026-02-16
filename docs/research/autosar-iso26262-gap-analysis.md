@@ -164,14 +164,33 @@ ISO 26262 requires Modified Condition/Decision Coverage (MC/DC) for ASIL D unit 
 
 ### Current state
 
-- No coverage measurement at any level (statement, branch, or MC/DC)
-- Rust's `cargo-llvm-cov` supports statement and branch coverage
-- LLVM 18+ supports MC/DC instrumentation (`-Cinstrument-coverage=mcdc`)
+- `cargo-llvm-cov` integrated with `--branch` and `--mcdc` (MC/DC) flags via `just coverage`
+- Requires Rust nightly (1.95.0+) with `-Z coverage-options=condition` support
+- HTML reports generated per crate to `target/llvm-cov/html/{crate}/`
+
+### Baseline measurements
+
+| Crate         | Feature      | Lines  | Functions | Branches | MC/DC | Notes                                    |
+|---------------|--------------|--------|-----------|----------|-------|------------------------------------------|
+| `nros-rmw`    | `safety-e2e` | 82.76% | 75.83%    | 88.89%   | N/A   | safety.rs: 99.03% lines, 90.00% branches |
+| `nros-serdes` | —            | 85.74% | 84.27%    | 52.27%   | N/A   | CDR serialization                        |
+| `nros-core`   | —            | 76.39% | 71.96%    | 85.00%   | N/A   | Core types                               |
+
+MC/DC requires `cargo-llvm-cov --mcdc` which needs rustc nightly with `condition` coverage option support. Branch coverage is available now via `--branch`.
+
+### ASIL coverage targets (ISO 26262 Table 12)
+
+| ASIL Level | Required Coverage  | Metric            |
+|------------|--------------------|-------------------|
+| ASIL A     | Statement coverage | ≥100% recommended |
+| ASIL B     | Branch coverage    | ≥100% recommended |
+| ASIL C     | MC/DC              | ≥100% recommended |
+| ASIL D     | MC/DC              | 100% required     |
 
 ### Gap closure path
 
-1. **Immediate**: Add `cargo-llvm-cov` for statement + branch coverage on safety-critical crates (`nano-ros-serdes`, `nano-ros-core`, `nano-ros-transport/safety`)
-2. **Near-term**: Enable MC/DC coverage when Rust stabilizes the LLVM MC/DC pass (tracking: rust-lang/rust#124032)
+1. **Done**: `cargo-llvm-cov` integrated for branch + MC/DC coverage on safety-critical crates (`nros-serdes`, `nros-core`, `nros-rmw/safety`)
+2. **Near-term**: Increase coverage to meet ASIL B (branch) targets on all safety-critical crates
 3. **Target**: 100% MC/DC on safety module (`safety.rs`), ≥90% branch coverage on CDR serialization
 
 ### MC/DC-relevant code
@@ -198,24 +217,24 @@ SafetyValidator::validate():
 
 ### Gap closure path
 
-| Step | Description | Tooling |
-|------|-------------|---------|
-| 1. Baseline collection | Measure key functions on STM32F4 (hardware) and QEMU-ARM | DWT cycle counter |
-| 2. Documentation | Record WCET per function, per platform, per optimization level | Structured table |
-| 3. Static analysis | Integrate a static WCET tool for Cortex-M | Platin (open-source) or OTAWA |
-| 4. Certification-grade | Commercial WCET tool with formal soundness guarantee | AbsInt aiT or RapiTime |
+| Step                   | Description                                                    | Tooling                       |
+|------------------------|----------------------------------------------------------------|-------------------------------|
+| 1. Baseline collection | Measure key functions on STM32F4 (hardware) and QEMU-ARM       | DWT cycle counter             |
+| 2. Documentation       | Record WCET per function, per platform, per optimization level | Structured table              |
+| 3. Static analysis     | Integrate a static WCET tool for Cortex-M                      | Platin (open-source) or OTAWA |
+| 4. Certification-grade | Commercial WCET tool with formal soundness guarantee           | AbsInt aiT or RapiTime        |
 
 ### Key functions for WCET measurement
 
-| Function | Expected Bound | Criticality |
-|----------|---------------|-------------|
-| `crc32(payload)` | O(n), n = payload size | High — called on every message |
-| `CdrWriter::serialize()` | O(n), n = message fields | High — called on every publish |
-| `CdrReader::deserialize()` | O(n), n = message fields | High — called on every receive |
-| `SafetyValidator::validate()` | O(1) + CRC cost | High — called on every receive |
-| `ShimPublisher::publish_raw()` | Fixed + serialize + CRC | High — publishing path |
-| `ShimSubscriber::try_recv_raw()` | Fixed + memcpy | High — receiving path |
-| `executor.spin_once()` | Depends on callback count | Medium — main loop |
+| Function                         | Expected Bound            | Criticality                    |
+|----------------------------------|---------------------------|--------------------------------|
+| `crc32(payload)`                 | O(n), n = payload size    | High — called on every message |
+| `CdrWriter::serialize()`         | O(n), n = message fields  | High — called on every publish |
+| `CdrReader::deserialize()`       | O(n), n = message fields  | High — called on every receive |
+| `SafetyValidator::validate()`    | O(1) + CRC cost           | High — called on every receive |
+| `ShimPublisher::publish_raw()`   | Fixed + serialize + CRC   | High — publishing path         |
+| `ShimSubscriber::try_recv_raw()` | Fixed + memcpy            | High — receiving path          |
+| `executor.spin_once()`           | Depends on callback count | Medium — main loop             |
 
 ### Challenge: Rust WCET analysis
 
@@ -269,32 +288,32 @@ Based on the gap analysis, the recommended priority order:
 
 ### Tier 1: Foundation (Phase 35.1–35.4)
 
-| Priority | Gap | Effort | Impact |
-|----------|-----|--------|--------|
-| **P1** | E2E safety protocol (CRC + sequence) | 1-2 weeks | Enables AUTOSAR E2E compliance, covers 5/7 EN 50159 threats |
-| **P2** | WCET baseline collection | 3-5 days | Establishes timing evidence for safety case |
-| **P3** | Statement/branch coverage | 2-3 days | Baseline for MC/DC path, immediate visibility |
+| Priority | Gap                                  | Effort    | Impact                                                      |
+|----------|--------------------------------------|-----------|-------------------------------------------------------------|
+| **P1**   | E2E safety protocol (CRC + sequence) | 1-2 weeks | Enables AUTOSAR E2E compliance, covers 5/7 EN 50159 threats |
+| **P2**   | WCET baseline collection             | 3-5 days  | Establishes timing evidence for safety case                 |
+| **P3**   | Statement/branch coverage            | 2-3 days  | Baseline for MC/DC path, immediate visibility               |
 
 ### Tier 2: Process (Phase 35.5–35.7)
 
-| Priority | Gap | Effort | Impact |
-|----------|-----|--------|--------|
-| **P4** | Tool confidence level assessment | 1 week | Documents tool risk per ISO 26262 Part 8 |
-| **P5** | Verus proofs for safety module | 1 week | Formal correctness of CRC + sequence logic |
-| **P6** | Fault injection testing | 1-2 weeks | Validates E2E protocol against corrupted/dropped messages |
+| Priority | Gap                              | Effort    | Impact                                                    |
+|----------|----------------------------------|-----------|-----------------------------------------------------------|
+| **P4**   | Tool confidence level assessment | 1 week    | Documents tool risk per ISO 26262 Part 8                  |
+| **P5**   | Verus proofs for safety module   | 1 week    | Formal correctness of CRC + sequence logic                |
+| **P6**   | Fault injection testing          | 1-2 weeks | Validates E2E protocol against corrupted/dropped messages |
 
 ### Tier 3: Certification (future phases)
 
-| Priority | Gap | Effort | Impact |
-|----------|-----|--------|--------|
-| **P7** | MC/DC coverage | Depends on LLVM/Rust stabilization | Required for ASIL D |
-| **P8** | Safety case (GSN) | 2-4 weeks | Required for any certification claim |
-| **P9** | HARA for safety island | 2-4 weeks | Required for ASIL assignment |
-| **P10** | Certified toolchain (Ferrocene) | Commercial engagement | Required for ASIL C/D production |
-| **P11** | ASIL-certified MCU migration | Hardware selection + BSP port | Required for ASIL D production |
-| **P12** | Watchdog supervision (WdgM) | 1-2 weeks code + design | Required for AUTOSAR compliance |
-| **P13** | Freshness/delay validation | 1 week + clock trait | Covers 6th EN 50159 threat |
-| **P14** | Source authentication | 1 week + policy design | Covers 7th EN 50159 threat |
+| Priority | Gap                             | Effort                             | Impact                               |
+|----------|---------------------------------|------------------------------------|--------------------------------------|
+| **P7**   | MC/DC coverage                  | Depends on LLVM/Rust stabilization | Required for ASIL D                  |
+| **P8**   | Safety case (GSN)               | 2-4 weeks                          | Required for any certification claim |
+| **P9**   | HARA for safety island          | 2-4 weeks                          | Required for ASIL assignment         |
+| **P10**  | Certified toolchain (Ferrocene) | Commercial engagement              | Required for ASIL C/D production     |
+| **P11**  | ASIL-certified MCU migration    | Hardware selection + BSP port      | Required for ASIL D production       |
+| **P12**  | Watchdog supervision (WdgM)     | 1-2 weeks code + design            | Required for AUTOSAR compliance      |
+| **P13**  | Freshness/delay validation      | 1 week + clock trait               | Covers 6th EN 50159 threat           |
+| **P14**  | Source authentication           | 1 week + policy design             | Covers 7th EN 50159 threat           |
 
 ### Dependencies
 
@@ -309,12 +328,12 @@ P9 (HARA) ──→ P8 (Safety case)
 
 ## 10. ASIL Readiness Summary
 
-| Level | Technical Readiness | Process Readiness | Overall |
-|-------|--------------------|--------------------|---------|
-| **ASIL A** | Exceeds requirements | Minor gaps (traceability, safety plan) | **Ready with minor documentation** |
-| **ASIL B** | Strong (needs coverage + WCET baselines) | Moderate gaps (formal safety requirements) | **Achievable in ~1 month** |
-| **ASIL C** | Strong (needs E2E protocol + MC/DC recommended) | Significant gaps (HARA, safety case, TCL) | **Achievable in ~3-6 months** |
-| **ASIL D** | Partial (needs certified MCU + toolchain) | Major gaps (full safety case, certified tools) | **Depends on ecosystem maturity** |
+| Level      | Technical Readiness                             | Process Readiness                              | Overall                            |
+|------------|-------------------------------------------------|------------------------------------------------|------------------------------------|
+| **ASIL A** | Exceeds requirements                            | Minor gaps (traceability, safety plan)         | **Ready with minor documentation** |
+| **ASIL B** | Strong (needs coverage + WCET baselines)        | Moderate gaps (formal safety requirements)     | **Achievable in ~1 month**         |
+| **ASIL C** | Strong (needs E2E protocol + MC/DC recommended) | Significant gaps (HARA, safety case, TCL)      | **Achievable in ~3-6 months**      |
+| **ASIL D** | Partial (needs certified MCU + toolchain)       | Major gaps (full safety case, certified tools) | **Depends on ecosystem maturity**  |
 
 nano-ros's technical position is unusually strong for an open-source embedded project — the combination of 67 unbounded proofs, 82 bounded proofs, UB detection, and `no_std` architecture is competitive with commercial safety stacks. The remaining gaps are primarily process artifacts (HARA, safety case, traceability) and ecosystem dependencies (certified Rust compiler, certified MCU).
 
@@ -331,17 +350,17 @@ The target MCU must satisfy:
 
 ### Platform Comparison
 
-| Criterion | NXP S32K344 | TI TMS570LS12x | Infineon AURIX TC375 | Renesas RH850 | NXP S32K144 |
-|-----------|-------------|----------------|---------------------|---------------|-------------|
-| **Core** | Cortex-M7 160 MHz | Cortex-R4F 180 MHz | TriCore 300 MHz | V850E3 400 MHz | Cortex-M4F 112 MHz |
-| **Safety** | **ASIL D** | **ASIL D / SIL 3** | **ASIL D** | **ASIL D** | ASIL B |
-| **Lockstep** | Yes (configurable) | Yes (always-on) | Yes (1 of 3 cores) | Yes | No |
-| **Rust target** | `thumbv7em` (stable) | `armebv7r` (nightly, BE) | None (proprietary) | None | `thumbv7em` (stable) |
-| **PAC on crates.io** | No (SVD available) | No | GitHub only | No | **Yes** (`s32k144-pac`) |
-| **Dev board cost** | ~$179 (MR-CANHUBK344) | ~$20-60 (LaunchPad) | ~$169 (ShieldBuddy) | ~$480 | ~$114 (EVB) |
-| **Free toolchain** | Yes (GCC ARM) | Yes (GCC ARM) | No (HighTec commercial) | Limited | Yes (GCC ARM) |
-| **Zephyr upstream** | **Yes** (MR-CANHUBK3) | No | No | No | **Yes** (S32K148EVB) |
-| **Distance from STM32F4** | Close (M7 vs M4) | Moderate (big-endian) | Incompatible (TriCore) | Incompatible (V850) | **Nearest** (same M4F) |
+| Criterion                 | NXP S32K344           | TI TMS570LS12x           | Infineon AURIX TC375    | Renesas RH850       | NXP S32K144             |
+|---------------------------|-----------------------|--------------------------|-------------------------|---------------------|-------------------------|
+| **Core**                  | Cortex-M7 160 MHz     | Cortex-R4F 180 MHz       | TriCore 300 MHz         | V850E3 400 MHz      | Cortex-M4F 112 MHz      |
+| **Safety**                | **ASIL D**            | **ASIL D / SIL 3**       | **ASIL D**              | **ASIL D**          | ASIL B                  |
+| **Lockstep**              | Yes (configurable)    | Yes (always-on)          | Yes (1 of 3 cores)      | Yes                 | No                      |
+| **Rust target**           | `thumbv7em` (stable)  | `armebv7r` (nightly, BE) | None (proprietary)      | None                | `thumbv7em` (stable)    |
+| **PAC on crates.io**      | No (SVD available)    | No                       | GitHub only             | No                  | **Yes** (`s32k144-pac`) |
+| **Dev board cost**        | ~$179 (MR-CANHUBK344) | ~$20-60 (LaunchPad)      | ~$169 (ShieldBuddy)     | ~$480               | ~$114 (EVB)             |
+| **Free toolchain**        | Yes (GCC ARM)         | Yes (GCC ARM)            | No (HighTec commercial) | Limited             | Yes (GCC ARM)           |
+| **Zephyr upstream**       | **Yes** (MR-CANHUBK3) | No                       | No                      | No                  | **Yes** (S32K148EVB)    |
+| **Distance from STM32F4** | Close (M7 vs M4)      | Moderate (big-endian)    | Incompatible (TriCore)  | Incompatible (V850) | **Nearest** (same M4F)  |
 
 ### Recommendation: NXP S32K3 (S32K344)
 
