@@ -41,6 +41,9 @@ just test-zephyr        # Zephyr E2E tests (needs west + TAP network)
 just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
 just test-c             # C API tests (needs cmake + zenohd)
 just test-docker-qemu   # QEMU networked tests in Docker (needs docker)
+just test-xrce          # XRCE-DDS integration tests (needs XRCE Agent)
+just test-xrce-ros2     # XRCE ↔ ROS 2 DDS interop (needs XRCE Agent + ROS 2 + rmw_fastrtps)
+just test-c-xrce        # C XRCE API tests (needs cmake + XRCE Agent)
 ```
 
 ## Directory Structure
@@ -61,16 +64,32 @@ packages/testing/nros-tests/  # Rust test crate
 │   ├── esp32.rs        # ESP32-C3 QEMU helpers (guard functions, flash, launch)
 │   └── fixtures/
 │       ├── mod.rs
-│       ├── binaries.rs     # Binary build helpers (cached)
-│       ├── qemu.rs         # QemuProcess fixture (RAII)
-│       ├── ros2.rs         # ROS 2 process helpers
-│       └── zenohd_fixture.rs # ZenohRouter fixture (RAII)
+│       ├── binaries.rs         # Binary build helpers (cached)
+│       ├── qemu.rs             # QemuProcess fixture (RAII)
+│       ├── ros2.rs             # ROS 2 process helpers (zenoh + DDS)
+│       ├── xrce_agent.rs       # XrceAgent / XrceSerialAgent fixtures (RAII)
+│       └── zenohd_router.rs    # ZenohRouter fixture (RAII)
 └── tests/
-    ├── emulator.rs         # QEMU Cortex-M3 tests (ARM)
-    ├── esp32_emulator.rs   # QEMU ESP32-C3 tests (RISC-V)
-    ├── nano2nano.rs        # nros ↔ nros tests
-    ├── platform.rs         # Platform detection tests
-    └── rmw_interop.rs      # ROS 2 interop tests
+    ├── actions.rs              # Action server/client tests (zenoh)
+    ├── c_api.rs                # C API tests (zenoh)
+    ├── c_xrce_api.rs           # C XRCE API tests
+    ├── custom_msg.rs           # Custom message tests (zenoh)
+    ├── emulator.rs             # QEMU Cortex-M3 tests (ARM)
+    ├── error_handling.rs       # Error handling tests
+    ├── esp32_emulator.rs       # QEMU ESP32-C3 tests (RISC-V)
+    ├── executor.rs             # Executor tests
+    ├── multi_node.rs           # Multi-node tests (zenoh)
+    ├── nano2nano.rs            # nros ↔ nros pub/sub tests (zenoh)
+    ├── params.rs               # Parameter tests (zenoh)
+    ├── platform.rs             # Platform detection tests
+    ├── qos.rs                  # QoS tests (zenoh)
+    ├── rmw.rs                  # RMW trait tests
+    ├── rmw_interop.rs          # ROS 2 zenoh interop tests
+    ├── safety_e2e.rs           # Safety E2E protocol tests
+    ├── services.rs             # Service tests (zenoh)
+    ├── xrce.rs                 # XRCE-DDS integration tests
+    ├── xrce_ros2_interop.rs    # XRCE ↔ ROS 2 DDS interop tests
+    └── zephyr.rs               # Zephyr E2E tests
 ```
 
 ## Test Suites
@@ -150,6 +169,77 @@ Tests interoperability with ROS 2 using rmw_zenoh_cpp:
 
 Tests gracefully skip when ROS 2 is not available.
 
+### xrce
+Tests XRCE-DDS backend via Micro-XRCE-DDS Agent (14 tests):
+
+**Pub/Sub Tests:**
+- Talker startup and message publishing
+- Listener startup and subscription
+- Talker → listener communication (asserted)
+- Multiple message delivery (≥3 messages)
+- Large message publishing (fragmented streams)
+
+**Service Tests:**
+- Service server startup and readiness
+- Service client startup
+- AddTwoInts request/response (3 sequential calls)
+
+**Action Tests:**
+- Action server startup
+- Action client startup
+- Fibonacci action E2E (goal → feedback → result)
+
+**Serial Transport Tests:**
+- Serial talker startup (PTY + HDLC framing)
+- Serial listener startup
+- Serial talker → listener communication (via socat PTY pair)
+
+**Requirements:** Micro-XRCE-DDS Agent (`just build-xrce-agent`), `socat` (for serial tests)
+
+```bash
+just test-xrce          # Run all XRCE tests
+just test-xrce verbose  # Verbose output
+```
+
+### xrce_ros2_interop
+Tests interoperability between nros XRCE nodes and ROS 2 DDS nodes (4 tests):
+
+```
+nros XRCE node → XRCE Agent (Fast-DDS) ←DDS multicast→ ROS 2 node (rmw_fastrtps_cpp)
+```
+
+**Tests:**
+- ROS 2 DDS detection (rmw_fastrtps_cpp availability)
+- nros XRCE talker → ROS 2 DDS listener (pub/sub)
+- ROS 2 DDS publisher → nros XRCE listener (pub/sub)
+- nros XRCE service server + ROS 2 DDS service client (AddTwoInts)
+
+Tests are diagnostic/informational — they report interop status but do not hard-fail,
+because DDS interop between the XRCE Agent's bundled Fast-DDS and the system's ROS 2
+Fast-DDS can have version-dependent issues.
+
+**Requirements:** Micro-XRCE-DDS Agent, ROS 2 Humble, `rmw_fastrtps_cpp`, `example_interfaces`
+
+```bash
+just test-xrce-ros2          # Run XRCE ↔ ROS 2 interop tests
+just test-xrce-ros2 verbose  # Verbose output
+```
+
+### c_xrce_api
+Tests C API with XRCE-DDS backend using CMake-built examples (5 tests):
+- C XRCE talker build verification
+- C XRCE listener build verification
+- C XRCE talker startup
+- C XRCE listener startup
+- C XRCE talker → listener pub/sub communication
+
+**Requirements:** `cmake`, Micro-XRCE-DDS Agent
+
+```bash
+just test-c-xrce          # Run C XRCE tests
+just test-c-xrce verbose  # Verbose output
+```
+
 ### zephyr (shell-based)
 Tests Zephyr native_sim integration:
 - Zephyr talker → native subscriber
@@ -194,6 +284,24 @@ just test-c verbose     # Verbose output
 sudo apt install ros-humble-rmw-zenoh-cpp
 ```
 
+### XRCE-DDS Tests
+- Micro-XRCE-DDS Agent (`just build-xrce-agent`)
+- `socat` (for serial transport tests)
+
+```bash
+# Build XRCE Agent (one-time)
+just build-xrce-agent
+
+# Install socat (for serial tests)
+sudo apt install socat
+```
+
+### XRCE ↔ ROS 2 DDS Interop Tests
+- All XRCE-DDS requirements above
+- ROS 2 Humble (or later)
+- `rmw_fastrtps_cpp` (default in Humble)
+- `example_interfaces` package
+
 ### QEMU Tests
 - `qemu-system-arm`
 - ARM embedded toolchain
@@ -226,14 +334,25 @@ fn test_my_feature(zenohd_unique: ZenohRouter) {
 |---------|-------------|
 | `zenohd_unique` | Starts zenohd on unique port, auto-cleanup |
 | `ZenohRouter::start(port)` | Starts zenohd on fixed port, auto-cleanup |
+| `XrceAgent::start_unique()` | Starts XRCE Agent on ephemeral UDP port, auto-cleanup |
+| `XrceSerialAgent::start()` | Starts XRCE Agent in serial mode (PTY pair via socat), auto-cleanup |
 | `build_native_talker()` | Builds and caches native-rs-talker binary |
 | `build_native_listener()` | Builds and caches native-rs-listener binary |
 | `build_esp32_qemu_talker()` | Builds and caches ESP32 QEMU talker (nightly) |
 | `build_esp32_qemu_listener()` | Builds and caches ESP32 QEMU listener (nightly) |
+| `xrce_talker_binary` | Builds and caches XRCE talker binary |
+| `xrce_listener_binary` | Builds and caches XRCE listener binary |
+| `xrce_service_server_binary` | Builds and caches XRCE service server binary |
+| `xrce_service_client_binary` | Builds and caches XRCE service client binary |
+| `xrce_action_server_binary` | Builds and caches XRCE action server binary |
+| `xrce_action_client_binary` | Builds and caches XRCE action client binary |
 | `QemuProcess::run()` | Runs QEMU ARM with semihosting, auto-cleanup |
 | `start_esp32_qemu()` | Starts QEMU ESP32-C3 instance, auto-cleanup |
-| `Ros2Process::topic_echo()` | Runs ros2 topic echo, auto-cleanup |
-| `Ros2Process::topic_pub()` | Runs ros2 topic pub, auto-cleanup |
+| `Ros2Process::topic_echo()` | Runs ros2 topic echo (rmw_zenoh_cpp), auto-cleanup |
+| `Ros2Process::topic_pub()` | Runs ros2 topic pub (rmw_zenoh_cpp), auto-cleanup |
+| `Ros2DdsProcess::topic_echo()` | Runs ros2 topic echo (rmw_fastrtps_cpp), auto-cleanup |
+| `Ros2DdsProcess::topic_pub()` | Runs ros2 topic pub (rmw_fastrtps_cpp), auto-cleanup |
+| `Ros2DdsProcess::service_call()` | Runs ros2 service call (rmw_fastrtps_cpp), auto-cleanup |
 
 ### QEMU Networked Test Practices
 
@@ -351,12 +470,15 @@ ros2-interop-tests:
 | QEMU ARM tests | `just test-qemu` | qemu-system-arm |
 | QEMU ESP32 tests | `just test-qemu-esp32` | qemu-system-riscv32 + espflash + TAP |
 | Integration tests | `just test-integration` | zenohd |
+| XRCE-DDS tests | `just test-xrce` | XRCE Agent + socat |
+| XRCE ↔ ROS 2 interop | `just test-xrce-ros2` | XRCE Agent + ROS 2 + rmw_fastrtps |
 | Zephyr tests | `just test-zephyr` | west + TAP |
-| ROS 2 interop | `just test-ros2` | ROS 2 + rmw_zenoh |
-| C API tests | `just test-c` | cmake + zenohd |
+| ROS 2 zenoh interop | `just test-ros2` | ROS 2 + rmw_zenoh |
+| C API tests (zenoh) | `just test-c` | cmake + zenohd |
+| C API tests (XRCE) | `just test-c-xrce` | cmake + XRCE Agent |
 | Docker QEMU | `just test-docker-qemu` | docker |
 
-Tests that require ROS 2 will gracefully skip if prerequisites are not met.
+Tests that require ROS 2 or XRCE Agent will gracefully skip if prerequisites are not met.
 
 ## Troubleshooting
 
@@ -367,6 +489,12 @@ Tests that require ROS 2 will gracefully skip if prerequisites are not met.
 ### ROS 2 tests skip
 - Source ROS 2: `source /opt/ros/humble/setup.bash`
 - Verify rmw_zenoh: `ros2 pkg list | grep rmw_zenoh`
+
+### XRCE tests skip
+- Build XRCE Agent: `just build-xrce-agent`
+- Check Agent binary: `ls build/xrce-agent/MicroXRCEAgent`
+- Check socat installed: `socat -V` (needed for serial transport tests)
+- Kill stale agents: `pkill -f MicroXRCEAgent`
 
 ### QEMU ARM tests fail
 - Check QEMU installed: `qemu-system-arm --version`
