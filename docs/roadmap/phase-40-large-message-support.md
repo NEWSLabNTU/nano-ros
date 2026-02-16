@@ -1,6 +1,6 @@
 # Phase 40 — Large Message Support
 
-## Status: In Progress (40.1 + 40.2 complete)
+## Status: In Progress (40.1 + 40.2 + 40.3 complete)
 
 ## Background
 
@@ -86,9 +86,13 @@ XRCE Agent → UDP transport (512-byte MTU)
 
 ### Fragmentation
 
-`uxr_prepare_output_stream_fragmented()` exists in the Micro-XRCE-DDS API but
+~~`uxr_prepare_output_stream_fragmented()` exists in the Micro-XRCE-DDS API but
 is **not used** by nano-ros. All publishes use the non-fragmented path, limiting
-effective payload to < MTU minus XRCE headers (~450-480 bytes).
+effective payload to < MTU minus XRCE headers (~450-480 bytes).~~ **Fixed in
+Phase 40.3**: `XrcePublisher::publish_raw()` now tries the non-fragmented fast
+path first (`uxr_buffer_topic`), then falls back to
+`uxr_prepare_output_stream_fragmented()` with a flush callback that flushes and
+runs the session. This enables messages larger than a single stream slot.
 
 ### Service/client overflow
 
@@ -102,13 +106,14 @@ set, and the application never learns a request was lost.
 |-----------------------|--------------------|-------------------------|
 | Per-entity buffer     | 1024 B             | 1024 B                  |
 | Transport limit       | 64 KB (posix) / 2 KB (embedded) | 4 KB (posix) / 512 B (embedded) |
-| Fragmentation used    | Yes (built-in)     | No (API exists, unused) |
+| Fragmentation used    | Yes (built-in)     | Yes (fast path + fragmented fallback) |
 | Copies per receive    | 3                  | 1                       |
 | Sub overflow signal   | Yes (flag → error) | Yes (flag → error)      |
 | Svc overflow signal   | Yes (flag → error) | Yes (flag → error)      |
-| Practical max message | ~1024 B¹           | ~3.5-4 KB (posix) / ~450-480 B (embedded) |
+| Practical max message | ~1024 B¹           | ~16 KB (posix)² / ~2 KB (embedded)² |
 
 ¹ Still limited by per-entity shim buffer (1024 B), not by transport layer.
+² With fragmented streams (40.3), limited by reliable stream buffer (4 × MTU).
 
 ## Issues
 
@@ -123,7 +128,7 @@ set, and the application never learns a request was lost.
 | I7  | `Z_FEATURE_LOCAL_SUBSCRIBER` disabled (no intra-process shortcut) | Zenoh    | Low      | Open        |
 | I8  | Embedded defrag limit too small (2 KB)                            | Zenoh    | Medium   | Configurable (40.2) |
 | I9  | 512-byte XRCE transport MTU                                       | XRCE     | Critical | Configurable, 4096 posix (40.2) |
-| I10 | XRCE fragmented streams not used                                  | XRCE     | High     | Open        |
+| I10 | XRCE fragmented streams not used                                  | XRCE     | High     | Fixed (40.3) |
 
 ¹ The XRCE node API (`XrceNodePublisher::publish()`) already requires a
 caller-supplied buffer, so I2 does not apply to XRCE.
@@ -158,9 +163,9 @@ RMW backend — defaults are scoped within each backend's build configuration.
 Enable large message transport through the XRCE Agent using the existing
 Micro-XRCE-DDS fragmentation API.
 
-- [ ] Implement `uxr_prepare_output_stream_fragmented()` support in publish path (I10)
-- [ ] Add flush callback for XRCE stream management (I10)
-- [ ] Test large message send/receive through XRCE Agent (I10)
+- [x] Implement `uxr_prepare_output_stream_fragmented()` support in publish path (I10)
+- [x] Add flush callback for XRCE stream management (I10)
+- [x] Test large message send/receive through XRCE Agent (I10)
 
 ## Phase 40.4 — Zenoh Receive Path Optimization
 

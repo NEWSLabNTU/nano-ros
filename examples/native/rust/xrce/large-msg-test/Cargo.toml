@@ -1,0 +1,14 @@
+[package]
+name = "native-rs-xrce-large-msg-test"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+
+[[bin]]
+name = "xrce-large-msg-test"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-xrce", "xrce-udp", "platform-posix", "ros-humble"] }
+std_msgs = { version = "*", default-features = false }

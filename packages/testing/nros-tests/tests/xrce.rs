@@ -8,9 +8,9 @@
 
 use nros_tests::fixtures::{
     ManagedProcess, XrceAgent, XrceSerialAgent, require_socat, require_xrce_agent,
-    xrce_action_client_binary, xrce_action_server_binary, xrce_listener_binary,
-    xrce_serial_listener_binary, xrce_serial_talker_binary, xrce_service_client_binary,
-    xrce_service_server_binary, xrce_talker_binary,
+    xrce_action_client_binary, xrce_action_server_binary, xrce_large_msg_test_binary,
+    xrce_listener_binary, xrce_serial_listener_binary, xrce_serial_talker_binary,
+    xrce_service_client_binary, xrce_service_server_binary, xrce_talker_binary,
 };
 use rstest::rstest;
 use std::path::PathBuf;
@@ -461,6 +461,46 @@ fn test_xrce_action_fibonacci(
         client_output.contains("Result:"),
         "Client should have received result.\nClient output:\n{}",
         client_output,
+    );
+
+    drop(agent);
+}
+
+// =============================================================================
+// XRCE Large Message / Fragmented Stream Tests
+// =============================================================================
+
+/// Tests that publish_raw succeeds for messages larger than a single stream
+/// slot, exercising the fragmented output stream path (Phase 40.3).
+#[rstest]
+fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_xrce_agent() {
+        return;
+    }
+
+    let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
+    let addr = agent.addr();
+
+    let mut cmd = Command::new(&xrce_large_msg_test_binary);
+    cmd.env("XRCE_AGENT_ADDR", &addr);
+    let mut test_proc = ManagedProcess::spawn_command(cmd, "xrce-large-msg-test")
+        .expect("Failed to start large-msg-test");
+
+    // Wait for the test to complete (prints "ALL PASSED" or "SOME FAILED")
+    let output = test_proc
+        .wait_for_output_pattern("Results:", Duration::from_secs(30))
+        .unwrap_or_default();
+
+    test_proc.kill();
+
+    eprintln!("Large msg test output:\n{}", output);
+
+    assert!(
+        output.contains("ALL PASSED"),
+        "Large message publish test failed.\nOutput:\n{}",
+        output,
     );
 
     drop(agent);

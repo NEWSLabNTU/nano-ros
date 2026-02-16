@@ -119,6 +119,25 @@ const fn zeroed_sample_identity() -> SampleIdentity {
 }
 
 // ============================================================================
+// Fragmented Stream Flush Callback
+// ============================================================================
+
+/// Flush callback for `uxr_prepare_output_stream_fragmented`.
+///
+/// Called by the XRCE library when the output stream buffer is full during
+/// fragmented writes. Flushes pending fragments to the transport and runs
+/// the session briefly to process acknowledgements.
+unsafe extern "C" fn flush_output_streams(
+    session: *mut xrce_sys::uxrSession,
+    _args: *mut core::ffi::c_void,
+) -> bool {
+    unsafe {
+        xrce_sys::uxr_flash_output_streams(session);
+        xrce_sys::uxr_run_session_time(session, 100)
+    }
+}
+
+// ============================================================================
 // Subscriber Slots
 // ============================================================================
 
@@ -953,6 +972,7 @@ impl Publisher for XrcePublisher {
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
         unsafe {
+            // Try the non-fragmented fast path first.
             let req = xrce_sys::uxr_buffer_topic(
                 &raw mut SESSION,
                 OUTPUT_RELIABLE,
@@ -960,9 +980,41 @@ impl Publisher for XrcePublisher {
                 data.as_ptr() as *mut u8,
                 data.len(),
             );
+            if req != xrce_sys::UXR_INVALID_REQUEST_ID {
+                return Ok(());
+            }
+
+            // Fast path failed (message too large for single stream slot).
+            // Fall back to fragmented output stream.
+            let mut ub = core::mem::zeroed::<xrce_sys::ucdrBuffer>();
+            let req = xrce_sys::uxr_prepare_output_stream_fragmented(
+                &raw mut SESSION,
+                OUTPUT_RELIABLE,
+                self.datawriter_id,
+                &raw mut ub,
+                data.len(),
+                Some(flush_output_streams),
+                &raw mut SESSION as *mut core::ffi::c_void,
+            );
             if req == xrce_sys::UXR_INVALID_REQUEST_ID {
                 return Err(TransportError::PublishFailed);
             }
+
+            // Serialize the payload into the fragmented stream. The ucdrBuffer's
+            // on_full_buffer callback handles flushing and advancing to the next
+            // fragment automatically.
+            let ok = xrce_sys::ucdr_serialize_array_uint8_t(
+                &raw mut ub,
+                data.as_ptr(),
+                data.len(),
+            );
+            if !ok {
+                return Err(TransportError::PublishFailed);
+            }
+
+            // Flush the final fragment.
+            xrce_sys::uxr_flash_output_streams(&raw mut SESSION);
+
             Ok(())
         }
     }

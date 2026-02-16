@@ -269,6 +269,15 @@ pub type uxrOnReplyFunc = Option<
     ),
 >;
 
+/// Flush callback for fragmented output streams (session.h).
+///
+/// Called by `uxr_prepare_output_stream_fragmented` when the output stream
+/// buffer is full and needs to be flushed to the transport. The callback
+/// should call `uxr_flash_output_streams` or `uxr_run_session_time` to
+/// push pending data, then return `true` on success.
+pub type uxrOnBuffersFull =
+    Option<unsafe extern "C" fn(session: *mut uxrSession, args: *mut c_void) -> bool>;
+
 /// Custom transport: open callback.
 pub type open_custom_func =
     Option<unsafe extern "C" fn(transport: *mut uxrCustomTransport) -> bool>;
@@ -555,6 +564,16 @@ unsafe extern "C" {
         len: u32,
     ) -> u16;
 
+    pub fn uxr_prepare_output_stream_fragmented(
+        session: *mut uxrSession,
+        stream_id: uxrStreamId,
+        datawriter_id: uxrObjectId,
+        ub: *mut ucdrBuffer,
+        data_size: usize,
+        flush_callback: uxrOnBuffersFull,
+        flush_callback_args: *mut c_void,
+    ) -> u16;
+
     pub fn uxr_buffer_request(
         session: *mut uxrSession,
         stream_id: uxrStreamId,
@@ -571,6 +590,11 @@ unsafe extern "C" {
         buffer: *mut u8,
         len: usize,
     ) -> u16;
+
+    // --- Micro-CDR serialization (microcdr.h) ---
+
+    pub fn ucdr_serialize_array_uint8_t(ub: *mut ucdrBuffer, array: *const u8, size: usize)
+    -> bool;
 
     // --- Read access (read_access.h) ---
 

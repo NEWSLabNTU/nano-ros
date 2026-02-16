@@ -80,6 +80,7 @@ exclude = [
     "examples/native/rust/xrce/action-client",
     "examples/native/rust/xrce/serial-talker",
     "examples/native/rust/xrce/serial-listener",
+    "examples/native/rust/xrce/large-msg-test",
     # zpico platform crates (embedded-only, require cross-compilation)
     "packages/zpico/zpico-platform-mps2-an385",
     "packages/zpico/zpico-platform-esp32",

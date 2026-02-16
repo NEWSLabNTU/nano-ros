@@ -67,6 +67,9 @@ static XRCE_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the xrce-action-client binary
 static XRCE_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the xrce-large-msg-test binary
+static XRCE_LARGE_MSG_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the xrce-serial-talker binary
 static XRCE_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -613,6 +616,28 @@ pub fn xrce_serial_talker_binary() -> PathBuf {
 pub fn xrce_serial_listener_binary() -> PathBuf {
     build_xrce_serial_listener()
         .expect("Failed to build xrce-serial-listener")
+        .to_path_buf()
+}
+
+/// Build the xrce-large-msg-test example binary (cached).
+pub fn build_xrce_large_msg_test() -> TestResult<&'static Path> {
+    XRCE_LARGE_MSG_TEST_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/xrce/large-msg-test",
+                "xrce-large-msg-test",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the xrce-large-msg-test binary path.
+#[rstest::fixture]
+pub fn xrce_large_msg_test_binary() -> PathBuf {
+    build_xrce_large_msg_test()
+        .expect("Failed to build xrce-large-msg-test")
         .to_path_buf()
 }
 
