@@ -43,16 +43,19 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Let it run briefly
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for talker to start publishing (ensures parameters are loaded)
+    let early_output = proc
+        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .unwrap_or_default();
 
     // Kill the process before collecting output
     proc.kill();
 
-    // Capture both stdout and stderr (env_logger writes to stderr)
-    let output = proc
+    // Capture both stdout and stderr — combine with early output
+    let remaining = proc
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let output = format!("{}{}", early_output, remaining);
 
     println!("=== Talker parameter output ===");
     println!("{}", output);
@@ -90,15 +93,19 @@ fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for talker to start publishing (ensures parameters are loaded)
+    let early_output = proc
+        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .unwrap_or_default();
 
     // Kill the process before collecting output
     proc.kill();
 
-    // Capture both stdout and stderr
-    let output = proc
+    // Capture both stdout and stderr — combine with early output
+    let remaining = proc
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let output = format!("{}{}", early_output, remaining);
 
     println!("=== Talker debug output ===");
     println!("{}", output);
@@ -139,7 +146,7 @@ fn start_talker_with_params(locator: &str) -> ManagedProcess {
     let _ = talker.wait_for_output_pattern("Publishing", Duration::from_secs(5));
 
     // Extra delay for parameter service discovery propagation through zenohd
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     talker
 }
@@ -154,7 +161,7 @@ fn require_node_discoverable(locator: &str) -> bool {
             return true;
         }
         if attempt < 3 {
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(Duration::from_secs(1));
         }
     }
     eprintln!(
@@ -192,7 +199,7 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
         }
 
         if attempt < 3 {
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(Duration::from_secs(1));
         }
     }
 
@@ -232,7 +239,7 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
         }
 
         if attempt < 3 {
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(Duration::from_secs(1));
         }
     }
 
@@ -319,7 +326,7 @@ fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
         }
 
         if attempt < 3 {
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(Duration::from_secs(1));
         }
     }
 
@@ -353,15 +360,19 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start");
 
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for talker to start publishing
+    let early_output = proc
+        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .unwrap_or_default();
 
     // Kill the process before collecting output
     proc.kill();
 
-    // Capture both stdout and stderr
-    let output = proc
+    // Capture both stdout and stderr — combine with early output
+    let remaining = proc
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let output = format!("{}{}", early_output, remaining);
 
     // The counter is used as i32, so it should work with the i64 parameter
     assert!(

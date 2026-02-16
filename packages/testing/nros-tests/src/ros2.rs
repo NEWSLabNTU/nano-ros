@@ -107,7 +107,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
+            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic echo {topic}"))
@@ -130,7 +130,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
+            "{env_setup} && timeout 15 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
 
         Self::spawn_bash(&cmd, format!("ros2 action send_goal {action_name}"))
@@ -175,7 +175,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability best_effort"
+            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability best_effort"
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic pub {topic}"))
@@ -184,6 +184,8 @@ impl Ros2Process {
     /// Wait for output and return it
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
         use std::io::Read;
+        #[cfg(unix)]
+        use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
         let mut output = String::new();
@@ -193,6 +195,17 @@ impl Ros2Process {
             .stdout
             .take()
             .ok_or_else(|| TestError::ProcessFailed(format!("No stdout for {}", self.name)))?;
+
+        // Set non-blocking mode on stdout so read() doesn't block forever
+        #[cfg(unix)]
+        let fd = {
+            let fd = stdout.as_raw_fd();
+            unsafe {
+                let flags = libc::fcntl(fd, libc::F_GETFL);
+                libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            }
+            fd
+        };
 
         let mut buffer = [0u8; 4096];
         loop {
@@ -210,12 +223,22 @@ impl Ros2Process {
                     break;
                 }
                 Ok(None) => match stdout.read(&mut buffer) {
-                    Ok(0) => std::thread::sleep(Duration::from_millis(50)),
+                    Ok(0) => {
+                        Self::wait_for_data(
+                            #[cfg(unix)]
+                            fd,
+                            timeout.saturating_sub(start.elapsed()),
+                        );
+                    }
                     Ok(n) => {
                         output.push_str(&String::from_utf8_lossy(&buffer[..n]));
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(50));
+                        Self::wait_for_data(
+                            #[cfg(unix)]
+                            fd,
+                            timeout.saturating_sub(start.elapsed()),
+                        );
                     }
                     Err(_) => break,
                 },
@@ -224,6 +247,25 @@ impl Ros2Process {
         }
 
         Ok(output)
+    }
+
+    /// Wait for data on a file descriptor (or sleep on non-Unix).
+    #[cfg(unix)]
+    fn wait_for_data(fd: std::os::unix::io::RawFd, remaining: Duration) {
+        let ms = remaining.as_millis().min(500) as i32;
+        let mut fds = [libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        }];
+        unsafe {
+            libc::poll(fds.as_mut_ptr(), 1, ms);
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn wait_for_data(remaining: Duration) {
+        std::thread::sleep(remaining.min(Duration::from_millis(50)));
     }
 
     /// Kill the process
@@ -409,7 +451,7 @@ impl Ros2Process {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 service call {service_name} {service_type} \"{request}\""
+            "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
         );
 
         Self::spawn_bash(&cmd, format!("ros2 service call {service_name}"))
@@ -471,7 +513,7 @@ rclpy.spin(node)
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
+            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic echo {topic} ({reliability})"))
@@ -498,7 +540,7 @@ rclpy.spin(node)
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
+            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
         );
 
         Self::spawn_bash(&cmd, format!("ros2 topic pub {topic} ({reliability})"))
@@ -585,7 +627,7 @@ impl Ros2DdsProcess {
     pub fn topic_echo(topic: &str, msg_type: &str, distro: &str) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds(distro);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
+            "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-dds topic echo {topic}"))
     }
@@ -607,7 +649,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds(distro);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
+            "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability reliable"
         );
         Self::spawn_bash(&cmd, format!("ros2-dds topic pub {topic}"))
     }
@@ -627,7 +669,7 @@ impl Ros2DdsProcess {
     ) -> TestResult<Self> {
         let env_setup = ros2_env_setup_dds(distro);
         let cmd = format!(
-            "{env_setup} && timeout 30 ros2 service call {service_name} {service_type} \"{request}\""
+            "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
         );
         Self::spawn_bash(&cmd, format!("ros2-dds service call {service_name}"))
     }
@@ -635,6 +677,8 @@ impl Ros2DdsProcess {
     /// Wait for output and return it
     pub fn wait_for_output(&mut self, timeout: Duration) -> TestResult<String> {
         use std::io::Read;
+        #[cfg(unix)]
+        use std::os::unix::io::AsRawFd;
 
         let start = std::time::Instant::now();
         let mut output = String::new();
@@ -644,6 +688,17 @@ impl Ros2DdsProcess {
             .stdout
             .take()
             .ok_or_else(|| TestError::ProcessFailed(format!("No stdout for {}", self.name)))?;
+
+        // Set non-blocking mode on stdout so read() doesn't block forever
+        #[cfg(unix)]
+        let fd = {
+            let fd = stdout.as_raw_fd();
+            unsafe {
+                let flags = libc::fcntl(fd, libc::F_GETFL);
+                libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            }
+            fd
+        };
 
         let mut buffer = [0u8; 4096];
         loop {
@@ -661,12 +716,22 @@ impl Ros2DdsProcess {
                     break;
                 }
                 Ok(None) => match stdout.read(&mut buffer) {
-                    Ok(0) => std::thread::sleep(Duration::from_millis(50)),
+                    Ok(0) => {
+                        Self::wait_for_data(
+                            #[cfg(unix)]
+                            fd,
+                            timeout.saturating_sub(start.elapsed()),
+                        );
+                    }
                     Ok(n) => {
                         output.push_str(&String::from_utf8_lossy(&buffer[..n]));
                     }
                     Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        std::thread::sleep(Duration::from_millis(50));
+                        Self::wait_for_data(
+                            #[cfg(unix)]
+                            fd,
+                            timeout.saturating_sub(start.elapsed()),
+                        );
                     }
                     Err(_) => break,
                 },
@@ -675,6 +740,25 @@ impl Ros2DdsProcess {
         }
 
         Ok(output)
+    }
+
+    /// Wait for data on a file descriptor (or sleep on non-Unix).
+    #[cfg(unix)]
+    fn wait_for_data(fd: std::os::unix::io::RawFd, remaining: Duration) {
+        let ms = remaining.as_millis().min(500) as i32;
+        let mut fds = [libc::pollfd {
+            fd,
+            events: libc::POLLIN,
+            revents: 0,
+        }];
+        unsafe {
+            libc::poll(fds.as_mut_ptr(), 1, ms);
+        }
+    }
+
+    #[cfg(not(unix))]
+    fn wait_for_data(remaining: Duration) {
+        std::thread::sleep(remaining.min(Duration::from_millis(50)));
     }
 
     /// Kill the process

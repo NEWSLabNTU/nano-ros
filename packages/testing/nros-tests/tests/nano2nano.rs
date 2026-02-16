@@ -232,8 +232,8 @@ fn test_sequence_number_increment(
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    // Wait for several messages to be received
-    std::thread::sleep(Duration::from_secs(6));
+    // Wait for several messages to be received (need at least 2 for increment/consistency check)
+    std::thread::sleep(Duration::from_secs(3));
 
     // Kill processes and collect output
     talker.kill();
@@ -314,8 +314,8 @@ fn test_gid_consistency(
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    // Wait for several messages to be received
-    std::thread::sleep(Duration::from_secs(6));
+    // Wait for several messages to be received (need at least 2 for increment/consistency check)
+    std::thread::sleep(Duration::from_secs(3));
 
     // Kill processes and collect output
     talker.kill();

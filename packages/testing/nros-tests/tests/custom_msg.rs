@@ -50,13 +50,14 @@ fn test_custom_msg_serialization() {
     let cmd = Command::new(&binary);
     let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
 
-    // Wait for it to complete
-    std::thread::sleep(Duration::from_secs(5));
-
-    // Get output
+    // Wait for completion marker (no network, finishes quickly)
     let output = proc
-        .wait_for_output(Duration::from_secs(5))
-        .expect("Failed to get output");
+        .wait_for_output_pattern("All serialization tests passed", Duration::from_secs(5))
+        .unwrap_or_else(|_| {
+            proc.kill();
+            proc.wait_for_all_output(Duration::from_secs(1))
+                .unwrap_or_default()
+        });
 
     println!("=== Custom message output ===");
     println!("{}", output);
@@ -106,12 +107,14 @@ fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
 
-    // Wait for it to complete (it runs and exits)
-    std::thread::sleep(Duration::from_secs(10));
-
+    // Wait for completion marker (runs serialization + pub/sub then exits)
     let output = proc
-        .wait_for_output(Duration::from_secs(5))
-        .expect("Failed to get output");
+        .wait_for_output_pattern("completed successfully", Duration::from_secs(10))
+        .unwrap_or_else(|_| {
+            proc.kill();
+            proc.wait_for_all_output(Duration::from_secs(1))
+                .unwrap_or_default()
+        });
 
     println!("=== Custom message pub/sub output ===");
     println!("{}", output);
@@ -159,10 +162,14 @@ fn test_sensor_reading_structure() {
     let mut proc = ManagedProcess::spawn_command(Command::new(&binary), "custom_msg")
         .expect("Failed to start");
 
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for completion (no network, finishes quickly)
     let output = proc
-        .wait_for_output(Duration::from_secs(5))
-        .expect("Failed to get output");
+        .wait_for_output_pattern("All serialization tests passed", Duration::from_secs(5))
+        .unwrap_or_else(|_| {
+            proc.kill();
+            proc.wait_for_all_output(Duration::from_secs(1))
+                .unwrap_or_default()
+        });
 
     // SensorReading should serialize to expected size
     // i32 + f32 + f32 + u64 = 4 + 4 + 4 + 8 = 20 bytes + 4 byte CDR header = 24 bytes
@@ -187,10 +194,14 @@ fn test_status_message_with_string() {
     let mut proc = ManagedProcess::spawn_command(Command::new(&binary), "custom_msg")
         .expect("Failed to start");
 
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for completion (no network, finishes quickly)
     let output = proc
-        .wait_for_output(Duration::from_secs(5))
-        .expect("Failed to get output");
+        .wait_for_output_pattern("All serialization tests passed", Duration::from_secs(5))
+        .unwrap_or_else(|_| {
+            proc.kill();
+            proc.wait_for_all_output(Duration::from_secs(1))
+                .unwrap_or_default()
+        });
 
     // Status has a string field which requires special handling
     assert!(
@@ -218,11 +229,14 @@ fn test_custom_msg_no_router() {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "custom_msg").expect("Failed to start");
 
-    // It should timeout quickly when router is unavailable
-    std::thread::sleep(Duration::from_secs(10));
+    // Wait for serialization tests to pass (those don't need network)
     let output = proc
-        .wait_for_output(Duration::from_secs(5))
-        .expect("Failed to get output");
+        .wait_for_output_pattern("All serialization tests passed", Duration::from_secs(10))
+        .unwrap_or_else(|_| {
+            proc.kill();
+            proc.wait_for_all_output(Duration::from_secs(1))
+                .unwrap_or_default()
+        });
 
     println!("=== Output without router ===");
     println!("{}", output);

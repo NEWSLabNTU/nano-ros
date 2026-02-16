@@ -50,7 +50,7 @@ fn test_connection_timeout_talker() {
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
     // Wait a bit and then kill - we're testing that it doesn't hang
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(2));
 
     proc.kill();
 
@@ -113,7 +113,7 @@ fn test_connection_timeout_listener() {
         ManagedProcess::spawn_command(cmd, "listener").expect("Failed to start listener");
 
     // Wait a bit and then kill
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(2));
 
     proc.kill();
 
@@ -212,7 +212,10 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for listener readiness
+    let ready_output = listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .unwrap_or_default();
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -224,21 +227,24 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for first message to confirm communication works
+    let recv_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .unwrap_or_default();
 
     // Kill router mid-communication
     drop(zenohd_unique);
 
-    // Let them run for 2 more seconds without router
-    std::thread::sleep(Duration::from_secs(2));
+    // Let them run for 1 more second without router
+    std::thread::sleep(Duration::from_secs(1));
 
     talker.kill();
     listener.kill();
 
-    let listener_output = listener
+    let remaining = listener
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let listener_output = format!("{}{}{}", ready_output, recv_output, remaining);
 
     println!("=== Listener output (router disconnect) ===");
     println!("{}", listener_output);
@@ -293,7 +299,10 @@ fn test_router_reconnect() {
     let mut listener1 =
         ManagedProcess::spawn_command(listener_cmd, "listener1").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for listener readiness
+    let ready1 = listener1
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .unwrap_or_default();
 
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
@@ -304,17 +313,20 @@ fn test_router_reconnect() {
     let mut talker1 =
         ManagedProcess::spawn_command(talker_cmd, "talker1").expect("Failed to start talker");
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for first message to confirm communication works
+    let recv1 = listener1
+        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .unwrap_or_default();
 
     // Kill everything
     talker1.kill();
     listener1.kill();
     drop(router1);
 
-    let listener1_output = listener1
+    let remaining1 = listener1
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let listener1_output = format!("{}{}{}", ready1, recv1, remaining1);
 
     let received1 = count_pattern(&listener1_output, "Received:");
     println!("Phase 1: Received {} messages", received1);
@@ -322,8 +334,6 @@ fn test_router_reconnect() {
     assert!(received1 >= 1, "Phase 1 should have received messages");
 
     // Phase 2: Restart router and verify communication resumes
-    std::thread::sleep(Duration::from_secs(1));
-
     let _router2 = ZenohRouter::start(port).expect("Failed to restart router");
 
     let mut listener2_cmd = Command::new(&listener_binary);
@@ -335,7 +345,10 @@ fn test_router_reconnect() {
     let mut listener2 = ManagedProcess::spawn_command(listener2_cmd, "listener2")
         .expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for listener readiness
+    let ready2 = listener2
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .unwrap_or_default();
 
     let mut talker2_cmd = Command::new(&talker_binary);
     talker2_cmd
@@ -346,15 +359,18 @@ fn test_router_reconnect() {
     let mut talker2 =
         ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker");
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for first message to confirm communication resumes
+    let recv2 = listener2
+        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .unwrap_or_default();
 
     talker2.kill();
     listener2.kill();
 
-    let listener2_output = listener2
+    let remaining2 = listener2
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let listener2_output = format!("{}{}{}", ready2, recv2, remaining2);
 
     let received2 = count_pattern(&listener2_output, "Received:");
     println!("Phase 2: Received {} messages", received2);
@@ -467,7 +483,10 @@ fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for listener readiness
+    let ready_output = listener
+        .wait_for_output_pattern("Waiting for", Duration::from_secs(5))
+        .unwrap_or_default();
 
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
@@ -478,15 +497,18 @@ fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate
-    std::thread::sleep(Duration::from_secs(5));
+    // Wait for first message to confirm communication works with debug logging
+    let recv_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(5))
+        .unwrap_or_default();
 
     talker.kill();
     listener.kill();
 
-    let listener_output = listener
+    let remaining = listener
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let listener_output = format!("{}{}{}", ready_output, recv_output, remaining);
 
     println!("=== Debug logging output ===");
     println!("Output length: {} chars", listener_output.len());

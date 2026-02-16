@@ -50,7 +50,7 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -62,8 +62,8 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Let them communicate for 3 seconds
+    std::thread::sleep(Duration::from_secs(3));
 
     talker.kill();
     listener.kill();
@@ -130,7 +130,7 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
     // Give listener time to subscribe
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -142,8 +142,8 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 7 seconds (more time for steady state)
-    std::thread::sleep(Duration::from_secs(7));
+    // Let them communicate for 3 seconds (more time for steady state)
+    std::thread::sleep(Duration::from_secs(3));
 
     talker.kill();
     listener.kill();
@@ -227,7 +227,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -239,7 +239,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(3));
 
     talker.kill();
     listener.kill();
@@ -309,7 +309,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -321,7 +321,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(4));
+    std::thread::sleep(Duration::from_secs(3));
 
     talker.kill();
     listener.kill();
@@ -381,7 +381,7 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     let mut listener2 = ManagedProcess::spawn_command(listener2_cmd, "listener2")
         .expect("Failed to start listener2");
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -393,7 +393,7 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(3));
 
     talker.kill();
     listener1.kill();
@@ -452,13 +452,17 @@ fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(2));
+    // Wait for talker to publish (ensures liveliness keyexpr is logged)
+    let early_output = proc
+        .wait_for_output_pattern("Publishing", Duration::from_secs(5))
+        .unwrap_or_default();
 
     proc.kill();
 
-    let output = proc
+    let remaining = proc
         .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
+    let output = format!("{}{}", early_output, remaining);
 
     println!("=== Talker output ===");
     println!("{}", output);

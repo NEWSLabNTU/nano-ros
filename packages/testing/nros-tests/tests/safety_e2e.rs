@@ -64,7 +64,7 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     // Allow 30s: under heavy parallel load, zenoh session establishment
     // can take several seconds (talker publishes every 1s).
     let output = listener
-        .wait_for_all_output(Duration::from_secs(30))
+        .wait_for_all_output(Duration::from_secs(10))
         .expect("Failed to collect listener output");
 
     let safety_ok_count = output.matches("crc=ok").count();
@@ -144,7 +144,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     // Standard listener should receive messages (prints "Received: data=")
     // Allow 30s for session establishment under parallel test load.
     let output = listener
-        .wait_for_all_output(Duration::from_secs(30))
+        .wait_for_all_output(Duration::from_secs(10))
         .expect("Failed to collect listener output");
 
     let received_count = output.matches("Received:").count();

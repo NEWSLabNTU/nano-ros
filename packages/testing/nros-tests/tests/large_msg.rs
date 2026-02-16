@@ -85,7 +85,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
     let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
 
     // Stabilization delay for zenoh subscription propagation
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(2));
 
     // Start talker
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -149,7 +149,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
             .expect("Failed to start listener");
 
     let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(2));
 
     // Talker sends 2048B payloads (larger than default 1024B receiver buffer)
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -206,7 +206,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
         .expect("Failed to start listener");
 
     let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(2));
 
     // Start talker at 100 Hz
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -260,7 +260,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
         .expect("Failed to start listener");
 
     let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(2));
 
     // Start talker with no delay (burst)
     let mut talker_cmd = Command::new(&zenoh_stress_test_binary);
@@ -320,7 +320,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
         .expect("Failed to start listener");
 
     let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(10));
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
@@ -425,7 +425,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
         .expect("Failed to start listener");
 
     let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(10));
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
     talker_cmd
@@ -480,7 +480,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
         .expect("Failed to start listener");
 
     let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(10));
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     let mut talker_cmd = Command::new(&xrce_stress_test_binary);
     talker_cmd

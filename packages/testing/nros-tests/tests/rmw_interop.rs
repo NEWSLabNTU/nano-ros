@@ -94,7 +94,7 @@ fn test_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
         .expect("Failed to start talker");
 
     // Let them communicate
-    std::thread::sleep(Duration::from_secs(8));
+    std::thread::sleep(Duration::from_secs(5));
 
     // Kill talker first
     talker.kill();
@@ -162,7 +162,7 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     };
 
     // Let them communicate
-    std::thread::sleep(Duration::from_secs(8));
+    std::thread::sleep(Duration::from_secs(5));
 
     // Kill ROS 2 publisher first
     ros2_publisher.kill();
@@ -309,7 +309,7 @@ fn test_nano_to_ros2_inner(locator: &str, talker_path: &Path) -> bool {
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(6));
+    std::thread::sleep(Duration::from_secs(4));
 
     talker.kill();
     let output = ros2_listener
@@ -345,7 +345,7 @@ fn test_ros2_to_nano_inner(locator: &str, listener_path: &Path) -> bool {
         Err(_) => return false,
     };
 
-    std::thread::sleep(Duration::from_secs(6));
+    std::thread::sleep(Duration::from_secs(4));
 
     ros2_publisher.kill();
     let output = listener
@@ -420,7 +420,7 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(6));
+    std::thread::sleep(Duration::from_secs(4));
 
     talker.kill();
     let output = ros2_listener
@@ -484,7 +484,7 @@ fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server
     };
 
     // Wait for action to complete (Fibonacci(5) takes ~3 seconds)
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(5));
 
     // Collect ROS 2 output
     let ros2_output = ros2_client
@@ -555,7 +555,7 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
         .expect("Failed to start action client");
 
     // Wait for action to complete
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(8));
 
     // Collect nros output
     let nano_output = client
@@ -773,7 +773,7 @@ fn test_service_nano_server_ros2_client(
 
     // Wait for service call to complete
     let ros2_output = ros2_client
-        .wait_for_output(Duration::from_secs(15))
+        .wait_for_output(Duration::from_secs(10))
         .unwrap_or_default();
 
     server.kill();
@@ -830,7 +830,7 @@ fn test_service_ros2_server_nano_client(
         .expect("Failed to start service client");
 
     // Wait for client to complete
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(5));
 
     // Collect nros output
     let nano_output = client
@@ -937,7 +937,7 @@ fn test_qos_matrix(
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    std::thread::sleep(Duration::from_secs(6));
+    std::thread::sleep(Duration::from_secs(4));
 
     talker.kill();
     let output = ros2_subscriber

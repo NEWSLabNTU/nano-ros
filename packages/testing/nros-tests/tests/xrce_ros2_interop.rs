@@ -76,7 +76,7 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
         };
 
     // Wait for DDS discovery + XRCE Agent to propagate
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start XRCE talker
     eprintln!("Starting XRCE talker...");
@@ -86,15 +86,15 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
         ManagedProcess::spawn_command(talker_cmd, "xrce-talker").expect("Failed to start talker");
 
     // Wait for talker to publish
-    let _ = talker.wait_for_output_pattern("Published:", Duration::from_secs(10));
+    let _ = talker.wait_for_output_pattern("Published:", Duration::from_secs(5));
 
     // Give ROS 2 time to receive messages via DDS
-    std::thread::sleep(Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(2));
 
     // Collect ROS 2 output
     talker.kill();
     let ros2_output = ros2_listener
-        .wait_for_output(Duration::from_secs(2))
+        .wait_for_output(Duration::from_secs(1))
         .unwrap_or_default();
 
     eprintln!("ROS 2 DDS output:\n{}", ros2_output);
@@ -142,10 +142,10 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
         .expect("Failed to start listener");
 
     // Wait for listener to be ready
-    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
 
     // Wait for DDS discovery + XRCE Agent to propagate subscription
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start ROS 2 DDS publisher
     eprintln!("Starting ROS 2 DDS topic pub...");
@@ -166,7 +166,7 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
 
     // Wait for XRCE listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received:", Duration::from_secs(15))
+        .wait_for_output_pattern("Received:", Duration::from_secs(5))
         .unwrap_or_default();
 
     ros2_publisher.kill();
@@ -220,10 +220,10 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
         .expect("Failed to start service server");
 
     // Wait for server to be ready
-    let _ = server.wait_for_output_pattern("Service server ready", Duration::from_secs(10));
+    let _ = server.wait_for_output_pattern("Service server ready", Duration::from_secs(5));
 
     // Wait for DDS discovery to propagate the service
-    std::thread::sleep(Duration::from_secs(3));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Call service from ROS 2 DDS
     eprintln!("Calling service from ROS 2 DDS...");
@@ -243,7 +243,7 @@ fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
 
     // Wait for service call to complete
     let ros2_output = ros2_client
-        .wait_for_output(Duration::from_secs(15))
+        .wait_for_output(Duration::from_secs(5))
         .unwrap_or_default();
 
     server.kill();

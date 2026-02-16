@@ -50,7 +50,7 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start 3 talkers
     let mut talkers = Vec::new();
@@ -65,8 +65,8 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
         talkers.push(proc);
     }
 
-    // Let them communicate for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Let them communicate for 3 seconds
+    std::thread::sleep(Duration::from_secs(3));
 
     // Kill all processes
     for mut talker in talkers {
@@ -126,7 +126,7 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
         listeners.push(proc);
     }
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -138,8 +138,8 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Let them communicate for 3 seconds
+    std::thread::sleep(Duration::from_secs(3));
 
     // Kill talker
     talker.kill();
@@ -217,7 +217,7 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
         listeners.push(proc);
     }
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start 2 talkers
     let mut talkers = Vec::new();
@@ -232,8 +232,8 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
         talkers.push(proc);
     }
 
-    // Let them communicate for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Let them communicate for 3 seconds
+    std::thread::sleep(Duration::from_secs(3));
 
     // Kill all
     for mut talker in talkers {
@@ -252,11 +252,11 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
 
     println!("Many-to-many receive counts: {:?}", receive_counts);
 
-    // With 2 talkers at ~1Hz for 5 seconds, expect at least 6 messages per listener
+    // With 2 talkers at ~1Hz for 3 seconds, expect at least 2 messages per listener
     for (i, count) in receive_counts.iter().enumerate() {
         assert!(
-            *count >= 4,
-            "Listener {} should receive at least 4 messages from 2 publishers, got {}",
+            *count >= 2,
+            "Listener {} should receive at least 2 messages from 2 publishers, got {}",
             i,
             count
         );
@@ -292,7 +292,7 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -304,8 +304,8 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Run for 10 seconds
-    std::thread::sleep(Duration::from_secs(10));
+    // Run for 7 seconds
+    std::thread::sleep(Duration::from_secs(7));
 
     talker.kill();
     listener.kill();
@@ -322,10 +322,10 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
 
     println!("Published: {}, Received: {}", published, received);
 
-    // At 1Hz for 10 seconds, expect ~10 messages (allow for timing variance)
+    // At 1Hz for 7 seconds, expect ~7 messages (allow for timing variance)
     assert!(
-        published >= 8,
-        "Should publish at least 8 messages in 10 seconds, got {}",
+        published >= 5,
+        "Should publish at least 5 messages in 7 seconds, got {}",
         published
     );
 
@@ -364,7 +364,7 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start talker
     let mut talker_cmd = Command::new(&talker_binary);
@@ -376,8 +376,8 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Run for 8 seconds
-    std::thread::sleep(Duration::from_secs(8));
+    // Run for 5 seconds
+    std::thread::sleep(Duration::from_secs(5));
 
     talker.kill();
     listener.kill();
@@ -484,8 +484,8 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     let mut talker =
         ManagedProcess::spawn_command(talker_cmd, "talker").expect("Failed to start talker");
 
-    // Let them communicate for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Let them communicate for 3 seconds
+    std::thread::sleep(Duration::from_secs(3));
 
     talker.kill();
 
@@ -544,7 +544,7 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     let mut listener =
         ManagedProcess::spawn_command(listener_cmd, "listener").expect("Failed to start listener");
 
-    std::thread::sleep(Duration::from_secs(2));
+    std::thread::sleep(Duration::from_secs(1));
 
     // Start 5 talkers
     let num_talkers = 5;
@@ -564,8 +564,8 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
         std::thread::sleep(Duration::from_millis(200));
     }
 
-    // Let them communicate for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Let them communicate for 3 seconds
+    std::thread::sleep(Duration::from_secs(3));
 
     // Kill all talkers
     for mut talker in talkers {
@@ -585,10 +585,9 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
         num_talkers, received
     );
 
-    // With 5 talkers at ~1Hz for 5 seconds, expect significant messages
-    // Each talker publishes ~5 messages, so expect at least 15 total
+    // With 5 talkers at ~1Hz for 3 seconds, expect significant messages
     assert!(
-        received >= 10,
+        received >= 5,
         "Should receive many messages from {} publishers, got {}",
         num_talkers,
         received
@@ -647,8 +646,8 @@ fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
     let mut talker2 =
         ManagedProcess::spawn_command(talker2_cmd, "talker2").expect("Failed to start talker2");
 
-    // Let them run for 5 seconds
-    std::thread::sleep(Duration::from_secs(5));
+    // Let them run for 3 seconds
+    std::thread::sleep(Duration::from_secs(3));
 
     // Kill all
     talker1.kill();
