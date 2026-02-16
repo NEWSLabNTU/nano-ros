@@ -229,6 +229,12 @@ just test-integration verbose   # Verbose: all test output streamed live
 - Use Write/Edit tools to create files (avoid cat + heredoc patterns)
 - The `tmp/` directory is git-ignored and can be cleaned freely
 
+### `.gitignore` Practices
+- **Per-example `.gitignore` files**: Each example that produces build artifacts should have its own `.gitignore` that ignores the exact generated directories (e.g., `/target/`, `/target-safety/`, `/generated/`)
+- **Root `.gitignore`**: Only for repo-wide patterns (e.g., `/target/` for the workspace root, editor temp files). Do not add example-specific patterns here
+- **Use leading `/`**: Always use `/target/` (not `target/`) to match only the exact directory at that level, avoiding unintended matches in subdirectories
+- **When adding a new `--target-dir`** in test builders (to isolate builds with different features), add the corresponding directory to the example's `.gitignore`
+
 ### Writing Tests
 
 **Integration tests** go in `packages/testing/nros-tests/tests/`. Each file is a test suite:
@@ -243,6 +249,8 @@ packages/testing/nros-tests/
 │   └── zephyr.rs     # Zephyr native_sim helpers
 └── tests/            # Integration test suites
     ├── nano2nano.rs  # nros ↔ nros pub/sub
+    ├── zero_copy.rs  # Zero-copy receive (unstable-zenoh-api)
+    ├── safety_e2e.rs # Safety protocol E2E (CRC, seq tracking)
     ├── services.rs   # Service server/client tests
     ├── actions.rs    # Action server/client tests
     ├── emulator.rs   # QEMU bare-metal tests
@@ -265,6 +273,8 @@ just test-report        # View JUnit XML report (needs junit-cli-report-viewer)
 ```
 
 **Unit tests** (per-crate `#[cfg(test)]` modules) go in each crate's source files as usual.
+
+**Parallel build isolation:** Nextest runs each test file as a separate binary/process in parallel. When multiple test binaries build the **same example** with **different features**, the output binary (e.g., `target/release/listener`) gets overwritten by whichever build finishes last. This causes test failures when a process runs a binary built with the wrong features. Fix: use `--target-dir` to give each feature variant its own output directory (e.g., `target-safety/`, `target-zero-copy/`). See `build_native_listener_safety()` and `build_native_listener_zero_copy()` in `fixtures/binaries.rs` for examples. Remember to add the new target directory to the example's `.gitignore`.
 
 ## Key Design Patterns
 
@@ -358,6 +368,8 @@ Features are organized into three orthogonal axes:
 - **ROS edition**: `ros-humble`, `ros-iron`
 
 **Orthogonality principle:** The three axes (RMW, platform, ROS edition) are strictly independent. A feature on one axis must NEVER imply a feature on another axis. For example, `platform-posix` must not activate `rmw-zenoh` or `ros-humble`. Compile-time checks enforce mutual exclusivity within each axis (e.g., cannot enable both `rmw-zenoh` and `rmw-xrce`), but selecting zero features on an axis is valid — the crate compiles with reduced functionality. This applies to all crates: `nros`, `nros-node`, `nros-c`, and board crates.
+
+**Cross-cutting feature:** `unstable-zenoh-api` enables zero-copy receive in the zenoh RMW backend. It is orthogonal to the three axes above. Feature chain: `nros` → `nros-node` → `nros-rmw-zenoh` → `zpico-sys`. The zero-copy path is transparent — `create_subscription_with_info()` automatically uses it when enabled.
 
 Platform features are forwarded to the active RMW backend via Cargo `?` syntax (e.g., `nros-rmw-zenoh?/platform-posix`).
 Default features: `std` only. Users must explicitly select RMW backend, platform, and ROS edition.
