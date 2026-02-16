@@ -87,6 +87,11 @@ filter = "binary(large_msg)"
 test-group = "large_msg"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
+# Zero-copy tests: 3s stabilization + 30s collection = ~33s expected runtime
+[[profile.default.overrides]]
+filter = "binary(zero_copy)"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
 [profile.ci]
 # CI profile with stricter timeouts
 slow-timeout = { period = "30s", terminate-after = 2 }

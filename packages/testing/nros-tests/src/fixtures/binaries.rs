@@ -22,6 +22,9 @@ static NATIVE_TALKER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-listener binary with safety-e2e
 static NATIVE_LISTENER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native-rs-listener binary with unstable-zenoh-api (zero-copy)
+static NATIVE_LISTENER_ZERO_COPY_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-action-server binary
 static NATIVE_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -338,6 +341,20 @@ pub fn listener_safety_binary() -> PathBuf {
     build_native_listener_safety()
         .expect("Failed to build native-rs-listener with safety-e2e")
         .to_path_buf()
+}
+
+/// Build native-rs-listener with zenoh + unstable-zenoh-api features (cached)
+pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
+    NATIVE_LISTENER_ZERO_COPY_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/listener",
+                "listener",
+                Some(&["zenoh", "unstable-zenoh-api"]),
+                None,
+            )
+        })
+        .map(|p| p.as_path())
 }
 
 /// rstest fixture that provides the native-rs-action-server binary path
