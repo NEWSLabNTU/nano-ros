@@ -116,6 +116,19 @@ ci: check test
 # Test Infrastructure
 # =============================================================================
 
+# Kill orphaned test processes from previous runs
+test-kill-orphans:
+    #!/usr/bin/env bash
+    echo "Killing orphaned test processes..."
+    pkill -9 -f 'zenohd.*--listen.*--no-multicast' 2>/dev/null || true
+    pkill -9 -f 'nano-ros/examples/.*/target/' 2>/dev/null || true
+    pkill -9 -f 'nano-ros/examples/.*/build/' 2>/dev/null || true
+    pkill -9 -f 'MicroXRCEAgent' 2>/dev/null || true
+    pkill -9 -f 'ros2 topic' 2>/dev/null || true
+    pkill -9 -f 'ros2 service' 2>/dev/null || true
+    pkill -9 -f 'ros2 action' 2>/dev/null || true
+    echo "Done."
+
 # Initialize timestamped log directory for non-nextest test output (QEMU, C)
 _init-test-logs:
     #!/usr/bin/env bash
