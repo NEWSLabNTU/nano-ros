@@ -179,6 +179,66 @@ This creates the `zeth-br` bridge for Zephyr native simulator instances.
 
 ---
 
+## Message Too Large / Truncated Messages
+
+### Symptoms
+
+- `TransportError::MessageTooLarge` when receiving service requests or subscription data
+- Messages arrive but with corrupted or incomplete payloads
+- Large messages (images, point clouds) silently disappear
+
+### Root Cause
+
+nros uses static buffers at multiple layers, each with configurable size limits.
+A message must fit through every layer in the path to be delivered intact.
+
+**Zenoh backend layers:**
+
+| Layer                               | Posix Default | Embedded Default | Env Var                    |
+|-------------------------------------|---------------|------------------|----------------------------|
+| Defragmentation (`Z_FRAG_MAX_SIZE`) | 65536         | 2048             | `ZPICO_FRAG_MAX_SIZE`      |
+| Batch size (`Z_BATCH_UNICAST_SIZE`) | 65536         | 1024             | `ZPICO_BATCH_UNICAST_SIZE` |
+| Per-entity shim buffer              | 1024          | 1024             | — (named constant in code) |
+| User receive buffer (`RX_BUF`)      | 1024          | 1024             | — (const generic)          |
+
+**XRCE-DDS backend layers:**
+
+| Layer             | Posix Default | Embedded Default | Env Var                    |
+|-------------------|---------------|------------------|----------------------------|
+| Transport MTU     | 4096          | 512              | `XRCE_TRANSPORT_MTU`       |
+| Per-entity buffer | 1024          | 1024             | — (named constant in code) |
+
+### Solutions
+
+**Increase transport-level limits** (set before `cargo build`):
+
+```bash
+# Zenoh: allow 128 KB reassembled messages
+ZPICO_FRAG_MAX_SIZE=131072 cargo build --features rmw-zenoh,platform-posix
+
+# XRCE: increase MTU to 8 KB
+XRCE_TRANSPORT_MTU=8192 cargo build --features rmw-xrce,platform-posix
+```
+
+**Increase per-entity buffer sizes** (in code):
+
+```rust
+// Zenoh subscriber with 4 KB receive buffer
+let sub = node.create_subscriber_sized::<MyMsg, 4096>(SubscriberOptions::new("/topic"))?;
+
+// Zenoh publisher with 4 KB transmit buffer
+let pub_ = node.create_publisher_sized::<MyMsg, 4096>(PublisherOptions::new("/topic"))?;
+```
+
+**Clean rebuild** after changing env vars (CMake caches old values):
+
+```bash
+cargo clean -p zpico-sys   # or: cargo clean -p xrce-sys
+cargo build
+```
+
+---
+
 ## Build Issues
 
 ### zenoh-pico Submodule Not Found

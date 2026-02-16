@@ -288,6 +288,44 @@ make
 ./my_c_talker
 ```
 
+## Configuration
+
+### Runtime Environment Variables
+
+| Variable        | Description                                   | Default              |
+|-----------------|-----------------------------------------------|----------------------|
+| `ROS_DOMAIN_ID` | ROS 2 domain ID                               | `0`                  |
+| `ZENOH_LOCATOR` | Router address (e.g., `tcp/192.168.1.1:7447`) | `tcp/127.0.0.1:7447` |
+| `ZENOH_MODE`    | Session mode: `client` or `peer`              | `client`             |
+
+### Build-Time Buffer Tuning
+
+nros uses platform-appropriate defaults for transport buffer sizes. Desktop
+(`platform-posix`) builds use larger defaults; embedded (`platform-bare-metal`,
+`platform-zephyr`) builds use smaller defaults to fit in constrained memory.
+
+Override defaults by setting environment variables before `cargo build`:
+
+**Zenoh backend (`rmw-zenoh`):**
+
+| Variable                     | Description                                        | Posix Default | Embedded Default |
+|------------------------------|----------------------------------------------------|---------------|------------------|
+| `ZPICO_FRAG_MAX_SIZE`        | Max reassembled message size after defragmentation | `65536`       | `2048`           |
+| `ZPICO_BATCH_UNICAST_SIZE`   | Max unicast batch size before fragmentation        | `65536`       | `1024`           |
+| `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size                           | `8192`        | `1024`           |
+
+**XRCE-DDS backend (`rmw-xrce`):**
+
+| Variable             | Description                                                                                | Posix Default | Embedded Default |
+|----------------------|--------------------------------------------------------------------------------------------|---------------|------------------|
+| `XRCE_TRANSPORT_MTU` | Custom transport MTU; also sizes reliable stream buffers (4 × MTU) and UDP staging buffers | `4096`        | `512`            |
+
+Example — increase zenoh defrag to 128 KB for large point clouds:
+
+```bash
+ZPICO_FRAG_MAX_SIZE=131072 cargo build --features rmw-zenoh,platform-posix
+```
+
 ## Next Steps
 
 - Browse the [examples/](../examples/) directory for more patterns (services, actions, subscribers)

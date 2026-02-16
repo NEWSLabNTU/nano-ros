@@ -149,6 +149,15 @@ Build-time environment variables:
 |----------|-------------|----------|
 | `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zpico-sys`) | Only with `system-zenohpico` |
 
+Build-time buffer tuning (optional — platform-appropriate defaults apply if unset):
+
+| Variable | Description | Posix Default | Embedded Default |
+|----------|-------------|---------------|------------------|
+| `ZPICO_FRAG_MAX_SIZE` | Max reassembled message size after zenoh-pico defragmentation | `65536` | `2048` |
+| `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch size before fragmentation | `65536` | `1024` |
+| `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | `8192` | `1024` |
+| `XRCE_TRANSPORT_MTU` | XRCE-DDS custom transport MTU; also sizes stream buffers (4×MTU) and UDP staging | `4096` | `512` |
+
 ## Development Practices
 
 ### Quality Checks
