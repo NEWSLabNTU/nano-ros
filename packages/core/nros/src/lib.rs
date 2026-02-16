@@ -164,6 +164,9 @@ pub mod xrce {
 /// These types are implementation details of the transport backends.
 /// Most users should use the high-level APIs (`Context`, `Executor`, `ShimExecutor`, etc.)
 /// instead of these types directly.
+///
+/// The `Rmw*` type aliases resolve to whichever backend is active at compile time,
+/// providing a backend-agnostic way to reference concrete transport types.
 pub mod internals {
     // Zenoh backend internal types
     #[cfg(feature = "rmw-zenoh")]
@@ -172,6 +175,59 @@ pub mod internals {
         ShimServiceClient, ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport,
         ShimZenohId, ZenohId, ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohTransport,
     };
+
+    // ── Backend-agnostic type aliases ────────────────────────────────────
+    // These resolve to the concrete types of the active RMW backend.
+
+    #[cfg(feature = "rmw-zenoh")]
+    pub type RmwSession = nros_rmw_zenoh::ShimSession;
+    #[cfg(feature = "rmw-zenoh")]
+    pub type RmwPublisher = nros_rmw_zenoh::ShimPublisher;
+    #[cfg(feature = "rmw-zenoh")]
+    pub type RmwSubscriber = nros_rmw_zenoh::ShimSubscriber;
+    #[cfg(feature = "rmw-zenoh")]
+    pub type RmwServiceServer = nros_rmw_zenoh::ShimServiceServer;
+    #[cfg(feature = "rmw-zenoh")]
+    pub type RmwServiceClient = nros_rmw_zenoh::ShimServiceClient;
+
+    #[cfg(feature = "rmw-xrce")]
+    pub type RmwSession = nros_rmw_xrce::XrceSession;
+    #[cfg(feature = "rmw-xrce")]
+    pub type RmwPublisher = nros_rmw_xrce::XrcePublisher;
+    #[cfg(feature = "rmw-xrce")]
+    pub type RmwSubscriber = nros_rmw_xrce::XrceSubscriber;
+    #[cfg(feature = "rmw-xrce")]
+    pub type RmwServiceServer = nros_rmw_xrce::XrceServiceServer;
+    #[cfg(feature = "rmw-xrce")]
+    pub type RmwServiceClient = nros_rmw_xrce::XrceServiceClient;
+
+    /// Open a new middleware session.
+    ///
+    /// Wraps the backend-specific session constructor behind a common signature.
+    /// Used by the C API (`nros-c`); Rust users should prefer `Context::new()`.
+    #[cfg(all(any(feature = "rmw-zenoh", feature = "rmw-xrce"), feature = "alloc"))]
+    pub fn open_session(
+        locator: &str,
+        mode: nros_rmw::SessionMode,
+    ) -> Result<RmwSession, nros_rmw::TransportError> {
+        #[cfg(feature = "rmw-zenoh")]
+        {
+            use nros_rmw::TransportConfig;
+
+            let config = TransportConfig {
+                locator: Some(locator),
+                mode,
+                properties: &[],
+            };
+            RmwSession::new(&config).map_err(|_| nros_rmw::TransportError::ConnectionFailed)
+        }
+
+        #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
+        {
+            let _ = (locator, mode);
+            Err(nros_rmw::TransportError::ConnectionFailed)
+        }
+    }
 }
 
 // Re-export shim node types

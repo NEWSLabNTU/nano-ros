@@ -1,176 +1,149 @@
 # Phase 39: C API Multi-Backend Support
 
-**Status: Not Started**
+**Status: Complete (39.1–39.7)**
 
 **Prerequisites:** Phase 34 (RMW abstraction — complete), Phase 38 (example cleanup — complete)
 
 ## Goal
 
-Make `nros-c` support multiple RMW backends (zenoh-pico, XRCE-DDS) using the same `nros-rmw` trait abstraction that the Rust API already uses. Today `nros-c` is hardcoded to zenoh-pico — every `_init` function imports `nros_rmw_zenoh::Shim*` types directly and casts them through `*mut c_void` pointers. This phase replaces those concrete types with trait-object dispatch so the C library works with any backend selected at compile time.
-
-## Current State
-
-### Coupling points
-
-`nros-c` imports 5 concrete zenoh types across 5 source files:
-
-| File              | Zenoh type                                              | Usage                                                               |
-|-------------------|---------------------------------------------------------|---------------------------------------------------------------------|
-| `support.rs`      | `ShimSession`                                           | Created in `nano_ros_support_init`, stored as `*mut c_void`         |
-| `publisher.rs`    | `ShimSession`, `ShimPublisher`                          | Session for `create_publisher`, publisher stored as `*mut c_void`   |
-| `subscription.rs` | `ShimSession`, `ShimSubscriber`                         | Session for `create_subscriber`, subscriber stored as `*mut c_void` |
-| `service.rs`      | `ShimSession`, `ShimServiceServer`, `ShimServiceClient` | Session for create, handles stored as `*mut c_void`                 |
-| `executor.rs`     | `ShimSubscriber`, `ShimServiceServer`                   | Cast from `*mut c_void` for `recv_raw()` and `check_ready()`        |
-
-All imports are `use nros_rmw_zenoh::*` — `nros-c` never uses the `nros_rmw` traits for creation, only for method calls after casting.
-
-### What already works
-
-- The `nros-rmw` crate defines backend-agnostic traits: `Session`, `Publisher`, `Subscriber`, `ServiceServerTrait`, `ServiceClientTrait`
-- `nros-rmw-zenoh` implements all traits for `ShimSession`, `ShimPublisher`, `ShimSubscriber`, `ShimServiceServer`, `ShimServiceClient`
-- `nros-rmw-xrce` implements `Session` for `XrceSession` and pub/sub/service traits
-- The C API feature flags (`rmw-zenoh`, `platform-*`, `ros-*`) are already orthogonal
-
-### The problem
-
-The `Session` trait uses associated types (`type PublisherHandle`, `type SubscriberHandle`, etc.), making it non-object-safe. You can't write `Box<dyn Session>` because the compiler doesn't know the concrete handle types. Each `_init` function must know the exact session type to call `create_publisher()` and get back a handle it can store.
+Make `nros-c` support multiple RMW backends (zenoh-pico, XRCE-DDS) using the same backend-agnostic type aliases that the Rust `nros` crate provides. Today `nros-c` is hardcoded to zenoh-pico — every `_init` function imports `nros_rmw_zenoh::Shim*` types directly and casts them through `*mut c_void` pointers.
 
 ## Design
 
-### Approach: Backend type aliases with `cfg` dispatch
+### Key insight: nros-c is a thin wrapper
 
-Use conditional type aliases (not trait objects) to select the concrete backend at compile time. This is the same pattern the Rust `nros` crate uses for `shim_aliases`.
+`nros-c` is a C FFI wrapper around `nros`. It should **not** contain low-level backend boilerplate or directly depend on backend crates. All backend abstraction lives in the `nros` crate via `nros::internals::Rmw*` type aliases. Features simply pass through from `nros-c` to `nros`.
+
+### Backend-agnostic type aliases in `nros::internals`
+
+The `nros` crate provides compile-time backend selection via type aliases in `pub mod internals`:
 
 ```rust
-// nros-c/src/backend.rs
+// nros/src/lib.rs — pub mod internals
 
 #[cfg(feature = "rmw-zenoh")]
-mod inner {
-    pub type Session = nros_rmw_zenoh::ShimSession;
-    pub type Publisher = nros_rmw_zenoh::ShimPublisher;
-    pub type Subscriber = nros_rmw_zenoh::ShimSubscriber;
-    pub type ServiceServer = nros_rmw_zenoh::ShimServiceServer;
-    pub type ServiceClient = nros_rmw_zenoh::ShimServiceClient;
-}
+pub type RmwSession = nros_rmw_zenoh::ShimSession;
+#[cfg(feature = "rmw-zenoh")]
+pub type RmwPublisher = nros_rmw_zenoh::ShimPublisher;
+// ... etc.
 
 #[cfg(feature = "rmw-xrce")]
-mod inner {
-    pub type Session = nros_rmw_xrce::XrceSession;
-    pub type Publisher = nros_rmw_xrce::XrcePublisher;
-    pub type Subscriber = nros_rmw_xrce::XrceSubscriber;
-    pub type ServiceServer = nros_rmw_xrce::XrceServiceServer;
-    pub type ServiceClient = nros_rmw_xrce::XrceServiceClient;
-}
+pub type RmwSession = nros_rmw_xrce::XrceSession;
+#[cfg(feature = "rmw-xrce")]
+pub type RmwPublisher = nros_rmw_xrce::XrcePublisher;
+// ... etc.
 
-pub use inner::*;
+pub fn open_session(locator: &str, mode: SessionMode) -> Result<RmwSession, TransportError> { ... }
 ```
 
-All `_init` and `_fini` functions replace `nros_rmw_zenoh::ShimSession` with `backend::Session`, `nros_rmw_zenoh::ShimPublisher` with `backend::Publisher`, etc.
+`nros-c` uses `nros::internals::RmwSession`, `nros::internals::RmwPublisher`, etc. everywhere it previously used `nros_rmw_zenoh::ShimSession`, `nros_rmw_zenoh::ShimPublisher`, etc. No `backend.rs` in `nros-c` — the abstraction lives upstream.
 
-**Why not trait objects?** Trait objects (`Box<dyn Session>`) are not possible because `Session` has associated types and is not object-safe. Trait objects also add vtable overhead inappropriate for embedded targets. Compile-time monomorphization via `cfg` is zero-cost and matches how the Rust API works.
+### Feature pass-through
 
-### Session creation abstraction
+`nros-c/Cargo.toml` features simply forward to `nros`:
 
-The `nano_ros_support_init` function currently calls `ShimSession::new(&config)`. Each backend has a different constructor:
+```toml
+rmw-zenoh = ["nros/rmw-zenoh"]
+rmw-xrce = ["nros/rmw-xrce"]
+```
 
-- zenoh: `ShimSession::new(&TransportConfig)`
-- XRCE: `XrceSession::new(transport, agent_addr, ...)`
+No direct dependencies on `nros-rmw-zenoh` or `nros-rmw-xrce`.
 
-Introduce a thin `backend::open_session()` function in `backend.rs` that wraps the backend-specific constructor behind a common signature:
+### Module gating
+
+Backend-independent modules (cdr, clock, constants, error, platform, qos) are always available. Backend-dependent modules use a `rmw_modules!` macro to reduce `#[cfg]` repetition:
 
 ```rust
-// nros-c/src/backend.rs
+macro_rules! rmw_modules {
+    ($(mod $mod:ident;)*) => {
+        $(
+            #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+            mod $mod;
+            #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+            pub use $mod::*;
+        )*
+    };
+}
 
-pub fn open_session(locator: &str, mode: SessionMode) -> Result<Session, TransportError> {
-    #[cfg(feature = "rmw-zenoh")]
-    {
-        let config = TransportConfig {
-            locator: Some(locator),
-            mode,
-            properties: &[],
-        };
-        Session::new(&config).map_err(|_| TransportError::ConnectionFailed)
-    }
-
-    #[cfg(feature = "rmw-xrce")]
-    {
-        // Parse locator into XRCE agent address + transport
-        todo!("XRCE session creation from locator string")
-    }
+rmw_modules! {
+    mod action;
+    mod executor;
+    mod guard_condition;
+    mod lifecycle;
+    mod node;
+    mod publisher;
+    mod service;
+    mod subscription;
+    mod support;
+    mod timer;
 }
 ```
 
-## Steps
+### Feature validation
 
-### 39.1: Create `backend.rs` module with type aliases
+Only mutual exclusivity checks — matching the `nros` crate's pattern. Without a backend, `nros-c` compiles as a partial library (CDR, clock, error types available).
 
-**Files:** `packages/core/nros-c/src/backend.rs`, `packages/core/nros-c/src/lib.rs`
+## Completed Steps
 
-- [ ] Create `backend.rs` with `cfg`-gated type aliases for `Session`, `Publisher`, `Subscriber`, `ServiceServer`, `ServiceClient`
-- [ ] Add `open_session()` factory function
-- [ ] Add mutual exclusivity check: `#[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))] compile_error!(...)`
-- [ ] Gate the module behind `#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]`
-- [ ] `just quality` passes
+### 39.1: Add backend-agnostic type aliases to `nros::internals`
 
-### 39.2: Refactor `support.rs` to use backend types
+**Files:** `packages/core/nros/src/lib.rs`
+
+- [x] Add `RmwSession`, `RmwPublisher`, `RmwSubscriber`, `RmwServiceServer`, `RmwServiceClient` type aliases with `#[cfg]` dispatch to `pub mod internals`
+- [x] Add `open_session()` factory function wrapping backend-specific constructors
+- [x] XRCE type aliases resolve to `nros_rmw_xrce::Xrce*` types
+
+### 39.2: Refactor `support.rs` to use `nros::internals`
 
 **Files:** `packages/core/nros-c/src/support.rs`
 
-- [ ] Replace `use nros_rmw_zenoh::ShimSession` with `use crate::backend::Session`
-- [ ] Replace `ShimSession::new(...)` with `crate::backend::open_session(...)`
-- [ ] Replace `get_session()` return type from `&nros_rmw_zenoh::ShimSession` to `&crate::backend::Session`
-- [ ] Replace `get_session_mut()` similarly
-- [ ] Replace `Box::from_raw(... as *mut ShimSession)` with `Box::from_raw(... as *mut backend::Session)`
-- [ ] `just quality` passes
+- [x] Replace `nros_rmw_zenoh::ShimSession` with `nros::internals::RmwSession`
+- [x] Replace `ShimSession::new(...)` with `nros::internals::open_session(...)`
+- [x] Update `get_session()` / `get_session_mut()` return types
 
-### 39.3: Refactor `publisher.rs` to use backend types
+### 39.3: Refactor `publisher.rs` to use `nros::internals`
 
 **Files:** `packages/core/nros-c/src/publisher.rs`
 
-- [ ] Replace all `ShimSession` and `ShimPublisher` imports with `backend::Session` and `backend::Publisher`
-- [ ] Use `nros_rmw::Publisher` trait for `publish_raw()` calls (already used, just fix casts)
-- [ ] `just quality` passes
+- [x] Replace `ShimPublisher` casts with `nros::internals::RmwPublisher`
 
-### 39.4: Refactor `subscription.rs` to use backend types
+### 39.4: Refactor `subscription.rs` to use `nros::internals`
 
 **Files:** `packages/core/nros-c/src/subscription.rs`
 
-- [ ] Replace `ShimSession` and `ShimSubscriber` with backend types
-- [ ] Use `nros_rmw::Subscriber` trait for `recv_raw()` calls
-- [ ] `just quality` passes
+- [x] Replace `ShimSubscriber` casts with `nros::internals::RmwSubscriber`
 
-### 39.5: Refactor `service.rs` to use backend types
+### 39.5: Refactor `service.rs` to use `nros::internals`
 
 **Files:** `packages/core/nros-c/src/service.rs`
 
-- [ ] Replace `ShimSession`, `ShimServiceServer`, `ShimServiceClient` with backend types
-- [ ] Use `nros_rmw::ServiceServerTrait` and `nros_rmw::ServiceClientTrait` traits for method calls
-- [ ] `just quality` passes
+- [x] Replace `ShimServiceServer` / `ShimServiceClient` casts with `nros::internals::RmwServiceServer` / `RmwServiceClient`
 
-### 39.6: Refactor `executor.rs` to use backend types
+### 39.6: Refactor `executor.rs` to use `nros::internals`
 
 **Files:** `packages/core/nros-c/src/executor.rs`
 
-- [ ] Replace `ShimSubscriber` and `ShimServiceServer` with backend types
-- [ ] Ensure `recv_raw()` and `check_ready()` calls go through traits
-- [ ] `just quality` passes
+- [x] Replace `ShimSubscriber` / `ShimServiceServer` casts with `nros::internals::Rmw*` types
 
-### 39.7: Gate module list on any-backend (not just zenoh)
+### 39.7: Clean up module gating and Cargo.toml
 
 **Files:** `packages/core/nros-c/src/lib.rs`, `packages/core/nros-c/Cargo.toml`
 
-- [ ] Change `#[cfg(feature = "rmw-zenoh")]` on all modules to `#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]`
-- [ ] Add `nros-rmw-xrce` as optional dependency in Cargo.toml
-- [ ] Add `rmw-xrce = ["nros/rmw-xrce", "dep:nros-rmw-xrce"]` feature
-- [ ] `just quality` passes
+- [x] Remove direct `nros-rmw-zenoh` and `nros-rmw-xrce` dependencies from Cargo.toml
+- [x] Features pass through to `nros` only
+- [x] Separate backend-independent modules (always compiled) from backend-dependent modules
+- [x] Use `rmw_modules!` macro for backend-dependent module gating
+- [x] Delete `backend.rs` — no longer needed
 
-### 39.8: Add XRCE session creation to `open_session()`
+## Future Steps
 
-**Files:** `packages/core/nros-c/src/backend.rs`
+### 39.8: XRCE session creation in `open_session()`
+
+**Files:** `packages/core/nros/src/lib.rs`
 
 - [ ] Implement XRCE locator parsing (e.g., `udp/192.168.1.1:2019`)
 - [ ] Create XRCE transport and session from parsed locator
-- [ ] Test with native XRCE example using C API
+- [ ] Currently returns `Err(TransportError::ConnectionFailed)` as placeholder
 
 ### 39.9: C example with XRCE backend
 
@@ -188,15 +161,6 @@ pub fn open_session(locator: &str, mode: SessionMode) -> Result<Session, Transpo
 - [ ] Document backend selection in C API guide
 - [ ] Update `FindNanoRos.cmake` if link dependencies differ by backend
 
-## Risk Assessment
-
-| Risk | Mitigation |
-|------|-----------|
-| XRCE types may not implement all `nros-rmw` traits | Verify trait coverage in 39.7 before proceeding to 39.8 |
-| XRCE session creation differs significantly from zenoh | `open_session()` encapsulates this; C API callers see no difference |
-| Action support missing in XRCE | `action.rs` can remain zenoh-only for now; gate with `#[cfg(feature = "rmw-zenoh")]` until XRCE actions exist |
-| Embedded no_alloc path not tested | Steps 39.1-39.6 only affect the `#[cfg(feature = "alloc")]` paths; no_alloc stub remains unchanged |
-
 ## Verification
 
 ```bash
@@ -204,20 +168,29 @@ pub fn open_session(locator: &str, mode: SessionMode) -> Result<Session, Transpo
 cargo build -p nros-c --features "rmw-zenoh,platform-posix,ros-humble"
 cargo clippy -p nros-c --features "rmw-zenoh,platform-posix,ros-humble"
 
-# XRCE backend (new)
+# XRCE backend (compiles, session creation is placeholder)
 cargo build -p nros-c --features "rmw-xrce,platform-posix,ros-humble"
-cargo clippy -p nros-c --features "rmw-xrce,platform-posix,ros-humble"
 
-# Empty library (no backend)
-cargo build -p nros-c --no-default-features
+# Default features (no backend — partial library)
+cargo build -p nros-c
 
-# Mutual exclusivity
+# Mutual exclusivity (should fail with compile_error)
 cargo build -p nros-c --features "rmw-zenoh,rmw-xrce,platform-posix,ros-humble"
-# ^ should fail with compile_error
 
 # Full quality
 just quality
-
-# C tests
-just test-c
 ```
+
+## Files Modified
+
+| File | Change |
+|------|--------|
+| `packages/core/nros/src/lib.rs` | Added `Rmw*` type aliases + `open_session()` to `pub mod internals` |
+| `packages/core/nros-c/Cargo.toml` | Removed direct backend deps; features pass through to `nros` |
+| `packages/core/nros-c/src/lib.rs` | Separated backend-independent/dependent modules; `rmw_modules!` macro |
+| `packages/core/nros-c/src/support.rs` | `nros_rmw_zenoh::ShimSession` → `nros::internals::RmwSession` |
+| `packages/core/nros-c/src/publisher.rs` | `ShimPublisher` → `nros::internals::RmwPublisher` |
+| `packages/core/nros-c/src/subscription.rs` | `ShimSubscriber` → `nros::internals::RmwSubscriber` |
+| `packages/core/nros-c/src/service.rs` | `ShimServiceServer/Client` → `nros::internals::RmwServiceServer/Client` |
+| `packages/core/nros-c/src/executor.rs` | `ShimSubscriber/ServiceServer` → `nros::internals::Rmw*` |
+| `packages/core/nros-c/src/backend.rs` | **Deleted** — abstraction moved to `nros::internals` |

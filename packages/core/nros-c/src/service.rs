@@ -221,11 +221,10 @@ pub unsafe extern "C" fn nano_ros_service_init(
     service.context = context;
     service.node = node;
 
-    // Create the internal service server using zenoh
+    // Create the internal service server
     #[cfg(feature = "alloc")]
     {
         use nros_rmw::{ServiceInfo, Session};
-        use nros_rmw_zenoh::ShimSession;
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -241,7 +240,7 @@ pub unsafe extern "C" fn nano_ros_service_init(
         let domain_id = support_mut.domain_id as u32;
 
         // Get mutable session reference
-        let session: &mut ShimSession = match support_mut.get_session_mut() {
+        let session = match support_mut.get_session_mut() {
             Some(s) => s,
             None => return NANO_ROS_RET_NOT_INIT,
         };
@@ -301,8 +300,9 @@ pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t)
     #[cfg(feature = "alloc")]
     {
         if !service._internal.is_null() {
-            use nros_rmw_zenoh::ShimServiceServer;
-            let _server = alloc::boxed::Box::from_raw(service._internal as *mut ShimServiceServer);
+            let _server = alloc::boxed::Box::from_raw(
+                service._internal as *mut nros::internals::RmwServiceServer,
+            );
             // Server is dropped here
         }
     }
@@ -355,13 +355,12 @@ pub unsafe extern "C" fn nano_ros_service_take_request(
     #[cfg(feature = "alloc")]
     {
         use nros_rmw::ServiceServerTrait;
-        use nros_rmw_zenoh::ShimServiceServer;
 
         if service._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let server = &mut *(service._internal as *mut ShimServiceServer);
+        let server = &mut *(service._internal as *mut nros::internals::RmwServiceServer);
 
         // Create a temporary buffer using the provided buffer
         let buf = core::slice::from_raw_parts_mut(request_data, request_capacity);
@@ -416,13 +415,12 @@ pub unsafe extern "C" fn nano_ros_service_send_response(
     #[cfg(feature = "alloc")]
     {
         use nros_rmw::ServiceServerTrait;
-        use nros_rmw_zenoh::ShimServiceServer;
 
         if service._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let server = &mut *(service._internal as *mut ShimServiceServer);
+        let server = &mut *(service._internal as *mut nros::internals::RmwServiceServer);
         let data = core::slice::from_raw_parts(response_data, response_len);
 
         match server.send_reply(sequence_number, data) {
@@ -633,11 +631,10 @@ pub unsafe extern "C" fn nano_ros_client_init(
     // Store node pointer
     client.node = node;
 
-    // Create the internal service client using zenoh
+    // Create the internal service client
     #[cfg(feature = "alloc")]
     {
         use nros_rmw::{ServiceInfo, Session};
-        use nros_rmw_zenoh::ShimSession;
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -653,7 +650,7 @@ pub unsafe extern "C" fn nano_ros_client_init(
         let domain_id = support_mut.domain_id as u32;
 
         // Get mutable session reference
-        let session: &mut ShimSession = match support_mut.get_session_mut() {
+        let session = match support_mut.get_session_mut() {
             Some(s) => s,
             None => return NANO_ROS_RET_NOT_INIT,
         };
@@ -713,9 +710,8 @@ pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) ->
     #[cfg(feature = "alloc")]
     {
         if !client._internal.is_null() {
-            use nros_rmw_zenoh::ShimServiceClient;
             let _client_handle =
-                alloc::boxed::Box::from_raw(client._internal as *mut ShimServiceClient);
+                alloc::boxed::Box::from_raw(client._internal as *mut nros::internals::RmwServiceClient);
             // Client is dropped here
         }
     }
@@ -772,13 +768,12 @@ pub unsafe extern "C" fn nano_ros_client_call(
     #[cfg(feature = "alloc")]
     {
         use nros_rmw::ServiceClientTrait;
-        use nros_rmw_zenoh::ShimServiceClient;
 
         if client._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let client_handle = &mut *(client._internal as *mut ShimServiceClient);
+        let client_handle = &mut *(client._internal as *mut nros::internals::RmwServiceClient);
         let request = core::slice::from_raw_parts(request_data, request_len);
         let reply_buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
 

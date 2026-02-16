@@ -481,7 +481,6 @@ dependencies = [
  "nros",
  "nros-core",
  "nros-rmw",
- "nros-rmw-zenoh",
  "paste",
 ]
 

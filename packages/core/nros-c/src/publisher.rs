@@ -268,11 +268,10 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         (*qos).to_qos_settings()
     };
 
-    // Create the internal publisher using zenoh
+    // Create the internal publisher
     #[cfg(feature = "alloc")]
     {
         use nros_rmw::{Session, TopicInfo};
-        use nros_rmw_zenoh::ShimSession;
 
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
@@ -288,7 +287,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         let domain_id = support_mut.domain_id as u32;
 
         // Get mutable session reference
-        let session: &mut ShimSession = match support_mut.get_session_mut() {
+        let session = match support_mut.get_session_mut() {
             Some(s) => s,
             None => return NANO_ROS_RET_NOT_INIT,
         };
@@ -359,13 +358,12 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
     #[cfg(feature = "alloc")]
     {
         use nros_rmw::Publisher;
-        use nros_rmw_zenoh::ShimPublisher;
 
         if publisher._internal.is_null() {
             return NANO_ROS_RET_NOT_INIT;
         }
 
-        let pub_handle = &*(publisher._internal as *const ShimPublisher);
+        let pub_handle = &*(publisher._internal as *const nros::internals::RmwPublisher);
         let data_slice = core::slice::from_raw_parts(data, len);
 
         match pub_handle.publish_raw(data_slice) {
@@ -410,8 +408,8 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
     #[cfg(feature = "alloc")]
     {
         if !publisher._internal.is_null() {
-            use nros_rmw_zenoh::ShimPublisher;
-            let _pub = alloc::boxed::Box::from_raw(publisher._internal as *mut ShimPublisher);
+            let _pub =
+                alloc::boxed::Box::from_raw(publisher._internal as *mut nros::internals::RmwPublisher);
             // Publisher is dropped here
         }
     }

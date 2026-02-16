@@ -630,13 +630,21 @@ pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
 
             eprintln!("Building nros-c library...");
 
-            let output = cmd!("cargo", "build", "-p", "nros-c", "--release")
-                .dir(&root)
-                .stderr_to_stdout()
-                .stdout_capture()
-                .unchecked()
-                .run()
-                .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+            let output = cmd!(
+                "cargo",
+                "build",
+                "-p",
+                "nros-c",
+                "--release",
+                "--features",
+                "rmw-zenoh,platform-posix,ros-humble"
+            )
+            .dir(&root)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
 
             if !output.status.success() {
                 return Err(TestError::BuildFailed(

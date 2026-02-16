@@ -26,9 +26,7 @@
 // Executor spin loops depend on external state changes (e.g., from another thread calling stop)
 #![allow(clippy::while_immutable_condition)]
 
-// ── Feature validation (mutual exclusivity) ─────────────────────────────
-#[cfg(all(feature = "platform-posix", feature = "platform-zephyr"))]
-compile_error!("`platform-posix` and `platform-zephyr` are mutually exclusive.");
+// ── Crate-level imports ─────────────────────────────────────────────────
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -36,73 +34,48 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-// All C API modules require the rmw-zenoh backend.
-// Without it the crate compiles as an empty library.
-#[cfg(feature = "rmw-zenoh")]
-mod action;
-#[cfg(feature = "rmw-zenoh")]
-mod cdr;
-#[cfg(feature = "rmw-zenoh")]
-mod clock;
-#[cfg(feature = "rmw-zenoh")]
-mod constants;
-#[cfg(feature = "rmw-zenoh")]
-mod error;
-#[cfg(feature = "rmw-zenoh")]
-mod executor;
-#[cfg(feature = "rmw-zenoh")]
-mod guard_condition;
-#[cfg(feature = "rmw-zenoh")]
-mod lifecycle;
-#[cfg(feature = "rmw-zenoh")]
-mod node;
-#[cfg(feature = "rmw-zenoh")]
-mod parameter;
-#[cfg(feature = "rmw-zenoh")]
-mod platform;
-#[cfg(feature = "rmw-zenoh")]
-mod publisher;
-#[cfg(feature = "rmw-zenoh")]
-mod qos;
-#[cfg(feature = "rmw-zenoh")]
-mod service;
-#[cfg(feature = "rmw-zenoh")]
-mod subscription;
-#[cfg(feature = "rmw-zenoh")]
-mod support;
-#[cfg(feature = "rmw-zenoh")]
-mod timer;
+// ── Modules ─────────────────────────────────────────────────────────────
 
-// Re-export all public C API items
-#[cfg(feature = "rmw-zenoh")]
-pub use action::*;
-#[cfg(feature = "rmw-zenoh")]
+// Backend-independent modules (always available)
+mod cdr;
+mod clock;
+mod constants;
+mod error;
+mod parameter;
+mod platform;
+mod qos;
+
 pub use cdr::*;
-#[cfg(feature = "rmw-zenoh")]
 pub use clock::*;
-#[cfg(feature = "rmw-zenoh")]
 pub use constants::*;
-#[cfg(feature = "rmw-zenoh")]
 pub use error::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use executor::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use guard_condition::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use lifecycle::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use node::*;
-#[cfg(feature = "rmw-zenoh")]
 pub use parameter::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use publisher::*;
-#[cfg(feature = "rmw-zenoh")]
 pub use qos::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use service::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use subscription::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use support::*;
-#[cfg(feature = "rmw-zenoh")]
-pub use timer::*;
+
+// Backend-dependent modules (require an RMW backend)
+// These reference support/node types which depend on the active backend.
+// Features pass through to `nros`, which provides the concrete types via
+// `nros::internals::Rmw*` type aliases.
+macro_rules! rmw_modules {
+    ($(mod $mod:ident;)*) => {
+        $(
+            #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+            mod $mod;
+            #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+            pub use $mod::*;
+        )*
+    };
+}
+
+rmw_modules! {
+    mod action;
+    mod executor;
+    mod guard_condition;
+    mod lifecycle;
+    mod node;
+    mod publisher;
+    mod service;
+    mod subscription;
+    mod support;
+    mod timer;
+}

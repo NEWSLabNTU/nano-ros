@@ -683,7 +683,6 @@ const MESSAGE_BUFFER_SIZE: usize = 4096;
 #[cfg(feature = "alloc")]
 unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bool {
     use nros_rmw::Subscriber;
-    use nros_rmw_zenoh::ShimSubscriber;
 
     let subscription_ref = &mut *subscription;
 
@@ -705,7 +704,7 @@ unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bo
     if internal.is_null() {
         return false;
     }
-    let subscriber = &mut *(internal as *mut ShimSubscriber);
+    let subscriber = &mut *(internal as *mut nros::internals::RmwSubscriber);
 
     // Allocate buffer on stack
     let mut buffer = [0u8; MESSAGE_BUFFER_SIZE];
@@ -728,7 +727,6 @@ unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bo
 #[cfg(feature = "alloc")]
 unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
     use nros_rmw::ServiceServerTrait;
-    use nros_rmw_zenoh::ShimServiceServer;
 
     let service_ref = &mut *service;
 
@@ -748,7 +746,7 @@ unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
     if internal.is_null() {
         return false;
     }
-    let server = &mut *(internal as *mut ShimServiceServer);
+    let server = &mut *(internal as *mut nros::internals::RmwServiceServer);
 
     // Allocate buffers on stack
     let mut request_buf = [0u8; MESSAGE_BUFFER_SIZE];
@@ -793,7 +791,6 @@ unsafe fn sample_subscription_for_let(
     buffer: &mut [u8],
 ) -> Option<usize> {
     use nros_rmw::Subscriber;
-    use nros_rmw_zenoh::ShimSubscriber;
 
     let subscription_ref = &*subscription;
 
@@ -809,7 +806,7 @@ unsafe fn sample_subscription_for_let(
     if internal.is_null() {
         return None;
     }
-    let subscriber = &mut *(internal as *mut ShimSubscriber);
+    let subscriber = &mut *(internal as *mut nros::internals::RmwSubscriber);
 
     // Try to receive a message into the LET buffer
     match subscriber.try_recv_raw(buffer) {
@@ -937,6 +934,8 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
     if let Some(trigger_fn) = executor.trigger {
         let mut ready_mask = [false; NANO_ROS_EXECUTOR_MAX_HANDLES];
 
+        #[allow(clippy::needless_range_loop)]
+        // i indexes handles, ready_mask, and let_data_available
         for i in 0..executor.handle_count {
             let handle = &executor.handles[i];
             ready_mask[i] = match handle.handle_type {

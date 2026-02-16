@@ -1,6 +1,6 @@
 //! Support context for nros C API.
 //!
-//! The support context manages the underlying zenoh session and provides
+//! The support context manages the underlying middleware session and provides
 //! shared resources for nodes, publishers, and subscribers.
 
 use core::ffi::{c_char, c_int};
@@ -24,7 +24,7 @@ pub enum nano_ros_support_state_t {
 /// Support context structure.
 ///
 /// This is the main context for nros, similar to rclc_support_t.
-/// It manages the zenoh session and provides shared resources.
+/// It manages the middleware session and provides shared resources.
 #[repr(C)]
 pub struct nano_ros_support_t {
     /// Current state
@@ -35,8 +35,7 @@ pub struct nano_ros_support_t {
     locator: [u8; MAX_LOCATOR_LEN],
     /// Locator string length
     locator_len: usize,
-    /// Opaque pointer to internal Rust context
-    /// This will hold a pointer to the zenoh session
+    /// Opaque pointer to internal Rust context (middleware session)
     _internal: *mut core::ffi::c_void,
 }
 
@@ -63,12 +62,12 @@ pub extern "C" fn nano_ros_support_get_zero_initialized() -> nano_ros_support_t 
 
 /// Initialize the support context.
 ///
-/// This function initializes the zenoh session and prepares the context
+/// This function initializes the middleware session and prepares the context
 /// for creating nodes, publishers, and subscribers.
 ///
 /// # Parameters
 /// * `support` - Pointer to a zero-initialized support context
-/// * `locator` - Zenoh locator string (e.g., "tcp/127.0.0.1:7447"), or NULL for default
+/// * `locator` - Middleware locator string (e.g., "tcp/127.0.0.1:7447"), or NULL for default
 /// * `domain_id` - ROS domain ID (0-232)
 ///
 /// # Returns
@@ -122,24 +121,15 @@ pub unsafe extern "C" fn nano_ros_support_init(
         support.locator_len = len;
     }
 
-    // Initialize the zenoh session
-    // For now, we'll use the shim directly
+    // Initialize the middleware session
     #[cfg(feature = "alloc")]
     {
-        use nros_rmw::{SessionMode, TransportConfig};
-        use nros_rmw_zenoh::ShimSession;
+        use nros_rmw::SessionMode;
 
         let locator_str = core::str::from_utf8_unchecked(&support.locator[..support.locator_len]);
 
-        let config = TransportConfig {
-            locator: Some(locator_str),
-            mode: SessionMode::Client,
-            properties: &[],
-        };
-
-        match ShimSession::new(&config) {
+        match nros::internals::open_session(locator_str, SessionMode::Client) {
             Ok(session) => {
-                // Store the session pointer
                 let session_box = alloc::boxed::Box::new(session);
                 support._internal = alloc::boxed::Box::into_raw(session_box) as *mut _;
                 support.state = nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED;
@@ -159,7 +149,7 @@ pub unsafe extern "C" fn nano_ros_support_init(
 
 /// Finalize the support context.
 ///
-/// This function closes the zenoh session and releases all resources.
+/// This function closes the middleware session and releases all resources.
 ///
 /// # Parameters
 /// * `support` - Pointer to an initialized support context
@@ -187,8 +177,8 @@ pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t)
     #[cfg(feature = "alloc")]
     {
         if !support._internal.is_null() {
-            use nros_rmw_zenoh::ShimSession;
-            let _session = alloc::boxed::Box::from_raw(support._internal as *mut ShimSession);
+            let _session =
+                alloc::boxed::Box::from_raw(support._internal as *mut nros::internals::RmwSession);
             // Session is dropped here
         }
     }
@@ -249,21 +239,21 @@ mod verification {
 impl nano_ros_support_t {
     /// Get the internal session pointer (for internal use)
     #[cfg(feature = "alloc")]
-    pub(crate) unsafe fn get_session(&self) -> Option<&nros_rmw_zenoh::ShimSession> {
+    pub(crate) unsafe fn get_session(&self) -> Option<&nros::internals::RmwSession> {
         if self._internal.is_null() {
             None
         } else {
-            Some(&*(self._internal as *const nros_rmw_zenoh::ShimSession))
+            Some(&*(self._internal as *const nros::internals::RmwSession))
         }
     }
 
     /// Get the internal session pointer mutably (for internal use)
     #[cfg(feature = "alloc")]
-    pub(crate) unsafe fn get_session_mut(&mut self) -> Option<&mut nros_rmw_zenoh::ShimSession> {
+    pub(crate) unsafe fn get_session_mut(&mut self) -> Option<&mut nros::internals::RmwSession> {
         if self._internal.is_null() {
             None
         } else {
-            Some(&mut *(self._internal as *mut nros_rmw_zenoh::ShimSession))
+            Some(&mut *(self._internal as *mut nros::internals::RmwSession))
         }
     }
 
