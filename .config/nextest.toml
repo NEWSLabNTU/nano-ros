@@ -31,6 +31,10 @@ max-threads = 1
 [test-groups.xrce]
 max-threads = 1
 
+# Note: C XRCE tests use the c_api group (not a separate group) because both
+# zenoh and XRCE C tests write to the same target/release/libnros_c.a — running
+# them concurrently causes library overwrites and link-time failures.
+
 [[profile.default.overrides]]
 filter = "binary(esp32_emulator)"
 test-group = "esp32-emulator"
@@ -53,6 +57,11 @@ test-group = "c_api"
 [[profile.default.overrides]]
 filter = "binary(xrce)"
 test-group = "xrce"
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = "binary(c_xrce_api)"
+test-group = "c_api"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
 # Safety E2E tests: 3s stabilization + 30s collection = ~33s expected runtime

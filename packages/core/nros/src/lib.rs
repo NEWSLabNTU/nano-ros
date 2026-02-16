@@ -206,15 +206,22 @@ pub mod internals {
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
     /// Used by the C API (`nros-c`); Rust users should prefer `Context::new()`.
+    ///
+    /// - **Zenoh**: `domain_id` and `node_name` are ignored (zenoh uses `locator` and `mode`).
+    /// - **XRCE-DDS**: `locator` is the agent address (e.g., `"127.0.0.1:2019"`).
+    ///   Transport must match the active transport feature (`xrce-udp` or `xrce-serial`).
     #[cfg(all(any(feature = "rmw-zenoh", feature = "rmw-xrce"), feature = "alloc"))]
     pub fn open_session(
         locator: &str,
         mode: nros_rmw::SessionMode,
+        domain_id: u32,
+        node_name: &str,
     ) -> Result<RmwSession, nros_rmw::TransportError> {
         #[cfg(feature = "rmw-zenoh")]
         {
             use nros_rmw::TransportConfig;
 
+            let _ = (domain_id, node_name);
             let config = TransportConfig {
                 locator: Some(locator),
                 mode,
@@ -225,8 +232,48 @@ pub mod internals {
 
         #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
         {
-            let _ = (locator, mode);
-            Err(nros_rmw::TransportError::ConnectionFailed)
+            use nros_rmw::Rmw;
+
+            // Initialize transport based on active transport feature
+            #[cfg(feature = "xrce-udp")]
+            unsafe {
+                nros_rmw_xrce::posix_udp::init_posix_udp_transport(locator);
+            }
+
+            #[cfg(feature = "xrce-serial")]
+            unsafe {
+                nros_rmw_xrce::posix_serial::init_posix_serial_transport(locator);
+            }
+
+            let config = nros_rmw::RmwConfig {
+                locator,
+                mode,
+                domain_id,
+                node_name,
+                namespace: "",
+            };
+            nros_rmw_xrce::XrceRmw::open(&config)
+                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
+        }
+    }
+
+    /// Drive middleware I/O for pull-based backends.
+    ///
+    /// - **Zenoh**: No-op (zenoh is push-based, callbacks fire asynchronously).
+    /// - **XRCE-DDS**: Calls `spin_once(timeout_ms)` to pump network I/O and
+    ///   dispatch incoming data into subscriber/service slots.
+    ///
+    /// Used by the C API executor before polling handles.
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    pub fn drive_session_io(session: &mut RmwSession, timeout_ms: i32) {
+        #[cfg(feature = "rmw-zenoh")]
+        {
+            let _ = (session, timeout_ms);
+        }
+
+        #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
+        {
+            session.spin_once(timeout_ms);
         }
     }
 }

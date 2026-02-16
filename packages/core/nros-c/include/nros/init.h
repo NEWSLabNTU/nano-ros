@@ -39,7 +39,7 @@ typedef enum nano_ros_support_state_t {
  * Support context structure.
  *
  * This is the main context for nros, similar to rclc_support_t.
- * It manages the zenoh session and provides shared resources.
+ * It manages the middleware session and provides shared resources.
  */
 typedef struct nano_ros_support_t {
     /** Current state */
@@ -69,11 +69,12 @@ nano_ros_support_t nano_ros_support_get_zero_initialized(void);
 /**
  * Initialize the support context.
  *
- * This function initializes the zenoh session and prepares the context
+ * This function initializes the middleware session and prepares the context
  * for creating nodes, publishers, and subscribers.
  *
  * @param support Pointer to a zero-initialized support context
- * @param locator Zenoh locator string (e.g., "tcp/127.0.0.1:7447"), or NULL for default
+ * @param locator Middleware locator string, or NULL for default.
+ *                Zenoh: "tcp/127.0.0.1:7447"; XRCE-DDS: "127.0.0.1:2019"
  * @param domain_id ROS domain ID (0-232)
  *
  * @return NANO_ROS_RET_OK on success
@@ -89,7 +90,7 @@ nano_ros_ret_t nano_ros_support_init(
 /**
  * Finalize the support context.
  *
- * This function closes the zenoh session and releases all resources.
+ * This function closes the middleware session and releases all resources.
  *
  * @param support Pointer to an initialized support context
  *

@@ -917,6 +917,19 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
         return NANO_ROS_RET_NOT_INIT;
     }
 
+    // Drive middleware I/O for pull-based backends (XRCE-DDS).
+    // This pumps uxr_run_session_time() to fill subscriber/service slots
+    // before polling them. No-op for push-based backends (zenoh).
+    #[cfg(all(any(feature = "rmw-zenoh", feature = "rmw-xrce"), feature = "alloc"))]
+    {
+        if !executor.support.is_null() {
+            let support = &mut *(executor.support as *mut nano_ros_support_t);
+            if let Some(session) = support.get_session_mut() {
+                nros::internals::drive_session_io(session, 10);
+            }
+        }
+    }
+
     // Get current time from platform
     let current_time_ns = crate::platform::get_time_ns();
 

@@ -86,6 +86,9 @@ test-all verbose="":
     echo "=== C API Tests ==="
     just test-c {{verbose}} || failed=1
     echo ""
+    echo "=== C XRCE API Tests ==="
+    just test-c-xrce {{verbose}} || failed=1
+    echo ""
     echo "JUnit XML:  target/nextest/default/junit.xml"
     echo "Other logs: {{LOG_DIR}}/latest/"
     if [ $failed -ne 0 ]; then
@@ -855,6 +858,16 @@ test-c verbose="": _init-test-logs
         bash -c 'cd packages/codegen/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
     ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh
 
+# C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
+test-c-xrce verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --no-fail-fast -E 'binary(c_xrce_api)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # Build C examples only (no tests)
 build-examples-c: build-codegen-lib
     @echo "Building nros-c library..."
@@ -867,9 +880,20 @@ build-examples-c: build-codegen-lib
     cd examples/native/c/zenoh/custom-msg && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
     @echo "C examples built!"
 
+# Build C XRCE examples only (no tests)
+build-examples-c-xrce: build-codegen-lib
+    @echo "Building nros-c library (XRCE backend)..."
+    cargo build -p nros-c --release --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
+    @echo "Building native/c/xrce/talker..."
+    cd examples/native/c/xrce/talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    @echo "Building native/c/xrce/listener..."
+    cd examples/native/c/xrce/listener && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    @echo "C XRCE examples built!"
+
 # Clean C examples build
 clean-examples-c:
     rm -rf examples/native/c/zenoh/talker/build examples/native/c/zenoh/listener/build examples/native/c/zenoh/custom-msg/build
+    rm -rf examples/native/c/xrce/talker/build examples/native/c/xrce/listener/build
     @echo "C examples build cleaned"
 
 # =============================================================================

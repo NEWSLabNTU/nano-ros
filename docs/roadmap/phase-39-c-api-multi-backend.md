@@ -1,6 +1,6 @@
 # Phase 39: C API Multi-Backend Support
 
-**Status: Complete (39.1–39.7)**
+**Status: Complete (39.1–39.10)**
 
 **Prerequisites:** Phase 34 (RMW abstraction — complete), Phase 38 (example cleanup — complete)
 
@@ -135,31 +135,34 @@ Only mutual exclusivity checks — matching the `nros` crate's pattern. Without 
 - [x] Use `rmw_modules!` macro for backend-dependent module gating
 - [x] Delete `backend.rs` — no longer needed
 
-## Future Steps
-
 ### 39.8: XRCE session creation in `open_session()`
 
-**Files:** `packages/core/nros/src/lib.rs`
+**Files:** `packages/core/nros/src/lib.rs`, `packages/core/nros-c/src/support.rs`, `packages/core/nros-c/Cargo.toml`
 
-- [ ] Implement XRCE locator parsing (e.g., `udp/192.168.1.1:2019`)
-- [ ] Create XRCE transport and session from parsed locator
-- [ ] Currently returns `Err(TransportError::ConnectionFailed)` as placeholder
+- [x] Extended `open_session()` signature to accept `domain_id: u32` and `node_name: &str`
+- [x] XRCE path: initializes transport (posix-udp or posix-serial based on feature) then calls `XrceRmw::open()` with `RmwConfig`
+- [x] Zenoh path: ignores `domain_id` and `node_name` (unchanged behavior)
+- [x] Added `drive_session_io()` to `nros::internals` — no-op for zenoh, calls `spin_once()` for XRCE
+- [x] Updated `support_init()` to pass `domain_id` and `"nros"` node name to `open_session()`
+- [x] Added backend-dependent default locator (zenoh: `tcp/127.0.0.1:7447`, XRCE: `127.0.0.1:2019`)
+- [x] Added `xrce-udp` and `xrce-serial` features to `nros-c/Cargo.toml`
+- [x] Called `drive_session_io()` in executor `spin_some()` to pump XRCE I/O before polling handles
 
-### 39.9: C example with XRCE backend
+### 39.9: C examples with XRCE backend
 
-**Files:** `examples/native/c/xrce/`
+**Files:** `examples/native/c/xrce/talker/`, `examples/native/c/xrce/listener/`
 
-- [ ] Create `talker/` and `listener/` C examples using XRCE backend
-- [ ] Update CMakeLists to support backend selection
-- [ ] Verify C examples work with both zenoh and XRCE backends
+- [x] Created talker and listener C examples for XRCE-DDS backend
+- [x] Same C API calls as zenoh examples (backend-agnostic)
+- [x] Environment variables: `XRCE_AGENT_ADDR` (default `127.0.0.1:2019`), `ROS_DOMAIN_ID`
+- [x] Build: `cargo build -p nros-c --release --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"`
 
 ### 39.10: Update C API headers and documentation
 
-**Files:** `packages/core/nros-c/include/nros/*.h`, docs
+**Files:** `packages/core/nros-c/include/nros/init.h`, `packages/testing/nros-tests/src/fixtures/binaries.rs`
 
-- [ ] Update header comments to remove zenoh-specific language
-- [ ] Document backend selection in C API guide
-- [ ] Update `FindNanoRos.cmake` if link dependencies differ by backend
+- [x] Updated header comments: "zenoh session" → "middleware session", "Zenoh locator" → "Middleware locator"
+- [x] Added `build_nano_ros_c_lib_xrce()`, `build_c_xrce_example()`, builder/fixture functions for XRCE C examples to test infrastructure
 
 ## Verification
 
@@ -168,8 +171,8 @@ Only mutual exclusivity checks — matching the `nros` crate's pattern. Without 
 cargo build -p nros-c --features "rmw-zenoh,platform-posix,ros-humble"
 cargo clippy -p nros-c --features "rmw-zenoh,platform-posix,ros-humble"
 
-# XRCE backend (compiles, session creation is placeholder)
-cargo build -p nros-c --features "rmw-xrce,platform-posix,ros-humble"
+# XRCE backend (session creation + I/O driving functional)
+cargo build -p nros-c --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
 
 # Default features (no backend — partial library)
 cargo build -p nros-c
@@ -179,18 +182,26 @@ cargo build -p nros-c --features "rmw-zenoh,rmw-xrce,platform-posix,ros-humble"
 
 # Full quality
 just quality
+
+# C XRCE examples (needs cmake + XRCE Agent for runtime)
+cargo build -p nros-c --release --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
+cd examples/native/c/xrce/talker && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT=../../../../../.. .. && cmake --build .
 ```
 
 ## Files Modified
 
 | File | Change |
 |------|--------|
-| `packages/core/nros/src/lib.rs` | Added `Rmw*` type aliases + `open_session()` to `pub mod internals` |
-| `packages/core/nros-c/Cargo.toml` | Removed direct backend deps; features pass through to `nros` |
+| `packages/core/nros/src/lib.rs` | Added `Rmw*` type aliases + `open_session()` + `drive_session_io()` to `pub mod internals` |
+| `packages/core/nros-c/Cargo.toml` | Removed direct backend deps; added `xrce-udp`, `xrce-serial` features |
 | `packages/core/nros-c/src/lib.rs` | Separated backend-independent/dependent modules; `rmw_modules!` macro |
-| `packages/core/nros-c/src/support.rs` | `nros_rmw_zenoh::ShimSession` → `nros::internals::RmwSession` |
+| `packages/core/nros-c/src/support.rs` | Backend-dependent default locator; passes `domain_id`/`node_name` to `open_session()` |
 | `packages/core/nros-c/src/publisher.rs` | `ShimPublisher` → `nros::internals::RmwPublisher` |
 | `packages/core/nros-c/src/subscription.rs` | `ShimSubscriber` → `nros::internals::RmwSubscriber` |
 | `packages/core/nros-c/src/service.rs` | `ShimServiceServer/Client` → `nros::internals::RmwServiceServer/Client` |
-| `packages/core/nros-c/src/executor.rs` | `ShimSubscriber/ServiceServer` → `nros::internals::Rmw*` |
+| `packages/core/nros-c/src/executor.rs` | `Rmw*` types + `drive_session_io()` call in `spin_some()` |
 | `packages/core/nros-c/src/backend.rs` | **Deleted** — abstraction moved to `nros::internals` |
+| `packages/core/nros-c/include/nros/init.h` | Removed zenoh-specific language from comments |
+| `examples/native/c/xrce/talker/` | New C XRCE talker example |
+| `examples/native/c/xrce/listener/` | New C XRCE listener example |
+| `packages/testing/nros-tests/src/fixtures/binaries.rs` | Added XRCE C build/fixture functions |

@@ -113,8 +113,14 @@ pub unsafe extern "C" fn nano_ros_support_init(
         support.locator[len] = 0;
         support.locator_len = len;
     } else {
-        // Default locator
+        // Backend-dependent default locator
+        #[cfg(feature = "rmw-zenoh")]
         let default_locator = b"tcp/127.0.0.1:7447\0";
+        #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
+        let default_locator = b"127.0.0.1:2019\0";
+        #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
+        let default_locator = b"\0";
+
         let len = default_locator.len() - 1;
         support.locator[..len].copy_from_slice(&default_locator[..len]);
         support.locator[len] = 0;
@@ -128,7 +134,20 @@ pub unsafe extern "C" fn nano_ros_support_init(
 
         let locator_str = core::str::from_utf8_unchecked(&support.locator[..support.locator_len]);
 
-        match nros::internals::open_session(locator_str, SessionMode::Client) {
+        // Generate unique session name per process. XRCE derives the session key
+        // from the node_name — two processes with the same name would conflict
+        // on the same Agent.
+        #[cfg(feature = "std")]
+        let session_name = alloc::format!("nros_{}", std::process::id());
+        #[cfg(not(feature = "std"))]
+        let session_name = alloc::string::String::from("nros");
+
+        match nros::internals::open_session(
+            locator_str,
+            SessionMode::Client,
+            support.domain_id as u32,
+            &session_name,
+        ) {
             Ok(session) => {
                 let session_box = alloc::boxed::Box::new(session);
                 support._internal = alloc::boxed::Box::into_raw(session_box) as *mut _;

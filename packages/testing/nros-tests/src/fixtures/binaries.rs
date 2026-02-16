@@ -85,6 +85,15 @@ static C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the c-listener binary
 static C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached: nros-c library built with XRCE features
+static NANO_ROS_C_LIB_XRCE: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the c-xrce-talker binary
+static C_XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the c-xrce-listener binary
+static C_XRCE_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build the qemu-test example and return its path
 ///
 /// Uses OnceLock to cache the build, so subsequent calls are fast.
@@ -794,6 +803,163 @@ pub fn c_talker_binary() -> PathBuf {
 pub fn c_listener_binary() -> PathBuf {
     build_c_listener()
         .expect("Failed to build c-listener")
+        .to_path_buf()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// C XRCE Example Builders (CMake-based, XRCE-DDS backend)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build the nros-c static library with XRCE features (cached).
+///
+/// Runs `cargo build -p nros-c --release --features rmw-xrce,xrce-udp,...`
+/// and returns the path to `libnros_c.a`.
+///
+/// Note: This overwrites `target/release/libnros_c.a` — zenoh and XRCE
+/// builds cannot coexist in the same target directory. Run XRCE C tests
+/// separately from zenoh C tests.
+pub fn build_nano_ros_c_lib_xrce() -> TestResult<&'static Path> {
+    NANO_ROS_C_LIB_XRCE
+        .get_or_try_init(|| {
+            let root = project_root();
+
+            eprintln!("Building nros-c library (XRCE backend)...");
+
+            let output = cmd!(
+                "cargo",
+                "build",
+                "-p",
+                "nros-c",
+                "--release",
+                "--features",
+                "rmw-xrce,xrce-udp,platform-posix,ros-humble"
+            )
+            .dir(&root)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let lib_path = root.join("target/release/libnros_c.a");
+            if !lib_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Library not found after build: {}",
+                    lib_path.display()
+                )));
+            }
+
+            Ok(lib_path)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build a CMake-based C example that uses the XRCE backend.
+///
+/// Similar to `build_c_example()` but first builds `nros-c` with XRCE features.
+pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
+    // Ensure the C library is built with XRCE features first
+    build_nano_ros_c_lib_xrce()?;
+
+    let root = project_root();
+    let src_dir = root.join(format!("examples/{}", example_dir));
+
+    if !src_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "C XRCE example directory not found: {}",
+            src_dir.display()
+        )));
+    }
+
+    let build_dir = src_dir.join("build");
+
+    eprintln!("Building C XRCE example {}...", example_dir);
+
+    // Clean and create build directory
+    if build_dir.exists() {
+        std::fs::remove_dir_all(&build_dir)
+            .map_err(|e| TestError::BuildFailed(format!("Failed to clean build dir: {}", e)))?;
+    }
+    std::fs::create_dir_all(&build_dir)
+        .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
+
+    // Run cmake configure
+    let root_arg = format!("-DNANO_ROS_ROOT={}", root.display());
+    let output = cmd!("cmake", &root_arg, "..")
+        .dir(&build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake configure failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    // Run cmake build
+    let output = cmd!("cmake", "--build", ".")
+        .dir(&build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake build failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let binary_path = build_dir.join(binary_name);
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+/// Build c-xrce-talker example (cached)
+pub fn build_c_xrce_talker() -> TestResult<&'static Path> {
+    C_XRCE_TALKER_BINARY
+        .get_or_try_init(|| build_c_xrce_example("native/c/xrce/talker", "c_xrce_talker"))
+        .map(|p| p.as_path())
+}
+
+/// Build c-xrce-listener example (cached)
+pub fn build_c_xrce_listener() -> TestResult<&'static Path> {
+    C_XRCE_LISTENER_BINARY
+        .get_or_try_init(|| build_c_xrce_example("native/c/xrce/listener", "c_xrce_listener"))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the c-xrce-talker binary path
+#[rstest::fixture]
+pub fn c_xrce_talker_binary() -> PathBuf {
+    build_c_xrce_talker()
+        .expect("Failed to build c-xrce-talker")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the c-xrce-listener binary path
+#[rstest::fixture]
+pub fn c_xrce_listener_binary() -> PathBuf {
+    build_c_xrce_listener()
+        .expect("Failed to build c-xrce-listener")
         .to_path_buf()
 }
 
