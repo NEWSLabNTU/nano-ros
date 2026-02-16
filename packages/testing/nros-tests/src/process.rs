@@ -33,13 +33,20 @@ fn poll_or_sleep(remaining: Duration) {
 ///
 /// This ensures that `kill_process_group()` can kill the child and all
 /// its descendants (e.g., bash → timeout → ros2).
+///
+/// On Linux, also sets `PR_SET_PDEATHSIG(SIGKILL)` so the child is killed
+/// when the parent dies — prevents orphans when nextest SIGKILL's the test binary.
 #[cfg(unix)]
 pub fn set_new_process_group(command: &mut Command) -> &mut Command {
     use std::os::unix::process::CommandExt;
-    // SAFETY: setpgid is async-signal-safe and called before exec
+    // SAFETY: setpgid and prctl are async-signal-safe and called before exec
     unsafe {
         command.pre_exec(|| {
             libc::setpgid(0, 0);
+            #[cfg(target_os = "linux")]
+            {
+                libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGKILL);
+            }
             Ok(())
         })
     }
