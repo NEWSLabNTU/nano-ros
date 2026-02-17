@@ -125,6 +125,7 @@ just test-zephyr        # Zephyr E2E tests (needs west + TAP)
 just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
 just test-all           # Everything
+just test-kill-orphans  # Kill orphaned test processes from previous runs
 ```
 
 ### First-Time Setup
@@ -388,7 +389,7 @@ Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMEN
 Features are organized into three orthogonal axes:
 - **RMW backend** (select one): `rmw-zenoh` (zenoh-pico), `rmw-xrce` (XRCE-DDS)
 - **Platform** (select one): `platform-posix` (desktop), `platform-zephyr` (Zephyr RTOS), `platform-bare-metal` (bare-metal)
-- **ROS edition**: `ros-humble`, `ros-iron`
+- **ROS edition** (select one): `ros-humble`, `ros-iron`
 
 **Orthogonality principle:** The three axes (RMW, platform, ROS edition) are strictly independent. A feature on one axis must NEVER imply a feature on another axis. For example, `platform-posix` must not activate `rmw-zenoh` or `ros-humble`. Compile-time checks enforce mutual exclusivity within each axis (e.g., cannot enable both `rmw-zenoh` and `rmw-xrce`), but selecting zero features on an axis is valid — the crate compiles with reduced functionality. This applies to all crates: `nros`, `nros-node`, `nros-c`, and board crates.
 

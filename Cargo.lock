@@ -461,6 +461,7 @@ dependencies = [
  "nros-node",
  "nros-params",
  "nros-rmw",
+ "nros-rmw-cffi",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
 ]
@@ -517,6 +518,7 @@ dependencies = [
  "nros-params",
  "nros-rcl-interfaces",
  "nros-rmw",
+ "nros-rmw-cffi",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
 ]
@@ -549,6 +551,14 @@ dependencies = [
  "nros-core",
  "nros-ghost-types",
  "spin",
+]
+
+[[package]]
+name = "nros-rmw-cffi"
+version = "0.1.0"
+dependencies = [
+ "nros-rmw",
+ "portable-atomic",
 ]
 
 [[package]]

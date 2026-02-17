@@ -6,7 +6,8 @@
 //!   XRCE_REQUEST_COUNT   — Number of requests to send (default: 3)
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use nros::xrce::*;
+use nros::xrce_transport::init_posix_udp;
+use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
 
 fn main() {
     let agent_addr =
@@ -27,14 +28,23 @@ fn main() {
 
     // Initialize transport and open session
     init_posix_udp(&agent_addr);
-    let mut executor =
-        XrceExecutor::new("xrce_service_client", domain_id).expect("Failed to open XRCE session");
+    let config = RmwConfig {
+        locator: &agent_addr,
+        mode: SessionMode::Client,
+        domain_id,
+        node_name: "xrce_service_client",
+        namespace: "",
+    };
+    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    let mut executor = EmbeddedExecutor::from_session(session);
     eprintln!("Session created");
 
     // Create service client
-    let mut node = executor.create_node();
+    let mut node = executor
+        .create_node("xrce_service_client")
+        .expect("Failed to create node");
     let mut client = node
-        .create_service_client::<AddTwoInts>("/add_two_ints")
+        .create_client::<AddTwoInts>("/add_two_ints")
         .expect("Failed to create service client");
     eprintln!("Service client created for /add_two_ints");
 
@@ -42,8 +52,6 @@ fn main() {
     println!("Service client ready");
 
     // Send requests
-    let mut req_buf = [0u8; 256];
-    let mut reply_buf = [0u8; 256];
     let mut success_count = 0usize;
 
     for i in 0..request_count {
@@ -54,15 +62,15 @@ fn main() {
         println!("Sent request: a={} b={}", a, b);
 
         // Drive session before call to ensure connectivity
-        executor.spin_once(100);
+        let _ = executor.drive_io(100);
 
-        match client.call(&request, &mut req_buf, &mut reply_buf) {
+        match client.call(&request) {
             Ok(reply) => {
                 println!("Received reply: sum={}", reply.sum);
                 success_count += 1;
             }
             Err(e) => {
-                eprintln!("Service call error: {}", e);
+                eprintln!("Service call error: {:?}", e);
             }
         }
 

@@ -5,7 +5,11 @@
 #![no_std]
 
 use log::{error, info};
-use nros::{ShimExecutor, ShimNodeError};
+#[allow(deprecated)]
+use nros::{
+    EmbeddedExecutor, EmbeddedNodeError, SessionMode, Transport, TransportConfig,
+    internals::ShimTransport,
+};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
@@ -22,8 +26,15 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), ShimNodeError> {
-    let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
+fn run() -> Result<(), EmbeddedNodeError> {
+    let config = TransportConfig {
+        locator: Some("tcp/192.0.2.2:7447"),
+        mode: SessionMode::Client,
+        properties: &[],
+    };
+    let session = ShimTransport::open(&config)
+        .map_err(|_| EmbeddedNodeError::Transport(nros::TransportError::ConnectionFailed))?;
+    let mut executor = EmbeddedExecutor::from_session(session);
     let mut node = executor.create_node("listener")?;
     let mut subscription = node.create_subscription::<Int32>("/chatter")?;
 
@@ -32,7 +43,7 @@ fn run() -> Result<(), ShimNodeError> {
     let mut count: u32 = 0;
 
     loop {
-        let _ = executor.spin_once(1000);
+        let _ = executor.drive_io(1000);
         while let Ok(Some(msg)) = subscription.try_recv() {
             count += 1;
             info!("[{}] Received: data={}", count, msg.data);

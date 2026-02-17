@@ -782,6 +782,10 @@ impl Session for ShimSession {
         // Context is closed on drop
         Ok(())
     }
+
+    fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
+        self.spin_once(timeout_ms as u32).map(|_| ())
+    }
 }
 
 // ============================================================================

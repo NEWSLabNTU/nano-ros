@@ -965,6 +965,11 @@ impl Session for XrceSession {
             Ok(())
         }
     }
+
+    fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
+        self.spin_once(timeout_ms);
+        Ok(())
+    }
 }
 
 // ============================================================================

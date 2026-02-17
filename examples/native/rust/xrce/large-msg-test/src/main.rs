@@ -8,7 +8,8 @@
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
-use nros::xrce::*;
+use nros::xrce_transport::init_posix_udp;
+use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -26,12 +27,21 @@ fn main() {
 
     // Initialize transport and open session
     init_posix_udp(&agent_addr);
-    let mut executor =
-        XrceExecutor::new("xrce_large_msg", domain_id).expect("Failed to open XRCE session");
+    let config = RmwConfig {
+        locator: &agent_addr,
+        mode: SessionMode::Client,
+        domain_id,
+        node_name: "xrce_large_msg",
+        namespace: "",
+    };
+    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    let mut executor = EmbeddedExecutor::from_session(session);
     eprintln!("Session created");
 
     // Create publisher (Int32 type — we'll publish raw bytes)
-    let mut node = executor.create_node();
+    let mut node = executor
+        .create_node("xrce_large_msg")
+        .expect("Failed to create node");
     let publisher = node
         .create_publisher::<Int32>("/large_msg_test")
         .expect("Failed to create publisher");
@@ -62,7 +72,7 @@ fn main() {
         }
 
         // Flush any pending output before each test
-        executor.spin_once(50);
+        let _ = executor.drive_io(50);
 
         match publisher.publish_raw(&payload) {
             Ok(()) => {
@@ -70,13 +80,13 @@ fn main() {
                 passed += 1;
             }
             Err(e) => {
-                println!("FAIL: publish_raw size={} error: {}", size, e);
+                println!("FAIL: publish_raw size={} error: {:?}", size, e);
                 failed += 1;
             }
         }
 
         // Drive session to flush the message through the transport
-        executor.spin_once(200);
+        let _ = executor.drive_io(200);
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 

@@ -26,6 +26,8 @@ members = [
     # cargo requires workspace member paths to exist on disk.
     "packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces",
     "packages/interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces",
+    # C function table adapter for third-party RMW backends
+    "packages/core/nros-rmw-cffi",
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
 ]
@@ -122,6 +124,7 @@ nros-params = { path = "packages/core/nros-params", default-features = false }
 nros-rmw = { path = "packages/core/nros-rmw", default-features = false }
 nros-rmw-zenoh = { path = "packages/zpico/nros-rmw-zenoh", default-features = false }
 nros-rmw-xrce = { path = "packages/xrce/nros-rmw-xrce", default-features = false }
+nros-rmw-cffi = { path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { path = "packages/core/nros-node", default-features = false }
 
 # no_std compatible

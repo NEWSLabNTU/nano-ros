@@ -13,7 +13,8 @@
 //!   EXPECTED_COUNT      — Messages to receive before exiting (default: 50)
 //!   TIMEOUT_SECS        — Listener timeout in seconds (default: 30)
 
-use nros::xrce::*;
+use nros::xrce_transport::init_posix_udp;
+use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
 use std::time::Instant;
 
 /// Build a test payload with integrity markers.
@@ -81,16 +82,25 @@ fn run_talker() {
     );
 
     init_posix_udp(&agent_addr);
-    let mut executor =
-        XrceExecutor::new("xrce_stress_talker", 0).expect("Failed to open XRCE session");
+    let config = RmwConfig {
+        locator: &agent_addr,
+        mode: SessionMode::Client,
+        domain_id: 0,
+        node_name: "xrce_stress_talker",
+        namespace: "",
+    };
+    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    let mut executor = EmbeddedExecutor::from_session(session);
 
-    let mut node = executor.create_node();
+    let mut node = executor
+        .create_node("xrce_stress_talker")
+        .expect("Failed to create node");
     let publisher = node
         .create_publisher::<std_msgs::msg::Int32>("/stress_test")
         .expect("Failed to create publisher");
 
     // Stabilize connection
-    executor.spin_once(500);
+    let _ = executor.drive_io(500);
     std::thread::sleep(std::time::Duration::from_millis(500));
     println!("Publishing...");
 
@@ -104,10 +114,10 @@ fn run_talker() {
                 println!("Published: seq={} size={}", seq, actual_size);
             }
             Err(e) => {
-                eprintln!("Publish error: seq={} size={}: {}", seq, actual_size, e);
+                eprintln!("Publish error: seq={} size={}: {:?}", seq, actual_size, e);
             }
         }
-        executor.spin_once(50);
+        let _ = executor.drive_io(50);
         if interval_ms > 0 {
             std::thread::sleep(std::time::Duration::from_millis(interval_ms));
         }
@@ -147,12 +157,21 @@ fn run_listener() {
     );
 
     init_posix_udp(&agent_addr);
-    let mut executor =
-        XrceExecutor::new("xrce_stress_listener", 0).expect("Failed to open XRCE session");
+    let config = RmwConfig {
+        locator: &agent_addr,
+        mode: SessionMode::Client,
+        domain_id: 0,
+        node_name: "xrce_stress_listener",
+        namespace: "",
+    };
+    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    let mut executor = EmbeddedExecutor::from_session(session);
 
-    let mut node = executor.create_node();
+    let mut node = executor
+        .create_node("xrce_stress_listener")
+        .expect("Failed to create node");
     let mut subscription = node
-        .create_subscription::<std_msgs::msg::Int32>("/stress_test")
+        .create_subscription_sized::<std_msgs::msg::Int32, 16384>("/stress_test")
         .expect("Failed to create subscriber");
 
     println!("Ready: listening");
@@ -162,14 +181,13 @@ fn run_listener() {
     let mut received: usize = 0;
     let mut valid: usize = 0;
     let mut invalid: usize = 0;
-    let mut recv_buf = [0u8; 16384];
 
     while received < expected_count && start.elapsed() < timeout {
-        executor.spin_once(50);
+        let _ = executor.drive_io(50);
 
-        match subscription.try_recv_raw(&mut recv_buf) {
+        match subscription.try_recv_raw() {
             Ok(Some(len)) => {
-                let (seq, is_valid) = validate_payload(&recv_buf[..len], actual_size);
+                let (seq, is_valid) = validate_payload(&subscription.buffer()[..len], actual_size);
                 received += 1;
                 if is_valid {
                     valid += 1;
@@ -180,7 +198,7 @@ fn run_listener() {
             }
             Ok(None) => {}
             Err(e) => {
-                eprintln!("Receive error: {}", e);
+                eprintln!("Receive error: {:?}", e);
             }
         }
     }

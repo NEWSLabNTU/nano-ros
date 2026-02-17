@@ -4,7 +4,8 @@
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
-use nros::xrce::*;
+use nros::xrce_transport::init_posix_udp;
+use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -19,12 +20,21 @@ fn main() {
 
     // Initialize transport and open session
     init_posix_udp(&agent_addr);
-    let mut executor =
-        XrceExecutor::new("xrce_talker", domain_id).expect("Failed to open XRCE session");
+    let config = RmwConfig {
+        locator: &agent_addr,
+        mode: SessionMode::Client,
+        domain_id,
+        node_name: "xrce_talker",
+        namespace: "",
+    };
+    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    let mut executor = EmbeddedExecutor::from_session(session);
     eprintln!("Session created");
 
     // Create publisher
-    let mut node = executor.create_node();
+    let mut node = executor
+        .create_node("xrce_talker")
+        .expect("Failed to create node");
     let publisher = node
         .create_publisher::<Int32>("/chatter")
         .expect("Failed to create publisher");
@@ -32,20 +42,19 @@ fn main() {
 
     // Publishing loop
     println!("Publishing Int32 messages...");
-    let mut buf = [0u8; 256];
     for i in 0i32..20 {
         let msg = Int32 { data: i };
-        match publisher.publish(&msg, &mut buf) {
+        match publisher.publish(&msg) {
             Ok(()) => {
                 println!("Published: {}", i);
             }
             Err(e) => {
-                eprintln!("Publish error: {}", e);
+                eprintln!("Publish error: {:?}", e);
             }
         }
 
         // Drive the XRCE session (flush output)
-        executor.spin_once(100);
+        let _ = executor.drive_io(100);
         std::thread::sleep(std::time::Duration::from_millis(500));
     }
 

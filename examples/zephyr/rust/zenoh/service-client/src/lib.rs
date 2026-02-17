@@ -7,7 +7,11 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use log::{error, info};
-use nros::{ShimExecutor, ShimNodeError};
+#[allow(deprecated)]
+use nros::{
+    EmbeddedExecutor, EmbeddedNodeError, SessionMode, Transport, TransportConfig,
+    internals::ShimTransport,
+};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
@@ -23,8 +27,15 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), ShimNodeError> {
-    let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
+fn run() -> Result<(), EmbeddedNodeError> {
+    let config = TransportConfig {
+        locator: Some("tcp/192.0.2.2:7447"),
+        mode: SessionMode::Client,
+        properties: &[],
+    };
+    let session = ShimTransport::open(&config)
+        .map_err(|_| EmbeddedNodeError::Transport(nros::TransportError::ConnectionFailed))?;
+    let mut executor = EmbeddedExecutor::from_session(session);
     let mut node = executor.create_node("add_two_ints_client")?;
     let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
 

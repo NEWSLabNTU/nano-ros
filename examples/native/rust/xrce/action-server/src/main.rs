@@ -9,10 +9,11 @@
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
-use nros::xrce::*;
+use nros::xrce_transport::init_posix_udp;
 use nros::{
-    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, Publisher, QosSettings, RosAction,
-    Serialize, ServiceInfo, ServiceServerTrait, Session, TopicInfo, XrceSession,
+    CdrReader, CdrWriter, Deserialize, EmbeddedExecutor, GoalId, GoalStatus, Publisher,
+    QosSettings, Rmw, RmwConfig, RosAction, Serialize, ServiceInfo, ServiceServerTrait, Session,
+    SessionMode, TopicInfo, XrceRmw, XrceSession,
 };
 use std::time::Instant;
 
@@ -36,8 +37,15 @@ fn main() {
     );
 
     init_posix_udp(&agent_addr);
-    let mut executor =
-        XrceExecutor::new("xrce_action_server", domain_id).expect("Failed to open XRCE session");
+    let config = RmwConfig {
+        locator: &agent_addr,
+        mode: SessionMode::Client,
+        domain_id,
+        node_name: "xrce_action_server",
+        namespace: "",
+    };
+    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    let mut executor = EmbeddedExecutor::from_session(session);
     eprintln!("Session created");
 
     // Build DDS type names for action sub-entities
@@ -80,7 +88,7 @@ fn main() {
     let mut feedback_buf = [0u8; 512];
 
     while start.elapsed() < timeout {
-        executor.spin_once(100);
+        let _ = executor.drive_io(100);
 
         // --- Handle send_goal requests ---
         if let Some(request) = send_goal_server
@@ -112,7 +120,7 @@ fn main() {
                 send_goal_server.send_reply(seq, &reply_buf[..len]).unwrap();
 
                 println!("Goal accepted: {:?}", goal_id);
-                executor.spin_once(100); // flush reply
+                let _ = executor.drive_io(100); // flush reply
 
                 // Execute Fibonacci computation with feedback
                 let mut sequence: nros::heapless::Vec<i32, 64> = nros::heapless::Vec::new();
@@ -137,7 +145,7 @@ fn main() {
                     let _ = feedback_publisher.publish_raw(&feedback_buf[..fb_len]);
 
                     println!("Feedback: step={}, sequence_len={}", i, sequence.len());
-                    executor.spin_once(100); // flush feedback
+                    let _ = executor.drive_io(100); // flush feedback
                     std::thread::sleep(std::time::Duration::from_millis(50));
                 }
 
@@ -184,7 +192,7 @@ fn main() {
                 get_result_server
                     .send_reply(seq, &reply_buf[..len])
                     .unwrap();
-                executor.spin_once(100);
+                let _ = executor.drive_io(100);
             }
         }
     }

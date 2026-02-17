@@ -11,6 +11,7 @@ std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "log"]
 alloc = ["nros-core/alloc"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
+rmw-cffi = ["dep:nros-rmw-cffi"]
 
 # XRCE transport refinements (posix-only, forwarded to nros-rmw-xrce)
 posix-udp = ["nros-rmw-xrce?/posix-udp"]
@@ -44,6 +45,7 @@ nros-core = { workspace = true, default-features = false }
 nros-rmw = { workspace = true, default-features = false }
 nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
 nros-rmw-xrce = { workspace = true, default-features = false, optional = true }
+nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 log = { workspace = true, optional = true }

@@ -640,6 +640,17 @@ pub trait Session {
 
     /// Close the session
     fn close(&mut self) -> Result<(), Self::Error>;
+
+    /// Drive transport I/O (poll network, dispatch callbacks).
+    ///
+    /// Pull-based backends (zenoh-pico, XRCE-DDS) override this to pump
+    /// network data. Push-based backends use the default no-op.
+    ///
+    /// `timeout_ms` is the maximum time to wait for data (0 = non-blocking).
+    fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
+        let _ = timeout_ms;
+        Ok(())
+    }
 }
 
 /// Publisher trait for sending messages

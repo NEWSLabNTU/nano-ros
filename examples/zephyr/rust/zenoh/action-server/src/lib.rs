@@ -8,7 +8,11 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
 use log::{error, info};
-use nros::{CancelResponse, GoalResponse, GoalStatus, ShimExecutor, ShimNodeError};
+#[allow(deprecated)]
+use nros::{
+    CancelResponse, EmbeddedExecutor, EmbeddedNodeError, GoalResponse, GoalStatus, SessionMode,
+    Transport, TransportConfig, internals::ShimTransport,
+};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
@@ -25,8 +29,15 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), ShimNodeError> {
-    let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
+fn run() -> Result<(), EmbeddedNodeError> {
+    let config = TransportConfig {
+        locator: Some("tcp/192.0.2.2:7447"),
+        mode: SessionMode::Client,
+        properties: &[],
+    };
+    let session = ShimTransport::open(&config)
+        .map_err(|_| EmbeddedNodeError::Transport(nros::TransportError::ConnectionFailed))?;
+    let mut executor = EmbeddedExecutor::from_session(session);
     let mut node = executor.create_node("fibonacci_action_server")?;
     let mut action_server = node.create_action_server::<Fibonacci>("/fibonacci")?;
 
@@ -34,7 +45,7 @@ fn run() -> Result<(), ShimNodeError> {
     info!("Waiting for action goals...");
 
     loop {
-        let _ = executor.spin_once(100);
+        let _ = executor.drive_io(100);
 
         // Handle cancel requests
         let _ = action_server.try_handle_cancel(|_goal_id, status| {
@@ -75,7 +86,7 @@ fn run() -> Result<(), ShimNodeError> {
 
             for i in 0..=order {
                 // Process events (including cancel requests)
-                let _ = executor.spin_once(10);
+                let _ = executor.drive_io(10);
                 let _ = action_server.try_handle_cancel(|cid, status| {
                     if cid.uuid == goal_id.uuid
                         && (status == GoalStatus::Executing || status == GoalStatus::Accepted)

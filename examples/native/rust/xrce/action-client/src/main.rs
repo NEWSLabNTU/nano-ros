@@ -9,10 +9,11 @@
 //!   XRCE_DOMAIN_ID      — ROS domain ID (default: 0)
 //!   XRCE_FIBONACCI_ORDER — Fibonacci sequence order to request (default: 5)
 
-use nros::xrce::*;
+use nros::xrce_transport::init_posix_udp;
 use nros::{
-    CdrReader, CdrWriter, Deserialize, GoalId, GoalStatus, QosSettings, RosAction, Serialize,
-    ServiceClientTrait, ServiceInfo, Session, Subscriber, TopicInfo, XrceSession,
+    CdrReader, CdrWriter, Deserialize, EmbeddedExecutor, GoalId, GoalStatus, QosSettings, Rmw,
+    RmwConfig, RosAction, Serialize, ServiceClientTrait, ServiceInfo, Session, SessionMode,
+    Subscriber, TopicInfo, XrceRmw, XrceSession,
 };
 use std::time::Instant;
 
@@ -36,8 +37,15 @@ fn main() {
     );
 
     init_posix_udp(&agent_addr);
-    let mut executor =
-        XrceExecutor::new("xrce_action_client", domain_id).expect("Failed to open XRCE session");
+    let config = RmwConfig {
+        locator: &agent_addr,
+        mode: SessionMode::Client,
+        domain_id,
+        node_name: "xrce_action_client",
+        namespace: "",
+    };
+    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
+    let mut executor = EmbeddedExecutor::from_session(session);
     eprintln!("Session created");
 
     // Build DDS type names for action sub-entities
@@ -108,7 +116,7 @@ fn main() {
     let feedback_timeout = std::time::Duration::from_secs(15);
 
     while start.elapsed() < feedback_timeout {
-        executor.spin_once(100);
+        let _ = executor.drive_io(100);
 
         // Check for feedback: GoalId(16 bytes) + FibonacciFeedback
         match feedback_subscriber.try_recv_raw(&mut feedback_buf) {
@@ -140,7 +148,7 @@ fn main() {
 
     // Small delay to let server finish storing result
     for _ in 0..5 {
-        executor.spin_once(100);
+        let _ = executor.drive_io(100);
     }
 
     // --- Step 3: Get result ---

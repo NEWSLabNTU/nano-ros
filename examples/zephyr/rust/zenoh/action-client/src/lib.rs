@@ -8,7 +8,11 @@
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 use log::{error, info, warn};
-use nros::{ShimExecutor, ShimNodeError};
+#[allow(deprecated)]
+use nros::{
+    EmbeddedExecutor, EmbeddedNodeError, SessionMode, Transport, TransportConfig,
+    internals::ShimTransport,
+};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
@@ -25,8 +29,15 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), ShimNodeError> {
-    let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
+fn run() -> Result<(), EmbeddedNodeError> {
+    let config = TransportConfig {
+        locator: Some("tcp/192.0.2.2:7447"),
+        mode: SessionMode::Client,
+        properties: &[],
+    };
+    let session = ShimTransport::open(&config)
+        .map_err(|_| EmbeddedNodeError::Transport(nros::TransportError::ConnectionFailed))?;
+    let mut executor = EmbeddedExecutor::from_session(session);
     let mut node = executor.create_node("fibonacci_action_client")?;
     let mut action_client = node.create_action_client::<Fibonacci>("/fibonacci")?;
 
@@ -48,7 +59,7 @@ fn run() -> Result<(), ShimNodeError> {
             );
             id
         }
-        Err(ShimNodeError::ServiceRequestFailed) => {
+        Err(EmbeddedNodeError::ServiceRequestFailed) => {
             warn!("Goal was rejected by the server");
             return Ok(());
         }
@@ -66,7 +77,7 @@ fn run() -> Result<(), ShimNodeError> {
     let max_wait_cycles = 200; // 20 seconds max (100ms per cycle)
 
     for cycle in 0..max_wait_cycles {
-        let _ = executor.spin_once(100);
+        let _ = executor.drive_io(100);
 
         // Check for feedback
         match action_client.try_recv_feedback() {

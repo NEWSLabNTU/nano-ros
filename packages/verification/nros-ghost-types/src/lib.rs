@@ -118,13 +118,13 @@ pub struct ServiceBufferGhost {
 ///
 /// Models the result of each layer in the publish path:
 ///
-/// Source (nros-node/src/shim.rs:596-609):
+/// Source (nros-node/src/generic.rs):
 /// ```ignore
-/// pub fn publish_with_buffer<const BUF: usize>(...) -> Result<(), ShimNodeError> {
+/// pub fn publish_with_buffer<const BUF: usize>(...) -> Result<(), EmbeddedNodeError> {
 ///     let mut writer = CdrWriter::new_with_header(&mut buffer)
-///         .map_err(|_| ShimNodeError::BufferTooSmall)?;
+///         .map_err(|_| EmbeddedNodeError::BufferTooSmall)?;
 ///     msg.serialize(&mut writer)
-///         .map_err(|_| ShimNodeError::Serialization)?;
+///         .map_err(|_| EmbeddedNodeError::Serialization)?;
 ///     self.publisher.publish_raw(&buffer[..len]).map_err(|e| e.into())
 /// }
 /// ```

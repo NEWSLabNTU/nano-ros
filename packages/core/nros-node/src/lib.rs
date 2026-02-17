@@ -85,6 +85,7 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod generic;
 pub mod lifecycle;
 mod node;
 mod publisher;
@@ -110,12 +111,6 @@ pub mod executor;
 
 #[cfg(all(feature = "rmw-zenoh", feature = "rtic"))]
 pub mod rtic;
-
-#[cfg(feature = "rmw-zenoh")]
-pub mod shim;
-
-#[cfg(feature = "rmw-xrce")]
-pub mod xrce;
 
 #[cfg(feature = "param-services")]
 pub mod parameter_services;
@@ -223,10 +218,9 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use lifecycle::LifecycleNode;
 
-// Re-export shim types when shim feature is enabled
-#[cfg(feature = "rmw-zenoh")]
-pub use shim::{
-    ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
-    ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,
-    ShimNodeServiceServer, ShimNodeSubscription,
+// Re-export generic embedded node types (always available, no feature gate)
+pub use generic::{
+    EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
+    EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher, EmbeddedServiceClient,
+    EmbeddedServiceServer, EmbeddedSubscription,
 };

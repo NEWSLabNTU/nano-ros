@@ -62,6 +62,10 @@
 // At most one RMW backend.
 #[cfg(all(feature = "rmw-zenoh", feature = "rmw-xrce"))]
 compile_error!("`rmw-zenoh` and `rmw-xrce` are mutually exclusive — select one RMW backend.");
+#[cfg(all(feature = "rmw-cffi", feature = "rmw-zenoh"))]
+compile_error!("`rmw-cffi` and `rmw-zenoh` are mutually exclusive.");
+#[cfg(all(feature = "rmw-cffi", feature = "rmw-xrce"))]
+compile_error!("`rmw-cffi` and `rmw-xrce` are mutually exclusive.");
 
 // At most one platform.
 #[cfg(any(
@@ -141,7 +145,7 @@ pub use nros_node::{BasicExecutor, Promise, SpinPeriodResult};
 pub use nros_rmw::{
     Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, Rmw,
     RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
-    SessionMode, Subscriber, TopicInfo, TransportError,
+    SessionMode, Subscriber, TopicInfo, Transport, TransportError,
 };
 
 /// Transport configuration struct.
@@ -158,16 +162,34 @@ pub use nros_rmw_xrce::{
     XrcePublisher, XrceRmw, XrceServiceClient, XrceServiceServer, XrceSession, XrceSubscriber,
 };
 
-// Re-export XRCE node API (typed wrappers)
+/// XRCE-DDS transport initialization helpers.
 #[cfg(feature = "rmw-xrce")]
-pub mod xrce {
-    pub use nros_node::xrce::*;
+pub mod xrce_transport {
+    /// Initialize POSIX UDP transport for XRCE-DDS.
+    ///
+    /// Must be called before opening an XRCE session.
+    #[cfg(feature = "xrce-udp")]
+    pub fn init_posix_udp(agent_addr: &str) {
+        unsafe {
+            nros_rmw_xrce::posix_udp::init_posix_udp_transport(agent_addr);
+        }
+    }
+
+    /// Initialize POSIX serial transport for XRCE-DDS.
+    ///
+    /// Must be called before opening an XRCE session.
+    #[cfg(feature = "xrce-serial")]
+    pub fn init_posix_serial(pty_path: &str) {
+        unsafe {
+            nros_rmw_xrce::posix_serial::init_posix_serial_transport(pty_path);
+        }
+    }
 }
 
 /// Backend-specific internal types.
 ///
 /// These types are implementation details of the transport backends.
-/// Most users should use the high-level APIs (`Context`, `Executor`, `ShimExecutor`, etc.)
+/// Most users should use the high-level APIs (`Context`, `Executor`, `EmbeddedExecutor`, etc.)
 /// instead of these types directly.
 ///
 /// The `Rmw*` type aliases resolve to whichever backend is active at compile time,
@@ -206,6 +228,17 @@ pub mod internals {
     #[cfg(feature = "rmw-xrce")]
     pub type RmwServiceClient = nros_rmw_xrce::XrceServiceClient;
 
+    #[cfg(feature = "rmw-cffi")]
+    pub type RmwSession = nros_rmw_cffi::CffiSession;
+    #[cfg(feature = "rmw-cffi")]
+    pub type RmwPublisher = nros_rmw_cffi::CffiPublisher;
+    #[cfg(feature = "rmw-cffi")]
+    pub type RmwSubscriber = nros_rmw_cffi::CffiSubscriber;
+    #[cfg(feature = "rmw-cffi")]
+    pub type RmwServiceServer = nros_rmw_cffi::CffiServiceServer;
+    #[cfg(feature = "rmw-cffi")]
+    pub type RmwServiceClient = nros_rmw_cffi::CffiServiceClient;
+
     /// Open a new middleware session.
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
@@ -214,7 +247,10 @@ pub mod internals {
     /// - **Zenoh**: `domain_id` and `node_name` are ignored (zenoh uses `locator` and `mode`).
     /// - **XRCE-DDS**: `locator` is the agent address (e.g., `"127.0.0.1:2019"`).
     ///   Transport must match the active transport feature (`xrce-udp` or `xrce-serial`).
-    #[cfg(all(any(feature = "rmw-zenoh", feature = "rmw-xrce"), feature = "alloc"))]
+    #[cfg(all(
+        any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"),
+        feature = "alloc",
+    ))]
     pub fn open_session(
         locator: &str,
         mode: nros_rmw::SessionMode,
@@ -259,63 +295,47 @@ pub mod internals {
             nros_rmw_xrce::XrceRmw::open(&config)
                 .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
         }
+
+        #[cfg(all(
+            feature = "rmw-cffi",
+            not(feature = "rmw-zenoh"),
+            not(feature = "rmw-xrce"),
+        ))]
+        {
+            use nros_rmw::Rmw;
+
+            let config = nros_rmw::RmwConfig {
+                locator,
+                mode,
+                domain_id,
+                node_name,
+                namespace: "",
+            };
+            nros_rmw_cffi::CffiRmw::open(&config)
+                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
+        }
     }
 
     /// Drive middleware I/O for pull-based backends.
     ///
-    /// - **Zenoh**: No-op (zenoh is push-based, callbacks fire asynchronously).
-    /// - **XRCE-DDS**: Calls `spin_once(timeout_ms)` to pump network I/O and
-    ///   dispatch incoming data into subscriber/service slots.
+    /// Delegates to [`Session::drive_io()`](nros_rmw::Session::drive_io),
+    /// which each backend implements appropriately (no-op for push-based,
+    /// poll for pull-based).
     ///
     /// Used by the C API executor before polling handles.
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
     pub fn drive_session_io(session: &mut RmwSession, timeout_ms: i32) {
-        #[cfg(feature = "rmw-zenoh")]
-        {
-            let _ = (session, timeout_ms);
-        }
-
-        #[cfg(all(feature = "rmw-xrce", not(feature = "rmw-zenoh")))]
-        {
-            session.spin_once(timeout_ms);
-        }
+        use nros_rmw::Session;
+        let _ = session.drive_io(timeout_ms);
     }
 }
 
-// Re-export shim node types
-#[cfg(feature = "rmw-zenoh")]
+// Re-export embedded node types (always available, no feature gate)
 pub use nros_node::{
-    ShimActiveGoal, ShimCompletedGoal, ShimExecutor, ShimNode, ShimNodeActionClient,
-    ShimNodeActionServer, ShimNodeError, ShimNodePublisher, ShimNodeServiceClient,
-    ShimNodeServiceServer, ShimNodeSubscription,
+    EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
+    EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher, EmbeddedServiceClient,
+    EmbeddedServiceServer, EmbeddedSubscription,
 };
-
-// Clean type aliases for shim types (when rmw-zenoh is active but alloc is not,
-// i.e., embedded use without the Connected* API)
-#[cfg(all(feature = "rmw-zenoh", not(feature = "alloc")))]
-mod shim_aliases {
-    pub type Publisher<M> = super::ShimNodePublisher<M>;
-    pub type Subscription<M, const N: usize = 1024> = super::ShimNodeSubscription<M, N>;
-    pub type Service<S, const REQ: usize = 1024, const REP: usize = 1024> =
-        super::ShimNodeServiceServer<S, REQ, REP>;
-    pub type Client<S, const REQ: usize = 1024, const REP: usize = 1024> =
-        super::ShimNodeServiceClient<S, REQ, REP>;
-    pub type ActionServer<
-        A: nros_core::RosAction,
-        const G: usize = 1024,
-        const R: usize = 1024,
-        const F: usize = 1024,
-        const M: usize = 4,
-    > = super::ShimNodeActionServer<A, G, R, F, M>;
-    pub type ActionClient<
-        A: nros_core::RosAction,
-        const G: usize = 1024,
-        const R: usize = 1024,
-        const F: usize = 1024,
-    > = super::ShimNodeActionClient<A, G, R, F>;
-}
-#[cfg(all(feature = "rmw-zenoh", not(feature = "alloc")))]
-pub use shim_aliases::*;
 
 // Re-export service types
 pub use nros_core::{ServiceClient, ServiceServer};
@@ -400,16 +420,10 @@ pub mod prelude {
     #[cfg(all(feature = "rmw-zenoh", feature = "std"))]
     pub use crate::{BasicExecutor, Promise, SpinPeriodResult};
 
-    // Re-export shim node types
-    #[cfg(feature = "rmw-zenoh")]
+    // Re-export generic embedded node types
     pub use crate::{
-        ShimExecutor, ShimNode, ShimNodeActionClient, ShimNodeActionServer, ShimNodeError,
-        ShimNodePublisher, ShimNodeServiceClient, ShimNodeServiceServer, ShimNodeSubscription,
+        EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher, EmbeddedSubscription,
     };
-
-    // Re-export clean type aliases (embedded without alloc)
-    #[cfg(all(feature = "rmw-zenoh", not(feature = "alloc")))]
-    pub use crate::shim_aliases::*;
 
     // Re-export parameter types
     pub use crate::{ParameterServer, ParameterType, ParameterValue};

@@ -27,6 +27,7 @@ alloc = [
 # RMW backend (select one)
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce", "nros-node/rmw-xrce"]
+rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 
 # Platform (select one; forwarded to active backend via ? syntax)
 platform-posix = [
@@ -70,6 +71,7 @@ nros-node = { path = "../nros-node", default-features = false }
 nros-rmw = { path = "../nros-rmw", default-features = false }
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
 nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
+nros-rmw-cffi = { path = "../nros-rmw-cffi", default-features = false, optional = true }
 nros-params = { path = "../nros-params", default-features = false }
 
 [dev-dependencies]

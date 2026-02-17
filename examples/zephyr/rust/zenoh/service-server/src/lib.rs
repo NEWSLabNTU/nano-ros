@@ -7,7 +7,11 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use log::{error, info};
-use nros::{ShimExecutor, ShimNodeError};
+#[allow(deprecated)]
+use nros::{
+    EmbeddedExecutor, EmbeddedNodeError, SessionMode, Transport, TransportConfig,
+    internals::ShimTransport,
+};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
@@ -23,8 +27,15 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), ShimNodeError> {
-    let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
+fn run() -> Result<(), EmbeddedNodeError> {
+    let config = TransportConfig {
+        locator: Some("tcp/192.0.2.2:7447"),
+        mode: SessionMode::Client,
+        properties: &[],
+    };
+    let session = ShimTransport::open(&config)
+        .map_err(|_| EmbeddedNodeError::Transport(nros::TransportError::ConnectionFailed))?;
+    let mut executor = EmbeddedExecutor::from_session(session);
     let mut node = executor.create_node("add_two_ints_server")?;
     let mut service = node.create_service::<AddTwoInts>("/add_two_ints")?;
 
@@ -32,7 +43,7 @@ fn run() -> Result<(), ShimNodeError> {
     info!("Waiting for service requests...");
 
     loop {
-        let _ = executor.spin_once(100);
+        let _ = executor.drive_io(100);
         let _ = service.handle_request(|req| {
             let sum = req.a + req.b;
             info!("{} + {} = {}", req.a, req.b, sum);
