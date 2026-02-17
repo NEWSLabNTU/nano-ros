@@ -23,9 +23,8 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-# Use locally-built zenohd if available, otherwise fall back to system PATH
+# Use locally-built zenohd (build with: just build-zenohd)
 ZENOHD="$PROJECT_ROOT/build/zenohd/zenohd"
-[ -x "$ZENOHD" ] || ZENOHD="zenohd"
 
 # =============================================================================
 # Utilities (self-contained)

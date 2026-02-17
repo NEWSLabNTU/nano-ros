@@ -54,7 +54,7 @@ test-unit verbose="":
 
 # Run standard tests (needs qemu-system-arm + zenohd)
 # Single nextest run (workspace + integration, excluding zephyr/ros2/large_msg) + Miri + QEMU
-test verbose="":
+test verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
@@ -85,7 +85,7 @@ test verbose="":
 
 # Run all tests including Zephyr, ROS 2 interop, C API
 # Single nextest run (entire workspace) + Miri + QEMU + C
-test-all verbose="":
+test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
@@ -855,7 +855,7 @@ bench-fairness:
 
 # Run all Rust integration tests (requires zenohd)
 # Excludes zephyr, rmw_interop, large_msg tests (run via test-zephyr / test-ros2 / test-large-msg)
-test-integration verbose="":
+test-integration verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --no-fail-fast
@@ -866,7 +866,7 @@ test-integration verbose="":
     cargo nextest run "${args[@]}"
 
 # Run large message & throughput stress tests (requires zenohd + XRCE Agent + qemu-system-arm)
-test-large-msg verbose="":
+test-large-msg verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --test large_msg --no-fail-fast)
@@ -876,7 +876,7 @@ test-large-msg verbose="":
     cargo nextest run "${args[@]}"
 
 # Run RMW abstraction integration tests (requires zenohd)
-test-rmw verbose="":
+test-rmw verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --test rmw --features rmw --no-fail-fast)
@@ -891,7 +891,7 @@ test-rmw verbose="":
 
 # Run Zephyr E2E tests (requires pre-built Zephyr examples + bridge network)
 # Note: thread limit handled by [test-groups.zephyr] in .config/nextest.toml
-test-zephyr verbose="":
+test-zephyr verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --test zephyr --no-fail-fast)
@@ -907,7 +907,7 @@ test-zephyr-full verbose="": build-zephyr
     just test-zephyr {{verbose}}
 
 # Run Zephyr C examples test
-test-zephyr-c:
+test-zephyr-c: build-zenohd
     ./tests/zephyr/run-c.sh
 
 # =============================================================================
@@ -915,7 +915,7 @@ test-zephyr-c:
 # =============================================================================
 
 # Run ROS 2 interop tests (Rust test harness)
-test-ros2 verbose="":
+test-ros2 verbose="": build-zenohd
     #!/usr/bin/env bash
     set -e
     args=(-p nros-tests --test rmw_interop --no-fail-fast)
@@ -953,7 +953,7 @@ test-xrce-ros2 verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-test-c verbose="": _init-test-logs
+test-c verbose="": build-zenohd _init-test-logs
     #!/usr/bin/env bash
     set -e
     v="{{ if verbose != "" { "--verbose" } else { "" } }}"
@@ -1262,7 +1262,7 @@ doc:
 # Clean all build artifacts created by `just build`
 clean: clean-examples clean-zephyr clean-zenohd
     cargo clean
-    rm -rf build/install
+    rm -rf build
     @echo "All build artifacts cleaned"
 
 # Show Zephyr build instructions

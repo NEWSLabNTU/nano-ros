@@ -475,31 +475,28 @@ impl Drop for ManagedProcess {
 // Zenoh Availability Check
 // =============================================================================
 
-/// Get the path to the zenohd binary.
+/// Get the path to the locally-built zenohd binary.
 ///
-/// Checks for a locally-built zenohd at `build/zenohd/zenohd` first,
-/// then falls back to `zenohd` on the system PATH.
+/// Returns `build/zenohd/zenohd` within the project root.
+/// Build it with `just build-zenohd`.
 pub fn zenohd_binary_path() -> std::path::PathBuf {
-    let local = crate::project_root().join("build/zenohd/zenohd");
-    if local.exists() {
-        local
-    } else {
-        std::path::PathBuf::from("zenohd")
-    }
+    crate::project_root().join("build/zenohd/zenohd")
 }
 
-/// Check if zenohd is available (local build or system PATH)
+/// Check if the locally-built zenohd is available.
 pub fn is_zenohd_available() -> bool {
-    Command::new(zenohd_binary_path())
-        .arg("--version")
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
+    let path = zenohd_binary_path();
+    path.exists()
+        && Command::new(&path)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+            .map(|s| s.success())
+            .unwrap_or(false)
 }
 
-/// Skip test if zenohd is not available
+/// Skip test if zenohd is not available.
 ///
 /// Returns `false` if zenohd is not available, printing a skip message.
 /// Returns `true` if zenohd is available and the test should proceed.
@@ -517,7 +514,7 @@ pub fn is_zenohd_available() -> bool {
 /// ```
 pub fn require_zenohd() -> bool {
     if !is_zenohd_available() {
-        eprintln!("Skipping test: zenohd not found");
+        eprintln!("Skipping test: zenohd not found (run `just build-zenohd`)");
         return false;
     }
     true
