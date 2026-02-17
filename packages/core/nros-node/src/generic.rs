@@ -27,8 +27,151 @@ use core::marker::PhantomData;
 use nros_core::{CdrReader, CdrWriter, Deserialize, RosAction, RosMessage, RosService, Serialize};
 use nros_rmw::{
     ActionInfo, Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceServerTrait,
-    Session, Subscriber, TopicInfo, TransportError,
+    Session, SessionMode, Subscriber, TopicInfo, TransportError,
 };
+
+// ============================================================================
+// EmbeddedConfig
+// ============================================================================
+
+/// Configuration for opening an embedded executor session.
+///
+/// Provides a backend-agnostic builder for configuring the middleware
+/// connection. The active Cargo feature (`rmw-zenoh`, `rmw-xrce`, or
+/// `rmw-cffi`) determines which backend is used.
+///
+/// # Example
+///
+/// ```ignore
+/// use nros::prelude::*;
+///
+/// let config = EmbeddedConfig::new("tcp/127.0.0.1:7447")
+///     .node_name("talker")
+///     .domain_id(0);
+/// let mut executor = EmbeddedExecutor::open(&config)?;
+/// ```
+pub struct EmbeddedConfig<'a> {
+    /// Middleware-specific connection string.
+    pub locator: &'a str,
+    /// Session mode (client or peer).
+    pub mode: SessionMode,
+    /// ROS 2 domain ID.
+    pub domain_id: u32,
+    /// Node name.
+    pub node_name: &'a str,
+    /// Node namespace.
+    pub namespace: &'a str,
+}
+
+impl<'a> EmbeddedConfig<'a> {
+    /// Create a new configuration with the given locator.
+    ///
+    /// Defaults: `Client` mode, domain 0, node name `"node"`, empty namespace.
+    pub const fn new(locator: &'a str) -> Self {
+        Self {
+            locator,
+            mode: SessionMode::Client,
+            domain_id: 0,
+            node_name: "node",
+            namespace: "",
+        }
+    }
+
+    /// Set the ROS 2 domain ID.
+    pub const fn domain_id(mut self, id: u32) -> Self {
+        self.domain_id = id;
+        self
+    }
+
+    /// Set the node name.
+    pub const fn node_name(mut self, name: &'a str) -> Self {
+        self.node_name = name;
+        self
+    }
+
+    /// Set the node namespace.
+    pub const fn namespace(mut self, ns: &'a str) -> Self {
+        self.namespace = ns;
+        self
+    }
+
+    /// Set the session mode.
+    pub const fn mode(mut self, mode: SessionMode) -> Self {
+        self.mode = mode;
+        self
+    }
+}
+
+// ============================================================================
+// EmbeddedExecutor::open() factory methods
+// ============================================================================
+
+#[cfg(any(feature = "rmw-xrce", feature = "rmw-cffi"))]
+use nros_rmw::Rmw;
+
+#[cfg(feature = "rmw-zenoh")]
+impl EmbeddedExecutor<nros_rmw_zenoh::ShimSession> {
+    /// Open a new executor session using the zenoh-pico backend.
+    ///
+    /// Connects to the zenoh router at the locator specified in `config`.
+    pub fn open(config: &EmbeddedConfig<'_>) -> Result<Self, EmbeddedNodeError> {
+        let tc = nros_rmw::TransportConfig {
+            locator: Some(config.locator),
+            mode: config.mode,
+            properties: &[],
+        };
+        let session = nros_rmw_zenoh::ShimSession::new(&tc)
+            .map_err(|_| EmbeddedNodeError::Transport(TransportError::ConnectionFailed))?;
+        Ok(Self::from_session(session))
+    }
+}
+
+#[cfg(feature = "rmw-xrce")]
+impl EmbeddedExecutor<nros_rmw_xrce::XrceSession> {
+    /// Open a new executor session using the XRCE-DDS backend.
+    ///
+    /// Automatically initializes the active POSIX transport (`posix-udp` or
+    /// `posix-serial`) before connecting to the XRCE agent.
+    pub fn open(config: &EmbeddedConfig<'_>) -> Result<Self, EmbeddedNodeError> {
+        // Auto-init transport based on active feature
+        #[cfg(feature = "posix-udp")]
+        unsafe {
+            nros_rmw_xrce::posix_udp::init_posix_udp_transport(config.locator);
+        }
+        #[cfg(feature = "posix-serial")]
+        unsafe {
+            nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
+        }
+
+        let rmw_config = nros_rmw::RmwConfig {
+            locator: config.locator,
+            mode: config.mode,
+            domain_id: config.domain_id,
+            node_name: config.node_name,
+            namespace: config.namespace,
+        };
+        let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
+            .map_err(|_| EmbeddedNodeError::Transport(TransportError::ConnectionFailed))?;
+        Ok(Self::from_session(session))
+    }
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl EmbeddedExecutor<nros_rmw_cffi::CffiSession> {
+    /// Open a new executor session using the C FFI backend.
+    pub fn open(config: &EmbeddedConfig<'_>) -> Result<Self, EmbeddedNodeError> {
+        let rmw_config = nros_rmw::RmwConfig {
+            locator: config.locator,
+            mode: config.mode,
+            domain_id: config.domain_id,
+            node_name: config.node_name,
+            namespace: config.namespace,
+        };
+        let session = nros_rmw_cffi::CffiRmw::open(&rmw_config)
+            .map_err(|_| EmbeddedNodeError::Transport(TransportError::ConnectionFailed))?;
+        Ok(Self::from_session(session))
+    }
+}
 
 /// Default transmit buffer size (bytes).
 const DEFAULT_TX_BUF: usize = 1024;

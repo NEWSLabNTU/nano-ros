@@ -1,6 +1,6 @@
 # Phase 43 — RMW-Agnostic Embedded API
 
-## Status: Not Started
+## Status: In Progress (43.2 remaining)
 
 ## Background
 
@@ -273,14 +273,14 @@ fn run() -> Result<(), EmbeddedNodeError> {
 
 ### Tasks
 
-- [ ] Define `EmbeddedConfig` struct with builder methods
-- [ ] Add optional backend deps to `nros-node/Cargo.toml` (or implement
+- [x] Define `EmbeddedConfig` struct with builder methods
+- [x] Add optional backend deps to `nros-node/Cargo.toml` (or implement
       factory in `nros/src/lib.rs` only)
-- [ ] Implement `EmbeddedExecutor::open()` for zenoh
-- [ ] Implement `EmbeddedExecutor::open()` for XRCE (with transport auto-init)
-- [ ] Implement `EmbeddedExecutor::open()` for cffi
-- [ ] Add `EmbeddedConfig` and factory to prelude
-- [ ] Update `internals::open_session` to delegate to the new factory (or
+- [x] Implement `EmbeddedExecutor::open()` for zenoh
+- [x] Implement `EmbeddedExecutor::open()` for XRCE (with transport auto-init)
+- [x] Implement `EmbeddedExecutor::open()` for cffi
+- [x] Add `EmbeddedConfig` and factory to prelude
+- [x] Update `internals::open_session` to delegate to the new factory (or
       deprecate it)
 
 ## Phase 43.2 — Callback Storage and `spin_once()` for Embedded Executor
@@ -617,12 +617,12 @@ while let Some(goal) = action_server.try_recv_goal()? {
 
 ### Tasks
 
-- [ ] Rewrite `examples/native/rust/xrce/action-server/src/main.rs` to use
+- [x] Rewrite `examples/native/rust/xrce/action-server/src/main.rs` to use
       `EmbeddedActionServer`
-- [ ] Rewrite `examples/native/rust/xrce/action-client/src/main.rs` to use
+- [x] Rewrite `examples/native/rust/xrce/action-client/src/main.rs` to use
       `EmbeddedActionClient`
-- [ ] Remove `XrceSession` and raw CDR imports from action examples
-- [ ] Verify action integration tests still pass
+- [x] Remove `XrceSession` and raw CDR imports from action examples
+- [x] Verify action integration tests still pass
 
 ## Phase 43.4 — Migrate All Examples to RMW-Agnostic Code
 
@@ -680,10 +680,10 @@ This is optional — manual-poll remains a valid pattern, especially for
 
 ### Tasks
 
-- [ ] Migrate 6 Zephyr examples to `EmbeddedExecutor::open()`
-- [ ] Migrate 8 XRCE pub/sub/service examples to `EmbeddedExecutor::open()`
-- [ ] Verify: no backend-specific types in any example's `use` statements
-- [ ] Optional: convert listener examples to callback+spin pattern
+- [x] Migrate 6 Zephyr examples to `EmbeddedExecutor::open()`
+- [x] Migrate 8 XRCE pub/sub/service examples to `EmbeddedExecutor::open()`
+- [x] Verify: no backend-specific types in any example's `use` statements
+- [ ] Optional: convert listener examples to callback+spin pattern (deferred to 43.2)
 
 ## Phase 43.5 — Delete Deprecated Items and Clean Up Exports
 
@@ -738,17 +738,17 @@ the public API surface.
 
 ### Tasks
 
-- [ ] Delete all 14 deprecated methods listed above
-- [ ] Update internal callers (`context.rs:418`, `executor.rs:1308`,
-      `executor.rs:1522` use `#[allow(deprecated)]` for `ConnectedNode::new`
-      — rewrite to use non-deprecated paths)
-- [ ] Move XRCE raw re-exports to `internals` module
-- [ ] Delete `xrce_transport` module (move to `internals`)
-- [ ] Remove `alloc` gate from `internals::open_session()`
-- [ ] Update prelude to include `EmbeddedConfig`
-- [ ] Remove all `#[allow(deprecated)]` from examples
-- [ ] Verify no backend-specific types in `nros::` root
-- [ ] `just quality` passes
+- [x] Delete deprecated methods (9 from `connected.rs`, 4 from `node.rs`,
+      1 from `context.rs`; `ConnectedNode::new()` kept public but undeprecated)
+- [x] Update internal callers (`executor.rs` `#[allow(deprecated)]` removed,
+      `context.rs` `create_node()` deleted)
+- [x] Move XRCE raw re-exports to `internals` module
+- [x] Move `xrce_transport` module to `internals`
+- [x] Remove `alloc` gate from `internals::open_session()`
+- [x] Update prelude to include `EmbeddedConfig`
+- [x] Remove all `#[allow(deprecated)]` from examples
+- [x] Verify no backend-specific types in `nros::` root
+- [x] `just quality` passes (423/432; 9 pre-existing C API codegen failures)
 
 ## Implementation Order
 

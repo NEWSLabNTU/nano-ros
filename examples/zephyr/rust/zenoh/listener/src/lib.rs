@@ -5,11 +5,7 @@
 #![no_std]
 
 use log::{error, info};
-#[allow(deprecated)]
-use nros::{
-    EmbeddedExecutor, EmbeddedNodeError, SessionMode, Transport, TransportConfig,
-    internals::ShimTransport,
-};
+use nros::{EmbeddedConfig, EmbeddedExecutor, EmbeddedNodeError};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
@@ -27,14 +23,8 @@ extern "C" fn rust_main() {
 }
 
 fn run() -> Result<(), EmbeddedNodeError> {
-    let config = TransportConfig {
-        locator: Some("tcp/192.0.2.2:7447"),
-        mode: SessionMode::Client,
-        properties: &[],
-    };
-    let session = ShimTransport::open(&config)
-        .map_err(|_| EmbeddedNodeError::Transport(nros::TransportError::ConnectionFailed))?;
-    let mut executor = EmbeddedExecutor::from_session(session);
+    let config = EmbeddedConfig::new("tcp/192.0.2.2:7447");
+    let mut executor = EmbeddedExecutor::open(&config)?;
     let mut node = executor.create_node("listener")?;
     let mut subscription = node.create_subscription::<Int32>("/chatter")?;
 

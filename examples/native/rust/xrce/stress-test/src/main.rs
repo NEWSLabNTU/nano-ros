@@ -13,8 +13,7 @@
 //!   EXPECTED_COUNT      — Messages to receive before exiting (default: 50)
 //!   TIMEOUT_SECS        — Listener timeout in seconds (default: 30)
 
-use nros::xrce_transport::init_posix_udp;
-use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
+use nros::{EmbeddedConfig, EmbeddedExecutor};
 use std::time::Instant;
 
 /// Build a test payload with integrity markers.
@@ -81,16 +80,8 @@ fn run_talker() {
         agent_addr, actual_size, publish_count, interval_ms
     );
 
-    init_posix_udp(&agent_addr);
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id: 0,
-        node_name: "xrce_stress_talker",
-        namespace: "",
-    };
-    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
-    let mut executor = EmbeddedExecutor::from_session(session);
+    let config = EmbeddedConfig::new(&agent_addr).node_name("xrce_stress_talker");
+    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
 
     let mut node = executor
         .create_node("xrce_stress_talker")
@@ -156,16 +147,8 @@ fn run_listener() {
         agent_addr, expected_count, timeout_secs, actual_size
     );
 
-    init_posix_udp(&agent_addr);
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id: 0,
-        node_name: "xrce_stress_listener",
-        namespace: "",
-    };
-    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
-    let mut executor = EmbeddedExecutor::from_session(session);
+    let config = EmbeddedConfig::new(&agent_addr).node_name("xrce_stress_listener");
+    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
 
     let mut node = executor
         .create_node("xrce_stress_listener")

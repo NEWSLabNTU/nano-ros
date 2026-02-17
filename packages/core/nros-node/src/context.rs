@@ -29,8 +29,6 @@
 //! executor.spin(SpinOptions::default());
 //! ```
 
-use crate::NodeConfig;
-
 #[cfg(feature = "rmw-zenoh")]
 use crate::ConnectedNode;
 
@@ -56,14 +54,6 @@ use crate::executor::BasicExecutor;
 /// let ctx = Context::new(InitOptions::new().locator("tcp/127.0.0.1:7447"))?;
 /// let mut executor = ctx.create_basic_executor();
 /// let node = executor.create_node("my_node")?;
-/// ```
-///
-/// # Legacy: Direct Node Creation
-///
-/// ```ignore
-/// // Deprecated - use executor API instead
-/// let ctx = Context::new(InitOptions::new())?;
-/// let node = ctx.create_node("my_node")?;  // Deprecated
 /// ```
 #[derive(Debug, Clone)]
 pub struct Context {
@@ -383,52 +373,6 @@ impl Context {
     #[cfg(all(feature = "rmw-zenoh", feature = "std"))]
     pub fn create_basic_executor(&self) -> BasicExecutor {
         BasicExecutor::new(self.domain_id, self.transport_config.clone())
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // LEGACY NODE CREATION (Deprecated)
-    // ═══════════════════════════════════════════════════════════════════════
-
-    /// Create a node using this context (zenoh feature only)
-    ///
-    /// **Deprecated**: Use `create_polling_executor()` or `create_basic_executor()`
-    /// instead for the new executor-based API.
-    ///
-    /// # Arguments
-    /// * `options` - Node name or NodeOptions with optional namespace
-    ///
-    /// # Returns
-    /// A new Node (ConnectedNode)
-    ///
-    /// # Examples
-    ///
-    /// ```ignore
-    /// // Simple node creation (deprecated)
-    /// let node = context.create_node("my_node")?;
-    ///
-    /// // Recommended: use executor API instead
-    /// let mut executor = context.create_basic_executor();
-    /// let node = executor.create_node("my_node")?;
-    /// ```
-    #[cfg(feature = "rmw-zenoh")]
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_polling_executor() or create_basic_executor() instead"
-    )]
-    #[allow(deprecated)] // Internal use of ConnectedNode::new() is intentional
-    pub fn create_node<'a>(&self, options: impl IntoNodeOptions<'a>) -> Result<Node, RclrsError> {
-        let node_options = options.into_node_options();
-
-        let config = NodeConfig {
-            name: node_options.name,
-            namespace: node_options.namespace.unwrap_or("/"),
-            domain_id: self.domain_id,
-        };
-
-        let node = ConnectedNode::new(config, &self.transport_config)
-            .map_err(|_| RclrsError::NodeCreationFailed)?;
-
-        Ok(node)
     }
 }
 

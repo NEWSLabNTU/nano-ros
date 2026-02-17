@@ -200,8 +200,7 @@ pub use options::{
 #[cfg(not(feature = "rmw-zenoh"))]
 pub use node::{PublisherOptions, SubscriberOptions};
 
-// Re-export zenoh transport types for convenience
-#[cfg(feature = "rmw-zenoh")]
+// Re-export session mode (used by EmbeddedConfig and connected node types)
 pub use nros_rmw::SessionMode;
 
 // Re-export timer types
@@ -221,6 +220,6 @@ pub use lifecycle::LifecycleNode;
 // Re-export generic embedded node types (always available, no feature gate)
 pub use generic::{
     EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
-    EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, EmbeddedSubscription,
+    EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher,
+    EmbeddedServiceClient, EmbeddedServiceServer, EmbeddedSubscription,
 };

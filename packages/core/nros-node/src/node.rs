@@ -220,31 +220,6 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
         fqn
     }
 
-    /// Create a publisher for the given topic
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_publisher with PublisherOptions instead"
-    )]
-    pub fn create_publisher_simple<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> Result<PublisherHandle<M>, NodeError> {
-        self.create_publisher(PublisherOptions::new(topic))
-    }
-
-    /// Create a publisher with custom QoS settings
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_publisher with PublisherOptions instead"
-    )]
-    pub fn create_publisher_with_qos<M: RosMessage>(
-        &mut self,
-        topic: &str,
-        qos: QosSettings,
-    ) -> Result<PublisherHandle<M>, NodeError> {
-        self.create_publisher(PublisherOptions::new(topic).qos(qos))
-    }
-
     /// Create a publisher with the given options
     pub fn create_publisher<M: RosMessage>(
         &mut self,
@@ -271,31 +246,6 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
             .map_err(|_| NodeError::MaxPublishersReached)?;
 
         Ok(PublisherHandle::new(index))
-    }
-
-    /// Create a subscriber for the given topic
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_subscriber with SubscriberOptions instead"
-    )]
-    pub fn create_subscriber_simple<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> Result<SubscriberHandle<M>, NodeError> {
-        self.create_subscriber(SubscriberOptions::new(topic))
-    }
-
-    /// Create a subscriber with custom QoS settings
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_subscriber with SubscriberOptions instead"
-    )]
-    pub fn create_subscriber_with_qos<M: RosMessage>(
-        &mut self,
-        topic: &str,
-        qos: QosSettings,
-    ) -> Result<SubscriberHandle<M>, NodeError> {
-        self.create_subscriber(SubscriberOptions::new(topic).qos(qos))
     }
 
     /// Create a subscriber with the given options

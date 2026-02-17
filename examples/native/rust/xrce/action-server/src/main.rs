@@ -1,20 +1,13 @@
 //! XRCE-DDS action server — Fibonacci action via XRCE Agent.
 //!
-//! Composes the action protocol from 2 service servers (send_goal, get_result)
-//! and 1 publisher (feedback). Matches the wire format used by `nros-node`'s
-//! `ConnectedActionServer`.
+//! Uses the typed `EmbeddedActionServer` API (no raw CDR needed).
 //!
 //! Environment variables:
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
-use nros::xrce_transport::init_posix_udp;
-use nros::{
-    CdrReader, CdrWriter, Deserialize, EmbeddedExecutor, GoalId, GoalStatus, Publisher,
-    QosSettings, Rmw, RmwConfig, RosAction, Serialize, ServiceInfo, ServiceServerTrait, Session,
-    SessionMode, TopicInfo, XrceRmw, XrceSession,
-};
+use nros::{EmbeddedConfig, EmbeddedExecutor, GoalResponse, GoalStatus};
 use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
@@ -36,164 +29,76 @@ fn main() {
         agent_addr, domain_id, timeout_secs
     );
 
-    init_posix_udp(&agent_addr);
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_action_server",
-        namespace: "",
-    };
-    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
-    let mut executor = EmbeddedExecutor::from_session(session);
+    // Open session
+    let config = EmbeddedConfig::new(&agent_addr)
+        .domain_id(domain_id)
+        .node_name("xrce_action_server");
+    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
-    // Build DDS type names for action sub-entities
-    let action_type = Fibonacci::ACTION_NAME;
-    let send_goal_type = format!("{}SendGoal_", action_type);
-    let get_result_type = format!("{}GetResult_", action_type);
-    let feedback_type = format!("{}FeedbackMessage_", action_type);
-
-    // Create action sub-entities via raw session (action protocol is manual)
-    let session: &mut XrceSession = executor.session_mut();
-
-    let send_goal_info = ServiceInfo::new("/fibonacci/_action/send_goal", &send_goal_type, "");
-    let mut send_goal_server = session
-        .create_service_server(&send_goal_info)
-        .expect("Failed to create send_goal server");
-    eprintln!("send_goal service server created");
-
-    let get_result_info = ServiceInfo::new("/fibonacci/_action/get_result", &get_result_type, "");
-    let mut get_result_server = session
-        .create_service_server(&get_result_info)
-        .expect("Failed to create get_result server");
-    eprintln!("get_result service server created");
-
-    let feedback_topic = TopicInfo::new("/fibonacci/_action/feedback", &feedback_type, "");
-    let feedback_publisher = session
-        .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
-        .expect("Failed to create feedback publisher");
-    eprintln!("feedback publisher created");
+    // Create action server
+    let mut node = executor
+        .create_node("xrce_action_server")
+        .expect("Failed to create node");
+    let mut action_server = node
+        .create_action_server::<Fibonacci>("/fibonacci")
+        .expect("Failed to create action server");
 
     println!("Action server ready");
 
-    // State for completed goals
-    let mut stored_result: Option<(GoalId, GoalStatus, FibonacciResult)> = None;
-    let mut goal_counter: u64 = 0;
-
     let start = Instant::now();
     let timeout = std::time::Duration::from_secs(timeout_secs);
-    let mut req_buf = [0u8; 512];
-    let mut reply_buf = [0u8; 512];
-    let mut feedback_buf = [0u8; 512];
 
     while start.elapsed() < timeout {
         let _ = executor.drive_io(100);
 
-        // --- Handle send_goal requests ---
-        if let Some(request) = send_goal_server
-            .try_recv_request(&mut req_buf)
-            .expect("recv error")
-        {
-            let data_len = request.data.len();
-            let seq = request.sequence_number;
+        // Handle get_result requests
+        let _ = action_server.try_handle_get_result();
 
-            // Parse: CDR header + GoalId(16 bytes) + FibonacciGoal(i32 order)
-            if let Ok(mut reader) = CdrReader::new_with_header(&req_buf[..data_len]) {
-                let client_goal_id = GoalId::deserialize(&mut reader).unwrap_or_default();
-                let order = reader.read_i32().unwrap_or(0);
-                let _ = client_goal_id; // client's proposed ID, we generate our own
+        // Try to accept a new goal
+        let accepted = action_server
+            .try_accept_goal(|goal| {
+                println!("Received goal: order={}", goal.order);
+                GoalResponse::AcceptAndExecute
+            })
+            .expect("accept error");
 
-                println!("Received goal: order={}", order);
+        if let Some(goal_id) = accepted {
+            let order = match action_server.get_goal(&goal_id) {
+                Some(g) => g.goal.order,
+                None => continue,
+            };
 
-                // Accept the goal
-                goal_counter += 1;
-                let goal_id = GoalId::from_counter(goal_counter);
+            println!("Goal accepted: {:?}", goal_id);
+            action_server.set_goal_status(&goal_id, GoalStatus::Executing);
 
-                // Send goal response: bool(accepted) + i32(stamp_sec) + u32(stamp_nsec) + GoalId
-                let mut writer = CdrWriter::new_with_header(&mut reply_buf).unwrap();
-                writer.write_bool(true).unwrap();
-                writer.write_i32(0).unwrap(); // stamp placeholder
-                writer.write_u32(0).unwrap();
-                goal_id.serialize(&mut writer).unwrap();
-                let len = writer.position();
-                send_goal_server.send_reply(seq, &reply_buf[..len]).unwrap();
+            // Execute Fibonacci computation with feedback
+            let mut sequence: nros::heapless::Vec<i32, 64> = nros::heapless::Vec::new();
 
-                println!("Goal accepted: {:?}", goal_id);
-                let _ = executor.drive_io(100); // flush reply
-
-                // Execute Fibonacci computation with feedback
-                let mut sequence: nros::heapless::Vec<i32, 64> = nros::heapless::Vec::new();
-
-                for i in 0..=order {
-                    let val = if i <= 1 {
-                        i
-                    } else {
-                        let n = sequence.len();
-                        sequence[n - 1] + sequence[n - 2]
-                    };
-                    let _ = sequence.push(val);
-
-                    // Publish feedback: GoalId(16 bytes) + FibonacciFeedback
-                    let feedback = FibonacciFeedback {
-                        sequence: sequence.clone(),
-                    };
-                    let mut writer = CdrWriter::new_with_header(&mut feedback_buf).unwrap();
-                    goal_id.serialize(&mut writer).unwrap();
-                    feedback.serialize(&mut writer).unwrap();
-                    let fb_len = writer.position();
-                    let _ = feedback_publisher.publish_raw(&feedback_buf[..fb_len]);
-
-                    println!("Feedback: step={}, sequence_len={}", i, sequence.len());
-                    let _ = executor.drive_io(100); // flush feedback
-                    std::thread::sleep(std::time::Duration::from_millis(50));
-                }
-
-                // Store result
-                let result = FibonacciResult { sequence };
-                println!("Goal completed: result_len={}", result.sequence.len());
-                stored_result = Some((goal_id, GoalStatus::Succeeded, result));
-            }
-        }
-
-        // --- Handle get_result requests ---
-        if let Some(request) = get_result_server
-            .try_recv_request(&mut req_buf)
-            .expect("recv error")
-        {
-            let data_len = request.data.len();
-            let seq = request.sequence_number;
-
-            // Parse: CDR header + GoalId(16 bytes)
-            if let Ok(mut reader) = CdrReader::new_with_header(&req_buf[..data_len]) {
-                let requested_id = GoalId::deserialize(&mut reader).unwrap_or_default();
-
-                // Send result response: i8(status) + FibonacciResult
-                let mut writer = CdrWriter::new_with_header(&mut reply_buf).unwrap();
-
-                if let Some((ref stored_id, status, ref result)) = stored_result {
-                    if *stored_id == requested_id || requested_id.is_zero() {
-                        writer.write_i8(status as i8).unwrap();
-                        result.serialize(&mut writer).unwrap();
-                        println!("Sent result: status={}", status);
-                    } else {
-                        writer.write_i8(GoalStatus::Unknown as i8).unwrap();
-                        // Empty result (sequence length 0)
-                        writer.write_u32(0).unwrap();
-                        println!("Unknown goal requested: {:?}", requested_id);
-                    }
+            for i in 0..=order {
+                let val = if i <= 1 {
+                    i
                 } else {
-                    writer.write_i8(GoalStatus::Unknown as i8).unwrap();
-                    writer.write_u32(0).unwrap();
-                    println!("No goal available");
-                }
+                    let n = sequence.len();
+                    sequence[n - 1] + sequence[n - 2]
+                };
+                let _ = sequence.push(val);
 
-                let len = writer.position();
-                get_result_server
-                    .send_reply(seq, &reply_buf[..len])
-                    .unwrap();
+                // Publish feedback
+                let feedback = FibonacciFeedback {
+                    sequence: sequence.clone(),
+                };
+                let _ = action_server.publish_feedback(&goal_id, &feedback);
+
+                println!("Feedback: step={}, sequence_len={}", i, sequence.len());
                 let _ = executor.drive_io(100);
+                std::thread::sleep(std::time::Duration::from_millis(50));
             }
+
+            // Complete the goal
+            let result = FibonacciResult { sequence };
+            println!("Goal completed: result_len={}", result.sequence.len());
+            action_server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
         }
     }
 

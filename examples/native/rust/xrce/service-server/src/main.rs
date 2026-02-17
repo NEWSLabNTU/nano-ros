@@ -6,8 +6,7 @@
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
 use example_interfaces::srv::AddTwoInts;
-use nros::xrce_transport::init_posix_udp;
-use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
+use nros::{EmbeddedConfig, EmbeddedExecutor};
 use std::time::Instant;
 
 fn main() {
@@ -27,17 +26,11 @@ fn main() {
         agent_addr, domain_id, timeout_secs
     );
 
-    // Initialize transport and open session
-    init_posix_udp(&agent_addr);
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_service_server",
-        namespace: "",
-    };
-    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
-    let mut executor = EmbeddedExecutor::from_session(session);
+    // Open session
+    let config = EmbeddedConfig::new(&agent_addr)
+        .domain_id(domain_id)
+        .node_name("xrce_service_server");
+    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create service server

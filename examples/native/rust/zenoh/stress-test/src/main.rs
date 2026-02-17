@@ -109,7 +109,6 @@ fn run_talker() {
         properties: &[],
     };
     let config = NodeConfig::new("stress_talker", "/test");
-    #[allow(deprecated)]
     let mut node: ConnectedNode =
         ConnectedNode::new(config, &transport).expect("Failed to create node");
 
@@ -187,7 +186,6 @@ fn run_listener() {
         properties: &[],
     };
     let config = NodeConfig::new("stress_listener", "/test");
-    #[allow(deprecated)]
     let mut node: ConnectedNode =
         ConnectedNode::new(config, &transport).expect("Failed to create node");
 

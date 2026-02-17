@@ -45,10 +45,14 @@
 //!
 //!         // Create node without background tasks
 //!         let config = NodeConfig::new("my_node", "/");
-//!         let node = ConnectedNode::connect_without_tasks(
+//!         let transport = nros_rmw::TransportConfig {
+//!             locator: Some("tcp/192.168.1.1:7447"),
+//!             mode: SessionMode::Client,
+//!             properties: &[],
+//!         };
+//!         let node = ConnectedNode::new_without_tasks(
 //!             config,
-//!             "tcp/192.168.1.1:7447",
-//!             SessionMode::Client,
+//!             &transport,
 //!         ).expect("Failed to connect");
 //!
 //!         // Spawn periodic tasks

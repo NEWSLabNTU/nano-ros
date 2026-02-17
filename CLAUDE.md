@@ -456,7 +456,7 @@ Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archi
 | 37 | Executor progress guarantees | Complete |
 | 40 | Large message support | In Progress |
 | 42 | Extensible RMW layer | In Progress |
-| 43 | RMW-agnostic embedded API | Not Started |
+| 43 | RMW-agnostic embedded API | In Progress (43.2 remaining) |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -468,7 +468,7 @@ Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archi
 
 **Phase 42**: 42.1-42.4 complete. Generic `EmbeddedExecutor<S>` / `EmbeddedNode<S>` replacing duplicated `ShimNode`/`XrceNode`, `drive_io()` on Session trait, C function table adapter (`nros-rmw-cffi`), feature wiring. `shim.rs` and `xrce.rs` deleted, all examples migrated.
 
-**Phase 43**: RMW-agnostic embedded API. Backend-agnostic factory (`EmbeddedExecutor::open()`), callback+spin for embedded executor, typed XRCE action examples, migration of all 16 embedded examples to remove backend-specific types. See `docs/roadmap/phase-43-rmw-agnostic-embedded-api.md`.
+**Phase 43**: RMW-agnostic embedded API. 43.1 (factory), 43.3 (typed XRCE actions), 43.4 (example migration), 43.5 (deprecated cleanup) complete. Remaining: 43.2 (arena-based callback storage + `spin_once()` for embedded executor). See `docs/roadmap/phase-43-rmw-agnostic-embedded-api.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

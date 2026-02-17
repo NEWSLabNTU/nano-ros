@@ -1305,7 +1305,6 @@ impl<const MAX_NODES: usize> PollingExecutor<MAX_NODES> {
     ///
     /// Returns a `NodeHandle` that can be used to create publishers, subscribers, etc.
     /// The node is owned by the executor and will be processed during `spin_once()`.
-    #[allow(deprecated)] // Internal use of ConnectedNode::new() is intentional
     pub fn create_node<'a, 'b>(
         &'a mut self,
         opts: impl IntoNodeOptions<'b>,
@@ -1519,7 +1518,6 @@ impl BasicExecutor {
     }
 
     /// Create a node managed by this executor
-    #[allow(deprecated)] // Internal use of ConnectedNode::new() is intentional
     pub fn create_node<'a, 'b>(
         &'a mut self,
         opts: impl IntoNodeOptions<'b>,

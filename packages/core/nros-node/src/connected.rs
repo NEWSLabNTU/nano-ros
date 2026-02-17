@@ -421,10 +421,6 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
     /// # Arguments
     /// * `config` - Node configuration (name, namespace, domain_id)
     /// * `transport_config` - Transport configuration (locator, mode)
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use Context and an executor (e.g. create_polling_executor) instead"
-    )]
     pub fn new(
         config: NodeConfig,
         transport_config: &TransportConfig,
@@ -520,43 +516,6 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         })
     }
 
-    /// Connect to a zenoh router without starting background tasks
-    ///
-    /// Use this for RTIC or other single-threaded executors.
-    #[cfg(any(feature = "rtic", feature = "polling"))]
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use Context and an executor (e.g. create_polling_executor) instead"
-    )]
-    pub fn connect_without_tasks(
-        config: NodeConfig,
-        locator: &str,
-    ) -> Result<Self, ConnectedNodeError> {
-        let transport_config = TransportConfig {
-            locator: Some(locator),
-            mode: SessionMode::Client,
-            properties: &[],
-        };
-        Self::new_without_tasks(config, &transport_config)
-    }
-
-    /// Connect in peer mode without starting background tasks
-    ///
-    /// Use this for RTIC or other single-threaded executors.
-    #[cfg(any(feature = "rtic", feature = "polling"))]
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use Context and an executor (e.g. create_polling_executor) instead"
-    )]
-    pub fn connect_peer_without_tasks(config: NodeConfig) -> Result<Self, ConnectedNodeError> {
-        let transport_config = TransportConfig {
-            locator: None,
-            mode: SessionMode::Peer,
-            properties: &[],
-        };
-        Self::new_without_tasks(config, &transport_config)
-    }
-
     /// Start background read and lease tasks
     ///
     /// Only call this if you used `new_without_tasks()` and later want to
@@ -634,31 +593,6 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
         self.domain_id
     }
 
-    /// Create a publisher for the given topic
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_publisher with PublisherOptions instead"
-    )]
-    pub fn create_publisher_simple<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> Result<ConnectedPublisher<M>, ConnectedNodeError> {
-        self.create_publisher_sized::<M, DEFAULT_TX_BUFFER_SIZE>(PublisherOptions::new(topic))
-    }
-
-    /// Create a publisher with custom QoS settings
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_publisher with PublisherOptions instead"
-    )]
-    pub fn create_publisher_with_qos<M: RosMessage>(
-        &mut self,
-        topic: &str,
-        qos: QosSettings,
-    ) -> Result<ConnectedPublisher<M>, ConnectedNodeError> {
-        self.create_publisher_sized::<M, DEFAULT_TX_BUFFER_SIZE>(PublisherOptions { topic, qos })
-    }
-
     /// Create a publisher with the given options
     ///
     /// Uses the default transmit buffer size (1024 bytes).
@@ -713,34 +647,6 @@ impl<const MAX_TOKENS: usize, const MAX_TIMERS: usize> ConnectedNode<MAX_TOKENS,
             topic_name,
             _marker: core::marker::PhantomData,
         })
-    }
-
-    /// Create a subscriber for the given topic
-    ///
-    /// Uses the default receive buffer size (1024 bytes).
-    /// For larger messages, use `create_subscriber_sized`.
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_subscriber with SubscriberOptions instead"
-    )]
-    pub fn create_subscriber<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> Result<ConnectedSubscriber<M, DEFAULT_RX_BUFFER_SIZE>, ConnectedNodeError> {
-        self.create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(SubscriberOptions::new(topic))
-    }
-
-    /// Create a subscriber with custom QoS settings
-    #[deprecated(
-        since = "0.2.0",
-        note = "Use create_subscriber with SubscriberOptions instead"
-    )]
-    pub fn create_subscriber_with_qos<M: RosMessage>(
-        &mut self,
-        topic: &str,
-        qos: QosSettings,
-    ) -> Result<ConnectedSubscriber<M, DEFAULT_RX_BUFFER_SIZE>, ConnectedNodeError> {
-        self.create_subscriber_sized::<M, DEFAULT_RX_BUFFER_SIZE>(SubscriberOptions { topic, qos })
     }
 
     /// Create a subscriber with custom buffer size
@@ -1841,20 +1747,6 @@ impl<M: RosMessage, const TX_BUF: usize> ConnectedPublisher<M, TX_BUF> {
         let mut buf = [0u8; TX_BUF];
         self.publisher
             .publish(msg.borrow(), &mut buf)
-            .map_err(|_| ConnectedNodeError::PublishFailed)
-    }
-
-    /// Publish with a custom buffer
-    ///
-    /// Use this when you need a different buffer than the `TX_BUF` const generic.
-    #[deprecated(note = "Use create_publisher_sized::<M, BUF_SIZE>() instead")]
-    pub fn publish_with_buffer(
-        &self,
-        msg: impl core::borrow::Borrow<M>,
-        buf: &mut [u8],
-    ) -> Result<(), ConnectedNodeError> {
-        self.publisher
-            .publish(msg.borrow(), buf)
             .map_err(|_| ConnectedNodeError::PublishFailed)
     }
 

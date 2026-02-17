@@ -145,46 +145,12 @@ pub use nros_node::{BasicExecutor, Promise, SpinPeriodResult};
 pub use nros_rmw::{
     Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, Rmw,
     RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
-    SessionMode, Subscriber, TopicInfo, Transport, TransportError,
+    SessionMode, Subscriber, TopicInfo, Transport, TransportConfig, TransportError,
 };
-
-/// Transport configuration struct.
-#[deprecated(note = "Use Context::from_env() or Context::new(InitOptions) instead")]
-pub use nros_rmw::TransportConfig;
 
 // Re-export safety types when feature is enabled
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
-
-// Re-export XRCE-DDS raw RMW types
-#[cfg(feature = "rmw-xrce")]
-pub use nros_rmw_xrce::{
-    XrcePublisher, XrceRmw, XrceServiceClient, XrceServiceServer, XrceSession, XrceSubscriber,
-};
-
-/// XRCE-DDS transport initialization helpers.
-#[cfg(feature = "rmw-xrce")]
-pub mod xrce_transport {
-    /// Initialize POSIX UDP transport for XRCE-DDS.
-    ///
-    /// Must be called before opening an XRCE session.
-    #[cfg(feature = "xrce-udp")]
-    pub fn init_posix_udp(agent_addr: &str) {
-        unsafe {
-            nros_rmw_xrce::posix_udp::init_posix_udp_transport(agent_addr);
-        }
-    }
-
-    /// Initialize POSIX serial transport for XRCE-DDS.
-    ///
-    /// Must be called before opening an XRCE session.
-    #[cfg(feature = "xrce-serial")]
-    pub fn init_posix_serial(pty_path: &str) {
-        unsafe {
-            nros_rmw_xrce::posix_serial::init_posix_serial_transport(pty_path);
-        }
-    }
-}
 
 /// Backend-specific internal types.
 ///
@@ -218,6 +184,34 @@ pub mod internals {
     pub type RmwServiceClient = nros_rmw_zenoh::ShimServiceClient;
 
     #[cfg(feature = "rmw-xrce")]
+    pub use nros_rmw_xrce::{
+        XrcePublisher, XrceRmw, XrceServiceClient, XrceServiceServer, XrceSession, XrceSubscriber,
+    };
+
+    /// XRCE-DDS transport initialization helpers.
+    ///
+    /// Most users should use `EmbeddedExecutor::open()` which auto-initializes
+    /// the transport. These are provided for advanced use cases.
+    #[cfg(feature = "rmw-xrce")]
+    pub mod xrce_transport {
+        /// Initialize POSIX UDP transport for XRCE-DDS.
+        #[cfg(feature = "xrce-udp")]
+        pub fn init_posix_udp(agent_addr: &str) {
+            unsafe {
+                nros_rmw_xrce::posix_udp::init_posix_udp_transport(agent_addr);
+            }
+        }
+
+        /// Initialize POSIX serial transport for XRCE-DDS.
+        #[cfg(feature = "xrce-serial")]
+        pub fn init_posix_serial(pty_path: &str) {
+            unsafe {
+                nros_rmw_xrce::posix_serial::init_posix_serial_transport(pty_path);
+            }
+        }
+    }
+
+    #[cfg(feature = "rmw-xrce")]
     pub type RmwSession = nros_rmw_xrce::XrceSession;
     #[cfg(feature = "rmw-xrce")]
     pub type RmwPublisher = nros_rmw_xrce::XrcePublisher;
@@ -247,10 +241,7 @@ pub mod internals {
     /// - **Zenoh**: `domain_id` and `node_name` are ignored (zenoh uses `locator` and `mode`).
     /// - **XRCE-DDS**: `locator` is the agent address (e.g., `"127.0.0.1:2019"`).
     ///   Transport must match the active transport feature (`xrce-udp` or `xrce-serial`).
-    #[cfg(all(
-        any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"),
-        feature = "alloc",
-    ))]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
     pub fn open_session(
         locator: &str,
         mode: nros_rmw::SessionMode,
@@ -333,8 +324,8 @@ pub mod internals {
 // Re-export embedded node types (always available, no feature gate)
 pub use nros_node::{
     EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
-    EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, EmbeddedSubscription,
+    EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher,
+    EmbeddedServiceClient, EmbeddedServiceServer, EmbeddedSubscription,
 };
 
 // Re-export service types
@@ -375,9 +366,6 @@ pub mod prelude {
         RosMessage, RosService, Serialize, StandaloneNode, SubscriberHandle, SubscriberOptions,
         TopicInfo,
     };
-
-    #[allow(deprecated)]
-    pub use crate::TransportConfig;
 
     #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
     pub use crate::{
@@ -422,7 +410,8 @@ pub mod prelude {
 
     // Re-export generic embedded node types
     pub use crate::{
-        EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher, EmbeddedSubscription,
+        EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher,
+        EmbeddedSubscription,
     };
 
     // Re-export parameter types

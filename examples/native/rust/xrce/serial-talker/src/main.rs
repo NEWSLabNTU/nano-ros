@@ -4,8 +4,7 @@
 //!   XRCE_SERIAL_PTY  — PTY device path (required)
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
-use nros::xrce_transport::init_posix_serial;
-use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
+use nros::{EmbeddedConfig, EmbeddedExecutor};
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -18,17 +17,11 @@ fn main() {
 
     eprintln!("XRCE Serial Talker: pty={}, domain={}", pty_path, domain_id);
 
-    // Initialize transport and open session
-    init_posix_serial(&pty_path);
-    let config = RmwConfig {
-        locator: &pty_path,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_serial_talker",
-        namespace: "",
-    };
-    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
-    let mut executor = EmbeddedExecutor::from_session(session);
+    // Open session
+    let config = EmbeddedConfig::new(&pty_path)
+        .domain_id(domain_id)
+        .node_name("xrce_serial_talker");
+    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create publisher

@@ -5,8 +5,7 @@
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_MSG_COUNT   — Messages to receive before exiting (default: 5)
 
-use nros::xrce_transport::init_posix_udp;
-use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
+use nros::{EmbeddedConfig, EmbeddedExecutor};
 use std::time::Instant;
 use std_msgs::msg::Int32;
 
@@ -27,17 +26,11 @@ fn main() {
         agent_addr, domain_id, msg_count
     );
 
-    // Initialize transport and open session
-    init_posix_udp(&agent_addr);
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_listener",
-        namespace: "",
-    };
-    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
-    let mut executor = EmbeddedExecutor::from_session(session);
+    // Open session
+    let config = EmbeddedConfig::new(&agent_addr)
+        .domain_id(domain_id)
+        .node_name("xrce_listener");
+    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create subscriber

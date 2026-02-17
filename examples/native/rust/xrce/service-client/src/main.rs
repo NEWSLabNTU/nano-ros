@@ -6,8 +6,7 @@
 //!   XRCE_REQUEST_COUNT   — Number of requests to send (default: 3)
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use nros::xrce_transport::init_posix_udp;
-use nros::{EmbeddedExecutor, Rmw, RmwConfig, SessionMode, XrceRmw};
+use nros::{EmbeddedConfig, EmbeddedExecutor};
 
 fn main() {
     let agent_addr =
@@ -26,17 +25,11 @@ fn main() {
         agent_addr, domain_id, request_count
     );
 
-    // Initialize transport and open session
-    init_posix_udp(&agent_addr);
-    let config = RmwConfig {
-        locator: &agent_addr,
-        mode: SessionMode::Client,
-        domain_id,
-        node_name: "xrce_service_client",
-        namespace: "",
-    };
-    let session = XrceRmw::open(&config).expect("Failed to open XRCE session");
-    let mut executor = EmbeddedExecutor::from_session(session);
+    // Open session
+    let config = EmbeddedConfig::new(&agent_addr)
+        .domain_id(domain_id)
+        .node_name("xrce_service_client");
+    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create service client
