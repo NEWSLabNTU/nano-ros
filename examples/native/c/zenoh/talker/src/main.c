@@ -15,45 +15,8 @@
 #include <nros/clock.h>
 #include <nros/parameter.h>
 
-// ----------------------------------------------------------------------------
-// std_msgs/Int32 message support (manual definition for this example)
-// In a full setup, this would be auto-generated
-// ----------------------------------------------------------------------------
-
-typedef struct std_msgs_Int32 {
-    int32_t data;
-} std_msgs_Int32;
-
-// Initialize message to default values
-static void std_msgs_Int32_init(std_msgs_Int32* msg) {
-    msg->data = 0;
-}
-
-// Serialize to CDR format
-// CDR format for Int32: 4-byte header (0x00, 0x01, 0x00, 0x00) + 4-byte int32
-static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buffer, size_t buffer_size) {
-    if (buffer_size < 8) {
-        return -1;
-    }
-    // CDR header (big-endian format flag = 0x00, little-endian = 0x01)
-    buffer[0] = 0x00;  // CDR encapsulation
-    buffer[1] = 0x01;  // Little-endian
-    buffer[2] = 0x00;  // Reserved
-    buffer[3] = 0x00;  // Reserved
-    // Little-endian int32
-    buffer[4] = (uint8_t)(msg->data & 0xFF);
-    buffer[5] = (uint8_t)((msg->data >> 8) & 0xFF);
-    buffer[6] = (uint8_t)((msg->data >> 16) & 0xFF);
-    buffer[7] = (uint8_t)((msg->data >> 24) & 0xFF);
-    return 8;
-}
-
-// Message type info
-static const nano_ros_message_type_t std_msgs_Int32_type = {
-    .type_name = "std_msgs::msg::dds_::Int32_",
-    .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
-    .serialized_size_max = 8,
-};
+// Generated message bindings
+#include "std_msgs.h"
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -61,7 +24,7 @@ static const nano_ros_message_type_t std_msgs_Int32_type = {
 
 typedef struct {
     nano_ros_publisher_t* publisher;
-    std_msgs_Int32 message;
+    std_msgs_msg_int32 message;
     int count;
 } talker_context_t;
 
@@ -105,15 +68,18 @@ static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
     ctx->message.data = ctx->count;
 
     uint8_t buffer[64];
-    int32_t len = std_msgs_Int32_serialize(&ctx->message, buffer, sizeof(buffer));
+    size_t serialized_size = 0;
+    int32_t ret = std_msgs_msg_int32_serialize(&ctx->message, buffer, sizeof(buffer), &serialized_size);
 
-    if (len > 0) {
-        nano_ros_ret_t ret = nano_ros_publish_raw(ctx->publisher, buffer, (size_t)len);
-        if (ret == NANO_ROS_RET_OK) {
+    if (ret == 0 && serialized_size > 0) {
+        nano_ros_ret_t pub_ret = nano_ros_publish_raw(ctx->publisher, buffer, serialized_size);
+        if (pub_ret == NANO_ROS_RET_OK) {
             printf("Published: %d\n", ctx->message.data);
         } else {
-            fprintf(stderr, "Publish failed: %d\n", ret);
+            fprintf(stderr, "Publish failed: %d\n", pub_ret);
         }
+    } else {
+        fprintf(stderr, "Serialize failed: %d\n", ret);
     }
 }
 
@@ -204,8 +170,9 @@ int main(int argc, char** argv) {
     }
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
-    // Create publisher
-    ret = nano_ros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/chatter");
+    // Create publisher using generated type support
+    ret = nano_ros_publisher_init(&app.publisher, &app.node,
+        std_msgs_msg_int32_get_type_support(), "/chatter");
     if (ret != NANO_ROS_RET_OK) {
         fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
         nros_node_fini(&app.node);
@@ -220,7 +187,7 @@ int main(int argc, char** argv) {
         .message = {0},
         .count = 0,
     };
-    std_msgs_Int32_init(&app.talker_ctx.message);
+    std_msgs_msg_int32_init(&app.talker_ctx.message);
 
     // Create timer (1 second period = 1,000,000,000 ns)
     ret = nano_ros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);

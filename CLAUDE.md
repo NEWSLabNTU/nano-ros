@@ -361,6 +361,29 @@ This provides include dirs, static library, and platform link libs (pthread, dl,
 
 **C code generation** uses `nano_ros_generate_interfaces()` (from `nano_ros_generate_interfaces.cmake`). The codegen tool is bundled as `libnano_ros_codegen_c.a` — no external `nros` binary needed. Build it with `just build-codegen-lib` before running CMake. The CMake module `FindNanoRosCodegen.cmake` compiles a thin C wrapper at configure time.
 
+**C example coding practice**: Always use `nano_ros_generate_interfaces()` for message/service/action types — never hand-write CDR serialization or struct definitions. The API mirrors `rosidl_generate_interfaces()` from standard ROS 2: interface files are positional arguments resolved first locally, then via ament index, then from bundled interfaces.
+```cmake
+# Standard ROS 2 package — resolved via AMENT_PREFIX_PATH
+nano_ros_generate_interfaces(std_msgs
+    "msg/Int32.msg"
+    SKIP_INSTALL
+)
+
+# Another standard package
+nano_ros_generate_interfaces(example_interfaces
+    "srv/AddTwoInts.srv"
+    "action/Fibonacci.action"
+    SKIP_INSTALL
+)
+
+# Custom project-local interfaces
+nano_ros_generate_interfaces(${PROJECT_NAME}
+    "msg/Temperature.msg"
+    SKIP_INSTALL
+)
+```
+Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `${NANO_ROS_ROOT}/packages/codegen/interfaces/<target>/<file>`. Type info structs (`nano_ros_message_type_t`, `nano_ros_service_type_t`, `nano_ros_action_type_t`) are all defined in `nros/types.h`.
+
 ### Platform Backends
 Features are organized into three orthogonal axes:
 - **RMW backend** (select one): `rmw-zenoh` (zenoh-pico), `rmw-xrce` (XRCE-DDS)

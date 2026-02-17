@@ -12,42 +12,8 @@
 #include <nros/subscription.h>
 #include <nros/executor.h>
 
-// ----------------------------------------------------------------------------
-// std_msgs/Int32 message support (manual definition for this example)
-// In a full setup, this would be auto-generated
-// ----------------------------------------------------------------------------
-
-typedef struct std_msgs_Int32 {
-    int32_t data;
-} std_msgs_Int32;
-
-// Initialize message to default values
-static void std_msgs_Int32_init(std_msgs_Int32* msg) {
-    msg->data = 0;
-}
-
-// Deserialize from CDR format
-// CDR format for Int32: 4-byte header + 4-byte int32
-static int32_t std_msgs_Int32_deserialize(std_msgs_Int32* msg, const uint8_t* buffer, size_t buffer_size) {
-    if (buffer_size < 8) {
-        return -1;
-    }
-    // Skip CDR header (4 bytes), read little-endian int32
-    msg->data = (int32_t)(
-        buffer[4] |
-        ((uint32_t)buffer[5] << 8) |
-        ((uint32_t)buffer[6] << 16) |
-        ((uint32_t)buffer[7] << 24)
-    );
-    return 0;
-}
-
-// Message type info
-static const nano_ros_message_type_t std_msgs_Int32_type = {
-    .type_name = "std_msgs::msg::dds_::Int32_",
-    .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
-    .serialized_size_max = 8,
-};
+// Generated message bindings
+#include "std_msgs.h"
 
 // ----------------------------------------------------------------------------
 // Application state
@@ -88,10 +54,10 @@ static void signal_handler(int signum) {
 static void subscription_callback(const uint8_t* data, size_t len, void* context) {
     listener_context_t* ctx = (listener_context_t*)context;
 
-    std_msgs_Int32 msg;
-    std_msgs_Int32_init(&msg);
+    std_msgs_msg_int32 msg;
+    std_msgs_msg_int32_init(&msg);
 
-    if (std_msgs_Int32_deserialize(&msg, data, len) == 0) {
+    if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
         ctx->message_count++;
         printf("Received [%d]: %d\n", ctx->message_count, msg.data);
     } else {
@@ -150,11 +116,11 @@ int main(int argc, char** argv) {
         .message_count = 0,
     };
 
-    // Create subscription
+    // Create subscription using generated type support
     ret = nano_ros_subscription_init(
         &app.subscription,
         &app.node,
-        &std_msgs_Int32_type,
+        std_msgs_msg_int32_get_type_support(),
         "/chatter",
         subscription_callback,
         &app.listener_ctx

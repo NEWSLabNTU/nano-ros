@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15)
+cmake_minimum_required(VERSION 3.16)
 project(c_listener
     VERSION 0.1.0
     LANGUAGES C
@@ -8,10 +8,8 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ============================================================================
-# nros-c dependency
+# nros-c setup
 # ============================================================================
-# Pass -DNANO_ROS_ROOT=/path/to/nros when configuring:
-#   cmake -DNANO_ROS_ROOT=/path/to/nros ..
 
 if(NOT DEFINED NANO_ROS_ROOT)
     message(FATAL_ERROR
@@ -22,15 +20,34 @@ if(NOT DEFINED NANO_ROS_ROOT)
 endif()
 
 list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
+list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/packages/core/nros-c/cmake")
 find_package(NanoRos REQUIRED)
+
+# Include the generate interfaces function
+include(nano_ros_generate_interfaces)
+
+# ============================================================================
+# Generate C bindings for std_msgs/Int32
+# ============================================================================
+
+nano_ros_generate_interfaces(std_msgs
+    "msg/Int32.msg"
+    SKIP_INSTALL
+)
 
 # ============================================================================
 # Executable
 # ============================================================================
+
 add_executable(c_listener src/main.c)
-target_link_libraries(c_listener PRIVATE NanoRos::NanoRos)
+target_link_libraries(c_listener
+    PRIVATE
+        std_msgs__nano_ros_c
+        NanoRos::NanoRos
+)
 
 # ============================================================================
 # Installation (optional)
 # ============================================================================
+
 install(TARGETS c_listener RUNTIME DESTINATION bin)

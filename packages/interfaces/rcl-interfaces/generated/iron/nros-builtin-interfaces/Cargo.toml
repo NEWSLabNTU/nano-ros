@@ -1,0 +1,14 @@
+[package]
+name = "nros-builtin-interfaces"
+version = "1.2.1"
+edition = "2021"
+
+[features]
+default = []
+std = ["nros-core/std", "nros-serdes/std"]
+
+[dependencies]
+# nros crates (patched to local via .cargo/config.toml during development)
+nros-core = { version = "*", default-features = false }
+nros-serdes = { version = "*", default-features = false }
+heapless = "0.8"
