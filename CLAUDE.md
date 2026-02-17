@@ -455,6 +455,8 @@ Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archi
 | 36 | Multi-backend integration tests | Not Started |
 | 37 | Executor progress guarantees | Complete |
 | 40 | Large message support | In Progress |
+| 42 | Extensible RMW layer | In Progress |
+| 43 | RMW-agnostic embedded API | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -463,6 +465,10 @@ Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archi
 **Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
 
 **Phase 37**: Complete. Service buffer stuck-state bug fixed, 8 progress proofs added (92 total Verus proofs), fairness evaluation found no issues (single-slot buffer prevents starvation by design).
+
+**Phase 42**: 42.1-42.4 complete. Generic `EmbeddedExecutor<S>` / `EmbeddedNode<S>` replacing duplicated `ShimNode`/`XrceNode`, `drive_io()` on Session trait, C function table adapter (`nros-rmw-cffi`), feature wiring. `shim.rs` and `xrce.rs` deleted, all examples migrated.
+
+**Phase 43**: RMW-agnostic embedded API. Backend-agnostic factory (`EmbeddedExecutor::open()`), callback+spin for embedded executor, typed XRCE action examples, migration of all 16 embedded examples to remove backend-specific types. See `docs/roadmap/phase-43-rmw-agnostic-embedded-api.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
