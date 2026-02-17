@@ -76,6 +76,9 @@ static XRCE_LARGE_MSG_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the zenoh-stress-test binary
 static ZENOH_STRESS_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the zenoh-stress-test binary built with large subscriber buffer
+static ZENOH_STRESS_TEST_LARGE_BUF_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the xrce-stress-test binary
 static XRCE_STRESS_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -813,6 +816,62 @@ pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
 pub fn zenoh_stress_test_binary() -> PathBuf {
     build_zenoh_stress_test()
         .expect("Failed to build zenoh-stress-test")
+        .to_path_buf()
+}
+
+/// Build the zenoh-stress-test binary with large subscriber buffer (8192B, cached).
+///
+/// Uses `NROS_SUBSCRIBER_BUFFER_SIZE=8192` and a separate `target-large-buf`
+/// directory to avoid overwriting the default stress-test binary.
+pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
+    ZENOH_STRESS_TEST_LARGE_BUF_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let example_dir = root.join("examples/native/rust/zenoh/stress-test");
+            let target_dir = example_dir.join("target-large-buf");
+
+            eprintln!("Building native/rust/zenoh/stress-test (large-buf)...");
+
+            let output = cmd!(
+                "cargo",
+                "build",
+                "--release",
+                "--features",
+                "zenoh",
+                "--target-dir",
+                target_dir.to_str().unwrap()
+            )
+            .env("NROS_SUBSCRIBER_BUFFER_SIZE", "8192")
+            .dir(&example_dir)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let binary_path = target_dir.join("release/zenoh-stress-test");
+            if !binary_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Binary not found: {}",
+                    binary_path.display()
+                )));
+            }
+            Ok(binary_path)
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the zenoh-stress-test binary path (large subscriber buffer).
+#[rstest::fixture]
+pub fn zenoh_stress_test_large_buf_binary() -> PathBuf {
+    build_zenoh_stress_test_large_buf()
+        .expect("Failed to build zenoh-stress-test (large-buf)")
         .to_path_buf()
 }
 

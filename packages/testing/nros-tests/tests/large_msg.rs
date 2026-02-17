@@ -10,7 +10,8 @@
 use nros_tests::count_pattern;
 use nros_tests::fixtures::{
     ManagedProcess, XrceAgent, ZenohRouter, qemu_large_msg_test_binary, require_xrce_agent,
-    require_zenohd, xrce_stress_test_binary, zenoh_stress_test_binary, zenohd_unique,
+    require_zenohd, xrce_stress_test_binary, zenoh_stress_test_binary,
+    zenoh_stress_test_large_buf_binary, zenohd_unique,
 };
 use rstest::rstest;
 use std::path::PathBuf;
@@ -180,6 +181,83 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
         valid_count, 0,
         "Expected 0 valid messages (overflow should cause size mismatch or drop), got {}.\nOutput:\n{}",
         valid_count, listener_output,
+    );
+
+    // Verify that the MessageTooLarge error was actually reported
+    let overflow_errors = count_pattern(&listener_output, "Receive error");
+    assert!(
+        overflow_errors >= 1,
+        "Expected at least 1 overflow error (MessageTooLarge), got 0.\nOutput:\n{}",
+        listener_output,
+    );
+}
+
+/// E2E test: talker sends 4096B payloads, listener with 8192B shim buffer receives them.
+///
+/// The listener is built with `NROS_SUBSCRIBER_BUFFER_SIZE=8192` so it can fit
+/// 4096B payloads (which would overflow the default 1024B buffer). The talker
+/// uses the same large-buf binary — publish path has no shim buffer constraint,
+/// but using the same binary simplifies the test.
+#[rstest]
+fn test_zenoh_e2e_large_receive(
+    zenohd_unique: ZenohRouter,
+    zenoh_stress_test_large_buf_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_zenohd() {
+        return;
+    }
+
+    let locator = zenohd_unique.locator();
+
+    // Listener (built with 8192B shim buffer)
+    let mut listener_cmd = Command::new(&zenoh_stress_test_large_buf_binary);
+    listener_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("MODE", "listener")
+        .env("PAYLOAD_SIZE", "4096")
+        .env("EXPECTED_COUNT", "10")
+        .env("TIMEOUT_SECS", "20");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "zenoh-large-recv-listener")
+        .expect("spawn listener");
+
+    let _ = listener.wait_for_output_pattern("Ready: listening", Duration::from_secs(5));
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Talker (same large-buf binary)
+    let mut talker_cmd = Command::new(&zenoh_stress_test_large_buf_binary);
+    talker_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("MODE", "talker")
+        .env("PAYLOAD_SIZE", "4096")
+        .env("PUBLISH_COUNT", "10")
+        .env("PUBLISH_INTERVAL_MS", "50");
+    let mut talker =
+        ManagedProcess::spawn_command(talker_cmd, "zenoh-large-recv-talker").expect("spawn talker");
+
+    let output = listener
+        .wait_for_output_pattern("RECV_DONE:", Duration::from_secs(20))
+        .unwrap_or_default();
+
+    talker.kill();
+    listener.kill();
+
+    eprintln!("Large receive test output:\n{}", output);
+
+    let received = count_pattern(&output, "Received:");
+    let invalid = count_pattern(&output, "valid=false");
+
+    assert!(
+        received >= 5,
+        "Expected >=5 received at 4096B, got {}.\nOutput:\n{}",
+        received,
+        output,
+    );
+    assert_eq!(
+        invalid, 0,
+        "Expected 0 invalid, got {}.\nOutput:\n{}",
+        invalid, output,
     );
 }
 
