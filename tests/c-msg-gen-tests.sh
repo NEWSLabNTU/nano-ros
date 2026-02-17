@@ -92,8 +92,8 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# Configure with CMake (auto-detects install dir from repo structure)
-cmake -DCMAKE_BUILD_TYPE=Release ..
+# Configure with CMake
+cmake -DNanoRos_DIR="$PROJECT_ROOT/build/install/lib/cmake/NanoRos" -DCMAKE_BUILD_TYPE=Release ..
 
 info "CMake configuration successful"
 

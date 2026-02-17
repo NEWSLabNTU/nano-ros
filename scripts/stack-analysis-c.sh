@@ -94,6 +94,7 @@ rm -f "$BUILD_DIR/CMakeCache.txt"
 (
     cd "$BUILD_DIR"
     cmake .. \
+        -DNanoRos_DIR="$REPO_ROOT/build/install/lib/cmake/NanoRos" \
         -DCMAKE_C_FLAGS="-fstack-usage" \
         -DCMAKE_BUILD_TYPE=Release \
         > /dev/null 2>&1

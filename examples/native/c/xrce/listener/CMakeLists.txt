@@ -16,14 +16,6 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # The pseudo-install dir (build/install/) contains zenoh-flavored nros-c by
 # default.  XRCE examples pass the library path explicitly via NROS_C_LIBRARY.
 
-if(NOT DEFINED NanoRos_DIR)
-    get_filename_component(_repo_root "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
-    set(_local "${_repo_root}/build/install/lib/cmake/NanoRos")
-    if(EXISTS "${_local}/NanoRosConfig.cmake")
-        set(NanoRos_DIR "${_local}")
-    endif()
-endif()
-
 find_package(NanoRos REQUIRED CONFIG)
 
 # Override with XRCE-flavored library when provided

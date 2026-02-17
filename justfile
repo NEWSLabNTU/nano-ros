@@ -978,30 +978,41 @@ test-c-xrce verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Build a single C example with CMake.
+# Usage: _build-c-example <example-dir> [extra cmake args...]
+[no-exit-message]
+_build-c-example dir *CMAKE_ARGS:
+    #!/usr/bin/env bash
+    set -e
+    NROS_DIR="$(pwd)/build/install/lib/cmake/NanoRos"
+    echo "Building {{dir}}..."
+    cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
+    cmake -DNanoRos_DIR="$NROS_DIR" {{CMAKE_ARGS}} ..
+    make
+
 # Build C examples only (no tests)
 build-examples-c: install-local
-    @echo "Building native/c/zenoh/talker..."
-    cd examples/native/c/zenoh/talker && rm -rf build && mkdir -p build && cd build && cmake .. && make
-    @echo "Building native/c/zenoh/listener..."
-    cd examples/native/c/zenoh/listener && rm -rf build && mkdir -p build && cd build && cmake .. && make
-    @echo "Building native/c/zenoh/custom-msg..."
-    cd examples/native/c/zenoh/custom-msg && rm -rf build && mkdir -p build && cd build && cmake .. && make
+    just _build-c-example examples/native/c/zenoh/talker
+    just _build-c-example examples/native/c/zenoh/listener
+    just _build-c-example examples/native/c/zenoh/custom-msg
     @echo "C examples built!"
 
 # Build C XRCE examples only (no tests)
 build-examples-c-xrce: install-local
-    @echo "Building nros-c library (XRCE backend)..."
-    cargo build -p nros-c --release --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
-    @echo "Building native/c/xrce/talker..."
-    cd examples/native/c/xrce/talker && rm -rf build && mkdir -p build && cd build && cmake -DNROS_C_LIBRARY="$(cd ../../../../../.. && pwd)/target/release/libnros_c.a" .. && make
-    @echo "Building native/c/xrce/listener..."
-    cd examples/native/c/xrce/listener && rm -rf build && mkdir -p build && cd build && cmake -DNROS_C_LIBRARY="$(cd ../../../../../.. && pwd)/target/release/libnros_c.a" .. && make
-    @echo "C XRCE examples built!"
+    #!/usr/bin/env bash
+    set -e
+    echo "Building nros-c library (XRCE backend)..."
+    cargo build -p nros-c --release \
+        --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
+    XRCE_LIB="$(pwd)/target/release/libnros_c.a"
+    just _build-c-example examples/native/c/xrce/talker  "-DNROS_C_LIBRARY=$XRCE_LIB"
+    just _build-c-example examples/native/c/xrce/listener "-DNROS_C_LIBRARY=$XRCE_LIB"
+    echo "C XRCE examples built!"
 
 # Clean C examples build
 clean-examples-c:
-    rm -rf examples/native/c/zenoh/talker/build examples/native/c/zenoh/listener/build examples/native/c/zenoh/custom-msg/build
-    rm -rf examples/native/c/xrce/talker/build examples/native/c/xrce/listener/build
+    rm -rf examples/native/c/zenoh/{talker,listener,custom-msg}/build
+    rm -rf examples/native/c/xrce/{talker,listener}/build
     @echo "C examples build cleaned"
 
 # =============================================================================

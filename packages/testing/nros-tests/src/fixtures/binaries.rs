@@ -942,8 +942,12 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure (CMakeLists.txt auto-detects install dir from repo structure)
-    let output = cmd!("cmake", "..")
+    // Run cmake configure — pass NanoRos_DIR to the pseudo-install layout
+    let nano_ros_dir = format!(
+        "-DNanoRos_DIR={}",
+        root.join("build/install/lib/cmake/NanoRos").display()
+    );
+    let output = cmd!("cmake", &nano_ros_dir, "..")
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()
@@ -1158,12 +1162,16 @@ pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure — override library path to XRCE-flavored build
+    // Run cmake configure — pass NanoRos_DIR and override library to XRCE-flavored build
+    let nano_ros_dir = format!(
+        "-DNanoRos_DIR={}",
+        root.join("build/install/lib/cmake/NanoRos").display()
+    );
     let xrce_lib_arg = format!(
         "-DNROS_C_LIBRARY={}",
         root.join("target/release/libnros_c.a").display()
     );
-    let output = cmd!("cmake", &xrce_lib_arg, "..")
+    let output = cmd!("cmake", &nano_ros_dir, &xrce_lib_arg, "..")
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()
