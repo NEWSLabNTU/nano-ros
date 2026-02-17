@@ -97,17 +97,17 @@ cd nros
 cargo build -p nros-c --release
 
 # Build a C example
+just install-local  # Build libraries + create CMake package
 cd examples/native/c/zenoh/talker
 mkdir -p build && cd build
-cmake -DNANO_ROS_ROOT=/path/to/nros ..
+cmake ..
 make
 ```
 
-A `FindNanoRos.cmake` module is provided at `cmake/FindNanoRos.cmake` for easy integration:
+A config-mode CMake package is provided for easy integration:
 
 ```cmake
-list(APPEND CMAKE_MODULE_PATH "/path/to/nros/cmake")
-find_package(NanoRos REQUIRED)
+find_package(NanoRos REQUIRED CONFIG)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
 

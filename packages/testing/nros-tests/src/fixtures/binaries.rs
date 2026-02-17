@@ -942,9 +942,8 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure
-    let root_arg = format!("-DNANO_ROS_ROOT={}", root.display());
-    let output = cmd!("cmake", &root_arg, "..")
+    // Run cmake configure (CMakeLists.txt auto-detects install dir from repo structure)
+    let output = cmd!("cmake", "..")
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()
@@ -1159,9 +1158,12 @@ pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure
-    let root_arg = format!("-DNANO_ROS_ROOT={}", root.display());
-    let output = cmd!("cmake", &root_arg, "..")
+    // Run cmake configure — override library path to XRCE-flavored build
+    let xrce_lib_arg = format!(
+        "-DNROS_C_LIBRARY={}",
+        root.join("target/release/libnros_c.a").display()
+    );
+    let output = cmd!("cmake", &xrce_lib_arg, "..")
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()

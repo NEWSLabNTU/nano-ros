@@ -4,21 +4,16 @@ project(baremetal_demo C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-# Find nros-c library (built from Rust)
-# The library should be pre-built with: cargo build --release -p nros-c
-#
-# Pass -DNANO_ROS_ROOT=/path/to/nros when configuring:
-#   cmake -DNANO_ROS_ROOT=/path/to/nros ..
-if(NOT DEFINED NANO_ROS_ROOT)
-    message(FATAL_ERROR
-        "NANO_ROS_ROOT not set.\n"
-        "Please specify the path to your nros workspace:\n"
-        "  cmake -DNANO_ROS_ROOT=/path/to/nros .."
-    )
+# Auto-detect pseudo-install dir when building inside the repo
+if(NOT DEFINED NanoRos_DIR)
+    get_filename_component(_repo_root "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
+    set(_local "${_repo_root}/build/install/lib/cmake/NanoRos")
+    if(EXISTS "${_local}/NanoRosConfig.cmake")
+        set(NanoRos_DIR "${_local}")
+    endif()
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
-find_package(NanoRos REQUIRED)
+find_package(NanoRos REQUIRED CONFIG)
 
 # Create executable
 add_executable(baremetal_demo
@@ -29,7 +24,7 @@ add_executable(baremetal_demo
 # Link libraries
 target_link_libraries(baremetal_demo PRIVATE NanoRos::NanoRos)
 
-# Platform-specific libraries not covered by FindNanoRos
+# Platform-specific libraries not covered by NanoRos::NanoRos
 if(UNIX AND NOT APPLE)
     target_link_libraries(baremetal_demo PRIVATE rt)
 elseif(APPLE)

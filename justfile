@@ -11,8 +11,29 @@ default:
 # =============================================================================
 
 # Build everything: refresh bindings, workspace (native + embedded) and all examples
-build: generate-bindings build-workspace build-workspace-embedded build-examples
+build: install-local generate-bindings build-workspace build-workspace-embedded build-examples
     @echo "All builds completed!"
+
+# Populate build/install/ pseudo-install directory for CMake config-mode package
+install-local: build-codegen-lib
+    #!/usr/bin/env bash
+    set -e
+    PREFIX="build/install"
+    echo "Building nros-c library..."
+    cargo build -p nros-c --release --features "rmw-zenoh,platform-posix,ros-humble"
+    echo "Creating pseudo-install layout at $PREFIX/..."
+    mkdir -p "$PREFIX"/{lib/cmake/NanoRos,include,libexec/nano-ros,share/nano-ros/interfaces}
+    cp target/release/libnros_c.a "$PREFIX/lib/"
+    cp packages/codegen/packages/target/release/libnros_codegen_c.a "$PREFIX/lib/"
+    cp -r packages/core/nros-c/include/nros "$PREFIX/include/"
+    cp packages/codegen/packages/nros-codegen-c/include/nros_codegen.h "$PREFIX/libexec/nano-ros/"
+    cp packages/codegen/packages/nros-codegen-c/src/codegen_main.c "$PREFIX/libexec/nano-ros/"
+    if [ -d packages/codegen/interfaces ]; then
+        rsync -a --delete packages/codegen/interfaces/ "$PREFIX/share/nano-ros/interfaces/"
+    fi
+    cp cmake/NanoRosConfig.cmake cmake/NanoRosCTargets.cmake cmake/NanoRosGenerateInterfaces.cmake \
+       "$PREFIX/lib/cmake/NanoRos/"
+    echo "Pseudo-install complete: $PREFIX/"
 
 # Format everything: workspace and all examples
 format: format-workspace format-examples
@@ -104,8 +125,8 @@ test-all verbose="":
         echo "All tests passed!"
     fi
 
-# Run code quality checks: format + check (clippy/features/examples) + test (unit/miri/qemu)
-quality: format check test
+# Run code quality checks: format check + clippy + tests (never modifies code)
+quality: check test
     @echo "All quality checks passed!"
 
 # Run full CI suite (quality + all integration tests)
@@ -958,25 +979,23 @@ test-c-xrce verbose="":
     cargo nextest run "${args[@]}"
 
 # Build C examples only (no tests)
-build-examples-c: build-codegen-lib
-    @echo "Building nros-c library..."
-    cargo build -p nros-c --release --features "rmw-zenoh,platform-posix,ros-humble"
+build-examples-c: install-local
     @echo "Building native/c/zenoh/talker..."
-    cd examples/native/c/zenoh/talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    cd examples/native/c/zenoh/talker && rm -rf build && mkdir -p build && cd build && cmake .. && make
     @echo "Building native/c/zenoh/listener..."
-    cd examples/native/c/zenoh/listener && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    cd examples/native/c/zenoh/listener && rm -rf build && mkdir -p build && cd build && cmake .. && make
     @echo "Building native/c/zenoh/custom-msg..."
-    cd examples/native/c/zenoh/custom-msg && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    cd examples/native/c/zenoh/custom-msg && rm -rf build && mkdir -p build && cd build && cmake .. && make
     @echo "C examples built!"
 
 # Build C XRCE examples only (no tests)
-build-examples-c-xrce: build-codegen-lib
+build-examples-c-xrce: install-local
     @echo "Building nros-c library (XRCE backend)..."
     cargo build -p nros-c --release --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
     @echo "Building native/c/xrce/talker..."
-    cd examples/native/c/xrce/talker && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    cd examples/native/c/xrce/talker && rm -rf build && mkdir -p build && cd build && cmake -DNROS_C_LIBRARY="$(cd ../../../../../.. && pwd)/target/release/libnros_c.a" .. && make
     @echo "Building native/c/xrce/listener..."
-    cd examples/native/c/xrce/listener && rm -rf build && mkdir -p build && cd build && cmake -DNANO_ROS_ROOT="$(cd ../../../../../.. && pwd)" .. && make
+    cd examples/native/c/xrce/listener && rm -rf build && mkdir -p build && cd build && cmake -DNROS_C_LIBRARY="$(cd ../../../../../.. && pwd)/target/release/libnros_c.a" .. && make
     @echo "C XRCE examples built!"
 
 # Clean C examples build
@@ -991,8 +1010,8 @@ clean-examples-c:
 
 # Build the codegen static library (for CMake C code generation)
 build-codegen-lib:
-    @echo "Building nano-ros-codegen-c staticlib..."
-    cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
+    @echo "Building nros-codegen-c staticlib..."
+    cargo build -p nros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
 
 # Install cargo-nano-ros (requires ROS 2 environment)
 install-cargo-nano-ros:
@@ -1232,6 +1251,7 @@ doc:
 # Clean all build artifacts created by `just build`
 clean: clean-examples clean-zephyr clean-zenohd
     cargo clean
+    rm -rf build/install
     @echo "All build artifacts cleaned"
 
 # Show Zephyr build instructions

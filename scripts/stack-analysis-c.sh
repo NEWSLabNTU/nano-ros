@@ -93,7 +93,7 @@ mkdir -p "$BUILD_DIR"
 rm -f "$BUILD_DIR/CMakeCache.txt"
 (
     cd "$BUILD_DIR"
-    cmake .. -DNANO_ROS_ROOT="$REPO_ROOT" \
+    cmake .. \
         -DCMAKE_C_FLAGS="-fstack-usage" \
         -DCMAKE_BUILD_TYPE=Release \
         > /dev/null 2>&1

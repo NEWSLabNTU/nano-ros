@@ -1,15 +1,18 @@
 #[=======================================================================[.rst:
-nano_ros_generate_interfaces
-----------------------------
+NanoRosGenerateInterfaces
+-------------------------
 
 Generate C bindings for ROS 2 interface files (.msg, .srv, .action).
+
+This module is included by ``NanoRosConfig.cmake`` and provides the
+``nano_ros_generate_interfaces()`` function.  It also locates (or
+builds) the codegen tool from the install prefix.
 
 Usage mirrors ``rosidl_generate_interfaces()`` from standard ROS 2:
 interface files are passed as positional arguments, resolved relative
 to ``CMAKE_CURRENT_SOURCE_DIR``.  When a file is not found locally,
 it is searched in the ament index (``AMENT_PREFIX_PATH``) and then in
-bundled interfaces shipped with nano-ros, using ``<target>`` as the
-package name.
+bundled interfaces shipped with nano-ros.
 
 .. code-block:: cmake
 
@@ -30,49 +33,84 @@ Arguments:
 
     1. ``${CMAKE_CURRENT_SOURCE_DIR}/<file>``  (local)
     2. ``${prefix}/share/<target>/<file>``      (ament index)
-    3. ``${NANO_ROS_ROOT}/packages/codegen/interfaces/<target>/<file>``
+    3. ``${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/<target>/<file>``
        (bundled)
   ``DEPENDENCIES``
     List of interface packages this package depends on.
   ``SKIP_INSTALL``
     Skip installing generated files.
 
-Example — standard ROS package (resolved via ament or bundled):
-
-  .. code-block:: cmake
-
-    nano_ros_generate_interfaces(std_msgs
-        "msg/Int32.msg"
-        SKIP_INSTALL
-    )
-
-Example — custom local messages:
-
-  .. code-block:: cmake
-
-    nano_ros_generate_interfaces(${PROJECT_NAME}
-        "msg/Temperature.msg"
-        "msg/SensorData.msg"
-        SKIP_INSTALL
-    )
-
 Prerequisites:
-  Build the codegen library before running CMake::
-
-    just build-codegen-lib
+  Run ``just install-local`` before configuring CMake.
 
 #]=======================================================================]
 
-# ---------------------------------------------------------------------------
+get_filename_component(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
+
+# =========================================================================
+# Internal: build the codegen tool (once per configure)
+# =========================================================================
+
+if(NOT DEFINED CACHE{_NANO_ROS_CODEGEN_TOOL})
+  # --- Locate the static codegen library -----------------------------------
+  set(_codegen_lib "${_NANO_ROS_PREFIX}/lib/libnros_codegen_c.a")
+
+  if(NOT EXISTS "${_codegen_lib}")
+    message(FATAL_ERROR
+      "libnros_codegen_c.a not found at ${_codegen_lib}\n"
+      "Build it with:\n"
+      "  just install-local"
+    )
+  endif()
+
+  # --- Locate header and wrapper source ------------------------------------
+  set(_codegen_header_dir "${_NANO_ROS_PREFIX}/libexec/nano-ros")
+  set(_codegen_wrapper_src "${_NANO_ROS_PREFIX}/libexec/nano-ros/codegen_main.c")
+
+  if(NOT EXISTS "${_codegen_header_dir}/nros_codegen.h")
+    message(FATAL_ERROR "nros_codegen.h not found at ${_codegen_header_dir}")
+  endif()
+  if(NOT EXISTS "${_codegen_wrapper_src}")
+    message(FATAL_ERROR "codegen_main.c not found at ${_codegen_wrapper_src}")
+  endif()
+
+  # --- Build the wrapper executable via try_compile ------------------------
+  set(_codegen_bin_dir "${CMAKE_BINARY_DIR}/_nano_ros_codegen")
+  file(MAKE_DIRECTORY "${_codegen_bin_dir}")
+
+  set(_platform_libs "")
+  if(UNIX AND NOT APPLE)
+    set(_platform_libs "-lpthread -ldl -lm")
+  elseif(APPLE)
+    set(_platform_libs "-lpthread -ldl -lm -framework Security -framework CoreFoundation")
+  endif()
+
+  try_compile(_codegen_compiled
+    "${_codegen_bin_dir}"
+    SOURCES "${_codegen_wrapper_src}"
+    CMAKE_FLAGS
+      "-DINCLUDE_DIRECTORIES=${_codegen_header_dir}"
+      "-DLINK_LIBRARIES=${_codegen_lib};${_platform_libs}"
+    COPY_FILE "${_codegen_bin_dir}/nros_codegen"
+    OUTPUT_VARIABLE _codegen_output
+  )
+
+  if(NOT _codegen_compiled)
+    message(FATAL_ERROR
+      "Failed to compile nros_codegen wrapper.\n"
+      "Output:\n${_codegen_output}"
+    )
+  endif()
+
+  set(_NANO_ROS_CODEGEN_TOOL "${_codegen_bin_dir}/nros_codegen"
+    CACHE INTERNAL "Path to nros C codegen tool")
+
+  message(STATUS "Built nros codegen tool: ${_NANO_ROS_CODEGEN_TOOL}")
+endif()
+
+# =========================================================================
 # _nano_ros_resolve_interface(<target> <relpath> <out_var>)
-#
-# Try to resolve a relative interface file path to an absolute path:
-#   1. Local:   ${CMAKE_CURRENT_SOURCE_DIR}/<relpath>
-#   2. Ament:   ${prefix}/share/<target>/<relpath>  for each AMENT_PREFIX_PATH
-#   3. Bundled: ${NANO_ROS_ROOT}/packages/codegen/interfaces/<target>/<relpath>
-#
-# Sets ${out_var} in PARENT_SCOPE to the absolute path, or "NOTFOUND".
-# ---------------------------------------------------------------------------
+# =========================================================================
 function(_nano_ros_resolve_interface target relpath out_var)
   set(${out_var} "NOTFOUND" PARENT_SCOPE)
 
@@ -96,19 +134,17 @@ function(_nano_ros_resolve_interface target relpath out_var)
   endif()
 
   # 3. Bundled interfaces
-  if(DEFINED NANO_ROS_ROOT)
-    set(_candidate "${NANO_ROS_ROOT}/packages/codegen/interfaces/${target}/${relpath}")
-    if(EXISTS "${_candidate}")
-      set(${out_var} "${_candidate}" PARENT_SCOPE)
-      return()
-    endif()
+  set(_candidate "${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/${relpath}")
+  if(EXISTS "${_candidate}")
+    set(${out_var} "${_candidate}" PARENT_SCOPE)
+    return()
   endif()
 endfunction()
 
-# ---------------------------------------------------------------------------
+# =========================================================================
 # nano_ros_generate_interfaces(<target> <files>...
 #     [DEPENDENCIES <deps>...] [SKIP_INSTALL])
-# ---------------------------------------------------------------------------
+# =========================================================================
 function(nano_ros_generate_interfaces target)
   cmake_parse_arguments(_ARG
     "SKIP_INSTALL"
@@ -137,14 +173,11 @@ function(nano_ros_generate_interfaces target)
         "  Searched:\n"
         "    ${CMAKE_CURRENT_SOURCE_DIR}/${_relpath}\n"
         "    AMENT_PREFIX_PATH/share/${target}/${_relpath}\n"
-        "    ${NANO_ROS_ROOT}/packages/codegen/interfaces/${target}/${_relpath}\n"
-        "  Hint: source your ROS 2 setup.bash, or check the file path.")
+        "    ${_NANO_ROS_PREFIX}/share/nano-ros/interfaces/${target}/${_relpath}\n"
+        "  Hint: run 'just install-local', or check the file path.")
     endif()
     list(APPEND _interface_files "${_abs_path}")
   endforeach()
-
-  # Find the bundled codegen tool
-  find_package(NanoRosCodegen REQUIRED)
 
   # Output directory
   set(_output_dir "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c/${target}")
@@ -252,18 +285,18 @@ function(nano_ros_generate_interfaces target)
   endif()
 
   # Link to nros-c
-  if(TARGET nros_c::nros_c)
+  if(TARGET NanoRos::NanoRos)
+    set(_link_type PUBLIC)
+    if(NOT _generated_sources)
+      set(_link_type INTERFACE)
+    endif()
+    target_link_libraries(${_lib_target} ${_link_type} NanoRos::NanoRos)
+  elseif(TARGET nros_c::nros_c)
     set(_link_type PUBLIC)
     if(NOT _generated_sources)
       set(_link_type INTERFACE)
     endif()
     target_link_libraries(${_lib_target} ${_link_type} nros_c::nros_c)
-  elseif(TARGET nano_ros_c)
-    set(_link_type PUBLIC)
-    if(NOT _generated_sources)
-      set(_link_type INTERFACE)
-    endif()
-    target_link_libraries(${_lib_target} ${_link_type} nano_ros_c)
   endif()
 
   # Link dependency libraries

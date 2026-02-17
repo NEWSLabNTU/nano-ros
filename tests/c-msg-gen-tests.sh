@@ -63,27 +63,20 @@ fi
 info "cargo-nano-ros built successfully: $GENERATOR"
 
 # ============================================================================
-# Step 2: Build nros-c and nano-ros-codegen-c libraries
+# Step 2: Build install-local (nros-c + nros-codegen-c + CMake package)
 # ============================================================================
 
-info "Building nros-c library..."
-
 cd "$PROJECT_ROOT"
+info "Running install-local..."
+just install-local
 
-# Build nros-c with Cargo (release mode)
-cargo build -p nros-c --release
-
-# Build nano-ros-codegen-c staticlib (needed by CMake FindNanoRosCodegen)
-info "Building nano-ros-codegen-c staticlib..."
-cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
-
-NANO_ROS_C_LIB="$PROJECT_ROOT/target/release/libnros_c.a"
-if [ ! -f "$NANO_ROS_C_LIB" ]; then
-    error "nros-c library not found at: $NANO_ROS_C_LIB"
+INSTALL_DIR="$PROJECT_ROOT/build/install"
+if [ ! -f "$INSTALL_DIR/lib/libnros_c.a" ]; then
+    error "install-local failed: libnros_c.a not found at $INSTALL_DIR/lib/"
     exit 1
 fi
 
-info "nros-c built successfully: $NANO_ROS_C_LIB"
+info "install-local complete: $INSTALL_DIR/"
 
 # ============================================================================
 # Step 3: Configure native-c-custom-msg example
@@ -99,8 +92,8 @@ rm -rf "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 cd "$BUILD_DIR"
 
-# Configure with CMake
-cmake -DNANO_ROS_ROOT="$PROJECT_ROOT" -DCMAKE_BUILD_TYPE=Release ..
+# Configure with CMake (auto-detects install dir from repo structure)
+cmake -DCMAKE_BUILD_TYPE=Release ..
 
 info "CMake configuration successful"
 

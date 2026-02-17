@@ -13,19 +13,25 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # Build nros-c with XRCE features before configuring:
 #   cargo build -p nros-c --release --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
 #
-# Pass -DNANO_ROS_ROOT=/path/to/nros when configuring:
-#   cmake -DNANO_ROS_ROOT=/path/to/nros ..
+# The pseudo-install dir (build/install/) contains zenoh-flavored nros-c by
+# default.  XRCE examples pass the library path explicitly via NROS_C_LIBRARY.
 
-if(NOT DEFINED NANO_ROS_ROOT)
-    message(FATAL_ERROR
-        "NANO_ROS_ROOT not set.\n"
-        "Please specify the path to your nros workspace:\n"
-        "  cmake -DNANO_ROS_ROOT=/path/to/nros .."
-    )
+if(NOT DEFINED NanoRos_DIR)
+    get_filename_component(_repo_root "${CMAKE_CURRENT_LIST_DIR}/../../../../.." ABSOLUTE)
+    set(_local "${_repo_root}/build/install/lib/cmake/NanoRos")
+    if(EXISTS "${_local}/NanoRosConfig.cmake")
+        set(NanoRos_DIR "${_local}")
+    endif()
 endif()
 
-list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
-find_package(NanoRos REQUIRED)
+find_package(NanoRos REQUIRED CONFIG)
+
+# Override with XRCE-flavored library when provided
+if(DEFINED NROS_C_LIBRARY AND EXISTS "${NROS_C_LIBRARY}")
+    set_target_properties(NanoRos::NanoRos PROPERTIES
+        IMPORTED_LOCATION "${NROS_C_LIBRARY}"
+    )
+endif()
 
 # ============================================================================
 # Executable

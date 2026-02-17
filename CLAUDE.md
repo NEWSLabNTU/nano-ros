@@ -76,8 +76,10 @@ nano-ros/
 ├── scripts/zephyr/            # Zephyr setup scripts
 │   ├── setup.sh               # Initialize workspace
 │   └── setup-network.sh       # Configure TAP interface
-├── cmake/                     # CMake find modules for external users
-│   └── FindNanoRos.cmake      # Top-level find module → NanoRos::NanoRos target
+├── cmake/                     # CMake config-mode package
+│   ├── NanoRosConfig.cmake    # find_package(NanoRos CONFIG) entry point
+│   ├── NanoRosCTargets.cmake  # NanoRos::NanoRos imported target
+│   └── NanoRosGenerateInterfaces.cmake  # nano_ros_generate_interfaces()
 ├── docker/                    # Docker development environment
 │   ├── Dockerfile.qemu-arm    # QEMU 7.2 + ARM toolchain
 │   └── docker-compose.yml     # Container orchestration
@@ -352,19 +354,19 @@ just build-codegen-lib
 ```
 
 ### C API and CMake Integration
-C examples use `FindNanoRos.cmake` (at `cmake/FindNanoRos.cmake`) which wraps the internal `FindNanoRosC.cmake` (at `packages/core/nros-c/cmake/`). Usage:
+C examples use a config-mode CMake package (`find_package(NanoRos CONFIG)`). Run `just install-local` first to create the pseudo-install layout at `build/install/`. Usage:
 ```cmake
-list(APPEND CMAKE_MODULE_PATH "${NANO_ROS_ROOT}/cmake")
-find_package(NanoRos REQUIRED)
+# Auto-detect when building inside the repo (examples do this automatically)
+find_package(NanoRos REQUIRED CONFIG)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
 This provides include dirs, static library, and platform link libs (pthread, dl, m) automatically.
 
-**C code generation** uses `nano_ros_generate_interfaces()` (from `nano_ros_generate_interfaces.cmake`). The codegen tool is bundled as `libnano_ros_codegen_c.a` — no external `nros` binary needed. Build it with `just build-codegen-lib` before running CMake. The CMake module `FindNanoRosCodegen.cmake` compiles a thin C wrapper at configure time.
+**C code generation** uses `nano_ros_generate_interfaces()` (from `NanoRosGenerateInterfaces.cmake`, included automatically by `find_package(NanoRos CONFIG)`). The codegen tool is bundled as `libnros_codegen_c.a` — no separate build step needed beyond `just install-local`.
 
 **C example coding practice**: Always use `nano_ros_generate_interfaces()` for message/service/action types — never hand-write CDR serialization or struct definitions. The API mirrors `rosidl_generate_interfaces()` from standard ROS 2: interface files are positional arguments resolved first locally, then via ament index, then from bundled interfaces.
 ```cmake
-# Standard ROS 2 package — resolved via AMENT_PREFIX_PATH
+# Standard ROS 2 package — resolved via AMENT_PREFIX_PATH or bundled
 nano_ros_generate_interfaces(std_msgs
     "msg/Int32.msg"
     SKIP_INSTALL
@@ -383,7 +385,7 @@ nano_ros_generate_interfaces(${PROJECT_NAME}
     SKIP_INSTALL
 )
 ```
-Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `${NANO_ROS_ROOT}/packages/codegen/interfaces/<target>/<file>`. Type info structs (`nano_ros_message_type_t`, `nano_ros_service_type_t`, `nano_ros_action_type_t`) are all defined in `nros/types.h`.
+Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<install_prefix>/share/nano-ros/interfaces/<target>/<file>`. Type info structs (`nano_ros_message_type_t`, `nano_ros_service_type_t`, `nano_ros_action_type_t`) are all defined in `nros/types.h`.
 
 ### Platform Backends
 Features are organized into three orthogonal axes:

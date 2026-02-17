@@ -247,11 +247,11 @@ and `.action` files. It uses a bundled codegen library — no external `nros` bi
 Build the codegen library once:
 ```bash
 just build-codegen-lib
-# or: cargo build -p nano-ros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
+# or: cargo build -p nros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
 ```
 
 ### Usage
 
 See `examples/native/c-custom-msg/CMakeLists.txt` for a complete example. CMake
 automatically compiles a thin wrapper at configure time that links against the
-`libnano_ros_codegen_c.a` static library.
+`libnros_codegen_c.a` static library.
