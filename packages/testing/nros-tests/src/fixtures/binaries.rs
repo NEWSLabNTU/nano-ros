@@ -821,7 +821,7 @@ pub fn zenoh_stress_test_binary() -> PathBuf {
 
 /// Build the zenoh-stress-test binary with large subscriber buffer (8192B, cached).
 ///
-/// Uses `NROS_SUBSCRIBER_BUFFER_SIZE=8192` and a separate `target-large-buf`
+/// Uses `ZPICO_SUBSCRIBER_BUFFER_SIZE=8192` and a separate `target-large-buf`
 /// directory to avoid overwriting the default stress-test binary.
 pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
     ZENOH_STRESS_TEST_LARGE_BUF_BINARY
@@ -841,7 +841,7 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
                 "--target-dir",
                 target_dir.to_str().unwrap()
             )
-            .env("NROS_SUBSCRIBER_BUFFER_SIZE", "8192")
+            .env("ZPICO_SUBSCRIBER_BUFFER_SIZE", "8192")
             .dir(&example_dir)
             .stderr_to_stdout()
             .stdout_capture()

@@ -112,11 +112,7 @@ include = [
     "ShimCallback",
     "ShimZeroCopyCallback",
     "ShimQueryCallback",
-    # Constants
-    "ZENOH_SHIM_MAX_PUBLISHERS",
-    "ZENOH_SHIM_MAX_SUBSCRIBERS",
-    "ZENOH_SHIM_MAX_LIVELINESS",
-    "ZENOH_SHIM_MAX_QUERYABLES",
+    # Constants (ZENOH_SHIM_MAX_* are now passed via -D compiler flags from build.rs)
     "ZENOH_SHIM_ZID_SIZE",
     "ZENOH_SHIM_RMW_GID_SIZE",
     "ZENOH_SHIM_OK",

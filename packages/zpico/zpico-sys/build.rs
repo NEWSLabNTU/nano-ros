@@ -51,6 +51,65 @@ impl LinkFeatures {
     }
 }
 
+/// Shim slot count configuration.
+///
+/// Controls the maximum number of concurrent publishers, subscribers,
+/// queryables, and liveliness tokens in the C shim layer.
+/// Values are read from `ZPICO_MAX_*` environment variables at build time.
+struct ShimConfig {
+    max_publishers: usize,
+    max_subscribers: usize,
+    max_queryables: usize,
+    max_liveliness: usize,
+}
+
+impl ShimConfig {
+    fn from_env() -> Self {
+        Self {
+            max_publishers: env_usize("ZPICO_MAX_PUBLISHERS", 8),
+            max_subscribers: env_usize("ZPICO_MAX_SUBSCRIBERS", 8),
+            max_queryables: env_usize("ZPICO_MAX_QUERYABLES", 8),
+            max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
+        }
+    }
+
+    /// Generate `$OUT_DIR/shim_constants.rs` with Rust const declarations.
+    fn generate_rust_consts(&self, out_dir: &Path) {
+        let contents = format!(
+            "/// Maximum number of concurrent publishers (set via ZPICO_MAX_PUBLISHERS, default 8).\n\
+             pub const ZENOH_SHIM_MAX_PUBLISHERS: usize = {};\n\
+             /// Maximum number of concurrent subscribers (set via ZPICO_MAX_SUBSCRIBERS, default 8).\n\
+             pub const ZENOH_SHIM_MAX_SUBSCRIBERS: usize = {};\n\
+             /// Maximum number of concurrent queryables (set via ZPICO_MAX_QUERYABLES, default 8).\n\
+             pub const ZENOH_SHIM_MAX_QUERYABLES: usize = {};\n\
+             /// Maximum number of concurrent liveliness tokens (set via ZPICO_MAX_LIVELINESS, default 16).\n\
+             pub const ZENOH_SHIM_MAX_LIVELINESS: usize = {};\n",
+            self.max_publishers, self.max_subscribers, self.max_queryables, self.max_liveliness,
+        );
+        std::fs::write(out_dir.join("shim_constants.rs"), contents).unwrap();
+    }
+
+    /// Add `-D` flags to a `cc::Build` so the C shim picks up the same values.
+    fn apply_to_cc(&self, build: &mut cc::Build) {
+        build.define(
+            "ZENOH_SHIM_MAX_PUBLISHERS",
+            self.max_publishers.to_string().as_str(),
+        );
+        build.define(
+            "ZENOH_SHIM_MAX_SUBSCRIBERS",
+            self.max_subscribers.to_string().as_str(),
+        );
+        build.define(
+            "ZENOH_SHIM_MAX_QUERYABLES",
+            self.max_queryables.to_string().as_str(),
+        );
+        build.define(
+            "ZENOH_SHIM_MAX_LIVELINESS",
+            self.max_liveliness.to_string().as_str(),
+        );
+    }
+}
+
 /// Buffer size configuration for zenoh-pico.
 ///
 /// These values are read from environment variables at build time, with
@@ -290,6 +349,10 @@ fn main() {
     // Read buffer config with platform-appropriate defaults
     let buf_config = ZenohBufferConfig::from_env(use_posix);
 
+    // Read shim slot counts from ZPICO_MAX_* env vars and generate Rust consts
+    let shim_config = ShimConfig::from_env();
+    shim_config.generate_rust_consts(&out_dir);
+
     // Build zenoh-pico and C shim
     if !is_embedded_target(&target) {
         // Native: build zenoh-pico via CMake (or use system library), then shim via cc
@@ -307,6 +370,7 @@ fn main() {
                 use_bare_metal,
                 &target,
                 &link_features,
+                &shim_config,
             );
         }
     } else if use_bare_metal {
@@ -321,6 +385,7 @@ fn main() {
             &out_dir,
             &target,
             &link_features,
+            &shim_config,
         );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
@@ -770,6 +835,7 @@ fn generate_version_header(build_dir: &Path) {
 /// Build the C shim library
 ///
 /// Note: For Zephyr, C code is built by Zephyr's build system, not here.
+#[allow(clippy::too_many_arguments)]
 fn build_c_shim(
     c_dir: &Path,
     include_dir: &Path,
@@ -778,6 +844,7 @@ fn build_c_shim(
     use_bare_metal: bool,
     target: &str,
     link: &LinkFeatures,
+    shim: &ShimConfig,
 ) {
     let mut build = cc::Build::new();
 
@@ -844,6 +911,9 @@ fn build_c_shim(
         }
     }
 
+    // Pass shim slot counts as -D flags so zenoh_shim.c gets them
+    shim.apply_to_cc(&mut build);
+
     build.opt_level(2);
     build.compile("zenoh_shim");
 }
@@ -853,6 +923,7 @@ fn build_c_shim(
 /// Compiles all zenoh-pico sources together with our platform headers and
 /// shim into a single static library (`libzenohpico.a`). This replaces the
 /// external `scripts/{qemu,esp32}/build-zenoh-pico.sh` shell scripts.
+#[allow(clippy::too_many_arguments)]
 fn build_zenoh_pico_embedded(
     zenoh_pico_src: &Path,
     c_dir: &Path,
@@ -860,6 +931,7 @@ fn build_zenoh_pico_embedded(
     out_dir: &Path,
     target: &str,
     link: &LinkFeatures,
+    shim: &ShimConfig,
 ) {
     let mut build = cc::Build::new();
     let platform_dir = c_dir.join("platform");
@@ -958,6 +1030,9 @@ fn build_zenoh_pico_embedded(
         if link.raweth { "1" } else { "0" },
     );
     build.define("Z_FEATURE_SCOUTING_UDP", "0");
+
+    // Pass shim slot counts as -D flags so zenoh_shim.c gets them
+    shim.apply_to_cc(&mut build);
 
     // Embedded-optimized compiler flags
     build

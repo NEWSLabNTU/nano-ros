@@ -194,7 +194,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
 
 /// E2E test: talker sends 4096B payloads, listener with 8192B shim buffer receives them.
 ///
-/// The listener is built with `NROS_SUBSCRIBER_BUFFER_SIZE=8192` so it can fit
+/// The listener is built with `ZPICO_SUBSCRIBER_BUFFER_SIZE=8192` so it can fit
 /// 4096B payloads (which would overflow the default 1024B buffer). The talker
 /// uses the same large-buf binary — publish path has no shim buffer constraint,
 /// but using the same binary simplifies the test.

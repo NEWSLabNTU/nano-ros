@@ -22,26 +22,6 @@
 #include <stdlib.h>
 
 /**
- * Maximum number of concurrent publishers
- */
-#define ZENOH_SHIM_MAX_PUBLISHERS 8
-
-/**
- * Maximum number of concurrent subscribers
- */
-#define ZENOH_SHIM_MAX_SUBSCRIBERS 8
-
-/**
- * Maximum number of concurrent liveliness tokens
- */
-#define ZENOH_SHIM_MAX_LIVELINESS 16
-
-/**
- * Maximum number of concurrent queryables
- */
-#define ZENOH_SHIM_MAX_QUERYABLES 8
-
-/**
  * Size of Zenoh ID in bytes
  */
 #define ZENOH_SHIM_ZID_SIZE 16

@@ -168,7 +168,12 @@ Build-time buffer tuning (optional — platform-appropriate defaults apply if un
 | `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch size before fragmentation | `65536` | `1024` |
 | `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | `8192` | `1024` |
 | `XRCE_TRANSPORT_MTU` | XRCE-DDS custom transport MTU; also sizes stream buffers (4×MTU) and UDP staging | `4096` | `512` |
-| `NROS_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber static buffer in zenoh shim | `1024` | `1024` |
+| `ZPICO_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber static buffer in zenoh shim | `1024` | `1024` |
+| `ZPICO_SERVICE_BUFFER_SIZE` | Per-service-server static buffer in zenoh shim | `1024` | `1024` |
+| `ZPICO_MAX_PUBLISHERS` | Max concurrent publishers in zenoh shim | `8` | `8` |
+| `ZPICO_MAX_SUBSCRIBERS` | Max concurrent subscribers in zenoh shim | `8` | `8` |
+| `ZPICO_MAX_QUERYABLES` | Max concurrent queryables in zenoh shim | `8` | `8` |
+| `ZPICO_MAX_LIVELINESS` | Max concurrent liveliness tokens in zenoh shim | `16` | `16` |
 
 ## Development Practices
 

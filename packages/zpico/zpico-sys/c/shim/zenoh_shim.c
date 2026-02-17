@@ -89,11 +89,9 @@ typedef struct {
     bool active;
 } queryable_entry_t;
 
-// Maximum number of concurrent liveliness tokens
-#define ZENOH_SHIM_MAX_LIVELINESS 16
-
-// Maximum number of concurrent queryables
-#define ZENOH_SHIM_MAX_QUERYABLES 8
+// ZENOH_SHIM_MAX_PUBLISHERS, ZENOH_SHIM_MAX_SUBSCRIBERS,
+// ZENOH_SHIM_MAX_QUERYABLES, and ZENOH_SHIM_MAX_LIVELINESS are provided
+// via -D compiler flags from build.rs (configurable with ZPICO_MAX_* env vars).
 
 // Static storage for zenoh objects
 static z_owned_config_t g_config;
