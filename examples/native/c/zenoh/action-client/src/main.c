@@ -1,0 +1,270 @@
+/// @file main.c
+/// @brief C action client example - sends Fibonacci goal, receives feedback
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <signal.h>
+
+// nros modular includes (rclc-style)
+#include <nros/init.h>
+#include <nros/node.h>
+#include <nros/action.h>
+
+// Generated C bindings for example_interfaces/action/Fibonacci
+#include "example_interfaces.h"
+
+// ----------------------------------------------------------------------------
+// Application state
+// ----------------------------------------------------------------------------
+
+static struct {
+    nano_ros_support_t support;
+    nros_node_t node;
+    nano_ros_action_client_t action_client;
+} app;
+
+static volatile sig_atomic_t g_running = 1;
+
+static void signal_handler(int signum) {
+    (void)signum;
+    g_running = 0;
+}
+
+// ----------------------------------------------------------------------------
+// Helper: print a Fibonacci sequence
+// ----------------------------------------------------------------------------
+
+static void print_sequence(const example_interfaces_action_fibonacci_feedback* fb) {
+    printf("[");
+    for (uint32_t i = 0; i < fb->sequence.size; i++) {
+        if (i > 0) printf(", ");
+        printf("%d", fb->sequence.data[i]);
+    }
+    printf("]");
+}
+
+// ----------------------------------------------------------------------------
+// Feedback callback
+// ----------------------------------------------------------------------------
+
+static int g_feedback_count = 0;
+
+static void feedback_callback(const nano_ros_goal_uuid_t* goal_uuid,
+                              const uint8_t* feedback,
+                              size_t feedback_len,
+                              void* context) {
+    (void)goal_uuid;
+    (void)context;
+
+    g_feedback_count++;
+
+    example_interfaces_action_fibonacci_feedback fb;
+    if (example_interfaces_action_fibonacci_feedback_deserialize(
+            &fb, feedback, feedback_len) == 0) {
+        printf("Feedback #%d: ", g_feedback_count);
+        print_sequence(&fb);
+        printf("\n");
+    } else {
+        fprintf(stderr, "Feedback #%d: failed to deserialize\n", g_feedback_count);
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Result callback
+// ----------------------------------------------------------------------------
+
+static int g_result_received = 0;
+
+static void result_callback(const nano_ros_goal_uuid_t* goal_uuid,
+                            nano_ros_goal_status_t status,
+                            const uint8_t* result,
+                            size_t result_len,
+                            void* context) {
+    (void)goal_uuid;
+    (void)context;
+
+    g_result_received = 1;
+
+    printf("Result (status=%s): ", nano_ros_goal_status_to_string(status));
+
+    if (result && result_len > 0) {
+        // Reuse feedback struct for deserialization — same layout as result
+        example_interfaces_action_fibonacci_feedback seq;
+        if (example_interfaces_action_fibonacci_feedback_deserialize(
+                &seq, result, result_len) == 0) {
+            print_sequence(&seq);
+            printf("\n");
+        } else {
+            printf("(deserialize failed)\n");
+        }
+    } else {
+        printf("(no result data)\n");
+    }
+}
+
+// ----------------------------------------------------------------------------
+// Main
+// ----------------------------------------------------------------------------
+
+int main(int argc, char** argv) {
+    (void)argc;
+    (void)argv;
+
+    printf("nros C Action Client (Fibonacci)\n");
+    printf("===================================\n");
+
+    // Get configuration from environment
+    const char* locator = getenv("ZENOH_LOCATOR");
+    if (!locator) {
+        locator = "tcp/127.0.0.1:7447";
+    }
+
+    const char* domain_str = getenv("ROS_DOMAIN_ID");
+    uint8_t domain_id = 0;
+    if (domain_str) {
+        domain_id = (uint8_t)atoi(domain_str);
+    }
+
+    printf("Locator: %s\n", locator);
+    printf("Domain ID: %d\n", domain_id);
+
+    // Zero-initialize all static state
+    memset(&app, 0, sizeof(app));
+
+    // Build action type info using generated type name/hash
+    nano_ros_action_type_t fibonacci_type = {
+        .type_name = example_interfaces_action_fibonacci_get_type_name(),
+        .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
+        .goal_serialized_size_max = 8,
+        .result_serialized_size_max = 264,
+        .feedback_serialized_size_max = 264,
+    };
+
+    // Initialize support context
+    nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
+    if (ret != NANO_ROS_RET_OK) {
+        fprintf(stderr, "Failed to initialize support: %d\n", ret);
+        return 1;
+    }
+    printf("Support initialized\n");
+
+    // Create node
+    ret = nros_node_init(&app.node, &app.support, "c_action_client", "/");
+    if (ret != NANO_ROS_RET_OK) {
+        fprintf(stderr, "Failed to initialize node: %d\n", ret);
+        nano_ros_support_fini(&app.support);
+        return 1;
+    }
+    printf("Node created: %s\n", nros_node_get_name(&app.node));
+
+    // Create action client
+    ret = nano_ros_action_client_init(
+        &app.action_client,
+        &app.node,
+        "/fibonacci",
+        &fibonacci_type
+    );
+    if (ret != NANO_ROS_RET_OK) {
+        fprintf(stderr, "Failed to initialize action client: %d\n", ret);
+        nros_node_fini(&app.node);
+        nano_ros_support_fini(&app.support);
+        return 1;
+    }
+    printf("Action client created: /fibonacci\n");
+
+    // Set callbacks
+    ret = nano_ros_action_client_set_feedback_callback(
+        &app.action_client, feedback_callback, NULL);
+    if (ret != NANO_ROS_RET_OK) {
+        fprintf(stderr, "Failed to set feedback callback: %d\n", ret);
+    }
+
+    ret = nano_ros_action_client_set_result_callback(
+        &app.action_client, result_callback, NULL);
+    if (ret != NANO_ROS_RET_OK) {
+        fprintf(stderr, "Failed to set result callback: %d\n", ret);
+    }
+
+    // Send goal: compute Fibonacci sequence of order 10
+    example_interfaces_action_fibonacci_goal goal;
+    example_interfaces_action_fibonacci_goal_init(&goal);
+    goal.order = 10;
+
+    uint8_t goal_buf[64];
+    int32_t goal_len = example_interfaces_action_fibonacci_goal_serialize(
+        &goal, goal_buf, sizeof(goal_buf));
+    if (goal_len < 0) {
+        fprintf(stderr, "Failed to serialize goal\n");
+        goto cleanup;
+    }
+
+    printf("\nSending goal: order=%d\n", goal.order);
+
+    nano_ros_goal_uuid_t goal_uuid;
+    ret = nano_ros_action_send_goal(
+        &app.action_client,
+        goal_buf, (size_t)goal_len,
+        &goal_uuid
+    );
+
+    if (ret != NANO_ROS_RET_OK) {
+        fprintf(stderr, "Failed to send goal: %d\n", ret);
+        fprintf(stderr, "(Is the action server running?)\n");
+        goto cleanup;
+    }
+
+    printf("Goal accepted! (uuid=%02x%02x%02x%02x...)\n",
+           goal_uuid.uuid[0], goal_uuid.uuid[1],
+           goal_uuid.uuid[2], goal_uuid.uuid[3]);
+
+    // Wait for result with timeout
+    signal(SIGINT, signal_handler);
+    signal(SIGTERM, signal_handler);
+
+    printf("\nWaiting for result...\n\n");
+
+    // Poll for result using get_result (blocking)
+    nano_ros_goal_status_t final_status;
+    uint8_t result_buf[512];
+    size_t result_len = 0;
+    ret = nano_ros_action_get_result(
+        &app.action_client,
+        &goal_uuid,
+        &final_status,
+        result_buf, sizeof(result_buf),
+        &result_len
+    );
+
+    if (ret == NANO_ROS_RET_OK) {
+        printf("Final result (status=%s): ",
+               nano_ros_goal_status_to_string(final_status));
+
+        example_interfaces_action_fibonacci_result result;
+        if (example_interfaces_action_fibonacci_result_deserialize(
+                &result, result_buf, result_len) == 0) {
+            printf("[");
+            for (uint32_t i = 0; i < result.sequence.size; i++) {
+                if (i > 0) printf(", ");
+                printf("%d", result.sequence.data[i]);
+            }
+            printf("]\n");
+        } else {
+            printf("(deserialize failed)\n");
+        }
+    } else if (ret == NANO_ROS_RET_TIMEOUT) {
+        fprintf(stderr, "Timeout waiting for result\n");
+    } else {
+        fprintf(stderr, "Failed to get result: %d\n", ret);
+    }
+
+cleanup:
+    // Cleanup
+    printf("\nShutting down...\n");
+    nano_ros_action_client_fini(&app.action_client);
+    nros_node_fini(&app.node);
+    nano_ros_support_fini(&app.support);
+
+    printf("Goodbye!\n");
+    return (ret == NANO_ROS_RET_OK) ? 0 : 1;
+}

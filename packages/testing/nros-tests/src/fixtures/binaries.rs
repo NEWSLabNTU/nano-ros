@@ -97,6 +97,18 @@ static C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the c-listener binary
 static C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the c-service-server binary
+static C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the c-service-client binary
+static C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the c-action-server binary
+static C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the c-action-client binary
+static C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached: nros-c library built with XRCE features
 static NANO_ROS_C_LIB_XRCE: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1001,6 +1013,66 @@ pub fn c_talker_binary() -> PathBuf {
 pub fn c_listener_binary() -> PathBuf {
     build_c_listener()
         .expect("Failed to build c-listener")
+        .to_path_buf()
+}
+
+/// Build c-service-server example (cached)
+pub fn build_c_service_server() -> TestResult<&'static Path> {
+    C_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| build_c_example("native/c/zenoh/service-server", "c_service_server"))
+        .map(|p| p.as_path())
+}
+
+/// Build c-service-client example (cached)
+pub fn build_c_service_client() -> TestResult<&'static Path> {
+    C_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| build_c_example("native/c/zenoh/service-client", "c_service_client"))
+        .map(|p| p.as_path())
+}
+
+/// Build c-action-server example (cached)
+pub fn build_c_action_server() -> TestResult<&'static Path> {
+    C_ACTION_SERVER_BINARY
+        .get_or_try_init(|| build_c_example("native/c/zenoh/action-server", "c_action_server"))
+        .map(|p| p.as_path())
+}
+
+/// Build c-action-client example (cached)
+pub fn build_c_action_client() -> TestResult<&'static Path> {
+    C_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| build_c_example("native/c/zenoh/action-client", "c_action_client"))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the c-service-server binary path
+#[rstest::fixture]
+pub fn c_service_server_binary() -> PathBuf {
+    build_c_service_server()
+        .expect("Failed to build c-service-server")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the c-service-client binary path
+#[rstest::fixture]
+pub fn c_service_client_binary() -> PathBuf {
+    build_c_service_client()
+        .expect("Failed to build c-service-client")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the c-action-server binary path
+#[rstest::fixture]
+pub fn c_action_server_binary() -> PathBuf {
+    build_c_action_server()
+        .expect("Failed to build c-action-server")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the c-action-client binary path
+#[rstest::fixture]
+pub fn c_action_client_binary() -> PathBuf {
+    build_c_action_client()
+        .expect("Failed to build c-action-client")
         .to_path_buf()
 }
 
