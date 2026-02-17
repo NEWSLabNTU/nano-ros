@@ -68,7 +68,8 @@ impl ZenohBufferConfig {
     fn from_env(posix: bool) -> Self {
         let (default_frag, default_batch_uni, default_batch_multi) = if posix {
             // Posix: large defaults for desktop/server workloads
-            (65536, 65536, 8192)
+            // Note: batch sizes must fit in u16 (zenoh protocol limit = 65535)
+            (65535, 65535, 8192)
         } else {
             // Embedded: small defaults for memory-constrained targets
             (2048, 1024, 1024)
@@ -603,12 +604,10 @@ fn build_zenoh_pico_native(
                 "0"
             },
         )
-        .define("Z_FRAG_MAX_SIZE", buf.frag_max_size.to_string())
-        .define("Z_BATCH_UNICAST_SIZE", buf.batch_unicast_size.to_string())
-        .define(
-            "Z_BATCH_MULTICAST_SIZE",
-            buf.batch_multicast_size.to_string(),
-        )
+        // zenoh-pico CMakeLists.txt uses FRAG_MAX_SIZE / BATCH_*_SIZE (no Z_ prefix)
+        .define("FRAG_MAX_SIZE", buf.frag_max_size.to_string())
+        .define("BATCH_UNICAST_SIZE", buf.batch_unicast_size.to_string())
+        .define("BATCH_MULTICAST_SIZE", buf.batch_multicast_size.to_string())
         .build();
 
     // Link the static library
