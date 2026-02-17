@@ -2,6 +2,10 @@
 //!
 //! These functions are used by generated message serialization/deserialization code.
 //! They handle CDR (Common Data Representation) encoding with little-endian byte order.
+//!
+//! All functions that perform alignment take an `origin` pointer that marks the start
+//! of the CDR data stream (right after the 4-byte encapsulation header). Alignment is
+//! computed relative to this origin, not relative to the absolute memory address.
 
 use core::ffi::c_char;
 
@@ -10,10 +14,12 @@ use core::ffi::c_char;
 /// # Safety
 /// - `ptr` must point to a valid mutable pointer to a buffer
 /// - The buffer must have sufficient space
+/// - `origin` is accepted for calling convention uniformity but unused
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_cdr_write_bool(
     ptr: *mut *mut u8,
     end: *const u8,
+    _origin: *const u8,
     value: bool,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() {
@@ -33,6 +39,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_bool(
 pub unsafe extern "C" fn nano_ros_cdr_write_u8(
     ptr: *mut *mut u8,
     end: *const u8,
+    _origin: *const u8,
     value: u8,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() {
@@ -52,16 +59,19 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u8(
 pub unsafe extern "C" fn nano_ros_cdr_write_i8(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: i8,
 ) -> i32 {
-    nano_ros_cdr_write_u8(ptr, end, value as u8)
+    nano_ros_cdr_write_u8(ptr, end, origin, value as u8)
 }
 
-/// Align pointer to the specified alignment.
-unsafe fn align_ptr(ptr: *mut *mut u8, end: *const u8, align: usize) -> i32 {
-    let p = *ptr as usize;
-    let aligned = (p + align - 1) & !(align - 1);
-    let padding = aligned - p;
+/// Align pointer to the specified alignment relative to origin.
+///
+/// CDR alignment is computed relative to the start of the data stream (origin),
+/// not relative to the absolute memory address.
+unsafe fn align_ptr(ptr: *mut *mut u8, end: *const u8, align: usize, origin: *const u8) -> i32 {
+    let offset = (*ptr as usize).wrapping_sub(origin as usize);
+    let padding = (align - (offset % align)) % align;
     if (*ptr).add(padding) > end as *mut u8 {
         return -1;
     }
@@ -69,7 +79,7 @@ unsafe fn align_ptr(ptr: *mut *mut u8, end: *const u8, align: usize) -> i32 {
     for i in 0..padding {
         *(*ptr).add(i) = 0;
     }
-    *ptr = aligned as *mut u8;
+    *ptr = (*ptr).add(padding);
     0
 }
 
@@ -78,12 +88,13 @@ unsafe fn align_ptr(ptr: *mut *mut u8, end: *const u8, align: usize) -> i32 {
 pub unsafe extern "C" fn nano_ros_cdr_write_u16(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: u16,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() {
         return -1;
     }
-    if align_ptr(ptr, end, 2) < 0 {
+    if align_ptr(ptr, end, 2, origin) < 0 {
         return -1;
     }
     let p = *ptr;
@@ -102,9 +113,10 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u16(
 pub unsafe extern "C" fn nano_ros_cdr_write_i16(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: i16,
 ) -> i32 {
-    nano_ros_cdr_write_u16(ptr, end, value as u16)
+    nano_ros_cdr_write_u16(ptr, end, origin, value as u16)
 }
 
 /// Write a u32 value to the buffer (with alignment).
@@ -112,12 +124,13 @@ pub unsafe extern "C" fn nano_ros_cdr_write_i16(
 pub unsafe extern "C" fn nano_ros_cdr_write_u32(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: u32,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() {
         return -1;
     }
-    if align_ptr(ptr, end, 4) < 0 {
+    if align_ptr(ptr, end, 4, origin) < 0 {
         return -1;
     }
     let p = *ptr;
@@ -138,9 +151,10 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u32(
 pub unsafe extern "C" fn nano_ros_cdr_write_i32(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: i32,
 ) -> i32 {
-    nano_ros_cdr_write_u32(ptr, end, value as u32)
+    nano_ros_cdr_write_u32(ptr, end, origin, value as u32)
 }
 
 /// Write a u64 value to the buffer (with alignment).
@@ -148,12 +162,13 @@ pub unsafe extern "C" fn nano_ros_cdr_write_i32(
 pub unsafe extern "C" fn nano_ros_cdr_write_u64(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: u64,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() {
         return -1;
     }
-    if align_ptr(ptr, end, 8) < 0 {
+    if align_ptr(ptr, end, 8, origin) < 0 {
         return -1;
     }
     let p = *ptr;
@@ -173,9 +188,10 @@ pub unsafe extern "C" fn nano_ros_cdr_write_u64(
 pub unsafe extern "C" fn nano_ros_cdr_write_i64(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: i64,
 ) -> i32 {
-    nano_ros_cdr_write_u64(ptr, end, value as u64)
+    nano_ros_cdr_write_u64(ptr, end, origin, value as u64)
 }
 
 /// Write a f32 value to the buffer (with alignment).
@@ -183,9 +199,10 @@ pub unsafe extern "C" fn nano_ros_cdr_write_i64(
 pub unsafe extern "C" fn nano_ros_cdr_write_f32(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: f32,
 ) -> i32 {
-    nano_ros_cdr_write_u32(ptr, end, value.to_bits())
+    nano_ros_cdr_write_u32(ptr, end, origin, value.to_bits())
 }
 
 /// Write a f64 value to the buffer (with alignment).
@@ -193,9 +210,10 @@ pub unsafe extern "C" fn nano_ros_cdr_write_f32(
 pub unsafe extern "C" fn nano_ros_cdr_write_f64(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: f64,
 ) -> i32 {
-    nano_ros_cdr_write_u64(ptr, end, value.to_bits())
+    nano_ros_cdr_write_u64(ptr, end, origin, value.to_bits())
 }
 
 /// Write a string to the buffer (length-prefixed).
@@ -205,6 +223,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_f64(
 pub unsafe extern "C" fn nano_ros_cdr_write_string(
     ptr: *mut *mut u8,
     end: *const u8,
+    origin: *const u8,
     value: *const c_char,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
@@ -221,7 +240,7 @@ pub unsafe extern "C" fn nano_ros_cdr_write_string(
 
     // Write length (including null terminator)
     let total_len = (len + 1) as u32;
-    if nano_ros_cdr_write_u32(ptr, end, total_len) < 0 {
+    if nano_ros_cdr_write_u32(ptr, end, origin, total_len) < 0 {
         return -1;
     }
 
@@ -246,11 +265,19 @@ pub unsafe extern "C" fn nano_ros_cdr_write_string(
 // Read functions
 // =============================================================================
 
-/// Align read pointer to the specified alignment.
-unsafe fn align_read_ptr(ptr: *mut *const u8, end: *const u8, align: usize) -> i32 {
-    let p = *ptr as usize;
-    let aligned = (p + align - 1) & !(align - 1);
-    let new_ptr = aligned as *const u8;
+/// Align read pointer to the specified alignment relative to origin.
+///
+/// CDR alignment is computed relative to the start of the data stream (origin),
+/// not relative to the absolute memory address.
+unsafe fn align_read_ptr(
+    ptr: *mut *const u8,
+    end: *const u8,
+    align: usize,
+    origin: *const u8,
+) -> i32 {
+    let offset = (*ptr as usize).wrapping_sub(origin as usize);
+    let padding = (align - (offset % align)) % align;
+    let new_ptr = (*ptr).add(padding);
     if new_ptr > end {
         return -1;
     }
@@ -263,6 +290,7 @@ unsafe fn align_read_ptr(ptr: *mut *const u8, end: *const u8, align: usize) -> i
 pub unsafe extern "C" fn nano_ros_cdr_read_bool(
     ptr: *mut *const u8,
     end: *const u8,
+    _origin: *const u8,
     value: *mut bool,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
@@ -282,6 +310,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_bool(
 pub unsafe extern "C" fn nano_ros_cdr_read_u8(
     ptr: *mut *const u8,
     end: *const u8,
+    _origin: *const u8,
     value: *mut u8,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
@@ -301,9 +330,10 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u8(
 pub unsafe extern "C" fn nano_ros_cdr_read_i8(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut i8,
 ) -> i32 {
-    nano_ros_cdr_read_u8(ptr, end, value as *mut u8)
+    nano_ros_cdr_read_u8(ptr, end, origin, value as *mut u8)
 }
 
 /// Read a u16 value from the buffer (with alignment).
@@ -311,12 +341,13 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i8(
 pub unsafe extern "C" fn nano_ros_cdr_read_u16(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut u16,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
         return -1;
     }
-    if align_read_ptr(ptr, end, 2) < 0 {
+    if align_read_ptr(ptr, end, 2, origin) < 0 {
         return -1;
     }
     let p = *ptr;
@@ -334,9 +365,10 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u16(
 pub unsafe extern "C" fn nano_ros_cdr_read_i16(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut i16,
 ) -> i32 {
-    nano_ros_cdr_read_u16(ptr, end, value as *mut u16)
+    nano_ros_cdr_read_u16(ptr, end, origin, value as *mut u16)
 }
 
 /// Read a u32 value from the buffer (with alignment).
@@ -344,12 +376,13 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i16(
 pub unsafe extern "C" fn nano_ros_cdr_read_u32(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut u32,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
         return -1;
     }
-    if align_read_ptr(ptr, end, 4) < 0 {
+    if align_read_ptr(ptr, end, 4, origin) < 0 {
         return -1;
     }
     let p = *ptr;
@@ -370,9 +403,10 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u32(
 pub unsafe extern "C" fn nano_ros_cdr_read_i32(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut i32,
 ) -> i32 {
-    nano_ros_cdr_read_u32(ptr, end, value as *mut u32)
+    nano_ros_cdr_read_u32(ptr, end, origin, value as *mut u32)
 }
 
 /// Read a u64 value from the buffer (with alignment).
@@ -380,12 +414,13 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i32(
 pub unsafe extern "C" fn nano_ros_cdr_read_u64(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut u64,
 ) -> i32 {
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
         return -1;
     }
-    if align_read_ptr(ptr, end, 8) < 0 {
+    if align_read_ptr(ptr, end, 8, origin) < 0 {
         return -1;
     }
     let p = *ptr;
@@ -407,9 +442,10 @@ pub unsafe extern "C" fn nano_ros_cdr_read_u64(
 pub unsafe extern "C" fn nano_ros_cdr_read_i64(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut i64,
 ) -> i32 {
-    nano_ros_cdr_read_u64(ptr, end, value as *mut u64)
+    nano_ros_cdr_read_u64(ptr, end, origin, value as *mut u64)
 }
 
 /// Read a f32 value from the buffer.
@@ -417,10 +453,11 @@ pub unsafe extern "C" fn nano_ros_cdr_read_i64(
 pub unsafe extern "C" fn nano_ros_cdr_read_f32(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut f32,
 ) -> i32 {
     let mut bits: u32 = 0;
-    let result = nano_ros_cdr_read_u32(ptr, end, &mut bits);
+    let result = nano_ros_cdr_read_u32(ptr, end, origin, &mut bits);
     if result < 0 {
         return result;
     }
@@ -435,10 +472,11 @@ pub unsafe extern "C" fn nano_ros_cdr_read_f32(
 pub unsafe extern "C" fn nano_ros_cdr_read_f64(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut f64,
 ) -> i32 {
     let mut bits: u64 = 0;
-    let result = nano_ros_cdr_read_u64(ptr, end, &mut bits);
+    let result = nano_ros_cdr_read_u64(ptr, end, origin, &mut bits);
     if result < 0 {
         return result;
     }
@@ -455,6 +493,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_f64(
 pub unsafe extern "C" fn nano_ros_cdr_read_string(
     ptr: *mut *const u8,
     end: *const u8,
+    origin: *const u8,
     value: *mut c_char,
     max_len: usize,
 ) -> i32 {
@@ -464,7 +503,7 @@ pub unsafe extern "C" fn nano_ros_cdr_read_string(
 
     // Read length
     let mut len: u32 = 0;
-    if nano_ros_cdr_read_u32(ptr, end, &mut len) < 0 {
+    if nano_ros_cdr_read_u32(ptr, end, origin, &mut len) < 0 {
         return -1;
     }
 
@@ -505,17 +544,19 @@ mod verification {
     #[kani::unwind(5)]
     fn cdr_write_u8_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         // NULL ptr → -1
         assert_eq!(
-            unsafe { nano_ros_cdr_write_u8(core::ptr::null_mut(), end, 0) },
+            unsafe { nano_ros_cdr_write_u8(core::ptr::null_mut(), end, origin, 0) },
             -1
         );
         // NULL *ptr → -1
         let mut null_inner: *mut u8 = core::ptr::null_mut();
         let buf = [0u8; 4];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_write_u8(&mut null_inner, end, 0) },
+            unsafe { nano_ros_cdr_write_u8(&mut null_inner, end, origin, 0) },
             -1
         );
     }
@@ -524,15 +565,17 @@ mod verification {
     #[kani::unwind(5)]
     fn cdr_write_u32_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         assert_eq!(
-            unsafe { nano_ros_cdr_write_u32(core::ptr::null_mut(), end, 0) },
+            unsafe { nano_ros_cdr_write_u32(core::ptr::null_mut(), end, origin, 0) },
             -1
         );
         let mut null_inner: *mut u8 = core::ptr::null_mut();
         let buf = [0u8; 8];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_write_u32(&mut null_inner, end, 0) },
+            unsafe { nano_ros_cdr_write_u32(&mut null_inner, end, origin, 0) },
             -1
         );
     }
@@ -541,15 +584,17 @@ mod verification {
     #[kani::unwind(10)]
     fn cdr_write_u64_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         assert_eq!(
-            unsafe { nano_ros_cdr_write_u64(core::ptr::null_mut(), end, 0) },
+            unsafe { nano_ros_cdr_write_u64(core::ptr::null_mut(), end, origin, 0) },
             -1
         );
         let mut null_inner: *mut u8 = core::ptr::null_mut();
         let buf = [0u8; 16];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_write_u64(&mut null_inner, end, 0) },
+            unsafe { nano_ros_cdr_write_u64(&mut null_inner, end, origin, 0) },
             -1
         );
     }
@@ -562,24 +607,26 @@ mod verification {
     #[kani::unwind(5)]
     fn cdr_read_u8_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         let mut val: u8 = 0;
         // NULL ptr → -1
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u8(core::ptr::null_mut(), end, &mut val) },
+            unsafe { nano_ros_cdr_read_u8(core::ptr::null_mut(), end, origin, &mut val) },
             -1
         );
         // NULL *ptr → -1
         let mut null_inner: *const u8 = core::ptr::null();
         let buf = [0u8; 4];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u8(&mut null_inner, end, &mut val) },
+            unsafe { nano_ros_cdr_read_u8(&mut null_inner, end, origin, &mut val) },
             -1
         );
         // NULL value → -1
         let mut rptr: *const u8 = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u8(&mut rptr, end, core::ptr::null_mut()) },
+            unsafe { nano_ros_cdr_read_u8(&mut rptr, end, origin, core::ptr::null_mut()) },
             -1
         );
     }
@@ -588,21 +635,23 @@ mod verification {
     #[kani::unwind(5)]
     fn cdr_read_u32_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         let mut val: u32 = 0;
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u32(core::ptr::null_mut(), end, &mut val) },
+            unsafe { nano_ros_cdr_read_u32(core::ptr::null_mut(), end, origin, &mut val) },
             -1
         );
         let mut null_inner: *const u8 = core::ptr::null();
         let buf = [0u8; 8];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u32(&mut null_inner, end, &mut val) },
+            unsafe { nano_ros_cdr_read_u32(&mut null_inner, end, origin, &mut val) },
             -1
         );
         let mut rptr: *const u8 = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u32(&mut rptr, end, core::ptr::null_mut()) },
+            unsafe { nano_ros_cdr_read_u32(&mut rptr, end, origin, core::ptr::null_mut()) },
             -1
         );
     }
@@ -611,21 +660,23 @@ mod verification {
     #[kani::unwind(10)]
     fn cdr_read_u64_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         let mut val: u64 = 0;
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u64(core::ptr::null_mut(), end, &mut val) },
+            unsafe { nano_ros_cdr_read_u64(core::ptr::null_mut(), end, origin, &mut val) },
             -1
         );
         let mut null_inner: *const u8 = core::ptr::null();
         let buf = [0u8; 16];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u64(&mut null_inner, end, &mut val) },
+            unsafe { nano_ros_cdr_read_u64(&mut null_inner, end, origin, &mut val) },
             -1
         );
         let mut rptr: *const u8 = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_u64(&mut rptr, end, core::ptr::null_mut()) },
+            unsafe { nano_ros_cdr_read_u64(&mut rptr, end, origin, core::ptr::null_mut()) },
             -1
         );
     }
@@ -640,8 +691,12 @@ mod verification {
         // Zero-length buffer → -1
         let mut buf = [0u8; 1];
         let end = buf.as_ptr(); // end == start, zero capacity
+        let origin = buf.as_ptr();
         let mut wptr = buf.as_mut_ptr();
-        assert_eq!(unsafe { nano_ros_cdr_write_u8(&mut wptr, end, 42) }, -1);
+        assert_eq!(
+            unsafe { nano_ros_cdr_write_u8(&mut wptr, end, origin, 42) },
+            -1
+        );
     }
 
     // NOTE: Buffer bounds and alignment harnesses for multi-byte types (u32, u64)
@@ -671,15 +726,16 @@ mod verification {
     fn cdr_roundtrip_u8() {
         let mut buf = [0u8; 4];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         let val: u8 = kani::any();
 
         let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nano_ros_cdr_write_u8(&mut wptr, end, val) };
+        let wret = unsafe { nano_ros_cdr_write_u8(&mut wptr, end, origin, val) };
         assert_eq!(wret, 0);
 
         let mut rptr: *const u8 = buf.as_ptr();
         let mut out: u8 = 0;
-        let rret = unsafe { nano_ros_cdr_read_u8(&mut rptr, end, &mut out) };
+        let rret = unsafe { nano_ros_cdr_read_u8(&mut rptr, end, origin, &mut out) };
         assert_eq!(rret, 0);
         assert_eq!(out, val);
     }
@@ -689,15 +745,16 @@ mod verification {
     fn cdr_roundtrip_bool() {
         let mut buf = [0u8; 4];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         let val: bool = kani::any();
 
         let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nano_ros_cdr_write_bool(&mut wptr, end, val) };
+        let wret = unsafe { nano_ros_cdr_write_bool(&mut wptr, end, origin, val) };
         assert_eq!(wret, 0);
 
         let mut rptr: *const u8 = buf.as_ptr();
         let mut out: bool = false;
-        let rret = unsafe { nano_ros_cdr_read_bool(&mut rptr, end, &mut out) };
+        let rret = unsafe { nano_ros_cdr_read_bool(&mut rptr, end, origin, &mut out) };
         assert_eq!(rret, 0);
         assert_eq!(out, val);
     }
@@ -707,15 +764,16 @@ mod verification {
     fn cdr_roundtrip_u32() {
         let mut buf = [0u8; 16];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         let val: u32 = kani::any();
 
         let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nano_ros_cdr_write_u32(&mut wptr, end, val) };
+        let wret = unsafe { nano_ros_cdr_write_u32(&mut wptr, end, origin, val) };
         assert_eq!(wret, 0);
 
         let mut rptr: *const u8 = buf.as_ptr();
         let mut out: u32 = 0;
-        let rret = unsafe { nano_ros_cdr_read_u32(&mut rptr, end, &mut out) };
+        let rret = unsafe { nano_ros_cdr_read_u32(&mut rptr, end, origin, &mut out) };
         assert_eq!(rret, 0);
         assert_eq!(out, val);
     }
@@ -725,15 +783,16 @@ mod verification {
     fn cdr_roundtrip_u64() {
         let mut buf = [0u8; 16];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         let val: u64 = kani::any();
 
         let mut wptr = buf.as_mut_ptr();
-        let wret = unsafe { nano_ros_cdr_write_u64(&mut wptr, end, val) };
+        let wret = unsafe { nano_ros_cdr_write_u64(&mut wptr, end, origin, val) };
         assert_eq!(wret, 0);
 
         let mut rptr: *const u8 = buf.as_ptr();
         let mut out: u64 = 0;
-        let rret = unsafe { nano_ros_cdr_read_u64(&mut rptr, end, &mut out) };
+        let rret = unsafe { nano_ros_cdr_read_u64(&mut rptr, end, origin, &mut out) };
         assert_eq!(rret, 0);
         assert_eq!(out, val);
     }
@@ -746,25 +805,34 @@ mod verification {
     #[kani::unwind(5)]
     fn cdr_write_string_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         // NULL ptr → -1
         assert_eq!(
-            unsafe { nano_ros_cdr_write_string(core::ptr::null_mut(), end, core::ptr::null()) },
+            unsafe {
+                nano_ros_cdr_write_string(core::ptr::null_mut(), end, origin, core::ptr::null())
+            },
             -1
         );
         // NULL *ptr → -1
         let mut null_inner: *mut u8 = core::ptr::null_mut();
         let buf = [0u8; 64];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
             unsafe {
-                nano_ros_cdr_write_string(&mut null_inner, end, b"hi\0".as_ptr() as *const c_char)
+                nano_ros_cdr_write_string(
+                    &mut null_inner,
+                    end,
+                    origin,
+                    b"hi\0".as_ptr() as *const c_char,
+                )
             },
             -1
         );
         // NULL value string → -1
         let mut wptr = buf.as_ptr() as *mut u8;
         assert_eq!(
-            unsafe { nano_ros_cdr_write_string(&mut wptr, end, core::ptr::null()) },
+            unsafe { nano_ros_cdr_write_string(&mut wptr, end, origin, core::ptr::null()) },
             -1
         );
     }
@@ -773,11 +841,18 @@ mod verification {
     #[kani::unwind(5)]
     fn cdr_read_string_null_safety() {
         let end: *const u8 = core::ptr::null();
+        let origin: *const u8 = core::ptr::null();
         let mut val = [0i8; 16];
         // NULL ptr → -1
         assert_eq!(
             unsafe {
-                nano_ros_cdr_read_string(core::ptr::null_mut(), end, val.as_mut_ptr(), val.len())
+                nano_ros_cdr_read_string(
+                    core::ptr::null_mut(),
+                    end,
+                    origin,
+                    val.as_mut_ptr(),
+                    val.len(),
+                )
             },
             -1
         );
@@ -785,20 +860,23 @@ mod verification {
         let mut null_inner: *const u8 = core::ptr::null();
         let buf = [0u8; 64];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_string(&mut null_inner, end, val.as_mut_ptr(), val.len()) },
+            unsafe {
+                nano_ros_cdr_read_string(&mut null_inner, end, origin, val.as_mut_ptr(), val.len())
+            },
             -1
         );
         // NULL value buffer → -1
         let mut rptr: *const u8 = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_string(&mut rptr, end, core::ptr::null_mut(), 16) },
+            unsafe { nano_ros_cdr_read_string(&mut rptr, end, origin, core::ptr::null_mut(), 16) },
             -1
         );
         // max_len == 0 → -1
         let mut rptr: *const u8 = buf.as_ptr();
         assert_eq!(
-            unsafe { nano_ros_cdr_read_string(&mut rptr, end, val.as_mut_ptr(), 0) },
+            unsafe { nano_ros_cdr_read_string(&mut rptr, end, origin, val.as_mut_ptr(), 0) },
             -1
         );
     }
@@ -817,18 +895,22 @@ mod verification {
         // Write a valid string then try to read with max_len too small
         let mut buf = [0u8; 64];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
 
         // Write "Hello\0"
         let mut wptr = buf.as_mut_ptr();
         let s = b"Hello\0";
-        let wret =
-            unsafe { nano_ros_cdr_write_string(&mut wptr, end, s.as_ptr() as *const c_char) };
+        let wret = unsafe {
+            nano_ros_cdr_write_string(&mut wptr, end, origin, s.as_ptr() as *const c_char)
+        };
         assert_eq!(wret, 0);
 
         // Read with max_len = 2 (too small for "Hello" + null = 6 bytes; CDR len includes null = 6)
         let mut rptr: *const u8 = buf.as_ptr();
         let mut val = [0i8; 2];
-        let rret = unsafe { nano_ros_cdr_read_string(&mut rptr, end, val.as_mut_ptr(), val.len()) };
+        let rret = unsafe {
+            nano_ros_cdr_read_string(&mut rptr, end, origin, val.as_mut_ptr(), val.len())
+        };
         assert_eq!(rret, -1);
     }
 
@@ -841,18 +923,22 @@ mod verification {
     fn cdr_roundtrip_string() {
         let mut buf = [0u8; 64];
         let end = unsafe { buf.as_ptr().add(buf.len()) };
+        let origin = buf.as_ptr();
 
         // Write "Hi\0"
         let s = b"Hi\0";
         let mut wptr = buf.as_mut_ptr();
-        let wret =
-            unsafe { nano_ros_cdr_write_string(&mut wptr, end, s.as_ptr() as *const c_char) };
+        let wret = unsafe {
+            nano_ros_cdr_write_string(&mut wptr, end, origin, s.as_ptr() as *const c_char)
+        };
         assert_eq!(wret, 0);
 
         // Read back
         let mut rptr: *const u8 = buf.as_ptr();
         let mut val = [0i8; 32];
-        let rret = unsafe { nano_ros_cdr_read_string(&mut rptr, end, val.as_mut_ptr(), val.len()) };
+        let rret = unsafe {
+            nano_ros_cdr_read_string(&mut rptr, end, origin, val.as_mut_ptr(), val.len())
+        };
         assert_eq!(rret, 0);
 
         // Verify content preserved
@@ -872,17 +958,21 @@ mod tests {
         let mut buffer = [0u8; 16];
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
+        let origin = buffer.as_ptr();
 
         // Write
         unsafe {
-            assert_eq!(nano_ros_cdr_write_u32(&mut ptr, end, 0x12345678), 0);
+            assert_eq!(nano_ros_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
         }
 
         // Read
         let mut read_ptr = buffer.as_ptr();
         let mut value: u32 = 0;
         unsafe {
-            assert_eq!(nano_ros_cdr_read_u32(&mut read_ptr, end, &mut value), 0);
+            assert_eq!(
+                nano_ros_cdr_read_u32(&mut read_ptr, end, origin, &mut value),
+                0
+            );
         }
         assert_eq!(value, 0x12345678);
     }
@@ -892,17 +982,21 @@ mod tests {
         let mut buffer = [0u8; 16];
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
+        let origin = buffer.as_ptr();
 
         // Write negative value
         unsafe {
-            assert_eq!(nano_ros_cdr_write_i32(&mut ptr, end, -12345), 0);
+            assert_eq!(nano_ros_cdr_write_i32(&mut ptr, end, origin, -12345), 0);
         }
 
         // Read
         let mut read_ptr = buffer.as_ptr();
         let mut value: i32 = 0;
         unsafe {
-            assert_eq!(nano_ros_cdr_read_i32(&mut read_ptr, end, &mut value), 0);
+            assert_eq!(
+                nano_ros_cdr_read_i32(&mut read_ptr, end, origin, &mut value),
+                0
+            );
         }
         assert_eq!(value, -12345);
     }
@@ -912,17 +1006,24 @@ mod tests {
         let mut buffer = [0u8; 16];
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
+        let origin = buffer.as_ptr();
 
         // Write
         unsafe {
-            assert_eq!(nano_ros_cdr_write_f64(&mut ptr, end, 3.14159265358979), 0);
+            assert_eq!(
+                nano_ros_cdr_write_f64(&mut ptr, end, origin, 3.14159265358979),
+                0
+            );
         }
 
         // Read
         let mut read_ptr = buffer.as_ptr();
         let mut value: f64 = 0.0;
         unsafe {
-            assert_eq!(nano_ros_cdr_read_f64(&mut read_ptr, end, &mut value), 0);
+            assert_eq!(
+                nano_ros_cdr_read_f64(&mut read_ptr, end, origin, &mut value),
+                0
+            );
         }
         assert!((value - 3.14159265358979).abs() < 1e-15);
     }
@@ -932,12 +1033,18 @@ mod tests {
         let mut buffer = [0u8; 64];
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
+        let origin = buffer.as_ptr();
 
         // Write
         let test_str = b"Hello, World!\0";
         unsafe {
             assert_eq!(
-                nano_ros_cdr_write_string(&mut ptr, end, test_str.as_ptr() as *const c_char),
+                nano_ros_cdr_write_string(
+                    &mut ptr,
+                    end,
+                    origin,
+                    test_str.as_ptr() as *const c_char
+                ),
                 0
             );
         }
@@ -947,7 +1054,13 @@ mod tests {
         let mut value = [0i8; 32];
         unsafe {
             assert_eq!(
-                nano_ros_cdr_read_string(&mut read_ptr, end, value.as_mut_ptr(), value.len()),
+                nano_ros_cdr_read_string(
+                    &mut read_ptr,
+                    end,
+                    origin,
+                    value.as_mut_ptr(),
+                    value.len()
+                ),
                 0
             );
         }
@@ -962,11 +1075,12 @@ mod tests {
         let mut buffer = [0u8; 32];
         let mut ptr = buffer.as_mut_ptr();
         let end = unsafe { buffer.as_ptr().add(buffer.len()) };
+        let origin = buffer.as_ptr();
 
-        // Write u8, then u32 - should align to 4 bytes
+        // Write u8, then u32 - should align to 4 bytes relative to origin
         unsafe {
-            assert_eq!(nano_ros_cdr_write_u8(&mut ptr, end, 0xAA), 0);
-            assert_eq!(nano_ros_cdr_write_u32(&mut ptr, end, 0x12345678), 0);
+            assert_eq!(nano_ros_cdr_write_u8(&mut ptr, end, origin, 0xAA), 0);
+            assert_eq!(nano_ros_cdr_write_u32(&mut ptr, end, origin, 0x12345678), 0);
         }
 
         // Check alignment: u8 at offset 0, u32 at offset 4
@@ -978,5 +1092,83 @@ mod tests {
         assert_eq!(buffer[5], 0x56);
         assert_eq!(buffer[6], 0x34);
         assert_eq!(buffer[7], 0x12);
+    }
+
+    /// Test origin-relative alignment with a simulated CDR header.
+    ///
+    /// This simulates the real-world scenario: 4-byte CDR header, then origin
+    /// points to byte 4, and i64 (align=8) should NOT add spurious padding.
+    #[test]
+    fn test_alignment_with_offset() {
+        let mut buffer = [0u8; 32];
+        let end = unsafe { buffer.as_ptr().add(buffer.len()) };
+
+        // Simulate CDR header (4 bytes)
+        buffer[0] = 0x00;
+        buffer[1] = 0x01;
+        buffer[2] = 0x00;
+        buffer[3] = 0x00;
+
+        // Origin is after the CDR header
+        let origin = unsafe { buffer.as_ptr().add(4) };
+        let mut ptr = unsafe { buffer.as_mut_ptr().add(4) };
+
+        // Write i64 immediately after header — origin-relative offset is 0,
+        // which is already 8-byte aligned, so no padding should be added.
+        let test_val: i64 = 0x0102030405060708;
+        unsafe {
+            assert_eq!(nano_ros_cdr_write_i64(&mut ptr, end, origin, test_val), 0);
+        }
+
+        // The i64 should start at buffer[4] (no padding)
+        assert_eq!(ptr, unsafe { buffer.as_mut_ptr().add(12) });
+
+        // Read it back
+        let mut read_ptr: *const u8 = unsafe { buffer.as_ptr().add(4) };
+        let mut value: i64 = 0;
+        unsafe {
+            assert_eq!(
+                nano_ros_cdr_read_i64(&mut read_ptr, end, origin, &mut value),
+                0
+            );
+        }
+        assert_eq!(value, test_val);
+    }
+
+    /// Test that two i64 fields after a CDR header round-trip correctly,
+    /// matching the AddTwoInts service request layout.
+    #[test]
+    fn test_two_i64_after_header() {
+        let mut buffer = [0u8; 32];
+        let end = unsafe { buffer.as_ptr().add(buffer.len()) };
+
+        // CDR header
+        buffer[0] = 0x00;
+        buffer[1] = 0x01;
+        buffer[2] = 0x00;
+        buffer[3] = 0x00;
+
+        let origin = unsafe { buffer.as_ptr().add(4) };
+        let mut ptr = unsafe { buffer.as_mut_ptr().add(4) };
+
+        // Write two i64 values (like AddTwoInts request: a=3, b=5)
+        unsafe {
+            assert_eq!(nano_ros_cdr_write_i64(&mut ptr, end, origin, 3), 0);
+            assert_eq!(nano_ros_cdr_write_i64(&mut ptr, end, origin, 5), 0);
+        }
+
+        // Should use exactly 16 bytes of payload (no padding between them)
+        assert_eq!(ptr, unsafe { buffer.as_mut_ptr().add(20) });
+
+        // Read back
+        let mut read_ptr: *const u8 = unsafe { buffer.as_ptr().add(4) };
+        let mut a: i64 = 0;
+        let mut b: i64 = 0;
+        unsafe {
+            assert_eq!(nano_ros_cdr_read_i64(&mut read_ptr, end, origin, &mut a), 0);
+            assert_eq!(nano_ros_cdr_read_i64(&mut read_ptr, end, origin, &mut b), 0);
+        }
+        assert_eq!(a, 3);
+        assert_eq!(b, 5);
     }
 }
