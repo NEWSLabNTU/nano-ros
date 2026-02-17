@@ -20,9 +20,9 @@
 //! ```
 
 #[cfg(feature = "zenoh")]
-use nros::prelude::*;
-#[cfg(feature = "zenoh")]
 use nros::TransportConfig;
+#[cfg(feature = "zenoh")]
+use nros::prelude::*;
 #[cfg(feature = "zenoh")]
 use std::time::Instant;
 
