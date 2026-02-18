@@ -1,6 +1,6 @@
 # Phase 43 — RMW-Agnostic Embedded API
 
-## Status: In Progress (43.2 remaining)
+## Status: In Progress (43.6 remaining — example migration)
 
 ## Background
 
@@ -532,15 +532,15 @@ fn handle_msg(msg: &Int32) {
 
 Typical entry sizes (Int32 subscription, fn pointer callback):
 
-| Component | Size |
-|-----------|------|
-| Subscriber handle (`XrceSubscriber`) | ~32 bytes |
-| Subscriber handle (`ShimSubscriber`) | ~16 bytes |
-| Receive buffer (`RX_BUF=1024`) | 1024 bytes |
-| Callback (`fn(&Int32)`) | 0 bytes (ZST) |
-| PhantomData | 0 bytes |
-| **Total per entry (XRCE)** | **~1056 bytes** |
-| **Total per entry (zenoh)** | **~1040 bytes** |
+| Component                            | Size            |
+|--------------------------------------|-----------------|
+| Subscriber handle (`XrceSubscriber`) | ~32 bytes       |
+| Subscriber handle (`ShimSubscriber`) | ~16 bytes       |
+| Receive buffer (`RX_BUF=1024`)       | 1024 bytes      |
+| Callback (`fn(&Int32)`)              | 0 bytes (ZST)   |
+| PhantomData                          | 0 bytes         |
+| **Total per entry (XRCE)**           | **~1056 bytes** |
+| **Total per entry (zenoh)**          | **~1040 bytes** |
 
 So `CB_ARENA=4096` fits ~3-4 subscriptions with 1KB receive buffers.
 `CB_ARENA=8192` fits ~7-8. Users needing large receive buffers
@@ -548,19 +548,20 @@ So `CB_ARENA=4096` fits ~3-4 subscriptions with 1KB receive buffers.
 
 ### Tasks
 
-- [ ] Add const generics `MAX_CBS` and `CB_ARENA` to `EmbeddedExecutor`
+- [x] Add const generics `MAX_CBS` and `CB_ARENA` to `EmbeddedExecutor`
       (with defaults `0, 0`)
-- [ ] Define `CallbackMeta` struct
-- [ ] Define `ConcreteEntry` layout
-- [ ] Implement arena bump allocation with alignment
-- [ ] Implement monomorphized `try_process_impl` function
-- [ ] Implement monomorphized `drop_impl` function
-- [ ] Add `add_subscription()` and `add_subscription_sized()` methods
-- [ ] Add `add_service()` method
-- [ ] Add `spin_once()` method
+- [x] Define `CallbackMeta` struct
+- [x] Define `ConcreteEntry` layout (`SubEntry`, `SrvEntry`)
+- [x] Implement arena bump allocation with alignment
+- [x] Implement monomorphized `sub_try_process` / `srv_try_process` functions
+- [x] Implement monomorphized `drop_entry` function
+- [x] Add `add_subscription()` and `add_subscription_sized()` methods
+- [x] Add `add_service()` and `add_service_sized()` methods
+- [x] Add `spin_once()` method
 - [ ] Add `spin()` blocking loop (behind `std`)
-- [ ] Add `Drop` impl for `EmbeddedExecutor` to call `drop_fn` on entries
-- [ ] Re-use `SpinOnceResult` from `executor.rs`
+- [x] Add `Drop` impl for `EmbeddedExecutor` to call `drop_fn` on entries
+- [x] Move `SpinOnceResult` to `generic.rs` (always available, no feature gate)
+- [x] Unit tests with mock session (10 tests covering arena, callbacks, Drop)
 
 ## Phase 43.3 — Migrate XRCE Action Examples to Typed API
 
@@ -683,7 +684,7 @@ This is optional — manual-poll remains a valid pattern, especially for
 - [x] Migrate 6 Zephyr examples to `EmbeddedExecutor::open()`
 - [x] Migrate 8 XRCE pub/sub/service examples to `EmbeddedExecutor::open()`
 - [x] Verify: no backend-specific types in any example's `use` statements
-- [ ] Optional: convert listener examples to callback+spin pattern (deferred to 43.2)
+- [ ] Migrate listener/service examples to callback+spin pattern (see 43.6)
 
 ## Phase 43.5 — Delete Deprecated Items and Clean Up Exports
 
@@ -750,18 +751,564 @@ the public API surface.
 - [x] Verify no backend-specific types in `nros::` root
 - [x] `just quality` passes (423/432; 9 pre-existing C API codegen failures)
 
+## Phase 43.6 — Migrate Examples to Callback + `spin_once()` API
+
+Now that 43.2 provides `add_subscription()`, `add_service()`, and
+`spin_once()`, examples that use manual `drive_io()` + `try_recv()` /
+`handle_request()` loops can be migrated to the callback pattern.
+
+### Migration candidates
+
+**Simple subscription listeners** (replace `drive_io` + `try_recv` with
+`add_subscription` + `spin_once`):
+
+| Example | File | Current pattern |
+|---------|------|-----------------|
+| XRCE listener | `examples/native/rust/xrce/listener/src/main.rs` | `drive_io(100)` + `subscription.try_recv()` loop |
+| XRCE serial-listener | `examples/native/rust/xrce/serial-listener/src/main.rs` | Same as XRCE listener |
+| Zephyr listener | `examples/zephyr/rust/zenoh/listener/src/lib.rs` | `drive_io(1000)` + `subscription.try_recv()` loop |
+
+**Simple service servers** (replace `drive_io` + `handle_request` with
+`add_service` + `spin_once`):
+
+| Example               | File                                                   | Current pattern                                   |
+|-----------------------|--------------------------------------------------------|---------------------------------------------------|
+| XRCE service-server   | `examples/native/rust/xrce/service-server/src/main.rs` | `drive_io(100)` + `server.handle_request()` loop  |
+| Zephyr service-server | `examples/zephyr/rust/zenoh/service-server/src/lib.rs` | `drive_io(1000)` + `server.handle_request()` loop |
+
+### Not migrating (manual poll remains appropriate)
+
+**Publishers/talkers** — only use `drive_io()` for flushing after
+`publish()`; `spin_once()` replaces this but there's no callback benefit.
+These stay as-is:
+- `examples/native/rust/xrce/talker/`, `serial-talker/`
+- `examples/zephyr/rust/zenoh/talker/`
+
+**Service clients** — use `drive_io()` + `try_recv_reply()`, client-side
+polling doesn't benefit from callback registration:
+- `examples/native/rust/xrce/service-client/`
+- `examples/zephyr/rust/zenoh/service-client/`
+
+**Action servers/clients** — would need future `add_action_server()` /
+`add_action_client()` support (not yet implemented):
+- `examples/native/rust/xrce/action-server/`, `action-client/`
+- `examples/zephyr/rust/zenoh/action-server/`, `action-client/`
+
+**Board-level examples** (qemu-arm, qemu-esp32, esp32, stm32f4) — already
+use board-level `node.spin_once()` or custom embedded loops, not the
+`EmbeddedExecutor` manual polling pattern.
+
+**Stress test / large-msg-test** — specialized testing code, not idiomatic
+examples.
+
+### Migration pattern
+
+```rust
+// Before (manual poll)
+let mut subscription = node.create_subscription::<Int32>("/chatter")?;
+loop {
+    let _ = executor.drive_io(100);
+    while let Ok(Some(msg)) = subscription.try_recv() {
+        println!("Received: {}", msg.data);
+    }
+}
+
+// After (callback + spin)
+let mut executor = EmbeddedExecutor::<_, 4, 4096>::open(&config)?;
+executor.add_subscription::<Int32>("/chatter", handle_msg as fn(&Int32))?;
+loop {
+    executor.spin_once(100);
+}
+fn handle_msg(msg: &Int32) { println!("Received: {}", msg.data); }
+```
+
+### Tasks
+
+- [ ] Migrate XRCE listener to `add_subscription` + `spin_once`
+- [ ] Migrate XRCE serial-listener to `add_subscription` + `spin_once`
+- [ ] Migrate Zephyr listener to `add_subscription` + `spin_once`
+- [ ] Migrate XRCE service-server to `add_service` + `spin_once`
+- [ ] Migrate Zephyr service-server to `add_service` + `spin_once`
+- [ ] Migrate XRCE/Zephyr talkers to `add_timer` + `spin_once` (depends on 43.7)
+- [ ] Migrate XRCE/Zephyr action-server to `add_action_server` + `spin_once` (depends on 43.8)
+- [ ] Migrate XRCE/Zephyr action-client to `add_action_client` + `spin_once` (depends on 43.9)
+- [ ] Verify: migrated examples compile and function correctly
+- [ ] Update Phase 43 doc status
+
+## Phase 43.7 — Timer Callbacks (`add_timer`)
+
+Add `add_timer()` to `EmbeddedExecutor` so periodic work (e.g., publishing)
+can be driven by `spin_once()` instead of manual loops with platform sleep.
+
+### Motivation
+
+Talker examples currently use a manual loop:
+
+```rust
+loop {
+    publisher.publish(&Int32 { data: counter })?;
+    executor.drive_io(1000);
+    counter = counter.wrapping_add(1);
+}
+```
+
+With `add_timer()`, the publish logic moves into a callback and `spin_once()`
+handles the timing:
+
+```rust
+let publisher = node.create_publisher::<Int32>("/chatter")?;
+let mut counter: i32 = 0;
+
+executor.add_timer(TimerDuration::from_millis(1000), move || {
+    let _ = publisher.publish(&Int32 { data: counter });
+    counter = counter.wrapping_add(1);
+})?;
+
+loop {
+    executor.spin_once(100);
+}
+```
+
+### Design
+
+Timer entries are stored in the arena alongside subscription/service entries.
+Each timer entry holds a `TimerState` and a callback. The `spin_once()` loop
+computes `delta_ms` since the last call (or uses the `timeout_ms` argument as
+an approximation for no_std targets without a clock) and processes timers.
+
+```rust
+#[repr(C)]
+struct TimerEntry<F> {
+    state: TimerState,
+    callback: F,
+}
+```
+
+Timer dispatch function:
+
+```rust
+unsafe fn timer_try_process<F>(ptr: *mut u8, delta_ms: u64) -> Result<bool, TransportError>
+where F: FnMut()
+{
+    let entry = &mut *(ptr as *mut TimerEntry<F>);
+    if entry.state.update(delta_ms) {
+        entry.state.fire_without_callback();  // reset elapsed, handle mode
+        (entry.callback)();
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+```
+
+Note: `TimerState::fire()` currently invokes its own stored callback. For
+arena-based timers, we separate the timer bookkeeping (`fire_without_callback`)
+from callback invocation (the arena entry's `F`), avoiding double storage.
+
+### `spin_once()` changes
+
+`spin_once()` needs a time delta to advance timers. Two options:
+
+1. **Argument-based** (no_std friendly): `spin_once(timeout_ms)` uses
+   `timeout_ms` as the delta approximation (already the case — good enough
+   for embedded polling loops where `spin_once` is called at regular intervals).
+2. **Clock-based** (std only): Track wall-clock time between `spin_once()`
+   calls for accurate deltas.
+
+For embedded, option 1 is sufficient. The `CallbackMeta` gains an extended
+dispatch function pointer:
+
+```rust
+struct CallbackMeta {
+    offset: usize,
+    kind: EntryKind,
+    try_process: unsafe fn(*mut u8) -> Result<bool, TransportError>,
+    try_process_timed: Option<unsafe fn(*mut u8, u64) -> Result<bool, TransportError>>,
+    drop_fn: unsafe fn(*mut u8),
+}
+```
+
+Subscription/service entries use `try_process` (no timing). Timer entries
+use `try_process_timed` with the delta.
+
+### API
+
+```rust
+impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>
+    EmbeddedExecutor<S, MAX_CBS, CB_ARENA>
+{
+    /// Register a repeating timer with a callback.
+    pub fn add_timer<F>(
+        &mut self,
+        period: TimerDuration,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where F: FnMut() + 'static;
+
+    /// Register a one-shot timer with a callback.
+    pub fn add_timer_oneshot<F>(
+        &mut self,
+        delay: TimerDuration,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where F: FnMut() + 'static;
+}
+```
+
+### Tasks
+
+- [ ] Add `EntryKind::Timer` variant
+- [ ] Define `TimerEntry<F>` layout
+- [ ] Implement `timer_try_process` monomorphized dispatch
+- [ ] Add `try_process_timed` to `CallbackMeta` (or unify with `try_process`)
+- [ ] Update `spin_once()` to pass delta_ms to timer entries
+- [x] Implement `add_timer()` and `add_timer_oneshot()`
+- [x] Add `TimerEntry<F>` arena entry with period/elapsed tracking
+- [x] Unit tests for timer arena entries (5 tests)
+- [ ] Add `spin()` blocking loop (behind `std`) that calls `spin_once()` in a loop
+
+## Phase 43.8 — Action Server Callbacks (`add_action_server`)
+
+Add `add_action_server()` to `EmbeddedExecutor` so goal acceptance, cancel
+handling, and result serving are driven automatically by `spin_once()`.
+
+### Motivation
+
+Action server examples currently have complex manual loops:
+
+```rust
+loop {
+    executor.drive_io(100);
+
+    // Must manually poll three separate channels:
+    action_server.try_handle_cancel(|goal_id, status| { ... })?;
+    action_server.try_accept_goal(|goal| GoalResponse::AcceptAndExecute)?;
+
+    if let Some(goal_id) = accepted {
+        action_server.set_goal_status(&goal_id, GoalStatus::Executing);
+        // ... compute and publish feedback ...
+        action_server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
+    }
+}
+```
+
+This pattern has three problems:
+1. User must remember to poll all three channels (goals, cancels, results)
+2. Goal acceptance and execution logic are interleaved in the main loop
+3. The pattern is error-prone and differs from rclrs
+
+### rclrs pattern (target)
+
+In rclrs, an action server is created with two callbacks: one for goal
+acceptance and one for cancel requests. The executor dispatches incoming
+goals/cancels to these callbacks. The user then drives execution
+(feedback + completion) from the goal callback or an async task.
+
+```rust
+// rclrs-like target API
+executor.add_action_server::<Fibonacci>(
+    "/fibonacci",
+    // Goal callback: called when a new goal arrives
+    |goal: &FibonacciGoal| -> GoalResponse {
+        GoalResponse::AcceptAndExecute
+    },
+    // Cancel callback: called when a cancel request arrives
+    |goal_id: &GoalId, status: GoalStatus| -> CancelResponse {
+        CancelResponse::Ok
+    },
+)?;
+
+loop {
+    executor.spin_once(100);
+}
+```
+
+### Design
+
+An `ActionServerEntry` in the arena holds:
+
+```rust
+#[repr(C)]
+struct ActionServerEntry<A, ActSrv, GoalF, CancelF,
+    const GOAL_BUF: usize, const RESULT_BUF: usize, const FB_BUF: usize>
+{
+    server: ActSrv,               // EmbeddedActionServer handle
+    goal_buffer: [u8; GOAL_BUF],  // Buffer for incoming goal requests
+    result_buffer: [u8; RESULT_BUF],
+    feedback_buffer: [u8; FB_BUF],
+    goal_callback: GoalF,         // fn(&Goal) -> GoalResponse
+    cancel_callback: CancelF,     // fn(&GoalId, GoalStatus) -> CancelResponse
+    _phantom: PhantomData<A>,
+}
+```
+
+The dispatch function polls all three action server channels:
+
+```rust
+unsafe fn action_server_try_process<...>(ptr: *mut u8) -> Result<bool, TransportError> {
+    let entry = &mut *(...);
+    let mut did_work = false;
+
+    // 1. Poll cancel requests
+    if entry.server.try_handle_cancel(|id, st| (entry.cancel_callback)(id, st)).is_ok() {
+        did_work = true;
+    }
+
+    // 2. Poll new goals
+    if let Ok(Some(_goal_id)) = entry.server.try_accept_goal(|g| (entry.goal_callback)(g)) {
+        did_work = true;
+    }
+
+    // 3. Poll result requests (auto-served from completed goals)
+    if entry.server.try_handle_get_result().is_ok() {
+        did_work = true;
+    }
+
+    Ok(did_work)
+}
+```
+
+**Execution model**: `add_action_server` handles the *protocol plumbing*
+(accept/reject goals, handle cancels, serve results). The user drives
+*execution* (compute, publish feedback, complete goal) separately — either
+via a timer callback, another thread, or by retaining a handle to the
+action server for manual interaction.
+
+### API
+
+```rust
+impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>
+    EmbeddedExecutor<S, MAX_CBS, CB_ARENA>
+{
+    /// Register an action server with goal/cancel callbacks.
+    ///
+    /// The executor will automatically:
+    /// - Accept/reject incoming goals via `goal_callback`
+    /// - Handle cancel requests via `cancel_callback`
+    /// - Serve result requests for completed goals
+    ///
+    /// To publish feedback and complete goals, retain the returned handle.
+    pub fn add_action_server<A, GoalF, CancelF>(
+        &mut self,
+        action_name: &str,
+        goal_callback: GoalF,
+        cancel_callback: CancelF,
+    ) -> Result<ActionServerHandle<A>, EmbeddedNodeError>
+    where
+        A: RosAction + 'static,
+        GoalF: FnMut(&A::Goal) -> GoalResponse + 'static,
+        CancelF: FnMut(&GoalId, GoalStatus) -> CancelResponse + 'static;
+}
+```
+
+The returned `ActionServerHandle` provides methods to drive execution:
+
+```rust
+pub struct ActionServerHandle<A: RosAction> { /* arena index */ }
+
+impl<A: RosAction> ActionServerHandle<A> {
+    /// Get accepted goal data.
+    pub fn get_goal(&self, executor: &EmbeddedExecutor<...>, goal_id: &GoalId)
+        -> Option<&A::Goal>;
+    /// Publish feedback for an active goal.
+    pub fn publish_feedback(&self, executor: &mut EmbeddedExecutor<...>,
+        goal_id: &GoalId, feedback: &A::Feedback) -> Result<(), ...>;
+    /// Complete a goal with final status and result.
+    pub fn complete_goal(&self, executor: &mut EmbeddedExecutor<...>,
+        goal_id: &GoalId, status: GoalStatus, result: A::Result) -> Result<(), ...>;
+}
+```
+
+### Open questions
+
+1. **Execution callback**: Should `add_action_server` take a third callback
+   `execute_callback: FnMut(GoalId, &Goal)` that runs after goal acceptance?
+   This would match rclc's `rclc_action_server_set_execute_callback`. Without
+   it, the user must manually check for newly accepted goals.
+
+2. **Handle lifetime**: The `ActionServerHandle` references arena data.
+   Borrowing rules must prevent use-after-drop. Simplest: handle is `Copy`
+   and methods take `&mut EmbeddedExecutor` as first arg (like file descriptors).
+
+3. **Buffer sizes**: Action servers need 5 transport channels (3 services +
+   2 topics). Arena cost per action server is substantial (~5KB+ with default
+   buffers). May need `add_action_server_sized` with custom buffer const
+   generics.
+
+### Tasks
+
+- [x] Define `ActionServerArenaEntry` layout
+- [x] Implement `action_server_try_process` dispatch
+- [x] Add `EntryKind::ActionServer` variant
+- [x] Implement `add_action_server()` and `add_action_server_sized()`
+- [x] Define `ActionServerHandle` for execution control
+- [x] Implement `publish_feedback()` / `complete_goal()` / `set_goal_status()` on handle
+- [x] Unit tests with mock action server (3 tests)
+- [ ] Consider `execute_callback` (optional third callback)
+
+## Phase 43.9 — Action Client Callbacks (`add_action_client`)
+
+Add `add_action_client()` to `EmbeddedExecutor` so feedback and result
+notifications are dispatched automatically by `spin_once()`.
+
+### Motivation
+
+Action client examples poll feedback manually:
+
+```rust
+action_client.send_goal(&goal)?;
+loop {
+    executor.drive_io(100);
+    match action_client.try_recv_feedback() {
+        Ok(Some((goal_id, feedback))) => { /* process */ }
+        Ok(None) => {}
+        Err(e) => { /* error */ }
+    }
+}
+let (status, result) = action_client.get_result(&goal_id)?;
+```
+
+### rclrs pattern (target)
+
+In rclrs, action clients provide callbacks for goal response, feedback, and
+result:
+
+```rust
+executor.add_action_client::<Fibonacci>(
+    "/fibonacci",
+    // Feedback callback: called when feedback arrives
+    |goal_id: &GoalId, feedback: &FibonacciFeedback| {
+        info!("Feedback: {:?}", feedback.sequence);
+    },
+    // Result callback: called when the goal completes
+    |goal_id: &GoalId, status: GoalStatus, result: &FibonacciResult| {
+        info!("Result: {:?}", result.sequence);
+    },
+)?;
+```
+
+### Design
+
+```rust
+#[repr(C)]
+struct ActionClientEntry<A, ActCli, FeedbackF, ResultF,
+    const GOAL_BUF: usize, const FB_BUF: usize, const RESULT_BUF: usize>
+{
+    client: ActCli,
+    goal_buffer: [u8; GOAL_BUF],
+    feedback_buffer: [u8; FB_BUF],
+    result_buffer: [u8; RESULT_BUF],
+    feedback_callback: FeedbackF,
+    result_callback: ResultF,
+    _phantom: PhantomData<A>,
+}
+```
+
+Dispatch function polls feedback and status topics:
+
+```rust
+unsafe fn action_client_try_process<...>(ptr: *mut u8) -> Result<bool, TransportError> {
+    let entry = &mut *(...);
+    let mut did_work = false;
+
+    // Poll feedback
+    if let Ok(Some((goal_id, feedback))) = entry.client.try_recv_feedback() {
+        (entry.feedback_callback)(&goal_id, &feedback);
+        did_work = true;
+    }
+
+    // Poll result (for any pending get_result requests)
+    // Result delivery is trickier — typically triggered after send_goal
+    // and requires tracking which goals are awaiting results.
+
+    Ok(did_work)
+}
+```
+
+### API
+
+```rust
+impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>
+    EmbeddedExecutor<S, MAX_CBS, CB_ARENA>
+{
+    /// Register an action client with feedback/result callbacks.
+    ///
+    /// Goal sending remains manual via the returned handle.
+    pub fn add_action_client<A, FeedbackF, ResultF>(
+        &mut self,
+        action_name: &str,
+        feedback_callback: FeedbackF,
+        result_callback: ResultF,
+    ) -> Result<ActionClientHandle<A>, EmbeddedNodeError>
+    where
+        A: RosAction + 'static,
+        FeedbackF: FnMut(&GoalId, &A::Feedback) + 'static,
+        ResultF: FnMut(&GoalId, GoalStatus, &A::Result) + 'static;
+}
+
+pub struct ActionClientHandle<A: RosAction> { /* arena index */ }
+
+impl<A: RosAction> ActionClientHandle<A> {
+    /// Send a goal request (blocking until accepted/rejected).
+    pub fn send_goal(&self, executor: &mut EmbeddedExecutor<...>,
+        goal: &A::Goal) -> Result<GoalId, ...>;
+    /// Cancel an active goal.
+    pub fn cancel_goal(&self, executor: &mut EmbeddedExecutor<...>,
+        goal_id: &GoalId) -> Result<CancelResponse, ...>;
+}
+```
+
+### Open questions
+
+1. **Result delivery**: When does the result callback fire? Options:
+   a. User calls `request_result(goal_id)` on the handle, then `spin_once()`
+      delivers the result to the callback when it arrives.
+   b. Automatically request result when goal status becomes terminal.
+   Option (b) matches rclrs behavior.
+
+2. **Goal response callback**: Should there be a third callback for
+   `send_goal` response (accepted/rejected)? In rclrs this is a future.
+   For embedded, `send_goal` is synchronous, so the caller already knows.
+
+### Tasks
+
+- [x] Define `ActionClientArenaEntry` layout
+- [x] Implement `action_client_try_process` dispatch
+- [x] Add `EntryKind::ActionClient` variant
+- [x] Implement `add_action_client()` and `add_action_client_sized()`
+- [x] Define `ActionClientHandle` for goal sending
+- [x] Implement `send_goal()` / `cancel_goal()` / `get_result()` on handle
+- [x] Result retrieval is manual via handle (synchronous service call)
+- [x] Unit tests with mock action client (3 tests)
+
 ## Implementation Order
 
-1. **43.1** — Backend-agnostic factory (`EmbeddedConfig` + `open()`)
-2. **43.3** — XRCE action examples → typed API (independent of 43.2)
-3. **43.4** — Migrate all examples to `open()` factory
-4. **43.2** — Arena-based callback storage + `spin_once()`
-5. **43.4 (stretch)** — Convert listener examples to callback+spin
-6. **43.5** — Delete deprecated items + clean up exports
+1. **43.1** — Backend-agnostic factory (`EmbeddedConfig` + `open()`) ✅
+2. **43.3** — XRCE action examples → typed API ✅
+3. **43.4** — Migrate all examples to `open()` factory ✅
+4. **43.5** — Delete deprecated items + clean up exports ✅
+5. **43.2** — Arena-based callback storage + `spin_once()` ✅
+6. **43.7** — Timer callbacks (`add_timer`) ✅
+7. **43.8** — Action server callbacks (`add_action_server`) ✅
+8. **43.9** — Action client callbacks (`add_action_client`) ✅
+9. **43.6** — Migrate all examples to callback+spin
 
-43.1 and 43.3 can proceed in parallel. 43.2 is independent of the
-example migration and can be done before or after. 43.5 should be last
-since it removes APIs that internal code currently uses.
+43.7–43.9 can proceed in parallel (independent arena entry types).
+43.6 (full example migration) depends on 43.7–43.9 for talker and action
+examples. Listener/service examples (5 of them) can migrate now using
+only 43.2.
+
+### API coverage summary
+
+| Entity          | Manual poll (43.2) | Callback+spin | Phase |
+|-----------------|--------------------|---------------|-------|
+| Subscription    | `try_recv()`       | `add_subscription()` ✅ | 43.2 |
+| Service server  | `handle_request()` | `add_service()` ✅      | 43.2 |
+| Service client  | `call()` (sync)    | N/A (sync is fine)      | —    |
+| Publisher       | `publish()` (sync) | N/A + `add_timer()` for periodic ✅ | 43.7 |
+| Timer           | —                  | `add_timer()` ✅        | 43.7 |
+| Action server   | `try_accept_goal()` + `try_handle_cancel()` | `add_action_server()` ✅ | 43.8 |
+| Action client   | `send_goal()` + `try_recv_feedback()` | `add_action_client()` ✅ | 43.9 |
 
 ## Verification
 
@@ -778,12 +1325,10 @@ since it removes APIs that internal code currently uses.
 
 | File                                           | Action                                                                  |
 |------------------------------------------------|-------------------------------------------------------------------------|
-| `packages/core/nros-node/src/generic.rs`       | Add `EmbeddedConfig`, `open()` factory, callback arena, `spin_once()`   |
-| `packages/core/nros/src/lib.rs`                | Move XRCE re-exports to internals, update prelude, remove alloc gate    |
-| `packages/core/nros-node/Cargo.toml`           | Optional deps on backend crates (if factory lives here)                 |
-| `packages/core/nros-node/src/connected.rs`     | Delete 8 deprecated methods                                            |
-| `packages/core/nros-node/src/node.rs`          | Delete 4 deprecated methods                                            |
-| `packages/core/nros-node/src/context.rs`       | Delete `create_executor()`, update internal callers                     |
-| `packages/core/nros-node/src/executor.rs`      | Update internal `#[allow(deprecated)]` callers                          |
-| `examples/zephyr/rust/zenoh/*/src/lib.rs` (6)  | Migrate to `EmbeddedExecutor::open()`                                   |
-| `examples/native/rust/xrce/*/src/main.rs` (10) | Migrate to `EmbeddedExecutor::open()` + typed actions                   |
+| `packages/core/nros-node/src/generic.rs`       | Arena, `spin_once()`, `add_timer`, `add_action_server`, `add_action_client` |
+| `packages/core/nros-node/src/timer.rs`         | Add `fire_without_callback()` for arena-based timer dispatch            |
+| `packages/core/nros-node/src/executor.rs`      | Re-export `SpinOnceResult` from generic                                 |
+| `packages/core/nros-node/src/lib.rs`           | Re-export new handle types (`ActionServerHandle`, `ActionClientHandle`) |
+| `packages/core/nros/src/lib.rs`                | Prelude updates for new types                                           |
+| `examples/zephyr/rust/zenoh/*/src/lib.rs` (6)  | Migrate to callback+spin pattern                                        |
+| `examples/native/rust/xrce/*/src/main.rs` (10) | Migrate to callback+spin pattern                                        |

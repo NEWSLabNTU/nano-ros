@@ -177,8 +177,8 @@ pub use context::{Context, InitOptions, IntoNodeOptions, Node, NodeNameExt, Node
 #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
 pub use executor::{
     DEFAULT_MAX_NODES, DEFAULT_MAX_SERVICES, DEFAULT_MAX_SUBSCRIPTIONS, Executor,
-    ExecutorTimerCallback, SpinOnceResult, SpinOptions, SubscriptionCallback,
-    SubscriptionCallbackWithInfo, SubscriptionHandle,
+    ExecutorTimerCallback, SpinOptions, SubscriptionCallback, SubscriptionCallbackWithInfo,
+    SubscriptionHandle,
 };
 
 #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
@@ -219,7 +219,8 @@ pub use lifecycle::LifecycleNode;
 
 // Re-export generic embedded node types (always available, no feature gate)
 pub use generic::{
-    EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
-    EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher,
-    EmbeddedServiceClient, EmbeddedServiceServer, EmbeddedSubscription,
+    ActionClientHandle, ActionServerHandle, EmbeddedActionClient, EmbeddedActionServer,
+    EmbeddedActiveGoal, EmbeddedCompletedGoal, EmbeddedConfig, EmbeddedExecutor, EmbeddedNode,
+    EmbeddedNodeError, EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer,
+    EmbeddedSubscription, SpinOnceResult,
 };

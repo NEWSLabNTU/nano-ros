@@ -23,12 +23,70 @@
 //! ```
 
 use core::marker::PhantomData;
+use core::mem::MaybeUninit;
 
 use nros_core::{CdrReader, CdrWriter, Deserialize, RosAction, RosMessage, RosService, Serialize};
 use nros_rmw::{
     ActionInfo, Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceServerTrait,
     Session, SessionMode, Subscriber, TopicInfo, TransportError,
 };
+
+use crate::timer::TimerDuration;
+
+// ============================================================================
+// SpinOnceResult
+// ============================================================================
+
+/// Result of a single spin iteration
+///
+/// Contains counts of how many items were processed during `spin_once()`,
+/// plus error counts for transport failures that would otherwise be silently dropped.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct SpinOnceResult {
+    /// Number of subscription callbacks invoked
+    pub subscriptions_processed: usize,
+    /// Number of timers that fired
+    pub timers_fired: usize,
+    /// Number of service requests handled
+    pub services_handled: usize,
+    /// Number of subscription processing errors (e.g., BufferTooSmall, MessageTooLarge)
+    pub subscription_errors: usize,
+    /// Number of service processing errors (e.g., BufferTooSmall)
+    pub service_errors: usize,
+}
+
+impl SpinOnceResult {
+    /// Create a new empty result
+    pub const fn new() -> Self {
+        Self {
+            subscriptions_processed: 0,
+            timers_fired: 0,
+            services_handled: 0,
+            subscription_errors: 0,
+            service_errors: 0,
+        }
+    }
+
+    /// Check if any work was done (errors are not counted as work)
+    pub const fn any_work(&self) -> bool {
+        self.subscriptions_processed > 0 || self.timers_fired > 0 || self.services_handled > 0
+    }
+
+    /// Total number of callbacks successfully invoked (errors excluded)
+    pub const fn total(&self) -> usize {
+        self.subscriptions_processed + self.timers_fired + self.services_handled
+    }
+
+    /// Check if any errors occurred during this spin iteration
+    pub const fn any_errors(&self) -> bool {
+        self.subscription_errors > 0 || self.service_errors > 0
+    }
+
+    /// Total number of errors across all handle types
+    pub const fn total_errors(&self) -> usize {
+        self.subscription_errors + self.service_errors
+    }
+}
 
 // ============================================================================
 // EmbeddedConfig
@@ -114,6 +172,9 @@ impl EmbeddedExecutor<nros_rmw_zenoh::ShimSession> {
     /// Open a new executor session using the zenoh-pico backend.
     ///
     /// Connects to the zenoh router at the locator specified in `config`.
+    /// Returns a plain executor (no callback arena). For an executor with
+    /// arena-based callbacks, use [`from_session()`](Self::from_session)
+    /// with explicit const generics.
     pub fn open(config: &EmbeddedConfig<'_>) -> Result<Self, EmbeddedNodeError> {
         let tc = nros_rmw::TransportConfig {
             locator: Some(config.locator),
@@ -210,20 +271,507 @@ impl From<TransportError> for EmbeddedNodeError {
 }
 
 // ============================================================================
+// Callback Arena Infrastructure
+// ============================================================================
+
+/// Kind of registered callback entry.
+#[derive(Clone, Copy)]
+enum EntryKind {
+    Subscription,
+    Service,
+    Timer,
+    ActionServer,
+    ActionClient,
+}
+
+/// Metadata for a type-erased callback stored in the arena.
+///
+/// Each entry records where the concrete entry struct lives in the arena
+/// and carries monomorphized function pointers for dispatch and cleanup.
+#[derive(Clone, Copy)]
+struct CallbackMeta {
+    /// Byte offset into the arena where the concrete entry starts.
+    offset: usize,
+    /// What kind of entry this is (for `SpinOnceResult` counters).
+    kind: EntryKind,
+    /// Monomorphized dispatch: tries to receive and process one message/request.
+    /// Returns `Ok(true)` if work was done, `Ok(false)` if nothing available.
+    /// The `u64` parameter is `delta_ms` (used by timer entries, ignored by others).
+    try_process: unsafe fn(*mut u8, u64) -> Result<bool, TransportError>,
+    /// Monomorphized drop: runs destructors on the concrete entry.
+    drop_fn: unsafe fn(*mut u8),
+}
+
+/// Concrete subscription entry stored in the arena.
+#[repr(C)]
+struct SubEntry<M, Sub, F, const RX_BUF: usize> {
+    handle: Sub,
+    buffer: [u8; RX_BUF],
+    callback: F,
+    _phantom: PhantomData<M>,
+}
+
+/// Concrete service entry stored in the arena.
+#[repr(C)]
+struct SrvEntry<Svc: RosService, Srv, F, const REQ_BUF: usize, const REPLY_BUF: usize> {
+    handle: Srv,
+    req_buffer: [u8; REQ_BUF],
+    reply_buffer: [u8; REPLY_BUF],
+    callback: F,
+    _phantom: PhantomData<Svc>,
+}
+
+/// Monomorphized subscription dispatch function.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubEntry<M, Sub, F, RX_BUF>`.
+unsafe fn sub_try_process<M, Sub, F, const RX_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    M: RosMessage,
+    Sub: Subscriber,
+    F: FnMut(&M),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubEntry<M, Sub, F, RX_BUF>) };
+    match entry.handle.try_recv_raw(&mut entry.buffer) {
+        Ok(Some(len)) => {
+            let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
+                .map_err(|_| TransportError::DeserializationError)?;
+            let msg =
+                M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
+            (entry.callback)(&msg);
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+/// Monomorphized service dispatch function.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SrvEntry<Svc, Srv, F, REQ_BUF, REPLY_BUF>`.
+unsafe fn srv_try_process<Svc, Srv, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    Svc: RosService,
+    Srv: ServiceServerTrait,
+    F: FnMut(&Svc::Request) -> Svc::Reply,
+    Srv::Error: From<TransportError>,
+{
+    let entry = unsafe { &mut *(ptr as *mut SrvEntry<Svc, Srv, F, REQ_BUF, REPLY_BUF>) };
+    // Split borrow: destructure entry to avoid aliasing issues
+    let SrvEntry {
+        handle,
+        req_buffer,
+        reply_buffer,
+        callback,
+        ..
+    } = entry;
+    handle
+        .handle_request::<Svc>(req_buffer, reply_buffer, |req| (callback)(req))
+        .map_err(|_| TransportError::ServiceReplyFailed)
+}
+
+/// Monomorphized drop function for arena entries.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `T` that has not been dropped.
+unsafe fn drop_entry<T>(ptr: *mut u8) {
+    unsafe { core::ptr::drop_in_place(ptr as *mut T) };
+}
+
+/// Concrete timer entry stored in the arena.
+#[repr(C)]
+struct TimerEntry<F> {
+    period_ms: u64,
+    elapsed_ms: u64,
+    oneshot: bool,
+    fired: bool,
+    callback: F,
+}
+
+/// Monomorphized timer dispatch function.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `TimerEntry<F>`.
+unsafe fn timer_try_process<F>(ptr: *mut u8, delta_ms: u64) -> Result<bool, TransportError>
+where
+    F: FnMut(),
+{
+    let entry = unsafe { &mut *(ptr as *mut TimerEntry<F>) };
+
+    // One-shot already fired
+    if entry.oneshot && entry.fired {
+        return Ok(false);
+    }
+
+    entry.elapsed_ms = entry.elapsed_ms.saturating_add(delta_ms);
+
+    if entry.elapsed_ms >= entry.period_ms {
+        (entry.callback)();
+        if entry.oneshot {
+            entry.fired = true;
+        } else {
+            entry.elapsed_ms = entry.elapsed_ms.saturating_sub(entry.period_ms);
+        }
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Concrete action server entry stored in the arena.
+#[repr(C)]
+struct ActionServerArenaEntry<
+    A: RosAction,
+    Srv,
+    Pub,
+    GoalF,
+    CancelF,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+    const MAX_GOALS: usize,
+> {
+    server: EmbeddedActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+    goal_callback: GoalF,
+    cancel_callback: CancelF,
+}
+
+/// Monomorphized action server dispatch function.
+///
+/// Polls goal acceptance, cancel handling, and result serving.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `ActionServerArenaEntry<...>`.
+unsafe fn action_server_try_process<
+    A,
+    Srv,
+    Pub,
+    GoalF,
+    CancelF,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+    const MAX_GOALS: usize,
+>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    A: RosAction,
+    A::Goal: Clone,
+    A::Result: Clone + Default,
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+    GoalF: FnMut(&A::Goal) -> nros_core::GoalResponse,
+    CancelF: FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse,
+{
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionServerArenaEntry<
+            A,
+            Srv,
+            Pub,
+            GoalF,
+            CancelF,
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+            MAX_GOALS,
+        >)
+    };
+    let ActionServerArenaEntry {
+        server,
+        goal_callback,
+        cancel_callback,
+    } = entry;
+
+    let mut did_work = false;
+
+    // Handle cancels first
+    if matches!(
+        server.try_handle_cancel(|id, st| (cancel_callback)(id, st)),
+        Ok(Some(_))
+    ) {
+        did_work = true;
+    }
+
+    // Handle new goals
+    if matches!(server.try_accept_goal(|g| (goal_callback)(g)), Ok(Some(_))) {
+        did_work = true;
+    }
+
+    // Handle result requests
+    if matches!(server.try_handle_get_result(), Ok(Some(_))) {
+        did_work = true;
+    }
+
+    Ok(did_work)
+}
+
+/// Concrete action client entry stored in the arena.
+#[repr(C)]
+struct ActionClientArenaEntry<
+    A: RosAction,
+    Cli,
+    Sub,
+    FeedbackF,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+> {
+    client: EmbeddedActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    feedback_callback: FeedbackF,
+}
+
+/// Monomorphized action client dispatch function.
+///
+/// Polls feedback from the action server.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `ActionClientArenaEntry<...>`.
+unsafe fn action_client_try_process<
+    A,
+    Cli,
+    Sub,
+    FeedbackF,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    A: RosAction,
+    Cli: ServiceClientTrait,
+    Sub: Subscriber,
+    FeedbackF: FnMut(&nros_core::GoalId, &A::Feedback),
+{
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionClientArenaEntry<
+            A,
+            Cli,
+            Sub,
+            FeedbackF,
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+        >)
+    };
+    let ActionClientArenaEntry {
+        client,
+        feedback_callback,
+    } = entry;
+
+    match client.try_recv_feedback() {
+        Ok(Some((goal_id, feedback))) => {
+            (feedback_callback)(&goal_id, &feedback);
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+// ============================================================================
+// Monomorphized handle operation functions
+// ============================================================================
+
+/// Action server: publish feedback via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerArenaEntry`.
+unsafe fn as_publish_feedback<
+    A,
+    Srv,
+    Pub,
+    GoalF,
+    CancelF,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+    feedback: &A::Feedback,
+) -> Result<(), EmbeddedNodeError>
+where
+    A: RosAction,
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
+    };
+    entry.server.publish_feedback(goal_id, feedback)
+}
+
+/// Action server: complete a goal via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerArenaEntry`.
+unsafe fn as_complete_goal<
+    A,
+    Srv,
+    Pub,
+    GoalF,
+    CancelF,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+    status: nros_core::GoalStatus,
+    result: A::Result,
+) where
+    A: RosAction,
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
+    };
+    entry.server.complete_goal(goal_id, status, result);
+}
+
+/// Action server: set goal status via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerArenaEntry`.
+unsafe fn as_set_goal_status<
+    A,
+    Srv,
+    Pub,
+    GoalF,
+    CancelF,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+    status: nros_core::GoalStatus,
+) where
+    A: RosAction,
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
+    };
+    entry.server.set_goal_status(goal_id, status);
+}
+
+/// Action client: send goal via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionClientArenaEntry`.
+unsafe fn ac_send_goal<A, Cli, Sub, FeedbackF, const GB: usize, const RB: usize, const FB: usize>(
+    ptr: *mut u8,
+    goal: &A::Goal,
+) -> Result<nros_core::GoalId, EmbeddedNodeError>
+where
+    A: RosAction,
+    Cli: ServiceClientTrait,
+    Sub: Subscriber,
+{
+    let entry =
+        unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
+    entry.client.send_goal(goal)
+}
+
+/// Action client: cancel goal via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionClientArenaEntry`.
+unsafe fn ac_cancel_goal<
+    A,
+    Cli,
+    Sub,
+    FeedbackF,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+) -> Result<nros_core::CancelResponse, EmbeddedNodeError>
+where
+    A: RosAction,
+    Cli: ServiceClientTrait,
+    Sub: Subscriber,
+{
+    let entry =
+        unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
+    entry.client.cancel_goal(goal_id)
+}
+
+/// Action client: get result via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionClientArenaEntry`.
+unsafe fn ac_get_result<A, Cli, Sub, FeedbackF, const GB: usize, const RB: usize, const FB: usize>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+) -> Result<(nros_core::GoalStatus, A::Result), EmbeddedNodeError>
+where
+    A: RosAction,
+    Cli: ServiceClientTrait,
+    Sub: Subscriber,
+{
+    let entry =
+        unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
+    entry.client.get_result(goal_id)
+}
+
+// ============================================================================
 // EmbeddedExecutor<S>
 // ============================================================================
 
 /// Backend-agnostic executor that owns a [`Session`].
 ///
 /// Provides `create_node()` for entity creation and `drive_io()` for polling.
-pub struct EmbeddedExecutor<S> {
+///
+/// # Callback Mode
+///
+/// When `MAX_CBS > 0` and `CB_ARENA > 0`, the executor supports arena-based
+/// callback registration via [`add_subscription()`](Self::add_subscription)
+/// and [`add_service()`](Self::add_service), with dispatch via
+/// [`spin_once()`](Self::spin_once). No heap allocation is needed.
+///
+/// When using the defaults (`MAX_CBS = 0`, `CB_ARENA = 0`), both arrays are
+/// zero-sized — zero overhead for existing manual-polling code.
+pub struct EmbeddedExecutor<S, const MAX_CBS: usize = 0, const CB_ARENA: usize = 0> {
     session: S,
+    arena: [MaybeUninit<u8>; CB_ARENA],
+    arena_used: usize,
+    entries: [Option<CallbackMeta>; MAX_CBS],
 }
 
-impl<S: Session> EmbeddedExecutor<S> {
+impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>
+    EmbeddedExecutor<S, MAX_CBS, CB_ARENA>
+{
     /// Create an executor from an already-opened session.
     pub fn from_session(session: S) -> Self {
-        Self { session }
+        // SAFETY: MaybeUninit::uninit() is always safe; these bytes are only
+        // accessed through properly-typed ptr::write / ptr::read via the
+        // dispatch function pointers stored in `entries`.
+        Self {
+            session,
+            arena: [MaybeUninit::uninit(); CB_ARENA],
+            arena_used: 0,
+            entries: [None; MAX_CBS],
+        }
     }
 
     /// Create a node on this executor.
@@ -266,6 +814,910 @@ impl<S: Session> EmbeddedExecutor<S> {
     /// Get a mutable reference to the underlying session.
     pub fn session_mut(&mut self) -> &mut S {
         &mut self.session
+    }
+
+    // ========================================================================
+    // Arena-based callback registration
+    // ========================================================================
+
+    /// Bump-allocate space for `T` in the arena. Returns the byte offset.
+    fn arena_alloc<T>(&mut self) -> Result<usize, EmbeddedNodeError> {
+        let align = core::mem::align_of::<T>();
+        let size = core::mem::size_of::<T>();
+        let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
+        let new_used = aligned_offset + size;
+        if new_used > CB_ARENA {
+            return Err(EmbeddedNodeError::BufferTooSmall);
+        }
+        self.arena_used = new_used;
+        Ok(aligned_offset)
+    }
+
+    /// Find the next free entry slot index.
+    fn next_entry_slot(&self) -> Result<usize, EmbeddedNodeError> {
+        self.entries
+            .iter()
+            .position(|e| e.is_none())
+            .ok_or(EmbeddedNodeError::BufferTooSmall)
+    }
+
+    /// Register a subscription callback with the default 1024-byte receive buffer.
+    ///
+    /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut executor: EmbeddedExecutor<_, 4, 4096> = EmbeddedExecutor::open(&config)?;
+    /// executor.add_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+    ///     // handle message
+    /// })?;
+    /// loop {
+    ///     executor.spin_once(10);
+    /// }
+    /// ```
+    pub fn add_subscription<M, F>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        self.add_subscription_sized::<M, F, 1024>(topic_name, callback)
+    }
+
+    /// Register a subscription callback with a custom receive buffer size.
+    pub fn add_subscription_sized<M, F, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        type Entry<M, Sub, F, const N: usize> = SubEntry<M, Sub, F, N>;
+
+        let slot = self.next_entry_slot()?;
+        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH);
+        let handle = self
+            .session
+            .create_subscriber(&topic, QosSettings::default())
+            .map_err(|_| EmbeddedNodeError::Transport(TransportError::SubscriberCreationFailed))?;
+
+        let offset = self.arena_alloc::<Entry<M, S::SubscriberHandle, F, RX_BUF>>()?;
+
+        // SAFETY: `arena_alloc` guarantees the offset is within bounds and
+        // properly aligned for `Entry`. We write a fully-initialized value.
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, S::SubscriberHandle, F, RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
+            drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
+        });
+        Ok(())
+    }
+
+    /// Register a service callback with the default 1024-byte buffers.
+    ///
+    /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
+    pub fn add_service<Svc, F>(
+        &mut self,
+        service_name: &str,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+        S::ServiceServerHandle: ServiceServerTrait,
+        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+    {
+        self.add_service_sized::<Svc, F, 1024, 1024>(service_name, callback)
+    }
+
+    /// Register a service callback with custom request/reply buffer sizes.
+    pub fn add_service_sized<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+        S::ServiceServerHandle: ServiceServerTrait,
+        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+    {
+        type Entry<Svc, Srv, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, Srv, F, RQ, RP>;
+
+        let slot = self.next_entry_slot()?;
+        let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
+        let handle = self.session.create_service_server(&info).map_err(|_| {
+            EmbeddedNodeError::Transport(TransportError::ServiceServerCreationFailed)
+        })?;
+
+        let offset =
+            self.arena_alloc::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>()?;
+
+        // SAFETY: same guarantees as add_subscription_sized.
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset)
+                as *mut Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    req_buffer: [0u8; REQ_BUF],
+                    reply_buffer: [0u8; REPLY_BUF],
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Service,
+            try_process: srv_try_process::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
+            drop_fn: drop_entry::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>,
+        });
+        Ok(())
+    }
+
+    // ========================================================================
+    // Timer registration
+    // ========================================================================
+
+    /// Register a repeating timer callback.
+    ///
+    /// The callback fires every `period` milliseconds during [`spin_once()`](Self::spin_once).
+    /// The timer delta is approximated by the `timeout_ms` argument to `spin_once`.
+    pub fn add_timer<F>(
+        &mut self,
+        period: TimerDuration,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<TimerEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
+            core::ptr::write(
+                entry_ptr,
+                TimerEntry {
+                    period_ms: period.as_millis(),
+                    elapsed_ms: 0,
+                    oneshot: false,
+                    fired: false,
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Timer,
+            try_process: timer_try_process::<F>,
+            drop_fn: drop_entry::<TimerEntry<F>>,
+        });
+        Ok(())
+    }
+
+    /// Register a one-shot timer callback.
+    ///
+    /// The callback fires once after `delay` milliseconds, then becomes inert.
+    pub fn add_timer_oneshot<F>(
+        &mut self,
+        delay: TimerDuration,
+        callback: F,
+    ) -> Result<(), EmbeddedNodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<TimerEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
+            core::ptr::write(
+                entry_ptr,
+                TimerEntry {
+                    period_ms: delay.as_millis(),
+                    elapsed_ms: 0,
+                    oneshot: true,
+                    fired: false,
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Timer,
+            try_process: timer_try_process::<F>,
+            drop_fn: drop_entry::<TimerEntry<F>>,
+        });
+        Ok(())
+    }
+
+    // ========================================================================
+    // Action server registration
+    // ========================================================================
+
+    /// Register an action server with goal/cancel callbacks.
+    ///
+    /// The executor automatically dispatches:
+    /// - Goal acceptance via `goal_callback`
+    /// - Cancel requests via `cancel_callback`
+    /// - Result serving for completed goals
+    ///
+    /// Use the returned [`ActionServerHandle`] to publish feedback and complete goals.
+    ///
+    /// Uses default buffer sizes (1024 bytes) and max 4 concurrent goals.
+    pub fn add_action_server<A, GoalF, CancelF>(
+        &mut self,
+        action_name: &str,
+        goal_callback: GoalF,
+        cancel_callback: CancelF,
+    ) -> Result<ActionServerHandle<A>, EmbeddedNodeError>
+    where
+        A: RosAction + 'static,
+        A::Goal: Clone,
+        A::Result: Clone + Default,
+        GoalF: FnMut(&A::Goal) -> nros_core::GoalResponse + 'static,
+        CancelF:
+            FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
+        S::ServiceServerHandle: ServiceServerTrait,
+        S::PublisherHandle: Publisher,
+    {
+        self.add_action_server_sized::<A, GoalF, CancelF, 1024, 1024, 1024, 4>(
+            action_name,
+            goal_callback,
+            cancel_callback,
+        )
+    }
+
+    /// Register an action server with custom buffer sizes.
+    pub fn add_action_server_sized<
+        A,
+        GoalF,
+        CancelF,
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+        const MAX_GOALS: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        goal_callback: GoalF,
+        cancel_callback: CancelF,
+    ) -> Result<ActionServerHandle<A>, EmbeddedNodeError>
+    where
+        A: RosAction + 'static,
+        A::Goal: Clone,
+        A::Result: Clone + Default,
+        GoalF: FnMut(&A::Goal) -> nros_core::GoalResponse + 'static,
+        CancelF:
+            FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
+        S::ServiceServerHandle: ServiceServerTrait,
+        S::PublisherHandle: Publisher,
+    {
+        type Entry<
+            A,
+            Srv,
+            Pub,
+            GoalF,
+            CancelF,
+            const GB: usize,
+            const RB: usize,
+            const FB: usize,
+            const MG: usize,
+        > = ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>;
+
+        let slot = self.next_entry_slot()?;
+
+        // Create the action server entities (same logic as EmbeddedNode::create_action_server_sized)
+        let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH);
+
+        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info =
+            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let send_goal_server = self
+            .session
+            .create_service_server(&send_goal_info)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            A::ACTION_HASH,
+        )
+        .with_domain(0);
+        let cancel_goal_server = self
+            .session
+            .create_service_server(&cancel_goal_info)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+        let get_result_info =
+            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let get_result_server = self
+            .session
+            .create_service_server(&get_result_info)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+        let feedback_topic =
+            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let feedback_publisher = self
+            .session
+            .create_publisher(&feedback_topic, QosSettings::BEST_EFFORT)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let status_keyexpr: heapless::String<256> = action_info.status_key();
+        let status_topic = TopicInfo::new(
+            &status_keyexpr,
+            "action_msgs::msg::dds_::GoalStatusArray_",
+            A::ACTION_HASH,
+        )
+        .with_domain(0);
+        let status_publisher = self
+            .session
+            .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let server = EmbeddedActionServer {
+            send_goal_server,
+            cancel_goal_server,
+            get_result_server,
+            feedback_publisher,
+            _status_publisher: status_publisher,
+            active_goals: heapless::Vec::new(),
+            completed_goals: heapless::Vec::new(),
+            goal_buffer: [0u8; GOAL_BUF],
+            result_buffer: [0u8; RESULT_BUF],
+            feedback_buffer: [0u8; FEEDBACK_BUF],
+            cancel_buffer: [0u8; 256],
+        };
+
+        let offset = self.arena_alloc::<Entry<
+            A,
+            S::ServiceServerHandle,
+            S::PublisherHandle,
+            GoalF,
+            CancelF,
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+            MAX_GOALS,
+        >>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset)
+                as *mut Entry<
+                    A,
+                    S::ServiceServerHandle,
+                    S::PublisherHandle,
+                    GoalF,
+                    CancelF,
+                    GOAL_BUF,
+                    RESULT_BUF,
+                    FEEDBACK_BUF,
+                    MAX_GOALS,
+                >;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    server,
+                    goal_callback,
+                    cancel_callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::ActionServer,
+            try_process: action_server_try_process::<
+                A,
+                S::ServiceServerHandle,
+                S::PublisherHandle,
+                GoalF,
+                CancelF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+                MAX_GOALS,
+            >,
+            drop_fn: drop_entry::<
+                Entry<
+                    A,
+                    S::ServiceServerHandle,
+                    S::PublisherHandle,
+                    GoalF,
+                    CancelF,
+                    GOAL_BUF,
+                    RESULT_BUF,
+                    FEEDBACK_BUF,
+                    MAX_GOALS,
+                >,
+            >,
+        });
+
+        Ok(ActionServerHandle {
+            entry_index: slot,
+            publish_feedback_fn: as_publish_feedback::<
+                A,
+                S::ServiceServerHandle,
+                S::PublisherHandle,
+                GoalF,
+                CancelF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+                MAX_GOALS,
+            >,
+            complete_goal_fn: as_complete_goal::<
+                A,
+                S::ServiceServerHandle,
+                S::PublisherHandle,
+                GoalF,
+                CancelF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+                MAX_GOALS,
+            >,
+            set_goal_status_fn: as_set_goal_status::<
+                A,
+                S::ServiceServerHandle,
+                S::PublisherHandle,
+                GoalF,
+                CancelF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+                MAX_GOALS,
+            >,
+            _phantom: PhantomData,
+        })
+    }
+
+    // ========================================================================
+    // Action client registration
+    // ========================================================================
+
+    /// Register an action client with a feedback callback.
+    ///
+    /// The executor automatically dispatches feedback to `feedback_callback`
+    /// during [`spin_once()`](Self::spin_once).
+    ///
+    /// Use the returned [`ActionClientHandle`] to send goals and get results.
+    ///
+    /// Uses default buffer sizes (1024 bytes).
+    pub fn add_action_client<A, FeedbackF>(
+        &mut self,
+        action_name: &str,
+        feedback_callback: FeedbackF,
+    ) -> Result<ActionClientHandle<A>, EmbeddedNodeError>
+    where
+        A: RosAction + 'static,
+        FeedbackF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
+        S::ServiceClientHandle: ServiceClientTrait,
+        S::SubscriberHandle: Subscriber,
+    {
+        self.add_action_client_sized::<A, FeedbackF, 1024, 1024, 1024>(
+            action_name,
+            feedback_callback,
+        )
+    }
+
+    /// Register an action client with custom buffer sizes.
+    pub fn add_action_client_sized<
+        A,
+        FeedbackF,
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        feedback_callback: FeedbackF,
+    ) -> Result<ActionClientHandle<A>, EmbeddedNodeError>
+    where
+        A: RosAction + 'static,
+        FeedbackF: FnMut(&nros_core::GoalId, &A::Feedback) + 'static,
+        S::ServiceClientHandle: ServiceClientTrait,
+        S::SubscriberHandle: Subscriber,
+    {
+        type Entry<A, Cli, Sub, FeedbackF, const GB: usize, const RB: usize, const FB: usize> =
+            ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>;
+
+        let slot = self.next_entry_slot()?;
+
+        // Create the action client entities
+        let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH);
+
+        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info =
+            ServiceInfo::new(&send_goal_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let send_goal_client = self
+            .session
+            .create_service_client(&send_goal_info)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            A::ACTION_HASH,
+        )
+        .with_domain(0);
+        let cancel_goal_client = self
+            .session
+            .create_service_client(&cancel_goal_info)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+        let get_result_info =
+            ServiceInfo::new(&get_result_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let get_result_client = self
+            .session
+            .create_service_client(&get_result_info)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+        let feedback_topic =
+            TopicInfo::new(&feedback_keyexpr, A::ACTION_NAME, A::ACTION_HASH).with_domain(0);
+        let feedback_subscriber = self
+            .session
+            .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
+            .map_err(|_| EmbeddedNodeError::ActionCreationFailed)?;
+
+        let client = EmbeddedActionClient {
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_subscriber,
+            goal_buffer: [0u8; GOAL_BUF],
+            result_buffer: [0u8; RESULT_BUF],
+            feedback_buffer: [0u8; FEEDBACK_BUF],
+            goal_counter: 0,
+            _phantom: PhantomData,
+        };
+
+        let offset = self.arena_alloc::<Entry<
+            A,
+            S::ServiceClientHandle,
+            S::SubscriberHandle,
+            FeedbackF,
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+        >>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset)
+                as *mut Entry<
+                    A,
+                    S::ServiceClientHandle,
+                    S::SubscriberHandle,
+                    FeedbackF,
+                    GOAL_BUF,
+                    RESULT_BUF,
+                    FEEDBACK_BUF,
+                >;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    client,
+                    feedback_callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::ActionClient,
+            try_process: action_client_try_process::<
+                A,
+                S::ServiceClientHandle,
+                S::SubscriberHandle,
+                FeedbackF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+            >,
+            drop_fn: drop_entry::<
+                Entry<
+                    A,
+                    S::ServiceClientHandle,
+                    S::SubscriberHandle,
+                    FeedbackF,
+                    GOAL_BUF,
+                    RESULT_BUF,
+                    FEEDBACK_BUF,
+                >,
+            >,
+        });
+
+        Ok(ActionClientHandle {
+            entry_index: slot,
+            send_goal_fn: ac_send_goal::<
+                A,
+                S::ServiceClientHandle,
+                S::SubscriberHandle,
+                FeedbackF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+            >,
+            cancel_goal_fn: ac_cancel_goal::<
+                A,
+                S::ServiceClientHandle,
+                S::SubscriberHandle,
+                FeedbackF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+            >,
+            get_result_fn: ac_get_result::<
+                A,
+                S::ServiceClientHandle,
+                S::SubscriberHandle,
+                FeedbackF,
+                GOAL_BUF,
+                RESULT_BUF,
+                FEEDBACK_BUF,
+            >,
+            _phantom: PhantomData,
+        })
+    }
+
+    // ========================================================================
+    // spin_once
+    // ========================================================================
+
+    /// Drive I/O and dispatch all registered callbacks once.
+    ///
+    /// 1. Calls [`drive_io()`](Self::drive_io) to pump the transport.
+    /// 2. Iterates every registered entry and tries to process one item each.
+    ///
+    /// Returns a [`SpinOnceResult`] with counts of processed items and errors.
+    pub fn spin_once(&mut self, timeout_ms: i32) -> SpinOnceResult {
+        let _ = self.session.drive_io(timeout_ms);
+
+        let delta_ms = timeout_ms.max(0) as u64;
+        let mut result = SpinOnceResult::new();
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+
+        for meta in self.entries.iter().flatten() {
+            // SAFETY: `meta.offset` was set by `arena_alloc` which guarantees
+            // alignment and bounds. The function pointer was set at registration
+            // time with the matching concrete type.
+            let data_ptr = unsafe { arena_ptr.add(meta.offset) };
+            match unsafe { (meta.try_process)(data_ptr, delta_ms) } {
+                Ok(true) => match meta.kind {
+                    EntryKind::Subscription | EntryKind::ActionClient => {
+                        result.subscriptions_processed += 1;
+                    }
+                    EntryKind::Service | EntryKind::ActionServer => {
+                        result.services_handled += 1;
+                    }
+                    EntryKind::Timer => result.timers_fired += 1,
+                },
+                Ok(false) => {}
+                Err(_) => match meta.kind {
+                    EntryKind::Subscription | EntryKind::ActionClient => {
+                        result.subscription_errors += 1;
+                    }
+                    EntryKind::Service | EntryKind::ActionServer => {
+                        result.service_errors += 1;
+                    }
+                    EntryKind::Timer => {} // timers don't produce transport errors
+                },
+            }
+        }
+        result
+    }
+}
+
+impl<S, const MAX_CBS: usize, const CB_ARENA: usize> Drop
+    for EmbeddedExecutor<S, MAX_CBS, CB_ARENA>
+{
+    fn drop(&mut self) {
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        for meta in self.entries.iter().flatten() {
+            // SAFETY: each entry was written by `ptr::write` in `add_*` and
+            // has not been dropped yet. `drop_fn` matches the concrete type.
+            unsafe {
+                let data_ptr = arena_ptr.add(meta.offset);
+                (meta.drop_fn)(data_ptr);
+            }
+        }
+    }
+}
+
+// ============================================================================
+// Handle types for arena-registered action server/client
+// ============================================================================
+
+/// Handle to an action server registered in the executor's arena.
+///
+/// Returned by [`EmbeddedExecutor::add_action_server()`]. Provides methods
+/// to interact with the server (publish feedback, complete goals) while the
+/// executor automatically handles goal acceptance, cancel requests, and
+/// result serving during [`spin_once()`](EmbeddedExecutor::spin_once).
+pub struct ActionServerHandle<A: RosAction> {
+    entry_index: usize,
+    publish_feedback_fn:
+        unsafe fn(*mut u8, &nros_core::GoalId, &A::Feedback) -> Result<(), EmbeddedNodeError>,
+    complete_goal_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus, A::Result),
+    set_goal_status_fn: unsafe fn(*mut u8, &nros_core::GoalId, nros_core::GoalStatus),
+    _phantom: PhantomData<A>,
+}
+
+impl<A: RosAction> Clone for ActionServerHandle<A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: RosAction> Copy for ActionServerHandle<A> {}
+
+impl<A: RosAction> ActionServerHandle<A> {
+    /// Publish feedback for an active goal.
+    pub fn publish_feedback<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+        &self,
+        executor: &mut EmbeddedExecutor<S, MAX_CBS, CB_ARENA>,
+        goal_id: &nros_core::GoalId,
+        feedback: &A::Feedback,
+    ) -> Result<(), EmbeddedNodeError> {
+        let meta = executor.entries[self.entry_index]
+            .as_ref()
+            .ok_or(EmbeddedNodeError::BufferTooSmall)?;
+        let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let data_ptr = arena_ptr.add(meta.offset);
+            (self.publish_feedback_fn)(data_ptr, goal_id, feedback)
+        }
+    }
+
+    /// Complete a goal with final status and result.
+    pub fn complete_goal<S, const MAX_CBS: usize, const CB_ARENA: usize>(
+        &self,
+        executor: &mut EmbeddedExecutor<S, MAX_CBS, CB_ARENA>,
+        goal_id: &nros_core::GoalId,
+        status: nros_core::GoalStatus,
+        result: A::Result,
+    ) {
+        if let Some(meta) = executor.entries[self.entry_index].as_ref() {
+            let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+            unsafe {
+                let data_ptr = arena_ptr.add(meta.offset);
+                (self.complete_goal_fn)(data_ptr, goal_id, status, result);
+            }
+        }
+    }
+
+    /// Update a goal's status.
+    pub fn set_goal_status<S, const MAX_CBS: usize, const CB_ARENA: usize>(
+        &self,
+        executor: &mut EmbeddedExecutor<S, MAX_CBS, CB_ARENA>,
+        goal_id: &nros_core::GoalId,
+        status: nros_core::GoalStatus,
+    ) {
+        if let Some(meta) = executor.entries[self.entry_index].as_ref() {
+            let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+            unsafe {
+                let data_ptr = arena_ptr.add(meta.offset);
+                (self.set_goal_status_fn)(data_ptr, goal_id, status);
+            }
+        }
+    }
+}
+
+/// Handle to an action client registered in the executor's arena.
+///
+/// Returned by [`EmbeddedExecutor::add_action_client()`]. Provides methods
+/// to send goals and get results while the executor automatically dispatches
+/// feedback to the registered callback during [`spin_once()`](EmbeddedExecutor::spin_once).
+#[allow(clippy::type_complexity)]
+pub struct ActionClientHandle<A: RosAction> {
+    entry_index: usize,
+    send_goal_fn: unsafe fn(*mut u8, &A::Goal) -> Result<nros_core::GoalId, EmbeddedNodeError>,
+    cancel_goal_fn: unsafe fn(
+        *mut u8,
+        &nros_core::GoalId,
+    ) -> Result<nros_core::CancelResponse, EmbeddedNodeError>,
+    get_result_fn: unsafe fn(
+        *mut u8,
+        &nros_core::GoalId,
+    ) -> Result<(nros_core::GoalStatus, A::Result), EmbeddedNodeError>,
+    _phantom: PhantomData<A>,
+}
+
+impl<A: RosAction> Clone for ActionClientHandle<A> {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<A: RosAction> Copy for ActionClientHandle<A> {}
+
+impl<A: RosAction> ActionClientHandle<A> {
+    /// Send a goal to the action server (blocks until accepted/rejected).
+    pub fn send_goal<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+        &self,
+        executor: &mut EmbeddedExecutor<S, MAX_CBS, CB_ARENA>,
+        goal: &A::Goal,
+    ) -> Result<nros_core::GoalId, EmbeddedNodeError> {
+        let meta = executor.entries[self.entry_index]
+            .as_ref()
+            .ok_or(EmbeddedNodeError::BufferTooSmall)?;
+        let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let data_ptr = arena_ptr.add(meta.offset);
+            (self.send_goal_fn)(data_ptr, goal)
+        }
+    }
+
+    /// Cancel an active goal.
+    pub fn cancel_goal<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+        &self,
+        executor: &mut EmbeddedExecutor<S, MAX_CBS, CB_ARENA>,
+        goal_id: &nros_core::GoalId,
+    ) -> Result<nros_core::CancelResponse, EmbeddedNodeError> {
+        let meta = executor.entries[self.entry_index]
+            .as_ref()
+            .ok_or(EmbeddedNodeError::BufferTooSmall)?;
+        let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let data_ptr = arena_ptr.add(meta.offset);
+            (self.cancel_goal_fn)(data_ptr, goal_id)
+        }
+    }
+
+    /// Get the result of a completed goal.
+    pub fn get_result<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+        &self,
+        executor: &mut EmbeddedExecutor<S, MAX_CBS, CB_ARENA>,
+        goal_id: &nros_core::GoalId,
+    ) -> Result<(nros_core::GoalStatus, A::Result), EmbeddedNodeError> {
+        let meta = executor.entries[self.entry_index]
+            .as_ref()
+            .ok_or(EmbeddedNodeError::BufferTooSmall)?;
+        let arena_ptr = executor.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let data_ptr = arena_ptr.add(meta.offset);
+            (self.get_result_fn)(data_ptr, goal_id)
+        }
     }
 }
 
@@ -1359,6 +2811,9 @@ impl<
 #[cfg(test)]
 mod tests {
     use super::*;
+    use core::cell::Cell;
+    use nros_core::{DeserError, SerError};
+    use nros_rmw::ServiceRequest;
 
     #[test]
     fn test_error_conversion() {
@@ -1368,5 +2823,728 @@ mod tests {
             node_err,
             EmbeddedNodeError::Transport(TransportError::ConnectionFailed)
         );
+    }
+
+    // ====================================================================
+    // Mock types for arena callback tests
+    // ====================================================================
+
+    /// Simple test message: a single i32.
+    #[derive(Debug, Clone, PartialEq)]
+    struct TestMsg {
+        data: i32,
+    }
+
+    impl RosMessage for TestMsg {
+        const TYPE_NAME: &'static str = "test/msg/TestMsg";
+        const TYPE_HASH: &'static str = "test_hash";
+    }
+
+    impl Serialize for TestMsg {
+        fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+            writer.write_i32(self.data)
+        }
+    }
+
+    impl Deserialize for TestMsg {
+        fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+            Ok(Self {
+                data: reader.read_i32()?,
+            })
+        }
+    }
+
+    /// CDR-encode a TestMsg(value) including CDR header.
+    fn encode_test_msg(value: i32) -> ([u8; 256], usize) {
+        let mut buf = [0u8; 256];
+        let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+        writer.write_i32(value).unwrap();
+        let len = writer.position();
+        (buf, len)
+    }
+
+    /// Mock subscriber that can be loaded with canned CDR data.
+    struct MockSubscriber {
+        /// Pre-encoded data to return on the next `try_recv_raw` call.
+        pending: Cell<Option<([u8; 256], usize)>>,
+    }
+
+    impl MockSubscriber {
+        fn new() -> Self {
+            Self {
+                pending: Cell::new(None),
+            }
+        }
+
+        fn load(&self, data: [u8; 256], len: usize) {
+            self.pending.set(Some((data, len)));
+        }
+    }
+
+    impl Subscriber for MockSubscriber {
+        type Error = TransportError;
+
+        fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
+            match self.pending.get() {
+                Some((data, len)) => {
+                    buf[..len].copy_from_slice(&data[..len]);
+                    self.pending.set(None);
+                    Ok(Some(len))
+                }
+                None => Ok(None),
+            }
+        }
+
+        fn deserialization_error(&self) -> TransportError {
+            TransportError::DeserializationError
+        }
+    }
+
+    /// Mock service server (not used for service tests yet, but needed for Session).
+    struct MockServiceServer;
+
+    impl ServiceServerTrait for MockServiceServer {
+        type Error = TransportError;
+
+        fn try_recv_request<'a>(
+            &mut self,
+            _buf: &'a mut [u8],
+        ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
+            Ok(None)
+        }
+
+        fn send_reply(&mut self, _seq: i64, _data: &[u8]) -> Result<(), TransportError> {
+            Ok(())
+        }
+    }
+
+    /// Dummy publisher (never used in callback tests).
+    struct MockPublisher;
+
+    impl Publisher for MockPublisher {
+        type Error = TransportError;
+
+        fn publish_raw(&self, _data: &[u8]) -> Result<(), TransportError> {
+            Ok(())
+        }
+
+        fn buffer_error(&self) -> TransportError {
+            TransportError::BufferTooSmall
+        }
+
+        fn serialization_error(&self) -> TransportError {
+            TransportError::SerializationError
+        }
+    }
+
+    /// Dummy service client.
+    struct MockServiceClient;
+
+    impl ServiceClientTrait for MockServiceClient {
+        type Error = TransportError;
+
+        fn call_raw(
+            &mut self,
+            _req: &[u8],
+            _reply_buf: &mut [u8],
+        ) -> Result<usize, TransportError> {
+            Err(TransportError::Timeout)
+        }
+    }
+
+    /// Mock session that produces mock handles.
+    struct MockSession;
+
+    impl MockSession {
+        fn new() -> Self {
+            Self
+        }
+    }
+
+    impl Session for MockSession {
+        type Error = TransportError;
+        type PublisherHandle = MockPublisher;
+        type SubscriberHandle = MockSubscriber;
+        type ServiceServerHandle = MockServiceServer;
+        type ServiceClientHandle = MockServiceClient;
+
+        fn create_publisher(
+            &mut self,
+            _topic: &TopicInfo,
+            _qos: QosSettings,
+        ) -> Result<MockPublisher, TransportError> {
+            Ok(MockPublisher)
+        }
+
+        fn create_subscriber(
+            &mut self,
+            _topic: &TopicInfo,
+            _qos: QosSettings,
+        ) -> Result<MockSubscriber, TransportError> {
+            Ok(MockSubscriber::new())
+        }
+
+        fn create_service_server(
+            &mut self,
+            _service: &ServiceInfo,
+        ) -> Result<MockServiceServer, TransportError> {
+            Ok(MockServiceServer)
+        }
+
+        fn create_service_client(
+            &mut self,
+            _service: &ServiceInfo,
+        ) -> Result<MockServiceClient, TransportError> {
+            Ok(MockServiceClient)
+        }
+
+        fn close(&mut self) -> Result<(), TransportError> {
+            Ok(())
+        }
+    }
+
+    // ====================================================================
+    // Arena callback tests
+    // ====================================================================
+
+    #[test]
+    fn test_add_subscription_and_spin_once_no_data() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 4096> =
+            EmbeddedExecutor::from_session(session);
+
+        // Register a subscription — callback should never fire
+        let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let called2 = called.clone();
+        executor
+            .add_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+                called2.store(true, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        let result = executor.spin_once(0);
+        assert_eq!(result.subscriptions_processed, 0);
+        assert!(!result.any_work());
+        assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
+    fn test_add_subscription_and_spin_once_with_data() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 4096> =
+            EmbeddedExecutor::from_session(session);
+
+        let received = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let received2 = received.clone();
+        executor
+            .add_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+                *received2.lock().unwrap() = Some(msg.data);
+            })
+            .unwrap();
+
+        // Grab a pointer to the subscriber in the arena so we can load data.
+        // The subscriber is stored inside the SubEntry in the arena.
+        // We need to reach it through the arena.
+        let meta = executor.entries[0].as_ref().unwrap();
+        let arena_ptr = executor.arena.as_ptr() as *const u8;
+        let sub_ptr = unsafe { arena_ptr.add(meta.offset) } as *const MockSubscriber;
+
+        // Load CDR-encoded TestMsg(42) into the subscriber
+        let (data, len) = encode_test_msg(42);
+        unsafe { &*sub_ptr }.load(data, len);
+
+        let result = executor.spin_once(0);
+        assert_eq!(result.subscriptions_processed, 1);
+        assert!(result.any_work());
+        assert_eq!(*received.lock().unwrap(), Some(42));
+    }
+
+    #[test]
+    fn test_multiple_subscriptions() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 8192> =
+            EmbeddedExecutor::from_session(session);
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count1 = count.clone();
+        let count2 = count.clone();
+
+        executor
+            .add_subscription::<TestMsg, _>("/topic1", move |_msg: &TestMsg| {
+                count1.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        executor
+            .add_subscription::<TestMsg, _>("/topic2", move |_msg: &TestMsg| {
+                count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        // Load data into both subscribers
+        let (data, len) = encode_test_msg(10);
+        let meta0 = executor.entries[0].as_ref().unwrap();
+        let meta1 = executor.entries[1].as_ref().unwrap();
+        let arena_ptr = executor.arena.as_ptr() as *const u8;
+        unsafe { &*(arena_ptr.add(meta0.offset) as *const MockSubscriber) }.load(data, len);
+        let (data2, len2) = encode_test_msg(20);
+        unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data2, len2);
+
+        let result = executor.spin_once(0);
+        assert_eq!(result.subscriptions_processed, 2);
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn test_arena_overflow() {
+        let session = MockSession::new();
+        // Tiny arena — one SubEntry<TestMsg, MockSubscriber, fn, 1024> is ~1040+ bytes
+        let mut executor: EmbeddedExecutor<MockSession, 4, 128> =
+            EmbeddedExecutor::from_session(session);
+
+        let result = executor.add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {});
+        assert_eq!(result, Err(EmbeddedNodeError::BufferTooSmall));
+    }
+
+    #[test]
+    fn test_entry_slots_exhausted() {
+        let session = MockSession::new();
+        // 1 entry slot but plenty of arena space
+        let mut executor: EmbeddedExecutor<MockSession, 1, 8192> =
+            EmbeddedExecutor::from_session(session);
+
+        executor
+            .add_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
+            .unwrap();
+
+        let result = executor.add_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {});
+        assert_eq!(result, Err(EmbeddedNodeError::BufferTooSmall));
+    }
+
+    #[test]
+    fn test_spin_once_result_counts() {
+        let result = SpinOnceResult::new();
+        assert!(!result.any_work());
+        assert!(!result.any_errors());
+        assert_eq!(result.total(), 0);
+        assert_eq!(result.total_errors(), 0);
+
+        let result = SpinOnceResult {
+            subscriptions_processed: 2,
+            timers_fired: 1,
+            services_handled: 1,
+            subscription_errors: 0,
+            service_errors: 0,
+        };
+        assert!(result.any_work());
+        assert!(!result.any_errors());
+        assert_eq!(result.total(), 4);
+    }
+
+    #[test]
+    fn test_drop_runs_without_panic() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 4096> =
+            EmbeddedExecutor::from_session(session);
+
+        executor
+            .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+            .unwrap();
+
+        // executor drops here — Drop impl must not panic
+    }
+
+    #[test]
+    fn test_zero_sized_executor_spin_once() {
+        // Default const generics: MAX_CBS=0, CB_ARENA=0
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 0, 0> =
+            EmbeddedExecutor::from_session(session);
+
+        // spin_once with no entries just calls drive_io
+        let result = executor.spin_once(0);
+        assert!(!result.any_work());
+    }
+
+    #[test]
+    fn test_arena_alignment() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 8192> =
+            EmbeddedExecutor::from_session(session);
+
+        // Add a subscription, then check the offset is properly aligned
+        executor
+            .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+            .unwrap();
+
+        let meta = executor.entries[0].as_ref().unwrap();
+        let entry_align =
+            core::mem::align_of::<SubEntry<TestMsg, MockSubscriber, fn(&TestMsg), 1024>>();
+        assert_eq!(meta.offset % entry_align, 0);
+    }
+
+    // ====================================================================
+    // Timer callback tests
+    // ====================================================================
+
+    #[test]
+    fn test_add_timer_and_fire() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 4096> =
+            EmbeddedExecutor::from_session(session);
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count2 = count.clone();
+        executor
+            .add_timer(TimerDuration::from_millis(100), move || {
+                count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        // Not enough time elapsed — should not fire
+        let result = executor.spin_once(50);
+        assert_eq!(result.timers_fired, 0);
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+        // Now enough time elapsed (50 + 60 = 110 >= 100)
+        let result = executor.spin_once(60);
+        assert_eq!(result.timers_fired, 1);
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_timer_repeats() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 4096> =
+            EmbeddedExecutor::from_session(session);
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count2 = count.clone();
+        executor
+            .add_timer(TimerDuration::from_millis(100), move || {
+                count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        // Fire 3 times
+        let _ = executor.spin_once(100);
+        let _ = executor.spin_once(100);
+        let _ = executor.spin_once(100);
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn test_timer_oneshot_fires_once() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 4096> =
+            EmbeddedExecutor::from_session(session);
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count2 = count.clone();
+        executor
+            .add_timer_oneshot(TimerDuration::from_millis(50), move || {
+                count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        // First spin fires
+        let result = executor.spin_once(60);
+        assert_eq!(result.timers_fired, 1);
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+        // Second spin should NOT fire again
+        let result = executor.spin_once(60);
+        assert_eq!(result.timers_fired, 0);
+        assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn test_timer_does_not_fire_at_zero_delta() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 4096> =
+            EmbeddedExecutor::from_session(session);
+
+        let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let count2 = count.clone();
+        executor
+            .add_timer(TimerDuration::from_millis(100), move || {
+                count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        // Zero delta should never fire
+        let result = executor.spin_once(0);
+        assert_eq!(result.timers_fired, 0);
+    }
+
+    #[test]
+    fn test_timer_with_subscriptions() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 8192> =
+            EmbeddedExecutor::from_session(session);
+
+        let timer_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let timer_count2 = timer_count.clone();
+        executor
+            .add_timer(TimerDuration::from_millis(100), move || {
+                timer_count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        let sub_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let sub_count2 = sub_count.clone();
+        executor
+            .add_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+                sub_count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            })
+            .unwrap();
+
+        // Load data into subscription
+        let (data, len) = encode_test_msg(99);
+        let meta1 = executor.entries[1].as_ref().unwrap();
+        let arena_ptr = executor.arena.as_ptr() as *const u8;
+        unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
+
+        let result = executor.spin_once(100);
+        assert_eq!(result.timers_fired, 1);
+        assert_eq!(result.subscriptions_processed, 1);
+        assert_eq!(timer_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+        assert_eq!(sub_count.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    // ====================================================================
+    // Action types for testing
+    // ====================================================================
+
+    #[derive(Debug, Clone, Default, PartialEq)]
+    struct TestGoal {
+        order: i32,
+    }
+
+    impl RosMessage for TestGoal {
+        const TYPE_NAME: &'static str = "test/action/TestAction_Goal";
+        const TYPE_HASH: &'static str = "test_hash";
+    }
+
+    impl Serialize for TestGoal {
+        fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+            writer.write_i32(self.order)
+        }
+    }
+
+    impl Deserialize for TestGoal {
+        fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+            Ok(Self {
+                order: reader.read_i32()?,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq)]
+    struct TestResult {
+        value: i32,
+    }
+
+    impl RosMessage for TestResult {
+        const TYPE_NAME: &'static str = "test/action/TestAction_Result";
+        const TYPE_HASH: &'static str = "test_hash";
+    }
+
+    impl Serialize for TestResult {
+        fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+            writer.write_i32(self.value)
+        }
+    }
+
+    impl Deserialize for TestResult {
+        fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+            Ok(Self {
+                value: reader.read_i32()?,
+            })
+        }
+    }
+
+    #[derive(Debug, Clone, Default, PartialEq)]
+    struct TestFeedback {
+        progress: i32,
+    }
+
+    impl RosMessage for TestFeedback {
+        const TYPE_NAME: &'static str = "test/action/TestAction_Feedback";
+        const TYPE_HASH: &'static str = "test_hash";
+    }
+
+    impl Serialize for TestFeedback {
+        fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+            writer.write_i32(self.progress)
+        }
+    }
+
+    impl Deserialize for TestFeedback {
+        fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+            Ok(Self {
+                progress: reader.read_i32()?,
+            })
+        }
+    }
+
+    struct TestAction;
+
+    impl RosAction for TestAction {
+        type Goal = TestGoal;
+        type Result = TestResult;
+        type Feedback = TestFeedback;
+        const ACTION_NAME: &'static str = "test/action/dds_/TestAction_";
+        const ACTION_HASH: &'static str = "test_hash";
+    }
+
+    // ====================================================================
+    // Action server tests
+    // ====================================================================
+
+    #[test]
+    fn test_add_action_server_registers() {
+        let session = MockSession::new();
+        // Action server arena entry is large — give plenty of space
+        let mut executor: EmbeddedExecutor<MockSession, 4, 16384> =
+            EmbeddedExecutor::from_session(session);
+
+        let handle = executor
+            .add_action_server::<TestAction, _, _>(
+                "/test_action",
+                |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+                |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                    nros_core::CancelResponse::Ok
+                },
+            )
+            .unwrap();
+
+        // Verify the entry was registered
+        assert!(executor.entries[0].is_some());
+        assert_eq!(handle.entry_index, 0);
+    }
+
+    #[test]
+    fn test_action_server_spin_once_no_requests() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 16384> =
+            EmbeddedExecutor::from_session(session);
+
+        let _handle = executor
+            .add_action_server::<TestAction, _, _>(
+                "/test_action",
+                |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+                |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                    nros_core::CancelResponse::Ok
+                },
+            )
+            .unwrap();
+
+        // With no pending requests, spin_once should return no work
+        let result = executor.spin_once(10);
+        assert_eq!(result.services_handled, 0);
+        assert!(!result.any_work());
+    }
+
+    // ====================================================================
+    // Action client tests
+    // ====================================================================
+
+    #[test]
+    fn test_add_action_client_registers() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 16384> =
+            EmbeddedExecutor::from_session(session);
+
+        let handle = executor
+            .add_action_client::<TestAction, _>(
+                "/test_action",
+                |_id: &nros_core::GoalId, _feedback: &TestFeedback| {},
+            )
+            .unwrap();
+
+        assert!(executor.entries[0].is_some());
+        assert_eq!(handle.entry_index, 0);
+    }
+
+    #[test]
+    fn test_action_client_spin_once_no_feedback() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 4, 16384> =
+            EmbeddedExecutor::from_session(session);
+
+        let _handle = executor
+            .add_action_client::<TestAction, _>(
+                "/test_action",
+                |_id: &nros_core::GoalId, _feedback: &TestFeedback| {},
+            )
+            .unwrap();
+
+        let result = executor.spin_once(10);
+        assert_eq!(result.subscriptions_processed, 0);
+        assert!(!result.any_work());
+    }
+
+    #[test]
+    fn test_action_server_and_client_coexist() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 8, 65536> =
+            EmbeddedExecutor::from_session(session);
+
+        let _server_handle = executor
+            .add_action_server::<TestAction, _, _>(
+                "/test_action",
+                |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+                |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                    nros_core::CancelResponse::Ok
+                },
+            )
+            .unwrap();
+
+        let _client_handle = executor
+            .add_action_client::<TestAction, _>(
+                "/test_action",
+                |_id: &nros_core::GoalId, _feedback: &TestFeedback| {},
+            )
+            .unwrap();
+
+        // Both registered
+        assert!(executor.entries[0].is_some());
+        assert!(executor.entries[1].is_some());
+
+        let result = executor.spin_once(10);
+        assert!(!result.any_work());
+    }
+
+    #[test]
+    fn test_drop_with_mixed_entries() {
+        let session = MockSession::new();
+        let mut executor: EmbeddedExecutor<MockSession, 8, 65536> =
+            EmbeddedExecutor::from_session(session);
+
+        // Register one of each kind
+        executor
+            .add_subscription::<TestMsg, _>("/sub", |_msg: &TestMsg| {})
+            .unwrap();
+        executor
+            .add_timer(TimerDuration::from_millis(100), || {})
+            .unwrap();
+        let _server = executor
+            .add_action_server::<TestAction, _, _>(
+                "/act",
+                |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+                |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| {
+                    nros_core::CancelResponse::Ok
+                },
+            )
+            .unwrap();
+        let _client = executor
+            .add_action_client::<TestAction, _>(
+                "/act",
+                |_id: &nros_core::GoalId, _fb: &TestFeedback| {},
+            )
+            .unwrap();
+
+        // Drop must clean up all 4 entries without panicking
     }
 }

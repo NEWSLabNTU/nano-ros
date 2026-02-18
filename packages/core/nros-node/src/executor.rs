@@ -70,56 +70,8 @@ use nros_rmw::TransportConfig;
 // SPIN RESULT AND OPTIONS
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Result of a single spin iteration
-///
-/// Contains counts of how many items were processed during `spin_once()`,
-/// plus error counts for transport failures that would otherwise be silently dropped.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct SpinOnceResult {
-    /// Number of subscription callbacks invoked
-    pub subscriptions_processed: usize,
-    /// Number of timers that fired
-    pub timers_fired: usize,
-    /// Number of service requests handled
-    pub services_handled: usize,
-    /// Number of subscription processing errors (e.g., BufferTooSmall, MessageTooLarge)
-    pub subscription_errors: usize,
-    /// Number of service processing errors (e.g., BufferTooSmall)
-    pub service_errors: usize,
-}
-
-impl SpinOnceResult {
-    /// Create a new empty result
-    pub const fn new() -> Self {
-        Self {
-            subscriptions_processed: 0,
-            timers_fired: 0,
-            services_handled: 0,
-            subscription_errors: 0,
-            service_errors: 0,
-        }
-    }
-
-    /// Check if any work was done (errors are not counted as work)
-    pub const fn any_work(&self) -> bool {
-        self.subscriptions_processed > 0 || self.timers_fired > 0 || self.services_handled > 0
-    }
-
-    /// Total number of callbacks successfully invoked (errors excluded)
-    pub const fn total(&self) -> usize {
-        self.subscriptions_processed + self.timers_fired + self.services_handled
-    }
-
-    /// Check if any errors occurred during this spin iteration
-    pub const fn any_errors(&self) -> bool {
-        self.subscription_errors > 0 || self.service_errors > 0
-    }
-
-    /// Total number of errors across all handle types
-    pub const fn total_errors(&self) -> usize {
-        self.subscription_errors + self.service_errors
-    }
-}
+// SpinOnceResult is defined in generic.rs (always available, no feature gate)
+pub use crate::generic::SpinOnceResult;
 
 /// Result from a single period of execution (std only)
 ///
