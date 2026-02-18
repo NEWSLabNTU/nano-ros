@@ -1,7 +1,7 @@
 //! Native Listener Example
 //!
 //! Demonstrates subscribing to messages using nros on native x86.
-//! Uses the unified executor API with callback-based subscriptions.
+//! Uses the Executor API with callback-based subscriptions.
 //!
 //! # Without zenoh feature (simulation mode):
 //! ```bash
@@ -22,87 +22,51 @@
 //! RUST_LOG=debug cargo run -p native-rs-listener --features zenoh
 //! ```
 
-#[cfg(all(feature = "zenoh", feature = "safety-e2e"))]
-use log::info;
 #[cfg(not(feature = "zenoh"))]
 use log::{debug, error, info};
-#[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
-use log::{debug, error, info, trace};
+#[cfg(feature = "zenoh")]
+use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-#[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
-use std::sync::atomic::{AtomicU64, Ordering};
-
-#[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
-static MESSAGE_COUNT: AtomicU64 = AtomicU64::new(0);
-
+/// Safety-e2e listener: validates CRC and tracks sequence gaps.
 #[cfg(all(feature = "zenoh", feature = "safety-e2e"))]
 fn main() {
     env_logger::init();
 
-    info!("nros Native Listener (Zenoh + Safety E2E)");
-    info!("=============================================");
+    info!("nros Native Listener (Zenoh Transport, Safety E2E)");
+    info!("=====================================================");
 
-    // Create context using rclrs-style API
-    let context = match Context::from_env() {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            log::error!("Failed to create context: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let config = ExecutorConfig::from_env().node_name("listener");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
 
-    // Create executor
-    let mut executor = context.create_basic_executor();
-
-    // Create node through executor
-    let mut node = match executor.create_node("listener".namespace("/demo")) {
-        Ok(node) => {
-            info!("Node created: listener in namespace /demo");
-            node
-        }
-        Err(e) => {
-            log::error!("Failed to create node: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Create subscription with safety callback
-    let count = std::sync::atomic::AtomicU64::new(0);
-    match node.create_subscription_with_safety::<Int32, _>(
-        SubscriberOptions::new("/chatter").reliable().keep_last(10),
-        move |msg: &Int32, status: &nros::IntegrityStatus| {
-            let n = count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+    let mut count: u64 = 0;
+    executor
+        .add_subscription_with_safety::<Int32, _>("/chatter", move |msg, status| {
+            count += 1;
             let crc_str = match status.crc_valid {
                 Some(true) => "ok",
                 Some(false) => "FAIL",
-                None => "none",
+                None => "n/a",
             };
             info!(
                 "[{}] Received: data={} [SAFETY] seq_gap={} dup={} crc={}",
-                n, msg.data, status.gap, status.duplicate, crc_str,
+                count, msg.data, status.gap, status.duplicate, crc_str
             );
-        },
-    ) {
-        Ok(_handle) => {
-            info!("Subscriber created for topic: /chatter (safety-e2e mode)");
-        }
-        Err(e) => {
-            log::error!("Failed to create subscriber: {:?}", e);
-            std::process::exit(1);
-        }
-    }
+        })
+        .expect("Failed to add safety subscription");
+    info!("Safety subscriber created for topic: /chatter");
 
-    info!("Waiting for Int32 messages on /chatter (safety-e2e mode)...");
+    info!("Waiting for Int32 messages on /chatter...");
     info!("(Press Ctrl+C to exit)");
 
-    // Run the executor - callbacks will be invoked automatically
-    if let Err(e) = executor.spin(SpinOptions::default()) {
-        log::error!("Spin error: {:?}", e);
+    if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
+        error!("Spin error: {:?}", e);
     }
 }
 
+/// Standard listener with MessageInfo: logs seq/gid at trace level.
+/// When unstable-zenoh-api is enabled, the zero-copy path is used transparently.
 #[cfg(all(feature = "zenoh", not(feature = "safety-e2e")))]
 fn main() {
     env_logger::init();
@@ -110,65 +74,37 @@ fn main() {
     info!("nros Native Listener (Zenoh Transport)");
     info!("==========================================");
 
-    // Create context using rclrs-style API
-    let context = match Context::from_env() {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            error!("Failed to create context: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let config = ExecutorConfig::from_env().node_name("listener");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
 
-    // Create executor - owns and manages nodes
-    let mut executor = context.create_basic_executor();
-
-    // Create node through executor
-    let mut node = match executor.create_node("listener".namespace("/demo")) {
-        Ok(node) => {
-            info!("Node created: listener in namespace /demo");
-            node
-        }
-        Err(e) => {
-            error!("Failed to create node: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    info!("Node: {}/{}", node.namespace(), node.name());
-
-    // Create a subscription with callback for Int32 messages on /chatter topic
-    // Using /chatter to match ROS 2 demo_nodes_cpp talker
-    match node.create_subscription_with_info::<Int32, _>(
-        SubscriberOptions::new("/chatter").reliable().keep_last(10),
-        |msg: &Int32, info: &MessageInfo| {
-            let count = MESSAGE_COUNT.fetch_add(1, Ordering::SeqCst) + 1;
+    let mut count: u64 = 0;
+    executor
+        .add_subscription_with_info::<Int32, _>("/chatter", move |msg, info| {
+            count += 1;
             info!("[{}] Received: data={}", count, msg.data);
-            trace!(
-                "  seq={} gid={:02x}{:02x}{:02x}{:02x} ts={}",
-                info.publication_sequence_number(),
-                info.publisher_gid()[0],
-                info.publisher_gid()[1],
-                info.publisher_gid()[2],
-                info.publisher_gid()[3],
-                info.source_timestamp().to_nanos(),
-            );
-        },
-    ) {
-        Ok(_handle) => {
-            info!("Subscriber created for topic: /chatter");
-            debug!("Message type: {}", Int32::TYPE_NAME);
-        }
-        Err(e) => {
-            error!("Failed to create subscriber: {:?}", e);
-            std::process::exit(1);
-        }
-    }
+            if let Some(info) = info {
+                let gid = info.publisher_gid();
+                log::trace!(
+                    "seq={} gid={:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x}{:02x} ",
+                    info.publication_sequence_number(),
+                    gid[0],
+                    gid[1],
+                    gid[2],
+                    gid[3],
+                    gid[4],
+                    gid[5],
+                    gid[6],
+                    gid[7],
+                );
+            }
+        })
+        .expect("Failed to add subscription");
+    info!("Subscriber created for topic: /chatter");
 
     info!("Waiting for Int32 messages on /chatter...");
     info!("(Press Ctrl+C to exit)");
 
-    // Run the executor - callbacks will be invoked automatically
-    if let Err(e) = executor.spin(SpinOptions::default()) {
+    if let Err(e) = executor.spin_blocking(SpinOptions::default()) {
         error!("Spin error: {:?}", e);
     }
 }

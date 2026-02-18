@@ -784,8 +784,24 @@ impl Session for ShimSession {
     fn create_publisher(
         &mut self,
         topic: &TopicInfo,
-        _qos: QosSettings,
+        qos: QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error> {
+        #[cfg(feature = "std")]
+        {
+            if let Ok(zid) = self.context.zid() {
+                let keyexpr = Ros2Liveliness::publisher_keyexpr::<256>(
+                    topic.domain_id,
+                    &zid,
+                    "/",
+                    "node",
+                    topic,
+                    &qos,
+                );
+                log::debug!("liveliness keyexpr: {}", keyexpr.as_str());
+            }
+        }
+        #[cfg(not(feature = "std"))]
+        let _ = &qos;
         ShimPublisher::new(&self.context, topic)
     }
 
@@ -1425,6 +1441,35 @@ impl Subscriber for ShimSubscriber {
         buffer.has_data.store(false, Ordering::Release);
 
         Ok(true)
+    }
+
+    fn try_recv_raw_with_info(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, Option<nros_core::MessageInfo>)>, Self::Error> {
+        // Delegate to the inherent method which parses the zenoh attachment
+        match self.try_recv_with_info(buf)? {
+            Some((len, zenoh_info)) => {
+                let core_info = zenoh_info.map(|zi| {
+                    let mut info = nros_core::MessageInfo::new();
+                    info.set_publication_sequence_number(zi.sequence_number);
+                    info.set_source_timestamp(nros_core::Time::from_nanos(zi.timestamp_ns));
+                    info.set_publisher_gid(zi.publisher_gid);
+                    info
+                });
+                Ok(Some((len, core_info)))
+            }
+            None => Ok(None),
+        }
+    }
+
+    #[cfg(feature = "safety-e2e")]
+    fn try_recv_validated(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, Self::Error> {
+        // Delegate to the inherent safety validation method
+        ShimSubscriber::try_recv_validated(self, buf)
     }
 
     fn deserialization_error(&self) -> Self::Error {

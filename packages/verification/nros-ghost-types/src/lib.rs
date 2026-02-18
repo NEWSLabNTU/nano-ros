@@ -548,13 +548,13 @@ mod verification {
 ///
 /// Models the result of each layer in the publish path:
 ///
-/// Source (nros-node/src/generic.rs):
+/// Source (nros-node/src/executor/handles.rs):
 /// ```ignore
-/// pub fn publish_with_buffer<const BUF: usize>(...) -> Result<(), EmbeddedNodeError> {
+/// pub fn publish_with_buffer<const BUF: usize>(...) -> Result<(), NodeError> {
 ///     let mut writer = CdrWriter::new_with_header(&mut buffer)
-///         .map_err(|_| EmbeddedNodeError::BufferTooSmall)?;
+///         .map_err(|_| NodeError::BufferTooSmall)?;
 ///     msg.serialize(&mut writer)
-///         .map_err(|_| EmbeddedNodeError::Serialization)?;
+///         .map_err(|_| NodeError::Serialization)?;
 ///     self.publisher.publish_raw(&buffer[..len]).map_err(|e| e.into())
 /// }
 /// ```

@@ -8,7 +8,7 @@
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
-use nros::{EmbeddedConfig, EmbeddedExecutor};
+use nros::{Executor, ExecutorConfig};
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -25,10 +25,10 @@ fn main() {
     );
 
     // Open session
-    let config = EmbeddedConfig::new(&agent_addr)
+    let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_large_msg");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create publisher (Int32 type — we'll publish raw bytes)

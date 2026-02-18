@@ -7,7 +7,7 @@
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use log::{error, info};
-use nros::{EmbeddedConfig, EmbeddedExecutor, EmbeddedNodeError};
+use nros::{ExecutorConfig, Executor, NodeError};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
@@ -23,9 +23,9 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), EmbeddedNodeError> {
-    let config = EmbeddedConfig::new("tcp/192.0.2.2:7447");
-    let mut executor = EmbeddedExecutor::open(&config)?;
+fn run() -> Result<(), NodeError> {
+    let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let mut executor = Executor::<_, 0, 0>::open(&config)?;
     let mut node = executor.create_node("add_two_ints_client")?;
     let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
 

@@ -20,8 +20,6 @@
 //! ```
 
 #[cfg(feature = "zenoh")]
-use nros::TransportConfig;
-#[cfg(feature = "zenoh")]
 use nros::prelude::*;
 #[cfg(feature = "zenoh")]
 use std::time::Instant;
@@ -97,28 +95,17 @@ fn run_talker() {
         actual_size, publish_count, interval_ms
     );
 
-    let locator = std::env::var("ZENOH_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
-    let mode_str = std::env::var("ZENOH_MODE").unwrap_or_else(|_| "client".into());
-    let session_mode = if mode_str == "peer" {
-        SessionMode::Peer
-    } else {
-        SessionMode::Client
-    };
+    let config = ExecutorConfig::from_env().node_name("stress_talker");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
 
-    let transport = TransportConfig {
-        locator: Some(&locator),
-        mode: session_mode,
-        properties: &[],
-    };
-    let config = NodeConfig::new("stress_talker", "/test");
-    let mut node: ConnectedNode =
-        ConnectedNode::new(config, &transport).expect("Failed to create node");
+    let mut node = executor
+        .create_node("stress_talker")
+        .expect("Failed to create node");
 
     let publisher = node
-        .create_publisher::<std_msgs::msg::Int32>(
-            PublisherOptions::new("/stress_test")
-                .reliable()
-                .keep_last(10),
+        .create_publisher_with_qos::<std_msgs::msg::Int32>(
+            "/stress_test",
+            nros::QosSettings::RELIABLE,
         )
         .expect("Failed to create publisher");
 
@@ -174,28 +161,17 @@ fn run_listener() {
         expected_count, timeout_secs, actual_size
     );
 
-    let locator = std::env::var("ZENOH_LOCATOR").unwrap_or_else(|_| "tcp/127.0.0.1:7447".into());
-    let mode_str = std::env::var("ZENOH_MODE").unwrap_or_else(|_| "client".into());
-    let session_mode = if mode_str == "peer" {
-        SessionMode::Peer
-    } else {
-        SessionMode::Client
-    };
+    let config = ExecutorConfig::from_env().node_name("stress_listener");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
 
-    let transport = TransportConfig {
-        locator: Some(&locator),
-        mode: session_mode,
-        properties: &[],
-    };
-    let config = NodeConfig::new("stress_listener", "/test");
-    let mut node: ConnectedNode =
-        ConnectedNode::new(config, &transport).expect("Failed to create node");
+    let mut node = executor
+        .create_node("stress_listener")
+        .expect("Failed to create node");
 
     let mut subscription = node
-        .create_subscriber_sized::<std_msgs::msg::Int32, 65536>(
-            SubscriberOptions::new("/stress_test")
-                .reliable()
-                .keep_last(10),
+        .create_subscription_with_qos::<std_msgs::msg::Int32, 65536>(
+            "/stress_test",
+            nros::QosSettings::RELIABLE,
         )
         .expect("Failed to create subscription");
 
@@ -206,12 +182,11 @@ fn run_listener() {
     let mut received: usize = 0;
     let mut valid: usize = 0;
     let mut invalid: usize = 0;
-    let mut recv_buf = [0u8; 65536];
 
     while received < expected_count && start.elapsed() < timeout {
-        match subscription.try_recv_raw(&mut recv_buf) {
+        match subscription.try_recv_raw() {
             Ok(Some(len)) => {
-                let (seq, is_valid) = validate_payload(&recv_buf[..len], actual_size);
+                let (seq, is_valid) = validate_payload(&subscription.buffer()[..len], actual_size);
                 received += 1;
                 if is_valid {
                     valid += 1;

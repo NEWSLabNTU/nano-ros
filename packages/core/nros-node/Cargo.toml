@@ -8,7 +8,7 @@ description = "Node abstraction for nros"
 [features]
 default = ["std"]
 std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "log"]
-alloc = ["nros-core/alloc"]
+alloc = ["nros-core/alloc", "nros-rmw/alloc"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
@@ -27,10 +27,6 @@ platform-posix = ["nros-rmw-zenoh?/platform-posix", "nros-rmw-xrce?/platform-pos
 platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr", "nros-rmw-xrce?/platform-zephyr"]
 platform-bare-metal = ["nros-rmw-zenoh?/platform-bare-metal", "nros-rmw-xrce?/platform-bare-metal"]
 
-# Executor support
-rtic = ["nros-rmw-zenoh?/rtic"]
-polling = ["nros-rmw-zenoh?/polling"]
-
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 
@@ -38,7 +34,7 @@ safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
 
 # Parameter services (ros2 param CLI support)
-param-services = ["dep:nros-rcl-interfaces", "rmw-zenoh", "alloc"]
+param-services = ["dep:nros-rcl-interfaces", "alloc"]
 
 [dependencies]
 nros-core = { workspace = true, default-features = false }

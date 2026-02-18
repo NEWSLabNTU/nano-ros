@@ -59,10 +59,6 @@ param-services = ["nros-node/param-services"]
 ros-humble = ["nros-node/ros-humble", "nros-rmw-zenoh?/ros-humble"]
 ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]
 
-# Executor modes
-rtic = ["nros-node/rtic"]
-polling = ["nros-node/polling"]
-
 [dependencies]
 # Core functionality (default-features = false for no_std support)
 nros-core = { path = "../nros-core", default-features = false }

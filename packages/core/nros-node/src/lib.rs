@@ -3,79 +3,54 @@
 //! This crate provides the high-level Node API for creating ROS 2 compatible
 //! publishers and subscribers on embedded systems.
 //!
-//! # Recommended: Executor-Based API
+//! # Executor-Based API
 //!
 //! The executor-based API provides a unified interface that works on both
 //! std (desktop) and no_std (embedded) targets.
 //!
-//! ## Desktop Example (BasicExecutor)
+//! ## Desktop Example
 //!
 //! ```ignore
-//! use nros_node::{Context, InitOptions, SpinOptions};
+//! use nros::prelude::*;
 //! use std_msgs::msg::Int32;
 //!
-//! // Create context and executor
-//! let ctx = Context::new(InitOptions::new().locator("tcp/127.0.0.1:7447"))?;
-//! let mut executor = ctx.create_basic_executor();
+//! let config = ExecutorConfig::from_env().node_name("my_node");
+//! let mut executor = Executor::<_, 4, 4096>::open(&config)?;
 //!
-//! // Create node through executor
-//! let node = executor.create_node("my_node")?;
-//!
-//! // Create subscription with callback
-//! node.create_subscription::<Int32>("/topic", |msg| {
+//! // Register subscription callback
+//! executor.add_subscription::<Int32, _>("/topic", |msg: &Int32| {
 //!     println!("Received: {}", msg.data);
 //! })?;
 //!
-//! // Create publisher and publish
-//! let publisher = node.create_publisher::<Int32>("/counter")?;
-//! publisher.publish(&Int32 { data: 42 })?;
-//!
-//! // Blocking spin (processes callbacks)
-//! executor.spin(SpinOptions::default());
+//! // Spin (processes callbacks)
+//! executor.spin_blocking(SpinOptions::default());
 //! ```
 //!
-//! ## Embedded Example (PollingExecutor)
+//! ## Embedded Example
 //!
 //! ```ignore
-//! use nros_node::{Context, InitOptions};
+//! use nros::prelude::*;
 //! use std_msgs::msg::Int32;
 //!
-//! // Create context and polling executor
-//! let ctx = Context::new(InitOptions::new().locator("tcp/192.168.1.1:7447"))?;
-//! let mut executor: PollingExecutor<2> = ctx.create_polling_executor();
+//! let config = ExecutorConfig { locator: "tcp/192.168.1.1:7447", ..Default::default() };
+//! let mut executor = Executor::<_, 4, 4096>::open(&config)?;
 //!
-//! // Create node through executor
-//! let node = executor.create_node("robot_node")?;
-//!
-//! // Create subscription with function pointer callback (no_std compatible)
-//! fn handle_msg(msg: &Int32) {
+//! // Register subscription callback
+//! executor.add_subscription::<Int32, _>("/cmd", |msg: &Int32| {
 //!     // process message...
-//! }
-//! node.create_subscription::<Int32>("/cmd", handle_msg)?;
+//! })?;
 //!
-//! // In your RTIC task or main loop:
+//! // In your main loop:
 //! loop {
-//!     executor.spin_once(10);  // 10ms delta
+//!     executor.spin_once(10);
 //!     // platform delay...
 //! }
 //! ```
 //!
-//! # Legacy: Direct Node Creation
-//!
-//! For simpler use cases or migration from older code:
-//!
-//! ```ignore
-//! use nros_node::{Context, InitOptions};
-//!
-//! let ctx = Context::new(InitOptions::new())?;
-//! let node = ctx.create_node("my_node")?;  // Deprecated
-//! ```
-//!
 //! # Features
 //!
-//! - `std` - Enable standard library support (BasicExecutor, blocking spin)
-//! - `alloc` - Enable heap allocation (closures, dynamic callbacks)
-//! - `zenoh` - Enable zenoh transport integration
+//! - `std` - Enable standard library support (spin_blocking)
+//! - `alloc` - Enable heap allocation (parameter service boxed replies)
 
 #![no_std]
 
@@ -85,38 +60,22 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
-pub mod generic;
+pub mod executor;
 pub mod lifecycle;
 mod node;
 mod publisher;
 mod subscriber;
 pub mod timer;
 
-#[cfg(feature = "rmw-zenoh")]
-mod error;
-
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-mod connected;
-
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-mod context;
-
-#[cfg(feature = "rmw-zenoh")]
-mod options;
-
-pub mod trigger;
-
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub mod executor;
-
-#[cfg(all(feature = "rmw-zenoh", feature = "rtic"))]
-pub mod rtic;
-
 #[cfg(feature = "param-services")]
 pub mod parameter_services;
 
+// Re-export parameter types when param-services is enabled
+#[cfg(feature = "param-services")]
+pub use nros_params::{ParameterDescriptor, ParameterServer, ParameterType, ParameterValue};
+
 // Export standalone node (without transport)
-pub use node::{Node as StandaloneNode, NodeConfig, NodeError};
+pub use node::{Node as StandaloneNode, NodeConfig, NodeError as StandaloneNodeError};
 
 pub use publisher::PublisherHandle;
 pub use subscriber::SubscriberHandle;
@@ -131,76 +90,11 @@ pub use nros_rmw::{
 #[cfg(feature = "safety-e2e")]
 pub use nros_rmw::{IntegrityStatus, SafetyValidator};
 
-// Re-export connected types (requires alloc for Box/Vec)
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use connected::{
-    // Action types
-    ActiveGoal,
-    CompletedGoal,
-    ConnectedActionClient,
-    ConnectedActionServer,
-    // Node types
-    ConnectedNode,
-    ConnectedNodeError,
-    ConnectedPublisher,
-    ConnectedServiceClient,
-    ConnectedServiceServer,
-    ConnectedSubscriber,
-    // Buffer size constants
-    DEFAULT_CANCEL_BUFFER_SIZE,
-    DEFAULT_FEEDBACK_BUFFER_SIZE,
-    DEFAULT_GOAL_BUFFER_SIZE,
-    DEFAULT_MAX_ACTIVE_GOALS,
-    DEFAULT_MAX_TOKENS,
-    DEFAULT_REPLY_BUFFER_SIZE,
-    DEFAULT_REQ_BUFFER_SIZE,
-    DEFAULT_RESULT_BUFFER_SIZE,
-    DEFAULT_RX_BUFFER_SIZE,
-    DEFAULT_STATUS_BUFFER_SIZE,
-    DEFAULT_TX_BUFFER_SIZE,
-    GoalHandle,
-};
-
-// Re-export Promise type when zenoh and std features are enabled
-#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
-pub use connected::Promise;
-
-// Re-export error types (available without alloc)
-#[cfg(feature = "rmw-zenoh")]
-pub use error::RclrsError;
-
-// Re-export context types (rclrs-style API, requires alloc)
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use context::{Context, InitOptions, IntoNodeOptions, Node, NodeNameExt, NodeOptions};
-
-// Re-export executor types (requires alloc for Connected types)
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use executor::{
-    DEFAULT_MAX_NODES, DEFAULT_MAX_SERVICES, DEFAULT_MAX_SUBSCRIPTIONS, Executor,
-    ExecutorTimerCallback, SpinOptions, SubscriptionCallback, SubscriptionCallbackWithInfo,
-    SubscriptionHandle,
-};
-
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use executor::{NodeHandle, NodeState, PollingExecutor, SpinPeriodPollingResult};
-
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc", feature = "safety-e2e"))]
-pub use executor::SubscriptionCallbackWithSafety;
-
-#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
-pub use executor::{BasicExecutor, SpinPeriodResult};
-
-// Re-export options types when zenoh feature is enabled
-#[cfg(feature = "rmw-zenoh")]
-pub use options::{
-    IntoPublisherOptions, IntoSubscriberOptions, PublisherOptions, SubscriberOptions,
-};
-
 // Re-export options for standalone node when zenoh feature is not enabled
 #[cfg(not(feature = "rmw-zenoh"))]
 pub use node::{PublisherOptions, SubscriberOptions};
 
-// Re-export session mode (used by EmbeddedConfig and connected node types)
+// Re-export session mode (used by EmbeddedConfig)
 pub use nros_rmw::SessionMode;
 
 // Re-export timer types
@@ -208,19 +102,29 @@ pub use timer::{
     DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
 
-// Re-export trigger types
-pub use trigger::{Trigger, TriggerCondition, TriggerFn};
-
 // Re-export lifecycle types
 pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use lifecycle::LifecycleNode;
-
 // Re-export generic embedded node types (always available, no feature gate)
-pub use generic::{
+pub use executor::{
     ActionClientHandle, ActionServerHandle, EmbeddedActionClient, EmbeddedActionServer,
-    EmbeddedActiveGoal, EmbeddedCompletedGoal, EmbeddedConfig, EmbeddedExecutor, EmbeddedNode,
-    EmbeddedNodeError, EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer,
-    EmbeddedSubscription, SpinOnceResult,
+    EmbeddedActiveGoal, EmbeddedCompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
+    EmbeddedServiceServer, Executor, ExecutorConfig, Node, NodeError, SpinOnceResult, SpinOptions,
+    SpinPeriodPollingResult, Subscription,
 };
+
+#[cfg(feature = "std")]
+pub use executor::SpinPeriodResult;
+
+// Backward compatibility type aliases (Phase 43.13)
+/// Alias for [`Executor`].
+pub type EmbeddedExecutor<S, const MAX_CBS: usize, const CB_ARENA: usize> =
+    Executor<S, MAX_CBS, CB_ARENA>;
+/// Alias for [`Node`].
+pub type EmbeddedNode<'a, S> = Node<'a, S>;
+/// Alias for [`NodeError`].
+pub type EmbeddedNodeError = NodeError;
+/// Alias for [`ExecutorConfig`].
+pub type EmbeddedConfig<'a> = ExecutorConfig<'a>;
+/// Alias for [`Subscription`].
+pub type EmbeddedSubscription<M, Sub, const RX_BUF: usize> = Subscription<M, Sub, RX_BUF>;

@@ -1,6 +1,6 @@
 //! Native Action Server Example
 //!
-//! Demonstrates a ROS 2 action server using nros.
+//! Demonstrates a ROS 2 action server using nros with the Executor API.
 //! This example implements a Fibonacci action that computes the Fibonacci
 //! sequence up to a given order, sending feedback as it computes.
 //!
@@ -34,41 +34,20 @@ fn main() {
     info!("nros Action Server Example");
     info!("================================");
 
-    // Create context
-    let context = match Context::from_env() {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            error!("Failed to create context: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create executor from environment
+    let config = ExecutorConfig::from_env().node_name("fibonacci_action_server");
+    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
 
-    // Create executor and node
-    let mut executor = context.create_basic_executor();
-    let mut node = match executor.create_node("fibonacci_action_server") {
-        Ok(node) => {
-            info!("Node created: fibonacci_action_server");
-            node
-        }
-        Err(e) => {
-            error!("Failed to create node: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create node and action server
+    let mut node = executor
+        .create_node("fibonacci_action_server")
+        .expect("Failed to create node");
+    info!("Node created: fibonacci_action_server");
 
-    info!("Node: {}", node.name());
-
-    // Create action server
-    let mut server = match node.create_action_server::<Fibonacci>("/fibonacci") {
-        Ok(s) => {
-            info!("Action server created: /fibonacci");
-            s
-        }
-        Err(e) => {
-            error!("Failed to create action server: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let mut server = node
+        .create_action_server::<Fibonacci>("/fibonacci")
+        .expect("Failed to create action server");
+    info!("Action server created: /fibonacci");
 
     info!("Waiting for action goals...");
     info!("(Run native-rs-action-client in another terminal)");
@@ -78,18 +57,15 @@ fn main() {
         // Try to accept new goals
         match server.try_accept_goal(|goal: &FibonacciGoal| {
             info!("Received goal request: order={}", goal.order);
-            // Accept all goals
             GoalResponse::AcceptAndExecute
         }) {
             Ok(Some(goal_id)) => {
                 info!("Goal accepted: {}", goal_id);
 
-                // Get the goal data
                 if let Some(active_goal) = server.get_goal(&goal_id) {
                     let order = active_goal.goal.order;
 
-                    // Set status to executing
-                    let _ = server.set_goal_status(&goal_id, GoalStatus::Executing);
+                    server.set_goal_status(&goal_id, GoalStatus::Executing);
 
                     // Compute Fibonacci sequence with feedback
                     let mut sequence: heapless::Vec<i32, 64> = heapless::Vec::new();
@@ -106,7 +82,6 @@ fn main() {
 
                         let _ = sequence.push(next_val);
 
-                        // Send feedback (clone the partial sequence)
                         let feedback = FibonacciFeedback {
                             sequence: sequence.clone(),
                         };
@@ -117,22 +92,16 @@ fn main() {
                             info!("Feedback: {:?}", feedback.sequence);
                         }
 
-                        // Simulate computation time
                         std::thread::sleep(std::time::Duration::from_millis(500));
                     }
 
-                    // Create result
                     let result = FibonacciResult { sequence };
                     info!("Goal completed: {:?}", result.sequence);
 
-                    // Complete the goal
-                    if let Err(e) = server.complete_goal(&goal_id, GoalStatus::Succeeded, result) {
-                        error!("Failed to complete goal: {:?}", e);
-                    }
+                    server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
                 }
             }
             Ok(None) => {
-                // No goal request available, sleep briefly
                 std::thread::sleep(std::time::Duration::from_millis(100));
             }
             Err(e) => {

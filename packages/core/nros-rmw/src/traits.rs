@@ -733,6 +733,46 @@ pub trait Subscriber {
         }
     }
 
+    /// Try to receive raw data along with message info from the RMW attachment.
+    ///
+    /// Returns `Ok(Some((len, info)))` if data is available, where:
+    /// - `len` is the number of bytes written to the buffer
+    /// - `info` is the parsed message info (if attachment was present)
+    ///
+    /// Default: delegates to `try_recv_raw` with no info.
+    fn try_recv_raw_with_info(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, Option<nros_core::MessageInfo>)>, Self::Error> {
+        self.try_recv_raw(buf).map(|opt| opt.map(|len| (len, None)))
+    }
+
+    /// Try to receive raw data with E2E safety validation (CRC + sequence tracking).
+    ///
+    /// Returns `Ok(Some((len, status)))` if data is available, where:
+    /// - `len` is the number of bytes written to the buffer
+    /// - `status` is the integrity validation result
+    ///
+    /// Default: delegates to `try_recv_raw` with no CRC info.
+    #[cfg(feature = "safety-e2e")]
+    fn try_recv_validated(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<(usize, crate::IntegrityStatus)>, Self::Error> {
+        self.try_recv_raw(buf).map(|opt| {
+            opt.map(|len| {
+                (
+                    len,
+                    crate::IntegrityStatus {
+                        gap: 0,
+                        duplicate: false,
+                        crc_valid: None,
+                    },
+                )
+            })
+        })
+    }
+
     /// Return a deserialization error (implementation specific)
     fn deserialization_error(&self) -> Self::Error;
 }

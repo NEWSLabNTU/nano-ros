@@ -7,7 +7,7 @@
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
-use nros::{EmbeddedConfig, EmbeddedExecutor, GoalResponse, GoalStatus};
+use nros::{Executor, ExecutorConfig, GoalResponse, GoalStatus};
 use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciFeedback, FibonacciResult};
@@ -30,10 +30,10 @@ fn main() {
     );
 
     // Open session
-    let config = EmbeddedConfig::new(&agent_addr)
+    let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_action_server");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create action server
@@ -50,7 +50,7 @@ fn main() {
     let timeout = std::time::Duration::from_secs(timeout_secs);
 
     while start.elapsed() < timeout {
-        let _ = executor.drive_io(100);
+        executor.spin_once(100);
 
         // Handle get_result requests
         let _ = action_server.try_handle_get_result();
@@ -91,7 +91,7 @@ fn main() {
                 let _ = action_server.publish_feedback(&goal_id, &feedback);
 
                 println!("Feedback: step={}, sequence_len={}", i, sequence.len());
-                let _ = executor.drive_io(100);
+                executor.spin_once(100);
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
 

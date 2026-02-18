@@ -107,26 +107,16 @@ fn spawn_publisher(scenario: &str) -> Child {
 /// Publish /bench1/fast at 100Hz and /bench1/slow at 10Hz for 20s.
 #[cfg(feature = "zenoh")]
 fn publish_scenario_1() {
-    let context = Context::from_env().expect("Context");
-    let mut executor = context.create_basic_executor();
-    let mut node = executor
-        .create_node("pub1".namespace("/bench1"))
-        .expect("Node");
+    let config = ExecutorConfig::from_env().node_name("pub1");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut node = executor.create_node("pub1").expect("Node");
 
     let fast_pub = node
-        .create_publisher::<Int32>(
-            PublisherOptions::new("/bench1/fast")
-                .best_effort()
-                .keep_last(1),
-        )
+        .create_publisher::<Int32>("/bench1/fast")
         .expect("Fast publisher");
 
     let slow_pub = node
-        .create_publisher::<Int32>(
-            PublisherOptions::new("/bench1/slow")
-                .best_effort()
-                .keep_last(1),
-        )
+        .create_publisher::<Int32>("/bench1/slow")
         .expect("Slow publisher");
 
     // Wait for subscriber session to register
@@ -157,11 +147,9 @@ fn publish_scenario_1() {
 /// Send 100 blocking service requests to /bench2/add.
 #[cfg(feature = "zenoh")]
 fn client_scenario_2() {
-    let context = Context::from_env().expect("Context");
-    let mut executor = context.create_basic_executor();
-    let mut node = executor
-        .create_node("client2".namespace("/bench2"))
-        .expect("Node");
+    let config = ExecutorConfig::from_env().node_name("client2");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut node = executor.create_node("client2").expect("Node");
 
     let mut client = node
         .create_client::<AddTwoInts>("/bench2/add")
@@ -180,26 +168,16 @@ fn client_scenario_2() {
 /// Publish 2 topics at 50Hz + service requests at 10Hz for 20s.
 #[cfg(feature = "zenoh")]
 fn publish_scenario_3() {
-    let context = Context::from_env().expect("Context");
-    let mut executor = context.create_basic_executor();
-    let mut node = executor
-        .create_node("pub3".namespace("/bench3"))
-        .expect("Node");
+    let config = ExecutorConfig::from_env().node_name("pub3");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut node = executor.create_node("pub3").expect("Node");
 
     let pub_a = node
-        .create_publisher::<Int32>(
-            PublisherOptions::new("/bench3/topic_a")
-                .best_effort()
-                .keep_last(1),
-        )
+        .create_publisher::<Int32>("/bench3/topic_a")
         .expect("Publisher A");
 
     let pub_b = node
-        .create_publisher::<Int32>(
-            PublisherOptions::new("/bench3/topic_b")
-                .best_effort()
-                .keep_last(1),
-        )
+        .create_publisher::<Int32>("/bench3/topic_b")
         .expect("Publisher B");
 
     let mut client = node
@@ -246,7 +224,7 @@ fn scenario_1_asymmetric_subscriptions() {
     println!("\n========================================================================");
     println!("Scenario 1: Asymmetric Subscription Rates");
     println!("  /bench1/fast at 100 Hz, /bench1/slow at 10 Hz");
-    println!("  Executor spin_one_period() at 10ms interval (100 Hz)");
+    println!("  Executor spin_one_period_timed() at 10ms interval (100 Hz)");
     println!("========================================================================\n");
 
     const DURATION_SECS: u64 = 10;
@@ -266,17 +244,11 @@ fn scenario_1_asymmetric_subscriptions() {
     let fl_cb = fast_last.clone();
     let sl_cb = slow_last.clone();
 
-    let context = Context::from_env().expect("Context");
-    let mut executor = context.create_basic_executor();
-    let mut node = executor
-        .create_node("sub1".namespace("/bench1"))
-        .expect("Node");
+    let config = ExecutorConfig::from_env().node_name("sub1");
+    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
 
-    node.create_subscription::<Int32, _>(
-        SubscriberOptions::new("/bench1/fast")
-            .best_effort()
-            .keep_last(1),
-        move |_msg: &Int32| {
+    executor
+        .add_subscription::<Int32, _>("/bench1/fast", move |_msg: &Int32| {
             let n = fast_cb.fetch_add(1, Ordering::Relaxed) + 1;
             let now = Instant::now();
             let mut last = fl_cb.lock().unwrap();
@@ -284,15 +256,11 @@ fn scenario_1_asymmetric_subscriptions() {
                 fi_cb.lock().unwrap().record(now.duration_since(*last));
             }
             *last = now;
-        },
-    )
-    .expect("Fast subscription");
+        })
+        .expect("Fast subscription");
 
-    node.create_subscription::<Int32, _>(
-        SubscriberOptions::new("/bench1/slow")
-            .best_effort()
-            .keep_last(1),
-        move |_msg: &Int32| {
+    executor
+        .add_subscription::<Int32, _>("/bench1/slow", move |_msg: &Int32| {
             let n = slow_cb.fetch_add(1, Ordering::Relaxed) + 1;
             let now = Instant::now();
             let mut last = sl_cb.lock().unwrap();
@@ -300,9 +268,8 @@ fn scenario_1_asymmetric_subscriptions() {
                 si_cb.lock().unwrap().record(now.duration_since(*last));
             }
             *last = now;
-        },
-    )
-    .expect("Slow subscription");
+        })
+        .expect("Slow subscription");
 
     println!("  Waiting for subscription propagation (2s)...");
     std::thread::sleep(Duration::from_secs(2));
@@ -316,7 +283,7 @@ fn scenario_1_asymmetric_subscriptions() {
     println!("  Running measurement ({DURATION_SECS}s)...");
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(DURATION_SECS) {
-        let _ = executor.spin_one_period(SPIN_PERIOD);
+        let _ = executor.spin_one_period_timed(SPIN_PERIOD);
     }
 
     let _ = child.kill();
@@ -363,17 +330,15 @@ fn scenario_2_service_burst() {
     let handled = Arc::new(AtomicU64::new(0));
     let handled_cb = handled.clone();
 
-    let context = Context::from_env().expect("Context");
-    let mut executor = context.create_basic_executor();
-    let mut node = executor
-        .create_node("server2".namespace("/bench2"))
-        .expect("Node");
+    let config = ExecutorConfig::from_env().node_name("server2");
+    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
 
-    node.create_service::<AddTwoInts, _>("/bench2/add", move |req: &AddTwoIntsRequest| {
-        handled_cb.fetch_add(1, Ordering::Relaxed);
-        AddTwoIntsResponse { sum: req.a + req.b }
-    })
-    .expect("Service");
+    executor
+        .add_service::<AddTwoInts, _>("/bench2/add", move |req: &AddTwoIntsRequest| {
+            handled_cb.fetch_add(1, Ordering::Relaxed);
+            AddTwoIntsResponse { sum: req.a + req.b }
+        })
+        .expect("Service");
 
     println!("  Waiting for service registration (2s)...");
     std::thread::sleep(Duration::from_secs(2));
@@ -385,7 +350,7 @@ fn scenario_2_service_burst() {
     println!("  Running executor (15s)...");
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(15) {
-        let _ = executor.spin_one_period(Duration::from_millis(10));
+        let _ = executor.spin_one_period_timed(Duration::from_millis(10));
     }
 
     let _ = child.kill();
@@ -426,37 +391,27 @@ fn scenario_3_mixed_load() {
     let b_cb = b_received.clone();
     let svc_cb = svc_handled.clone();
 
-    let context = Context::from_env().expect("Context");
-    let mut executor = context.create_basic_executor();
-    let mut node = executor
-        .create_node("bench3".namespace("/bench3"))
-        .expect("Node");
+    let config = ExecutorConfig::from_env().node_name("bench3");
+    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
 
-    node.create_subscription::<Int32, _>(
-        SubscriberOptions::new("/bench3/topic_a")
-            .best_effort()
-            .keep_last(1),
-        move |_msg: &Int32| {
+    executor
+        .add_subscription::<Int32, _>("/bench3/topic_a", move |_msg: &Int32| {
             a_cb.fetch_add(1, Ordering::Relaxed);
-        },
-    )
-    .expect("Sub A");
+        })
+        .expect("Sub A");
 
-    node.create_subscription::<Int32, _>(
-        SubscriberOptions::new("/bench3/topic_b")
-            .best_effort()
-            .keep_last(1),
-        move |_msg: &Int32| {
+    executor
+        .add_subscription::<Int32, _>("/bench3/topic_b", move |_msg: &Int32| {
             b_cb.fetch_add(1, Ordering::Relaxed);
-        },
-    )
-    .expect("Sub B");
+        })
+        .expect("Sub B");
 
-    node.create_service::<AddTwoInts, _>("/bench3/add", move |req: &AddTwoIntsRequest| {
-        svc_cb.fetch_add(1, Ordering::Relaxed);
-        AddTwoIntsResponse { sum: req.a + req.b }
-    })
-    .expect("Service");
+    executor
+        .add_service::<AddTwoInts, _>("/bench3/add", move |req: &AddTwoIntsRequest| {
+            svc_cb.fetch_add(1, Ordering::Relaxed);
+            AddTwoIntsResponse { sum: req.a + req.b }
+        })
+        .expect("Service");
 
     println!("  Waiting for propagation (2s)...");
     std::thread::sleep(Duration::from_secs(2));
@@ -469,7 +424,7 @@ fn scenario_3_mixed_load() {
     println!("  Running measurement ({DURATION_SECS}s)...");
     let start = Instant::now();
     while start.elapsed() < Duration::from_secs(DURATION_SECS) {
-        let _ = executor.spin_one_period(SPIN_PERIOD);
+        let _ = executor.spin_one_period_timed(SPIN_PERIOD);
     }
 
     let _ = child.kill();

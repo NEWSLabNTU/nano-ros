@@ -1,10 +1,15 @@
 //! XRCE-DDS talker — publishes Int32 on /chatter via XRCE Agent.
 //!
+//! Uses the timer+spin pattern: registers a timer callback that publishes
+//! messages periodically, then spins the executor.
+//!
 //! Environment variables:
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 
-use nros::{EmbeddedConfig, EmbeddedExecutor};
+use nros::{Executor, ExecutorConfig, TimerDuration};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicI32, Ordering};
 use std_msgs::msg::Int32;
 
 fn main() {
@@ -17,11 +22,11 @@ fn main() {
 
     eprintln!("XRCE Talker: agent={}, domain={}", agent_addr, domain_id);
 
-    // Open session
-    let config = EmbeddedConfig::new(&agent_addr)
+    // Open session with callback arena
+    let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_talker");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create publisher
@@ -33,22 +38,23 @@ fn main() {
         .expect("Failed to create publisher");
     eprintln!("Publisher created on /chatter");
 
-    // Publishing loop
+    // Register timer callback that publishes every 500ms
     println!("Publishing Int32 messages...");
-    for i in 0i32..20 {
-        let msg = Int32 { data: i };
-        match publisher.publish(&msg) {
-            Ok(()) => {
-                println!("Published: {}", i);
+    let counter = Arc::new(AtomicI32::new(0));
+    let counter_cb = counter.clone();
+    executor
+        .add_timer(TimerDuration::from_millis(500), move || {
+            let i = counter_cb.fetch_add(1, Ordering::SeqCst);
+            match publisher.publish(&Int32 { data: i }) {
+                Ok(()) => println!("Published: {}", i),
+                Err(e) => eprintln!("Publish error: {:?}", e),
             }
-            Err(e) => {
-                eprintln!("Publish error: {:?}", e);
-            }
-        }
+        })
+        .expect("Failed to add timer");
 
-        // Drive the XRCE session (flush output)
-        let _ = executor.drive_io(100);
-        std::thread::sleep(std::time::Duration::from_millis(500));
+    // Spin until 20 messages published
+    while counter.load(Ordering::SeqCst) < 20 {
+        executor.spin_once(100);
     }
 
     // Clean up

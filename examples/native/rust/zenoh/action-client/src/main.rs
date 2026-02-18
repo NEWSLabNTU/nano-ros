@@ -1,6 +1,6 @@
 //! Native Action Client Example
 //!
-//! Demonstrates a ROS 2 action client using nros.
+//! Demonstrates a ROS 2 action client using nros with the Executor API.
 //! This example sends a Fibonacci action goal and receives feedback
 //! as the sequence is computed.
 //!
@@ -34,56 +34,34 @@ fn main() {
     info!("nros Action Client Example");
     info!("================================");
 
-    // Create context
-    let context = match Context::from_env() {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            error!("Failed to create context: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create executor from environment
+    let config = ExecutorConfig::from_env().node_name("fibonacci_action_client");
+    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
 
-    // Create executor and node
-    let mut executor = context.create_basic_executor();
-    let mut node = match executor.create_node("fibonacci_action_client") {
-        Ok(node) => {
-            info!("Node created: fibonacci_action_client");
-            node
-        }
-        Err(e) => {
-            error!("Failed to create node: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create node and action client
+    let mut node = executor
+        .create_node("fibonacci_action_client")
+        .expect("Failed to create node");
+    info!("Node created: fibonacci_action_client");
 
-    info!("Node: {}", node.name());
+    let mut client = node
+        .create_action_client::<Fibonacci>("/fibonacci")
+        .expect("Failed to create action client");
+    info!("Action client created: /fibonacci");
 
-    // Create action client
-    let mut client = match node.create_action_client::<Fibonacci>("/fibonacci") {
-        Ok(c) => {
-            info!("Action client created: /fibonacci");
-            c
-        }
-        Err(e) => {
-            error!("Failed to create action client: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Create goal - compute Fibonacci sequence up to order 10
+    // Create goal
     let goal = FibonacciGoal { order: 10 };
     info!("Sending goal: order={}", goal.order);
 
     // Send goal
-    let goal_handle = match client.send_goal(&goal) {
-        Ok(handle) => {
-            if handle.accepted {
-                info!("Goal accepted! ID: {}", handle.goal_id);
-            } else {
-                warn!("Goal was rejected by the server");
-                std::process::exit(1);
-            }
-            handle
+    let goal_id = match client.send_goal(&goal) {
+        Ok(id) => {
+            info!("Goal accepted! ID: {:?}", id);
+            id
+        }
+        Err(NodeError::ServiceRequestFailed) => {
+            warn!("Goal was rejected by the server");
+            std::process::exit(1);
         }
         Err(e) => {
             error!("Failed to send goal: {:?}", e);
@@ -99,20 +77,19 @@ fn main() {
     let timeout = std::time::Duration::from_secs(30);
 
     loop {
-        // Check timeout
         if start_time.elapsed() > timeout {
             error!("Timeout waiting for result");
             break;
         }
 
-        // Try to receive feedback
+        executor.spin_once(100);
+
         match client.try_recv_feedback() {
-            Ok(Some((goal_id, feedback))) => {
-                if goal_id == goal_handle.goal_id {
+            Ok(Some((fid, feedback))) => {
+                if fid == goal_id {
                     feedback_count += 1;
                     info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
 
-                    // Check if we've received all expected feedback (order + 1 values)
                     if feedback.sequence.len() as i32 > goal.order {
                         info!("Received all feedback, action completed!");
                         info!("Final sequence: {:?}", feedback.sequence);
@@ -121,7 +98,6 @@ fn main() {
                 }
             }
             Ok(None) => {
-                // No feedback available, sleep briefly
                 std::thread::sleep(std::time::Duration::from_millis(50));
             }
             Err(e) => {

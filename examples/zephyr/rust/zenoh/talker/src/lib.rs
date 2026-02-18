@@ -1,11 +1,13 @@
 //! nros Zephyr Talker Example (Rust)
 //!
 //! A ROS 2 compatible publisher running on Zephyr RTOS using the nros API.
+//! Uses the timer+spin pattern: registers a timer callback that publishes
+//! messages at 1 Hz, then spins the executor.
 
 #![no_std]
 
 use log::{error, info};
-use nros::{EmbeddedConfig, EmbeddedExecutor, EmbeddedNodeError};
+use nros::{ExecutorConfig, Executor, NodeError, TimerDuration};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
@@ -22,20 +24,21 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), EmbeddedNodeError> {
-    let config = EmbeddedConfig::new("tcp/192.0.2.2:7447");
-    let mut executor = EmbeddedExecutor::open(&config)?;
+fn run() -> Result<(), NodeError> {
+    let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+
     let mut node = executor.create_node("talker")?;
     let publisher = node.create_publisher::<Int32>("/chatter")?;
 
-    info!("Publishing messages...");
-
     let mut counter: i32 = 0;
-
-    loop {
-        publisher.publish(&Int32 { data: counter })?;
+    executor.add_timer(TimerDuration::from_millis(1000), move || {
+        let _ = publisher.publish(&Int32 { data: counter });
         info!("[{}] Published: data={}", counter, counter);
         counter = counter.wrapping_add(1);
-        let _ = executor.drive_io(1000);
-    }
+    })?;
+
+    info!("Publishing messages...");
+
+    executor.spin(10);
 }

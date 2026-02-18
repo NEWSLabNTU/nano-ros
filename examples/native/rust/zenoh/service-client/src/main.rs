@@ -1,6 +1,6 @@
 //! Native Service Client Example
 //!
-//! Demonstrates a ROS 2 service client using nros with the executor API.
+//! Demonstrates a ROS 2 service client using nros with the Executor API.
 //! Service clients use blocking calls, so no spin() is needed.
 //!
 //! # Usage
@@ -33,41 +33,20 @@ fn main() {
     info!("nros Service Client Example");
     info!("================================");
 
-    // Create context using rclrs-style API
-    let context = match Context::from_env() {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            error!("Failed to create context: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create executor from environment
+    let config = ExecutorConfig::from_env().node_name("add_two_ints_client");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
 
-    // Create executor and node through executor
-    let mut executor = context.create_basic_executor();
-    let mut node = match executor.create_node("add_two_ints_client") {
-        Ok(node) => {
-            info!("Node created: add_two_ints_client");
-            node
-        }
-        Err(e) => {
-            error!("Failed to create node: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create node and service client
+    let mut node = executor
+        .create_node("add_two_ints_client")
+        .expect("Failed to create node");
+    info!("Node created: add_two_ints_client");
 
-    info!("Node: {}", node.name());
-
-    // Create service client
-    let mut client = match node.create_client::<AddTwoInts>("/add_two_ints") {
-        Ok(c) => {
-            info!("Service client created for: /add_two_ints");
-            c
-        }
-        Err(e) => {
-            error!("Failed to create service client: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    let mut client = node
+        .create_client::<AddTwoInts>("/add_two_ints")
+        .expect("Failed to create client");
+    info!("Service client created for: /add_two_ints");
 
     // Make several service calls
     let test_cases = [(5, 3), (10, 20), (100, 200), (-5, 10)];

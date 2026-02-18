@@ -75,39 +75,3 @@ fn test_const_generics_compile() {
     let buffer: [u8; CUSTOM_SIZE] = [0u8; CUSTOM_SIZE];
     assert_eq!(buffer.len(), CUSTOM_SIZE);
 }
-
-/// Test RTIC timing constants (only when both zenoh and rtic features enabled)
-#[test]
-#[cfg(all(feature = "rmw-zenoh", feature = "rtic"))]
-fn test_timing_constants() {
-    use nros_node::rtic::{KEEPALIVE_INTERVAL_MS, POLL_INTERVAL_MS};
-
-    // Poll interval should be short (10ms default)
-    assert!(POLL_INTERVAL_MS > 0);
-    assert!(POLL_INTERVAL_MS <= 100);
-
-    // Keepalive should be longer than poll (1000ms default)
-    assert!(KEEPALIVE_INTERVAL_MS > POLL_INTERVAL_MS);
-    assert!(KEEPALIVE_INTERVAL_MS >= 100);
-    assert!(KEEPALIVE_INTERVAL_MS <= 10000);
-}
-
-/// Test default buffer sizes (only when zenoh feature enabled)
-#[test]
-#[cfg(feature = "rmw-zenoh")]
-fn test_default_buffer_sizes() {
-    use nros_node::{
-        DEFAULT_MAX_TOKENS, DEFAULT_REPLY_BUFFER_SIZE, DEFAULT_REQ_BUFFER_SIZE,
-        DEFAULT_RX_BUFFER_SIZE,
-    };
-
-    // RX buffer should be at least 256 bytes
-    assert!(DEFAULT_RX_BUFFER_SIZE >= 256);
-
-    // Request/reply buffers should be reasonable
-    assert!(DEFAULT_REQ_BUFFER_SIZE >= 256);
-    assert!(DEFAULT_REPLY_BUFFER_SIZE >= 256);
-
-    // Max tokens should allow at least a few publishers/subscribers
-    assert!(DEFAULT_MAX_TOKENS >= 4);
-}

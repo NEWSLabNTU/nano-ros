@@ -14,25 +14,22 @@
 //!
 //! ## Quick Start
 //!
-//! Message types are generated from ROS 2 interface packages using `cargo nano-ros generate`.
-//! See the examples for how to set up bindings.
-//!
 //! ```ignore
 //! use nros::prelude::*;
-//! use std_msgs::msg::Int32;  // Generated bindings
+//! use std_msgs::msg::Int32;
 //!
-//! // Create a node
-//! let config = NodeConfig::new("my_node");
-//! let mut node = ConnectedNode::connect(config, "tcp/127.0.0.1:7447")
-//!     .expect("Failed to connect");
+//! let config = ExecutorConfig::from_env().node_name("my_node");
+//! let mut executor = Executor::<_, 4, 4096>::open(&config)?;
 //!
-//! // Create a publisher
-//! let publisher = node.create_publisher::<Int32>("/my_topic")
-//!     .expect("Failed to create publisher");
+//! let mut node = executor.create_node("my_node")?;
+//! let publisher = node.create_publisher::<Int32>("/my_topic")?;
+//! publisher.publish(&Int32 { data: 42 })?;
 //!
-//! // Publish a message
-//! let msg = Int32 { data: 42 };
-//! publisher.publish(&msg).expect("Failed to publish");
+//! executor.add_subscription::<Int32, _>("/topic", |msg: &Int32| {
+//!     println!("Received: {}", msg.data);
+//! })?;
+//!
+//! executor.spin_blocking(SpinOptions::default());
 //! ```
 //!
 //! ## Crate Features
@@ -97,49 +94,16 @@ pub use nros_core::{
 pub use nros_core::heapless;
 
 // Re-export node types
-pub use nros_node::{
-    NodeConfig, PublisherHandle, PublisherOptions, StandaloneNode, SubscriberHandle,
-    SubscriberOptions,
-};
+pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandle};
+
+// Re-export standalone node options (when no RMW backend is active)
+#[cfg(not(feature = "rmw-zenoh"))]
+pub use nros_node::{PublisherOptions, SubscriberOptions};
 
 // Re-export timer types
 pub use nros_node::{
     DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
 };
-
-// Re-export connected node types (requires rmw-zenoh + alloc)
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use nros_node::{
-    ConnectedActionClient, ConnectedActionServer, ConnectedNode, ConnectedNodeError,
-    ConnectedPublisher, ConnectedServiceClient, ConnectedServiceServer, ConnectedSubscriber,
-    DEFAULT_TX_BUFFER_SIZE,
-};
-
-// Re-export error types (available without alloc)
-#[cfg(feature = "rmw-zenoh")]
-pub use nros_node::RclrsError;
-
-// Re-export new rclrs-style API types (requires rmw-zenoh + alloc)
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use nros_node::{
-    Context, InitOptions, IntoNodeOptions, IntoPublisherOptions, IntoSubscriberOptions, Node,
-    NodeNameExt, NodeOptions,
-};
-
-// Re-export executor types (with zenoh and alloc features)
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use nros_node::{
-    Executor, NodeHandle, NodeState, PollingExecutor, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, SubscriptionCallback, SubscriptionCallbackWithInfo,
-};
-
-// Re-export safety-e2e executor callback
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc", feature = "safety-e2e"))]
-pub use nros_node::SubscriptionCallbackWithSafety;
-
-// Re-export BasicExecutor, SpinPeriodResult, and Promise (with zenoh and std features)
-#[cfg(all(feature = "rmw-zenoh", feature = "std"))]
-pub use nros_node::{BasicExecutor, Promise, SpinPeriodResult};
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{
@@ -155,7 +119,7 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 /// Backend-specific internal types.
 ///
 /// These types are implementation details of the transport backends.
-/// Most users should use the high-level APIs (`Context`, `Executor`, `EmbeddedExecutor`, etc.)
+/// Most users should use the high-level APIs (`Executor`, etc.)
 /// instead of these types directly.
 ///
 /// The `Rmw*` type aliases resolve to whichever backend is active at compile time,
@@ -190,7 +154,7 @@ pub mod internals {
 
     /// XRCE-DDS transport initialization helpers.
     ///
-    /// Most users should use `EmbeddedExecutor::open()` which auto-initializes
+    /// Most users should use `Executor::open()` which auto-initializes
     /// the transport. These are provided for advanced use cases.
     #[cfg(feature = "rmw-xrce")]
     pub mod xrce_transport {
@@ -236,7 +200,7 @@ pub mod internals {
     /// Open a new middleware session.
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
-    /// Used by the C API (`nros-c`); Rust users should prefer `Context::new()`.
+    /// Used by the C API (`nros-c`); Rust users should prefer `Executor::open()`.
     ///
     /// - **Zenoh**: `domain_id` and `node_name` are ignored (zenoh uses `locator` and `mode`).
     /// - **XRCE-DDS**: `locator` is the agent address (e.g., `"127.0.0.1:2019"`).
@@ -329,8 +293,16 @@ pub mod internals {
 // Re-export embedded node types (always available, no feature gate)
 pub use nros_node::{
     EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
-    EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher,
-    EmbeddedServiceClient, EmbeddedServiceServer, EmbeddedSubscription,
+    EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorConfig,
+    Node, NodeError, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Subscription,
+};
+
+#[cfg(feature = "std")]
+pub use nros_node::SpinPeriodResult;
+
+// Backward compatibility type aliases (Phase 43.13)
+pub use nros_node::{
+    EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedSubscription,
 };
 
 // Re-export service types
@@ -342,15 +314,9 @@ pub use nros_core::{
     GoalStatusStamped, RosAction,
 };
 
-// Re-export trigger types
-pub use nros_node::{Trigger, TriggerCondition, TriggerFn};
-
 // Re-export lifecycle types (always available, no_std compatible)
 pub use nros_core::{LifecycleState, LifecycleTransition, TransitionResult};
 pub use nros_node::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
-
-#[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-pub use nros_node::LifecycleNode;
 
 // Re-export parameter types
 pub use nros_params::{
@@ -367,38 +333,9 @@ pub use nros_params::{
 pub mod prelude {
     pub use crate::{
         CdrReader, CdrWriter, Deserialize, Logger, MessageInfo, NodeConfig, PublisherHandle,
-        PublisherOptions, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings,
-        RosMessage, RosService, Serialize, StandaloneNode, SubscriberHandle, SubscriberOptions,
-        TopicInfo,
+        QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, RosMessage,
+        RosService, Serialize, StandaloneNode, SubscriberHandle, TopicInfo,
     };
-
-    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-    pub use crate::{
-        ConnectedActionClient, ConnectedActionServer, ConnectedNode, ConnectedNodeError,
-        ConnectedPublisher, ConnectedServiceClient, ConnectedServiceServer, ConnectedSubscriber,
-        SessionMode,
-    };
-
-    // Re-export error types
-    #[cfg(feature = "rmw-zenoh")]
-    pub use crate::RclrsError;
-
-    // Re-export new rclrs-style API
-    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-    pub use crate::{
-        Context, InitOptions, IntoNodeOptions, IntoPublisherOptions, IntoSubscriberOptions, Node,
-        NodeNameExt, NodeOptions,
-    };
-
-    // Re-export executor types
-    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-    pub use crate::{
-        Executor, PollingExecutor, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
-        SubscriptionCallback, SubscriptionCallbackWithInfo,
-    };
-
-    // Re-export trigger types
-    pub use crate::{Trigger, TriggerCondition, TriggerFn};
 
     // Re-export lifecycle types
     pub use crate::{
@@ -406,18 +343,22 @@ pub mod prelude {
         LifecycleTransition, TransitionResult,
     };
 
-    #[cfg(all(feature = "rmw-zenoh", feature = "alloc"))]
-    pub use crate::LifecycleNode;
-
-    // Re-export BasicExecutor, SpinPeriodResult, and Promise
-    #[cfg(all(feature = "rmw-zenoh", feature = "std"))]
-    pub use crate::{BasicExecutor, Promise, SpinPeriodResult};
-
-    // Re-export generic embedded node types
+    // Re-export generic embedded node types (new names + backward compat)
     pub use crate::{
-        EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedPublisher,
-        EmbeddedSubscription,
+        EmbeddedPublisher, Executor, ExecutorConfig, Node, NodeError, SessionMode, SpinOnceResult,
+        SpinOptions, SpinPeriodPollingResult, Subscription,
     };
+    // Backward compat aliases
+    pub use crate::{
+        EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedSubscription,
+    };
+
+    // Standalone node options (no-transport simulation mode)
+    #[cfg(not(feature = "rmw-zenoh"))]
+    pub use crate::{PublisherOptions, SubscriberOptions};
+
+    #[cfg(feature = "std")]
+    pub use crate::SpinPeriodResult;
 
     // Re-export parameter types
     pub use crate::{ParameterServer, ParameterType, ParameterValue};

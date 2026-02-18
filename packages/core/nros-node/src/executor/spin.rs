@@ -1,0 +1,1039 @@
+//! Executor struct and core spin methods.
+
+use core::marker::PhantomData;
+use core::mem::MaybeUninit;
+
+use nros_core::{RosMessage, RosService};
+use nros_rmw::{
+    QosSettings, ServiceInfo, ServiceServerTrait, Session, Subscriber, TopicInfo, TransportError,
+};
+
+use crate::timer::TimerDuration;
+
+use super::arena::{
+    CallbackMeta, EntryKind, SrvEntry, SubEntry, SubInfoEntry, TimerEntry, drop_entry,
+    srv_try_process, sub_info_try_process, sub_try_process, timer_try_process,
+};
+#[cfg(feature = "safety-e2e")]
+use super::arena::{SubSafetyEntry, sub_safety_try_process};
+use super::node::Node;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+use super::types::ExecutorConfig;
+#[cfg(feature = "std")]
+use super::types::SpinOptions;
+use super::types::{NodeError, SpinOnceResult, SpinPeriodPollingResult};
+
+// ============================================================================
+// Executor::open() factory methods
+// ============================================================================
+
+#[cfg(any(feature = "rmw-xrce", feature = "rmw-cffi"))]
+use nros_rmw::Rmw;
+
+#[cfg(feature = "rmw-zenoh")]
+impl<const MAX_CBS: usize, const CB_ARENA: usize>
+    Executor<nros_rmw_zenoh::ShimSession, MAX_CBS, CB_ARENA>
+{
+    /// Open a new executor session using the zenoh-pico backend.
+    ///
+    /// Connects to the zenoh router at the locator specified in `config`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let config = ExecutorConfig::from_env().node_name("my_node");
+    /// let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+    /// ```
+    pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
+        let tc = nros_rmw::TransportConfig {
+            locator: Some(config.locator),
+            mode: config.mode,
+            properties: &[],
+        };
+        let session = nros_rmw_zenoh::ShimSession::new(&tc)
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        Ok(Self::from_session(session))
+    }
+}
+
+#[cfg(feature = "rmw-xrce")]
+impl<const MAX_CBS: usize, const CB_ARENA: usize>
+    Executor<nros_rmw_xrce::XrceSession, MAX_CBS, CB_ARENA>
+{
+    /// Open a new executor session using the XRCE-DDS backend.
+    ///
+    /// Automatically initializes the active POSIX transport (`posix-udp` or
+    /// `posix-serial`) before connecting to the XRCE agent.
+    pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
+        // Auto-init transport based on active feature
+        #[cfg(feature = "posix-udp")]
+        unsafe {
+            nros_rmw_xrce::posix_udp::init_posix_udp_transport(config.locator);
+        }
+        #[cfg(feature = "posix-serial")]
+        unsafe {
+            nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
+        }
+
+        let rmw_config = nros_rmw::RmwConfig {
+            locator: config.locator,
+            mode: config.mode,
+            domain_id: config.domain_id,
+            node_name: config.node_name,
+            namespace: config.namespace,
+        };
+        let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        Ok(Self::from_session(session))
+    }
+}
+
+#[cfg(feature = "rmw-cffi")]
+impl<const MAX_CBS: usize, const CB_ARENA: usize>
+    Executor<nros_rmw_cffi::CffiSession, MAX_CBS, CB_ARENA>
+{
+    /// Open a new executor session using the C FFI backend.
+    pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
+        let rmw_config = nros_rmw::RmwConfig {
+            locator: config.locator,
+            mode: config.mode,
+            domain_id: config.domain_id,
+            node_name: config.node_name,
+            namespace: config.namespace,
+        };
+        let session = nros_rmw_cffi::CffiRmw::open(&rmw_config)
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+        Ok(Self::from_session(session))
+    }
+}
+
+// ============================================================================
+// Executor<S>
+// ============================================================================
+
+/// Backend-agnostic executor that owns a [`Session`].
+///
+/// Provides `create_node()` for entity creation and `drive_io()` for polling.
+///
+/// # Callback Mode
+///
+/// When `MAX_CBS > 0` and `CB_ARENA > 0`, the executor supports arena-based
+/// callback registration via [`add_subscription()`](Self::add_subscription)
+/// and [`add_service()`](Self::add_service), with dispatch via
+/// [`spin_once()`](Self::spin_once). No heap allocation is needed.
+///
+/// When using the defaults (`MAX_CBS = 0`, `CB_ARENA = 0`), both arrays are
+/// zero-sized — zero overhead for existing manual-polling code.
+pub struct Executor<S, const MAX_CBS: usize = 0, const CB_ARENA: usize = 0> {
+    pub(crate) session: S,
+    pub(crate) arena: [MaybeUninit<u8>; CB_ARENA],
+    pub(crate) arena_used: usize,
+    pub(crate) entries: [Option<CallbackMeta>; MAX_CBS],
+    #[cfg(feature = "std")]
+    pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    #[cfg(feature = "param-services")]
+    pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState>>,
+}
+
+impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA> {
+    /// Create an executor from an already-opened session.
+    pub fn from_session(session: S) -> Self {
+        // SAFETY: MaybeUninit::uninit() is always safe; these bytes are only
+        // accessed through properly-typed ptr::write / ptr::read via the
+        // dispatch function pointers stored in `entries`.
+        Self {
+            session,
+            arena: [MaybeUninit::uninit(); CB_ARENA],
+            arena_used: 0,
+            entries: [None; MAX_CBS],
+            #[cfg(feature = "std")]
+            halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            #[cfg(feature = "param-services")]
+            params: None,
+        }
+    }
+
+    /// Create a node on this executor.
+    pub fn create_node(&mut self, name: &str) -> Result<Node<'_, S>, NodeError> {
+        if name.len() > 64 {
+            return Err(NodeError::NameTooLong);
+        }
+
+        let mut node_name = heapless::String::<64>::new();
+        node_name
+            .push_str(name)
+            .map_err(|_| NodeError::NameTooLong)?;
+
+        Ok(Node::new(node_name, &mut self.session, 0))
+    }
+
+    /// Drive transport I/O (poll network, dispatch callbacks).
+    pub fn drive_io(&mut self, timeout_ms: i32) -> Result<(), NodeError> {
+        self.session
+            .drive_io(timeout_ms)
+            .map_err(|_| NodeError::Transport(TransportError::PollFailed))
+    }
+
+    /// Close the underlying session.
+    pub fn close(&mut self) -> Result<(), NodeError> {
+        self.session
+            .close()
+            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))
+    }
+
+    /// Get a reference to the underlying session.
+    pub fn session(&self) -> &S {
+        &self.session
+    }
+
+    /// Get a mutable reference to the underlying session.
+    pub fn session_mut(&mut self) -> &mut S {
+        &mut self.session
+    }
+
+    // ========================================================================
+    // Arena-based callback registration
+    // ========================================================================
+
+    /// Bump-allocate space for `T` in the arena. Returns the byte offset.
+    pub(crate) fn arena_alloc<T>(&mut self) -> Result<usize, NodeError> {
+        let align = core::mem::align_of::<T>();
+        let size = core::mem::size_of::<T>();
+        let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
+        let new_used = aligned_offset + size;
+        if new_used > CB_ARENA {
+            return Err(NodeError::BufferTooSmall);
+        }
+        self.arena_used = new_used;
+        Ok(aligned_offset)
+    }
+
+    /// Find the next free entry slot index.
+    pub(crate) fn next_entry_slot(&self) -> Result<usize, NodeError> {
+        self.entries
+            .iter()
+            .position(|e| e.is_none())
+            .ok_or(NodeError::BufferTooSmall)
+    }
+
+    /// Register a subscription callback with the default 1024-byte receive buffer.
+    ///
+    /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut executor: Executor<_, 4, 4096> = Executor::open(&config)?;
+    /// executor.add_subscription::<Int32, _>("/chatter", |msg: &Int32| {
+    ///     // handle message
+    /// })?;
+    /// loop {
+    ///     executor.spin_once(10);
+    /// }
+    /// ```
+    pub fn add_subscription<M, F>(&mut self, topic_name: &str, callback: F) -> Result<(), NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        self.add_subscription_sized::<M, F, 1024>(topic_name, callback)
+    }
+
+    /// Register a subscription callback with a custom receive buffer size.
+    pub fn add_subscription_sized<M, F, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        type Entry<M, Sub, F, const N: usize> = SubEntry<M, Sub, F, N>;
+
+        let slot = self.next_entry_slot()?;
+        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH);
+        let handle = self
+            .session
+            .create_subscriber(&topic, QosSettings::default())
+            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+
+        let offset = self.arena_alloc::<Entry<M, S::SubscriberHandle, F, RX_BUF>>()?;
+
+        // SAFETY: `arena_alloc` guarantees the offset is within bounds and
+        // properly aligned for `Entry`. We write a fully-initialized value.
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, S::SubscriberHandle, F, RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
+            drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
+        });
+        Ok(())
+    }
+
+    /// Register a subscription callback that receives both the message and
+    /// [`MessageInfo`](nros_core::MessageInfo) (sequence number, publisher GID, timestamps).
+    ///
+    /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// executor.add_subscription_with_info::<Int32, _>("/chatter", |msg, info| {
+    ///     if let Some(info) = info {
+    ///         log::trace!("seq={} gid={:02x?}", info.publication_sequence_number(), &info.publisher_gid()[..4]);
+    ///     }
+    /// })?;
+    /// ```
+    pub fn add_subscription_with_info<M, F>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        self.add_subscription_with_info_sized::<M, F, 1024>(topic_name, callback)
+    }
+
+    /// Register a subscription callback with MessageInfo and a custom receive buffer size.
+    pub fn add_subscription_with_info_sized<M, F, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        type Entry<M, Sub, F, const N: usize> = SubInfoEntry<M, Sub, F, N>;
+
+        let slot = self.next_entry_slot()?;
+        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH);
+        let handle = self
+            .session
+            .create_subscriber(&topic, QosSettings::default())
+            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+
+        let offset = self.arena_alloc::<Entry<M, S::SubscriberHandle, F, RX_BUF>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, S::SubscriberHandle, F, RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_info_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
+            drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
+        });
+        Ok(())
+    }
+
+    /// Register a subscription callback with E2E safety validation (CRC + sequence tracking).
+    ///
+    /// The callback receives the deserialized message and an [`IntegrityStatus`](nros_rmw::IntegrityStatus)
+    /// with CRC validation results and sequence gap/duplicate detection.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// executor.add_subscription_with_safety::<Int32, _>("/chatter", |msg, status| {
+    ///     let crc_str = match status.crc_valid {
+    ///         Some(true) => "ok",
+    ///         Some(false) => "FAIL",
+    ///         None => "n/a",
+    ///     };
+    ///     println!("[SAFETY] seq_gap={} dup={} crc={}", status.gap, status.duplicate, crc_str);
+    /// })?;
+    /// ```
+    #[cfg(feature = "safety-e2e")]
+    pub fn add_subscription_with_safety<M, F>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        self.add_subscription_with_safety_sized::<M, F, 1024>(topic_name, callback)
+    }
+
+    /// Register a safety-validated subscription callback with a custom receive buffer size.
+    #[cfg(feature = "safety-e2e")]
+    pub fn add_subscription_with_safety_sized<M, F, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
+        S::SubscriberHandle: Subscriber,
+    {
+        type Entry<M, Sub, F, const N: usize> = SubSafetyEntry<M, Sub, F, N>;
+
+        let slot = self.next_entry_slot()?;
+        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH);
+        let handle = self
+            .session
+            .create_subscriber(&topic, QosSettings::default())
+            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+
+        let offset = self.arena_alloc::<Entry<M, S::SubscriberHandle, F, RX_BUF>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, S::SubscriberHandle, F, RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_safety_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
+            drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
+        });
+        Ok(())
+    }
+
+    /// Register a service callback with the default 1024-byte buffers.
+    ///
+    /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
+    pub fn add_service<Svc, F>(&mut self, service_name: &str, callback: F) -> Result<(), NodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+        S::ServiceServerHandle: ServiceServerTrait,
+        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+    {
+        self.add_service_sized::<Svc, F, 1024, 1024>(service_name, callback)
+    }
+
+    /// Register a service callback with custom request/reply buffer sizes.
+    pub fn add_service_sized<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        Svc: RosService + 'static,
+        F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
+        S::ServiceServerHandle: ServiceServerTrait,
+        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+    {
+        type Entry<Svc, Srv, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, Srv, F, RQ, RP>;
+
+        let slot = self.next_entry_slot()?;
+        let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
+        let handle = self
+            .session
+            .create_service_server(&info)
+            .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
+
+        let offset =
+            self.arena_alloc::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>()?;
+
+        // SAFETY: same guarantees as add_subscription_sized.
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset)
+                as *mut Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    req_buffer: [0u8; REQ_BUF],
+                    reply_buffer: [0u8; REPLY_BUF],
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Service,
+            try_process: srv_try_process::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
+            drop_fn: drop_entry::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>,
+        });
+        Ok(())
+    }
+
+    // ========================================================================
+    // Timer registration
+    // ========================================================================
+
+    /// Register a repeating timer callback.
+    ///
+    /// The callback fires every `period` milliseconds during [`spin_once()`](Self::spin_once).
+    /// The timer delta is approximated by the `timeout_ms` argument to `spin_once`.
+    pub fn add_timer<F>(&mut self, period: TimerDuration, callback: F) -> Result<(), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<TimerEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
+            core::ptr::write(
+                entry_ptr,
+                TimerEntry {
+                    period_ms: period.as_millis(),
+                    elapsed_ms: 0,
+                    oneshot: false,
+                    fired: false,
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Timer,
+            try_process: timer_try_process::<F>,
+            drop_fn: drop_entry::<TimerEntry<F>>,
+        });
+        Ok(())
+    }
+
+    /// Register a one-shot timer callback.
+    ///
+    /// The callback fires once after `delay` milliseconds, then becomes inert.
+    pub fn add_timer_oneshot<F>(
+        &mut self,
+        delay: TimerDuration,
+        callback: F,
+    ) -> Result<(), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<TimerEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut TimerEntry<F>;
+            core::ptr::write(
+                entry_ptr,
+                TimerEntry {
+                    period_ms: delay.as_millis(),
+                    elapsed_ms: 0,
+                    oneshot: true,
+                    fired: false,
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Timer,
+            try_process: timer_try_process::<F>,
+            drop_fn: drop_entry::<TimerEntry<F>>,
+        });
+        Ok(())
+    }
+
+    // ========================================================================
+    // spin_once
+    // ========================================================================
+
+    /// Drive I/O and dispatch all registered callbacks once.
+    ///
+    /// 1. Calls [`drive_io()`](Self::drive_io) to pump the transport.
+    /// 2. Iterates every registered entry and tries to process one item each.
+    ///
+    /// Returns a [`SpinOnceResult`] with counts of processed items and errors.
+    pub fn spin_once(&mut self, timeout_ms: i32) -> SpinOnceResult {
+        let _ = self.session.drive_io(timeout_ms);
+
+        let delta_ms = timeout_ms.max(0) as u64;
+        let mut result = SpinOnceResult::new();
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+
+        for meta in self.entries.iter().flatten() {
+            // SAFETY: `meta.offset` was set by `arena_alloc` which guarantees
+            // alignment and bounds. The function pointer was set at registration
+            // time with the matching concrete type.
+            let data_ptr = unsafe { arena_ptr.add(meta.offset) };
+            match unsafe { (meta.try_process)(data_ptr, delta_ms) } {
+                Ok(true) => match meta.kind {
+                    EntryKind::Subscription | EntryKind::ActionClient => {
+                        result.subscriptions_processed += 1;
+                    }
+                    EntryKind::Service | EntryKind::ActionServer => {
+                        result.services_handled += 1;
+                    }
+                    EntryKind::Timer => result.timers_fired += 1,
+                },
+                Ok(false) => {}
+                Err(_) => match meta.kind {
+                    EntryKind::Subscription | EntryKind::ActionClient => {
+                        result.subscription_errors += 1;
+                    }
+                    EntryKind::Service | EntryKind::ActionServer => {
+                        result.service_errors += 1;
+                    }
+                    EntryKind::Timer => {} // timers don't produce transport errors
+                },
+            }
+        }
+
+        // Process parameter services (outside the arena)
+        #[cfg(feature = "param-services")]
+        if let Some(params) = &mut self.params {
+            let crate::parameter_services::ParamState { server, services } = &mut **params;
+            if let Ok(n) = services.process_services(server) {
+                result.services_handled += n;
+            }
+        }
+
+        result
+    }
+
+    /// Drive I/O and dispatch callbacks in an infinite loop.
+    ///
+    /// Each iteration calls [`spin_once(timeout_ms)`](Self::spin_once),
+    /// which pumps the transport and dispatches all registered callbacks.
+    ///
+    /// This is the primary run loop for embedded applications:
+    ///
+    /// ```ignore
+    /// let mut executor: Executor<_, 4, 4096> = Executor::open(&config)?;
+    /// executor.add_subscription::<Int32, _>("/topic", |msg| { /* ... */ })?;
+    /// executor.spin(10); // never returns
+    /// ```
+    pub fn spin(&mut self, timeout_ms: i32) -> ! {
+        loop {
+            self.spin_once(timeout_ms);
+        }
+    }
+
+    // ========================================================================
+    // spin_one_period (no_std)
+    // ========================================================================
+
+    /// Process one iteration and return remaining sleep time.
+    ///
+    /// This is `no_std` compatible — the caller is responsible for the actual
+    /// delay using platform-specific sleep.
+    ///
+    /// # Arguments
+    /// * `period_ms` - Target period in milliseconds
+    /// * `elapsed_ms` - Time elapsed since last call (used for timer ticking)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// loop {
+    ///     let r = executor.spin_one_period(10, elapsed_ms);
+    ///     platform_sleep_ms(r.remaining_ms);
+    /// }
+    /// ```
+    pub fn spin_one_period(&mut self, period_ms: u64, elapsed_ms: u64) -> SpinPeriodPollingResult {
+        let result = self.spin_once(elapsed_ms as i32);
+        SpinPeriodPollingResult {
+            work: result,
+            remaining_ms: period_ms.saturating_sub(elapsed_ms),
+        }
+    }
+}
+
+// ============================================================================
+// Parameter services (cfg param-services)
+// ============================================================================
+
+#[cfg(feature = "param-services")]
+impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA>
+where
+    S::ServiceServerHandle: ServiceServerTrait + 'static,
+    <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+{
+    /// Register the 6 ROS 2 parameter services for this node.
+    ///
+    /// Creates service servers for `get_parameters`, `set_parameters`,
+    /// `set_parameters_atomically`, `list_parameters`, `describe_parameters`,
+    /// and `get_parameter_types` under the given node fully-qualified name.
+    ///
+    /// Parameter services are stored outside the arena and don't consume
+    /// `MAX_CBS` slots.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+    /// executor.register_parameter_services("/demo/talker")?;
+    /// executor.declare_parameter("start_value", ParameterValue::Integer(0));
+    /// ```
+    pub fn register_parameter_services(&mut self, node_fqn: &str) -> Result<(), NodeError> {
+        use crate::parameter_services::{
+            DescribeParameters, GetParameterTypes, GetParameters, ListParameters,
+            PARAM_SERVICE_BUFFER_SIZE, ParameterServiceServers, SetParameters,
+            SetParametersAtomically,
+        };
+        use nros_core::RosService;
+
+        type PSrv<Svc, Srv> = super::handles::EmbeddedServiceServer<
+            Svc,
+            Srv,
+            PARAM_SERVICE_BUFFER_SIZE,
+            PARAM_SERVICE_BUFFER_SIZE,
+        >;
+
+        /// Build a service name like `{node_fqn}/{suffix}` and create the server handle.
+        fn create_param_srv<Svc: RosService, S: Session>(
+            session: &mut S,
+            node_fqn: &str,
+            suffix: &str,
+        ) -> Result<S::ServiceServerHandle, NodeError>
+        where
+            S::ServiceServerHandle: ServiceServerTrait,
+            <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+        {
+            let mut name = heapless::String::<256>::new();
+            name.push_str(node_fqn)
+                .map_err(|_| NodeError::NameTooLong)?;
+            name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
+            let info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
+            session
+                .create_service_server(&info)
+                .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
+        }
+
+        let get_handle =
+            create_param_srv::<GetParameters, S>(&mut self.session, node_fqn, "get_parameters")?;
+        let set_handle =
+            create_param_srv::<SetParameters, S>(&mut self.session, node_fqn, "set_parameters")?;
+        let set_atomic_handle = create_param_srv::<SetParametersAtomically, S>(
+            &mut self.session,
+            node_fqn,
+            "set_parameters_atomically",
+        )?;
+        let list_handle =
+            create_param_srv::<ListParameters, S>(&mut self.session, node_fqn, "list_parameters")?;
+        let desc_handle = create_param_srv::<DescribeParameters, S>(
+            &mut self.session,
+            node_fqn,
+            "describe_parameters",
+        )?;
+        let types_handle = create_param_srv::<GetParameterTypes, S>(
+            &mut self.session,
+            node_fqn,
+            "get_parameter_types",
+        )?;
+
+        let servers = ParameterServiceServers::new(
+            PSrv::<GetParameters, _> {
+                handle: get_handle,
+                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            PSrv::<SetParameters, _> {
+                handle: set_handle,
+                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            PSrv::<SetParametersAtomically, _> {
+                handle: set_atomic_handle,
+                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            PSrv::<ListParameters, _> {
+                handle: list_handle,
+                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            PSrv::<DescribeParameters, _> {
+                handle: desc_handle,
+                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+            PSrv::<GetParameterTypes, _> {
+                handle: types_handle,
+                req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
+                _phantom: core::marker::PhantomData,
+            },
+        );
+
+        self.params = Some(alloc::boxed::Box::new(
+            crate::parameter_services::ParamState {
+                server: nros_params::ParameterServer::new(),
+                services: alloc::boxed::Box::new(servers),
+            },
+        ));
+
+        Ok(())
+    }
+
+    /// Declare a parameter with a value. Returns `true` if successful.
+    pub fn declare_parameter(&mut self, name: &str, value: nros_params::ParameterValue) -> bool {
+        if let Some(params) = &mut self.params {
+            params.server.declare(name, value)
+        } else {
+            false
+        }
+    }
+
+    /// Declare a parameter with a value and descriptor. Returns `true` if successful.
+    pub fn declare_parameter_with_descriptor(
+        &mut self,
+        name: &str,
+        value: nros_params::ParameterValue,
+        descriptor: nros_params::ParameterDescriptor,
+    ) -> bool {
+        if let Some(params) = &mut self.params {
+            params
+                .server
+                .declare_with_descriptor(name, value, Some(descriptor))
+        } else {
+            false
+        }
+    }
+
+    /// Get a parameter value by name.
+    pub fn get_parameter(&self, name: &str) -> Option<&nros_params::ParameterValue> {
+        self.params.as_ref()?.server.get(name)
+    }
+
+    /// Get an integer parameter value by name (convenience).
+    pub fn get_parameter_integer(&self, name: &str) -> Option<i64> {
+        self.params.as_ref()?.server.get_integer(name)
+    }
+
+    /// Get a reference to the parameter server (if registered).
+    pub fn params(&self) -> Option<&nros_params::ParameterServer> {
+        self.params.as_ref().map(|p| &p.server)
+    }
+
+    /// Get a mutable reference to the parameter server (if registered).
+    pub fn params_mut(&mut self) -> Option<&mut nros_params::ParameterServer> {
+        self.params.as_mut().map(|p| &mut p.server)
+    }
+}
+
+// ============================================================================
+// std-gated spin and halt methods
+// ============================================================================
+
+#[cfg(feature = "std")]
+impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA> {
+    /// Blocking spin loop with configurable exit conditions.
+    ///
+    /// Runs until one of:
+    /// - [`halt()`](Self::halt) is called (from another thread or signal handler)
+    /// - Timeout expires (if set in options)
+    /// - Max callbacks reached (if set in options)
+    /// - `only_next` is true (single iteration)
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // Spin forever until halted
+    /// executor.spin_blocking(SpinOptions::default())?;
+    ///
+    /// // Spin with 5-second timeout
+    /// executor.spin_blocking(SpinOptions::new().timeout_ms(5000))?;
+    ///
+    /// // Single iteration
+    /// executor.spin_blocking(SpinOptions::spin_once())?;
+    /// ```
+    pub fn spin_blocking(&mut self, opts: SpinOptions) -> Result<(), NodeError> {
+        use std::time::{Duration, Instant};
+
+        const POLL_INTERVAL_MS: i32 = 10;
+
+        let start = Instant::now();
+        let timeout = opts.timeout_ms.map(Duration::from_millis);
+        let mut total_callbacks = 0usize;
+
+        self.halt_flag
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+
+        loop {
+            if self.halt_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
+            if timeout.is_some_and(|t| start.elapsed() >= t) {
+                break;
+            }
+
+            let result = self.spin_once(POLL_INTERVAL_MS);
+            total_callbacks += result.total();
+
+            if opts.max_callbacks.is_some_and(|max| total_callbacks >= max) {
+                break;
+            }
+
+            if opts.only_next {
+                break;
+            }
+
+            std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS as u64));
+        }
+
+        Ok(())
+    }
+
+    /// Execute one period with wall-clock overrun detection.
+    ///
+    /// Calls [`spin_once()`](Self::spin_once), measures wall-clock time, sleeps
+    /// for the remainder if under budget.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let period = std::time::Duration::from_millis(10);
+    /// let result = executor.spin_one_period_timed(period);
+    /// if result.overrun {
+    ///     log::warn!("Period overrun: {:?}", result.elapsed);
+    /// }
+    /// ```
+    pub fn spin_one_period_timed(
+        &mut self,
+        period: std::time::Duration,
+    ) -> super::types::SpinPeriodResult {
+        let start = std::time::Instant::now();
+        let period_ms = period.as_millis() as i32;
+        let result = self.spin_once(period_ms.max(1));
+        let elapsed = start.elapsed();
+        let overrun = elapsed > period;
+        if !overrun {
+            std::thread::sleep(period - elapsed);
+        }
+        super::types::SpinPeriodResult {
+            work: result,
+            overrun,
+            elapsed,
+        }
+    }
+
+    /// Spin at a fixed rate with drift compensation. Blocks until halted.
+    ///
+    /// Uses wall-clock time to maintain the target rate. The next invocation
+    /// time is accumulated (not reset to `now + period`) to prevent cumulative
+    /// drift.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// // 100Hz control loop — blocks until halt() is called
+    /// executor.spin_period(std::time::Duration::from_millis(10))?;
+    /// ```
+    pub fn spin_period(&mut self, period: std::time::Duration) -> Result<(), NodeError> {
+        self.halt_flag
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        let mut next_invocation = std::time::Instant::now() + period;
+
+        loop {
+            if self.halt_flag.load(std::sync::atomic::Ordering::SeqCst) {
+                break;
+            }
+
+            let period_ms = period.as_millis() as i32;
+            self.spin_once(period_ms.max(1));
+
+            let now = std::time::Instant::now();
+            if now < next_invocation {
+                std::thread::sleep(next_invocation - now);
+            }
+            // Accumulate to prevent drift (not = now + period)
+            next_invocation += period;
+        }
+        Ok(())
+    }
+
+    /// Request the executor to stop spinning.
+    ///
+    /// Sets a flag that causes [`spin_blocking()`](Self::spin_blocking) or
+    /// [`spin_period()`](Self::spin_period) to exit on the next iteration.
+    /// Safe to call from another thread or signal handler.
+    pub fn halt(&self) {
+        self.halt_flag
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Check if halt has been requested.
+    pub fn is_halted(&self) -> bool {
+        self.halt_flag.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Get a clone of the halt flag for use in signal handlers or other threads.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let halt = executor.halt_flag();
+    /// std::thread::spawn(move || {
+    ///     std::thread::sleep(Duration::from_secs(5));
+    ///     halt.store(true, Ordering::SeqCst);
+    /// });
+    /// executor.spin_blocking(SpinOptions::default())?;
+    /// ```
+    pub fn halt_flag(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
+        self.halt_flag.clone()
+    }
+}
+
+impl<S, const MAX_CBS: usize, const CB_ARENA: usize> Drop for Executor<S, MAX_CBS, CB_ARENA> {
+    fn drop(&mut self) {
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        for meta in self.entries.iter().flatten() {
+            // SAFETY: each entry was written by `ptr::write` in `add_*` and
+            // has not been dropped yet. `drop_fn` matches the concrete type.
+            unsafe {
+                let data_ptr = arena_ptr.add(meta.offset);
+                (meta.drop_fn)(data_ptr);
+            }
+        }
+    }
+}

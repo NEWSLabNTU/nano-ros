@@ -1,12 +1,15 @@
 //! XRCE-DDS service server — handles AddTwoInts requests via XRCE Agent.
 //!
+//! Uses the callback+spin pattern: registers a service callback, then
+//! spins the executor which drives I/O and dispatches callbacks automatically.
+//!
 //! Environment variables:
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID   — ROS domain ID (default: 0)
 //!   XRCE_TIMEOUT     — Server timeout in seconds (default: 30)
 
-use example_interfaces::srv::AddTwoInts;
-use nros::{EmbeddedConfig, EmbeddedExecutor};
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
+use nros::{Executor, ExecutorConfig};
 use std::time::Instant;
 
 fn main() {
@@ -26,50 +29,33 @@ fn main() {
         agent_addr, domain_id, timeout_secs
     );
 
-    // Open session
-    let config = EmbeddedConfig::new(&agent_addr)
+    // Open session with callback arena
+    let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_service_server");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
-    // Create service server
-    let mut node = executor
-        .create_node("xrce_service_server")
-        .expect("Failed to create node");
-    let mut server = node
-        .create_service::<AddTwoInts>("/add_two_ints")
-        .expect("Failed to create service server");
+    // Register service callback
+    executor
+        .add_service::<AddTwoInts, _>("/add_two_ints", |req| {
+            println!("Received request: a={} b={}", req.a, req.b);
+            let sum = req.a + req.b;
+            println!("Sent reply: sum={}", sum);
+            AddTwoIntsResponse { sum }
+        })
+        .expect("Failed to add service");
     eprintln!("Service server created on /add_two_ints");
 
     // Ready marker for test matching
     println!("Service server ready");
 
-    // Request handling loop
+    // Spin loop with timeout
     let start = Instant::now();
     let timeout = std::time::Duration::from_secs(timeout_secs);
 
     while start.elapsed() < timeout {
-        // Drive the XRCE session
-        let _ = executor.drive_io(100);
-
-        // Try to handle a request
-        match server.handle_request(|req| {
-            println!("Received request: a={} b={}", req.a, req.b);
-            let sum = req.a + req.b;
-            let reply = example_interfaces::srv::AddTwoIntsResponse { sum };
-            println!("Sent reply: sum={}", sum);
-            reply
-        }) {
-            Ok(true) => {
-                // Flush the reply
-                let _ = executor.drive_io(100);
-            }
-            Ok(false) => {}
-            Err(e) => {
-                eprintln!("Handle request error: {:?}", e);
-            }
-        }
+        executor.spin_once(100);
     }
 
     eprintln!("Server timeout, exiting");

@@ -198,8 +198,6 @@ check-workspace-features:
     cargo clippy -p nros --no-default-features --features "rmw-cffi" -- {{CLIPPY_LINTS}}
     @echo "  - transport: sync-critical-section"
     cargo clippy -p nros-rmw --no-default-features --features "sync-critical-section" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
-    @echo "  - node: rtic"
-    cargo clippy -p nros-node --no-default-features --features "rtic" --target thumbv7em-none-eabihf -- {{CLIPPY_LINTS}}
     @echo "  - zenoh transport (std)"
     cargo clippy -p nros-rmw --features "std" -- {{CLIPPY_LINTS}}
     @echo "All feature checks passed!"

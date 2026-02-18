@@ -1,7 +1,7 @@
 //! Native Talker Example
 //!
 //! Demonstrates publishing messages using nros on native x86.
-//! Uses the unified executor API with spin_once() for manual control.
+//! Uses the Executor API with timer callback for periodic publishing.
 //!
 //! # Without zenoh feature (simulation mode):
 //! ```bash
@@ -25,7 +25,7 @@
 #[cfg(not(feature = "zenoh"))]
 use log::{debug, error, info};
 #[cfg(feature = "zenoh")]
-use log::{debug, error, info};
+use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
@@ -36,93 +36,55 @@ fn main() {
     info!("nros Native Talker (Zenoh Transport)");
     info!("=========================================");
 
-    // Create context using rclrs-style API
-    let context = match Context::from_env() {
-        Ok(ctx) => ctx,
-        Err(e) => {
-            error!("Failed to create context: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create executor from environment (reads ZENOH_LOCATOR, ROS_DOMAIN_ID, ZENOH_MODE)
+    let config = ExecutorConfig::from_env().node_name("talker");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
 
-    // Create executor - owns and manages nodes
-    let mut executor = context.create_basic_executor();
-
-    // Create node through executor
-    let mut node = match executor.create_node("talker".namespace("/demo")) {
-        Ok(node) => {
-            info!("Node created: talker in namespace /demo");
-            node
-        }
-        Err(e) => {
-            error!("Failed to create node: {:?}", e);
-            std::process::exit(1);
-        }
-    };
-
-    info!("Node: {}/{}", node.namespace(), node.name());
-
-    // Declare a typed parameter and get its value immediately
-    // (we need to release the borrow before creating publisher)
-    let counter_start_value: i64 = {
-        let param = node
-            .declare_parameter("start_value")
-            .default(0i64)
-            .description("Initial value for the counter")
-            .integer_range(0, 1000, 1)
-            .unwrap()
-            .mandatory()
-            .unwrap();
-        param.get()
-    };
-
-    info!("Counter start value: {}", counter_start_value);
-
-    // Register parameter services so ros2 param list/get/set works
-    if let Err(e) = node.register_parameter_services() {
-        error!("Failed to register parameter services: {:?}", e);
-    } else {
-        info!("Parameter services registered");
+    // Register parameter services (when param-services feature is enabled)
+    #[cfg(feature = "param-services")]
+    {
+        executor
+            .register_parameter_services("/demo/talker")
+            .expect("Failed to register parameter services");
+        executor.declare_parameter("start_value", ParameterValue::Integer(0));
+        info!("Parameter services registered for /demo/talker");
     }
 
-    // Create a publisher for Int32 messages on /chatter topic
-    // Using /chatter to match ROS 2 demo_nodes_cpp talker
-    let publisher = match node
-        .create_publisher::<Int32>(PublisherOptions::new("/chatter").reliable().keep_last(10))
-    {
-        Ok(pub_) => {
-            info!("Publisher created for topic: /chatter");
-            debug!("Message type: {}", Int32::TYPE_NAME);
-            pub_
-        }
-        Err(e) => {
-            error!("Failed to create publisher: {:?}", e);
-            std::process::exit(1);
-        }
-    };
+    // Create publisher
+    let mut node = executor
+        .create_node("talker")
+        .expect("Failed to create node");
+    info!("Node created: talker");
 
+    let publisher = node
+        .create_publisher::<Int32>("/chatter")
+        .expect("Failed to create publisher");
+    info!("Publisher created for topic: /chatter");
     info!("Publishing Int32 messages...");
 
-    // Publishing loop with spin_once() - demonstrates manual control pattern
-    // This pattern is also used in RTIC/embedded where you control the main loop
-    let mut count: i32 = counter_start_value as i32;
+    // Get counter start value from parameters (if available)
+    #[cfg(feature = "param-services")]
+    let counter_start = {
+        let v = executor.get_parameter_integer("start_value").unwrap_or(0) as i32;
+        info!("Counter start value: {}", v);
+        v
+    };
+    #[cfg(not(feature = "param-services"))]
+    let counter_start = 0i32;
+
+    // Manual publish loop: publish first, then pump transport, then sleep.
+    // This ensures the first message is sent immediately (important for tests).
+    let mut count: i32 = counter_start;
     loop {
         let msg = Int32 { data: count };
-
         match publisher.publish(&msg) {
-            Ok(()) => {
-                info!("[{}] Published: data={}", count, msg.data);
-            }
-            Err(e) => {
-                error!("Publish error: {:?}", e);
-            }
+            Ok(()) => info!("[{}] Published: data={}", count, msg.data),
+            Err(e) => error!("Publish error: {:?}", e),
         }
-
         count = count.wrapping_add(1);
 
-        // Process any pending callbacks (timers, subscriptions)
-        // The delta_ms parameter updates internal timers
-        let _result = executor.spin_once(1000); // 1000ms delta
+        // Pump transport I/O
+        executor.spin_once(10);
 
         // Sleep 1 second between messages (like ROS 2 demo)
         std::thread::sleep(std::time::Duration::from_secs(1));

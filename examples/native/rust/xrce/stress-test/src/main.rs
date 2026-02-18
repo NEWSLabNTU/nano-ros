@@ -13,7 +13,7 @@
 //!   EXPECTED_COUNT      — Messages to receive before exiting (default: 50)
 //!   TIMEOUT_SECS        — Listener timeout in seconds (default: 30)
 
-use nros::{EmbeddedConfig, EmbeddedExecutor};
+use nros::{Executor, ExecutorConfig};
 use std::time::Instant;
 
 /// Build a test payload with integrity markers.
@@ -80,8 +80,8 @@ fn run_talker() {
         agent_addr, actual_size, publish_count, interval_ms
     );
 
-    let config = EmbeddedConfig::new(&agent_addr).node_name("xrce_stress_talker");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let config = ExecutorConfig::new(&agent_addr).node_name("xrce_stress_talker");
+    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
 
     let mut node = executor
         .create_node("xrce_stress_talker")
@@ -147,8 +147,8 @@ fn run_listener() {
         agent_addr, expected_count, timeout_secs, actual_size
     );
 
-    let config = EmbeddedConfig::new(&agent_addr).node_name("xrce_stress_listener");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let config = ExecutorConfig::new(&agent_addr).node_name("xrce_stress_listener");
+    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
 
     let mut node = executor
         .create_node("xrce_stress_listener")

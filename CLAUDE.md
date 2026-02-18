@@ -154,7 +154,7 @@ sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat
 
 ## Environment Variables
 
-Examples use `Context::from_env()` for configuration:
+Examples use `ExecutorConfig::from_env()` for configuration:
 
 | Variable | Description | Default |
 |----------|-------------|---------|
@@ -523,7 +523,10 @@ Completed phases (1-15, 17-21, 25-33, 37-42, 44-46) are archived in `docs/roadma
 | 34 | RMW abstraction + XRCE-DDS | In Progress |
 | 35 | Safety hardening & E2E protocol | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
-| 43 | RMW-agnostic embedded API | In Progress (43.2 remaining) |
+| 37 | Executor progress guarantees | Complete |
+| 40 | Large message support | In Progress |
+| 42 | Extensible RMW layer | Complete |
+| 43 | RMW-agnostic embedded API | Complete |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -531,7 +534,11 @@ Completed phases (1-15, 17-21, 25-33, 37-42, 44-46) are archived in `docs/roadma
 
 **Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
 
-**Phase 43**: RMW-agnostic embedded API. 43.1 (factory), 43.3 (typed XRCE actions), 43.4 (example migration), 43.5 (deprecated cleanup) complete. Remaining: 43.2 (arena-based callback storage + `spin_once()` for embedded executor). See `docs/roadmap/phase-43-rmw-agnostic-embedded-api.md`.
+**Phase 37**: Complete. Service buffer stuck-state bug fixed, 8 progress proofs added (92 total Verus proofs), fairness evaluation found no issues (single-slot buffer prevents starvation by design).
+
+**Phase 42**: Complete. Generic `Executor<S>` (formerly `EmbeddedExecutor<S>`) / `Node<S>` replacing duplicated `ShimNode`/`XrceNode`, `drive_io()` on Session trait, C function table adapter (`nros-rmw-cffi`), feature wiring. `shim.rs` and `xrce.rs` deleted, all examples migrated.
+
+**Phase 43**: Complete. RMW-agnostic embedded API. All 13 sub-phases done: factory (`Executor::open()`), arena-based callbacks (`add_subscription`/`add_service`/`add_timer`/`add_action_server`/`add_action_client`), `spin_once()`/`spin_blocking()`/`spin_period()`, executor unification (deleted `PollingExecutor`/`BasicExecutor`/`Context`), type renames (`Executor`, `Node`, `NodeError`, `ExecutorConfig`, `Subscription`). Backward compat aliases provided for old `Embedded*` names.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

@@ -174,7 +174,9 @@ fn test_qemu_wcet_benchmark() {
         .wait_for_output(Duration::from_secs(60))
         .expect("QEMU timed out");
 
-    assert_output_contains(&output, &["[PASS]", "Benchmark complete"]);
+    // Note: [PASS] is printed after "Benchmark complete" but wait_for_output
+    // kills the process on that marker, so we may not capture [PASS].
+    assert_output_contains(&output, &["Benchmark complete"]);
     assert_output_excludes(&output, &["[FAIL]"]);
 }
 

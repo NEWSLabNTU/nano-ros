@@ -6,7 +6,7 @@
 //!   XRCE_REQUEST_COUNT   — Number of requests to send (default: 3)
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-use nros::{EmbeddedConfig, EmbeddedExecutor};
+use nros::{Executor, ExecutorConfig};
 
 fn main() {
     let agent_addr =
@@ -26,10 +26,10 @@ fn main() {
     );
 
     // Open session
-    let config = EmbeddedConfig::new(&agent_addr)
+    let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_service_client");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create service client

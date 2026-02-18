@@ -1,13 +1,13 @@
 //! nros Zephyr Service Server Example (Rust)
 //!
 //! A ROS 2 compatible service server running on Zephyr RTOS using the nros API.
-//! The server responds to AddTwoInts service requests.
+//! Uses the callback+spin pattern for request handling.
 
 #![no_std]
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsResponse};
 use log::{error, info};
-use nros::{EmbeddedConfig, EmbeddedExecutor, EmbeddedNodeError};
+use nros::{ExecutorConfig, Executor, NodeError};
 
 #[unsafe(no_mangle)]
 extern "C" fn rust_main() {
@@ -23,21 +23,18 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), EmbeddedNodeError> {
-    let config = EmbeddedConfig::new("tcp/192.0.2.2:7447");
-    let mut executor = EmbeddedExecutor::open(&config)?;
-    let mut node = executor.create_node("add_two_ints_server")?;
-    let mut service = node.create_service::<AddTwoInts>("/add_two_ints")?;
+fn run() -> Result<(), NodeError> {
+    let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+
+    executor.add_service::<AddTwoInts, _>("/add_two_ints", |req| {
+        let sum = req.a + req.b;
+        info!("{} + {} = {}", req.a, req.b, sum);
+        AddTwoIntsResponse { sum }
+    })?;
 
     info!("Service server ready: /add_two_ints");
     info!("Waiting for service requests...");
 
-    loop {
-        let _ = executor.drive_io(100);
-        let _ = service.handle_request(|req| {
-            let sum = req.a + req.b;
-            info!("{} + {} = {}", req.a, req.b, sum);
-            AddTwoIntsResponse { sum }
-        });
-    }
+    executor.spin(100);
 }

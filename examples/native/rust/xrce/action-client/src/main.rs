@@ -7,7 +7,7 @@
 //!   XRCE_DOMAIN_ID      — ROS domain ID (default: 0)
 //!   XRCE_FIBONACCI_ORDER — Fibonacci sequence order to request (default: 5)
 
-use nros::{EmbeddedConfig, EmbeddedExecutor, EmbeddedNodeError};
+use nros::{Executor, ExecutorConfig, NodeError};
 use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
@@ -30,10 +30,10 @@ fn main() {
     );
 
     // Open session
-    let config = EmbeddedConfig::new(&agent_addr)
+    let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_action_client");
-    let mut executor = EmbeddedExecutor::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create action client
@@ -53,7 +53,7 @@ fn main() {
             println!("Goal accepted: {:?}", id);
             id
         }
-        Err(EmbeddedNodeError::ServiceRequestFailed) => {
+        Err(NodeError::ServiceRequestFailed) => {
             println!("Goal rejected");
             let _ = executor.close();
             return;
@@ -71,7 +71,7 @@ fn main() {
     let feedback_timeout = std::time::Duration::from_secs(15);
 
     while start.elapsed() < feedback_timeout {
-        let _ = executor.drive_io(100);
+        executor.spin_once(100);
 
         match action_client.try_recv_feedback() {
             Ok(Some((_fid, feedback))) => {
@@ -96,7 +96,7 @@ fn main() {
 
     // Small delay to let server finish storing result
     for _ in 0..5 {
-        let _ = executor.drive_io(100);
+        executor.spin_once(100);
     }
 
     // Get result

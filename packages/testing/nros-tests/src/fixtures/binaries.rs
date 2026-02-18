@@ -242,11 +242,16 @@ pub fn build_example(
     Ok(binary_path)
 }
 
-/// Build native-rs-talker with zenoh feature (cached)
+/// Build native-rs-talker with zenoh + param-services features (cached)
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
         .get_or_try_init(|| {
-            build_example("native/rust/zenoh/talker", "talker", Some(&["zenoh"]), None)
+            build_example(
+                "native/rust/zenoh/talker",
+                "talker",
+                Some(&["zenoh", "param-services"]),
+                None,
+            )
         })
         .map(|p| p.as_path())
 }

@@ -205,50 +205,34 @@ fn main() {
     #[cfg(feature = "zenoh")]
     {
         use nros::prelude::*;
-        use std::sync::atomic::{AtomicU64, Ordering};
         use std::time::Duration;
-
-        static MSG_COUNT: AtomicU64 = AtomicU64::new(0);
 
         println!("Testing pub/sub with custom messages:");
 
-        let context = match Context::from_env() {
-            Ok(ctx) => ctx,
-            Err(e) => {
-                eprintln!("  Failed to create context: {:?}", e);
-                eprintln!("  Make sure zenohd is running: zenohd --listen tcp/127.0.0.1:7447");
-                return;
-            }
-        };
-        info!("Context created, domain_id: {}", context.domain_id());
+        let config = ExecutorConfig::from_env().node_name("custom_msg_node");
+        let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+        info!("Session created");
 
-        // Create executor
-        let mut executor = context.create_basic_executor();
-
-        // Create node through executor
+        // Create publisher
         let mut node = executor
             .create_node("custom_msg_node")
-            .expect("create node");
-        info!("Node created: {}/{}", node.namespace(), node.name());
-
-        // Create publisher for SensorReading
+            .expect("Failed to create node");
         let publisher = node
-            .create_publisher::<SensorReading>(PublisherOptions::new("/sensor_data"))
-            .expect("create publisher");
+            .create_publisher::<SensorReading>("/sensor_data")
+            .expect("Failed to create publisher");
         info!("Publisher created for: /sensor_data");
 
-        // Create subscriber for SensorReading
-        node.create_subscription::<SensorReading, _>(
-            SubscriberOptions::new("/sensor_data"),
-            move |msg: &SensorReading| {
-                MSG_COUNT.fetch_add(1, Ordering::SeqCst);
+        // Register subscription callback
+        let mut msg_count: u64 = 0;
+        executor
+            .add_subscription::<SensorReading, _>("/sensor_data", move |msg: &SensorReading| {
+                msg_count += 1;
                 println!(
                     "  Received: sensor_id={}, temp={:.1}, humidity={:.1}",
                     msg.sensor_id, msg.temperature, msg.humidity
                 );
-            },
-        )
-        .expect("create subscriber");
+            })
+            .expect("Failed to add subscription");
         info!("Subscriber created for: /sensor_data");
 
         println!();
@@ -271,19 +255,12 @@ fn main() {
                 reading.sensor_id, reading.temperature, reading.humidity
             );
 
-            // Process callbacks
-            let _ = executor.spin_once(100);
-
-            // Give time for message to be received
+            executor.spin_once(100);
             std::thread::sleep(Duration::from_millis(100));
         }
 
-        // Process any remaining callbacks
-        let _ = executor.spin_once(500);
-
-        let received = MSG_COUNT.load(Ordering::SeqCst);
-        println!();
-        println!("Received {} messages", received);
+        // Process remaining callbacks
+        executor.spin_once(500);
     }
 
     #[cfg(not(feature = "zenoh"))]

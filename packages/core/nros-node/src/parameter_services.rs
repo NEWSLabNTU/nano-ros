@@ -16,18 +16,14 @@
 //! # Example
 //!
 //! ```ignore
-//! use nros_node::ConnectedNode;
+//! use nros::prelude::*;
 //!
-//! let mut node = ConnectedNode::new("my_node", &session)?;
+//! let config = ExecutorConfig::from_env().node_name("my_node");
+//! let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+//! let mut node = executor.create_node("my_node")?;
 //!
-//! // Declare some parameters
-//! node.declare_parameter("speed", 1.0);
-//! node.declare_parameter("name", "robot1");
-//!
-//! // Register parameter services (done automatically if enabled)
-//! node.register_parameter_services()?;
-//!
-//! // Now `ros2 param list /my_node` will show the parameters
+//! // Parameter services can be integrated via the executor
+//! // and respond to `ros2 param list /my_node` etc.
 //! ```
 
 // Note: Module is already gated by #[cfg(feature = "param-services")] in lib.rs
@@ -474,7 +470,8 @@ pub fn handle_get_parameter_types(
 // PARAMETER SERVICE SERVERS
 // ═══════════════════════════════════════════════════════════════════════════
 
-use crate::connected::{ConnectedNodeError, ConnectedServiceServer};
+use crate::executor::{EmbeddedServiceServer, NodeError};
+use nros_rmw::{ServiceServerTrait, TransportError};
 
 /// Buffer size for parameter service request/reply serialization.
 ///
@@ -482,74 +479,41 @@ use crate::connected::{ConnectedNodeError, ConnectedServiceServer};
 /// parameter data is much smaller than in-memory heapless structs.
 pub const PARAM_SERVICE_BUFFER_SIZE: usize = 4096;
 
+/// Type alias for a parameter service server with standard buffer sizes.
+type ParamServer<Svc, Srv> =
+    EmbeddedServiceServer<Svc, Srv, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>;
+
 /// Holds the 6 ROS 2 parameter service servers for a node.
 ///
 /// These servers handle `ros2 param` CLI interactions:
 /// - `get_parameters` / `set_parameters` / `set_parameters_atomically`
 /// - `list_parameters` / `describe_parameters` / `get_parameter_types`
 ///
+/// Generic over the service server handle type `Srv` (e.g., `ShimServiceServer`).
+///
 /// Boxed when stored in executor to avoid 48KB+ on the stack
 /// (6 servers × 8KB buffers each).
-pub struct ParameterServiceServers {
-    get_parameters:
-        ConnectedServiceServer<GetParameters, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>,
-    set_parameters:
-        ConnectedServiceServer<SetParameters, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>,
-    set_parameters_atomically: ConnectedServiceServer<
-        SetParametersAtomically,
-        PARAM_SERVICE_BUFFER_SIZE,
-        PARAM_SERVICE_BUFFER_SIZE,
-    >,
-    list_parameters: ConnectedServiceServer<
-        ListParameters,
-        PARAM_SERVICE_BUFFER_SIZE,
-        PARAM_SERVICE_BUFFER_SIZE,
-    >,
-    describe_parameters: ConnectedServiceServer<
-        DescribeParameters,
-        PARAM_SERVICE_BUFFER_SIZE,
-        PARAM_SERVICE_BUFFER_SIZE,
-    >,
-    get_parameter_types: ConnectedServiceServer<
-        GetParameterTypes,
-        PARAM_SERVICE_BUFFER_SIZE,
-        PARAM_SERVICE_BUFFER_SIZE,
-    >,
+pub struct ParameterServiceServers<Srv> {
+    get_parameters: ParamServer<GetParameters, Srv>,
+    set_parameters: ParamServer<SetParameters, Srv>,
+    set_parameters_atomically: ParamServer<SetParametersAtomically, Srv>,
+    list_parameters: ParamServer<ListParameters, Srv>,
+    describe_parameters: ParamServer<DescribeParameters, Srv>,
+    get_parameter_types: ParamServer<GetParameterTypes, Srv>,
 }
 
-impl ParameterServiceServers {
+impl<Srv: ServiceServerTrait> ParameterServiceServers<Srv>
+where
+    Srv::Error: From<TransportError>,
+{
     /// Create a new set of parameter service servers
     pub(crate) fn new(
-        get_parameters: ConnectedServiceServer<
-            GetParameters,
-            PARAM_SERVICE_BUFFER_SIZE,
-            PARAM_SERVICE_BUFFER_SIZE,
-        >,
-        set_parameters: ConnectedServiceServer<
-            SetParameters,
-            PARAM_SERVICE_BUFFER_SIZE,
-            PARAM_SERVICE_BUFFER_SIZE,
-        >,
-        set_parameters_atomically: ConnectedServiceServer<
-            SetParametersAtomically,
-            PARAM_SERVICE_BUFFER_SIZE,
-            PARAM_SERVICE_BUFFER_SIZE,
-        >,
-        list_parameters: ConnectedServiceServer<
-            ListParameters,
-            PARAM_SERVICE_BUFFER_SIZE,
-            PARAM_SERVICE_BUFFER_SIZE,
-        >,
-        describe_parameters: ConnectedServiceServer<
-            DescribeParameters,
-            PARAM_SERVICE_BUFFER_SIZE,
-            PARAM_SERVICE_BUFFER_SIZE,
-        >,
-        get_parameter_types: ConnectedServiceServer<
-            GetParameterTypes,
-            PARAM_SERVICE_BUFFER_SIZE,
-            PARAM_SERVICE_BUFFER_SIZE,
-        >,
+        get_parameters: ParamServer<GetParameters, Srv>,
+        set_parameters: ParamServer<SetParameters, Srv>,
+        set_parameters_atomically: ParamServer<SetParametersAtomically, Srv>,
+        list_parameters: ParamServer<ListParameters, Srv>,
+        describe_parameters: ParamServer<DescribeParameters, Srv>,
+        get_parameter_types: ParamServer<GetParameterTypes, Srv>,
     ) -> Self {
         Self {
             get_parameters,
@@ -567,10 +531,7 @@ impl ParameterServiceServers {
     /// `ParameterServer` while `self` provides access to the service servers.
     ///
     /// Returns the number of requests handled.
-    pub(crate) fn process(
-        &mut self,
-        server: &mut ParameterServer,
-    ) -> Result<usize, ConnectedNodeError> {
+    pub(crate) fn process(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError> {
         let mut count = 0;
 
         if self
@@ -617,6 +578,37 @@ impl ParameterServiceServers {
 
         Ok(count)
     }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// TYPE-ERASED PARAMETER PROCESSING (for Executor integration)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Type-erased trait for processing parameter services inside `spin_once()`.
+///
+/// The concrete `ParameterServiceServers<Srv>` holds generic service handles,
+/// but `Executor::spin_once()` is `impl<S: Session>` without `ServiceServerTrait`
+/// bounds. This trait erases those bounds so the executor can call `process()`
+/// through a `Box<dyn ParamServiceProcessor>`.
+pub(crate) trait ParamServiceProcessor {
+    fn process_services(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError>;
+}
+
+impl<Srv: ServiceServerTrait> ParamServiceProcessor for ParameterServiceServers<Srv>
+where
+    Srv::Error: From<TransportError>,
+{
+    fn process_services(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError> {
+        self.process(server)
+    }
+}
+
+/// Holds parameter server state for the executor.
+///
+/// Stored outside the arena so it doesn't consume `MAX_CBS` slots.
+pub(crate) struct ParamState {
+    pub(crate) server: ParameterServer,
+    pub(crate) services: Box<dyn ParamServiceProcessor>,
 }
 
 #[cfg(test)]
