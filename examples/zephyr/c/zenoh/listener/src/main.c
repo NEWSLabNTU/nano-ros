@@ -1,43 +1,51 @@
 /**
  * @file main.c
- * @brief Zephyr C listener example using nros BSP
+ * @brief Zephyr C listener example using nros-c API
  *
- * This example demonstrates using nros BSP for subscriptions on Zephyr.
- * The BSP handles zenoh initialization and ROS 2 keyexpr formatting.
+ * This example demonstrates subscribing to Int32 messages on Zephyr RTOS
+ * using the nros C API (nros/init.h, nros/node.h, nros/subscription.h,
+ * nros/executor.h). The nros module handles zenoh initialization and
+ * platform support.
  */
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
 
-#include "nano_ros_bsp_zephyr.h"
+#include <nros/init.h>
+#include <nros/node.h>
+#include <nros/subscription.h>
+#include <nros/executor.h>
+#include <nros/types.h>
+#include <zpico_zephyr.h>
 
-LOG_MODULE_REGISTER(nano_ros_listener, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(nros_listener, LOG_LEVEL_INF);
 
 /* ============================================================================
- * std_msgs/Int32 message support
+ * std_msgs/Int32 message support (hand-deserialized CDR)
  * ============================================================================ */
 
-typedef struct std_msgs_Int32 {
-    int32_t data;
-} std_msgs_Int32;
+/** Message type info for std_msgs/Int32 */
+static const nano_ros_message_type_t INT32_TYPE = {
+    .type_name = "std_msgs::msg::dds_::Int32_",
+    .type_hash = "TypeHashNotSupported",
+    .serialized_size_max = 8,
+};
 
 /**
- * Deserialize from CDR format
- * CDR format for Int32: 4-byte header + 4-byte int32
+ * Deserialize Int32 from CDR format (4-byte header + 4-byte int32)
  */
-static int32_t std_msgs_Int32_deserialize(std_msgs_Int32 *msg, const uint8_t *buffer, size_t buffer_size)
+static int32_t deserialize_int32(const uint8_t *buffer, size_t buffer_size)
 {
     if (buffer_size < 8) {
-        return -1;
+        return 0;
     }
     /* Skip CDR header (4 bytes), read little-endian int32 */
-    msg->data = (int32_t)(
+    return (int32_t)(
         buffer[4] |
         ((uint32_t)buffer[5] << 8) |
         ((uint32_t)buffer[6] << 16) |
         ((uint32_t)buffer[7] << 24)
     );
-    return 0;
 }
 
 /* ============================================================================
@@ -46,17 +54,13 @@ static int32_t std_msgs_Int32_deserialize(std_msgs_Int32 *msg, const uint8_t *bu
 
 static int message_count = 0;
 
-static void on_message(const uint8_t *data, size_t len, void *user_data)
+static void on_message(const uint8_t *data, size_t len, void *context)
 {
-    (void)user_data;
+    (void)context;
 
-    std_msgs_Int32 msg;
-    if (std_msgs_Int32_deserialize(&msg, data, len) == 0) {
-        message_count++;
-        LOG_INF("Received [%d]: %d", message_count, msg.data);
-    } else {
-        LOG_ERR("Failed to deserialize message (len=%zu)", len);
-    }
+    int32_t value = deserialize_int32(data, len);
+    message_count++;
+    LOG_INF("Received [%d]: %d", message_count, value);
 }
 
 /* ============================================================================
@@ -65,47 +69,69 @@ static void on_message(const uint8_t *data, size_t len, void *user_data)
 
 int main(void)
 {
-    LOG_INF("nros Zephyr C Listener (BSP)");
-    LOG_INF("================================");
+    LOG_INF("nros Zephyr C Listener");
+    LOG_INF("=======================");
 
-    /* Initialize BSP (uses Kconfig for zenoh locator) */
-    nano_ros_bsp_context_t ctx;
-    int32_t ret = nano_ros_bsp_init(&ctx);
-    if (ret != NROS_BSP_OK) {
-        LOG_ERR("BSP init failed: %d", ret);
+    /* Wait for network interface */
+    if (zpico_zephyr_wait_network(CONFIG_NROS_INIT_DELAY_MS) != 0) {
+        LOG_ERR("Network not ready");
+        return 1;
+    }
+
+    /* Initialize support context */
+    nano_ros_support_t support = nano_ros_support_get_zero_initialized();
+    nano_ros_ret_t ret = nano_ros_support_init(
+        &support,
+        CONFIG_NROS_ZENOH_LOCATOR,
+        CONFIG_NROS_DOMAIN_ID);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Support init failed: %d", ret);
         return 1;
     }
 
     /* Create node */
-    nros_node_t node;
-    ret = nano_ros_bsp_create_node(&ctx, &node, "zephyr_listener");
-    if (ret != NROS_BSP_OK) {
-        LOG_ERR("Node creation failed: %d", ret);
+    nros_node_t node = nros_node_get_zero_initialized();
+    ret = nros_node_init(&node, &support, "zephyr_listener", "/");
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Node init failed: %d", ret);
         return 1;
     }
 
-    /* Create subscriber */
-    nano_ros_subscriber_t sub;
-    ret = nano_ros_bsp_create_subscriber(
-        &node, &sub,
-        "/chatter", "std_msgs::msg::dds_::Int32_",
-        on_message, NULL
-    );
-    if (ret != NROS_BSP_OK) {
-        LOG_ERR("Subscriber creation failed: %d", ret);
+    /* Create subscription */
+    nano_ros_subscription_t sub = nano_ros_subscription_get_zero_initialized();
+    ret = nano_ros_subscription_init(
+        &sub, &node, &INT32_TYPE, "/chatter",
+        on_message, NULL);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Subscription init failed: %d", ret);
+        return 1;
+    }
+
+    /* Create executor and add subscription */
+    nano_ros_executor_t executor = nano_ros_executor_get_zero_initialized();
+    ret = nano_ros_executor_init(&executor, &support, 1);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Executor init failed: %d", ret);
+        return 1;
+    }
+
+    ret = nano_ros_executor_add_subscription(
+        &executor, &sub, NROS_EXECUTOR_ON_NEW_DATA);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Failed to add subscription to executor: %d", ret);
         return 1;
     }
 
     LOG_INF("Waiting for messages...");
 
-    /* Main loop - messages delivered via callback */
-    while (1) {
-        nano_ros_bsp_spin_once(&ctx, K_MSEC(100));
-    }
+    /* Spin forever — executor dispatches callbacks */
+    nano_ros_executor_spin(&executor);
 
     /* Cleanup (unreachable in this example) */
-    nano_ros_bsp_destroy_subscriber(&sub);
-    nano_ros_bsp_shutdown(&ctx);
+    nano_ros_executor_fini(&executor);
+    nano_ros_subscription_fini(&sub);
+    nros_node_fini(&node);
+    nano_ros_support_fini(&support);
 
     return 0;
 }

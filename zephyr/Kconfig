@@ -1,0 +1,165 @@
+# nros Zephyr Module Configuration
+# Copyright (c) 2024 nros contributors
+# SPDX-License-Identifier: MIT OR Apache-2.0
+
+menuconfig NROS
+    bool "nros ROS 2 client library"
+    depends on ZENOH_PICO
+    help
+      Enable nros, a lightweight ROS 2 client library for embedded systems.
+      This module compiles the zenoh shim and platform support centrally,
+      eliminating per-example boilerplate.
+
+if NROS
+
+# =============================================================================
+# API Selection
+# =============================================================================
+
+choice NROS_API
+    prompt "nros API language"
+    default NROS_RUST_API
+
+config NROS_C_API
+    bool "C API (nros-c)"
+    help
+      Build and link the nros C API library (libnros_c.a).
+      Uses nano_ros_* functions from nros/init.h, nros/node.h, etc.
+
+config NROS_RUST_API
+    bool "Rust API (nros crate)"
+    depends on RUST
+    help
+      Use the nros Rust crate via rust_cargo_application().
+      Kconfig values are bridged to Cargo env vars automatically.
+
+endchoice
+
+# =============================================================================
+# Transport Tuning (zpico-sys)
+# =============================================================================
+
+config NROS_MAX_PUBLISHERS
+    int "Maximum concurrent publishers"
+    default 8
+    help
+      Maximum number of concurrent zenoh publishers in the shim layer.
+      Maps to ZPICO_MAX_PUBLISHERS.
+
+config NROS_MAX_SUBSCRIBERS
+    int "Maximum concurrent subscribers"
+    default 8
+    help
+      Maximum number of concurrent zenoh subscribers in the shim layer.
+      Maps to ZPICO_MAX_SUBSCRIBERS.
+
+config NROS_MAX_QUERYABLES
+    int "Maximum concurrent queryables"
+    default 8
+    help
+      Maximum number of concurrent zenoh queryables (service servers) in the shim.
+      Maps to ZPICO_MAX_QUERYABLES.
+
+config NROS_MAX_LIVELINESS
+    int "Maximum concurrent liveliness tokens"
+    default 16
+    help
+      Maximum number of concurrent liveliness tokens in the shim layer.
+      Maps to ZPICO_MAX_LIVELINESS.
+
+config NROS_FRAG_MAX_SIZE
+    int "Maximum reassembled message size"
+    default 2048
+    help
+      Maximum reassembled message size after defragmentation (bytes).
+      Maps to ZPICO_FRAG_MAX_SIZE.
+
+config NROS_BATCH_UNICAST_SIZE
+    int "Maximum unicast batch size"
+    default 1024
+    help
+      Maximum unicast batch size before fragmentation (bytes).
+      Maps to ZPICO_BATCH_UNICAST_SIZE.
+
+config NROS_SUBSCRIBER_BUFFER_SIZE
+    int "Per-subscriber static buffer size"
+    default 1024
+    help
+      Size of the static buffer for each subscriber slot (bytes).
+      Maps to ZPICO_SUBSCRIBER_BUFFER_SIZE.
+
+config NROS_SERVICE_BUFFER_SIZE
+    int "Per-service static buffer size"
+    default 1024
+    help
+      Size of the static buffer for each service server slot (bytes).
+      Maps to ZPICO_SERVICE_BUFFER_SIZE.
+
+# =============================================================================
+# C API Limits (visible only when C API selected)
+# =============================================================================
+
+if NROS_C_API
+
+config NROS_C_MAX_HANDLES
+    int "Maximum executor handles"
+    default 16
+    help
+      Maximum number of handles in a C API executor.
+      Maps to NROS_EXECUTOR_MAX_HANDLES.
+
+config NROS_C_MAX_SUBSCRIPTIONS
+    int "Maximum subscriptions per executor"
+    default 8
+    help
+      Maximum number of subscriptions in a C API executor.
+      Maps to NROS_MAX_SUBSCRIPTIONS.
+
+config NROS_C_MAX_TIMERS
+    int "Maximum timers per executor"
+    default 8
+    help
+      Maximum number of timers in a C API executor.
+      Maps to NROS_MAX_TIMERS.
+
+config NROS_C_MAX_SERVICES
+    int "Maximum services per executor"
+    default 4
+    help
+      Maximum number of services in a C API executor.
+      Maps to NROS_MAX_SERVICES.
+
+endif # NROS_C_API
+
+# =============================================================================
+# Platform Configuration
+# =============================================================================
+
+config NROS_ZENOH_LOCATOR
+    string "Zenoh router locator"
+    default "tcp/192.0.2.2:7447"
+    help
+      Zenoh router address. Supported formats:
+        TCP:    "tcp/IP:PORT"       (e.g. "tcp/192.0.2.2:7447")
+        Serial: "serial/DEVICE#baudrate=RATE"
+
+config NROS_DOMAIN_ID
+    int "ROS 2 Domain ID"
+    default 0
+    help
+      ROS 2 domain ID for topic isolation.
+
+config NROS_INIT_DELAY_MS
+    int "Network initialization delay (ms)"
+    default 2000
+    help
+      Maximum time to wait for the network interface to come up
+      before initializing zenoh.
+
+config NROS_TRANSPORT_SERIAL
+    bool "Enable serial/UART transport"
+    select ZENOH_PICO_LINK_SERIAL
+    help
+      Enable serial/UART transport for zenoh-pico.
+
+endif # NROS

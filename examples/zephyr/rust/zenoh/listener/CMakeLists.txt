@@ -1,36 +1,11 @@
 # SPDX-License-Identifier: Apache-2.0
 # nros Zephyr Listener Example (Rust)
-#
-# A ROS 2 compatible subscriber running on Zephyr RTOS using nros BSP.
-#
-# Build:
-#   source ~/nano-ros-workspace/env.sh
-#   west build -b native_sim/native/64 nros/examples/zephyr/rs-listener
-#
-# Run:
-#   ./build/zephyr/zephyr.exe
 
 cmake_minimum_required(VERSION 3.20.0)
 
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-project(nano_ros_listener_rs)
+project(nros_zephyr_listener_rs)
 
-# Include nros BSP for Zephyr
-set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../packages/zpico/zpico-zephyr)
-target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
-target_include_directories(app PRIVATE ${BSP_DIR}/include)
-
-# Include zenoh shim (required by BSP)
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../../../packages/zpico/zpico-sys/c)
-target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
-target_include_directories(app PRIVATE ${SHIM_DIR}/include)
-
-# Disable Z_FEATURE_INTEREST to avoid write filter issues with multiple clients
-# The interest feature causes _z_send_n_msg() to fail when multiple zenoh clients
-# connect to the same router simultaneously. Disabling it makes pub/sub work.
-# Z_FEATURE_MATCHING depends on Z_FEATURE_INTEREST, so disable both.
-# Use zephyr_compile_definitions to affect all Zephyr targets including zenoh-pico
-zephyr_compile_definitions(Z_FEATURE_INTEREST=0 Z_FEATURE_MATCHING=0)
-
-# Build Rust application (zephyr-lang-rust is in west manifest)
+# nros module (CONFIG_NROS=y) provides zenoh shim, platform support,
+# and Kconfig→Cargo env var bridging automatically.
 rust_cargo_application()

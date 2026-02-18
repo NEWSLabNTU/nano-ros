@@ -1,8 +1,8 @@
-# nros BSP Zephyr Module
+# nros Zephyr Module
 # Copyright (c) 2024 nros contributors
 # SPDX-License-Identifier: MIT OR Apache-2.0
 
-name: nano-ros-bsp-zephyr
+name: nros
 build:
-  cmake: .
-  kconfig: Kconfig
+  cmake: zephyr
+  kconfig: zephyr/Kconfig
