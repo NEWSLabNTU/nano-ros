@@ -30,9 +30,18 @@ install-local:
     done
     echo "Installed to $PREFIX"
 
-# Format everything: workspace and all examples
-format: format-workspace format-examples
-    @echo "All formatting completed!"
+# Format everything: workspace and all examples (parallel)
+format:
+    #!/usr/bin/env bash
+    set -e
+    {
+        echo "."
+        find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
+            -not -path '*/generated/*' -not -path '*/zephyr/*' \
+            -exec dirname {} \; | sort
+    } | parallel --halt now,fail=1 --line-buffer \
+        'cd {} && cargo +nightly fmt && echo "  fmt {}"'
+    echo "All formatting completed!"
 
 # Check everything: formatting, clippy (native + embedded + features), and all examples
 check: check-workspace check-workspace-embedded check-workspace-features check-examples
@@ -258,16 +267,16 @@ build-examples:
     done
     echo "All examples built!"
 
-# Format all Rust examples (auto-discovered)
+# Format all Rust examples (auto-discovered, parallel)
 format-examples:
     #!/usr/bin/env bash
     set -e
     echo "Formatting examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
-        dir="$(dirname "$toml")"
-        echo "  fmt $dir"
-        (cd "$dir" && cargo +nightly fmt)
-    done
+    find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
+        -not -path '*/generated/*' -not -path '*/zephyr/*' \
+        -exec dirname {} \; | sort \
+    | parallel --halt now,fail=1 --line-buffer \
+        'cd {} && cargo +nightly fmt && echo "  fmt {}"'
     echo "All examples formatted!"
 
 # Check all Rust examples (auto-discovered, excludes zephyr which uses west)
