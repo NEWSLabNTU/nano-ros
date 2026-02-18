@@ -38,8 +38,8 @@ static void internal_subscriber_callback(const uint8_t *data, size_t len, void *
 
 int32_t nano_ros_bsp_init(nano_ros_bsp_context_t *ctx)
 {
-#ifdef CONFIG_NANO_ROS_ZENOH_LOCATOR
-    return nano_ros_bsp_init_with_locator(ctx, CONFIG_NANO_ROS_ZENOH_LOCATOR);
+#ifdef CONFIG_NROS_ZENOH_LOCATOR
+    return nano_ros_bsp_init_with_locator(ctx, CONFIG_NROS_ZENOH_LOCATOR);
 #else
     return nano_ros_bsp_init_with_locator(ctx, "tcp/192.0.2.2:7447");
 #endif
@@ -48,15 +48,15 @@ int32_t nano_ros_bsp_init(nano_ros_bsp_context_t *ctx)
 int32_t nano_ros_bsp_init_with_locator(nano_ros_bsp_context_t *ctx, const char *locator)
 {
     if (ctx == NULL || locator == NULL) {
-        return NANO_ROS_BSP_ERR_INVALID;
+        return NROS_BSP_ERR_INVALID;
     }
 
     memset(ctx, 0, sizeof(*ctx));
 
     /* Wait for network interface to come up */
     {
-#ifdef CONFIG_NANO_ROS_INIT_DELAY_MS
-        const int timeout_ms = CONFIG_NANO_ROS_INIT_DELAY_MS;
+#ifdef CONFIG_NROS_INIT_DELAY_MS
+        const int timeout_ms = CONFIG_NROS_INIT_DELAY_MS;
 #else
         const int timeout_ms = 2000;
 #endif
@@ -68,7 +68,7 @@ int32_t nano_ros_bsp_init_with_locator(nano_ros_bsp_context_t *ctx, const char *
         }
         if (!net_if_is_up(iface)) {
             LOG_ERR("Network interface not ready after %d ms", timeout_ms);
-            return NANO_ROS_BSP_ERR_CONNECT;
+            return NROS_BSP_ERR_CONNECT;
         }
     }
 
@@ -77,9 +77,9 @@ int32_t nano_ros_bsp_init_with_locator(nano_ros_bsp_context_t *ctx, const char *
 
     /* Initialize zenoh shim */
     int32_t ret = zenoh_shim_init(locator);
-    if (ret != ZENOH_SHIM_OK) {
+    if (ret != ZPICO_OK) {
         LOG_ERR("Failed to initialize zenoh: %d", ret);
-        return NANO_ROS_BSP_ERR_CONNECT;
+        return NROS_BSP_ERR_CONNECT;
     }
 
     ctx->initialized = true;
@@ -87,16 +87,16 @@ int32_t nano_ros_bsp_init_with_locator(nano_ros_bsp_context_t *ctx, const char *
 
     /* Open zenoh session */
     ret = zenoh_shim_open();
-    if (ret != ZENOH_SHIM_OK) {
+    if (ret != ZPICO_OK) {
         LOG_ERR("Failed to open zenoh session: %d", ret);
         ctx->initialized = false;
-        return NANO_ROS_BSP_ERR_CONNECT;
+        return NROS_BSP_ERR_CONNECT;
     }
 
     ctx->session_open = true;
     LOG_INF("  Session opened");
 
-    return NANO_ROS_BSP_OK;
+    return NROS_BSP_OK;
 }
 
 void nano_ros_bsp_shutdown(nano_ros_bsp_context_t *ctx)
@@ -128,8 +128,8 @@ int32_t nano_ros_bsp_create_node(
     nros_node_t *node,
     const char *name)
 {
-#ifdef CONFIG_NANO_ROS_DOMAIN_ID
-    return nano_ros_bsp_create_node_with_domain(ctx, node, name, CONFIG_NANO_ROS_DOMAIN_ID);
+#ifdef CONFIG_NROS_DOMAIN_ID
+    return nano_ros_bsp_create_node_with_domain(ctx, node, name, CONFIG_NROS_DOMAIN_ID);
 #else
     return nano_ros_bsp_create_node_with_domain(ctx, node, name, 0);
 #endif
@@ -142,7 +142,7 @@ int32_t nano_ros_bsp_create_node_with_domain(
     int32_t domain_id)
 {
     if (!nano_ros_bsp_is_ready(ctx) || node == NULL || name == NULL) {
-        return NANO_ROS_BSP_ERR_INVALID;
+        return NROS_BSP_ERR_INVALID;
     }
 
     node->ctx = ctx;
@@ -151,7 +151,7 @@ int32_t nano_ros_bsp_create_node_with_domain(
 
     LOG_INF("Created node '%s' (domain=%d)", name, domain_id);
 
-    return NANO_ROS_BSP_OK;
+    return NROS_BSP_OK;
 }
 
 /* ============================================================================
@@ -165,11 +165,11 @@ int32_t nano_ros_bsp_create_publisher(
     const char *type_name)
 {
     if (node == NULL || pub == NULL || topic == NULL || type_name == NULL) {
-        return NANO_ROS_BSP_ERR_INVALID;
+        return NROS_BSP_ERR_INVALID;
     }
 
     if (!nano_ros_bsp_is_ready(node->ctx)) {
-        return NANO_ROS_BSP_ERR_NOT_INIT;
+        return NROS_BSP_ERR_NOT_INIT;
     }
 
     /* Build keyexpr */
@@ -179,14 +179,14 @@ int32_t nano_ros_bsp_create_publisher(
     );
 
     if (keyexpr_len < 0) {
-        return NANO_ROS_BSP_ERR_INVALID;
+        return NROS_BSP_ERR_INVALID;
     }
 
     /* Declare publisher */
     int32_t handle = zenoh_shim_declare_publisher(pub->keyexpr);
     if (handle < 0) {
         LOG_ERR("Failed to declare publisher: %d", handle);
-        return NANO_ROS_BSP_ERR;
+        return NROS_BSP_ERR;
     }
 
     pub->node = node;
@@ -194,7 +194,7 @@ int32_t nano_ros_bsp_create_publisher(
 
     LOG_INF("Publisher created (handle=%d): %s", handle, pub->keyexpr);
 
-    return NANO_ROS_BSP_OK;
+    return NROS_BSP_OK;
 }
 
 int32_t nano_ros_bsp_publish(
@@ -203,15 +203,15 @@ int32_t nano_ros_bsp_publish(
     size_t len)
 {
     if (pub == NULL || data == NULL || len == 0) {
-        return NANO_ROS_BSP_ERR_INVALID;
+        return NROS_BSP_ERR_INVALID;
     }
 
     int32_t ret = zenoh_shim_publish(pub->handle, data, len);
-    if (ret != ZENOH_SHIM_OK) {
-        return NANO_ROS_BSP_ERR;
+    if (ret != ZPICO_OK) {
+        return NROS_BSP_ERR;
     }
 
-    return NANO_ROS_BSP_OK;
+    return NROS_BSP_OK;
 }
 
 void nano_ros_bsp_destroy_publisher(nano_ros_publisher_t *pub)
@@ -240,11 +240,11 @@ int32_t nano_ros_bsp_create_subscriber(
     void *user_data)
 {
     if (node == NULL || sub == NULL || topic == NULL || type_name == NULL || callback == NULL) {
-        return NANO_ROS_BSP_ERR_INVALID;
+        return NROS_BSP_ERR_INVALID;
     }
 
     if (!nano_ros_bsp_is_ready(node->ctx)) {
-        return NANO_ROS_BSP_ERR_NOT_INIT;
+        return NROS_BSP_ERR_NOT_INIT;
     }
 
     /* Build keyexpr with wildcard for subscribers (to receive any type hash) */
@@ -254,7 +254,7 @@ int32_t nano_ros_bsp_create_subscriber(
     );
 
     if (keyexpr_len < 0) {
-        return NANO_ROS_BSP_ERR_INVALID;
+        return NROS_BSP_ERR_INVALID;
     }
 
     /* Store callback info before declaring (for use in internal callback) */
@@ -271,14 +271,14 @@ int32_t nano_ros_bsp_create_subscriber(
 
     if (handle < 0) {
         LOG_ERR("Failed to declare subscriber: %d", handle);
-        return NANO_ROS_BSP_ERR;
+        return NROS_BSP_ERR;
     }
 
     sub->handle = handle;
 
     LOG_INF("Subscriber created (handle=%d): %s", handle, sub->keyexpr);
 
-    return NANO_ROS_BSP_OK;
+    return NROS_BSP_OK;
 }
 
 void nano_ros_bsp_destroy_subscriber(nano_ros_subscriber_t *sub)
@@ -303,7 +303,7 @@ void nano_ros_bsp_destroy_subscriber(nano_ros_subscriber_t *sub)
 int32_t nano_ros_bsp_spin_once(nano_ros_bsp_context_t *ctx, k_timeout_t timeout)
 {
     if (!nano_ros_bsp_is_ready(ctx)) {
-        return NANO_ROS_BSP_ERR_NOT_INIT;
+        return NROS_BSP_ERR_NOT_INIT;
     }
 
     /* Convert Zephyr timeout to milliseconds */
@@ -316,28 +316,28 @@ int32_t nano_ros_bsp_spin_once(nano_ros_bsp_context_t *ctx, k_timeout_t timeout)
 
     /* Poll zenoh for events */
     int32_t ret = zenoh_shim_spin_once(timeout_ms);
-    if (ret < 0 && ret != ZENOH_SHIM_ERR_TIMEOUT) {
-        return NANO_ROS_BSP_ERR;
+    if (ret < 0 && ret != ZPICO_ERR_TIMEOUT) {
+        return NROS_BSP_ERR;
     }
 
-    return NANO_ROS_BSP_OK;
+    return NROS_BSP_OK;
 }
 
 int32_t nano_ros_bsp_spin(nano_ros_bsp_context_t *ctx)
 {
     if (!nano_ros_bsp_is_ready(ctx)) {
-        return NANO_ROS_BSP_ERR_NOT_INIT;
+        return NROS_BSP_ERR_NOT_INIT;
     }
 
     while (1) {
         int32_t ret = nano_ros_bsp_spin_once(ctx, K_MSEC(100));
-        if (ret != NANO_ROS_BSP_OK && ret != NANO_ROS_BSP_ERR_TIMEOUT) {
+        if (ret != NROS_BSP_OK && ret != NROS_BSP_ERR_TIMEOUT) {
             return ret;
         }
     }
 
     /* Unreachable */
-    return NANO_ROS_BSP_OK;
+    return NROS_BSP_OK;
 }
 
 /* ============================================================================

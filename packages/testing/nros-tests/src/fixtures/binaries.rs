@@ -92,7 +92,7 @@ static XRCE_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static XRCE_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached: nros-c library built
-static NANO_ROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
+static NROS_C_LIB: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the c-talker binary
 static C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -113,7 +113,7 @@ static C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached: nros-c library built with XRCE features
-static NANO_ROS_C_LIB_XRCE: OnceCell<PathBuf> = OnceCell::new();
+static NROS_C_LIB_XRCE: OnceCell<PathBuf> = OnceCell::new();
 
 /// Cached path to the c-xrce-talker binary
 static C_XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -927,7 +927,7 @@ pub fn qemu_large_msg_test_binary() -> PathBuf {
 ///
 /// Runs `cargo build -p nros-c --release` and returns the path to `libnros_c.a`.
 pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
-    NANO_ROS_C_LIB
+    NROS_C_LIB
         .get_or_try_init(|| {
             let root = project_root();
 
@@ -1151,7 +1151,7 @@ pub fn c_action_client_binary() -> PathBuf {
 /// builds cannot coexist in the same target directory. Run XRCE C tests
 /// separately from zenoh C tests.
 pub fn build_nano_ros_c_lib_xrce() -> TestResult<&'static Path> {
-    NANO_ROS_C_LIB_XRCE
+    NROS_C_LIB_XRCE
         .get_or_try_init(|| {
             let root = project_root();
 

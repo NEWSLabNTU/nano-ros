@@ -18,9 +18,9 @@
 #include <signal.h>
 
 // Define platform BEFORE including nros headers
-// On real bare-metal: #define NANO_ROS_PLATFORM_BAREMETAL
+// On real bare-metal: #define NROS_PLATFORM_BAREMETAL
 // For this demo, we simulate bare-metal on POSIX
-#define NANO_ROS_PLATFORM_POSIX
+#define NROS_PLATFORM_POSIX
 
 // nros modular includes
 #include <nros/init.h>
@@ -101,7 +101,7 @@ static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
     int32_t len = std_msgs_Int32_serialize(&app.message, g_serialize_buffer, sizeof(g_serialize_buffer));
     if (len > 0) {
         nano_ros_ret_t ret = nano_ros_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
-        if (ret == NANO_ROS_RET_OK) {
+        if (ret == NROS_RET_OK) {
             printf("[Timer] Published: %d\n", app.message.data);
         }
     }
@@ -144,7 +144,7 @@ static void demo_platform_time(void) {
 
     // Get time using platform abstraction
     nano_ros_clock_t clock = nano_ros_clock_get_zero_initialized();
-    (void)nano_ros_clock_init(&clock, NANO_ROS_CLOCK_STEADY_TIME);
+    (void)nano_ros_clock_init(&clock, NROS_CLOCK_STEADY_TIME);
 
     nano_ros_time_t t1, t2;
     (void)nano_ros_clock_get_now(&clock, &t1);
@@ -173,13 +173,13 @@ static void demo_guard_condition(void) {
     // Initialize guard condition with callback
     app.shutdown_guard = nano_ros_guard_condition_get_zero_initialized();
     nano_ros_ret_t ret = nano_ros_guard_condition_init(&app.shutdown_guard, &app.support);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init guard condition: %d\n", ret);
         return;
     }
 
     ret = nano_ros_guard_condition_set_callback(&app.shutdown_guard, shutdown_callback, NULL);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set guard condition callback: %d\n", ret);
         return;
     }
@@ -200,7 +200,7 @@ static void demo_guard_condition(void) {
 
     // Add to executor - callback will be invoked when triggered
     ret = nano_ros_executor_add_guard_condition(&app.executor, &app.shutdown_guard);
-    if (ret == NANO_ROS_RET_OK) {
+    if (ret == NROS_RET_OK) {
         printf("Guard condition added to executor\n");
     }
 }
@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
     // Initialize support
     app.support = nano_ros_support_get_zero_initialized();
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init support: %d\n", ret);
         return 1;
     }
@@ -254,7 +254,7 @@ int main(int argc, char** argv) {
     // Initialize node
     app.node = nros_node_get_zero_initialized();
     ret = nros_node_init(&app.node, &app.support, "baremetal_demo", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init node: %d\n", ret);
         goto cleanup_support;
     }
@@ -263,7 +263,7 @@ int main(int argc, char** argv) {
     // Initialize publisher
     app.publisher = nano_ros_publisher_get_zero_initialized();
     ret = nano_ros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/baremetal_demo/counter");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init publisher: %d\n", ret);
         goto cleanup_node;
     }
@@ -272,7 +272,7 @@ int main(int argc, char** argv) {
     // Initialize timer (500ms period)
     app.timer = nano_ros_timer_get_zero_initialized();
     ret = nano_ros_timer_init(&app.timer, &app.support, 500000000ULL, timer_callback, NULL);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init timer: %d\n", ret);
         goto cleanup_publisher;
     }
@@ -281,14 +281,14 @@ int main(int argc, char** argv) {
     // Initialize executor
     app.executor = nano_ros_executor_get_zero_initialized();
     ret = nano_ros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init executor: %d\n", ret);
         goto cleanup_timer;
     }
 
     // Add timer to executor
     ret = nano_ros_executor_add_timer(&app.executor, &app.timer);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer: %d\n", ret);
         goto cleanup_executor;
     }

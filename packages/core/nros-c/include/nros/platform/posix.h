@@ -8,8 +8,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_PLATFORM_POSIX_H
-#define NANO_ROS_PLATFORM_POSIX_H
+#ifndef NROS_PLATFORM_POSIX_H
+#define NROS_PLATFORM_POSIX_H
 
 #include <time.h>
 #include <stdlib.h>
@@ -17,7 +17,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#ifdef NANO_ROS_FEATURE_THREADS
+#ifdef NROS_FEATURE_THREADS
 #include <pthread.h>
 #endif
 
@@ -29,11 +29,11 @@ extern "C" {
 // Platform Capability Flags
 // ============================================================================
 
-#define NANO_ROS_PLATFORM_HAS_ATOMICS
-#define NANO_ROS_PLATFORM_HAS_MALLOC
+#define NROS_PLATFORM_HAS_ATOMICS
+#define NROS_PLATFORM_HAS_MALLOC
 
-#ifdef NANO_ROS_FEATURE_THREADS
-#define NANO_ROS_PLATFORM_HAS_MUTEX
+#ifdef NROS_FEATURE_THREADS
+#define NROS_PLATFORM_HAS_MUTEX
 typedef pthread_mutex_t nano_ros_mutex_t;
 #endif
 
@@ -83,7 +83,7 @@ static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
 // Memory Functions
 // ============================================================================
 
-#ifndef NANO_ROS_NO_DYNAMIC_MEMORY
+#ifndef NROS_NO_DYNAMIC_MEMORY
 
 /**
  * Allocate memory.
@@ -99,13 +99,13 @@ static inline void nano_ros_platform_free(void *ptr) {
     free(ptr);
 }
 
-#endif // !NANO_ROS_NO_DYNAMIC_MEMORY
+#endif // !NROS_NO_DYNAMIC_MEMORY
 
 // ============================================================================
 // Threading Functions
 // ============================================================================
 
-#ifdef NANO_ROS_FEATURE_THREADS
+#ifdef NROS_FEATURE_THREADS
 
 /**
  * Initialize a mutex.
@@ -135,10 +135,10 @@ static inline int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex) {
     return pthread_mutex_destroy(mutex);
 }
 
-#endif // NANO_ROS_FEATURE_THREADS
+#endif // NROS_FEATURE_THREADS
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_PLATFORM_POSIX_H
+#endif // NROS_PLATFORM_POSIX_H

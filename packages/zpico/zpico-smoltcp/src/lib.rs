@@ -16,6 +16,7 @@
 
 #![no_std]
 
+mod config;
 mod bridge;
 mod tcp;
 

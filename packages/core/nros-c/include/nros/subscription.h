@@ -7,8 +7,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_SUBSCRIPTION_H
-#define NANO_ROS_SUBSCRIPTION_H
+#ifndef NROS_SUBSCRIPTION_H
+#define NROS_SUBSCRIPTION_H
 
 #include "nros/types.h"
 #include "nros/visibility.h"
@@ -25,11 +25,11 @@ extern "C" {
 /** Subscription state */
 typedef enum nano_ros_subscription_state_t {
     /** Not initialized */
-    NANO_ROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
+    NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
-    NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
+    NROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
     /** Shutdown */
-    NANO_ROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
+    NROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
 } nano_ros_subscription_state_t;
 
 // ============================================================================
@@ -57,15 +57,15 @@ typedef struct nano_ros_subscription_t {
     /** Current state */
     nano_ros_subscription_state_t state;
     /** Topic name storage */
-    uint8_t topic_name[NANO_ROS_MAX_TOPIC_LEN];
+    uint8_t topic_name[NROS_MAX_TOPIC_LEN];
     /** Topic name length */
     size_t topic_name_len;
     /** Type name storage */
-    uint8_t type_name[NANO_ROS_MAX_TYPE_NAME_LEN];
+    uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
     /** Type name length */
     size_t type_name_len;
     /** Type hash storage */
-    uint8_t type_hash[NANO_ROS_MAX_TYPE_HASH_LEN];
+    uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
     /** Type hash length */
     size_t type_hash_len;
     /** User callback function */
@@ -87,7 +87,7 @@ typedef struct nano_ros_subscription_t {
  *
  * @return Zero-initialized subscription structure
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_subscription_t nano_ros_subscription_get_zero_initialized(void);
 
 /**
@@ -100,12 +100,12 @@ nano_ros_subscription_t nano_ros_subscription_get_zero_initialized(void);
  * @param callback Callback function to invoke when messages arrive
  * @param context User context pointer passed to callback (can be NULL)
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any required pointer is NULL
- * @return NANO_ROS_RET_NOT_INIT if node is not initialized
- * @return NANO_ROS_RET_ERROR on initialization failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any required pointer is NULL
+ * @return NROS_RET_NOT_INIT if node is not initialized
+ * @return NROS_RET_ERROR on initialization failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_subscription_init(
     nano_ros_subscription_t *subscription,
     const nros_node_t *node,
@@ -125,12 +125,12 @@ nano_ros_ret_t nano_ros_subscription_init(
  * @param context User context pointer passed to callback (can be NULL)
  * @param qos Pointer to QoS settings
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any required pointer is NULL
- * @return NANO_ROS_RET_NOT_INIT if node is not initialized
- * @return NANO_ROS_RET_ERROR on initialization failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any required pointer is NULL
+ * @return NROS_RET_NOT_INIT if node is not initialized
+ * @return NROS_RET_ERROR on initialization failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_subscription_init_with_qos(
     nano_ros_subscription_t *subscription,
     const nros_node_t *node,
@@ -145,11 +145,11 @@ nano_ros_ret_t nano_ros_subscription_init_with_qos(
  *
  * @param subscription Pointer to an initialized subscription
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if subscription is NULL
- * @return NANO_ROS_RET_NOT_INIT if not initialized
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if subscription is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_subscription_fini(nano_ros_subscription_t *subscription);
 
 /**
@@ -159,7 +159,7 @@ nano_ros_ret_t nano_ros_subscription_fini(nano_ros_subscription_t *subscription)
  *
  * @return Pointer to topic name (null-terminated), or NULL if invalid
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 const char *nano_ros_subscription_get_topic_name(const nano_ros_subscription_t *subscription);
 
 /**
@@ -169,11 +169,11 @@ const char *nano_ros_subscription_get_topic_name(const nano_ros_subscription_t *
  *
  * @return Non-zero if valid, 0 if invalid or NULL
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int nano_ros_subscription_is_valid(const nano_ros_subscription_t *subscription);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_SUBSCRIPTION_H
+#endif // NROS_SUBSCRIPTION_H

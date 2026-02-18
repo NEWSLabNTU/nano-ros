@@ -8,8 +8,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_PLATFORM_FREERTOS_H
-#define NANO_ROS_PLATFORM_FREERTOS_H
+#ifndef NROS_PLATFORM_FREERTOS_H
+#define NROS_PLATFORM_FREERTOS_H
 
 #include "FreeRTOS.h"
 #include "task.h"
@@ -25,13 +25,13 @@ extern "C" {
 // Platform Capability Flags
 // ============================================================================
 
-#define NANO_ROS_PLATFORM_HAS_ATOMICS
+#define NROS_PLATFORM_HAS_ATOMICS
 
 #if configSUPPORT_DYNAMIC_ALLOCATION == 1
-#define NANO_ROS_PLATFORM_HAS_MALLOC
+#define NROS_PLATFORM_HAS_MALLOC
 #endif
 
-#define NANO_ROS_PLATFORM_HAS_MUTEX
+#define NROS_PLATFORM_HAS_MUTEX
 typedef SemaphoreHandle_t nano_ros_mutex_t;
 
 // ============================================================================
@@ -95,7 +95,7 @@ static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
 // Memory Functions
 // ============================================================================
 
-#ifdef NANO_ROS_PLATFORM_HAS_MALLOC
+#ifdef NROS_PLATFORM_HAS_MALLOC
 
 /**
  * Allocate memory from FreeRTOS heap.
@@ -111,7 +111,7 @@ static inline void nano_ros_platform_free(void *ptr) {
     vPortFree(ptr);
 }
 
-#endif // NANO_ROS_PLATFORM_HAS_MALLOC
+#endif // NROS_PLATFORM_HAS_MALLOC
 
 // ============================================================================
 // Threading Functions
@@ -154,4 +154,4 @@ static inline int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex) {
 }
 #endif
 
-#endif // NANO_ROS_PLATFORM_FREERTOS_H
+#endif // NROS_PLATFORM_FREERTOS_H

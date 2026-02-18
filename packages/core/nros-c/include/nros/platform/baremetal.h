@@ -25,8 +25,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_PLATFORM_BAREMETAL_H
-#define NANO_ROS_PLATFORM_BAREMETAL_H
+#ifndef NROS_PLATFORM_BAREMETAL_H
+#define NROS_PLATFORM_BAREMETAL_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -41,16 +41,16 @@ extern "C" {
 // ============================================================================
 
 // Bare-metal provides simple atomic operations via volatile
-#define NANO_ROS_PLATFORM_HAS_ATOMICS
+#define NROS_PLATFORM_HAS_ATOMICS
 
 // No dynamic memory by default on bare-metal
-#ifndef NANO_ROS_NO_DYNAMIC_MEMORY
-#define NANO_ROS_NO_DYNAMIC_MEMORY
+#ifndef NROS_NO_DYNAMIC_MEMORY
+#define NROS_NO_DYNAMIC_MEMORY
 #endif
 
 // No threading on bare-metal
-#ifdef NANO_ROS_FEATURE_THREADS
-#error "NANO_ROS_FEATURE_THREADS not supported on bare-metal. Use NANO_ROS_PLATFORM_CUSTOM for RTOS support."
+#ifdef NROS_FEATURE_THREADS
+#error "NROS_FEATURE_THREADS not supported on bare-metal. Use NROS_PLATFORM_CUSTOM for RTOS support."
 #endif
 
 // ============================================================================
@@ -92,11 +92,11 @@ extern void nano_ros_platform_sleep_ns(uint64_t ns);
  * Prevents compiler reordering. For Cortex-M, also includes DMB.
  */
 #if defined(__ARM_ARCH)
-    #define NANO_ROS_MEMORY_BARRIER() __asm__ volatile ("dmb" ::: "memory")
+    #define NROS_MEMORY_BARRIER() __asm__ volatile ("dmb" ::: "memory")
 #elif defined(__GNUC__)
-    #define NANO_ROS_MEMORY_BARRIER() __asm__ volatile ("" ::: "memory")
+    #define NROS_MEMORY_BARRIER() __asm__ volatile ("" ::: "memory")
 #else
-    #define NANO_ROS_MEMORY_BARRIER() do {} while(0)
+    #define NROS_MEMORY_BARRIER() do {} while(0)
 #endif
 
 /**
@@ -105,18 +105,18 @@ extern void nano_ros_platform_sleep_ns(uint64_t ns);
  * For single-core bare-metal, volatile write with barrier is sufficient.
  */
 static inline void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
-    NANO_ROS_MEMORY_BARRIER();
+    NROS_MEMORY_BARRIER();
     *ptr = value;
-    NANO_ROS_MEMORY_BARRIER();
+    NROS_MEMORY_BARRIER();
 }
 
 /**
  * Atomically load a boolean value with acquire semantics.
  */
 static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
-    NANO_ROS_MEMORY_BARRIER();
+    NROS_MEMORY_BARRIER();
     bool value = *ptr;
-    NANO_ROS_MEMORY_BARRIER();
+    NROS_MEMORY_BARRIER();
     return value;
 }
 
@@ -146,4 +146,4 @@ static inline void nano_ros_platform_restore_irq(uint32_t primask) {
 }
 #endif
 
-#endif // NANO_ROS_PLATFORM_BAREMETAL_H
+#endif // NROS_PLATFORM_BAREMETAL_H

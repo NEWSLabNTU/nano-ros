@@ -38,18 +38,19 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub(crate) mod config;
 pub mod server;
 pub mod typed;
 pub mod types;
 
 // Re-export main types
-pub use server::{LegacyParameterBuilder, MAX_PARAMETERS, ParameterServer};
+pub use server::{LegacyParameterBuilder, ParameterServer};
 pub use typed::{
     MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, RangeConvertible,
     ReadOnlyParameter, UndeclaredParameters,
 };
 pub use types::{
     FloatingPointRange, IntegerRange, MAX_ARRAY_LEN, MAX_BYTE_ARRAY_LEN, MAX_PARAM_NAME_LEN,
-    MAX_STRING_VALUE_LEN, Parameter, ParameterDescriptor, ParameterRange, ParameterType,
-    ParameterValue, ParameterVariant, SetParameterResult,
+    MAX_PARAMETERS, MAX_STRING_VALUE_LEN, Parameter, ParameterDescriptor, ParameterRange,
+    ParameterType, ParameterValue, ParameterVariant, SetParameterResult,
 };

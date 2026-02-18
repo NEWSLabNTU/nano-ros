@@ -7,8 +7,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_INIT_H
-#define NANO_ROS_INIT_H
+#ifndef NROS_INIT_H
+#define NROS_INIT_H
 
 #include "nros/types.h"
 #include "nros/visibility.h"
@@ -24,11 +24,11 @@ extern "C" {
 /** Support context state */
 typedef enum nano_ros_support_state_t {
     /** Not initialized */
-    NANO_ROS_SUPPORT_STATE_UNINITIALIZED = 0,
+    NROS_SUPPORT_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
-    NANO_ROS_SUPPORT_STATE_INITIALIZED = 1,
+    NROS_SUPPORT_STATE_INITIALIZED = 1,
     /** Shutdown */
-    NANO_ROS_SUPPORT_STATE_SHUTDOWN = 2,
+    NROS_SUPPORT_STATE_SHUTDOWN = 2,
 } nano_ros_support_state_t;
 
 // ============================================================================
@@ -47,7 +47,7 @@ typedef struct nano_ros_support_t {
     /** Domain ID (ROS_DOMAIN_ID) */
     uint8_t domain_id;
     /** Locator string storage */
-    uint8_t locator[NANO_ROS_MAX_LOCATOR_LEN];
+    uint8_t locator[NROS_MAX_LOCATOR_LEN];
     /** Locator string length */
     size_t locator_len;
     /** Opaque pointer to internal Rust context */
@@ -63,7 +63,7 @@ typedef struct nano_ros_support_t {
  *
  * @return Zero-initialized support context
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_support_t nano_ros_support_get_zero_initialized(void);
 
 /**
@@ -77,11 +77,11 @@ nano_ros_support_t nano_ros_support_get_zero_initialized(void);
  *                Zenoh: "tcp/127.0.0.1:7447"; XRCE-DDS: "127.0.0.1:2019"
  * @param domain_id ROS domain ID (0-232)
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if support is NULL
- * @return NANO_ROS_RET_ERROR on initialization failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if support is NULL
+ * @return NROS_RET_ERROR on initialization failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_support_init(
     nano_ros_support_t *support,
     const char *locator,
@@ -94,11 +94,11 @@ nano_ros_ret_t nano_ros_support_init(
  *
  * @param support Pointer to an initialized support context
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if support is NULL
- * @return NANO_ROS_RET_NOT_INIT if not initialized
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if support is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_support_fini(nano_ros_support_t *support);
 
 /**
@@ -108,11 +108,11 @@ nano_ros_ret_t nano_ros_support_fini(nano_ros_support_t *support);
  *
  * @return Non-zero if valid, 0 if invalid or NULL
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int nano_ros_support_is_valid(const nano_ros_support_t *support);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_INIT_H
+#endif // NROS_INIT_H

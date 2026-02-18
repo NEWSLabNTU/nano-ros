@@ -7,8 +7,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_TYPES_H
-#define NANO_ROS_TYPES_H
+#ifndef NROS_TYPES_H
+#define NROS_TYPES_H
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -27,34 +27,34 @@ extern "C" {
 // ============================================================================
 
 /** Maximum length of a zenoh locator string (e.g., "tcp/127.0.0.1:7447") */
-#define NANO_ROS_MAX_LOCATOR_LEN 128
+#define NROS_MAX_LOCATOR_LEN 128
 
 /** Maximum length of a node name */
-#define NANO_ROS_MAX_NAME_LEN 64
+#define NROS_MAX_NAME_LEN 64
 
 /** Maximum length of a node namespace */
-#define NANO_ROS_MAX_NAMESPACE_LEN 128
+#define NROS_MAX_NAMESPACE_LEN 128
 
 /** Maximum length of a topic name */
-#define NANO_ROS_MAX_TOPIC_LEN 256
+#define NROS_MAX_TOPIC_LEN 256
 
 /** Maximum length of a service name */
-#define NANO_ROS_MAX_SERVICE_NAME_LEN 256
+#define NROS_MAX_SERVICE_NAME_LEN 256
 
 /** Maximum length of a type name (e.g., "std_msgs::msg::dds_::Int32_") */
-#define NANO_ROS_MAX_TYPE_NAME_LEN 256
+#define NROS_MAX_TYPE_NAME_LEN 256
 
 /** Maximum length of a type hash (RIHS format) */
-#define NANO_ROS_MAX_TYPE_HASH_LEN 128
+#define NROS_MAX_TYPE_HASH_LEN 128
 
-// Legacy compatibility (without NANO_ROS_ prefix)
-#define MAX_LOCATOR_LEN NANO_ROS_MAX_LOCATOR_LEN
-#define MAX_NAME_LEN NANO_ROS_MAX_NAME_LEN
-#define MAX_NAMESPACE_LEN NANO_ROS_MAX_NAMESPACE_LEN
-#define MAX_TOPIC_LEN NANO_ROS_MAX_TOPIC_LEN
-#define MAX_SERVICE_NAME_LEN NANO_ROS_MAX_SERVICE_NAME_LEN
-#define MAX_TYPE_NAME_LEN NANO_ROS_MAX_TYPE_NAME_LEN
-#define MAX_TYPE_HASH_LEN NANO_ROS_MAX_TYPE_HASH_LEN
+// Legacy compatibility (without NROS_ prefix)
+#define MAX_LOCATOR_LEN NROS_MAX_LOCATOR_LEN
+#define MAX_NAME_LEN NROS_MAX_NAME_LEN
+#define MAX_NAMESPACE_LEN NROS_MAX_NAMESPACE_LEN
+#define MAX_TOPIC_LEN NROS_MAX_TOPIC_LEN
+#define MAX_SERVICE_NAME_LEN NROS_MAX_SERVICE_NAME_LEN
+#define MAX_TYPE_NAME_LEN NROS_MAX_TYPE_NAME_LEN
+#define MAX_TYPE_HASH_LEN NROS_MAX_TYPE_HASH_LEN
 
 // ============================================================================
 // Return Codes
@@ -68,46 +68,46 @@ extern "C" {
 typedef int nano_ros_ret_t;
 
 /** Success */
-#define NANO_ROS_RET_OK 0
+#define NROS_RET_OK 0
 
 /** Generic error */
-#define NANO_ROS_RET_ERROR (-1)
+#define NROS_RET_ERROR (-1)
 
 /** Timeout occurred */
-#define NANO_ROS_RET_TIMEOUT (-2)
+#define NROS_RET_TIMEOUT (-2)
 
 /** Invalid argument passed */
-#define NANO_ROS_RET_INVALID_ARGUMENT (-3)
+#define NROS_RET_INVALID_ARGUMENT (-3)
 
 /** Resource not found */
-#define NANO_ROS_RET_NOT_FOUND (-4)
+#define NROS_RET_NOT_FOUND (-4)
 
 /** Resource already exists */
-#define NANO_ROS_RET_ALREADY_EXISTS (-5)
+#define NROS_RET_ALREADY_EXISTS (-5)
 
 /** Resource limit reached (e.g., max handles) */
-#define NANO_ROS_RET_FULL (-6)
+#define NROS_RET_FULL (-6)
 
 /** Not initialized */
-#define NANO_ROS_RET_NOT_INIT (-7)
+#define NROS_RET_NOT_INIT (-7)
 
 /** Bad sequence (e.g., wrong order of operations) */
-#define NANO_ROS_RET_BAD_SEQUENCE (-8)
+#define NROS_RET_BAD_SEQUENCE (-8)
 
 /** Service call failed */
-#define NANO_ROS_RET_SERVICE_FAILED (-9)
+#define NROS_RET_SERVICE_FAILED (-9)
 
 /** Publish failed */
-#define NANO_ROS_RET_PUBLISH_FAILED (-10)
+#define NROS_RET_PUBLISH_FAILED (-10)
 
 /** Subscription failed */
-#define NANO_ROS_RET_SUBSCRIPTION_FAILED (-11)
+#define NROS_RET_SUBSCRIPTION_FAILED (-11)
 
 /** Operation not allowed (e.g., goal not in correct state) */
-#define NANO_ROS_RET_NOT_ALLOWED (-12)
+#define NROS_RET_NOT_ALLOWED (-12)
 
 /** Request was rejected (e.g., goal rejected by server) */
-#define NANO_ROS_RET_REJECTED (-13)
+#define NROS_RET_REJECTED (-13)
 
 // ============================================================================
 // QoS Types
@@ -116,25 +116,25 @@ typedef int nano_ros_ret_t;
 /** QoS reliability policy */
 typedef enum nano_ros_qos_reliability_t {
     /** Best effort delivery - no guarantees */
-    NANO_ROS_QOS_RELIABILITY_BEST_EFFORT = 0,
+    NROS_QOS_RELIABILITY_BEST_EFFORT = 0,
     /** Reliable delivery - retransmit if needed */
-    NANO_ROS_QOS_RELIABILITY_RELIABLE = 1,
+    NROS_QOS_RELIABILITY_RELIABLE = 1,
 } nano_ros_qos_reliability_t;
 
 /** QoS durability policy */
 typedef enum nano_ros_qos_durability_t {
     /** Volatile - no persistence */
-    NANO_ROS_QOS_DURABILITY_VOLATILE = 0,
+    NROS_QOS_DURABILITY_VOLATILE = 0,
     /** Transient local - persist for late joiners */
-    NANO_ROS_QOS_DURABILITY_TRANSIENT_LOCAL = 1,
+    NROS_QOS_DURABILITY_TRANSIENT_LOCAL = 1,
 } nano_ros_qos_durability_t;
 
 /** QoS history policy */
 typedef enum nano_ros_qos_history_t {
     /** Keep last N samples */
-    NANO_ROS_QOS_HISTORY_KEEP_LAST = 0,
+    NROS_QOS_HISTORY_KEEP_LAST = 0,
     /** Keep all samples */
-    NANO_ROS_QOS_HISTORY_KEEP_ALL = 1,
+    NROS_QOS_HISTORY_KEEP_ALL = 1,
 } nano_ros_qos_history_t;
 
 /** QoS settings structure */
@@ -150,13 +150,13 @@ typedef struct nano_ros_qos_t {
 } nano_ros_qos_t;
 
 /** Default QoS profile */
-NANO_ROS_PUBLIC extern const nano_ros_qos_t NANO_ROS_QOS_DEFAULT;
+NROS_PUBLIC extern const nano_ros_qos_t NROS_QOS_DEFAULT;
 
 /** Sensor data QoS profile (best effort, volatile) */
-NANO_ROS_PUBLIC extern const nano_ros_qos_t NANO_ROS_QOS_SENSOR_DATA;
+NROS_PUBLIC extern const nano_ros_qos_t NROS_QOS_SENSOR_DATA;
 
 /** Services QoS profile (reliable) */
-NANO_ROS_PUBLIC extern const nano_ros_qos_t NANO_ROS_QOS_SERVICES;
+NROS_PUBLIC extern const nano_ros_qos_t NROS_QOS_SERVICES;
 
 // ============================================================================
 // Message Type Information
@@ -219,4 +219,4 @@ typedef struct nano_ros_action_type_t {
 }
 #endif
 
-#endif // NANO_ROS_TYPES_H
+#endif // NROS_TYPES_H

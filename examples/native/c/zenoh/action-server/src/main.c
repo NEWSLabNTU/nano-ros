@@ -63,7 +63,7 @@ static nano_ros_goal_response_t goal_callback(
     if (example_interfaces_action_fibonacci_goal_deserialize(
             &goal, goal_request, goal_len) != 0) {
         fprintf(stderr, "Failed to deserialize goal\n");
-        return NANO_ROS_GOAL_REJECT;
+        return NROS_GOAL_REJECT;
     }
 
     printf("Goal request: order=%d (uuid=%02x%02x...)\n",
@@ -73,11 +73,11 @@ static nano_ros_goal_response_t goal_callback(
     // Reject negative orders or orders too large
     if (goal.order < 0 || goal.order >= 64) {
         printf("  -> REJECTED (order out of range)\n");
-        return NANO_ROS_GOAL_REJECT;
+        return NROS_GOAL_REJECT;
     }
 
     printf("  -> ACCEPTED\n");
-    return NANO_ROS_GOAL_ACCEPT_AND_EXECUTE;
+    return NROS_GOAL_ACCEPT_AND_EXECUTE;
 }
 
 static nano_ros_cancel_response_t cancel_callback(
@@ -87,7 +87,7 @@ static nano_ros_cancel_response_t cancel_callback(
     (void)context;
     printf("Cancel request for goal (uuid=%02x%02x...)\n",
            goal->uuid.uuid[0], goal->uuid.uuid[1]);
-    return NANO_ROS_CANCEL_ACCEPT;
+    return NROS_CANCEL_ACCEPT;
 }
 
 static void accepted_callback(
@@ -108,7 +108,7 @@ static void accepted_callback(
 
     // Transition to executing state
     nano_ros_ret_t ret = nano_ros_action_execute(goal);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set executing state: %d\n", ret);
         return;
     }
@@ -135,7 +135,7 @@ static void accepted_callback(
             &fb, fb_buf, sizeof(fb_buf));
         if (fb_len > 0) {
             ret = nano_ros_action_publish_feedback(goal, fb_buf, (size_t)fb_len);
-            if (ret != NANO_ROS_RET_OK) {
+            if (ret != NROS_RET_OK) {
                 fprintf(stderr, "Failed to publish feedback: %d\n", ret);
             } else {
                 printf("  Feedback: [");
@@ -160,7 +160,7 @@ static void accepted_callback(
         &result, result_buf, sizeof(result_buf));
     if (result_len > 0) {
         ret = nano_ros_action_succeed(goal, result_buf, (size_t)result_len);
-        if (ret != NANO_ROS_RET_OK) {
+        if (ret != NROS_RET_OK) {
             fprintf(stderr, "Failed to send result: %d\n", ret);
         } else {
             printf("  Goal SUCCEEDED\n");
@@ -209,7 +209,7 @@ int main(int argc, char** argv) {
 
     // Initialize support context
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
     }
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
 
     // Create node
     ret = nros_node_init(&app.node, &app.support, "c_action_server", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nano_ros_support_fini(&app.support);
         return 1;
@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
         accepted_callback,
         &app.ctx
     );
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize action server: %d\n", ret);
         nros_node_fini(&app.node);
         nano_ros_support_fini(&app.support);
@@ -245,7 +245,7 @@ int main(int argc, char** argv) {
 
     // Create executor
     ret = nano_ros_executor_init(&app.executor, &app.support, 8);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
         nano_ros_action_server_fini(&app.action_server);
         nros_node_fini(&app.node);
@@ -262,7 +262,7 @@ int main(int argc, char** argv) {
 
     // Spin with 100ms period
     ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NANO_ROS_RET_OK && g_running) {
+    if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 

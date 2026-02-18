@@ -7,8 +7,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_PUBLISHER_H
-#define NANO_ROS_PUBLISHER_H
+#ifndef NROS_PUBLISHER_H
+#define NROS_PUBLISHER_H
 
 #include "nros/types.h"
 #include "nros/visibility.h"
@@ -25,11 +25,11 @@ extern "C" {
 /** Publisher state */
 typedef enum nano_ros_publisher_state_t {
     /** Not initialized */
-    NANO_ROS_PUBLISHER_STATE_UNINITIALIZED = 0,
+    NROS_PUBLISHER_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
-    NANO_ROS_PUBLISHER_STATE_INITIALIZED = 1,
+    NROS_PUBLISHER_STATE_INITIALIZED = 1,
     /** Shutdown */
-    NANO_ROS_PUBLISHER_STATE_SHUTDOWN = 2,
+    NROS_PUBLISHER_STATE_SHUTDOWN = 2,
 } nano_ros_publisher_state_t;
 
 // ============================================================================
@@ -41,15 +41,15 @@ typedef struct nano_ros_publisher_t {
     /** Current state */
     nano_ros_publisher_state_t state;
     /** Topic name storage */
-    uint8_t topic_name[NANO_ROS_MAX_TOPIC_LEN];
+    uint8_t topic_name[NROS_MAX_TOPIC_LEN];
     /** Topic name length */
     size_t topic_name_len;
     /** Type name storage */
-    uint8_t type_name[NANO_ROS_MAX_TYPE_NAME_LEN];
+    uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
     /** Type name length */
     size_t type_name_len;
     /** Type hash storage */
-    uint8_t type_hash[NANO_ROS_MAX_TYPE_HASH_LEN];
+    uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
     /** Type hash length */
     size_t type_hash_len;
     /** Pointer to parent node */
@@ -67,7 +67,7 @@ typedef struct nano_ros_publisher_t {
  *
  * @return Zero-initialized publisher structure
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_publisher_t nano_ros_publisher_get_zero_initialized(void);
 
 /**
@@ -78,12 +78,12 @@ nano_ros_publisher_t nano_ros_publisher_get_zero_initialized(void);
  * @param type_info Pointer to message type information
  * @param topic_name Topic name (null-terminated string)
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any pointer is NULL
- * @return NANO_ROS_RET_NOT_INIT if node is not initialized
- * @return NANO_ROS_RET_ERROR on initialization failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any pointer is NULL
+ * @return NROS_RET_NOT_INIT if node is not initialized
+ * @return NROS_RET_ERROR on initialization failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_publisher_init(
     nano_ros_publisher_t *publisher,
     const nros_node_t *node,
@@ -99,12 +99,12 @@ nano_ros_ret_t nano_ros_publisher_init(
  * @param topic_name Topic name (null-terminated string)
  * @param qos Pointer to QoS settings (NULL for default)
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any required pointer is NULL
- * @return NANO_ROS_RET_NOT_INIT if node is not initialized
- * @return NANO_ROS_RET_ERROR on initialization failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any required pointer is NULL
+ * @return NROS_RET_NOT_INIT if node is not initialized
+ * @return NROS_RET_ERROR on initialization failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_publisher_init_with_qos(
     nano_ros_publisher_t *publisher,
     const nros_node_t *node,
@@ -119,12 +119,12 @@ nano_ros_ret_t nano_ros_publisher_init_with_qos(
  * @param data Pointer to CDR-serialized message data
  * @param len Length of data in bytes
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any pointer is NULL or len is 0
- * @return NANO_ROS_RET_NOT_INIT if publisher is not initialized
- * @return NANO_ROS_RET_PUBLISH_FAILED on publish failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any pointer is NULL or len is 0
+ * @return NROS_RET_NOT_INIT if publisher is not initialized
+ * @return NROS_RET_PUBLISH_FAILED on publish failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_publish_raw(
     const nano_ros_publisher_t *publisher,
     const uint8_t *data,
@@ -135,11 +135,11 @@ nano_ros_ret_t nano_ros_publish_raw(
  *
  * @param publisher Pointer to an initialized publisher
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if publisher is NULL
- * @return NANO_ROS_RET_NOT_INIT if not initialized
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if publisher is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_publisher_fini(nano_ros_publisher_t *publisher);
 
 /**
@@ -149,7 +149,7 @@ nano_ros_ret_t nano_ros_publisher_fini(nano_ros_publisher_t *publisher);
  *
  * @return Pointer to topic name (null-terminated), or NULL if invalid
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 const char *nano_ros_publisher_get_topic_name(const nano_ros_publisher_t *publisher);
 
 /**
@@ -159,11 +159,11 @@ const char *nano_ros_publisher_get_topic_name(const nano_ros_publisher_t *publis
  *
  * @return Non-zero if valid, 0 if invalid or NULL
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int nano_ros_publisher_is_valid(const nano_ros_publisher_t *publisher);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_PUBLISHER_H
+#endif // NROS_PUBLISHER_H

@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
 
     // Initialize support context
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
     }
@@ -138,7 +138,7 @@ int main(int argc, char** argv) {
 
     // Create node
     ret = nros_node_init(&app.node, &app.support, "c_service_server", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nano_ros_support_fini(&app.support);
         return 1;
@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
         service_callback,
         &app.ctx
     );
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize service: %d\n", ret);
         nros_node_fini(&app.node);
         nano_ros_support_fini(&app.support);
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
 
     // Create executor
     ret = nano_ros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
         nano_ros_service_fini(&app.service);
         nros_node_fini(&app.node);
@@ -175,7 +175,7 @@ int main(int argc, char** argv) {
 
     // Add service to executor
     ret = nano_ros_executor_add_service(&app.executor, &app.service);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add service to executor: %d\n", ret);
         nano_ros_executor_fini(&app.executor);
         nano_ros_service_fini(&app.service);
@@ -194,7 +194,7 @@ int main(int argc, char** argv) {
 
     // Spin with 100ms period
     ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NANO_ROS_RET_OK && g_running) {
+    if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 

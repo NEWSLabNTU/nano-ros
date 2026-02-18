@@ -14,11 +14,11 @@ use crate::error::*;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_support_state_t {
     /// Not initialized
-    NANO_ROS_SUPPORT_STATE_UNINITIALIZED = 0,
+    NROS_SUPPORT_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NANO_ROS_SUPPORT_STATE_INITIALIZED = 1,
+    NROS_SUPPORT_STATE_INITIALIZED = 1,
     /// Shutdown
-    NANO_ROS_SUPPORT_STATE_SHUTDOWN = 2,
+    NROS_SUPPORT_STATE_SHUTDOWN = 2,
 }
 
 /// Support context structure.
@@ -42,7 +42,7 @@ pub struct nano_ros_support_t {
 impl Default for nano_ros_support_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_UNINITIALIZED,
+            state: nano_ros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED,
             domain_id: 0,
             locator: [0u8; MAX_LOCATOR_LEN],
             locator_len: 0,
@@ -71,9 +71,9 @@ pub extern "C" fn nano_ros_support_get_zero_initialized() -> nano_ros_support_t 
 /// * `domain_id` - ROS domain ID (0-232)
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if support is NULL
-/// * `NANO_ROS_RET_ERROR` on initialization failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if support is NULL
+/// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * `support` must be a valid pointer to a zero-initialized nano_ros_support_t
@@ -85,14 +85,14 @@ pub unsafe extern "C" fn nano_ros_support_init(
     domain_id: u8,
 ) -> nano_ros_ret_t {
     if support.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let support = &mut *support;
 
     // Check if already initialized
-    if support.state != nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_UNINITIALIZED {
-        return NANO_ROS_RET_BAD_SEQUENCE;
+    if support.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED {
+        return NROS_RET_BAD_SEQUENCE;
     }
 
     // Store domain ID
@@ -151,10 +151,10 @@ pub unsafe extern "C" fn nano_ros_support_init(
             Ok(session) => {
                 let session_box = alloc::boxed::Box::new(session);
                 support._internal = alloc::boxed::Box::into_raw(session_box) as *mut _;
-                support.state = nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED;
-                NANO_ROS_RET_OK
+                support.state = nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+                NROS_RET_OK
             }
-            Err(_) => NANO_ROS_RET_ERROR,
+            Err(_) => NROS_RET_ERROR,
         }
     }
 
@@ -162,7 +162,7 @@ pub unsafe extern "C" fn nano_ros_support_init(
     {
         // For no_std, we need to use the shim transport
         // This will be implemented when shim support is added
-        NANO_ROS_RET_ERROR
+        NROS_RET_ERROR
     }
 }
 
@@ -174,22 +174,22 @@ pub unsafe extern "C" fn nano_ros_support_init(
 /// * `support` - Pointer to an initialized support context
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if support is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if support is NULL
+/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `support` must be a valid pointer to an initialized nano_ros_support_t
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t) -> nano_ros_ret_t {
     if support.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let support = &mut *support;
 
-    if support.state != nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if support.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
     // Clean up the session
@@ -203,9 +203,9 @@ pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t)
     }
 
     support._internal = ptr::null_mut();
-    support.state = nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_SHUTDOWN;
+    support.state = nano_ros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Check if support context is valid (initialized).
@@ -222,7 +222,7 @@ pub unsafe extern "C" fn nano_ros_support_is_valid(support: *const nano_ros_supp
     }
 
     let support = &*support;
-    if support.state == nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED {
+    if support.state == nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
         1
     } else {
         0
@@ -239,7 +239,7 @@ mod verification {
     fn support_init_null_ptr() {
         // NULL support pointer → INVALID_ARGUMENT
         let ret = unsafe { nano_ros_support_init(core::ptr::null_mut(), core::ptr::null(), 0) };
-        assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+        assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
     }
 
     #[kani::proof]
@@ -248,7 +248,7 @@ mod verification {
         let support = nano_ros_support_get_zero_initialized();
         assert_eq!(
             support.state,
-            nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_UNINITIALIZED
+            nano_ros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED
         );
         assert_eq!(support.domain_id, 0);
         assert!(support._internal.is_null());

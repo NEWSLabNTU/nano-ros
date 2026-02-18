@@ -7,8 +7,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_CLOCK_H
-#define NANO_ROS_CLOCK_H
+#ifndef NROS_CLOCK_H
+#define NROS_CLOCK_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -58,13 +58,13 @@ typedef struct nano_ros_duration_t {
  */
 typedef enum nano_ros_clock_type_t {
     /** Uninitialized clock */
-    NANO_ROS_CLOCK_UNINITIALIZED = 0,
+    NROS_CLOCK_UNINITIALIZED = 0,
     /** ROS time - follows /clock topic if available, otherwise system time */
-    NANO_ROS_CLOCK_ROS_TIME = 1,
+    NROS_CLOCK_ROS_TIME = 1,
     /** System time - wall clock time from the operating system */
-    NANO_ROS_CLOCK_SYSTEM_TIME = 2,
+    NROS_CLOCK_SYSTEM_TIME = 2,
     /** Steady time - monotonic clock, not affected by system time changes */
-    NANO_ROS_CLOCK_STEADY_TIME = 3,
+    NROS_CLOCK_STEADY_TIME = 3,
 } nano_ros_clock_type_t;
 
 /**
@@ -72,11 +72,11 @@ typedef enum nano_ros_clock_type_t {
  */
 typedef enum nano_ros_clock_state_t {
     /** Not initialized */
-    NANO_ROS_CLOCK_STATE_UNINITIALIZED = 0,
+    NROS_CLOCK_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
-    NANO_ROS_CLOCK_STATE_READY = 1,
+    NROS_CLOCK_STATE_READY = 1,
     /** Shutdown */
-    NANO_ROS_CLOCK_STATE_SHUTDOWN = 2,
+    NROS_CLOCK_STATE_SHUTDOWN = 2,
 } nano_ros_clock_state_t;
 
 /**
@@ -102,7 +102,7 @@ typedef struct nano_ros_clock_t {
  *
  * @return Zero-initialized clock structure
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_clock_t nano_ros_clock_get_zero_initialized(void);
 
 /**
@@ -110,10 +110,10 @@ nano_ros_clock_t nano_ros_clock_get_zero_initialized(void);
  *
  * @param clock Pointer to a zero-initialized clock
  * @param type The type of clock to create
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if clock is NULL or type is invalid
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if clock is NULL or type is invalid
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_clock_init(
     nano_ros_clock_t *clock,
     nano_ros_clock_type_t type);
@@ -123,11 +123,11 @@ nano_ros_ret_t nano_ros_clock_init(
  *
  * @param clock Pointer to an initialized clock
  * @param time_out Pointer to store the current time
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if clock or time_out is NULL
- * @return NANO_ROS_RET_NOT_INIT if clock is not initialized
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if clock or time_out is NULL
+ * @return NROS_RET_NOT_INIT if clock is not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_clock_get_now(
     const nano_ros_clock_t *clock,
     nano_ros_time_t *time_out);
@@ -137,11 +137,11 @@ nano_ros_ret_t nano_ros_clock_get_now(
  *
  * @param clock Pointer to an initialized clock
  * @param nanoseconds Pointer to store the current time in nanoseconds
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if clock or nanoseconds is NULL
- * @return NANO_ROS_RET_NOT_INIT if clock is not initialized
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if clock or nanoseconds is NULL
+ * @return NROS_RET_NOT_INIT if clock is not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_clock_get_now_ns(
     const nano_ros_clock_t *clock,
     int64_t *nanoseconds);
@@ -152,26 +152,26 @@ nano_ros_ret_t nano_ros_clock_get_now_ns(
  * @param clock Pointer to a clock
  * @return true if the clock is valid, false otherwise
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 bool nano_ros_clock_is_valid(const nano_ros_clock_t *clock);
 
 /**
  * Get the clock type.
  *
  * @param clock Pointer to a clock
- * @return The clock type, or NANO_ROS_CLOCK_UNINITIALIZED if clock is NULL
+ * @return The clock type, or NROS_CLOCK_UNINITIALIZED if clock is NULL
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_clock_type_t nano_ros_clock_get_type(const nano_ros_clock_t *clock);
 
 /**
  * Finalize a clock and release resources.
  *
  * @param clock Pointer to an initialized clock
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if clock is NULL
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if clock is NULL
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_clock_fini(nano_ros_clock_t *clock);
 
 // ============================================================================
@@ -184,7 +184,7 @@ nano_ros_ret_t nano_ros_clock_fini(nano_ros_clock_t *clock);
  * @param nanoseconds Time in nanoseconds
  * @return Time structure
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_time_t nano_ros_time_from_nanoseconds(int64_t nanoseconds);
 
 /**
@@ -193,7 +193,7 @@ nano_ros_time_t nano_ros_time_from_nanoseconds(int64_t nanoseconds);
  * @param time Pointer to time structure
  * @return Time in nanoseconds, or 0 if time is NULL
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int64_t nano_ros_time_to_nanoseconds(const nano_ros_time_t *time);
 
 /**
@@ -203,7 +203,7 @@ int64_t nano_ros_time_to_nanoseconds(const nano_ros_time_t *time);
  * @param duration Duration to add
  * @return Resulting time
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_time_t nano_ros_time_add(nano_ros_time_t time, nano_ros_duration_t duration);
 
 /**
@@ -213,7 +213,7 @@ nano_ros_time_t nano_ros_time_add(nano_ros_time_t time, nano_ros_duration_t dura
  * @param duration Duration to subtract
  * @return Resulting time
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_time_t nano_ros_time_sub(nano_ros_time_t time, nano_ros_duration_t duration);
 
 /**
@@ -223,11 +223,11 @@ nano_ros_time_t nano_ros_time_sub(nano_ros_time_t time, nano_ros_duration_t dura
  * @param b Second time
  * @return Negative if a < b, zero if a == b, positive if a > b
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int nano_ros_time_compare(nano_ros_time_t a, nano_ros_time_t b);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_CLOCK_H
+#endif // NROS_CLOCK_H

@@ -96,7 +96,7 @@ int main(int argc, char** argv) {
 
     // Initialize support context
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
     }
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
 
     // Create node
     ret = nros_node_init(&app.node, &app.support, "c_listener", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nano_ros_support_fini(&app.support);
         return 1;
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         subscription_callback,
         &app.listener_ctx
     );
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize subscription: %d\n", ret);
         nros_node_fini(&app.node);
         nano_ros_support_fini(&app.support);
@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
 
     // Create executor
     ret = nano_ros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
         nano_ros_subscription_fini(&app.subscription);
         nros_node_fini(&app.node);
@@ -145,8 +145,8 @@ int main(int argc, char** argv) {
     g_executor = &app.executor;
 
     // Add subscription to executor
-    ret = nano_ros_executor_add_subscription(&app.executor, &app.subscription, NANO_ROS_EXECUTOR_ON_NEW_DATA);
-    if (ret != NANO_ROS_RET_OK) {
+    ret = nano_ros_executor_add_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA);
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add subscription to executor: %d\n", ret);
         nano_ros_executor_fini(&app.executor);
         nano_ros_subscription_fini(&app.subscription);
@@ -164,7 +164,7 @@ int main(int argc, char** argv) {
 
     // Spin with 100ms period
     ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NANO_ROS_RET_OK && g_running) {
+    if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 

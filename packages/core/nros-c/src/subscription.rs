@@ -26,11 +26,11 @@ pub type nano_ros_subscription_callback_t =
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_subscription_state_t {
     /// Not initialized
-    NANO_ROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
+    NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
+    NROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
     /// Shutdown
-    NANO_ROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
+    NROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
 }
 
 /// Subscription structure.
@@ -63,7 +63,7 @@ pub struct nano_ros_subscription_t {
 impl Default for nano_ros_subscription_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_UNINITIALIZED,
+            state: nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
             topic_name: [0u8; MAX_TOPIC_LEN],
             topic_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -98,10 +98,10 @@ pub extern "C" fn nano_ros_subscription_get_zero_initialized() -> nano_ros_subsc
 /// * `context` - User context pointer passed to callback (can be NULL)
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
-/// * `NANO_ROS_RET_ERROR` on initialization failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All required pointers must be valid
@@ -167,10 +167,10 @@ pub unsafe extern "C" fn nano_ros_subscription_init_default(
 /// * `context` - User context pointer passed to callback (can be NULL)
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
-/// * `NANO_ROS_RET_ERROR` on initialization failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All required pointers must be valid
@@ -192,7 +192,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_best_effort(
         topic_name,
         callback,
         context,
-        &crate::qos::NANO_ROS_QOS_SENSOR_DATA,
+        &crate::qos::NROS_QOS_SENSOR_DATA,
     )
 }
 
@@ -212,11 +212,11 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
 ) -> nano_ros_ret_t {
     // Validate required arguments
     if subscription.is_null() || node.is_null() || type_info.is_null() || topic_name.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     if callback.is_none() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let subscription = &mut *subscription;
@@ -225,14 +225,14 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
 
     // Check if subscription is already initialized
     if subscription.state
-        != nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_UNINITIALIZED
+        != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED
     {
-        return NANO_ROS_RET_BAD_SEQUENCE;
+        return NROS_RET_BAD_SEQUENCE;
     }
 
     // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NANO_ROS_NODE_STATE_INITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
     // Copy topic name
@@ -247,7 +247,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
         len += 1;
     }
     if len == 0 {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
     subscription.topic_name[len] = 0;
     subscription.topic_name_len = len;
@@ -291,7 +291,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
 
     // Get QoS settings
     let _qos_settings = if qos.is_null() {
-        crate::qos::NANO_ROS_QOS_DEFAULT.to_qos_settings()
+        crate::qos::NROS_QOS_DEFAULT.to_qos_settings()
     } else {
         (*qos).to_qos_settings()
     };
@@ -304,11 +304,11 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
             Some(s) => s,
-            None => return NANO_ROS_RET_NOT_INIT,
+            None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED {
-            return NANO_ROS_RET_NOT_INIT;
+        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+            return NROS_RET_NOT_INIT;
         }
 
         // Save domain_id before borrowing session
@@ -317,7 +317,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
         // Get mutable session reference
         let session = match support_mut.get_session_mut() {
             Some(s) => s,
-            None => return NANO_ROS_RET_NOT_INIT,
+            None => return NROS_RET_NOT_INIT,
         };
 
         // Build the topic key expression for ROS 2 compatibility
@@ -337,17 +337,17 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
                 let sub_box = alloc::boxed::Box::new(sub_handle);
                 subscription._internal = alloc::boxed::Box::into_raw(sub_box) as *mut _;
             }
-            Err(_) => return NANO_ROS_RET_ERROR,
+            Err(_) => return NROS_RET_ERROR,
         }
 
-        subscription.state = nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED;
-        NANO_ROS_RET_OK
+        subscription.state = nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
+        NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
     {
         // For no_std, use shim transport (not yet implemented)
-        NANO_ROS_RET_ERROR
+        NROS_RET_ERROR
     }
 }
 
@@ -357,9 +357,9 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
 /// * `subscription` - Pointer to an initialized subscription
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if subscription is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if subscription is NULL
+/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `subscription` must be a valid pointer
@@ -368,14 +368,14 @@ pub unsafe extern "C" fn nano_ros_subscription_fini(
     subscription: *mut nano_ros_subscription_t,
 ) -> nano_ros_ret_t {
     if subscription.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let subscription = &mut *subscription;
 
-    if subscription.state != nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED
+    if subscription.state != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
-        return NANO_ROS_RET_NOT_INIT;
+        return NROS_RET_NOT_INIT;
     }
 
     // Clean up internal resources
@@ -393,9 +393,9 @@ pub unsafe extern "C" fn nano_ros_subscription_fini(
     subscription.callback = None;
     subscription.context = ptr::null_mut();
     subscription.node = ptr::null();
-    subscription.state = nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_SHUTDOWN;
+    subscription.state = nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Get the topic name of a subscription.
@@ -414,7 +414,7 @@ pub unsafe extern "C" fn nano_ros_subscription_get_topic_name(
     }
 
     let subscription = &*subscription;
-    if subscription.state != nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED
+    if subscription.state != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         return ptr::null();
     }
@@ -438,7 +438,7 @@ pub unsafe extern "C" fn nano_ros_subscription_is_valid(
     }
 
     let subscription = &*subscription;
-    if subscription.state == nano_ros_subscription_state_t::NANO_ROS_SUBSCRIPTION_STATE_INITIALIZED
+    if subscription.state == nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         1
     } else {

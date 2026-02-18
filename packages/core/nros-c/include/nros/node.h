@@ -7,8 +7,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_NODE_H
-#define NANO_ROS_NODE_H
+#ifndef NROS_NODE_H
+#define NROS_NODE_H
 
 #include "nros/types.h"
 #include "nros/visibility.h"
@@ -25,11 +25,11 @@ extern "C" {
 /** Node state */
 typedef enum nros_node_state_t {
     /** Not initialized */
-    NANO_ROS_NODE_STATE_UNINITIALIZED = 0,
+    NROS_NODE_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
-    NANO_ROS_NODE_STATE_INITIALIZED = 1,
+    NROS_NODE_STATE_INITIALIZED = 1,
     /** Shutdown */
-    NANO_ROS_NODE_STATE_SHUTDOWN = 2,
+    NROS_NODE_STATE_SHUTDOWN = 2,
 } nros_node_state_t;
 
 // ============================================================================
@@ -45,11 +45,11 @@ typedef struct nros_node_t {
     /** Current state */
     nros_node_state_t state;
     /** Node name storage */
-    uint8_t name[NANO_ROS_MAX_NAME_LEN];
+    uint8_t name[NROS_MAX_NAME_LEN];
     /** Node name length */
     size_t name_len;
     /** Namespace storage */
-    uint8_t namespace_[NANO_ROS_MAX_NAMESPACE_LEN];
+    uint8_t namespace_[NROS_MAX_NAMESPACE_LEN];
     /** Namespace length */
     size_t namespace_len;
     /** Pointer to parent support context */
@@ -67,7 +67,7 @@ typedef struct nros_node_t {
  *
  * @return Zero-initialized node structure
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nros_node_t nros_node_get_zero_initialized(void);
 
 /**
@@ -78,12 +78,12 @@ nros_node_t nros_node_get_zero_initialized(void);
  * @param name Node name (null-terminated string)
  * @param namespace_ Node namespace (null-terminated string, use "/" for root)
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any pointer is NULL or strings are invalid
- * @return NANO_ROS_RET_NOT_INIT if support is not initialized
- * @return NANO_ROS_RET_ERROR on initialization failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any pointer is NULL or strings are invalid
+ * @return NROS_RET_NOT_INIT if support is not initialized
+ * @return NROS_RET_ERROR on initialization failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nros_node_init(
     nros_node_t *node,
     const nano_ros_support_t *support,
@@ -95,11 +95,11 @@ nano_ros_ret_t nros_node_init(
  *
  * @param node Pointer to an initialized node
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if node is NULL
- * @return NANO_ROS_RET_NOT_INIT if not initialized
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if node is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nros_node_fini(nros_node_t *node);
 
 /**
@@ -109,7 +109,7 @@ nano_ros_ret_t nros_node_fini(nros_node_t *node);
  *
  * @return Pointer to the node name (null-terminated), or NULL if invalid
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 const char *nros_node_get_name(const nros_node_t *node);
 
 /**
@@ -119,11 +119,11 @@ const char *nros_node_get_name(const nros_node_t *node);
  *
  * @return Pointer to the node namespace (null-terminated), or NULL if invalid
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 const char *nros_node_get_namespace(const nros_node_t *node);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_NODE_H
+#endif // NROS_NODE_H

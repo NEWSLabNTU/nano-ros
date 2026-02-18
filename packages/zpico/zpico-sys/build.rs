@@ -61,6 +61,8 @@ struct ShimConfig {
     max_subscribers: usize,
     max_queryables: usize,
     max_liveliness: usize,
+    get_reply_buf_size: usize,
+    get_poll_interval_ms: usize,
 }
 
 impl ShimConfig {
@@ -70,6 +72,8 @@ impl ShimConfig {
             max_subscribers: env_usize("ZPICO_MAX_SUBSCRIBERS", 8),
             max_queryables: env_usize("ZPICO_MAX_QUERYABLES", 8),
             max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
+            get_reply_buf_size: env_usize("ZPICO_GET_REPLY_BUF_SIZE", 4096),
+            get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
         }
     }
 
@@ -77,13 +81,13 @@ impl ShimConfig {
     fn generate_rust_consts(&self, out_dir: &Path) {
         let contents = format!(
             "/// Maximum number of concurrent publishers (set via ZPICO_MAX_PUBLISHERS, default 8).\n\
-             pub const ZENOH_SHIM_MAX_PUBLISHERS: usize = {};\n\
+             pub const ZPICO_MAX_PUBLISHERS: usize = {};\n\
              /// Maximum number of concurrent subscribers (set via ZPICO_MAX_SUBSCRIBERS, default 8).\n\
-             pub const ZENOH_SHIM_MAX_SUBSCRIBERS: usize = {};\n\
+             pub const ZPICO_MAX_SUBSCRIBERS: usize = {};\n\
              /// Maximum number of concurrent queryables (set via ZPICO_MAX_QUERYABLES, default 8).\n\
-             pub const ZENOH_SHIM_MAX_QUERYABLES: usize = {};\n\
+             pub const ZPICO_MAX_QUERYABLES: usize = {};\n\
              /// Maximum number of concurrent liveliness tokens (set via ZPICO_MAX_LIVELINESS, default 16).\n\
-             pub const ZENOH_SHIM_MAX_LIVELINESS: usize = {};\n",
+             pub const ZPICO_MAX_LIVELINESS: usize = {};\n",
             self.max_publishers, self.max_subscribers, self.max_queryables, self.max_liveliness,
         );
         std::fs::write(out_dir.join("shim_constants.rs"), contents).unwrap();
@@ -92,20 +96,28 @@ impl ShimConfig {
     /// Add `-D` flags to a `cc::Build` so the C shim picks up the same values.
     fn apply_to_cc(&self, build: &mut cc::Build) {
         build.define(
-            "ZENOH_SHIM_MAX_PUBLISHERS",
+            "ZPICO_MAX_PUBLISHERS",
             self.max_publishers.to_string().as_str(),
         );
         build.define(
-            "ZENOH_SHIM_MAX_SUBSCRIBERS",
+            "ZPICO_MAX_SUBSCRIBERS",
             self.max_subscribers.to_string().as_str(),
         );
         build.define(
-            "ZENOH_SHIM_MAX_QUERYABLES",
+            "ZPICO_MAX_QUERYABLES",
             self.max_queryables.to_string().as_str(),
         );
         build.define(
-            "ZENOH_SHIM_MAX_LIVELINESS",
+            "ZPICO_MAX_LIVELINESS",
             self.max_liveliness.to_string().as_str(),
+        );
+        build.define(
+            "ZPICO_GET_REPLY_BUF_SIZE",
+            self.get_reply_buf_size.to_string().as_str(),
+        );
+        build.define(
+            "ZPICO_GET_POLL_INTERVAL_MS",
+            self.get_poll_interval_ms.to_string().as_str(),
         );
     }
 }
@@ -868,7 +880,7 @@ fn build_c_shim(
         build.include(&platform_dir);
 
         // Platform defines — link features from Cargo features
-        build.define("ZENOH_SHIM_SMOLTCP", None);
+        build.define("ZPICO_SMOLTCP", None);
         build.define("ZENOH_GENERIC", None);
         build.define("Z_FEATURE_MULTI_THREAD", "0");
         build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
@@ -1007,7 +1019,7 @@ fn build_zenoh_pico_embedded(
 
     // Platform defines
     build.define("ZENOH_GENERIC", None);
-    build.define("ZENOH_SHIM_SMOLTCP", None);
+    build.define("ZPICO_SMOLTCP", None);
     build.define("ZENOH_DEBUG", "0");
     // Link features are set in the generated zenoh_generic_config.h,
     // but also pass them as -D flags for consistency with any code that

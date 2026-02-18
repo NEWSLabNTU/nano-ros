@@ -15,11 +15,11 @@ use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nros_node_state_t {
     /// Not initialized
-    NANO_ROS_NODE_STATE_UNINITIALIZED = 0,
+    NROS_NODE_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NANO_ROS_NODE_STATE_INITIALIZED = 1,
+    NROS_NODE_STATE_INITIALIZED = 1,
     /// Shutdown
-    NANO_ROS_NODE_STATE_SHUTDOWN = 2,
+    NROS_NODE_STATE_SHUTDOWN = 2,
 }
 
 /// Node structure.
@@ -46,7 +46,7 @@ pub struct nros_node_t {
 impl Default for nros_node_t {
     fn default() -> Self {
         Self {
-            state: nros_node_state_t::NANO_ROS_NODE_STATE_UNINITIALIZED,
+            state: nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED,
             name: [0u8; MAX_NAME_LEN],
             name_len: 0,
             namespace: [0u8; MAX_NAMESPACE_LEN],
@@ -75,10 +75,10 @@ pub extern "C" fn nros_node_get_zero_initialized() -> nros_node_t {
 /// * `namespace_` - Node namespace (null-terminated string, use "/" for root)
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL or strings are invalid
-/// * `NANO_ROS_RET_NOT_INIT` if support is not initialized
-/// * `NANO_ROS_RET_ERROR` on initialization failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or strings are invalid
+/// * `NROS_RET_NOT_INIT` if support is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All pointers must be valid
@@ -92,20 +92,20 @@ pub unsafe extern "C" fn nros_node_init(
 ) -> nano_ros_ret_t {
     // Validate arguments
     if node.is_null() || support.is_null() || name.is_null() || namespace_.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let node = &mut *node;
     let support_ref = &*support;
 
     // Check if node is already initialized
-    if node.state != nros_node_state_t::NANO_ROS_NODE_STATE_UNINITIALIZED {
-        return NANO_ROS_RET_BAD_SEQUENCE;
+    if node.state != nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED {
+        return NROS_RET_BAD_SEQUENCE;
     }
 
     // Check if support is initialized
-    if support_ref.state != nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if support_ref.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
     // Copy name
@@ -120,7 +120,7 @@ pub unsafe extern "C" fn nros_node_init(
         len += 1;
     }
     if len == 0 {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
     node.name[len] = 0;
     node.name_len = len;
@@ -145,9 +145,9 @@ pub unsafe extern "C" fn nros_node_init(
     // For now, we don't create an internal Rust node object
     // The node is just metadata; publishers/subscribers will use support directly
     node._internal = ptr::null_mut();
-    node.state = nros_node_state_t::NANO_ROS_NODE_STATE_INITIALIZED;
+    node.state = nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Finalize a node.
@@ -156,22 +156,22 @@ pub unsafe extern "C" fn nros_node_init(
 /// * `node` - Pointer to an initialized node
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if node is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if node is NULL
+/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `node` must be a valid pointer to an initialized nros_node_t
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nano_ros_ret_t {
     if node.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let node = &mut *node;
 
-    if node.state != nros_node_state_t::NANO_ROS_NODE_STATE_INITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
     // Clean up internal resources if any
@@ -181,9 +181,9 @@ pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nano_ros_ret_
     }
 
     node.support = ptr::null();
-    node.state = nros_node_state_t::NANO_ROS_NODE_STATE_SHUTDOWN;
+    node.state = nros_node_state_t::NROS_NODE_STATE_SHUTDOWN;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Get the node name.
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn nros_node_get_name(node: *const nros_node_t) -> *const 
     }
 
     let node = &*node;
-    if node.state != nros_node_state_t::NANO_ROS_NODE_STATE_INITIALIZED {
+    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -227,7 +227,7 @@ pub unsafe extern "C" fn nros_node_get_namespace(node: *const nros_node_t) -> *c
     }
 
     let node = &*node;
-    if node.state != nros_node_state_t::NANO_ROS_NODE_STATE_INITIALIZED {
+    if node.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -256,7 +256,7 @@ mod verification {
                     ns.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL support → INVALID_ARGUMENT
@@ -270,7 +270,7 @@ mod verification {
                     ns.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL name → INVALID_ARGUMENT
@@ -283,7 +283,7 @@ mod verification {
                     ns.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL namespace → INVALID_ARGUMENT
@@ -296,7 +296,7 @@ mod verification {
                     core::ptr::null(),
                 )
             },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -306,7 +306,7 @@ mod verification {
         let node = nros_node_get_zero_initialized();
         assert_eq!(
             node.state,
-            nros_node_state_t::NANO_ROS_NODE_STATE_UNINITIALIZED
+            nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED
         );
         assert!(node.support.is_null());
         assert!(node._internal.is_null());

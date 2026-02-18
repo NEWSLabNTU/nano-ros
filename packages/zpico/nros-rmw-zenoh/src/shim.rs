@@ -55,8 +55,8 @@ use nros_rmw::{
 
 use crate::keyexpr::{QosKeyExpr, ServiceKeyExpr, TopicKeyExpr};
 use crate::zpico::{
-    ShimContext, ShimError, ShimLivelinessToken, ShimZenohId, ZENOH_SHIM_MAX_QUERYABLES,
-    ZENOH_SHIM_MAX_SUBSCRIBERS, ZENOH_SHIM_RMW_GID_SIZE,
+    ShimContext, ShimError, ShimLivelinessToken, ShimZenohId, ZPICO_MAX_QUERYABLES,
+    ZPICO_MAX_SUBSCRIBERS, ZPICO_RMW_GID_SIZE,
 };
 
 // Re-export for convenience
@@ -67,7 +67,7 @@ pub use crate::zpico::ShimZenohId as ZenohId;
 // ============================================================================
 
 /// RMW GID size for attachment serialization (16 bytes for Humble)
-pub const RMW_GID_SIZE: usize = ZENOH_SHIM_RMW_GID_SIZE;
+pub const RMW_GID_SIZE: usize = ZPICO_RMW_GID_SIZE;
 
 /// Size of serialized RMW attachment (without safety CRC)
 /// Format: sequence_number (8) + timestamp (8) + VLE length (1) + gid (16) = 33 bytes
@@ -80,6 +80,36 @@ const SAFETY_CRC_SIZE: usize = 4;
 /// Total attachment size with safety CRC (37 bytes)
 #[cfg(feature = "safety-e2e")]
 const RMW_ATTACHMENT_SIZE_WITH_CRC: usize = RMW_ATTACHMENT_SIZE + SAFETY_CRC_SIZE;
+
+/// LCG multiplier for GID PRNG generation.
+const GID_PRNG_MULTIPLIER: u64 = 0x517cc1b727220a95;
+
+/// Null-terminated locator string buffer size.
+const LOCATOR_BUFFER_SIZE: usize = 128;
+
+/// Property key/value buffer size for session configuration.
+const CONFIG_PROPERTY_SIZE: usize = 64;
+
+/// Maximum number of session configuration properties.
+const MAX_SESSION_PROPERTIES: usize = 8;
+
+/// Key expression heapless::String capacity (256 chars).
+const KEYEXPR_STRING_SIZE: usize = 256;
+
+/// Key expression buffer size with null terminator (256 + 1).
+const KEYEXPR_BUFFER_SIZE: usize = KEYEXPR_STRING_SIZE + 1;
+
+/// Buffer size for topic/namespace name mangling.
+const MANGLED_NAME_SIZE: usize = 64;
+
+/// 16-byte ZID formatted as hexadecimal (32 ASCII characters).
+const ZID_HEX_SIZE: usize = 32;
+
+/// QoS encoding string buffer size.
+const QOS_STRING_SIZE: usize = 32;
+
+/// Placeholder timestamp increment per publish (1ms in nanoseconds).
+const TIMESTAMP_INCREMENT_NS: i64 = 1_000_000;
 
 // ============================================================================
 // Executor Wake Signal (std only)
@@ -186,7 +216,7 @@ impl RmwAttachment {
         let seed = COUNTER.fetch_add(1, Ordering::Relaxed) as u64;
         // Use address of gid as additional entropy
         let addr = &gid as *const _ as u64;
-        let mixed = seed.wrapping_mul(0x517cc1b727220a95) ^ addr;
+        let mixed = seed.wrapping_mul(GID_PRNG_MULTIPLIER) ^ addr;
 
         for (i, byte) in gid.iter_mut().enumerate() {
             let shift = (i % 8) * 8;
@@ -315,10 +345,10 @@ impl Ros2Liveliness {
         node_name: &str,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
-        let mut zid_hex = [0u8; 32];
+        let mut zid_hex = [0u8; ZID_HEX_SIZE];
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
-        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
+        let ns_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(namespace);
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -345,13 +375,13 @@ impl Ros2Liveliness {
         qos: &QosSettings,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
-        let mut zid_hex = [0u8; 32];
+        let mut zid_hex = [0u8; ZID_HEX_SIZE];
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
         // Mangle topic name: replace slashes with percent signs
-        let topic_mangled = Self::mangle_topic_name::<64>(topic.name);
-        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
-        let qos_string: heapless::String<32> = qos.to_qos_string();
+        let topic_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(topic.name);
+        let ns_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(namespace);
+        let qos_string: heapless::String<QOS_STRING_SIZE> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -382,12 +412,12 @@ impl Ros2Liveliness {
         qos: &QosSettings,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
-        let mut zid_hex = [0u8; 32];
+        let mut zid_hex = [0u8; ZID_HEX_SIZE];
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
-        let topic_mangled = Self::mangle_topic_name::<64>(topic.name);
-        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
-        let qos_string: heapless::String<32> = qos.to_qos_string();
+        let topic_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(topic.name);
+        let ns_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(namespace);
+        let qos_string: heapless::String<QOS_STRING_SIZE> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -418,12 +448,12 @@ impl Ros2Liveliness {
         qos: &QosSettings,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
-        let mut zid_hex = [0u8; 32];
+        let mut zid_hex = [0u8; ZID_HEX_SIZE];
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
-        let service_mangled = Self::mangle_topic_name::<64>(service.name);
-        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
-        let qos_string: heapless::String<32> = qos.to_qos_string();
+        let service_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(service.name);
+        let ns_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(namespace);
+        let qos_string: heapless::String<QOS_STRING_SIZE> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -454,12 +484,12 @@ impl Ros2Liveliness {
         qos: &QosSettings,
     ) -> heapless::String<N> {
         let mut key = heapless::String::new();
-        let mut zid_hex = [0u8; 32];
+        let mut zid_hex = [0u8; ZID_HEX_SIZE];
         zid.to_hex_bytes(&mut zid_hex);
         let zid_str = core::str::from_utf8(&zid_hex).unwrap_or("");
-        let service_mangled = Self::mangle_topic_name::<64>(service.name);
-        let ns_mangled = Self::mangle_topic_name::<64>(namespace);
-        let qos_string: heapless::String<32> = qos.to_qos_string();
+        let service_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(service.name);
+        let ns_mangled = Self::mangle_topic_name::<MANGLED_NAME_SIZE>(namespace);
+        let qos_string: heapless::String<QOS_STRING_SIZE> = qos.to_qos_string();
         let _ = core::fmt::write(
             &mut key,
             format_args!(
@@ -576,7 +606,7 @@ impl ShimSession {
         let locator = match (&config.mode, config.locator) {
             (SessionMode::Client, Some(loc)) => {
                 // Create null-terminated locator
-                let mut buf = [0u8; 128];
+                let mut buf = [0u8; LOCATOR_BUFFER_SIZE];
                 let bytes = loc.as_bytes();
                 if bytes.len() >= buf.len() {
                     return Err(TransportError::InvalidConfig);
@@ -590,7 +620,7 @@ impl ShimSession {
             }
             (SessionMode::Peer, _) => {
                 // Peer mode - pass null locator
-                [0u8; 128]
+                [0u8; LOCATOR_BUFFER_SIZE]
             }
         };
 
@@ -602,18 +632,19 @@ impl ShimSession {
 
         // Build null-terminated property strings on the stack
         // Each key/value is at most 64 bytes
-        let mut key_bufs = [[0u8; 64]; 8];
-        let mut val_bufs = [[0u8; 64]; 8];
-        let mut c_props: [crate::zpico::zenoh_shim_property_t; 8] = unsafe { core::mem::zeroed() };
+        let mut key_bufs = [[0u8; CONFIG_PROPERTY_SIZE]; MAX_SESSION_PROPERTIES];
+        let mut val_bufs = [[0u8; CONFIG_PROPERTY_SIZE]; MAX_SESSION_PROPERTIES];
+        let mut c_props: [crate::zpico::zenoh_shim_property_t; MAX_SESSION_PROPERTIES] =
+            unsafe { core::mem::zeroed() };
 
         let mut prop_count = 0usize;
 
         // Copy explicit properties from config
-        for i in 0..config.properties.len().min(8) {
+        for i in 0..config.properties.len().min(MAX_SESSION_PROPERTIES) {
             let (key, value) = config.properties[i];
             let key_bytes = key.as_bytes();
             let val_bytes = value.as_bytes();
-            if key_bytes.len() >= 64 || val_bytes.len() >= 64 {
+            if key_bytes.len() >= CONFIG_PROPERTY_SIZE || val_bytes.len() >= CONFIG_PROPERTY_SIZE {
                 continue; // Skip oversized properties
             }
             key_bufs[prop_count][..key_bytes.len()].copy_from_slice(key_bytes);
@@ -638,10 +669,12 @@ impl ShimSession {
             for &(env_name, prop_key) in env_mappings {
                 if let Ok(val) = std::env::var(env_name) {
                     let already_set = config.properties.iter().any(|(k, _)| *k == prop_key);
-                    if !already_set && prop_count < 8 {
+                    if !already_set && prop_count < MAX_SESSION_PROPERTIES {
                         let key_bytes = prop_key.as_bytes();
                         let val_bytes = val.as_bytes();
-                        if key_bytes.len() < 64 && val_bytes.len() < 64 {
+                        if key_bytes.len() < CONFIG_PROPERTY_SIZE
+                            && val_bytes.len() < CONFIG_PROPERTY_SIZE
+                        {
                             key_bufs[prop_count][..key_bytes.len()].copy_from_slice(key_bytes);
                             key_bufs[prop_count][key_bytes.len()] = 0;
                             val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
@@ -809,13 +842,13 @@ impl ShimPublisher {
     /// Create a new publisher for the given topic
     pub fn new(context: &ShimContext, topic: &TopicInfo) -> Result<Self, TransportError> {
         // Generate the topic key with null terminator
-        let key: heapless::String<256> = topic.to_key();
+        let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
 
         #[cfg(feature = "std")]
         log::debug!("Publisher data keyexpr: {}", key.as_str());
 
         // Create null-terminated keyexpr
-        let mut keyexpr_buf = [0u8; 257];
+        let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
             return Err(TransportError::InvalidConfig);
@@ -852,7 +885,7 @@ impl ShimPublisher {
         // Increment by 1ms equivalent
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         self.timestamp_counter
-            .fetch_add(1_000_000, Ordering::Relaxed)
+            .fetch_add(TIMESTAMP_INCREMENT_NS as _, Ordering::Relaxed)
             .into()
     }
 
@@ -947,9 +980,7 @@ const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE;
 #[cfg(feature = "safety-e2e")]
 const SUBSCRIBER_ATTACHMENT_BUF_SIZE: usize = RMW_ATTACHMENT_SIZE_WITH_CRC;
 
-// Generated by build.rs from ZPICO_SUBSCRIBER_BUFFER_SIZE and ZPICO_SERVICE_BUFFER_SIZE
-// env vars (both default to 1024).
-include!(concat!(env!("OUT_DIR"), "/buffer_config.rs"));
+pub use crate::config::{SERVICE_BUFFER_SIZE, SUBSCRIBER_BUFFER_SIZE};
 
 /// Shared buffer for subscriber callbacks
 ///
@@ -994,11 +1025,11 @@ impl SubscriberBuffer {
 
 /// Static buffers for subscribers.
 ///
-/// Count matches `ZENOH_SHIM_MAX_SUBSCRIBERS` from zpico-sys (the C shim
+/// Count matches `ZPICO_MAX_SUBSCRIBERS` from zpico-sys (the C shim
 /// allocates the same number of subscriber entries). We use static buffers
 /// because the shim callback mechanism requires a static context pointer.
-static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZENOH_SHIM_MAX_SUBSCRIBERS] =
-    [const { SubscriberBuffer::new() }; ZENOH_SHIM_MAX_SUBSCRIBERS];
+static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZPICO_MAX_SUBSCRIBERS] =
+    [const { SubscriberBuffer::new() }; ZPICO_MAX_SUBSCRIBERS];
 
 /// Next available buffer index
 static NEXT_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
@@ -1014,7 +1045,7 @@ extern "C" fn subscriber_notify_callback(
     ctx: *mut core::ffi::c_void,
 ) {
     let buffer_index = ctx as usize;
-    if buffer_index >= 8 {
+    if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
         return;
     }
 
@@ -1071,20 +1102,20 @@ impl ShimSubscriber {
     pub fn new(context: &ShimContext, topic: &TopicInfo) -> Result<Self, TransportError> {
         // Allocate a buffer index
         let buffer_index = NEXT_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
-        if buffer_index >= 8 {
+        if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
             // Roll back and return error
             NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
             return Err(TransportError::SubscriberCreationFailed);
         }
 
         // Generate the topic key with wildcard for type hash
-        let key: heapless::String<256> = topic.to_key_wildcard();
+        let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key_wildcard();
 
         #[cfg(feature = "std")]
         log::debug!("Subscriber data keyexpr: {}", key.as_str());
 
         // Create null-terminated keyexpr
-        let mut keyexpr_buf = [0u8; 257];
+        let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
             return Err(TransportError::InvalidConfig);
@@ -1466,13 +1497,13 @@ impl ShimZeroCopySubscriber {
         use crate::keyexpr::TopicKeyExpr;
 
         // Generate the topic key with wildcard for type hash
-        let key: heapless::String<256> = topic.to_key_wildcard();
+        let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key_wildcard();
 
         #[cfg(feature = "std")]
         log::debug!("ZeroCopy subscriber data keyexpr: {}", key.as_str());
 
         // Create null-terminated keyexpr
-        let mut keyexpr_buf = [0u8; 257];
+        let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
             return Err(nros_rmw::TransportError::InvalidConfig);
@@ -1546,9 +1577,9 @@ impl ServiceBuffer {
 
 /// Static buffers for service servers.
 ///
-/// Count matches `ZENOH_SHIM_MAX_QUERYABLES` from zpico-sys.
-static mut SERVICE_BUFFERS: [ServiceBuffer; ZENOH_SHIM_MAX_QUERYABLES] =
-    [const { ServiceBuffer::new() }; ZENOH_SHIM_MAX_QUERYABLES];
+/// Count matches `ZPICO_MAX_QUERYABLES` from zpico-sys.
+static mut SERVICE_BUFFERS: [ServiceBuffer; ZPICO_MAX_QUERYABLES] =
+    [const { ServiceBuffer::new() }; ZPICO_MAX_QUERYABLES];
 
 /// Next available service buffer index
 static NEXT_SERVICE_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
@@ -1565,7 +1596,7 @@ extern "C" fn queryable_callback(
     ctx: *mut core::ffi::c_void,
 ) {
     let buffer_index = ctx as usize;
-    if buffer_index >= 8 {
+    if buffer_index >= ZPICO_MAX_QUERYABLES {
         return;
     }
 
@@ -1637,16 +1668,16 @@ impl ShimServiceServer {
     pub fn new(context: &ShimContext, service: &ServiceInfo) -> Result<Self, TransportError> {
         // Allocate a buffer index
         let buffer_index = NEXT_SERVICE_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
-        if buffer_index >= 8 {
+        if buffer_index >= ZPICO_MAX_QUERYABLES {
             NEXT_SERVICE_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
             return Err(TransportError::ServiceServerCreationFailed);
         }
 
         // Generate the service key
-        let key: heapless::String<256> = service.to_key();
+        let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key();
 
         // Create null-terminated keyexpr
-        let mut keyexpr_buf = [0u8; 257];
+        let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
             return Err(TransportError::InvalidConfig);
@@ -1791,10 +1822,10 @@ impl ShimServiceClient {
     /// Create a new service client for the given service
     pub fn new(context: &ShimContext, service: &ServiceInfo) -> Result<Self, TransportError> {
         // Generate wildcard service key for queries (matches any type hash from ROS 2)
-        let key: heapless::String<256> = service.to_key_wildcard();
+        let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key_wildcard();
 
         // Create null-terminated keyexpr
-        let mut keyexpr_buf = [0u8; 257];
+        let mut keyexpr_buf = [0u8; KEYEXPR_BUFFER_SIZE];
         let bytes = key.as_bytes();
         if bytes.len() >= keyexpr_buf.len() {
             return Err(TransportError::InvalidConfig);
@@ -1971,10 +2002,10 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_mangle() {
-        let mangled = Ros2Liveliness::mangle_topic_name::<64>("/chatter");
+        let mangled = Ros2Liveliness::mangle_topic_name::<MANGLED_NAME_SIZE>("/chatter");
         assert_eq!(mangled.as_str(), "%chatter");
 
-        let mangled2 = Ros2Liveliness::mangle_topic_name::<64>("/foo/bar/baz");
+        let mangled2 = Ros2Liveliness::mangle_topic_name::<MANGLED_NAME_SIZE>("/foo/bar/baz");
         assert_eq!(mangled2.as_str(), "%foo%bar%baz");
     }
 
@@ -2207,7 +2238,7 @@ mod tests {
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
             0x0f, 0x10,
         ]);
-        let mut buf = [0u8; 32];
+        let mut buf = [0u8; ZID_HEX_SIZE];
         zid.to_hex_bytes(&mut buf);
         let hex = core::str::from_utf8(&buf).unwrap();
 

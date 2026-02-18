@@ -18,6 +18,8 @@
 #![no_std]
 #![allow(static_mut_refs)]
 
+pub(crate) mod config;
+
 use core::ffi::c_int;
 
 use smoltcp::iface::{PollResult, SocketHandle};
@@ -40,8 +42,7 @@ pub use smoltcp::phy::Device;
 /// Matches the XRCE transport MTU to avoid truncation.
 pub const UDP_BUFFER_SIZE: usize = xrce_sys::XRCE_TRANSPORT_MTU;
 
-/// Number of packet metadata slots per direction.
-const UDP_META_COUNT: usize = 4;
+use crate::config::UDP_META_COUNT;
 
 // ============================================================================
 // Static Buffers

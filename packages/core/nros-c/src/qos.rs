@@ -7,9 +7,9 @@ use core::ffi::c_int;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_qos_reliability_t {
     /// Best effort delivery - no guarantees
-    NANO_ROS_QOS_RELIABILITY_BEST_EFFORT = 0,
+    NROS_QOS_RELIABILITY_BEST_EFFORT = 0,
     /// Reliable delivery - retransmit if needed
-    NANO_ROS_QOS_RELIABILITY_RELIABLE = 1,
+    NROS_QOS_RELIABILITY_RELIABLE = 1,
 }
 
 /// QoS durability policy
@@ -17,9 +17,9 @@ pub enum nano_ros_qos_reliability_t {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_qos_durability_t {
     /// Volatile - no persistence
-    NANO_ROS_QOS_DURABILITY_VOLATILE = 0,
+    NROS_QOS_DURABILITY_VOLATILE = 0,
     /// Transient local - persist for late joiners
-    NANO_ROS_QOS_DURABILITY_TRANSIENT_LOCAL = 1,
+    NROS_QOS_DURABILITY_TRANSIENT_LOCAL = 1,
 }
 
 /// QoS history policy
@@ -27,9 +27,9 @@ pub enum nano_ros_qos_durability_t {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_qos_history_t {
     /// Keep last N samples
-    NANO_ROS_QOS_HISTORY_KEEP_LAST = 0,
+    NROS_QOS_HISTORY_KEEP_LAST = 0,
     /// Keep all samples
-    NANO_ROS_QOS_HISTORY_KEEP_ALL = 1,
+    NROS_QOS_HISTORY_KEEP_ALL = 1,
 }
 
 /// QoS settings structure
@@ -49,9 +49,9 @@ pub struct nano_ros_qos_t {
 impl Default for nano_ros_qos_t {
     fn default() -> Self {
         Self {
-            reliability: nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_RELIABLE,
-            durability: nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE,
-            history: nano_ros_qos_history_t::NANO_ROS_QOS_HISTORY_KEEP_LAST,
+            reliability: nano_ros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE,
+            durability: nano_ros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
+            history: nano_ros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
             depth: 10,
         }
     }
@@ -59,28 +59,28 @@ impl Default for nano_ros_qos_t {
 
 /// Default QoS profile
 #[unsafe(no_mangle)]
-pub static NANO_ROS_QOS_DEFAULT: nano_ros_qos_t = nano_ros_qos_t {
-    reliability: nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_RELIABLE,
-    durability: nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE,
-    history: nano_ros_qos_history_t::NANO_ROS_QOS_HISTORY_KEEP_LAST,
+pub static NROS_QOS_DEFAULT: nano_ros_qos_t = nano_ros_qos_t {
+    reliability: nano_ros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE,
+    durability: nano_ros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
+    history: nano_ros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
     depth: 10,
 };
 
 /// Sensor data QoS profile (best effort, small depth)
 #[unsafe(no_mangle)]
-pub static NANO_ROS_QOS_SENSOR_DATA: nano_ros_qos_t = nano_ros_qos_t {
-    reliability: nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_BEST_EFFORT,
-    durability: nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE,
-    history: nano_ros_qos_history_t::NANO_ROS_QOS_HISTORY_KEEP_LAST,
+pub static NROS_QOS_SENSOR_DATA: nano_ros_qos_t = nano_ros_qos_t {
+    reliability: nano_ros_qos_reliability_t::NROS_QOS_RELIABILITY_BEST_EFFORT,
+    durability: nano_ros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
+    history: nano_ros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
     depth: 5,
 };
 
 /// Services QoS profile (reliable)
 #[unsafe(no_mangle)]
-pub static NANO_ROS_QOS_SERVICES: nano_ros_qos_t = nano_ros_qos_t {
-    reliability: nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_RELIABLE,
-    durability: nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE,
-    history: nano_ros_qos_history_t::NANO_ROS_QOS_HISTORY_KEEP_LAST,
+pub static NROS_QOS_SERVICES: nano_ros_qos_t = nano_ros_qos_t {
+    reliability: nano_ros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE,
+    durability: nano_ros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE,
+    history: nano_ros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST,
     depth: 10,
 };
 
@@ -90,26 +90,26 @@ impl nano_ros_qos_t {
         use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
 
         let reliability = match self.reliability {
-            nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_BEST_EFFORT => {
+            nano_ros_qos_reliability_t::NROS_QOS_RELIABILITY_BEST_EFFORT => {
                 QosReliabilityPolicy::BestEffort
             }
-            nano_ros_qos_reliability_t::NANO_ROS_QOS_RELIABILITY_RELIABLE => {
+            nano_ros_qos_reliability_t::NROS_QOS_RELIABILITY_RELIABLE => {
                 QosReliabilityPolicy::Reliable
             }
         };
 
         let durability = match self.durability {
-            nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_VOLATILE => {
+            nano_ros_qos_durability_t::NROS_QOS_DURABILITY_VOLATILE => {
                 QosDurabilityPolicy::Volatile
             }
-            nano_ros_qos_durability_t::NANO_ROS_QOS_DURABILITY_TRANSIENT_LOCAL => {
+            nano_ros_qos_durability_t::NROS_QOS_DURABILITY_TRANSIENT_LOCAL => {
                 QosDurabilityPolicy::TransientLocal
             }
         };
 
         let history = match self.history {
-            nano_ros_qos_history_t::NANO_ROS_QOS_HISTORY_KEEP_LAST => QosHistoryPolicy::KeepLast,
-            nano_ros_qos_history_t::NANO_ROS_QOS_HISTORY_KEEP_ALL => QosHistoryPolicy::KeepAll,
+            nano_ros_qos_history_t::NROS_QOS_HISTORY_KEEP_LAST => QosHistoryPolicy::KeepLast,
+            nano_ros_qos_history_t::NROS_QOS_HISTORY_KEEP_ALL => QosHistoryPolicy::KeepAll,
         };
 
         nros_rmw::QosSettings {

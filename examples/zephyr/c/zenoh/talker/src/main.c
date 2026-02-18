@@ -55,7 +55,7 @@ int main(void)
     /* Initialize BSP (uses Kconfig for zenoh locator) */
     nano_ros_bsp_context_t ctx;
     int32_t ret = nano_ros_bsp_init(&ctx);
-    if (ret != NANO_ROS_BSP_OK) {
+    if (ret != NROS_BSP_OK) {
         LOG_ERR("BSP init failed: %d", ret);
         return 1;
     }
@@ -63,7 +63,7 @@ int main(void)
     /* Create node */
     nros_node_t node;
     ret = nano_ros_bsp_create_node(&ctx, &node, "zephyr_talker");
-    if (ret != NANO_ROS_BSP_OK) {
+    if (ret != NROS_BSP_OK) {
         LOG_ERR("Node creation failed: %d", ret);
         return 1;
     }
@@ -71,7 +71,7 @@ int main(void)
     /* Create publisher */
     nano_ros_publisher_t pub;
     ret = nano_ros_bsp_create_publisher(&node, &pub, "/chatter", "std_msgs::msg::dds_::Int32_");
-    if (ret != NANO_ROS_BSP_OK) {
+    if (ret != NROS_BSP_OK) {
         LOG_ERR("Publisher creation failed: %d", ret);
         return 1;
     }
@@ -88,7 +88,7 @@ int main(void)
         int32_t len = std_msgs_Int32_serialize(&msg, buffer, sizeof(buffer));
         if (len > 0) {
             ret = nano_ros_bsp_publish(&pub, buffer, (size_t)len);
-            if (ret == NANO_ROS_BSP_OK) {
+            if (ret == NROS_BSP_OK) {
                 LOG_INF("Published: %d", msg.data);
             } else {
                 LOG_ERR("Publish failed: %d", ret);

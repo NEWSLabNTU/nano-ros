@@ -12,10 +12,10 @@ use crate::error::*;
 // ============================================================================
 
 /// Maximum length of a parameter name
-pub const NANO_ROS_MAX_PARAM_NAME_LEN: usize = 64;
+pub const NROS_MAX_PARAM_NAME_LEN: usize = 64;
 
 /// Maximum length of a string parameter value
-pub const NANO_ROS_MAX_PARAM_STRING_LEN: usize = 128;
+pub const NROS_MAX_PARAM_STRING_LEN: usize = 128;
 
 // ============================================================================
 // Parameter Types
@@ -26,25 +26,25 @@ pub const NANO_ROS_MAX_PARAM_STRING_LEN: usize = 128;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_parameter_type_t {
     /// Parameter not set
-    NANO_ROS_PARAMETER_NOT_SET = 0,
+    NROS_PARAMETER_NOT_SET = 0,
     /// Boolean parameter
-    NANO_ROS_PARAMETER_BOOL = 1,
+    NROS_PARAMETER_BOOL = 1,
     /// 64-bit signed integer parameter
-    NANO_ROS_PARAMETER_INTEGER = 2,
+    NROS_PARAMETER_INTEGER = 2,
     /// 64-bit floating point parameter
-    NANO_ROS_PARAMETER_DOUBLE = 3,
+    NROS_PARAMETER_DOUBLE = 3,
     /// String parameter
-    NANO_ROS_PARAMETER_STRING = 4,
+    NROS_PARAMETER_STRING = 4,
     /// Byte array parameter
-    NANO_ROS_PARAMETER_BYTE_ARRAY = 5,
+    NROS_PARAMETER_BYTE_ARRAY = 5,
     /// Boolean array parameter
-    NANO_ROS_PARAMETER_BOOL_ARRAY = 6,
+    NROS_PARAMETER_BOOL_ARRAY = 6,
     /// Integer array parameter
-    NANO_ROS_PARAMETER_INTEGER_ARRAY = 7,
+    NROS_PARAMETER_INTEGER_ARRAY = 7,
     /// Double array parameter
-    NANO_ROS_PARAMETER_DOUBLE_ARRAY = 8,
+    NROS_PARAMETER_DOUBLE_ARRAY = 8,
     /// String array parameter
-    NANO_ROS_PARAMETER_STRING_ARRAY = 9,
+    NROS_PARAMETER_STRING_ARRAY = 9,
 }
 
 /// Array parameter value (pointer + length to caller-owned data).
@@ -71,7 +71,7 @@ pub union nano_ros_parameter_value_t {
     /// Double value
     pub double_value: f64,
     /// String value (fixed-size buffer)
-    pub string_value: [u8; NANO_ROS_MAX_PARAM_STRING_LEN],
+    pub string_value: [u8; NROS_MAX_PARAM_STRING_LEN],
     /// Array value (pointer + length)
     pub array_value: nano_ros_param_array_t,
 }
@@ -87,7 +87,7 @@ impl Default for nano_ros_parameter_value_t {
 #[derive(Clone, Copy)]
 pub struct nano_ros_parameter_t {
     /// Parameter name (null-terminated)
-    pub name: [u8; NANO_ROS_MAX_PARAM_NAME_LEN],
+    pub name: [u8; NROS_MAX_PARAM_NAME_LEN],
     /// Parameter type
     pub r#type: nano_ros_parameter_type_t,
     /// Parameter value
@@ -97,8 +97,8 @@ pub struct nano_ros_parameter_t {
 impl Default for nano_ros_parameter_t {
     fn default() -> Self {
         Self {
-            name: [0u8; NANO_ROS_MAX_PARAM_NAME_LEN],
-            r#type: nano_ros_parameter_type_t::NANO_ROS_PARAMETER_NOT_SET,
+            name: [0u8; NROS_MAX_PARAM_NAME_LEN],
+            r#type: nano_ros_parameter_type_t::NROS_PARAMETER_NOT_SET,
             value: nano_ros_parameter_value_t::default(),
         }
     }
@@ -113,11 +113,11 @@ impl Default for nano_ros_parameter_t {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_param_server_state_t {
     /// Not initialized
-    NANO_ROS_PARAM_SERVER_STATE_UNINITIALIZED = 0,
+    NROS_PARAM_SERVER_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NANO_ROS_PARAM_SERVER_STATE_READY = 1,
+    NROS_PARAM_SERVER_STATE_READY = 1,
     /// Shutdown
-    NANO_ROS_PARAM_SERVER_STATE_SHUTDOWN = 2,
+    NROS_PARAM_SERVER_STATE_SHUTDOWN = 2,
 }
 
 /// Parameter change callback type.
@@ -149,7 +149,7 @@ pub struct nano_ros_param_server_t {
 impl Default for nano_ros_param_server_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_UNINITIALIZED,
+            state: nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED,
             capacity: 0,
             count: 0,
             parameters: ptr::null_mut(),
@@ -228,13 +228,13 @@ pub unsafe extern "C" fn nano_ros_param_server_init(
     capacity: usize,
 ) -> nano_ros_ret_t {
     if server.is_null() || storage.is_null() || capacity == 0 {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &mut *server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_UNINITIALIZED {
-        return NANO_ROS_RET_ALREADY_EXISTS;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
+        return NROS_RET_ALREADY_EXISTS;
     }
 
     // Initialize storage to default values
@@ -247,9 +247,9 @@ pub unsafe extern "C" fn nano_ros_param_server_init(
     server.count = 0;
     server.callback = None;
     server.callback_context = ptr::null_mut();
-    server.state = nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY;
+    server.state = nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Set a parameter change callback.
@@ -260,19 +260,19 @@ pub unsafe extern "C" fn nano_ros_param_server_set_callback(
     context: *mut c_void,
 ) -> nano_ros_ret_t {
     if server.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &mut *server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return NROS_RET_NOT_INIT;
     }
 
     server.callback = callback;
     server.callback_context = context;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Find a parameter by name. Returns the index or None if not found.
@@ -299,23 +299,23 @@ unsafe fn declare_parameter_internal(
     value: nano_ros_parameter_value_t,
 ) -> nano_ros_ret_t {
     if server.is_null() || name.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &mut *server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return NROS_RET_NOT_INIT;
     }
 
     // Check if parameter already exists
     if find_parameter(server, name).is_some() {
-        return NANO_ROS_RET_ALREADY_EXISTS;
+        return NROS_RET_ALREADY_EXISTS;
     }
 
     // Check capacity
     if server.count >= server.capacity {
-        return NANO_ROS_RET_FULL;
+        return NROS_RET_FULL;
     }
 
     // Add the parameter
@@ -325,7 +325,7 @@ unsafe fn declare_parameter_internal(
     param.value = value;
     server.count += 1;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Declare a boolean parameter.
@@ -341,7 +341,7 @@ pub unsafe extern "C" fn nano_ros_param_declare_bool(
     declare_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_BOOL,
+        nano_ros_parameter_type_t::NROS_PARAMETER_BOOL,
         value,
     )
 }
@@ -359,7 +359,7 @@ pub unsafe extern "C" fn nano_ros_param_declare_integer(
     declare_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_INTEGER,
+        nano_ros_parameter_type_t::NROS_PARAMETER_INTEGER,
         value,
     )
 }
@@ -377,7 +377,7 @@ pub unsafe extern "C" fn nano_ros_param_declare_double(
     declare_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_DOUBLE,
+        nano_ros_parameter_type_t::NROS_PARAMETER_DOUBLE,
         value,
     )
 }
@@ -390,18 +390,18 @@ pub unsafe extern "C" fn nano_ros_param_declare_string(
     default_value: *const c_char,
 ) -> nano_ros_ret_t {
     if default_value.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let mut value = nano_ros_parameter_value_t {
-        string_value: [0u8; NANO_ROS_MAX_PARAM_STRING_LEN],
+        string_value: [0u8; NROS_MAX_PARAM_STRING_LEN],
     };
     copy_cstr_to_buffer(default_value, &mut value.string_value);
 
     declare_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_STRING,
+        nano_ros_parameter_type_t::NROS_PARAMETER_STRING,
         value,
     )
 }
@@ -414,25 +414,25 @@ pub unsafe extern "C" fn nano_ros_param_get_bool(
     value: *mut bool,
 ) -> nano_ros_ret_t {
     if server.is_null() || name.is_null() || value.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &*server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return NROS_RET_NOT_INIT;
     }
 
     match find_parameter(server, name) {
         Some(idx) => {
             let param = &*server.parameters.add(idx);
-            if param.r#type != nano_ros_parameter_type_t::NANO_ROS_PARAMETER_BOOL {
-                return NANO_ROS_RET_INVALID_ARGUMENT;
+            if param.r#type != nano_ros_parameter_type_t::NROS_PARAMETER_BOOL {
+                return NROS_RET_INVALID_ARGUMENT;
             }
             *value = param.value.bool_value;
-            NANO_ROS_RET_OK
+            NROS_RET_OK
         }
-        None => NANO_ROS_RET_NOT_FOUND,
+        None => NROS_RET_NOT_FOUND,
     }
 }
 
@@ -444,25 +444,25 @@ pub unsafe extern "C" fn nano_ros_param_get_integer(
     value: *mut i64,
 ) -> nano_ros_ret_t {
     if server.is_null() || name.is_null() || value.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &*server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return NROS_RET_NOT_INIT;
     }
 
     match find_parameter(server, name) {
         Some(idx) => {
             let param = &*server.parameters.add(idx);
-            if param.r#type != nano_ros_parameter_type_t::NANO_ROS_PARAMETER_INTEGER {
-                return NANO_ROS_RET_INVALID_ARGUMENT;
+            if param.r#type != nano_ros_parameter_type_t::NROS_PARAMETER_INTEGER {
+                return NROS_RET_INVALID_ARGUMENT;
             }
             *value = param.value.integer_value;
-            NANO_ROS_RET_OK
+            NROS_RET_OK
         }
-        None => NANO_ROS_RET_NOT_FOUND,
+        None => NROS_RET_NOT_FOUND,
     }
 }
 
@@ -474,25 +474,25 @@ pub unsafe extern "C" fn nano_ros_param_get_double(
     value: *mut f64,
 ) -> nano_ros_ret_t {
     if server.is_null() || name.is_null() || value.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &*server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return NROS_RET_NOT_INIT;
     }
 
     match find_parameter(server, name) {
         Some(idx) => {
             let param = &*server.parameters.add(idx);
-            if param.r#type != nano_ros_parameter_type_t::NANO_ROS_PARAMETER_DOUBLE {
-                return NANO_ROS_RET_INVALID_ARGUMENT;
+            if param.r#type != nano_ros_parameter_type_t::NROS_PARAMETER_DOUBLE {
+                return NROS_RET_INVALID_ARGUMENT;
             }
             *value = param.value.double_value;
-            NANO_ROS_RET_OK
+            NROS_RET_OK
         }
-        None => NANO_ROS_RET_NOT_FOUND,
+        None => NROS_RET_NOT_FOUND,
     }
 }
 
@@ -505,39 +505,39 @@ pub unsafe extern "C" fn nano_ros_param_get_string(
     max_len: usize,
 ) -> nano_ros_ret_t {
     if server.is_null() || name.is_null() || value.is_null() || max_len == 0 {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &*server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return NROS_RET_NOT_INIT;
     }
 
     match find_parameter(server, name) {
         Some(idx) => {
             let param = &*server.parameters.add(idx);
-            if param.r#type != nano_ros_parameter_type_t::NANO_ROS_PARAMETER_STRING {
-                return NANO_ROS_RET_INVALID_ARGUMENT;
+            if param.r#type != nano_ros_parameter_type_t::NROS_PARAMETER_STRING {
+                return NROS_RET_INVALID_ARGUMENT;
             }
 
             // Copy string to output buffer
             let dst = core::slice::from_raw_parts_mut(value as *mut u8, max_len);
             let src = &param.value.string_value;
-            let copy_len = max_len.min(NANO_ROS_MAX_PARAM_STRING_LEN) - 1;
+            let copy_len = max_len.min(NROS_MAX_PARAM_STRING_LEN) - 1;
 
             for i in 0..copy_len {
                 if src[i] == 0 {
                     dst[i] = 0;
-                    return NANO_ROS_RET_OK;
+                    return NROS_RET_OK;
                 }
                 dst[i] = src[i];
             }
             dst[copy_len] = 0;
 
-            NANO_ROS_RET_OK
+            NROS_RET_OK
         }
-        None => NANO_ROS_RET_NOT_FOUND,
+        None => NROS_RET_NOT_FOUND,
     }
 }
 
@@ -549,13 +549,13 @@ unsafe fn set_parameter_internal(
     new_value: nano_ros_parameter_value_t,
 ) -> nano_ros_ret_t {
     if server.is_null() || name.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &mut *server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return NROS_RET_NOT_INIT;
     }
 
     match find_parameter(server, name) {
@@ -564,7 +564,7 @@ unsafe fn set_parameter_internal(
 
             // Check type matches
             if param.r#type != param_type {
-                return NANO_ROS_RET_INVALID_ARGUMENT;
+                return NROS_RET_INVALID_ARGUMENT;
             }
 
             // Create a temporary parameter for the callback
@@ -579,16 +579,16 @@ unsafe fn set_parameter_internal(
                     server.callback_context,
                 );
                 if !accepted {
-                    return NANO_ROS_RET_ERROR;
+                    return NROS_RET_ERROR;
                 }
             }
 
             // Apply the change
             param.value = new_value;
 
-            NANO_ROS_RET_OK
+            NROS_RET_OK
         }
-        None => NANO_ROS_RET_NOT_FOUND,
+        None => NROS_RET_NOT_FOUND,
     }
 }
 
@@ -603,7 +603,7 @@ pub unsafe extern "C" fn nano_ros_param_set_bool(
     set_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_BOOL,
+        nano_ros_parameter_type_t::NROS_PARAMETER_BOOL,
         new_value,
     )
 }
@@ -621,7 +621,7 @@ pub unsafe extern "C" fn nano_ros_param_set_integer(
     set_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_INTEGER,
+        nano_ros_parameter_type_t::NROS_PARAMETER_INTEGER,
         new_value,
     )
 }
@@ -639,7 +639,7 @@ pub unsafe extern "C" fn nano_ros_param_set_double(
     set_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_DOUBLE,
+        nano_ros_parameter_type_t::NROS_PARAMETER_DOUBLE,
         new_value,
     )
 }
@@ -652,18 +652,18 @@ pub unsafe extern "C" fn nano_ros_param_set_string(
     value: *const c_char,
 ) -> nano_ros_ret_t {
     if value.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let mut new_value = nano_ros_parameter_value_t {
-        string_value: [0u8; NANO_ROS_MAX_PARAM_STRING_LEN],
+        string_value: [0u8; NROS_MAX_PARAM_STRING_LEN],
     };
     copy_cstr_to_buffer(value, &mut new_value.string_value);
 
     set_parameter_internal(
         server,
         name,
-        nano_ros_parameter_type_t::NANO_ROS_PARAMETER_STRING,
+        nano_ros_parameter_type_t::NROS_PARAMETER_STRING,
         new_value,
     )
 }
@@ -697,7 +697,7 @@ macro_rules! impl_param_array {
                 len: usize,
             ) -> nano_ros_ret_t {
                 if data.is_null() && len != 0 {
-                    return NANO_ROS_RET_INVALID_ARGUMENT;
+                    return NROS_RET_INVALID_ARGUMENT;
                 }
                 let value = nano_ros_parameter_value_t {
                     array_value: nano_ros_param_array_t {
@@ -708,7 +708,7 @@ macro_rules! impl_param_array {
                 declare_parameter_internal(
                     server,
                     name,
-                    nano_ros_parameter_type_t::[<NANO_ROS_PARAMETER_ $variant>],
+                    nano_ros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
                     value,
                 )
             }
@@ -723,28 +723,28 @@ macro_rules! impl_param_array {
                 len: *mut usize,
             ) -> nano_ros_ret_t {
                 if server.is_null() || name.is_null() || data.is_null() || len.is_null() {
-                    return NANO_ROS_RET_INVALID_ARGUMENT;
+                    return NROS_RET_INVALID_ARGUMENT;
                 }
 
                 let server = &*server;
 
-                if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-                    return NANO_ROS_RET_NOT_INIT;
+                if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+                    return NROS_RET_NOT_INIT;
                 }
 
                 match find_parameter(server, name) {
                     Some(idx) => {
                         let param = &*server.parameters.add(idx);
                         if param.r#type
-                            != nano_ros_parameter_type_t::[<NANO_ROS_PARAMETER_ $variant>]
+                            != nano_ros_parameter_type_t::[<NROS_PARAMETER_ $variant>]
                         {
-                            return NANO_ROS_RET_INVALID_ARGUMENT;
+                            return NROS_RET_INVALID_ARGUMENT;
                         }
                         *data = param.value.array_value.data as *const $T;
                         *len = param.value.array_value.len;
-                        NANO_ROS_RET_OK
+                        NROS_RET_OK
                     }
-                    None => NANO_ROS_RET_NOT_FOUND,
+                    None => NROS_RET_NOT_FOUND,
                 }
             }
 
@@ -759,7 +759,7 @@ macro_rules! impl_param_array {
                 len: usize,
             ) -> nano_ros_ret_t {
                 if data.is_null() && len != 0 {
-                    return NANO_ROS_RET_INVALID_ARGUMENT;
+                    return NROS_RET_INVALID_ARGUMENT;
                 }
                 let new_value = nano_ros_parameter_value_t {
                     array_value: nano_ros_param_array_t {
@@ -770,7 +770,7 @@ macro_rules! impl_param_array {
                 set_parameter_internal(
                     server,
                     name,
-                    nano_ros_parameter_type_t::[<NANO_ROS_PARAMETER_ $variant>],
+                    nano_ros_parameter_type_t::[<NROS_PARAMETER_ $variant>],
                     new_value,
                 )
             }
@@ -800,7 +800,7 @@ pub unsafe extern "C" fn nano_ros_param_has(
 
     let server = &*server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return false;
     }
 
@@ -814,18 +814,18 @@ pub unsafe extern "C" fn nano_ros_param_get_type(
     name: *const c_char,
 ) -> nano_ros_parameter_type_t {
     if server.is_null() || name.is_null() {
-        return nano_ros_parameter_type_t::NANO_ROS_PARAMETER_NOT_SET;
+        return nano_ros_parameter_type_t::NROS_PARAMETER_NOT_SET;
     }
 
     let server = &*server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
-        return nano_ros_parameter_type_t::NANO_ROS_PARAMETER_NOT_SET;
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
+        return nano_ros_parameter_type_t::NROS_PARAMETER_NOT_SET;
     }
 
     match find_parameter(server, name) {
         Some(idx) => (*server.parameters.add(idx)).r#type,
-        None => nano_ros_parameter_type_t::NANO_ROS_PARAMETER_NOT_SET,
+        None => nano_ros_parameter_type_t::NROS_PARAMETER_NOT_SET,
     }
 }
 
@@ -840,7 +840,7 @@ pub unsafe extern "C" fn nano_ros_param_server_get_count(
 
     let server = &*server;
 
-    if server.state != nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_READY {
+    if server.state != nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_READY {
         return 0;
     }
 
@@ -853,23 +853,23 @@ pub unsafe extern "C" fn nano_ros_param_server_fini(
     server: *mut nano_ros_param_server_t,
 ) -> nano_ros_ret_t {
     if server.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &mut *server;
 
-    if server.state == nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_UNINITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if server.state == nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_UNINITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
-    server.state = nano_ros_param_server_state_t::NANO_ROS_PARAM_SERVER_STATE_SHUTDOWN;
+    server.state = nano_ros_param_server_state_t::NROS_PARAM_SERVER_STATE_SHUTDOWN;
     server.parameters = ptr::null_mut();
     server.capacity = 0;
     server.count = 0;
     server.callback = None;
     server.callback_context = ptr::null_mut();
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 #[cfg(test)]
@@ -884,7 +884,7 @@ mod tests {
     ) {
         *server = nano_ros_param_server_get_zero_initialized();
         let ret = nano_ros_param_server_init(server, storage.as_mut_ptr(), storage.len());
-        assert_eq!(ret, NANO_ROS_RET_OK);
+        assert_eq!(ret, NROS_RET_OK);
     }
 
     #[test]
@@ -902,12 +902,12 @@ mod tests {
                 values.as_ptr(),
                 values.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const i64 = ptr::null();
             let mut len: usize = 0;
             let ret = nano_ros_param_get_integer_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 3);
             assert_eq!(*data, 10);
             assert_eq!(*data.add(1), 20);
@@ -930,12 +930,12 @@ mod tests {
                 values.as_ptr(),
                 values.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const f64 = ptr::null();
             let mut len: usize = 0;
             let ret = nano_ros_param_get_double_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 2);
             assert_eq!(*data, 1.5);
             assert_eq!(*data.add(1), 2.5);
@@ -953,12 +953,12 @@ mod tests {
             let name = c"bool_arr".as_ptr();
             let ret =
                 nano_ros_param_declare_bool_array(&mut server, name, values.as_ptr(), values.len());
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const bool = ptr::null();
             let mut len: usize = 0;
             let ret = nano_ros_param_get_bool_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 3);
             assert!(*data);
             assert!(!*data.add(1));
@@ -977,12 +977,12 @@ mod tests {
             let name = c"byte_arr".as_ptr();
             let ret =
                 nano_ros_param_declare_byte_array(&mut server, name, values.as_ptr(), values.len());
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const u8 = ptr::null();
             let mut len: usize = 0;
             let ret = nano_ros_param_get_byte_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 4);
             assert_eq!(
                 core::slice::from_raw_parts(data, len),
@@ -1008,12 +1008,12 @@ mod tests {
                 strings.as_ptr(),
                 strings.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const *const c_char = ptr::null();
             let mut len: usize = 0;
             let ret = nano_ros_param_get_string_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 2);
             assert_eq!(*data, s1);
             assert_eq!(*data.add(1), s2);
@@ -1035,7 +1035,7 @@ mod tests {
                 initial.as_ptr(),
                 initial.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let updated: [i64; 3] = [10, 20, 30];
             let ret = nano_ros_param_set_integer_array(
@@ -1044,12 +1044,12 @@ mod tests {
                 updated.as_ptr(),
                 updated.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const i64 = ptr::null();
             let mut len: usize = 0;
             let ret = nano_ros_param_get_integer_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 3);
             assert_eq!(*data, 10);
         }
@@ -1064,12 +1064,12 @@ mod tests {
 
             let name = c"empty".as_ptr();
             let ret = nano_ros_param_declare_integer_array(&mut server, name, ptr::null(), 0);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let mut data: *const i64 = ptr::null();
             let mut len: usize = 99;
             let ret = nano_ros_param_get_integer_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert_eq!(len, 0);
         }
     }
@@ -1083,7 +1083,7 @@ mod tests {
 
             let name = c"bad".as_ptr();
             let ret = nano_ros_param_declare_integer_array(&mut server, name, ptr::null(), 5);
-            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
 
             // Also test set path
             let initial: [i64; 1] = [1];
@@ -1093,10 +1093,10 @@ mod tests {
                 initial.as_ptr(),
                 initial.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let ret = nano_ros_param_set_integer_array(&mut server, name, ptr::null(), 3);
-            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -1115,13 +1115,13 @@ mod tests {
                 values.as_ptr(),
                 values.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             // Try to get as double array
             let mut data: *const f64 = ptr::null();
             let mut len: usize = 0;
             let ret = nano_ros_param_get_double_array(&server, name, &mut data, &mut len);
-            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -1140,11 +1140,11 @@ mod tests {
                 values.as_ptr(),
                 values.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             // Try to set as scalar integer
             let ret = nano_ros_param_set_integer(&mut server, name, 42);
-            assert_eq!(ret, NANO_ROS_RET_INVALID_ARGUMENT);
+            assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
 
@@ -1163,12 +1163,12 @@ mod tests {
                 values.as_ptr(),
                 values.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let ptype = nano_ros_param_get_type(&server, name);
             assert_eq!(
                 ptype,
-                nano_ros_parameter_type_t::NANO_ROS_PARAMETER_DOUBLE_ARRAY
+                nano_ros_parameter_type_t::NROS_PARAMETER_DOUBLE_ARRAY
             );
         }
     }
@@ -1195,7 +1195,7 @@ mod tests {
 
             let ret =
                 nano_ros_param_server_set_callback(&mut server, Some(on_change), ptr::null_mut());
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             let values: [i64; 2] = [1, 2];
             let name = c"int_arr".as_ptr();
@@ -1205,7 +1205,7 @@ mod tests {
                 values.as_ptr(),
                 values.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
 
             CALLBACK_CALLED = false;
             let updated: [i64; 1] = [99];
@@ -1215,7 +1215,7 @@ mod tests {
                 updated.as_ptr(),
                 updated.len(),
             );
-            assert_eq!(ret, NANO_ROS_RET_OK);
+            assert_eq!(ret, NROS_RET_OK);
             assert!(CALLBACK_CALLED);
         }
     }

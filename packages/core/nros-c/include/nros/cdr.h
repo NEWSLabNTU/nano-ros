@@ -10,8 +10,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_CDR_H
-#define NANO_ROS_CDR_H
+#ifndef NROS_CDR_H
+#define NROS_CDR_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -37,67 +37,67 @@ extern "C" {
  *
  * @return 0 on success, -1 on error (buffer overflow)
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_bool(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, bool value);
 
 /**
  * Write a uint8 value to the buffer.
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_u8(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint8_t value);
 
 /**
  * Write an int8 value to the buffer.
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_i8(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int8_t value);
 
 /**
  * Write a uint16 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_u16(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint16_t value);
 
 /**
  * Write an int16 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_i16(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int16_t value);
 
 /**
  * Write a uint32 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_u32(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint32_t value);
 
 /**
  * Write an int32 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_i32(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int32_t value);
 
 /**
  * Write a uint64 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_u64(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint64_t value);
 
 /**
  * Write an int64 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_i64(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int64_t value);
 
 /**
  * Write a float32 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_f32(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, float value);
 
 /**
  * Write a float64 value to the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_f64(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, double value);
 
 /**
@@ -112,7 +112,7 @@ int32_t nano_ros_cdr_write_f64(uint8_t **ptr, const uint8_t *end, const uint8_t 
  *
  * @return 0 on success, -1 on error
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_write_string(uint8_t **ptr, const uint8_t *end, const uint8_t *origin, const char *value);
 
 // ============================================================================
@@ -129,67 +129,67 @@ int32_t nano_ros_cdr_write_string(uint8_t **ptr, const uint8_t *end, const uint8
  *
  * @return 0 on success, -1 on error (buffer underflow)
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_bool(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, bool *value);
 
 /**
  * Read a uint8 value from the buffer.
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_u8(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint8_t *value);
 
 /**
  * Read an int8 value from the buffer.
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_i8(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int8_t *value);
 
 /**
  * Read a uint16 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_u16(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint16_t *value);
 
 /**
  * Read an int16 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_i16(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int16_t *value);
 
 /**
  * Read a uint32 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_u32(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint32_t *value);
 
 /**
  * Read an int32 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_i32(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int32_t *value);
 
 /**
  * Read a uint64 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_u64(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, uint64_t *value);
 
 /**
  * Read an int64 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_i64(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, int64_t *value);
 
 /**
  * Read a float32 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_f32(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, float *value);
 
 /**
  * Read a float64 value from the buffer (with alignment).
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_f64(const uint8_t **ptr, const uint8_t *end, const uint8_t *origin, double *value);
 
 /**
@@ -205,7 +205,7 @@ int32_t nano_ros_cdr_read_f64(const uint8_t **ptr, const uint8_t *end, const uin
  *
  * @return 0 on success, -1 on error
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int32_t nano_ros_cdr_read_string(
     const uint8_t **ptr,
     const uint8_t *end,
@@ -217,4 +217,4 @@ int32_t nano_ros_cdr_read_string(
 }
 #endif
 
-#endif // NANO_ROS_CDR_H
+#endif // NROS_CDR_H

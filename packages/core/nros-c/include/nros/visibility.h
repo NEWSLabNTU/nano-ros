@@ -8,8 +8,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_VISIBILITY_H
-#define NANO_ROS_VISIBILITY_H
+#ifndef NROS_VISIBILITY_H
+#define NROS_VISIBILITY_H
 
 #ifdef __cplusplus
 extern "C" {
@@ -17,42 +17,42 @@ extern "C" {
 
 // Visibility macros for shared library support
 #if defined(_WIN32)
-    #if defined(NANO_ROS_BUILDING_DLL)
-        #define NANO_ROS_PUBLIC __declspec(dllexport)
-    #elif defined(NANO_ROS_USING_DLL)
-        #define NANO_ROS_PUBLIC __declspec(dllimport)
+    #if defined(NROS_BUILDING_DLL)
+        #define NROS_PUBLIC __declspec(dllexport)
+    #elif defined(NROS_USING_DLL)
+        #define NROS_PUBLIC __declspec(dllimport)
     #else
-        #define NANO_ROS_PUBLIC
+        #define NROS_PUBLIC
     #endif
-    #define NANO_ROS_LOCAL
+    #define NROS_LOCAL
 #else
     #if __GNUC__ >= 4
-        #define NANO_ROS_PUBLIC __attribute__((visibility("default")))
-        #define NANO_ROS_LOCAL __attribute__((visibility("hidden")))
+        #define NROS_PUBLIC __attribute__((visibility("default")))
+        #define NROS_LOCAL __attribute__((visibility("hidden")))
     #else
-        #define NANO_ROS_PUBLIC
-        #define NANO_ROS_LOCAL
+        #define NROS_PUBLIC
+        #define NROS_LOCAL
     #endif
 #endif
 
 // Deprecation macro
 #if defined(__GNUC__) || defined(__clang__)
-    #define NANO_ROS_DEPRECATED __attribute__((deprecated))
+    #define NROS_DEPRECATED __attribute__((deprecated))
 #elif defined(_MSC_VER)
-    #define NANO_ROS_DEPRECATED __declspec(deprecated)
+    #define NROS_DEPRECATED __declspec(deprecated)
 #else
-    #define NANO_ROS_DEPRECATED
+    #define NROS_DEPRECATED
 #endif
 
 // Warn unused result
 #if defined(__GNUC__) || defined(__clang__)
-    #define NANO_ROS_WARN_UNUSED __attribute__((warn_unused_result))
+    #define NROS_WARN_UNUSED __attribute__((warn_unused_result))
 #else
-    #define NANO_ROS_WARN_UNUSED
+    #define NROS_WARN_UNUSED
 #endif
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_VISIBILITY_H
+#endif // NROS_VISIBILITY_H

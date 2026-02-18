@@ -11,7 +11,13 @@ use std::ffi::c_int;
 // Global Transport State
 // ============================================================================
 
-static mut PTY_PATH: [u8; 256] = [0u8; 256];
+/// Stack buffer size for PTY path string (including null terminator).
+const PTY_PATH_BUF_SIZE: usize = 256;
+
+/// Default timeout for serial transport reads (milliseconds).
+const SERIAL_DEFAULT_TIMEOUT_MS: c_int = 1000;
+
+static mut PTY_PATH: [u8; PTY_PATH_BUF_SIZE] = [0u8; PTY_PATH_BUF_SIZE];
 static mut PTY_PATH_LEN: usize = 0;
 static mut PTY_FD: c_int = -1;
 
@@ -28,7 +34,7 @@ static mut PTY_FD: c_int = -1;
 /// Must not be called concurrently. Only one transport may be active.
 pub unsafe fn init_posix_serial_transport(pty_path: &str) {
     unsafe {
-        let len = pty_path.len().min(255);
+        let len = pty_path.len().min(PTY_PATH_BUF_SIZE - 1);
         PTY_PATH[..len].copy_from_slice(&pty_path.as_bytes()[..len]);
         PTY_PATH[len] = 0;
         PTY_PATH_LEN = len;
@@ -132,7 +138,7 @@ unsafe extern "C" fn serial_transport_read(
             events: libc::POLLIN,
             revents: 0,
         };
-        let timeout_ms = if timeout <= 0 { 1000 } else { timeout };
+        let timeout_ms = if timeout <= 0 { SERIAL_DEFAULT_TIMEOUT_MS } else { timeout };
         let poll_ret = libc::poll(&mut pfd, 1, timeout_ms);
 
         if poll_ret <= 0 {

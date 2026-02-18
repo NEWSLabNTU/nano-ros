@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
 
     // Initialize support context
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
     }
@@ -70,7 +70,7 @@ int main(int argc, char** argv) {
 
     // Create node
     ret = nros_node_init(&app.node, &app.support, "c_service_client", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nano_ros_support_fini(&app.support);
         return 1;
@@ -84,7 +84,7 @@ int main(int argc, char** argv) {
         &add_two_ints_type,
         "/add_two_ints"
     );
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize client: %d\n", ret);
         nros_node_fini(&app.node);
         nano_ros_support_fini(&app.support);
@@ -129,7 +129,7 @@ int main(int argc, char** argv) {
             &resp_len
         );
 
-        if (ret == NANO_ROS_RET_OK) {
+        if (ret == NROS_RET_OK) {
             // Deserialize response using generated function
             example_interfaces_srv_add_two_ints_response response;
             if (example_interfaces_srv_add_two_ints_response_deserialize(
@@ -150,7 +150,7 @@ int main(int argc, char** argv) {
             } else {
                 fprintf(stderr, "Call [%d]: Failed to deserialize response\n", i + 1);
             }
-        } else if (ret == NANO_ROS_RET_TIMEOUT) {
+        } else if (ret == NROS_RET_TIMEOUT) {
             fprintf(stderr, "Call [%d]: Timeout (is the server running?)\n", i + 1);
         } else {
             fprintf(stderr, "Call [%d]: Failed with error %d\n", i + 1, ret);

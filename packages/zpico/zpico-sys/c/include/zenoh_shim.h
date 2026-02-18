@@ -24,62 +24,62 @@
 /**
  * Size of Zenoh ID in bytes
  */
-#define ZENOH_SHIM_ZID_SIZE 16
+#define ZPICO_ZID_SIZE 16
 
 /**
  * Size of RMW GID in bytes (for ROS 2 humble compatibility)
  */
-#define ZENOH_SHIM_RMW_GID_SIZE 16
+#define ZPICO_RMW_GID_SIZE 16
 
 /**
  * Success
  */
-#define ZENOH_SHIM_OK 0
+#define ZPICO_OK 0
 
 /**
  * Generic error
  */
-#define ZENOH_SHIM_ERR_GENERIC -1
+#define ZPICO_ERR_GENERIC -1
 
 /**
  * Configuration error
  */
-#define ZENOH_SHIM_ERR_CONFIG -2
+#define ZPICO_ERR_CONFIG -2
 
 /**
  * Session error
  */
-#define ZENOH_SHIM_ERR_SESSION -3
+#define ZPICO_ERR_SESSION -3
 
 /**
  * Task creation error
  */
-#define ZENOH_SHIM_ERR_TASK -4
+#define ZPICO_ERR_TASK -4
 
 /**
  * Invalid key expression
  */
-#define ZENOH_SHIM_ERR_KEYEXPR -5
+#define ZPICO_ERR_KEYEXPR -5
 
 /**
  * Resource limit reached
  */
-#define ZENOH_SHIM_ERR_FULL -6
+#define ZPICO_ERR_FULL -6
 
 /**
  * Invalid handle
  */
-#define ZENOH_SHIM_ERR_INVALID -7
+#define ZPICO_ERR_INVALID -7
 
 /**
  * Publish error
  */
-#define ZENOH_SHIM_ERR_PUBLISH -8
+#define ZPICO_ERR_PUBLISH -8
 
 /**
  * Query timeout
  */
-#define ZENOH_SHIM_ERR_TIMEOUT -9
+#define ZPICO_ERR_TIMEOUT -9
 
 /**
  * A key-value property for transport configuration (C-compatible)

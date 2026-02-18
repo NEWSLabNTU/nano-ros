@@ -12,7 +12,10 @@ use std::time::Duration;
 // Global Transport State
 // ============================================================================
 
-static mut AGENT_ADDR: [u8; 64] = [0u8; 64];
+/// Stack buffer size for agent address string (including null terminator).
+const AGENT_ADDR_BUF_SIZE: usize = 64;
+
+static mut AGENT_ADDR: [u8; AGENT_ADDR_BUF_SIZE] = [0u8; AGENT_ADDR_BUF_SIZE];
 static mut AGENT_ADDR_LEN: usize = 0;
 static mut UDP_SOCKET: Option<UdpSocket> = None;
 
@@ -25,7 +28,7 @@ static mut UDP_SOCKET: Option<UdpSocket> = None;
 /// Must not be called concurrently. Only one transport may be active.
 pub unsafe fn init_posix_udp_transport(agent_addr: &str) {
     unsafe {
-        let len = agent_addr.len().min(63);
+        let len = agent_addr.len().min(AGENT_ADDR_BUF_SIZE - 1);
         AGENT_ADDR[..len].copy_from_slice(&agent_addr.as_bytes()[..len]);
         AGENT_ADDR[len] = 0;
         AGENT_ADDR_LEN = len;

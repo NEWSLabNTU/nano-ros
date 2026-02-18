@@ -7,8 +7,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_SERVICE_H
-#define NANO_ROS_SERVICE_H
+#ifndef NROS_SERVICE_H
+#define NROS_SERVICE_H
 
 #include "nros/types.h"
 #include "nros/visibility.h"
@@ -25,11 +25,11 @@ extern "C" {
 /** Service server state */
 typedef enum nano_ros_service_state_t {
     /** Not initialized */
-    NANO_ROS_SERVICE_STATE_UNINITIALIZED = 0,
+    NROS_SERVICE_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
-    NANO_ROS_SERVICE_STATE_INITIALIZED = 1,
+    NROS_SERVICE_STATE_INITIALIZED = 1,
     /** Shutdown */
-    NANO_ROS_SERVICE_STATE_SHUTDOWN = 2,
+    NROS_SERVICE_STATE_SHUTDOWN = 2,
 } nano_ros_service_state_t;
 
 // ============================================================================
@@ -66,15 +66,15 @@ typedef struct nano_ros_service_t {
     /** Current state */
     nano_ros_service_state_t state;
     /** Service name storage */
-    uint8_t service_name[NANO_ROS_MAX_SERVICE_NAME_LEN];
+    uint8_t service_name[NROS_MAX_SERVICE_NAME_LEN];
     /** Service name length */
     size_t service_name_len;
     /** Type name storage */
-    uint8_t type_name[NANO_ROS_MAX_TYPE_NAME_LEN];
+    uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
     /** Type name length */
     size_t type_name_len;
     /** Type hash storage */
-    uint8_t type_hash[NANO_ROS_MAX_TYPE_HASH_LEN];
+    uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
     /** Type hash length */
     size_t type_hash_len;
     /** User callback function */
@@ -96,7 +96,7 @@ typedef struct nano_ros_service_t {
  *
  * @return Zero-initialized service structure
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_service_t nano_ros_service_get_zero_initialized(void);
 
 /**
@@ -109,12 +109,12 @@ nano_ros_service_t nano_ros_service_get_zero_initialized(void);
  * @param callback Callback function to invoke when requests arrive
  * @param context User context pointer passed to callback (can be NULL)
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any required pointer is NULL
- * @return NANO_ROS_RET_NOT_INIT if node is not initialized
- * @return NANO_ROS_RET_ERROR on initialization failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any required pointer is NULL
+ * @return NROS_RET_NOT_INIT if node is not initialized
+ * @return NROS_RET_ERROR on initialization failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_service_init(
     nano_ros_service_t *service,
     const nros_node_t *node,
@@ -128,11 +128,11 @@ nano_ros_ret_t nano_ros_service_init(
  *
  * @param service Pointer to an initialized service
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if service is NULL
- * @return NANO_ROS_RET_NOT_INIT if not initialized
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if service is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_service_fini(nano_ros_service_t *service);
 
 /**
@@ -144,12 +144,12 @@ nano_ros_ret_t nano_ros_service_fini(nano_ros_service_t *service);
  * @param request_len Output: actual length of request data
  * @param sequence_number Output: sequence number for response matching
  *
- * @return NANO_ROS_RET_OK if a request was received
- * @return NANO_ROS_RET_TIMEOUT if no request is available
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any pointer is NULL
- * @return NANO_ROS_RET_NOT_INIT if not initialized
+ * @return NROS_RET_OK if a request was received
+ * @return NROS_RET_TIMEOUT if no request is available
+ * @return NROS_RET_INVALID_ARGUMENT if any pointer is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_service_take_request(
     nano_ros_service_t *service,
     uint8_t *request_data,
@@ -165,12 +165,12 @@ nano_ros_ret_t nano_ros_service_take_request(
  * @param response_data CDR-serialized response data
  * @param response_len Length of response data
  *
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if any pointer is NULL
- * @return NANO_ROS_RET_NOT_INIT if not initialized
- * @return NANO_ROS_RET_ERROR on send failure
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any pointer is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
+ * @return NROS_RET_ERROR on send failure
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_service_send_response(
     nano_ros_service_t *service,
     int64_t sequence_number,
@@ -184,7 +184,7 @@ nano_ros_ret_t nano_ros_service_send_response(
  *
  * @return Pointer to service name (null-terminated), or NULL if invalid
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 const char *nano_ros_service_get_service_name(const nano_ros_service_t *service);
 
 /**
@@ -194,11 +194,11 @@ const char *nano_ros_service_get_service_name(const nano_ros_service_t *service)
  *
  * @return Non-zero if valid, 0 if invalid or NULL
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 int nano_ros_service_is_valid(const nano_ros_service_t *service);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_SERVICE_H
+#endif // NROS_SERVICE_H

@@ -19,6 +19,12 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+#[cfg(any(
+    feature = "platform-posix",
+    feature = "platform-zephyr",
+    feature = "platform-bare-metal"
+))]
+pub(crate) mod config;
 pub mod keyexpr;
 pub mod zpico;
 

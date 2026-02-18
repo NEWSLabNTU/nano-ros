@@ -5,25 +5,25 @@
  * Users must define one of the platform macros before including nros headers.
  *
  * Supported platforms:
- *   NANO_ROS_PLATFORM_POSIX     - Linux, macOS, other POSIX systems
- *   NANO_ROS_PLATFORM_ZEPHYR    - Zephyr RTOS
- *   NANO_ROS_PLATFORM_FREERTOS  - FreeRTOS
- *   NANO_ROS_PLATFORM_BAREMETAL - Bare-metal (user provides time/sleep)
- *   NANO_ROS_PLATFORM_CUSTOM    - User provides all platform functions
+ *   NROS_PLATFORM_POSIX     - Linux, macOS, other POSIX systems
+ *   NROS_PLATFORM_ZEPHYR    - Zephyr RTOS
+ *   NROS_PLATFORM_FREERTOS  - FreeRTOS
+ *   NROS_PLATFORM_BAREMETAL - Bare-metal (user provides time/sleep)
+ *   NROS_PLATFORM_CUSTOM    - User provides all platform functions
  *
  * Example usage:
- *   #define NANO_ROS_PLATFORM_ZEPHYR
+ *   #define NROS_PLATFORM_ZEPHYR
  *   #include <nano_ros/init.h>
  *
  * Or via compiler flag:
- *   gcc -DNANO_ROS_PLATFORM_POSIX -c main.c
+ *   gcc -DNROS_PLATFORM_POSIX -c main.c
  *
  * Copyright 2024 nros contributors
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_PLATFORM_H
-#define NANO_ROS_PLATFORM_H
+#ifndef NROS_PLATFORM_H
+#define NROS_PLATFORM_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -37,20 +37,20 @@ extern "C" {
 // Platform Selection
 // ============================================================================
 
-#if defined(NANO_ROS_PLATFORM_POSIX)
+#if defined(NROS_PLATFORM_POSIX)
     #include "nros/platform/posix.h"
-#elif defined(NANO_ROS_PLATFORM_ZEPHYR)
+#elif defined(NROS_PLATFORM_ZEPHYR)
     #include "nros/platform/zephyr.h"
-#elif defined(NANO_ROS_PLATFORM_FREERTOS)
+#elif defined(NROS_PLATFORM_FREERTOS)
     #include "nros/platform/freertos.h"
-#elif defined(NANO_ROS_PLATFORM_BAREMETAL)
+#elif defined(NROS_PLATFORM_BAREMETAL)
     #include "nros/platform/baremetal.h"
-#elif defined(NANO_ROS_PLATFORM_CUSTOM)
+#elif defined(NROS_PLATFORM_CUSTOM)
     // User must implement all platform functions externally
 #else
     // Default to POSIX for backward compatibility
-    #ifndef NANO_ROS_PLATFORM_POSIX
-        #define NANO_ROS_PLATFORM_POSIX
+    #ifndef NROS_PLATFORM_POSIX
+        #define NROS_PLATFORM_POSIX
     #endif
     #include "nros/platform/posix.h"
 #endif
@@ -60,9 +60,9 @@ extern "C" {
 // ============================================================================
 // These functions must be provided by the platform implementation.
 // For built-in platforms, they are defined as static inline in the headers.
-// For NANO_ROS_PLATFORM_CUSTOM, user must provide implementations.
+// For NROS_PLATFORM_CUSTOM, user must provide implementations.
 
-#if defined(NANO_ROS_PLATFORM_CUSTOM) || defined(NANO_ROS_PLATFORM_BAREMETAL)
+#if defined(NROS_PLATFORM_CUSTOM) || defined(NROS_PLATFORM_BAREMETAL)
 
 /**
  * Get current monotonic time in nanoseconds.
@@ -85,7 +85,7 @@ uint64_t nano_ros_platform_time_ns(void);
  */
 void nano_ros_platform_sleep_ns(uint64_t ns);
 
-#endif // NANO_ROS_PLATFORM_CUSTOM || NANO_ROS_PLATFORM_BAREMETAL
+#endif // NROS_PLATFORM_CUSTOM || NROS_PLATFORM_BAREMETAL
 
 // ============================================================================
 // Atomic Operations
@@ -93,7 +93,7 @@ void nano_ros_platform_sleep_ns(uint64_t ns);
 // These are required for guard conditions and thread-safe signaling.
 // For single-threaded bare-metal systems, simple volatile access is sufficient.
 
-#ifndef NANO_ROS_PLATFORM_HAS_ATOMICS
+#ifndef NROS_PLATFORM_HAS_ATOMICS
 
 /**
  * Atomically store a boolean value with release semantics.
@@ -117,17 +117,17 @@ void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool value);
  */
 bool nano_ros_platform_atomic_load_bool(volatile bool *ptr);
 
-#endif // !NANO_ROS_PLATFORM_HAS_ATOMICS
+#endif // !NROS_PLATFORM_HAS_ATOMICS
 
 // ============================================================================
 // Memory Functions (Optional)
 // ============================================================================
 // These are only required if dynamic memory allocation is used.
-// Define NANO_ROS_NO_DYNAMIC_MEMORY to disable dynamic memory.
+// Define NROS_NO_DYNAMIC_MEMORY to disable dynamic memory.
 
-#ifndef NANO_ROS_NO_DYNAMIC_MEMORY
+#ifndef NROS_NO_DYNAMIC_MEMORY
 
-#ifndef NANO_ROS_PLATFORM_HAS_MALLOC
+#ifndef NROS_PLATFORM_HAS_MALLOC
 
 /**
  * Allocate memory.
@@ -144,19 +144,19 @@ void *nano_ros_platform_malloc(size_t size);
  */
 void nano_ros_platform_free(void *ptr);
 
-#endif // !NANO_ROS_PLATFORM_HAS_MALLOC
+#endif // !NROS_PLATFORM_HAS_MALLOC
 
-#endif // !NANO_ROS_NO_DYNAMIC_MEMORY
+#endif // !NROS_NO_DYNAMIC_MEMORY
 
 // ============================================================================
 // Threading Functions (Optional)
 // ============================================================================
 // These are only required if threading support is enabled.
-// Define NANO_ROS_FEATURE_THREADS to enable threading.
+// Define NROS_FEATURE_THREADS to enable threading.
 
-#ifdef NANO_ROS_FEATURE_THREADS
+#ifdef NROS_FEATURE_THREADS
 
-#ifndef NANO_ROS_PLATFORM_HAS_MUTEX
+#ifndef NROS_PLATFORM_HAS_MUTEX
 
 /**
  * Initialize a mutex.
@@ -192,12 +192,12 @@ int nano_ros_platform_mutex_unlock(nano_ros_mutex_t *mutex);
  */
 int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex);
 
-#endif // !NANO_ROS_PLATFORM_HAS_MUTEX
+#endif // !NROS_PLATFORM_HAS_MUTEX
 
-#endif // NANO_ROS_FEATURE_THREADS
+#endif // NROS_FEATURE_THREADS
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_PLATFORM_H
+#endif // NROS_PLATFORM_H

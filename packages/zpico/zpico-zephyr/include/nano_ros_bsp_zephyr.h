@@ -37,8 +37,8 @@
  * @license MIT OR Apache-2.0
  */
 
-#ifndef NANO_ROS_BSP_ZEPHYR_H
-#define NANO_ROS_BSP_ZEPHYR_H
+#ifndef NROS_BSP_ZEPHYR_H
+#define NROS_BSP_ZEPHYR_H
 
 #include <stdint.h>
 #include <stddef.h>
@@ -54,19 +54,19 @@ extern "C" {
  * ============================================================================ */
 
 /** Operation successful */
-#define NANO_ROS_BSP_OK              0
+#define NROS_BSP_OK              0
 /** Generic error */
-#define NANO_ROS_BSP_ERR            -1
+#define NROS_BSP_ERR            -1
 /** Not initialized */
-#define NANO_ROS_BSP_ERR_NOT_INIT  -2
+#define NROS_BSP_ERR_NOT_INIT  -2
 /** Resource limit reached */
-#define NANO_ROS_BSP_ERR_LIMIT     -3
+#define NROS_BSP_ERR_LIMIT     -3
 /** Invalid argument */
-#define NANO_ROS_BSP_ERR_INVALID   -4
+#define NROS_BSP_ERR_INVALID   -4
 /** Connection failed */
-#define NANO_ROS_BSP_ERR_CONNECT   -5
+#define NROS_BSP_ERR_CONNECT   -5
 /** Timeout */
-#define NANO_ROS_BSP_ERR_TIMEOUT   -6
+#define NROS_BSP_ERR_TIMEOUT   -6
 
 /* ============================================================================
  * Types
@@ -116,11 +116,11 @@ typedef struct nano_ros_subscriber {
  * @brief Initialize the nros BSP
  *
  * This initializes the zenoh-pico transport using configuration from Kconfig:
- * - CONFIG_NANO_ROS_ZENOH_LOCATOR: Router address
- * - CONFIG_NANO_ROS_INIT_DELAY_MS: Startup delay
+ * - CONFIG_NROS_ZENOH_LOCATOR: Router address
+ * - CONFIG_NROS_INIT_DELAY_MS: Startup delay
  *
  * @param ctx Context to initialize
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_init(nano_ros_bsp_context_t *ctx);
 
@@ -129,7 +129,7 @@ int32_t nano_ros_bsp_init(nano_ros_bsp_context_t *ctx);
  *
  * @param ctx Context to initialize
  * @param locator Zenoh router locator (e.g., "tcp/192.168.1.1:7447")
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_init_with_locator(nano_ros_bsp_context_t *ctx, const char *locator);
 
@@ -158,7 +158,7 @@ bool nano_ros_bsp_is_ready(const nano_ros_bsp_context_t *ctx);
  * @param ctx Initialized BSP context
  * @param node Node handle to initialize
  * @param name Node name (e.g., "my_node")
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_create_node(
     nano_ros_bsp_context_t *ctx,
@@ -173,7 +173,7 @@ int32_t nano_ros_bsp_create_node(
  * @param node Node handle to initialize
  * @param name Node name
  * @param domain_id ROS 2 domain ID
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_create_node_with_domain(
     nano_ros_bsp_context_t *ctx,
@@ -193,7 +193,7 @@ int32_t nano_ros_bsp_create_node_with_domain(
  * @param pub Publisher handle to initialize
  * @param topic Topic name (e.g., "/chatter")
  * @param type_name ROS 2 type name (e.g., "std_msgs::msg::dds_::Int32_")
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_create_publisher(
     nros_node_t *node,
@@ -208,7 +208,7 @@ int32_t nano_ros_bsp_create_publisher(
  * @param pub Publisher handle
  * @param data Serialized message data (CDR format with header)
  * @param len Data length
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_publish(
     nano_ros_publisher_t *pub,
@@ -236,7 +236,7 @@ void nano_ros_bsp_destroy_publisher(nano_ros_publisher_t *pub);
  * @param type_name ROS 2 type name
  * @param callback Function called when messages arrive
  * @param user_data User data passed to callback
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_create_subscriber(
     nros_node_t *node,
@@ -265,7 +265,7 @@ void nano_ros_bsp_destroy_subscriber(nano_ros_subscriber_t *sub);
  *
  * @param ctx BSP context
  * @param timeout Maximum time to wait for events
- * @return NANO_ROS_BSP_OK on success, error code otherwise
+ * @return NROS_BSP_OK on success, error code otherwise
  */
 int32_t nano_ros_bsp_spin_once(nano_ros_bsp_context_t *ctx, k_timeout_t timeout);
 
@@ -331,4 +331,4 @@ int32_t nano_ros_bsp_build_keyexpr_wildcard(
 }
 #endif
 
-#endif /* NANO_ROS_BSP_ZEPHYR_H */
+#endif /* NROS_BSP_ZEPHYR_H */

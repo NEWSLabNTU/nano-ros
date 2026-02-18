@@ -71,7 +71,7 @@ int main(void)
     /* Initialize BSP (uses Kconfig for zenoh locator) */
     nano_ros_bsp_context_t ctx;
     int32_t ret = nano_ros_bsp_init(&ctx);
-    if (ret != NANO_ROS_BSP_OK) {
+    if (ret != NROS_BSP_OK) {
         LOG_ERR("BSP init failed: %d", ret);
         return 1;
     }
@@ -79,7 +79,7 @@ int main(void)
     /* Create node */
     nros_node_t node;
     ret = nano_ros_bsp_create_node(&ctx, &node, "zephyr_listener");
-    if (ret != NANO_ROS_BSP_OK) {
+    if (ret != NROS_BSP_OK) {
         LOG_ERR("Node creation failed: %d", ret);
         return 1;
     }
@@ -91,7 +91,7 @@ int main(void)
         "/chatter", "std_msgs::msg::dds_::Int32_",
         on_message, NULL
     );
-    if (ret != NANO_ROS_BSP_OK) {
+    if (ret != NROS_BSP_OK) {
         LOG_ERR("Subscriber creation failed: %d", ret);
         return 1;
     }

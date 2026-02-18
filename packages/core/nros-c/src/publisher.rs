@@ -30,11 +30,11 @@ pub struct nano_ros_message_type_t {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum nano_ros_publisher_state_t {
     /// Not initialized
-    NANO_ROS_PUBLISHER_STATE_UNINITIALIZED = 0,
+    NROS_PUBLISHER_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
-    NANO_ROS_PUBLISHER_STATE_INITIALIZED = 1,
+    NROS_PUBLISHER_STATE_INITIALIZED = 1,
     /// Shutdown
-    NANO_ROS_PUBLISHER_STATE_SHUTDOWN = 2,
+    NROS_PUBLISHER_STATE_SHUTDOWN = 2,
 }
 
 /// Publisher structure.
@@ -63,7 +63,7 @@ pub struct nano_ros_publisher_t {
 impl Default for nano_ros_publisher_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_UNINITIALIZED,
+            state: nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
             topic_name: [0u8; MAX_TOPIC_LEN],
             topic_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -94,10 +94,10 @@ pub extern "C" fn nano_ros_publisher_get_zero_initialized() -> nano_ros_publishe
 /// * `topic_name` - Topic name (null-terminated string)
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
-/// * `NANO_ROS_RET_ERROR` on initialization failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
+/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All pointers must be valid
@@ -140,10 +140,10 @@ pub unsafe extern "C" fn nano_ros_publisher_init_default(
 /// * `topic_name` - Topic name (null-terminated string)
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
-/// * `NANO_ROS_RET_ERROR` on initialization failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
+/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All pointers must be valid
@@ -160,7 +160,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_best_effort(
         node,
         type_info,
         topic_name,
-        &crate::qos::NANO_ROS_QOS_SENSOR_DATA,
+        &crate::qos::NROS_QOS_SENSOR_DATA,
     )
 }
 
@@ -174,10 +174,10 @@ pub unsafe extern "C" fn nano_ros_publisher_init_best_effort(
 /// * `qos` - Pointer to QoS settings (NULL for default)
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if node is not initialized
-/// * `NANO_ROS_RET_ERROR` on initialization failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any required pointer is NULL
+/// * `NROS_RET_NOT_INIT` if node is not initialized
+/// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
 /// * All required pointers must be valid
@@ -192,7 +192,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
 ) -> nano_ros_ret_t {
     // Validate required arguments
     if publisher.is_null() || node.is_null() || type_info.is_null() || topic_name.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let publisher = &mut *publisher;
@@ -200,13 +200,13 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
     let type_info = &*type_info;
 
     // Check if publisher is already initialized
-    if publisher.state != nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_UNINITIALIZED {
-        return NANO_ROS_RET_BAD_SEQUENCE;
+    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED {
+        return NROS_RET_BAD_SEQUENCE;
     }
 
     // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NANO_ROS_NODE_STATE_INITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
     // Copy topic name
@@ -221,7 +221,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         len += 1;
     }
     if len == 0 {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
     publisher.topic_name[len] = 0;
     publisher.topic_name_len = len;
@@ -263,7 +263,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
 
     // Get QoS settings
     let _qos_settings = if qos.is_null() {
-        crate::qos::NANO_ROS_QOS_DEFAULT.to_qos_settings()
+        crate::qos::NROS_QOS_DEFAULT.to_qos_settings()
     } else {
         (*qos).to_qos_settings()
     };
@@ -276,11 +276,11 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         // Get mutable support reference to access the session
         let support_mut = match node_ref.get_support_mut() {
             Some(s) => s,
-            None => return NANO_ROS_RET_NOT_INIT,
+            None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NANO_ROS_SUPPORT_STATE_INITIALIZED {
-            return NANO_ROS_RET_NOT_INIT;
+        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+            return NROS_RET_NOT_INIT;
         }
 
         // Save domain_id before borrowing session
@@ -289,7 +289,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
         // Get mutable session reference
         let session = match support_mut.get_session_mut() {
             Some(s) => s,
-            None => return NANO_ROS_RET_NOT_INIT,
+            None => return NROS_RET_NOT_INIT,
         };
 
         // Build the topic key expression for ROS 2 compatibility
@@ -309,17 +309,17 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
                 let pub_box = alloc::boxed::Box::new(pub_handle);
                 publisher._internal = alloc::boxed::Box::into_raw(pub_box) as *mut _;
             }
-            Err(_) => return NANO_ROS_RET_ERROR,
+            Err(_) => return NROS_RET_ERROR,
         }
 
-        publisher.state = nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_INITIALIZED;
-        NANO_ROS_RET_OK
+        publisher.state = nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED;
+        NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
     {
         // For no_std, use shim transport (not yet implemented)
-        NANO_ROS_RET_ERROR
+        NROS_RET_ERROR
     }
 }
 
@@ -331,10 +331,10 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
 /// * `len` - Length of data in bytes
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if any pointer is NULL or len is 0
-/// * `NANO_ROS_RET_NOT_INIT` if publisher is not initialized
-/// * `NANO_ROS_RET_PUBLISH_FAILED` on publish failure
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL or len is 0
+/// * `NROS_RET_NOT_INIT` if publisher is not initialized
+/// * `NROS_RET_PUBLISH_FAILED` on publish failure
 ///
 /// # Safety
 /// * `publisher` must be a valid pointer to an initialized publisher
@@ -346,13 +346,13 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
     len: usize,
 ) -> nano_ros_ret_t {
     if publisher.is_null() || data.is_null() || len == 0 {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let publisher = &*publisher;
 
-    if publisher.state != nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_INITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
     #[cfg(feature = "alloc")]
@@ -360,21 +360,21 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
         use nros_rmw::Publisher;
 
         if publisher._internal.is_null() {
-            return NANO_ROS_RET_NOT_INIT;
+            return NROS_RET_NOT_INIT;
         }
 
         let pub_handle = &*(publisher._internal as *const nros::internals::RmwPublisher);
         let data_slice = core::slice::from_raw_parts(data, len);
 
         match pub_handle.publish_raw(data_slice) {
-            Ok(()) => NANO_ROS_RET_OK,
-            Err(_) => NANO_ROS_RET_PUBLISH_FAILED,
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_PUBLISH_FAILED,
         }
     }
 
     #[cfg(not(feature = "alloc"))]
     {
-        NANO_ROS_RET_ERROR
+        NROS_RET_ERROR
     }
 }
 
@@ -384,9 +384,9 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
 /// * `publisher` - Pointer to an initialized publisher
 ///
 /// # Returns
-/// * `NANO_ROS_RET_OK` on success
-/// * `NANO_ROS_RET_INVALID_ARGUMENT` if publisher is NULL
-/// * `NANO_ROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_OK` on success
+/// * `NROS_RET_INVALID_ARGUMENT` if publisher is NULL
+/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `publisher` must be a valid pointer
@@ -395,13 +395,13 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
     publisher: *mut nano_ros_publisher_t,
 ) -> nano_ros_ret_t {
     if publisher.is_null() {
-        return NANO_ROS_RET_INVALID_ARGUMENT;
+        return NROS_RET_INVALID_ARGUMENT;
     }
 
     let publisher = &mut *publisher;
 
-    if publisher.state != nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_INITIALIZED {
-        return NANO_ROS_RET_NOT_INIT;
+    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
     }
 
     // Clean up internal resources
@@ -416,9 +416,9 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
 
     publisher._internal = ptr::null_mut();
     publisher.node = ptr::null();
-    publisher.state = nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_SHUTDOWN;
+    publisher.state = nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_SHUTDOWN;
 
-    NANO_ROS_RET_OK
+    NROS_RET_OK
 }
 
 /// Get the topic name of a publisher.
@@ -437,7 +437,7 @@ pub unsafe extern "C" fn nano_ros_publisher_get_topic_name(
     }
 
     let publisher = &*publisher;
-    if publisher.state != nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_INITIALIZED {
+    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -460,7 +460,7 @@ pub unsafe extern "C" fn nano_ros_publisher_is_valid(
     }
 
     let publisher = &*publisher;
-    if publisher.state == nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_INITIALIZED {
+    if publisher.state == nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
         1
     } else {
         0
@@ -496,7 +496,7 @@ mod verification {
                     topic.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL node → INVALID_ARGUMENT
@@ -510,7 +510,7 @@ mod verification {
                     topic.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL type_info → INVALID_ARGUMENT
@@ -524,14 +524,14 @@ mod verification {
                     topic.as_ptr() as *const core::ffi::c_char,
                 )
             },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL topic → INVALID_ARGUMENT
         let mut pub_ = nano_ros_publisher_get_zero_initialized();
         assert_eq!(
             unsafe { nano_ros_publisher_init(&mut pub_, &node, &type_info, core::ptr::null()) },
-            NANO_ROS_RET_INVALID_ARGUMENT,
+            NROS_RET_INVALID_ARGUMENT,
         );
     }
 
@@ -541,7 +541,7 @@ mod verification {
         let pub_ = nano_ros_publisher_get_zero_initialized();
         assert_eq!(
             pub_.state,
-            nano_ros_publisher_state_t::NANO_ROS_PUBLISHER_STATE_UNINITIALIZED,
+            nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
         );
         assert!(pub_.node.is_null());
         assert!(pub_._internal.is_null());

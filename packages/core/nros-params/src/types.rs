@@ -8,17 +8,7 @@ use heapless::{String, Vec};
 #[cfg(feature = "std")]
 use std::string::ToString;
 
-/// Maximum length for parameter names
-pub const MAX_PARAM_NAME_LEN: usize = 64;
-
-/// Maximum length for parameter string values
-pub const MAX_STRING_VALUE_LEN: usize = 256;
-
-/// Maximum length for array parameters
-pub const MAX_ARRAY_LEN: usize = 32;
-
-/// Maximum length for byte array parameters
-pub const MAX_BYTE_ARRAY_LEN: usize = 256;
+pub use crate::config::*;
 
 /// ROS 2 parameter types
 ///

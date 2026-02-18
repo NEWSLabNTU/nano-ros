@@ -106,7 +106,7 @@ static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
 
     if (len > 0) {
         nano_ros_ret_t ret = nano_ros_publish_raw(ctx->publisher, buffer, (size_t)len);
-        if (ret == NANO_ROS_RET_OK) {
+        if (ret == NROS_RET_OK) {
             printf("Published: %d\n", ctx->message.data);
         } else {
             fprintf(stderr, "Publish failed: %d\n", ret);
@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
 
     // Initialize support context (connects to XRCE Agent)
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, agent_addr, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         fprintf(stderr, "Is the XRCE Agent running? MicroXRCEAgent udp4 -p 2019\n");
         return 1;
@@ -154,7 +154,7 @@ int main(int argc, char** argv) {
 
     // Create node
     ret = nros_node_init(&app.node, &app.support, "c_xrce_talker", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nano_ros_support_fini(&app.support);
         return 1;
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
 
     // Create publisher
     ret = nano_ros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/chatter");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
         nros_node_fini(&app.node);
         nano_ros_support_fini(&app.support);
@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
 
     // Create timer (1 second period = 1,000,000,000 ns)
     ret = nano_ros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize timer: %d\n", ret);
         nano_ros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
 
     // Create executor
     ret = nano_ros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
         nano_ros_timer_fini(&app.timer);
         nano_ros_publisher_fini(&app.publisher);
@@ -203,7 +203,7 @@ int main(int argc, char** argv) {
 
     // Add timer to executor
     ret = nano_ros_executor_add_timer(&app.executor, &app.timer);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer to executor: %d\n", ret);
         nano_ros_executor_fini(&app.executor);
         nano_ros_timer_fini(&app.timer);
@@ -222,7 +222,7 @@ int main(int argc, char** argv) {
 
     // Spin with 100ms period
     ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NANO_ROS_RET_OK && g_running) {
+    if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 

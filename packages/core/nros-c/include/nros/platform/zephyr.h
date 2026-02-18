@@ -8,8 +8,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_PLATFORM_ZEPHYR_H
-#define NANO_ROS_PLATFORM_ZEPHYR_H
+#ifndef NROS_PLATFORM_ZEPHYR_H
+#define NROS_PLATFORM_ZEPHYR_H
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/atomic.h>
@@ -24,16 +24,16 @@ extern "C" {
 // Platform Capability Flags
 // ============================================================================
 
-#define NANO_ROS_PLATFORM_HAS_ATOMICS
+#define NROS_PLATFORM_HAS_ATOMICS
 
 #ifdef CONFIG_HEAP_MEM_POOL_SIZE
 #if CONFIG_HEAP_MEM_POOL_SIZE > 0
-#define NANO_ROS_PLATFORM_HAS_MALLOC
+#define NROS_PLATFORM_HAS_MALLOC
 #endif
 #endif
 
 #ifdef CONFIG_MULTITHREADING
-#define NANO_ROS_PLATFORM_HAS_MUTEX
+#define NROS_PLATFORM_HAS_MUTEX
 typedef struct k_mutex nano_ros_mutex_t;
 #endif
 
@@ -89,7 +89,7 @@ static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
 // Memory Functions
 // ============================================================================
 
-#ifdef NANO_ROS_PLATFORM_HAS_MALLOC
+#ifdef NROS_PLATFORM_HAS_MALLOC
 
 /**
  * Allocate memory from Zephyr heap.
@@ -105,13 +105,13 @@ static inline void nano_ros_platform_free(void *ptr) {
     k_free(ptr);
 }
 
-#endif // NANO_ROS_PLATFORM_HAS_MALLOC
+#endif // NROS_PLATFORM_HAS_MALLOC
 
 // ============================================================================
 // Threading Functions
 // ============================================================================
 
-#ifdef NANO_ROS_PLATFORM_HAS_MUTEX
+#ifdef NROS_PLATFORM_HAS_MUTEX
 
 /**
  * Initialize a mutex.
@@ -144,10 +144,10 @@ static inline int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex) {
     return 0;
 }
 
-#endif // NANO_ROS_PLATFORM_HAS_MUTEX
+#endif // NROS_PLATFORM_HAS_MUTEX
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_PLATFORM_ZEPHYR_H
+#endif // NROS_PLATFORM_ZEPHYR_H

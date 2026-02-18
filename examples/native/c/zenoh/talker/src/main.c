@@ -73,7 +73,7 @@ static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
 
     if (ret == 0 && serialized_size > 0) {
         nano_ros_ret_t pub_ret = nano_ros_publish_raw(ctx->publisher, buffer, serialized_size);
-        if (pub_ret == NANO_ROS_RET_OK) {
+        if (pub_ret == NROS_RET_OK) {
             printf("Published: %d\n", ctx->message.data);
         } else {
             fprintf(stderr, "Publish failed: %d\n", pub_ret);
@@ -113,17 +113,17 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Demo: Initialize and use clock API
-    nano_ros_ret_t clock_ret = nano_ros_clock_init(&app.clock, NANO_ROS_CLOCK_SYSTEM_TIME);
-    if (clock_ret == NANO_ROS_RET_OK) {
+    nano_ros_ret_t clock_ret = nano_ros_clock_init(&app.clock, NROS_CLOCK_SYSTEM_TIME);
+    if (clock_ret == NROS_RET_OK) {
         nano_ros_time_t now;
-        if (nano_ros_clock_get_now(&app.clock, &now) == NANO_ROS_RET_OK) {
+        if (nano_ros_clock_get_now(&app.clock, &now) == NROS_RET_OK) {
             printf("System time: %d.%09u sec\n", now.sec, now.nanosec);
         }
         (void)nano_ros_clock_fini(&app.clock);
     }
 
     // Demo: Initialize and use parameter server
-    if (nano_ros_param_server_init(&app.params, app.param_storage, 8) == NANO_ROS_RET_OK) {
+    if (nano_ros_param_server_init(&app.params, app.param_storage, 8) == NROS_RET_OK) {
         // Declare parameters with default values
         nano_ros_param_declare_bool(&app.params, "verbose", false);
         nano_ros_param_declare_integer(&app.params, "publish_rate_hz", 1);
@@ -155,7 +155,7 @@ int main(int argc, char** argv) {
 
     // Initialize support context
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
     }
@@ -163,7 +163,7 @@ int main(int argc, char** argv) {
 
     // Create node
     ret = nros_node_init(&app.node, &app.support, "c_talker", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nano_ros_support_fini(&app.support);
         return 1;
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
     // Create publisher using generated type support
     ret = nano_ros_publisher_init(&app.publisher, &app.node,
         std_msgs_msg_int32_get_type_support(), "/chatter");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
         nros_node_fini(&app.node);
         nano_ros_support_fini(&app.support);
@@ -191,7 +191,7 @@ int main(int argc, char** argv) {
 
     // Create timer (1 second period = 1,000,000,000 ns)
     ret = nano_ros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize timer: %d\n", ret);
         nano_ros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
@@ -202,7 +202,7 @@ int main(int argc, char** argv) {
 
     // Create executor
     ret = nano_ros_executor_init(&app.executor, &app.support, 4);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
         nano_ros_timer_fini(&app.timer);
         nano_ros_publisher_fini(&app.publisher);
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
 
     // Add timer to executor
     ret = nano_ros_executor_add_timer(&app.executor, &app.timer);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer to executor: %d\n", ret);
         nano_ros_executor_fini(&app.executor);
         nano_ros_timer_fini(&app.timer);
@@ -233,7 +233,7 @@ int main(int argc, char** argv) {
 
     // Spin with 100ms period
     ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
-    if (ret != NANO_ROS_RET_OK && g_running) {
+    if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 

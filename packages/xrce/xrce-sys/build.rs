@@ -137,6 +137,9 @@ fn generate_ucdr_config(out_dir: &Path) {
 }
 
 fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
+    let max_session_conn_attempts = env_usize("XRCE_MAX_SESSION_CONNECTION_ATTEMPTS", 10);
+    let min_session_conn_interval = env_usize("XRCE_MIN_SESSION_CONNECTION_INTERVAL", 25);
+    let min_heartbeat_time_interval = env_usize("XRCE_MIN_HEARTBEAT_TIME_INTERVAL", 100);
     let dir = out_dir.join("include/uxr/client");
     fs::create_dir_all(&dir).unwrap();
 
@@ -173,10 +176,10 @@ fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
 #define UXR_CONFIG_MAX_INPUT_BEST_EFFORT_STREAMS      1
 #define UXR_CONFIG_MAX_INPUT_RELIABLE_STREAMS         1
 
-// Session connection
-#define UXR_CONFIG_MAX_SESSION_CONNECTION_ATTEMPTS    10
-#define UXR_CONFIG_MIN_SESSION_CONNECTION_INTERVAL    25
-#define UXR_CONFIG_MIN_HEARTBEAT_TIME_INTERVAL        100
+// Session connection (configurable via XRCE_* env vars)
+#define UXR_CONFIG_MAX_SESSION_CONNECTION_ATTEMPTS    {max_session_conn_attempts}
+#define UXR_CONFIG_MIN_SESSION_CONNECTION_INTERVAL    {min_session_conn_interval}
+#define UXR_CONFIG_MIN_HEARTBEAT_TIME_INTERVAL        {min_heartbeat_time_interval}
 
 // Custom transport MTU (configurable via XRCE_TRANSPORT_MTU env var)
 #define UXR_CONFIG_CUSTOM_TRANSPORT_MTU               {mtu}
@@ -191,11 +194,16 @@ fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
     .unwrap();
 }
 
+/// Opaque blob size for `uxrSession`.
+const UXR_SESSION_BLOB_SIZE: usize = 512;
+/// Transport blob overhead beyond MTU.
+const UXR_TRANSPORT_OVERHEAD: usize = 256;
+
 fn generate_size_check(out_dir: &Path, manifest_dir: &Path, _posix: bool, mtu: usize) {
     // Compute Rust blob sizes from the configured MTU.
     // Transport struct embeds buffer[MTU]; session is MTU-independent.
-    let session_size = 512usize;
-    let transport_size = mtu + 256;
+    let session_size = UXR_SESSION_BLOB_SIZE;
+    let transport_size = mtu + UXR_TRANSPORT_OVERHEAD;
 
     // Generate Rust constants for the blob sizes
     let constants_path = out_dir.join("xrce_constants.rs");

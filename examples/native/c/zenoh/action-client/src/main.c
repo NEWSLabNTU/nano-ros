@@ -143,7 +143,7 @@ int main(int argc, char** argv) {
 
     // Initialize support context
     nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
     }
@@ -151,7 +151,7 @@ int main(int argc, char** argv) {
 
     // Create node
     ret = nros_node_init(&app.node, &app.support, "c_action_client", "/");
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nano_ros_support_fini(&app.support);
         return 1;
@@ -165,7 +165,7 @@ int main(int argc, char** argv) {
         "/fibonacci",
         &fibonacci_type
     );
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize action client: %d\n", ret);
         nros_node_fini(&app.node);
         nano_ros_support_fini(&app.support);
@@ -176,13 +176,13 @@ int main(int argc, char** argv) {
     // Set callbacks
     ret = nano_ros_action_client_set_feedback_callback(
         &app.action_client, feedback_callback, NULL);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set feedback callback: %d\n", ret);
     }
 
     ret = nano_ros_action_client_set_result_callback(
         &app.action_client, result_callback, NULL);
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set result callback: %d\n", ret);
     }
 
@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
         &goal_uuid
     );
 
-    if (ret != NANO_ROS_RET_OK) {
+    if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to send goal: %d\n", ret);
         fprintf(stderr, "(Is the action server running?)\n");
         goto cleanup;
@@ -236,7 +236,7 @@ int main(int argc, char** argv) {
         &result_len
     );
 
-    if (ret == NANO_ROS_RET_OK) {
+    if (ret == NROS_RET_OK) {
         printf("Final result (status=%s): ",
                nano_ros_goal_status_to_string(final_status));
 
@@ -252,7 +252,7 @@ int main(int argc, char** argv) {
         } else {
             printf("(deserialize failed)\n");
         }
-    } else if (ret == NANO_ROS_RET_TIMEOUT) {
+    } else if (ret == NROS_RET_TIMEOUT) {
         fprintf(stderr, "Timeout waiting for result\n");
     } else {
         fprintf(stderr, "Failed to get result: %d\n", ret);
@@ -266,5 +266,5 @@ cleanup:
     nano_ros_support_fini(&app.support);
 
     printf("Goodbye!\n");
-    return (ret == NANO_ROS_RET_OK) ? 0 : 1;
+    return (ret == NROS_RET_OK) ? 0 : 1;
 }

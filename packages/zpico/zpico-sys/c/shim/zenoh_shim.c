@@ -19,7 +19,7 @@
 #endif
 
 // Internal zenoh-pico headers for socket FD access (select()-based timeout)
-#ifndef ZENOH_SHIM_SMOLTCP
+#ifndef ZPICO_SMOLTCP
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
@@ -28,7 +28,7 @@
 // Platform-specific select()
 #if defined(ZENOH_ZEPHYR)
 #include <zephyr/posix/sys/select.h>
-#elif !defined(ZENOH_SHIM_SMOLTCP)
+#elif !defined(ZPICO_SMOLTCP)
 #include <sys/select.h>
 #endif
 
@@ -36,7 +36,7 @@
 // Platform-Specific Declarations
 // ============================================================================
 
-#ifdef ZENOH_SHIM_SMOLTCP
+#ifdef ZPICO_SMOLTCP
 // External Rust FFI functions for smoltcp platform
 extern int32_t smoltcp_init(void);
 extern void smoltcp_cleanup(void);
@@ -89,9 +89,28 @@ typedef struct {
     bool active;
 } queryable_entry_t;
 
-// ZENOH_SHIM_MAX_PUBLISHERS, ZENOH_SHIM_MAX_SUBSCRIBERS,
-// ZENOH_SHIM_MAX_QUERYABLES, and ZENOH_SHIM_MAX_LIVELINESS are provided
-// via -D compiler flags from build.rs (configurable with ZPICO_MAX_* env vars).
+// ZPICO_MAX_PUBLISHERS, ZPICO_MAX_SUBSCRIBERS, ZPICO_MAX_QUERYABLES,
+// ZPICO_MAX_LIVELINESS, ZPICO_GET_REPLY_BUF_SIZE, and ZPICO_GET_POLL_INTERVAL_MS
+// are provided via -D compiler flags from build.rs (configurable with env vars).
+// Defaults are provided here for non-Cargo build paths (e.g., Zephyr CMake).
+#ifndef ZPICO_MAX_PUBLISHERS
+#define ZPICO_MAX_PUBLISHERS 8
+#endif
+#ifndef ZPICO_MAX_SUBSCRIBERS
+#define ZPICO_MAX_SUBSCRIBERS 8
+#endif
+#ifndef ZPICO_MAX_QUERYABLES
+#define ZPICO_MAX_QUERYABLES 8
+#endif
+#ifndef ZPICO_MAX_LIVELINESS
+#define ZPICO_MAX_LIVELINESS 16
+#endif
+#ifndef ZPICO_GET_REPLY_BUF_SIZE
+#define ZPICO_GET_REPLY_BUF_SIZE 4096
+#endif
+#ifndef ZPICO_GET_POLL_INTERVAL_MS
+#define ZPICO_GET_POLL_INTERVAL_MS 10
+#endif
 
 // Static storage for zenoh objects
 static z_owned_config_t g_config;
@@ -99,20 +118,20 @@ static z_owned_session_t g_session;
 static bool g_session_open = false;
 static bool g_initialized = false;
 
-static publisher_entry_t g_publishers[ZENOH_SHIM_MAX_PUBLISHERS];
-static subscriber_entry_t g_subscribers[ZENOH_SHIM_MAX_SUBSCRIBERS];
-static liveliness_entry_t g_liveliness[ZENOH_SHIM_MAX_LIVELINESS];
-static queryable_entry_t g_queryables[ZENOH_SHIM_MAX_QUERYABLES];
+static publisher_entry_t g_publishers[ZPICO_MAX_PUBLISHERS];
+static subscriber_entry_t g_subscribers[ZPICO_MAX_SUBSCRIBERS];
+static liveliness_entry_t g_liveliness[ZPICO_MAX_LIVELINESS];
+static queryable_entry_t g_queryables[ZPICO_MAX_QUERYABLES];
 
 // Per-queryable storage for cloned queries (for later reply)
-static z_owned_query_t g_stored_queries[ZENOH_SHIM_MAX_QUERYABLES];
-static bool g_stored_query_valid[ZENOH_SHIM_MAX_QUERYABLES];  // zero-initialized = all false
+static z_owned_query_t g_stored_queries[ZPICO_MAX_QUERYABLES];
+static bool g_stored_query_valid[ZPICO_MAX_QUERYABLES];  // zero-initialized = all false
 
 // Context struct for blocking z_get reply (stack-allocated per call)
-#define ZENOH_SHIM_GET_REPLY_BUF_SIZE 4096
+// ZPICO_GET_REPLY_BUF_SIZE is provided via -D compiler flag from build.rs
 
 typedef struct {
-    uint8_t buf[ZENOH_SHIM_GET_REPLY_BUF_SIZE];
+    uint8_t buf[ZPICO_GET_REPLY_BUF_SIZE];
     size_t len;
     bool received;
     bool done;
@@ -131,7 +150,7 @@ typedef struct {
  */
 static void shim_query_handler(z_loaned_query_t *query, void *arg) {
     int idx = (int)(intptr_t)arg;
-    if (idx < 0 || idx >= ZENOH_SHIM_MAX_QUERYABLES) {
+    if (idx < 0 || idx >= ZPICO_MAX_QUERYABLES) {
         return;
     }
 
@@ -190,7 +209,7 @@ static void shim_query_handler(z_loaned_query_t *query, void *arg) {
  */
 static void shim_sample_handler(z_loaned_sample_t *sample, void *arg) {
     int idx = (int)(intptr_t)arg;
-    if (idx < 0 || idx >= ZENOH_SHIM_MAX_SUBSCRIBERS) {
+    if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
         return;
     }
 
@@ -334,16 +353,16 @@ int32_t zenoh_shim_init_with_config(const char *locator,
     memset(g_liveliness, 0, sizeof(g_liveliness));
     memset(g_queryables, 0, sizeof(g_queryables));
     memset(g_stored_query_valid, 0, sizeof(g_stored_query_valid));
-    for (int i = 0; i < ZENOH_SHIM_MAX_QUERYABLES; i++) {
+    for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
         z_internal_query_null(&g_stored_queries[i]);
     }
     g_session_open = false;
 
-#ifdef ZENOH_SHIM_SMOLTCP
+#ifdef ZPICO_SMOLTCP
     // Initialize smoltcp platform
     int ret = smoltcp_init();
     if (ret < 0) {
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 #endif
 
@@ -351,12 +370,12 @@ int32_t zenoh_shim_init_with_config(const char *locator,
     z_config_default(&g_config);
 
     if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_MODE_KEY, mode) < 0) {
-        return ZENOH_SHIM_ERR_CONFIG;
+        return ZPICO_ERR_CONFIG;
     }
 
     if (locator != NULL) {
         if (zp_config_insert(z_config_loan_mut(&g_config), Z_CONFIG_CONNECT_KEY, locator) < 0) {
-            return ZENOH_SHIM_ERR_CONFIG;
+            return ZPICO_ERR_CONFIG;
         }
     }
 
@@ -383,21 +402,21 @@ int32_t zenoh_shim_init_with_config(const char *locator,
         }
 
         if (zp_config_insert(z_config_loan_mut(&g_config), config_key, properties[i].value) < 0) {
-            return ZENOH_SHIM_ERR_CONFIG;
+            return ZPICO_ERR_CONFIG;
         }
     }
 
     g_initialized = true;
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 int32_t zenoh_shim_open(void) {
     if (!g_initialized) {
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     if (z_open(&g_session, z_config_move(&g_config), NULL) < 0) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Start background tasks only in multi-threaded mode
@@ -406,18 +425,18 @@ int32_t zenoh_shim_open(void) {
 #if Z_FEATURE_MULTI_THREAD == 1
     if (zp_start_read_task(z_session_loan_mut(&g_session), NULL) < 0) {
         z_close(z_session_loan_mut(&g_session), NULL);
-        return ZENOH_SHIM_ERR_TASK;
+        return ZPICO_ERR_TASK;
     }
 
     if (zp_start_lease_task(z_session_loan_mut(&g_session), NULL) < 0) {
         zp_stop_read_task(z_session_loan_mut(&g_session));
         z_close(z_session_loan_mut(&g_session), NULL);
-        return ZENOH_SHIM_ERR_TASK;
+        return ZPICO_ERR_TASK;
     }
 #endif
 
     g_session_open = true;
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 int32_t zenoh_shim_is_open(void) {
@@ -426,7 +445,7 @@ int32_t zenoh_shim_is_open(void) {
 
 void zenoh_shim_close(void) {
     // Clean up publishers
-    for (int i = 0; i < ZENOH_SHIM_MAX_PUBLISHERS; i++) {
+    for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
         if (g_publishers[i].active) {
             z_undeclare_publisher(z_publisher_move(&g_publishers[i].publisher));
             g_publishers[i].active = false;
@@ -434,7 +453,7 @@ void zenoh_shim_close(void) {
     }
 
     // Clean up subscribers
-    for (int i = 0; i < ZENOH_SHIM_MAX_SUBSCRIBERS; i++) {
+    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
         if (g_subscribers[i].active) {
             z_undeclare_subscriber(z_subscriber_move(&g_subscribers[i].subscriber));
             g_subscribers[i].active = false;
@@ -444,7 +463,7 @@ void zenoh_shim_close(void) {
     }
 
     // Clean up liveliness tokens
-    for (int i = 0; i < ZENOH_SHIM_MAX_LIVELINESS; i++) {
+    for (int i = 0; i < ZPICO_MAX_LIVELINESS; i++) {
         if (g_liveliness[i].active) {
             z_liveliness_undeclare_token(z_liveliness_token_move(&g_liveliness[i].token));
             g_liveliness[i].active = false;
@@ -452,7 +471,7 @@ void zenoh_shim_close(void) {
     }
 
     // Clean up queryables
-    for (int i = 0; i < ZENOH_SHIM_MAX_QUERYABLES; i++) {
+    for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
         if (g_queryables[i].active) {
             z_undeclare_queryable(z_queryable_move(&g_queryables[i].queryable));
             g_queryables[i].active = false;
@@ -472,7 +491,7 @@ void zenoh_shim_close(void) {
         g_session_open = false;
     }
 
-#ifdef ZENOH_SHIM_SMOLTCP
+#ifdef ZPICO_SMOLTCP
     // Cleanup smoltcp platform
     smoltcp_cleanup();
 #endif
@@ -486,33 +505,33 @@ void zenoh_shim_close(void) {
 
 int32_t zenoh_shim_declare_publisher(const char *keyexpr) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
-    for (int i = 0; i < ZENOH_SHIM_MAX_PUBLISHERS; i++) {
+    for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
         if (!g_publishers[i].active) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        return ZENOH_SHIM_ERR_FULL;
+        return ZPICO_ERR_FULL;
     }
 
     z_view_keyexpr_t ke;
     int ke_ret = z_view_keyexpr_from_str(&ke, keyexpr);
     if (ke_ret < 0) {
         printk("zenoh_shim: z_view_keyexpr_from_str failed: %d for '%s'\n", ke_ret, keyexpr);
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
                                       z_view_keyexpr_loan(&ke), NULL);
     if (pub_ret < 0) {
         printk("zenoh_shim: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     g_publishers[idx].active = true;
@@ -520,35 +539,35 @@ int32_t zenoh_shim_declare_publisher(const char *keyexpr) {
 }
 
 int32_t zenoh_shim_publish(int32_t handle, const uint8_t *data, size_t len) {
-    if (handle < 0 || handle >= ZENOH_SHIM_MAX_PUBLISHERS || !g_publishers[handle].active) {
-        return ZENOH_SHIM_ERR_INVALID;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+        return ZPICO_ERR_INVALID;
     }
 
     z_owned_bytes_t payload;
     int bytes_ret = z_bytes_copy_from_buf(&payload, data, len);
     if (bytes_ret < 0) {
         printk("zenoh_shim: z_bytes_copy_from_buf failed: %d\n", bytes_ret);
-        return ZENOH_SHIM_ERR_PUBLISH;
+        return ZPICO_ERR_PUBLISH;
     }
 
     int put_ret = z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
                         z_bytes_move(&payload), NULL);
     if (put_ret < 0) {
         printk("zenoh_shim: z_publisher_put failed: %d\n", put_ret);
-        return ZENOH_SHIM_ERR_PUBLISH;
+        return ZPICO_ERR_PUBLISH;
     }
 
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 int32_t zenoh_shim_undeclare_publisher(int32_t handle) {
-    if (handle < 0 || handle >= ZENOH_SHIM_MAX_PUBLISHERS || !g_publishers[handle].active) {
-        return ZENOH_SHIM_ERR_INVALID;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+        return ZPICO_ERR_INVALID;
     }
 
     z_undeclare_publisher(z_publisher_move(&g_publishers[handle].publisher));
     g_publishers[handle].active = false;
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 // ============================================================================
@@ -559,19 +578,19 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
                                        ShimCallback callback,
                                        void *ctx) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
-    for (int i = 0; i < ZENOH_SHIM_MAX_SUBSCRIBERS; i++) {
+    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
         if (!g_subscribers[i].active) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        return ZENOH_SHIM_ERR_FULL;
+        return ZPICO_ERR_FULL;
     }
 
     g_subscribers[idx].callback = callback;
@@ -582,7 +601,7 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
         g_subscribers[idx].callback = NULL;
         g_subscribers[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
@@ -595,7 +614,7 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
         printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback = NULL;
         g_subscribers[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     g_subscribers[idx].active = true;
@@ -606,19 +625,19 @@ int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
                                                        ShimCallbackWithAttachment callback,
                                                        void *ctx) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
-    for (int i = 0; i < ZENOH_SHIM_MAX_SUBSCRIBERS; i++) {
+    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
         if (!g_subscribers[i].active) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        return ZENOH_SHIM_ERR_FULL;
+        return ZPICO_ERR_FULL;
     }
 
     g_subscribers[idx].callback_ext = callback;
@@ -629,7 +648,7 @@ int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
         g_subscribers[idx].callback_ext = NULL;
         g_subscribers[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
@@ -642,7 +661,7 @@ int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
         printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback_ext = NULL;
         g_subscribers[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     g_subscribers[idx].active = true;
@@ -656,19 +675,19 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
                                                      ShimNotifyCallback callback,
                                                      void *ctx) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
-    for (int i = 0; i < ZENOH_SHIM_MAX_SUBSCRIBERS; i++) {
+    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
         if (!g_subscribers[i].active) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        return ZENOH_SHIM_ERR_FULL;
+        return ZPICO_ERR_FULL;
     }
 
     g_subscribers[idx].notify = callback;
@@ -684,7 +703,7 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
         g_subscribers[idx].notify = NULL;
         g_subscribers[idx].ctx = NULL;
         g_subscribers[idx].direct_write = false;
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
@@ -698,7 +717,7 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
         g_subscribers[idx].notify = NULL;
         g_subscribers[idx].ctx = NULL;
         g_subscribers[idx].direct_write = false;
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     g_subscribers[idx].active = true;
@@ -710,19 +729,19 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
                                         ShimZeroCopyCallback callback,
                                         void *ctx) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
-    for (int i = 0; i < ZENOH_SHIM_MAX_SUBSCRIBERS; i++) {
+    for (int i = 0; i < ZPICO_MAX_SUBSCRIBERS; i++) {
         if (!g_subscribers[i].active) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        return ZENOH_SHIM_ERR_FULL;
+        return ZPICO_ERR_FULL;
     }
 
     g_subscribers[idx].ctx = ctx;
@@ -736,7 +755,7 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
         g_subscribers[idx].zero_copy = false;
         g_subscribers[idx].zero_copy_cb = NULL;
         g_subscribers[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback, passing index as context
@@ -750,7 +769,7 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
         g_subscribers[idx].zero_copy = false;
         g_subscribers[idx].zero_copy_cb = NULL;
         g_subscribers[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     g_subscribers[idx].active = true;
@@ -764,13 +783,13 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
     (void)keyexpr;
     (void)callback;
     (void)ctx;
-    return ZENOH_SHIM_ERR_GENERIC;
+    return ZPICO_ERR_GENERIC;
 }
 #endif
 
 int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
-    if (handle < 0 || handle >= ZENOH_SHIM_MAX_SUBSCRIBERS || !g_subscribers[handle].active) {
-        return ZENOH_SHIM_ERR_INVALID;
+    if (handle < 0 || handle >= ZPICO_MAX_SUBSCRIBERS || !g_subscribers[handle].active) {
+        return ZPICO_ERR_INVALID;
     }
 
     z_undeclare_subscriber(z_subscriber_move(&g_subscribers[handle].subscriber));
@@ -778,14 +797,14 @@ int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
     g_subscribers[handle].callback = NULL;
     g_subscribers[handle].ctx = NULL;
     g_subscribers[handle].with_attachment = false;
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 // ============================================================================
 // Socket FD Helper (for select()-based timeout)
 // ============================================================================
 
-#ifndef ZENOH_SHIM_SMOLTCP
+#ifndef ZPICO_SMOLTCP
 /**
  * Extract the socket file descriptor from the zenoh session.
  *
@@ -813,10 +832,10 @@ static int _zenoh_shim_get_session_fd(void) {
 
 int32_t zenoh_shim_poll(uint32_t timeout_ms) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
-#ifdef ZENOH_SHIM_SMOLTCP
+#ifdef ZPICO_SMOLTCP
     // smoltcp: no real sockets, no select(). Loop with clock timeout.
     uint64_t start = smoltcp_clock_now_ms();
     int ret;
@@ -855,7 +874,7 @@ int32_t zenoh_shim_poll(uint32_t timeout_ms) {
         tv.tv_usec = (timeout_ms % 1000) * 1000;
         int result = select(fd + 1, &read_fds, NULL, NULL, &tv);
         if (result <= 0) {
-            return (result == 0) ? ZENOH_SHIM_ERR_TIMEOUT : result;
+            return (result == 0) ? ZPICO_ERR_TIMEOUT : result;
         }
     }
     return zp_read(z_session_loan_mut(&g_session), NULL);
@@ -864,10 +883,10 @@ int32_t zenoh_shim_poll(uint32_t timeout_ms) {
 
 int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
-#ifdef ZENOH_SHIM_SMOLTCP
+#ifdef ZPICO_SMOLTCP
     // smoltcp: no real sockets, no select(). Loop with clock timeout.
     uint64_t start = smoltcp_clock_now_ms();
     int ret;
@@ -909,7 +928,7 @@ int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
         int result = select(fd + 1, &read_fds, NULL, NULL, &tv);
         if (result <= 0) {
             zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
-            return (result == 0) ? ZENOH_SHIM_ERR_TIMEOUT : result;
+            return (result == 0) ? ZPICO_ERR_TIMEOUT : result;
         }
     }
     int ret = zp_read(z_session_loan_mut(&g_session), NULL);
@@ -933,12 +952,12 @@ bool zenoh_shim_uses_polling(void) {
 
 int32_t zenoh_shim_get_zid(uint8_t *zid_out) {
     if (!g_session_open || zid_out == NULL) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     z_id_t zid = z_info_zid(z_session_loan(&g_session));
     memcpy(zid_out, zid.id, 16);
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 // ============================================================================
@@ -947,31 +966,31 @@ int32_t zenoh_shim_get_zid(uint8_t *zid_out) {
 
 int32_t zenoh_shim_declare_liveliness(const char *keyexpr) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
-    for (int i = 0; i < ZENOH_SHIM_MAX_LIVELINESS; i++) {
+    for (int i = 0; i < ZPICO_MAX_LIVELINESS; i++) {
         if (!g_liveliness[i].active) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        return ZENOH_SHIM_ERR_FULL;
+        return ZPICO_ERR_FULL;
     }
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     int lv_ret = z_liveliness_declare_token(z_session_loan(&g_session),
                                             &g_liveliness[idx].token,
                                             z_view_keyexpr_loan(&ke), NULL);
     if (lv_ret < 0) {
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     g_liveliness[idx].active = true;
@@ -979,13 +998,13 @@ int32_t zenoh_shim_declare_liveliness(const char *keyexpr) {
 }
 
 int32_t zenoh_shim_undeclare_liveliness(int32_t handle) {
-    if (handle < 0 || handle >= ZENOH_SHIM_MAX_LIVELINESS || !g_liveliness[handle].active) {
-        return ZENOH_SHIM_ERR_INVALID;
+    if (handle < 0 || handle >= ZPICO_MAX_LIVELINESS || !g_liveliness[handle].active) {
+        return ZPICO_ERR_INVALID;
     }
 
     z_liveliness_undeclare_token(z_liveliness_token_move(&g_liveliness[handle].token));
     g_liveliness[handle].active = false;
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 // ============================================================================
@@ -995,14 +1014,14 @@ int32_t zenoh_shim_undeclare_liveliness(int32_t handle) {
 int32_t zenoh_shim_publish_with_attachment(int32_t handle,
                                             const uint8_t *data, size_t len,
                                             const uint8_t *attachment, size_t attachment_len) {
-    if (handle < 0 || handle >= ZENOH_SHIM_MAX_PUBLISHERS || !g_publishers[handle].active) {
-        return ZENOH_SHIM_ERR_INVALID;
+    if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
+        return ZPICO_ERR_INVALID;
     }
 
     // Create payload
     z_owned_bytes_t payload;
     if (z_bytes_copy_from_buf(&payload, data, len) < 0) {
-        return ZENOH_SHIM_ERR_PUBLISH;
+        return ZPICO_ERR_PUBLISH;
     }
 
     // Create put options with attachment
@@ -1013,17 +1032,17 @@ int32_t zenoh_shim_publish_with_attachment(int32_t handle,
     if (attachment != NULL && attachment_len > 0) {
         if (z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len) < 0) {
             z_bytes_drop(z_bytes_move(&payload));
-            return ZENOH_SHIM_ERR_PUBLISH;
+            return ZPICO_ERR_PUBLISH;
         }
         options.attachment = z_bytes_move(&attachment_bytes);
     }
 
     if (z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
                         z_bytes_move(&payload), &options) < 0) {
-        return ZENOH_SHIM_ERR_PUBLISH;
+        return ZPICO_ERR_PUBLISH;
     }
 
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 // ============================================================================
@@ -1034,19 +1053,19 @@ int32_t zenoh_shim_declare_queryable(const char *keyexpr,
                                       ShimQueryCallback callback,
                                       void *ctx) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Find free slot
     int idx = -1;
-    for (int i = 0; i < ZENOH_SHIM_MAX_QUERYABLES; i++) {
+    for (int i = 0; i < ZPICO_MAX_QUERYABLES; i++) {
         if (!g_queryables[i].active) {
             idx = i;
             break;
         }
     }
     if (idx < 0) {
-        return ZENOH_SHIM_ERR_FULL;
+        return ZPICO_ERR_FULL;
     }
 
     g_queryables[idx].callback = callback;
@@ -1056,7 +1075,7 @@ int32_t zenoh_shim_declare_queryable(const char *keyexpr,
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
         g_queryables[idx].callback = NULL;
         g_queryables[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     // Create closure for callback
@@ -1069,7 +1088,7 @@ int32_t zenoh_shim_declare_queryable(const char *keyexpr,
         printk("zenoh_shim: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
         g_queryables[idx].callback = NULL;
         g_queryables[idx].ctx = NULL;
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     g_queryables[idx].active = true;
@@ -1077,15 +1096,15 @@ int32_t zenoh_shim_declare_queryable(const char *keyexpr,
 }
 
 int32_t zenoh_shim_undeclare_queryable(int32_t handle) {
-    if (handle < 0 || handle >= ZENOH_SHIM_MAX_QUERYABLES || !g_queryables[handle].active) {
-        return ZENOH_SHIM_ERR_INVALID;
+    if (handle < 0 || handle >= ZPICO_MAX_QUERYABLES || !g_queryables[handle].active) {
+        return ZPICO_ERR_INVALID;
     }
 
     z_undeclare_queryable(z_queryable_move(&g_queryables[handle].queryable));
     g_queryables[handle].active = false;
     g_queryables[handle].callback = NULL;
     g_queryables[handle].ctx = NULL;
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }
 
 // ============================================================================
@@ -1117,7 +1136,7 @@ static void shim_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
         const uint8_t *data = z_slice_data(z_slice_loan(&slice));
         size_t len = z_slice_len(z_slice_loan(&slice));
 
-        if (len <= ZENOH_SHIM_GET_REPLY_BUF_SIZE) {
+        if (len <= ZPICO_GET_REPLY_BUF_SIZE) {
             memcpy(rctx->buf, data, len);
             rctx->len = len;
             rctx->received = true;
@@ -1146,7 +1165,7 @@ int32_t zenoh_shim_get(const char *keyexpr,
                        uint8_t *reply_buf, size_t reply_buf_size,
                        uint32_t timeout_ms) {
     if (!g_session_open) {
-        return ZENOH_SHIM_ERR_SESSION;
+        return ZPICO_ERR_SESSION;
     }
 
     // Stack-allocated reply context (safe for concurrent z_get calls)
@@ -1161,7 +1180,7 @@ int32_t zenoh_shim_get(const char *keyexpr,
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     // Set up get options
@@ -1173,7 +1192,7 @@ int32_t zenoh_shim_get(const char *keyexpr,
     z_owned_bytes_t payload_bytes;
     if (payload != NULL && payload_len > 0) {
         if (z_bytes_copy_from_buf(&payload_bytes, payload, payload_len) < 0) {
-            return ZENOH_SHIM_ERR_GENERIC;
+            return ZPICO_ERR_GENERIC;
         }
         opts.payload = z_bytes_move(&payload_bytes);
     }
@@ -1185,7 +1204,7 @@ int32_t zenoh_shim_get(const char *keyexpr,
     // Send the query
     if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
               z_move(callback), &opts) < 0) {
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     // For multi-threaded platforms, wait for reply via background threads
@@ -1193,7 +1212,7 @@ int32_t zenoh_shim_get(const char *keyexpr,
 #if Z_FEATURE_MULTI_THREAD == 0
     // Single-threaded: poll until reply received or timeout
     uint32_t elapsed = 0;
-    const uint32_t poll_interval = 10;  // 10ms polling interval
+    const uint32_t poll_interval = ZPICO_GET_POLL_INTERVAL_MS;
 
     while (!ctx.done && elapsed < timeout_ms) {
         zp_read(z_session_loan_mut(&g_session), NULL);
@@ -1227,12 +1246,12 @@ int32_t zenoh_shim_get(const char *keyexpr,
 
     // Check if we got a reply
     if (!ctx.received) {
-        return -9;  // ZENOH_SHIM_ERR_TIMEOUT (defined in Rust FFI)
+        return -9;  // ZPICO_ERR_TIMEOUT (defined in Rust FFI)
     }
 
     // Copy reply to output buffer
     if (ctx.len > reply_buf_size) {
-        return ZENOH_SHIM_ERR_FULL;  // Buffer too small
+        return ZPICO_ERR_FULL;  // Buffer too small
     }
 
     memcpy(reply_buf, ctx.buf, ctx.len);
@@ -1247,22 +1266,22 @@ int32_t zenoh_shim_query_reply(int32_t queryable_handle,
                                 const char *keyexpr,
                                 const uint8_t *data, size_t len,
                                 const uint8_t *attachment, size_t attachment_len) {
-    if (queryable_handle < 0 || queryable_handle >= ZENOH_SHIM_MAX_QUERYABLES) {
-        return ZENOH_SHIM_ERR_INVALID;
+    if (queryable_handle < 0 || queryable_handle >= ZPICO_MAX_QUERYABLES) {
+        return ZPICO_ERR_INVALID;
     }
     if (!g_stored_query_valid[queryable_handle]) {
-        return ZENOH_SHIM_ERR_INVALID;
+        return ZPICO_ERR_INVALID;
     }
 
     z_view_keyexpr_t ke;
     if (z_view_keyexpr_from_str(&ke, keyexpr) < 0) {
-        return ZENOH_SHIM_ERR_KEYEXPR;
+        return ZPICO_ERR_KEYEXPR;
     }
 
     // Create payload
     z_owned_bytes_t payload;
     if (z_bytes_copy_from_buf(&payload, data, len) < 0) {
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     // Create reply options with attachment
@@ -1273,7 +1292,7 @@ int32_t zenoh_shim_query_reply(int32_t queryable_handle,
     if (attachment != NULL && attachment_len > 0) {
         if (z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len) < 0) {
             z_bytes_drop(z_bytes_move(&payload));
-            return ZENOH_SHIM_ERR_GENERIC;
+            return ZPICO_ERR_GENERIC;
         }
         options.attachment = z_bytes_move(&attachment_bytes);
     }
@@ -1282,12 +1301,12 @@ int32_t zenoh_shim_query_reply(int32_t queryable_handle,
     if (z_query_reply(z_query_loan(&g_stored_queries[queryable_handle]),
                       z_view_keyexpr_loan(&ke),
                       z_bytes_move(&payload), &options) < 0) {
-        return ZENOH_SHIM_ERR_GENERIC;
+        return ZPICO_ERR_GENERIC;
     }
 
     // Drop the stored query after reply
     z_query_drop(z_query_move(&g_stored_queries[queryable_handle]));
     g_stored_query_valid[queryable_handle] = false;
 
-    return ZENOH_SHIM_OK;
+    return ZPICO_OK;
 }

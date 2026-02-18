@@ -162,18 +162,60 @@ Build-time environment variables:
 
 Build-time buffer tuning (optional — platform-appropriate defaults apply if unset):
 
-| Variable | Description | Posix Default | Embedded Default |
-|----------|-------------|---------------|------------------|
-| `ZPICO_FRAG_MAX_SIZE` | Max reassembled message size after zenoh-pico defragmentation | `65536` | `2048` |
-| `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch size before fragmentation | `65536` | `1024` |
-| `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | `8192` | `1024` |
-| `XRCE_TRANSPORT_MTU` | XRCE-DDS custom transport MTU; also sizes stream buffers (4×MTU) and UDP staging | `4096` | `512` |
-| `ZPICO_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber static buffer in zenoh shim | `1024` | `1024` |
-| `ZPICO_SERVICE_BUFFER_SIZE` | Per-service-server static buffer in zenoh shim | `1024` | `1024` |
-| `ZPICO_MAX_PUBLISHERS` | Max concurrent publishers in zenoh shim | `8` | `8` |
-| `ZPICO_MAX_SUBSCRIBERS` | Max concurrent subscribers in zenoh shim | `8` | `8` |
-| `ZPICO_MAX_QUERYABLES` | Max concurrent queryables in zenoh shim | `8` | `8` |
-| `ZPICO_MAX_LIVELINESS` | Max concurrent liveliness tokens in zenoh shim | `16` | `16` |
+**Zenoh-pico (`ZPICO_*`):**
+
+| Variable | Description | Default | Crate |
+|----------|-------------|---------|-------|
+| `ZPICO_FRAG_MAX_SIZE` | Max reassembled message size after defragmentation | `65536` / `2048` | zpico-sys |
+| `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch size before fragmentation | `65536` / `1024` | zpico-sys |
+| `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | `8192` / `1024` | zpico-sys |
+| `ZPICO_MAX_PUBLISHERS` | Max concurrent publishers in zenoh shim | `8` | zpico-sys |
+| `ZPICO_MAX_SUBSCRIBERS` | Max concurrent subscribers in zenoh shim | `8` | zpico-sys |
+| `ZPICO_MAX_QUERYABLES` | Max concurrent queryables in zenoh shim | `8` | zpico-sys |
+| `ZPICO_MAX_LIVELINESS` | Max concurrent liveliness tokens in zenoh shim | `16` | zpico-sys |
+| `ZPICO_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber static buffer in zenoh shim | `1024` | nros-rmw-zenoh |
+| `ZPICO_SERVICE_BUFFER_SIZE` | Per-service-server static buffer in zenoh shim | `1024` | nros-rmw-zenoh |
+| `ZPICO_GET_REPLY_BUF_SIZE` | Stack buffer for service client replies | `4096` | zpico-sys |
+| `ZPICO_GET_POLL_INTERVAL_MS` | Single-threaded polling interval in `zenoh_shim_get()` | `10` | zpico-sys |
+| `ZPICO_SMOLTCP_MAX_SOCKETS` | Max concurrent TCP sockets (smoltcp) | `4` | zpico-smoltcp |
+| `ZPICO_SMOLTCP_BUFFER_SIZE` | Per-socket staging buffer (smoltcp) | `2048` | zpico-smoltcp |
+| `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp) | `30000` | zpico-smoltcp |
+| `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` | TCP read/write timeout (smoltcp) | `10000` | zpico-smoltcp |
+
+**XRCE-DDS (`XRCE_*`):**
+
+| Variable | Description | Default | Crate |
+|----------|-------------|---------|-------|
+| `XRCE_TRANSPORT_MTU` | Custom transport MTU; also sizes stream buffers (4x MTU) and UDP staging | `4096` / `512` | xrce-sys |
+| `XRCE_MAX_SUBSCRIBERS` | Max concurrent subscribers | `8` | nros-rmw-xrce |
+| `XRCE_MAX_SERVICE_SERVERS` | Max concurrent service servers | `4` | nros-rmw-xrce |
+| `XRCE_MAX_SERVICE_CLIENTS` | Max concurrent service clients | `4` | nros-rmw-xrce |
+| `XRCE_BUFFER_SIZE` | Per-slot static buffer size | `1024` | nros-rmw-xrce |
+| `XRCE_STREAM_HISTORY` | Reliable stream history depth (must be >= 2) | `4` | nros-rmw-xrce |
+| `XRCE_ENTITY_CREATION_TIMEOUT_MS` | Timeout for entity creation | `1000` | nros-rmw-xrce |
+| `XRCE_SERVICE_REPLY_TIMEOUT_MS` | Timeout for service replies | `1000` | nros-rmw-xrce |
+| `XRCE_SERVICE_REPLY_RETRIES` | Number of service reply retries | `5` | nros-rmw-xrce |
+| `XRCE_MAX_SESSION_CONNECTION_ATTEMPTS` | Max session connection attempts | `10` | xrce-sys |
+| `XRCE_MIN_SESSION_CONNECTION_INTERVAL` | Min interval between connection attempts (ms) | `25` | xrce-sys |
+| `XRCE_MIN_HEARTBEAT_TIME_INTERVAL` | Min heartbeat interval (ms) | `100` | xrce-sys |
+| `XRCE_UDP_META_COUNT` | In-flight UDP packets per direction (smoltcp) | `4` | xrce-smoltcp |
+
+**Core (`NROS_*`):**
+
+| Variable | Description | Default | Crate |
+|----------|-------------|---------|-------|
+| `NROS_EXECUTOR_MAX_HANDLES` | Max handles in a C API executor | `16` | nros-c |
+| `NROS_MAX_SUBSCRIPTIONS` | Max subscriptions in a C API executor | `8` | nros-c |
+| `NROS_MAX_TIMERS` | Max timers in a C API executor | `8` | nros-c |
+| `NROS_MAX_SERVICES` | Max services in a C API executor | `4` | nros-c |
+| `NROS_LET_BUFFER_SIZE` | Buffer size for LET semantics per handle | `512` | nros-c |
+| `NROS_MESSAGE_BUFFER_SIZE` | Max buffer size for subscription/service data | `4096` | nros-c |
+| `NROS_MAX_CONCURRENT_GOALS` | Max concurrent goals per action server | `4` | nros-c |
+| `NROS_MAX_PARAMETERS` | Max parameters in parameter server | `32` | nros-params |
+| `NROS_MAX_PARAM_NAME_LEN` | Max parameter name length | `64` | nros-params |
+| `NROS_MAX_STRING_VALUE_LEN` | Max string parameter value length | `256` | nros-params |
+| `NROS_MAX_ARRAY_LEN` | Max parameter array length | `32` | nros-params |
+| `NROS_MAX_BYTE_ARRAY_LEN` | Max byte array parameter length | `256` | nros-params |
 
 ## Development Practices
 

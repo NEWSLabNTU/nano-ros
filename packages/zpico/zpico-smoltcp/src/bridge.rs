@@ -15,14 +15,14 @@ use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address};
 // Configuration
 // ============================================================================
 
-/// Maximum number of concurrent sockets
-pub const MAX_SOCKETS: usize = 4;
+pub use crate::config::{MAX_SOCKETS, SOCKET_BUFFER_SIZE};
+pub(crate) use crate::config::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
 
-/// Per-socket staging buffer size (bytes)
-pub const SOCKET_BUFFER_SIZE: usize = 2048;
+/// RFC 6056 ephemeral port range lower bound.
+const EPHEMERAL_PORT_START: u16 = 49152;
 
 /// Next ephemeral port counter
-static mut NEXT_EPHEMERAL_PORT: u16 = 49152;
+static mut NEXT_EPHEMERAL_PORT: u16 = EPHEMERAL_PORT_START;
 
 // ============================================================================
 // Socket State
@@ -183,8 +183,8 @@ impl SmoltcpBridge {
                     entry.connected = false;
                     entry.local_port = NEXT_EPHEMERAL_PORT;
                     NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
-                    if NEXT_EPHEMERAL_PORT < 49152 {
-                        NEXT_EPHEMERAL_PORT = 49152;
+                    if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
+                        NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START;
                     }
                     entry.rx_pos = 0;
                     entry.rx_len = 0;

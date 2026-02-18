@@ -5,11 +5,11 @@
 //! For `no_std` builds, the C platform layer is called.
 //!
 //! The C platform layer is selected at compile time via preprocessor macros:
-//! - `NANO_ROS_PLATFORM_POSIX` - Linux, macOS, POSIX systems
-//! - `NANO_ROS_PLATFORM_ZEPHYR` - Zephyr RTOS
-//! - `NANO_ROS_PLATFORM_FREERTOS` - FreeRTOS
-//! - `NANO_ROS_PLATFORM_BAREMETAL` - Bare-metal (user provides time/sleep)
-//! - `NANO_ROS_PLATFORM_CUSTOM` - User provides all functions
+//! - `NROS_PLATFORM_POSIX` - Linux, macOS, POSIX systems
+//! - `NROS_PLATFORM_ZEPHYR` - Zephyr RTOS
+//! - `NROS_PLATFORM_FREERTOS` - FreeRTOS
+//! - `NROS_PLATFORM_BAREMETAL` - Bare-metal (user provides time/sleep)
+//! - `NROS_PLATFORM_CUSTOM` - User provides all functions
 
 // ============================================================================
 // FFI Declarations (for no_std)

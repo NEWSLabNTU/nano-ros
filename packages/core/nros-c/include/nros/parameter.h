@@ -8,8 +8,8 @@
  * Licensed under Apache-2.0
  */
 
-#ifndef NANO_ROS_PARAMETER_H
-#define NANO_ROS_PARAMETER_H
+#ifndef NROS_PARAMETER_H
+#define NROS_PARAMETER_H
 
 #include <stdint.h>
 #include <stdbool.h>
@@ -27,13 +27,13 @@ extern "C" {
 // ============================================================================
 
 /** Maximum length of a parameter name */
-#define NANO_ROS_MAX_PARAM_NAME_LEN 64
+#define NROS_MAX_PARAM_NAME_LEN 64
 
 /** Maximum length of a string parameter value */
-#define NANO_ROS_MAX_PARAM_STRING_LEN 128
+#define NROS_MAX_PARAM_STRING_LEN 128
 
 /** Default maximum number of parameters per node */
-#define NANO_ROS_DEFAULT_MAX_PARAMS 16
+#define NROS_DEFAULT_MAX_PARAMS 16
 
 // ============================================================================
 // Parameter Types
@@ -46,25 +46,25 @@ extern "C" {
  */
 typedef enum nano_ros_parameter_type_t {
     /** Parameter not set */
-    NANO_ROS_PARAMETER_NOT_SET = 0,
+    NROS_PARAMETER_NOT_SET = 0,
     /** Boolean parameter */
-    NANO_ROS_PARAMETER_BOOL = 1,
+    NROS_PARAMETER_BOOL = 1,
     /** 64-bit signed integer parameter */
-    NANO_ROS_PARAMETER_INTEGER = 2,
+    NROS_PARAMETER_INTEGER = 2,
     /** 64-bit floating point parameter */
-    NANO_ROS_PARAMETER_DOUBLE = 3,
+    NROS_PARAMETER_DOUBLE = 3,
     /** String parameter */
-    NANO_ROS_PARAMETER_STRING = 4,
+    NROS_PARAMETER_STRING = 4,
     /** Byte array parameter */
-    NANO_ROS_PARAMETER_BYTE_ARRAY = 5,
+    NROS_PARAMETER_BYTE_ARRAY = 5,
     /** Boolean array parameter */
-    NANO_ROS_PARAMETER_BOOL_ARRAY = 6,
+    NROS_PARAMETER_BOOL_ARRAY = 6,
     /** Integer array parameter */
-    NANO_ROS_PARAMETER_INTEGER_ARRAY = 7,
+    NROS_PARAMETER_INTEGER_ARRAY = 7,
     /** Double array parameter */
-    NANO_ROS_PARAMETER_DOUBLE_ARRAY = 8,
+    NROS_PARAMETER_DOUBLE_ARRAY = 8,
     /** String array parameter */
-    NANO_ROS_PARAMETER_STRING_ARRAY = 9,
+    NROS_PARAMETER_STRING_ARRAY = 9,
 } nano_ros_parameter_type_t;
 
 /**
@@ -93,7 +93,7 @@ typedef union nano_ros_parameter_value_t {
     /** Double value */
     double double_value;
     /** String value (fixed-size buffer) */
-    char string_value[NANO_ROS_MAX_PARAM_STRING_LEN];
+    char string_value[NROS_MAX_PARAM_STRING_LEN];
     /** Array value (pointer + length) */
     nano_ros_param_array_t array_value;
 } nano_ros_parameter_value_t;
@@ -105,7 +105,7 @@ typedef union nano_ros_parameter_value_t {
  */
 typedef struct nano_ros_parameter_t {
     /** Parameter name (null-terminated) */
-    char name[NANO_ROS_MAX_PARAM_NAME_LEN];
+    char name[NROS_MAX_PARAM_NAME_LEN];
     /** Parameter type */
     nano_ros_parameter_type_t type;
     /** Parameter value */
@@ -121,11 +121,11 @@ typedef struct nano_ros_parameter_t {
  */
 typedef enum nano_ros_param_server_state_t {
     /** Not initialized */
-    NANO_ROS_PARAM_SERVER_STATE_UNINITIALIZED = 0,
+    NROS_PARAM_SERVER_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
-    NANO_ROS_PARAM_SERVER_STATE_READY = 1,
+    NROS_PARAM_SERVER_STATE_READY = 1,
     /** Shutdown */
-    NANO_ROS_PARAM_SERVER_STATE_SHUTDOWN = 2,
+    NROS_PARAM_SERVER_STATE_SHUTDOWN = 2,
 } nano_ros_param_server_state_t;
 
 /**
@@ -172,7 +172,7 @@ typedef struct nano_ros_param_server_t {
  *
  * @return Zero-initialized parameter server structure
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_param_server_t nano_ros_param_server_get_zero_initialized(void);
 
 /**
@@ -181,10 +181,10 @@ nano_ros_param_server_t nano_ros_param_server_get_zero_initialized(void);
  * @param server Pointer to a zero-initialized parameter server
  * @param storage Pointer to parameter storage array
  * @param capacity Number of parameters the storage can hold
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if server or storage is NULL, or capacity is 0
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if server or storage is NULL, or capacity is 0
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_server_init(
     nano_ros_param_server_t *server,
     nano_ros_parameter_t *storage,
@@ -199,10 +199,10 @@ nano_ros_ret_t nano_ros_param_server_init(
  * @param server Pointer to an initialized parameter server
  * @param callback Callback function (can be NULL to disable)
  * @param context User context passed to callback
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if server is NULL
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if server is NULL
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_server_set_callback(
     nano_ros_param_server_t *server,
     nano_ros_param_callback_t callback,
@@ -214,12 +214,12 @@ nano_ros_ret_t nano_ros_param_server_set_callback(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param default_value Default value
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_INVALID_ARGUMENT if server or name is NULL
- * @return NANO_ROS_RET_FULL if parameter storage is full
- * @return NANO_ROS_RET_ALREADY_EXISTS if parameter already exists
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if server or name is NULL
+ * @return NROS_RET_FULL if parameter storage is full
+ * @return NROS_RET_ALREADY_EXISTS if parameter already exists
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_bool(
     nano_ros_param_server_t *server,
     const char *name,
@@ -231,9 +231,9 @@ nano_ros_ret_t nano_ros_param_declare_bool(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param default_value Default value
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_integer(
     nano_ros_param_server_t *server,
     const char *name,
@@ -245,9 +245,9 @@ nano_ros_ret_t nano_ros_param_declare_integer(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param default_value Default value
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_double(
     nano_ros_param_server_t *server,
     const char *name,
@@ -259,9 +259,9 @@ nano_ros_ret_t nano_ros_param_declare_double(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param default_value Default value (will be truncated if too long)
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_string(
     nano_ros_param_server_t *server,
     const char *name,
@@ -273,11 +273,11 @@ nano_ros_ret_t nano_ros_param_declare_string(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param value Pointer to store the value
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_NOT_FOUND if parameter doesn't exist
- * @return NANO_ROS_RET_INVALID_ARGUMENT if types don't match
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_NOT_FOUND if parameter doesn't exist
+ * @return NROS_RET_INVALID_ARGUMENT if types don't match
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_bool(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -289,9 +289,9 @@ nano_ros_ret_t nano_ros_param_get_bool(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param value Pointer to store the value
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_integer(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -303,9 +303,9 @@ nano_ros_ret_t nano_ros_param_get_integer(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param value Pointer to store the value
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_double(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -318,9 +318,9 @@ nano_ros_ret_t nano_ros_param_get_double(
  * @param name Parameter name
  * @param value Buffer to store the value
  * @param max_len Maximum buffer length
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_string(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -333,12 +333,12 @@ nano_ros_ret_t nano_ros_param_get_string(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param value New value
- * @return NANO_ROS_RET_OK on success
- * @return NANO_ROS_RET_NOT_FOUND if parameter doesn't exist
- * @return NANO_ROS_RET_INVALID_ARGUMENT if types don't match
- * @return NANO_ROS_RET_ERROR if change was rejected by callback
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_NOT_FOUND if parameter doesn't exist
+ * @return NROS_RET_INVALID_ARGUMENT if types don't match
+ * @return NROS_RET_ERROR if change was rejected by callback
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_bool(
     nano_ros_param_server_t *server,
     const char *name,
@@ -350,9 +350,9 @@ nano_ros_ret_t nano_ros_param_set_bool(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param value New value
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_integer(
     nano_ros_param_server_t *server,
     const char *name,
@@ -364,9 +364,9 @@ nano_ros_ret_t nano_ros_param_set_integer(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param value New value
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_double(
     nano_ros_param_server_t *server,
     const char *name,
@@ -378,9 +378,9 @@ nano_ros_ret_t nano_ros_param_set_double(
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
  * @param value New value
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_string(
     nano_ros_param_server_t *server,
     const char *name,
@@ -400,9 +400,9 @@ nano_ros_ret_t nano_ros_param_set_string(
  * @param name Parameter name
  * @param data Pointer to byte array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_byte_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -416,9 +416,9 @@ nano_ros_ret_t nano_ros_param_declare_byte_array(
  * @param name Parameter name
  * @param data Pointer to store the data pointer
  * @param len Pointer to store the element count
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_byte_array(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -432,9 +432,9 @@ nano_ros_ret_t nano_ros_param_get_byte_array(
  * @param name Parameter name
  * @param data Pointer to byte array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_byte_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -448,9 +448,9 @@ nano_ros_ret_t nano_ros_param_set_byte_array(
  * @param name Parameter name
  * @param data Pointer to boolean array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_bool_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -464,9 +464,9 @@ nano_ros_ret_t nano_ros_param_declare_bool_array(
  * @param name Parameter name
  * @param data Pointer to store the data pointer
  * @param len Pointer to store the element count
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_bool_array(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -480,9 +480,9 @@ nano_ros_ret_t nano_ros_param_get_bool_array(
  * @param name Parameter name
  * @param data Pointer to boolean array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_bool_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -496,9 +496,9 @@ nano_ros_ret_t nano_ros_param_set_bool_array(
  * @param name Parameter name
  * @param data Pointer to integer array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_integer_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -512,9 +512,9 @@ nano_ros_ret_t nano_ros_param_declare_integer_array(
  * @param name Parameter name
  * @param data Pointer to store the data pointer
  * @param len Pointer to store the element count
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_integer_array(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -528,9 +528,9 @@ nano_ros_ret_t nano_ros_param_get_integer_array(
  * @param name Parameter name
  * @param data Pointer to integer array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_integer_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -544,9 +544,9 @@ nano_ros_ret_t nano_ros_param_set_integer_array(
  * @param name Parameter name
  * @param data Pointer to double array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_double_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -560,9 +560,9 @@ nano_ros_ret_t nano_ros_param_declare_double_array(
  * @param name Parameter name
  * @param data Pointer to store the data pointer
  * @param len Pointer to store the element count
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_double_array(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -576,9 +576,9 @@ nano_ros_ret_t nano_ros_param_get_double_array(
  * @param name Parameter name
  * @param data Pointer to double array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_double_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -592,9 +592,9 @@ nano_ros_ret_t nano_ros_param_set_double_array(
  * @param name Parameter name
  * @param data Pointer to string pointer array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_declare_string_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -608,9 +608,9 @@ nano_ros_ret_t nano_ros_param_declare_string_array(
  * @param name Parameter name
  * @param data Pointer to store the string pointer array
  * @param len Pointer to store the element count
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_get_string_array(
     const nano_ros_param_server_t *server,
     const char *name,
@@ -624,9 +624,9 @@ nano_ros_ret_t nano_ros_param_get_string_array(
  * @param name Parameter name
  * @param data Pointer to string pointer array (NULL allowed if len is 0)
  * @param len Number of elements
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_set_string_array(
     nano_ros_param_server_t *server,
     const char *name,
@@ -640,7 +640,7 @@ nano_ros_ret_t nano_ros_param_set_string_array(
  * @param name Parameter name
  * @return true if parameter exists, false otherwise
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 bool nano_ros_param_has(
     const nano_ros_param_server_t *server,
     const char *name);
@@ -650,9 +650,9 @@ bool nano_ros_param_has(
  *
  * @param server Pointer to an initialized parameter server
  * @param name Parameter name
- * @return Parameter type, or NANO_ROS_PARAMETER_NOT_SET if not found
+ * @return Parameter type, or NROS_PARAMETER_NOT_SET if not found
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 nano_ros_parameter_type_t nano_ros_param_get_type(
     const nano_ros_param_server_t *server,
     const char *name);
@@ -663,20 +663,20 @@ nano_ros_parameter_type_t nano_ros_param_get_type(
  * @param server Pointer to an initialized parameter server
  * @return Number of parameters, or 0 if server is NULL
  */
-NANO_ROS_PUBLIC
+NROS_PUBLIC
 size_t nano_ros_param_server_get_count(const nano_ros_param_server_t *server);
 
 /**
  * Finalize a parameter server.
  *
  * @param server Pointer to an initialized parameter server
- * @return NANO_ROS_RET_OK on success
+ * @return NROS_RET_OK on success
  */
-NANO_ROS_PUBLIC NANO_ROS_WARN_UNUSED
+NROS_PUBLIC NROS_WARN_UNUSED
 nano_ros_ret_t nano_ros_param_server_fini(nano_ros_param_server_t *server);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif // NANO_ROS_PARAMETER_H
+#endif // NROS_PARAMETER_H
