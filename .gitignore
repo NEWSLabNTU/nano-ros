@@ -11,8 +11,8 @@ __pycache__/
 # Rust
 /target/
 
-# Pseudo-install directory (created by: just install-local)
-/build/install/
+# Build output (created by: just install-local)
+/build/
 
 # Zephyr workspace symlink (user-specific, created by scripts/zephyr/setup.sh)
 /zephyr-workspace

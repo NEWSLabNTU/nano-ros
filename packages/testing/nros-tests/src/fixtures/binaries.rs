@@ -112,9 +112,6 @@ static C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the c-action-client binary
 static C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
-/// Cached: nros-c library built with XRCE features
-static NROS_C_LIB_XRCE: OnceCell<PathBuf> = OnceCell::new();
-
 /// Cached path to the c-xrce-talker binary
 static C_XRCE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -1142,63 +1139,11 @@ pub fn c_action_client_binary() -> PathBuf {
 // C XRCE Example Builders (CMake-based, XRCE-DDS backend)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/// Build the nros-c static library with XRCE features (cached).
-///
-/// Runs `cargo build -p nros-c --release --features rmw-xrce,xrce-udp,...`
-/// and returns the path to `libnros_c.a`.
-///
-/// Note: This overwrites `target/release/libnros_c.a` — zenoh and XRCE
-/// builds cannot coexist in the same target directory. Run XRCE C tests
-/// separately from zenoh C tests.
-pub fn build_nano_ros_c_lib_xrce() -> TestResult<&'static Path> {
-    NROS_C_LIB_XRCE
-        .get_or_try_init(|| {
-            let root = project_root();
-
-            eprintln!("Building nros-c library (XRCE backend)...");
-
-            let output = cmd!(
-                "cargo",
-                "build",
-                "-p",
-                "nros-c",
-                "--release",
-                "--features",
-                "rmw-xrce,xrce-udp,platform-posix,ros-humble"
-            )
-            .dir(&root)
-            .stderr_to_stdout()
-            .stdout_capture()
-            .unchecked()
-            .run()
-            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
-
-            if !output.status.success() {
-                return Err(TestError::BuildFailed(
-                    String::from_utf8_lossy(&output.stdout).to_string(),
-                ));
-            }
-
-            let lib_path = root.join("target/release/libnros_c.a");
-            if !lib_path.exists() {
-                return Err(TestError::BuildFailed(format!(
-                    "Library not found after build: {}",
-                    lib_path.display()
-                )));
-            }
-
-            Ok(lib_path)
-        })
-        .map(|p| p.as_path())
-}
-
 /// Build a CMake-based C example that uses the XRCE backend.
 ///
-/// Similar to `build_c_example()` but first builds `nros-c` with XRCE features.
+/// Similar to `build_c_example()` but passes `-DNANO_ROS_RMW=xrce` to select
+/// the pre-installed XRCE library variant (`libnros_c_xrce.a`).
 pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
-    // Ensure the C library is built with XRCE features first
-    build_nano_ros_c_lib_xrce()?;
-
     let root = project_root();
     let src_dir = root.join(format!("examples/{}", example_dir));
 
@@ -1221,16 +1166,12 @@ pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure — pass NanoRos_DIR and override library to XRCE-flavored build
+    // Run cmake configure — select XRCE RMW variant
     let nano_ros_dir = format!(
         "-DNanoRos_DIR={}",
         root.join("build/install/lib/cmake/NanoRos").display()
     );
-    let xrce_lib_arg = format!(
-        "-DNROS_C_LIBRARY={}",
-        root.join("target/release/libnros_c.a").display()
-    );
-    let output = cmd!("cmake", &nano_ros_dir, &xrce_lib_arg, "..")
+    let output = cmd!("cmake", &nano_ros_dir, "-DNANO_ROS_RMW=xrce", "..")
         .dir(&build_dir)
         .stderr_to_stdout()
         .stdout_capture()

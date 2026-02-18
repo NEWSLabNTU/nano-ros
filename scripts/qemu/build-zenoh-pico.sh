@@ -21,7 +21,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build/qemu-zenoh-pico"
 ZENOH_PICO_DIR="$REPO_ROOT/packages/zpico/zpico-sys/zenoh-pico"
 PLATFORM_DIR="$REPO_ROOT/packages/zpico/zpico-sys/c/platform_smoltcp"
-TOOLCHAIN_FILE="$REPO_ROOT/cmake/arm-none-eabi-cortex-m3.cmake"
+TOOLCHAIN_FILE="$SCRIPT_DIR/arm-none-eabi-cortex-m3.cmake"
 
 # Parse arguments
 if [ "$1" = "--clean" ]; then

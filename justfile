@@ -14,26 +14,21 @@ default:
 build: install-local generate-bindings build-workspace build-workspace-embedded build-examples
     @echo "All builds completed!"
 
-# Populate build/install/ pseudo-install directory for CMake config-mode package
-install-local: build-codegen-lib
+# Populate build/install/ with C API artifacts (libraries, headers, CMake, codegen, interfaces).
+# Builds both zenoh and XRCE RMW variants via CMake + Corrosion.
+install-local:
     #!/usr/bin/env bash
     set -e
-    PREFIX="build/install"
-    echo "Building nros-c library..."
-    cargo build -p nros-c --release --features "rmw-zenoh,platform-posix,ros-humble"
-    echo "Creating pseudo-install layout at $PREFIX/..."
-    mkdir -p "$PREFIX"/{lib/cmake/NanoRos,include,libexec/nano-ros,share/nano-ros/interfaces}
-    cp target/release/libnros_c.a "$PREFIX/lib/"
-    cp packages/codegen/packages/target/release/libnros_codegen_c.a "$PREFIX/lib/"
-    cp -r packages/core/nros-c/include/nros "$PREFIX/include/"
-    cp packages/codegen/packages/nros-codegen-c/include/nros_codegen.h "$PREFIX/libexec/nano-ros/"
-    cp packages/codegen/packages/nros-codegen-c/src/codegen_main.c "$PREFIX/libexec/nano-ros/"
-    if [ -d packages/codegen/interfaces ]; then
-        rsync -a --delete packages/codegen/interfaces/ "$PREFIX/share/nano-ros/interfaces/"
-    fi
-    cp cmake/NanoRosConfig.cmake cmake/NanoRosCTargets.cmake cmake/NanoRosGenerateInterfaces.cmake \
-       "$PREFIX/lib/cmake/NanoRos/"
-    echo "Pseudo-install complete: $PREFIX/"
+    PREFIX="$(pwd)/build/install"
+    for rmw in zenoh xrce; do
+        echo "=== Building RMW=$rmw ==="
+        cmake -S . -B "build/cmake-$rmw" \
+            -DNANO_ROS_RMW="$rmw" \
+            -DCMAKE_BUILD_TYPE=Release
+        cmake --build "build/cmake-$rmw"
+        cmake --install "build/cmake-$rmw" --prefix "$PREFIX"
+    done
+    echo "Installed to $PREFIX"
 
 # Format everything: workspace and all examples
 format: format-workspace format-examples
@@ -999,15 +994,9 @@ build-examples-c: install-local
 
 # Build C XRCE examples only (no tests)
 build-examples-c-xrce: install-local
-    #!/usr/bin/env bash
-    set -e
-    echo "Building nros-c library (XRCE backend)..."
-    cargo build -p nros-c --release \
-        --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
-    XRCE_LIB="$(pwd)/target/release/libnros_c.a"
-    just _build-c-example examples/native/c/xrce/talker  "-DNROS_C_LIBRARY=$XRCE_LIB"
-    just _build-c-example examples/native/c/xrce/listener "-DNROS_C_LIBRARY=$XRCE_LIB"
-    echo "C XRCE examples built!"
+    just _build-c-example examples/native/c/xrce/talker  "-DNANO_ROS_RMW=xrce"
+    just _build-c-example examples/native/c/xrce/listener "-DNANO_ROS_RMW=xrce"
+    @echo "C XRCE examples built!"
 
 # Clean C examples build
 clean-examples-c:
@@ -1018,11 +1007,6 @@ clean-examples-c:
 # =============================================================================
 # Message Bindings
 # =============================================================================
-
-# Build the codegen static library (for CMake C code generation)
-build-codegen-lib:
-    @echo "Building nros-codegen-c staticlib..."
-    cargo build -p nros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
 
 # Install cargo-nano-ros (requires ROS 2 environment)
 install-cargo-nano-ros:

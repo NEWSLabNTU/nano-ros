@@ -4,7 +4,7 @@
 # C libraries for bare-metal ARM Cortex-M3 targets like QEMU mps2-an385.
 #
 # Usage:
-#   cmake -DCMAKE_TOOLCHAIN_FILE=cmake/arm-none-eabi-cortex-m3.cmake ..
+#   cmake -DCMAKE_TOOLCHAIN_FILE=scripts/qemu/arm-none-eabi-cortex-m3.cmake ..
 
 set(CMAKE_SYSTEM_NAME Generic)
 set(CMAKE_SYSTEM_PROCESSOR arm)

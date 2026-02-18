@@ -5,23 +5,52 @@ NanoRosCTargets
 Defines the ``NanoRos::NanoRos`` imported static library target.
 
 This file is included by ``NanoRosConfig.cmake`` and should not be
-used directly.  The target wraps ``libnros_c.a`` with the correct
-include directories and platform link libraries.
+used directly.  The target wraps ``libnros_c_<backend>.a`` with the
+correct include directories and platform link libraries.
+
+The RMW backend is selected via the ``NANO_ROS_RMW`` variable
+(default: ``zenoh``).  Available backends depend on which variants
+were installed.
+
+.. code-block:: cmake
+
+  set(NANO_ROS_RMW "xrce")          # before find_package
+  find_package(NanoRos REQUIRED CONFIG)
+
+Or from the command line::
+
+  cmake -DNANO_ROS_RMW=xrce ..
 
 #]=======================================================================]
 
 get_filename_component(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
 
-set(_nros_c_lib "${_NANO_ROS_PREFIX}/lib/libnros_c.a")
+# Select RMW backend (default: zenoh)
+if(NOT DEFINED NANO_ROS_RMW)
+  set(NANO_ROS_RMW "zenoh")
+endif()
+
+set(_nros_c_lib "${_NANO_ROS_PREFIX}/lib/libnros_c_${NANO_ROS_RMW}.a")
 set(_nros_c_include "${_NANO_ROS_PREFIX}/include")
 
 if(NOT EXISTS "${_nros_c_lib}")
+  # List available backends for a helpful error message
+  file(GLOB _variants "${_NANO_ROS_PREFIX}/lib/libnros_c_*.a")
+  set(_available "")
+  foreach(_v ${_variants})
+    get_filename_component(_name ${_v} NAME_WE)
+    string(REGEX REPLACE "^libnros_c_" "" _backend "${_name}")
+    list(APPEND _available "${_backend}")
+  endforeach()
+
   set(NanoRos_FOUND FALSE)
   if(NanoRos_FIND_REQUIRED)
     message(FATAL_ERROR
-      "libnros_c.a not found at ${_nros_c_lib}\n"
-      "Build it with:\n"
-      "  just install-local"
+      "libnros_c_${NANO_ROS_RMW}.a not found at ${_nros_c_lib}\n"
+      "Available backends: ${_available}\n"
+      "Install with:\n"
+      "  cmake -S <nros-src> -B build -DNANO_ROS_RMW=${NANO_ROS_RMW}\n"
+      "  cmake --build build && cmake --install build --prefix <path>"
     )
   endif()
   return()

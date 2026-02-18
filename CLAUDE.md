@@ -76,10 +76,7 @@ nano-ros/
 ├── scripts/zephyr/            # Zephyr setup scripts
 │   ├── setup.sh               # Initialize workspace
 │   └── setup-network.sh       # Configure TAP interface
-├── cmake/                     # CMake config-mode package
-│   ├── NanoRosConfig.cmake    # find_package(NanoRos CONFIG) entry point
-│   ├── NanoRosCTargets.cmake  # NanoRos::NanoRos imported target
-│   └── NanoRosGenerateInterfaces.cmake  # nano_ros_generate_interfaces()
+├── CMakeLists.txt             # Top-level CMake (Corrosion, nros-c + codegen)
 ├── docker/                    # Docker development environment
 │   ├── Dockerfile.qemu-arm    # QEMU 7.2 + ARM toolchain
 │   └── docker-compose.yml     # Container orchestration
@@ -396,21 +393,32 @@ just generate-bindings      # Regenerate all (uses bundled interfaces, no ROS 2 
 just regenerate-bindings    # Clean + regenerate from scratch
 ```
 
-**Building the C codegen library (for CMake integration):**
-```bash
-just build-codegen-lib
-```
-
 ### C API and CMake Integration
-C examples use a config-mode CMake package (`find_package(NanoRos CONFIG)`). Run `just install-local` first to create the pseudo-install layout at `build/install/`. Usage:
+C examples use a config-mode CMake package. Run `just install-local` first to create the pseudo-install layout at `build/install/`. Both zenoh and XRCE library variants are installed.
+
+The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. The top-level `CMakeLists.txt` builds one RMW variant per invocation; `just install-local` runs cmake twice (zenoh + xrce) to the same prefix.
+
 ```cmake
-# Auto-detect when building inside the repo (examples do this automatically)
 find_package(NanoRos REQUIRED CONFIG)
 target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
 ```
 This provides include dirs, static library, and platform link libs (pthread, dl, m) automatically.
 
-**C code generation** uses `nano_ros_generate_interfaces()` (from `NanoRosGenerateInterfaces.cmake`, included automatically by `find_package(NanoRos CONFIG)`). The codegen tool is bundled as `libnros_codegen_c.a` — no separate build step needed beyond `just install-local`.
+**RMW backend selection:** The `NANO_ROS_RMW` CMake variable selects which library variant to link (default: `zenoh`). Pass `-DNANO_ROS_RMW=xrce` for XRCE examples.
+
+**C code generation** uses `nano_ros_generate_interfaces()` (from `NanoRosGenerateInterfaces.cmake`, included automatically by `find_package(NanoRos CONFIG)`). The codegen tool (`nros-codegen`) is installed to `$PREFIX/bin/` by `just install-local`.
+
+**System install for package maintainers:**
+```bash
+cmake -S . -B build -DNANO_ROS_RMW=zenoh -DCMAKE_BUILD_TYPE=Release
+cmake --build build
+cmake --install build --prefix /usr/local
+
+# Multi-RMW: run cmake twice to same prefix (library names don't collide)
+cmake -S . -B build-xrce -DNANO_ROS_RMW=xrce -DCMAKE_BUILD_TYPE=Release
+cmake --build build-xrce
+cmake --install build-xrce --prefix /usr/local
+```
 
 **C example coding practice**: Always use `nano_ros_generate_interfaces()` for message/service/action types — never hand-write CDR serialization or struct definitions. The API mirrors `rosidl_generate_interfaces()` from standard ROS 2: interface files are positional arguments resolved first locally, then via ament index, then from bundled interfaces.
 ```cmake

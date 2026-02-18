@@ -244,14 +244,8 @@ and `.action` files. It uses a bundled codegen library — no external `nros` bi
 
 ### Prerequisites
 
-Build the codegen library once:
-```bash
-just build-codegen-lib
-# or: cargo build -p nros-codegen-c --release --manifest-path packages/codegen/packages/Cargo.toml
-```
+Run `just install-local` to build and install the codegen tool and C libraries.
 
 ### Usage
 
-See `examples/native/c-custom-msg/CMakeLists.txt` for a complete example. CMake
-automatically compiles a thin wrapper at configure time that links against the
-`libnros_codegen_c.a` static library.
+See `examples/native/c/zenoh/custom-msg/CMakeLists.txt` for a complete example.

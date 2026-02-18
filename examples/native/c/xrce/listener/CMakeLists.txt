@@ -8,22 +8,10 @@ set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
 # ============================================================================
-# nros-c dependency
+# nros-c dependency (use -DNANO_ROS_RMW=xrce when configuring)
 # ============================================================================
-# Build nros-c with XRCE features before configuring:
-#   cargo build -p nros-c --release --features "rmw-xrce,xrce-udp,platform-posix,ros-humble"
-#
-# The pseudo-install dir (build/install/) contains zenoh-flavored nros-c by
-# default.  XRCE examples pass the library path explicitly via NROS_C_LIBRARY.
 
 find_package(NanoRos REQUIRED CONFIG)
-
-# Override with XRCE-flavored library when provided
-if(DEFINED NROS_C_LIBRARY AND EXISTS "${NROS_C_LIBRARY}")
-    set_target_properties(NanoRos::NanoRos PROPERTIES
-        IMPORTED_LOCATION "${NROS_C_LIBRARY}"
-    )
-endif()
 
 # ============================================================================
 # Executable

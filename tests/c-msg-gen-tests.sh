@@ -71,8 +71,8 @@ info "Running install-local..."
 just install-local
 
 INSTALL_DIR="$PROJECT_ROOT/build/install"
-if [ ! -f "$INSTALL_DIR/lib/libnros_c.a" ]; then
-    error "install-local failed: libnros_c.a not found at $INSTALL_DIR/lib/"
+if [ ! -f "$INSTALL_DIR/lib/libnros_c_zenoh.a" ]; then
+    error "install-local failed: libnros_c_zenoh.a not found at $INSTALL_DIR/lib/"
     exit 1
 fi
 
