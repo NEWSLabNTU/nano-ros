@@ -1,0 +1,34 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr XRCE Talker Example (Rust)
+#
+# A ROS 2 compatible publisher running on Zephyr RTOS using XRCE-DDS backend.
+
+[package]
+# Name must be "rustapp" for zephyr-lang-rust integration
+name = "rustapp"
+version = "0.1.0"
+edition = "2024"
+description = "nros XRCE talker for Zephyr RTOS"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Zephyr support from zephyr-lang-rust module
+zephyr = "0.1.0"
+log = "0.4"
+
+# nros unified API (patched to local via .cargo/config.toml)
+nros = { version = "*", default-features = false, features = ["rmw-xrce", "platform-zephyr"] }
+
+# Generated message types (patched to local via .cargo/config.toml)
+std_msgs = { version = "*", default-features = false }
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

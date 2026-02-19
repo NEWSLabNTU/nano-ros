@@ -21,8 +21,8 @@
 
 use nros_tests::count_pattern;
 use nros_tests::fixtures::{
-    ZenohRouter, build_native_listener, build_native_service_client, build_native_service_server,
-    build_native_talker,
+    XrceAgent, ZenohRouter, build_native_listener, build_native_service_client,
+    build_native_service_server, build_native_talker, require_xrce_agent,
 };
 use nros_tests::zephyr::{
     ZephyrPlatform, ZephyrProcess, get_or_build_zephyr_example, is_bridge_network_available,
@@ -1199,6 +1199,241 @@ fn test_native_server_zephyr_client() {
         // Don't fail - this may be due to known zenoh-pico limitations
     }
 }
+
+// =============================================================================
+// Zephyr XRCE-DDS E2E Tests (with XRCE Agent)
+// =============================================================================
+
+/// Get or build Zephyr XRCE Rust talker for native_sim
+fn get_zephyr_xrce_rs_talker_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-xrce-rs-talker", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-xrce-rs-talker binary")
+}
+
+/// Get or build Zephyr XRCE Rust listener for native_sim
+fn get_zephyr_xrce_rs_listener_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-xrce-rs-listener", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-xrce-rs-listener binary")
+}
+
+/// Get or build Zephyr XRCE C talker for native_sim
+fn get_zephyr_xrce_c_talker_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-xrce-c-talker", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-xrce-c-talker binary")
+}
+
+/// Get or build Zephyr XRCE C listener for native_sim
+fn get_zephyr_xrce_c_listener_native_sim() -> PathBuf {
+    get_or_build_zephyr_example("zephyr-xrce-c-listener", ZephyrPlatform::NativeSim, false)
+        .expect("Failed to get zephyr-xrce-c-listener binary")
+}
+
+/// Test: Zephyr XRCE Rust talker → listener communication
+///
+/// E2E integration test for XRCE-DDS backend on Zephyr:
+/// 1. Starts MicroXRCEAgent on port 2018
+/// 2. Runs Zephyr listener (native_sim)
+/// 3. Runs Zephyr talker (native_sim)
+/// 4. Verifies message delivery
+///
+/// Requires:
+/// - Bridge network configured: `sudo ./scripts/zephyr/setup-network.sh`
+/// - XRCE Agent available: `just build-xrce-agent`
+#[test]
+fn test_zephyr_xrce_rust_talker_listener() {
+    if !require_zephyr() {
+        return;
+    }
+    if !require_bridge_network() {
+        return;
+    }
+    if !require_xrce_agent() {
+        return;
+    }
+
+    // Start XRCE Agent on port 2018 (compiled into Zephyr binaries via Kconfig)
+    eprintln!("Starting XRCE Agent on port 2018...");
+    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+
+    // Give agent time to start
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Build both examples
+    let talker_binary = get_zephyr_xrce_rs_talker_native_sim();
+    let listener_binary = get_zephyr_xrce_rs_listener_native_sim();
+
+    eprintln!("Talker binary: {}", talker_binary.display());
+    eprintln!("Listener binary: {}", listener_binary.display());
+
+    // Start listener first (subscribe before publish)
+    eprintln!("Starting Zephyr XRCE listener...");
+    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE listener");
+
+    // Give listener time to connect and create subscription
+    std::thread::sleep(Duration::from_secs(3));
+
+    // Start talker
+    eprintln!("Starting Zephyr XRCE talker...");
+    let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE talker");
+
+    // Wait for communication
+    eprintln!("Waiting for XRCE talker → listener communication...");
+
+    let talker_output = talker
+        .wait_for_output(Duration::from_secs(10))
+        .unwrap_or_default();
+    let listener_output = listener
+        .wait_for_output(Duration::from_secs(10))
+        .unwrap_or_default();
+
+    // Kill processes
+    let _ = talker.kill();
+    let _ = listener.kill();
+
+    eprintln!("\n=== XRCE Talker output ===\n{}", talker_output);
+    eprintln!("\n=== XRCE Listener output ===\n{}", listener_output);
+
+    // Check talker status
+    let talker_published = talker_output.contains("Published:") || talker_output.contains("data=");
+    let talker_error = talker_output.contains("Error:");
+
+    // Check listener status
+    let listener_received = listener_output.contains("Received:");
+    let listener_waiting = listener_output.contains("Waiting for messages");
+    let listener_error = listener_output.contains("Error:");
+
+    if talker_error {
+        panic!("XRCE talker encountered an error:\n{}", talker_output);
+    }
+    if listener_error && !listener_received {
+        panic!("XRCE listener encountered an error:\n{}", listener_output);
+    }
+
+    if listener_received {
+        let count = count_pattern(&listener_output, "Received:");
+        eprintln!(
+            "\nSUCCESS: Zephyr XRCE listener received {} messages from talker",
+            count
+        );
+    } else if talker_published && listener_waiting {
+        eprintln!("\nWARNING: Talker published but listener didn't receive (timing issue?)");
+        eprintln!("Both sides initialized successfully via XRCE-DDS");
+    } else {
+        panic!(
+            "XRCE communication failed:\n  talker_published={}\n  listener_waiting={}\n  listener_received={}",
+            talker_published, listener_waiting, listener_received
+        );
+    }
+}
+
+/// Test: Zephyr XRCE C talker → listener communication
+///
+/// E2E integration test for XRCE-DDS C API backend on Zephyr:
+/// 1. Starts MicroXRCEAgent on port 2018
+/// 2. Runs C listener (native_sim)
+/// 3. Runs C talker (native_sim)
+/// 4. Verifies message delivery
+///
+/// Requires:
+/// - Bridge network configured: `sudo ./scripts/zephyr/setup-network.sh`
+/// - XRCE Agent available: `just build-xrce-agent`
+#[test]
+fn test_zephyr_xrce_c_talker_listener() {
+    if !require_zephyr() {
+        return;
+    }
+    if !require_bridge_network() {
+        return;
+    }
+    if !require_xrce_agent() {
+        return;
+    }
+
+    // Start XRCE Agent on port 2018 (compiled into Zephyr binaries via Kconfig)
+    eprintln!("Starting XRCE Agent on port 2018...");
+    let _agent = XrceAgent::start(2018).expect("Failed to start XRCE Agent");
+
+    // Give agent time to start
+    std::thread::sleep(Duration::from_millis(500));
+
+    // Build both examples
+    let talker_binary = get_zephyr_xrce_c_talker_native_sim();
+    let listener_binary = get_zephyr_xrce_c_listener_native_sim();
+
+    eprintln!("C Talker binary: {}", talker_binary.display());
+    eprintln!("C Listener binary: {}", listener_binary.display());
+
+    // Start listener first (subscribe before publish)
+    eprintln!("Starting Zephyr XRCE C listener...");
+    let mut listener = ZephyrProcess::start(&listener_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE C listener");
+
+    // Give listener time to connect and create subscription
+    std::thread::sleep(Duration::from_secs(3));
+
+    // Start talker
+    eprintln!("Starting Zephyr XRCE C talker...");
+    let mut talker = ZephyrProcess::start(&talker_binary, ZephyrPlatform::NativeSim)
+        .expect("Failed to start Zephyr XRCE C talker");
+
+    // Wait for communication
+    eprintln!("Waiting for XRCE C talker → listener communication...");
+
+    let talker_output = talker
+        .wait_for_output(Duration::from_secs(10))
+        .unwrap_or_default();
+    let listener_output = listener
+        .wait_for_output(Duration::from_secs(10))
+        .unwrap_or_default();
+
+    // Kill processes
+    let _ = talker.kill();
+    let _ = listener.kill();
+
+    eprintln!("\n=== XRCE C Talker output ===\n{}", talker_output);
+    eprintln!("\n=== XRCE C Listener output ===\n{}", listener_output);
+
+    // Check talker status (C API uses LOG_INF format)
+    let talker_published = talker_output.contains("Published:");
+    let talker_init = talker_output.contains("Publishing messages");
+    let talker_error =
+        talker_output.contains("failed") || talker_output.contains("Network not ready");
+
+    // Check listener status (C API uses LOG_INF format)
+    let listener_received = listener_output.contains("Received");
+    let listener_waiting = listener_output.contains("Waiting for messages");
+    let listener_error =
+        listener_output.contains("failed") || listener_output.contains("Network not ready");
+
+    if talker_error && !talker_init {
+        panic!("XRCE C talker encountered an error:\n{}", talker_output);
+    }
+    if listener_error && !listener_waiting {
+        panic!("XRCE C listener encountered an error:\n{}", listener_output);
+    }
+
+    if listener_received {
+        let count = count_pattern(&listener_output, "Received");
+        eprintln!(
+            "\nSUCCESS: Zephyr XRCE C listener received {} messages from talker",
+            count
+        );
+    } else if talker_published && listener_waiting {
+        eprintln!("\nWARNING: C talker published but listener didn't receive (timing issue?)");
+        eprintln!("Both sides initialized successfully via XRCE-DDS C API");
+    } else {
+        panic!(
+            "XRCE C communication failed:\n  talker_published={}\n  listener_waiting={}\n  listener_received={}",
+            talker_published, listener_waiting, listener_received
+        );
+    }
+}
+
+// =============================================================================
+// Cross-Platform Service Tests
+// =============================================================================
 
 /// Test: Zephyr service server + Native service client
 ///

@@ -359,15 +359,37 @@ build-zephyr-c:
     west build -b native_sim/native/64 -d build-c-listener -p auto nros/examples/zephyr/c/zenoh/listener
     echo "Zephyr C examples built successfully!"
 
-# Build all Zephyr examples (Rust + C)
-build-zephyr-all: build-zephyr build-zephyr-c
+# Build Zephyr XRCE examples (Rust + C for XRCE-DDS backend)
+build-zephyr-xrce:
+    #!/usr/bin/env bash
+    set -e
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if [ ! -d "$WORKSPACE/zephyr" ]; then
+        echo "Error: Zephyr workspace not found at $WORKSPACE"
+        echo "Run: ./scripts/zephyr/setup.sh"
+        exit 1
+    fi
+    echo "Building Zephyr XRCE examples in $WORKSPACE..."
+    cd "$WORKSPACE"
+    echo "  Building zephyr/rust/xrce/talker -> build-xrce-rs-talker/"
+    west build -b native_sim/native/64 -d build-xrce-rs-talker -p auto nros/examples/zephyr/rust/xrce/talker
+    echo "  Building zephyr/rust/xrce/listener -> build-xrce-rs-listener/"
+    west build -b native_sim/native/64 -d build-xrce-rs-listener -p auto nros/examples/zephyr/rust/xrce/listener
+    echo "  Building zephyr/c/xrce/talker -> build-xrce-c-talker/"
+    west build -b native_sim/native/64 -d build-xrce-c-talker -p auto nros/examples/zephyr/c/xrce/talker
+    echo "  Building zephyr/c/xrce/listener -> build-xrce-c-listener/"
+    west build -b native_sim/native/64 -d build-xrce-c-listener -p auto nros/examples/zephyr/c/xrce/listener
+    echo "Zephyr XRCE examples built successfully!"
+
+# Build all Zephyr examples (Rust + C, zenoh + XRCE)
+build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-xrce
     @echo "All Zephyr examples built!"
 
 # Clean Zephyr build directories
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -901,6 +923,18 @@ test-zephyr verbose="": build-zenohd
 test-zephyr-full verbose="": build-zephyr
     just test-zephyr {{verbose}}
 
+# Run Zephyr XRCE E2E tests (requires pre-built XRCE examples + bridge network + XRCE Agent)
+test-zephyr-xrce verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --test zephyr --no-fail-fast -E 'test(xrce)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    else
+        args+=(--success-output immediate --failure-output immediate)
+    fi
+    cargo nextest run "${args[@]}"
+
 # Run Zephyr C examples test
 test-zephyr-c: build-zenohd
     ./tests/zephyr/run-c.sh
@@ -1259,22 +1293,24 @@ zephyr-help:
     @echo "  2. Set up bridge network:   sudo ./scripts/zephyr/setup-network.sh"
     @echo ""
     @echo "Build examples:"
-    @echo "  just build-zephyr           # Build all Rust Zephyr examples"
-    @echo "  just build-zephyr-c         # Build C Zephyr examples"
-    @echo "  just build-zephyr-all       # Build all Zephyr examples (Rust + C)"
+    @echo "  just build-zephyr           # Build Rust zenoh Zephyr examples"
+    @echo "  just build-zephyr-c         # Build C zenoh Zephyr examples"
+    @echo "  just build-zephyr-xrce      # Build XRCE Zephyr examples (Rust + C)"
+    @echo "  just build-zephyr-all       # Build all Zephyr examples"
     @echo "  just rebuild-zephyr         # Clean and rebuild"
     @echo "  just clean-zephyr           # Remove all build directories"
     @echo ""
     @echo "Run tests:"
-    @echo "  just test-zephyr            # Run all Zephyr E2E tests"
-    @echo "  just test-zephyr-full       # Rebuild and run all Zephyr tests"
+    @echo "  just test-zephyr            # Run zenoh Zephyr E2E tests"
+    @echo "  just test-zephyr-xrce       # Run XRCE Zephyr E2E tests"
+    @echo "  just test-zephyr-full       # Rebuild and run zenoh Zephyr tests"
     @echo "  just test-zephyr-c          # Run Zephyr C examples test"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
     @echo "  west build -b native_sim/native/64 -d build-talker nros/examples/zephyr/rust/zenoh/talker"
     @echo "  west build -b native_sim/native/64 -d build-listener nros/examples/zephyr/rust/zenoh/listener"
-    @echo "  west build -b native_sim/native/64 -d build-action-server nros/examples/zephyr/rust/zenoh/action-server"
-    @echo "  west build -b native_sim/native/64 -d build-action-client nros/examples/zephyr/rust/zenoh/action-client"
+    @echo "  west build -b native_sim/native/64 -d build-xrce-rs-talker nros/examples/zephyr/rust/xrce/talker"
+    @echo "  west build -b native_sim/native/64 -d build-xrce-rs-listener nros/examples/zephyr/rust/xrce/listener"
 
 # =============================================================================
 # Docker
