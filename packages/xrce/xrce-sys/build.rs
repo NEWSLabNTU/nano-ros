@@ -17,9 +17,11 @@ fn main() {
 
     let posix = env::var("CARGO_FEATURE_POSIX").is_ok();
     let bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
+    let zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
 
-    if posix && bare_metal {
-        panic!("Features `posix` and `bare-metal` are mutually exclusive");
+    let platform_count = [posix, bare_metal, zephyr].iter().filter(|&&x| x).count();
+    if platform_count > 1 {
+        panic!("Features `posix`, `bare-metal`, and `zephyr` are mutually exclusive");
     }
 
     // Read MTU from environment variable with platform-appropriate default.
@@ -96,7 +98,10 @@ fn main() {
     // Stream framing protocol (HDLC framing for serial transports)
     build.file(uxr_src.join("profile/transport/stream_framing/stream_framing_protocol.c"));
 
-    // Platform-conditional: time.c (only with POSIX)
+    // Platform-conditional: time.c
+    // - POSIX: compile time.c (uses clock_gettime)
+    // - Zephyr: skip time.c (uxr_millis/uxr_nanos provided by xrce_zephyr.c)
+    // - Bare-metal: skip time.c (uxr_millis/uxr_nanos provided by platform crate)
     if posix {
         build.file(uxr_src.join("util/time.c"));
     }

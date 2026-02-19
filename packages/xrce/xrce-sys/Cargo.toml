@@ -9,6 +9,7 @@ links = "xrce_client"
 default = []
 posix = []
 bare-metal = []
+zephyr = []
 std = []
 
 [build-dependencies]

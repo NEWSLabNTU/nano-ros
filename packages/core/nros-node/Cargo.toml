@@ -24,7 +24,7 @@ log = ["dep:log"]
 
 # Platform backend (select one; forwarded to active RMW backend)
 platform-posix = ["nros-rmw-zenoh?/platform-posix", "nros-rmw-xrce?/platform-posix"]
-platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr"]
+platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr", "nros-rmw-xrce?/platform-zephyr"]
 platform-bare-metal = ["nros-rmw-zenoh?/platform-bare-metal", "nros-rmw-xrce?/platform-bare-metal"]
 
 # Executor support

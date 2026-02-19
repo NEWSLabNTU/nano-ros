@@ -9,6 +9,7 @@ description = "XRCE-DDS RMW backend for nros"
 default = []
 platform-posix = ["xrce-sys/posix"]
 platform-bare-metal = ["xrce-sys/bare-metal"]
+platform-zephyr = ["xrce-sys/zephyr"]
 posix-udp = ["platform-posix"]
 posix-serial = ["platform-posix", "dep:libc"]
 

@@ -26,6 +26,9 @@ pub mod posix_udp;
 #[cfg(feature = "posix-serial")]
 pub mod posix_serial;
 
+#[cfg(feature = "platform-zephyr")]
+pub mod zephyr;
+
 use core::ffi::{c_char, c_int, c_void};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 

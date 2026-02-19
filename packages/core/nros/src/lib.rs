@@ -276,6 +276,11 @@ pub mod internals {
                 nros_rmw_xrce::posix_serial::init_posix_serial_transport(locator);
             }
 
+            #[cfg(feature = "platform-zephyr")]
+            unsafe {
+                nros_rmw_xrce::zephyr::init_zephyr_transport();
+            }
+
             let config = nros_rmw::RmwConfig {
                 locator,
                 mode,

@@ -48,17 +48,29 @@ endfunction()
 # rust_cargo_application() (Rust path).
 # =============================================================================
 function(nros_set_cargo_env_from_kconfig)
-    # Transport tuning (zpico-sys build.rs)
-    set(ENV{ZPICO_MAX_PUBLISHERS} "${CONFIG_NROS_MAX_PUBLISHERS}")
-    set(ENV{ZPICO_MAX_SUBSCRIBERS} "${CONFIG_NROS_MAX_SUBSCRIBERS}")
-    set(ENV{ZPICO_MAX_QUERYABLES} "${CONFIG_NROS_MAX_QUERYABLES}")
-    set(ENV{ZPICO_MAX_LIVELINESS} "${CONFIG_NROS_MAX_LIVELINESS}")
-    set(ENV{ZPICO_FRAG_MAX_SIZE} "${CONFIG_NROS_FRAG_MAX_SIZE}")
-    set(ENV{ZPICO_BATCH_UNICAST_SIZE} "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
+    # Zenoh-specific transport tuning (zpico-sys build.rs)
+    if(CONFIG_NROS_RMW_ZENOH)
+        set(ENV{ZPICO_MAX_PUBLISHERS} "${CONFIG_NROS_MAX_PUBLISHERS}")
+        set(ENV{ZPICO_MAX_SUBSCRIBERS} "${CONFIG_NROS_MAX_SUBSCRIBERS}")
+        set(ENV{ZPICO_MAX_QUERYABLES} "${CONFIG_NROS_MAX_QUERYABLES}")
+        set(ENV{ZPICO_MAX_LIVELINESS} "${CONFIG_NROS_MAX_LIVELINESS}")
+        set(ENV{ZPICO_FRAG_MAX_SIZE} "${CONFIG_NROS_FRAG_MAX_SIZE}")
+        set(ENV{ZPICO_BATCH_UNICAST_SIZE} "${CONFIG_NROS_BATCH_UNICAST_SIZE}")
 
-    # Buffer sizing (nros-rmw-zenoh build.rs)
-    set(ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE} "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
-    set(ENV{ZPICO_SERVICE_BUFFER_SIZE} "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
+        # Buffer sizing (nros-rmw-zenoh build.rs)
+        set(ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE} "${CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE}")
+        set(ENV{ZPICO_SERVICE_BUFFER_SIZE} "${CONFIG_NROS_SERVICE_BUFFER_SIZE}")
+    endif()
+
+    # XRCE-specific transport tuning (xrce-sys build.rs, nros-rmw-xrce build.rs)
+    if(CONFIG_NROS_RMW_XRCE)
+        set(ENV{XRCE_TRANSPORT_MTU} "${CONFIG_NROS_XRCE_TRANSPORT_MTU}")
+        set(ENV{XRCE_MAX_SUBSCRIBERS} "${CONFIG_NROS_XRCE_MAX_SUBSCRIBERS}")
+        set(ENV{XRCE_MAX_SERVICE_SERVERS} "${CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS}")
+        set(ENV{XRCE_MAX_SERVICE_CLIENTS} "${CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS}")
+        set(ENV{XRCE_BUFFER_SIZE} "${CONFIG_NROS_XRCE_BUFFER_SIZE}")
+        set(ENV{XRCE_STREAM_HISTORY} "${CONFIG_NROS_XRCE_STREAM_HISTORY}")
+    endif()
 
     # C API limits (nros-c build.rs) — only set if C API enabled
     if(CONFIG_NROS_C_API)
@@ -127,6 +139,8 @@ function(nros_cargo_build)
         list(APPEND CARGO_ARGS ${TARGET_ARGS})
     endif()
 
+    # Pass both ZPICO_* and XRCE_* env vars — build.rs ignores vars it
+    # doesn't consume, so it's safe to pass both sets unconditionally.
     add_custom_command(
         OUTPUT ${LIB_PATH}
         COMMAND ${CMAKE_COMMAND} -E env
@@ -138,6 +152,12 @@ function(nros_cargo_build)
             ZPICO_BATCH_UNICAST_SIZE=$ENV{ZPICO_BATCH_UNICAST_SIZE}
             ZPICO_SUBSCRIBER_BUFFER_SIZE=$ENV{ZPICO_SUBSCRIBER_BUFFER_SIZE}
             ZPICO_SERVICE_BUFFER_SIZE=$ENV{ZPICO_SERVICE_BUFFER_SIZE}
+            XRCE_TRANSPORT_MTU=$ENV{XRCE_TRANSPORT_MTU}
+            XRCE_MAX_SUBSCRIBERS=$ENV{XRCE_MAX_SUBSCRIBERS}
+            XRCE_MAX_SERVICE_SERVERS=$ENV{XRCE_MAX_SERVICE_SERVERS}
+            XRCE_MAX_SERVICE_CLIENTS=$ENV{XRCE_MAX_SERVICE_CLIENTS}
+            XRCE_BUFFER_SIZE=$ENV{XRCE_BUFFER_SIZE}
+            XRCE_STREAM_HISTORY=$ENV{XRCE_STREAM_HISTORY}
             cargo ${CARGO_ARGS}
         COMMENT "Building ${ARG_PACKAGE} via Cargo"
         VERBATIM

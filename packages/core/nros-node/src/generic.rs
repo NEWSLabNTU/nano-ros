@@ -130,8 +130,8 @@ impl EmbeddedExecutor<nros_rmw_zenoh::ShimSession> {
 impl EmbeddedExecutor<nros_rmw_xrce::XrceSession> {
     /// Open a new executor session using the XRCE-DDS backend.
     ///
-    /// Automatically initializes the active POSIX transport (`posix-udp` or
-    /// `posix-serial`) before connecting to the XRCE agent.
+    /// Automatically initializes the active transport (POSIX UDP, POSIX serial,
+    /// or Zephyr BSD socket) before connecting to the XRCE agent.
     pub fn open(config: &EmbeddedConfig<'_>) -> Result<Self, EmbeddedNodeError> {
         // Auto-init transport based on active feature
         #[cfg(feature = "posix-udp")]
@@ -141,6 +141,10 @@ impl EmbeddedExecutor<nros_rmw_xrce::XrceSession> {
         #[cfg(feature = "posix-serial")]
         unsafe {
             nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
+        }
+        #[cfg(feature = "platform-zephyr")]
+        unsafe {
+            nros_rmw_xrce::zephyr::init_zephyr_transport();
         }
 
         let rmw_config = nros_rmw::RmwConfig {

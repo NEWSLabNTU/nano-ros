@@ -6,8 +6,8 @@ menuconfig NROS
     bool "nros ROS 2 client library"
     help
       Enable nros, a lightweight ROS 2 client library for embedded systems.
-      This module compiles zenoh-pico and the zenoh shim centrally,
-      eliminating per-example boilerplate.
+      This module supports multiple RMW backends (zenoh-pico, XRCE-DDS)
+      selectable via Kconfig.
 
 if NROS
 
@@ -35,12 +35,37 @@ config NROS_RUST_API
 endchoice
 
 # =============================================================================
+# RMW Backend Selection
+# =============================================================================
+
+choice NROS_RMW_BACKEND
+    prompt "RMW backend"
+    default NROS_RMW_ZENOH
+
+config NROS_RMW_ZENOH
+    bool "zenoh-pico"
+    help
+      Use zenoh-pico as the RMW transport backend.
+      Connects to a zenoh router for ROS 2 interop via rmw_zenoh.
+
+config NROS_RMW_XRCE
+    bool "XRCE-DDS"
+    depends on NET_SOCKETS
+    help
+      Use Micro-XRCE-DDS as the RMW transport backend.
+      Connects to a Micro-XRCE-DDS Agent over UDP sockets.
+
+endchoice
+
+# =============================================================================
 # Zenoh-pico Feature Configuration
 # =============================================================================
 # These options control which zenoh-pico features are compiled in.
 # They map directly to Z_FEATURE_* compile definitions.
 # Defaults are set for typical ROS 2 usage; disable unused features
 # to reduce code size on constrained targets.
+
+if NROS_RMW_ZENOH
 
 config NROS_ZENOH_MULTI_THREAD
     bool "Zenoh-pico multithreading"
@@ -131,7 +156,7 @@ config NROS_ZENOH_RAWETH_TRANSPORT
       Maps to Z_FEATURE_RAWETH_TRANSPORT.
 
 # =============================================================================
-# Transport Tuning (zpico-sys)
+# Zenoh Transport Tuning (zpico-sys)
 # =============================================================================
 
 config NROS_MAX_PUBLISHERS
@@ -191,6 +216,89 @@ config NROS_SERVICE_BUFFER_SIZE
       Maps to ZPICO_SERVICE_BUFFER_SIZE.
 
 # =============================================================================
+# Zenoh Platform Configuration
+# =============================================================================
+
+config NROS_ZENOH_LOCATOR
+    string "Zenoh router locator"
+    default "tcp/192.0.2.2:7447"
+    help
+      Zenoh router address. Supported formats:
+        TCP:    "tcp/IP:PORT"       (e.g. "tcp/192.0.2.2:7447")
+        Serial: "serial/DEVICE#baudrate=RATE"
+
+config NROS_TRANSPORT_SERIAL
+    bool "Enable serial/UART transport"
+    select NROS_ZENOH_LINK_SERIAL
+    help
+      Enable serial/UART transport for zenoh-pico.
+
+endif # NROS_RMW_ZENOH
+
+# =============================================================================
+# XRCE-DDS Transport Tuning
+# =============================================================================
+
+if NROS_RMW_XRCE
+
+config NROS_XRCE_TRANSPORT_MTU
+    int "XRCE transport MTU"
+    default 512
+    help
+      Custom transport MTU for XRCE-DDS. Also sizes stream buffers
+      (4x MTU) and UDP staging. Maps to XRCE_TRANSPORT_MTU.
+
+config NROS_XRCE_MAX_SUBSCRIBERS
+    int "Maximum concurrent subscribers"
+    default 8
+    help
+      Maximum number of concurrent XRCE subscribers.
+      Maps to XRCE_MAX_SUBSCRIBERS.
+
+config NROS_XRCE_MAX_SERVICE_SERVERS
+    int "Maximum concurrent service servers"
+    default 4
+    help
+      Maximum number of concurrent XRCE service servers.
+      Maps to XRCE_MAX_SERVICE_SERVERS.
+
+config NROS_XRCE_MAX_SERVICE_CLIENTS
+    int "Maximum concurrent service clients"
+    default 4
+    help
+      Maximum number of concurrent XRCE service clients.
+      Maps to XRCE_MAX_SERVICE_CLIENTS.
+
+config NROS_XRCE_BUFFER_SIZE
+    int "Per-slot static buffer size"
+    default 1024
+    help
+      Size of the static buffer for each subscriber/service slot (bytes).
+      Maps to XRCE_BUFFER_SIZE.
+
+config NROS_XRCE_STREAM_HISTORY
+    int "Reliable stream history depth"
+    default 4
+    range 2 16
+    help
+      Reliable stream history depth for XRCE-DDS. Must be >= 2.
+      Maps to XRCE_STREAM_HISTORY.
+
+config NROS_XRCE_AGENT_ADDR
+    string "XRCE-DDS Agent address"
+    default "192.0.2.2"
+    help
+      IP address of the Micro-XRCE-DDS Agent.
+
+config NROS_XRCE_AGENT_PORT
+    int "XRCE-DDS Agent port"
+    default 2018
+    help
+      UDP port of the Micro-XRCE-DDS Agent.
+
+endif # NROS_RMW_XRCE
+
+# =============================================================================
 # C API Limits (visible only when C API selected)
 # =============================================================================
 
@@ -227,16 +335,8 @@ config NROS_C_MAX_SERVICES
 endif # NROS_C_API
 
 # =============================================================================
-# Platform Configuration
+# Common Platform Configuration
 # =============================================================================
-
-config NROS_ZENOH_LOCATOR
-    string "Zenoh router locator"
-    default "tcp/192.0.2.2:7447"
-    help
-      Zenoh router address. Supported formats:
-        TCP:    "tcp/IP:PORT"       (e.g. "tcp/192.0.2.2:7447")
-        Serial: "serial/DEVICE#baudrate=RATE"
 
 config NROS_DOMAIN_ID
     int "ROS 2 Domain ID"
@@ -249,12 +349,6 @@ config NROS_INIT_DELAY_MS
     default 2000
     help
       Maximum time to wait for the network interface to come up
-      before initializing zenoh.
-
-config NROS_TRANSPORT_SERIAL
-    bool "Enable serial/UART transport"
-    select NROS_ZENOH_LINK_SERIAL
-    help
-      Enable serial/UART transport for zenoh-pico.
+      before initializing the RMW transport.
 
 endif # NROS

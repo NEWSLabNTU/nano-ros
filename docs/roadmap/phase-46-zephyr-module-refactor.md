@@ -397,22 +397,22 @@ submodule. `west.yml` no longer references zenoh-pico.
 
 Add XRCE-DDS as a selectable RMW backend on Zephyr.
 
-#### 46.13 — RMW backend Kconfig choice
+#### 46.13 — RMW backend Kconfig choice ✅
 
 Add a `choice` block for selecting between zenoh and XRCE, and reorganize
 existing Kconfig options under backend-specific `if` guards.
 
-- [ ] Add `NROS_RMW_BACKEND` choice with `NROS_RMW_ZENOH` (default) and
+- [x] Add `NROS_RMW_BACKEND` choice with `NROS_RMW_ZENOH` (default) and
   `NROS_RMW_XRCE` options
-- [ ] Remove `depends on ZENOH_PICO` from top-level `menuconfig NROS` (this
+- [x] Remove `depends on ZENOH_PICO` from top-level `menuconfig NROS` (this
   is now internal to `NROS_RMW_ZENOH` after 46.12, or auto-selected)
-- [ ] Move existing zenoh transport tuning options under `if NROS_RMW_ZENOH`
+- [x] Move existing zenoh transport tuning options under `if NROS_RMW_ZENOH`
   (`NROS_MAX_PUBLISHERS`, `NROS_MAX_SUBSCRIBERS`, `NROS_MAX_QUERYABLES`,
   `NROS_MAX_LIVELINESS`, `NROS_FRAG_MAX_SIZE`, `NROS_BATCH_UNICAST_SIZE`,
   `NROS_SUBSCRIBER_BUFFER_SIZE`, `NROS_SERVICE_BUFFER_SIZE`)
-- [ ] Move `NROS_ZENOH_LOCATOR`, `NROS_TRANSPORT_SERIAL` under
+- [x] Move `NROS_ZENOH_LOCATOR`, `NROS_TRANSPORT_SERIAL` under
   `if NROS_RMW_ZENOH`
-- [ ] Add XRCE transport tuning under `if NROS_RMW_XRCE`:
+- [x] Add XRCE transport tuning under `if NROS_RMW_XRCE`:
   - `NROS_XRCE_TRANSPORT_MTU` (default 512)
   - `NROS_XRCE_MAX_SUBSCRIBERS` (default 8)
   - `NROS_XRCE_MAX_SERVICE_SERVERS` (default 4)
@@ -421,39 +421,38 @@ existing Kconfig options under backend-specific `if` guards.
   - `NROS_XRCE_STREAM_HISTORY` (default 4, range 2..16)
   - `NROS_XRCE_AGENT_ADDR` (default "192.0.2.2")
   - `NROS_XRCE_AGENT_PORT` (default 2018)
-- [ ] `NROS_RMW_XRCE` should `depends on NET_SOCKETS` (Zephyr BSD socket API)
-- [ ] Keep common options outside backend guards: `NROS_API`, `NROS_DOMAIN_ID`,
+- [x] `NROS_RMW_XRCE` should `depends on NET_SOCKETS` (Zephyr BSD socket API)
+- [x] Keep common options outside backend guards: `NROS_API`, `NROS_DOMAIN_ID`,
   `NROS_INIT_DELAY_MS`, C API limits
 - [ ] Verify: `west build -t menuconfig` shows the RMW choice and
   backend-specific options appear/disappear based on selection
 
-#### 46.14 — Cargo feature wiring for `platform-zephyr` + XRCE
+#### 46.14 — Cargo feature wiring for `platform-zephyr` + XRCE ✅
 
 Wire the `platform-zephyr` feature through the XRCE crate chain so Cargo
 builds the correct XRCE configuration for Zephyr.
 
-- [ ] Add `zephyr` feature to `xrce-sys/Cargo.toml`
-- [ ] Update `xrce-sys/build.rs`:
-  - When `zephyr` feature is active: define `UCLIENT_PLATFORM_ZEPHYR` in
-    generated `uxr/client/config.h`, compile `time.c` (which has built-in
-    Zephyr support via `#ifdef UCLIENT_PLATFORM_ZEPHYR`)
+- [x] Add `zephyr` feature to `xrce-sys/Cargo.toml`
+- [x] Update `xrce-sys/build.rs`:
+  - When `zephyr` feature is active: skip `time.c` (Zephyr provides
+    `uxr_millis`/`uxr_nanos` from `xrce_zephyr.c`)
   - Ensure `posix`, `bare-metal`, and `zephyr` are mutually exclusive
-- [ ] Add `platform-zephyr = ["xrce-sys/zephyr"]` to
+- [x] Add `platform-zephyr = ["xrce-sys/zephyr"]` to
   `nros-rmw-xrce/Cargo.toml`
-- [ ] Update `nros-node/Cargo.toml`: add `"nros-rmw-xrce?/platform-zephyr"`
+- [x] Update `nros-node/Cargo.toml`: add `"nros-rmw-xrce?/platform-zephyr"`
   to `platform-zephyr` feature
-- [ ] Update `nros/Cargo.toml`: add `"nros-rmw-xrce?/platform-zephyr"` to
+- [x] Update `nros/Cargo.toml`: add `"nros-rmw-xrce?/platform-zephyr"` to
   `platform-zephyr` feature
-- [ ] Verify: `cargo check -p nros --no-default-features --features
+- [x] Verify: `cargo check -p nros --no-default-features --features
   "rmw-xrce,platform-zephyr,ros-humble"` succeeds
-- [ ] Verify: `just quality` passes (existing posix/bare-metal unaffected)
+- [x] Verify: `just quality` passes (existing posix/bare-metal unaffected)
 
-#### 46.15 — XRCE Zephyr transport glue and module CMake
+#### 46.15 — XRCE Zephyr transport glue and module CMake ✅
 
 Create the Zephyr BSD socket transport for XRCE and make the module CMake
 backend-conditional.
 
-- [ ] **Create `packages/xrce/xrce-zephyr/`**:
+- [x] **Create `packages/xrce/xrce-zephyr/`**:
   - `src/xrce_zephyr.c` — implement 4 custom transport callbacks using
     Zephyr BSD socket API (`zsock_socket`, `zsock_connect`, `zsock_send`,
     `zsock_recvfrom` with `zsock_poll` for timeout)
@@ -462,76 +461,69 @@ backend-conditional.
     `xrce_zephyr_init(const char *agent_addr, int agent_port)`
   - Transport callbacks registered via
     `uxr_set_custom_transport_callbacks()` (from xrce-sys)
+  - `uxr_millis()` / `uxr_nanos()` clock symbols using Zephyr `k_uptime_get()`
 
-- [ ] **Make `zephyr/CMakeLists.txt` backend-conditional**:
-  ```cmake
-  if(CONFIG_NROS_RMW_ZENOH)
-      # zenoh-pico sources (from 46.12 absorption)
-      # zenoh_shim.c + zpico_zephyr.c
-      # Kconfig → -DZPICO_MAX_* compile definitions
-  elseif(CONFIG_NROS_RMW_XRCE)
-      # xrce_zephyr.c only (XRCE lib compiled by Cargo)
-      zephyr_library_sources(
-          ${NROS_REPO_DIR}/packages/xrce/xrce-zephyr/src/xrce_zephyr.c
-      )
-      zephyr_include_directories(
-          ${NROS_REPO_DIR}/packages/xrce/xrce-zephyr/include
-      )
-  endif()
-  ```
+- [x] **Created `packages/xrce/nros-rmw-xrce/src/zephyr.rs`**:
+  - Declares extern C references to the 4 transport callbacks
+  - Provides `init_zephyr_transport()` that registers callbacks via
+    `crate::init_transport()`
 
-- [ ] **Make `nros_cargo_build()` feature string backend-conditional**:
-  ```cmake
-  if(CONFIG_NROS_RMW_ZENOH)
-      set(_nros_features "rmw-zenoh,platform-zephyr,ros-humble")
-  elseif(CONFIG_NROS_RMW_XRCE)
-      set(_nros_features "rmw-xrce,platform-zephyr,ros-humble")
-  endif()
-  ```
+- [x] **Make `zephyr/CMakeLists.txt` backend-conditional**:
+  - zenoh-pico sources under `if(CONFIG_NROS_RMW_ZENOH)`
+  - xrce_zephyr.c under `elseif(CONFIG_NROS_RMW_XRCE)`
 
-- [ ] **Extend `nros_set_cargo_env_from_kconfig()`**: add conditional
+- [x] **Make `nros_cargo_build()` feature string backend-conditional**:
+  - `rmw-zenoh,platform-zephyr,ros-humble` for zenoh
+  - `rmw-xrce,platform-zephyr,ros-humble` for XRCE
+
+- [x] **Extend `nros_set_cargo_env_from_kconfig()`**: add conditional
   `XRCE_*` env var exports when `CONFIG_NROS_RMW_XRCE` is set
 
-- [ ] **Extend `nros_cargo_build()` `add_custom_command`**: pass `XRCE_*`
+- [x] **Extend `nros_cargo_build()` `add_custom_command`**: pass `XRCE_*`
   env vars alongside existing `ZPICO_*` vars (harmless to pass both — build.rs
   ignores vars it doesn't consume)
 
 - [ ] Verify: `west build` with `CONFIG_NROS_RMW_XRCE=y` +
   `CONFIG_NROS_C_API=y` produces a linkable binary for `native_sim`
 
-#### 46.16 — XRCE Zephyr examples
+#### 46.16 — XRCE Zephyr examples ✅
 
 Create C and Rust XRCE examples following the same pattern as zenoh examples.
 
-- [ ] **C talker** (`examples/zephyr/c/xrce/talker/`):
+- [x] **C talker** (`examples/zephyr/c/xrce/talker/`):
   - `CMakeLists.txt`: `nros_generate_interfaces(std_msgs "msg/Int32.msg")` +
     `target_sources(app PRIVATE src/main.c)`
   - `prj.conf`: `CONFIG_NROS=y`, `CONFIG_NROS_RMW_XRCE=y`,
     `CONFIG_NROS_C_API=y`, `CONFIG_NROS_XRCE_AGENT_ADDR="192.0.2.2"`
-  - `src/main.c`: identical to zenoh C talker (same nros-c API), but init
-    uses `xrce_zephyr_init()` instead of `zpico_zephyr_init_session()`
-- [ ] **C listener** (`examples/zephyr/c/xrce/listener/`): same pattern
-- [ ] **Rust talker** (`examples/zephyr/rust/xrce/talker/`):
+  - `src/main.c`: uses `xrce_zephyr_wait_network()` + `xrce_zephyr_init()`
+    before `nano_ros_support_init()`
+- [x] **C listener** (`examples/zephyr/c/xrce/listener/`): same pattern
+  with subscription + executor spin
+- [x] **Rust talker** (`examples/zephyr/rust/xrce/talker/`):
   - `CMakeLists.txt`: 3 lines + `rust_cargo_application()`
   - `prj.conf`: `CONFIG_NROS=y`, `CONFIG_NROS_RMW_XRCE=y`,
     `CONFIG_NROS_RUST_API=y`
-  - `Cargo.toml`: `nros = { features = ["rmw-xrce", "platform-zephyr", ...] }`
-- [ ] **Rust listener** (`examples/zephyr/rust/xrce/listener/`): same pattern
+  - `Cargo.toml`: `nros = { features = ["rmw-xrce", "platform-zephyr"] }`
+- [x] **Rust listener** (`examples/zephyr/rust/xrce/listener/`): same pattern
 - [ ] Verify: all 4 new examples build with `west build`
 - [ ] Verify: XRCE examples can communicate via Micro-XRCE-DDS Agent
 
-#### 46.17 — XRCE Zephyr test infrastructure
+#### 46.17 — XRCE Zephyr test infrastructure ✅
 
 Add test recipes and integration tests for XRCE on Zephyr.
 
-- [ ] Add `just build-zephyr-xrce` recipe (C + Rust XRCE examples)
-- [ ] Add `just test-zephyr-xrce` recipe
-- [ ] Add XRCE Agent setup to test infrastructure (download/build agent, or
-  use pre-built binary)
-- [ ] Add integration test in `packages/testing/nros-tests/tests/zephyr.rs`
-  for XRCE talker/listener on native_sim
-- [ ] Verify: `just test-zephyr-xrce` passes
-- [ ] Verify: `just test-zephyr` still passes (zenoh tests unaffected)
+- [x] Add `just build-zephyr-xrce` recipe (C + Rust XRCE examples)
+- [x] Add `just test-zephyr-xrce` recipe
+- [x] Reuse existing `XrceAgent` fixture from `nros-tests/src/fixtures/`
+- [x] Add XRCE example entries to `example_path_for_name()` and
+  `build_dir_for_example()` in `nros-tests/src/zephyr.rs`
+- [x] Add `test_zephyr_xrce_rust_talker_listener` and
+  `test_zephyr_xrce_c_talker_listener` E2E tests in `zephyr.rs`
+- [x] Update `clean-zephyr` and `build-zephyr-all` to include XRCE dirs
+- [x] Nextest `zephyr` test group (max-threads=1) automatically applies
+  (binary name matches `binary(zephyr)` filter)
+- [x] Verify: `just quality` passes (zenoh tests unaffected)
+- [ ] Verify: `just test-zephyr-xrce` passes (requires Zephyr workspace)
 
 ---
 
