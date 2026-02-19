@@ -512,14 +512,13 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 
 ## Development Phases
 
-Completed phases (1-15, 17-21, 25-33, 37-42, 44-46) are archived in `docs/roadmap/archived/`.
+Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadmap/archived/`.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 16 | ROS 2 Interop Completion | In Progress |
 | 22 | ESP32-C3 platform support | Complete (22.6 deferred) |
 | 23 | Arduino precompiled library | Not Started |
-| 24 | RPi Pico W platform support | Not Started |
 | 34 | RMW abstraction + XRCE-DDS | In Progress |
 | 35 | Safety hardening & E2E protocol | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
@@ -560,7 +559,7 @@ docs/
 │   └── archived/    # Superseded design docs
 ├── research/        # Autoware porting analysis
 └── roadmap/         # Active phases (16, 22-24, 34-37, 40)
-    └── archived/    # Completed phases (1-15, 17-21, 25-33, 37-42, 44-46)
+    └── archived/    # Completed phases (1-15, 17-21, 24-33, 37-42, 44-46)
 ```
 
 Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw-layer-design](docs/design/rmw-layer-design.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [tests/README](tests/README.md).

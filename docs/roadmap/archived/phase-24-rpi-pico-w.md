@@ -21,30 +21,30 @@ The Raspberry Pi Pico W is a $6 board with an RP2040 (dual ARM Cortex-M0+) and C
 
 ### Hardware Specifications
 
-| Feature | Value |
-|---------|-------|
-| MCU | RP2040 (dual Cortex-M0+ @ 133 MHz) |
-| RAM | 264 KB SRAM |
-| Flash | 2 MB external QSPI |
-| WiFi | CYW43439 (802.11 b/g/n) |
-| BLE | Bluetooth 5.2 (BLE) |
-| GPIO | 26 multi-function |
-| ADC | 3-channel 12-bit |
-| Price | ~$6 |
-| USB | 1.1 device/host |
+| Feature | Value                              |
+|---------|------------------------------------|
+| MCU     | RP2040 (dual Cortex-M0+ @ 133 MHz) |
+| RAM     | 264 KB SRAM                        |
+| Flash   | 2 MB external QSPI                 |
+| WiFi    | CYW43439 (802.11 b/g/n)            |
+| BLE     | Bluetooth 5.2 (BLE)                |
+| GPIO    | 26 multi-function                  |
+| ADC     | 3-channel 12-bit                   |
+| Price   | ~$6                                |
+| USB     | 1.1 device/host                    |
 
 ### Resource Budget
 
-| Component | Size | Pico W Available |
-|-----------|------|------------------|
-| zenoh-pico heap | ~12 KB | 264 KB RAM |
-| zenoh-pico code | ~80 KB | 2 MB flash |
-| smoltcp buffers | ~8 KB | 264 KB RAM |
-| CYW43 WiFi firmware | ~230 KB | 2 MB flash (loaded from flash) |
-| CYW43 driver RAM | ~40 KB | 264 KB RAM |
-| Application + nros | ~30 KB flash, ~20 KB RAM | 2 MB / 264 KB |
-| **Total RAM** | **~80 KB** | **264 KB** |
-| **Total Flash** | **~340 KB** | **2 MB** |
+| Component           | Size                     | Pico W Available               |
+|---------------------|--------------------------|--------------------------------|
+| zenoh-pico heap     | ~12 KB                   | 264 KB RAM                     |
+| zenoh-pico code     | ~80 KB                   | 2 MB flash                     |
+| smoltcp buffers     | ~8 KB                    | 264 KB RAM                     |
+| CYW43 WiFi firmware | ~230 KB                  | 2 MB flash (loaded from flash) |
+| CYW43 driver RAM    | ~40 KB                   | 264 KB RAM                     |
+| Application + nros  | ~30 KB flash, ~20 KB RAM | 2 MB / 264 KB                  |
+| **Total RAM**       | **~80 KB**               | **264 KB**                     |
+| **Total Flash**     | **~340 KB**              | **2 MB**                       |
 
 Fits with comfortable margins. RAM is tighter than ESP32-C3 but still has 3x headroom.
 
@@ -90,10 +90,10 @@ The Pico W WiFi stack uses the `cyw43` crate which provides a smoltcp-compatible
 
 The Pico W ecosystem heavily uses Embassy (async Rust for embedded). Two approaches:
 
-| Approach | Pros | Cons |
-|----------|------|------|
+| Approach          | Pros                                                             | Cons                                     |
+|-------------------|------------------------------------------------------------------|------------------------------------------|
 | **Embassy async** | Idiomatic Pico W, excellent power management, community standard | Requires async runtime, more complex BSP |
-| **Polling loop** | Simpler, matches existing BSP pattern | Less idiomatic, worse power efficiency |
+| **Polling loop**  | Simpler, matches existing BSP pattern                            | Less idiomatic, worse power efficiency   |
 
 Recommendation: Start with **polling loop** (matches bsp-qemu pattern), add Embassy integration as a feature flag later.
 
