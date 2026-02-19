@@ -15,38 +15,12 @@
 #include <nros/node.h>
 #include <nros/subscription.h>
 #include <nros/executor.h>
-#include <nros/types.h>
 #include <zpico_zephyr.h>
 
+// Generated message bindings
+#include "std_msgs.h"
+
 LOG_MODULE_REGISTER(nros_listener, LOG_LEVEL_INF);
-
-/* ============================================================================
- * std_msgs/Int32 message support (hand-deserialized CDR)
- * ============================================================================ */
-
-/** Message type info for std_msgs/Int32 */
-static const nano_ros_message_type_t INT32_TYPE = {
-    .type_name = "std_msgs::msg::dds_::Int32_",
-    .type_hash = "TypeHashNotSupported",
-    .serialized_size_max = 8,
-};
-
-/**
- * Deserialize Int32 from CDR format (4-byte header + 4-byte int32)
- */
-static int32_t deserialize_int32(const uint8_t *buffer, size_t buffer_size)
-{
-    if (buffer_size < 8) {
-        return 0;
-    }
-    /* Skip CDR header (4 bytes), read little-endian int32 */
-    return (int32_t)(
-        buffer[4] |
-        ((uint32_t)buffer[5] << 8) |
-        ((uint32_t)buffer[6] << 16) |
-        ((uint32_t)buffer[7] << 24)
-    );
-}
 
 /* ============================================================================
  * Subscription Callback
@@ -58,9 +32,15 @@ static void on_message(const uint8_t *data, size_t len, void *context)
 {
     (void)context;
 
-    int32_t value = deserialize_int32(data, len);
-    message_count++;
-    LOG_INF("Received [%d]: %d", message_count, value);
+    std_msgs_msg_int32 msg;
+    std_msgs_msg_int32_init(&msg);
+
+    if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
+        message_count++;
+        LOG_INF("Received [%d]: %d", message_count, msg.data);
+    } else {
+        LOG_ERR("Failed to deserialize message (len=%zu)", len);
+    }
 }
 
 /* ============================================================================
@@ -97,10 +77,10 @@ int main(void)
         return 1;
     }
 
-    /* Create subscription */
+    /* Create subscription using generated type support */
     nano_ros_subscription_t sub = nano_ros_subscription_get_zero_initialized();
     ret = nano_ros_subscription_init(
-        &sub, &node, &INT32_TYPE, "/chatter",
+        &sub, &node, std_msgs_msg_int32_get_type_support(), "/chatter",
         on_message, NULL);
     if (ret != NROS_RET_OK) {
         LOG_ERR("Subscription init failed: %d", ret);

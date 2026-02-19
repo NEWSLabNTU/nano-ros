@@ -60,6 +60,9 @@ if(CONFIG_NROS_C_API)
     # Add nros-c include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-c/include)
 
+    # Make nros_generate_interfaces() available for C examples
+    include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_generate_interfaces.cmake)
+
     # Build nros-c static library via Cargo
     nros_cargo_build(
         PACKAGE nros-c

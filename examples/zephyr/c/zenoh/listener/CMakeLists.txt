@@ -8,4 +8,7 @@ project(nros_zephyr_listener_c)
 
 # nros module (CONFIG_NROS=y, CONFIG_NROS_C_API=y) provides zenoh shim,
 # platform support, and the nros-c library automatically.
+
+nros_generate_interfaces(std_msgs "msg/Int32.msg")
+
 target_sources(app PRIVATE src/main.c)

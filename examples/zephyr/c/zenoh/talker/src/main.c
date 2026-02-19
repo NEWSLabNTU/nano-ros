@@ -13,42 +13,12 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
-#include <nros/types.h>
 #include <zpico_zephyr.h>
 
+// Generated message bindings
+#include "std_msgs.h"
+
 LOG_MODULE_REGISTER(nros_talker, LOG_LEVEL_INF);
-
-/* ============================================================================
- * std_msgs/Int32 message support (hand-serialized CDR)
- * ============================================================================ */
-
-/** Message type info for std_msgs/Int32 */
-static const nano_ros_message_type_t INT32_TYPE = {
-    .type_name = "std_msgs::msg::dds_::Int32_",
-    .type_hash = "TypeHashNotSupported",
-    .serialized_size_max = 8,
-};
-
-/**
- * Serialize Int32 to CDR format (4-byte header + 4-byte int32)
- */
-static int32_t serialize_int32(int32_t value, uint8_t *buffer, size_t buffer_size)
-{
-    if (buffer_size < 8) {
-        return -1;
-    }
-    /* CDR header (little-endian) */
-    buffer[0] = 0x00;
-    buffer[1] = 0x01;
-    buffer[2] = 0x00;
-    buffer[3] = 0x00;
-    /* Little-endian int32 */
-    buffer[4] = (uint8_t)(value & 0xFF);
-    buffer[5] = (uint8_t)((value >> 8) & 0xFF);
-    buffer[6] = (uint8_t)((value >> 16) & 0xFF);
-    buffer[7] = (uint8_t)((value >> 24) & 0xFF);
-    return 8;
-}
 
 /* ============================================================================
  * Application
@@ -84,9 +54,10 @@ int main(void)
         return 1;
     }
 
-    /* Create publisher */
+    /* Create publisher using generated type support */
     nano_ros_publisher_t pub = nano_ros_publisher_get_zero_initialized();
-    ret = nano_ros_publisher_init(&pub, &node, &INT32_TYPE, "/chatter");
+    ret = nano_ros_publisher_init(
+        &pub, &node, std_msgs_msg_int32_get_type_support(), "/chatter");
     if (ret != NROS_RET_OK) {
         LOG_ERR("Publisher init failed: %d", ret);
         return 1;
@@ -95,20 +66,28 @@ int main(void)
     /* Publish messages */
     int32_t count = 0;
     uint8_t buffer[64];
+    std_msgs_msg_int32 msg;
+    std_msgs_msg_int32_init(&msg);
 
     LOG_INF("Publishing messages...");
 
     while (1) {
         count++;
+        msg.data = count;
 
-        int32_t len = serialize_int32(count, buffer, sizeof(buffer));
-        if (len > 0) {
-            ret = nano_ros_publish_raw(&pub, buffer, (size_t)len);
+        size_t serialized_size = 0;
+        int32_t ser_ret = std_msgs_msg_int32_serialize(
+            &msg, buffer, sizeof(buffer), &serialized_size);
+
+        if (ser_ret == 0 && serialized_size > 0) {
+            ret = nano_ros_publish_raw(&pub, buffer, serialized_size);
             if (ret == NROS_RET_OK) {
                 LOG_INF("Published: %d", count);
             } else {
                 LOG_ERR("Publish failed: %d", ret);
             }
+        } else {
+            LOG_ERR("Serialize failed: %d", ser_ret);
         }
 
         k_sleep(K_SECONDS(1));
