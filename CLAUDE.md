@@ -512,7 +512,7 @@ See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 
 ## Development Phases
 
-Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archived/`.
+Completed phases (1-15, 17-21, 25-33, 37-42, 44-46) are archived in `docs/roadmap/archived/`.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
@@ -520,13 +520,9 @@ Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archi
 | 22 | ESP32-C3 platform support | Complete (22.6 deferred) |
 | 23 | Arduino precompiled library | Not Started |
 | 24 | RPi Pico W platform support | Not Started |
-| 31 | Verus unbounded verification | Complete |
 | 34 | RMW abstraction + XRCE-DDS | In Progress |
 | 35 | Safety hardening & E2E protocol | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
-| 37 | Executor progress guarantees | Complete |
-| 40 | Large message support | Complete |
-| 42 | Extensible RMW layer | In Progress |
 | 43 | RMW-agnostic embedded API | In Progress (43.2 remaining) |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
@@ -534,10 +530,6 @@ Completed phases (1-15, 17-21, 25-33, 37-39) are archived in `docs/roadmap/archi
 **Phase 34**: 34.1-34.8 complete. RMW factory trait, zenoh backend, board refactor, XRCE-DDS FFI (`xrce-sys`), UDP transport (`xrce-smoltcp`), RMW implementation (`nros-rmw-xrce`), platform symbols, integration test infrastructure.
 
 **Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
-
-**Phase 37**: Complete. Service buffer stuck-state bug fixed, 8 progress proofs added (92 total Verus proofs), fairness evaluation found no issues (single-slot buffer prevents starvation by design).
-
-**Phase 42**: 42.1-42.4 complete. Generic `EmbeddedExecutor<S>` / `EmbeddedNode<S>` replacing duplicated `ShimNode`/`XrceNode`, `drive_io()` on Session trait, C function table adapter (`nros-rmw-cffi`), feature wiring. `shim.rs` and `xrce.rs` deleted, all examples migrated.
 
 **Phase 43**: RMW-agnostic embedded API. 43.1 (factory), 43.3 (typed XRCE actions), 43.4 (example migration), 43.5 (deprecated cleanup) complete. Remaining: 43.2 (arena-based callback storage + `spin_once()` for embedded executor). See `docs/roadmap/phase-43-rmw-agnostic-embedded-api.md`.
 
@@ -561,7 +553,7 @@ docs/
 │   └── archived/    # Superseded design docs
 ├── research/        # Autoware porting analysis
 └── roadmap/         # Active phases (16, 22-24, 34-37, 40)
-    └── archived/    # Completed phases (1-15, 17-21, 25-33, 38-39, 31)
+    └── archived/    # Completed phases (1-15, 17-21, 25-33, 37-42, 44-46)
 ```
 
 Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw-layer-design](docs/design/rmw-layer-design.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [tests/README](tests/README.md).

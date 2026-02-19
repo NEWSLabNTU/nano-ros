@@ -1,6 +1,6 @@
 # Phase 42 — Extensible RMW Layer
 
-## Status: In Progress
+## Status: Complete
 
 ## Background
 
@@ -121,10 +121,10 @@ pub fn drive_session_io(session: &mut RmwSession, timeout_ms: i32) {
 
 ### Tasks
 
-- [ ] Add `drive_io()` default method to `Session` trait
-- [ ] Implement `drive_io()` for `ShimSession` (zenoh)
-- [ ] Implement `drive_io()` for `XrceSession` (XRCE)
-- [ ] Update `internals::drive_session_io` to use trait method
+- [x] Add `drive_io()` default method to `Session` trait
+- [x] Implement `drive_io()` for `ShimSession` (zenoh)
+- [x] Implement `drive_io()` for `XrceSession` (XRCE)
+- [x] Update `internals::drive_session_io` to use trait method
 
 ## Phase 42.2 — Generic Embedded Node API
 
@@ -313,15 +313,15 @@ The old backend-specific node types are deleted entirely:
 
 ### Tasks
 
-- [ ] Create `packages/core/nros-node/src/generic.rs` (~800 lines)
-- [ ] Add `EmbeddedNodeError` type
-- [ ] Add `EmbeddedExecutor<S>` with `from_session`, `create_node`, `drive_io`
-- [ ] Add `EmbeddedNode<S>` with pub/sub/service/action creation methods
-- [ ] Add typed handle types (`EmbeddedPublisher`, `EmbeddedSubscription`, etc.)
-- [ ] Add action types (`EmbeddedActionServer`, `EmbeddedActionClient`, etc.)
-- [ ] Add `pub mod generic` + re-exports to `nros-node/src/lib.rs`
-- [ ] Delete `nros-node/src/shim.rs` and `nros-node/src/xrce.rs`
-- [ ] Update all examples and board crates to use generic types
+- [x] Create `packages/core/nros-node/src/generic.rs` (~800 lines)
+- [x] Add `EmbeddedNodeError` type
+- [x] Add `EmbeddedExecutor<S>` with `from_session`, `create_node`, `drive_io`
+- [x] Add `EmbeddedNode<S>` with pub/sub/service/action creation methods
+- [x] Add typed handle types (`EmbeddedPublisher`, `EmbeddedSubscription`, etc.)
+- [x] Add action types (`EmbeddedActionServer`, `EmbeddedActionClient`, etc.)
+- [x] Add `pub mod generic` + re-exports to `nros-node/src/lib.rs`
+- [x] Delete `nros-node/src/shim.rs` and `nros-node/src/xrce.rs`
+- [x] Update all examples and board crates to use generic types
 
 ## Phase 42.3 — C Function Table (`nros-rmw-cffi`)
 
@@ -417,15 +417,15 @@ int32_t nros_rmw_cffi_register(const nros_rmw_vtable_t *vtable);
 
 ### Return value conventions
 
-| Function | Success | No data | Error |
-|----------|---------|---------|-------|
-| `open` | non-null handle | — | null |
-| `close`, `drive_io`, `publish_raw`, `send_reply` | 0 | — | negative |
-| `try_recv_raw` | positive (bytes received) | 0 | negative |
-| `try_recv_request` | positive (bytes, seq_out written) | 0 | negative |
-| `has_data`, `has_request` | 1 (yes) | 0 (no) | — |
-| `call_raw` | positive (reply bytes) | — | negative |
-| `destroy_*` | void (best-effort) | — | — |
+| Function                                         | Success                           | No data | Error    |
+|--------------------------------------------------|-----------------------------------|---------|----------|
+| `open`                                           | non-null handle                   | —       | null     |
+| `close`, `drive_io`, `publish_raw`, `send_reply` | 0                                 | —       | negative |
+| `try_recv_raw`                                   | positive (bytes received)         | 0       | negative |
+| `try_recv_request`                               | positive (bytes, seq_out written) | 0       | negative |
+| `has_data`, `has_request`                        | 1 (yes)                           | 0 (no)  | —        |
+| `call_raw`                                       | positive (reply bytes)            | —       | negative |
+| `destroy_*`                                      | void (best-effort)                | —       | —        |
 
 ### Rust adapter types
 
@@ -492,15 +492,15 @@ alloc = ["nros-rmw/alloc"]
 
 ### Tasks
 
-- [ ] Create `packages/core/nros-rmw-cffi/` crate structure
-- [ ] Write C header (`include/nros/rmw_vtable.h`)
-- [ ] Implement `CffiSession` (Session trait via vtable)
-- [ ] Implement `CffiPublisher` (Publisher trait via vtable)
-- [ ] Implement `CffiSubscriber` (Subscriber trait via vtable)
-- [ ] Implement `CffiServiceServer` and `CffiServiceClient`
-- [ ] Add vtable registration (`nros_rmw_cffi_register`)
-- [ ] Add `CffiRmw` factory
-- [ ] Add QoS conversion helpers
+- [x] Create `packages/core/nros-rmw-cffi/` crate structure
+- [x] Write C header (`include/nros/rmw_vtable.h`)
+- [x] Implement `CffiSession` (Session trait via vtable)
+- [x] Implement `CffiPublisher` (Publisher trait via vtable)
+- [x] Implement `CffiSubscriber` (Subscriber trait via vtable)
+- [x] Implement `CffiServiceServer` and `CffiServiceClient`
+- [x] Add vtable registration (`nros_rmw_cffi_register`)
+- [x] Add `CffiRmw` factory
+- [x] Add QoS conversion helpers
 
 ## Phase 42.4 — Feature Wiring
 
@@ -587,14 +587,14 @@ cargo clippy -p nros --features rmw-cffi --no-default-features -- -D warnings
 
 ### Tasks
 
-- [ ] Add `rmw-cffi` feature + dep to `nros-node/Cargo.toml`
-- [ ] Add `rmw-cffi` feature + dep to `nros/Cargo.toml`
-- [ ] Add `rmw-cffi` feature to `nros-c/Cargo.toml`
-- [ ] Add mutual exclusivity compile errors in `nros/src/lib.rs`
-- [ ] Add `RmwSession`/`RmwPublisher`/etc. type aliases for cffi
-- [ ] Add `open_session` cffi branch
-- [ ] Add workspace member to root `Cargo.toml`
-- [ ] Add clippy check recipe to `justfile`
+- [x] Add `rmw-cffi` feature + dep to `nros-node/Cargo.toml`
+- [x] Add `rmw-cffi` feature + dep to `nros/Cargo.toml`
+- [x] Add `rmw-cffi` feature to `nros-c/Cargo.toml`
+- [x] Add mutual exclusivity compile errors in `nros/src/lib.rs`
+- [x] Add `RmwSession`/`RmwPublisher`/etc. type aliases for cffi
+- [x] Add `open_session` cffi branch
+- [x] Add workspace member to root `Cargo.toml`
+- [x] Add clippy check recipe to `justfile`
 
 ## Implementation Order
 
