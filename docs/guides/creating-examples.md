@@ -431,11 +431,8 @@ CONFIG_POSIX_API=y
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=32   # Default 5 is too low for zenoh-pico
 CONFIG_MAX_PTHREAD_COND_COUNT=16
 
-# zenoh-pico
-CONFIG_ZENOH_PICO=y
-CONFIG_ZENOH_PICO_PUBLICATION=y
-CONFIG_ZENOH_PICO_SUBSCRIPTION=y    # For listeners
-CONFIG_ZENOH_PICO_LINK_TCP=y
+# nros (zenoh-pico features like pub/sub/TCP are enabled by default)
+CONFIG_NROS=y
 
 # Stack and heap
 CONFIG_MAIN_STACK_SIZE=16384

@@ -367,25 +367,26 @@ a git submodule (`packages/zpico/zpico-sys/zenoh-pico/`, v1.6.2).
 **Target state:** The nros module compiles zenoh-pico from the vendored
 submodule. `west.yml` no longer references zenoh-pico.
 
-- [ ] **Remove zenoh-pico from `west.yml`**
-- [ ] **Compile zenoh-pico sources in `zephyr/CMakeLists.txt`** from
+- [x] **Remove zenoh-pico from `west.yml`** — removed project entry and
+  `eclipse-zenoh` remote
+- [x] **Compile zenoh-pico sources in `zephyr/CMakeLists.txt`** from
   `packages/zpico/zpico-sys/zenoh-pico/`:
   - Glob core sources (`src/**/*.c`) excluding `src/system/` platform backends
   - Add Zephyr platform backend (`src/system/zephyr/*.c`)
-  - Define `ZENOH_ZEPHYR` and `ZENOH_C_STANDARD=11`
-  - Map Kconfig → `Z_FEATURE_*` compile definitions
-- [ ] **Absorb zenoh-pico Kconfig** into `zephyr/Kconfig`: either `rsource`
-  the submodule's `zephyr/Kconfig.zenoh` or inline the relevant options
-- [ ] **Remove `depends on ZENOH_PICO`** from `zephyr/Kconfig` — replace with
-  internal conditional logic under `NROS_RMW_ZENOH`
-- [ ] **Apply zenoh-pico patches via compile definitions** instead of
+  - Define `ZENOH_ZEPHYR`
+  - Map `NROS_ZENOH_*` Kconfig → `Z_FEATURE_*` compile definitions
+- [x] **Absorb zenoh-pico Kconfig** into `zephyr/Kconfig`: inlined 12 features
+  as `CONFIG_NROS_ZENOH_*` with sensible defaults (pub, sub, query, queryable,
+  TCP, multi-thread default=y)
+- [x] **Remove `depends on ZENOH_PICO`** from `zephyr/Kconfig`
+- [x] **Apply zenoh-pico patches via compile definitions** instead of
   `setup.sh` file patching (`Z_FEATURE_INTEREST=0`, `Z_FEATURE_MATCHING=0`)
-- [ ] **Revise `scripts/zephyr/setup.sh`**: remove `patch_zenoh_pico()`,
-  update workspace summary text
-- [ ] **Update example `prj.conf` files**: replace `CONFIG_ZENOH_PICO=y`
-  with the appropriate nros Kconfig symbol
-- [ ] **Version alignment**: ensure the vendored submodule is the single
-  source of truth for all builds (native, embedded, Zephyr)
+- [x] **Revise `scripts/zephyr/setup.sh`**: removed `patch_zenoh_pico()`,
+  updated workspace summary text
+- [x] **Update example `prj.conf` files**: removed `CONFIG_ZENOH_PICO=y`
+  and all `CONFIG_ZENOH_PICO_*` lines (now handled by nros Kconfig defaults)
+- [x] **Version alignment**: vendored submodule at
+  `packages/zpico/zpico-sys/zenoh-pico/` is the single source of truth
 - [ ] Verify: `just test-zephyr` passes
 - [ ] Verify: `west update` no longer fetches a separate zenoh-pico module
 - [ ] Verify: `just quality` passes (non-Zephyr builds unaffected)

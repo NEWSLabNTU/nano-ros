@@ -286,34 +286,6 @@ ENVEOF
 }
 
 # =============================================================================
-# Patch zenoh-pico for nros compatibility
-# =============================================================================
-
-patch_zenoh_pico() {
-    local ZENOH_PICO_CONFIG="$WORKSPACE_DIR/modules/lib/zenoh-pico/include/zenoh-pico/config.h"
-
-    if [ ! -f "$ZENOH_PICO_CONFIG" ]; then
-        log_warn "zenoh-pico config.h not found, skipping patch"
-        return
-    fi
-
-    # Check if already patched
-    if grep -q "nros patch" "$ZENOH_PICO_CONFIG"; then
-        log_info "zenoh-pico config.h already patched"
-        return
-    fi
-
-    log_info "Patching zenoh-pico config.h to disable Z_FEATURE_INTEREST..."
-
-    # Patch config.h to disable Z_FEATURE_INTEREST and Z_FEATURE_MATCHING
-    # These features cause issues when multiple clients connect to the same router
-    sed -i 's/^#define Z_FEATURE_INTEREST 1$/#define Z_FEATURE_INTEREST 0  \/\/ nros patch: disabled for multi-client support/' "$ZENOH_PICO_CONFIG"
-    sed -i 's/^#define Z_FEATURE_MATCHING 1$/#define Z_FEATURE_MATCHING 0  \/\/ nros patch: disabled (depends on INTEREST)/' "$ZENOH_PICO_CONFIG"
-
-    log_success "zenoh-pico config.h patched"
-}
-
-# =============================================================================
 # Initialize Workspace
 # =============================================================================
 
@@ -325,9 +297,6 @@ if [ -d "$WORKSPACE_DIR/.west" ]; then
         log_info "Workspace exists, updating..."
         cd "$WORKSPACE_DIR"
         west update
-
-        # Apply patches after update
-        patch_zenoh_pico
 
         log_success "Update complete"
 
@@ -364,9 +333,6 @@ ln -sf "$NANO_ROS_ROOT" "$WORKSPACE_DIR/$NANO_ROS_NAME"
 log_info "Fetching Zephyr and modules (this may take a while)..."
 west update
 
-# Patch zenoh-pico to disable Z_FEATURE_INTEREST (allows multiple clients)
-patch_zenoh_pico
-
 # Install Zephyr Python dependencies
 log_info "Installing Zephyr Python dependencies..."
 pip3 install --user -r "$WORKSPACE_DIR/zephyr/scripts/requirements.txt"
@@ -389,7 +355,7 @@ echo ""
 echo "Structure:"
 echo "  $NANO_ROS_NAME/  -> $NANO_ROS_ROOT (symlink)"
 echo "  zephyr/          - Zephyr RTOS v3.7.0"
-echo "  modules/         - Zephyr modules (lang/rust, zenoh-pico, HALs)"
+echo "  modules/         - Zephyr modules (lang/rust, HALs)"
 echo ""
 echo "Next steps:"
 echo ""

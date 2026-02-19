@@ -22,7 +22,7 @@ This example shows how to use nros with Zephyr RTOS:
 ```
 zephyr-rs-talker/
 ├── CMakeLists.txt      # Zephyr build config
-├── prj.conf            # Kconfig options (networking, zenoh-pico)
+├── prj.conf            # Kconfig options (networking, nros)
 ├── src/
 │   └── lib.rs          # Rust application
 ├── Cargo.toml          # Rust dependencies
@@ -104,8 +104,8 @@ CONFIG_NETWORKING=y
 CONFIG_NET_TCP=y
 CONFIG_NET_IPV4=y
 
-# zenoh-pico
-CONFIG_ZENOH_PICO=y
+# nros
+CONFIG_NROS=y
 CONFIG_HEAP_MEM_POOL_SIZE=16384
 
 # Rust support

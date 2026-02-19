@@ -4,10 +4,9 @@
 
 menuconfig NROS
     bool "nros ROS 2 client library"
-    depends on ZENOH_PICO
     help
       Enable nros, a lightweight ROS 2 client library for embedded systems.
-      This module compiles the zenoh shim and platform support centrally,
+      This module compiles zenoh-pico and the zenoh shim centrally,
       eliminating per-example boilerplate.
 
 if NROS
@@ -34,6 +33,102 @@ config NROS_RUST_API
       Kconfig values are bridged to Cargo env vars automatically.
 
 endchoice
+
+# =============================================================================
+# Zenoh-pico Feature Configuration
+# =============================================================================
+# These options control which zenoh-pico features are compiled in.
+# They map directly to Z_FEATURE_* compile definitions.
+# Defaults are set for typical ROS 2 usage; disable unused features
+# to reduce code size on constrained targets.
+
+config NROS_ZENOH_MULTI_THREAD
+    bool "Zenoh-pico multithreading"
+    default y
+    help
+      Enable multithreading in zenoh-pico. Uses Zephyr threads for
+      background read/lease tasks. Required for non-blocking operation.
+      Maps to Z_FEATURE_MULTI_THREAD.
+
+config NROS_ZENOH_PUBLICATION
+    bool "Publication support"
+    default y
+    help
+      Enable zenoh-pico publication support. Required for publishers.
+      Maps to Z_FEATURE_PUBLICATION.
+
+config NROS_ZENOH_SUBSCRIPTION
+    bool "Subscription support"
+    default y
+    help
+      Enable zenoh-pico subscription support. Required for subscribers.
+      Maps to Z_FEATURE_SUBSCRIPTION.
+
+config NROS_ZENOH_QUERY
+    bool "Query support (service client)"
+    default y
+    help
+      Enable zenoh-pico query support. Required for service clients
+      and action clients.
+      Maps to Z_FEATURE_QUERY.
+
+config NROS_ZENOH_QUERYABLE
+    bool "Queryable support (service server)"
+    default y
+    help
+      Enable zenoh-pico queryable support. Required for service servers
+      and action servers.
+      Maps to Z_FEATURE_QUERYABLE.
+
+config NROS_ZENOH_LINK_TCP
+    bool "TCP link"
+    default y
+    help
+      Enable TCP transport link. This is the primary transport for
+      connecting to a zenoh router.
+      Maps to Z_FEATURE_LINK_TCP.
+
+config NROS_ZENOH_LINK_UDP_UNICAST
+    bool "UDP unicast link"
+    default n
+    help
+      Enable UDP unicast transport link.
+      Maps to Z_FEATURE_LINK_UDP_UNICAST.
+
+config NROS_ZENOH_LINK_UDP_MULTICAST
+    bool "UDP multicast link"
+    default n
+    help
+      Enable UDP multicast transport link.
+      Maps to Z_FEATURE_LINK_UDP_MULTICAST.
+
+config NROS_ZENOH_SCOUTING
+    bool "Scouting (UDP discovery)"
+    default n
+    help
+      Enable scouting for automatic router discovery via UDP.
+      Maps to Z_FEATURE_SCOUTING.
+
+config NROS_ZENOH_LINK_SERIAL
+    bool "Serial/UART link"
+    default n
+    help
+      Enable serial/UART transport link.
+      Maps to Z_FEATURE_LINK_SERIAL.
+
+config NROS_ZENOH_LINK_WS
+    bool "WebSocket link"
+    default n
+    help
+      Enable WebSocket transport link.
+      Maps to Z_FEATURE_LINK_WS.
+
+config NROS_ZENOH_RAWETH_TRANSPORT
+    bool "Raw Ethernet transport"
+    default n
+    help
+      Enable raw Ethernet transport (bypasses IP stack).
+      Maps to Z_FEATURE_RAWETH_TRANSPORT.
 
 # =============================================================================
 # Transport Tuning (zpico-sys)
@@ -158,7 +253,7 @@ config NROS_INIT_DELAY_MS
 
 config NROS_TRANSPORT_SERIAL
     bool "Enable serial/UART transport"
-    select ZENOH_PICO_LINK_SERIAL
+    select NROS_ZENOH_LINK_SERIAL
     help
       Enable serial/UART transport for zenoh-pico.
 
