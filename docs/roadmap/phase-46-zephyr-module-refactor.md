@@ -1,30 +1,13 @@
 # Phase 46 — Zephyr Module Refactor
 
-## Status: Not Started
+## Status: In Progress
 
 ## Background
 
 The current Zephyr integration has grown organically through several phases and
 has usability and architectural gaps compared to Zephyr module best practices.
 
-**Current state:**
-
-- `zpico-zephyr` serves as both zenoh-pico platform glue AND the nros user API
-  (via `bsp_zephyr.c`), conflating two concerns
-- `zpico-zephyr/zephyr/module.yml` registers a module named
-  `nano-ros-bsp-zephyr`, but examples don't actually use it — they manually
-  include sources with hardcoded relative paths
-- Buffer constants (`ZPICO_MAX_PUBLISHERS`, etc.) use `#ifndef` fallback
-  defaults in `zenoh_shim.c` because Zephyr CMake doesn't pass `-D` flags
-- Kconfig entries exist (`CONFIG_NANO_ROS_MAX_PUBLISHERS`) but are disconnected
-  from the actual constants the C shim uses
-- C Zephyr examples use the limited `bsp_zephyr.c` API instead of the full
-  `nros-c` API
-- Rust Zephyr examples manually add `target_sources` for shim and BSP in every
-  `CMakeLists.txt` (~36 lines of boilerplate each)
-- No Kconfig→Cargo env var bridge — Rust builds ignore Kconfig values
-
-**Problems:**
+**Original problems (pre-46):**
 
 1. **40-line boilerplate** per example `CMakeLists.txt` with fragile relative paths
 2. **Two configuration systems** (env vars for Cargo, Kconfig for Zephyr) with
@@ -35,8 +18,10 @@ has usability and architectural gaps compared to Zephyr module best practices.
 5. **Inconsistent naming** — `CONFIG_NANO_ROS_*` in Kconfig vs `ZPICO_*` in env
    vars for the same concepts
 6. **Stale Kconfig prefix** — zpico-zephyr Kconfig still uses the old
-   `NANO_ROS_` prefix (`CONFIG_NANO_ROS_BSP`, `CONFIG_NANO_ROS_DOMAIN_ID`,
-   etc.) instead of the project-wide `NROS_` prefix
+   `NANO_ROS_` prefix
+7. **Zenoh-only** — no mechanism for selecting alternative RMW backends (XRCE-DDS)
+8. **Dual zenoh-pico sources** — west.yml pulls zenoh-pico as a separate module
+   (v1.7.2) while zpico-sys vendors it as a submodule (v1.6.2)
 
 ### Goals
 
@@ -51,7 +36,11 @@ has usability and architectural gaps compared to Zephyr module best practices.
 5. **3-line example CMakeLists** — no manual `target_sources` or relative paths
 6. **Reposition zpico-zephyr** as pure zenoh-pico platform support (network
    wait, session init) — remove the nros BSP API layer
-7. **Revise all Zephyr examples** to use the refactored module
+7. **Multi-RMW backend** — Kconfig choice between zenoh and XRCE-DDS, with
+   backend-specific C sources, Cargo features, and env var bridging
+8. **Single zenoh-pico source** — absorb the zenoh-pico west module into the
+   nros module, compiling from the vendored submodule
+9. **Revise all Zephyr examples** to use the refactored module
 
 ### Non-Goals
 
@@ -60,9 +49,7 @@ has usability and architectural gaps compared to Zephyr module best practices.
 - Publishing the Zephyr module to any registry
 - Supporting Zephyr versions other than 3.7.x (current west.yml pin)
 - Pre-built binary distribution of `libnros_c.a` for Zephyr targets
-- Changing the `west.yml` manifest structure or workspace layout
-- Zephyr C codegen integration (`nano_ros_generate_interfaces()` for Zephyr
-  CMake) — future phase
+- XRCE serial transport on Zephyr (initial scope is UDP only)
 
 ---
 
@@ -71,60 +58,69 @@ has usability and architectural gaps compared to Zephyr module best practices.
 ### Layer Diagram
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                     User Application                            │
-│                                                                 │
-│   C user:                          Rust user:                   │
-│   #include <nros/node.h>           use nros::EmbeddedExecutor;  │
-│   nano_ros_init(...);              let exec = ...open(&cfg)?;   │
-├─────────────────────────────────────────────────────────────────┤
-│   nros-c (libnros_c.a)        │   nros crate                   │
-│   Built by module CMake       │   Built by rust_cargo_app()     │
-│   via nros_cargo_build()      │   in user's CMakeLists.txt      │
-├───────────────────────────────┴─────────────────────────────────┤
-│                   zenoh_shim.c (from zpico-sys)                 │
-│                   Compiled by module CMake with Kconfig -D flags│
-├─────────────────────────────────────────────────────────────────┤
-│              zpico-zephyr (platform support)                    │
-│              Network wait, Zephyr logging, session helpers      │
-├─────────────────────────────────────────────────────────────────┤
-│              zenoh-pico (existing Zephyr module)                │
-│              CONFIG_ZENOH_PICO=y                                │
-├─────────────────────────────────────────────────────────────────┤
-│                      Zephyr RTOS kernel                         │
-└─────────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────────────────┐
+│                          User Application                               │
+│                                                                         │
+│   C user:                              Rust user:                       │
+│   #include <nros/node.h>               use nros::EmbeddedExecutor;      │
+│   nano_ros_init(...);                  let exec = ...open(&cfg)?;       │
+├──────────────────────────────────────────────────────────────────────────┤
+│   nros-c (libnros_c.a)           │   nros crate                        │
+│   Built by nros_cargo_build()    │   Built by rust_cargo_application() │
+├───────────────────┬──────────────┴──────────────────────────────────────┤
+│ NROS_RMW_ZENOH    │ NROS_RMW_XRCE                                      │
+├───────────────────┼─────────────────────────────────────────────────────┤
+│ zenoh_shim.c      │ xrce_zephyr.c (NEW)                                │
+│ Compiled by       │ Zephyr BSD socket transport callbacks               │
+│ module CMake with │ Compiled by module CMake                            │
+│ Kconfig -D flags  │                                                     │
+├───────────────────┼─────────────────────────────────────────────────────┤
+│ zpico_zephyr.c    │ (Micro-XRCE-DDS-Client compiled by                 │
+│ Network wait,     │  xrce-sys/build.rs inside Cargo —                   │
+│ session helpers   │  no Zephyr CMake compilation needed)                │
+├───────────────────┼─────────────────────────────────────────────────────┤
+│ zenoh-pico        │                                                     │
+│ (from submodule,  │                                                     │
+│  absorbed by nros │                                                     │
+│  module — 46.12)  │                                                     │
+├───────────────────┴─────────────────────────────────────────────────────┤
+│                         Zephyr RTOS kernel                              │
+└──────────────────────────────────────────────────────────────────────────┘
 ```
 
-### File Structure (new/changed files only)
+**Key asymmetry:** Zenoh-pico is compiled by the Zephyr module's CMake (it needs
+Zephyr platform headers for threading, sockets, etc.). Micro-XRCE-DDS-Client is
+compiled by `xrce-sys/build.rs` inside Cargo (it uses a "custom transport" model
+with 4 user-supplied C callbacks, so it has no Zephyr header dependencies). The
+only XRCE C file compiled by Zephyr CMake is the transport glue (`xrce_zephyr.c`)
+which implements the callbacks using Zephyr's BSD socket API.
+
+### File Structure
 
 ```
 nano-ros/
-├── zephyr/                              # NEW: root Zephyr module
+├── zephyr/                              # Root Zephyr module
 │   ├── module.yml                       # name: nros
-│   ├── CMakeLists.txt                   # Module build logic (shim + C API + Rust bridge)
-│   ├── Kconfig                          # All nros Kconfig options
+│   ├── CMakeLists.txt                   # Conditional backend build + C/Rust API
+│   ├── Kconfig                          # RMW choice + backend-specific tuning
 │   └── cmake/
-│       └── nros_cargo_build.cmake       # Target detection + Cargo invocation helpers
+│       ├── nros_cargo_build.cmake       # Target detection + Cargo invocation
+│       └── nros_generate_interfaces.cmake  # C codegen (adds to app target)
 │
-├── packages/zpico/zpico-zephyr/         # REFACTORED: zenoh-pico platform support only
-│   ├── src/zpico_zephyr.c              # RENAMED from bsp_zephyr.c; nros API removed
-│   ├── include/zpico_zephyr.h          # RENAMED from nano_ros_bsp_zephyr.h; platform API only
-│   ├── Kconfig                          # SLIMMED: only zpico-zephyr-specific options
-│   ├── CMakeLists.txt                   # KEPT: conditional zephyr_library() for standalone use
-│   └── zephyr/module.yml               # REMOVED: root module handles registration
+├── packages/zpico/zpico-zephyr/         # Zenoh platform support (network wait, session)
+│   ├── src/zpico_zephyr.c
+│   ├── include/zpico_zephyr.h
+│   └── Kconfig                          # Zenoh-specific platform options
+│
+├── packages/xrce/xrce-zephyr/          # NEW: XRCE Zephyr transport glue
+│   ├── src/xrce_zephyr.c              # BSD socket transport callbacks
+│   └── include/xrce_zephyr.h          # Public API (init, wait_network)
 │
 ├── examples/zephyr/
-│   ├── c/zenoh/talker/                  # REVISED
-│   │   ├── CMakeLists.txt              # 3 lines
-│   │   ├── prj.conf                    # CONFIG_NROS=y, CONFIG_NROS_C_API=y
-│   │   └── src/main.c                  # Uses nros-c API
-│   ├── c/zenoh/listener/               # REVISED (same pattern)
-│   ├── rust/zenoh/talker/              # REVISED
-│   │   ├── CMakeLists.txt              # 3 lines + rust_cargo_application()
-│   │   ├── prj.conf                    # CONFIG_NROS=y, CONFIG_NROS_RUST_API=y
-│   │   ├── Cargo.toml                  # unchanged
-│   │   └── src/lib.rs                  # unchanged
-│   └── rust/zenoh/*/                   # All 6 Rust examples revised
+│   ├── c/zenoh/{talker,listener}/       # C + zenoh (existing)
+│   ├── c/xrce/{talker,listener}/        # C + XRCE (NEW)
+│   ├── rust/zenoh/*/                    # Rust + zenoh (existing, 6 examples)
+│   └── rust/xrce/{talker,listener}/     # Rust + XRCE (NEW)
 ```
 
 ### Configuration Flow
@@ -132,14 +128,24 @@ nano-ros/
 ```
 prj.conf (single source of truth)
     │
-    ├─→ Kconfig → autoconf.h → C application code (#ifdef CONFIG_NROS_...)
+    ├─→ CONFIG_NROS_RMW_ZENOH or CONFIG_NROS_RMW_XRCE
+    │       │
+    │       ├─→ CMakeLists.txt: compile backend-specific C sources
+    │       │     Zenoh: zenoh-pico + zenoh_shim.c + zpico_zephyr.c
+    │       │     XRCE:  xrce_zephyr.c only (XRCE lib compiled by Cargo)
+    │       │
+    │       ├─→ CMakeLists.txt: select Cargo features
+    │       │     Zenoh: "rmw-zenoh,platform-zephyr,ros-humble"
+    │       │     XRCE:  "rmw-xrce,platform-zephyr,ros-humble"
+    │       │
+    │       └─→ nros_set_cargo_env_from_kconfig()
+    │             Zenoh: ZPICO_MAX_PUBLISHERS, ZPICO_FRAG_MAX_SIZE, ...
+    │             XRCE:  XRCE_TRANSPORT_MTU, XRCE_MAX_SUBSCRIBERS, ...
+    │             Common: NROS_EXECUTOR_MAX_HANDLES, ...
     │
-    ├─→ Kconfig → zephyr_compile_definitions() → zenoh_shim.c (-DZPICO_MAX_*=N)
-    │
-    ├─→ Kconfig → nros_set_cargo_env_from_kconfig()
+    ├─→ CONFIG_NROS_C_API or CONFIG_NROS_RUST_API
     │       │
     │       ├─→ nros_cargo_build() → build.rs → libnros_c.a  (C path)
-    │       │
     │       └─→ rust_cargo_application() → build.rs → nros crate  (Rust path)
     │
     └─→ Non-Zephyr builds: env vars or #ifndef defaults still work
@@ -147,27 +153,43 @@ prj.conf (single source of truth)
 
 ### Kconfig → Env Var Mapping
 
-| Kconfig | Env Var | Consumer |
-|---------|---------|----------|
-| `CONFIG_NROS_MAX_PUBLISHERS` | `ZPICO_MAX_PUBLISHERS` | zpico-sys build.rs |
-| `CONFIG_NROS_MAX_SUBSCRIBERS` | `ZPICO_MAX_SUBSCRIBERS` | zpico-sys build.rs |
-| `CONFIG_NROS_MAX_QUERYABLES` | `ZPICO_MAX_QUERYABLES` | zpico-sys build.rs |
-| `CONFIG_NROS_MAX_LIVELINESS` | `ZPICO_MAX_LIVELINESS` | zpico-sys build.rs |
+**Zenoh-specific** (visible when `CONFIG_NROS_RMW_ZENOH`):
+
+| Kconfig                              | Env Var                        | Consumer                |
+|--------------------------------------|--------------------------------|-------------------------|
+| `CONFIG_NROS_MAX_PUBLISHERS`         | `ZPICO_MAX_PUBLISHERS`         | zpico-sys build.rs      |
+| `CONFIG_NROS_MAX_SUBSCRIBERS`        | `ZPICO_MAX_SUBSCRIBERS`        | zpico-sys build.rs      |
+| `CONFIG_NROS_MAX_QUERYABLES`         | `ZPICO_MAX_QUERYABLES`         | zpico-sys build.rs      |
+| `CONFIG_NROS_MAX_LIVELINESS`         | `ZPICO_MAX_LIVELINESS`         | zpico-sys build.rs      |
 | `CONFIG_NROS_SUBSCRIBER_BUFFER_SIZE` | `ZPICO_SUBSCRIBER_BUFFER_SIZE` | nros-rmw-zenoh build.rs |
-| `CONFIG_NROS_SERVICE_BUFFER_SIZE` | `ZPICO_SERVICE_BUFFER_SIZE` | nros-rmw-zenoh build.rs |
-| `CONFIG_NROS_FRAG_MAX_SIZE` | `ZPICO_FRAG_MAX_SIZE` | zpico-sys build.rs |
-| `CONFIG_NROS_BATCH_UNICAST_SIZE` | `ZPICO_BATCH_UNICAST_SIZE` | zpico-sys build.rs |
-| `CONFIG_NROS_C_MAX_EXECUTORS` | `NROS_C_MAX_EXECUTORS` | nros-c build.rs |
-| `CONFIG_NROS_C_MAX_NODES` | `NROS_C_MAX_NODES` | nros-c build.rs |
-| `CONFIG_NROS_C_MAX_SUBSCRIPTIONS` | `NROS_C_MAX_SUBSCRIPTIONS` | nros-c build.rs |
-| `CONFIG_NROS_C_MAX_TIMERS` | `NROS_C_MAX_TIMERS` | nros-c build.rs |
-| `CONFIG_NROS_C_MAX_SERVICES` | `NROS_C_MAX_SERVICES` | nros-c build.rs |
-| `CONFIG_NROS_C_MAX_CLIENTS` | `NROS_C_MAX_CLIENTS` | nros-c build.rs |
+| `CONFIG_NROS_SERVICE_BUFFER_SIZE`    | `ZPICO_SERVICE_BUFFER_SIZE`    | nros-rmw-zenoh build.rs |
+| `CONFIG_NROS_FRAG_MAX_SIZE`          | `ZPICO_FRAG_MAX_SIZE`          | zpico-sys build.rs      |
+| `CONFIG_NROS_BATCH_UNICAST_SIZE`     | `ZPICO_BATCH_UNICAST_SIZE`     | zpico-sys build.rs      |
+
+**XRCE-specific** (visible when `CONFIG_NROS_RMW_XRCE`):
+
+| Kconfig                                | Env Var                          | Consumer                  |
+|-----------------------------------------|----------------------------------|---------------------------|
+| `CONFIG_NROS_XRCE_TRANSPORT_MTU`       | `XRCE_TRANSPORT_MTU`            | xrce-sys build.rs         |
+| `CONFIG_NROS_XRCE_MAX_SUBSCRIBERS`     | `XRCE_MAX_SUBSCRIBERS`           | nros-rmw-xrce build.rs   |
+| `CONFIG_NROS_XRCE_MAX_SERVICE_SERVERS` | `XRCE_MAX_SERVICE_SERVERS`       | nros-rmw-xrce build.rs   |
+| `CONFIG_NROS_XRCE_MAX_SERVICE_CLIENTS` | `XRCE_MAX_SERVICE_CLIENTS`       | nros-rmw-xrce build.rs   |
+| `CONFIG_NROS_XRCE_BUFFER_SIZE`         | `XRCE_BUFFER_SIZE`               | nros-rmw-xrce build.rs   |
+| `CONFIG_NROS_XRCE_STREAM_HISTORY`      | `XRCE_STREAM_HISTORY`            | nros-rmw-xrce build.rs   |
+
+**Common** (visible regardless of backend):
+
+| Kconfig                              | Env Var                        | Consumer                |
+|--------------------------------------|--------------------------------|-------------------------|
+| `CONFIG_NROS_C_MAX_HANDLES`          | `NROS_EXECUTOR_MAX_HANDLES`    | nros-c build.rs         |
+| `CONFIG_NROS_C_MAX_SUBSCRIPTIONS`    | `NROS_MAX_SUBSCRIPTIONS`       | nros-c build.rs         |
+| `CONFIG_NROS_C_MAX_TIMERS`           | `NROS_MAX_TIMERS`              | nros-c build.rs         |
+| `CONFIG_NROS_C_MAX_SERVICES`         | `NROS_MAX_SERVICES`            | nros-c build.rs         |
 
 ### Design Decisions
 
 **Single module at repo root, not in zpico-zephyr.** The nros Zephyr module
-spans multiple packages (zpico-sys, zpico-zephyr, nros-c, nros-rmw-zenoh). It
+spans multiple packages (zpico-sys, zpico-zephyr, xrce-sys, nros-c). It
 doesn't belong inside any single package. The root `zephyr/` directory makes
 the module visible at the top level, matching where `west.yml` already lives.
 
@@ -186,213 +208,352 @@ precise target mapping, proper env var bridging, and no hidden linker hacks.
 **C API path uses nros-c, not bsp_zephyr.c.** The old `bsp_zephyr.c` API is a
 thin wrapper around zenoh_shim that only supports pub/sub with raw bytes. The
 nros-c API provides executor, lifecycle, actions, services, parameters, codegen
-integration, and CDR serialization — a complete ROS 2 client library. Users
-upgrading to nros-c get a vastly richer API.
-
-**zpico-sys build.rs skips zenoh_shim.c on platform-zephyr.** When
-`platform-zephyr` feature is active, the Zephyr module's CMake compiles
-`zenoh_shim.c` with Kconfig-derived `-D` flags. The Cargo build.rs must skip
-compiling the same file to avoid duplicate symbol errors. The `#ifndef`
-fallback defaults in `zenoh_shim.c` remain for non-Zephyr build paths.
+integration, and CDR serialization — a complete ROS 2 client library.
 
 **Kconfig `choice` for API selection.** `NROS_C_API` and `NROS_RUST_API` are
 mutually exclusive via Kconfig `choice`. A single Zephyr image links either
 `libnros_c.a` (for C apps) or lets the user's Cargo build pull in the `nros`
-crate (for Rust apps). Both paths share the same zenoh_shim + platform layer.
+crate (for Rust apps). Both paths share the same platform layer.
+
+**Kconfig `choice` for RMW backend.** `NROS_RMW_ZENOH` and `NROS_RMW_XRCE` are
+mutually exclusive. The selected backend determines which C sources the module
+compiles, which Cargo features are passed to `nros_cargo_build()`, and which
+env vars `nros_set_cargo_env_from_kconfig()` exports.
+
+**XRCE C library compiled by Cargo, not Zephyr CMake.** Unlike zenoh-pico,
+Micro-XRCE-DDS-Client uses a "custom transport" model — the library itself has
+zero platform-specific code. All 33 C source files are compiled by
+`xrce-sys/build.rs` via `cc::Build`, with no Zephyr header dependencies. Only
+the transport glue (`xrce_zephyr.c`, which uses `zsock_*` APIs) needs Zephyr
+CMake compilation. This avoids the complexity of absorbing another C library
+into the Zephyr module build.
+
+**XRCE Zephyr time via built-in `time.c`.** Micro-XRCE-DDS-Client's `time.c`
+already has `#ifdef UCLIENT_PLATFORM_ZEPHYR` support using `clock_gettime()`.
+The `xrce-sys` `zephyr` feature enables this path, so no separate platform
+crate is needed for the clock (unlike the bare-metal path which provides
+`uxr_millis()` from `xrce-platform-mps2-an385`).
 
 **`NROS_` Kconfig prefix.** The old zpico-zephyr Kconfig used the
-`NANO_ROS_` prefix (`CONFIG_NANO_ROS_BSP`, `CONFIG_NANO_ROS_DOMAIN_ID`, etc.).
-This phase adopts the project-wide `NROS_` prefix (`CONFIG_NROS`,
-`CONFIG_NROS_DOMAIN_ID`, etc.), consistent with the crate rename completed in
-Phase 33 and the constant rename completed in Phase 45.
+`NANO_ROS_` prefix. This phase adopts the project-wide `NROS_` prefix,
+consistent with the crate rename completed in Phase 33 and the constant rename
+completed in Phase 45.
+
+### Cargo Feature Wiring
+
+The `platform-zephyr` feature must forward to **both** RMW backends via `?`
+syntax (only the active backend's optional dependency is present):
+
+**`nros/Cargo.toml`:**
+```toml
+platform-zephyr = [
+    "nros-node/platform-zephyr",
+    "nros-rmw-zenoh?/platform-zephyr",
+    "nros-rmw-xrce?/platform-zephyr",
+]
+```
+
+**`nros-node/Cargo.toml`:**
+```toml
+platform-zephyr = [
+    "nros-rmw-zenoh?/platform-zephyr",
+    "nros-rmw-xrce?/platform-zephyr",
+]
+```
+
+**`nros-rmw-xrce/Cargo.toml`** (new feature):
+```toml
+platform-zephyr = ["xrce-sys/zephyr"]
+```
+
+**`xrce-sys/Cargo.toml`** (new feature):
+```toml
+zephyr = []  # enables UCLIENT_PLATFORM_ZEPHYR, compiles time.c
+```
+
+**`xrce-sys/build.rs`** changes: when `zephyr` feature is active, define
+`UCLIENT_PLATFORM_ZEPHYR` in the generated config.h and compile `time.c`
+(same as posix, but with the Zephyr platform define instead).
 
 ---
 
 ## Sub-phases
 
-### 46.1 — Create root Zephyr module structure
+### Part A — Zenoh Refactor (46.1–46.10) ✅
 
-Create `zephyr/` directory at repo root with module descriptor and skeleton
-build files.
+These sub-phases are complete. They established the root Zephyr module,
+refactored zpico-zephyr, wired up the Kconfig→Cargo bridge, and revised all
+existing examples.
 
-- [ ] Create `zephyr/module.yml` with `name: nros`
-- [ ] Create `zephyr/Kconfig` with full config hierarchy using `NROS_` prefix
-  (API choice, transport tuning, buffer sizing, C API executor limits).
-  This replaces the old `NANO_ROS_*` Kconfig prefix from zpico-zephyr
-- [ ] Create `zephyr/CMakeLists.txt` skeleton (conditional on `CONFIG_NROS`)
-- [ ] Create `zephyr/cmake/nros_cargo_build.cmake` with:
-  - `nros_detect_rust_target()` — maps Zephyr `CONFIG_*` to Rust target triple
-  - `nros_set_cargo_env_from_kconfig()` — bridges Kconfig→env vars
-  - `nros_cargo_build()` — invokes Cargo for cross-compilation
-- [ ] Remove `packages/zpico/zpico-zephyr/zephyr/module.yml`
-- [ ] Update `west.yml` `self:` section if needed (module discovery uses
-  `zephyr/module.yml` in the manifest repo automatically)
-- [ ] Verify: `west build -t menuconfig` shows NROS menu under the nros module
+#### 46.1 — Create root Zephyr module structure ✅
 
-### 46.2 — Wire zenoh_shim.c compilation into module CMake
+- [x] Create `zephyr/module.yml` with `name: nros`
+- [x] Create `zephyr/Kconfig` with full config hierarchy using `NROS_` prefix
+- [x] Create `zephyr/CMakeLists.txt` skeleton (conditional on `CONFIG_NROS`)
+- [x] Create `zephyr/cmake/nros_cargo_build.cmake` with target detection,
+  env var bridging, and Cargo invocation helpers
+- [x] Remove `packages/zpico/zpico-zephyr/zephyr/module.yml`
+- [x] Verify: `west build -t menuconfig` shows NROS menu
 
-Move zenoh_shim.c compilation from per-example boilerplate into the module.
+#### 46.2 — Wire zenoh_shim.c into module CMake ✅
 
-- [ ] Add `zephyr_library_sources(zenoh_shim.c)` to `zephyr/CMakeLists.txt`
-- [ ] Add `zephyr_compile_definitions()` mapping all Kconfig buffer constants to
-  `-DZPICO_MAX_*` flags
-- [ ] Add `zephyr_include_directories()` for `zpico-sys/c/include`
-- [ ] Verify: `zenoh_shim.c` compiles with Kconfig values (not `#ifndef`
-  fallbacks) when building a Zephyr example
+- [x] Add `zephyr_library_sources(zenoh_shim.c)` to `zephyr/CMakeLists.txt`
+- [x] Add `zephyr_compile_definitions()` mapping Kconfig → `-DZPICO_MAX_*`
+- [x] Add `zephyr_include_directories()` for `zpico-sys/c/include`
 
-### 46.3 — Wire zpico-zephyr platform support into module CMake
+#### 46.3 — Wire zpico-zephyr platform support ✅
 
-Add zpico-zephyr platform initialization to the module's shared layer.
+- [x] Add `zephyr_library_sources(zpico_zephyr.c)` to module CMake
+- [x] Add `zephyr_include_directories()` for `zpico-zephyr/include`
 
-- [ ] Add `zephyr_library_sources(zpico_zephyr.c)` to `zephyr/CMakeLists.txt`
-- [ ] Add `zephyr_include_directories()` for `zpico-zephyr/include`
-- [ ] Verify: platform init functions available to both C and Rust paths
+#### 46.4 — Refactor zpico-zephyr to platform-only ✅
 
-### 46.4 — Refactor zpico-zephyr to platform-only
+- [x] Rename `bsp_zephyr.c` → `zpico_zephyr.c`,
+  `nano_ros_bsp_zephyr.h` → `zpico_zephyr.h`
+- [x] Remove nros-specific API (`nano_ros_bsp_*` functions, types, error codes)
+- [x] Keep platform-level functions: `zpico_zephyr_wait_network()`,
+  `zpico_zephyr_init_session()`, `zpico_zephyr_shutdown()`
+- [x] Slim down Kconfig to platform-only options with `NROS_` prefix
 
-Remove the nros BSP API from zpico-zephyr, keeping only zenoh-pico platform
-support.
+#### 46.5 — Implement Kconfig→Cargo env var bridge ✅
 
-- [ ] Rename `bsp_zephyr.c` → `zpico_zephyr.c`
-- [ ] Rename `nano_ros_bsp_zephyr.h` → `zpico_zephyr.h`
-- [ ] Remove nros-specific API functions:
-  - `nano_ros_bsp_create_node()`, `nano_ros_bsp_create_node_with_domain()`
-  - `nano_ros_bsp_create_publisher()`, `nano_ros_bsp_publish()`,
-    `nano_ros_bsp_destroy_publisher()`
-  - `nano_ros_bsp_create_subscriber()`, `nano_ros_bsp_destroy_subscriber()`
-  - `nano_ros_bsp_spin_once()`, `nano_ros_bsp_spin()`
-  - `nano_ros_bsp_build_keyexpr()`, `nano_ros_bsp_build_keyexpr_wildcard()`
-  - `nano_ros_bsp_context_t`, `nros_node_t`, `nano_ros_publisher_t`,
-    `nano_ros_subscriber_t` types
-  - `NROS_BSP_*` error codes
-- [ ] Keep platform-level functions:
-  - `zpico_zephyr_wait_network(int timeout_ms)` — wait for `net_if_is_up()`
-  - `zpico_zephyr_init_session(const char *locator)` — `zenoh_shim_init()` +
-    `zenoh_shim_open()`
-  - `zpico_zephyr_shutdown()` — `zenoh_shim_close()`
-- [ ] Slim down `zpico-zephyr/Kconfig` to platform-only options (init delay,
-  locator) using `NROS_` prefix (rename from old `NANO_ROS_*`), referenced
-  by `zephyr/Kconfig` via `source`
-- [ ] Update zpico-zephyr `CMakeLists.txt` for standalone use (when not used
-  through the root module)
-- [ ] Verify: zpico-zephyr builds without nros dependencies
+- [x] Implement `nros_set_cargo_env_from_kconfig()` mapping Kconfig → env vars
+- [x] Env vars visible to both `nros_cargo_build()` and `rust_cargo_application()`
 
-### 46.5 — Implement Kconfig→Cargo env var bridge
+#### 46.6 — Implement nros_cargo_build() for C API path ✅
 
-Enable Kconfig values to flow into Cargo's build.rs for both build paths.
+- [x] Implement `nros_detect_rust_target()` (Cortex-M, ESP32, native_sim)
+- [x] Implement `nros_cargo_build()` with workspace Cargo invocation
+- [x] Wire into `zephyr/CMakeLists.txt` with library linking
 
-- [ ] Implement `nros_set_cargo_env_from_kconfig()` in
-  `zephyr/cmake/nros_cargo_build.cmake`
-- [ ] Map all Kconfig int/string values to their corresponding `ZPICO_*` /
-  `NROS_*` env vars (see mapping table above)
-- [ ] Ensure env vars are visible to both `nros_cargo_build()` (C path) and
-  `rust_cargo_application()` (Rust path)
-- [ ] Verify: build a Rust example with non-default Kconfig values, confirm
-  `build.rs` picks them up (check generated constants match `prj.conf`)
+#### 46.7 — ~~Guard zenoh_shim.c in build.rs~~ (OBSOLETE)
 
-### 46.6 — Implement nros_cargo_build() for C API path
+Obsoleted by 46.12. The existing guard in `zpico-sys/build.rs` (line 376:
+`if backend_count > 0 && !use_zephyr`) already skips shim compilation for
+Zephyr. After 46.12 absorbs zenoh-pico into the module, there is only one
+compilation path for each source file.
 
-Enable cross-compilation of `nros-c` from the Cargo workspace.
+#### 46.8 — Revise Rust Zephyr examples ✅
 
-- [ ] Implement `nros_detect_rust_target()`:
-  - `CONFIG_CPU_CORTEX_M3` → `thumbv7m-none-eabi`
-  - `CONFIG_CPU_CORTEX_M4`/`M7` → `thumbv7em-none-eabi[hf]`
-  - `CONFIG_SOC_SERIES_ESP32C3` → `riscv32imc-unknown-none-elf`
-  - `CONFIG_BOARD_NATIVE_SIM` → `x86_64-unknown-linux-gnu`
-- [ ] Implement `nros_cargo_build()`:
-  - Invoke `cargo build -p nros-c` with `--manifest-path`, `--target`,
-    `--target-dir ${CMAKE_BINARY_DIR}/nros-rust`, `--release`,
-    `--no-default-features`, `--features "rmw-zenoh,platform-zephyr,ros-humble"`
-  - Locate output `libnros_c.a`
-  - Create imported CMake target `nros::nros-c`
-- [ ] Wire into `zephyr/CMakeLists.txt`:
-  - `target_link_libraries(app PUBLIC nros::nros-c)`
-  - `zephyr_include_directories()` for `nros-c/include`
-- [ ] Verify: `west build` with `CONFIG_NROS_C_API=y` produces a linkable
-  binary for `native_sim`
+- [x] All 6 Rust examples reduced to 3-line `CMakeLists.txt`
+- [x] Updated `prj.conf` with `CONFIG_NROS=y`, `CONFIG_NROS_RUST_API=y`
+- [x] Moved `Z_FEATURE_INTEREST=0` to module CMake
 
-### 46.7 — Guard zenoh_shim.c in zpico-sys build.rs
+#### 46.9 — Revise C Zephyr examples ✅
 
-Prevent double-compilation of `zenoh_shim.c` when building for Zephyr.
-
-- [ ] In `packages/zpico/zpico-sys/build.rs`, skip `cc::Build` for
-  `zenoh_shim.c` when `platform-zephyr` feature is active
-- [ ] Ensure non-Zephyr builds (posix, bare-metal) still compile `zenoh_shim.c`
-  via build.rs as before
-- [ ] Verify: no duplicate symbol errors when building Rust Zephyr examples
-- [ ] Verify: `just quality` still passes (non-Zephyr builds unaffected)
-
-### 46.8 — Revise Rust Zephyr examples
-
-Update all 6 Rust Zephyr examples to use the module instead of manual paths.
-
-- [ ] `examples/zephyr/rust/zenoh/talker/CMakeLists.txt` — reduce to:
-  ```cmake
-  cmake_minimum_required(VERSION 3.20.0)
-  find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-  project(nros_zephyr_talker_rs)
-  rust_cargo_application()
-  ```
-- [ ] Update `prj.conf` for all 6 examples:
-  - Add `CONFIG_NROS=y` and `CONFIG_NROS_RUST_API=y`
-  - Remove commented-out `CONFIG_NANO_ROS_BSP` lines
-  - Replace any hardcoded buffer values with `CONFIG_NROS_*` equivalents
-- [ ] Remove `zephyr_compile_definitions(Z_FEATURE_INTEREST=0 ...)` from
-  examples — move to module CMake if still needed
-- [ ] Repeat for: talker, listener, service-server, service-client,
-  action-server, action-client
-- [ ] Verify: `just build-zephyr` succeeds
-- [ ] Verify: `just test-zephyr` passes
-
-### 46.9 — Revise C Zephyr examples
-
-Update C Zephyr examples to use nros-c API via the module.
-
-- [ ] `examples/zephyr/c/zenoh/talker/CMakeLists.txt` — reduce to:
-  ```cmake
-  cmake_minimum_required(VERSION 3.20.0)
-  find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
-  project(nros_zephyr_talker_c)
-  target_sources(app PRIVATE src/main.c)
-  ```
-- [ ] Update `prj.conf`:
-  - Add `CONFIG_NROS=y` and `CONFIG_NROS_C_API=y`
-  - Add `CONFIG_NROS_ZENOH_LOCATOR`, `CONFIG_NROS_DOMAIN_ID`, etc.
-- [ ] Rewrite `src/main.c` to use nros-c API (`nano_ros_init`,
-  `nano_ros_node_create`, `nano_ros_publisher_create`, etc.) instead of
-  `bsp_zephyr.c` API
-- [ ] Repeat for: talker, listener
+- [x] Created `zephyr/cmake/nros_generate_interfaces.cmake` for C codegen
+- [x] Rewrote C examples to use nros-c API + generated `std_msgs` types
+- [x] Standard `.msg` files resolved from ament index (`AMENT_PREFIX_PATH`)
 - [ ] Verify: `just build-zephyr-c` succeeds
 - [ ] Verify: `just test-zephyr` passes (C examples)
 
-### 46.10 — Update justfile and test infrastructure
+#### 46.10 — Update justfile and test infrastructure ✅
 
-Update build recipes and test fixtures to work with the refactored module.
+- [x] Updated build/test recipes and test fixtures
 
-- [ ] Update `just build-zephyr` if build commands changed
-- [ ] Update `just build-zephyr-c` if build commands changed
-- [ ] Update `just test-zephyr` if test expectations changed
-- [ ] Update test fixtures in `packages/testing/nros-tests/src/zephyr.rs` if
-  binary paths or output patterns changed
-- [ ] Update `scripts/zephyr/setup.sh` if any setup steps changed
-- [ ] Verify: `just test-all` passes
+---
 
-### 46.11 — Documentation
+### Part B — Zenoh-pico Absorption (46.12)
 
-Update all docs to reflect the refactored module architecture.
+Eliminate the separate zenoh-pico west module by compiling from the vendored
+submodule, giving nros full control over zenoh-pico configuration.
+
+#### 46.12 — Absorb zenoh-pico Zephyr module into nros
+
+**Current state:** Zephyr projects pull zenoh-pico as a separate west module
+(`modules/lib/zenoh-pico/`, v1.7.2). The nros repo also vendors zenoh-pico as
+a git submodule (`packages/zpico/zpico-sys/zenoh-pico/`, v1.6.2).
+
+**Target state:** The nros module compiles zenoh-pico from the vendored
+submodule. `west.yml` no longer references zenoh-pico.
+
+- [ ] **Remove zenoh-pico from `west.yml`**
+- [ ] **Compile zenoh-pico sources in `zephyr/CMakeLists.txt`** from
+  `packages/zpico/zpico-sys/zenoh-pico/`:
+  - Glob core sources (`src/**/*.c`) excluding `src/system/` platform backends
+  - Add Zephyr platform backend (`src/system/zephyr/*.c`)
+  - Define `ZENOH_ZEPHYR` and `ZENOH_C_STANDARD=11`
+  - Map Kconfig → `Z_FEATURE_*` compile definitions
+- [ ] **Absorb zenoh-pico Kconfig** into `zephyr/Kconfig`: either `rsource`
+  the submodule's `zephyr/Kconfig.zenoh` or inline the relevant options
+- [ ] **Remove `depends on ZENOH_PICO`** from `zephyr/Kconfig` — replace with
+  internal conditional logic under `NROS_RMW_ZENOH`
+- [ ] **Apply zenoh-pico patches via compile definitions** instead of
+  `setup.sh` file patching (`Z_FEATURE_INTEREST=0`, `Z_FEATURE_MATCHING=0`)
+- [ ] **Revise `scripts/zephyr/setup.sh`**: remove `patch_zenoh_pico()`,
+  update workspace summary text
+- [ ] **Update example `prj.conf` files**: replace `CONFIG_ZENOH_PICO=y`
+  with the appropriate nros Kconfig symbol
+- [ ] **Version alignment**: ensure the vendored submodule is the single
+  source of truth for all builds (native, embedded, Zephyr)
+- [ ] Verify: `just test-zephyr` passes
+- [ ] Verify: `west update` no longer fetches a separate zenoh-pico module
+- [ ] Verify: `just quality` passes (non-Zephyr builds unaffected)
+
+---
+
+### Part C — Multi-RMW Backend (46.13–46.17)
+
+Add XRCE-DDS as a selectable RMW backend on Zephyr.
+
+#### 46.13 — RMW backend Kconfig choice
+
+Add a `choice` block for selecting between zenoh and XRCE, and reorganize
+existing Kconfig options under backend-specific `if` guards.
+
+- [ ] Add `NROS_RMW_BACKEND` choice with `NROS_RMW_ZENOH` (default) and
+  `NROS_RMW_XRCE` options
+- [ ] Remove `depends on ZENOH_PICO` from top-level `menuconfig NROS` (this
+  is now internal to `NROS_RMW_ZENOH` after 46.12, or auto-selected)
+- [ ] Move existing zenoh transport tuning options under `if NROS_RMW_ZENOH`
+  (`NROS_MAX_PUBLISHERS`, `NROS_MAX_SUBSCRIBERS`, `NROS_MAX_QUERYABLES`,
+  `NROS_MAX_LIVELINESS`, `NROS_FRAG_MAX_SIZE`, `NROS_BATCH_UNICAST_SIZE`,
+  `NROS_SUBSCRIBER_BUFFER_SIZE`, `NROS_SERVICE_BUFFER_SIZE`)
+- [ ] Move `NROS_ZENOH_LOCATOR`, `NROS_TRANSPORT_SERIAL` under
+  `if NROS_RMW_ZENOH`
+- [ ] Add XRCE transport tuning under `if NROS_RMW_XRCE`:
+  - `NROS_XRCE_TRANSPORT_MTU` (default 512)
+  - `NROS_XRCE_MAX_SUBSCRIBERS` (default 8)
+  - `NROS_XRCE_MAX_SERVICE_SERVERS` (default 4)
+  - `NROS_XRCE_MAX_SERVICE_CLIENTS` (default 4)
+  - `NROS_XRCE_BUFFER_SIZE` (default 1024)
+  - `NROS_XRCE_STREAM_HISTORY` (default 4, range 2..16)
+  - `NROS_XRCE_AGENT_ADDR` (default "192.0.2.2")
+  - `NROS_XRCE_AGENT_PORT` (default 2018)
+- [ ] `NROS_RMW_XRCE` should `depends on NET_SOCKETS` (Zephyr BSD socket API)
+- [ ] Keep common options outside backend guards: `NROS_API`, `NROS_DOMAIN_ID`,
+  `NROS_INIT_DELAY_MS`, C API limits
+- [ ] Verify: `west build -t menuconfig` shows the RMW choice and
+  backend-specific options appear/disappear based on selection
+
+#### 46.14 — Cargo feature wiring for `platform-zephyr` + XRCE
+
+Wire the `platform-zephyr` feature through the XRCE crate chain so Cargo
+builds the correct XRCE configuration for Zephyr.
+
+- [ ] Add `zephyr` feature to `xrce-sys/Cargo.toml`
+- [ ] Update `xrce-sys/build.rs`:
+  - When `zephyr` feature is active: define `UCLIENT_PLATFORM_ZEPHYR` in
+    generated `uxr/client/config.h`, compile `time.c` (which has built-in
+    Zephyr support via `#ifdef UCLIENT_PLATFORM_ZEPHYR`)
+  - Ensure `posix`, `bare-metal`, and `zephyr` are mutually exclusive
+- [ ] Add `platform-zephyr = ["xrce-sys/zephyr"]` to
+  `nros-rmw-xrce/Cargo.toml`
+- [ ] Update `nros-node/Cargo.toml`: add `"nros-rmw-xrce?/platform-zephyr"`
+  to `platform-zephyr` feature
+- [ ] Update `nros/Cargo.toml`: add `"nros-rmw-xrce?/platform-zephyr"` to
+  `platform-zephyr` feature
+- [ ] Verify: `cargo check -p nros --no-default-features --features
+  "rmw-xrce,platform-zephyr,ros-humble"` succeeds
+- [ ] Verify: `just quality` passes (existing posix/bare-metal unaffected)
+
+#### 46.15 — XRCE Zephyr transport glue and module CMake
+
+Create the Zephyr BSD socket transport for XRCE and make the module CMake
+backend-conditional.
+
+- [ ] **Create `packages/xrce/xrce-zephyr/`**:
+  - `src/xrce_zephyr.c` — implement 4 custom transport callbacks using
+    Zephyr BSD socket API (`zsock_socket`, `zsock_connect`, `zsock_send`,
+    `zsock_recvfrom` with `zsock_poll` for timeout)
+  - `include/xrce_zephyr.h` — public API:
+    `xrce_zephyr_wait_network(int timeout_ms)`,
+    `xrce_zephyr_init(const char *agent_addr, int agent_port)`
+  - Transport callbacks registered via
+    `uxr_set_custom_transport_callbacks()` (from xrce-sys)
+
+- [ ] **Make `zephyr/CMakeLists.txt` backend-conditional**:
+  ```cmake
+  if(CONFIG_NROS_RMW_ZENOH)
+      # zenoh-pico sources (from 46.12 absorption)
+      # zenoh_shim.c + zpico_zephyr.c
+      # Kconfig → -DZPICO_MAX_* compile definitions
+  elseif(CONFIG_NROS_RMW_XRCE)
+      # xrce_zephyr.c only (XRCE lib compiled by Cargo)
+      zephyr_library_sources(
+          ${NROS_REPO_DIR}/packages/xrce/xrce-zephyr/src/xrce_zephyr.c
+      )
+      zephyr_include_directories(
+          ${NROS_REPO_DIR}/packages/xrce/xrce-zephyr/include
+      )
+  endif()
+  ```
+
+- [ ] **Make `nros_cargo_build()` feature string backend-conditional**:
+  ```cmake
+  if(CONFIG_NROS_RMW_ZENOH)
+      set(_nros_features "rmw-zenoh,platform-zephyr,ros-humble")
+  elseif(CONFIG_NROS_RMW_XRCE)
+      set(_nros_features "rmw-xrce,platform-zephyr,ros-humble")
+  endif()
+  ```
+
+- [ ] **Extend `nros_set_cargo_env_from_kconfig()`**: add conditional
+  `XRCE_*` env var exports when `CONFIG_NROS_RMW_XRCE` is set
+
+- [ ] **Extend `nros_cargo_build()` `add_custom_command`**: pass `XRCE_*`
+  env vars alongside existing `ZPICO_*` vars (harmless to pass both — build.rs
+  ignores vars it doesn't consume)
+
+- [ ] Verify: `west build` with `CONFIG_NROS_RMW_XRCE=y` +
+  `CONFIG_NROS_C_API=y` produces a linkable binary for `native_sim`
+
+#### 46.16 — XRCE Zephyr examples
+
+Create C and Rust XRCE examples following the same pattern as zenoh examples.
+
+- [ ] **C talker** (`examples/zephyr/c/xrce/talker/`):
+  - `CMakeLists.txt`: `nros_generate_interfaces(std_msgs "msg/Int32.msg")` +
+    `target_sources(app PRIVATE src/main.c)`
+  - `prj.conf`: `CONFIG_NROS=y`, `CONFIG_NROS_RMW_XRCE=y`,
+    `CONFIG_NROS_C_API=y`, `CONFIG_NROS_XRCE_AGENT_ADDR="192.0.2.2"`
+  - `src/main.c`: identical to zenoh C talker (same nros-c API), but init
+    uses `xrce_zephyr_init()` instead of `zpico_zephyr_init_session()`
+- [ ] **C listener** (`examples/zephyr/c/xrce/listener/`): same pattern
+- [ ] **Rust talker** (`examples/zephyr/rust/xrce/talker/`):
+  - `CMakeLists.txt`: 3 lines + `rust_cargo_application()`
+  - `prj.conf`: `CONFIG_NROS=y`, `CONFIG_NROS_RMW_XRCE=y`,
+    `CONFIG_NROS_RUST_API=y`
+  - `Cargo.toml`: `nros = { features = ["rmw-xrce", "platform-zephyr", ...] }`
+- [ ] **Rust listener** (`examples/zephyr/rust/xrce/listener/`): same pattern
+- [ ] Verify: all 4 new examples build with `west build`
+- [ ] Verify: XRCE examples can communicate via Micro-XRCE-DDS Agent
+
+#### 46.17 — XRCE Zephyr test infrastructure
+
+Add test recipes and integration tests for XRCE on Zephyr.
+
+- [ ] Add `just build-zephyr-xrce` recipe (C + Rust XRCE examples)
+- [ ] Add `just test-zephyr-xrce` recipe
+- [ ] Add XRCE Agent setup to test infrastructure (download/build agent, or
+  use pre-built binary)
+- [ ] Add integration test in `packages/testing/nros-tests/tests/zephyr.rs`
+  for XRCE talker/listener on native_sim
+- [ ] Verify: `just test-zephyr-xrce` passes
+- [ ] Verify: `just test-zephyr` still passes (zenoh tests unaffected)
+
+---
+
+### Part D — Documentation (46.11)
+
+#### 46.11 — Documentation
+
+Update all docs to reflect multi-RMW architecture.
 
 - [ ] Update `CLAUDE.md`:
   - Add `zephyr/` to workspace structure
   - Update zpico-zephyr description (platform support, not BSP)
-  - Document Kconfig options and their mapping to env vars
+  - Document multi-RMW Kconfig options and env var mappings
   - Add Zephyr module usage instructions
 - [ ] Update `docs/guides/zephyr-setup.md`:
   - Remove references to manual `target_sources` boilerplate
-  - Document `CONFIG_NROS` / `CONFIG_NROS_C_API` / `CONFIG_NROS_RUST_API`
-  - Add `prj.conf` reference for all Kconfig options
+  - Document `CONFIG_NROS_RMW_ZENOH` / `CONFIG_NROS_RMW_XRCE` choice
+  - Document `CONFIG_NROS_C_API` / `CONFIG_NROS_RUST_API` choice
+  - Add `prj.conf` reference for all Kconfig options (both backends)
 - [ ] Update `docs/guides/creating-examples.md`:
   - Revise Zephyr example section with new minimal CMakeLists.txt
   - Document C API vs Rust API path selection
+  - Document zenoh vs XRCE backend selection
 - [ ] Mark phase 46 as Complete in this file
 - [ ] Verify: all doc cross-references are valid
 
@@ -402,33 +563,51 @@ Update all docs to reflect the refactored module architecture.
 
 ### Functional
 
-1. `west build -t menuconfig` shows the NROS menu with all options
-2. C Zephyr talker builds and runs with `CONFIG_NROS_C_API=y` (native_sim)
-3. Rust Zephyr talker builds and runs with `CONFIG_NROS_RUST_API=y` (native_sim)
-4. Changing `CONFIG_NROS_MAX_PUBLISHERS=2` in `prj.conf` affects both C and
-   Rust builds (verified by checking generated constants or link-time failure
-   when exceeding the limit)
-5. All 6 Rust Zephyr examples build and pass tests
-6. Both C Zephyr examples build and pass tests
-7. `just test-all` passes (no regressions)
+1. `west build -t menuconfig` shows NROS menu with RMW backend choice
+2. C Zephyr talker builds and runs with zenoh backend (native_sim)
+3. Rust Zephyr talker builds and runs with zenoh backend (native_sim)
+4. C Zephyr talker builds and runs with XRCE backend (native_sim)
+5. Rust Zephyr talker builds and runs with XRCE backend (native_sim)
+6. Changing backend-specific Kconfig values in `prj.conf` affects both C and
+   Rust builds
+7. All 6 Rust zenoh Zephyr examples build and pass tests
+8. Both C zenoh Zephyr examples build and pass tests
+9. XRCE Zephyr examples communicate via Micro-XRCE-DDS Agent
+10. `just test-all` passes (no regressions)
 
 ### Structural
 
-8. No example `CMakeLists.txt` contains `target_sources` for zenoh_shim.c or
-   bsp_zephyr.c
-9. No example `CMakeLists.txt` contains hardcoded relative paths to
-   `packages/zpico/`
-10. `zpico-zephyr` has zero nros-specific API (no `nano_ros_bsp_*` functions)
-11. `zpico-zephyr/zephyr/module.yml` does not exist (root module handles it)
-12. `zenoh_shim.c` is compiled exactly once per build (no duplicate symbols)
+11. No example `CMakeLists.txt` contains `target_sources` for zenoh_shim.c or
+    bsp_zephyr.c
+12. No example `CMakeLists.txt` contains hardcoded relative paths to
+    `packages/zpico/` or `packages/xrce/`
+13. `zpico-zephyr` has zero nros-specific API (no `nano_ros_bsp_*` functions)
+14. `zpico-zephyr/zephyr/module.yml` does not exist
+15. Each backend's C sources are compiled exactly once per build (no duplicates)
+
+### Module Integration (46.12)
+
+16. `west.yml` does not reference zenoh-pico as a separate module
+17. zenoh-pico is compiled from `packages/zpico/zpico-sys/zenoh-pico/` submodule
+18. `scripts/zephyr/setup.sh` has no `patch_zenoh_pico()` function
+19. `Z_FEATURE_INTEREST=0` / `Z_FEATURE_MATCHING=0` applied via compile
+    definitions, not source file patches
+
+### Multi-RMW (46.13–46.17)
+
+20. Switching RMW backend requires only changing `prj.conf` — application
+    code is identical (same nros-c / nros API)
+21. Zenoh-specific Kconfig options hidden when XRCE is selected (and vice versa)
+22. `platform-zephyr` Cargo feature correctly forwards to both
+    `nros-rmw-zenoh` and `nros-rmw-xrce` via `?` syntax
+23. XRCE env vars (`XRCE_TRANSPORT_MTU`, etc.) propagate from Kconfig to
+    Cargo build.rs
 
 ### Configuration
 
-13. All Kconfig values in the mapping table propagate correctly to Cargo env
-    vars (verified by building with non-default values)
-14. Non-Zephyr builds (`just quality`) are unaffected — env vars and `#ifndef`
-    defaults work as before
-15. `prj.conf` is the only file users need to edit for configuration
+24. All Kconfig values propagate correctly to Cargo env vars
+25. Non-Zephyr builds (`just quality`) are unaffected
+26. `prj.conf` is the only file users need to edit for configuration
 
 ---
 
@@ -439,18 +618,38 @@ vars during configure time. `rust_cargo_application()` spawns Cargo during
 build time. If Cargo inherits the CMake process env (typical for
 `add_custom_command`), this works. If not, we may need to generate a
 `.cargo/config.toml` or pass env vars via the custom command's `COMMAND`
-property. Mitigation: test early in 46.5.
+property. Mitigation: tested and working in 46.5.
 
 **nros-c on native_sim.** `nros-c` has only been built for host (x86_64) and
 bare-metal ARM targets. Building for `native_sim` (x86_64-unknown-linux-gnu)
 with `platform-zephyr` is a new combination that may surface link issues.
-Mitigation: validate in 46.6 before revising examples.
+Mitigation: validated in 46.6.
 
-**Duplicate symbols.** Both the module CMake and zpico-sys build.rs want to
-compile `zenoh_shim.c`. The feature gate in 46.7 must be correct, and both C
-and Rust Zephyr paths must be tested. Mitigation: 46.7 is a prerequisite for
-46.8 and 46.9.
+**Duplicate symbols.** ~~Both the module CMake and zpico-sys build.rs want to
+compile `zenoh_shim.c`.~~ Resolved: the existing guard in `build.rs` (line 376)
+already skips shim compilation for Zephyr. 46.7 is obsolete.
+
+**zenoh-pico source compatibility (46.12).** Compiling zenoh-pico from the
+vendored submodule (currently 1.6.2) instead of the separate west module (1.7.2)
+may surface API differences if examples relied on 1.7.x features. Mitigation:
+verify all Zephyr examples build and pass with the submodule version. If needed,
+bump the submodule to match.
 
 **zephyr-lang-rust stability.** The `rust_cargo_application()` CMake function
 tracks `main` branch. API changes could break the Rust path. Mitigation: pin
 to a specific revision in `west.yml` after validation.
+
+**XRCE `time.c` on Zephyr (46.14).** The `zephyr` feature in xrce-sys needs
+to compile `time.c` which includes `<version.h>` (a Zephyr header). When
+xrce-sys is built by Cargo (not Zephyr CMake), the Zephyr sysroot may not be
+in the default include path. Mitigation: if `cc::Build` cannot find Zephyr
+headers, we have two options: (1) skip `time.c` and provide `uxr_millis()`
+/ `uxr_nanos()` from `xrce_zephyr.c` (compiled by Zephyr CMake), matching
+the bare-metal pattern; or (2) pass Zephyr include paths to `cc::Build` via
+`DEP_ZEPHYR_INCLUDE` env var from the module CMake. Option (1) is simpler
+and more consistent with the existing bare-metal approach.
+
+**XRCE UDP on native_sim.** Zephyr's native_sim uses host networking or a
+simulated network stack. BSD socket calls (`zsock_*`) map to POSIX sockets on
+native_sim, so `xrce_zephyr.c` should work without modification. Mitigation:
+validate in 46.15.
