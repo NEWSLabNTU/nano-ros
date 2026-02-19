@@ -326,14 +326,27 @@ The STM32F4 target is `thumbv7em-none-eabihf` (Cortex-M4F with hardware float).
 
 ## Zephyr Examples (`examples/zephyr/`)
 
-Zephyr examples build as a static library linked into the Zephyr application by CMake.
+Zephyr examples use nros as a **Zephyr module**. The module handles all transport compilation, Kconfig→env var bridging, and library linking automatically. Examples have minimal CMakeLists.txt files.
 
-### Directory structure
+### Directory Layout
+
+Examples follow a 4-level hierarchy: `examples/zephyr/{lang}/{rmw}/{use-case}/`
 
 ```
-examples/zephyr/my-example/
+examples/zephyr/
+├── rust/zenoh/talker/    # Rust + zenoh
+├── rust/xrce/talker/     # Rust + XRCE-DDS
+├── c/zenoh/talker/       # C + zenoh
+└── c/xrce/talker/        # C + XRCE-DDS
+```
+
+### Rust API Examples
+
+#### Directory structure
+
+```
+examples/zephyr/rust/zenoh/my-example/
 ├── Cargo.toml
-├── package.xml
 ├── CMakeLists.txt
 ├── prj.conf
 ├── src/
@@ -342,10 +355,10 @@ examples/zephyr/my-example/
 │   ├── builtin_interfaces/
 │   └── std_msgs/
 └── .cargo/
-    └── config.toml     # patches for ALL nros crates
+    └── config.toml     # patches for ALL nros + RMW crates
 ```
 
-### `Cargo.toml`
+#### `Cargo.toml`
 
 The package name **must** be `rustapp` for `zephyr-lang-rust` integration:
 
@@ -361,7 +374,7 @@ crate-type = ["staticlib"]
 [dependencies]
 zephyr = "0.1.0"
 log = "0.4"
-nros = { version = "*", default-features = false, features = ["shim-zephyr"] }
+nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-zephyr"] }
 std_msgs = { version = "*", default-features = false }
 
 [profile.release]
@@ -369,51 +382,59 @@ opt-level = "s"
 lto = true
 ```
 
-### `.cargo/config.toml`
+For XRCE backend, change the feature to `"rmw-xrce"`:
+```toml
+nros = { version = "*", default-features = false, features = ["rmw-xrce", "platform-zephyr"] }
+```
 
-Zephyr examples patch **all** nros crates (not just core/serdes):
+#### `.cargo/config.toml`
 
+Zephyr examples patch **all** nros crates plus the active RMW backend crates:
+
+**Zenoh backend:**
 ```toml
 [patch.crates-io]
-nros = { path = "../../../packages/core/nros" }
-nros-core = { path = "../../../packages/core/nros-core" }
-nros-serdes = { path = "../../../packages/core/nros-serdes" }
-nros-node = { path = "../../../packages/core/nros-node" }
-nros-rmw = { path = "../../../packages/core/nros-rmw" }
-nros-params = { path = "../../../packages/core/nros-params" }
-nros-macros = { path = "../../../packages/core/nros-macros" }
-nros-rmw-zenoh = { path = "../../../packages/zpico/nros-rmw-zenoh" }
-zpico-sys = { path = "../../../packages/zpico/zpico-sys" }
+nros = { path = "../../../../../packages/core/nros" }
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
+nros-node = { path = "../../../../../packages/core/nros-node" }
+nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
+nros-params = { path = "../../../../../packages/core/nros-params" }
+nros-macros = { path = "../../../../../packages/core/nros-macros" }
+nros-rmw-zenoh = { path = "../../../../../packages/zpico/nros-rmw-zenoh" }
+zpico-sys = { path = "../../../../../packages/zpico/zpico-sys" }
 builtin_interfaces = { path = "generated/builtin_interfaces" }
 std_msgs = { path = "generated/std_msgs" }
 ```
 
-### `CMakeLists.txt`
+**XRCE backend:**
+```toml
+[patch.crates-io]
+nros = { path = "../../../../../packages/core/nros" }
+nros-core = { path = "../../../../../packages/core/nros-core" }
+nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
+nros-node = { path = "../../../../../packages/core/nros-node" }
+nros-rmw = { path = "../../../../../packages/core/nros-rmw" }
+nros-params = { path = "../../../../../packages/core/nros-params" }
+nros-macros = { path = "../../../../../packages/core/nros-macros" }
+nros-rmw-xrce = { path = "../../../../../packages/xrce/nros-rmw-xrce" }
+xrce-sys = { path = "../../../../../packages/xrce/xrce-sys" }
+builtin_interfaces = { path = "generated/builtin_interfaces" }
+std_msgs = { path = "generated/std_msgs" }
+```
+
+#### `CMakeLists.txt`
+
+Minimal — the nros module handles everything:
 
 ```cmake
+cmake_minimum_required(VERSION 3.20.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(my_example)
-
-# nros BSP for Zephyr (C glue)
-set(BSP_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/zpico/zpico-zephyr)
-target_sources(app PRIVATE ${BSP_DIR}/src/bsp_zephyr.c)
-target_include_directories(app PRIVATE ${BSP_DIR}/include)
-
-# zenoh-pico C shim
-set(SHIM_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../packages/zpico/zpico-sys/c)
-target_sources(app PRIVATE ${SHIM_DIR}/shim/zenoh_shim.c)
-target_include_directories(app PRIVATE ${SHIM_DIR}/include)
-
-# Disable Z_FEATURE_INTEREST to avoid write-filter mutex exhaustion
-zephyr_compile_definitions(Z_FEATURE_INTEREST=0 Z_FEATURE_MATCHING=0)
-
-# Build Rust staticlib and link
 rust_cargo_application()
 ```
 
-### `prj.conf`
-
-Critical settings (copy from an existing Zephyr example and adjust):
+#### `prj.conf` (zenoh)
 
 ```ini
 # Rust support
@@ -425,14 +446,16 @@ CONFIG_NETWORKING=y
 CONFIG_NET_IPV4=y
 CONFIG_NET_TCP=y
 CONFIG_NET_UDP=y
+CONFIG_NET_SOCKETS=y
 
 # POSIX API (required by zenoh-pico)
 CONFIG_POSIX_API=y
-CONFIG_MAX_PTHREAD_MUTEX_COUNT=32   # Default 5 is too low for zenoh-pico
+CONFIG_MAX_PTHREAD_MUTEX_COUNT=32
 CONFIG_MAX_PTHREAD_COND_COUNT=16
 
-# nros (zenoh-pico features like pub/sub/TCP are enabled by default)
+# nros (zenoh is the default RMW backend)
 CONFIG_NROS=y
+CONFIG_NROS_RUST_API=y
 
 # Stack and heap
 CONFIG_MAIN_STACK_SIZE=16384
@@ -445,13 +468,49 @@ CONFIG_NET_CONFIG_MY_IPV4_NETMASK="255.255.255.0"
 CONFIG_NET_CONFIG_MY_IPV4_GW="192.0.2.2"
 ```
 
-### `src/lib.rs`
+#### `prj.conf` (XRCE)
+
+```ini
+# Rust support
+CONFIG_RUST=y
+CONFIG_RUST_ALLOC=y
+
+# Networking (BSD sockets required by XRCE)
+CONFIG_NETWORKING=y
+CONFIG_NET_IPV4=y
+CONFIG_NET_TCP=y
+CONFIG_NET_UDP=y
+CONFIG_NET_SOCKETS=y
+
+# nros with XRCE backend
+CONFIG_NROS=y
+CONFIG_NROS_RUST_API=y
+CONFIG_NROS_RMW_XRCE=y
+CONFIG_NROS_XRCE_AGENT_ADDR="192.0.2.2"
+CONFIG_NROS_XRCE_AGENT_PORT=2018
+
+# Stack and heap
+CONFIG_MAIN_STACK_SIZE=16384
+CONFIG_HEAP_MEM_POOL_SIZE=65536
+
+# Static IP
+CONFIG_NET_CONFIG_SETTINGS=y
+CONFIG_NET_CONFIG_MY_IPV4_ADDR="192.0.2.1"
+CONFIG_NET_CONFIG_MY_IPV4_NETMASK="255.255.255.0"
+CONFIG_NET_CONFIG_MY_IPV4_GW="192.0.2.2"
+```
+
+Note: XRCE does **not** need `CONFIG_POSIX_API` or elevated mutex counts.
+
+#### `src/lib.rs`
+
+The application code is **identical** for both backends — only `Cargo.toml` features and `prj.conf` differ:
 
 ```rust
 #![no_std]
 
 use log::{error, info};
-use nros::{ShimExecutor, ShimNodeError};
+use nros::{EmbeddedConfig, EmbeddedExecutor, EmbeddedNodeError};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
@@ -465,8 +524,10 @@ extern "C" fn rust_main() {
     }
 }
 
-fn run() -> Result<(), ShimNodeError> {
-    let mut executor = ShimExecutor::new(b"tcp/192.0.2.2:7447\0")?;
+fn run() -> Result<(), EmbeddedNodeError> {
+    // Zenoh: "tcp/192.0.2.2:7447"   XRCE: "192.0.2.2:2018"
+    let config = EmbeddedConfig::new("tcp/192.0.2.2:7447");
+    let mut executor = EmbeddedExecutor::open(&config)?;
     let mut node = executor.create_node("my_node")?;
     let publisher = node.create_publisher::<Int32>("/chatter")?;
 
@@ -475,20 +536,71 @@ fn run() -> Result<(), ShimNodeError> {
         publisher.publish(&Int32 { data: counter })?;
         info!("Published: {}", counter);
         counter = counter.wrapping_add(1);
-        let _ = executor.spin_once(1000);
+        let _ = executor.drive_io(1000);
     }
 }
 ```
 
+### C API Examples
+
+#### Directory structure
+
+```
+examples/zephyr/c/zenoh/my-example/
+├── CMakeLists.txt
+├── prj.conf
+├── src/
+│   └── main.c
+└── msg/
+    └── Int32.msg       # Interface files (resolved locally first)
+```
+
+#### `CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.20.0)
+find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
+project(my_example)
+
+nros_generate_interfaces(std_msgs "msg/Int32.msg")
+target_sources(app PRIVATE src/main.c)
+```
+
+#### `prj.conf` (zenoh)
+
+```ini
+CONFIG_NROS=y
+CONFIG_NROS_C_API=y
+# CONFIG_NROS_RMW_ZENOH=y  # default
+CONFIG_NROS_ZENOH_LOCATOR="tcp/192.0.2.2:7447"
+CONFIG_NROS_DOMAIN_ID=0
+CONFIG_POSIX_API=y
+CONFIG_MAX_PTHREAD_MUTEX_COUNT=32
+CONFIG_MAX_PTHREAD_COND_COUNT=16
+```
+
+#### `prj.conf` (XRCE)
+
+```ini
+CONFIG_NROS=y
+CONFIG_NROS_C_API=y
+CONFIG_NROS_RMW_XRCE=y
+CONFIG_NROS_XRCE_AGENT_ADDR="192.0.2.2"
+CONFIG_NROS_XRCE_AGENT_PORT=2018
+CONFIG_NROS_DOMAIN_ID=0
+CONFIG_NET_SOCKETS=y
+```
+
 ### Key points
 
-- **Package name must be `rustapp`** — the `zephyr-lang-rust` build system expects this
-- Source file is `src/lib.rs` (staticlib), not `src/main.rs`
-- Entry point: `#[unsafe(no_mangle)] extern "C" fn rust_main()`
-- Use `nros` with `features = ["shim-zephyr"]`
-- Zenoh locator is a null-terminated byte string: `b"tcp/192.0.2.2:7447\0"`
-- `CONFIG_MAX_PTHREAD_MUTEX_COUNT=32` is critical — zenoh-pico needs ~8+ POSIX mutexes
+- **Package name must be `rustapp`** — the `zephyr-lang-rust` build system expects this (Rust only)
+- Source file is `src/lib.rs` (staticlib) for Rust, `src/main.c` for C
+- Entry point: `#[unsafe(no_mangle)] extern "C" fn rust_main()` (Rust) or `int main(void)` (C)
+- Use `EmbeddedConfig` / `EmbeddedExecutor` / `EmbeddedNodeError` (not `ShimExecutor`)
+- RMW backend selected in two places: `Cargo.toml` features (Rust) and `prj.conf` Kconfig
+- No `target_sources` needed for transport C files — the module handles it
 - Build via `west build`, not `cargo build`
+- See [zephyr-setup.md](zephyr-setup.md) for full Kconfig reference
 
 ---
 
@@ -501,8 +613,8 @@ fn run() -> Result<(), ShimNodeError> {
 | **Source file** | `src/main.rs` | `src/main.rs` | `src/lib.rs` |
 | **Crate type** | Binary | Binary | Staticlib |
 | **Package name** | Any | Any | Must be `rustapp` |
-| **Main crate** | `nros` | `nros-mps2-an385`/`nros-stm32f4` | `nros` (shim-zephyr) |
-| **Transport** | Feature-gated `zenoh` | Built into platform crate | Built into BSP (C) |
+| **Main crate** | `nros` | `nros-mps2-an385`/`nros-stm32f4` | `nros` |
+| **Transport** | Feature-gated `zenoh` | Built into platform crate | Kconfig + module |
 | **Logging** | `env_logger` | Semihosting / `defmt` | `zephyr::set_logger()` |
 | **Build system** | `cargo build` | `cargo build` | `west build` (CMake) |
 | **Generate flags** | `cargo nano-ros generate` | `--config --nano-ros-path` | `cargo nano-ros generate` |

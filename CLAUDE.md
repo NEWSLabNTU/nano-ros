@@ -20,11 +20,17 @@ nano-ros/
 │   │   ├── nros-rmw-zenoh/        # Safe Rust API for zenoh-pico
 │   │   ├── zpico-sys/             # FFI + C shim + zenoh-pico submodule
 │   │   ├── zpico-smoltcp/         # TCP/UDP via smoltcp IP stack
-│   │   ├── zpico-zephyr/          # Zephyr RTOS BSP (C, CMake)
+│   │   ├── zpico-zephyr/          # Zephyr platform support (C glue, CMake)
 │   │   ├── zpico-platform-mps2-an385/ # QEMU ARM FFI symbols (no nros deps)
 │   │   ├── zpico-platform-esp32/  # ESP32-C3 WiFi FFI symbols
 │   │   ├── zpico-platform-esp32-qemu/ # ESP32-C3 QEMU FFI symbols
 │   │   └── zpico-platform-stm32f4/   # STM32F4 FFI symbols
+│   ├── xrce/                      # XRCE-DDS transport backend
+│   │   ├── nros-rmw-xrce/         # XRCE-DDS RMW implementation
+│   │   ├── xrce-sys/              # FFI + Micro-XRCE-DDS-Client submodule
+│   │   ├── xrce-smoltcp/          # UDP via smoltcp IP stack
+│   │   ├── xrce-zephyr/           # Zephyr platform support (C glue)
+│   │   └── xrce-platform-mps2-an385/ # QEMU ARM FFI symbols
 │   ├── boards/                    # Board support crates (user API)
 │   │   ├── nros-mps2-an385/       # QEMU ARM board (Node API)
 │   │   ├── nros-esp32/            # ESP32-C3 WiFi board
@@ -68,8 +74,10 @@ nano-ros/
 │   │       ├── core/             # nros-core only (embassy)
 │   │       └── standalone/       # No nros deps (smoltcp)
 │   └── zephyr/                # Zephyr RTOS
-│       ├── rust/zenoh/           # Rust (talker, listener, service-*, action-*)
-│       └── c/zenoh/              # C (talker, listener)
+│       ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*)
+│       ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener)
+│       ├── c/zenoh/              # C + zenoh (talker, listener)
+│       └── c/xrce/               # C + XRCE-DDS (talker, listener)
 ├── scripts/zenohd/            # Zenohd build scripts
 │   ├── build.sh               # Build zenohd from submodule
 │   └── zenoh/                 # Zenoh 1.6.2 submodule
@@ -83,6 +91,10 @@ nano-ros/
 ├── external/                  # Reference projects (git-ignored)
 ├── tests/                     # Test scripts and docs
 ├── docs/                      # Detailed documentation
+├── zephyr/                    # Zephyr module definition
+│   ├── Kconfig                # RMW backend, API selection, tuning knobs
+│   ├── CMakeLists.txt         # Compiles transport C sources, builds nros-c
+│   └── cmake/                 # nros_cargo_build(), nros_generate_interfaces()
 ├── zephyr-workspace -> ../nano-ros-workspace/  # Symlink to Zephyr workspace
 └── west.yml                   # Zephyr west manifest
 ```
@@ -120,7 +132,8 @@ just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
 just test-qemu-esp32    # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
 just test-integration   # All Rust integration tests (builds zenohd automatically)
 just test               # test-unit + test-miri + test-qemu + test-integration
-just test-zephyr        # Zephyr E2E tests (needs west + TAP)
+just test-zephyr        # Zephyr E2E tests — zenoh (needs west + TAP)
+just test-zephyr-xrce   # Zephyr E2E tests — XRCE (needs west + TAP + XRCE Agent)
 just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
 just test-all           # Everything
@@ -609,8 +622,9 @@ See `docs/roadmap/phase-6-actions.md` for API details.
 ### Zephyr Setup
 ```bash
 ./scripts/zephyr/setup.sh              # Initialize workspace + create symlink
-sudo ./scripts/zephyr/setup-network.sh # Configure TAP network
-just test-zephyr                       # Run tests
+sudo ./scripts/zephyr/setup-network.sh # Configure bridge network (zeth-br)
+just test-zephyr                       # Run zenoh tests
+just test-zephyr-xrce                  # Run XRCE tests
 ```
 
 The `zephyr-workspace` symlink points to the actual workspace (default: `../nano-ros-workspace/`).
@@ -618,6 +632,29 @@ Scripts use this symlink to locate the workspace. For custom workspace locations
 ```bash
 ln -sfn /path/to/custom-workspace zephyr-workspace
 ```
+
+**Zephyr module**: nros registers as a Zephyr module via `zephyr/module.yml`. The `zephyr/Kconfig` exposes all configuration. The `zephyr/CMakeLists.txt` compiles transport C sources and (for C API) builds `libnros_c.a` via Cargo.
+
+**RMW backend selection** in `prj.conf`:
+```ini
+# Zenoh (default — connects to zenohd router)
+CONFIG_NROS=y
+CONFIG_NROS_RMW_ZENOH=y       # (default, can be omitted)
+
+# XRCE-DDS (connects to Micro-XRCE-DDS Agent)
+CONFIG_NROS=y
+CONFIG_NROS_RMW_XRCE=y
+CONFIG_NROS_XRCE_AGENT_ADDR="192.0.2.2"
+CONFIG_NROS_XRCE_AGENT_PORT=2018
+```
+
+**API selection** in `prj.conf`:
+```ini
+CONFIG_NROS_RUST_API=y         # Rust API (default) — uses rust_cargo_application()
+CONFIG_NROS_C_API=y            # C API — links libnros_c.a, uses nros_generate_interfaces()
+```
+
+Zenoh requires `CONFIG_POSIX_API=y` and elevated mutex counts. XRCE requires `CONFIG_NET_SOCKETS=y`. See existing examples in `examples/zephyr/` for complete `prj.conf` templates.
 
 See [docs/guides/zephyr-setup.md](docs/guides/zephyr-setup.md) for details.
 

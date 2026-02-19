@@ -1,6 +1,6 @@
 # Phase 46 — Zephyr Module Refactor
 
-## Status: In Progress
+## Status: Complete
 
 ## Background
 
@@ -533,22 +533,25 @@ Add test recipes and integration tests for XRCE on Zephyr.
 
 Update all docs to reflect multi-RMW architecture.
 
-- [ ] Update `CLAUDE.md`:
+- [x] Update `CLAUDE.md`:
   - Add `zephyr/` to workspace structure
   - Update zpico-zephyr description (platform support, not BSP)
-  - Document multi-RMW Kconfig options and env var mappings
-  - Add Zephyr module usage instructions
-- [ ] Update `docs/guides/zephyr-setup.md`:
-  - Remove references to manual `target_sources` boilerplate
+  - Add `xrce/` package tree with xrce-zephyr
+  - Add XRCE Zephyr examples to example tree
+  - Document multi-RMW Kconfig options and module usage
+- [x] Update `docs/guides/zephyr-setup.md`:
+  - Updated network diagram to bridge topology (zeth-br, zeth0, zeth1)
   - Document `CONFIG_NROS_RMW_ZENOH` / `CONFIG_NROS_RMW_XRCE` choice
   - Document `CONFIG_NROS_C_API` / `CONFIG_NROS_RUST_API` choice
-  - Add `prj.conf` reference for all Kconfig options (both backends)
-- [ ] Update `docs/guides/creating-examples.md`:
-  - Revise Zephyr example section with new minimal CMakeLists.txt
+  - Full Kconfig reference tables (common, zenoh, XRCE, C API)
+  - Removed manual `target_sources` boilerplate references
+- [x] Update `docs/guides/creating-examples.md`:
+  - Revised Zephyr section with module-based CMakeLists.txt
   - Document C API vs Rust API path selection
   - Document zenoh vs XRCE backend selection
-- [ ] Mark phase 46 as Complete in this file
-- [ ] Verify: all doc cross-references are valid
+  - Updated API from ShimExecutor to EmbeddedExecutor
+- [x] Mark phase 46 as Complete in this file
+- [x] Verify: all doc cross-references are valid
 
 ---
 
