@@ -73,6 +73,22 @@ filter = "binary(xrce_ros2_interop)"
 test-group = "xrce_ros2_interop"
 slow-timeout = { period = "60s", terminate-after = 3 }
 
+# ROS 2 interop tests: ros2 CLI commands with rmw_zenoh_cpp are heavyweight
+# (each spawns zenoh sessions for discovery). Running in parallel causes
+# resource contention and discovery timeouts.
+[test-groups.ros2-interop]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(params)"
+test-group = "ros2-interop"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
+[[profile.default.overrides]]
+filter = "binary(rmw_interop)"
+test-group = "ros2-interop"
+slow-timeout = { period = "60s", terminate-after = 2 }
+
 # Safety E2E tests: 3s stabilization + 30s collection = ~33s expected runtime
 [[profile.default.overrides]]
 filter = "binary(safety_e2e)"
