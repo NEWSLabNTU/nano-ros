@@ -532,6 +532,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 | 40 | Large message support | In Progress |
 | 42 | Extensible RMW layer | Complete |
 | 43 | RMW-agnostic embedded API | Complete |
+| 47 | Executor trigger conditions | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -544,6 +545,8 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 **Phase 42**: Complete. Generic `Executor<S>` (formerly `EmbeddedExecutor<S>`) / `Node<S>` replacing duplicated `ShimNode`/`XrceNode`, `drive_io()` on Session trait, C function table adapter (`nros-rmw-cffi`), feature wiring. `shim.rs` and `xrce.rs` deleted, all examples migrated.
 
 **Phase 43**: Complete. RMW-agnostic embedded API. All 13 sub-phases done: factory (`Executor::open()`), arena-based callbacks (`add_subscription`/`add_service`/`add_timer`/`add_action_server`/`add_action_client`), `spin_once()`/`spin_blocking()`/`spin_period()`, executor unification (deleted `PollingExecutor`/`BasicExecutor`/`Context`), type renames (`Executor`, `Node`, `NodeError`, `ExecutorConfig`, `Subscription`). Backward compat aliases provided for old `Embedded*` names.
+
+**Phase 47**: Executor trigger conditions. Adds rclc-style trigger conditions (`Trigger::Any`/`All`/`One`/`Always`) and per-callback `InvocationMode` (`OnNewData`/`Always`) to the executor. Leverages existing `has_data()` trait methods via monomorphized fn pointers on `CallbackMeta`. See `docs/roadmap/phase-47-executor-trigger-conditions.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 
