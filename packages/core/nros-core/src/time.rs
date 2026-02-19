@@ -6,6 +6,24 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Seria
 /// Nanoseconds per second
 const NANOS_PER_SEC: i64 = 1_000_000_000;
 
+/// Split a float seconds value into (sec, nanosec) without using `f64::floor()`/`f64::abs()`
+/// which require `std`. Uses integer truncation with correction for negative values.
+fn split_secs_f64(secs: f64) -> (i32, u32) {
+    let truncated = secs as i32;
+    // `as i32` truncates toward zero; floor rounds toward negative infinity.
+    // Correct for negative values with a fractional part.
+    let sec = if (truncated as f64) > secs {
+        truncated - 1
+    } else {
+        truncated
+    };
+    let frac = secs - sec as f64;
+    // frac should be in [0, 1), but guard against float imprecision
+    let frac = if frac < 0.0 { -frac } else { frac };
+    let nanosec = (frac * NANOS_PER_SEC as f64) as u32;
+    (sec, nanosec)
+}
+
 /// ROS Time representation
 ///
 /// Matches `builtin_interfaces/msg/Time`:
@@ -64,19 +82,12 @@ impl Time {
     }
 
     /// Create a Time from seconds (float)
-    ///
-    /// Requires `std` feature for floating point math.
-    #[cfg(feature = "std")]
     pub fn from_secs_f64(secs: f64) -> Self {
-        let sec = secs.floor() as i32;
-        let nanosec = ((secs - secs.floor()) * NANOS_PER_SEC as f64) as u32;
+        let (sec, nanosec) = split_secs_f64(secs);
         Self { sec, nanosec }
     }
 
     /// Convert to seconds (float)
-    ///
-    /// Requires `std` feature for floating point math.
-    #[cfg(feature = "std")]
     pub fn to_secs_f64(&self) -> f64 {
         self.sec as f64 + (self.nanosec as f64 / NANOS_PER_SEC as f64)
     }
@@ -183,19 +194,12 @@ impl Duration {
     }
 
     /// Create a Duration from seconds (float)
-    ///
-    /// Requires `std` feature for floating point math.
-    #[cfg(feature = "std")]
     pub fn from_secs_f64(secs: f64) -> Self {
-        let sec = secs.floor() as i32;
-        let nanosec = ((secs - secs.floor()).abs() * NANOS_PER_SEC as f64) as u32;
+        let (sec, nanosec) = split_secs_f64(secs);
         Self { sec, nanosec }
     }
 
     /// Convert to seconds (float)
-    ///
-    /// Requires `std` feature for floating point math.
-    #[cfg(feature = "std")]
     pub fn to_secs_f64(&self) -> f64 {
         self.sec as f64 + (self.nanosec as f64 / NANOS_PER_SEC as f64)
     }
@@ -372,7 +376,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "std")]
     fn test_time_secs_f64() {
         let time = Time::from_secs_f64(1.5);
         assert_eq!(time.sec, 1);
@@ -383,7 +386,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "std")]
     fn test_duration_secs_f64() {
         let duration = Duration::from_secs_f64(2.25);
         assert_eq!(duration.sec, 2);
