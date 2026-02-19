@@ -2,6 +2,12 @@
 
 Lightweight ROS 2 client for embedded real-time systems (Zephyr, NuttX). `no_std` compatible.
 
+### Naming Convention
+
+- **nano-ros** — the project name, used in prose, documentation, and user-facing text
+- **nros** — the code-level shorthand, used in crate names (`nros-core`, `nros-rmw-zenoh`), Rust identifiers (`nros_core::`, `nros_serdes::`), Kconfig symbols (`CONFIG_NROS_*`), and C struct prefixes (`nros_node_t`)
+- **nano_ros** — C function names (`nano_ros_support_init`), C headers (`nano_ros/`), CMake targets (`NanoRos::NanoRos`)
+
 ## Workspace Structure
 
 ```
