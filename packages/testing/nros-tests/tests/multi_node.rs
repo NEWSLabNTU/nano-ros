@@ -65,8 +65,9 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
         talkers.push(proc);
     }
 
-    // Let them communicate for 3 seconds
-    std::thread::sleep(Duration::from_secs(3));
+    // Let them communicate for 5 seconds (subscription propagation across
+    // 3 simultaneous sessions + 1s timer period needs extra headroom)
+    std::thread::sleep(Duration::from_secs(5));
 
     // Kill all processes
     for mut talker in talkers {

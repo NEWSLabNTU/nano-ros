@@ -381,12 +381,16 @@ fn test_service_server_multiple_clients(
         panic!("Service server failed to start");
     }
 
-    // Start two clients simultaneously
+    // Start two clients with staggered starts to avoid zenoh queryable race
     let mut client1_cmd = Command::new(&service_client_binary);
     client1_cmd.env("ZENOH_LOCATOR", &locator);
     client1_cmd.env("RUST_LOG", "info");
     let mut client1 = ManagedProcess::spawn_command(client1_cmd, "service-client-1")
         .expect("Failed to start client 1");
+
+    // Stagger client 2 start by 2 seconds so both clients don't race
+    // for the zenoh queryable registration simultaneously
+    std::thread::sleep(Duration::from_secs(2));
 
     let mut client2_cmd = Command::new(&service_client_binary);
     client2_cmd.env("ZENOH_LOCATOR", &locator);
