@@ -111,6 +111,436 @@ pub struct ServiceBufferGhost {
 }
 
 // ======================================================================
+// Buffer State Machine Operations
+// ======================================================================
+
+/// Result of a subscriber buffer read operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SubReadResult {
+    /// No data available
+    Empty,
+    /// Data available and successfully read
+    Ok,
+    /// Overflow detected — message was too large
+    Overflow,
+}
+
+/// Result of a service buffer read operation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SvcReadResult {
+    /// No request available
+    Empty,
+    /// Request available and successfully read
+    Ok,
+    /// Overflow detected — request was too large
+    Overflow,
+}
+
+impl SubscriberBufferGhost {
+    /// Initial empty state.
+    pub fn new(buf_capacity: usize) -> Self {
+        Self {
+            has_data: false,
+            overflow: false,
+            locked: false,
+            stored_len: 0,
+            buf_capacity,
+        }
+    }
+
+    /// Models the transport callback writing into the buffer.
+    ///
+    /// Returns `true` if the write succeeded, `false` if the message was
+    /// dropped (buffer locked).
+    pub fn callback_write(&mut self, msg_len: usize) -> bool {
+        if self.locked {
+            // Reader is processing — drop message
+            return false;
+        }
+        if msg_len > self.buf_capacity {
+            self.overflow = true;
+            self.has_data = true;
+            // stored_len is not updated on overflow
+        } else {
+            self.overflow = false;
+            self.stored_len = msg_len;
+            self.has_data = true;
+        }
+        true
+    }
+
+    /// Models `try_recv_raw` — copy-based read with lock window.
+    pub fn try_recv_raw(&mut self, user_buf_capacity: usize) -> SubReadResult {
+        if !self.has_data {
+            return SubReadResult::Empty;
+        }
+        if self.overflow {
+            self.overflow = false;
+            self.has_data = false;
+            return SubReadResult::Overflow;
+        }
+        // Lock window: locked=true → copy → locked=false → has_data=false
+        self.locked = true;
+        let fits = self.stored_len <= user_buf_capacity;
+        self.locked = false;
+        self.has_data = false;
+        if fits {
+            SubReadResult::Ok
+        } else {
+            SubReadResult::Overflow
+        }
+    }
+
+    /// Models `process_raw_in_place` — in-place read with lock window.
+    pub fn process_in_place(&mut self) -> SubReadResult {
+        if !self.has_data {
+            return SubReadResult::Empty;
+        }
+        if self.overflow {
+            self.overflow = false;
+            self.has_data = false;
+            return SubReadResult::Overflow;
+        }
+        // Lock window: locked=true → f(&data[..len]) → locked=false → has_data=false
+        self.locked = true;
+        // Callback would be dropped here if it fired
+        self.locked = false;
+        self.has_data = false;
+        SubReadResult::Ok
+    }
+}
+
+impl ServiceBufferGhost {
+    /// Initial empty state.
+    pub fn new(buf_capacity: usize) -> Self {
+        Self {
+            has_request: false,
+            overflow: false,
+            stored_len: 0,
+            buf_capacity,
+        }
+    }
+
+    /// Models the queryable/request callback writing into the buffer.
+    pub fn callback_write(&mut self, msg_len: usize) {
+        if msg_len > self.buf_capacity {
+            self.overflow = true;
+            self.has_request = true;
+        } else {
+            self.overflow = false;
+            self.stored_len = msg_len;
+            self.has_request = true;
+        }
+    }
+
+    /// Models `try_recv_request`.
+    pub fn try_recv_request(&mut self) -> SvcReadResult {
+        if !self.has_request {
+            return SvcReadResult::Empty;
+        }
+        if self.overflow {
+            self.overflow = false;
+            self.has_request = false;
+            return SvcReadResult::Overflow;
+        }
+        self.has_request = false;
+        SvcReadResult::Ok
+    }
+}
+
+// ======================================================================
+// Kani Bounded Model Checking
+// ======================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    // ------------------------------------------------------------------
+    // SubscriberBuffer invariants
+    // ------------------------------------------------------------------
+
+    /// After any callback, if has_data && !overflow, then stored_len <= buf_capacity.
+    #[kani::proof]
+    fn sub_callback_len_bounded() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len <= 65536);
+        buf.callback_write(msg_len);
+
+        if buf.has_data && !buf.overflow {
+            assert!(buf.stored_len <= buf.buf_capacity);
+        }
+    }
+
+    /// Overflow is set iff the message exceeded capacity.
+    #[kani::proof]
+    fn sub_callback_overflow_iff_too_large() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len <= 65536);
+        buf.callback_write(msg_len);
+
+        assert_eq!(buf.overflow, msg_len > cap);
+    }
+
+    /// A locked buffer drops the callback — state unchanged.
+    #[kani::proof]
+    fn sub_locked_drops_callback() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        // Put some data in the buffer first
+        let first_len: usize = kani::any();
+        kani::assume(first_len > 0 && first_len <= cap);
+        buf.callback_write(first_len);
+
+        // Start in-place read (sets locked=true mid-operation)
+        // Simulate the lock window manually
+        buf.locked = true;
+        let snapshot_has_data = buf.has_data;
+        let snapshot_overflow = buf.overflow;
+        let snapshot_len = buf.stored_len;
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len <= 65536);
+        let accepted = buf.callback_write(msg_len);
+
+        assert!(!accepted);
+        assert_eq!(buf.has_data, snapshot_has_data);
+        assert_eq!(buf.overflow, snapshot_overflow);
+        assert_eq!(buf.stored_len, snapshot_len);
+
+        buf.locked = false;
+    }
+
+    /// Overflow is never silently consumed — reading returns Overflow error.
+    #[kani::proof]
+    fn sub_overflow_detected_on_read() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len > cap && msg_len <= 65536);
+        buf.callback_write(msg_len);
+
+        let result = buf.try_recv_raw(cap);
+        assert_eq!(result, SubReadResult::Overflow);
+    }
+
+    /// Overflow detected via in-place path too.
+    #[kani::proof]
+    fn sub_overflow_detected_in_place() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len > cap && msg_len <= 65536);
+        buf.callback_write(msg_len);
+
+        let result = buf.process_in_place();
+        assert_eq!(result, SubReadResult::Overflow);
+    }
+
+    /// After successful read, buffer is ready for next message.
+    #[kani::proof]
+    fn sub_read_clears_state() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len > 0 && msg_len <= cap);
+        buf.callback_write(msg_len);
+        assert!(buf.has_data);
+
+        let result = buf.process_in_place();
+        assert_eq!(result, SubReadResult::Ok);
+        assert!(!buf.has_data);
+        assert!(!buf.overflow);
+        assert!(!buf.locked);
+    }
+
+    /// Reading from empty buffer returns Empty, not garbage.
+    #[kani::proof]
+    fn sub_empty_read_is_empty() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        assert_eq!(buf.try_recv_raw(cap), SubReadResult::Empty);
+        assert_eq!(buf.process_in_place(), SubReadResult::Empty);
+    }
+
+    /// Write–read–write–read cycle: buffer handles back-to-back correctly.
+    #[kani::proof]
+    fn sub_write_read_cycle() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        let len1: usize = kani::any();
+        kani::assume(len1 > 0 && len1 <= cap);
+        buf.callback_write(len1);
+        let r1 = buf.process_in_place();
+        assert_eq!(r1, SubReadResult::Ok);
+
+        let len2: usize = kani::any();
+        kani::assume(len2 > 0 && len2 <= cap);
+        buf.callback_write(len2);
+        let r2 = buf.process_in_place();
+        assert_eq!(r2, SubReadResult::Ok);
+    }
+
+    /// Overflow then normal: overflow is cleared by read, next write succeeds.
+    #[kani::proof]
+    fn sub_overflow_then_normal() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+
+        // Trigger overflow
+        let big: usize = kani::any();
+        kani::assume(big > cap && big <= 65536);
+        buf.callback_write(big);
+        let r1 = buf.process_in_place();
+        assert_eq!(r1, SubReadResult::Overflow);
+
+        // Normal write should now succeed
+        let small: usize = kani::any();
+        kani::assume(small > 0 && small <= cap);
+        buf.callback_write(small);
+        let r2 = buf.process_in_place();
+        assert_eq!(r2, SubReadResult::Ok);
+    }
+
+    /// Buffer capacity is preserved across all operations.
+    #[kani::proof]
+    fn sub_capacity_immutable() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = SubscriberBufferGhost::new(cap);
+        let original_cap = buf.buf_capacity;
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len <= 65536);
+        buf.callback_write(msg_len);
+        assert_eq!(buf.buf_capacity, original_cap);
+
+        let _ = buf.process_in_place();
+        assert_eq!(buf.buf_capacity, original_cap);
+    }
+
+    // ------------------------------------------------------------------
+    // ServiceBuffer invariants
+    // ------------------------------------------------------------------
+
+    /// After any callback, if has_request && !overflow, then stored_len <= buf_capacity.
+    #[kani::proof]
+    fn svc_callback_len_bounded() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = ServiceBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len <= 65536);
+        buf.callback_write(msg_len);
+
+        if buf.has_request && !buf.overflow {
+            assert!(buf.stored_len <= buf.buf_capacity);
+        }
+    }
+
+    /// Service overflow is detected — never silently consumed.
+    #[kani::proof]
+    fn svc_overflow_detected() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = ServiceBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len > cap && msg_len <= 65536);
+        buf.callback_write(msg_len);
+
+        let result = buf.try_recv_request();
+        assert_eq!(result, SvcReadResult::Overflow);
+    }
+
+    /// Service read clears state for next request.
+    #[kani::proof]
+    fn svc_read_clears_state() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = ServiceBufferGhost::new(cap);
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len > 0 && msg_len <= cap);
+        buf.callback_write(msg_len);
+
+        let result = buf.try_recv_request();
+        assert_eq!(result, SvcReadResult::Ok);
+        assert!(!buf.has_request);
+        assert!(!buf.overflow);
+    }
+
+    /// Empty service buffer returns Empty.
+    #[kani::proof]
+    fn svc_empty_read_is_empty() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = ServiceBufferGhost::new(cap);
+
+        assert_eq!(buf.try_recv_request(), SvcReadResult::Empty);
+    }
+
+    /// Service overflow→read→write→read cycle.
+    #[kani::proof]
+    fn svc_overflow_then_normal() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = ServiceBufferGhost::new(cap);
+
+        let big: usize = kani::any();
+        kani::assume(big > cap && big <= 65536);
+        buf.callback_write(big);
+        let r1 = buf.try_recv_request();
+        assert_eq!(r1, SvcReadResult::Overflow);
+
+        let small: usize = kani::any();
+        kani::assume(small > 0 && small <= cap);
+        buf.callback_write(small);
+        let r2 = buf.try_recv_request();
+        assert_eq!(r2, SvcReadResult::Ok);
+    }
+
+    /// Service capacity is preserved across all operations.
+    #[kani::proof]
+    fn svc_capacity_immutable() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 65536);
+        let mut buf = ServiceBufferGhost::new(cap);
+        let original_cap = buf.buf_capacity;
+
+        let msg_len: usize = kani::any();
+        kani::assume(msg_len <= 65536);
+        buf.callback_write(msg_len);
+        assert_eq!(buf.buf_capacity, original_cap);
+
+        let _ = buf.try_recv_request();
+        assert_eq!(buf.buf_capacity, original_cap);
+    }
+}
+
+// ======================================================================
 // Publish Call Chain
 // ======================================================================
 

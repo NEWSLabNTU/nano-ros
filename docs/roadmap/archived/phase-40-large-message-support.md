@@ -1,6 +1,6 @@
 # Phase 40 — Large Message Support
 
-## Status: In Progress (40.1–40.4 complete)
+## Status: Complete
 
 ## Background
 
@@ -673,49 +673,34 @@ just test-xrce                                      # All XRCE tests
 cargo nextest run -p nros-tests -E 'test(xrce_large_message)'  # Just this test
 ```
 
-### Zenoh Large Message Test (TODO)
+### Zenoh Large Message Test
 
-No dedicated large-message integration test exists for the zenoh backend yet.
-The existing `nano2nano.rs` tests use Int32 messages (8 bytes).
+Comprehensive zenoh large message tests in `nros-tests::large_msg`:
 
-**What to test**: Publish and receive messages larger than `Z_BATCH_UNICAST_SIZE`
-(1024 bytes on embedded, 65536 bytes on posix) to verify zenoh-pico
-fragmentation and reassembly work end-to-end. The binding constraint is
-`SUBSCRIBER_BUFFER_SIZE` (1024 bytes) on the receive side — messages larger than
-this trigger `TransportError::MessageTooLarge`.
+- `test_zenoh_large_publish_sizes` — publishes payloads from 64B to 32KB, tests fragmentation
+- `test_zenoh_e2e_integrity` — 512B payload end-to-end with data integrity validation
+- `test_zenoh_overflow_detection` — 2048B payload vs 1024B receiver buffer, verifies `MessageTooLarge`
+- `test_zenoh_e2e_large_receive` — 4096B payloads with resized 8192B shim buffer
+- `test_zenoh_throughput_100hz` — high-rate stress test (100 messages at 10ms interval)
+- `test_zenoh_throughput_burst` — maximum throughput burst test
+- `test_qemu_zenoh_large_publish` — QEMU bare-metal large message test
 
-**Possible approaches**:
+Run with:
+```bash
+just test-integration                                                # All integration tests
+cargo nextest run -p nros-tests -E 'test(zenoh_large)'               # Just zenoh large msg tests
+```
 
-1. **Publish-only test** (similar to XRCE large-msg-test): Create a zenoh
-   talker binary that publishes `String` messages of increasing sizes via
-   `publish_raw()`. Verify the publish path succeeds for payloads up to the
-   defrag limit. This tests zenoh-pico fragmentation on the TX side without
-   requiring the receive-side buffer to match.
+## Verification Requirements (Complete)
 
-2. **End-to-end test with sized subscriber**: Create a talker/listener pair
-   where the listener uses `create_subscriber_sized::<String, 8192>()` and
-   `SUBSCRIBER_BUFFER_SIZE` is also increased (requires either changing the
-   constant or adding build-time configurability to the shim buffer size).
-   This tests the full path including deserialization.
-
-3. **Overflow detection test**: Publish a message larger than
-   `SUBSCRIBER_BUFFER_SIZE` and verify the listener reports
-   `TransportError::MessageTooLarge` (not silent truncation). This validates
-   Phase 40.1's overflow flag without needing buffer size changes.
-
-**Recommended first step**: Approach 3 (overflow detection) validates the most
-critical behavior (no silent corruption) and requires no buffer size changes.
-Approach 1 can be added alongside it. Approach 2 is blocked until shim buffer
-sizes become build-time configurable.
-
-## Verification Requirements
-
-- Verus proofs for `SubscriberBuffer` / `ServiceBuffer` state machines need
-  parameterizing for configurable buffer sizes (currently hardcode capacity = 1024)
-- Kani harnesses need updated size parameters to cover non-default buffer sizes
-- Phase 37.1a buffer state machine tests (`ghost_capacity_constant`) must hold
-  across all buffer sizes
-- New overflow error paths (service buffer overflow flag) need proof coverage
+- [x] Verus proofs parameterized by `buf_capacity` — 14+ proofs covering overflow,
+  lock correctness, data race prevention (in `nros-verification/src/e2e.rs`)
+- [x] Ghost types parameterized — `SubscriberBufferGhost.buf_capacity` and
+  `ServiceBufferGhost.buf_capacity` fields (in `nros-ghost-types`)
+- [x] Kani harnesses for buffer state machines — 16 harnesses in `nros-ghost-types`
+  verifying overflow detection, lock safety, state consistency, and capacity
+  invariants for arbitrary buffer sizes (256–65536)
+- [x] Overflow error paths covered by both Verus proofs and Kani harnesses
 
 ## Key Files
 
