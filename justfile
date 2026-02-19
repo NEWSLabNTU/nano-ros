@@ -57,14 +57,13 @@ test-unit verbose="":
     cargo nextest run "${args[@]}"
 
 # Run standard tests (needs qemu-system-arm + zenohd)
-# Single nextest run (workspace + integration, excluding zephyr/ros2/large_msg) + Miri + QEMU
+# Single nextest run (workspace + integration, excluding zephyr/ros2/large_msg) + Miri
 test verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
-    just _init-test-logs
     args=(--workspace --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(large_msg)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -73,13 +72,7 @@ test verbose="": build-zenohd
     echo "=== Miri ==="
     just test-miri || failed=1
     echo ""
-    echo "=== QEMU Tests ==="
-    just test-qemu-basic {{verbose}} || failed=1
-    just test-qemu-wcet {{verbose}} || failed=1
-    just test-qemu-lan9118 {{verbose}} || failed=1
-    echo ""
     echo "JUnit XML: target/nextest/default/junit.xml"
-    echo "QEMU logs: {{LOG_DIR}}/latest/"
     if [ $failed -ne 0 ]; then
         echo "FAIL: Some tests failed."
         exit 1
@@ -87,8 +80,8 @@ test verbose="": build-zenohd
         echo "All standard tests passed!"
     fi
 
-# Run all tests including Zephyr, ROS 2 interop, C API
-# Single nextest run (entire workspace) + Miri + QEMU + C
+# Run all tests including Zephyr, ROS 2 interop, C API, XRCE, large_msg
+# Single nextest run (entire workspace) + Miri + C codegen
 test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
@@ -103,22 +96,8 @@ test-all verbose="": build-zenohd
     echo "=== Miri ==="
     just test-miri || failed=1
     echo ""
-    echo "=== QEMU Tests ==="
-    just test-qemu-basic {{verbose}} || failed=1
-    just test-qemu-wcet {{verbose}} || failed=1
-    just test-qemu-lan9118 {{verbose}} || failed=1
-    echo ""
-    echo "=== C API Tests ==="
-    just test-c {{verbose}} || failed=1
-    echo ""
-    echo "=== C XRCE API Tests ==="
-    just test-c-xrce {{verbose}} || failed=1
-    echo ""
-    echo "=== XRCE ↔ ROS 2 DDS Interop ==="
-    just test-xrce-ros2 {{verbose}} || failed=1
-    echo ""
-    echo "=== Large Message & Throughput ==="
-    just test-large-msg {{verbose}} || failed=1
+    echo "=== C Codegen Tests ==="
+    just _test-c-codegen {{verbose}} || failed=1
     echo ""
     echo "JUnit XML:  target/nextest/default/junit.xml"
     echo "Other logs: {{LOG_DIR}}/latest/"
@@ -225,16 +204,8 @@ check-workspace-features:
     cargo clippy -p nros-rmw --features "std" -- {{CLIPPY_LINTS}}
     @echo "All feature checks passed!"
 
-# Run workspace unit tests (no external deps)
-# Excludes nros-tests which contains integration tests requiring zenohd/Zephyr/ROS 2
-test-workspace verbose="":
-    #!/usr/bin/env bash
-    set -e
-    args=(--workspace --exclude nros-tests --no-fail-fast)
-    if [ -z "{{verbose}}" ]; then
-        args+=(--success-output never --failure-output never)
-    fi
-    cargo nextest run "${args[@]}"
+# Alias for test-unit (backward compatibility)
+test-workspace verbose="": (test-unit verbose)
 
 # Run Miri to detect undefined behavior in embedded-safe crates (no FFI)
 test-miri:
@@ -879,7 +850,9 @@ bench-fairness:
 # Integration Tests (requires zenohd running on tcp/127.0.0.1:7447)
 # =============================================================================
 
-# Run all Rust integration tests (requires zenohd)
+# Run integration tests only (requires zenohd)
+# Note: `just test` covers these plus workspace unit tests in a single nextest run.
+# Use this when you only want to re-run integration tests.
 # Excludes zephyr, rmw_interop, large_msg tests (run via test-zephyr / test-ros2 / test-large-msg)
 test-integration verbose="": build-zenohd
     #!/usr/bin/env bash
@@ -970,7 +943,6 @@ test-ros2-shell:
 # C API Tests (requires cmake + zenohd)
 # =============================================================================
 
-# Run all C tests (integration + codegen)
 # Run XRCE-DDS integration tests (requires: just build-xrce-agent)
 test-xrce verbose="":
     #!/usr/bin/env bash
@@ -991,20 +963,25 @@ test-xrce-ros2 verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-test-c verbose="": build-zenohd _init-test-logs
+# Run C codegen tests only (shell-based, no nextest)
+_test-c-codegen verbose="": _init-test-logs
     #!/usr/bin/env bash
     set -e
     v="{{ if verbose != "" { "--verbose" } else { "" } }}"
-    # C API integration tests (build + communication via nextest)
+    ./tests/run-test.sh --name c-codegen --log {{LOG_DIR}}/latest/c-codegen.log $v -- \
+        bash -c 'cd packages/codegen/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
+    ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh
+
+# Run all C tests (integration + codegen)
+test-c verbose="": build-zenohd _init-test-logs
+    #!/usr/bin/env bash
+    set -e
     args=(-p nros-tests --no-fail-fast -E 'binary(c_api)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
-    # C codegen tests
-    ./tests/run-test.sh --name c-codegen --log {{LOG_DIR}}/latest/c-codegen.log $v -- \
-        bash -c 'cd packages/codegen/packages && cargo test -p cargo-nano-ros --test test_generate_c -- --nocapture'
-    ./tests/run-test.sh --name c-msg-gen --log {{LOG_DIR}}/latest/c-msg-gen.log $v -- ./tests/c-msg-gen-tests.sh
+    just _test-c-codegen {{verbose}}
 
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
 test-c-xrce verbose="":

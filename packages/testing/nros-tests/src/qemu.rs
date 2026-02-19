@@ -68,6 +68,44 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
+    /// Start QEMU with MPS2-AN385 machine (Cortex-M3 + LAN9118 Ethernet)
+    ///
+    /// Uses the MPS2-AN385 machine which has a LAN9118 Ethernet controller.
+    ///
+    /// # Arguments
+    /// * `binary` - Path to the ARM ELF binary to run
+    ///
+    /// # Returns
+    /// A managed QEMU process
+    pub fn start_mps2_an385(binary: &Path) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-arm");
+        cmd.args([
+            "-cpu",
+            "cortex-m3",
+            "-machine",
+            "mps2-an385",
+            "-nographic",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-kernel",
+        ])
+        .arg(binary)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     /// Wait for QEMU to produce output and exit
     ///
     /// # Arguments
@@ -116,6 +154,7 @@ impl QemuProcess {
 
                             // Check for test completion markers
                             if output.contains("All tests passed")
+                                || output.contains("Benchmark complete")
                                 || output.contains("TEST COMPLETE")
                                 || output.contains("QEMU: Terminated")
                             {

@@ -12,8 +12,9 @@
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nros_tests::fixtures::{
-    QemuProcess, build_qemu_bsp_listener, build_qemu_bsp_talker, is_arm_toolchain_available,
-    is_qemu_available, parse_test_results, qemu_binary, require_zenoh_pico_arm,
+    QemuProcess, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
+    build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, parse_test_results,
+    qemu_binary, require_zenoh_pico_arm,
 };
 use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
 use rstest::rstest;
@@ -152,6 +153,64 @@ fn test_qemu_output_format(qemu_binary: PathBuf) {
     eprintln!("Output:\n{}", output);
 
     assert!(pass_count > 0, "No [PASS] markers found in output");
+}
+
+// =============================================================================
+// QEMU WCET Benchmark
+// =============================================================================
+
+#[test]
+fn test_qemu_wcet_benchmark() {
+    if !is_qemu_available() || !is_arm_toolchain_available() {
+        eprintln!("Skipping test: qemu-system-arm or ARM toolchain not available");
+        return;
+    }
+
+    let binary = build_qemu_wcet_bench().expect("Failed to build qemu-wcet-bench");
+
+    let mut qemu = QemuProcess::start_cortex_m3(binary).expect("Failed to start QEMU");
+
+    let output = qemu
+        .wait_for_output(Duration::from_secs(60))
+        .expect("QEMU timed out");
+
+    assert_output_contains(&output, &["[PASS]", "Benchmark complete"]);
+    assert_output_excludes(&output, &["[FAIL]"]);
+}
+
+// =============================================================================
+// QEMU LAN9118 Driver Test
+// =============================================================================
+
+#[test]
+fn test_qemu_lan9118_driver() {
+    if !is_qemu_available() || !is_arm_toolchain_available() {
+        eprintln!("Skipping test: qemu-system-arm or ARM toolchain not available");
+        return;
+    }
+
+    let binary = build_qemu_lan9118().expect("Failed to build qemu-lan9118");
+
+    let mut qemu = QemuProcess::start_mps2_an385(binary).expect("Failed to start QEMU");
+
+    let output = qemu
+        .wait_for_output(Duration::from_secs(30))
+        .expect("QEMU timed out");
+
+    let (passed, failed) = parse_test_results(&output);
+
+    assert!(
+        passed >= 5,
+        "Expected at least 5 tests to pass, got {}. Output:\n{}",
+        passed,
+        output
+    );
+    assert_eq!(
+        failed, 0,
+        "Expected no failures, got {}. Output:\n{}",
+        failed, output
+    );
+    assert_output_contains(&output, &["All tests passed"]);
 }
 
 // =============================================================================

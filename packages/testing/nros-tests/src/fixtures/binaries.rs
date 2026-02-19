@@ -10,6 +10,12 @@ use std::path::{Path, PathBuf};
 /// Cached path to the qemu-test binary
 static QEMU_TEST_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the qemu-wcet-bench binary
+static QEMU_WCET_BENCH_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-lan9118 binary
+static QEMU_LAN9118_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-talker binary
 static NATIVE_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -265,6 +271,34 @@ pub fn qemu_binary() -> PathBuf {
     build_qemu_test()
         .expect("Failed to build qemu-test")
         .to_path_buf()
+}
+
+/// Build the qemu-wcet-bench example and return its path (cached)
+pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
+    QEMU_WCET_BENCH_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm/rust/core/wcet-bench",
+                "qemu-rs-wcet-bench",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build the qemu-lan9118 example and return its path (cached)
+pub fn build_qemu_lan9118() -> TestResult<&'static Path> {
+    QEMU_LAN9118_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm/rust/standalone/lan9118",
+                "qemu-rs-lan9118",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
 }
 
 /// rstest fixture that provides the native-rs-talker binary path
