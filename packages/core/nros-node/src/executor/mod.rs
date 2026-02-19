@@ -18,7 +18,7 @@
 //! publisher.publish(&Int32 { data: 42 })?;
 //!
 //! loop {
-//!     executor.drive_io(10)?;
+//!     executor.spin_once(10);
 //! }
 //! ```
 

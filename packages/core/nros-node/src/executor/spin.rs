@@ -168,7 +168,8 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 
     /// Drive transport I/O (poll network, dispatch callbacks).
-    pub fn drive_io(&mut self, timeout_ms: i32) -> Result<(), NodeError> {
+    #[allow(dead_code)]
+    pub(crate) fn drive_io(&mut self, timeout_ms: i32) -> Result<(), NodeError> {
         self.session
             .drive_io(timeout_ms)
             .map_err(|_| NodeError::Transport(TransportError::PollFailed))

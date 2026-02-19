@@ -54,9 +54,6 @@ fn main() {
 
         println!("Sent request: a={} b={}", a, b);
 
-        // Drive session before call to ensure connectivity
-        let _ = executor.drive_io(100);
-
         match client.call(&request) {
             Ok(reply) => {
                 println!("Received reply: sum={}", reply.sum);

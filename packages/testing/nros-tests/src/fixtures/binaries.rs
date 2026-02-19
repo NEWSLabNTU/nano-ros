@@ -242,31 +242,24 @@ pub fn build_example(
     Ok(binary_path)
 }
 
-/// Build native-rs-talker with zenoh + param-services features (cached)
+/// Build native-rs-talker with param-services feature (cached)
 pub fn build_native_talker() -> TestResult<&'static Path> {
     NATIVE_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
                 "native/rust/zenoh/talker",
                 "talker",
-                Some(&["zenoh", "param-services"]),
+                Some(&["param-services"]),
                 None,
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-listener with zenoh feature (cached)
+/// Build native-rs-listener (cached)
 pub fn build_native_listener() -> TestResult<&'static Path> {
     NATIVE_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/listener",
-                "listener",
-                Some(&["zenoh"]),
-                None,
-            )
-        })
+        .get_or_try_init(|| build_example("native/rust/zenoh/listener", "listener", None, None))
         .map(|p| p.as_path())
 }
 
@@ -322,35 +315,35 @@ pub fn listener_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build native-rs-action-server with zenoh feature (cached)
+/// Build native-rs-action-server (cached)
 pub fn build_native_action_server() -> TestResult<&'static Path> {
     NATIVE_ACTION_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
                 "native/rust/zenoh/action-server",
                 "native-rs-action-server",
-                Some(&["zenoh"]),
+                None,
                 None,
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-action-client with zenoh feature (cached)
+/// Build native-rs-action-client (cached)
 pub fn build_native_action_client() -> TestResult<&'static Path> {
     NATIVE_ACTION_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
                 "native/rust/zenoh/action-client",
                 "native-rs-action-client",
-                Some(&["zenoh"]),
+                None,
                 None,
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-talker with zenoh + safety-e2e features (cached)
+/// Build native-rs-talker with safety-e2e feature (cached)
 ///
 /// Uses a separate `target-safety` directory to avoid overwriting the
 /// standard talker binary that other parallel test processes use.
@@ -368,7 +361,7 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
                 "build",
                 "--release",
                 "--features",
-                "zenoh,safety-e2e",
+                "safety-e2e",
                 "--target-dir",
                 target_dir.to_str().unwrap()
             )
@@ -398,7 +391,7 @@ pub fn build_native_talker_safety() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-listener with zenoh + safety-e2e features (cached)
+/// Build native-rs-listener with safety-e2e feature (cached)
 ///
 /// Uses a separate `target-safety` directory to avoid overwriting the
 /// standard listener binary that other parallel test processes use.
@@ -416,7 +409,7 @@ pub fn build_native_listener_safety() -> TestResult<&'static Path> {
                 "build",
                 "--release",
                 "--features",
-                "zenoh,safety-e2e",
+                "safety-e2e",
                 "--target-dir",
                 target_dir.to_str().unwrap()
             )
@@ -462,7 +455,7 @@ pub fn listener_safety_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build native-rs-listener with zenoh + unstable-zenoh-api features (cached)
+/// Build native-rs-listener with unstable-zenoh-api feature (cached)
 ///
 /// Uses a separate `target-zero-copy` directory to avoid overwriting the
 /// standard/safety listener binaries that other parallel test processes use.
@@ -480,7 +473,7 @@ pub fn build_native_listener_zero_copy() -> TestResult<&'static Path> {
                 "build",
                 "--release",
                 "--features",
-                "zenoh,unstable-zenoh-api",
+                "unstable-zenoh-api",
                 "--target-dir",
                 target_dir.to_str().unwrap()
             )
@@ -526,28 +519,28 @@ pub fn action_client_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build native-rs-service-server with zenoh feature (cached)
+/// Build native-rs-service-server (cached)
 pub fn build_native_service_server() -> TestResult<&'static Path> {
     NATIVE_SERVICE_SERVER_BINARY
         .get_or_try_init(|| {
             build_example(
                 "native/rust/zenoh/service-server",
                 "native-rs-service-server",
-                Some(&["zenoh"]),
+                None,
                 None,
             )
         })
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-service-client with zenoh feature (cached)
+/// Build native-rs-service-client (cached)
 pub fn build_native_service_client() -> TestResult<&'static Path> {
     NATIVE_SERVICE_CLIENT_BINARY
         .get_or_try_init(|| {
             build_example(
                 "native/rust/zenoh/service-client",
                 "native-rs-service-client",
-                Some(&["zenoh"]),
+                None,
                 None,
             )
         })
@@ -570,21 +563,14 @@ pub fn service_client_binary() -> PathBuf {
         .to_path_buf()
 }
 
-/// Build native-rs-custom-msg with zenoh feature (cached)
+/// Build native-rs-custom-msg (cached)
 pub fn build_native_custom_msg() -> TestResult<&'static Path> {
     NATIVE_CUSTOM_MSG_BINARY
-        .get_or_try_init(|| {
-            build_example(
-                "native/rust/zenoh/custom-msg",
-                "custom_msg",
-                Some(&["zenoh"]),
-                None,
-            )
-        })
+        .get_or_try_init(|| build_example("native/rust/zenoh/custom-msg", "custom_msg", None, None))
         .map(|p| p.as_path())
 }
 
-/// Build native-rs-custom-msg without zenoh feature (for serialization tests)
+/// Build native-rs-custom-msg (uncached, for serialization tests)
 pub fn build_native_custom_msg_no_zenoh() -> TestResult<PathBuf> {
     build_example("native/rust/zenoh/custom-msg", "custom_msg", None, None)
 }
@@ -840,7 +826,7 @@ pub fn build_zenoh_stress_test() -> TestResult<&'static Path> {
             build_example(
                 "native/rust/zenoh/stress-test",
                 "zenoh-stress-test",
-                Some(&["zenoh"]),
+                None,
                 None,
             )
         })
@@ -872,8 +858,6 @@ pub fn build_zenoh_stress_test_large_buf() -> TestResult<&'static Path> {
                 "cargo",
                 "build",
                 "--release",
-                "--features",
-                "zenoh",
                 "--target-dir",
                 target_dir.to_str().unwrap()
             )
