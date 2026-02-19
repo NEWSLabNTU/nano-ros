@@ -9,10 +9,6 @@ publish = false
 name = "zenoh-stress-test"
 path = "src/main.rs"
 
-[features]
-default = []
-zenoh = ["nros/rmw-zenoh", "nros/platform-posix"]
-
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix"] }
 std_msgs = { version = "*", default-features = false }

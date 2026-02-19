@@ -12,16 +12,14 @@
 //!
 //! # Terminal 2: listener
 //! MODE=listener PAYLOAD_SIZE=512 EXPECTED_COUNT=20 \
-//!     cargo run -p native-rs-zenoh-stress-test --features zenoh
+//!     cargo run -p native-rs-zenoh-stress-test
 //!
 //! # Terminal 3: talker
 //! MODE=talker PAYLOAD_SIZE=512 PUBLISH_COUNT=20 \
-//!     cargo run -p native-rs-zenoh-stress-test --features zenoh
+//!     cargo run -p native-rs-zenoh-stress-test
 //! ```
 
-#[cfg(feature = "zenoh")]
 use nros::prelude::*;
-#[cfg(feature = "zenoh")]
 use std::time::Instant;
 
 /// Build a test payload with integrity markers.
@@ -31,7 +29,6 @@ use std::time::Instant;
 ///   [4..8]   Sequence number (u32 LE)
 ///   [8..12]  Total payload size (u32 LE, including CDR header)
 ///   [12..N]  Fill pattern: byte[i] = ((i - 12) & 0xFF) as u8
-#[cfg(feature = "zenoh")]
 fn build_payload(buf: &mut [u8], seq: u32, size: usize) {
     assert!(size >= 16 && size <= buf.len());
     // CDR header (little-endian)
@@ -50,7 +47,6 @@ fn build_payload(buf: &mut [u8], seq: u32, size: usize) {
 }
 
 /// Validate a received payload. Returns (seq, valid).
-#[cfg(feature = "zenoh")]
 fn validate_payload(data: &[u8], expected_size: usize) -> (u32, bool) {
     if data.len() < 16 {
         return (0, false);
@@ -73,7 +69,6 @@ fn validate_payload(data: &[u8], expected_size: usize) -> (u32, bool) {
     (seq, true)
 }
 
-#[cfg(feature = "zenoh")]
 fn run_talker() {
     let payload_size: usize = std::env::var("PAYLOAD_SIZE")
         .ok()
@@ -139,7 +134,6 @@ fn run_talker() {
     );
 }
 
-#[cfg(feature = "zenoh")]
 fn run_listener() {
     let expected_count: usize = std::env::var("EXPECTED_COUNT")
         .ok()
@@ -215,7 +209,6 @@ fn run_listener() {
     );
 }
 
-#[cfg(feature = "zenoh")]
 fn main() {
     let mode = std::env::var("MODE").unwrap_or_else(|_| "talker".to_string());
     match mode.as_str() {
@@ -226,11 +219,4 @@ fn main() {
             std::process::exit(1);
         }
     }
-}
-
-#[cfg(not(feature = "zenoh"))]
-fn main() {
-    eprintln!("This binary requires the 'zenoh' feature.");
-    eprintln!("Run with: cargo run --features zenoh");
-    std::process::exit(1);
 }

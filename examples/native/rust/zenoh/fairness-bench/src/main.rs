@@ -15,35 +15,26 @@
 //! zenohd --listen tcp/127.0.0.1:7447
 //!
 //! # Run the benchmark:
-//! RUST_LOG=warn cargo run --features zenoh --release
+//! RUST_LOG=warn cargo run --release
 //! ```
 
-#[cfg(feature = "zenoh")]
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest, AddTwoIntsResponse};
-#[cfg(feature = "zenoh")]
 use nros::prelude::*;
-#[cfg(feature = "zenoh")]
 use std_msgs::msg::Int32;
 
-#[cfg(feature = "zenoh")]
 use std::process::{Child, Command, Stdio};
-#[cfg(feature = "zenoh")]
 use std::sync::atomic::{AtomicU64, Ordering};
-#[cfg(feature = "zenoh")]
 use std::sync::{Arc, Mutex};
-#[cfg(feature = "zenoh")]
 use std::time::{Duration, Instant};
 
 // ═══════════════════════════════════════════════════════════════════════════
 // STATISTICS
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "zenoh")]
 struct LatencyStats {
     samples: Vec<Duration>,
 }
 
-#[cfg(feature = "zenoh")]
 impl LatencyStats {
     fn new() -> Self {
         Self {
@@ -88,7 +79,6 @@ impl LatencyStats {
 // SUBPROCESS HELPER
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "zenoh")]
 fn spawn_publisher(scenario: &str) -> Child {
     let rust_log = std::env::var("RUST_LOG").unwrap_or_default();
     Command::new(std::env::current_exe().unwrap())
@@ -105,7 +95,6 @@ fn spawn_publisher(scenario: &str) -> Child {
 // ═══════════════════════════════════════════════════════════════════════════
 
 /// Publish /bench1/fast at 100Hz and /bench1/slow at 10Hz for 20s.
-#[cfg(feature = "zenoh")]
 fn publish_scenario_1() {
     let config = ExecutorConfig::from_env().node_name("pub1");
     let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
@@ -145,7 +134,6 @@ fn publish_scenario_1() {
 }
 
 /// Send 100 blocking service requests to /bench2/add.
-#[cfg(feature = "zenoh")]
 fn client_scenario_2() {
     let config = ExecutorConfig::from_env().node_name("client2");
     let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
@@ -166,7 +154,6 @@ fn client_scenario_2() {
 }
 
 /// Publish 2 topics at 50Hz + service requests at 10Hz for 20s.
-#[cfg(feature = "zenoh")]
 fn publish_scenario_3() {
     let config = ExecutorConfig::from_env().node_name("pub3");
     let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
@@ -219,7 +206,6 @@ fn publish_scenario_3() {
 // SCENARIO 1: ASYMMETRIC SUBSCRIPTION RATES
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "zenoh")]
 fn scenario_1_asymmetric_subscriptions() {
     println!("\n========================================================================");
     println!("Scenario 1: Asymmetric Subscription Rates");
@@ -320,7 +306,6 @@ fn scenario_1_asymmetric_subscriptions() {
 // SCENARIO 2: SERVICE REQUEST BURST
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "zenoh")]
 fn scenario_2_service_burst() {
     println!("\n========================================================================");
     println!("Scenario 2: Service Request Burst");
@@ -374,7 +359,6 @@ fn scenario_2_service_burst() {
 // SCENARIO 3: MIXED SUBSCRIPTION + SERVICE LOAD
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "zenoh")]
 fn scenario_3_mixed_load() {
     println!("\n========================================================================");
     println!("Scenario 3: Mixed Subscription + Service Load");
@@ -459,7 +443,6 @@ fn scenario_3_mixed_load() {
 // MAIN
 // ═══════════════════════════════════════════════════════════════════════════
 
-#[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
@@ -504,11 +487,4 @@ fn main() {
     println!("\n========================================================================");
     println!("  Benchmark Complete");
     println!("========================================================================");
-}
-
-#[cfg(not(feature = "zenoh"))]
-fn main() {
-    eprintln!("This benchmark requires the 'zenoh' feature.");
-    eprintln!("Run with: cargo run --features zenoh --release");
-    std::process::exit(1);
 }

@@ -17,17 +17,10 @@
 //! cargo run -p native-rs-action-client
 //! ```
 
-#[cfg(not(feature = "zenoh"))]
-use log::info;
-#[cfg(feature = "zenoh")]
-use log::{error, info, warn};
-
-#[cfg(feature = "zenoh")]
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
-#[cfg(feature = "zenoh")]
+use log::{error, info, warn};
 use nros::prelude::*;
 
-#[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
@@ -107,13 +100,4 @@ fn main() {
     }
 
     info!("Action client finished");
-}
-
-#[cfg(not(feature = "zenoh"))]
-fn main() {
-    env_logger::init();
-    info!("nros Action Client Example");
-    info!("================================");
-    info!("This example requires the 'zenoh' feature.");
-    info!("Run with: cargo run -p native-rs-action-client --features zenoh");
 }

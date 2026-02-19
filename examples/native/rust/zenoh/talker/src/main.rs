@@ -3,33 +3,25 @@
 //! Demonstrates publishing messages using nros on native x86.
 //! Uses the Executor API with timer callback for periodic publishing.
 //!
-//! # Without zenoh feature (simulation mode):
-//! ```bash
-//! cargo run -p native-rs-talker
-//! ```
+//! # Usage
 //!
-//! # With zenoh feature (real transport):
 //! ```bash
 //! # Start zenoh router first:
 //! zenohd --listen tcp/127.0.0.1:7447
 //!
 //! # Then run the talker:
-//! cargo run -p native-rs-talker --features zenoh
+//! cargo run -p native-rs-talker
 //! ```
 //!
 //! # Enabling debug logs:
 //! ```bash
-//! RUST_LOG=debug cargo run -p native-rs-talker --features zenoh
+//! RUST_LOG=debug cargo run -p native-rs-talker
 //! ```
 
-#[cfg(not(feature = "zenoh"))]
-use log::{debug, error, info};
-#[cfg(feature = "zenoh")]
 use log::{error, info};
 use nros::prelude::*;
 use std_msgs::msg::Int32;
 
-#[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
@@ -89,53 +81,4 @@ fn main() {
         // Sleep 1 second between messages (like ROS 2 demo)
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
-}
-
-#[cfg(not(feature = "zenoh"))]
-fn main() {
-    env_logger::init();
-
-    info!("nros Native Talker (Simulation Mode)");
-    info!("=========================================");
-    info!("Note: Running without zenoh transport.");
-    info!("To use real transport, run with: --features zenoh");
-
-    // Create a node (without transport)
-    let config = NodeConfig::new("talker", "/demo");
-    let mut node = StandaloneNode::<4, 4>::new(config);
-
-    info!("Node created: {}", node.fully_qualified_name());
-
-    // Create a publisher for Int32 messages
-    let publisher = node
-        .create_publisher::<Int32>(PublisherOptions::new("/chatter"))
-        .expect("Failed to create publisher");
-
-    info!("Publisher created for topic: /chatter");
-    debug!("Message type: {}", Int32::TYPE_NAME);
-
-    // Simulate publishing loop
-    for i in 0..10 {
-        let msg = Int32 { data: i };
-
-        // Serialize the message (but don't actually send it)
-        match node.serialize_message(&publisher, &msg) {
-            Ok(bytes) => {
-                info!(
-                    "[{}] Serialized: data={}, {} bytes: {:02x?}...",
-                    i,
-                    msg.data,
-                    bytes.len(),
-                    &bytes[..bytes.len().min(16)]
-                );
-            }
-            Err(e) => {
-                error!("Serialization error: {:?}", e);
-            }
-        }
-
-        std::thread::sleep(std::time::Duration::from_millis(500));
-    }
-
-    info!("Talker finished (simulation mode).");
 }

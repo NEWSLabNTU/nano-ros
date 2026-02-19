@@ -16,17 +16,10 @@
 //! cargo run -p native-rs-service-client
 //! ```
 
-#[cfg(not(feature = "zenoh"))]
-use log::info;
-#[cfg(feature = "zenoh")]
-use log::{error, info};
-
-#[cfg(feature = "zenoh")]
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
-#[cfg(feature = "zenoh")]
+use log::{error, info};
 use nros::prelude::*;
 
-#[cfg(feature = "zenoh")]
 fn main() {
     env_logger::init();
 
@@ -72,13 +65,4 @@ fn main() {
     }
 
     info!("All service calls completed successfully!");
-}
-
-#[cfg(not(feature = "zenoh"))]
-fn main() {
-    env_logger::init();
-    info!("nros Service Client Example");
-    info!("================================");
-    info!("This example requires the 'zenoh' feature.");
-    info!("Run with: cargo run -p native-rs-service-client --features zenoh");
 }

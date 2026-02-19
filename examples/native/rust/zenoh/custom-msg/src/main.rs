@@ -9,12 +9,11 @@
 //! # Running
 //!
 //! ```bash
-//! # Without zenoh (serialization test only):
-//! cargo run
+//! # Start zenoh router first:
+//! zenohd --listen tcp/127.0.0.1:7447
 //!
-//! # With zenoh (full pub/sub):
-//! zenohd --listen tcp/127.0.0.1:7447  # In another terminal
-//! cargo run --features zenoh
+//! # Run the example:
+//! cargo run
 //! ```
 //!
 //! # Creating Real Custom Messages
@@ -29,7 +28,6 @@
 //! The .msg files in this example's `msg/` directory show the format.
 
 use heapless::String as HString;
-#[cfg(feature = "zenoh")]
 use log::info;
 use nros::{CdrReader, CdrWriter, DeserError, Deserialize, RosMessage, SerError, Serialize};
 
@@ -200,9 +198,8 @@ fn main() {
     println!();
 
     // =========================================================================
-    // Pub/Sub with custom messages (requires zenoh feature)
+    // Pub/Sub with custom messages (requires zenoh router)
     // =========================================================================
-    #[cfg(feature = "zenoh")]
     {
         use nros::prelude::*;
         use std::time::Duration;
@@ -210,7 +207,15 @@ fn main() {
         println!("Testing pub/sub with custom messages:");
 
         let config = ExecutorConfig::from_env().node_name("custom_msg_node");
-        let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+        let mut executor = match Executor::<_, 4, 4096>::open(&config) {
+            Ok(e) => e,
+            Err(e) => {
+                println!("Skipping pub/sub (no zenoh router): {:?}", e);
+                println!();
+                println!("Custom message example completed successfully!");
+                return;
+            }
+        };
         info!("Session created");
 
         // Create publisher
@@ -223,10 +228,8 @@ fn main() {
         info!("Publisher created for: /sensor_data");
 
         // Register subscription callback
-        let mut msg_count: u64 = 0;
         executor
             .add_subscription::<SensorReading, _>("/sensor_data", move |msg: &SensorReading| {
-                msg_count += 1;
                 println!(
                     "  Received: sensor_id={}, temp={:.1}, humidity={:.1}",
                     msg.sensor_id, msg.temperature, msg.humidity
@@ -261,11 +264,6 @@ fn main() {
 
         // Process remaining callbacks
         executor.spin_once(500);
-    }
-
-    #[cfg(not(feature = "zenoh"))]
-    {
-        println!("Pub/sub test skipped (compile with --features zenoh)");
     }
 
     println!();

@@ -4,15 +4,8 @@ version = "0.1.0"
 edition = "2024"
 description = "Example ROS 2 service client using nros"
 
-[features]
-default = ["zenoh"]
-zenoh = [
-    "nros/rmw-zenoh",
-    "nros/platform-posix",
-]
-
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix"] }
 example_interfaces = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.10"

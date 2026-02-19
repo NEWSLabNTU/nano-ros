@@ -11,12 +11,11 @@ path = "src/main.rs"
 
 [features]
 default = []
-zenoh = ["nros/rmw-zenoh", "nros/platform-posix"]
 safety-e2e = ["nros/safety-e2e"]
 param-services = ["nros/param-services"]
 
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"

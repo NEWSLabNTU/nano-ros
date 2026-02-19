@@ -9,12 +9,8 @@ publish = false
 name = "custom_msg"
 path = "src/main.rs"
 
-[features]
-default = []
-zenoh = ["nros/rmw-zenoh", "nros/platform-posix"]
-
 [dependencies]
-nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std"] }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix"] }
 std_msgs = { version = "*", default-features = false }
 heapless = "0.8"
 log = "0.4"
