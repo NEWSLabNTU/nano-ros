@@ -287,3 +287,255 @@ impl From<TransportError> for NodeError {
 
 /// Default transmit buffer size (bytes).
 pub(crate) const DEFAULT_TX_BUF: usize = 1024;
+
+// ============================================================================
+// HandleId
+// ============================================================================
+
+/// Opaque handle identifier returned by registration methods.
+///
+/// Used with [`Trigger::One`] and [`HandleSet`] for type-safe trigger
+/// configuration. The inner value is the entry slot index.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct HandleId(pub(crate) usize);
+
+// ============================================================================
+// HandleSet
+// ============================================================================
+
+/// A set of handle IDs, represented as a bitset.
+///
+/// Supports up to 64 handles. Construct via `HandleId` operators:
+/// ```ignore
+/// let set = imu | gps | lidar;  // HandleSet from 3 handles
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct HandleSet(pub(crate) u64);
+
+impl HandleSet {
+    /// Empty set.
+    pub const EMPTY: Self = Self(0);
+
+    /// Insert a handle into the set.
+    pub const fn insert(self, id: HandleId) -> Self {
+        Self(self.0 | (1u64 << id.0))
+    }
+
+    /// Check if the set contains a handle.
+    pub const fn contains(self, id: HandleId) -> bool {
+        self.0 & (1u64 << id.0) != 0
+    }
+
+    /// Union of two sets.
+    pub const fn union(self, other: Self) -> Self {
+        Self(self.0 | other.0)
+    }
+
+    /// Number of handles in the set.
+    pub const fn len(self) -> u32 {
+        self.0.count_ones()
+    }
+
+    /// Check if the set is empty.
+    pub const fn is_empty(self) -> bool {
+        self.0 == 0
+    }
+}
+
+impl core::ops::BitOr for HandleId {
+    type Output = HandleSet;
+    fn bitor(self, rhs: HandleId) -> HandleSet {
+        HandleSet::EMPTY.insert(self).insert(rhs)
+    }
+}
+
+impl core::ops::BitOr<HandleId> for HandleSet {
+    type Output = HandleSet;
+    fn bitor(self, rhs: HandleId) -> HandleSet {
+        self.insert(rhs)
+    }
+}
+
+impl core::ops::BitOr for HandleSet {
+    type Output = HandleSet;
+    fn bitor(self, rhs: HandleSet) -> HandleSet {
+        self.union(rhs)
+    }
+}
+
+// ============================================================================
+// ReadinessSnapshot
+// ============================================================================
+
+/// Snapshot of handle readiness at the start of a spin iteration.
+///
+/// Passed to [`Trigger::Predicate`] functions. Query by [`HandleId`].
+pub struct ReadinessSnapshot {
+    pub(crate) bits: u64,
+    pub(crate) count: usize,
+}
+
+impl ReadinessSnapshot {
+    /// Check if a specific handle has data.
+    pub const fn is_ready(&self, id: HandleId) -> bool {
+        self.bits & (1u64 << id.0) != 0
+    }
+
+    /// Check if all handles in the set have data.
+    pub const fn all_ready(&self, set: HandleSet) -> bool {
+        self.bits & set.0 == set.0
+    }
+
+    /// Check if any handle in the set has data.
+    pub const fn any_ready(&self, set: HandleSet) -> bool {
+        self.bits & set.0 != 0
+    }
+
+    /// Number of handles that have data.
+    pub const fn ready_count(&self) -> u32 {
+        self.bits.count_ones()
+    }
+
+    /// Total registered handles.
+    pub const fn total(&self) -> usize {
+        self.count
+    }
+}
+
+// ============================================================================
+// InvocationMode
+// ============================================================================
+
+/// Per-callback invocation mode.
+///
+/// Controls whether a callback fires only when new data is available
+/// or on every spin iteration that passes the trigger gate.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum InvocationMode {
+    /// Fire only when `has_data()` returns true (default).
+    #[default]
+    OnNewData,
+    /// Fire on every spin iteration, regardless of data availability.
+    Always,
+}
+
+// ============================================================================
+// Trigger
+// ============================================================================
+
+/// Executor-level trigger condition.
+///
+/// Controls when the executor dispatches callbacks during `spin_once()`.
+/// The trigger is evaluated after polling the transport but before any
+/// callback dispatch.
+#[derive(Clone, Copy, Default)]
+pub enum Trigger {
+    /// Fire if any registered handle has data (default).
+    #[default]
+    Any,
+    /// Fire only when ALL non-timer handles have data.
+    All,
+    /// Fire only when a specific handle has data.
+    One(HandleId),
+    /// Fire only when every handle in the set has data.
+    AllOf(HandleSet),
+    /// Fire when any handle in the set has data.
+    AnyOf(HandleSet),
+    /// Always fire, regardless of data availability.
+    Always,
+    /// Custom predicate over a readiness snapshot.
+    Predicate(fn(&ReadinessSnapshot) -> bool),
+}
+
+// Manual Debug impl because fn pointers don't impl Debug well
+impl core::fmt::Debug for Trigger {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        match self {
+            Self::Any => write!(f, "Any"),
+            Self::All => write!(f, "All"),
+            Self::One(id) => f.debug_tuple("One").field(id).finish(),
+            Self::AllOf(set) => f.debug_tuple("AllOf").field(set).finish(),
+            Self::AnyOf(set) => f.debug_tuple("AnyOf").field(set).finish(),
+            Self::Always => write!(f, "Always"),
+            Self::Predicate(_) => write!(f, "Predicate(...)"),
+        }
+    }
+}
+
+// ============================================================================
+// Raw callback types (for C API)
+// ============================================================================
+
+/// Raw subscription callback that receives CDR bytes without deserialization.
+///
+/// # Safety
+/// The `data` pointer is valid for `len` bytes during the call.
+pub type RawSubscriptionCallback =
+    unsafe extern "C" fn(data: *const u8, len: usize, context: *mut core::ffi::c_void);
+
+/// Raw service callback that receives and produces CDR bytes.
+///
+/// # Safety
+/// - `req` is valid for `req_len` bytes
+/// - `resp` is valid for `resp_cap` bytes (writable)
+/// - `resp_len` is a valid pointer to write the response length
+///
+/// Returns `true` if the request was handled successfully.
+pub type RawServiceCallback = unsafe extern "C" fn(
+    req: *const u8,
+    req_len: usize,
+    resp: *mut u8,
+    resp_cap: usize,
+    resp_len: *mut usize,
+    context: *mut core::ffi::c_void,
+) -> bool;
+
+// ============================================================================
+// ExecutorSemantics
+// ============================================================================
+
+/// Data communication semantics for the executor.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExecutorSemantics {
+    /// Standard interleaved execution (default). Each callback sees the
+    /// latest data at the time it runs.
+    #[default]
+    RclcppExecutor,
+    /// Logical Execution Time. All subscriptions are sampled at spin start;
+    /// callbacks process from the snapshot.
+    LogicalExecutionTime,
+}
+
+// ============================================================================
+// GuardConditionHandle
+// ============================================================================
+
+/// Handle for triggering a guard condition from outside the executor.
+///
+/// Obtained from [`Executor::add_guard_condition()`](super::Executor::add_guard_condition).
+/// Safe to use from any thread.
+pub struct GuardConditionHandle {
+    flag: *const core::sync::atomic::AtomicBool,
+}
+
+impl GuardConditionHandle {
+    pub(crate) fn new(flag: *const core::sync::atomic::AtomicBool) -> Self {
+        Self { flag }
+    }
+
+    /// Trigger the guard condition.
+    ///
+    /// The executor will invoke the associated callback on the next spin iteration.
+    pub fn trigger(&self) {
+        // SAFETY: The flag lives in the arena which outlives this handle
+        // (the arena is part of the Executor which must not be dropped while
+        // this handle is in use).
+        unsafe {
+            (*self.flag).store(true, core::sync::atomic::Ordering::Release);
+        }
+    }
+}
+
+// SAFETY: The AtomicBool is designed for cross-thread access.
+unsafe impl Send for GuardConditionHandle {}
+unsafe impl Sync for GuardConditionHandle {}

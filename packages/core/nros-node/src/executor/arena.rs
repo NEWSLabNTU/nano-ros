@@ -7,7 +7,7 @@ use nros_core::{CdrReader, RosAction, RosMessage, RosService};
 use nros_rmw::{Publisher, ServiceServerTrait, Subscriber, TransportError};
 
 use super::handles::{EmbeddedActionClient, EmbeddedActionServer};
-use super::types::NodeError;
+use super::types::{InvocationMode, NodeError, RawServiceCallback, RawSubscriptionCallback};
 
 // ============================================================================
 // Callback metadata
@@ -21,6 +21,7 @@ pub(crate) enum EntryKind {
     Timer,
     ActionServer,
     ActionClient,
+    GuardCondition,
 }
 
 /// Metadata for a type-erased callback stored in the arena.
@@ -37,6 +38,10 @@ pub(crate) struct CallbackMeta {
     /// Returns `Ok(true)` if work was done, `Ok(false)` if nothing available.
     /// The `u64` parameter is `delta_ms` (used by timer entries, ignored by others).
     pub(crate) try_process: unsafe fn(*mut u8, u64) -> Result<bool, TransportError>,
+    /// Monomorphized readiness check: returns true if the entry has data.
+    pub(crate) has_data: unsafe fn(*const u8) -> bool,
+    /// Per-callback invocation mode.
+    pub(crate) invocation: InvocationMode,
     /// Monomorphized drop: runs destructors on the concrete entry.
     pub(crate) drop_fn: unsafe fn(*mut u8),
 }
@@ -125,6 +130,32 @@ pub(crate) struct ActionClientArenaEntry<
 > {
     pub(crate) client: EmbeddedActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
     pub(crate) feedback_callback: FeedbackF,
+}
+
+/// Concrete subscription entry for raw (untyped) callbacks.
+#[repr(C)]
+pub(crate) struct SubRawEntry<Sub, const RX_BUF: usize> {
+    pub(crate) handle: Sub,
+    pub(crate) buffer: [u8; RX_BUF],
+    pub(crate) callback: RawSubscriptionCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Concrete service entry for raw (untyped) callbacks.
+#[repr(C)]
+pub(crate) struct SrvRawEntry<Srv, const REQ_BUF: usize, const REPLY_BUF: usize> {
+    pub(crate) handle: Srv,
+    pub(crate) req_buffer: [u8; REQ_BUF],
+    pub(crate) reply_buffer: [u8; REPLY_BUF],
+    pub(crate) callback: RawServiceCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Concrete guard condition entry stored in the arena.
+#[repr(C)]
+pub(crate) struct GuardConditionEntry<F> {
+    pub(crate) flag: core::sync::atomic::AtomicBool,
+    pub(crate) callback: F,
 }
 
 // ============================================================================
@@ -404,6 +435,192 @@ where
         Ok(None) => Ok(false),
         Err(_) => Err(TransportError::DeserializationError),
     }
+}
+
+/// Monomorphized raw subscription dispatch function.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubRawEntry<Sub, RX_BUF>`.
+pub(crate) unsafe fn sub_raw_try_process<Sub, const RX_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    Sub: Subscriber,
+{
+    let entry = unsafe { &mut *(ptr as *mut SubRawEntry<Sub, RX_BUF>) };
+    match entry.handle.try_recv_raw(&mut entry.buffer) {
+        Ok(Some(len)) => {
+            unsafe {
+                (entry.callback)(entry.buffer.as_ptr(), len, entry.context);
+            }
+            Ok(true)
+        }
+        Ok(None) => Ok(false),
+        Err(_) => Err(TransportError::DeserializationError),
+    }
+}
+
+/// Monomorphized raw service dispatch function.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>`.
+pub(crate) unsafe fn srv_raw_try_process<Srv, const REQ_BUF: usize, const REPLY_BUF: usize>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    Srv: ServiceServerTrait,
+    Srv::Error: From<TransportError>,
+{
+    let entry = unsafe { &mut *(ptr as *mut SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>) };
+    let SrvRawEntry {
+        handle,
+        req_buffer,
+        reply_buffer,
+        callback,
+        context,
+    } = entry;
+    let (data_len, seq_num) = match handle.try_recv_request(req_buffer) {
+        Ok(Some(request)) => {
+            let len = request.data.len();
+            let seq = request.sequence_number;
+            (len, seq)
+        }
+        Ok(None) => return Ok(false),
+        Err(_) => return Err(TransportError::ServiceReplyFailed),
+    };
+
+    let mut resp_len: usize = 0;
+    let ok = unsafe {
+        (*callback)(
+            req_buffer.as_ptr(),
+            data_len,
+            reply_buffer.as_mut_ptr(),
+            REPLY_BUF,
+            &mut resp_len,
+            *context,
+        )
+    };
+    if ok && resp_len > 0 {
+        handle
+            .send_reply(seq_num, &reply_buffer[..resp_len])
+            .map_err(|_| TransportError::ServiceReplyFailed)?;
+    }
+    Ok(true)
+}
+
+/// Monomorphized guard condition dispatch function.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `GuardConditionEntry<F>`.
+pub(crate) unsafe fn guard_try_process<F>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    F: FnMut(),
+{
+    let entry = unsafe { &mut *(ptr as *mut GuardConditionEntry<F>) };
+    if entry.flag.swap(false, core::sync::atomic::Ordering::AcqRel) {
+        (entry.callback)();
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+// ============================================================================
+// Readiness check functions
+// ============================================================================
+
+/// Subscription readiness: check `has_data()` on the subscriber handle.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubEntry<M, Sub, F, RX_BUF>`.
+pub(crate) unsafe fn sub_has_data<M, Sub, F, const RX_BUF: usize>(ptr: *const u8) -> bool
+where
+    Sub: Subscriber,
+{
+    let entry = unsafe { &*(ptr as *const SubEntry<M, Sub, F, RX_BUF>) };
+    entry.handle.has_data()
+}
+
+/// SubInfoEntry readiness.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubInfoEntry<M, Sub, F, RX_BUF>`.
+pub(crate) unsafe fn sub_info_has_data<M, Sub, F, const RX_BUF: usize>(ptr: *const u8) -> bool
+where
+    Sub: Subscriber,
+{
+    let entry = unsafe { &*(ptr as *const SubInfoEntry<M, Sub, F, RX_BUF>) };
+    entry.handle.has_data()
+}
+
+/// SubSafetyEntry readiness.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubSafetyEntry<M, Sub, F, RX_BUF>`.
+#[cfg(feature = "safety-e2e")]
+pub(crate) unsafe fn sub_safety_has_data<M, Sub, F, const RX_BUF: usize>(ptr: *const u8) -> bool
+where
+    Sub: Subscriber,
+{
+    let entry = unsafe { &*(ptr as *const SubSafetyEntry<M, Sub, F, RX_BUF>) };
+    entry.handle.has_data()
+}
+
+/// Raw subscription readiness.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubRawEntry<Sub, RX_BUF>`.
+pub(crate) unsafe fn sub_raw_has_data<Sub, const RX_BUF: usize>(ptr: *const u8) -> bool
+where
+    Sub: Subscriber,
+{
+    let entry = unsafe { &*(ptr as *const SubRawEntry<Sub, RX_BUF>) };
+    entry.handle.has_data()
+}
+
+/// Service readiness: check `has_request()` on the service handle.
+///
+/// # Safety
+/// `ptr` must point to a valid `SrvEntry<Svc, Srv, F, RQ, RP>`.
+pub(crate) unsafe fn srv_has_data<Svc: RosService, Srv, F, const RQ: usize, const RP: usize>(
+    ptr: *const u8,
+) -> bool
+where
+    Srv: ServiceServerTrait,
+{
+    let entry = unsafe { &*(ptr as *const SrvEntry<Svc, Srv, F, RQ, RP>) };
+    entry.handle.has_request()
+}
+
+/// Raw service readiness.
+///
+/// # Safety
+/// `ptr` must point to a valid `SrvRawEntry<Srv, RQ, RP>`.
+pub(crate) unsafe fn srv_raw_has_data<Srv, const RQ: usize, const RP: usize>(ptr: *const u8) -> bool
+where
+    Srv: ServiceServerTrait,
+{
+    let entry = unsafe { &*(ptr as *const SrvRawEntry<Srv, RQ, RP>) };
+    entry.handle.has_request()
+}
+
+/// Guard condition readiness: check the atomic flag.
+///
+/// # Safety
+/// `ptr` must point to a valid `GuardConditionEntry<F>`.
+pub(crate) unsafe fn guard_has_data<F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const GuardConditionEntry<F>) };
+    entry.flag.load(core::sync::atomic::Ordering::Acquire)
+}
+
+/// Timers and action entries are always considered ready.
+pub(crate) unsafe fn always_ready(_ptr: *const u8) -> bool {
+    true
 }
 
 // ============================================================================

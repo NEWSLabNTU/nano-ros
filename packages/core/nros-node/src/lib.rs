@@ -109,8 +109,10 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 pub use executor::{
     ActionClientHandle, ActionServerHandle, EmbeddedActionClient, EmbeddedActionServer,
     EmbeddedActiveGoal, EmbeddedCompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, Executor, ExecutorConfig, Node, NodeError, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Subscription,
+    EmbeddedServiceServer, Executor, ExecutorConfig, ExecutorSemantics, GuardConditionHandle,
+    HandleId, HandleSet, InvocationMode, Node, NodeError, RawServiceCallback,
+    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
+    SpinPeriodPollingResult, Subscription, Trigger,
 };
 
 #[cfg(feature = "std")]

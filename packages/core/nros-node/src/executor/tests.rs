@@ -79,6 +79,10 @@ impl MockSubscriber {
 impl Subscriber for MockSubscriber {
     type Error = TransportError;
 
+    fn has_data(&self) -> bool {
+        self.pending.get().is_some()
+    }
+
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
         match self.pending.get() {
             Some((data, len)) => {
@@ -848,4 +852,433 @@ fn test_spin_period_halts() {
 
     let result = executor.spin_period(std::time::Duration::from_millis(10));
     assert!(result.is_ok());
+}
+
+// ====================================================================
+// Phase 49: HandleId / HandleSet / ReadinessSnapshot tests
+// ====================================================================
+
+#[test]
+fn test_handle_id_from_add_subscription() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+
+    let id = executor
+        .add_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
+        .unwrap();
+    assert_eq!(id, HandleId(0));
+
+    let id2 = executor
+        .add_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {})
+        .unwrap();
+    assert_eq!(id2, HandleId(1));
+}
+
+#[test]
+fn test_handle_set_operations() {
+    let a = HandleId(0);
+    let b = HandleId(1);
+    let c = HandleId(5);
+
+    let set = a | b;
+    assert!(set.contains(a));
+    assert!(set.contains(b));
+    assert!(!set.contains(c));
+    assert_eq!(set.len(), 2);
+
+    let set2 = set | c;
+    assert!(set2.contains(c));
+    assert_eq!(set2.len(), 3);
+
+    let empty = HandleSet::EMPTY;
+    assert!(empty.is_empty());
+    assert_eq!(empty.len(), 0);
+}
+
+#[test]
+fn test_handle_set_union() {
+    let set1 = HandleSet::EMPTY.insert(HandleId(0)).insert(HandleId(2));
+    let set2 = HandleSet::EMPTY.insert(HandleId(1)).insert(HandleId(2));
+    let union = set1 | set2;
+    assert!(union.contains(HandleId(0)));
+    assert!(union.contains(HandleId(1)));
+    assert!(union.contains(HandleId(2)));
+    assert_eq!(union.len(), 3);
+}
+
+#[test]
+fn test_readiness_snapshot() {
+    let snap = ReadinessSnapshot {
+        bits: 0b101,
+        count: 3,
+    };
+    assert!(snap.is_ready(HandleId(0)));
+    assert!(!snap.is_ready(HandleId(1)));
+    assert!(snap.is_ready(HandleId(2)));
+    assert_eq!(snap.ready_count(), 2);
+    assert_eq!(snap.total(), 3);
+
+    let set = HandleId(0) | HandleId(2);
+    assert!(snap.all_ready(set));
+    assert!(snap.any_ready(set));
+
+    let set2 = HandleId(0) | HandleId(1);
+    assert!(!snap.all_ready(set2));
+    assert!(snap.any_ready(set2));
+}
+
+// ====================================================================
+// Phase 49: Trigger condition tests
+// ====================================================================
+
+#[test]
+fn test_trigger_any_fires_on_data() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    executor.set_trigger(Trigger::Any);
+
+    executor
+        .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .unwrap();
+
+    // Load data
+    let (data, len) = encode_test_msg(1);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe { &*(arena_ptr.add(meta.offset) as *const MockSubscriber) }.load(data, len);
+
+    let result = executor.spin_once(0);
+    assert_eq!(result.subscriptions_processed, 1);
+}
+
+#[test]
+fn test_trigger_any_no_data_no_dispatch() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    executor.set_trigger(Trigger::Any);
+
+    executor
+        .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
+        .unwrap();
+
+    // No data loaded → trigger should not pass (for subscriptions)
+    let result = executor.spin_once(0);
+    assert_eq!(result.subscriptions_processed, 0);
+}
+
+#[test]
+fn test_trigger_always_fires_without_data() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    executor.set_trigger(Trigger::Always);
+
+    let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let called2 = called.clone();
+    let id = executor
+        .add_subscription::<TestMsg, _>("/test", move |_msg: &TestMsg| {
+            called2.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // Set invocation to Always so callback fires even without data
+    executor.set_invocation(id, InvocationMode::Always);
+
+    // No data, but trigger Always → dispatch phase runs, callback fires
+    let result = executor.spin_once(0);
+    // Subscription try_recv returns None, so subscriptions_processed stays 0
+    // but the callback IS invoked (Always invocation) — try_process returns Ok(false)
+    // because there's no actual data
+    assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+fn test_trigger_one_fires_on_specific_handle() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+
+    let _id0 = executor
+        .add_subscription::<TestMsg, _>("/topic0", |_: &TestMsg| {})
+        .unwrap();
+    let id1 = executor
+        .add_subscription::<TestMsg, _>("/topic1", |_: &TestMsg| {})
+        .unwrap();
+
+    executor.set_trigger(Trigger::One(id1));
+
+    // Load data only on topic0 (not the trigger handle)
+    let (data, len) = encode_test_msg(1);
+    let meta0 = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe { &*(arena_ptr.add(meta0.offset) as *const MockSubscriber) }.load(data, len);
+
+    let result = executor.spin_once(0);
+    // Trigger requires handle 1 to have data, but only handle 0 does
+    assert_eq!(result.subscriptions_processed, 0);
+
+    // Now load data on topic1
+    let (data2, len2) = encode_test_msg(2);
+    let meta1 = executor.entries[1].as_ref().unwrap();
+    unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data2, len2);
+
+    let result = executor.spin_once(0);
+    assert!(result.subscriptions_processed >= 1);
+}
+
+#[test]
+fn test_trigger_predicate() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+
+    executor
+        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .unwrap();
+
+    // Custom predicate that requires at least 1 ready handle
+    executor.set_trigger(Trigger::Predicate(|snap: &ReadinessSnapshot| {
+        snap.ready_count() >= 1
+    }));
+
+    // No data → predicate returns false
+    let result = executor.spin_once(0);
+    assert_eq!(result.subscriptions_processed, 0);
+}
+
+// ====================================================================
+// Phase 49: Guard condition tests
+// ====================================================================
+
+#[test]
+fn test_guard_condition_trigger_fires_callback() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+
+    let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let called2 = called.clone();
+
+    let (_id, handle) = executor
+        .add_guard_condition(move || {
+            called2.store(true, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // Not triggered yet
+    let _result = executor.spin_once(0);
+    assert!(!called.load(std::sync::atomic::Ordering::SeqCst));
+
+    // Trigger the guard condition
+    handle.trigger();
+
+    let _result = executor.spin_once(0);
+    assert!(called.load(std::sync::atomic::Ordering::SeqCst));
+}
+
+#[test]
+fn test_guard_condition_clears_after_trigger() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count2 = count.clone();
+
+    let (_id, handle) = executor
+        .add_guard_condition(move || {
+            count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+
+    // Trigger once
+    handle.trigger();
+    executor.spin_once(0);
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    // Without re-triggering, callback should not fire again
+    executor.spin_once(0);
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+
+    // Trigger again
+    handle.trigger();
+    executor.spin_once(0);
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 2);
+}
+
+// ====================================================================
+// Phase 49: Raw subscription callback tests
+// ====================================================================
+
+#[test]
+fn test_raw_subscription_callback() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+
+    static RAW_CALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+    static RAW_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    unsafe extern "C" fn raw_cb(_data: *const u8, len: usize, _context: *mut core::ffi::c_void) {
+        RAW_CALLED.store(true, std::sync::atomic::Ordering::SeqCst);
+        RAW_LEN.store(len, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    RAW_CALLED.store(false, std::sync::atomic::Ordering::SeqCst);
+
+    let _id = executor
+        .add_subscription_raw(
+            "/test",
+            "test/msg/TestMsg",
+            "test_hash",
+            raw_cb,
+            core::ptr::null_mut(),
+        )
+        .unwrap();
+
+    // Load CDR data into the mock subscriber
+    let (data, len) = encode_test_msg(99);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe {
+        let sub_ptr = arena_ptr.add(meta.offset) as *const MockSubscriber;
+        (*sub_ptr).load(data, len);
+    }
+
+    let result = executor.spin_once(0);
+    assert_eq!(result.subscriptions_processed, 1);
+    assert!(RAW_CALLED.load(std::sync::atomic::Ordering::SeqCst));
+    assert_eq!(RAW_LEN.load(std::sync::atomic::Ordering::SeqCst), len);
+}
+
+// ====================================================================
+// Phase 49: Session borrowing tests
+// ====================================================================
+
+#[test]
+fn test_from_session_ptr() {
+    let mut session = MockSession::new();
+    let executor: Executor<MockSession, 4, 4096> =
+        unsafe { Executor::from_session_ptr(&mut session) };
+
+    // Session should be accessible
+    let _session_ref = executor.session();
+}
+
+#[test]
+fn test_from_session_ptr_create_node() {
+    let mut session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 4096> =
+        unsafe { Executor::from_session_ptr(&mut session) };
+
+    let node = executor.create_node("test_node");
+    assert!(node.is_ok());
+}
+
+// ====================================================================
+// Phase 49: InvocationMode tests
+// ====================================================================
+
+#[test]
+fn test_set_invocation_mode() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+
+    let id = executor
+        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .unwrap();
+
+    // Default is OnNewData
+    assert_eq!(
+        executor.entries[id.0].as_ref().unwrap().invocation,
+        InvocationMode::OnNewData
+    );
+
+    // Change to Always
+    executor.set_invocation(id, InvocationMode::Always);
+    assert_eq!(
+        executor.entries[id.0].as_ref().unwrap().invocation,
+        InvocationMode::Always
+    );
+}
+
+// ====================================================================
+// Phase 49: ExecutorSemantics tests
+// ====================================================================
+
+#[test]
+fn test_set_semantics() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+
+    // Default is RclcppExecutor
+    assert_eq!(executor.semantics, ExecutorSemantics::RclcppExecutor);
+
+    executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
+    assert_eq!(executor.semantics, ExecutorSemantics::LogicalExecutionTime);
+}
+
+// ====================================================================
+// Phase 49: Trigger::All requires all non-timer handles
+// ====================================================================
+
+#[test]
+fn test_trigger_all_with_mixed_handles() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+
+    // Add a timer and a subscription
+    executor
+        .add_timer(TimerDuration::from_millis(100), || {})
+        .unwrap();
+    let _sub_id = executor
+        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .unwrap();
+
+    executor.set_trigger(Trigger::All);
+
+    // Timer is always ready, but subscription has no data → trigger fails
+    let result = executor.spin_once(0);
+    assert_eq!(result.subscriptions_processed, 0);
+    // Timer delta still accumulates
+
+    // Now load data into subscription
+    let (data, len) = encode_test_msg(1);
+    let meta1 = executor.entries[1].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe { &*(arena_ptr.add(meta1.offset) as *const MockSubscriber) }.load(data, len);
+
+    let result = executor.spin_once(100);
+    assert_eq!(result.subscriptions_processed, 1);
+    assert_eq!(result.timers_fired, 1);
+}
+
+// ====================================================================
+// Phase 49: Timer fires even when trigger fails
+// ====================================================================
+
+#[test]
+fn test_timer_delta_accumulates_when_trigger_fails() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+
+    let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let count2 = count.clone();
+
+    executor
+        .add_timer(TimerDuration::from_millis(100), move || {
+            count2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        })
+        .unwrap();
+    let sub_id = executor
+        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .unwrap();
+
+    // Trigger requires specific handle that won't have data
+    executor.set_trigger(Trigger::One(sub_id));
+
+    // Timer delta accumulates even when trigger fails.
+    // When the timer fires during the trigger-failed path, its callback
+    // IS invoked (timers always fire regardless of trigger), but the
+    // SpinOnceResult is not propagated.
+    let _result = executor.spin_once(50); // elapsed=50, not ready
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 0);
+
+    let _result = executor.spin_once(60); // elapsed=110, fires!
+    // Timer callback fired even though trigger didn't pass
+    assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
 }

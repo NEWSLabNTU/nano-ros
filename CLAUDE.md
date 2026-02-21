@@ -462,6 +462,8 @@ nano_ros_generate_interfaces(${PROJECT_NAME}
 ```
 Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<install_prefix>/share/nano-ros/interfaces/<target>/<file>`. Type info structs (`nano_ros_message_type_t`, `nano_ros_service_type_t`, `nano_ros_action_type_t`) are all defined in `nros/types.h`.
 
+**nros-c thin wrapper principle:** `nros-c` (`packages/core/nros-c/`) must be a thin FFI wrapper over the Rust `nros-node` API — it should expose `#[unsafe(no_mangle)] extern "C"` functions that delegate to `nros-node` types, not reimplement logic. Any feature needed by the C API (executor, timers, subscriptions, services, actions, trigger conditions, LET semantics, guard conditions) must first be implemented in `nros-node` as reusable Rust types, then wrapped by `nros-c`. This avoids duplicated logic, ensures both APIs share the same tested core, and keeps `nros-c` maintainable. When adding new C API features, always add the underlying capability to `nros-node` first, then add the C wrapper.
+
 ### Platform Backends
 Features are organized into three orthogonal axes:
 - **RMW backend** (select one): `rmw-zenoh` (zenoh-pico), `rmw-xrce` (XRCE-DDS)
@@ -533,6 +535,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 | 42 | Extensible RMW layer | Complete |
 | 43 | RMW-agnostic embedded API | Complete |
 | 47 | Executor trigger conditions | Not Started |
+| 49 | nros-c thin wrapper migration | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -547,6 +550,8 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 **Phase 43**: Complete. RMW-agnostic embedded API. All 13 sub-phases done: factory (`Executor::open()`), arena-based callbacks (`add_subscription`/`add_service`/`add_timer`/`add_action_server`/`add_action_client`), `spin_once()`/`spin_blocking()`/`spin_period()`, executor unification (deleted `PollingExecutor`/`BasicExecutor`/`Context`), type renames (`Executor`, `Node`, `NodeError`, `ExecutorConfig`, `Subscription`). Backward compat aliases provided for old `Embedded*` names.
 
 **Phase 47**: Executor trigger conditions. Adds rclc-style trigger conditions (`Trigger::Any`/`All`/`One`/`Always`) and per-callback `InvocationMode` (`OnNewData`/`Always`) to the executor. Leverages existing `has_data()` trait methods via monomorphized fn pointers on `CallbackMeta`. See `docs/roadmap/phase-47-executor-trigger-conditions.md`.
+
+**Phase 49**: nros-c thin wrapper migration. Rewrites nros-c executor (1,788 lines), timer (348), guard condition (450), and action (1,086) modules to delegate to nros-node instead of self-implementing. Adds raw-bytes callbacks, guard conditions, LET semantics, and session-borrowing executor to nros-node first. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

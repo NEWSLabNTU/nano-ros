@@ -11,17 +11,24 @@ use nros_rmw::{
 use crate::timer::TimerDuration;
 
 use super::arena::{
-    CallbackMeta, EntryKind, SrvEntry, SubEntry, SubInfoEntry, TimerEntry, drop_entry,
-    srv_try_process, sub_info_try_process, sub_try_process, timer_try_process,
+    CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry, SubEntry, SubInfoEntry,
+    SubRawEntry, TimerEntry, always_ready, drop_entry, guard_has_data, guard_try_process,
+    srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_has_data,
+    sub_info_has_data, sub_info_try_process, sub_raw_has_data, sub_raw_try_process,
+    sub_try_process, timer_try_process,
 };
 #[cfg(feature = "safety-e2e")]
-use super::arena::{SubSafetyEntry, sub_safety_try_process};
+use super::arena::{SubSafetyEntry, sub_safety_has_data, sub_safety_try_process};
 use super::node::Node;
 #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
 use super::types::ExecutorConfig;
 #[cfg(feature = "std")]
 use super::types::SpinOptions;
-use super::types::{NodeError, SpinOnceResult, SpinPeriodPollingResult};
+use super::types::{
+    ExecutorSemantics, GuardConditionHandle, HandleId, InvocationMode, NodeError,
+    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult,
+    SpinPeriodPollingResult, Trigger,
+};
 
 // ============================================================================
 // Executor::open() factory methods
@@ -108,6 +115,38 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
 }
 
 // ============================================================================
+// SessionStore — owned or borrowed session
+// ============================================================================
+
+/// Session storage: owned or borrowed via raw pointer.
+///
+/// The C API creates a session in `nano_ros_support_init()` before the
+/// executor. `Borrowed` lets the executor use that session without owning it.
+pub(crate) enum SessionStore<S> {
+    Owned(S),
+    Borrowed(*mut S),
+}
+
+impl<S> core::ops::Deref for SessionStore<S> {
+    type Target = S;
+    fn deref(&self) -> &S {
+        match self {
+            SessionStore::Owned(s) => s,
+            SessionStore::Borrowed(ptr) => unsafe { &**ptr },
+        }
+    }
+}
+
+impl<S> core::ops::DerefMut for SessionStore<S> {
+    fn deref_mut(&mut self) -> &mut S {
+        match self {
+            SessionStore::Owned(s) => s,
+            SessionStore::Borrowed(ptr) => unsafe { &mut **ptr },
+        }
+    }
+}
+
+// ============================================================================
 // Executor<S>
 // ============================================================================
 
@@ -125,10 +164,12 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
 /// When using the defaults (`MAX_CBS = 0`, `CB_ARENA = 0`), both arrays are
 /// zero-sized — zero overhead for existing manual-polling code.
 pub struct Executor<S, const MAX_CBS: usize = 0, const CB_ARENA: usize = 0> {
-    pub(crate) session: S,
+    pub(crate) session: SessionStore<S>,
     pub(crate) arena: [MaybeUninit<u8>; CB_ARENA],
     pub(crate) arena_used: usize,
     pub(crate) entries: [Option<CallbackMeta>; MAX_CBS],
+    pub(crate) trigger: Trigger,
+    pub(crate) semantics: ExecutorSemantics,
     #[cfg(feature = "std")]
     pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(feature = "param-services")]
@@ -142,10 +183,33 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         // accessed through properly-typed ptr::write / ptr::read via the
         // dispatch function pointers stored in `entries`.
         Self {
-            session,
+            session: SessionStore::Owned(session),
             arena: [MaybeUninit::uninit(); CB_ARENA],
             arena_used: 0,
             entries: [None; MAX_CBS],
+            trigger: Trigger::Any,
+            semantics: ExecutorSemantics::RclcppExecutor,
+            #[cfg(feature = "std")]
+            halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            #[cfg(feature = "param-services")]
+            params: None,
+        }
+    }
+
+    /// Create an executor from a borrowed session pointer.
+    ///
+    /// # Safety
+    /// - `session_ptr` must point to a valid, initialized `S` that lives at
+    ///   least as long as this executor.
+    /// - The caller must not move or drop the session while the executor exists.
+    pub unsafe fn from_session_ptr(session_ptr: *mut S) -> Self {
+        Self {
+            session: SessionStore::Borrowed(session_ptr),
+            arena: [MaybeUninit::uninit(); CB_ARENA],
+            arena_used: 0,
+            entries: [None; MAX_CBS],
+            trigger: Trigger::Any,
+            semantics: ExecutorSemantics::RclcppExecutor,
             #[cfg(feature = "std")]
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "param-services")]
@@ -164,7 +228,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .push_str(name)
             .map_err(|_| NodeError::NameTooLong)?;
 
-        Ok(Node::new(node_name, &mut self.session, 0))
+        Ok(Node::new(node_name, &mut *self.session, 0))
     }
 
     /// Drive transport I/O (poll network, dispatch callbacks).
@@ -190,6 +254,23 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     /// Get a mutable reference to the underlying session.
     pub fn session_mut(&mut self) -> &mut S {
         &mut self.session
+    }
+
+    /// Set the executor-level trigger condition.
+    pub fn set_trigger(&mut self, trigger: Trigger) {
+        self.trigger = trigger;
+    }
+
+    /// Set the executor data communication semantics.
+    pub fn set_semantics(&mut self, semantics: ExecutorSemantics) {
+        self.semantics = semantics;
+    }
+
+    /// Set the invocation mode for a specific handle.
+    pub fn set_invocation(&mut self, id: HandleId, mode: InvocationMode) {
+        if let Some(Some(meta)) = self.entries.get_mut(id.0) {
+            meta.invocation = mode;
+        }
     }
 
     // ========================================================================
@@ -232,7 +313,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     ///     executor.spin_once(10);
     /// }
     /// ```
-    pub fn add_subscription<M, F>(&mut self, topic_name: &str, callback: F) -> Result<(), NodeError>
+    pub fn add_subscription<M, F>(
+        &mut self,
+        topic_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
     where
         M: RosMessage + 'static,
         F: FnMut(&M) + 'static,
@@ -246,7 +331,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         &mut self,
         topic_name: &str,
         callback: F,
-    ) -> Result<(), NodeError>
+    ) -> Result<HandleId, NodeError>
     where
         M: RosMessage + 'static,
         F: FnMut(&M) + 'static,
@@ -283,9 +368,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
+            has_data: sub_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
+            invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
         });
-        Ok(())
+        Ok(HandleId(slot))
     }
 
     /// Register a subscription callback that receives both the message and
@@ -306,7 +393,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         &mut self,
         topic_name: &str,
         callback: F,
-    ) -> Result<(), NodeError>
+    ) -> Result<HandleId, NodeError>
     where
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
@@ -320,7 +407,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         &mut self,
         topic_name: &str,
         callback: F,
-    ) -> Result<(), NodeError>
+    ) -> Result<HandleId, NodeError>
     where
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
@@ -355,9 +442,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_info_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
+            has_data: sub_info_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
+            invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
         });
-        Ok(())
+        Ok(HandleId(slot))
     }
 
     /// Register a subscription callback with E2E safety validation (CRC + sequence tracking).
@@ -382,7 +471,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         &mut self,
         topic_name: &str,
         callback: F,
-    ) -> Result<(), NodeError>
+    ) -> Result<HandleId, NodeError>
     where
         M: RosMessage + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
@@ -397,7 +486,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         &mut self,
         topic_name: &str,
         callback: F,
-    ) -> Result<(), NodeError>
+    ) -> Result<HandleId, NodeError>
     where
         M: RosMessage + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
@@ -432,15 +521,21 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::Subscription,
             try_process: sub_safety_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
+            has_data: sub_safety_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
+            invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
         });
-        Ok(())
+        Ok(HandleId(slot))
     }
 
     /// Register a service callback with the default 1024-byte buffers.
     ///
     /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
-    pub fn add_service<Svc, F>(&mut self, service_name: &str, callback: F) -> Result<(), NodeError>
+    pub fn add_service<Svc, F>(
+        &mut self,
+        service_name: &str,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
@@ -455,7 +550,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         &mut self,
         service_name: &str,
         callback: F,
-    ) -> Result<(), NodeError>
+    ) -> Result<HandleId, NodeError>
     where
         Svc: RosService + 'static,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
@@ -495,9 +590,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::Service,
             try_process: srv_try_process::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
+            has_data: srv_has_data::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
+            invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>,
         });
-        Ok(())
+        Ok(HandleId(slot))
     }
 
     // ========================================================================
@@ -508,7 +605,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     ///
     /// The callback fires every `period` milliseconds during [`spin_once()`](Self::spin_once).
     /// The timer delta is approximated by the `timeout_ms` argument to `spin_once`.
-    pub fn add_timer<F>(&mut self, period: TimerDuration, callback: F) -> Result<(), NodeError>
+    pub fn add_timer<F>(
+        &mut self,
+        period: TimerDuration,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -534,9 +635,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::Timer,
             try_process: timer_try_process::<F>,
+            has_data: always_ready,
+            invocation: InvocationMode::Always,
             drop_fn: drop_entry::<TimerEntry<F>>,
         });
-        Ok(())
+        Ok(HandleId(slot))
     }
 
     /// Register a one-shot timer callback.
@@ -546,7 +649,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         &mut self,
         delay: TimerDuration,
         callback: F,
-    ) -> Result<(), NodeError>
+    ) -> Result<HandleId, NodeError>
     where
         F: FnMut() + 'static,
     {
@@ -572,32 +675,278 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::Timer,
             try_process: timer_try_process::<F>,
+            has_data: always_ready,
+            invocation: InvocationMode::Always,
             drop_fn: drop_entry::<TimerEntry<F>>,
         });
-        Ok(())
+        Ok(HandleId(slot))
     }
 
     // ========================================================================
-    // spin_once
+    // Raw callback registration (for C API)
     // ========================================================================
 
-    /// Drive I/O and dispatch all registered callbacks once.
+    /// Register a raw (untyped) subscription callback.
     ///
-    /// 1. Calls [`drive_io()`](Self::drive_io) to pump the transport.
-    /// 2. Iterates every registered entry and tries to process one item each.
+    /// The callback receives CDR bytes without deserialization.
+    /// Used by the C API where generic type parameters are not available.
+    pub fn add_subscription_raw(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        callback: RawSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError>
+    where
+        S::SubscriberHandle: Subscriber,
+    {
+        self.add_subscription_raw_sized::<1024>(topic_name, type_name, type_hash, callback, context)
+    }
+
+    /// Register a raw subscription callback with a custom receive buffer size.
+    pub fn add_subscription_raw_sized<const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        callback: RawSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError>
+    where
+        S::SubscriberHandle: Subscriber,
+    {
+        let slot = self.next_entry_slot()?;
+        let topic = TopicInfo::new(topic_name, type_name, type_hash);
+        let handle = self
+            .session
+            .create_subscriber(&topic, QosSettings::default())
+            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+
+        let offset = self.arena_alloc::<SubRawEntry<S::SubscriberHandle, RX_BUF>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut SubRawEntry<S::SubscriberHandle, RX_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                SubRawEntry {
+                    handle,
+                    buffer: [0u8; RX_BUF],
+                    callback,
+                    context,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_raw_try_process::<S::SubscriberHandle, RX_BUF>,
+            has_data: sub_raw_has_data::<S::SubscriberHandle, RX_BUF>,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<SubRawEntry<S::SubscriberHandle, RX_BUF>>,
+        });
+        Ok(HandleId(slot))
+    }
+
+    /// Register a raw (untyped) service callback.
+    ///
+    /// The callback receives and produces CDR bytes without typed
+    /// deserialization/serialization.
+    pub fn add_service_raw(
+        &mut self,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: RawServiceCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError>
+    where
+        S::ServiceServerHandle: ServiceServerTrait,
+        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+    {
+        self.add_service_raw_sized::<1024, 1024>(
+            service_name,
+            service_type,
+            service_hash,
+            callback,
+            context,
+        )
+    }
+
+    /// Register a raw service callback with custom buffer sizes.
+    pub fn add_service_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
+        &mut self,
+        service_name: &str,
+        service_type: &str,
+        service_hash: &str,
+        callback: RawServiceCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError>
+    where
+        S::ServiceServerHandle: ServiceServerTrait,
+        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
+    {
+        let slot = self.next_entry_slot()?;
+        let info = ServiceInfo::new(service_name, service_type, service_hash);
+        let handle = self
+            .session
+            .create_service_server(&info)
+            .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
+
+        let offset =
+            self.arena_alloc::<SrvRawEntry<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset)
+                as *mut SrvRawEntry<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                SrvRawEntry {
+                    handle,
+                    req_buffer: [0u8; REQ_BUF],
+                    reply_buffer: [0u8; REPLY_BUF],
+                    callback,
+                    context,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::Service,
+            try_process: srv_raw_try_process::<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>,
+            has_data: srv_raw_has_data::<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<SrvRawEntry<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>>,
+        });
+        Ok(HandleId(slot))
+    }
+
+    // ========================================================================
+    // Guard condition registration
+    // ========================================================================
+
+    /// Register a guard condition with a callback.
+    ///
+    /// Returns both the [`HandleId`] for trigger configuration and a
+    /// [`GuardConditionHandle`] for triggering from other threads.
+    pub fn add_guard_condition<F>(
+        &mut self,
+        callback: F,
+    ) -> Result<(HandleId, GuardConditionHandle), NodeError>
+    where
+        F: FnMut() + 'static,
+    {
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<GuardConditionEntry<F>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut GuardConditionEntry<F>;
+            core::ptr::write(
+                entry_ptr,
+                GuardConditionEntry {
+                    flag: core::sync::atomic::AtomicBool::new(false),
+                    callback,
+                },
+            );
+
+            // Create a handle pointing to the flag in the arena
+            let flag_ptr = &(*entry_ptr).flag as *const core::sync::atomic::AtomicBool;
+            let guard_handle = GuardConditionHandle::new(flag_ptr);
+
+            self.entries[slot] = Some(CallbackMeta {
+                offset,
+                kind: EntryKind::GuardCondition,
+                try_process: guard_try_process::<F>,
+                has_data: guard_has_data::<F>,
+                invocation: InvocationMode::OnNewData,
+                drop_fn: drop_entry::<GuardConditionEntry<F>>,
+            });
+
+            Ok((HandleId(slot), guard_handle))
+        }
+    }
+
+    // ========================================================================
+    // spin_once (three-phase: readiness → trigger → dispatch)
+    // ========================================================================
+
+    /// Drive I/O and dispatch registered callbacks once.
+    ///
+    /// Three-phase execution:
+    /// 1. **Readiness scan** — query each handle's `has_data()`.
+    /// 2. **Trigger evaluation** — check if the executor-level trigger passes.
+    /// 3. **Dispatch** — invoke callbacks according to their `InvocationMode`.
     ///
     /// Returns a [`SpinOnceResult`] with counts of processed items and errors.
     pub fn spin_once(&mut self, timeout_ms: i32) -> SpinOnceResult {
         let _ = self.session.drive_io(timeout_ms);
 
         let delta_ms = timeout_ms.max(0) as u64;
-        let mut result = SpinOnceResult::new();
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
 
-        for meta in self.entries.iter().flatten() {
-            // SAFETY: `meta.offset` was set by `arena_alloc` which guarantees
-            // alignment and bounds. The function pointer was set at registration
-            // time with the matching concrete type.
+        // Phase 1: Readiness scan
+        let mut bits: u64 = 0;
+        let mut count: usize = 0;
+        let mut non_timer_mask: u64 = 0;
+
+        for (i, meta) in self.entries.iter().enumerate() {
+            if let Some(meta) = meta {
+                let data_ptr = unsafe { arena_ptr.add(meta.offset) as *const u8 };
+                if unsafe { (meta.has_data)(data_ptr) } {
+                    bits |= 1u64 << i;
+                }
+                if !matches!(meta.kind, EntryKind::Timer | EntryKind::GuardCondition) {
+                    non_timer_mask |= 1u64 << i;
+                }
+                count += 1;
+            }
+        }
+
+        let snapshot = ReadinessSnapshot { bits, count };
+
+        // Phase 2: Trigger evaluation
+        let trigger_passes = match &self.trigger {
+            Trigger::Any => bits & non_timer_mask != 0 || non_timer_mask == 0,
+            Trigger::All => bits & non_timer_mask == non_timer_mask,
+            Trigger::One(id) => snapshot.is_ready(*id),
+            Trigger::AllOf(set) => snapshot.all_ready(*set),
+            Trigger::AnyOf(set) => snapshot.any_ready(*set),
+            Trigger::Always => true,
+            Trigger::Predicate(f) => f(&snapshot),
+        };
+
+        if !trigger_passes {
+            // Timers still need delta accumulation even when trigger doesn't pass
+            for meta in self.entries.iter().flatten() {
+                if matches!(meta.kind, EntryKind::Timer) {
+                    let data_ptr = unsafe { arena_ptr.add(meta.offset) };
+                    let _ = unsafe { (meta.try_process)(data_ptr, delta_ms) };
+                }
+            }
+            return SpinOnceResult::new();
+        }
+
+        // Phase 3: Dispatch
+        let mut result = SpinOnceResult::new();
+
+        for (i, meta) in self.entries.iter().enumerate() {
+            let Some(meta) = meta else { continue };
+
+            // Check invocation mode
+            let should_fire = match meta.invocation {
+                InvocationMode::OnNewData => bits & (1u64 << i) != 0,
+                InvocationMode::Always => true,
+            };
+
+            if !should_fire {
+                continue;
+            }
+
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
             match unsafe { (meta.try_process)(data_ptr, delta_ms) } {
                 Ok(true) => match meta.kind {
@@ -608,6 +957,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                         result.services_handled += 1;
                     }
                     EntryKind::Timer => result.timers_fired += 1,
+                    EntryKind::GuardCondition => {}
                 },
                 Ok(false) => {}
                 Err(_) => match meta.kind {
@@ -617,7 +967,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                     EntryKind::Service | EntryKind::ActionServer => {
                         result.service_errors += 1;
                     }
-                    EntryKind::Timer => {} // timers don't produce transport errors
+                    EntryKind::Timer | EntryKind::GuardCondition => {}
                 },
             }
         }

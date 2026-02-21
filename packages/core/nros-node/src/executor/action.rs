@@ -11,10 +11,11 @@ use nros_rmw::{
 use super::arena::{
     ActionClientArenaEntry, ActionServerArenaEntry, CallbackMeta, EntryKind, ac_cancel_goal,
     ac_get_result, ac_send_goal, action_client_try_process, action_server_try_process,
-    as_complete_goal, as_publish_feedback, as_set_goal_status, drop_entry,
+    always_ready, as_complete_goal, as_publish_feedback, as_set_goal_status, drop_entry,
 };
 use super::handles::{EmbeddedActionClient, EmbeddedActionServer};
 use super::spin::Executor;
+use super::types::InvocationMode;
 use super::types::NodeError;
 
 // ============================================================================
@@ -198,6 +199,8 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::ActionServer,
+            has_data: always_ready,
+            invocation: InvocationMode::Always,
             try_process: action_server_try_process::<
                 A,
                 S::ServiceServerHandle,
@@ -400,6 +403,8 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::ActionClient,
+            has_data: always_ready,
+            invocation: InvocationMode::Always,
             try_process: action_client_try_process::<
                 A,
                 S::ServiceClientHandle,
