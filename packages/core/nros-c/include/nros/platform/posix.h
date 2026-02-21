@@ -34,7 +34,7 @@ extern "C" {
 
 #ifdef NROS_FEATURE_THREADS
 #define NROS_PLATFORM_HAS_MUTEX
-typedef pthread_mutex_t nano_ros_mutex_t;
+typedef pthread_mutex_t nros_mutex_t;
 #endif
 
 // ============================================================================
@@ -44,7 +44,7 @@ typedef pthread_mutex_t nano_ros_mutex_t;
 /**
  * Get current monotonic time in nanoseconds.
  */
-static inline uint64_t nano_ros_platform_time_ns(void) {
+static inline uint64_t nros_platform_time_ns(void) {
     struct timespec ts;
     clock_gettime(CLOCK_MONOTONIC, &ts);
     return (uint64_t)ts.tv_sec * 1000000000ULL + (uint64_t)ts.tv_nsec;
@@ -53,7 +53,7 @@ static inline uint64_t nano_ros_platform_time_ns(void) {
 /**
  * Sleep for the specified duration in nanoseconds.
  */
-static inline void nano_ros_platform_sleep_ns(uint64_t ns) {
+static inline void nros_platform_sleep_ns(uint64_t ns) {
     struct timespec ts = {
         .tv_sec = (time_t)(ns / 1000000000ULL),
         .tv_nsec = (long)(ns % 1000000000ULL)
@@ -68,14 +68,14 @@ static inline void nano_ros_platform_sleep_ns(uint64_t ns) {
 /**
  * Atomically store a boolean value with release semantics.
  */
-static inline void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
     atomic_store_explicit((_Atomic bool *)ptr, value, memory_order_release);
 }
 
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
+static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
     return atomic_load_explicit((_Atomic bool *)ptr, memory_order_acquire);
 }
 
@@ -88,14 +88,14 @@ static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
 /**
  * Allocate memory.
  */
-static inline void *nano_ros_platform_malloc(size_t size) {
+static inline void *nros_platform_malloc(size_t size) {
     return malloc(size);
 }
 
 /**
  * Free previously allocated memory.
  */
-static inline void nano_ros_platform_free(void *ptr) {
+static inline void nros_platform_free(void *ptr) {
     free(ptr);
 }
 
@@ -110,28 +110,28 @@ static inline void nano_ros_platform_free(void *ptr) {
 /**
  * Initialize a mutex.
  */
-static inline int nano_ros_platform_mutex_init(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_init(nros_mutex_t *mutex) {
     return pthread_mutex_init(mutex, NULL);
 }
 
 /**
  * Lock a mutex.
  */
-static inline int nano_ros_platform_mutex_lock(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_lock(nros_mutex_t *mutex) {
     return pthread_mutex_lock(mutex);
 }
 
 /**
  * Unlock a mutex.
  */
-static inline int nano_ros_platform_mutex_unlock(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_unlock(nros_mutex_t *mutex) {
     return pthread_mutex_unlock(mutex);
 }
 
 /**
  * Destroy a mutex.
  */
-static inline int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_destroy(nros_mutex_t *mutex) {
     return pthread_mutex_destroy(mutex);
 }
 

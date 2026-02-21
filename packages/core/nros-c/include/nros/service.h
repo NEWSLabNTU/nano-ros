@@ -23,14 +23,14 @@ extern "C" {
 // ============================================================================
 
 /** Service server state */
-typedef enum nano_ros_service_state_t {
+typedef enum nros_service_state_t {
     /** Not initialized */
     NROS_SERVICE_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_SERVICE_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_SERVICE_STATE_SHUTDOWN = 2,
-} nano_ros_service_state_t;
+} nros_service_state_t;
 
 // ============================================================================
 // Service Callback
@@ -49,7 +49,7 @@ typedef enum nano_ros_service_state_t {
  * @return true if the request was handled successfully
  * @return false if there was an error handling the request
  */
-typedef bool (*nano_ros_service_callback_t)(
+typedef bool (*nros_service_callback_t)(
     const uint8_t *request_data,
     size_t request_len,
     uint8_t *response_data,
@@ -62,9 +62,9 @@ typedef bool (*nano_ros_service_callback_t)(
 // ============================================================================
 
 /** Service server structure */
-typedef struct nano_ros_service_t {
+typedef struct nros_service_t {
     /** Current state */
-    nano_ros_service_state_t state;
+    nros_service_state_t state;
     /** Service name storage */
     uint8_t service_name[NROS_MAX_SERVICE_NAME_LEN];
     /** Service name length */
@@ -78,14 +78,14 @@ typedef struct nano_ros_service_t {
     /** Type hash length */
     size_t type_hash_len;
     /** User callback function */
-    nano_ros_service_callback_t callback;
+    nros_service_callback_t callback;
     /** User context pointer */
     void *context;
     /** Pointer to parent node */
     const nros_node_t *node;
     /** Opaque pointer to internal Rust service server */
     void *internal;
-} nano_ros_service_t;
+} nros_service_t;
 
 // ============================================================================
 // Service Functions
@@ -97,7 +97,7 @@ typedef struct nano_ros_service_t {
  * @return Zero-initialized service structure
  */
 NROS_PUBLIC
-nano_ros_service_t nano_ros_service_get_zero_initialized(void);
+nros_service_t nros_service_get_zero_initialized(void);
 
 /**
  * Initialize a service server.
@@ -115,12 +115,12 @@ nano_ros_service_t nano_ros_service_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_service_init(
-    nano_ros_service_t *service,
+nros_ret_t nros_service_init(
+    nros_service_t *service,
     const nros_node_t *node,
-    const nano_ros_message_type_t *type_info,
+    const nros_message_type_t *type_info,
     const char *service_name,
-    nano_ros_service_callback_t callback,
+    nros_service_callback_t callback,
     void *context);
 
 /**
@@ -133,7 +133,7 @@ nano_ros_ret_t nano_ros_service_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_service_fini(nano_ros_service_t *service);
+nros_ret_t nros_service_fini(nros_service_t *service);
 
 /**
  * Take a service request (non-blocking).
@@ -150,8 +150,8 @@ nano_ros_ret_t nano_ros_service_fini(nano_ros_service_t *service);
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_service_take_request(
-    nano_ros_service_t *service,
+nros_ret_t nros_service_take_request(
+    nros_service_t *service,
     uint8_t *request_data,
     size_t request_capacity,
     size_t *request_len,
@@ -171,8 +171,8 @@ nano_ros_ret_t nano_ros_service_take_request(
  * @return NROS_RET_ERROR on send failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_service_send_response(
-    nano_ros_service_t *service,
+nros_ret_t nros_service_send_response(
+    nros_service_t *service,
     int64_t sequence_number,
     const uint8_t *response_data,
     size_t response_len);
@@ -185,7 +185,7 @@ nano_ros_ret_t nano_ros_service_send_response(
  * @return Pointer to service name (null-terminated), or NULL if invalid
  */
 NROS_PUBLIC
-const char *nano_ros_service_get_service_name(const nano_ros_service_t *service);
+const char *nros_service_get_service_name(const nros_service_t *service);
 
 /**
  * Check if service is valid (initialized).
@@ -195,7 +195,7 @@ const char *nano_ros_service_get_service_name(const nano_ros_service_t *service)
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_service_is_valid(const nano_ros_service_t *service);
+int nros_service_is_valid(const nros_service_t *service);
 
 #ifdef __cplusplus
 }

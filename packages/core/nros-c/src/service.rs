@@ -9,8 +9,8 @@ use core::ptr;
 use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
-use crate::publisher::nano_ros_message_type_t;
-use crate::support::nano_ros_support_state_t;
+use crate::publisher::nros_message_type_t;
+use crate::support::nros_support_state_t;
 
 // ============================================================================
 // Service Server
@@ -29,7 +29,7 @@ use crate::support::nano_ros_support_state_t;
 /// # Returns
 /// * `true` if the request was handled successfully
 /// * `false` if there was an error handling the request
-pub type nano_ros_service_callback_t = Option<
+pub type nros_service_callback_t = Option<
     unsafe extern "C" fn(
         request_data: *const u8,
         request_len: usize,
@@ -43,7 +43,7 @@ pub type nano_ros_service_callback_t = Option<
 /// Service server state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_service_state_t {
+pub enum nros_service_state_t {
     /// Not initialized
     NROS_SERVICE_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -54,9 +54,9 @@ pub enum nano_ros_service_state_t {
 
 /// Service server structure.
 #[repr(C)]
-pub struct nano_ros_service_t {
+pub struct nros_service_t {
     /// Current state
-    pub state: nano_ros_service_state_t,
+    pub state: nros_service_state_t,
     /// Service name storage
     service_name: [u8; MAX_SERVICE_NAME_LEN],
     /// Service name length
@@ -70,7 +70,7 @@ pub struct nano_ros_service_t {
     /// Type hash length
     type_hash_len: usize,
     /// User callback function
-    callback: nano_ros_service_callback_t,
+    callback: nros_service_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Pointer to parent node
@@ -79,10 +79,10 @@ pub struct nano_ros_service_t {
     _internal: *mut c_void,
 }
 
-impl Default for nano_ros_service_t {
+impl Default for nros_service_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
+            state: nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
             service_name: [0u8; MAX_SERVICE_NAME_LEN],
             service_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -97,9 +97,9 @@ impl Default for nano_ros_service_t {
     }
 }
 
-impl nano_ros_service_t {
+impl nros_service_t {
     /// Get the callback function
-    pub(crate) fn get_callback(&self) -> nano_ros_service_callback_t {
+    pub(crate) fn get_callback(&self) -> nros_service_callback_t {
         self.callback
     }
 
@@ -116,8 +116,8 @@ impl nano_ros_service_t {
 
 /// Get a zero-initialized service server.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_service_get_zero_initialized() -> nano_ros_service_t {
-    nano_ros_service_t::default()
+pub extern "C" fn nros_service_get_zero_initialized() -> nros_service_t {
+    nros_service_t::default()
 }
 
 /// Initialize a service server.
@@ -136,14 +136,14 @@ pub extern "C" fn nano_ros_service_get_zero_initialized() -> nano_ros_service_t 
 /// * `NROS_RET_NOT_INIT` if node is not initialized
 /// * `NROS_RET_ERROR` on initialization failure
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_service_init(
-    service: *mut nano_ros_service_t,
+pub unsafe extern "C" fn nros_service_init(
+    service: *mut nros_service_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     service_name: *const c_char,
-    callback: nano_ros_service_callback_t,
+    callback: nros_service_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     // Validate required arguments
     if service.is_null() || node.is_null() || type_info.is_null() || service_name.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -158,7 +158,7 @@ pub unsafe extern "C" fn nano_ros_service_init(
     let type_info = &*type_info;
 
     // Check if service is already initialized
-    if service.state != nano_ros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED {
+    if service.state != nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -232,7 +232,7 @@ pub unsafe extern "C" fn nano_ros_service_init(
             None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             return NROS_RET_NOT_INIT;
         }
 
@@ -264,7 +264,7 @@ pub unsafe extern "C" fn nano_ros_service_init(
             Err(_) => return NROS_RET_ERROR,
         }
 
-        service.state = nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
+        service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
         NROS_RET_OK
     }
 
@@ -285,14 +285,14 @@ pub unsafe extern "C" fn nano_ros_service_init(
 /// * `NROS_RET_INVALID_ARGUMENT` if service is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros_ret_t {
     if service.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let service = &mut *service;
 
-    if service.state != nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -311,7 +311,7 @@ pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t)
     service.callback = None;
     service.context = ptr::null_mut();
     service.node = ptr::null();
-    service.state = nano_ros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN;
+    service.state = nros_service_state_t::NROS_SERVICE_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -331,13 +331,13 @@ pub unsafe extern "C" fn nano_ros_service_fini(service: *mut nano_ros_service_t)
 /// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_service_take_request(
-    service: *mut nano_ros_service_t,
+pub unsafe extern "C" fn nros_service_take_request(
+    service: *mut nros_service_t,
     request_data: *mut u8,
     request_capacity: usize,
     request_len: *mut usize,
     sequence_number: *mut i64,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if service.is_null()
         || request_data.is_null()
         || request_len.is_null()
@@ -348,7 +348,7 @@ pub unsafe extern "C" fn nano_ros_service_take_request(
 
     let service = &mut *service;
 
-    if service.state != nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -396,19 +396,19 @@ pub unsafe extern "C" fn nano_ros_service_take_request(
 /// * `NROS_RET_NOT_INIT` if not initialized
 /// * `NROS_RET_ERROR` on send failure
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_service_send_response(
-    service: *mut nano_ros_service_t,
+pub unsafe extern "C" fn nros_service_send_response(
+    service: *mut nros_service_t,
     sequence_number: i64,
     response_data: *const u8,
     response_len: usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if service.is_null() || response_data.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let service = &mut *service;
 
-    if service.state != nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -443,15 +443,15 @@ pub unsafe extern "C" fn nano_ros_service_send_response(
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if invalid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_service_get_service_name(
-    service: *const nano_ros_service_t,
+pub unsafe extern "C" fn nros_service_get_service_name(
+    service: *const nros_service_t,
 ) -> *const c_char {
     if service.is_null() {
         return ptr::null();
     }
 
     let service = &*service;
-    if service.state != nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -466,13 +466,13 @@ pub unsafe extern "C" fn nano_ros_service_get_service_name(
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_service_is_valid(service: *const nano_ros_service_t) -> c_int {
+pub unsafe extern "C" fn nros_service_is_valid(service: *const nros_service_t) -> c_int {
     if service.is_null() {
         return 0;
     }
 
     let service = &*service;
-    if service.state == nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if service.state == nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
         1
     } else {
         0
@@ -486,7 +486,7 @@ pub unsafe extern "C" fn nano_ros_service_is_valid(service: *const nano_ros_serv
 /// Client state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_client_state_t {
+pub enum nros_client_state_t {
     /// Not initialized
     NROS_CLIENT_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -497,9 +497,9 @@ pub enum nano_ros_client_state_t {
 
 /// Service client structure.
 #[repr(C)]
-pub struct nano_ros_client_t {
+pub struct nros_client_t {
     /// Current state
-    pub state: nano_ros_client_state_t,
+    pub state: nros_client_state_t,
     /// Service name storage
     service_name: [u8; MAX_SERVICE_NAME_LEN],
     /// Service name length
@@ -518,10 +518,10 @@ pub struct nano_ros_client_t {
     _internal: *mut c_void,
 }
 
-impl Default for nano_ros_client_t {
+impl Default for nros_client_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
+            state: nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
             service_name: [0u8; MAX_SERVICE_NAME_LEN],
             service_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -536,8 +536,8 @@ impl Default for nano_ros_client_t {
 
 /// Get a zero-initialized client.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_client_get_zero_initialized() -> nano_ros_client_t {
-    nano_ros_client_t::default()
+pub extern "C" fn nros_client_get_zero_initialized() -> nros_client_t {
+    nros_client_t::default()
 }
 
 /// Initialize a service client.
@@ -554,12 +554,12 @@ pub extern "C" fn nano_ros_client_get_zero_initialized() -> nano_ros_client_t {
 /// * `NROS_RET_NOT_INIT` if node is not initialized
 /// * `NROS_RET_ERROR` on initialization failure
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_client_init(
-    client: *mut nano_ros_client_t,
+pub unsafe extern "C" fn nros_client_init(
+    client: *mut nros_client_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     service_name: *const c_char,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     // Validate required arguments
     if client.is_null() || node.is_null() || type_info.is_null() || service_name.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -570,7 +570,7 @@ pub unsafe extern "C" fn nano_ros_client_init(
     let type_info = &*type_info;
 
     // Check if client is already initialized
-    if client.state != nano_ros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED {
+    if client.state != nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -642,7 +642,7 @@ pub unsafe extern "C" fn nano_ros_client_init(
             None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             return NROS_RET_NOT_INIT;
         }
 
@@ -674,7 +674,7 @@ pub unsafe extern "C" fn nano_ros_client_init(
             Err(_) => return NROS_RET_ERROR,
         }
 
-        client.state = nano_ros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
+        client.state = nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED;
         NROS_RET_OK
     }
 
@@ -695,14 +695,14 @@ pub unsafe extern "C" fn nano_ros_client_init(
 /// * `NROS_RET_INVALID_ARGUMENT` if client is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_ret_t {
     if client.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let client = &mut *client;
 
-    if client.state != nano_ros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
+    if client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -718,7 +718,7 @@ pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) ->
 
     client._internal = ptr::null_mut();
     client.node = ptr::null();
-    client.state = nano_ros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
+    client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -743,14 +743,14 @@ pub unsafe extern "C" fn nano_ros_client_fini(client: *mut nano_ros_client_t) ->
 /// * `NROS_RET_TIMEOUT` if no response within timeout
 /// * `NROS_RET_ERROR` on call failure
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_client_call(
-    client: *mut nano_ros_client_t,
+pub unsafe extern "C" fn nros_client_call(
+    client: *mut nros_client_t,
     request_data: *const u8,
     request_len: usize,
     response_data: *mut u8,
     response_capacity: usize,
     response_len: *mut usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if client.is_null()
         || request_data.is_null()
         || response_data.is_null()
@@ -761,7 +761,7 @@ pub unsafe extern "C" fn nano_ros_client_call(
 
     let client = &mut *client;
 
-    if client.state != nano_ros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
+    if client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -801,15 +801,15 @@ pub unsafe extern "C" fn nano_ros_client_call(
 /// # Returns
 /// * Pointer to service name (null-terminated), or NULL if invalid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_client_get_service_name(
-    client: *const nano_ros_client_t,
+pub unsafe extern "C" fn nros_client_get_service_name(
+    client: *const nros_client_t,
 ) -> *const c_char {
     if client.is_null() {
         return ptr::null();
     }
 
     let client = &*client;
-    if client.state != nano_ros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
+    if client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -824,13 +824,13 @@ pub unsafe extern "C" fn nano_ros_client_get_service_name(
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_client_is_valid(client: *const nano_ros_client_t) -> c_int {
+pub unsafe extern "C" fn nros_client_is_valid(client: *const nros_client_t) -> c_int {
     if client.is_null() {
         return 0;
     }
 
     let client = &*client;
-    if client.state == nano_ros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
+    if client.state == nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
         1
     } else {
         0

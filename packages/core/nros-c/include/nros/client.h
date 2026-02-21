@@ -23,23 +23,23 @@ extern "C" {
 // ============================================================================
 
 /** Client state */
-typedef enum nano_ros_client_state_t {
+typedef enum nros_client_state_t {
     /** Not initialized */
     NROS_CLIENT_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_CLIENT_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_CLIENT_STATE_SHUTDOWN = 2,
-} nano_ros_client_state_t;
+} nros_client_state_t;
 
 // ============================================================================
 // Client Structure
 // ============================================================================
 
 /** Service client structure */
-typedef struct nano_ros_client_t {
+typedef struct nros_client_t {
     /** Current state */
-    nano_ros_client_state_t state;
+    nros_client_state_t state;
     /** Service name storage */
     uint8_t service_name[NROS_MAX_SERVICE_NAME_LEN];
     /** Service name length */
@@ -56,7 +56,7 @@ typedef struct nano_ros_client_t {
     const nros_node_t *node;
     /** Opaque pointer to internal Rust service client */
     void *internal;
-} nano_ros_client_t;
+} nros_client_t;
 
 // ============================================================================
 // Client Functions
@@ -68,7 +68,7 @@ typedef struct nano_ros_client_t {
  * @return Zero-initialized client structure
  */
 NROS_PUBLIC
-nano_ros_client_t nano_ros_client_get_zero_initialized(void);
+nros_client_t nros_client_get_zero_initialized(void);
 
 /**
  * Initialize a service client.
@@ -84,10 +84,10 @@ nano_ros_client_t nano_ros_client_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_client_init(
-    nano_ros_client_t *client,
+nros_ret_t nros_client_init(
+    nros_client_t *client,
     const nros_node_t *node,
-    const nano_ros_message_type_t *type_info,
+    const nros_message_type_t *type_info,
     const char *service_name);
 
 /**
@@ -100,7 +100,7 @@ nano_ros_ret_t nano_ros_client_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_client_fini(nano_ros_client_t *client);
+nros_ret_t nros_client_fini(nros_client_t *client);
 
 /**
  * Call a service (blocking).
@@ -122,8 +122,8 @@ nano_ros_ret_t nano_ros_client_fini(nano_ros_client_t *client);
  * @return NROS_RET_ERROR on call failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_client_call(
-    nano_ros_client_t *client,
+nros_ret_t nros_client_call(
+    nros_client_t *client,
     const uint8_t *request_data,
     size_t request_len,
     uint8_t *response_data,
@@ -138,7 +138,7 @@ nano_ros_ret_t nano_ros_client_call(
  * @return Pointer to service name (null-terminated), or NULL if invalid
  */
 NROS_PUBLIC
-const char *nano_ros_client_get_service_name(const nano_ros_client_t *client);
+const char *nros_client_get_service_name(const nros_client_t *client);
 
 /**
  * Check if client is valid (initialized).
@@ -148,7 +148,7 @@ const char *nano_ros_client_get_service_name(const nano_ros_client_t *client);
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_client_is_valid(const nano_ros_client_t *client);
+int nros_client_is_valid(const nros_client_t *client);
 
 #ifdef __cplusplus
 }

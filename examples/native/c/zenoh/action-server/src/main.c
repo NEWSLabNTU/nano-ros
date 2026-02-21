@@ -24,15 +24,15 @@ typedef struct {
 } server_context_t;
 
 static struct {
-    nano_ros_support_t support;
+    nros_support_t support;
     nros_node_t node;
-    nano_ros_action_server_t action_server;
-    nano_ros_executor_t executor;
+    nros_action_server_t action_server;
+    nros_executor_t executor;
     server_context_t ctx;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
-static nano_ros_executor_t* g_executor = NULL;
+static nros_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -42,7 +42,7 @@ static void signal_handler(int signum) {
     (void)signum;
     g_running = 0;
     if (g_executor) {
-        nano_ros_executor_stop(g_executor);
+        nros_executor_stop(g_executor);
     }
 }
 
@@ -50,8 +50,8 @@ static void signal_handler(int signum) {
 // Action callbacks
 // ----------------------------------------------------------------------------
 
-static nano_ros_goal_response_t goal_callback(
-    const nano_ros_goal_uuid_t* goal_uuid,
+static nros_goal_response_t goal_callback(
+    const nros_goal_uuid_t* goal_uuid,
     const uint8_t* goal_request,
     size_t goal_len,
     void* context)
@@ -80,8 +80,8 @@ static nano_ros_goal_response_t goal_callback(
     return NROS_GOAL_ACCEPT_AND_EXECUTE;
 }
 
-static nano_ros_cancel_response_t cancel_callback(
-    nano_ros_goal_handle_t* goal,
+static nros_cancel_response_t cancel_callback(
+    nros_goal_handle_t* goal,
     void* context)
 {
     (void)context;
@@ -91,7 +91,7 @@ static nano_ros_cancel_response_t cancel_callback(
 }
 
 static void accepted_callback(
-    nano_ros_goal_handle_t* goal,
+    nros_goal_handle_t* goal,
     void* context)
 {
     server_context_t* ctx = (server_context_t*)context;
@@ -107,7 +107,7 @@ static void accepted_callback(
     int32_t order = 10;
 
     // Transition to executing state
-    nano_ros_ret_t ret = nano_ros_action_execute(goal);
+    nros_ret_t ret = nros_action_execute(goal);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set executing state: %d\n", ret);
         return;
@@ -134,7 +134,7 @@ static void accepted_callback(
         int32_t fb_len = example_interfaces_action_fibonacci_feedback_serialize(
             &fb, fb_buf, sizeof(fb_buf));
         if (fb_len > 0) {
-            ret = nano_ros_action_publish_feedback(goal, fb_buf, (size_t)fb_len);
+            ret = nros_action_publish_feedback(goal, fb_buf, (size_t)fb_len);
             if (ret != NROS_RET_OK) {
                 fprintf(stderr, "Failed to publish feedback: %d\n", ret);
             } else {
@@ -159,7 +159,7 @@ static void accepted_callback(
     int32_t result_len = example_interfaces_action_fibonacci_result_serialize(
         &result, result_buf, sizeof(result_buf));
     if (result_len > 0) {
-        ret = nano_ros_action_succeed(goal, result_buf, (size_t)result_len);
+        ret = nros_action_succeed(goal, result_buf, (size_t)result_len);
         if (ret != NROS_RET_OK) {
             fprintf(stderr, "Failed to send result: %d\n", ret);
         } else {
@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
 
     // Build action type info using generated type name/hash
     // Sequence capacity: 4-byte CDR header + 4-byte length + 64*4-byte data = 264
-    nano_ros_action_type_t fibonacci_type = {
+    nros_action_type_t fibonacci_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
         .type_hash = example_interfaces_action_fibonacci_get_type_hash(),
         .goal_serialized_size_max = 8,
@@ -208,7 +208,7 @@ int main(int argc, char** argv) {
     };
 
     // Initialize support context
-    nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
+    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
@@ -219,13 +219,13 @@ int main(int argc, char** argv) {
     ret = nros_node_init(&app.node, &app.support, "c_action_server", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create action server
-    ret = nano_ros_action_server_init(
+    ret = nros_action_server_init(
         &app.action_server,
         &app.node,
         "/fibonacci",
@@ -238,18 +238,18 @@ int main(int argc, char** argv) {
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize action server: %d\n", ret);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Action server created: /fibonacci\n");
 
     // Create executor
-    ret = nano_ros_executor_init(&app.executor, &app.support, 8);
+    ret = nros_executor_init(&app.executor, &app.support, 8);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nano_ros_action_server_fini(&app.action_server);
+        nros_action_server_fini(&app.action_server);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     g_executor = &app.executor;
@@ -261,7 +261,7 @@ int main(int argc, char** argv) {
     printf("\nWaiting for action goals (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
+    ret = nros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
@@ -269,10 +269,10 @@ int main(int argc, char** argv) {
     // Cleanup
     printf("\nShutting down...\n");
     printf("Total goals handled: %d\n", app.ctx.goal_count);
-    nano_ros_executor_fini(&app.executor);
-    nano_ros_action_server_fini(&app.action_server);
+    nros_executor_fini(&app.executor);
+    nros_action_server_fini(&app.action_server);
     nros_node_fini(&app.node);
-    nano_ros_support_fini(&app.support);
+    nros_support_fini(&app.support);
 
     printf("Goodbye!\n");
     return 0;

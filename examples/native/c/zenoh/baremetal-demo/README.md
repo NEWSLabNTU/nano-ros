@@ -37,23 +37,23 @@ zenohd --listen tcp/127.0.0.1:7447 &
 
 The `platform_impl.c` file shows example implementations for the required platform functions:
 
-- `nano_ros_platform_time_ns()` - Get monotonic time in nanoseconds
-- `nano_ros_platform_sleep_ns()` - Sleep for specified nanoseconds
-- `nano_ros_platform_atomic_store_bool()` - Atomic boolean store
-- `nano_ros_platform_atomic_load_bool()` - Atomic boolean load
+- `nros_platform_time_ns()` - Get monotonic time in nanoseconds
+- `nros_platform_sleep_ns()` - Sleep for specified nanoseconds
+- `nros_platform_atomic_store_bool()` - Atomic boolean store
+- `nros_platform_atomic_load_bool()` - Atomic boolean load
 
 ### Real Embedded Examples
 
 For STM32 with HAL:
 ```c
-uint64_t nano_ros_platform_time_ns(void) {
+uint64_t nros_platform_time_ns(void) {
     return (uint64_t)HAL_GetTick() * 1000000ULL;
 }
 ```
 
 For Cortex-M with DWT cycle counter:
 ```c
-uint64_t nano_ros_platform_time_ns(void) {
+uint64_t nros_platform_time_ns(void) {
     static uint64_t high_bits = 0;
     static uint32_t last_count = 0;
     uint32_t count = DWT->CYCCNT;
@@ -82,11 +82,11 @@ Guard conditions provide a thread-safe mechanism for signaling events:
 
 ```c
 // In signal handler (or interrupt handler on embedded):
-nano_ros_guard_condition_trigger(&shutdown_guard);
+nros_guard_condition_trigger(&shutdown_guard);
 
 // In executor callback:
 void shutdown_callback(void* context) {
-    nano_ros_executor_stop(&executor);
+    nros_executor_stop(&executor);
 }
 ```
 

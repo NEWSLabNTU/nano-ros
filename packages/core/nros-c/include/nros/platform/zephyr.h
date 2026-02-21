@@ -34,7 +34,7 @@ extern "C" {
 
 #ifdef CONFIG_MULTITHREADING
 #define NROS_PLATFORM_HAS_MUTEX
-typedef struct k_mutex nano_ros_mutex_t;
+typedef struct k_mutex nros_mutex_t;
 #endif
 
 // ============================================================================
@@ -44,7 +44,7 @@ typedef struct k_mutex nano_ros_mutex_t;
 /**
  * Get current monotonic time in nanoseconds.
  */
-static inline uint64_t nano_ros_platform_time_ns(void) {
+static inline uint64_t nros_platform_time_ns(void) {
     int64_t ticks = k_uptime_ticks();
     // Convert ticks to nanoseconds
     // ticks * (1e9 / ticks_per_sec) = ticks * 1e9 / CONFIG_SYS_CLOCK_TICKS_PER_SEC
@@ -54,7 +54,7 @@ static inline uint64_t nano_ros_platform_time_ns(void) {
 /**
  * Sleep for the specified duration in nanoseconds.
  */
-static inline void nano_ros_platform_sleep_ns(uint64_t ns) {
+static inline void nros_platform_sleep_ns(uint64_t ns) {
     // K_NSEC converts nanoseconds to Zephyr timeout
     // For very short sleeps, k_busy_wait might be more appropriate
     if (ns < 1000000) {
@@ -74,14 +74,14 @@ static inline void nano_ros_platform_sleep_ns(uint64_t ns) {
  *
  * Zephyr's atomic_set provides the necessary memory ordering.
  */
-static inline void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
     atomic_set((atomic_t *)ptr, value ? 1 : 0);
 }
 
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
+static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
     return atomic_get((atomic_t *)ptr) != 0;
 }
 
@@ -94,14 +94,14 @@ static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
 /**
  * Allocate memory from Zephyr heap.
  */
-static inline void *nano_ros_platform_malloc(size_t size) {
+static inline void *nros_platform_malloc(size_t size) {
     return k_malloc(size);
 }
 
 /**
  * Free previously allocated memory.
  */
-static inline void nano_ros_platform_free(void *ptr) {
+static inline void nros_platform_free(void *ptr) {
     k_free(ptr);
 }
 
@@ -116,21 +116,21 @@ static inline void nano_ros_platform_free(void *ptr) {
 /**
  * Initialize a mutex.
  */
-static inline int nano_ros_platform_mutex_init(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_init(nros_mutex_t *mutex) {
     return k_mutex_init(mutex);
 }
 
 /**
  * Lock a mutex (blocking).
  */
-static inline int nano_ros_platform_mutex_lock(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_lock(nros_mutex_t *mutex) {
     return k_mutex_lock(mutex, K_FOREVER);
 }
 
 /**
  * Unlock a mutex.
  */
-static inline int nano_ros_platform_mutex_unlock(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_unlock(nros_mutex_t *mutex) {
     return k_mutex_unlock(mutex);
 }
 
@@ -139,7 +139,7 @@ static inline int nano_ros_platform_mutex_unlock(nano_ros_mutex_t *mutex) {
  *
  * Zephyr mutexes don't require explicit destruction, but we reset the state.
  */
-static inline int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex) {
+static inline int nros_platform_mutex_destroy(nros_mutex_t *mutex) {
     (void)mutex;
     return 0;
 }

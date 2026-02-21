@@ -5,8 +5,8 @@ Lightweight ROS 2 client for embedded real-time systems (Zephyr, NuttX). `no_std
 ### Naming Convention
 
 - **nano-ros** — the project name, used in prose, documentation, and user-facing text
-- **nros** — the code-level shorthand, used in crate names (`nros-core`, `nros-rmw-zenoh`), Rust identifiers (`nros_core::`, `nros_serdes::`), Kconfig symbols (`CONFIG_NROS_*`), and C struct prefixes (`nros_node_t`)
-- **nano_ros** — C function names (`nano_ros_support_init`), C headers (`nano_ros/`), CMake targets (`NanoRos::NanoRos`)
+- **nros** — the code-level shorthand, used in crate names (`nros-core`, `nros-rmw-zenoh`), Rust identifiers (`nros_core::`, `nros_serdes::`), Kconfig symbols (`CONFIG_NROS_*`), C function names (`nros_support_init`), C type names (`nros_node_t`, `nros_publisher_t`), and C struct prefixes
+- **nano_ros** — C header directory (`nano_ros/`), CMake targets (`NanoRos::NanoRos`), CMake function (`nano_ros_generate_interfaces()`)
 
 ## Workspace Structure
 
@@ -460,7 +460,7 @@ nano_ros_generate_interfaces(${PROJECT_NAME}
     SKIP_INSTALL
 )
 ```
-Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<install_prefix>/share/nano-ros/interfaces/<target>/<file>`. Type info structs (`nano_ros_message_type_t`, `nano_ros_service_type_t`, `nano_ros_action_type_t`) are all defined in `nros/types.h`.
+Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<install_prefix>/share/nano-ros/interfaces/<target>/<file>`. Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_type_t`) are all defined in `nros/types.h`.
 
 **nros-c thin wrapper principle:** `nros-c` (`packages/core/nros-c/`) must be a thin FFI wrapper over the Rust `nros-node` API — it should expose `#[unsafe(no_mangle)] extern "C"` functions that delegate to `nros-node` types, not reimplement logic. Any feature needed by the C API (executor, timers, subscriptions, services, actions, trigger conditions, LET semantics, guard conditions) must first be implemented in `nros-node` as reusable Rust types, then wrapped by `nros-c`. This avoids duplicated logic, ensures both APIs share the same tested core, and keeps `nros-c` maintainable. When adding new C API features, always add the underlying capability to `nros-node` first, then add the C wrapper.
 
@@ -551,7 +551,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 
 **Phase 47**: Complete. Executor trigger conditions + nros-node prerequisites. Three-phase `spin_once()` (readiness scan → trigger evaluation → dispatch). Core types: `HandleId`, `HandleSet`, `Trigger` (7 variants), `InvocationMode`, `ReadinessSnapshot`. Raw-bytes callbacks (`add_subscription_raw`/`add_service_raw`), guard conditions (`GuardConditionHandle`), LET semantics (`ExecutorSemantics::LogicalExecutionTime` with pre-sample phase), session-borrowing executor (`SessionStore::Borrowed`). 86 unit tests.
 
-**Phase 49**: nros-c thin wrapper migration. Requires Phase 47 (which adds raw-bytes callbacks, guard conditions, LET semantics, and session-borrowing executor to nros-node). Renames C API prefix from `nano_ros_` to `nros_` (~142 functions, ~46 types, CMake targets). Then rewrites nros-c executor (1,788 lines), timer (348), guard condition (450), and action (1,086) modules to delegate to nros-node instead of self-implementing. Key design: C init functions store metadata only, executor registration creates RMW handles via `add_subscription_raw()` etc. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
+**Phase 49**: nros-c thin wrapper migration. Requires Phase 47 (which adds raw-bytes callbacks, guard conditions, LET semantics, and session-borrowing executor to nros-node). 49.1 complete: C API prefix renamed from `nano_ros_` to `nros_` (~142 functions, ~46 types). 49.2–49.4: rewrites nros-c executor (1,788 lines), timer (348), guard condition (450), and action (1,086) modules to delegate to nros-node instead of self-implementing. Key design: C init functions store metadata only, executor registration creates RMW handles via `add_subscription_raw()` etc. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

@@ -122,7 +122,7 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
 
 /// Session storage: owned or borrowed via raw pointer.
 ///
-/// The C API creates a session in `nano_ros_support_init()` before the
+/// The C API creates a session in `nros_support_init()` before the
 /// executor. `Borrowed` lets the executor use that session without owning it.
 pub(crate) enum SessionStore<S> {
     Owned(S),

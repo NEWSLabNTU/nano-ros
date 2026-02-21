@@ -30,14 +30,14 @@ extern "C" {
 /**
  * Guard condition state.
  */
-typedef enum nano_ros_guard_condition_state_t {
+typedef enum nros_guard_condition_state_t {
     /** Not initialized */
     NROS_GUARD_CONDITION_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_GUARD_CONDITION_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_GUARD_CONDITION_STATE_SHUTDOWN = 2,
-} nano_ros_guard_condition_state_t;
+} nros_guard_condition_state_t;
 
 /**
  * Guard condition callback type.
@@ -46,7 +46,7 @@ typedef enum nano_ros_guard_condition_state_t {
  *
  * @param context User-provided context
  */
-typedef void (*nano_ros_guard_condition_callback_t)(void *context);
+typedef void (*nros_guard_condition_callback_t)(void *context);
 
 /**
  * Guard condition structure.
@@ -56,21 +56,21 @@ typedef void (*nano_ros_guard_condition_callback_t)(void *context);
  * during the next executor spin cycle.
  *
  * Thread-safety:
- * - nano_ros_guard_condition_trigger() is safe to call from any thread
+ * - nros_guard_condition_trigger() is safe to call from any thread
  * - Other functions should only be called from the executor thread
  */
-typedef struct nano_ros_guard_condition_t {
+typedef struct nros_guard_condition_t {
     /** Current state */
-    nano_ros_guard_condition_state_t state;
+    nros_guard_condition_state_t state;
     /** Triggered flag (atomic in practice) */
     volatile bool triggered;
     /** Callback function */
-    nano_ros_guard_condition_callback_t callback;
+    nros_guard_condition_callback_t callback;
     /** User context pointer */
     void *context;
     /** Pointer to parent support context */
     void *_support;
-} nano_ros_guard_condition_t;
+} nros_guard_condition_t;
 
 // ============================================================================
 // Guard Condition Functions
@@ -82,7 +82,7 @@ typedef struct nano_ros_guard_condition_t {
  * @return Zero-initialized guard condition structure
  */
 NROS_PUBLIC
-nano_ros_guard_condition_t nano_ros_guard_condition_get_zero_initialized(void);
+nros_guard_condition_t nros_guard_condition_get_zero_initialized(void);
 
 /**
  * Initialize a guard condition.
@@ -95,9 +95,9 @@ nano_ros_guard_condition_t nano_ros_guard_condition_get_zero_initialized(void);
  * @return NROS_RET_BAD_SEQUENCE if already initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_guard_condition_init(
-    nano_ros_guard_condition_t *guard,
-    struct nano_ros_support_t *support);
+nros_ret_t nros_guard_condition_init(
+    nros_guard_condition_t *guard,
+    struct nros_support_t *support);
 
 /**
  * Set the guard condition callback.
@@ -110,9 +110,9 @@ nano_ros_ret_t nano_ros_guard_condition_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_guard_condition_set_callback(
-    nano_ros_guard_condition_t *guard,
-    nano_ros_guard_condition_callback_t callback,
+nros_ret_t nros_guard_condition_set_callback(
+    nros_guard_condition_t *guard,
+    nros_guard_condition_callback_t callback,
     void *context);
 
 /**
@@ -128,7 +128,7 @@ nano_ros_ret_t nano_ros_guard_condition_set_callback(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_guard_condition_trigger(nano_ros_guard_condition_t *guard);
+nros_ret_t nros_guard_condition_trigger(nros_guard_condition_t *guard);
 
 /**
  * Check if the guard condition is triggered.
@@ -137,7 +137,7 @@ nano_ros_ret_t nano_ros_guard_condition_trigger(nano_ros_guard_condition_t *guar
  * @return true if triggered, false otherwise
  */
 NROS_PUBLIC
-bool nano_ros_guard_condition_is_triggered(const nano_ros_guard_condition_t *guard);
+bool nros_guard_condition_is_triggered(const nros_guard_condition_t *guard);
 
 /**
  * Clear the triggered flag (called by executor after processing).
@@ -150,7 +150,7 @@ bool nano_ros_guard_condition_is_triggered(const nano_ros_guard_condition_t *gua
  * @return NROS_RET_INVALID_ARGUMENT if guard is NULL
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_guard_condition_clear(nano_ros_guard_condition_t *guard);
+nros_ret_t nros_guard_condition_clear(nros_guard_condition_t *guard);
 
 /**
  * Check if guard condition is valid (initialized).
@@ -159,7 +159,7 @@ nano_ros_ret_t nano_ros_guard_condition_clear(nano_ros_guard_condition_t *guard)
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_guard_condition_is_valid(const nano_ros_guard_condition_t *guard);
+int nros_guard_condition_is_valid(const nros_guard_condition_t *guard);
 
 /**
  * Finalize a guard condition.
@@ -170,7 +170,7 @@ int nano_ros_guard_condition_is_valid(const nano_ros_guard_condition_t *guard);
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_guard_condition_fini(nano_ros_guard_condition_t *guard);
+nros_ret_t nros_guard_condition_fini(nros_guard_condition_t *guard);
 
 #ifdef __cplusplus
 }

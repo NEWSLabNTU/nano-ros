@@ -43,7 +43,7 @@ extern "C" {
 // ============================================================================
 
 /** Executor state */
-typedef enum nano_ros_executor_state_t {
+typedef enum nros_executor_state_t {
     /** Not initialized */
     NROS_EXECUTOR_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
@@ -52,10 +52,10 @@ typedef enum nano_ros_executor_state_t {
     NROS_EXECUTOR_STATE_SPINNING = 2,
     /** Shutdown */
     NROS_EXECUTOR_STATE_SHUTDOWN = 3,
-} nano_ros_executor_state_t;
+} nros_executor_state_t;
 
 /** Handle type for executor */
-typedef enum nano_ros_executor_handle_type_t {
+typedef enum nros_executor_handle_type_t {
     /** No handle (empty slot) */
     NROS_EXECUTOR_HANDLE_NONE = 0,
     /** Subscription handle */
@@ -68,15 +68,15 @@ typedef enum nano_ros_executor_handle_type_t {
     NROS_EXECUTOR_HANDLE_CLIENT = 4,
     /** Guard condition handle */
     NROS_EXECUTOR_HANDLE_GUARD_CONDITION = 5,
-} nano_ros_executor_handle_type_t;
+} nros_executor_handle_type_t;
 
 /** Callback invocation mode */
-typedef enum nano_ros_executor_invocation_t {
+typedef enum nros_executor_invocation_t {
     /** Only invoke callback when new data is available */
     NROS_EXECUTOR_ON_NEW_DATA = 0,
     /** Always invoke callback (even with NULL data) */
     NROS_EXECUTOR_ALWAYS = 1,
-} nano_ros_executor_invocation_t;
+} nros_executor_invocation_t;
 
 // ============================================================================
 // Trigger Types
@@ -93,7 +93,7 @@ typedef enum nano_ros_executor_invocation_t {
  * @param context User-provided context pointer
  * @return true if executor should process callbacks
  */
-typedef bool (*nano_ros_executor_trigger_t)(
+typedef bool (*nros_executor_trigger_t)(
     const bool *ready,
     size_t count,
     void *context);
@@ -103,16 +103,16 @@ typedef bool (*nano_ros_executor_trigger_t)(
 // ============================================================================
 
 /** Executor handle (union-like structure) */
-typedef struct nano_ros_executor_handle_t {
+typedef struct nros_executor_handle_t {
     /** Handle type */
-    nano_ros_executor_handle_type_t handle_type;
+    nros_executor_handle_type_t handle_type;
     /** Invocation mode (for subscriptions) */
-    nano_ros_executor_invocation_t invocation;
+    nros_executor_invocation_t invocation;
     /** Handle pointer (type depends on handle_type) */
     void *handle;
     /** Flag indicating if handle has new data ready */
     bool data_ready;
-} nano_ros_executor_handle_t;
+} nros_executor_handle_t;
 
 /**
  * Executor structure.
@@ -120,11 +120,11 @@ typedef struct nano_ros_executor_handle_t {
  * The executor manages a fixed array of handles and processes them
  * in the order they were added.
  */
-typedef struct nano_ros_executor_t {
+typedef struct nros_executor_t {
     /** Current state */
-    nano_ros_executor_state_t state;
+    nros_executor_state_t state;
     /** Handle array */
-    nano_ros_executor_handle_t handles[NROS_EXECUTOR_MAX_HANDLES];
+    nros_executor_handle_t handles[NROS_EXECUTOR_MAX_HANDLES];
     /** Number of handles in use */
     size_t handle_count;
     /** Maximum handles (configured at init) */
@@ -134,9 +134,9 @@ typedef struct nano_ros_executor_t {
     /** Data communication semantics */
     int semantics;
     /** Pointer to support context */
-    const nano_ros_support_t *support;
+    const nros_support_t *support;
     /** Trigger function (NULL = default "any" trigger) */
-    nano_ros_executor_trigger_t trigger;
+    nros_executor_trigger_t trigger;
     /** User context for trigger function */
     void *trigger_context;
     /** LET buffers (internal) */
@@ -153,7 +153,7 @@ typedef struct nano_ros_executor_t {
     size_t timer_count;
     /** Number of service handles */
     size_t service_count;
-} nano_ros_executor_t;
+} nros_executor_t;
 
 // ============================================================================
 // Executor Functions
@@ -165,7 +165,7 @@ typedef struct nano_ros_executor_t {
  * @return Zero-initialized executor structure
  */
 NROS_PUBLIC
-nano_ros_executor_t nano_ros_executor_get_zero_initialized(void);
+nros_executor_t nros_executor_get_zero_initialized(void);
 
 /**
  * Initialize an executor.
@@ -179,9 +179,9 @@ nano_ros_executor_t nano_ros_executor_get_zero_initialized(void);
  * @return NROS_RET_NOT_INIT if support is not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_init(
-    nano_ros_executor_t *executor,
-    const nano_ros_support_t *support,
+nros_ret_t nros_executor_init(
+    nros_executor_t *executor,
+    const nros_support_t *support,
     size_t max_handles);
 
 /**
@@ -195,8 +195,8 @@ nano_ros_ret_t nano_ros_executor_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_set_timeout(
-    nano_ros_executor_t *executor,
+nros_ret_t nros_executor_set_timeout(
+    nros_executor_t *executor,
     uint64_t timeout_ns);
 
 /**
@@ -212,10 +212,10 @@ nano_ros_ret_t nano_ros_executor_set_timeout(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_add_subscription(
-    nano_ros_executor_t *executor,
-    nano_ros_subscription_t *subscription,
-    nano_ros_executor_invocation_t invocation);
+nros_ret_t nros_executor_add_subscription(
+    nros_executor_t *executor,
+    nros_subscription_t *subscription,
+    nros_executor_invocation_t invocation);
 
 /**
  * Add a timer to the executor.
@@ -229,9 +229,9 @@ nano_ros_ret_t nano_ros_executor_add_subscription(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_add_timer(
-    nano_ros_executor_t *executor,
-    nano_ros_timer_t *timer);
+nros_ret_t nros_executor_add_timer(
+    nros_executor_t *executor,
+    nros_timer_t *timer);
 
 /**
  * Add a service to the executor.
@@ -245,9 +245,9 @@ nano_ros_ret_t nano_ros_executor_add_timer(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_add_service(
-    nano_ros_executor_t *executor,
-    nano_ros_service_t *service);
+nros_ret_t nros_executor_add_service(
+    nros_executor_t *executor,
+    nros_service_t *service);
 
 /**
  * Add a guard condition to the executor.
@@ -264,9 +264,9 @@ nano_ros_ret_t nano_ros_executor_add_service(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_add_guard_condition(
-    nano_ros_executor_t *executor,
-    nano_ros_guard_condition_t *guard);
+nros_ret_t nros_executor_add_guard_condition(
+    nros_executor_t *executor,
+    nros_guard_condition_t *guard);
 
 /**
  * Spin the executor once.
@@ -282,8 +282,8 @@ nano_ros_ret_t nano_ros_executor_add_guard_condition(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_spin_some(
-    nano_ros_executor_t *executor,
+nros_ret_t nros_executor_spin_some(
+    nros_executor_t *executor,
     uint64_t timeout_ns);
 
 /**
@@ -298,7 +298,7 @@ nano_ros_ret_t nano_ros_executor_spin_some(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_spin(nano_ros_executor_t *executor);
+nros_ret_t nros_executor_spin(nros_executor_t *executor);
 
 /**
  * Spin the executor with a fixed period.
@@ -313,8 +313,8 @@ nano_ros_ret_t nano_ros_executor_spin(nano_ros_executor_t *executor);
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_spin_period(
-    nano_ros_executor_t *executor,
+nros_ret_t nros_executor_spin_period(
+    nros_executor_t *executor,
     uint64_t period_ns);
 
 /**
@@ -331,8 +331,8 @@ nano_ros_ret_t nano_ros_executor_spin_period(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_spin_one_period(
-    nano_ros_executor_t *executor,
+nros_ret_t nros_executor_spin_one_period(
+    nros_executor_t *executor,
     uint64_t period_ns);
 
 /**
@@ -344,7 +344,7 @@ nano_ros_ret_t nano_ros_executor_spin_one_period(
  * @return NROS_RET_INVALID_ARGUMENT if executor is NULL
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_stop(nano_ros_executor_t *executor);
+nros_ret_t nros_executor_stop(nros_executor_t *executor);
 
 /**
  * Finalize an executor.
@@ -356,7 +356,7 @@ nano_ros_ret_t nano_ros_executor_stop(nano_ros_executor_t *executor);
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_fini(nano_ros_executor_t *executor);
+nros_ret_t nros_executor_fini(nros_executor_t *executor);
 
 /**
  * Get the number of handles in the executor.
@@ -366,7 +366,7 @@ nano_ros_ret_t nano_ros_executor_fini(nano_ros_executor_t *executor);
  * @return Number of handles, or -1 if invalid
  */
 NROS_PUBLIC
-int nano_ros_executor_get_handle_count(const nano_ros_executor_t *executor);
+int nros_executor_get_handle_count(const nros_executor_t *executor);
 
 /**
  * Check if executor is valid (initialized).
@@ -376,7 +376,7 @@ int nano_ros_executor_get_handle_count(const nano_ros_executor_t *executor);
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_executor_is_valid(const nano_ros_executor_t *executor);
+int nros_executor_is_valid(const nros_executor_t *executor);
 
 // ============================================================================
 // Capacity Queries
@@ -390,7 +390,7 @@ int nano_ros_executor_is_valid(const nano_ros_executor_t *executor);
  * @return Remaining capacity, or -1 if NULL
  */
 NROS_PUBLIC
-int nano_ros_executor_get_remaining_handles(const nano_ros_executor_t *executor);
+int nros_executor_get_remaining_handles(const nros_executor_t *executor);
 
 /**
  * Get remaining subscription capacity.
@@ -400,7 +400,7 @@ int nano_ros_executor_get_remaining_handles(const nano_ros_executor_t *executor)
  * @return Remaining subscription capacity, or -1 if NULL
  */
 NROS_PUBLIC
-int nano_ros_executor_get_remaining_subscriptions(const nano_ros_executor_t *executor);
+int nros_executor_get_remaining_subscriptions(const nros_executor_t *executor);
 
 /**
  * Get remaining timer capacity.
@@ -410,7 +410,7 @@ int nano_ros_executor_get_remaining_subscriptions(const nano_ros_executor_t *exe
  * @return Remaining timer capacity, or -1 if NULL
  */
 NROS_PUBLIC
-int nano_ros_executor_get_remaining_timers(const nano_ros_executor_t *executor);
+int nros_executor_get_remaining_timers(const nros_executor_t *executor);
 
 /**
  * Get remaining service capacity.
@@ -420,7 +420,7 @@ int nano_ros_executor_get_remaining_timers(const nano_ros_executor_t *executor);
  * @return Remaining service capacity, or -1 if NULL
  */
 NROS_PUBLIC
-int nano_ros_executor_get_remaining_services(const nano_ros_executor_t *executor);
+int nros_executor_get_remaining_services(const nros_executor_t *executor);
 
 // ============================================================================
 // Trigger Functions
@@ -441,29 +441,29 @@ int nano_ros_executor_get_remaining_services(const nano_ros_executor_t *executor
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_executor_set_trigger(
-    nano_ros_executor_t *executor,
-    nano_ros_executor_trigger_t trigger,
+nros_ret_t nros_executor_set_trigger(
+    nros_executor_t *executor,
+    nros_executor_trigger_t trigger,
     void *context);
 
 /** Built-in trigger: fire when ANY handle has data ready (default). */
 NROS_PUBLIC
-bool nano_ros_executor_trigger_any(const bool *ready, size_t count, void *context);
+bool nros_executor_trigger_any(const bool *ready, size_t count, void *context);
 
 /** Built-in trigger: fire when ALL handles have data ready. */
 NROS_PUBLIC
-bool nano_ros_executor_trigger_all(const bool *ready, size_t count, void *context);
+bool nros_executor_trigger_all(const bool *ready, size_t count, void *context);
 
 /** Built-in trigger: always fire (unconditionally). */
 NROS_PUBLIC
-bool nano_ros_executor_trigger_always(const bool *ready, size_t count, void *context);
+bool nros_executor_trigger_always(const bool *ready, size_t count, void *context);
 
 /**
  * Built-in trigger: fire when handle at a specific index has data.
  * Pass the handle index (cast to void*) as the context parameter.
  */
 NROS_PUBLIC
-bool nano_ros_executor_trigger_one(const bool *ready, size_t count, void *context);
+bool nros_executor_trigger_one(const bool *ready, size_t count, void *context);
 
 #ifdef __cplusplus
 }

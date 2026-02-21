@@ -685,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nano_ros_error_timeout() {
+    fn test_nros_error_timeout() {
         let err = NanoRosError::timeout();
         assert!(err.is_timeout());
         assert!(!err.is_take_failed());
@@ -693,7 +693,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nano_ros_error_take_failed() {
+    fn test_nros_error_take_failed() {
         let err = NanoRosError::subscription_take_failed();
         assert!(err.is_take_failed());
         assert!(!err.is_timeout());
@@ -706,7 +706,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nano_ros_error_with_context() {
+    fn test_nros_error_with_context() {
         let err = NanoRosError::topic_name_invalid("/bad topic");
         assert!(err.context().is_some());
         if let Some(ErrorContext::Topic(name)) = err.context() {
@@ -717,7 +717,7 @@ mod tests {
     }
 
     #[test]
-    fn test_nano_ros_error_display() {
+    fn test_nros_error_display() {
         let err = NanoRosError::timeout();
         let msg = format!("{}", err);
         assert!(msg.contains("Timeout"));
@@ -729,14 +729,14 @@ mod tests {
     }
 
     #[test]
-    fn test_nano_ros_error_from_ser_error() {
+    fn test_nros_error_from_ser_error() {
         let err: NanoRosError = SerError::BufferTooSmall.into();
         assert!(err.is_serialization_error());
         assert!(matches!(err.nested(), Some(NestedError::Ser(_))));
     }
 
     #[test]
-    fn test_nano_ros_error_from_deser_error() {
+    fn test_nros_error_from_deser_error() {
         let err: NanoRosError = DeserError::UnexpectedEof.into();
         assert!(err.is_serialization_error());
         assert!(matches!(err.nested(), Some(NestedError::Deser(_))));

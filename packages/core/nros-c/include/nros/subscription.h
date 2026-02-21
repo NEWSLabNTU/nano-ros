@@ -23,14 +23,14 @@ extern "C" {
 // ============================================================================
 
 /** Subscription state */
-typedef enum nano_ros_subscription_state_t {
+typedef enum nros_subscription_state_t {
     /** Not initialized */
     NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_SUBSCRIPTION_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_SUBSCRIPTION_STATE_SHUTDOWN = 2,
-} nano_ros_subscription_state_t;
+} nros_subscription_state_t;
 
 // ============================================================================
 // Subscription Callback
@@ -43,7 +43,7 @@ typedef enum nano_ros_subscription_state_t {
  * @param len Length of data in bytes
  * @param context User-provided context pointer
  */
-typedef void (*nano_ros_subscription_callback_t)(
+typedef void (*nros_subscription_callback_t)(
     const uint8_t *data,
     size_t len,
     void *context);
@@ -53,9 +53,9 @@ typedef void (*nano_ros_subscription_callback_t)(
 // ============================================================================
 
 /** Subscription structure */
-typedef struct nano_ros_subscription_t {
+typedef struct nros_subscription_t {
     /** Current state */
-    nano_ros_subscription_state_t state;
+    nros_subscription_state_t state;
     /** Topic name storage */
     uint8_t topic_name[NROS_MAX_TOPIC_LEN];
     /** Topic name length */
@@ -69,14 +69,14 @@ typedef struct nano_ros_subscription_t {
     /** Type hash length */
     size_t type_hash_len;
     /** User callback function */
-    nano_ros_subscription_callback_t callback;
+    nros_subscription_callback_t callback;
     /** User context pointer */
     void *context;
     /** Pointer to parent node */
     const nros_node_t *node;
     /** Opaque pointer to internal Rust subscriber */
     void *internal;
-} nano_ros_subscription_t;
+} nros_subscription_t;
 
 // ============================================================================
 // Subscription Functions
@@ -88,7 +88,7 @@ typedef struct nano_ros_subscription_t {
  * @return Zero-initialized subscription structure
  */
 NROS_PUBLIC
-nano_ros_subscription_t nano_ros_subscription_get_zero_initialized(void);
+nros_subscription_t nros_subscription_get_zero_initialized(void);
 
 /**
  * Initialize a subscription with default QoS.
@@ -106,12 +106,12 @@ nano_ros_subscription_t nano_ros_subscription_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_subscription_init(
-    nano_ros_subscription_t *subscription,
+nros_ret_t nros_subscription_init(
+    nros_subscription_t *subscription,
     const nros_node_t *node,
-    const nano_ros_message_type_t *type_info,
+    const nros_message_type_t *type_info,
     const char *topic_name,
-    nano_ros_subscription_callback_t callback,
+    nros_subscription_callback_t callback,
     void *context);
 
 /**
@@ -131,14 +131,14 @@ nano_ros_ret_t nano_ros_subscription_init(
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_subscription_init_with_qos(
-    nano_ros_subscription_t *subscription,
+nros_ret_t nros_subscription_init_with_qos(
+    nros_subscription_t *subscription,
     const nros_node_t *node,
-    const nano_ros_message_type_t *type_info,
+    const nros_message_type_t *type_info,
     const char *topic_name,
-    nano_ros_subscription_callback_t callback,
+    nros_subscription_callback_t callback,
     void *context,
-    const nano_ros_qos_t *qos);
+    const nros_qos_t *qos);
 
 /**
  * Finalize a subscription.
@@ -150,7 +150,7 @@ nano_ros_ret_t nano_ros_subscription_init_with_qos(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_subscription_fini(nano_ros_subscription_t *subscription);
+nros_ret_t nros_subscription_fini(nros_subscription_t *subscription);
 
 /**
  * Get the topic name of a subscription.
@@ -160,7 +160,7 @@ nano_ros_ret_t nano_ros_subscription_fini(nano_ros_subscription_t *subscription)
  * @return Pointer to topic name (null-terminated), or NULL if invalid
  */
 NROS_PUBLIC
-const char *nano_ros_subscription_get_topic_name(const nano_ros_subscription_t *subscription);
+const char *nros_subscription_get_topic_name(const nros_subscription_t *subscription);
 
 /**
  * Check if subscription is valid (initialized).
@@ -170,7 +170,7 @@ const char *nano_ros_subscription_get_topic_name(const nano_ros_subscription_t *
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_subscription_is_valid(const nano_ros_subscription_t *subscription);
+int nros_subscription_is_valid(const nros_subscription_t *subscription);
 
 #ifdef __cplusplus
 }

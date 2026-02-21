@@ -23,7 +23,7 @@ config NROS_C_API
     bool "C API (nros-c)"
     help
       Build and link the nros C API library (libnros_c.a).
-      Uses nano_ros_* functions from nros/init.h, nros/node.h, etc.
+      Uses nros_* functions from nros/init.h, nros/node.h, etc.
 
 config NROS_RUST_API
     bool "Rust API (nros crate)"

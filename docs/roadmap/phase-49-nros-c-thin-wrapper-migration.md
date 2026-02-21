@@ -104,7 +104,7 @@ guard_condition.rs, action.rs = **3,672 lines** (36% of crate).
 
 ### Ownership Model: Session-Borrowing Executor
 
-In the C API, the support object (`nano_ros_support_t`) owns the session and
+In the C API, the support object (`nros_support_t`) owns the session and
 is created before the executor. The executor borrows the session for its
 lifetime. nros-node's `Executor<S>` currently owns the session (created via
 `Executor::open()`).
@@ -196,13 +196,13 @@ trigger evaluation, invocation mode checks, and LET sampling.
 Phase 49 requires the following nros-node Rust API to be complete before
 any C API work begins:
 
-| Prerequisite | Phase | Sub-phase | Status |
-|--------------|-------|-----------|--------|
-| Trigger conditions (`Trigger` enum, `InvocationMode`, three-phase `spin_once()`) | 47 | 47.1–47.5 | Not Started |
-| Raw-bytes callbacks (`add_subscription_raw()`, `add_service_raw()`) | 47 | 47.6 | Not Started |
-| Guard conditions (`add_guard_condition()`, `GuardConditionHandle`) | 47 | 47.7 | Not Started |
-| LET semantics (pre-sample phase in `spin_once()`) | 47 | 47.8 | Not Started |
-| Session-borrowing executor (`from_session_ptr()`, `SessionStore`) | 47 | 47.9 | Not Started |
+| Prerequisite                                                                     | Phase | Sub-phase | Status   |
+|----------------------------------------------------------------------------------|-------|-----------|----------|
+| Trigger conditions (`Trigger` enum, `InvocationMode`, three-phase `spin_once()`) | 47    | 47.1–47.5 | Complete |
+| Raw-bytes callbacks (`add_subscription_raw()`, `add_service_raw()`)              | 47    | 47.6      | Complete |
+| Guard conditions (`add_guard_condition()`, `GuardConditionHandle`)               | 47    | 47.7      | Complete |
+| LET semantics (pre-sample phase in `spin_once()`)                                | 47    | 47.8      | Complete |
+| Session-borrowing executor (`from_session_ptr()`, `SessionStore`)                | 47    | 47.9      | Complete |
 
 All Rust executor infrastructure is implemented in Phase 47. Phase 49 is
 purely C API work: rename the `nano_ros_` prefix and rewrite nros-c modules
@@ -212,78 +212,50 @@ to delegate to nros-node.
 
 ## Sub-phases
 
-### 49.1 — C API Prefix Rename (`nano_ros_` → `nros_`)
+### 49.1 — C API Prefix Rename (`nano_ros_` → `nros_`) — COMPLETE
 
-Rename all C-facing items from the `nano_ros_` prefix to `nros_`, aligning
-the C API with the code-level naming convention used everywhere else (Rust
-crate names, Kconfig symbols, header directory, macros). This must happen
-**before** the delegation migration (49.2–49.4) so that the new thin-wrapper
-code is written with the final names from the start.
+Renamed all C-facing code-level identifiers from the `nano_ros_` prefix to
+`nros_`, aligning the C API with the code-level naming convention used
+everywhere else (Rust crate names, Kconfig symbols, header directory, macros).
+This was done **before** the delegation migration (49.2–49.4) so that the new
+thin-wrapper code uses final names from the start.
 
-**Current state:**
-- **Functions**: 142 `nano_ros_*()` declarations across 20 headers
-- **Types**: 46 `nano_ros_*_t` typedefs (structs/enums)
-- **Exception**: `nros_node_t` already uses `nros_` prefix
-- **Macros**: Already use `NROS_` prefix (no change needed)
-- **Headers**: Already in `nros/` directory (no change needed)
-- **CMake**: `NanoRos::NanoRos` target, `NANO_ROS_RMW` variable,
-  `nano_ros_generate_interfaces()` function, `NanoRosConfig.cmake`
+**What was renamed (code-level identifiers):**
 
-**Rename scope:**
+| Category          | From                             | To                           | Count |
+|-------------------|----------------------------------|------------------------------|------:|
+| C functions       | `nano_ros_support_init()`        | `nros_support_init()`        |  ~142 |
+| C types           | `nano_ros_publisher_t`           | `nros_publisher_t`           |   ~46 |
+| Rust FFI          | `#[unsafe(no_mangle)]` fn names | matching `nros_*`            |  ~142 |
+| Codegen templates | `nano_ros_cdr_*` calls           | `nros_cdr_*`                 |    ~6 |
+| Codegen Rust      | `NanoRosField`, etc.             | `NrosField`, etc.            |   ~20 |
+| C examples        | 14 `main.c` files                | `nros_*` API calls           |    14 |
+| CLAUDE.md         | naming convention section        | updated                      |     1 |
+| Docs              | various .md files                | updated                      |   ~10 |
 
-| Category | From | To | Count |
-|----------|------|----|------:|
-| C functions | `nano_ros_support_init()` | `nros_support_init()` | ~142 |
-| C types | `nano_ros_publisher_t` | `nros_publisher_t` | ~46 |
-| CMake target | `NanoRos::NanoRos` | `Nros::Nros` | 1 |
-| CMake variable | `NANO_ROS_RMW` | `NROS_RMW` | 1 |
-| CMake function | `nano_ros_generate_interfaces()` | `nros_generate_interfaces()` | 1 |
-| CMake config | `NanoRosConfig.cmake` | `NrosConfig.cmake` | 1 |
-| Codegen binary | `nros-codegen` (unchanged) | — | 0 |
-| Build dir | `build/nano_ros_c/` | `build/nros_c/` | 1 |
-| Generated targets | `std_msgs__nano_ros_c` | `std_msgs__nros_c` | ~5 |
-| CLAUDE.md | naming convention section | update | 1 |
-| Docs | various .md files | update | ~10 |
-| C examples | 14 `main.c` files | update | 14 |
-| Zephyr CMake | `zephyr/CMakeLists.txt` | update | 1 |
+**What was kept (project-level names):**
+- CMake target: `NanoRos::NanoRos` (project name, not code abbreviation)
+- CMake variable: `NANO_ROS_RMW`
+- CMake function: `nano_ros_generate_interfaces()`
+- CMake config: `NanoRosConfig.cmake`
+- CMake build dirs: `nano_ros_c/`, `__nano_ros_c` suffixes
+- CLI: `cargo nano-ros`
+- Kconfig symbols: already `CONFIG_NROS_*`
+- C macros: already `NROS_*`
+- Header directory: already `nros/`
 
-**NOT renamed:**
-- `cargo nano-ros` CLI command (user-facing tool name, kept for clarity)
-- Kconfig symbols (already `CONFIG_NROS_*`)
-- C macros (already `NROS_*`)
-- Header directory (already `nros/`)
+**Completed tasks:**
 
-**Tasks:**
-
-- [ ] Rename all `nano_ros_*()` functions to `nros_*()` in C headers
-  (`packages/core/nros-c/include/nros/*.h`)
-- [ ] Rename all `nano_ros_*_t` types to `nros_*_t` in C headers
-- [ ] Update all `#[unsafe(no_mangle)]` function names in nros-c Rust source
-  (`packages/core/nros-c/src/*.rs`)
-- [ ] Update all `#[repr(C)]` struct names to match renamed typedefs
-- [ ] Rename CMake target `NanoRos::NanoRos` → `Nros::Nros` and update
-  config files (`NanoRosConfig.cmake` → `NrosConfig.cmake`, etc.)
-- [ ] Rename CMake variable `NANO_ROS_RMW` → `NROS_RMW`
-- [ ] Rename CMake function `nano_ros_generate_interfaces()` →
-  `nros_generate_interfaces()`
-- [ ] Update codegen C backend to emit `nros_*` names
-  (`packages/codegen/packages/nano-ros-codegen-c/`)
-- [ ] Update all C example `main.c` files (14 files in
-  `examples/native/c/` and `examples/zephyr/c/`)
-- [ ] Update `zephyr/CMakeLists.txt` and `zephyr/cmake/` modules
-- [ ] Update CLAUDE.md naming convention section
-- [ ] Update all documentation references (~10 .md files)
-- [ ] Add backward-compat `#define` aliases in a single
-  `nros/compat.h` header (optional, can be removed in a future release)
-- [ ] `just quality` passes
-- [ ] `just test-c` passes
-- [ ] Zephyr C examples build
-
-**Files:** `packages/core/nros-c/include/nros/*.h`,
-`packages/core/nros-c/src/*.rs`, `CMakeLists.txt`,
-`zephyr/CMakeLists.txt`, `zephyr/cmake/*.cmake`,
-`packages/codegen/packages/nano-ros-codegen-c/`,
-all C example `main.c` files, CLAUDE.md, various docs
+- [x] Rename all `nano_ros_*()` functions to `nros_*()` in C headers
+- [x] Rename all `nano_ros_*_t` types to `nros_*_t` in C headers
+- [x] Update all `#[unsafe(no_mangle)]` function names in nros-c Rust source
+- [x] Update all `#[repr(C)]` struct names to match renamed typedefs
+- [x] Update codegen C templates to emit `nros_cdr_*` and `nros_*_type_t`
+- [x] Rename codegen Rust identifiers (`NrosField`, `NrosCodegenMode`, etc.)
+- [x] Rename codegen template files (`*_nano_ros.*` → `*_nros.*`)
+- [x] Update all C example `main.c` files
+- [x] Update CLAUDE.md naming convention section
+- [x] Update all documentation references
 
 ---
 
@@ -444,16 +416,16 @@ registers callbacks.
 
 **Delegation table:**
 
-| C API function (post-rename)       | Delegates to                        |
-|------------------------------------|-------------------------------------|
-| `nros_action_server_init()`        | stores metadata only                |
-| `nros_executor_add_action_server()`| `executor.add_action_server_raw()` |
-| `nros_action_send_result()`        | `action_server.send_result()`       |
-| `nros_action_publish_feedback()`   | `action_server.publish_feedback()`  |
-| `nros_action_client_init()`        | stores metadata only                |
-| `nros_executor_add_action_client()`| `executor.add_action_client_raw()` |
-| `nros_action_send_goal()`          | `action_client.send_goal()`         |
-| `nros_action_get_result()`         | `action_client.get_result()`        |
+| C API function (post-rename)        | Delegates to                       |
+|-------------------------------------|------------------------------------|
+| `nros_action_server_init()`         | stores metadata only               |
+| `nros_executor_add_action_server()` | `executor.add_action_server_raw()` |
+| `nros_action_send_result()`         | `action_server.send_result()`      |
+| `nros_action_publish_feedback()`    | `action_server.publish_feedback()` |
+| `nros_action_client_init()`         | stores metadata only               |
+| `nros_executor_add_action_client()` | `executor.add_action_client_raw()` |
+| `nros_action_send_goal()`           | `action_client.send_goal()`        |
+| `nros_action_get_result()`          | `action_client.get_result()`       |
 
 **Expected reduction:** ~1,086 → ~400 lines.
 
@@ -512,23 +484,23 @@ tests for nros-node capabilities added in this phase.
 These modules are inherently C-specific — they handle `#[repr(C)]` struct
 marshaling, raw CDR bytes, and metadata storage:
 
-| Module            | Lines | Reason                                                            |
-|-------------------|------:|-------------------------------------------------------------------|
-| `publisher.rs`    |   549 | Init creates `RmwPublisher` directly (C has no generics)          |
-| `subscription.rs` |   465 | Simplified to metadata storage; RMW creation moves to executor    |
-| `service.rs`      |   838 | Simplified to metadata storage; RMW creation moves to executor    |
-| `cdr.rs`          | 1,174 | Raw CDR serialization for C struct types                          |
-| `parameter.rs`    | 1,222 | Parameter server C bindings                                       |
-| `lifecycle.rs`    |   728 | Lifecycle state machine C bindings                                |
-| `node.rs`         |   349 | Metadata container (`#[repr(C)]`)                                 |
-| `clock.rs`        |   315 | Clock C bindings                                                  |
-| `support.rs`      |   283 | Session/support init                                              |
-| `platform.rs`     |   183 | Platform abstraction C bindings                                   |
-| `qos.rs`          |   122 | QoS profile C bindings                                            |
-| `lib.rs`          |    85 | Module declarations                                               |
-| `error.rs`        |    50 | Error code definitions                                            |
-| `constants.rs`    |    28 | Build-time constants                                              |
-| `config.rs`       |     6 | Config re-exports                                                 |
+| Module            | Lines | Reason                                                         |
+|-------------------|------:|----------------------------------------------------------------|
+| `publisher.rs`    |   549 | Init creates `RmwPublisher` directly (C has no generics)       |
+| `subscription.rs` |   465 | Simplified to metadata storage; RMW creation moves to executor |
+| `service.rs`      |   838 | Simplified to metadata storage; RMW creation moves to executor |
+| `cdr.rs`          | 1,174 | Raw CDR serialization for C struct types                       |
+| `parameter.rs`    | 1,222 | Parameter server C bindings                                    |
+| `lifecycle.rs`    |   728 | Lifecycle state machine C bindings                             |
+| `node.rs`         |   349 | Metadata container (`#[repr(C)]`)                              |
+| `clock.rs`        |   315 | Clock C bindings                                               |
+| `support.rs`      |   283 | Session/support init                                           |
+| `platform.rs`     |   183 | Platform abstraction C bindings                                |
+| `qos.rs`          |   122 | QoS profile C bindings                                         |
+| `lib.rs`          |    85 | Module declarations                                            |
+| `error.rs`        |    50 | Error code definitions                                         |
+| `constants.rs`    |    28 | Build-time constants                                           |
+| `config.rs`       |     6 | Config re-exports                                              |
 
 Note: `subscription.rs` and `service.rs` are simplified during 49.2 — their
 init functions change from "create RMW handle" to "store metadata". The RMW
@@ -541,30 +513,30 @@ nros-node.
 
 **49.1 (C API rename):**
 
-| File                                | Changes                                    |
-|-------------------------------------|--------------------------------------------|
-| `nros-c/include/nros/*.h` (20 files)| Rename `nano_ros_*` → `nros_*` in all decls|
-| `nros-c/src/*.rs` (19 files)        | Rename `nano_ros_*` → `nros_*` in FFI fns  |
-| `CMakeLists.txt`                    | `NANO_ROS_RMW` → `NROS_RMW`               |
-| `cmake/*.cmake`                     | `NanoRos` → `Nros` in targets and configs  |
-| `zephyr/CMakeLists.txt`             | Update target names                        |
-| `zephyr/cmake/*.cmake`              | Update function/target names               |
-| `nano-ros-codegen-c/`               | Emit `nros_*` names in generated code      |
-| C example `main.c` files (14)       | Update all API calls                       |
-| `CLAUDE.md`                         | Update naming convention section            |
-| Various docs (~10 .md files)        | Update references                          |
+| File                                 | Changes                                     |
+|--------------------------------------|---------------------------------------------|
+| `nros-c/include/nros/*.h` (20 files) | Rename `nano_ros_*` → `nros_*` in all decls |
+| `nros-c/src/*.rs` (19 files)         | Rename `nano_ros_*` → `nros_*` in FFI fns   |
+| `CMakeLists.txt`                     | `NANO_ROS_RMW` → `NROS_RMW`                 |
+| `cmake/*.cmake`                      | `NanoRos` → `Nros` in targets and configs   |
+| `zephyr/CMakeLists.txt`              | Update target names                         |
+| `zephyr/cmake/*.cmake`               | Update function/target names                |
+| `nano-ros-codegen-c/`                | Emit `nros_*` names in generated code       |
+| C example `main.c` files (14)        | Update all API calls                        |
+| `CLAUDE.md`                          | Update naming convention section            |
+| Various docs (~10 .md files)         | Update references                           |
 
 **49.2–49.4 (nros-c delegation):**
 
-| File                               | Changes                                                     |
-|------------------------------------|-------------------------------------------------------------|
-| `nros-c/src/executor.rs`          | Rewrite to delegate to nros-node `Executor`                  |
-| `nros-c/src/subscription.rs`      | Simplify to metadata storage (RMW creation moves to executor)|
-| `nros-c/src/service.rs`           | Simplify to metadata storage (RMW creation moves to executor)|
-| `nros-c/src/timer.rs`             | Rewrite to delegate to nros-node `Timer`                     |
-| `nros-c/src/guard_condition.rs`   | Rewrite to delegate to nros-node `GuardCondition`            |
-| `nros-c/src/action.rs`            | Rewrite to delegate to nros-node action types                |
-| `nros-c/Cargo.toml`               | Ensure `nros-node` dependency                                |
+| File                            | Changes                                                       |
+|---------------------------------|---------------------------------------------------------------|
+| `nros-c/src/executor.rs`        | Rewrite to delegate to nros-node `Executor`                   |
+| `nros-c/src/subscription.rs`    | Simplify to metadata storage (RMW creation moves to executor) |
+| `nros-c/src/service.rs`         | Simplify to metadata storage (RMW creation moves to executor) |
+| `nros-c/src/timer.rs`           | Rewrite to delegate to nros-node `Timer`                      |
+| `nros-c/src/guard_condition.rs` | Rewrite to delegate to nros-node `GuardCondition`             |
+| `nros-c/src/action.rs`          | Rewrite to delegate to nros-node action types                 |
+| `nros-c/Cargo.toml`             | Ensure `nros-node` dependency                                 |
 
 ---
 

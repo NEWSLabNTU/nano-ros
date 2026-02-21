@@ -662,13 +662,13 @@ Self-implementations in nros-c:
 
 | Component             | nros-c                                   | nros-node equivalent                                |
 |-----------------------|------------------------------------------|-----------------------------------------------------|
-| Executor struct       | `nano_ros_executor_t` (fixed arrays)     | `Executor<S, MAX_CBS, CB_ARENA>` (arena)            |
+| Executor struct       | `nros_executor_t` (fixed arrays)     | `Executor<S, MAX_CBS, CB_ARENA>` (arena)            |
 | Spin loop             | `spin_some()` with manual dispatch       | `spin_once()` with `CallbackMeta` dispatch          |
-| Trigger conditions    | `nano_ros_executor_trigger_t` fn ptr     | **Not yet** (Phase 47 adds this)                    |
+| Trigger conditions    | `nros_executor_trigger_t` fn ptr     | **Not yet** (Phase 47 adds this)                    |
 | Invocation mode       | `NROS_EXECUTOR_ON_NEW_DATA` / `ALWAYS`   | **Not yet** (Phase 47 adds this)                    |
 | LET semantics         | Per-handle LET buffers + sampling        | **Not in nros-node**                                |
-| Timer                 | `nano_ros_timer_t` (own period tracking) | `TimerEntry<F>` in arena                            |
-| Guard condition       | `nano_ros_guard_condition_t`             | **Not in nros-node**                                |
+| Timer                 | `nros_timer_t` (own period tracking) | `TimerEntry<F>` in arena                            |
+| Guard condition       | `nros_guard_condition_t`             | **Not in nros-node**                                |
 | Subscription dispatch | `process_subscription()` (raw bytes)     | `sub_try_process()` (typed deserialize)             |
 | Service dispatch      | `process_service_request()` (raw bytes)  | `srv_try_process()` (typed deserialize)             |
 | Action                | Own goal UUID tracking                   | `ActionServerArenaEntry` / `ActionClientArenaEntry` |

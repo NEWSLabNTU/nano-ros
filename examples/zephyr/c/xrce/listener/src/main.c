@@ -69,8 +69,8 @@ int main(void)
     }
 
     /* Initialize support context */
-    nano_ros_support_t support = nano_ros_support_get_zero_initialized();
-    nano_ros_ret_t ret = nano_ros_support_init(
+    nros_support_t support = nros_support_get_zero_initialized();
+    nros_ret_t ret = nros_support_init(
         &support,
         CONFIG_NROS_XRCE_AGENT_ADDR ":" STRINGIFY(CONFIG_NROS_XRCE_AGENT_PORT),
         CONFIG_NROS_DOMAIN_ID);
@@ -88,8 +88,8 @@ int main(void)
     }
 
     /* Create subscription using generated type support */
-    nano_ros_subscription_t sub = nano_ros_subscription_get_zero_initialized();
-    ret = nano_ros_subscription_init(
+    nros_subscription_t sub = nros_subscription_get_zero_initialized();
+    ret = nros_subscription_init(
         &sub, &node, std_msgs_msg_int32_get_type_support(), "/chatter",
         on_message, NULL);
     if (ret != NROS_RET_OK) {
@@ -98,14 +98,14 @@ int main(void)
     }
 
     /* Create executor and add subscription */
-    nano_ros_executor_t executor = nano_ros_executor_get_zero_initialized();
-    ret = nano_ros_executor_init(&executor, &support, 1);
+    nros_executor_t executor = nros_executor_get_zero_initialized();
+    ret = nros_executor_init(&executor, &support, 1);
     if (ret != NROS_RET_OK) {
         LOG_ERR("Executor init failed: %d", ret);
         return 1;
     }
 
-    ret = nano_ros_executor_add_subscription(
+    ret = nros_executor_add_subscription(
         &executor, &sub, NROS_EXECUTOR_ON_NEW_DATA);
     if (ret != NROS_RET_OK) {
         LOG_ERR("Failed to add subscription to executor: %d", ret);
@@ -115,13 +115,13 @@ int main(void)
     LOG_INF("Waiting for messages...");
 
     /* Spin forever — executor dispatches callbacks */
-    nano_ros_executor_spin(&executor);
+    nros_executor_spin(&executor);
 
     /* Cleanup (unreachable in this example) */
-    nano_ros_executor_fini(&executor);
-    nano_ros_subscription_fini(&sub);
+    nros_executor_fini(&executor);
+    nros_subscription_fini(&sub);
     nros_node_fini(&node);
-    nano_ros_support_fini(&support);
+    nros_support_fini(&support);
 
     return 0;
 }

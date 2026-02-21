@@ -13,7 +13,7 @@ use crate::error::*;
 /// Time representation compatible with builtin_interfaces/msg/Time.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct nano_ros_time_t {
+pub struct nros_time_t {
     /// Seconds component
     pub sec: i32,
     /// Nanoseconds component (0 to 999,999,999)
@@ -23,7 +23,7 @@ pub struct nano_ros_time_t {
 /// Duration representation compatible with builtin_interfaces/msg/Duration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct nano_ros_duration_t {
+pub struct nros_duration_t {
     /// Seconds component (can be negative)
     pub sec: i32,
     /// Nanoseconds component (0 to 999,999,999)
@@ -37,7 +37,7 @@ pub struct nano_ros_duration_t {
 /// Clock type enumeration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_clock_type_t {
+pub enum nros_clock_type_t {
     /// Uninitialized clock
     NROS_CLOCK_UNINITIALIZED = 0,
     /// ROS time - follows /clock topic if available, otherwise system time
@@ -51,7 +51,7 @@ pub enum nano_ros_clock_type_t {
 /// Clock state enumeration.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_clock_state_t {
+pub enum nros_clock_state_t {
     /// Not initialized
     NROS_CLOCK_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -62,20 +62,20 @@ pub enum nano_ros_clock_state_t {
 
 /// Clock structure.
 #[repr(C)]
-pub struct nano_ros_clock_t {
+pub struct nros_clock_t {
     /// Clock type
-    pub r#type: nano_ros_clock_type_t,
+    pub r#type: nros_clock_type_t,
     /// Current state
-    pub state: nano_ros_clock_state_t,
+    pub state: nros_clock_state_t,
     /// Internal: steady clock epoch (nanoseconds since process start)
     pub _steady_epoch_ns: u64,
 }
 
-impl Default for nano_ros_clock_t {
+impl Default for nros_clock_t {
     fn default() -> Self {
         Self {
-            r#type: nano_ros_clock_type_t::NROS_CLOCK_UNINITIALIZED,
-            state: nano_ros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED,
+            r#type: nros_clock_type_t::NROS_CLOCK_UNINITIALIZED,
+            state: nros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED,
             _steady_epoch_ns: 0,
         }
     }
@@ -106,40 +106,40 @@ fn get_steady_time_ns() -> u64 {
 
 /// Get a zero-initialized clock.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_clock_get_zero_initialized() -> nano_ros_clock_t {
-    nano_ros_clock_t::default()
+pub extern "C" fn nros_clock_get_zero_initialized() -> nros_clock_t {
+    nros_clock_t::default()
 }
 
 /// Initialize a clock.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_clock_init(
-    clock: *mut nano_ros_clock_t,
-    clock_type: nano_ros_clock_type_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_clock_init(
+    clock: *mut nros_clock_t,
+    clock_type: nros_clock_type_t,
+) -> nros_ret_t {
     if clock.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     // Validate clock type
     match clock_type {
-        nano_ros_clock_type_t::NROS_CLOCK_ROS_TIME
-        | nano_ros_clock_type_t::NROS_CLOCK_SYSTEM_TIME
-        | nano_ros_clock_type_t::NROS_CLOCK_STEADY_TIME => {}
+        nros_clock_type_t::NROS_CLOCK_ROS_TIME
+        | nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME
+        | nros_clock_type_t::NROS_CLOCK_STEADY_TIME => {}
         _ => return NROS_RET_INVALID_ARGUMENT,
     }
 
     let clock = &mut *clock;
 
     // Check if already initialized
-    if clock.state != nano_ros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED {
+    if clock.state != nros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED {
         return NROS_RET_ALREADY_EXISTS;
     }
 
     clock.r#type = clock_type;
-    clock.state = nano_ros_clock_state_t::NROS_CLOCK_STATE_READY;
+    clock.state = nros_clock_state_t::NROS_CLOCK_STATE_READY;
 
     // For steady time, record the epoch
-    if clock_type == nano_ros_clock_type_t::NROS_CLOCK_STEADY_TIME {
+    if clock_type == nros_clock_type_t::NROS_CLOCK_STEADY_TIME {
         clock._steady_epoch_ns = get_steady_time_ns();
     }
 
@@ -148,58 +148,58 @@ pub unsafe extern "C" fn nano_ros_clock_init(
 
 /// Get the current time from a clock.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_clock_get_now(
-    clock: *const nano_ros_clock_t,
-    time_out: *mut nano_ros_time_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_clock_get_now(
+    clock: *const nros_clock_t,
+    time_out: *mut nros_time_t,
+) -> nros_ret_t {
     if clock.is_null() || time_out.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let clock = &*clock;
 
-    if clock.state != nano_ros_clock_state_t::NROS_CLOCK_STATE_READY {
+    if clock.state != nros_clock_state_t::NROS_CLOCK_STATE_READY {
         return NROS_RET_NOT_INIT;
     }
 
     let nanos = match clock.r#type {
-        nano_ros_clock_type_t::NROS_CLOCK_ROS_TIME => {
+        nros_clock_type_t::NROS_CLOCK_ROS_TIME => {
             // ROS time: for now, same as system time
             // Full implementation would check for /clock topic override
             get_system_time_ns()
         }
-        nano_ros_clock_type_t::NROS_CLOCK_SYSTEM_TIME => get_system_time_ns(),
-        nano_ros_clock_type_t::NROS_CLOCK_STEADY_TIME => {
+        nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME => get_system_time_ns(),
+        nros_clock_type_t::NROS_CLOCK_STEADY_TIME => {
             // Steady time relative to epoch
             get_steady_time_ns() as i64
         }
         _ => return NROS_RET_ERROR,
     };
 
-    *time_out = nano_ros_time_from_nanoseconds(nanos);
+    *time_out = nros_time_from_nanoseconds(nanos);
     NROS_RET_OK
 }
 
 /// Get the current time from a clock as nanoseconds.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_clock_get_now_ns(
-    clock: *const nano_ros_clock_t,
+pub unsafe extern "C" fn nros_clock_get_now_ns(
+    clock: *const nros_clock_t,
     nanoseconds: *mut i64,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if clock.is_null() || nanoseconds.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let clock = &*clock;
 
-    if clock.state != nano_ros_clock_state_t::NROS_CLOCK_STATE_READY {
+    if clock.state != nros_clock_state_t::NROS_CLOCK_STATE_READY {
         return NROS_RET_NOT_INIT;
     }
 
     let nanos = match clock.r#type {
-        nano_ros_clock_type_t::NROS_CLOCK_ROS_TIME => get_system_time_ns(),
-        nano_ros_clock_type_t::NROS_CLOCK_SYSTEM_TIME => get_system_time_ns(),
-        nano_ros_clock_type_t::NROS_CLOCK_STEADY_TIME => get_steady_time_ns() as i64,
+        nros_clock_type_t::NROS_CLOCK_ROS_TIME => get_system_time_ns(),
+        nros_clock_type_t::NROS_CLOCK_SYSTEM_TIME => get_system_time_ns(),
+        nros_clock_type_t::NROS_CLOCK_STEADY_TIME => get_steady_time_ns() as i64,
         _ => return NROS_RET_ERROR,
     };
 
@@ -209,22 +209,20 @@ pub unsafe extern "C" fn nano_ros_clock_get_now_ns(
 
 /// Check if a clock is valid.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_clock_is_valid(clock: *const nano_ros_clock_t) -> bool {
+pub unsafe extern "C" fn nros_clock_is_valid(clock: *const nros_clock_t) -> bool {
     if clock.is_null() {
         return false;
     }
 
     let clock = &*clock;
-    clock.state == nano_ros_clock_state_t::NROS_CLOCK_STATE_READY
+    clock.state == nros_clock_state_t::NROS_CLOCK_STATE_READY
 }
 
 /// Get the clock type.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_clock_get_type(
-    clock: *const nano_ros_clock_t,
-) -> nano_ros_clock_type_t {
+pub unsafe extern "C" fn nros_clock_get_type(clock: *const nros_clock_t) -> nros_clock_type_t {
     if clock.is_null() {
-        return nano_ros_clock_type_t::NROS_CLOCK_UNINITIALIZED;
+        return nros_clock_type_t::NROS_CLOCK_UNINITIALIZED;
     }
 
     (*clock).r#type
@@ -232,19 +230,19 @@ pub unsafe extern "C" fn nano_ros_clock_get_type(
 
 /// Finalize a clock.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_clock_fini(clock: *mut nano_ros_clock_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_clock_fini(clock: *mut nros_clock_t) -> nros_ret_t {
     if clock.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let clock = &mut *clock;
 
-    if clock.state == nano_ros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED {
+    if clock.state == nros_clock_state_t::NROS_CLOCK_STATE_UNINITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
-    clock.state = nano_ros_clock_state_t::NROS_CLOCK_STATE_SHUTDOWN;
-    clock.r#type = nano_ros_clock_type_t::NROS_CLOCK_UNINITIALIZED;
+    clock.state = nros_clock_state_t::NROS_CLOCK_STATE_SHUTDOWN;
+    clock.r#type = nros_clock_type_t::NROS_CLOCK_UNINITIALIZED;
     clock._steady_epoch_ns = 0;
 
     NROS_RET_OK
@@ -254,18 +252,18 @@ pub unsafe extern "C" fn nano_ros_clock_fini(clock: *mut nano_ros_clock_t) -> na
 // Time Utility Functions
 // ============================================================================
 
-/// Convert nanoseconds to a nano_ros_time_t structure.
+/// Convert nanoseconds to a nros_time_t structure.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_time_from_nanoseconds(nanoseconds: i64) -> nano_ros_time_t {
+pub extern "C" fn nros_time_from_nanoseconds(nanoseconds: i64) -> nros_time_t {
     let sec = (nanoseconds / NANOS_PER_SEC as i64) as i32;
     let nanosec = (nanoseconds.unsigned_abs() % NANOS_PER_SEC) as u32;
 
-    nano_ros_time_t { sec, nanosec }
+    nros_time_t { sec, nanosec }
 }
 
-/// Convert a nano_ros_time_t structure to nanoseconds.
+/// Convert a nros_time_t structure to nanoseconds.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_time_to_nanoseconds(time: *const nano_ros_time_t) -> i64 {
+pub unsafe extern "C" fn nros_time_to_nanoseconds(time: *const nros_time_t) -> i64 {
     if time.is_null() {
         return 0;
     }
@@ -276,31 +274,25 @@ pub unsafe extern "C" fn nano_ros_time_to_nanoseconds(time: *const nano_ros_time
 
 /// Add a duration to a time.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_time_add(
-    time: nano_ros_time_t,
-    duration: nano_ros_duration_t,
-) -> nano_ros_time_t {
+pub extern "C" fn nros_time_add(time: nros_time_t, duration: nros_duration_t) -> nros_time_t {
     let time_ns = (time.sec as i64) * (NANOS_PER_SEC as i64) + (time.nanosec as i64);
     let duration_ns = (duration.sec as i64) * (NANOS_PER_SEC as i64) + (duration.nanosec as i64);
 
-    nano_ros_time_from_nanoseconds(time_ns + duration_ns)
+    nros_time_from_nanoseconds(time_ns + duration_ns)
 }
 
 /// Subtract a duration from a time.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_time_sub(
-    time: nano_ros_time_t,
-    duration: nano_ros_duration_t,
-) -> nano_ros_time_t {
+pub extern "C" fn nros_time_sub(time: nros_time_t, duration: nros_duration_t) -> nros_time_t {
     let time_ns = (time.sec as i64) * (NANOS_PER_SEC as i64) + (time.nanosec as i64);
     let duration_ns = (duration.sec as i64) * (NANOS_PER_SEC as i64) + (duration.nanosec as i64);
 
-    nano_ros_time_from_nanoseconds(time_ns - duration_ns)
+    nros_time_from_nanoseconds(time_ns - duration_ns)
 }
 
 /// Compare two times.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_time_compare(a: nano_ros_time_t, b: nano_ros_time_t) -> c_int {
+pub extern "C" fn nros_time_compare(a: nros_time_t, b: nros_time_t) -> c_int {
     if a.sec < b.sec {
         -1
     } else if a.sec > b.sec {

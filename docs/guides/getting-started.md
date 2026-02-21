@@ -152,7 +152,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
 ```bash
 cd /path/to/nros
 cargo build -p nros-c --release
-# Library at: target/release/libnano_ros_c.a
+# Library at: target/release/libnros_c.a
 # Headers at: packages/core/nros-c/include/
 ```
 
@@ -200,7 +200,7 @@ Create `src/main.c`:
 // (auto-generated in full projects via CMake nano_ros_generate_interfaces)
 typedef struct { int32_t data; } std_msgs_Int32;
 
-static const nano_ros_message_type_t std_msgs_Int32_type = {
+static const nros_message_type_t std_msgs_Int32_type = {
     .type_name = "std_msgs::msg::dds_::Int32_",
     .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
     .serialized_size_max = 8,
@@ -216,60 +216,60 @@ static int32_t serialize_int32(const std_msgs_Int32* msg, uint8_t* buf, size_t l
     return 8;
 }
 
-static nano_ros_publisher_t* g_pub;
+static nros_publisher_t* g_pub;
 static int g_count = 0;
 
-static void timer_cb(struct nano_ros_timer_t* timer, void* ctx) {
+static void timer_cb(struct nros_timer_t* timer, void* ctx) {
     (void)timer; (void)ctx;
     g_count++;
     std_msgs_Int32 msg = { .data = g_count };
     uint8_t buf[64];
     int32_t len = serialize_int32(&msg, buf, sizeof(buf));
-    if (len > 0 && nano_ros_publish_raw(g_pub, buf, (size_t)len) == NANO_ROS_RET_OK) {
+    if (len > 0 && nros_publish_raw(g_pub, buf, (size_t)len) == NANO_ROS_RET_OK) {
         printf("Published: %d\n", g_count);
     }
 }
 
 static volatile sig_atomic_t running = 1;
-static nano_ros_executor_t* g_exec;
+static nros_executor_t* g_exec;
 
 static void on_signal(int sig) {
     (void)sig;
     running = 0;
-    if (g_exec) nano_ros_executor_stop(g_exec);
+    if (g_exec) nros_executor_stop(g_exec);
 }
 
 int main(void) {
     const char* locator = getenv("ZENOH_LOCATOR");
     if (!locator) locator = "tcp/127.0.0.1:7447";
 
-    nano_ros_support_t support = nano_ros_support_get_zero_initialized();
-    if (nano_ros_support_init(&support, locator, 0) != NANO_ROS_RET_OK) return 1;
+    nros_support_t support = nros_support_get_zero_initialized();
+    if (nros_support_init(&support, locator, 0) != NANO_ROS_RET_OK) return 1;
 
     nros_node_t node = nros_node_get_zero_initialized();
     nros_node_init(&node, &support, "c_talker", "/");
 
-    nano_ros_publisher_t pub = nano_ros_publisher_get_zero_initialized();
-    nano_ros_publisher_init(&pub, &node, &std_msgs_Int32_type, "/chatter");
+    nros_publisher_t pub = nros_publisher_get_zero_initialized();
+    nros_publisher_init(&pub, &node, &std_msgs_Int32_type, "/chatter");
     g_pub = &pub;
 
-    nano_ros_timer_t timer = nano_ros_timer_get_zero_initialized();
-    nano_ros_timer_init(&timer, &support, 1000000000ULL, timer_cb, NULL);
+    nros_timer_t timer = nros_timer_get_zero_initialized();
+    nros_timer_init(&timer, &support, 1000000000ULL, timer_cb, NULL);
 
-    nano_ros_executor_t exec = nano_ros_executor_get_zero_initialized();
-    nano_ros_executor_init(&exec, &support, 4);
-    nano_ros_executor_add_timer(&exec, &timer);
+    nros_executor_t exec = nros_executor_get_zero_initialized();
+    nros_executor_init(&exec, &support, 4);
+    nros_executor_add_timer(&exec, &timer);
     g_exec = &exec;
 
     signal(SIGINT, on_signal);
     printf("Publishing on /chatter (Ctrl+C to stop)...\n");
-    nano_ros_executor_spin_period(&exec, 100000000ULL);
+    nros_executor_spin_period(&exec, 100000000ULL);
 
-    nano_ros_executor_fini(&exec);
-    nano_ros_timer_fini(&timer);
-    nano_ros_publisher_fini(&pub);
+    nros_executor_fini(&exec);
+    nros_timer_fini(&timer);
+    nros_publisher_fini(&pub);
     nros_node_fini(&node);
-    nano_ros_support_fini(&support);
+    nros_support_fini(&support);
     return 0;
 }
 ```

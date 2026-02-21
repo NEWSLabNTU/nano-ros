@@ -87,10 +87,10 @@ extern "C" {
  * Lifecycle state machine structure.
  *
  * Manages the REP-2002 lifecycle state and transition callbacks for a node.
- * Created with nano_ros_lifecycle_get_zero_initialized() and initialized
- * with nano_ros_lifecycle_init().
+ * Created with nros_lifecycle_get_zero_initialized() and initialized
+ * with nros_lifecycle_init().
  */
-typedef struct nano_ros_lifecycle_state_machine_t {
+typedef struct nros_lifecycle_state_machine_t {
     /** Current lifecycle state (NROS_LIFECYCLE_STATE_*) */
     uint8_t current_state;
     /** Configure callback (Unconfigured -> Inactive) */
@@ -109,7 +109,7 @@ typedef struct nano_ros_lifecycle_state_machine_t {
     void *context;
     /** Whether the state machine has been initialized */
     bool initialized;
-} nano_ros_lifecycle_state_machine_t;
+} nros_lifecycle_state_machine_t;
 
 /* ============================================================================
  * Functions
@@ -121,7 +121,7 @@ typedef struct nano_ros_lifecycle_state_machine_t {
  * @return Zero-initialized state machine structure
  */
 NROS_PUBLIC
-nano_ros_lifecycle_state_machine_t nano_ros_lifecycle_get_zero_initialized(void);
+nros_lifecycle_state_machine_t nros_lifecycle_get_zero_initialized(void);
 
 /**
  * Initialize a lifecycle state machine for a node.
@@ -136,8 +136,8 @@ nano_ros_lifecycle_state_machine_t nano_ros_lifecycle_get_zero_initialized(void)
  * @return NROS_RET_BAD_SEQUENCE if already initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_init(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_init(
+    nros_lifecycle_state_machine_t *sm,
     const nros_node_t *node);
 
 /**
@@ -150,8 +150,8 @@ nano_ros_ret_t nano_ros_lifecycle_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_fini(
-    nano_ros_lifecycle_state_machine_t *sm);
+nros_ret_t nros_lifecycle_fini(
+    nros_lifecycle_state_machine_t *sm);
 
 /**
  * Trigger a lifecycle state transition.
@@ -169,8 +169,8 @@ nano_ros_ret_t nano_ros_lifecycle_fini(
  * @return NROS_RET_ERROR if the callback returned failure or error
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_change_state(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_change_state(
+    nros_lifecycle_state_machine_t *sm,
     uint8_t transition_id);
 
 /**
@@ -181,8 +181,8 @@ nano_ros_ret_t nano_ros_lifecycle_change_state(
  * @return Current state as uint8_t, or 0 if sm is NULL or not initialized
  */
 NROS_PUBLIC
-uint8_t nano_ros_lifecycle_get_state(
-    const nano_ros_lifecycle_state_machine_t *sm);
+uint8_t nros_lifecycle_get_state(
+    const nros_lifecycle_state_machine_t *sm);
 
 /**
  * Register a callback for the configure transition.
@@ -196,8 +196,8 @@ uint8_t nano_ros_lifecycle_get_state(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_register_on_configure(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_register_on_configure(
+    nros_lifecycle_state_machine_t *sm,
     uint8_t (*cb)(void *context),
     void *context);
 
@@ -205,8 +205,8 @@ nano_ros_ret_t nano_ros_lifecycle_register_on_configure(
  * Register a callback for the activate transition.
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_register_on_activate(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_register_on_activate(
+    nros_lifecycle_state_machine_t *sm,
     uint8_t (*cb)(void *context),
     void *context);
 
@@ -214,8 +214,8 @@ nano_ros_ret_t nano_ros_lifecycle_register_on_activate(
  * Register a callback for the deactivate transition.
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_register_on_deactivate(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_register_on_deactivate(
+    nros_lifecycle_state_machine_t *sm,
     uint8_t (*cb)(void *context),
     void *context);
 
@@ -223,8 +223,8 @@ nano_ros_ret_t nano_ros_lifecycle_register_on_deactivate(
  * Register a callback for the cleanup transition.
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_register_on_cleanup(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_register_on_cleanup(
+    nros_lifecycle_state_machine_t *sm,
     uint8_t (*cb)(void *context),
     void *context);
 
@@ -232,8 +232,8 @@ nano_ros_ret_t nano_ros_lifecycle_register_on_cleanup(
  * Register a callback for the shutdown transition.
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_register_on_shutdown(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_register_on_shutdown(
+    nros_lifecycle_state_machine_t *sm,
     uint8_t (*cb)(void *context),
     void *context);
 
@@ -241,15 +241,15 @@ nano_ros_ret_t nano_ros_lifecycle_register_on_shutdown(
  * Register a callback for error recovery transition.
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_lifecycle_register_on_error(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_register_on_error(
+    nros_lifecycle_state_machine_t *sm,
     uint8_t (*cb)(void *context),
     void *context);
 
 /**
  * Convenience: initialize a lifecycle state machine for a node.
  *
- * Equivalent to nano_ros_lifecycle_init(sm, node).
+ * Equivalent to nros_lifecycle_init(sm, node).
  * Named to match rclc's rclc_make_node_a_lifecycle_node.
  *
  * @param sm Pointer to a zero-initialized state machine
@@ -258,8 +258,8 @@ nano_ros_ret_t nano_ros_lifecycle_register_on_error(
  * @return NROS_RET_OK on success
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_make_node_a_lifecycle_node(
-    nano_ros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_make_node_a_lifecycle_node(
+    nros_lifecycle_state_machine_t *sm,
     const nros_node_t *node);
 
 #ifdef __cplusplus

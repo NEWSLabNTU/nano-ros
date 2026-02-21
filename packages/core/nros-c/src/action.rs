@@ -9,7 +9,7 @@ use core::ptr;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
-use crate::support::nano_ros_support_state_t;
+use crate::support::nros_support_state_t;
 
 // ============================================================================
 // Constants
@@ -27,7 +27,7 @@ use crate::executor::NROS_MAX_CONCURRENT_GOALS;
 /// Compatible with action_msgs/msg/GoalStatus values.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_goal_status_t {
+pub enum nros_goal_status_t {
     /// Goal state is unknown
     NROS_GOAL_STATUS_UNKNOWN = 0,
     /// Goal was accepted and is pending execution
@@ -47,7 +47,7 @@ pub enum nano_ros_goal_status_t {
 /// Goal response codes for goal request handling.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_goal_response_t {
+pub enum nros_goal_response_t {
     /// Reject the goal
     NROS_GOAL_REJECT = 0,
     /// Accept the goal and start executing immediately
@@ -59,7 +59,7 @@ pub enum nano_ros_goal_response_t {
 /// Cancel response codes.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_cancel_response_t {
+pub enum nros_cancel_response_t {
     /// Reject the cancel request
     NROS_CANCEL_REJECT = 0,
     /// Accept the cancel request
@@ -72,7 +72,7 @@ pub enum nano_ros_cancel_response_t {
 
 /// Action type information.
 #[repr(C)]
-pub struct nano_ros_action_type_t {
+pub struct nros_action_type_t {
     /// Action type name (e.g., "example_interfaces::action::Fibonacci")
     pub type_name: *const c_char,
     /// Action type hash
@@ -92,7 +92,7 @@ pub struct nano_ros_action_type_t {
 /// Goal UUID structure (16 bytes).
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
-pub struct nano_ros_goal_uuid_t {
+pub struct nros_goal_uuid_t {
     /// UUID bytes
     pub uuid: [u8; 16],
 }
@@ -103,24 +103,24 @@ pub struct nano_ros_goal_uuid_t {
 
 /// Goal handle structure.
 #[repr(C)]
-pub struct nano_ros_goal_handle_t {
+pub struct nros_goal_handle_t {
     /// Goal UUID
-    pub uuid: nano_ros_goal_uuid_t,
+    pub uuid: nros_goal_uuid_t,
     /// Current status
-    pub status: nano_ros_goal_status_t,
+    pub status: nros_goal_status_t,
     /// Whether this goal slot is in use
     pub active: bool,
     /// User context pointer for this goal
     pub context: *mut c_void,
     /// Pointer back to the action server (internal)
-    server: *mut nano_ros_action_server_t,
+    server: *mut nros_action_server_t,
 }
 
-impl Default for nano_ros_goal_handle_t {
+impl Default for nros_goal_handle_t {
     fn default() -> Self {
         Self {
-            uuid: nano_ros_goal_uuid_t::default(),
-            status: nano_ros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+            uuid: nros_goal_uuid_t::default(),
+            status: nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
             active: false,
             context: ptr::null_mut(),
             server: ptr::null_mut(),
@@ -133,31 +133,31 @@ impl Default for nano_ros_goal_handle_t {
 // ============================================================================
 
 /// Goal request callback type.
-pub type nano_ros_goal_callback_t = Option<
+pub type nros_goal_callback_t = Option<
     unsafe extern "C" fn(
-        goal_uuid: *const nano_ros_goal_uuid_t,
+        goal_uuid: *const nros_goal_uuid_t,
         goal_request: *const u8,
         goal_len: usize,
         context: *mut c_void,
-    ) -> nano_ros_goal_response_t,
+    ) -> nros_goal_response_t,
 >;
 
 /// Cancel request callback type.
-pub type nano_ros_cancel_callback_t = Option<
+pub type nros_cancel_callback_t = Option<
     unsafe extern "C" fn(
-        goal: *mut nano_ros_goal_handle_t,
+        goal: *mut nros_goal_handle_t,
         context: *mut c_void,
-    ) -> nano_ros_cancel_response_t,
+    ) -> nros_cancel_response_t,
 >;
 
 /// Goal accepted callback type.
-pub type nano_ros_accepted_callback_t =
-    Option<unsafe extern "C" fn(goal: *mut nano_ros_goal_handle_t, context: *mut c_void)>;
+pub type nros_accepted_callback_t =
+    Option<unsafe extern "C" fn(goal: *mut nros_goal_handle_t, context: *mut c_void)>;
 
 /// Feedback callback type (for client).
-pub type nano_ros_feedback_callback_t = Option<
+pub type nros_feedback_callback_t = Option<
     unsafe extern "C" fn(
-        goal_uuid: *const nano_ros_goal_uuid_t,
+        goal_uuid: *const nros_goal_uuid_t,
         feedback: *const u8,
         feedback_len: usize,
         context: *mut c_void,
@@ -165,10 +165,10 @@ pub type nano_ros_feedback_callback_t = Option<
 >;
 
 /// Result callback type (for client).
-pub type nano_ros_result_callback_t = Option<
+pub type nros_result_callback_t = Option<
     unsafe extern "C" fn(
-        goal_uuid: *const nano_ros_goal_uuid_t,
-        status: nano_ros_goal_status_t,
+        goal_uuid: *const nros_goal_uuid_t,
+        status: nros_goal_status_t,
         result: *const u8,
         result_len: usize,
         context: *mut c_void,
@@ -182,7 +182,7 @@ pub type nano_ros_result_callback_t = Option<
 /// Action server state.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_action_server_state_t {
+pub enum nros_action_server_state_t {
     /// Not initialized
     NROS_ACTION_SERVER_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -193,9 +193,9 @@ pub enum nano_ros_action_server_state_t {
 
 /// Action server structure.
 #[repr(C)]
-pub struct nano_ros_action_server_t {
+pub struct nros_action_server_t {
     /// Current state
-    pub state: nano_ros_action_server_state_t,
+    pub state: nros_action_server_state_t,
     /// Action name storage
     action_name: [u8; MAX_ACTION_NAME_LEN],
     /// Action name length
@@ -209,15 +209,15 @@ pub struct nano_ros_action_server_t {
     /// Type hash length
     type_hash_len: usize,
     /// Goal callback
-    goal_callback: nano_ros_goal_callback_t,
+    goal_callback: nros_goal_callback_t,
     /// Cancel callback
-    cancel_callback: nano_ros_cancel_callback_t,
+    cancel_callback: nros_cancel_callback_t,
     /// Accepted callback
-    accepted_callback: nano_ros_accepted_callback_t,
+    accepted_callback: nros_accepted_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Goal handles
-    goals: [nano_ros_goal_handle_t; NROS_MAX_CONCURRENT_GOALS],
+    goals: [nros_goal_handle_t; NROS_MAX_CONCURRENT_GOALS],
     /// Number of active goals
     active_goal_count: usize,
     /// Pointer to parent node
@@ -226,10 +226,10 @@ pub struct nano_ros_action_server_t {
     _internal: *mut c_void,
 }
 
-impl Default for nano_ros_action_server_t {
+impl Default for nros_action_server_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
+            state: nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
             action_name: [0u8; MAX_ACTION_NAME_LEN],
             action_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -241,10 +241,10 @@ impl Default for nano_ros_action_server_t {
             accepted_callback: None,
             context: ptr::null_mut(),
             goals: [
-                nano_ros_goal_handle_t::default(),
-                nano_ros_goal_handle_t::default(),
-                nano_ros_goal_handle_t::default(),
-                nano_ros_goal_handle_t::default(),
+                nros_goal_handle_t::default(),
+                nros_goal_handle_t::default(),
+                nros_goal_handle_t::default(),
+                nros_goal_handle_t::default(),
             ],
             active_goal_count: 0,
             node: ptr::null(),
@@ -255,22 +255,22 @@ impl Default for nano_ros_action_server_t {
 
 /// Get a zero-initialized action server.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_action_server_get_zero_initialized() -> nano_ros_action_server_t {
-    nano_ros_action_server_t::default()
+pub extern "C" fn nros_action_server_get_zero_initialized() -> nros_action_server_t {
+    nros_action_server_t::default()
 }
 
 /// Initialize an action server.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_server_init(
-    server: *mut nano_ros_action_server_t,
+pub unsafe extern "C" fn nros_action_server_init(
+    server: *mut nros_action_server_t,
     node: *const nros_node_t,
     action_name: *const c_char,
-    type_info: *const nano_ros_action_type_t,
-    goal_callback: nano_ros_goal_callback_t,
-    cancel_callback: nano_ros_cancel_callback_t,
-    accepted_callback: nano_ros_accepted_callback_t,
+    type_info: *const nros_action_type_t,
+    goal_callback: nros_goal_callback_t,
+    cancel_callback: nros_cancel_callback_t,
+    accepted_callback: nros_accepted_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     // Validate required arguments
     if server.is_null() || node.is_null() || action_name.is_null() || type_info.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -285,7 +285,7 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
     let type_info = &*type_info;
 
     // Check if server is already initialized
-    if server.state != nano_ros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED {
+    if server.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -352,9 +352,9 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
     server.active_goal_count = 0;
 
     // Initialize goal handles with pointer back to server
-    let server_ptr = server as *mut nano_ros_action_server_t;
+    let server_ptr = server as *mut nros_action_server_t;
     for goal in server.goals.iter_mut() {
-        *goal = nano_ros_goal_handle_t::default();
+        *goal = nros_goal_handle_t::default();
         goal.server = server_ptr;
     }
 
@@ -367,7 +367,7 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
             None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             return NROS_RET_NOT_INIT;
         }
 
@@ -380,7 +380,7 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
         // - Status topic
 
         // Mark as initialized (basic implementation)
-        server.state = nano_ros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
+        server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
         NROS_RET_OK
     }
 
@@ -393,11 +393,11 @@ pub unsafe extern "C" fn nano_ros_action_server_init(
 
 /// Publish feedback for an executing goal.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_publish_feedback(
-    goal: *mut nano_ros_goal_handle_t,
+pub unsafe extern "C" fn nros_action_publish_feedback(
+    goal: *mut nros_goal_handle_t,
     feedback: *const u8,
     feedback_len: usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if goal.is_null() || feedback.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -405,7 +405,7 @@ pub unsafe extern "C" fn nano_ros_action_publish_feedback(
     let goal = &mut *goal;
 
     // Check goal is in executing state
-    if goal.status != nano_ros_goal_status_t::NROS_GOAL_STATUS_EXECUTING {
+    if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING {
         return NROS_RET_NOT_ALLOWED;
     }
 
@@ -429,11 +429,11 @@ pub unsafe extern "C" fn nano_ros_action_publish_feedback(
 
 /// Mark a goal as succeeded with a result.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_succeed(
-    goal: *mut nano_ros_goal_handle_t,
+pub unsafe extern "C" fn nros_action_succeed(
+    goal: *mut nros_goal_handle_t,
     result: *const u8,
     result_len: usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if goal.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -441,7 +441,7 @@ pub unsafe extern "C" fn nano_ros_action_succeed(
     let goal = &mut *goal;
 
     // Check goal is in executing state
-    if goal.status != nano_ros_goal_status_t::NROS_GOAL_STATUS_EXECUTING {
+    if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING {
         return NROS_RET_NOT_ALLOWED;
     }
 
@@ -456,7 +456,7 @@ pub unsafe extern "C" fn nano_ros_action_succeed(
             let _data = core::slice::from_raw_parts(result, result_len);
         }
 
-        goal.status = nano_ros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED;
+        goal.status = nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED;
 
         // Deactivate goal and update server count
         goal.active = false;
@@ -478,11 +478,11 @@ pub unsafe extern "C" fn nano_ros_action_succeed(
 
 /// Mark a goal as aborted with an optional result.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_abort(
-    goal: *mut nano_ros_goal_handle_t,
+pub unsafe extern "C" fn nros_action_abort(
+    goal: *mut nros_goal_handle_t,
     result: *const u8,
     result_len: usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if goal.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -490,8 +490,8 @@ pub unsafe extern "C" fn nano_ros_action_abort(
     let goal = &mut *goal;
 
     // Check goal is in executing or canceling state
-    if goal.status != nano_ros_goal_status_t::NROS_GOAL_STATUS_EXECUTING
-        && goal.status != nano_ros_goal_status_t::NROS_GOAL_STATUS_CANCELING
+    if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING
+        && goal.status != nros_goal_status_t::NROS_GOAL_STATUS_CANCELING
     {
         return NROS_RET_NOT_ALLOWED;
     }
@@ -506,7 +506,7 @@ pub unsafe extern "C" fn nano_ros_action_abort(
             let _data = core::slice::from_raw_parts(result, result_len);
         }
 
-        goal.status = nano_ros_goal_status_t::NROS_GOAL_STATUS_ABORTED;
+        goal.status = nros_goal_status_t::NROS_GOAL_STATUS_ABORTED;
 
         // Deactivate goal and update server count
         goal.active = false;
@@ -528,11 +528,11 @@ pub unsafe extern "C" fn nano_ros_action_abort(
 
 /// Mark a goal as canceled with an optional result.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_canceled(
-    goal: *mut nano_ros_goal_handle_t,
+pub unsafe extern "C" fn nros_action_canceled(
+    goal: *mut nros_goal_handle_t,
     result: *const u8,
     result_len: usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if goal.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -540,7 +540,7 @@ pub unsafe extern "C" fn nano_ros_action_canceled(
     let goal = &mut *goal;
 
     // Check goal is in canceling state
-    if goal.status != nano_ros_goal_status_t::NROS_GOAL_STATUS_CANCELING {
+    if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_CANCELING {
         return NROS_RET_NOT_ALLOWED;
     }
 
@@ -554,7 +554,7 @@ pub unsafe extern "C" fn nano_ros_action_canceled(
             let _data = core::slice::from_raw_parts(result, result_len);
         }
 
-        goal.status = nano_ros_goal_status_t::NROS_GOAL_STATUS_CANCELED;
+        goal.status = nros_goal_status_t::NROS_GOAL_STATUS_CANCELED;
 
         // Deactivate goal and update server count
         goal.active = false;
@@ -576,9 +576,9 @@ pub unsafe extern "C" fn nano_ros_action_canceled(
 
 /// Execute a goal (transition from accepted to executing).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_execute(
-    goal: *mut nano_ros_goal_handle_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_action_execute(
+    goal: *mut nros_goal_handle_t,
+) -> nros_ret_t {
     if goal.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -586,7 +586,7 @@ pub unsafe extern "C" fn nano_ros_action_execute(
     let goal = &mut *goal;
 
     // Check goal is in accepted state
-    if goal.status != nano_ros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED {
+    if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED {
         return NROS_RET_NOT_ALLOWED;
     }
 
@@ -594,14 +594,14 @@ pub unsafe extern "C" fn nano_ros_action_execute(
         return NROS_RET_NOT_ALLOWED;
     }
 
-    goal.status = nano_ros_goal_status_t::NROS_GOAL_STATUS_EXECUTING;
+    goal.status = nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING;
     NROS_RET_OK
 }
 
 /// Get the number of active goals.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_server_get_active_goal_count(
-    server: *const nano_ros_action_server_t,
+pub unsafe extern "C" fn nros_action_server_get_active_goal_count(
+    server: *const nros_action_server_t,
 ) -> usize {
     if server.is_null() {
         return 0;
@@ -613,16 +613,16 @@ pub unsafe extern "C" fn nano_ros_action_server_get_active_goal_count(
 
 /// Finalize an action server.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_server_fini(
-    server: *mut nano_ros_action_server_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_action_server_fini(
+    server: *mut nros_action_server_t,
+) -> nros_ret_t {
     if server.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let server = &mut *server;
 
-    if server.state != nano_ros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
+    if server.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -638,7 +638,7 @@ pub unsafe extern "C" fn nano_ros_action_server_fini(
 
     // Reset all goal handles
     for goal in server.goals.iter_mut() {
-        *goal = nano_ros_goal_handle_t::default();
+        *goal = nros_goal_handle_t::default();
     }
 
     server.goal_callback = None;
@@ -647,7 +647,7 @@ pub unsafe extern "C" fn nano_ros_action_server_fini(
     server.context = ptr::null_mut();
     server.node = ptr::null();
     server.active_goal_count = 0;
-    server.state = nano_ros_action_server_state_t::NROS_ACTION_SERVER_STATE_SHUTDOWN;
+    server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -659,7 +659,7 @@ pub unsafe extern "C" fn nano_ros_action_server_fini(
 /// Action client state.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_action_client_state_t {
+pub enum nros_action_client_state_t {
     /// Not initialized
     NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -670,9 +670,9 @@ pub enum nano_ros_action_client_state_t {
 
 /// Action client structure.
 #[repr(C)]
-pub struct nano_ros_action_client_t {
+pub struct nros_action_client_t {
     /// Current state
-    pub state: nano_ros_action_client_state_t,
+    pub state: nros_action_client_state_t,
     /// Action name storage
     action_name: [u8; MAX_ACTION_NAME_LEN],
     /// Action name length
@@ -686,9 +686,9 @@ pub struct nano_ros_action_client_t {
     /// Type hash length
     type_hash_len: usize,
     /// Feedback callback
-    feedback_callback: nano_ros_feedback_callback_t,
+    feedback_callback: nros_feedback_callback_t,
     /// Result callback
-    result_callback: nano_ros_result_callback_t,
+    result_callback: nros_result_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Pointer to parent node
@@ -697,10 +697,10 @@ pub struct nano_ros_action_client_t {
     _internal: *mut c_void,
 }
 
-impl Default for nano_ros_action_client_t {
+impl Default for nros_action_client_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
+            state: nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
             action_name: [0u8; MAX_ACTION_NAME_LEN],
             action_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -718,18 +718,18 @@ impl Default for nano_ros_action_client_t {
 
 /// Get a zero-initialized action client.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_action_client_get_zero_initialized() -> nano_ros_action_client_t {
-    nano_ros_action_client_t::default()
+pub extern "C" fn nros_action_client_get_zero_initialized() -> nros_action_client_t {
+    nros_action_client_t::default()
 }
 
 /// Initialize an action client.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_client_init(
-    client: *mut nano_ros_action_client_t,
+pub unsafe extern "C" fn nros_action_client_init(
+    client: *mut nros_action_client_t,
     node: *const nros_node_t,
     action_name: *const c_char,
-    type_info: *const nano_ros_action_type_t,
-) -> nano_ros_ret_t {
+    type_info: *const nros_action_type_t,
+) -> nros_ret_t {
     // Validate required arguments
     if client.is_null() || node.is_null() || action_name.is_null() || type_info.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -740,7 +740,7 @@ pub unsafe extern "C" fn nano_ros_action_client_init(
     let type_info = &*type_info;
 
     // Check if client is already initialized
-    if client.state != nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED {
+    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -810,12 +810,12 @@ pub unsafe extern "C" fn nano_ros_action_client_init(
             None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             return NROS_RET_NOT_INIT;
         }
 
         // Mark as initialized (basic implementation)
-        client.state = nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
+        client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
         NROS_RET_OK
     }
 
@@ -828,11 +828,11 @@ pub unsafe extern "C" fn nano_ros_action_client_init(
 
 /// Set feedback callback.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_client_set_feedback_callback(
-    client: *mut nano_ros_action_client_t,
-    callback: nano_ros_feedback_callback_t,
+pub unsafe extern "C" fn nros_action_client_set_feedback_callback(
+    client: *mut nros_action_client_t,
+    callback: nros_feedback_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if client.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -846,11 +846,11 @@ pub unsafe extern "C" fn nano_ros_action_client_set_feedback_callback(
 
 /// Set result callback.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_client_set_result_callback(
-    client: *mut nano_ros_action_client_t,
-    callback: nano_ros_result_callback_t,
+pub unsafe extern "C" fn nros_action_client_set_result_callback(
+    client: *mut nros_action_client_t,
+    callback: nros_result_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if client.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -864,19 +864,19 @@ pub unsafe extern "C" fn nano_ros_action_client_set_result_callback(
 
 /// Send a goal request.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_send_goal(
-    client: *mut nano_ros_action_client_t,
+pub unsafe extern "C" fn nros_action_send_goal(
+    client: *mut nros_action_client_t,
     goal: *const u8,
     goal_len: usize,
-    goal_uuid: *mut nano_ros_goal_uuid_t,
-) -> nano_ros_ret_t {
+    goal_uuid: *mut nros_goal_uuid_t,
+) -> nros_ret_t {
     if client.is_null() || goal.is_null() || goal_uuid.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let client = &mut *client;
 
-    if client.state != nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -884,7 +884,7 @@ pub unsafe extern "C" fn nano_ros_action_send_goal(
     {
         // Generate a UUID for this goal
         let uuid = &mut *goal_uuid;
-        if nano_ros_goal_uuid_generate(uuid) != NROS_RET_OK {
+        if nros_goal_uuid_generate(uuid) != NROS_RET_OK {
             return NROS_RET_ERROR;
         }
 
@@ -901,17 +901,17 @@ pub unsafe extern "C" fn nano_ros_action_send_goal(
 
 /// Request cancellation of a goal.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_cancel_goal(
-    client: *mut nano_ros_action_client_t,
-    goal_uuid: *const nano_ros_goal_uuid_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_action_cancel_goal(
+    client: *mut nros_action_client_t,
+    goal_uuid: *const nros_goal_uuid_t,
+) -> nros_ret_t {
     if client.is_null() || goal_uuid.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let client = &mut *client;
 
-    if client.state != nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -930,14 +930,14 @@ pub unsafe extern "C" fn nano_ros_action_cancel_goal(
 
 /// Request result of a goal (blocking).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_get_result(
-    client: *mut nano_ros_action_client_t,
-    goal_uuid: *const nano_ros_goal_uuid_t,
-    status: *mut nano_ros_goal_status_t,
+pub unsafe extern "C" fn nros_action_get_result(
+    client: *mut nros_action_client_t,
+    goal_uuid: *const nros_goal_uuid_t,
+    status: *mut nros_goal_status_t,
     result: *mut u8,
     result_capacity: usize,
     result_len: *mut usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if client.is_null()
         || goal_uuid.is_null()
         || status.is_null()
@@ -949,7 +949,7 @@ pub unsafe extern "C" fn nano_ros_action_get_result(
 
     let client = &mut *client;
 
-    if client.state != nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -971,16 +971,16 @@ pub unsafe extern "C" fn nano_ros_action_get_result(
 
 /// Finalize an action client.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_action_client_fini(
-    client: *mut nano_ros_action_client_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_action_client_fini(
+    client: *mut nros_action_client_t,
+) -> nros_ret_t {
     if client.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let client = &mut *client;
 
-    if client.state != nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -996,7 +996,7 @@ pub unsafe extern "C" fn nano_ros_action_client_fini(
     client.result_callback = None;
     client.context = ptr::null_mut();
     client.node = ptr::null();
-    client.state = nano_ros_action_client_state_t::NROS_ACTION_CLIENT_STATE_SHUTDOWN;
+    client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -1007,9 +1007,9 @@ pub unsafe extern "C" fn nano_ros_action_client_fini(
 
 /// Generate a new random goal UUID.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_goal_uuid_generate(
-    uuid: *mut nano_ros_goal_uuid_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_goal_uuid_generate(
+    uuid: *mut nros_goal_uuid_t,
+) -> nros_ret_t {
     if uuid.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -1057,9 +1057,9 @@ pub unsafe extern "C" fn nano_ros_goal_uuid_generate(
 
 /// Compare two goal UUIDs.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_goal_uuid_equal(
-    a: *const nano_ros_goal_uuid_t,
-    b: *const nano_ros_goal_uuid_t,
+pub unsafe extern "C" fn nros_goal_uuid_equal(
+    a: *const nros_goal_uuid_t,
+    b: *const nros_goal_uuid_t,
 ) -> bool {
     if a.is_null() || b.is_null() {
         return false;
@@ -1073,14 +1073,14 @@ pub unsafe extern "C" fn nano_ros_goal_uuid_equal(
 
 /// Get status name as string.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_goal_status_to_string(status: nano_ros_goal_status_t) -> *const c_char {
+pub extern "C" fn nros_goal_status_to_string(status: nros_goal_status_t) -> *const c_char {
     match status {
-        nano_ros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN => c"UNKNOWN".as_ptr(),
-        nano_ros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED => c"ACCEPTED".as_ptr(),
-        nano_ros_goal_status_t::NROS_GOAL_STATUS_EXECUTING => c"EXECUTING".as_ptr(),
-        nano_ros_goal_status_t::NROS_GOAL_STATUS_CANCELING => c"CANCELING".as_ptr(),
-        nano_ros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED => c"SUCCEEDED".as_ptr(),
-        nano_ros_goal_status_t::NROS_GOAL_STATUS_CANCELED => c"CANCELED".as_ptr(),
-        nano_ros_goal_status_t::NROS_GOAL_STATUS_ABORTED => c"ABORTED".as_ptr(),
+        nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN => c"UNKNOWN".as_ptr(),
+        nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED => c"ACCEPTED".as_ptr(),
+        nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING => c"EXECUTING".as_ptr(),
+        nros_goal_status_t::NROS_GOAL_STATUS_CANCELING => c"CANCELING".as_ptr(),
+        nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED => c"SUCCEEDED".as_ptr(),
+        nros_goal_status_t::NROS_GOAL_STATUS_CANCELED => c"CANCELED".as_ptr(),
+        nros_goal_status_t::NROS_GOAL_STATUS_ABORTED => c"ABORTED".as_ptr(),
     }
 }

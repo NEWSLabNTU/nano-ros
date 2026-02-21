@@ -23,26 +23,26 @@
 // ----------------------------------------------------------------------------
 
 typedef struct {
-    nano_ros_publisher_t* publisher;
+    nros_publisher_t* publisher;
     std_msgs_msg_int32 message;
     int count;
 } talker_context_t;
 
 // Static allocation — all nros structs live in .bss, not on the stack
 static struct {
-    nano_ros_clock_t clock;
-    nano_ros_parameter_t param_storage[8];
-    nano_ros_param_server_t params;
-    nano_ros_support_t support;
+    nros_clock_t clock;
+    nros_parameter_t param_storage[8];
+    nros_param_server_t params;
+    nros_support_t support;
     nros_node_t node;
-    nano_ros_publisher_t publisher;
+    nros_publisher_t publisher;
     talker_context_t talker_ctx;
-    nano_ros_timer_t timer;
-    nano_ros_executor_t executor;
+    nros_timer_t timer;
+    nros_executor_t executor;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
-static nano_ros_executor_t* g_executor = NULL;
+static nros_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -52,7 +52,7 @@ static void signal_handler(int signum) {
     (void)signum;
     g_running = 0;
     if (g_executor) {
-        nano_ros_executor_stop(g_executor);
+        nros_executor_stop(g_executor);
     }
 }
 
@@ -60,7 +60,7 @@ static void signal_handler(int signum) {
 // Timer callback - publish a message
 // ----------------------------------------------------------------------------
 
-static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
+static void timer_callback(struct nros_timer_t* timer, void* context) {
     (void)timer;
     talker_context_t* ctx = (talker_context_t*)context;
 
@@ -72,7 +72,7 @@ static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
     int32_t ret = std_msgs_msg_int32_serialize(&ctx->message, buffer, sizeof(buffer), &serialized_size);
 
     if (ret == 0 && serialized_size > 0) {
-        nano_ros_ret_t pub_ret = nano_ros_publish_raw(ctx->publisher, buffer, serialized_size);
+        nros_ret_t pub_ret = nros_publish_raw(ctx->publisher, buffer, serialized_size);
         if (pub_ret == NROS_RET_OK) {
             printf("Published: %d\n", ctx->message.data);
         } else {
@@ -113,22 +113,22 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Demo: Initialize and use clock API
-    nano_ros_ret_t clock_ret = nano_ros_clock_init(&app.clock, NROS_CLOCK_SYSTEM_TIME);
+    nros_ret_t clock_ret = nros_clock_init(&app.clock, NROS_CLOCK_SYSTEM_TIME);
     if (clock_ret == NROS_RET_OK) {
-        nano_ros_time_t now;
-        if (nano_ros_clock_get_now(&app.clock, &now) == NROS_RET_OK) {
+        nros_time_t now;
+        if (nros_clock_get_now(&app.clock, &now) == NROS_RET_OK) {
             printf("System time: %d.%09u sec\n", now.sec, now.nanosec);
         }
-        (void)nano_ros_clock_fini(&app.clock);
+        (void)nros_clock_fini(&app.clock);
     }
 
     // Demo: Initialize and use parameter server
-    if (nano_ros_param_server_init(&app.params, app.param_storage, 8) == NROS_RET_OK) {
+    if (nros_param_server_init(&app.params, app.param_storage, 8) == NROS_RET_OK) {
         // Declare parameters with default values
-        nano_ros_param_declare_bool(&app.params, "verbose", false);
-        nano_ros_param_declare_integer(&app.params, "publish_rate_hz", 1);
-        nano_ros_param_declare_double(&app.params, "scale_factor", 1.0);
-        nano_ros_param_declare_string(&app.params, "topic_name", "/chatter");
+        nros_param_declare_bool(&app.params, "verbose", false);
+        nros_param_declare_integer(&app.params, "publish_rate_hz", 1);
+        nros_param_declare_double(&app.params, "scale_factor", 1.0);
+        nros_param_declare_string(&app.params, "topic_name", "/chatter");
 
         // Read back and display parameter values
         bool verbose = false;
@@ -136,25 +136,25 @@ int main(int argc, char** argv) {
         double scale = 0.0;
         char topic[64] = {0};
 
-        nano_ros_param_get_bool(&app.params, "verbose", &verbose);
-        nano_ros_param_get_integer(&app.params, "publish_rate_hz", &rate_hz);
-        nano_ros_param_get_double(&app.params, "scale_factor", &scale);
-        nano_ros_param_get_string(&app.params, "topic_name", topic, sizeof(topic));
+        nros_param_get_bool(&app.params, "verbose", &verbose);
+        nros_param_get_integer(&app.params, "publish_rate_hz", &rate_hz);
+        nros_param_get_double(&app.params, "scale_factor", &scale);
+        nros_param_get_string(&app.params, "topic_name", topic, sizeof(topic));
 
         printf("Parameters: verbose=%s, rate=%lld Hz, scale=%.2f, topic=%s\n",
                verbose ? "true" : "false", (long long)rate_hz, scale, topic);
 
         // Demonstrate parameter modification
-        nano_ros_param_set_bool(&app.params, "verbose", true);
-        nano_ros_param_get_bool(&app.params, "verbose", &verbose);
+        nros_param_set_bool(&app.params, "verbose", true);
+        nros_param_get_bool(&app.params, "verbose", &verbose);
         printf("After set: verbose=%s\n", verbose ? "true" : "false");
 
         // Clean up (parameters are local demo only)
-        (void)nano_ros_param_server_fini(&app.params);
+        (void)nros_param_server_fini(&app.params);
     }
 
     // Initialize support context
-    nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
+    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
@@ -165,21 +165,21 @@ int main(int argc, char** argv) {
     ret = nros_node_init(&app.node, &app.support, "c_talker", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create publisher using generated type support
-    ret = nano_ros_publisher_init(&app.publisher, &app.node,
+    ret = nros_publisher_init(&app.publisher, &app.node,
         std_msgs_msg_int32_get_type_support(), "/chatter");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
-    printf("Publisher created for topic: %s\n", nano_ros_publisher_get_topic_name(&app.publisher));
+    printf("Publisher created for topic: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
     // Create application context
     app.talker_ctx = (talker_context_t){
@@ -190,40 +190,40 @@ int main(int argc, char** argv) {
     std_msgs_msg_int32_init(&app.talker_ctx.message);
 
     // Create timer (1 second period = 1,000,000,000 ns)
-    ret = nano_ros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);
+    ret = nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize timer: %d\n", ret);
-        nano_ros_publisher_fini(&app.publisher);
+        nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Timer created (1 second period)\n");
 
     // Create executor
-    ret = nano_ros_executor_init(&app.executor, &app.support, 4);
+    ret = nros_executor_init(&app.executor, &app.support, 4);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nano_ros_timer_fini(&app.timer);
-        nano_ros_publisher_fini(&app.publisher);
+        nros_timer_fini(&app.timer);
+        nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     g_executor = &app.executor;
 
     // Add timer to executor
-    ret = nano_ros_executor_add_timer(&app.executor, &app.timer);
+    ret = nros_executor_add_timer(&app.executor, &app.timer);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer to executor: %d\n", ret);
-        nano_ros_executor_fini(&app.executor);
-        nano_ros_timer_fini(&app.timer);
-        nano_ros_publisher_fini(&app.publisher);
+        nros_executor_fini(&app.executor);
+        nros_timer_fini(&app.timer);
+        nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
-    printf("Executor created with %d handle(s)\n", nano_ros_executor_get_handle_count(&app.executor));
+    printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
@@ -232,18 +232,18 @@ int main(int argc, char** argv) {
     printf("\nPublishing messages (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
+    ret = nros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 
     // Cleanup
     printf("\nShutting down...\n");
-    nano_ros_executor_fini(&app.executor);
-    nano_ros_timer_fini(&app.timer);
-    nano_ros_publisher_fini(&app.publisher);
+    nros_executor_fini(&app.executor);
+    nros_timer_fini(&app.timer);
+    nros_publisher_fini(&app.publisher);
     nros_node_fini(&app.node);
-    nano_ros_support_fini(&app.support);
+    nros_support_fini(&app.support);
 
     printf("Goodbye!\n");
     return 0;

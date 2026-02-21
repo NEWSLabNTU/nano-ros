@@ -6,20 +6,20 @@ use core::ffi::{c_int, c_void};
 use core::ptr;
 
 use crate::error::*;
-use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
+use crate::support::{nros_support_state_t, nros_support_t};
 
 /// Timer callback function type.
 ///
 /// # Parameters
 /// * `timer` - Pointer to the timer that triggered
 /// * `context` - User-provided context pointer
-pub type nano_ros_timer_callback_t =
-    Option<unsafe extern "C" fn(timer: *mut nano_ros_timer_t, context: *mut c_void)>;
+pub type nros_timer_callback_t =
+    Option<unsafe extern "C" fn(timer: *mut nros_timer_t, context: *mut c_void)>;
 
 /// Timer state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_timer_state_t {
+pub enum nros_timer_state_t {
     /// Not initialized
     NROS_TIMER_STATE_UNINITIALIZED = 0,
     /// Initialized and running
@@ -32,25 +32,25 @@ pub enum nano_ros_timer_state_t {
 
 /// Timer structure.
 #[repr(C)]
-pub struct nano_ros_timer_t {
+pub struct nros_timer_t {
     /// Current state
-    pub state: nano_ros_timer_state_t,
+    pub state: nros_timer_state_t,
     /// Period in nanoseconds
     pub period_ns: u64,
     /// Last trigger time in nanoseconds
     pub last_call_time_ns: u64,
     /// User callback function
-    callback: nano_ros_timer_callback_t,
+    callback: nros_timer_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Pointer to parent support context
-    support: *const nano_ros_support_t,
+    support: *const nros_support_t,
 }
 
-impl Default for nano_ros_timer_t {
+impl Default for nros_timer_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED,
+            state: nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED,
             period_ns: 0,
             last_call_time_ns: 0,
             callback: None,
@@ -62,8 +62,8 @@ impl Default for nano_ros_timer_t {
 
 /// Get a zero-initialized timer.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_timer_get_zero_initialized() -> nano_ros_timer_t {
-    nano_ros_timer_t::default()
+pub extern "C" fn nros_timer_get_zero_initialized() -> nros_timer_t {
+    nros_timer_t::default()
 }
 
 /// Initialize a timer.
@@ -84,13 +84,13 @@ pub extern "C" fn nano_ros_timer_get_zero_initialized() -> nano_ros_timer_t {
 /// * All required pointers must be valid
 /// * `callback` must be a valid function pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_init(
-    timer: *mut nano_ros_timer_t,
-    support: *const nano_ros_support_t,
+pub unsafe extern "C" fn nros_timer_init(
+    timer: *mut nros_timer_t,
+    support: *const nros_support_t,
     period_ns: u64,
-    callback: nano_ros_timer_callback_t,
+    callback: nros_timer_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     // Validate arguments
     if timer.is_null() || support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -104,12 +104,12 @@ pub unsafe extern "C" fn nano_ros_timer_init(
     let support_ref = &*support;
 
     // Check if timer is already initialized
-    if timer.state != nano_ros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED {
+    if timer.state != nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
     // Check if support is initialized
-    if support_ref.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -118,7 +118,7 @@ pub unsafe extern "C" fn nano_ros_timer_init(
     timer.context = context;
     timer.support = support;
     timer.last_call_time_ns = 0;
-    timer.state = nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING;
+    timer.state = nros_timer_state_t::NROS_TIMER_STATE_RUNNING;
 
     NROS_RET_OK
 }
@@ -135,7 +135,7 @@ pub unsafe extern "C" fn nano_ros_timer_init(
 /// * `NROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_cancel(timer: *mut nano_ros_timer_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_timer_cancel(timer: *mut nros_timer_t) -> nros_ret_t {
     if timer.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -143,11 +143,11 @@ pub unsafe extern "C" fn nano_ros_timer_cancel(timer: *mut nano_ros_timer_t) -> 
     let timer = &mut *timer;
 
     match timer.state {
-        nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING => {
-            timer.state = nano_ros_timer_state_t::NROS_TIMER_STATE_CANCELED;
+        nros_timer_state_t::NROS_TIMER_STATE_RUNNING => {
+            timer.state = nros_timer_state_t::NROS_TIMER_STATE_CANCELED;
             NROS_RET_OK
         }
-        nano_ros_timer_state_t::NROS_TIMER_STATE_CANCELED => {
+        nros_timer_state_t::NROS_TIMER_STATE_CANCELED => {
             // Already canceled
             NROS_RET_OK
         }
@@ -168,7 +168,7 @@ pub unsafe extern "C" fn nano_ros_timer_cancel(timer: *mut nano_ros_timer_t) -> 
 /// * `NROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_reset(timer: *mut nano_ros_timer_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_timer_reset(timer: *mut nros_timer_t) -> nros_ret_t {
     if timer.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -176,10 +176,10 @@ pub unsafe extern "C" fn nano_ros_timer_reset(timer: *mut nano_ros_timer_t) -> n
     let timer = &mut *timer;
 
     match timer.state {
-        nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING
-        | nano_ros_timer_state_t::NROS_TIMER_STATE_CANCELED => {
+        nros_timer_state_t::NROS_TIMER_STATE_RUNNING
+        | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => {
             timer.last_call_time_ns = 0;
-            timer.state = nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING;
+            timer.state = nros_timer_state_t::NROS_TIMER_STATE_RUNNING;
             NROS_RET_OK
         }
         _ => NROS_RET_NOT_INIT,
@@ -196,15 +196,15 @@ pub unsafe extern "C" fn nano_ros_timer_reset(timer: *mut nano_ros_timer_t) -> n
 /// * `NROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_fini(timer: *mut nano_ros_timer_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_timer_fini(timer: *mut nros_timer_t) -> nros_ret_t {
     if timer.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let timer = &mut *timer;
 
-    if timer.state == nano_ros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED
-        || timer.state == nano_ros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN
+    if timer.state == nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED
+        || timer.state == nros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN
     {
         return NROS_RET_NOT_INIT;
     }
@@ -212,7 +212,7 @@ pub unsafe extern "C" fn nano_ros_timer_fini(timer: *mut nano_ros_timer_t) -> na
     timer.callback = None;
     timer.context = ptr::null_mut();
     timer.support = ptr::null();
-    timer.state = nano_ros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN;
+    timer.state = nros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -226,8 +226,8 @@ pub unsafe extern "C" fn nano_ros_timer_fini(timer: *mut nano_ros_timer_t) -> na
 /// # Returns
 /// * Non-zero if timer is ready, 0 otherwise
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_is_ready(
-    timer: *const nano_ros_timer_t,
+pub unsafe extern "C" fn nros_timer_is_ready(
+    timer: *const nros_timer_t,
     current_time_ns: u64,
 ) -> c_int {
     if timer.is_null() {
@@ -236,7 +236,7 @@ pub unsafe extern "C" fn nano_ros_timer_is_ready(
 
     let timer = &*timer;
 
-    if timer.state != nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING {
+    if timer.state != nros_timer_state_t::NROS_TIMER_STATE_RUNNING {
         return 0;
     }
 
@@ -257,17 +257,17 @@ pub unsafe extern "C" fn nano_ros_timer_is_ready(
 /// * `NROS_RET_INVALID_ARGUMENT` if timer is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized or not running
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_call(
-    timer: *mut nano_ros_timer_t,
+pub unsafe extern "C" fn nros_timer_call(
+    timer: *mut nros_timer_t,
     current_time_ns: u64,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if timer.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let timer_ref = &mut *timer;
 
-    if timer_ref.state != nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING {
+    if timer_ref.state != nros_timer_state_t::NROS_TIMER_STATE_RUNNING {
         return NROS_RET_NOT_INIT;
     }
 
@@ -290,15 +290,15 @@ pub unsafe extern "C" fn nano_ros_timer_call(
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_is_valid(timer: *const nano_ros_timer_t) -> c_int {
+pub unsafe extern "C" fn nros_timer_is_valid(timer: *const nros_timer_t) -> c_int {
     if timer.is_null() {
         return 0;
     }
 
     let timer = &*timer;
     match timer.state {
-        nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING
-        | nano_ros_timer_state_t::NROS_TIMER_STATE_CANCELED => 1,
+        nros_timer_state_t::NROS_TIMER_STATE_RUNNING
+        | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => 1,
         _ => 0,
     }
 }
@@ -311,7 +311,7 @@ pub unsafe extern "C" fn nano_ros_timer_is_valid(timer: *const nano_ros_timer_t)
 /// # Returns
 /// * Period in nanoseconds, or 0 if invalid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_get_period(timer: *const nano_ros_timer_t) -> u64 {
+pub unsafe extern "C" fn nros_timer_get_period(timer: *const nros_timer_t) -> u64 {
     if timer.is_null() {
         return 0;
     }
@@ -329,8 +329,8 @@ pub unsafe extern "C" fn nano_ros_timer_get_period(timer: *const nano_ros_timer_
 /// # Returns
 /// * Time until next firing in nanoseconds, or 0 if ready now or invalid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_timer_get_time_until_next_call(
-    timer: *const nano_ros_timer_t,
+pub unsafe extern "C" fn nros_timer_get_time_until_next_call(
+    timer: *const nros_timer_t,
     current_time_ns: u64,
 ) -> u64 {
     if timer.is_null() {
@@ -339,7 +339,7 @@ pub unsafe extern "C" fn nano_ros_timer_get_time_until_next_call(
 
     let timer = &*timer;
 
-    if timer.state != nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING {
+    if timer.state != nros_timer_state_t::NROS_TIMER_STATE_RUNNING {
         return 0;
     }
 

@@ -49,7 +49,7 @@ static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buff
 }
 
 // Message type info
-static const nano_ros_message_type_t std_msgs_Int32_type = {
+static const nros_message_type_t std_msgs_Int32_type = {
     .type_name = "std_msgs::msg::dds_::Int32_",
     .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
     .serialized_size_max = 8,
@@ -60,23 +60,23 @@ static const nano_ros_message_type_t std_msgs_Int32_type = {
 // ----------------------------------------------------------------------------
 
 typedef struct {
-    nano_ros_publisher_t* publisher;
+    nros_publisher_t* publisher;
     std_msgs_Int32 message;
     int count;
 } talker_context_t;
 
 // Static allocation — all nros structs live in .bss, not on the stack
 static struct {
-    nano_ros_support_t support;
+    nros_support_t support;
     nros_node_t node;
-    nano_ros_publisher_t publisher;
+    nros_publisher_t publisher;
     talker_context_t talker_ctx;
-    nano_ros_timer_t timer;
-    nano_ros_executor_t executor;
+    nros_timer_t timer;
+    nros_executor_t executor;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
-static nano_ros_executor_t* g_executor = NULL;
+static nros_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -86,7 +86,7 @@ static void signal_handler(int signum) {
     (void)signum;
     g_running = 0;
     if (g_executor) {
-        nano_ros_executor_stop(g_executor);
+        nros_executor_stop(g_executor);
     }
 }
 
@@ -94,7 +94,7 @@ static void signal_handler(int signum) {
 // Timer callback - publish a message
 // ----------------------------------------------------------------------------
 
-static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
+static void timer_callback(struct nros_timer_t* timer, void* context) {
     (void)timer;
     talker_context_t* ctx = (talker_context_t*)context;
 
@@ -105,7 +105,7 @@ static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
     int32_t len = std_msgs_Int32_serialize(&ctx->message, buffer, sizeof(buffer));
 
     if (len > 0) {
-        nano_ros_ret_t ret = nano_ros_publish_raw(ctx->publisher, buffer, (size_t)len);
+        nros_ret_t ret = nros_publish_raw(ctx->publisher, buffer, (size_t)len);
         if (ret == NROS_RET_OK) {
             printf("Published: %d\n", ctx->message.data);
         } else {
@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Initialize support context (connects to XRCE Agent)
-    nano_ros_ret_t ret = nano_ros_support_init(&app.support, agent_addr, domain_id);
+    nros_ret_t ret = nros_support_init(&app.support, agent_addr, domain_id);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         fprintf(stderr, "Is the XRCE Agent running? MicroXRCEAgent udp4 -p 2019\n");
@@ -156,20 +156,20 @@ int main(int argc, char** argv) {
     ret = nros_node_init(&app.node, &app.support, "c_xrce_talker", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create publisher
-    ret = nano_ros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/chatter");
+    ret = nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/chatter");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
-    printf("Publisher created for topic: %s\n", nano_ros_publisher_get_topic_name(&app.publisher));
+    printf("Publisher created for topic: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
     // Create application context
     app.talker_ctx = (talker_context_t){
@@ -179,40 +179,40 @@ int main(int argc, char** argv) {
     };
 
     // Create timer (1 second period = 1,000,000,000 ns)
-    ret = nano_ros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);
+    ret = nros_timer_init(&app.timer, &app.support, 1000000000ULL, timer_callback, &app.talker_ctx);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize timer: %d\n", ret);
-        nano_ros_publisher_fini(&app.publisher);
+        nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Timer created (1 second period)\n");
 
     // Create executor
-    ret = nano_ros_executor_init(&app.executor, &app.support, 4);
+    ret = nros_executor_init(&app.executor, &app.support, 4);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nano_ros_timer_fini(&app.timer);
-        nano_ros_publisher_fini(&app.publisher);
+        nros_timer_fini(&app.timer);
+        nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     g_executor = &app.executor;
 
     // Add timer to executor
-    ret = nano_ros_executor_add_timer(&app.executor, &app.timer);
+    ret = nros_executor_add_timer(&app.executor, &app.timer);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer to executor: %d\n", ret);
-        nano_ros_executor_fini(&app.executor);
-        nano_ros_timer_fini(&app.timer);
-        nano_ros_publisher_fini(&app.publisher);
+        nros_executor_fini(&app.executor);
+        nros_timer_fini(&app.timer);
+        nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
-    printf("Executor created with %d handle(s)\n", nano_ros_executor_get_handle_count(&app.executor));
+    printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
@@ -221,18 +221,18 @@ int main(int argc, char** argv) {
     printf("\nPublishing messages (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
+    ret = nros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
 
     // Cleanup
     printf("\nShutting down...\n");
-    nano_ros_executor_fini(&app.executor);
-    nano_ros_timer_fini(&app.timer);
-    nano_ros_publisher_fini(&app.publisher);
+    nros_executor_fini(&app.executor);
+    nros_timer_fini(&app.timer);
+    nros_publisher_fini(&app.publisher);
     nros_node_fini(&app.node);
-    nano_ros_support_fini(&app.support);
+    nros_support_fini(&app.support);
 
     printf("Goodbye!\n");
     return 0;

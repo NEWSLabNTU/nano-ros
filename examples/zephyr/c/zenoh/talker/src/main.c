@@ -36,8 +36,8 @@ int main(void)
     }
 
     /* Initialize support context */
-    nano_ros_support_t support = nano_ros_support_get_zero_initialized();
-    nano_ros_ret_t ret = nano_ros_support_init(
+    nros_support_t support = nros_support_get_zero_initialized();
+    nros_ret_t ret = nros_support_init(
         &support,
         CONFIG_NROS_ZENOH_LOCATOR,
         CONFIG_NROS_DOMAIN_ID);
@@ -55,8 +55,8 @@ int main(void)
     }
 
     /* Create publisher using generated type support */
-    nano_ros_publisher_t pub = nano_ros_publisher_get_zero_initialized();
-    ret = nano_ros_publisher_init(
+    nros_publisher_t pub = nros_publisher_get_zero_initialized();
+    ret = nros_publisher_init(
         &pub, &node, std_msgs_msg_int32_get_type_support(), "/chatter");
     if (ret != NROS_RET_OK) {
         LOG_ERR("Publisher init failed: %d", ret);
@@ -80,7 +80,7 @@ int main(void)
             &msg, buffer, sizeof(buffer), &serialized_size);
 
         if (ser_ret == 0 && serialized_size > 0) {
-            ret = nano_ros_publish_raw(&pub, buffer, serialized_size);
+            ret = nros_publish_raw(&pub, buffer, serialized_size);
             if (ret == NROS_RET_OK) {
                 LOG_INF("Published: %d", count);
             } else {
@@ -94,9 +94,9 @@ int main(void)
     }
 
     /* Cleanup (unreachable in this example) */
-    nano_ros_publisher_fini(&pub);
+    nros_publisher_fini(&pub);
     nros_node_fini(&node);
-    nano_ros_support_fini(&support);
+    nros_support_fini(&support);
 
     return 0;
 }

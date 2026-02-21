@@ -946,7 +946,7 @@ pub fn qemu_large_msg_test_binary() -> PathBuf {
 /// Build the nros-c static library (cached).
 ///
 /// Runs `cargo build -p nros-c --release` and returns the path to `libnros_c.a`.
-pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
+pub fn build_nros_c_lib() -> TestResult<&'static Path> {
     NROS_C_LIB
         .get_or_try_init(|| {
             let root = project_root();
@@ -997,7 +997,7 @@ pub fn build_nano_ros_c_lib() -> TestResult<&'static Path> {
 /// This first ensures the nros-c library is built, then runs cmake + cmake --build.
 pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
     // Ensure the C library is built first
-    build_nano_ros_c_lib()?;
+    build_nros_c_lib()?;
 
     let root = project_root();
     let src_dir = root.join(format!("examples/{}", example_dir));

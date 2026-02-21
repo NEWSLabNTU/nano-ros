@@ -39,7 +39,7 @@ typedef struct {
     int32_t data;
 } std_msgs_Int32;
 
-static const nano_ros_message_type_t std_msgs_Int32_type = {
+static const nros_message_type_t std_msgs_Int32_type = {
     .type_name = "std_msgs::msg::dds_::Int32_",
     .type_hash = "RIHS01_5bf22a2e7c2c8a4ca3f55054648f6d8c7c77cc0ae5695a1ff1df0b7ef8df1f09",
     .serialized_size_max = 8,
@@ -63,12 +63,12 @@ static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buff
 // Application state (would be in .bss section on embedded)
 static struct {
     // nros resources
-    nano_ros_support_t support;
+    nros_support_t support;
     nros_node_t node;
-    nano_ros_publisher_t publisher;
-    nano_ros_timer_t timer;
-    nano_ros_executor_t executor;
-    nano_ros_guard_condition_t shutdown_guard;
+    nros_publisher_t publisher;
+    nros_timer_t timer;
+    nros_executor_t executor;
+    nros_guard_condition_t shutdown_guard;
 
     // Application data
     std_msgs_Int32 message;
@@ -91,7 +91,7 @@ static uint8_t g_serialize_buffer[64];
  * - Publish telemetry
  * - Update control loops
  */
-static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
+static void timer_callback(struct nros_timer_t* timer, void* context) {
     (void)timer;
     (void)context;
 
@@ -100,7 +100,7 @@ static void timer_callback(struct nano_ros_timer_t* timer, void* context) {
 
     int32_t len = std_msgs_Int32_serialize(&app.message, g_serialize_buffer, sizeof(g_serialize_buffer));
     if (len > 0) {
-        nano_ros_ret_t ret = nano_ros_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
+        nros_ret_t ret = nros_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
         if (ret == NROS_RET_OK) {
             printf("[Timer] Published: %d\n", app.message.data);
         }
@@ -119,7 +119,7 @@ static void shutdown_callback(void* context) {
     (void)context;
     printf("[Guard] Shutdown signal received!\n");
     app.running = false;
-    (void)nano_ros_executor_stop(&app.executor);
+    (void)nros_executor_stop(&app.executor);
 }
 
 // ============================================================================
@@ -132,7 +132,7 @@ static void signal_handler(int signum) {
 
     // This is how you would signal from an interrupt handler:
     // The guard condition trigger is thread-safe and can be called from any context
-    (void)nano_ros_guard_condition_trigger(&app.shutdown_guard);
+    (void)nros_guard_condition_trigger(&app.shutdown_guard);
 }
 
 // ============================================================================
@@ -143,24 +143,24 @@ static void demo_platform_time(void) {
     printf("\n=== Platform Time Demo ===\n");
 
     // Get time using platform abstraction
-    nano_ros_clock_t clock = nano_ros_clock_get_zero_initialized();
-    (void)nano_ros_clock_init(&clock, NROS_CLOCK_STEADY_TIME);
+    nros_clock_t clock = nros_clock_get_zero_initialized();
+    (void)nros_clock_init(&clock, NROS_CLOCK_STEADY_TIME);
 
-    nano_ros_time_t t1, t2;
-    (void)nano_ros_clock_get_now(&clock, &t1);
+    nros_time_t t1, t2;
+    (void)nros_clock_get_now(&clock, &t1);
 
     // Sleep for 100ms using platform sleep
     printf("Sleeping for 100ms...\n");
-    // Note: On real bare-metal, this would call nano_ros_platform_sleep_ns()
+    // Note: On real bare-metal, this would call nros_platform_sleep_ns()
     struct timespec ts = {0, 100000000};  // 100ms
     nanosleep(&ts, NULL);
 
-    (void)nano_ros_clock_get_now(&clock, &t2);
+    (void)nros_clock_get_now(&clock, &t2);
 
-    int64_t elapsed_ns = nano_ros_time_to_nanoseconds(&t2) - nano_ros_time_to_nanoseconds(&t1);
+    int64_t elapsed_ns = nros_time_to_nanoseconds(&t2) - nros_time_to_nanoseconds(&t1);
     printf("Elapsed time: %.3f ms\n", (double)elapsed_ns / 1000000.0);
 
-    (void)nano_ros_clock_fini(&clock);
+    (void)nros_clock_fini(&clock);
 }
 
 // ============================================================================
@@ -171,14 +171,14 @@ static void demo_guard_condition(void) {
     printf("\n=== Guard Condition Demo ===\n");
 
     // Initialize guard condition with callback
-    app.shutdown_guard = nano_ros_guard_condition_get_zero_initialized();
-    nano_ros_ret_t ret = nano_ros_guard_condition_init(&app.shutdown_guard, &app.support);
+    app.shutdown_guard = nros_guard_condition_get_zero_initialized();
+    nros_ret_t ret = nros_guard_condition_init(&app.shutdown_guard, &app.support);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init guard condition: %d\n", ret);
         return;
     }
 
-    ret = nano_ros_guard_condition_set_callback(&app.shutdown_guard, shutdown_callback, NULL);
+    ret = nros_guard_condition_set_callback(&app.shutdown_guard, shutdown_callback, NULL);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set guard condition callback: %d\n", ret);
         return;
@@ -186,20 +186,20 @@ static void demo_guard_condition(void) {
 
     // Check initial state
     printf("Guard condition initialized\n");
-    printf("  Is valid: %s\n", nano_ros_guard_condition_is_valid(&app.shutdown_guard) ? "yes" : "no");
-    printf("  Is triggered: %s\n", nano_ros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+    printf("  Is valid: %s\n", nros_guard_condition_is_valid(&app.shutdown_guard) ? "yes" : "no");
+    printf("  Is triggered: %s\n", nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     // Demonstrate trigger/clear cycle
     printf("Triggering guard condition...\n");
-    (void)nano_ros_guard_condition_trigger(&app.shutdown_guard);
-    printf("  Is triggered: %s\n", nano_ros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+    (void)nros_guard_condition_trigger(&app.shutdown_guard);
+    printf("  Is triggered: %s\n", nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     printf("Clearing guard condition...\n");
-    (void)nano_ros_guard_condition_clear(&app.shutdown_guard);
-    printf("  Is triggered: %s\n", nano_ros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+    (void)nros_guard_condition_clear(&app.shutdown_guard);
+    printf("  Is triggered: %s\n", nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     // Add to executor - callback will be invoked when triggered
-    ret = nano_ros_executor_add_guard_condition(&app.executor, &app.shutdown_guard);
+    ret = nros_executor_add_guard_condition(&app.executor, &app.shutdown_guard);
     if (ret == NROS_RET_OK) {
         printf("Guard condition added to executor\n");
     }
@@ -243,8 +243,8 @@ int main(int argc, char** argv) {
     printf("Domain ID: %d\n", domain_id);
 
     // Initialize support
-    app.support = nano_ros_support_get_zero_initialized();
-    nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
+    app.support = nros_support_get_zero_initialized();
+    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init support: %d\n", ret);
         return 1;
@@ -261,17 +261,17 @@ int main(int argc, char** argv) {
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Initialize publisher
-    app.publisher = nano_ros_publisher_get_zero_initialized();
-    ret = nano_ros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/baremetal_demo/counter");
+    app.publisher = nros_publisher_get_zero_initialized();
+    ret = nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/baremetal_demo/counter");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init publisher: %d\n", ret);
         goto cleanup_node;
     }
-    printf("Publisher created: %s\n", nano_ros_publisher_get_topic_name(&app.publisher));
+    printf("Publisher created: %s\n", nros_publisher_get_topic_name(&app.publisher));
 
     // Initialize timer (500ms period)
-    app.timer = nano_ros_timer_get_zero_initialized();
-    ret = nano_ros_timer_init(&app.timer, &app.support, 500000000ULL, timer_callback, NULL);
+    app.timer = nros_timer_get_zero_initialized();
+    ret = nros_timer_init(&app.timer, &app.support, 500000000ULL, timer_callback, NULL);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init timer: %d\n", ret);
         goto cleanup_publisher;
@@ -279,20 +279,20 @@ int main(int argc, char** argv) {
     printf("Timer created (500ms period)\n");
 
     // Initialize executor
-    app.executor = nano_ros_executor_get_zero_initialized();
-    ret = nano_ros_executor_init(&app.executor, &app.support, 4);
+    app.executor = nros_executor_get_zero_initialized();
+    ret = nros_executor_init(&app.executor, &app.support, 4);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init executor: %d\n", ret);
         goto cleanup_timer;
     }
 
     // Add timer to executor
-    ret = nano_ros_executor_add_timer(&app.executor, &app.timer);
+    ret = nros_executor_add_timer(&app.executor, &app.timer);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add timer: %d\n", ret);
         goto cleanup_executor;
     }
-    printf("Executor initialized with %d handles\n", nano_ros_executor_get_handle_count(&app.executor));
+    printf("Executor initialized with %d handles\n", nros_executor_get_handle_count(&app.executor));
 
     // Demo and setup guard condition
     demo_guard_condition();
@@ -308,24 +308,24 @@ int main(int argc, char** argv) {
     // The executor handles all callbacks including:
     // - Timer callbacks (periodic publishing)
     // - Guard condition callbacks (shutdown signal)
-    ret = nano_ros_executor_spin_period(&app.executor, 50000000ULL);  // 50ms spin period
+    ret = nros_executor_spin_period(&app.executor, 50000000ULL);  // 50ms spin period
 
     // Cleanup (in reverse order of initialization)
     printf("\n=== Cleanup ===\n");
 
-    (void)nano_ros_guard_condition_fini(&app.shutdown_guard);
+    (void)nros_guard_condition_fini(&app.shutdown_guard);
     printf("Guard condition finalized\n");
 
 cleanup_executor:
-    (void)nano_ros_executor_fini(&app.executor);
+    (void)nros_executor_fini(&app.executor);
     printf("Executor finalized\n");
 
 cleanup_timer:
-    (void)nano_ros_timer_fini(&app.timer);
+    (void)nros_timer_fini(&app.timer);
     printf("Timer finalized\n");
 
 cleanup_publisher:
-    (void)nano_ros_publisher_fini(&app.publisher);
+    (void)nros_publisher_fini(&app.publisher);
     printf("Publisher finalized\n");
 
 cleanup_node:
@@ -333,7 +333,7 @@ cleanup_node:
     printf("Node finalized\n");
 
 cleanup_support:
-    (void)nano_ros_support_fini(&app.support);
+    (void)nros_support_fini(&app.support);
     printf("Support finalized\n");
 
     printf("\n");

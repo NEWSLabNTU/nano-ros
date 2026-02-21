@@ -22,14 +22,14 @@ extern "C" {
 // ============================================================================
 
 /** Support context state */
-typedef enum nano_ros_support_state_t {
+typedef enum nros_support_state_t {
     /** Not initialized */
     NROS_SUPPORT_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_SUPPORT_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_SUPPORT_STATE_SHUTDOWN = 2,
-} nano_ros_support_state_t;
+} nros_support_state_t;
 
 // ============================================================================
 // Support Context Structure
@@ -41,9 +41,9 @@ typedef enum nano_ros_support_state_t {
  * This is the main context for nros, similar to rclc_support_t.
  * It manages the middleware session and provides shared resources.
  */
-typedef struct nano_ros_support_t {
+typedef struct nros_support_t {
     /** Current state */
-    nano_ros_support_state_t state;
+    nros_support_state_t state;
     /** Domain ID (ROS_DOMAIN_ID) */
     uint8_t domain_id;
     /** Locator string storage */
@@ -52,7 +52,7 @@ typedef struct nano_ros_support_t {
     size_t locator_len;
     /** Opaque pointer to internal Rust context */
     void *internal;
-} nano_ros_support_t;
+} nros_support_t;
 
 // ============================================================================
 // Support Context Functions
@@ -64,7 +64,7 @@ typedef struct nano_ros_support_t {
  * @return Zero-initialized support context
  */
 NROS_PUBLIC
-nano_ros_support_t nano_ros_support_get_zero_initialized(void);
+nros_support_t nros_support_get_zero_initialized(void);
 
 /**
  * Initialize the support context.
@@ -82,8 +82,8 @@ nano_ros_support_t nano_ros_support_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_support_init(
-    nano_ros_support_t *support,
+nros_ret_t nros_support_init(
+    nros_support_t *support,
     const char *locator,
     uint8_t domain_id);
 
@@ -99,7 +99,7 @@ nano_ros_ret_t nano_ros_support_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_support_fini(nano_ros_support_t *support);
+nros_ret_t nros_support_fini(nros_support_t *support);
 
 /**
  * Check if support context is valid (initialized).
@@ -109,7 +109,7 @@ nano_ros_ret_t nano_ros_support_fini(nano_ros_support_t *support);
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_support_is_valid(const nano_ros_support_t *support);
+int nros_support_is_valid(const nros_support_t *support);
 
 #ifdef __cplusplus
 }

@@ -23,23 +23,23 @@ extern "C" {
 // ============================================================================
 
 /** Publisher state */
-typedef enum nano_ros_publisher_state_t {
+typedef enum nros_publisher_state_t {
     /** Not initialized */
     NROS_PUBLISHER_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_PUBLISHER_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_PUBLISHER_STATE_SHUTDOWN = 2,
-} nano_ros_publisher_state_t;
+} nros_publisher_state_t;
 
 // ============================================================================
 // Publisher Structure
 // ============================================================================
 
 /** Publisher structure */
-typedef struct nano_ros_publisher_t {
+typedef struct nros_publisher_t {
     /** Current state */
-    nano_ros_publisher_state_t state;
+    nros_publisher_state_t state;
     /** Topic name storage */
     uint8_t topic_name[NROS_MAX_TOPIC_LEN];
     /** Topic name length */
@@ -56,7 +56,7 @@ typedef struct nano_ros_publisher_t {
     const nros_node_t *node;
     /** Opaque pointer to internal Rust publisher */
     void *internal;
-} nano_ros_publisher_t;
+} nros_publisher_t;
 
 // ============================================================================
 // Publisher Functions
@@ -68,7 +68,7 @@ typedef struct nano_ros_publisher_t {
  * @return Zero-initialized publisher structure
  */
 NROS_PUBLIC
-nano_ros_publisher_t nano_ros_publisher_get_zero_initialized(void);
+nros_publisher_t nros_publisher_get_zero_initialized(void);
 
 /**
  * Initialize a publisher with default QoS.
@@ -84,10 +84,10 @@ nano_ros_publisher_t nano_ros_publisher_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_publisher_init(
-    nano_ros_publisher_t *publisher,
+nros_ret_t nros_publisher_init(
+    nros_publisher_t *publisher,
     const nros_node_t *node,
-    const nano_ros_message_type_t *type_info,
+    const nros_message_type_t *type_info,
     const char *topic_name);
 
 /**
@@ -105,12 +105,12 @@ nano_ros_ret_t nano_ros_publisher_init(
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_publisher_init_with_qos(
-    nano_ros_publisher_t *publisher,
+nros_ret_t nros_publisher_init_with_qos(
+    nros_publisher_t *publisher,
     const nros_node_t *node,
-    const nano_ros_message_type_t *type_info,
+    const nros_message_type_t *type_info,
     const char *topic_name,
-    const nano_ros_qos_t *qos);
+    const nros_qos_t *qos);
 
 /**
  * Publish raw CDR-serialized data.
@@ -125,8 +125,8 @@ nano_ros_ret_t nano_ros_publisher_init_with_qos(
  * @return NROS_RET_PUBLISH_FAILED on publish failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_publish_raw(
-    const nano_ros_publisher_t *publisher,
+nros_ret_t nros_publish_raw(
+    const nros_publisher_t *publisher,
     const uint8_t *data,
     size_t len);
 
@@ -140,7 +140,7 @@ nano_ros_ret_t nano_ros_publish_raw(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_publisher_fini(nano_ros_publisher_t *publisher);
+nros_ret_t nros_publisher_fini(nros_publisher_t *publisher);
 
 /**
  * Get the topic name of a publisher.
@@ -150,7 +150,7 @@ nano_ros_ret_t nano_ros_publisher_fini(nano_ros_publisher_t *publisher);
  * @return Pointer to topic name (null-terminated), or NULL if invalid
  */
 NROS_PUBLIC
-const char *nano_ros_publisher_get_topic_name(const nano_ros_publisher_t *publisher);
+const char *nros_publisher_get_topic_name(const nros_publisher_t *publisher);
 
 /**
  * Check if publisher is valid (initialized).
@@ -160,7 +160,7 @@ const char *nano_ros_publisher_get_topic_name(const nano_ros_publisher_t *publis
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_publisher_is_valid(const nano_ros_publisher_t *publisher);
+int nros_publisher_is_valid(const nros_publisher_t *publisher);
 
 #ifdef __cplusplus
 }

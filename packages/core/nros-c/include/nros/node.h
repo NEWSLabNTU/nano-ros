@@ -53,7 +53,7 @@ typedef struct nros_node_t {
     /** Namespace length */
     size_t namespace_len;
     /** Pointer to parent support context */
-    const nano_ros_support_t *support;
+    const nros_support_t *support;
     /** Opaque pointer to internal Rust node */
     void *internal;
 } nros_node_t;
@@ -84,9 +84,9 @@ nros_node_t nros_node_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nros_node_init(
+nros_ret_t nros_node_init(
     nros_node_t *node,
-    const nano_ros_support_t *support,
+    const nros_support_t *support,
     const char *name,
     const char *namespace_);
 
@@ -100,7 +100,7 @@ nano_ros_ret_t nros_node_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nros_node_fini(nros_node_t *node);
+nros_ret_t nros_node_fini(nros_node_t *node);
 
 /**
  * Get the node name.

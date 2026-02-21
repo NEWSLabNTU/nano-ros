@@ -234,19 +234,19 @@ loop {
 
 **nano-ros C API (~20 lines):**
 ```c
-nano_ros_support_t support;
-nano_ros_support_init(&support, "tcp/127.0.0.1:7447", domain_id);
+nros_support_t support;
+nros_support_init(&support, "tcp/127.0.0.1:7447", domain_id);
 
 nros_node_t node;
 nros_node_init(&node, &support, "c_talker", "/");
 
-nano_ros_publisher_t publisher;
-nano_ros_publisher_init(&publisher, &node, &type_support, "/topic");
+nros_publisher_t publisher;
+nros_publisher_init(&publisher, &node, &type_support, "/topic");
 
-nano_ros_executor_t executor;
-nano_ros_executor_init(&executor, &support, max_handles);
-nano_ros_executor_add_timer(&executor, &timer);
-nano_ros_executor_spin_period(&executor, period_ns);
+nros_executor_t executor;
+nros_executor_init(&executor, &support, max_handles);
+nros_executor_add_timer(&executor, &timer);
+nros_executor_spin_period(&executor, period_ns);
 ```
 
 nano-ros's Rust API is significantly more ergonomic (type-safe generics,

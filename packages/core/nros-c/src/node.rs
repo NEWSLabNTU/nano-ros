@@ -8,7 +8,7 @@ use core::ptr;
 
 use crate::constants::{MAX_NAME_LEN, MAX_NAMESPACE_LEN};
 use crate::error::*;
-use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
+use crate::support::{nros_support_state_t, nros_support_t};
 
 /// Node state
 #[repr(C)]
@@ -38,7 +38,7 @@ pub struct nros_node_t {
     /// Namespace length
     namespace_len: usize,
     /// Pointer to parent support context
-    support: *const nano_ros_support_t,
+    support: *const nros_support_t,
     /// Opaque pointer to internal Rust node
     _internal: *mut core::ffi::c_void,
 }
@@ -86,10 +86,10 @@ pub extern "C" fn nros_node_get_zero_initialized() -> nros_node_t {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_node_init(
     node: *mut nros_node_t,
-    support: *const nano_ros_support_t,
+    support: *const nros_support_t,
     name: *const c_char,
     namespace_: *const c_char,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     // Validate arguments
     if node.is_null() || support.is_null() || name.is_null() || namespace_.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -104,7 +104,7 @@ pub unsafe extern "C" fn nros_node_init(
     }
 
     // Check if support is initialized
-    if support_ref.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -163,7 +163,7 @@ pub unsafe extern "C" fn nros_node_init(
 /// # Safety
 /// * `node` must be a valid pointer to an initialized nros_node_t
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_node_fini(node: *mut nros_node_t) -> nros_ret_t {
     if node.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -246,7 +246,7 @@ mod verification {
         let ns = b"/\0";
 
         // NULL node → INVALID_ARGUMENT
-        let mut support = crate::support::nano_ros_support_get_zero_initialized();
+        let mut support = crate::support::nros_support_get_zero_initialized();
         assert_eq!(
             unsafe {
                 nros_node_init(
@@ -325,7 +325,7 @@ impl nros_node_t {
     }
 
     /// Get the support context
-    pub(crate) unsafe fn get_support(&self) -> Option<&nano_ros_support_t> {
+    pub(crate) unsafe fn get_support(&self) -> Option<&nros_support_t> {
         if self.support.is_null() {
             None
         } else {
@@ -339,11 +339,11 @@ impl nros_node_t {
     /// intentional for C FFI where the node stores a const pointer but the
     /// support may need to be mutated.
     #[allow(clippy::mut_from_ref)]
-    pub(crate) unsafe fn get_support_mut(&self) -> Option<&mut nano_ros_support_t> {
+    pub(crate) unsafe fn get_support_mut(&self) -> Option<&mut nros_support_t> {
         if self.support.is_null() {
             None
         } else {
-            Some(&mut *(self.support as *mut nano_ros_support_t))
+            Some(&mut *(self.support as *mut nros_support_t))
         }
     }
 }

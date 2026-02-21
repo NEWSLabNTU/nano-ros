@@ -19,9 +19,9 @@
 // ----------------------------------------------------------------------------
 
 static struct {
-    nano_ros_support_t support;
+    nros_support_t support;
     nros_node_t node;
-    nano_ros_client_t client;
+    nros_client_t client;
 } app;
 
 // ----------------------------------------------------------------------------
@@ -54,14 +54,14 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Build type info using generated type name/hash
-    nano_ros_message_type_t add_two_ints_type = {
+    nros_message_type_t add_two_ints_type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
         .serialized_size_max = 256,
     };
 
     // Initialize support context
-    nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
+    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
@@ -72,13 +72,13 @@ int main(int argc, char** argv) {
     ret = nros_node_init(&app.node, &app.support, "c_service_client", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create service client
-    ret = nano_ros_client_init(
+    ret = nros_client_init(
         &app.client,
         &app.node,
         &add_two_ints_type,
@@ -87,11 +87,11 @@ int main(int argc, char** argv) {
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize client: %d\n", ret);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Client created for service: %s\n",
-           nano_ros_client_get_service_name(&app.client));
+           nros_client_get_service_name(&app.client));
 
     // Test cases: (a, b) pairs
     struct { int64_t a; int64_t b; } test_cases[] = {
@@ -122,7 +122,7 @@ int main(int argc, char** argv) {
         // Call service (blocking)
         uint8_t resp_buf[256];
         size_t resp_len = 0;
-        ret = nano_ros_client_call(
+        ret = nros_client_call(
             &app.client,
             req_buf, (size_t)req_len,
             resp_buf, sizeof(resp_buf),
@@ -161,9 +161,9 @@ int main(int argc, char** argv) {
 
     // Cleanup
     printf("\nShutting down...\n");
-    nano_ros_client_fini(&app.client);
+    nros_client_fini(&app.client);
     nros_node_fini(&app.node);
-    nano_ros_support_fini(&app.support);
+    nros_support_fini(&app.support);
 
     printf("Goodbye!\n");
     return (success_count == num_cases) ? 0 : 1;

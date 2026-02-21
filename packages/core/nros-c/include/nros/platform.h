@@ -72,7 +72,7 @@ extern "C" {
  *
  * @return Current time in nanoseconds
  */
-uint64_t nano_ros_platform_time_ns(void);
+uint64_t nros_platform_time_ns(void);
 
 /**
  * Sleep for the specified duration in nanoseconds.
@@ -83,7 +83,7 @@ uint64_t nano_ros_platform_time_ns(void);
  *
  * @param ns Duration to sleep in nanoseconds
  */
-void nano_ros_platform_sleep_ns(uint64_t ns);
+void nros_platform_sleep_ns(uint64_t ns);
 
 #endif // NROS_PLATFORM_CUSTOM || NROS_PLATFORM_BAREMETAL
 
@@ -104,7 +104,7 @@ void nano_ros_platform_sleep_ns(uint64_t ns);
  * @param ptr Pointer to the boolean variable
  * @param value Value to store
  */
-void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool value);
+void nros_platform_atomic_store_bool(volatile bool *ptr, bool value);
 
 /**
  * Atomically load a boolean value with acquire semantics.
@@ -115,7 +115,7 @@ void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool value);
  * @param ptr Pointer to the boolean variable
  * @return The current value
  */
-bool nano_ros_platform_atomic_load_bool(volatile bool *ptr);
+bool nros_platform_atomic_load_bool(volatile bool *ptr);
 
 #endif // !NROS_PLATFORM_HAS_ATOMICS
 
@@ -135,14 +135,14 @@ bool nano_ros_platform_atomic_load_bool(volatile bool *ptr);
  * @param size Number of bytes to allocate
  * @return Pointer to allocated memory, or NULL on failure
  */
-void *nano_ros_platform_malloc(size_t size);
+void *nros_platform_malloc(size_t size);
 
 /**
  * Free previously allocated memory.
  *
  * @param ptr Pointer to memory to free (may be NULL)
  */
-void nano_ros_platform_free(void *ptr);
+void nros_platform_free(void *ptr);
 
 #endif // !NROS_PLATFORM_HAS_MALLOC
 
@@ -164,7 +164,7 @@ void nano_ros_platform_free(void *ptr);
  * @param mutex Pointer to mutex to initialize
  * @return 0 on success, non-zero on failure
  */
-int nano_ros_platform_mutex_init(nano_ros_mutex_t *mutex);
+int nros_platform_mutex_init(nros_mutex_t *mutex);
 
 /**
  * Lock a mutex.
@@ -174,7 +174,7 @@ int nano_ros_platform_mutex_init(nano_ros_mutex_t *mutex);
  * @param mutex Pointer to mutex to lock
  * @return 0 on success, non-zero on failure
  */
-int nano_ros_platform_mutex_lock(nano_ros_mutex_t *mutex);
+int nros_platform_mutex_lock(nros_mutex_t *mutex);
 
 /**
  * Unlock a mutex.
@@ -182,7 +182,7 @@ int nano_ros_platform_mutex_lock(nano_ros_mutex_t *mutex);
  * @param mutex Pointer to mutex to unlock
  * @return 0 on success, non-zero on failure
  */
-int nano_ros_platform_mutex_unlock(nano_ros_mutex_t *mutex);
+int nros_platform_mutex_unlock(nros_mutex_t *mutex);
 
 /**
  * Destroy a mutex.
@@ -190,7 +190,7 @@ int nano_ros_platform_mutex_unlock(nano_ros_mutex_t *mutex);
  * @param mutex Pointer to mutex to destroy
  * @return 0 on success, non-zero on failure
  */
-int nano_ros_platform_mutex_destroy(nano_ros_mutex_t *mutex);
+int nros_platform_mutex_destroy(nros_mutex_t *mutex);
 
 #endif // !NROS_PLATFORM_HAS_MUTEX
 

@@ -65,7 +65,7 @@ extern "C" {
  *
  * Compatible with rcl_ret_t for familiarity.
  */
-typedef int nano_ros_ret_t;
+typedef int nros_ret_t;
 
 /** Success */
 #define NROS_RET_OK 0
@@ -114,49 +114,49 @@ typedef int nano_ros_ret_t;
 // ============================================================================
 
 /** QoS reliability policy */
-typedef enum nano_ros_qos_reliability_t {
+typedef enum nros_qos_reliability_t {
     /** Best effort delivery - no guarantees */
     NROS_QOS_RELIABILITY_BEST_EFFORT = 0,
     /** Reliable delivery - retransmit if needed */
     NROS_QOS_RELIABILITY_RELIABLE = 1,
-} nano_ros_qos_reliability_t;
+} nros_qos_reliability_t;
 
 /** QoS durability policy */
-typedef enum nano_ros_qos_durability_t {
+typedef enum nros_qos_durability_t {
     /** Volatile - no persistence */
     NROS_QOS_DURABILITY_VOLATILE = 0,
     /** Transient local - persist for late joiners */
     NROS_QOS_DURABILITY_TRANSIENT_LOCAL = 1,
-} nano_ros_qos_durability_t;
+} nros_qos_durability_t;
 
 /** QoS history policy */
-typedef enum nano_ros_qos_history_t {
+typedef enum nros_qos_history_t {
     /** Keep last N samples */
     NROS_QOS_HISTORY_KEEP_LAST = 0,
     /** Keep all samples */
     NROS_QOS_HISTORY_KEEP_ALL = 1,
-} nano_ros_qos_history_t;
+} nros_qos_history_t;
 
 /** QoS settings structure */
-typedef struct nano_ros_qos_t {
+typedef struct nros_qos_t {
     /** Reliability policy */
-    nano_ros_qos_reliability_t reliability;
+    nros_qos_reliability_t reliability;
     /** Durability policy */
-    nano_ros_qos_durability_t durability;
+    nros_qos_durability_t durability;
     /** History policy */
-    nano_ros_qos_history_t history;
+    nros_qos_history_t history;
     /** History depth (for KEEP_LAST) */
     int depth;
-} nano_ros_qos_t;
+} nros_qos_t;
 
 /** Default QoS profile */
-NROS_PUBLIC extern const nano_ros_qos_t NROS_QOS_DEFAULT;
+NROS_PUBLIC extern const nros_qos_t NROS_QOS_DEFAULT;
 
 /** Sensor data QoS profile (best effort, volatile) */
-NROS_PUBLIC extern const nano_ros_qos_t NROS_QOS_SENSOR_DATA;
+NROS_PUBLIC extern const nros_qos_t NROS_QOS_SENSOR_DATA;
 
 /** Services QoS profile (reliable) */
-NROS_PUBLIC extern const nano_ros_qos_t NROS_QOS_SERVICES;
+NROS_PUBLIC extern const nros_qos_t NROS_QOS_SERVICES;
 
 // ============================================================================
 // Message Type Information
@@ -168,14 +168,14 @@ NROS_PUBLIC extern const nano_ros_qos_t NROS_QOS_SERVICES;
  * This structure describes a ROS message type for use with publishers
  * and subscribers.
  */
-typedef struct nano_ros_message_type_t {
+typedef struct nros_message_type_t {
     /** Type name (e.g., "std_msgs::msg::dds_::Int32_") */
     const char *type_name;
     /** Type hash (RIHS format) */
     const char *type_hash;
     /** Maximum serialized size (0 = dynamic/unknown) */
     size_t serialized_size_max;
-} nano_ros_message_type_t;
+} nros_message_type_t;
 
 // ============================================================================
 // Service Type Information
@@ -186,12 +186,12 @@ typedef struct nano_ros_message_type_t {
  *
  * Provides type name and hash for a ROS 2 service type.
  */
-typedef struct nano_ros_service_type_t {
+typedef struct nros_service_type_t {
     /** Type name (e.g., "example_interfaces::srv::dds_::AddTwoInts_") */
     const char *type_name;
     /** Type hash (RIHS format) */
     const char *type_hash;
-} nano_ros_service_type_t;
+} nros_service_type_t;
 
 // ============================================================================
 // Action Type Information
@@ -202,7 +202,7 @@ typedef struct nano_ros_service_type_t {
  *
  * Contains type names and hashes for goal, result, and feedback messages.
  */
-typedef struct nano_ros_action_type_t {
+typedef struct nros_action_type_t {
     /** Action type name (e.g., "example_interfaces::action::Fibonacci") */
     const char *type_name;
     /** Action type hash */
@@ -213,7 +213,7 @@ typedef struct nano_ros_action_type_t {
     size_t result_serialized_size_max;
     /** Maximum serialized size of feedback message */
     size_t feedback_serialized_size_max;
-} nano_ros_action_type_t;
+} nros_action_type_t;
 
 #ifdef __cplusplus
 }

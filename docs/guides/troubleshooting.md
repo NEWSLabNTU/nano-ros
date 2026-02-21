@@ -9,7 +9,7 @@ Common issues and solutions when working with nros.
 When running multiple zenoh-pico clients (e.g., a talker and listener) simultaneously connecting to the same router, you may see errors like:
 
 ```
-<err> nano_ros_bsp: Failed to open zenoh session: -3
+<err> nros_bsp: Failed to open zenoh session: -3
 <err> rust: rustapp: BSP init failed: InitFailed(-5)
 ```
 
@@ -329,14 +329,14 @@ ip addr show zeth-br
 bsp_zephyr: sub->callback=0x60, sub->user_data=0x4  # These should be valid addresses!
 ```
 
-**Root Cause**: The C BSP stores a pointer to the `nano_ros_subscriber_t` struct when you call `nano_ros_bsp_create_subscriber()`. If the Rust code moves the struct after this call (e.g., when returning it from a function), the C code's pointer becomes dangling.
+**Root Cause**: The C BSP stores a pointer to the `nros_subscriber_t` struct when you call `nros_bsp_create_subscriber()`. If the Rust code moves the struct after this call (e.g., when returning it from a function), the C code's pointer becomes dangling.
 
 In Rust, values are moved by default:
 ```rust
 // WRONG - struct will move when returned
 pub fn create_subscriber(...) -> Result<BspSubscriber<M>, Error> {
     let mut sub = NanoRosSubscriber { ... };
-    nano_ros_bsp_create_subscriber(&mut sub, ...);  // C stores pointer to `sub`
+    nros_bsp_create_subscriber(&mut sub, ...);  // C stores pointer to `sub`
     Ok(BspSubscriber { sub, ... })  // `sub` MOVES here - old address is invalid!
 }
 ```
@@ -363,7 +363,7 @@ fn main() {
     };
 
     // Now the pointer is stable
-    nano_ros_bsp_create_subscriber(sub_ptr, ...);
+    nros_bsp_create_subscriber(sub_ptr, ...);
 }
 ```
 

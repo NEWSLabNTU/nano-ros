@@ -7,11 +7,11 @@ use core::ffi::c_int;
 use core::ptr;
 
 use crate::error::*;
-use crate::guard_condition::{nano_ros_guard_condition_state_t, nano_ros_guard_condition_t};
-use crate::service::{nano_ros_service_state_t, nano_ros_service_t};
-use crate::subscription::{nano_ros_subscription_state_t, nano_ros_subscription_t};
-use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
-use crate::timer::{nano_ros_timer_state_t, nano_ros_timer_t};
+use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
+use crate::service::{nros_service_state_t, nros_service_t};
+use crate::subscription::{nros_subscription_state_t, nros_subscription_t};
+use crate::support::{nros_support_state_t, nros_support_t};
+use crate::timer::{nros_timer_state_t, nros_timer_t};
 
 pub use crate::config::*;
 
@@ -35,14 +35,14 @@ const MAX_SLEEP_NS: u64 = 10_000_000;
 /// # Returns
 /// * `true` if executor should process callbacks
 /// * `false` if executor should skip processing
-pub type nano_ros_executor_trigger_t = Option<
+pub type nros_executor_trigger_t = Option<
     unsafe extern "C" fn(ready: *const bool, count: usize, context: *mut core::ffi::c_void) -> bool,
 >;
 
 /// Callback invocation mode
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_executor_invocation_t {
+pub enum nros_executor_invocation_t {
     /// Only invoke callback when new data is available
     NROS_EXECUTOR_ON_NEW_DATA = 0,
     /// Always invoke callback (even with NULL data)
@@ -54,7 +54,7 @@ pub enum nano_ros_executor_invocation_t {
 /// Defines when data is taken from DDS during spin operations.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_executor_semantics_t {
+pub enum nros_executor_semantics_t {
     /// RCLCPP executor semantics: Data is taken from DDS just before
     /// the corresponding callback is called.
     NROS_SEMANTICS_RCLCPP_EXECUTOR = 0,
@@ -69,7 +69,7 @@ pub enum nano_ros_executor_semantics_t {
 /// Handle type for executor
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_executor_handle_type_t {
+pub enum nros_executor_handle_type_t {
     /// No handle (empty slot)
     NROS_EXECUTOR_HANDLE_NONE = 0,
     /// Subscription handle
@@ -87,22 +87,22 @@ pub enum nano_ros_executor_handle_type_t {
 /// Executor handle (union-like structure)
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct nano_ros_executor_handle_t {
+pub struct nros_executor_handle_t {
     /// Handle type
-    pub handle_type: nano_ros_executor_handle_type_t,
+    pub handle_type: nros_executor_handle_type_t,
     /// Invocation mode (for subscriptions)
-    pub invocation: nano_ros_executor_invocation_t,
+    pub invocation: nros_executor_invocation_t,
     /// Handle pointer (type depends on handle_type)
     pub handle: *mut core::ffi::c_void,
     /// Flag indicating if handle has new data ready
     pub data_ready: bool,
 }
 
-impl Default for nano_ros_executor_handle_t {
+impl Default for nros_executor_handle_t {
     fn default() -> Self {
         Self {
-            handle_type: nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_NONE,
-            invocation: nano_ros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
+            handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_NONE,
+            invocation: nros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
             handle: ptr::null_mut(),
             data_ready: false,
         }
@@ -112,7 +112,7 @@ impl Default for nano_ros_executor_handle_t {
 /// Executor state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_executor_state_t {
+pub enum nros_executor_state_t {
     /// Not initialized
     NROS_EXECUTOR_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -128,11 +128,11 @@ pub enum nano_ros_executor_state_t {
 /// The executor manages a fixed array of handles and processes them
 /// in the order they were added.
 #[repr(C)]
-pub struct nano_ros_executor_t {
+pub struct nros_executor_t {
     /// Current state
-    pub state: nano_ros_executor_state_t,
+    pub state: nros_executor_state_t,
     /// Handle array
-    handles: [nano_ros_executor_handle_t; NROS_EXECUTOR_MAX_HANDLES],
+    handles: [nros_executor_handle_t; NROS_EXECUTOR_MAX_HANDLES],
     /// Number of handles in use
     handle_count: usize,
     /// Maximum handles (configured at init)
@@ -140,11 +140,11 @@ pub struct nano_ros_executor_t {
     /// Timeout in nanoseconds for spin_some
     pub timeout_ns: u64,
     /// Data communication semantics
-    pub semantics: nano_ros_executor_semantics_t,
+    pub semantics: nros_executor_semantics_t,
     /// Pointer to support context
-    support: *const nano_ros_support_t,
+    support: *const nros_support_t,
     /// Trigger function (NULL = default "any" trigger)
-    pub trigger: nano_ros_executor_trigger_t,
+    pub trigger: nros_executor_trigger_t,
     /// User context for trigger function
     pub trigger_context: *mut core::ffi::c_void,
     /// LET buffers for storing sampled data (one per handle)
@@ -163,15 +163,15 @@ pub struct nano_ros_executor_t {
     service_count: usize,
 }
 
-impl Default for nano_ros_executor_t {
+impl Default for nros_executor_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
-            handles: [nano_ros_executor_handle_t::default(); NROS_EXECUTOR_MAX_HANDLES],
+            state: nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
+            handles: [nros_executor_handle_t::default(); NROS_EXECUTOR_MAX_HANDLES],
             handle_count: 0,
             max_handles: NROS_EXECUTOR_MAX_HANDLES,
             timeout_ns: DEFAULT_TIMEOUT_NS,
-            semantics: nano_ros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
+            semantics: nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
             support: ptr::null(),
             trigger: None,
             trigger_context: ptr::null_mut(),
@@ -188,8 +188,8 @@ impl Default for nano_ros_executor_t {
 
 /// Get a zero-initialized executor.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_executor_get_zero_initialized() -> nano_ros_executor_t {
-    nano_ros_executor_t::default()
+pub extern "C" fn nros_executor_get_zero_initialized() -> nros_executor_t {
+    nros_executor_t::default()
 }
 
 /// Initialize an executor.
@@ -207,11 +207,11 @@ pub extern "C" fn nano_ros_executor_get_zero_initialized() -> nano_ros_executor_
 /// # Safety
 /// * All pointers must be valid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_init(
-    executor: *mut nano_ros_executor_t,
-    support: *const nano_ros_support_t,
+pub unsafe extern "C" fn nros_executor_init(
+    executor: *mut nros_executor_t,
+    support: *const nros_support_t,
     max_handles: usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if executor.is_null() || support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -224,12 +224,12 @@ pub unsafe extern "C" fn nano_ros_executor_init(
     let support_ref = &*support;
 
     // Check if executor is already initialized
-    if executor.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED {
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
     // Check if support is initialized
-    if support_ref.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -238,7 +238,7 @@ pub unsafe extern "C" fn nano_ros_executor_init(
     executor.handle_count = 0;
     executor.support = support;
     executor.timeout_ns = 100_000_000; // 100ms default
-    executor.state = nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+    executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
 
     NROS_RET_OK
 }
@@ -254,18 +254,18 @@ pub unsafe extern "C" fn nano_ros_executor_init(
 /// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_set_timeout(
-    executor: *mut nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_set_timeout(
+    executor: *mut nros_executor_t,
     timeout_ns: u64,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor = &mut *executor;
 
-    if executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
     {
         return NROS_RET_NOT_INIT;
     }
@@ -290,18 +290,18 @@ pub unsafe extern "C" fn nano_ros_executor_set_timeout(
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_set_semantics(
-    executor: *mut nano_ros_executor_t,
-    semantics: nano_ros_executor_semantics_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_set_semantics(
+    executor: *mut nros_executor_t,
+    semantics: nros_executor_semantics_t,
+) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor = &mut *executor;
 
-    if executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
     {
         return NROS_RET_NOT_INIT;
     }
@@ -328,19 +328,19 @@ pub unsafe extern "C" fn nano_ros_executor_set_semantics(
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_set_trigger(
-    executor: *mut nano_ros_executor_t,
-    trigger: nano_ros_executor_trigger_t,
+pub unsafe extern "C" fn nros_executor_set_trigger(
+    executor: *mut nros_executor_t,
+    trigger: nros_executor_trigger_t,
     context: *mut core::ffi::c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor = &mut *executor;
 
-    if executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
-        || executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
+    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED
+        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN
     {
         return NROS_RET_NOT_INIT;
     }
@@ -352,12 +352,12 @@ pub unsafe extern "C" fn nano_ros_executor_set_trigger(
 
 /// Built-in trigger: fire when ANY handle has data ready.
 ///
-/// This is the default behavior. Use with `nano_ros_executor_set_trigger`.
+/// This is the default behavior. Use with `nros_executor_set_trigger`.
 ///
 /// # Safety
 /// * `ready` must point to a valid array of at least `count` booleans
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_trigger_any(
+pub unsafe extern "C" fn nros_executor_trigger_any(
     ready: *const bool,
     count: usize,
     _context: *mut core::ffi::c_void,
@@ -375,7 +375,7 @@ pub unsafe extern "C" fn nano_ros_executor_trigger_any(
 /// # Safety
 /// * `ready` must point to a valid array of at least `count` booleans
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_trigger_all(
+pub unsafe extern "C" fn nros_executor_trigger_all(
     ready: *const bool,
     count: usize,
     _context: *mut core::ffi::c_void,
@@ -396,7 +396,7 @@ pub unsafe extern "C" fn nano_ros_executor_trigger_all(
 /// # Safety
 /// * `ready` and `count` are unused
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_trigger_always(
+pub unsafe extern "C" fn nros_executor_trigger_always(
     _ready: *const bool,
     _count: usize,
     _context: *mut core::ffi::c_void,
@@ -411,14 +411,14 @@ pub unsafe extern "C" fn nano_ros_executor_trigger_always(
 /// # Example
 /// ```c
 /// // Trigger when handle 2 has data
-/// nano_ros_executor_set_trigger(&executor, nano_ros_executor_trigger_one, (void*)2);
+/// nros_executor_set_trigger(&executor, nros_executor_trigger_one, (void*)2);
 /// ```
 ///
 /// # Safety
 /// * `ready` must point to a valid array of at least `count` booleans
 /// * `context` is interpreted as a `usize` index
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_trigger_one(
+pub unsafe extern "C" fn nros_executor_trigger_one(
     ready: *const bool,
     count: usize,
     context: *mut core::ffi::c_void,
@@ -447,11 +447,11 @@ pub unsafe extern "C" fn nano_ros_executor_trigger_one(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_add_subscription(
-    executor: *mut nano_ros_executor_t,
-    subscription: *mut nano_ros_subscription_t,
-    invocation: nano_ros_executor_invocation_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_add_subscription(
+    executor: *mut nros_executor_t,
+    subscription: *mut nros_subscription_t,
+    invocation: nros_executor_invocation_t,
+) -> nros_ret_t {
     if executor.is_null() || subscription.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -460,13 +460,13 @@ pub unsafe extern "C" fn nano_ros_executor_add_subscription(
     let subscription_ref = &*subscription;
 
     // Check executor state
-    if executor.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
     // Check subscription state
     if subscription_ref.state
-        != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         return NROS_RET_NOT_INIT;
     }
@@ -481,8 +481,8 @@ pub unsafe extern "C" fn nano_ros_executor_add_subscription(
 
     // Add handle
     let idx = executor.handle_count;
-    executor.handles[idx] = nano_ros_executor_handle_t {
-        handle_type: nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION,
+    executor.handles[idx] = nros_executor_handle_t {
+        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION,
         invocation,
         handle: subscription as *mut _,
         data_ready: false,
@@ -508,10 +508,10 @@ pub unsafe extern "C" fn nano_ros_executor_add_subscription(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_add_timer(
-    executor: *mut nano_ros_executor_t,
-    timer: *mut nano_ros_timer_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_add_timer(
+    executor: *mut nros_executor_t,
+    timer: *mut nros_timer_t,
+) -> nros_ret_t {
     if executor.is_null() || timer.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -520,12 +520,12 @@ pub unsafe extern "C" fn nano_ros_executor_add_timer(
     let timer_ref = &*timer;
 
     // Check executor state
-    if executor.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
     // Check timer state
-    if timer_ref.state != nano_ros_timer_state_t::NROS_TIMER_STATE_RUNNING {
+    if timer_ref.state != nros_timer_state_t::NROS_TIMER_STATE_RUNNING {
         return NROS_RET_NOT_INIT;
     }
 
@@ -539,9 +539,9 @@ pub unsafe extern "C" fn nano_ros_executor_add_timer(
 
     // Add handle
     let idx = executor.handle_count;
-    executor.handles[idx] = nano_ros_executor_handle_t {
-        handle_type: nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER,
-        invocation: nano_ros_executor_invocation_t::NROS_EXECUTOR_ALWAYS,
+    executor.handles[idx] = nros_executor_handle_t {
+        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER,
+        invocation: nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS,
         handle: timer as *mut _,
         data_ready: false,
     };
@@ -566,10 +566,10 @@ pub unsafe extern "C" fn nano_ros_executor_add_timer(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_add_service(
-    executor: *mut nano_ros_executor_t,
-    service: *mut nano_ros_service_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_add_service(
+    executor: *mut nros_executor_t,
+    service: *mut nros_service_t,
+) -> nros_ret_t {
     if executor.is_null() || service.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -578,12 +578,12 @@ pub unsafe extern "C" fn nano_ros_executor_add_service(
     let service_ref = &*service;
 
     // Check executor state
-    if executor.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
     // Check service state
-    if service_ref.state != nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if service_ref.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -597,9 +597,9 @@ pub unsafe extern "C" fn nano_ros_executor_add_service(
 
     // Add handle
     let idx = executor.handle_count;
-    executor.handles[idx] = nano_ros_executor_handle_t {
-        handle_type: nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE,
-        invocation: nano_ros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
+    executor.handles[idx] = nros_executor_handle_t {
+        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE,
+        invocation: nros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
         handle: service as *mut _,
         data_ready: false,
     };
@@ -624,10 +624,10 @@ pub unsafe extern "C" fn nano_ros_executor_add_service(
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_add_guard_condition(
-    executor: *mut nano_ros_executor_t,
-    guard: *mut nano_ros_guard_condition_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_add_guard_condition(
+    executor: *mut nros_executor_t,
+    guard: *mut nros_guard_condition_t,
+) -> nros_ret_t {
     if executor.is_null() || guard.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -636,13 +636,13 @@ pub unsafe extern "C" fn nano_ros_executor_add_guard_condition(
     let guard_ref = &*guard;
 
     // Check executor state
-    if executor.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
     // Check guard condition state
     if guard_ref.state
-        != nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
+        != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
     {
         return NROS_RET_NOT_INIT;
     }
@@ -654,9 +654,9 @@ pub unsafe extern "C" fn nano_ros_executor_add_guard_condition(
 
     // Add handle
     let idx = executor.handle_count;
-    executor.handles[idx] = nano_ros_executor_handle_t {
-        handle_type: nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION,
-        invocation: nano_ros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
+    executor.handles[idx] = nros_executor_handle_t {
+        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION,
+        invocation: nros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
         handle: guard as *mut _,
         data_ready: false,
     };
@@ -671,14 +671,14 @@ pub unsafe extern "C" fn nano_ros_executor_add_guard_condition(
 ///
 /// Returns true if a message was processed, false otherwise.
 #[cfg(feature = "alloc")]
-unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bool {
+unsafe fn process_subscription(subscription: *mut nros_subscription_t) -> bool {
     use nros_rmw::Subscriber;
 
     let subscription_ref = &mut *subscription;
 
     // Check if subscription is initialized
     if subscription_ref.state
-        != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         return false;
     }
@@ -715,13 +715,13 @@ unsafe fn process_subscription(subscription: *mut nano_ros_subscription_t) -> bo
 ///
 /// Returns true if a request was processed, false otherwise.
 #[cfg(feature = "alloc")]
-unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
+unsafe fn process_service_request(service: *mut nros_service_t) -> bool {
     use nros_rmw::ServiceServerTrait;
 
     let service_ref = &mut *service;
 
     // Check if service is initialized
-    if service_ref.state != nano_ros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
+    if service_ref.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
         return false;
     }
 
@@ -777,7 +777,7 @@ unsafe fn process_service_request(service: *mut nano_ros_service_t) -> bool {
 /// Returns true if data was sampled, false otherwise.
 #[cfg(feature = "alloc")]
 unsafe fn sample_subscription_for_let(
-    subscription: *mut nano_ros_subscription_t,
+    subscription: *mut nros_subscription_t,
     buffer: &mut [u8],
 ) -> Option<usize> {
     use nros_rmw::Subscriber;
@@ -786,7 +786,7 @@ unsafe fn sample_subscription_for_let(
 
     // Check if subscription is initialized
     if subscription_ref.state
-        != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         return None;
     }
@@ -811,7 +811,7 @@ unsafe fn sample_subscription_for_let(
 /// Returns true if the callback was invoked, false otherwise.
 #[cfg(feature = "alloc")]
 unsafe fn process_subscription_from_let(
-    subscription: *mut nano_ros_subscription_t,
+    subscription: *mut nros_subscription_t,
     data: &[u8],
     len: usize,
 ) -> bool {
@@ -819,7 +819,7 @@ unsafe fn process_subscription_from_let(
 
     // Check if subscription is initialized
     if subscription_ref.state
-        != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         return false;
     }
@@ -841,7 +841,7 @@ unsafe fn process_subscription_from_let(
 /// in the executor's LET buffers. Services are not pre-sampled since
 /// they need request-reply semantics.
 #[cfg(feature = "alloc")]
-unsafe fn sample_all_handles_for_let(executor: &mut nano_ros_executor_t) {
+unsafe fn sample_all_handles_for_let(executor: &mut nros_executor_t) {
     // Clear previous LET data
     for i in 0..executor.handle_count {
         executor.let_data_available[i] = false;
@@ -853,9 +853,9 @@ unsafe fn sample_all_handles_for_let(executor: &mut nano_ros_executor_t) {
         let handle = &executor.handles[i];
 
         if handle.handle_type
-            == nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION
+            == nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION
         {
-            let subscription = handle.handle as *mut nano_ros_subscription_t;
+            let subscription = handle.handle as *mut nros_subscription_t;
             if !subscription.is_null() {
                 // Sample into LET buffer
                 if let Some(len) =
@@ -889,10 +889,10 @@ unsafe fn sample_all_handles_for_let(executor: &mut nano_ros_executor_t) {
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_spin_some(
-    executor: *mut nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_spin_some(
+    executor: *mut nros_executor_t,
     timeout_ns: u64,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -901,8 +901,8 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
 
     // Accept both INITIALIZED and SPINNING states
     // spin_period/spin set state to SPINNING before calling spin_some
-    if executor.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        && executor.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
     {
         return NROS_RET_NOT_INIT;
     }
@@ -913,7 +913,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
     #[cfg(all(any(feature = "rmw-zenoh", feature = "rmw-xrce"), feature = "alloc"))]
     {
         if !executor.support.is_null() {
-            let support = &mut *(executor.support as *mut nano_ros_support_t);
+            let support = &mut *(executor.support as *mut nros_support_t);
             if let Some(session) = support.get_session_mut() {
                 nros::internals::drive_session_io(session, 10);
             }
@@ -926,7 +926,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
     // LET semantics: Sample all data at the start of the spin cycle
     #[cfg(feature = "alloc")]
     let use_let = executor.semantics
-        == nano_ros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME;
+        == nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME;
 
     #[cfg(feature = "alloc")]
     if use_let {
@@ -942,7 +942,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
         for i in 0..executor.handle_count {
             let handle = &executor.handles[i];
             ready_mask[i] = match handle.handle_type {
-                nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
+                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
                     // In LET mode, use the pre-sampled data availability
                     #[cfg(feature = "alloc")]
                     {
@@ -957,19 +957,19 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                         handle.data_ready
                     }
                 }
-                nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE => {
+                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE => {
                     // Services always use immediate checking (not pre-sampled)
                     handle.data_ready
                 }
-                nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER => {
-                    let timer = handle.handle as *mut nano_ros_timer_t;
+                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER => {
+                    let timer = handle.handle as *mut nros_timer_t;
                     !timer.is_null()
-                        && crate::timer::nano_ros_timer_is_ready(timer, current_time_ns) != 0
+                        && crate::timer::nros_timer_is_ready(timer, current_time_ns) != 0
                 }
-                nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
-                    let guard = handle.handle as *mut nano_ros_guard_condition_t;
+                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
+                    let guard = handle.handle as *mut nros_guard_condition_t;
                     !guard.is_null()
-                        && crate::guard_condition::nano_ros_guard_condition_is_triggered(guard)
+                        && crate::guard_condition::nros_guard_condition_is_triggered(guard)
                 }
                 _ => false,
             };
@@ -984,13 +984,13 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
             for i in 0..executor.handle_count {
                 let handle = &mut executor.handles[i];
                 if handle.handle_type
-                    == nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER
+                    == nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER
                 {
-                    let timer = handle.handle as *mut nano_ros_timer_t;
+                    let timer = handle.handle as *mut nros_timer_t;
                     if !timer.is_null()
-                        && crate::timer::nano_ros_timer_is_ready(timer, current_time_ns) != 0
+                        && crate::timer::nros_timer_is_ready(timer, current_time_ns) != 0
                     {
-                        crate::timer::nano_ros_timer_call(timer, current_time_ns);
+                        crate::timer::nros_timer_call(timer, current_time_ns);
                     }
                 }
             }
@@ -1010,19 +1010,19 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
         let handle = &mut executor.handles[i];
 
         match handle.handle_type {
-            nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER => {
-                let timer = handle.handle as *mut nano_ros_timer_t;
+            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER => {
+                let timer = handle.handle as *mut nros_timer_t;
                 if !timer.is_null()
-                    && crate::timer::nano_ros_timer_is_ready(timer, current_time_ns) != 0
+                    && crate::timer::nros_timer_is_ready(timer, current_time_ns) != 0
                 {
-                    crate::timer::nano_ros_timer_call(timer, current_time_ns);
+                    crate::timer::nros_timer_call(timer, current_time_ns);
                     any_executed = true;
                 }
             }
-            nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
+            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
                 #[cfg(feature = "alloc")]
                 {
-                    let subscription = handle.handle as *mut nano_ros_subscription_t;
+                    let subscription = handle.handle as *mut nros_subscription_t;
                     if !subscription.is_null() {
                         if use_let {
                             // LET mode: Use pre-sampled data from the sampling point
@@ -1036,7 +1036,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                                     any_executed = true;
                                 }
                             } else if handle.invocation
-                                == nano_ros_executor_invocation_t::NROS_EXECUTOR_ALWAYS
+                                == nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS
                             {
                                 // ALWAYS invocation: call with empty data even if not sampled
                                 let _ = process_subscription_from_let(subscription, &[], 0);
@@ -1051,24 +1051,24 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
                     }
                 }
             }
-            nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE => {
+            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE => {
                 #[cfg(feature = "alloc")]
                 {
-                    let service = handle.handle as *mut nano_ros_service_t;
+                    let service = handle.handle as *mut nros_service_t;
                     // Try to receive and process a request
                     if !service.is_null() && process_service_request(service) {
                         any_executed = true;
                     }
                 }
             }
-            nano_ros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
-                let guard = handle.handle as *mut nano_ros_guard_condition_t;
+            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
+                let guard = handle.handle as *mut nros_guard_condition_t;
                 if !guard.is_null() {
                     let guard_ref = &mut *guard;
                     // Check if triggered
-                    if crate::guard_condition::nano_ros_guard_condition_is_triggered(guard) {
+                    if crate::guard_condition::nros_guard_condition_is_triggered(guard) {
                         // Clear the triggered flag
-                        let _ = crate::guard_condition::nano_ros_guard_condition_clear(guard);
+                        let _ = crate::guard_condition::nros_guard_condition_clear(guard);
                         // Invoke callback if set
                         if let Some(callback) = guard_ref.get_callback() {
                             callback(guard_ref.get_context());
@@ -1106,24 +1106,24 @@ pub unsafe extern "C" fn nano_ros_executor_spin_some(
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_spin(
-    executor: *mut nano_ros_executor_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_spin(
+    executor: *mut nros_executor_t,
+) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor_ref = &mut *executor;
 
-    if executor_ref.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
+    if executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
-    executor_ref.state = nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
+    executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
 
     // Spin until shutdown
-    while executor_ref.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        let _ = nano_ros_executor_spin_some(executor, executor_ref.timeout_ns);
+    while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
+        let _ = nros_executor_spin_some(executor, executor_ref.timeout_ns);
     }
 
     NROS_RET_OK
@@ -1147,28 +1147,28 @@ pub unsafe extern "C" fn nano_ros_executor_spin(
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_spin_period(
-    executor: *mut nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_spin_period(
+    executor: *mut nros_executor_t,
     period_ns: u64,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if executor.is_null() || period_ns == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor_ref = &mut *executor;
 
-    if executor_ref.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
+    if executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
-    executor_ref.state = nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
+    executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
 
     // Initialize invocation time on first call
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
 
-    while executor_ref.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
+    while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
         // Process callbacks
-        let _ = nano_ros_executor_spin_some(executor, 0);
+        let _ = nros_executor_spin_some(executor, 0);
 
         // Accumulate next invocation time to prevent drift
         executor_ref.invocation_time_ns += period_ns;
@@ -1198,18 +1198,18 @@ pub unsafe extern "C" fn nano_ros_executor_spin_period(
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_spin_one_period(
-    executor: *mut nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_spin_one_period(
+    executor: *mut nros_executor_t,
     period_ns: u64,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if executor.is_null() || period_ns == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor_ref = &mut *executor;
 
-    if executor_ref.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        && executor_ref.state != nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    if executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        && executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
     {
         return NROS_RET_NOT_INIT;
     }
@@ -1217,7 +1217,7 @@ pub unsafe extern "C" fn nano_ros_executor_spin_one_period(
     let start = crate::platform::get_time_ns();
 
     // Process callbacks
-    let _ = nano_ros_executor_spin_some(executor, 0);
+    let _ = nros_executor_spin_some(executor, 0);
 
     // Sleep for remaining time in period
     let elapsed = crate::platform::get_time_ns().saturating_sub(start);
@@ -1237,17 +1237,17 @@ pub unsafe extern "C" fn nano_ros_executor_spin_one_period(
 /// * `NROS_RET_OK` on success
 /// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_stop(
-    executor: *mut nano_ros_executor_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_stop(
+    executor: *mut nros_executor_t,
+) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor = &mut *executor;
 
-    if executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        executor.state = nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
+        executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
     }
 
     NROS_RET_OK
@@ -1266,35 +1266,35 @@ pub unsafe extern "C" fn nano_ros_executor_stop(
 /// # Safety
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_fini(
-    executor: *mut nano_ros_executor_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_executor_fini(
+    executor: *mut nros_executor_t,
+) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor = &mut *executor;
 
-    if executor.state == nano_ros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED {
+    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
     // Clear all handles
     for i in 0..executor.handle_count {
-        executor.handles[i] = nano_ros_executor_handle_t::default();
+        executor.handles[i] = nros_executor_handle_t::default();
     }
 
     executor.handle_count = 0;
     executor.support = ptr::null();
-    executor.state = nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
+    executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
 
 /// Get the number of handles in the executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_get_handle_count(
-    executor: *const nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_get_handle_count(
+    executor: *const nros_executor_t,
 ) -> c_int {
     if executor.is_null() {
         return 0;
@@ -1306,15 +1306,15 @@ pub unsafe extern "C" fn nano_ros_executor_get_handle_count(
 
 /// Check if executor is valid (initialized).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_is_valid(executor: *const nano_ros_executor_t) -> c_int {
+pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t) -> c_int {
     if executor.is_null() {
         return 0;
     }
 
     let executor = &*executor;
     match executor.state {
-        nano_ros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
-        | nano_ros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING => 1,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        | nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING => 1,
         _ => 0,
     }
 }
@@ -1324,8 +1324,8 @@ pub unsafe extern "C" fn nano_ros_executor_is_valid(executor: *const nano_ros_ex
 /// # Returns
 /// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_get_remaining_handles(
-    executor: *const nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_get_remaining_handles(
+    executor: *const nros_executor_t,
 ) -> c_int {
     if executor.is_null() {
         return -1;
@@ -1340,8 +1340,8 @@ pub unsafe extern "C" fn nano_ros_executor_get_remaining_handles(
 /// # Returns
 /// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_get_remaining_subscriptions(
-    executor: *const nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_get_remaining_subscriptions(
+    executor: *const nros_executor_t,
 ) -> c_int {
     if executor.is_null() {
         return -1;
@@ -1356,8 +1356,8 @@ pub unsafe extern "C" fn nano_ros_executor_get_remaining_subscriptions(
 /// # Returns
 /// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_get_remaining_timers(
-    executor: *const nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_get_remaining_timers(
+    executor: *const nros_executor_t,
 ) -> c_int {
     if executor.is_null() {
         return -1;
@@ -1372,8 +1372,8 @@ pub unsafe extern "C" fn nano_ros_executor_get_remaining_timers(
 /// # Returns
 /// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_executor_get_remaining_services(
-    executor: *const nano_ros_executor_t,
+pub unsafe extern "C" fn nros_executor_get_remaining_services(
+    executor: *const nros_executor_t,
 ) -> c_int {
     if executor.is_null() {
         return -1;
@@ -1392,16 +1392,16 @@ mod verification {
     #[kani::unwind(5)]
     fn executor_init_null_ptrs() {
         // NULL executor → INVALID_ARGUMENT
-        let support = crate::support::nano_ros_support_get_zero_initialized();
+        let support = crate::support::nros_support_get_zero_initialized();
         assert_eq!(
-            unsafe { nano_ros_executor_init(core::ptr::null_mut(), &support, 4) },
+            unsafe { nros_executor_init(core::ptr::null_mut(), &support, 4) },
             NROS_RET_INVALID_ARGUMENT,
         );
 
         // NULL support → INVALID_ARGUMENT
-        let mut executor = nano_ros_executor_get_zero_initialized();
+        let mut executor = nros_executor_get_zero_initialized();
         assert_eq!(
-            unsafe { nano_ros_executor_init(&mut executor, core::ptr::null(), 4) },
+            unsafe { nros_executor_init(&mut executor, core::ptr::null(), 4) },
             NROS_RET_INVALID_ARGUMENT,
         );
     }
@@ -1409,10 +1409,10 @@ mod verification {
     #[kani::proof]
     #[kani::unwind(5)]
     fn executor_zero_initialized_state() {
-        let executor = nano_ros_executor_get_zero_initialized();
+        let executor = nros_executor_get_zero_initialized();
         assert_eq!(
             executor.state,
-            nano_ros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
+            nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
         );
         assert!(executor.support.is_null());
         assert_eq!(executor.handle_count, 0);
@@ -1422,26 +1422,26 @@ mod verification {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::support::{nano_ros_support_get_zero_initialized, nano_ros_support_state_t};
+    use crate::support::{nros_support_get_zero_initialized, nros_support_state_t};
 
     #[test]
     fn test_trigger_any_matches_behavior() {
         unsafe {
             let ready = [true, false, true];
-            assert!(nano_ros_executor_trigger_any(
+            assert!(nros_executor_trigger_any(
                 ready.as_ptr(),
                 ready.len(),
                 ptr::null_mut()
             ));
 
             let ready = [false, false, false];
-            assert!(!nano_ros_executor_trigger_any(
+            assert!(!nros_executor_trigger_any(
                 ready.as_ptr(),
                 ready.len(),
                 ptr::null_mut()
             ));
 
-            assert!(!nano_ros_executor_trigger_any(
+            assert!(!nros_executor_trigger_any(
                 [].as_ptr(),
                 0,
                 ptr::null_mut()
@@ -1453,27 +1453,27 @@ mod tests {
     fn test_trigger_all_matches_behavior() {
         unsafe {
             let ready = [true, true, true];
-            assert!(nano_ros_executor_trigger_all(
+            assert!(nros_executor_trigger_all(
                 ready.as_ptr(),
                 ready.len(),
                 ptr::null_mut()
             ));
 
             let ready = [true, false, true];
-            assert!(!nano_ros_executor_trigger_all(
+            assert!(!nros_executor_trigger_all(
                 ready.as_ptr(),
                 ready.len(),
                 ptr::null_mut()
             ));
 
             let ready = [false, false, false];
-            assert!(!nano_ros_executor_trigger_all(
+            assert!(!nros_executor_trigger_all(
                 ready.as_ptr(),
                 ready.len(),
                 ptr::null_mut()
             ));
 
-            assert!(!nano_ros_executor_trigger_all(
+            assert!(!nros_executor_trigger_all(
                 [].as_ptr(),
                 0,
                 ptr::null_mut()
@@ -1484,14 +1484,14 @@ mod tests {
     #[test]
     fn test_trigger_always_matches_behavior() {
         unsafe {
-            assert!(nano_ros_executor_trigger_always(
+            assert!(nros_executor_trigger_always(
                 [].as_ptr(),
                 0,
                 ptr::null_mut()
             ));
 
             let ready = [false, false];
-            assert!(nano_ros_executor_trigger_always(
+            assert!(nros_executor_trigger_always(
                 ready.as_ptr(),
                 ready.len(),
                 ptr::null_mut()
@@ -1504,19 +1504,19 @@ mod tests {
         unsafe {
             let ready = [false, true, false];
 
-            assert!(nano_ros_executor_trigger_one(
+            assert!(nros_executor_trigger_one(
                 ready.as_ptr(),
                 ready.len(),
                 1usize as *mut core::ffi::c_void,
             ));
 
-            assert!(!nano_ros_executor_trigger_one(
+            assert!(!nros_executor_trigger_one(
                 ready.as_ptr(),
                 ready.len(),
                 0usize as *mut core::ffi::c_void,
             ));
 
-            assert!(!nano_ros_executor_trigger_one(
+            assert!(!nros_executor_trigger_one(
                 ready.as_ptr(),
                 ready.len(),
                 10usize as *mut core::ffi::c_void,
@@ -1541,7 +1541,7 @@ mod tests {
 
         for (case, expected) in test_cases {
             let c_result = unsafe {
-                nano_ros_executor_trigger_all(case.as_ptr(), case.len(), ptr::null_mut())
+                nros_executor_trigger_all(case.as_ptr(), case.len(), ptr::null_mut())
             };
             assert_eq!(
                 c_result, *expected,
@@ -1554,11 +1554,11 @@ mod tests {
     #[test]
     fn test_set_trigger_requires_init() {
         unsafe {
-            let mut executor = nano_ros_executor_get_zero_initialized();
+            let mut executor = nros_executor_get_zero_initialized();
 
-            let ret = nano_ros_executor_set_trigger(
+            let ret = nros_executor_set_trigger(
                 &mut executor,
-                Some(nano_ros_executor_trigger_all),
+                Some(nros_executor_trigger_all),
                 ptr::null_mut(),
             );
             assert_eq!(ret, NROS_RET_NOT_INIT);
@@ -1568,9 +1568,9 @@ mod tests {
     #[test]
     fn test_set_trigger_null_executor() {
         unsafe {
-            let ret = nano_ros_executor_set_trigger(
+            let ret = nros_executor_set_trigger(
                 ptr::null_mut(),
-                Some(nano_ros_executor_trigger_all),
+                Some(nros_executor_trigger_all),
                 ptr::null_mut(),
             );
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
@@ -1584,29 +1584,29 @@ mod tests {
     #[test]
     fn test_set_semantics_rclcpp() {
         unsafe {
-            let mut support = nano_ros_support_get_zero_initialized();
-            let mut executor = nano_ros_executor_get_zero_initialized();
+            let mut support = nros_support_get_zero_initialized();
+            let mut executor = nros_executor_get_zero_initialized();
 
-            support.state = nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+            support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
 
-            let ret = nano_ros_executor_init(&mut executor, &support, 4);
+            let ret = nros_executor_init(&mut executor, &support, 4);
             assert_eq!(ret, NROS_RET_OK);
 
             // Default should be RCLCPP semantics
             assert_eq!(
                 executor.semantics,
-                nano_ros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR
+                nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR
             );
 
             // Setting RCLCPP semantics should succeed
-            let ret = nano_ros_executor_set_semantics(
+            let ret = nros_executor_set_semantics(
                 &mut executor,
-                nano_ros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
+                nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
             );
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(
                 executor.semantics,
-                nano_ros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR
+                nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR
             );
         }
     }
@@ -1614,23 +1614,23 @@ mod tests {
     #[test]
     fn test_set_semantics_let() {
         unsafe {
-            let mut support = nano_ros_support_get_zero_initialized();
-            let mut executor = nano_ros_executor_get_zero_initialized();
+            let mut support = nros_support_get_zero_initialized();
+            let mut executor = nros_executor_get_zero_initialized();
 
-            support.state = nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+            support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
 
-            let ret = nano_ros_executor_init(&mut executor, &support, 4);
+            let ret = nros_executor_init(&mut executor, &support, 4);
             assert_eq!(ret, NROS_RET_OK);
 
             // Setting LET semantics should succeed
-            let ret = nano_ros_executor_set_semantics(
+            let ret = nros_executor_set_semantics(
                 &mut executor,
-                nano_ros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
+                nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
             );
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(
                 executor.semantics,
-                nano_ros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME
+                nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME
             );
         }
     }
@@ -1638,11 +1638,11 @@ mod tests {
     #[test]
     fn test_set_semantics_requires_init() {
         unsafe {
-            let mut executor = nano_ros_executor_get_zero_initialized();
+            let mut executor = nros_executor_get_zero_initialized();
 
-            let ret = nano_ros_executor_set_semantics(
+            let ret = nros_executor_set_semantics(
                 &mut executor,
-                nano_ros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
+                nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
             );
             assert_eq!(ret, NROS_RET_NOT_INIT);
         }
@@ -1650,7 +1650,7 @@ mod tests {
 
     #[test]
     fn test_let_buffer_initialization() {
-        let executor = nano_ros_executor_get_zero_initialized();
+        let executor = nros_executor_get_zero_initialized();
 
         // LET buffers should be zero-initialized
         for i in 0..NROS_EXECUTOR_MAX_HANDLES {
@@ -1678,7 +1678,7 @@ mod tests {
     #[test]
     fn test_spin_one_period_null() {
         unsafe {
-            let ret = nano_ros_executor_spin_one_period(ptr::null_mut(), 10_000_000);
+            let ret = nros_executor_spin_one_period(ptr::null_mut(), 10_000_000);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -1686,8 +1686,8 @@ mod tests {
     #[test]
     fn test_spin_one_period_zero_period() {
         unsafe {
-            let mut executor = nano_ros_executor_get_zero_initialized();
-            let ret = nano_ros_executor_spin_one_period(&mut executor, 0);
+            let mut executor = nros_executor_get_zero_initialized();
+            let ret = nros_executor_spin_one_period(&mut executor, 0);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -1695,8 +1695,8 @@ mod tests {
     #[test]
     fn test_spin_one_period_not_init() {
         unsafe {
-            let mut executor = nano_ros_executor_get_zero_initialized();
-            let ret = nano_ros_executor_spin_one_period(&mut executor, 10_000_000);
+            let mut executor = nros_executor_get_zero_initialized();
+            let ret = nros_executor_spin_one_period(&mut executor, 10_000_000);
             assert_eq!(ret, NROS_RET_NOT_INIT);
         }
     }
@@ -1704,7 +1704,7 @@ mod tests {
     #[test]
     fn test_spin_period_null() {
         unsafe {
-            let ret = nano_ros_executor_spin_period(ptr::null_mut(), 10_000_000);
+            let ret = nros_executor_spin_period(ptr::null_mut(), 10_000_000);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -1712,15 +1712,15 @@ mod tests {
     #[test]
     fn test_spin_period_zero_period() {
         unsafe {
-            let mut executor = nano_ros_executor_get_zero_initialized();
-            let ret = nano_ros_executor_spin_period(&mut executor, 0);
+            let mut executor = nros_executor_get_zero_initialized();
+            let ret = nros_executor_spin_period(&mut executor, 0);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
 
     #[test]
     fn test_invocation_time_ns_initialized() {
-        let executor = nano_ros_executor_get_zero_initialized();
+        let executor = nros_executor_get_zero_initialized();
         assert_eq!(executor.invocation_time_ns, 0);
     }
 
@@ -1730,7 +1730,7 @@ mod tests {
 
     #[test]
     fn test_per_type_counters_initialized_to_zero() {
-        let executor = nano_ros_executor_get_zero_initialized();
+        let executor = nros_executor_get_zero_initialized();
         assert_eq!(executor.subscription_count, 0);
         assert_eq!(executor.timer_count, 0);
         assert_eq!(executor.service_count, 0);
@@ -1739,40 +1739,40 @@ mod tests {
     #[test]
     fn test_remaining_handles_null() {
         unsafe {
-            assert_eq!(nano_ros_executor_get_remaining_handles(ptr::null()), -1);
+            assert_eq!(nros_executor_get_remaining_handles(ptr::null()), -1);
             assert_eq!(
-                nano_ros_executor_get_remaining_subscriptions(ptr::null()),
+                nros_executor_get_remaining_subscriptions(ptr::null()),
                 -1
             );
-            assert_eq!(nano_ros_executor_get_remaining_timers(ptr::null()), -1);
-            assert_eq!(nano_ros_executor_get_remaining_services(ptr::null()), -1);
+            assert_eq!(nros_executor_get_remaining_timers(ptr::null()), -1);
+            assert_eq!(nros_executor_get_remaining_services(ptr::null()), -1);
         }
     }
 
     #[test]
     fn test_remaining_capacity_initial() {
         unsafe {
-            let mut support = nano_ros_support_get_zero_initialized();
-            let mut executor = nano_ros_executor_get_zero_initialized();
-            support.state = nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+            let mut support = nros_support_get_zero_initialized();
+            let mut executor = nros_executor_get_zero_initialized();
+            support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
 
-            let ret = nano_ros_executor_init(&mut executor, &support, 16);
+            let ret = nros_executor_init(&mut executor, &support, 16);
             assert_eq!(ret, NROS_RET_OK);
 
             assert_eq!(
-                nano_ros_executor_get_remaining_handles(&executor),
+                nros_executor_get_remaining_handles(&executor),
                 NROS_EXECUTOR_MAX_HANDLES as c_int
             );
             assert_eq!(
-                nano_ros_executor_get_remaining_subscriptions(&executor),
+                nros_executor_get_remaining_subscriptions(&executor),
                 NROS_MAX_SUBSCRIPTIONS as c_int
             );
             assert_eq!(
-                nano_ros_executor_get_remaining_timers(&executor),
+                nros_executor_get_remaining_timers(&executor),
                 NROS_MAX_TIMERS as c_int
             );
             assert_eq!(
-                nano_ros_executor_get_remaining_services(&executor),
+                nros_executor_get_remaining_services(&executor),
                 NROS_MAX_SERVICES as c_int
             );
         }

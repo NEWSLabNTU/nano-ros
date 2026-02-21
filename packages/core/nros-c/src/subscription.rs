@@ -8,9 +8,9 @@ use core::ptr;
 use crate::constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
-use crate::publisher::nano_ros_message_type_t;
-use crate::qos::nano_ros_qos_t;
-use crate::support::nano_ros_support_state_t;
+use crate::publisher::nros_message_type_t;
+use crate::qos::nros_qos_t;
+use crate::support::nros_support_state_t;
 
 /// Subscription callback function type.
 ///
@@ -18,13 +18,13 @@ use crate::support::nano_ros_support_state_t;
 /// * `data` - Pointer to received CDR-serialized message data
 /// * `len` - Length of data in bytes
 /// * `context` - User-provided context pointer
-pub type nano_ros_subscription_callback_t =
+pub type nros_subscription_callback_t =
     Option<unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void)>;
 
 /// Subscription state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_subscription_state_t {
+pub enum nros_subscription_state_t {
     /// Not initialized
     NROS_SUBSCRIPTION_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -35,9 +35,9 @@ pub enum nano_ros_subscription_state_t {
 
 /// Subscription structure.
 #[repr(C)]
-pub struct nano_ros_subscription_t {
+pub struct nros_subscription_t {
     /// Current state
-    pub state: nano_ros_subscription_state_t,
+    pub state: nros_subscription_state_t,
     /// Topic name storage
     topic_name: [u8; MAX_TOPIC_LEN],
     /// Topic name length
@@ -51,7 +51,7 @@ pub struct nano_ros_subscription_t {
     /// Type hash length
     type_hash_len: usize,
     /// User callback function
-    callback: nano_ros_subscription_callback_t,
+    callback: nros_subscription_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Pointer to parent node
@@ -60,10 +60,10 @@ pub struct nano_ros_subscription_t {
     _internal: *mut c_void,
 }
 
-impl Default for nano_ros_subscription_t {
+impl Default for nros_subscription_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
+            state: nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
             topic_name: [0u8; MAX_TOPIC_LEN],
             topic_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -80,8 +80,8 @@ impl Default for nano_ros_subscription_t {
 
 /// Get a zero-initialized subscription.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_subscription_get_zero_initialized() -> nano_ros_subscription_t {
-    nano_ros_subscription_t::default()
+pub extern "C" fn nros_subscription_get_zero_initialized() -> nros_subscription_t {
+    nros_subscription_t::default()
 }
 
 /// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
@@ -108,15 +108,15 @@ pub extern "C" fn nano_ros_subscription_get_zero_initialized() -> nano_ros_subsc
 /// * `topic_name` must be a valid null-terminated string
 /// * `callback` must be a valid function pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_subscription_init(
-    subscription: *mut nano_ros_subscription_t,
+pub unsafe extern "C" fn nros_subscription_init(
+    subscription: *mut nros_subscription_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-    callback: nano_ros_subscription_callback_t,
+    callback: nros_subscription_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
-    nano_ros_subscription_init_with_qos(
+) -> nros_ret_t {
+    nros_subscription_init_with_qos(
         subscription,
         node,
         type_info,
@@ -129,20 +129,20 @@ pub unsafe extern "C" fn nano_ros_subscription_init(
 
 /// Initialize a subscription with default QoS (RELIABLE, KEEP_LAST(10)).
 ///
-/// Alias for `nano_ros_subscription_init()` for rclc API compatibility.
+/// Alias for `nros_subscription_init()` for rclc API compatibility.
 ///
 /// # Safety
-/// See `nano_ros_subscription_init()` for safety requirements.
+/// See `nros_subscription_init()` for safety requirements.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_subscription_init_default(
-    subscription: *mut nano_ros_subscription_t,
+pub unsafe extern "C" fn nros_subscription_init_default(
+    subscription: *mut nros_subscription_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-    callback: nano_ros_subscription_callback_t,
+    callback: nros_subscription_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
-    nano_ros_subscription_init_with_qos(
+) -> nros_ret_t {
+    nros_subscription_init_with_qos(
         subscription,
         node,
         type_info,
@@ -177,15 +177,15 @@ pub unsafe extern "C" fn nano_ros_subscription_init_default(
 /// * `topic_name` must be a valid null-terminated string
 /// * `callback` must be a valid function pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_subscription_init_best_effort(
-    subscription: *mut nano_ros_subscription_t,
+pub unsafe extern "C" fn nros_subscription_init_best_effort(
+    subscription: *mut nros_subscription_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-    callback: nano_ros_subscription_callback_t,
+    callback: nros_subscription_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
-    nano_ros_subscription_init_with_qos(
+) -> nros_ret_t {
+    nros_subscription_init_with_qos(
         subscription,
         node,
         type_info,
@@ -199,17 +199,17 @@ pub unsafe extern "C" fn nano_ros_subscription_init_best_effort(
 /// Initialize a subscription with custom QoS.
 ///
 /// # Safety
-/// See `nano_ros_subscription_init` for safety requirements.
+/// See `nros_subscription_init` for safety requirements.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
-    subscription: *mut nano_ros_subscription_t,
+pub unsafe extern "C" fn nros_subscription_init_with_qos(
+    subscription: *mut nros_subscription_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-    callback: nano_ros_subscription_callback_t,
+    callback: nros_subscription_callback_t,
     context: *mut c_void,
-    qos: *const nano_ros_qos_t,
-) -> nano_ros_ret_t {
+    qos: *const nros_qos_t,
+) -> nros_ret_t {
     // Validate required arguments
     if subscription.is_null() || node.is_null() || type_info.is_null() || topic_name.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -225,7 +225,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
 
     // Check if subscription is already initialized
     if subscription.state
-        != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED
+        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED
     {
         return NROS_RET_BAD_SEQUENCE;
     }
@@ -307,7 +307,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
             None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             return NROS_RET_NOT_INIT;
         }
 
@@ -340,7 +340,7 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
             Err(_) => return NROS_RET_ERROR,
         }
 
-        subscription.state = nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
+        subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
         NROS_RET_OK
     }
 
@@ -364,16 +364,16 @@ pub unsafe extern "C" fn nano_ros_subscription_init_with_qos(
 /// # Safety
 /// * `subscription` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_subscription_fini(
-    subscription: *mut nano_ros_subscription_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_subscription_fini(
+    subscription: *mut nros_subscription_t,
+) -> nros_ret_t {
     if subscription.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let subscription = &mut *subscription;
 
-    if subscription.state != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         return NROS_RET_NOT_INIT;
     }
@@ -393,7 +393,7 @@ pub unsafe extern "C" fn nano_ros_subscription_fini(
     subscription.callback = None;
     subscription.context = ptr::null_mut();
     subscription.node = ptr::null();
-    subscription.state = nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN;
+    subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -406,15 +406,15 @@ pub unsafe extern "C" fn nano_ros_subscription_fini(
 /// # Returns
 /// * Pointer to topic name (null-terminated), or NULL if invalid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_subscription_get_topic_name(
-    subscription: *const nano_ros_subscription_t,
+pub unsafe extern "C" fn nros_subscription_get_topic_name(
+    subscription: *const nros_subscription_t,
 ) -> *const c_char {
     if subscription.is_null() {
         return ptr::null();
     }
 
     let subscription = &*subscription;
-    if subscription.state != nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         return ptr::null();
     }
@@ -430,15 +430,15 @@ pub unsafe extern "C" fn nano_ros_subscription_get_topic_name(
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_subscription_is_valid(
-    subscription: *const nano_ros_subscription_t,
+pub unsafe extern "C" fn nros_subscription_is_valid(
+    subscription: *const nros_subscription_t,
 ) -> c_int {
     if subscription.is_null() {
         return 0;
     }
 
     let subscription = &*subscription;
-    if subscription.state == nano_ros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    if subscription.state == nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     {
         1
     } else {
@@ -447,9 +447,9 @@ pub unsafe extern "C" fn nano_ros_subscription_is_valid(
 }
 
 // Internal helper methods for executor
-impl nano_ros_subscription_t {
+impl nros_subscription_t {
     /// Get the callback function
-    pub(crate) fn get_callback(&self) -> nano_ros_subscription_callback_t {
+    pub(crate) fn get_callback(&self) -> nros_subscription_callback_t {
         self.callback
     }
 

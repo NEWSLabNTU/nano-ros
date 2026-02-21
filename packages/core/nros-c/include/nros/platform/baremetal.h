@@ -5,18 +5,18 @@
  * Users must provide time and sleep implementations externally.
  *
  * Required user implementations:
- *   uint64_t nano_ros_platform_time_ns(void);
- *   void nano_ros_platform_sleep_ns(uint64_t ns);
+ *   uint64_t nros_platform_time_ns(void);
+ *   void nros_platform_sleep_ns(uint64_t ns);
  *
  * Example implementation for STM32 with HAL:
  *
- *   uint64_t nano_ros_platform_time_ns(void) {
+ *   uint64_t nros_platform_time_ns(void) {
  *       return (uint64_t)HAL_GetTick() * 1000000ULL;  // ms to ns
  *   }
  *
- *   void nano_ros_platform_sleep_ns(uint64_t ns) {
- *       uint64_t start = nano_ros_platform_time_ns();
- *       while ((nano_ros_platform_time_ns() - start) < ns) {
+ *   void nros_platform_sleep_ns(uint64_t ns) {
+ *       uint64_t start = nros_platform_time_ns();
+ *       while ((nros_platform_time_ns() - start) < ns) {
  *           __WFI();  // Wait for interrupt
  *       }
  *   }
@@ -68,19 +68,19 @@ extern "C" {
  *
  * @return Current time in nanoseconds
  */
-extern uint64_t nano_ros_platform_time_ns(void);
+extern uint64_t nros_platform_time_ns(void);
 
 /**
  * Sleep for the specified duration in nanoseconds.
  *
  * User must implement this function. Common implementations:
- *   - Busy-wait loop using nano_ros_platform_time_ns()
+ *   - Busy-wait loop using nros_platform_time_ns()
  *   - WFI instruction for power saving
  *   - Hardware timer interrupt
  *
  * @param ns Duration to sleep in nanoseconds
  */
-extern void nano_ros_platform_sleep_ns(uint64_t ns);
+extern void nros_platform_sleep_ns(uint64_t ns);
 
 // ============================================================================
 // Atomic Operations
@@ -104,7 +104,7 @@ extern void nano_ros_platform_sleep_ns(uint64_t ns);
  *
  * For single-core bare-metal, volatile write with barrier is sufficient.
  */
-static inline void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
     NROS_MEMORY_BARRIER();
     *ptr = value;
     NROS_MEMORY_BARRIER();
@@ -113,7 +113,7 @@ static inline void nano_ros_platform_atomic_store_bool(volatile bool *ptr, bool 
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
+static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
     NROS_MEMORY_BARRIER();
     bool value = *ptr;
     NROS_MEMORY_BARRIER();
@@ -129,7 +129,7 @@ static inline bool nano_ros_platform_atomic_load_bool(volatile bool *ptr) {
  * User may need to override for other architectures.
  */
 #if defined(__ARM_ARCH)
-static inline uint32_t nano_ros_platform_disable_irq(void) {
+static inline uint32_t nros_platform_disable_irq(void) {
     uint32_t primask;
     __asm__ volatile ("mrs %0, primask\n\t"
                       "cpsid i"
@@ -137,7 +137,7 @@ static inline uint32_t nano_ros_platform_disable_irq(void) {
     return primask;
 }
 
-static inline void nano_ros_platform_restore_irq(uint32_t primask) {
+static inline void nros_platform_restore_irq(uint32_t primask) {
     __asm__ volatile ("msr primask, %0" :: "r" (primask) : "memory");
 }
 #endif

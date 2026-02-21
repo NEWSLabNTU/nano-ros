@@ -25,15 +25,15 @@ typedef struct {
 
 // Static allocation
 static struct {
-    nano_ros_support_t support;
+    nros_support_t support;
     nros_node_t node;
-    nano_ros_service_t service;
-    nano_ros_executor_t executor;
+    nros_service_t service;
+    nros_executor_t executor;
     server_context_t ctx;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
-static nano_ros_executor_t* g_executor = NULL;
+static nros_executor_t* g_executor = NULL;
 
 // ----------------------------------------------------------------------------
 // Signal handler for graceful shutdown
@@ -43,7 +43,7 @@ static void signal_handler(int signum) {
     (void)signum;
     g_running = 0;
     if (g_executor) {
-        nano_ros_executor_stop(g_executor);
+        nros_executor_stop(g_executor);
     }
 }
 
@@ -122,14 +122,14 @@ int main(int argc, char** argv) {
     memset(&app, 0, sizeof(app));
 
     // Build type info using generated type name/hash
-    nano_ros_message_type_t add_two_ints_type = {
+    nros_message_type_t add_two_ints_type = {
         .type_name = example_interfaces_srv_add_two_ints_get_type_name(),
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
         .serialized_size_max = 256,
     };
 
     // Initialize support context
-    nano_ros_ret_t ret = nano_ros_support_init(&app.support, locator, domain_id);
+    nros_ret_t ret = nros_support_init(&app.support, locator, domain_id);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;
@@ -140,13 +140,13 @@ int main(int argc, char** argv) {
     ret = nros_node_init(&app.node, &app.support, "c_service_server", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create service server
-    ret = nano_ros_service_init(
+    ret = nros_service_init(
         &app.service,
         &app.node,
         &add_two_ints_type,
@@ -157,34 +157,34 @@ int main(int argc, char** argv) {
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize service: %d\n", ret);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
-    printf("Service created: %s\n", nano_ros_service_get_service_name(&app.service));
+    printf("Service created: %s\n", nros_service_get_service_name(&app.service));
 
     // Create executor
-    ret = nano_ros_executor_init(&app.executor, &app.support, 4);
+    ret = nros_executor_init(&app.executor, &app.support, 4);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize executor: %d\n", ret);
-        nano_ros_service_fini(&app.service);
+        nros_service_fini(&app.service);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     g_executor = &app.executor;
 
     // Add service to executor
-    ret = nano_ros_executor_add_service(&app.executor, &app.service);
+    ret = nros_executor_add_service(&app.executor, &app.service);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add service to executor: %d\n", ret);
-        nano_ros_executor_fini(&app.executor);
-        nano_ros_service_fini(&app.service);
+        nros_executor_fini(&app.executor);
+        nros_service_fini(&app.service);
         nros_node_fini(&app.node);
-        nano_ros_support_fini(&app.support);
+        nros_support_fini(&app.support);
         return 1;
     }
     printf("Executor created with %d handle(s)\n",
-           nano_ros_executor_get_handle_count(&app.executor));
+           nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
     signal(SIGINT, signal_handler);
@@ -193,7 +193,7 @@ int main(int argc, char** argv) {
     printf("\nWaiting for service requests (Ctrl+C to exit)...\n\n");
 
     // Spin with 100ms period
-    ret = nano_ros_executor_spin_period(&app.executor, 100000000ULL);
+    ret = nros_executor_spin_period(&app.executor, 100000000ULL);
     if (ret != NROS_RET_OK && g_running) {
         fprintf(stderr, "Executor spin failed: %d\n", ret);
     }
@@ -201,10 +201,10 @@ int main(int argc, char** argv) {
     // Cleanup
     printf("\nShutting down...\n");
     printf("Total requests handled: %d\n", app.ctx.request_count);
-    nano_ros_executor_fini(&app.executor);
-    nano_ros_service_fini(&app.service);
+    nros_executor_fini(&app.executor);
+    nros_service_fini(&app.service);
     nros_node_fini(&app.node);
-    nano_ros_support_fini(&app.support);
+    nros_support_fini(&app.support);
 
     printf("Goodbye!\n");
     return 0;

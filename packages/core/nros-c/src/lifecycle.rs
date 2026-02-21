@@ -61,10 +61,10 @@ pub const NROS_LIFECYCLE_RET_ERROR: u8 = TransitionResult::Error as u8;
 /// Lifecycle state machine structure.
 ///
 /// Manages the REP-2002 lifecycle state and transition callbacks for a node.
-/// Created with `nano_ros_lifecycle_get_zero_initialized()` and initialized
-/// with `nano_ros_lifecycle_init()`.
+/// Created with `nros_lifecycle_get_zero_initialized()` and initialized
+/// with `nros_lifecycle_init()`.
 #[repr(C)]
-pub struct nano_ros_lifecycle_state_machine_t {
+pub struct nros_lifecycle_state_machine_t {
     /// Current lifecycle state (one of the `NROS_LIFECYCLE_STATE_*` constants)
     pub current_state: u8,
     /// Configure callback: called during Unconfigured -> Inactive
@@ -85,7 +85,7 @@ pub struct nano_ros_lifecycle_state_machine_t {
     pub initialized: bool,
 }
 
-impl Default for nano_ros_lifecycle_state_machine_t {
+impl Default for nros_lifecycle_state_machine_t {
     fn default() -> Self {
         Self {
             current_state: 0,
@@ -107,8 +107,8 @@ impl Default for nano_ros_lifecycle_state_machine_t {
 
 /// Get a zero-initialized lifecycle state machine.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_lifecycle_get_zero_initialized() -> nano_ros_lifecycle_state_machine_t {
-    nano_ros_lifecycle_state_machine_t::default()
+pub extern "C" fn nros_lifecycle_get_zero_initialized() -> nros_lifecycle_state_machine_t {
+    nros_lifecycle_state_machine_t::default()
 }
 
 /// Initialize a lifecycle state machine for a node.
@@ -124,10 +124,10 @@ pub extern "C" fn nano_ros_lifecycle_get_zero_initialized() -> nano_ros_lifecycl
 /// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
 /// * `NROS_RET_BAD_SEQUENCE` if already initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_init(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_init(
+    sm: *mut nros_lifecycle_state_machine_t,
     node: *const nros_node_t,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if sm.is_null() || node.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -153,9 +153,9 @@ pub unsafe extern "C" fn nano_ros_lifecycle_init(
 /// * `NROS_RET_INVALID_ARGUMENT` if sm is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_fini(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_lifecycle_fini(
+    sm: *mut nros_lifecycle_state_machine_t,
+) -> nros_ret_t {
     if sm.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -194,10 +194,10 @@ pub unsafe extern "C" fn nano_ros_lifecycle_fini(
 /// * `NROS_RET_BAD_SEQUENCE` if transition is not valid from current state
 /// * `NROS_RET_ERROR` if the callback returned an error
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_change_state(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_change_state(
+    sm: *mut nros_lifecycle_state_machine_t,
     transition_id: u8,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if sm.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -257,8 +257,8 @@ pub unsafe extern "C" fn nano_ros_lifecycle_change_state(
 /// # Returns
 /// * Current state as u8, or 0 if sm is NULL or not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_get_state(
-    sm: *const nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_get_state(
+    sm: *const nros_lifecycle_state_machine_t,
 ) -> u8 {
     if sm.is_null() {
         return 0;
@@ -284,74 +284,74 @@ pub unsafe extern "C" fn nano_ros_lifecycle_get_state(
 /// * `NROS_RET_INVALID_ARGUMENT` if sm is NULL
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_register_on_configure(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_register_on_configure(
+    sm: *mut nros_lifecycle_state_machine_t,
     cb: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     register_callback(sm, cb, context, CallbackSlot::Configure)
 }
 
 /// Register a callback for the `activate` transition.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_register_on_activate(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_register_on_activate(
+    sm: *mut nros_lifecycle_state_machine_t,
     cb: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     register_callback(sm, cb, context, CallbackSlot::Activate)
 }
 
 /// Register a callback for the `deactivate` transition.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_register_on_deactivate(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_register_on_deactivate(
+    sm: *mut nros_lifecycle_state_machine_t,
     cb: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     register_callback(sm, cb, context, CallbackSlot::Deactivate)
 }
 
 /// Register a callback for the `cleanup` transition.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_register_on_cleanup(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_register_on_cleanup(
+    sm: *mut nros_lifecycle_state_machine_t,
     cb: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     register_callback(sm, cb, context, CallbackSlot::Cleanup)
 }
 
 /// Register a callback for the `shutdown` transition.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_register_on_shutdown(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_register_on_shutdown(
+    sm: *mut nros_lifecycle_state_machine_t,
     cb: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     register_callback(sm, cb, context, CallbackSlot::Shutdown)
 }
 
 /// Register a callback for the `error` transition (error recovery).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_lifecycle_register_on_error(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_lifecycle_register_on_error(
+    sm: *mut nros_lifecycle_state_machine_t,
     cb: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     register_callback(sm, cb, context, CallbackSlot::Error)
 }
 
 /// Convenience: initialize a lifecycle state machine for a node.
 ///
-/// Equivalent to calling `nano_ros_lifecycle_init(sm, node)`.
+/// Equivalent to calling `nros_lifecycle_init(sm, node)`.
 /// Named to match rclc's `rclc_make_node_a_lifecycle_node`.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_make_node_a_lifecycle_node(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+pub unsafe extern "C" fn nros_make_node_a_lifecycle_node(
+    sm: *mut nros_lifecycle_state_machine_t,
     node: *const nros_node_t,
-) -> nano_ros_ret_t {
-    nano_ros_lifecycle_init(sm, node)
+) -> nros_ret_t {
+    nros_lifecycle_init(sm, node)
 }
 
 // ============================================================================
@@ -368,11 +368,11 @@ enum CallbackSlot {
 }
 
 unsafe fn register_callback(
-    sm: *mut nano_ros_lifecycle_state_machine_t,
+    sm: *mut nros_lifecycle_state_machine_t,
     cb: Option<unsafe extern "C" fn(*mut c_void) -> u8>,
     context: *mut c_void,
     slot: CallbackSlot,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if sm.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -405,7 +405,7 @@ mod tests {
 
     #[test]
     fn test_zero_initialized() {
-        let sm = nano_ros_lifecycle_get_zero_initialized();
+        let sm = nros_lifecycle_get_zero_initialized();
         assert_eq!(sm.current_state, 0);
         assert!(!sm.initialized);
         assert!(sm.on_configure.is_none());
@@ -416,13 +416,13 @@ mod tests {
     fn test_init_null_checks() {
         unsafe {
             assert_eq!(
-                nano_ros_lifecycle_init(core::ptr::null_mut(), core::ptr::null()),
+                nros_lifecycle_init(core::ptr::null_mut(), core::ptr::null()),
                 NROS_RET_INVALID_ARGUMENT
             );
 
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             assert_eq!(
-                nano_ros_lifecycle_init(&mut sm, core::ptr::null()),
+                nros_lifecycle_init(&mut sm, core::ptr::null()),
                 NROS_RET_INVALID_ARGUMENT
             );
         }
@@ -431,26 +431,26 @@ mod tests {
     #[test]
     fn test_init_and_fini() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             // Use a non-null dummy for node
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
 
-            assert_eq!(nano_ros_lifecycle_init(&mut sm, node_ptr), NROS_RET_OK);
+            assert_eq!(nros_lifecycle_init(&mut sm, node_ptr), NROS_RET_OK);
             assert!(sm.initialized);
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_UNCONFIGURED);
 
             // Double init fails
             assert_eq!(
-                nano_ros_lifecycle_init(&mut sm, node_ptr),
+                nros_lifecycle_init(&mut sm, node_ptr),
                 NROS_RET_BAD_SEQUENCE
             );
 
-            assert_eq!(nano_ros_lifecycle_fini(&mut sm), NROS_RET_OK);
+            assert_eq!(nros_lifecycle_fini(&mut sm), NROS_RET_OK);
             assert!(!sm.initialized);
 
             // Double fini fails
-            assert_eq!(nano_ros_lifecycle_fini(&mut sm), NROS_RET_NOT_INIT);
+            assert_eq!(nros_lifecycle_fini(&mut sm), NROS_RET_NOT_INIT);
         }
     }
 
@@ -458,18 +458,18 @@ mod tests {
     fn test_get_state() {
         unsafe {
             // NULL returns 0
-            assert_eq!(nano_ros_lifecycle_get_state(core::ptr::null()), 0);
+            assert_eq!(nros_lifecycle_get_state(core::ptr::null()), 0);
 
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             // Not initialized returns 0
-            assert_eq!(nano_ros_lifecycle_get_state(&sm), 0);
+            assert_eq!(nros_lifecycle_get_state(&sm), 0);
 
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
             assert_eq!(
-                nano_ros_lifecycle_get_state(&sm),
+                nros_lifecycle_get_state(&sm),
                 NROS_LIFECYCLE_STATE_UNCONFIGURED
             );
         }
@@ -490,12 +490,12 @@ mod tests {
     #[test]
     fn test_change_state_happy_path() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
-            nano_ros_lifecycle_register_on_configure(
+            nros_lifecycle_register_on_configure(
                 &mut sm,
                 Some(cb_success),
                 core::ptr::null_mut(),
@@ -503,28 +503,28 @@ mod tests {
 
             // Configure
             assert_eq!(
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
                 NROS_RET_OK
             );
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_INACTIVE);
 
             // Activate
             assert_eq!(
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_ACTIVATE),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_ACTIVATE),
                 NROS_RET_OK
             );
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_ACTIVE);
 
             // Deactivate
             assert_eq!(
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_DEACTIVATE),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_DEACTIVATE),
                 NROS_RET_OK
             );
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_INACTIVE);
 
             // Shutdown
             assert_eq!(
-                nano_ros_lifecycle_change_state(
+                nros_lifecycle_change_state(
                     &mut sm,
                     NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE
                 ),
@@ -537,14 +537,14 @@ mod tests {
     #[test]
     fn test_change_state_invalid_transition() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
             // Cannot activate from Unconfigured
             assert_eq!(
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_ACTIVATE),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_ACTIVATE),
                 NROS_RET_BAD_SEQUENCE
             );
             // State unchanged
@@ -556,16 +556,16 @@ mod tests {
     fn test_change_state_null_and_not_init() {
         unsafe {
             assert_eq!(
-                nano_ros_lifecycle_change_state(
+                nros_lifecycle_change_state(
                     core::ptr::null_mut(),
                     NROS_LIFECYCLE_TRANSITION_CONFIGURE
                 ),
                 NROS_RET_INVALID_ARGUMENT
             );
 
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             assert_eq!(
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
                 NROS_RET_NOT_INIT
             );
         }
@@ -574,13 +574,13 @@ mod tests {
     #[test]
     fn test_change_state_invalid_transition_id() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
             assert_eq!(
-                nano_ros_lifecycle_change_state(&mut sm, 99),
+                nros_lifecycle_change_state(&mut sm, 99),
                 NROS_RET_INVALID_ARGUMENT
             );
         }
@@ -589,19 +589,19 @@ mod tests {
     #[test]
     fn test_callback_failure_rolls_back() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
-            nano_ros_lifecycle_register_on_configure(
+            nros_lifecycle_register_on_configure(
                 &mut sm,
                 Some(cb_failure),
                 core::ptr::null_mut(),
             );
 
             let ret =
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
             assert_eq!(ret, NROS_RET_ERROR);
             // State rolled back to Unconfigured
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_UNCONFIGURED);
@@ -611,19 +611,19 @@ mod tests {
     #[test]
     fn test_callback_error_goes_to_error_processing() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
-            nano_ros_lifecycle_register_on_configure(
+            nros_lifecycle_register_on_configure(
                 &mut sm,
                 Some(cb_error),
                 core::ptr::null_mut(),
             );
 
             let ret =
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
             assert_eq!(ret, NROS_RET_ERROR);
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_ERROR_PROCESSING);
         }
@@ -633,7 +633,7 @@ mod tests {
     fn test_register_callback_null_and_not_init() {
         unsafe {
             assert_eq!(
-                nano_ros_lifecycle_register_on_configure(
+                nros_lifecycle_register_on_configure(
                     core::ptr::null_mut(),
                     Some(cb_success),
                     core::ptr::null_mut()
@@ -641,9 +641,9 @@ mod tests {
                 NROS_RET_INVALID_ARGUMENT
             );
 
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             assert_eq!(
-                nano_ros_lifecycle_register_on_configure(
+                nros_lifecycle_register_on_configure(
                     &mut sm,
                     Some(cb_success),
                     core::ptr::null_mut()
@@ -656,12 +656,12 @@ mod tests {
     #[test]
     fn test_make_node_a_lifecycle_node() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
 
             assert_eq!(
-                nano_ros_make_node_a_lifecycle_node(&mut sm, node_ptr),
+                nros_make_node_a_lifecycle_node(&mut sm, node_ptr),
                 NROS_RET_OK
             );
             assert!(sm.initialized);
@@ -683,18 +683,18 @@ mod tests {
         unsafe {
             CALLBACK_COUNT.store(0, Ordering::Relaxed);
 
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
-            nano_ros_lifecycle_register_on_configure(
+            nros_lifecycle_register_on_configure(
                 &mut sm,
                 Some(cb_counting),
                 core::ptr::null_mut(),
             );
 
-            nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
+            nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
             assert_eq!(CALLBACK_COUNT.load(Ordering::Relaxed), 1);
         }
     }
@@ -702,14 +702,14 @@ mod tests {
     #[test]
     fn test_no_callback_defaults_to_success() {
         unsafe {
-            let mut sm = nano_ros_lifecycle_get_zero_initialized();
+            let mut sm = nros_lifecycle_get_zero_initialized();
             let dummy_node = 1u8;
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
-            nano_ros_lifecycle_init(&mut sm, node_ptr);
+            nros_lifecycle_init(&mut sm, node_ptr);
 
             // No callbacks registered — transition should succeed
             assert_eq!(
-                nano_ros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE),
                 NROS_RET_OK
             );
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_INACTIVE);
@@ -720,7 +720,7 @@ mod tests {
     fn test_fini_null() {
         unsafe {
             assert_eq!(
-                nano_ros_lifecycle_fini(core::ptr::null_mut()),
+                nros_lifecycle_fini(core::ptr::null_mut()),
                 NROS_RET_INVALID_ARGUMENT
             );
         }

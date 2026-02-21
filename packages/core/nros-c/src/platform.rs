@@ -18,16 +18,16 @@
 #[cfg(not(feature = "std"))]
 unsafe extern "C" {
     /// Get current monotonic time in nanoseconds.
-    pub fn nano_ros_platform_time_ns() -> u64;
+    pub fn nros_platform_time_ns() -> u64;
 
     /// Sleep for the specified duration in nanoseconds.
-    pub fn nano_ros_platform_sleep_ns(ns: u64);
+    pub fn nros_platform_sleep_ns(ns: u64);
 
     /// Atomically store a boolean value with release semantics.
-    pub fn nano_ros_platform_atomic_store_bool(ptr: *mut bool, value: bool);
+    pub fn nros_platform_atomic_store_bool(ptr: *mut bool, value: bool);
 
     /// Atomically load a boolean value with acquire semantics.
-    pub fn nano_ros_platform_atomic_load_bool(ptr: *const bool) -> bool;
+    pub fn nros_platform_atomic_load_bool(ptr: *const bool) -> bool;
 }
 
 // ============================================================================
@@ -51,7 +51,7 @@ pub fn get_time_ns() -> u64 {
 /// Get current monotonic time in nanoseconds (no_std version).
 #[cfg(not(feature = "std"))]
 pub fn get_time_ns() -> u64 {
-    unsafe { nano_ros_platform_time_ns() }
+    unsafe { nros_platform_time_ns() }
 }
 
 /// Get system time in nanoseconds since Unix epoch.
@@ -93,7 +93,7 @@ pub fn sleep_ns(ns: u64) {
 /// Sleep for the specified duration in nanoseconds (no_std version).
 #[cfg(not(feature = "std"))]
 pub fn sleep_ns(ns: u64) {
-    unsafe { nano_ros_platform_sleep_ns(ns) }
+    unsafe { nros_platform_sleep_ns(ns) }
 }
 
 // ============================================================================
@@ -117,7 +117,7 @@ pub fn atomic_store_bool(ptr: *mut bool, value: bool) {
 /// Atomically store a boolean value (no_std version).
 #[cfg(not(feature = "std"))]
 pub fn atomic_store_bool(ptr: *mut bool, value: bool) {
-    unsafe { nano_ros_platform_atomic_store_bool(ptr, value) }
+    unsafe { nros_platform_atomic_store_bool(ptr, value) }
 }
 
 /// Atomically load a boolean value with acquire semantics.
@@ -137,7 +137,7 @@ pub fn atomic_load_bool(ptr: *const bool) -> bool {
 /// Atomically load a boolean value (no_std version).
 #[cfg(not(feature = "std"))]
 pub fn atomic_load_bool(ptr: *const bool) -> bool {
-    unsafe { nano_ros_platform_atomic_load_bool(ptr) }
+    unsafe { nros_platform_atomic_load_bool(ptr) }
 }
 
 // ============================================================================

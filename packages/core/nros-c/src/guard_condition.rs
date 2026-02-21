@@ -8,7 +8,7 @@ use core::ffi::{c_int, c_void};
 use core::ptr;
 
 use crate::error::*;
-use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
+use crate::support::{nros_support_state_t, nros_support_t};
 
 // ============================================================================
 // Guard Condition Types
@@ -17,7 +17,7 @@ use crate::support::{nano_ros_support_state_t, nano_ros_support_t};
 /// Guard condition state.
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_guard_condition_state_t {
+pub enum nros_guard_condition_state_t {
     /// Not initialized
     NROS_GUARD_CONDITION_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -27,32 +27,32 @@ pub enum nano_ros_guard_condition_state_t {
 }
 
 /// Guard condition callback type.
-pub type nano_ros_guard_condition_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;
+pub type nros_guard_condition_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;
 
 /// Guard condition structure.
 #[repr(C)]
-pub struct nano_ros_guard_condition_t {
+pub struct nros_guard_condition_t {
     /// Current state
-    pub state: nano_ros_guard_condition_state_t,
+    pub state: nros_guard_condition_state_t,
     /// Triggered flag (volatile for cross-thread visibility)
     pub triggered: bool,
     /// Callback function
-    callback: nano_ros_guard_condition_callback_t,
+    callback: nros_guard_condition_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Pointer to parent support context
-    _support: *const nano_ros_support_t,
+    _support: *const nros_support_t,
 }
 
 // Safety: The triggered flag is designed for cross-thread access.
 // The callback and context are only accessed from the executor thread.
-unsafe impl Send for nano_ros_guard_condition_t {}
-unsafe impl Sync for nano_ros_guard_condition_t {}
+unsafe impl Send for nros_guard_condition_t {}
+unsafe impl Sync for nros_guard_condition_t {}
 
-impl Default for nano_ros_guard_condition_t {
+impl Default for nros_guard_condition_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED,
+            state: nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED,
             triggered: false,
             callback: None,
             context: ptr::null_mut(),
@@ -61,9 +61,9 @@ impl Default for nano_ros_guard_condition_t {
     }
 }
 
-impl nano_ros_guard_condition_t {
+impl nros_guard_condition_t {
     /// Get the callback function.
-    pub(crate) fn get_callback(&self) -> nano_ros_guard_condition_callback_t {
+    pub(crate) fn get_callback(&self) -> nros_guard_condition_callback_t {
         self.callback
     }
 
@@ -79,16 +79,16 @@ impl nano_ros_guard_condition_t {
 
 /// Get a zero-initialized guard condition.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_guard_condition_get_zero_initialized() -> nano_ros_guard_condition_t {
-    nano_ros_guard_condition_t::default()
+pub extern "C" fn nros_guard_condition_get_zero_initialized() -> nros_guard_condition_t {
+    nros_guard_condition_t::default()
 }
 
 /// Initialize a guard condition.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_guard_condition_init(
-    guard: *mut nano_ros_guard_condition_t,
-    support: *const nano_ros_support_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_guard_condition_init(
+    guard: *mut nros_guard_condition_t,
+    support: *const nros_support_t,
+) -> nros_ret_t {
     if guard.is_null() || support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -97,13 +97,13 @@ pub unsafe extern "C" fn nano_ros_guard_condition_init(
     let support_ref = &*support;
 
     // Check if already initialized
-    if guard.state != nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED
+    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED
     {
         return NROS_RET_BAD_SEQUENCE;
     }
 
     // Check if support is initialized
-    if support_ref.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -111,25 +111,25 @@ pub unsafe extern "C" fn nano_ros_guard_condition_init(
     guard.triggered = false;
     guard.callback = None;
     guard.context = ptr::null_mut();
-    guard.state = nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+    guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
     NROS_RET_OK
 }
 
 /// Set the guard condition callback.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_guard_condition_set_callback(
-    guard: *mut nano_ros_guard_condition_t,
-    callback: nano_ros_guard_condition_callback_t,
+pub unsafe extern "C" fn nros_guard_condition_set_callback(
+    guard: *mut nros_guard_condition_t,
+    callback: nros_guard_condition_callback_t,
     context: *mut c_void,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if guard.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let guard = &mut *guard;
 
-    if guard.state != nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
+    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -144,16 +144,16 @@ pub unsafe extern "C" fn nano_ros_guard_condition_set_callback(
 /// This function is designed to be thread-safe. It sets the triggered flag
 /// which will be checked by the executor during its next spin cycle.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_guard_condition_trigger(
-    guard: *mut nano_ros_guard_condition_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_guard_condition_trigger(
+    guard: *mut nros_guard_condition_t,
+) -> nros_ret_t {
     if guard.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let guard = &mut *guard;
 
-    if guard.state != nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
+    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -165,8 +165,8 @@ pub unsafe extern "C" fn nano_ros_guard_condition_trigger(
 
 /// Check if the guard condition is triggered.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_guard_condition_is_triggered(
-    guard: *const nano_ros_guard_condition_t,
+pub unsafe extern "C" fn nros_guard_condition_is_triggered(
+    guard: *const nros_guard_condition_t,
 ) -> bool {
     if guard.is_null() {
         return false;
@@ -174,7 +174,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_is_triggered(
 
     let guard = &*guard;
 
-    if guard.state != nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
+    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
         return false;
     }
 
@@ -184,9 +184,9 @@ pub unsafe extern "C" fn nano_ros_guard_condition_is_triggered(
 
 /// Clear the triggered flag.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_guard_condition_clear(
-    guard: *mut nano_ros_guard_condition_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_guard_condition_clear(
+    guard: *mut nros_guard_condition_t,
+) -> nros_ret_t {
     if guard.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -201,8 +201,8 @@ pub unsafe extern "C" fn nano_ros_guard_condition_clear(
 
 /// Check if guard condition is valid (initialized).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_guard_condition_is_valid(
-    guard: *const nano_ros_guard_condition_t,
+pub unsafe extern "C" fn nros_guard_condition_is_valid(
+    guard: *const nros_guard_condition_t,
 ) -> c_int {
     if guard.is_null() {
         return 0;
@@ -210,7 +210,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_is_valid(
 
     let guard = &*guard;
 
-    if guard.state == nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
+    if guard.state == nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
         1
     } else {
         0
@@ -219,16 +219,16 @@ pub unsafe extern "C" fn nano_ros_guard_condition_is_valid(
 
 /// Finalize a guard condition.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_guard_condition_fini(
-    guard: *mut nano_ros_guard_condition_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_guard_condition_fini(
+    guard: *mut nros_guard_condition_t,
+) -> nros_ret_t {
     if guard.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let guard = &mut *guard;
 
-    if guard.state != nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
+    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -236,7 +236,7 @@ pub unsafe extern "C" fn nano_ros_guard_condition_fini(
     guard.callback = None;
     guard.context = ptr::null_mut();
     guard._support = ptr::null();
-    guard.state = nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_SHUTDOWN;
+    guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -251,10 +251,10 @@ mod tests {
 
     #[test]
     fn test_guard_condition_default() {
-        let guard = nano_ros_guard_condition_get_zero_initialized();
+        let guard = nros_guard_condition_get_zero_initialized();
         assert_eq!(
             guard.state,
-            nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED
+            nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED
         );
         assert!(!guard.triggered);
         assert!(guard.callback.is_none());
@@ -264,8 +264,8 @@ mod tests {
     #[test]
     fn test_guard_condition_init_null_guard() {
         unsafe {
-            let support = crate::support::nano_ros_support_get_zero_initialized();
-            let ret = nano_ros_guard_condition_init(ptr::null_mut(), &support);
+            let support = crate::support::nros_support_get_zero_initialized();
+            let ret = nros_guard_condition_init(ptr::null_mut(), &support);
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -273,8 +273,8 @@ mod tests {
     #[test]
     fn test_guard_condition_init_null_support() {
         unsafe {
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
-            let ret = nano_ros_guard_condition_init(&mut guard, ptr::null());
+            let mut guard = nros_guard_condition_get_zero_initialized();
+            let ret = nros_guard_condition_init(&mut guard, ptr::null());
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -282,8 +282,8 @@ mod tests {
     #[test]
     fn test_guard_condition_trigger_not_init() {
         unsafe {
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
-            let ret = nano_ros_guard_condition_trigger(&mut guard);
+            let mut guard = nros_guard_condition_get_zero_initialized();
+            let ret = nros_guard_condition_trigger(&mut guard);
             assert_eq!(ret, NROS_RET_NOT_INIT);
         }
     }
@@ -291,7 +291,7 @@ mod tests {
     #[test]
     fn test_guard_condition_trigger_null() {
         unsafe {
-            let ret = nano_ros_guard_condition_trigger(ptr::null_mut());
+            let ret = nros_guard_condition_trigger(ptr::null_mut());
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -299,7 +299,7 @@ mod tests {
     #[test]
     fn test_guard_condition_is_triggered_null() {
         unsafe {
-            let result = nano_ros_guard_condition_is_triggered(ptr::null());
+            let result = nros_guard_condition_is_triggered(ptr::null());
             assert!(!result);
         }
     }
@@ -307,8 +307,8 @@ mod tests {
     #[test]
     fn test_guard_condition_is_triggered_not_init() {
         unsafe {
-            let guard = nano_ros_guard_condition_get_zero_initialized();
-            let result = nano_ros_guard_condition_is_triggered(&guard);
+            let guard = nros_guard_condition_get_zero_initialized();
+            let result = nros_guard_condition_is_triggered(&guard);
             assert!(!result);
         }
     }
@@ -316,7 +316,7 @@ mod tests {
     #[test]
     fn test_guard_condition_clear_null() {
         unsafe {
-            let ret = nano_ros_guard_condition_clear(ptr::null_mut());
+            let ret = nros_guard_condition_clear(ptr::null_mut());
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -324,7 +324,7 @@ mod tests {
     #[test]
     fn test_guard_condition_is_valid_null() {
         unsafe {
-            let result = nano_ros_guard_condition_is_valid(ptr::null());
+            let result = nros_guard_condition_is_valid(ptr::null());
             assert_eq!(result, 0);
         }
     }
@@ -332,8 +332,8 @@ mod tests {
     #[test]
     fn test_guard_condition_is_valid_not_init() {
         unsafe {
-            let guard = nano_ros_guard_condition_get_zero_initialized();
-            let result = nano_ros_guard_condition_is_valid(&guard);
+            let guard = nros_guard_condition_get_zero_initialized();
+            let result = nros_guard_condition_is_valid(&guard);
             assert_eq!(result, 0);
         }
     }
@@ -341,7 +341,7 @@ mod tests {
     #[test]
     fn test_guard_condition_fini_null() {
         unsafe {
-            let ret = nano_ros_guard_condition_fini(ptr::null_mut());
+            let ret = nros_guard_condition_fini(ptr::null_mut());
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -349,8 +349,8 @@ mod tests {
     #[test]
     fn test_guard_condition_fini_not_init() {
         unsafe {
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
-            let ret = nano_ros_guard_condition_fini(&mut guard);
+            let mut guard = nros_guard_condition_get_zero_initialized();
+            let ret = nros_guard_condition_fini(&mut guard);
             assert_eq!(ret, NROS_RET_NOT_INIT);
         }
     }
@@ -358,7 +358,7 @@ mod tests {
     #[test]
     fn test_guard_condition_set_callback_null() {
         unsafe {
-            let ret = nano_ros_guard_condition_set_callback(ptr::null_mut(), None, ptr::null_mut());
+            let ret = nros_guard_condition_set_callback(ptr::null_mut(), None, ptr::null_mut());
             assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
         }
     }
@@ -366,8 +366,8 @@ mod tests {
     #[test]
     fn test_guard_condition_set_callback_not_init() {
         unsafe {
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
-            let ret = nano_ros_guard_condition_set_callback(&mut guard, None, ptr::null_mut());
+            let mut guard = nros_guard_condition_get_zero_initialized();
+            let ret = nros_guard_condition_set_callback(&mut guard, None, ptr::null_mut());
             assert_eq!(ret, NROS_RET_NOT_INIT);
         }
     }
@@ -377,33 +377,33 @@ mod tests {
     fn test_guard_condition_trigger_and_clear() {
         unsafe {
             // Manually set up an initialized guard condition (bypassing support check)
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
+            let mut guard = nros_guard_condition_get_zero_initialized();
             guard.state =
-                nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
             // Initially not triggered
-            assert!(!nano_ros_guard_condition_is_triggered(&guard));
+            assert!(!nros_guard_condition_is_triggered(&guard));
 
             // Trigger it
-            let ret = nano_ros_guard_condition_trigger(&mut guard);
+            let ret = nros_guard_condition_trigger(&mut guard);
             assert_eq!(ret, NROS_RET_OK);
-            assert!(nano_ros_guard_condition_is_triggered(&guard));
+            assert!(nros_guard_condition_is_triggered(&guard));
 
             // Clear it
-            let ret = nano_ros_guard_condition_clear(&mut guard);
+            let ret = nros_guard_condition_clear(&mut guard);
             assert_eq!(ret, NROS_RET_OK);
-            assert!(!nano_ros_guard_condition_is_triggered(&guard));
+            assert!(!nros_guard_condition_is_triggered(&guard));
         }
     }
 
     #[test]
     fn test_guard_condition_is_valid_initialized() {
         unsafe {
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
+            let mut guard = nros_guard_condition_get_zero_initialized();
             guard.state =
-                nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
-            let result = nano_ros_guard_condition_is_valid(&guard);
+            let result = nros_guard_condition_is_valid(&guard);
             assert_eq!(result, 1);
         }
     }
@@ -411,16 +411,16 @@ mod tests {
     #[test]
     fn test_guard_condition_fini_initialized() {
         unsafe {
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
+            let mut guard = nros_guard_condition_get_zero_initialized();
             guard.state =
-                nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
             guard.triggered = true;
 
-            let ret = nano_ros_guard_condition_fini(&mut guard);
+            let ret = nros_guard_condition_fini(&mut guard);
             assert_eq!(ret, NROS_RET_OK);
             assert_eq!(
                 guard.state,
-                nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_SHUTDOWN
+                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_SHUTDOWN
             );
             assert!(!guard.triggered);
         }
@@ -432,12 +432,12 @@ mod tests {
     #[test]
     fn test_guard_condition_set_callback_initialized() {
         unsafe {
-            let mut guard = nano_ros_guard_condition_get_zero_initialized();
+            let mut guard = nros_guard_condition_get_zero_initialized();
             guard.state =
-                nano_ros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
             let context_value: i32 = 42;
-            let ret = nano_ros_guard_condition_set_callback(
+            let ret = nros_guard_condition_set_callback(
                 &mut guard,
                 Some(test_callback),
                 &context_value as *const i32 as *mut c_void,

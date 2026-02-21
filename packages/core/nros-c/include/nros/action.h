@@ -42,7 +42,7 @@ extern "C" {
  *
  * Compatible with action_msgs/msg/GoalStatus values.
  */
-typedef enum nano_ros_goal_status_t {
+typedef enum nros_goal_status_t {
     /** Goal state is unknown */
     NROS_GOAL_STATUS_UNKNOWN = 0,
     /** Goal was accepted and is pending execution */
@@ -57,31 +57,31 @@ typedef enum nano_ros_goal_status_t {
     NROS_GOAL_STATUS_CANCELED = 5,
     /** Goal was aborted (failed) */
     NROS_GOAL_STATUS_ABORTED = 6,
-} nano_ros_goal_status_t;
+} nros_goal_status_t;
 
 /**
  * Goal response codes for goal request handling.
  */
-typedef enum nano_ros_goal_response_t {
+typedef enum nros_goal_response_t {
     /** Reject the goal */
     NROS_GOAL_REJECT = 0,
     /** Accept the goal and start executing immediately */
     NROS_GOAL_ACCEPT_AND_EXECUTE = 1,
     /** Accept the goal but defer execution */
     NROS_GOAL_ACCEPT_AND_DEFER = 2,
-} nano_ros_goal_response_t;
+} nros_goal_response_t;
 
 /**
  * Cancel response codes.
  */
-typedef enum nano_ros_cancel_response_t {
+typedef enum nros_cancel_response_t {
     /** Reject the cancel request */
     NROS_CANCEL_REJECT = 0,
     /** Accept the cancel request */
     NROS_CANCEL_ACCEPT = 1,
-} nano_ros_cancel_response_t;
+} nros_cancel_response_t;
 
-// nano_ros_action_type_t is defined in nros/types.h (included above)
+// nros_action_type_t is defined in nros/types.h (included above)
 
 // ============================================================================
 // Goal UUID
@@ -92,10 +92,10 @@ typedef enum nano_ros_cancel_response_t {
  *
  * 16-byte UUID identifying a goal.
  */
-typedef struct nano_ros_goal_uuid_t {
+typedef struct nros_goal_uuid_t {
     /** UUID bytes */
     uint8_t uuid[16];
-} nano_ros_goal_uuid_t;
+} nros_goal_uuid_t;
 
 // ============================================================================
 // Goal Handle
@@ -106,16 +106,16 @@ typedef struct nano_ros_goal_uuid_t {
  *
  * Represents a single goal on the action server.
  */
-typedef struct nano_ros_goal_handle_t {
+typedef struct nros_goal_handle_t {
     /** Goal UUID */
-    nano_ros_goal_uuid_t uuid;
+    nros_goal_uuid_t uuid;
     /** Current status */
-    nano_ros_goal_status_t status;
+    nros_goal_status_t status;
     /** Whether this goal slot is in use */
     bool active;
     /** User context pointer for this goal */
     void *context;
-} nano_ros_goal_handle_t;
+} nros_goal_handle_t;
 
 // ============================================================================
 // Action Server
@@ -124,14 +124,14 @@ typedef struct nano_ros_goal_handle_t {
 /**
  * Action server state.
  */
-typedef enum nano_ros_action_server_state_t {
+typedef enum nros_action_server_state_t {
     /** Not initialized */
     NROS_ACTION_SERVER_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_ACTION_SERVER_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_ACTION_SERVER_STATE_SHUTDOWN = 2,
-} nano_ros_action_server_state_t;
+} nros_action_server_state_t;
 
 /**
  * Goal request callback type.
@@ -145,8 +145,8 @@ typedef enum nano_ros_action_server_state_t {
  * @param context User-provided context
  * @return Goal response (accept/reject)
  */
-typedef nano_ros_goal_response_t (*nano_ros_goal_callback_t)(
-    const nano_ros_goal_uuid_t *goal_uuid,
+typedef nros_goal_response_t (*nros_goal_callback_t)(
+    const nros_goal_uuid_t *goal_uuid,
     const uint8_t *goal_request,
     size_t goal_len,
     void *context);
@@ -160,8 +160,8 @@ typedef nano_ros_goal_response_t (*nano_ros_goal_callback_t)(
  * @param context User-provided context
  * @return Cancel response (accept/reject)
  */
-typedef nano_ros_cancel_response_t (*nano_ros_cancel_callback_t)(
-    nano_ros_goal_handle_t *goal,
+typedef nros_cancel_response_t (*nros_cancel_callback_t)(
+    nros_goal_handle_t *goal,
     void *context);
 
 /**
@@ -173,31 +173,31 @@ typedef nano_ros_cancel_response_t (*nano_ros_cancel_callback_t)(
  * @param goal Goal handle for the accepted goal
  * @param context User-provided context
  */
-typedef void (*nano_ros_accepted_callback_t)(
-    nano_ros_goal_handle_t *goal,
+typedef void (*nros_accepted_callback_t)(
+    nros_goal_handle_t *goal,
     void *context);
 
 /**
  * Action server structure.
  */
-typedef struct nano_ros_action_server_t {
+typedef struct nros_action_server_t {
     /** Current state */
-    nano_ros_action_server_state_t state;
+    nros_action_server_state_t state;
     /** Goal callback */
-    nano_ros_goal_callback_t goal_callback;
+    nros_goal_callback_t goal_callback;
     /** Cancel callback */
-    nano_ros_cancel_callback_t cancel_callback;
+    nros_cancel_callback_t cancel_callback;
     /** Accepted callback */
-    nano_ros_accepted_callback_t accepted_callback;
+    nros_accepted_callback_t accepted_callback;
     /** User context pointer */
     void *context;
     /** Goal handles (static array for embedded use) */
-    nano_ros_goal_handle_t goals[NROS_MAX_CONCURRENT_GOALS];
+    nros_goal_handle_t goals[NROS_MAX_CONCURRENT_GOALS];
     /** Number of active goals */
     size_t active_goal_count;
     /** Opaque pointer to internal implementation */
     void *_internal;
-} nano_ros_action_server_t;
+} nros_action_server_t;
 
 // ============================================================================
 // Action Client
@@ -206,14 +206,14 @@ typedef struct nano_ros_action_server_t {
 /**
  * Action client state.
  */
-typedef enum nano_ros_action_client_state_t {
+typedef enum nros_action_client_state_t {
     /** Not initialized */
     NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
     /** Initialized and ready */
     NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
     /** Shutdown */
     NROS_ACTION_CLIENT_STATE_SHUTDOWN = 2,
-} nano_ros_action_client_state_t;
+} nros_action_client_state_t;
 
 /**
  * Feedback callback type.
@@ -225,8 +225,8 @@ typedef enum nano_ros_action_client_state_t {
  * @param feedback_len Length of feedback in bytes
  * @param context User-provided context
  */
-typedef void (*nano_ros_feedback_callback_t)(
-    const nano_ros_goal_uuid_t *goal_uuid,
+typedef void (*nros_feedback_callback_t)(
+    const nros_goal_uuid_t *goal_uuid,
     const uint8_t *feedback,
     size_t feedback_len,
     void *context);
@@ -242,9 +242,9 @@ typedef void (*nano_ros_feedback_callback_t)(
  * @param result_len Length of result in bytes
  * @param context User-provided context
  */
-typedef void (*nano_ros_result_callback_t)(
-    const nano_ros_goal_uuid_t *goal_uuid,
-    nano_ros_goal_status_t status,
+typedef void (*nros_result_callback_t)(
+    const nros_goal_uuid_t *goal_uuid,
+    nros_goal_status_t status,
     const uint8_t *result,
     size_t result_len,
     void *context);
@@ -252,18 +252,18 @@ typedef void (*nano_ros_result_callback_t)(
 /**
  * Action client structure.
  */
-typedef struct nano_ros_action_client_t {
+typedef struct nros_action_client_t {
     /** Current state */
-    nano_ros_action_client_state_t state;
+    nros_action_client_state_t state;
     /** Feedback callback */
-    nano_ros_feedback_callback_t feedback_callback;
+    nros_feedback_callback_t feedback_callback;
     /** Result callback */
-    nano_ros_result_callback_t result_callback;
+    nros_result_callback_t result_callback;
     /** User context pointer */
     void *context;
     /** Opaque pointer to internal implementation */
     void *_internal;
-} nano_ros_action_client_t;
+} nros_action_client_t;
 
 // ============================================================================
 // Action Server Functions
@@ -275,7 +275,7 @@ typedef struct nano_ros_action_client_t {
  * @return Zero-initialized action server structure
  */
 NROS_PUBLIC
-nano_ros_action_server_t nano_ros_action_server_get_zero_initialized(void);
+nros_action_server_t nros_action_server_get_zero_initialized(void);
 
 /**
  * Initialize an action server.
@@ -294,14 +294,14 @@ nano_ros_action_server_t nano_ros_action_server_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_server_init(
-    nano_ros_action_server_t *server,
+nros_ret_t nros_action_server_init(
+    nros_action_server_t *server,
     struct nros_node_t *node,
     const char *action_name,
-    const nano_ros_action_type_t *type,
-    nano_ros_goal_callback_t goal_callback,
-    nano_ros_cancel_callback_t cancel_callback,
-    nano_ros_accepted_callback_t accepted_callback,
+    const nros_action_type_t *type,
+    nros_goal_callback_t goal_callback,
+    nros_cancel_callback_t cancel_callback,
+    nros_accepted_callback_t accepted_callback,
     void *context);
 
 /**
@@ -316,8 +316,8 @@ nano_ros_ret_t nano_ros_action_server_init(
  * @return NROS_RET_ERROR on publish failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_publish_feedback(
-    nano_ros_goal_handle_t *goal,
+nros_ret_t nros_action_publish_feedback(
+    nros_goal_handle_t *goal,
     const uint8_t *feedback,
     size_t feedback_len);
 
@@ -333,8 +333,8 @@ nano_ros_ret_t nano_ros_action_publish_feedback(
  * @return NROS_RET_ERROR on publish failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_succeed(
-    nano_ros_goal_handle_t *goal,
+nros_ret_t nros_action_succeed(
+    nros_goal_handle_t *goal,
     const uint8_t *result,
     size_t result_len);
 
@@ -350,8 +350,8 @@ nano_ros_ret_t nano_ros_action_succeed(
  * @return NROS_RET_ERROR on publish failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_abort(
-    nano_ros_goal_handle_t *goal,
+nros_ret_t nros_action_abort(
+    nros_goal_handle_t *goal,
     const uint8_t *result,
     size_t result_len);
 
@@ -367,8 +367,8 @@ nano_ros_ret_t nano_ros_action_abort(
  * @return NROS_RET_ERROR on publish failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_canceled(
-    nano_ros_goal_handle_t *goal,
+nros_ret_t nros_action_canceled(
+    nros_goal_handle_t *goal,
     const uint8_t *result,
     size_t result_len);
 
@@ -381,7 +381,7 @@ nano_ros_ret_t nano_ros_action_canceled(
  * @return NROS_RET_NOT_ALLOWED if goal is not in accepted state
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_execute(nano_ros_goal_handle_t *goal);
+nros_ret_t nros_action_execute(nros_goal_handle_t *goal);
 
 /**
  * Get the number of active goals.
@@ -390,8 +390,8 @@ nano_ros_ret_t nano_ros_action_execute(nano_ros_goal_handle_t *goal);
  * @return Number of active goals, or 0 if server is NULL
  */
 NROS_PUBLIC
-size_t nano_ros_action_server_get_active_goal_count(
-    const nano_ros_action_server_t *server);
+size_t nros_action_server_get_active_goal_count(
+    const nros_action_server_t *server);
 
 /**
  * Finalize an action server.
@@ -402,7 +402,7 @@ size_t nano_ros_action_server_get_active_goal_count(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_server_fini(nano_ros_action_server_t *server);
+nros_ret_t nros_action_server_fini(nros_action_server_t *server);
 
 // ============================================================================
 // Action Client Functions
@@ -414,7 +414,7 @@ nano_ros_ret_t nano_ros_action_server_fini(nano_ros_action_server_t *server);
  * @return Zero-initialized action client structure
  */
 NROS_PUBLIC
-nano_ros_action_client_t nano_ros_action_client_get_zero_initialized(void);
+nros_action_client_t nros_action_client_get_zero_initialized(void);
 
 /**
  * Initialize an action client.
@@ -429,11 +429,11 @@ nano_ros_action_client_t nano_ros_action_client_get_zero_initialized(void);
  * @return NROS_RET_ERROR on initialization failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_client_init(
-    nano_ros_action_client_t *client,
+nros_ret_t nros_action_client_init(
+    nros_action_client_t *client,
     struct nros_node_t *node,
     const char *action_name,
-    const nano_ros_action_type_t *type);
+    const nros_action_type_t *type);
 
 /**
  * Set feedback callback.
@@ -445,9 +445,9 @@ nano_ros_ret_t nano_ros_action_client_init(
  * @return NROS_RET_INVALID_ARGUMENT if client is NULL
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_client_set_feedback_callback(
-    nano_ros_action_client_t *client,
-    nano_ros_feedback_callback_t callback,
+nros_ret_t nros_action_client_set_feedback_callback(
+    nros_action_client_t *client,
+    nros_feedback_callback_t callback,
     void *context);
 
 /**
@@ -460,9 +460,9 @@ nano_ros_ret_t nano_ros_action_client_set_feedback_callback(
  * @return NROS_RET_INVALID_ARGUMENT if client is NULL
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_client_set_result_callback(
-    nano_ros_action_client_t *client,
-    nano_ros_result_callback_t callback,
+nros_ret_t nros_action_client_set_result_callback(
+    nros_action_client_t *client,
+    nros_result_callback_t callback,
     void *context);
 
 /**
@@ -479,11 +479,11 @@ nano_ros_ret_t nano_ros_action_client_set_result_callback(
  * @return NROS_RET_ERROR on send failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_send_goal(
-    nano_ros_action_client_t *client,
+nros_ret_t nros_action_send_goal(
+    nros_action_client_t *client,
     const uint8_t *goal,
     size_t goal_len,
-    nano_ros_goal_uuid_t *goal_uuid);
+    nros_goal_uuid_t *goal_uuid);
 
 /**
  * Request cancellation of a goal.
@@ -496,9 +496,9 @@ nano_ros_ret_t nano_ros_action_send_goal(
  * @return NROS_RET_ERROR on send failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_cancel_goal(
-    nano_ros_action_client_t *client,
-    const nano_ros_goal_uuid_t *goal_uuid);
+nros_ret_t nros_action_cancel_goal(
+    nros_action_client_t *client,
+    const nros_goal_uuid_t *goal_uuid);
 
 /**
  * Request result of a goal (blocking).
@@ -516,10 +516,10 @@ nano_ros_ret_t nano_ros_action_cancel_goal(
  * @return NROS_RET_ERROR on failure
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_get_result(
-    nano_ros_action_client_t *client,
-    const nano_ros_goal_uuid_t *goal_uuid,
-    nano_ros_goal_status_t *status,
+nros_ret_t nros_action_get_result(
+    nros_action_client_t *client,
+    const nros_goal_uuid_t *goal_uuid,
+    nros_goal_status_t *status,
     uint8_t *result,
     size_t result_capacity,
     size_t *result_len);
@@ -533,7 +533,7 @@ nano_ros_ret_t nano_ros_action_get_result(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_action_client_fini(nano_ros_action_client_t *client);
+nros_ret_t nros_action_client_fini(nros_action_client_t *client);
 
 // ============================================================================
 // Utility Functions
@@ -547,7 +547,7 @@ nano_ros_ret_t nano_ros_action_client_fini(nano_ros_action_client_t *client);
  * @return NROS_RET_INVALID_ARGUMENT if uuid is NULL
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_goal_uuid_generate(nano_ros_goal_uuid_t *uuid);
+nros_ret_t nros_goal_uuid_generate(nros_goal_uuid_t *uuid);
 
 /**
  * Compare two goal UUIDs.
@@ -557,9 +557,9 @@ nano_ros_ret_t nano_ros_goal_uuid_generate(nano_ros_goal_uuid_t *uuid);
  * @return true if equal, false otherwise
  */
 NROS_PUBLIC
-bool nano_ros_goal_uuid_equal(
-    const nano_ros_goal_uuid_t *a,
-    const nano_ros_goal_uuid_t *b);
+bool nros_goal_uuid_equal(
+    const nros_goal_uuid_t *a,
+    const nros_goal_uuid_t *b);
 
 /**
  * Get status name as string.
@@ -568,7 +568,7 @@ bool nano_ros_goal_uuid_equal(
  * @return String representation of status
  */
 NROS_PUBLIC
-const char *nano_ros_goal_status_to_string(nano_ros_goal_status_t status);
+const char *nros_goal_status_to_string(nros_goal_status_t status);
 
 #ifdef __cplusplus
 }

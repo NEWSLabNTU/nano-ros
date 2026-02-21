@@ -23,7 +23,7 @@ extern "C" {
 // ============================================================================
 
 /** Timer state */
-typedef enum nano_ros_timer_state_t {
+typedef enum nros_timer_state_t {
     /** Not initialized */
     NROS_TIMER_STATE_UNINITIALIZED = 0,
     /** Initialized and running */
@@ -32,14 +32,14 @@ typedef enum nano_ros_timer_state_t {
     NROS_TIMER_STATE_CANCELED = 2,
     /** Shutdown */
     NROS_TIMER_STATE_SHUTDOWN = 3,
-} nano_ros_timer_state_t;
+} nros_timer_state_t;
 
 // ============================================================================
 // Timer Callback
 // ============================================================================
 
 // Forward declaration
-struct nano_ros_timer_t;
+struct nros_timer_t;
 
 /**
  * Timer callback function type.
@@ -47,8 +47,8 @@ struct nano_ros_timer_t;
  * @param timer Pointer to the timer that triggered
  * @param context User-provided context pointer
  */
-typedef void (*nano_ros_timer_callback_t)(
-    struct nano_ros_timer_t *timer,
+typedef void (*nros_timer_callback_t)(
+    struct nros_timer_t *timer,
     void *context);
 
 // ============================================================================
@@ -56,20 +56,20 @@ typedef void (*nano_ros_timer_callback_t)(
 // ============================================================================
 
 /** Timer structure */
-typedef struct nano_ros_timer_t {
+typedef struct nros_timer_t {
     /** Current state */
-    nano_ros_timer_state_t state;
+    nros_timer_state_t state;
     /** Period in nanoseconds */
     uint64_t period_ns;
     /** Last trigger time in nanoseconds */
     uint64_t last_call_time_ns;
     /** User callback function */
-    nano_ros_timer_callback_t callback;
+    nros_timer_callback_t callback;
     /** User context pointer */
     void *context;
     /** Pointer to parent support context */
-    const nano_ros_support_t *support;
-} nano_ros_timer_t;
+    const nros_support_t *support;
+} nros_timer_t;
 
 // ============================================================================
 // Timer Functions
@@ -81,7 +81,7 @@ typedef struct nano_ros_timer_t {
  * @return Zero-initialized timer structure
  */
 NROS_PUBLIC
-nano_ros_timer_t nano_ros_timer_get_zero_initialized(void);
+nros_timer_t nros_timer_get_zero_initialized(void);
 
 /**
  * Initialize a timer.
@@ -97,11 +97,11 @@ nano_ros_timer_t nano_ros_timer_get_zero_initialized(void);
  * @return NROS_RET_NOT_INIT if support is not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_timer_init(
-    nano_ros_timer_t *timer,
-    const nano_ros_support_t *support,
+nros_ret_t nros_timer_init(
+    nros_timer_t *timer,
+    const nros_support_t *support,
     uint64_t period_ns,
-    nano_ros_timer_callback_t callback,
+    nros_timer_callback_t callback,
     void *context);
 
 /**
@@ -116,7 +116,7 @@ nano_ros_ret_t nano_ros_timer_init(
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_timer_cancel(nano_ros_timer_t *timer);
+nros_ret_t nros_timer_cancel(nros_timer_t *timer);
 
 /**
  * Reset a timer.
@@ -131,7 +131,7 @@ nano_ros_ret_t nano_ros_timer_cancel(nano_ros_timer_t *timer);
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_timer_reset(nano_ros_timer_t *timer);
+nros_ret_t nros_timer_reset(nros_timer_t *timer);
 
 /**
  * Finalize a timer.
@@ -143,7 +143,7 @@ nano_ros_ret_t nano_ros_timer_reset(nano_ros_timer_t *timer);
  * @return NROS_RET_NOT_INIT if not initialized
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_timer_fini(nano_ros_timer_t *timer);
+nros_ret_t nros_timer_fini(nros_timer_t *timer);
 
 /**
  * Check if timer is ready to fire.
@@ -154,7 +154,7 @@ nano_ros_ret_t nano_ros_timer_fini(nano_ros_timer_t *timer);
  * @return Non-zero if timer is ready, 0 otherwise
  */
 NROS_PUBLIC
-int nano_ros_timer_is_ready(const nano_ros_timer_t *timer, uint64_t current_time_ns);
+int nros_timer_is_ready(const nros_timer_t *timer, uint64_t current_time_ns);
 
 /**
  * Call the timer callback and update last call time.
@@ -169,7 +169,7 @@ int nano_ros_timer_is_ready(const nano_ros_timer_t *timer, uint64_t current_time
  * @return NROS_RET_NOT_INIT if not initialized or not running
  */
 NROS_PUBLIC NROS_WARN_UNUSED
-nano_ros_ret_t nano_ros_timer_call(nano_ros_timer_t *timer, uint64_t current_time_ns);
+nros_ret_t nros_timer_call(nros_timer_t *timer, uint64_t current_time_ns);
 
 /**
  * Check if timer is valid (initialized and not shutdown).
@@ -179,7 +179,7 @@ nano_ros_ret_t nano_ros_timer_call(nano_ros_timer_t *timer, uint64_t current_tim
  * @return Non-zero if valid, 0 if invalid or NULL
  */
 NROS_PUBLIC
-int nano_ros_timer_is_valid(const nano_ros_timer_t *timer);
+int nros_timer_is_valid(const nros_timer_t *timer);
 
 /**
  * Get the timer period in nanoseconds.
@@ -189,7 +189,7 @@ int nano_ros_timer_is_valid(const nano_ros_timer_t *timer);
  * @return Period in nanoseconds, or 0 if invalid
  */
 NROS_PUBLIC
-uint64_t nano_ros_timer_get_period(const nano_ros_timer_t *timer);
+uint64_t nros_timer_get_period(const nros_timer_t *timer);
 
 /**
  * Get the time until next timer firing.
@@ -200,8 +200,8 @@ uint64_t nano_ros_timer_get_period(const nano_ros_timer_t *timer);
  * @return Time until next firing in nanoseconds, or 0 if ready now or invalid
  */
 NROS_PUBLIC
-uint64_t nano_ros_timer_get_time_until_next_call(
-    const nano_ros_timer_t *timer,
+uint64_t nros_timer_get_time_until_next_call(
+    const nros_timer_t *timer,
     uint64_t current_time_ns);
 
 #ifdef __cplusplus

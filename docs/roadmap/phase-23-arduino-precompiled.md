@@ -59,25 +59,25 @@ The `micro_ros_arduino` library (source in `external/micro_ros_arduino/`) is the
 ┌─────────────────────────────────────────────────────────────────┐
 │                    Arduino IDE Sketch (.ino)                     │
 │                                                                  │
-│  #include <nano_ros_arduino.h>                                  │
+│  #include <nros_arduino.h>                                  │
 │  #include <std_msgs/msg/int32.h>                                │
 │                                                                  │
-│  nano_ros_context_t ctx;                                        │
+│  nros_context_t ctx;                                        │
 │  nros_node_t node;                                          │
-│  nano_ros_publisher_t pub;                                      │
+│  nros_publisher_t pub;                                      │
 │  std_msgs__msg__Int32 msg;                                      │
 │                                                                  │
 │  setup(): set_nanoros_wifi_transports(ssid, pass, locator);     │
-│           nano_ros_init(&ctx, ...);                             │
+│           nros_init(&ctx, ...);                             │
 │           nros_node_create(&node, &ctx, "talker");          │
-│           nano_ros_publisher_create(&pub, &node, "/chatter");   │
+│           nros_publisher_create(&pub, &node, "/chatter");   │
 │                                                                  │
-│  loop():  nano_ros_publish(&pub, &msg, sizeof(msg));            │
-│           nano_ros_spin_once(&ctx, timeout_ms);                 │
+│  loop():  nros_publish(&pub, &msg, sizeof(msg));            │
+│           nros_spin_once(&ctx, timeout_ms);                 │
 └────────────────────────────┬────────────────────────────────────┘
                              │  C API calls
 ┌────────────────────────────▼────────────────────────────────────┐
-│              nano_ros_arduino.h  (transport setup)              │
+│              nros_arduino.h  (transport setup)              │
 │                                                                  │
 │  set_nanoros_wifi_transports(ssid, pass, locator)               │
 │  set_nanoros_serial_transports()          (future)              │
@@ -117,12 +117,12 @@ Unlike micro-ROS's 3-layer stack (rclc → rcl → rmw → Micro XRCE-DDS), nros
 
 ## Target API
 
-Following the micro-ROS pattern: raw C API with transport setup helpers and error-checking macros. No C++ wrapper classes — users call `nano_ros_*()` functions directly.
+Following the micro-ROS pattern: raw C API with transport setup helpers and error-checking macros. No C++ wrapper classes — users call `nros_*()` functions directly.
 
 ### Arduino Sketch (Talker)
 
 ```cpp
-#include <nano_ros_arduino.h>
+#include <nros_arduino.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/publisher.h>
@@ -132,9 +132,9 @@ Following the micro-ROS pattern: raw C API with transport setup helpers and erro
 #define NRCHECK(fn) { int rc = fn; if (rc != 0) { Serial.printf("Error %d at %s:%d\n", rc, __FILE__, __LINE__); while(1) delay(1000); }}
 #define NRSOFTCHECK(fn) { int rc = fn; if (rc != 0) { Serial.printf("Warning %d at %s:%d\n", rc, __FILE__, __LINE__); }}
 
-nano_ros_context_t ctx;
+nros_context_t ctx;
 nros_node_t node;
-nano_ros_publisher_t pub;
+nros_publisher_t pub;
 int count = 0;
 
 void setup() {
@@ -144,18 +144,18 @@ void setup() {
     set_nanoros_wifi_transports("MyNetwork", "password123", "tcp/192.168.1.1:7447");
 
     // Standard C API calls (same on all platforms)
-    NRCHECK(nano_ros_init(&ctx));
+    NRCHECK(nros_init(&ctx));
     NRCHECK(nros_node_create(&node, &ctx, "talker"));
-    NRCHECK(nano_ros_publisher_create(&pub, &node, "/chatter",
+    NRCHECK(nros_publisher_create(&pub, &node, "/chatter",
         NANO_ROS_MSG_TYPE_SUPPORT(std_msgs, msg, Int32)));
 }
 
 void loop() {
     std_msgs__msg__Int32 msg = { .data = count++ };
-    NRSOFTCHECK(nano_ros_publish(&pub, &msg, sizeof(msg)));
+    NRSOFTCHECK(nros_publish(&pub, &msg, sizeof(msg)));
     Serial.printf("Published: %d\n", msg.data);
 
-    nano_ros_spin_once(&ctx, 100);
+    nros_spin_once(&ctx, 100);
     delay(1000);
 }
 ```
@@ -163,7 +163,7 @@ void loop() {
 ### Arduino Sketch (Listener)
 
 ```cpp
-#include <nano_ros_arduino.h>
+#include <nros_arduino.h>
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/subscription.h>
@@ -171,9 +171,9 @@ void loop() {
 
 #define NRCHECK(fn) { int rc = fn; if (rc != 0) { Serial.printf("Error %d\n", rc); while(1) delay(1000); }}
 
-nano_ros_context_t ctx;
+nros_context_t ctx;
 nros_node_t node;
-nano_ros_subscription_t sub;
+nros_subscription_t sub;
 std_msgs__msg__Int32 msg;
 
 void message_callback(const void* data, size_t len, void* user_data) {
@@ -185,24 +185,24 @@ void setup() {
     Serial.begin(115200);
     set_nanoros_wifi_transports("MyNetwork", "password123", "tcp/192.168.1.1:7447");
 
-    NRCHECK(nano_ros_init(&ctx));
+    NRCHECK(nros_init(&ctx));
     NRCHECK(nros_node_create(&node, &ctx, "listener"));
-    NRCHECK(nano_ros_subscription_create(&sub, &node, "/chatter",
+    NRCHECK(nros_subscription_create(&sub, &node, "/chatter",
         NANO_ROS_MSG_TYPE_SUPPORT(std_msgs, msg, Int32),
         message_callback, NULL));
 }
 
 void loop() {
-    nano_ros_spin_once(&ctx, 100);
+    nros_spin_once(&ctx, 100);
 }
 ```
 
 ### API Design Notes
 
-- **`set_nanoros_wifi_transports()`** handles WiFi connection + zenoh locator configuration in one call, following micro-ROS's `set_microros_wifi_transports()` pattern. Internally calls `WiFi.begin()` and sets the zenoh locator for subsequent `nano_ros_init()`.
+- **`set_nanoros_wifi_transports()`** handles WiFi connection + zenoh locator configuration in one call, following micro-ROS's `set_microros_wifi_transports()` pattern. Internally calls `WiFi.begin()` and sets the zenoh locator for subsequent `nros_init()`.
 - **`NANO_ROS_MSG_TYPE_SUPPORT()`** macro provides type support metadata (topic type string, CDR size). This is used for ROS 2 topic type matching via rmw_zenoh.
-- **`nano_ros_spin_once()`** polls zenoh-pico for incoming data and dispatches subscription callbacks. Unlike micro-ROS's executor model (which requires pre-allocating handle slots), nros dispatches directly from the zenoh session — no executor initialization step.
-- **Error codes**: All `nano_ros_*()` functions return `int` (0 = success, negative = error). The `NRCHECK`/`NRSOFTCHECK` macros mirror micro-ROS's `RCCHECK`/`RCSOFTCHECK`.
+- **`nros_spin_once()`** polls zenoh-pico for incoming data and dispatches subscription callbacks. Unlike micro-ROS's executor model (which requires pre-allocating handle slots), nros dispatches directly from the zenoh session — no executor initialization step.
+- **Error codes**: All `nros_*()` functions return `int` (0 = success, negative = error). The `NRCHECK`/`NRSOFTCHECK` macros mirror micro-ROS's `RCCHECK`/`RCSOFTCHECK`.
 
 ## Implementation Plan
 
@@ -215,10 +215,10 @@ void loop() {
    ```
    arduino/nros/
    ├── library.properties        # Arduino library metadata (precompiled=true)
-   ├── keywords.txt              # Syntax highlighting for nano_ros_* functions
+   ├── keywords.txt              # Syntax highlighting for nros_* functions
    ├── src/
-   │   ├── nano_ros_arduino.h    # Transport setup (WiFi/Serial) + helper macros
-   │   ├── nano_ros_arduino.cpp  # Transport setup implementation (~70 lines)
+   │   ├── nros_arduino.h    # Transport setup (WiFi/Serial) + helper macros
+   │   ├── nros_arduino.cpp  # Transport setup implementation (~70 lines)
    │   ├── nros/             # C API headers (from packages/core/nros-c/include/)
    │   │   ├── init.h
    │   │   ├── node.h
@@ -248,7 +248,7 @@ void loop() {
    └── README.md
    ```
 2. [ ] Create `library.properties` with `precompiled=true` and `architectures=esp32`
-3. [ ] Create `keywords.txt` for IDE syntax highlighting (`nano_ros_*` functions, `NRCHECK` macro)
+3. [ ] Create `keywords.txt` for IDE syntax highlighting (`nros_*` functions, `NRCHECK` macro)
 4. [ ] Bundle pre-generated message headers for common types (std_msgs, geometry_msgs, sensor_msgs — following micro-ROS's approach of bundling ~58 packages)
 
 **Acceptance Criteria**:
@@ -265,7 +265,7 @@ void loop() {
 **What goes into `libnanoros.a`**:
 ```
 libnanoros.a (per target)
-├── libnano_ros_c.a    ← cargo build -p nros-c --target <triple> --release
+├── libnros_c.a    ← cargo build -p nros-c --target <triple> --release
 └── libzenohpico.a     ← cross-compiled C library from scripts/esp32/build-zenoh-pico.sh
 ```
 
@@ -283,17 +283,17 @@ Both archives are bundled into a single `libnanoros.a` via `ar` so Arduino sketc
 1. [ ] Create `scripts/arduino/build-libnanoros.sh` — per-target build script:
    - Cross-compile zenoh-pico for the target (reuse `scripts/esp32/build-zenoh-pico.sh` pattern)
    - Cross-compile `nros-c` crate: `cargo build -p nros-c --target <triple> --release` with appropriate platform feature (not `shim-posix` — needs bare-metal/smoltcp backend from Phase 21)
-   - Bundle both `.a` files: `ar crsT libnanoros.a libnano_ros_c.a libzenohpico.a`
+   - Bundle both `.a` files: `ar crsT libnanoros.a libnros_c.a libzenohpico.a`
    - Strip debug symbols: `strip --strip-debug libnanoros.a`
    - Output to `build/arduino/<board>/libnanoros.a`
 2. [ ] Create `scripts/arduino/package-arduino-lib.sh` — assemble the Arduino library:
    - Copy `libnanoros.a` for each board into `arduino/nros/src/<board>/`
    - Copy C headers from `packages/core/nros-c/include/nros/` into `arduino/nros/src/nros/`
-   - Copy transport setup files (`nano_ros_arduino.h`, `nano_ros_arduino.cpp`) into `arduino/nros/src/`
+   - Copy transport setup files (`nros_arduino.h`, `nros_arduino.cpp`) into `arduino/nros/src/`
    - Copy example sketches into `arduino/nros/examples/`
    - Stamp version in `library.properties`
    - Produce distributable zip: `nano-ros-arduino-v<version>.zip`
-3. [ ] Verify exported symbols: `nm -g libnanoros.a | grep ' T nano_ros_'` — all C API functions must be present
+3. [ ] Verify exported symbols: `nm -g libnanoros.a | grep ' T nros_'` — all C API functions must be present
 4. [ ] Verify no undefined platform symbols: `nm -u libnanoros.a` — must not reference POSIX APIs (`pthread_*`, `dlopen`, etc.)
 5. [ ] Add `just build-arduino-libs` recipe (calls build-libnanoros.sh for each target)
 6. [ ] Add `just package-arduino` recipe (calls package-arduino-lib.sh)
@@ -317,7 +317,7 @@ Both archives are bundled into a single `libnanoros.a` via `ar` so Arduino sketc
 Following micro-ROS's pattern, the only Arduino-specific code is the transport setup (~70 lines per transport). The C API itself is platform-agnostic.
 
 **Tasks**:
-1. [ ] Implement `nano_ros_arduino.h` header:
+1. [ ] Implement `nros_arduino.h` header:
    ```cpp
    #ifndef NANO_ROS_ARDUINO_H
    #define NANO_ROS_ARDUINO_H
@@ -341,8 +341,8 @@ Following micro-ROS's pattern, the only Arduino-specific code is the transport s
 
    #endif
    ```
-2. [ ] Implement `nano_ros_arduino.cpp`:
-   - `set_nanoros_wifi_transports()`: Call `WiFi.begin(ssid, pass)`, wait for `WL_CONNECTED`, configure zenoh locator for subsequent `nano_ros_init()` call
+2. [ ] Implement `nros_arduino.cpp`:
+   - `set_nanoros_wifi_transports()`: Call `WiFi.begin(ssid, pass)`, wait for `WL_CONNECTED`, configure zenoh locator for subsequent `nros_init()` call
    - `nanoros_ping()`: Lightweight connectivity check (zenoh scout or session open/close)
    - Platform detection via preprocessor (`#if defined(ESP32)`, `#elif defined(ARDUINO_ARCH_RP2040)`)
 3. [ ] Implement `set_nanoros_serial_transports()` (future, lower priority — nros's value is direct WiFi/Ethernet without an agent)
@@ -392,12 +392,12 @@ Testing is organized into tiers, from fastest/cheapest (host-native, no hardware
 
 **Depends on**: 23.3 (transport setup, to know which C functions the examples use)
 
-Verify the existing C API test suite (`just test-c`) covers every `nano_ros_*` function used by the example sketches. No new infrastructure needed — this runs on the host against the native `libnano_ros_c.a`.
+Verify the existing C API test suite (`just test-c`) covers every `nros_*` function used by the example sketches. No new infrastructure needed — this runs on the host against the native `libnros_c.a`.
 
 **Tasks**:
-1. [ ] Audit example sketches → list every `nano_ros_*` C function they call
+1. [ ] Audit example sketches → list every `nros_*` C function they call
 2. [ ] Cross-reference with `packages/testing/nros-tests/tests/c_api.rs` — flag gaps
-3. [ ] Add missing C API test cases (e.g., if `nano_ros_spin_once` or subscription callbacks aren't covered)
+3. [ ] Add missing C API test cases (e.g., if `nros_spin_once` or subscription callbacks aren't covered)
 
 **Acceptance Criteria**:
 - [ ] Every C API function used by the Arduino examples has at least one test in `test-c`
@@ -453,12 +453,12 @@ Validate wire-compatibility of `libnanoros.a` output across architectures. This 
 
 **Depends on**: 23.3 (transport setup)
 
-Test `nano_ros_arduino.cpp` on x86 Linux without any emulator or hardware. Compile the transport setup code against the native `libnano_ros_c.a` with a stub `WiFi.h` that returns "connected" immediately. This validates the transport setup logic and `nanoros_ping()` without needing WiFi or an ESP32.
+Test `nros_arduino.cpp` on x86 Linux without any emulator or hardware. Compile the transport setup code against the native `libnros_c.a` with a stub `WiFi.h` that returns "connected" immediately. This validates the transport setup logic and `nanoros_ping()` without needing WiFi or an ESP32.
 
 **Tasks**:
 1. [ ] Create `tests/arduino/mock_wifi/WiFi.h` — stub that satisfies `WiFi.begin()`, `WiFi.status()` with no-ops
-2. [ ] Create `tests/arduino/test-transport-host.cpp` — call `set_nanoros_wifi_transports()` with mock WiFi, then `nano_ros_init()` → `nros_node_create()` → publish/subscribe via zenohd on localhost
-3. [ ] Add CMake build for host transport test (link `nano_ros_arduino.cpp` + `libnano_ros_c.a` + stubs)
+2. [ ] Create `tests/arduino/test-transport-host.cpp` — call `set_nanoros_wifi_transports()` with mock WiFi, then `nros_init()` → `nros_node_create()` → publish/subscribe via zenohd on localhost
+3. [ ] Add CMake build for host transport test (link `nros_arduino.cpp` + `libnros_c.a` + stubs)
 4. [ ] Add `just test-arduino-transport` recipe
 
 **Acceptance Criteria**:
@@ -539,7 +539,7 @@ Phase 22.5c/d (ESP32-C3      │
 - **Phase 21** (C API `no_std` backend) is the critical blocker: `nros-c` currently requires `shim-posix` (POSIX sockets). Cross-compiling for ESP32 bare-metal needs a `shim-smoltcp` or equivalent platform backend that routes through zenoh-pico's smoltcp integration.
 - **Phase 22.2** provides the zenoh-pico RISC-V cross-compilation scripts reused by 23.2.
 - **Phase 22.5c/d** provides the Espressif QEMU installation and test infrastructure needed for 23.5b emulator tests.
-- **Phase 11** (C API) provides the `nano_ros_*` functions and headers that the Arduino wrapper calls.
+- **Phase 11** (C API) provides the `nros_*` functions and headers that the Arduino wrapper calls.
 - **23.5b and 23.5c** (emulator tests) can proceed independently of **23.5d and 23.5e** (wrapper/WiFi tests).
 
 ## Risks and Mitigations
@@ -561,11 +561,11 @@ Phase 22.5c/d (ESP32-C3      │
 
 | Feature                  | micro_ros_arduino                      | nros Arduino                          |
 |--------------------------|----------------------------------------|-------------------------------------------|
-| **User-facing API**      | Raw C (rcl/rclc functions)             | Raw C (nano_ros_* functions)              |
+| **User-facing API**      | Raw C (rcl/rclc functions)             | Raw C (nros_* functions)              |
 | C++ wrapper classes      | None                                   | None                                      |
 | Transport setup          | `set_microros_wifi_transports()`       | `set_nanoros_wifi_transports()`           |
 | Error handling           | `RCCHECK()` / `RCSOFTCHECK()` macros  | `NRCHECK()` / `NRSOFTCHECK()` macros     |
-| Spin model               | `rclc_executor_spin_some()` in loop()  | `nano_ros_spin_once()` in loop()          |
+| Spin model               | `rclc_executor_spin_some()` in loop()  | `nros_spin_once()` in loop()          |
 | **Infrastructure**       |                                        |                                           |
 | Agent required           | Yes (micro-ROS Agent on host)          | No (direct to zenohd)                     |
 | Middleware               | Micro XRCE-DDS                         | zenoh-pico                                |

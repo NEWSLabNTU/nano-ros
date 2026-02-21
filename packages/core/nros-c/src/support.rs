@@ -12,7 +12,7 @@ use crate::error::*;
 /// Support context state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_support_state_t {
+pub enum nros_support_state_t {
     /// Not initialized
     NROS_SUPPORT_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -26,9 +26,9 @@ pub enum nano_ros_support_state_t {
 /// This is the main context for nros, similar to rclc_support_t.
 /// It manages the middleware session and provides shared resources.
 #[repr(C)]
-pub struct nano_ros_support_t {
+pub struct nros_support_t {
     /// Current state
-    pub state: nano_ros_support_state_t,
+    pub state: nros_support_state_t,
     /// Domain ID (ROS_DOMAIN_ID)
     pub domain_id: u8,
     /// Locator string storage
@@ -39,10 +39,10 @@ pub struct nano_ros_support_t {
     _internal: *mut core::ffi::c_void,
 }
 
-impl Default for nano_ros_support_t {
+impl Default for nros_support_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED,
+            state: nros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED,
             domain_id: 0,
             locator: [0u8; MAX_LOCATOR_LEN],
             locator_len: 0,
@@ -56,8 +56,8 @@ impl Default for nano_ros_support_t {
 /// # Safety
 /// Returns a stack-allocated struct that must be initialized before use.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_support_get_zero_initialized() -> nano_ros_support_t {
-    nano_ros_support_t::default()
+pub extern "C" fn nros_support_get_zero_initialized() -> nros_support_t {
+    nros_support_t::default()
 }
 
 /// Initialize the support context.
@@ -76,14 +76,14 @@ pub extern "C" fn nano_ros_support_get_zero_initialized() -> nano_ros_support_t 
 /// * `NROS_RET_ERROR` on initialization failure
 ///
 /// # Safety
-/// * `support` must be a valid pointer to a zero-initialized nano_ros_support_t
+/// * `support` must be a valid pointer to a zero-initialized nros_support_t
 /// * `locator` must be a valid null-terminated string or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_support_init(
-    support: *mut nano_ros_support_t,
+pub unsafe extern "C" fn nros_support_init(
+    support: *mut nros_support_t,
     locator: *const c_char,
     domain_id: u8,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -91,7 +91,7 @@ pub unsafe extern "C" fn nano_ros_support_init(
     let support = &mut *support;
 
     // Check if already initialized
-    if support.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED {
+    if support.state != nros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -151,7 +151,7 @@ pub unsafe extern "C" fn nano_ros_support_init(
             Ok(session) => {
                 let session_box = alloc::boxed::Box::new(session);
                 support._internal = alloc::boxed::Box::into_raw(session_box) as *mut _;
-                support.state = nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
+                support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
                 NROS_RET_OK
             }
             Err(_) => NROS_RET_ERROR,
@@ -179,16 +179,16 @@ pub unsafe extern "C" fn nano_ros_support_init(
 /// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
-/// * `support` must be a valid pointer to an initialized nano_ros_support_t
+/// * `support` must be a valid pointer to an initialized nros_support_t
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_support_fini(support: *mut nros_support_t) -> nros_ret_t {
     if support.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let support = &mut *support;
 
-    if support.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+    if support.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -203,7 +203,7 @@ pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t)
     }
 
     support._internal = ptr::null_mut();
-    support.state = nano_ros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
+    support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -216,13 +216,13 @@ pub unsafe extern "C" fn nano_ros_support_fini(support: *mut nano_ros_support_t)
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_support_is_valid(support: *const nano_ros_support_t) -> c_int {
+pub unsafe extern "C" fn nros_support_is_valid(support: *const nros_support_t) -> c_int {
     if support.is_null() {
         return 0;
     }
 
     let support = &*support;
-    if support.state == nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+    if support.state == nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
         1
     } else {
         0
@@ -238,24 +238,24 @@ mod verification {
     #[kani::unwind(5)]
     fn support_init_null_ptr() {
         // NULL support pointer → INVALID_ARGUMENT
-        let ret = unsafe { nano_ros_support_init(core::ptr::null_mut(), core::ptr::null(), 0) };
+        let ret = unsafe { nros_support_init(core::ptr::null_mut(), core::ptr::null(), 0) };
         assert_eq!(ret, NROS_RET_INVALID_ARGUMENT);
     }
 
     #[kani::proof]
     #[kani::unwind(5)]
     fn support_zero_initialized_state() {
-        let support = nano_ros_support_get_zero_initialized();
+        let support = nros_support_get_zero_initialized();
         assert_eq!(
             support.state,
-            nano_ros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED
+            nros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED
         );
         assert_eq!(support.domain_id, 0);
         assert!(support._internal.is_null());
     }
 }
 
-impl nano_ros_support_t {
+impl nros_support_t {
     /// Get the internal session pointer (for internal use)
     #[cfg(feature = "alloc")]
     pub(crate) unsafe fn get_session(&self) -> Option<&nros::internals::RmwSession> {

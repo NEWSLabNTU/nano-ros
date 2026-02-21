@@ -8,15 +8,15 @@ use core::ptr;
 use crate::constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
-use crate::qos::nano_ros_qos_t;
-use crate::support::nano_ros_support_state_t;
+use crate::qos::nros_qos_t;
+use crate::support::nros_support_state_t;
 
 /// Message type information.
 ///
 /// This structure describes a ROS message type for use with publishers
 /// and subscribers.
 #[repr(C)]
-pub struct nano_ros_message_type_t {
+pub struct nros_message_type_t {
     /// Type name (e.g., "std_msgs::msg::dds_::Int32")
     pub type_name: *const c_char,
     /// Type hash (RIHS format)
@@ -28,7 +28,7 @@ pub struct nano_ros_message_type_t {
 /// Publisher state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nano_ros_publisher_state_t {
+pub enum nros_publisher_state_t {
     /// Not initialized
     NROS_PUBLISHER_STATE_UNINITIALIZED = 0,
     /// Initialized and ready
@@ -39,9 +39,9 @@ pub enum nano_ros_publisher_state_t {
 
 /// Publisher structure.
 #[repr(C)]
-pub struct nano_ros_publisher_t {
+pub struct nros_publisher_t {
     /// Current state
-    pub state: nano_ros_publisher_state_t,
+    pub state: nros_publisher_state_t,
     /// Topic name storage
     topic_name: [u8; MAX_TOPIC_LEN],
     /// Topic name length
@@ -60,10 +60,10 @@ pub struct nano_ros_publisher_t {
     _internal: *mut core::ffi::c_void,
 }
 
-impl Default for nano_ros_publisher_t {
+impl Default for nros_publisher_t {
     fn default() -> Self {
         Self {
-            state: nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
+            state: nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
             topic_name: [0u8; MAX_TOPIC_LEN],
             topic_name_len: 0,
             type_name: [0u8; MAX_TYPE_NAME_LEN],
@@ -78,8 +78,8 @@ impl Default for nano_ros_publisher_t {
 
 /// Get a zero-initialized publisher.
 #[unsafe(no_mangle)]
-pub extern "C" fn nano_ros_publisher_get_zero_initialized() -> nano_ros_publisher_t {
-    nano_ros_publisher_t::default()
+pub extern "C" fn nros_publisher_get_zero_initialized() -> nros_publisher_t {
+    nros_publisher_t::default()
 }
 
 /// Initialize a publisher with default QoS (RELIABLE, KEEP_LAST(10)).
@@ -103,29 +103,29 @@ pub extern "C" fn nano_ros_publisher_get_zero_initialized() -> nano_ros_publishe
 /// * All pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publisher_init(
-    publisher: *mut nano_ros_publisher_t,
+pub unsafe extern "C" fn nros_publisher_init(
+    publisher: *mut nros_publisher_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-) -> nano_ros_ret_t {
-    nano_ros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
+) -> nros_ret_t {
+    nros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
 }
 
 /// Initialize a publisher with default QoS (RELIABLE, KEEP_LAST(10)).
 ///
-/// Alias for `nano_ros_publisher_init()` for rclc API compatibility.
+/// Alias for `nros_publisher_init()` for rclc API compatibility.
 ///
 /// # Safety
-/// See `nano_ros_publisher_init()` for safety requirements.
+/// See `nros_publisher_init()` for safety requirements.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publisher_init_default(
-    publisher: *mut nano_ros_publisher_t,
+pub unsafe extern "C" fn nros_publisher_init_default(
+    publisher: *mut nros_publisher_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-) -> nano_ros_ret_t {
-    nano_ros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
+) -> nros_ret_t {
+    nros_publisher_init_with_qos(publisher, node, type_info, topic_name, ptr::null())
 }
 
 /// Initialize a publisher with best-effort QoS (BEST_EFFORT, VOLATILE).
@@ -149,13 +149,13 @@ pub unsafe extern "C" fn nano_ros_publisher_init_default(
 /// * All pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publisher_init_best_effort(
-    publisher: *mut nano_ros_publisher_t,
+pub unsafe extern "C" fn nros_publisher_init_best_effort(
+    publisher: *mut nros_publisher_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-) -> nano_ros_ret_t {
-    nano_ros_publisher_init_with_qos(
+) -> nros_ret_t {
+    nros_publisher_init_with_qos(
         publisher,
         node,
         type_info,
@@ -183,13 +183,13 @@ pub unsafe extern "C" fn nano_ros_publisher_init_best_effort(
 /// * All required pointers must be valid
 /// * `topic_name` must be a valid null-terminated string
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
-    publisher: *mut nano_ros_publisher_t,
+pub unsafe extern "C" fn nros_publisher_init_with_qos(
+    publisher: *mut nros_publisher_t,
     node: *const nros_node_t,
-    type_info: *const nano_ros_message_type_t,
+    type_info: *const nros_message_type_t,
     topic_name: *const c_char,
-    qos: *const nano_ros_qos_t,
-) -> nano_ros_ret_t {
+    qos: *const nros_qos_t,
+) -> nros_ret_t {
     // Validate required arguments
     if publisher.is_null() || node.is_null() || type_info.is_null() || topic_name.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -200,7 +200,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
     let type_info = &*type_info;
 
     // Check if publisher is already initialized
-    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED {
+    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -279,7 +279,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
             None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nano_ros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
+        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             return NROS_RET_NOT_INIT;
         }
 
@@ -312,7 +312,7 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
             Err(_) => return NROS_RET_ERROR,
         }
 
-        publisher.state = nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED;
+        publisher.state = nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED;
         NROS_RET_OK
     }
 
@@ -340,18 +340,18 @@ pub unsafe extern "C" fn nano_ros_publisher_init_with_qos(
 /// * `publisher` must be a valid pointer to an initialized publisher
 /// * `data` must be a valid pointer to `len` bytes
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publish_raw(
-    publisher: *const nano_ros_publisher_t,
+pub unsafe extern "C" fn nros_publish_raw(
+    publisher: *const nros_publisher_t,
     data: *const u8,
     len: usize,
-) -> nano_ros_ret_t {
+) -> nros_ret_t {
     if publisher.is_null() || data.is_null() || len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let publisher = &*publisher;
 
-    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
+    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -391,16 +391,16 @@ pub unsafe extern "C" fn nano_ros_publish_raw(
 /// # Safety
 /// * `publisher` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publisher_fini(
-    publisher: *mut nano_ros_publisher_t,
-) -> nano_ros_ret_t {
+pub unsafe extern "C" fn nros_publisher_fini(
+    publisher: *mut nros_publisher_t,
+) -> nros_ret_t {
     if publisher.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let publisher = &mut *publisher;
 
-    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
+    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -416,7 +416,7 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
 
     publisher._internal = ptr::null_mut();
     publisher.node = ptr::null();
-    publisher.state = nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_SHUTDOWN;
+    publisher.state = nros_publisher_state_t::NROS_PUBLISHER_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
@@ -429,15 +429,15 @@ pub unsafe extern "C" fn nano_ros_publisher_fini(
 /// # Returns
 /// * Pointer to topic name (null-terminated), or NULL if invalid
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publisher_get_topic_name(
-    publisher: *const nano_ros_publisher_t,
+pub unsafe extern "C" fn nros_publisher_get_topic_name(
+    publisher: *const nros_publisher_t,
 ) -> *const c_char {
     if publisher.is_null() {
         return ptr::null();
     }
 
     let publisher = &*publisher;
-    if publisher.state != nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
+    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -452,15 +452,15 @@ pub unsafe extern "C" fn nano_ros_publisher_get_topic_name(
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nano_ros_publisher_is_valid(
-    publisher: *const nano_ros_publisher_t,
+pub unsafe extern "C" fn nros_publisher_is_valid(
+    publisher: *const nros_publisher_t,
 ) -> c_int {
     if publisher.is_null() {
         return 0;
     }
 
     let publisher = &*publisher;
-    if publisher.state == nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
+    if publisher.state == nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
         1
     } else {
         0
@@ -478,7 +478,7 @@ mod verification {
         let topic = b"/chatter\0";
         let type_name = b"std_msgs::msg::dds_::Int32\0";
         let type_hash = b"RIHS01_test\0";
-        let type_info = nano_ros_message_type_t {
+        let type_info = nros_message_type_t {
             type_name: type_name.as_ptr() as *const core::ffi::c_char,
             type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
             serialized_size_max: 4,
@@ -489,7 +489,7 @@ mod verification {
         // NULL publisher → INVALID_ARGUMENT
         assert_eq!(
             unsafe {
-                nano_ros_publisher_init(
+                nros_publisher_init(
                     core::ptr::null_mut(),
                     &node,
                     &type_info,
@@ -500,10 +500,10 @@ mod verification {
         );
 
         // NULL node → INVALID_ARGUMENT
-        let mut pub_ = nano_ros_publisher_get_zero_initialized();
+        let mut pub_ = nros_publisher_get_zero_initialized();
         assert_eq!(
             unsafe {
-                nano_ros_publisher_init(
+                nros_publisher_init(
                     &mut pub_,
                     core::ptr::null(),
                     &type_info,
@@ -514,10 +514,10 @@ mod verification {
         );
 
         // NULL type_info → INVALID_ARGUMENT
-        let mut pub_ = nano_ros_publisher_get_zero_initialized();
+        let mut pub_ = nros_publisher_get_zero_initialized();
         assert_eq!(
             unsafe {
-                nano_ros_publisher_init(
+                nros_publisher_init(
                     &mut pub_,
                     &node,
                     core::ptr::null(),
@@ -528,9 +528,9 @@ mod verification {
         );
 
         // NULL topic → INVALID_ARGUMENT
-        let mut pub_ = nano_ros_publisher_get_zero_initialized();
+        let mut pub_ = nros_publisher_get_zero_initialized();
         assert_eq!(
-            unsafe { nano_ros_publisher_init(&mut pub_, &node, &type_info, core::ptr::null()) },
+            unsafe { nros_publisher_init(&mut pub_, &node, &type_info, core::ptr::null()) },
             NROS_RET_INVALID_ARGUMENT,
         );
     }
@@ -538,10 +538,10 @@ mod verification {
     #[kani::proof]
     #[kani::unwind(5)]
     fn publisher_zero_initialized_state() {
-        let pub_ = nano_ros_publisher_get_zero_initialized();
+        let pub_ = nros_publisher_get_zero_initialized();
         assert_eq!(
             pub_.state,
-            nano_ros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
+            nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
         );
         assert!(pub_.node.is_null());
         assert!(pub_._internal.is_null());
