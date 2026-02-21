@@ -534,7 +534,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 | 40 | Large message support | In Progress |
 | 42 | Extensible RMW layer | Complete |
 | 43 | RMW-agnostic embedded API | Complete |
-| 47 | Executor trigger conditions + nros-node prerequisites | Not Started |
+| 47 | Executor trigger conditions + nros-node prerequisites | Complete |
 | 49 | nros-c thin wrapper migration | Not Started |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
@@ -549,7 +549,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 
 **Phase 43**: Complete. RMW-agnostic embedded API. All 13 sub-phases done: factory (`Executor::open()`), arena-based callbacks (`add_subscription`/`add_service`/`add_timer`/`add_action_server`/`add_action_client`), `spin_once()`/`spin_blocking()`/`spin_period()`, executor unification (deleted `PollingExecutor`/`BasicExecutor`/`Context`), type renames (`Executor`, `Node`, `NodeError`, `ExecutorConfig`, `Subscription`). Backward compat aliases provided for old `Embedded*` names.
 
-**Phase 47**: Executor trigger conditions + nros-node prerequisites for Phase 49. Sub-phases 47.1-47.5: rclc-style trigger conditions (`Trigger::Any`/`All`/`One`/`Always`) and per-callback `InvocationMode` (`OnNewData`/`Always`). Sub-phases 47.6-47.9: raw-bytes callbacks (`add_subscription_raw`/`add_service_raw`), guard conditions, LET semantics, session-borrowing executor. See `docs/roadmap/phase-47-executor-trigger-conditions.md`.
+**Phase 47**: Complete. Executor trigger conditions + nros-node prerequisites. Three-phase `spin_once()` (readiness scan → trigger evaluation → dispatch). Core types: `HandleId`, `HandleSet`, `Trigger` (7 variants), `InvocationMode`, `ReadinessSnapshot`. Raw-bytes callbacks (`add_subscription_raw`/`add_service_raw`), guard conditions (`GuardConditionHandle`), LET semantics (`ExecutorSemantics::LogicalExecutionTime` with pre-sample phase), session-borrowing executor (`SessionStore::Borrowed`). 86 unit tests.
 
 **Phase 49**: nros-c thin wrapper migration. Requires Phase 47 (which adds raw-bytes callbacks, guard conditions, LET semantics, and session-borrowing executor to nros-node). Renames C API prefix from `nano_ros_` to `nros_` (~142 functions, ~46 types, CMake targets). Then rewrites nros-c executor (1,788 lines), timer (348), guard condition (450), and action (1,086) modules to delegate to nros-node instead of self-implementing. Key design: C init functions store metadata only, executor registration creates RMW handles via `add_subscription_raw()` etc. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
 

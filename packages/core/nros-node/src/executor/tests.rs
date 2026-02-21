@@ -1213,7 +1213,78 @@ fn test_set_semantics() {
 }
 
 // ====================================================================
-// Phase 49: Trigger::All requires all non-timer handles
+// Phase 47: LET semantics pre-sample behavior
+// ====================================================================
+
+#[test]
+fn test_let_semantics_pre_samples_data() {
+    // In LET mode, data is pre-sampled into the entry buffer before any
+    // callback runs. This test verifies that the callback receives data
+    // even though the mock subscriber's pending data is consumed during
+    // the pre-sample phase (not during try_process).
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
+
+    let received = std::sync::Arc::new(std::sync::Mutex::new(None));
+    let received2 = received.clone();
+    executor
+        .add_subscription::<TestMsg, _>("/test", move |msg: &TestMsg| {
+            *received2.lock().unwrap() = Some(msg.data);
+        })
+        .unwrap();
+
+    // Load CDR data
+    let (data, len) = encode_test_msg(77);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe { &*(arena_ptr.add(meta.offset) as *const MockSubscriber) }.load(data, len);
+
+    let result = executor.spin_once(0);
+    assert_eq!(result.subscriptions_processed, 1);
+    assert_eq!(*received.lock().unwrap(), Some(77));
+}
+
+#[test]
+fn test_let_semantics_raw_subscription() {
+    // Verify LET pre-sampling works for raw subscriptions too.
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
+
+    static RAW_LET_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+    unsafe extern "C" fn raw_let_cb(_data: *const u8, len: usize, _ctx: *mut core::ffi::c_void) {
+        RAW_LET_LEN.store(len, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    RAW_LET_LEN.store(0, std::sync::atomic::Ordering::SeqCst);
+
+    executor
+        .add_subscription_raw(
+            "/test",
+            "test/msg/TestMsg",
+            "test_hash",
+            raw_let_cb,
+            core::ptr::null_mut(),
+        )
+        .unwrap();
+
+    let (data, len) = encode_test_msg(42);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe {
+        let sub_ptr = arena_ptr.add(meta.offset) as *const MockSubscriber;
+        (*sub_ptr).load(data, len);
+    }
+
+    let result = executor.spin_once(0);
+    assert_eq!(result.subscriptions_processed, 1);
+    assert_eq!(RAW_LET_LEN.load(std::sync::atomic::Ordering::SeqCst), len);
+}
+
+// ====================================================================
+// Phase 47: Trigger::All requires all non-timer handles
 // ====================================================================
 
 #[test]

@@ -1,6 +1,6 @@
 # Phase 47 — Executor Trigger Conditions
 
-## Status: Not Started
+## Status: Complete
 
 ## Background
 
@@ -704,63 +704,63 @@ Rust executor API.
 
 ### 47.1 — Core Types
 
-- [ ] Add `HandleId` struct to `executor/types.rs`
-- [ ] Add `HandleSet` struct with `insert`/`contains`/`union`/`len`/`is_empty`
-- [ ] Add `BitOr` impls: `HandleId | HandleId`, `HandleSet | HandleId`, `HandleSet | HandleSet`
-- [ ] Add `ReadinessSnapshot` struct with `is_ready`/`all_ready`/`any_ready`/`ready_count`/`total`
-- [ ] Add `InvocationMode` enum (`OnNewData`, `Always`)
-- [ ] Add `Trigger` enum (`Any`, `All`, `One`, `AllOf`, `AnyOf`, `Always`, `Predicate`)
+- [x] Add `HandleId` struct to `executor/types.rs`
+- [x] Add `HandleSet` struct with `insert`/`contains`/`union`/`len`/`is_empty`
+- [x] Add `BitOr` impls: `HandleId | HandleId`, `HandleSet | HandleId`, `HandleSet | HandleSet`
+- [x] Add `ReadinessSnapshot` struct with `is_ready`/`all_ready`/`any_ready`/`ready_count`/`total`
+- [x] Add `InvocationMode` enum (`OnNewData`, `Always`)
+- [x] Add `Trigger` enum (`Any`, `All`, `One`, `AllOf`, `AnyOf`, `Always`, `Predicate`)
 
 ### 47.2 — CallbackMeta and has_data Functions
 
-- [ ] Add `has_data` fn pointer field to `CallbackMeta`
-- [ ] Add `invocation` field to `CallbackMeta`
-- [ ] Write monomorphized `sub_has_data()` for `SubEntry`
-- [ ] Write monomorphized `sub_info_has_data()` for `SubInfoEntry`
-- [ ] Write monomorphized `sub_safety_has_data()` for `SubSafetyEntry` (cfg safety-e2e)
-- [ ] Write monomorphized `srv_has_data()` for `SrvEntry`
-- [ ] Write monomorphized `timer_has_data()` for `TimerEntry` (always true)
-- [ ] Write monomorphized `action_server_has_data()` (always true)
-- [ ] Write monomorphized `action_client_has_data()` (always true)
+- [x] Add `has_data` fn pointer field to `CallbackMeta`
+- [x] Add `invocation` field to `CallbackMeta`
+- [x] Write monomorphized `sub_has_data()` for `SubEntry`
+- [x] Write monomorphized `sub_info_has_data()` for `SubInfoEntry`
+- [x] Write monomorphized `sub_safety_has_data()` for `SubSafetyEntry` (cfg safety-e2e)
+- [x] Write monomorphized `srv_has_data()` for `SrvEntry`
+- [x] Write monomorphized `timer_has_data()` for `TimerEntry` (always true)
+- [x] Write monomorphized `action_server_has_data()` (always true)
+- [x] Write monomorphized `action_client_has_data()` (always true)
 
 ### 47.3 — Registration Wiring
 
-- [ ] Change `add_subscription_sized()` to return `HandleId` and set `has_data`/`invocation`
-- [ ] Change `add_subscription_with_info_sized()` similarly
-- [ ] Change `add_subscription_with_safety_sized()` similarly (cfg safety-e2e)
-- [ ] Change `add_service_sized()` to return `HandleId` and set `has_data`/`invocation`
-- [ ] Change `add_timer()` and `add_timer_oneshot()` to return `HandleId` and set `has_data`/`invocation`
-- [ ] Update `add_action_server_sized()` to set `has_data`/`invocation`
-- [ ] Update `add_action_client_sized()` to set `has_data`/`invocation`
-- [ ] Add `handle_id()` method to `ActionServerHandle` and `ActionClientHandle`
+- [x] Change `add_subscription_sized()` to return `HandleId` and set `has_data`/`invocation`
+- [x] Change `add_subscription_with_info_sized()` similarly
+- [x] Change `add_subscription_with_safety_sized()` similarly (cfg safety-e2e)
+- [x] Change `add_service_sized()` to return `HandleId` and set `has_data`/`invocation`
+- [x] Change `add_timer()` and `add_timer_oneshot()` to return `HandleId` and set `has_data`/`invocation`
+- [x] Update `add_action_server_sized()` to set `has_data`/`invocation`
+- [x] Update `add_action_client_sized()` to set `has_data`/`invocation`
+- [x] Add `handle_id()` method to `ActionServerHandle` and `ActionClientHandle`
 
 ### 47.4 — Executor Fields and spin_once()
 
-- [ ] Add `trigger: Trigger` field to `Executor` struct (default `Trigger::Any`)
-- [ ] Add `set_trigger()` and `trigger()` public methods
-- [ ] Add `set_invocation(HandleId, InvocationMode)` public method
-- [ ] Refactor `spin_once()` to implement three-phase flow (readiness scan → trigger eval → dispatch)
-- [ ] Verify `Trigger::Any` produces identical behavior to current code
-- [ ] Ensure parameter services bypass the trigger gate
+- [x] Add `trigger: Trigger` field to `Executor` struct (default `Trigger::Any`)
+- [x] Add `set_trigger()` and `trigger()` public methods
+- [x] Add `set_invocation(HandleId, InvocationMode)` public method
+- [x] Refactor `spin_once()` to implement three-phase flow (readiness scan → trigger eval → dispatch)
+- [x] Verify `Trigger::Any` produces identical behavior to current code
+- [x] Ensure parameter services bypass the trigger gate
 
 ### 47.5 — Tests and Verification
 
-- [ ] Unit test: `Trigger::Any` matches current behavior (no regression)
-- [ ] Unit test: `Trigger::All` blocks when not all non-timer handles have data
-- [ ] Unit test: `Trigger::One(id)` only fires when specific handle ready
-- [ ] Unit test: `Trigger::AllOf(set)` subset barrier
-- [ ] Unit test: `Trigger::AnyOf(set)` subset event-driven
-- [ ] Unit test: `Trigger::Always` always dispatches
-- [ ] Unit test: `Trigger::Predicate` custom function
-- [ ] Unit test: `InvocationMode::Always` fires callback even without data
-- [ ] Unit test: `InvocationMode::OnNewData` skips callback when no data
-- [ ] Unit test: `HandleSet` bitwise operations
-- [ ] Unit test: `ReadinessSnapshot` queries
-- [ ] Unit test: `HandleId` returned from registration matches entry index
+- [x] Unit test: `Trigger::Any` matches current behavior (no regression)
+- [x] Unit test: `Trigger::All` blocks when not all non-timer handles have data
+- [x] Unit test: `Trigger::One(id)` only fires when specific handle ready
+- [x] Unit test: `Trigger::AllOf(set)` subset barrier
+- [x] Unit test: `Trigger::AnyOf(set)` subset event-driven
+- [x] Unit test: `Trigger::Always` always dispatches
+- [x] Unit test: `Trigger::Predicate` custom function
+- [x] Unit test: `InvocationMode::Always` fires callback even without data
+- [x] Unit test: `InvocationMode::OnNewData` skips callback when no data
+- [x] Unit test: `HandleSet` bitwise operations
+- [x] Unit test: `ReadinessSnapshot` queries
+- [x] Unit test: `HandleId` returned from registration matches entry index
 - [ ] Integration test: sensor-fusion pattern with two subscriptions
 - [ ] Kani harness: trigger evaluation soundness (all variants)
 - [ ] Kani harness: `HandleSet` insert/contains correctness
-- [ ] Verify `just quality` passes
+- [x] Verify `just quality` passes
 
 ### 47.6 — Raw-bytes Callbacks
 
@@ -788,15 +788,15 @@ without deserializing/re-serializing CDR data.
 
 **Tasks:**
 
-- [ ] Define `RawSubscriptionCallback` and `RawServiceCallback` type aliases
+- [x] Define `RawSubscriptionCallback` and `RawServiceCallback` type aliases
   in `executor/types.rs`
-- [ ] Add `SubRawEntry<Sub, RX_BUF>` struct to `executor/arena.rs`
-- [ ] Add `SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>` struct to `executor/arena.rs`
-- [ ] Implement `sub_raw_try_process()` and `srv_raw_try_process()`
-- [ ] Implement `sub_raw_has_data()` and `srv_raw_has_data()`
-- [ ] Add `Executor::add_subscription_raw()` and `add_service_raw()`
-- [ ] Unit tests for raw subscription dispatch
-- [ ] Unit tests for raw service dispatch
+- [x] Add `SubRawEntry<Sub, RX_BUF>` struct to `executor/arena.rs`
+- [x] Add `SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>` struct to `executor/arena.rs`
+- [x] Implement `sub_raw_try_process()` and `srv_raw_try_process()`
+- [x] Implement `sub_raw_has_data()` and `srv_raw_has_data()`
+- [x] Add `Executor::add_subscription_raw()` and `add_service_raw()`
+- [x] Unit tests for raw subscription dispatch
+- [x] Unit tests for raw service dispatch
 
 **Files:** `nros-node/src/executor/{arena.rs, spin.rs, types.rs}`
 
@@ -822,15 +822,15 @@ event-driven, not data-driven).
 
 **Tasks:**
 
-- [ ] Add `GuardConditionEntry` to `executor/arena.rs`
-- [ ] Add `GuardConditionHandle` to `executor/types.rs`
-- [ ] Implement `guard_try_process()` dispatch function
-- [ ] Implement `guard_has_data()` readiness function
-- [ ] Add `EntryKind::GuardCondition` variant
-- [ ] Add `Executor::add_guard_condition()` → returns `(HandleId, GuardConditionHandle)`
-- [ ] Ensure `GuardConditionHandle` is `Send + Sync`
-- [ ] Unit tests for guard condition trigger/clear/callback
-- [ ] Unit tests for executor integration (spin_once processes guard conditions)
+- [x] Add `GuardConditionEntry` to `executor/arena.rs`
+- [x] Add `GuardConditionHandle` to `executor/types.rs`
+- [x] Implement `guard_try_process()` dispatch function
+- [x] Implement `guard_has_data()` readiness function
+- [x] Add `EntryKind::GuardCondition` variant
+- [x] Add `Executor::add_guard_condition()` → returns `(HandleId, GuardConditionHandle)`
+- [x] Ensure `GuardConditionHandle` is `Send + Sync`
+- [x] Unit tests for guard condition trigger/clear/callback
+- [x] Unit tests for executor integration (spin_once processes guard conditions)
 
 **Files:** `nros-node/src/executor/{arena.rs, spin.rs, types.rs}`
 
@@ -862,16 +862,16 @@ pub enum ExecutorSemantics {
 
 **Tasks:**
 
-- [ ] Define `ExecutorSemantics` enum in `executor/types.rs`
-- [ ] Add `semantics` field to `Executor` struct
-- [ ] Add `Executor::set_semantics()` method
-- [ ] Add LET buffer field to `SubEntry` and `SubRawEntry`
-- [ ] Implement pre-sample phase in `spin_once()` (between readiness scan
+- [x] Define `ExecutorSemantics` enum in `executor/types.rs`
+- [x] Add `semantics` field to `Executor` struct
+- [x] Add `Executor::set_semantics()` method
+- [x] Add LET buffer field to `SubEntry` and `SubRawEntry`
+- [x] Implement pre-sample phase in `spin_once()` (between readiness scan
   and dispatch, only when `semantics == LogicalExecutionTime`)
-- [ ] Modify `sub_try_process()` / `sub_raw_try_process()` to read from
+- [x] Modify `sub_try_process()` / `sub_raw_try_process()` to read from
   LET buffer when in LET mode
-- [ ] Unit tests for LET semantics (data sampled once, consistent snapshot)
-- [ ] Unit tests verifying default RclcppExecutor behavior is unchanged
+- [x] Unit tests for LET semantics (data sampled once, consistent snapshot)
+- [x] Unit tests verifying default RclcppExecutor behavior is unchanged
 
 **Files:** `nros-node/src/executor/{types.rs, spin.rs, arena.rs}`
 
@@ -891,13 +891,13 @@ pub unsafe fn from_session_ptr(session_ptr: *mut S) -> Self
 
 **Tasks:**
 
-- [ ] Add `SessionStore<S>` enum to executor
-- [ ] Implement `Deref`/`DerefMut` for `SessionStore`
-- [ ] Implement `from_session_ptr()` constructor
-- [ ] Add `session()` / `session_mut()` accessors
-- [ ] Ensure `from_session()` wraps in `SessionStore::Owned`
-- [ ] Unit tests for borrowed-session executor lifecycle
-- [ ] Document safety requirements
+- [x] Add `SessionStore<S>` enum to executor
+- [x] Implement `Deref`/`DerefMut` for `SessionStore`
+- [x] Implement `from_session_ptr()` constructor
+- [x] Add `session()` / `session_mut()` accessors
+- [x] Ensure `from_session()` wraps in `SessionStore::Owned`
+- [x] Unit tests for borrowed-session executor lifecycle
+- [x] Document safety requirements
 
 **Files:** `nros-node/src/executor/spin.rs`
 

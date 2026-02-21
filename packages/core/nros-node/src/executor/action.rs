@@ -12,9 +12,11 @@ use super::arena::{
     ActionClientArenaEntry, ActionServerArenaEntry, CallbackMeta, EntryKind, ac_cancel_goal,
     ac_get_result, ac_send_goal, action_client_try_process, action_server_try_process,
     always_ready, as_complete_goal, as_publish_feedback, as_set_goal_status, drop_entry,
+    no_pre_sample,
 };
 use super::handles::{EmbeddedActionClient, EmbeddedActionServer};
 use super::spin::Executor;
+use super::types::HandleId;
 use super::types::InvocationMode;
 use super::types::NodeError;
 
@@ -200,6 +202,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::ActionServer,
             has_data: always_ready,
+            pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             try_process: action_server_try_process::<
                 A,
@@ -404,6 +407,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             offset,
             kind: EntryKind::ActionClient,
             has_data: always_ready,
+            pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             try_process: action_client_try_process::<
                 A,
@@ -489,6 +493,13 @@ impl<A: RosAction> Clone for ActionServerHandle<A> {
 impl<A: RosAction> Copy for ActionServerHandle<A> {}
 
 impl<A: RosAction> ActionServerHandle<A> {
+    /// Get the [`HandleId`] for this action server.
+    ///
+    /// Used with [`Trigger::One`] or [`HandleSet`] for trigger configuration.
+    pub fn handle_id(&self) -> HandleId {
+        HandleId(self.entry_index)
+    }
+
     /// Publish feedback for an active goal.
     pub fn publish_feedback<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
@@ -567,6 +578,13 @@ impl<A: RosAction> Clone for ActionClientHandle<A> {
 impl<A: RosAction> Copy for ActionClientHandle<A> {}
 
 impl<A: RosAction> ActionClientHandle<A> {
+    /// Get the [`HandleId`] for this action client.
+    ///
+    /// Used with [`Trigger::One`] or [`HandleSet`] for trigger configuration.
+    pub fn handle_id(&self) -> HandleId {
+        HandleId(self.entry_index)
+    }
+
     /// Send a goal to the action server (blocks until accepted/rejected).
     pub fn send_goal<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,

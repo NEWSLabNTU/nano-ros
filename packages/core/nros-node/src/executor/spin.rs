@@ -13,12 +13,14 @@ use crate::timer::TimerDuration;
 use super::arena::{
     CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry, SubEntry, SubInfoEntry,
     SubRawEntry, TimerEntry, always_ready, drop_entry, guard_has_data, guard_try_process,
-    srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_has_data,
-    sub_info_has_data, sub_info_try_process, sub_raw_has_data, sub_raw_try_process,
-    sub_try_process, timer_try_process,
+    no_pre_sample, srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
+    sub_has_data, sub_info_has_data, sub_info_pre_sample, sub_info_try_process, sub_pre_sample,
+    sub_raw_has_data, sub_raw_pre_sample, sub_raw_try_process, sub_try_process, timer_try_process,
 };
 #[cfg(feature = "safety-e2e")]
-use super::arena::{SubSafetyEntry, sub_safety_has_data, sub_safety_try_process};
+use super::arena::{
+    SubSafetyEntry, sub_safety_has_data, sub_safety_pre_sample, sub_safety_try_process,
+};
 use super::node::Node;
 #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
 use super::types::ExecutorConfig;
@@ -358,6 +360,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 Entry {
                     handle,
                     buffer: [0u8; RX_BUF],
+                    sampled_len: 0,
                     callback,
                     _phantom: PhantomData,
                 },
@@ -369,6 +372,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Subscription,
             try_process: sub_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
             has_data: sub_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
+            pre_sample: sub_pre_sample::<M, S::SubscriberHandle, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
         });
@@ -432,6 +436,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 Entry {
                     handle,
                     buffer: [0u8; RX_BUF],
+                    sampled_len: 0,
                     callback,
                     _phantom: PhantomData,
                 },
@@ -443,6 +448,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Subscription,
             try_process: sub_info_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
             has_data: sub_info_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
+            pre_sample: sub_info_pre_sample::<M, S::SubscriberHandle, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
         });
@@ -511,6 +517,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 Entry {
                     handle,
                     buffer: [0u8; RX_BUF],
+                    sampled_len: 0,
                     callback,
                     _phantom: PhantomData,
                 },
@@ -522,6 +529,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Subscription,
             try_process: sub_safety_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
             has_data: sub_safety_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
+            pre_sample: sub_safety_pre_sample::<M, S::SubscriberHandle, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
         });
@@ -591,6 +599,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Service,
             try_process: srv_try_process::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
             has_data: srv_has_data::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
+            pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>,
         });
@@ -636,6 +645,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Timer,
             try_process: timer_try_process::<F>,
             has_data: always_ready,
+            pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<TimerEntry<F>>,
         });
@@ -676,6 +686,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Timer,
             try_process: timer_try_process::<F>,
             has_data: always_ready,
+            pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             drop_fn: drop_entry::<TimerEntry<F>>,
         });
@@ -733,6 +744,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 SubRawEntry {
                     handle,
                     buffer: [0u8; RX_BUF],
+                    sampled_len: 0,
                     callback,
                     context,
                 },
@@ -744,6 +756,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Subscription,
             try_process: sub_raw_try_process::<S::SubscriberHandle, RX_BUF>,
             has_data: sub_raw_has_data::<S::SubscriberHandle, RX_BUF>,
+            pre_sample: sub_raw_pre_sample::<S::SubscriberHandle, RX_BUF>,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SubRawEntry<S::SubscriberHandle, RX_BUF>>,
         });
@@ -819,6 +832,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             kind: EntryKind::Service,
             try_process: srv_raw_try_process::<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>,
             has_data: srv_raw_has_data::<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>,
+            pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<SrvRawEntry<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>>,
         });
@@ -863,6 +877,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 kind: EntryKind::GuardCondition,
                 try_process: guard_try_process::<F>,
                 has_data: guard_has_data::<F>,
+                pre_sample: no_pre_sample,
                 invocation: InvocationMode::OnNewData,
                 drop_fn: drop_entry::<GuardConditionEntry<F>>,
             });
@@ -929,6 +944,21 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 }
             }
             return SpinOnceResult::new();
+        }
+
+        // Phase 2.5: LET pre-sample (only when LogicalExecutionTime)
+        //
+        // Sample all subscription data into entry buffers BEFORE dispatching
+        // any callbacks. This ensures all callbacks in this cycle see a
+        // consistent snapshot of data from the same point in time.
+        // Services are NOT pre-sampled (request-reply is sequential).
+        if matches!(self.semantics, ExecutorSemantics::LogicalExecutionTime) {
+            for meta in self.entries.iter().flatten() {
+                if matches!(meta.kind, EntryKind::Subscription) {
+                    let data_ptr = unsafe { arena_ptr.add(meta.offset) };
+                    unsafe { (meta.pre_sample)(data_ptr) };
+                }
+            }
         }
 
         // Phase 3: Dispatch
