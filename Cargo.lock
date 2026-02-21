@@ -480,6 +480,7 @@ version = "0.1.0"
 dependencies = [
  "nros",
  "nros-core",
+ "nros-node",
  "nros-rmw",
  "paste",
 ]

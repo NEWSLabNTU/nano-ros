@@ -12,10 +12,11 @@ use crate::timer::TimerDuration;
 
 use super::arena::{
     CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry, SubEntry, SubInfoEntry,
-    SubRawEntry, TimerEntry, always_ready, drop_entry, guard_has_data, guard_try_process,
-    no_pre_sample, srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
-    sub_has_data, sub_info_has_data, sub_info_pre_sample, sub_info_try_process, sub_pre_sample,
-    sub_raw_has_data, sub_raw_pre_sample, sub_raw_try_process, sub_try_process, timer_try_process,
+    SubRawEntry, TimerEntry, TimerHeader, always_ready, drop_entry, guard_has_data,
+    guard_try_process, no_pre_sample, srv_has_data, srv_raw_has_data, srv_raw_try_process,
+    srv_try_process, sub_has_data, sub_info_has_data, sub_info_pre_sample, sub_info_try_process,
+    sub_pre_sample, sub_raw_has_data, sub_raw_pre_sample, sub_raw_try_process, sub_try_process,
+    timer_try_process,
 };
 #[cfg(feature = "safety-e2e")]
 use super::arena::{
@@ -639,6 +640,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                     elapsed_ms: 0,
                     oneshot: false,
                     fired: false,
+                    cancelled: false,
                     callback,
                 },
             );
@@ -680,6 +682,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                     elapsed_ms: 0,
                     oneshot: true,
                     fired: false,
+                    cancelled: false,
                     callback,
                 },
             );
@@ -701,7 +704,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     // Raw callback registration (for C API)
     // ========================================================================
 
-    /// Register a raw (untyped) subscription callback.
+    /// Register a raw (untyped) subscription callback with default QoS.
     ///
     /// The callback receives CDR bytes without deserialization.
     /// Used by the C API where generic type parameters are not available.
@@ -716,7 +719,14 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         S::SubscriberHandle: Subscriber,
     {
-        self.add_subscription_raw_sized::<1024>(topic_name, type_name, type_hash, callback, context)
+        self.add_subscription_raw_with_qos_sized::<1024>(
+            topic_name,
+            type_name,
+            type_hash,
+            QosSettings::default(),
+            callback,
+            context,
+        )
     }
 
     /// Register a raw subscription callback with a custom receive buffer size.
@@ -731,11 +741,54 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         S::SubscriberHandle: Subscriber,
     {
+        self.add_subscription_raw_with_qos_sized::<RX_BUF>(
+            topic_name,
+            type_name,
+            type_hash,
+            QosSettings::default(),
+            callback,
+            context,
+        )
+    }
+
+    /// Register a raw (untyped) subscription callback with custom QoS.
+    ///
+    /// Used by the C API where QoS is specified at init time.
+    pub fn add_subscription_raw_with_qos(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: RawSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError>
+    where
+        S::SubscriberHandle: Subscriber,
+    {
+        self.add_subscription_raw_with_qos_sized::<1024>(
+            topic_name, type_name, type_hash, qos, callback, context,
+        )
+    }
+
+    /// Register a raw subscription callback with custom QoS and buffer size.
+    pub fn add_subscription_raw_with_qos_sized<const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: RawSubscriptionCallback,
+        context: *mut core::ffi::c_void,
+    ) -> Result<HandleId, NodeError>
+    where
+        S::SubscriberHandle: Subscriber,
+    {
         let slot = self.next_entry_slot()?;
         let topic = TopicInfo::new(topic_name, type_name, type_hash);
         let handle = self
             .session
-            .create_subscriber(&topic, QosSettings::default())
+            .create_subscriber(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
 
         let offset = self.arena_alloc::<SubRawEntry<S::SubscriberHandle, RX_BUF>>()?;
@@ -891,6 +944,71 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 
     // ========================================================================
+    // Timer control methods
+    // ========================================================================
+
+    /// Cancel a timer. A cancelled timer will not fire but still accumulates
+    /// elapsed time. The timer can be restarted with [`reset_timer()`](Self::reset_timer).
+    pub fn cancel_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .ok_or(NodeError::BufferTooSmall)?;
+        if !matches!(meta.kind, EntryKind::Timer) {
+            return Err(NodeError::BufferTooSmall);
+        }
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        // SAFETY: meta.offset points to a valid TimerEntry<F> which shares
+        // layout with TimerHeader for its initial fields (both #[repr(C)]).
+        let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+        header.cancelled = true;
+        Ok(())
+    }
+
+    /// Reset a timer. Clears the cancelled state and resets the elapsed time
+    /// to zero, so the timer starts a fresh period.
+    pub fn reset_timer(&mut self, id: HandleId) -> Result<(), NodeError> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .ok_or(NodeError::BufferTooSmall)?;
+        if !matches!(meta.kind, EntryKind::Timer) {
+            return Err(NodeError::BufferTooSmall);
+        }
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        let header = unsafe { &mut *(arena_ptr.add(meta.offset) as *mut TimerHeader) };
+        header.cancelled = false;
+        header.elapsed_ms = 0;
+        Ok(())
+    }
+
+    /// Check if a timer is cancelled.
+    pub fn timer_is_cancelled(&self, id: HandleId) -> bool {
+        let meta = match self.entries.get(id.0).and_then(|e| e.as_ref()) {
+            Some(m) if matches!(m.kind, EntryKind::Timer) => m,
+            _ => return false,
+        };
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+        header.cancelled
+    }
+
+    /// Get the period of a timer in milliseconds, or `None` if the handle
+    /// is not a valid timer.
+    pub fn timer_period_ms(&self, id: HandleId) -> Option<u64> {
+        let meta = self
+            .entries
+            .get(id.0)
+            .and_then(|e| e.as_ref())
+            .filter(|m| matches!(m.kind, EntryKind::Timer))?;
+        let arena_ptr = self.arena.as_ptr() as *const u8;
+        let header = unsafe { &*(arena_ptr.add(meta.offset) as *const TimerHeader) };
+        Some(header.period_ms)
+    }
+
+    // ========================================================================
     // spin_once (three-phase: readiness → trigger → dispatch)
     // ========================================================================
 
@@ -937,6 +1055,20 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             Trigger::AnyOf(set) => snapshot.any_ready(*set),
             Trigger::Always => true,
             Trigger::Predicate(f) => f(&snapshot),
+            Trigger::RawPredicate { callback, context } => {
+                // Convert ReadinessSnapshot bitmask to a bool array for the C callback
+                let mut ready_array = [false; 64];
+                for (i, slot) in ready_array
+                    .iter_mut()
+                    .enumerate()
+                    .take(snapshot.count.min(64))
+                {
+                    *slot = snapshot.bits & (1u64 << i) != 0;
+                }
+                // SAFETY: The callback and context are provided by the C API caller.
+                // The ready_array is valid for snapshot.count elements.
+                unsafe { callback(ready_array.as_ptr(), snapshot.count, *context) }
+            }
         };
 
         if !trigger_passes {

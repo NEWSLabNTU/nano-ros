@@ -98,13 +98,31 @@ pub(crate) struct SrvEntry<Svc: RosService, Srv, F, const REQ_BUF: usize, const 
 }
 
 /// Concrete timer entry stored in the arena.
+///
+/// The first fields (up to `callback`) share layout with [`TimerHeader`],
+/// enabling type-erased access to timer state (cancel, reset, period query).
 #[repr(C)]
 pub(crate) struct TimerEntry<F> {
     pub(crate) period_ms: u64,
     pub(crate) elapsed_ms: u64,
     pub(crate) oneshot: bool,
     pub(crate) fired: bool,
+    pub(crate) cancelled: bool,
     pub(crate) callback: F,
+}
+
+/// Type-erased header for timer entries.
+///
+/// Shares layout with the initial fields of `TimerEntry<F>` (both `#[repr(C)]`),
+/// so a `*mut TimerHeader` can safely read/write the timer state fields
+/// regardless of the concrete closure type `F`.
+#[repr(C)]
+pub(crate) struct TimerHeader {
+    pub(crate) period_ms: u64,
+    pub(crate) elapsed_ms: u64,
+    pub(crate) oneshot: bool,
+    pub(crate) fired: bool,
+    pub(crate) cancelled: bool,
 }
 
 /// Concrete action server entry stored in the arena.
@@ -350,8 +368,8 @@ where
 {
     let entry = unsafe { &mut *(ptr as *mut TimerEntry<F>) };
 
-    // One-shot already fired
-    if entry.oneshot && entry.fired {
+    // Cancelled or one-shot already fired
+    if entry.cancelled || (entry.oneshot && entry.fired) {
         return Ok(false);
     }
 

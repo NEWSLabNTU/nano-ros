@@ -45,6 +45,10 @@ pub struct nros_timer_t {
     context: *mut c_void,
     /// Pointer to parent support context
     support: *const nros_support_t,
+    /// Handle ID from executor registration (usize::MAX = not registered)
+    handle_id: usize,
+    /// Opaque pointer to internal executor (set by nros_executor_add_timer)
+    _executor: *mut c_void,
 }
 
 impl Default for nros_timer_t {
@@ -56,7 +60,32 @@ impl Default for nros_timer_t {
             callback: None,
             context: ptr::null_mut(),
             support: ptr::null(),
+            handle_id: usize::MAX,
+            _executor: ptr::null_mut(),
         }
+    }
+}
+
+// Internal helper methods for executor
+impl nros_timer_t {
+    /// Get the callback function
+    pub(crate) fn get_callback(&self) -> nros_timer_callback_t {
+        self.callback
+    }
+
+    /// Get the user context
+    pub(crate) fn get_context(&self) -> *mut c_void {
+        self.context
+    }
+
+    /// Set the handle ID from executor registration
+    pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
+        self.handle_id = id.0;
+    }
+
+    /// Set the executor pointer (called by nros_executor_add_timer)
+    pub(crate) fn set_executor_ptr(&mut self, executor: *mut c_void) {
+        self._executor = executor;
     }
 }
 
@@ -126,6 +155,7 @@ pub unsafe extern "C" fn nros_timer_init(
 /// Cancel a timer.
 ///
 /// A canceled timer will not fire, but can be reset to start again.
+/// If registered with an executor, forwards to the executor's cancel_timer.
 ///
 /// # Parameters
 /// * `timer` - Pointer to an initialized timer
@@ -144,6 +174,13 @@ pub unsafe extern "C" fn nros_timer_cancel(timer: *mut nros_timer_t) -> nros_ret
 
     match timer.state {
         nros_timer_state_t::NROS_TIMER_STATE_RUNNING => {
+            // Forward to executor if registered
+            #[cfg(feature = "alloc")]
+            if !timer._executor.is_null() && timer.handle_id != usize::MAX {
+                let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
+                let _ = exec.cancel_timer(nros_node::HandleId(timer.handle_id));
+            }
+
             timer.state = nros_timer_state_t::NROS_TIMER_STATE_CANCELED;
             NROS_RET_OK
         }
@@ -158,7 +195,8 @@ pub unsafe extern "C" fn nros_timer_cancel(timer: *mut nros_timer_t) -> nros_ret
 /// Reset a timer.
 ///
 /// This resets the timer's last call time and starts it running again
-/// if it was canceled.
+/// if it was canceled. If registered with an executor, forwards to the
+/// executor's reset_timer.
 ///
 /// # Parameters
 /// * `timer` - Pointer to an initialized timer
@@ -178,6 +216,13 @@ pub unsafe extern "C" fn nros_timer_reset(timer: *mut nros_timer_t) -> nros_ret_
     match timer.state {
         nros_timer_state_t::NROS_TIMER_STATE_RUNNING
         | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => {
+            // Forward to executor if registered
+            #[cfg(feature = "alloc")]
+            if !timer._executor.is_null() && timer.handle_id != usize::MAX {
+                let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
+                let _ = exec.reset_timer(nros_node::HandleId(timer.handle_id));
+            }
+
             timer.last_call_time_ns = 0;
             timer.state = nros_timer_state_t::NROS_TIMER_STATE_RUNNING;
             NROS_RET_OK
@@ -212,6 +257,8 @@ pub unsafe extern "C" fn nros_timer_fini(timer: *mut nros_timer_t) -> nros_ret_t
     timer.callback = None;
     timer.context = ptr::null_mut();
     timer.support = ptr::null();
+    timer.handle_id = usize::MAX;
+    timer._executor = ptr::null_mut();
     timer.state = nros_timer_state_t::NROS_TIMER_STATE_SHUTDOWN;
 
     NROS_RET_OK

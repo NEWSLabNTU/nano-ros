@@ -256,6 +256,11 @@ mod verification {
 }
 
 impl nros_support_t {
+    /// Get the raw session pointer (for executor initialization).
+    pub(crate) fn get_session_ptr(&self) -> *mut nros::internals::RmwSession {
+        self._internal as *mut nros::internals::RmwSession
+    }
+
     /// Get the internal session pointer (for internal use)
     #[cfg(feature = "alloc")]
     pub(crate) unsafe fn get_session(&self) -> Option<&nros::internals::RmwSession> {

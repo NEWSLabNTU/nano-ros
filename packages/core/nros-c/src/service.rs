@@ -58,23 +58,25 @@ pub struct nros_service_t {
     /// Current state
     pub state: nros_service_state_t,
     /// Service name storage
-    service_name: [u8; MAX_SERVICE_NAME_LEN],
+    pub(crate) service_name: [u8; MAX_SERVICE_NAME_LEN],
     /// Service name length
-    service_name_len: usize,
+    pub(crate) service_name_len: usize,
     /// Type name storage
-    type_name: [u8; MAX_TYPE_NAME_LEN],
+    pub(crate) type_name: [u8; MAX_TYPE_NAME_LEN],
     /// Type name length
-    type_name_len: usize,
+    pub(crate) type_name_len: usize,
     /// Type hash storage
-    type_hash: [u8; MAX_TYPE_HASH_LEN],
+    pub(crate) type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
-    type_hash_len: usize,
+    pub(crate) type_hash_len: usize,
     /// User callback function
     callback: nros_service_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Pointer to parent node
     node: *const nros_node_t,
+    /// Handle ID from executor registration (usize::MAX = not registered)
+    handle_id: usize,
     /// Opaque pointer to internal Rust service server
     _internal: *mut c_void,
 }
@@ -92,6 +94,7 @@ impl Default for nros_service_t {
             callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
+            handle_id: usize::MAX,
             _internal: ptr::null_mut(),
         }
     }
@@ -106,6 +109,11 @@ impl nros_service_t {
     /// Get the context pointer
     pub(crate) fn get_context(&self) -> *mut c_void {
         self.context
+    }
+
+    /// Set the handle ID from executor registration
+    pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
+        self.handle_id = id.0;
     }
 
     /// Get the internal handle pointer
@@ -221,58 +229,13 @@ pub unsafe extern "C" fn nros_service_init(
     service.context = context;
     service.node = node;
 
-    // Create the internal service server
-    #[cfg(feature = "alloc")]
-    {
-        use nros_rmw::{ServiceInfo, Session};
+    // Service server creation is deferred to nros_executor_add_service(),
+    // which calls nros_node::Executor::add_service_raw_sized().
+    service._internal = ptr::null_mut();
+    service.handle_id = usize::MAX;
+    service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
 
-        // Get mutable support reference to access the session
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-            return NROS_RET_NOT_INIT;
-        }
-
-        // Save domain_id before borrowing session
-        let domain_id = support_mut.domain_id as u32;
-
-        // Get mutable session reference
-        let session = match support_mut.get_session_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        // Build ServiceInfo
-        let svc_name_str =
-            core::str::from_utf8_unchecked(&service.service_name[..service.service_name_len]);
-        let type_str = core::str::from_utf8_unchecked(&service.type_name[..service.type_name_len]);
-        let type_hash_str =
-            core::str::from_utf8_unchecked(&service.type_hash[..service.type_hash_len]);
-
-        let svc_info =
-            ServiceInfo::new(svc_name_str, type_str, type_hash_str).with_domain(domain_id);
-
-        // Create service server
-        match session.create_service_server(&svc_info) {
-            Ok(server_handle) => {
-                let server_box = alloc::boxed::Box::new(server_handle);
-                service._internal = alloc::boxed::Box::into_raw(server_box) as *mut _;
-            }
-            Err(_) => return NROS_RET_ERROR,
-        }
-
-        service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
-        NROS_RET_OK
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        // For no_std, not yet implemented
-        NROS_RET_ERROR
-    }
+    NROS_RET_OK
 }
 
 /// Finalize a service server.
@@ -296,18 +259,10 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
         return NROS_RET_NOT_INIT;
     }
 
-    // Clean up internal resources
-    #[cfg(feature = "alloc")]
-    {
-        if !service._internal.is_null() {
-            let _server = alloc::boxed::Box::from_raw(
-                service._internal as *mut nros::internals::RmwServiceServer,
-            );
-            // Server is dropped here
-        }
-    }
-
+    // The service server lives in the executor arena (if registered),
+    // so we don't drop anything here — just reset metadata.
     service._internal = ptr::null_mut();
+    service.handle_id = usize::MAX;
     service.callback = None;
     service.context = ptr::null_mut();
     service.node = ptr::null();

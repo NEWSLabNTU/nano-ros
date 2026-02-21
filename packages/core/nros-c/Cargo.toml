@@ -12,8 +12,8 @@ crate-type = ["staticlib", "cdylib"]
 
 [features]
 default = ["std"]
-std = ["alloc", "nros/std", "nros-rmw/std"]
-alloc = ["nros/alloc", "nros-rmw/alloc"]
+std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
+alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 
 # RMW backend (select one) — passed through to nros
 rmw-zenoh = ["nros/rmw-zenoh"]
@@ -34,6 +34,7 @@ ros-iron = ["nros/ros-iron"]
 
 [dependencies]
 nros = { path = "../nros", default-features = false }
+nros-node = { path = "../nros-node", default-features = false }
 nros-rmw = { path = "../nros-rmw", default-features = false }
 nros-core = { path = "../nros-core", default-features = false }
 paste = "1"

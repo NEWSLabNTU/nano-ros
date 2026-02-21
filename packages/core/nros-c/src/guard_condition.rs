@@ -42,6 +42,10 @@ pub struct nros_guard_condition_t {
     context: *mut c_void,
     /// Pointer to parent support context
     _support: *const nros_support_t,
+    /// Handle ID from executor registration (usize::MAX = not registered)
+    handle_id: usize,
+    /// Guard condition handle for external triggering (set by executor)
+    _guard_handle: *mut core::ffi::c_void,
 }
 
 // Safety: The triggered flag is designed for cross-thread access.
@@ -57,6 +61,8 @@ impl Default for nros_guard_condition_t {
             callback: None,
             context: ptr::null_mut(),
             _support: ptr::null(),
+            handle_id: usize::MAX,
+            _guard_handle: ptr::null_mut(),
         }
     }
 }
@@ -70,6 +76,28 @@ impl nros_guard_condition_t {
     /// Get the context pointer.
     pub(crate) fn get_context(&self) -> *mut c_void {
         self.context
+    }
+
+    /// Set the handle ID from executor registration.
+    pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
+        self.handle_id = id.0;
+    }
+
+    /// Set the guard handle for external triggering.
+    #[cfg(feature = "alloc")]
+    pub(crate) fn set_guard_handle(&mut self, handle: nros_node::GuardConditionHandle) {
+        let boxed = alloc::boxed::Box::new(handle);
+        self._guard_handle = alloc::boxed::Box::into_raw(boxed) as *mut _;
+    }
+
+    /// Get the guard handle for triggering.
+    #[cfg(feature = "alloc")]
+    pub(crate) fn get_guard_handle(&self) -> Option<&nros_node::GuardConditionHandle> {
+        if self._guard_handle.is_null() {
+            None
+        } else {
+            Some(unsafe { &*(self._guard_handle as *const nros_node::GuardConditionHandle) })
+        }
     }
 }
 
@@ -141,8 +169,9 @@ pub unsafe extern "C" fn nros_guard_condition_set_callback(
 
 /// Trigger a guard condition.
 ///
-/// This function is designed to be thread-safe. It sets the triggered flag
-/// which will be checked by the executor during its next spin cycle.
+/// This function is designed to be thread-safe. When registered with an
+/// executor, it triggers via the executor's guard handle (atomic flag in
+/// the arena). Otherwise falls back to the local triggered flag.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_guard_condition_trigger(
     guard: *mut nros_guard_condition_t,
@@ -157,7 +186,14 @@ pub unsafe extern "C" fn nros_guard_condition_trigger(
         return NROS_RET_NOT_INIT;
     }
 
-    // Use platform atomic operation for thread-safety
+    // If registered with an executor, trigger via the executor's guard handle
+    #[cfg(feature = "alloc")]
+    if let Some(handle) = guard.get_guard_handle() {
+        handle.trigger();
+        return NROS_RET_OK;
+    }
+
+    // Fallback: use platform atomic operation for thread-safety
     crate::platform::atomic_store_bool(&mut guard.triggered as *mut bool, true);
 
     NROS_RET_OK
@@ -232,10 +268,22 @@ pub unsafe extern "C" fn nros_guard_condition_fini(
         return NROS_RET_NOT_INIT;
     }
 
+    // Clean up the guard handle if allocated
+    #[cfg(feature = "alloc")]
+    {
+        if !guard._guard_handle.is_null() {
+            let _handle = alloc::boxed::Box::from_raw(
+                guard._guard_handle as *mut nros_node::GuardConditionHandle,
+            );
+        }
+    }
+
     guard.triggered = false;
     guard.callback = None;
     guard.context = ptr::null_mut();
     guard._support = ptr::null();
+    guard.handle_id = usize::MAX;
+    guard._guard_handle = ptr::null_mut();
     guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_SHUTDOWN;
 
     NROS_RET_OK

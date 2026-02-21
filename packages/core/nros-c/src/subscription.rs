@@ -10,7 +10,6 @@ use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
 use crate::publisher::nros_message_type_t;
 use crate::qos::nros_qos_t;
-use crate::support::nros_support_state_t;
 
 /// Subscription callback function type.
 ///
@@ -39,24 +38,28 @@ pub struct nros_subscription_t {
     /// Current state
     pub state: nros_subscription_state_t,
     /// Topic name storage
-    topic_name: [u8; MAX_TOPIC_LEN],
+    pub(crate) topic_name: [u8; MAX_TOPIC_LEN],
     /// Topic name length
-    topic_name_len: usize,
+    pub(crate) topic_name_len: usize,
     /// Type name storage
-    type_name: [u8; MAX_TYPE_NAME_LEN],
+    pub(crate) type_name: [u8; MAX_TYPE_NAME_LEN],
     /// Type name length
-    type_name_len: usize,
+    pub(crate) type_name_len: usize,
     /// Type hash storage
-    type_hash: [u8; MAX_TYPE_HASH_LEN],
+    pub(crate) type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
-    type_hash_len: usize,
+    pub(crate) type_hash_len: usize,
     /// User callback function
     callback: nros_subscription_callback_t,
     /// User context pointer
     context: *mut c_void,
     /// Pointer to parent node
     node: *const nros_node_t,
-    /// Opaque pointer to internal Rust subscriber
+    /// QoS settings (stored during init, used by executor registration)
+    qos: crate::qos::nros_qos_t,
+    /// Handle ID from executor registration (usize::MAX = not registered)
+    handle_id: usize,
+    /// Opaque pointer to internal Rust subscriber (unused in executor model)
     _internal: *mut c_void,
 }
 
@@ -73,6 +76,8 @@ impl Default for nros_subscription_t {
             callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
+            qos: crate::qos::nros_qos_t::default(),
+            handle_id: usize::MAX,
             _internal: ptr::null_mut(),
         }
     }
@@ -289,66 +294,20 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     subscription.context = context;
     subscription.node = node;
 
-    // Get QoS settings
-    let _qos_settings = if qos.is_null() {
-        crate::qos::NROS_QOS_DEFAULT.to_qos_settings()
+    // Store QoS settings for later use by executor registration
+    subscription.qos = if qos.is_null() {
+        crate::qos::NROS_QOS_DEFAULT
     } else {
-        (*qos).to_qos_settings()
+        *qos
     };
 
-    // Create the internal subscriber
-    #[cfg(feature = "alloc")]
-    {
-        use nros_rmw::{Session, TopicInfo};
+    // Subscriber creation is deferred to nros_executor_add_subscription(),
+    // which calls nros_node::Executor::add_subscription_raw_with_qos_sized().
+    subscription._internal = ptr::null_mut();
+    subscription.handle_id = usize::MAX;
+    subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
 
-        // Get mutable support reference to access the session
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-            return NROS_RET_NOT_INIT;
-        }
-
-        // Save domain_id before borrowing session
-        let domain_id = support_mut.domain_id as u32;
-
-        // Get mutable session reference
-        let session = match support_mut.get_session_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        // Build the topic key expression for ROS 2 compatibility
-        let topic_str =
-            core::str::from_utf8_unchecked(&subscription.topic_name[..subscription.topic_name_len]);
-        let type_str =
-            core::str::from_utf8_unchecked(&subscription.type_name[..subscription.type_name_len]);
-        let type_hash_str =
-            core::str::from_utf8_unchecked(&subscription.type_hash[..subscription.type_hash_len]);
-
-        // Build TopicInfo
-        let topic_info = TopicInfo::new(topic_str, type_str, type_hash_str).with_domain(domain_id);
-
-        // Create subscriber (uses polling model - executor will poll and invoke callbacks)
-        match session.create_subscriber(&topic_info, _qos_settings) {
-            Ok(sub_handle) => {
-                let sub_box = alloc::boxed::Box::new(sub_handle);
-                subscription._internal = alloc::boxed::Box::into_raw(sub_box) as *mut _;
-            }
-            Err(_) => return NROS_RET_ERROR,
-        }
-
-        subscription.state = nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED;
-        NROS_RET_OK
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        // For no_std, use shim transport (not yet implemented)
-        NROS_RET_ERROR
-    }
+    NROS_RET_OK
 }
 
 /// Finalize a subscription.
@@ -378,18 +337,10 @@ pub unsafe extern "C" fn nros_subscription_fini(
         return NROS_RET_NOT_INIT;
     }
 
-    // Clean up internal resources
-    #[cfg(feature = "alloc")]
-    {
-        if !subscription._internal.is_null() {
-            let _sub = alloc::boxed::Box::from_raw(
-                subscription._internal as *mut nros::internals::RmwSubscriber,
-            );
-            // Subscriber is dropped here
-        }
-    }
-
+    // The subscriber lives in the executor arena (if registered),
+    // so we don't drop anything here — just reset metadata.
     subscription._internal = ptr::null_mut();
+    subscription.handle_id = usize::MAX;
     subscription.callback = None;
     subscription.context = ptr::null_mut();
     subscription.node = ptr::null();
@@ -456,6 +407,16 @@ impl nros_subscription_t {
     /// Get the user context
     pub(crate) fn get_context(&self) -> *mut c_void {
         self.context
+    }
+
+    /// Get the stored QoS as `nros_rmw::QosSettings`
+    pub(crate) fn get_qos_settings(&self) -> nros_rmw::QosSettings {
+        self.qos.to_qos_settings()
+    }
+
+    /// Set the handle ID from executor registration
+    pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
+        self.handle_id = id.0;
     }
 
     /// Get the internal subscriber handle

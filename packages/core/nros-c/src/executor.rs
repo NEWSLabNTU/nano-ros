@@ -1,7 +1,8 @@
 //! Executor API for nros C API.
 //!
-//! The executor manages callbacks for subscriptions, timers, and services,
-//! providing deterministic execution in a user-defined order.
+//! Thin wrapper over `nros_node::Executor`. All dispatch logic, trigger
+//! evaluation, LET semantics, and I/O driving are delegated to the Rust
+//! executor — this module only handles C FFI translation.
 
 use core::ffi::c_int;
 use core::ptr;
@@ -15,11 +16,38 @@ use crate::timer::{nros_timer_state_t, nros_timer_t};
 
 pub use crate::config::*;
 
-/// Default executor timeout (100ms in nanoseconds).
-const DEFAULT_TIMEOUT_NS: u64 = 100_000_000;
+// ============================================================================
+// Internal Rust executor type
+// ============================================================================
 
-/// Maximum sleep duration to maintain responsiveness (10ms in nanoseconds).
-const MAX_SLEEP_NS: u64 = 10_000_000;
+/// Arena size computed from build-time constants.
+///
+/// Each subscription raw entry is ~MESSAGE_BUFFER_SIZE bytes (receive buffer),
+/// each service raw entry is ~2*MESSAGE_BUFFER_SIZE (request + reply buffers),
+/// timers and guard conditions are small. We over-provision to handle the
+/// worst case where all handles are services with double buffers.
+const CB_ARENA_SIZE: usize = NROS_EXECUTOR_MAX_HANDLES * MESSAGE_BUFFER_SIZE * 2 + 4096;
+
+/// The concrete nros-node executor type used by the C API.
+///
+/// - `S = nros::internals::RmwSession` — the active backend session
+/// - `MAX_CBS = NROS_EXECUTOR_MAX_HANDLES` — max callback entries
+/// - `CB_ARENA = CB_ARENA_SIZE` — arena byte budget
+#[cfg(feature = "alloc")]
+pub(crate) type CExecutor = nros_node::Executor<nros::internals::RmwSession, NROS_EXECUTOR_MAX_HANDLES, CB_ARENA_SIZE>;
+
+/// Get a mutable reference to the internal executor.
+///
+/// # Safety
+/// The `_internal` pointer must be valid and point to a live `CExecutor`.
+#[cfg(feature = "alloc")]
+unsafe fn get_executor(internal: *mut core::ffi::c_void) -> &'static mut CExecutor {
+    &mut *(internal as *mut CExecutor)
+}
+
+// ============================================================================
+// C types (kept for API compatibility)
+// ============================================================================
 
 /// Trigger function type for executor.
 ///
@@ -66,49 +94,6 @@ pub enum nros_executor_semantics_t {
     NROS_SEMANTICS_LOGICAL_EXECUTION_TIME = 1,
 }
 
-/// Handle type for executor
-#[repr(C)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum nros_executor_handle_type_t {
-    /// No handle (empty slot)
-    NROS_EXECUTOR_HANDLE_NONE = 0,
-    /// Subscription handle
-    NROS_EXECUTOR_HANDLE_SUBSCRIPTION = 1,
-    /// Timer handle
-    NROS_EXECUTOR_HANDLE_TIMER = 2,
-    /// Service handle
-    NROS_EXECUTOR_HANDLE_SERVICE = 3,
-    /// Client handle
-    NROS_EXECUTOR_HANDLE_CLIENT = 4,
-    /// Guard condition handle
-    NROS_EXECUTOR_HANDLE_GUARD_CONDITION = 5,
-}
-
-/// Executor handle (union-like structure)
-#[repr(C)]
-#[derive(Clone, Copy)]
-pub struct nros_executor_handle_t {
-    /// Handle type
-    pub handle_type: nros_executor_handle_type_t,
-    /// Invocation mode (for subscriptions)
-    pub invocation: nros_executor_invocation_t,
-    /// Handle pointer (type depends on handle_type)
-    pub handle: *mut core::ffi::c_void,
-    /// Flag indicating if handle has new data ready
-    pub data_ready: bool,
-}
-
-impl Default for nros_executor_handle_t {
-    fn default() -> Self {
-        Self {
-            handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_NONE,
-            invocation: nros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
-            handle: ptr::null_mut(),
-            data_ready: false,
-        }
-    }
-}
-
 /// Executor state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -125,18 +110,13 @@ pub enum nros_executor_state_t {
 
 /// Executor structure.
 ///
-/// The executor manages a fixed array of handles and processes them
-/// in the order they were added.
+/// The executor delegates all dispatch logic to an internal
+/// `nros_node::Executor`. The C struct retains state, timeout, and
+/// per-type counters for API compatibility.
 #[repr(C)]
 pub struct nros_executor_t {
     /// Current state
     pub state: nros_executor_state_t,
-    /// Handle array
-    handles: [nros_executor_handle_t; NROS_EXECUTOR_MAX_HANDLES],
-    /// Number of handles in use
-    handle_count: usize,
-    /// Maximum handles (configured at init)
-    max_handles: usize,
     /// Timeout in nanoseconds for spin_some
     pub timeout_ns: u64,
     /// Data communication semantics
@@ -147,41 +127,38 @@ pub struct nros_executor_t {
     pub trigger: nros_executor_trigger_t,
     /// User context for trigger function
     pub trigger_context: *mut core::ffi::c_void,
-    /// LET buffers for storing sampled data (one per handle)
-    let_buffers: [[u8; LET_BUFFER_SIZE]; NROS_EXECUTOR_MAX_HANDLES],
-    /// Length of sampled data in each LET buffer
-    let_buffer_lens: [usize; NROS_EXECUTOR_MAX_HANDLES],
-    /// Flags indicating which handles have sampled data in LET mode
-    let_data_available: [bool; NROS_EXECUTOR_MAX_HANDLES],
-    /// Next invocation time in nanoseconds for drift-compensated spin_period
-    invocation_time_ns: u64,
+    /// Number of handles registered
+    handle_count: usize,
+    /// Maximum handles (configured at init)
+    max_handles: usize,
     /// Number of subscription handles
     subscription_count: usize,
     /// Number of timer handles
     timer_count: usize,
     /// Number of service handles
     service_count: usize,
+    /// Next invocation time in nanoseconds for drift-compensated spin_period
+    invocation_time_ns: u64,
+    /// Opaque pointer to internal Rust executor (`Box<CExecutor>`)
+    _internal: *mut core::ffi::c_void,
 }
 
 impl Default for nros_executor_t {
     fn default() -> Self {
         Self {
             state: nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
-            handles: [nros_executor_handle_t::default(); NROS_EXECUTOR_MAX_HANDLES],
-            handle_count: 0,
-            max_handles: NROS_EXECUTOR_MAX_HANDLES,
-            timeout_ns: DEFAULT_TIMEOUT_NS,
+            timeout_ns: 100_000_000, // 100ms default
             semantics: nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
             support: ptr::null(),
             trigger: None,
             trigger_context: ptr::null_mut(),
-            let_buffers: [[0u8; LET_BUFFER_SIZE]; NROS_EXECUTOR_MAX_HANDLES],
-            let_buffer_lens: [0usize; NROS_EXECUTOR_MAX_HANDLES],
-            let_data_available: [false; NROS_EXECUTOR_MAX_HANDLES],
-            invocation_time_ns: 0,
+            handle_count: 0,
+            max_handles: NROS_EXECUTOR_MAX_HANDLES,
             subscription_count: 0,
             timer_count: 0,
             service_count: 0,
+            invocation_time_ns: 0,
+            _internal: ptr::null_mut(),
         }
     }
 }
@@ -233,7 +210,18 @@ pub unsafe extern "C" fn nros_executor_init(
         return NROS_RET_NOT_INIT;
     }
 
-    // Cap max_handles at array size
+    // Create the internal nros-node executor using a borrowed session pointer
+    #[cfg(feature = "alloc")]
+    {
+        let session_ptr = support_ref.get_session_ptr();
+        if session_ptr.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let rust_exec = alloc::boxed::Box::new(CExecutor::from_session_ptr(session_ptr));
+        executor._internal = alloc::boxed::Box::into_raw(rust_exec) as *mut _;
+    }
+
     executor.max_handles = max_handles.min(NROS_EXECUTOR_MAX_HANDLES);
     executor.handle_count = 0;
     executor.support = support;
@@ -245,14 +233,8 @@ pub unsafe extern "C" fn nros_executor_init(
 
 /// Set the executor timeout.
 ///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `timeout_ns` - Timeout in nanoseconds for spin_some
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// # Safety
+/// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_set_timeout(
     executor: *mut nros_executor_t,
@@ -276,17 +258,6 @@ pub unsafe extern "C" fn nros_executor_set_timeout(
 
 /// Set data communication semantics.
 ///
-/// Controls when data is taken from DDS during spin operations.
-///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `semantics` - The data communication semantics to use
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
-/// * `NROS_RET_NOT_INIT` if executor is not initialized
-///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
@@ -307,23 +278,25 @@ pub unsafe extern "C" fn nros_executor_set_semantics(
     }
 
     executor.semantics = semantics;
+
+    // Forward to the internal executor
+    #[cfg(feature = "alloc")]
+    if !executor._internal.is_null() {
+        let rust_exec = get_executor(executor._internal);
+        rust_exec.set_semantics(match semantics {
+            nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR => {
+                nros_node::ExecutorSemantics::RclcppExecutor
+            }
+            nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME => {
+                nros_node::ExecutorSemantics::LogicalExecutionTime
+            }
+        });
+    }
+
     NROS_RET_OK
 }
 
 /// Set the trigger condition for the executor.
-///
-/// The trigger controls when `spin_some` processes callbacks.
-/// Pass NULL for the trigger function to use the default "any" behavior.
-///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `trigger` - Trigger function (NULL for default "any" behavior)
-/// * `context` - User context passed to trigger function (may be NULL)
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
@@ -347,12 +320,32 @@ pub unsafe extern "C" fn nros_executor_set_trigger(
 
     executor.trigger = trigger;
     executor.trigger_context = context;
+
+    // Forward to the internal executor
+    #[cfg(feature = "alloc")]
+    if !executor._internal.is_null() {
+        let rust_exec = get_executor(executor._internal);
+        match trigger {
+            Some(cb) => {
+                rust_exec.set_trigger(nros_node::Trigger::RawPredicate {
+                    callback: cb,
+                    context,
+                });
+            }
+            None => {
+                rust_exec.set_trigger(nros_node::Trigger::Any);
+            }
+        }
+    }
+
     NROS_RET_OK
 }
 
+// ============================================================================
+// Built-in trigger functions (kept as C-exported convenience wrappers)
+// ============================================================================
+
 /// Built-in trigger: fire when ANY handle has data ready.
-///
-/// This is the default behavior. Use with `nros_executor_set_trigger`.
 ///
 /// # Safety
 /// * `ready` must point to a valid array of at least `count` booleans
@@ -408,12 +401,6 @@ pub unsafe extern "C" fn nros_executor_trigger_always(
 ///
 /// Pass the handle index (cast to `void*`) as the context parameter.
 ///
-/// # Example
-/// ```c
-/// // Trigger when handle 2 has data
-/// nros_executor_set_trigger(&executor, nros_executor_trigger_one, (void*)2);
-/// ```
-///
 /// # Safety
 /// * `ready` must point to a valid array of at least `count` booleans
 /// * `context` is interpreted as a `usize` index
@@ -431,18 +418,15 @@ pub unsafe extern "C" fn nros_executor_trigger_one(
     }
 }
 
+// ============================================================================
+// Handle registration — delegated to nros-node Executor
+// ============================================================================
+
 /// Add a subscription to the executor.
 ///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `subscription` - Pointer to an initialized subscription
-/// * `invocation` - When to invoke the callback
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_FULL` if executor is full
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// Extracts metadata from the subscription struct and registers a raw-bytes
+/// callback with the internal nros-node executor. The RMW subscriber handle
+/// is created here (moved from subscription init).
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
@@ -471,7 +455,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         return NROS_RET_NOT_INIT;
     }
 
-    // Check if full (overall or per-type)
+    // Check capacity (overall and per-type)
     if executor.handle_count >= executor.max_handles {
         return NROS_RET_FULL;
     }
@@ -479,31 +463,73 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         return NROS_RET_FULL;
     }
 
-    // Add handle
-    let idx = executor.handle_count;
-    executor.handles[idx] = nros_executor_handle_t {
-        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION,
-        invocation,
-        handle: subscription as *mut _,
-        data_ready: false,
-    };
-    executor.handle_count += 1;
-    executor.subscription_count += 1;
+    #[cfg(feature = "alloc")]
+    {
+        if executor._internal.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+        let rust_exec = get_executor(executor._internal);
 
-    NROS_RET_OK
+        // Extract metadata from subscription struct
+        let topic_str = core::str::from_utf8_unchecked(
+            &subscription_ref.topic_name[..subscription_ref.topic_name_len],
+        );
+        let type_str = core::str::from_utf8_unchecked(
+            &subscription_ref.type_name[..subscription_ref.type_name_len],
+        );
+        let type_hash_str = core::str::from_utf8_unchecked(
+            &subscription_ref.type_hash[..subscription_ref.type_hash_len],
+        );
+
+        // Get QoS settings from the subscription
+        let qos = subscription_ref.get_qos_settings();
+
+        // Get callback and context
+        let callback = match subscription_ref.get_callback() {
+            Some(cb) => cb,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let context = subscription_ref.get_context();
+
+        // Register with the nros-node executor using MESSAGE_BUFFER_SIZE
+        let result = rust_exec.add_subscription_raw_with_qos_sized::<MESSAGE_BUFFER_SIZE>(
+            topic_str,
+            type_str,
+            type_hash_str,
+            qos,
+            callback,
+            context,
+        );
+
+        match result {
+            Ok(handle_id) => {
+                // Store the handle ID in the subscription for later reference
+                let sub_mut = &mut *subscription;
+                sub_mut.set_handle_id(handle_id);
+
+                // Set invocation mode
+                if invocation == nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS {
+                    rust_exec.set_invocation(handle_id, nros_node::InvocationMode::Always);
+                }
+
+                executor.handle_count += 1;
+                executor.subscription_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    {
+        NROS_RET_ERROR
+    }
 }
 
 /// Add a timer to the executor.
 ///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `timer` - Pointer to an initialized timer
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_FULL` if executor is full
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// Wraps the C timer callback in a closure and registers it with the
+/// internal nros-node executor.
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
@@ -529,7 +555,7 @@ pub unsafe extern "C" fn nros_executor_add_timer(
         return NROS_RET_NOT_INIT;
     }
 
-    // Check if full (overall or per-type)
+    // Check capacity
     if executor.handle_count >= executor.max_handles {
         return NROS_RET_FULL;
     }
@@ -537,31 +563,61 @@ pub unsafe extern "C" fn nros_executor_add_timer(
         return NROS_RET_FULL;
     }
 
-    // Add handle
-    let idx = executor.handle_count;
-    executor.handles[idx] = nros_executor_handle_t {
-        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER,
-        invocation: nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS,
-        handle: timer as *mut _,
-        data_ready: false,
-    };
-    executor.handle_count += 1;
-    executor.timer_count += 1;
+    #[cfg(feature = "alloc")]
+    {
+        if executor._internal.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+        let rust_exec = get_executor(executor._internal);
 
-    NROS_RET_OK
+        // Get the C callback and context from the timer
+        let c_callback = match timer_ref.get_callback() {
+            Some(cb) => cb,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let c_context = timer_ref.get_context();
+        let timer_ptr = timer;
+
+        // Wrap the C callback in a Rust closure
+        let wrapper = move || {
+            // SAFETY: The C callback and timer/context pointers remain valid
+            // for the lifetime of the executor (same guarantee as rclc).
+            c_callback(timer_ptr, c_context);
+        };
+
+        // Convert period from nanoseconds to milliseconds
+        let period_ms = timer_ref.period_ns / 1_000_000;
+        if period_ms == 0 {
+            return NROS_RET_INVALID_ARGUMENT;
+        }
+
+        // Register with the nros-node executor
+        let period = nros_node::TimerDuration::from_millis(period_ms);
+        match rust_exec.add_timer(period, wrapper) {
+            Ok(handle_id) => {
+                // Store handle ID and executor pointer for cancel/reset operations
+                let timer_mut = &mut *timer;
+                timer_mut.set_handle_id(handle_id);
+                timer_mut.set_executor_ptr(executor._internal);
+
+                executor.handle_count += 1;
+                executor.timer_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    {
+        NROS_RET_ERROR
+    }
 }
 
 /// Add a service to the executor.
 ///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `service` - Pointer to an initialized service
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_FULL` if executor is full
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// Extracts metadata from the service struct and registers a raw-bytes
+/// service callback with the internal nros-node executor.
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
@@ -587,7 +643,7 @@ pub unsafe extern "C" fn nros_executor_add_service(
         return NROS_RET_NOT_INIT;
     }
 
-    // Check if full (overall or per-type)
+    // Check capacity
     if executor.handle_count >= executor.max_handles {
         return NROS_RET_FULL;
     }
@@ -595,31 +651,60 @@ pub unsafe extern "C" fn nros_executor_add_service(
         return NROS_RET_FULL;
     }
 
-    // Add handle
-    let idx = executor.handle_count;
-    executor.handles[idx] = nros_executor_handle_t {
-        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE,
-        invocation: nros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
-        handle: service as *mut _,
-        data_ready: false,
-    };
-    executor.handle_count += 1;
-    executor.service_count += 1;
+    #[cfg(feature = "alloc")]
+    {
+        if executor._internal.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+        let rust_exec = get_executor(executor._internal);
 
-    NROS_RET_OK
+        // Extract metadata from service struct
+        let service_name = core::str::from_utf8_unchecked(
+            &service_ref.service_name[..service_ref.service_name_len],
+        );
+        let type_str = core::str::from_utf8_unchecked(
+            &service_ref.type_name[..service_ref.type_name_len],
+        );
+        let type_hash_str = core::str::from_utf8_unchecked(
+            &service_ref.type_hash[..service_ref.type_hash_len],
+        );
+
+        // Get callback and context
+        let callback = match service_ref.get_callback() {
+            Some(cb) => cb,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+        let context = service_ref.get_context();
+
+        // Register with the nros-node executor
+        let result = rust_exec.add_service_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE>(
+            service_name,
+            type_str,
+            type_hash_str,
+            callback,
+            context,
+        );
+
+        match result {
+            Ok(handle_id) => {
+                let service_mut = &mut *service;
+                service_mut.set_handle_id(handle_id);
+
+                executor.handle_count += 1;
+                executor.service_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    {
+        NROS_RET_ERROR
+    }
 }
 
 /// Add a guard condition to the executor.
-///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `guard` - Pointer to an initialized guard condition
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_FULL` if executor is full
-/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
@@ -647,244 +732,57 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
         return NROS_RET_NOT_INIT;
     }
 
-    // Check if full
+    // Check capacity
     if executor.handle_count >= executor.max_handles {
         return NROS_RET_FULL;
     }
 
-    // Add handle
-    let idx = executor.handle_count;
-    executor.handles[idx] = nros_executor_handle_t {
-        handle_type: nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION,
-        invocation: nros_executor_invocation_t::NROS_EXECUTOR_ON_NEW_DATA,
-        handle: guard as *mut _,
-        data_ready: false,
-    };
-    executor.handle_count += 1;
-
-    NROS_RET_OK
-}
-
-// MESSAGE_BUFFER_SIZE is generated by build.rs (from NROS_MESSAGE_BUFFER_SIZE env var).
-
-/// Process a subscription message if one is available.
-///
-/// Returns true if a message was processed, false otherwise.
-#[cfg(feature = "alloc")]
-unsafe fn process_subscription(subscription: *mut nros_subscription_t) -> bool {
-    use nros_rmw::Subscriber;
-
-    let subscription_ref = &mut *subscription;
-
-    // Check if subscription is initialized
-    if subscription_ref.state
-        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    #[cfg(feature = "alloc")]
     {
-        return false;
-    }
-
-    // Get the callback
-    let callback = match subscription_ref.get_callback() {
-        Some(cb) => cb,
-        None => return false,
-    };
-
-    // Get the internal subscriber handle
-    let internal = subscription_ref.get_internal();
-    if internal.is_null() {
-        return false;
-    }
-    let subscriber = &mut *(internal as *mut nros::internals::RmwSubscriber);
-
-    // Allocate buffer on stack
-    let mut buffer = [0u8; MESSAGE_BUFFER_SIZE];
-
-    // Try to receive a message
-    match subscriber.try_recv_raw(&mut buffer) {
-        Ok(Some(len)) => {
-            // Invoke the user callback with received data
-            callback(buffer.as_ptr(), len, subscription_ref.get_context());
-            true
+        if executor._internal.is_null() {
+            return NROS_RET_NOT_INIT;
         }
-        Ok(None) => false,
-        Err(_) => false,
-    }
-}
+        let rust_exec = get_executor(executor._internal);
 
-/// Process a service request if one is available.
-///
-/// Returns true if a request was processed, false otherwise.
-#[cfg(feature = "alloc")]
-unsafe fn process_service_request(service: *mut nros_service_t) -> bool {
-    use nros_rmw::ServiceServerTrait;
+        // Get the C callback and context from the guard condition
+        let c_callback = guard_ref.get_callback();
+        let c_context = guard_ref.get_context();
 
-    let service_ref = &mut *service;
-
-    // Check if service is initialized
-    if service_ref.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        return false;
-    }
-
-    // Get the callback
-    let callback = match service_ref.get_callback() {
-        Some(cb) => cb,
-        None => return false,
-    };
-
-    // Get the internal server handle
-    let internal = service_ref.get_internal();
-    if internal.is_null() {
-        return false;
-    }
-    let server = &mut *(internal as *mut nros::internals::RmwServiceServer);
-
-    // Allocate buffers on stack
-    let mut request_buf = [0u8; MESSAGE_BUFFER_SIZE];
-    let mut response_buf = [0u8; MESSAGE_BUFFER_SIZE];
-
-    // Try to receive a request
-    let (request_len, sequence_number) = match server.try_recv_request(&mut request_buf) {
-        Ok(Some(req)) => (req.data.len(), req.sequence_number),
-        Ok(None) => return false,
-        Err(_) => return false,
-    };
-
-    // Call the user callback
-    let mut response_len: usize = 0;
-    let handled = callback(
-        request_buf.as_ptr(),
-        request_len,
-        response_buf.as_mut_ptr(),
-        MESSAGE_BUFFER_SIZE,
-        &mut response_len,
-        service_ref.get_context(),
-    );
-
-    // Send the response if handled successfully
-    if handled && response_len > 0 {
-        let _ = server.send_reply(sequence_number, &response_buf[..response_len]);
-    }
-
-    true
-}
-
-// ═══════════════════════════════════════════════════════════════════════════
-// LET (LOGICAL EXECUTION TIME) SEMANTICS HELPERS
-// ═══════════════════════════════════════════════════════════════════════════
-
-/// Sample a subscription's data into the LET buffer.
-///
-/// Returns true if data was sampled, false otherwise.
-#[cfg(feature = "alloc")]
-unsafe fn sample_subscription_for_let(
-    subscription: *mut nros_subscription_t,
-    buffer: &mut [u8],
-) -> Option<usize> {
-    use nros_rmw::Subscriber;
-
-    let subscription_ref = &*subscription;
-
-    // Check if subscription is initialized
-    if subscription_ref.state
-        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
-    {
-        return None;
-    }
-
-    // Get the internal subscriber handle
-    let internal = subscription_ref.get_internal();
-    if internal.is_null() {
-        return None;
-    }
-    let subscriber = &mut *(internal as *mut nros::internals::RmwSubscriber);
-
-    // Try to receive a message into the LET buffer
-    match subscriber.try_recv_raw(buffer) {
-        Ok(Some(len)) => Some(len),
-        Ok(None) => None,
-        Err(_) => None,
-    }
-}
-
-/// Process a subscription callback using pre-sampled LET data.
-///
-/// Returns true if the callback was invoked, false otherwise.
-#[cfg(feature = "alloc")]
-unsafe fn process_subscription_from_let(
-    subscription: *mut nros_subscription_t,
-    data: &[u8],
-    len: usize,
-) -> bool {
-    let subscription_ref = &*subscription;
-
-    // Check if subscription is initialized
-    if subscription_ref.state
-        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
-    {
-        return false;
-    }
-
-    // Get the callback
-    let callback = match subscription_ref.get_callback() {
-        Some(cb) => cb,
-        None => return false,
-    };
-
-    // Invoke the user callback with the pre-sampled data
-    callback(data.as_ptr(), len, subscription_ref.get_context());
-    true
-}
-
-/// Sample all handles at the start of a LET spin cycle.
-///
-/// This function takes data from all ready subscriptions and stores it
-/// in the executor's LET buffers. Services are not pre-sampled since
-/// they need request-reply semantics.
-#[cfg(feature = "alloc")]
-unsafe fn sample_all_handles_for_let(executor: &mut nros_executor_t) {
-    // Clear previous LET data
-    for i in 0..executor.handle_count {
-        executor.let_data_available[i] = false;
-        executor.let_buffer_lens[i] = 0;
-    }
-
-    // Sample all subscriptions
-    for i in 0..executor.handle_count {
-        let handle = &executor.handles[i];
-
-        if handle.handle_type
-            == nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION
-        {
-            let subscription = handle.handle as *mut nros_subscription_t;
-            if !subscription.is_null() {
-                // Sample into LET buffer
-                if let Some(len) =
-                    sample_subscription_for_let(subscription, &mut executor.let_buffers[i])
-                {
-                    executor.let_buffer_lens[i] = len;
-                    executor.let_data_available[i] = true;
-                }
+        // Wrap the C callback in a Rust closure
+        let wrapper = move || {
+            if let Some(cb) = c_callback {
+                // SAFETY: The C callback and context remain valid for the
+                // lifetime of the executor.
+                cb(c_context);
             }
+        };
+
+        match rust_exec.add_guard_condition(wrapper) {
+            Ok((handle_id, guard_handle)) => {
+                let guard_mut = &mut *guard;
+                guard_mut.set_handle_id(handle_id);
+                guard_mut.set_guard_handle(guard_handle);
+
+                executor.handle_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
         }
-        // Note: Services are NOT pre-sampled in LET mode because they
-        // require request-reply semantics with sequence numbers.
-        // Services are processed immediately as in RCLCPP mode.
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    {
+        NROS_RET_ERROR
     }
 }
+
+// ============================================================================
+// Spin functions — delegated to nros-node executor
+// ============================================================================
 
 /// Spin the executor once.
 ///
-/// This function checks for ready handles and processes them once.
-///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `timeout_ns` - Timeout in nanoseconds (0 for non-blocking)
-///
-/// # Returns
-/// * `NROS_RET_OK` if callbacks were executed
-/// * `NROS_RET_TIMEOUT` if no callbacks were ready within timeout
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// Drives middleware I/O, then calls `spin_once()` on the internal executor.
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
@@ -900,208 +798,46 @@ pub unsafe extern "C" fn nros_executor_spin_some(
     let executor = &mut *executor;
 
     // Accept both INITIALIZED and SPINNING states
-    // spin_period/spin set state to SPINNING before calling spin_some
     if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
         && executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
     {
         return NROS_RET_NOT_INIT;
     }
 
-    // Drive middleware I/O for pull-based backends (XRCE-DDS).
-    // This pumps uxr_run_session_time() to fill subscriber/service slots
-    // before polling them. No-op for push-based backends (zenoh).
-    #[cfg(all(any(feature = "rmw-zenoh", feature = "rmw-xrce"), feature = "alloc"))]
+    #[cfg(feature = "alloc")]
     {
-        if !executor.support.is_null() {
-            let support = &mut *(executor.support as *mut nros_support_t);
-            if let Some(session) = support.get_session_mut() {
-                nros::internals::drive_session_io(session, 10);
-            }
+        if executor._internal.is_null() {
+            return NROS_RET_NOT_INIT;
         }
-    }
+        let rust_exec = get_executor(executor._internal);
 
-    // Get current time from platform
-    let current_time_ns = crate::platform::get_time_ns();
+        // Convert timeout from nanoseconds to milliseconds (i32) for nros-node
+        let timeout_ms: i32 = if timeout_ns > 0 {
+            ((timeout_ns / 1_000_000).max(1)).min(i32::MAX as u64) as i32
+        } else {
+            0
+        };
 
-    // LET semantics: Sample all data at the start of the spin cycle
-    #[cfg(feature = "alloc")]
-    let use_let = executor.semantics
-        == nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME;
+        // spin_once drives I/O internally and handles trigger evaluation,
+        // LET semantics, and dispatch
+        let result = rust_exec.spin_once(timeout_ms);
 
-    #[cfg(feature = "alloc")]
-    if use_let {
-        sample_all_handles_for_let(executor);
-    }
-
-    // If a trigger is set, collect the ready mask and check it
-    if let Some(trigger_fn) = executor.trigger {
-        let mut ready_mask = [false; NROS_EXECUTOR_MAX_HANDLES];
-
-        #[allow(clippy::needless_range_loop)]
-        // i indexes handles, ready_mask, and let_data_available
-        for i in 0..executor.handle_count {
-            let handle = &executor.handles[i];
-            ready_mask[i] = match handle.handle_type {
-                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
-                    // In LET mode, use the pre-sampled data availability
-                    #[cfg(feature = "alloc")]
-                    {
-                        if use_let {
-                            executor.let_data_available[i]
-                        } else {
-                            handle.data_ready
-                        }
-                    }
-                    #[cfg(not(feature = "alloc"))]
-                    {
-                        handle.data_ready
-                    }
-                }
-                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE => {
-                    // Services always use immediate checking (not pre-sampled)
-                    handle.data_ready
-                }
-                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER => {
-                    let timer = handle.handle as *mut nros_timer_t;
-                    !timer.is_null()
-                        && crate::timer::nros_timer_is_ready(timer, current_time_ns) != 0
-                }
-                nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
-                    let guard = handle.handle as *mut nros_guard_condition_t;
-                    !guard.is_null()
-                        && crate::guard_condition::nros_guard_condition_is_triggered(guard)
-                }
-                _ => false,
-            };
-        }
-
-        if !trigger_fn(
-            ready_mask.as_ptr(),
-            executor.handle_count,
-            executor.trigger_context,
-        ) {
-            // Trigger not satisfied — still process timers
-            for i in 0..executor.handle_count {
-                let handle = &mut executor.handles[i];
-                if handle.handle_type
-                    == nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER
-                {
-                    let timer = handle.handle as *mut nros_timer_t;
-                    if !timer.is_null()
-                        && crate::timer::nros_timer_is_ready(timer, current_time_ns) != 0
-                    {
-                        crate::timer::nros_timer_call(timer, current_time_ns);
-                    }
-                }
-            }
-
+        if result.any_work() {
+            NROS_RET_OK
+        } else {
+            // If nothing was processed and we had a timeout, sleep briefly
             if timeout_ns > 0 {
-                crate::platform::sleep_ns(timeout_ns.min(MAX_SLEEP_NS));
-                return NROS_RET_TIMEOUT;
+                crate::platform::sleep_ns(timeout_ns.min(10_000_000));
             }
-            return NROS_RET_TIMEOUT;
+            NROS_RET_TIMEOUT
         }
     }
 
-    let mut any_executed = false;
-
-    // Process all handles in order
-    for i in 0..executor.handle_count {
-        let handle = &mut executor.handles[i];
-
-        match handle.handle_type {
-            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_TIMER => {
-                let timer = handle.handle as *mut nros_timer_t;
-                if !timer.is_null()
-                    && crate::timer::nros_timer_is_ready(timer, current_time_ns) != 0
-                {
-                    crate::timer::nros_timer_call(timer, current_time_ns);
-                    any_executed = true;
-                }
-            }
-            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SUBSCRIPTION => {
-                #[cfg(feature = "alloc")]
-                {
-                    let subscription = handle.handle as *mut nros_subscription_t;
-                    if !subscription.is_null() {
-                        if use_let {
-                            // LET mode: Use pre-sampled data from the sampling point
-                            if executor.let_data_available[i] {
-                                let len = executor.let_buffer_lens[i];
-                                if process_subscription_from_let(
-                                    subscription,
-                                    &executor.let_buffers[i],
-                                    len,
-                                ) {
-                                    any_executed = true;
-                                }
-                            } else if handle.invocation
-                                == nros_executor_invocation_t::NROS_EXECUTOR_ALWAYS
-                            {
-                                // ALWAYS invocation: call with empty data even if not sampled
-                                let _ = process_subscription_from_let(subscription, &[], 0);
-                                any_executed = true;
-                            }
-                        } else {
-                            // RCLCPP mode: Take data immediately before callback
-                            if process_subscription(subscription) {
-                                any_executed = true;
-                            }
-                        }
-                    }
-                }
-            }
-            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_SERVICE => {
-                #[cfg(feature = "alloc")]
-                {
-                    let service = handle.handle as *mut nros_service_t;
-                    // Try to receive and process a request
-                    if !service.is_null() && process_service_request(service) {
-                        any_executed = true;
-                    }
-                }
-            }
-            nros_executor_handle_type_t::NROS_EXECUTOR_HANDLE_GUARD_CONDITION => {
-                let guard = handle.handle as *mut nros_guard_condition_t;
-                if !guard.is_null() {
-                    let guard_ref = &mut *guard;
-                    // Check if triggered
-                    if crate::guard_condition::nros_guard_condition_is_triggered(guard) {
-                        // Clear the triggered flag
-                        let _ = crate::guard_condition::nros_guard_condition_clear(guard);
-                        // Invoke callback if set
-                        if let Some(callback) = guard_ref.get_callback() {
-                            callback(guard_ref.get_context());
-                        }
-                        any_executed = true;
-                    }
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // If nothing executed and we have a timeout, wait
-    if !any_executed && timeout_ns > 0 {
-        // Max 10ms sleep to avoid blocking too long
-        crate::platform::sleep_ns(timeout_ns.min(MAX_SLEEP_NS));
-        return NROS_RET_TIMEOUT;
-    }
-
-    NROS_RET_OK
+    #[cfg(not(feature = "alloc"))]
+    NROS_RET_ERROR
 }
 
 /// Spin the executor forever.
-///
-/// This function continuously processes callbacks until shutdown.
-///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-///
-/// # Returns
-/// * `NROS_RET_OK` if shutdown gracefully
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
@@ -1131,19 +867,6 @@ pub unsafe extern "C" fn nros_executor_spin(
 
 /// Spin the executor with a fixed period.
 ///
-/// This function processes callbacks at a fixed rate with drift compensation.
-/// The next invocation time is accumulated (not reset to now + period) to
-/// prevent cumulative drift, matching rclc's `rclc_executor_spin_period()`.
-///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `period_ns` - Period in nanoseconds
-///
-/// # Returns
-/// * `NROS_RET_OK` if shutdown gracefully
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL or period is 0
-/// * `NROS_RET_NOT_INIT` if not initialized
-///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
@@ -1162,12 +885,9 @@ pub unsafe extern "C" fn nros_executor_spin_period(
     }
 
     executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
-
-    // Initialize invocation time on first call
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
 
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        // Process callbacks
         let _ = nros_executor_spin_some(executor, 0);
 
         // Accumulate next invocation time to prevent drift
@@ -1182,18 +902,6 @@ pub unsafe extern "C" fn nros_executor_spin_period(
 }
 
 /// Spin the executor for one period.
-///
-/// This function processes callbacks once and sleeps for the remainder
-/// of the period. Matches rclc's `rclc_executor_spin_one_period()`.
-///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-/// * `period_ns` - Period in nanoseconds
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL or period is 0
-/// * `NROS_RET_NOT_INIT` if not initialized
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
@@ -1216,7 +924,6 @@ pub unsafe extern "C" fn nros_executor_spin_one_period(
 
     let start = crate::platform::get_time_ns();
 
-    // Process callbacks
     let _ = nros_executor_spin_some(executor, 0);
 
     // Sleep for remaining time in period
@@ -1230,12 +937,8 @@ pub unsafe extern "C" fn nros_executor_spin_one_period(
 
 /// Stop a spinning executor.
 ///
-/// # Parameters
-/// * `executor` - Pointer to a spinning executor
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
+/// # Safety
+/// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_stop(
     executor: *mut nros_executor_t,
@@ -1255,14 +958,6 @@ pub unsafe extern "C" fn nros_executor_stop(
 
 /// Finalize an executor.
 ///
-/// # Parameters
-/// * `executor` - Pointer to an initialized executor
-///
-/// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if executor is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
-///
 /// # Safety
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
@@ -1279,17 +974,29 @@ pub unsafe extern "C" fn nros_executor_fini(
         return NROS_RET_NOT_INIT;
     }
 
-    // Clear all handles
-    for i in 0..executor.handle_count {
-        executor.handles[i] = nros_executor_handle_t::default();
+    // Drop the internal executor
+    #[cfg(feature = "alloc")]
+    {
+        if !executor._internal.is_null() {
+            let _exec = alloc::boxed::Box::from_raw(executor._internal as *mut CExecutor);
+            // CExecutor is dropped here — arena entries are cleaned up
+        }
     }
 
+    executor._internal = ptr::null_mut();
     executor.handle_count = 0;
+    executor.subscription_count = 0;
+    executor.timer_count = 0;
+    executor.service_count = 0;
     executor.support = ptr::null();
     executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SHUTDOWN;
 
     NROS_RET_OK
 }
+
+// ============================================================================
+// Query functions
+// ============================================================================
 
 /// Get the number of handles in the executor.
 #[unsafe(no_mangle)]
@@ -1320,9 +1027,6 @@ pub unsafe extern "C" fn nros_executor_is_valid(executor: *const nros_executor_t
 }
 
 /// Get remaining total handle capacity.
-///
-/// # Returns
-/// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_get_remaining_handles(
     executor: *const nros_executor_t,
@@ -1336,9 +1040,6 @@ pub unsafe extern "C" fn nros_executor_get_remaining_handles(
 }
 
 /// Get remaining subscription capacity.
-///
-/// # Returns
-/// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_get_remaining_subscriptions(
     executor: *const nros_executor_t,
@@ -1352,9 +1053,6 @@ pub unsafe extern "C" fn nros_executor_get_remaining_subscriptions(
 }
 
 /// Get remaining timer capacity.
-///
-/// # Returns
-/// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_get_remaining_timers(
     executor: *const nros_executor_t,
@@ -1368,9 +1066,6 @@ pub unsafe extern "C" fn nros_executor_get_remaining_timers(
 }
 
 /// Get remaining service capacity.
-///
-/// # Returns
-/// * Remaining capacity, or -1 if executor is NULL
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_get_remaining_services(
     executor: *const nros_executor_t,
@@ -1382,6 +1077,10 @@ pub unsafe extern "C" fn nros_executor_get_remaining_services(
     let executor = &*executor;
     (NROS_MAX_SERVICES - executor.service_count) as c_int
 }
+
+// ============================================================================
+// Kani verification
+// ============================================================================
 
 #[cfg(kani)]
 mod verification {
@@ -1526,10 +1225,6 @@ mod tests {
 
     #[test]
     fn test_trigger_all_matches_rust_behavior() {
-        // Verify C trigger_all has identical semantics to Rust TriggerCondition::All:
-        // - All true → true
-        // - Any false → false
-        // - Empty → false
         let test_cases: &[(&[bool], bool)] = &[
             (&[true, true, true], true),
             (&[true, false, true], false),
@@ -1577,28 +1272,19 @@ mod tests {
         }
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // LET SEMANTICS TESTS
-    // ═══════════════════════════════════════════════════════════════════════
-
     #[test]
     fn test_set_semantics_rclcpp() {
         unsafe {
-            let mut support = nros_support_get_zero_initialized();
+            // Manually initialize (no real session needed for semantics test)
             let mut executor = nros_executor_get_zero_initialized();
+            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            executor.max_handles = 4;
 
-            support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
-
-            let ret = nros_executor_init(&mut executor, &support, 4);
-            assert_eq!(ret, NROS_RET_OK);
-
-            // Default should be RCLCPP semantics
             assert_eq!(
                 executor.semantics,
                 nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR
             );
 
-            // Setting RCLCPP semantics should succeed
             let ret = nros_executor_set_semantics(
                 &mut executor,
                 nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR,
@@ -1614,15 +1300,11 @@ mod tests {
     #[test]
     fn test_set_semantics_let() {
         unsafe {
-            let mut support = nros_support_get_zero_initialized();
+            // Manually initialize (no real session needed for semantics test)
             let mut executor = nros_executor_get_zero_initialized();
+            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            executor.max_handles = 4;
 
-            support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
-
-            let ret = nros_executor_init(&mut executor, &support, 4);
-            assert_eq!(ret, NROS_RET_OK);
-
-            // Setting LET semantics should succeed
             let ret = nros_executor_set_semantics(
                 &mut executor,
                 nros_executor_semantics_t::NROS_SEMANTICS_LOGICAL_EXECUTION_TIME,
@@ -1647,33 +1329,6 @@ mod tests {
             assert_eq!(ret, NROS_RET_NOT_INIT);
         }
     }
-
-    #[test]
-    fn test_let_buffer_initialization() {
-        let executor = nros_executor_get_zero_initialized();
-
-        // LET buffers should be zero-initialized
-        for i in 0..NROS_EXECUTOR_MAX_HANDLES {
-            assert!(!executor.let_data_available[i]);
-            assert_eq!(executor.let_buffer_lens[i], 0);
-            assert!(executor.let_buffers[i].iter().all(|&b| b == 0));
-        }
-    }
-
-    #[test]
-    fn test_let_buffer_size_constant() {
-        // LET buffer should be 512 bytes
-        assert_eq!(LET_BUFFER_SIZE, 512);
-
-        // Total LET buffer memory should be reasonable for embedded
-        // 512 bytes × 16 handles = 8KB
-        let total_let_memory = LET_BUFFER_SIZE * NROS_EXECUTOR_MAX_HANDLES;
-        assert_eq!(total_let_memory, 8192);
-    }
-
-    // ═══════════════════════════════════════════════════════════════════════
-    // SPIN_ONE_PERIOD TESTS
-    // ═══════════════════════════════════════════════════════════════════════
 
     #[test]
     fn test_spin_one_period_null() {
@@ -1724,10 +1379,6 @@ mod tests {
         assert_eq!(executor.invocation_time_ns, 0);
     }
 
-    // ═══════════════════════════════════════════════════════════════════════
-    // PER-TYPE LIMIT AND CAPACITY QUERY TESTS
-    // ═══════════════════════════════════════════════════════════════════════
-
     #[test]
     fn test_per_type_counters_initialized_to_zero() {
         let executor = nros_executor_get_zero_initialized();
@@ -1752,12 +1403,10 @@ mod tests {
     #[test]
     fn test_remaining_capacity_initial() {
         unsafe {
-            let mut support = nros_support_get_zero_initialized();
+            // Manually initialize (no real session needed for capacity test)
             let mut executor = nros_executor_get_zero_initialized();
-            support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
-
-            let ret = nros_executor_init(&mut executor, &support, 16);
-            assert_eq!(ret, NROS_RET_OK);
+            executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
+            executor.max_handles = NROS_EXECUTOR_MAX_HANDLES;
 
             assert_eq!(
                 nros_executor_get_remaining_handles(&executor),

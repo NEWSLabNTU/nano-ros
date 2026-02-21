@@ -535,7 +535,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 | 42 | Extensible RMW layer | Complete |
 | 43 | RMW-agnostic embedded API | Complete |
 | 47 | Executor trigger conditions + nros-node prerequisites | Complete |
-| 49 | nros-c thin wrapper migration | Not Started |
+| 49 | nros-c thin wrapper migration | In Progress (49.1–49.3 complete) |
 | 51 | Board crate `run()` API | Complete |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
@@ -554,7 +554,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 
 **Phase 51**: Complete. Board crate `run()` API replaces `run_node()`. Board crates now only handle hardware/network init — users create `Executor::open()` inside the `run()` closure for full API access. Simplified `Node`, `Publisher`, `Subscription` types removed. Board crates no longer depend on `nros-rmw`/`nros-rmw-zenoh`/`nros-core`. All 8 embedded examples migrated. `portable-atomic` added to `nros-node` for riscv32imc (ESP32-C3) support.
 
-**Phase 49**: nros-c thin wrapper migration. Requires Phase 47 (which adds raw-bytes callbacks, guard conditions, LET semantics, and session-borrowing executor to nros-node). 49.1 complete: C API prefix renamed from `nano_ros_` to `nros_` (~142 functions, ~46 types). 49.2–49.4: rewrites nros-c executor (1,788 lines), timer (348), guard condition (450), and action (1,086) modules to delegate to nros-node instead of self-implementing. Key design: C init functions store metadata only, executor registration creates RMW handles via `add_subscription_raw()` etc. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
+**Phase 49**: nros-c thin wrapper migration. 49.1 complete: C API prefix renamed from `nano_ros_` to `nros_` (~142 functions, ~46 types). 49.2 complete: executor.rs rewritten to delegate to nros-node `Executor` (dispatch, triggers, LET, spin). Subscription/service init simplified to metadata-only (RMW handles created during executor registration via `add_subscription_raw_with_qos_sized()` etc). 49.3 complete: timer cancel/reset forward to nros-node executor; guard conditions use `GuardConditionHandle` for thread-safe triggering. 49.4 (action migration) deferred — current action.rs works and action tests pass. `just quality` and `just test-c` (15 tests) pass. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
 
 See [docs/roadmap/](docs/roadmap/) for details.
 

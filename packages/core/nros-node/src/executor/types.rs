@@ -297,7 +297,7 @@ pub(crate) const DEFAULT_TX_BUF: usize = 1024;
 /// Used with [`Trigger::One`] and [`HandleSet`] for type-safe trigger
 /// configuration. The inner value is the entry slot index.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct HandleId(pub(crate) usize);
+pub struct HandleId(pub usize);
 
 // ============================================================================
 // HandleSet
@@ -445,6 +445,21 @@ pub enum Trigger {
     Always,
     /// Custom predicate over a readiness snapshot.
     Predicate(fn(&ReadinessSnapshot) -> bool),
+    /// Custom predicate with C-compatible signature and context pointer.
+    ///
+    /// The callback receives a `bool` array of readiness flags (one per handle),
+    /// the count of handles, and a user-provided context pointer.
+    /// Used by the C API to bridge `nros_executor_trigger_t` to the Rust trigger system.
+    RawPredicate {
+        /// C trigger callback
+        callback: unsafe extern "C" fn(
+            ready: *const bool,
+            count: usize,
+            context: *mut core::ffi::c_void,
+        ) -> bool,
+        /// User-provided context pointer passed to the callback
+        context: *mut core::ffi::c_void,
+    },
 }
 
 // Manual Debug impl because fn pointers don't impl Debug well
@@ -458,6 +473,7 @@ impl core::fmt::Debug for Trigger {
             Self::AnyOf(set) => f.debug_tuple("AnyOf").field(set).finish(),
             Self::Always => write!(f, "Always"),
             Self::Predicate(_) => write!(f, "Predicate(...)"),
+            Self::RawPredicate { .. } => write!(f, "RawPredicate(...)"),
         }
     }
 }
