@@ -1,5 +1,8 @@
 //! XRCE-DDS service client — sends AddTwoInts requests via XRCE Agent.
 //!
+//! Uses the Promise API: `client.call()` returns immediately, then
+//! `spin_once()` + `try_recv()` drives I/O and polls for the reply.
+//!
 //! Environment variables:
 //!   XRCE_AGENT_ADDR     — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID      — ROS domain ID (default: 0)
@@ -44,7 +47,7 @@ fn main() {
     // Ready marker for test matching
     println!("Service client ready");
 
-    // Send requests
+    // Send requests using the Promise pattern
     let mut success_count = 0usize;
 
     for i in 0..request_count {
@@ -54,13 +57,36 @@ fn main() {
 
         println!("Sent request: a={} b={}", a, b);
 
-        match client.call(&request) {
-            Ok(reply) => {
-                println!("Received reply: sum={}", reply.sum);
-                success_count += 1;
-            }
+        // Non-blocking: send request and get a promise
+        let mut promise = match client.call(&request) {
+            Ok(p) => p,
             Err(e) => {
-                eprintln!("Service call error: {:?}", e);
+                eprintln!("Failed to send request: {:?}", e);
+                continue;
+            }
+        };
+
+        // Drive I/O and poll for the reply
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(5);
+        loop {
+            executor.spin_once(10);
+            match promise.try_recv() {
+                Ok(Some(reply)) => {
+                    println!("Received reply: sum={}", reply.sum);
+                    success_count += 1;
+                    break;
+                }
+                Ok(None) => {
+                    if start.elapsed() > timeout {
+                        eprintln!("Service call timed out");
+                        break;
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Service call error: {:?}", e);
+                    break;
+                }
             }
         }
 

@@ -153,6 +153,15 @@ unsafe extern "C" {
         timeout_ms: u32,
     ) -> i32;
 
+    // Non-blocking service client (async queries)
+    pub fn zenoh_shim_get_start(
+        keyexpr: *const core::ffi::c_char,
+        payload: *const u8,
+        payload_len: usize,
+        timeout_ms: u32,
+    ) -> i32;
+    pub fn zenoh_shim_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
+
     // Polling
     pub fn zenoh_shim_poll(timeout_ms: u32) -> i32;
     pub fn zenoh_shim_spin_once(timeout_ms: u32) -> i32;

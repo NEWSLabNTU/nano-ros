@@ -141,6 +141,15 @@ typedef struct {
 #endif
 } get_reply_ctx_t;
 
+// Static slots for non-blocking z_get operations
+// ZPICO_MAX_PENDING_GETS is provided via -D compiler flag from build.rs
+typedef struct {
+    get_reply_ctx_t ctx;
+    bool in_use;
+} pending_get_slot_t;
+
+static pending_get_slot_t g_pending_gets[ZPICO_MAX_PENDING_GETS];
+
 // ============================================================================
 // Internal Helper Functions
 // ============================================================================
@@ -1256,6 +1265,107 @@ int32_t zenoh_shim_get(const char *keyexpr,
 
     memcpy(reply_buf, ctx.buf, ctx.len);
     return (int32_t)ctx.len;
+}
+
+// ============================================================================
+// Non-blocking z_get (for async service client)
+// ============================================================================
+
+// Reply handler for pending get slots — reuses the same logic as shim_get_reply_handler
+static void shim_pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
+    shim_get_reply_handler(reply, ctx);
+}
+
+// Dropper for pending get slots — just sets the done flag (no condvar)
+static void shim_pending_get_dropper(void *ctx) {
+    get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
+    rctx->done = true;
+}
+
+int32_t zenoh_shim_get_start(const char *keyexpr,
+                              const uint8_t *payload, size_t payload_len,
+                              uint32_t timeout_ms) {
+    if (!g_session_open) {
+        return ZPICO_ERR_SESSION;
+    }
+
+    // Find a free slot
+    int32_t slot = -1;
+    for (int32_t i = 0; i < ZPICO_MAX_PENDING_GETS; i++) {
+        if (!g_pending_gets[i].in_use) {
+            slot = i;
+            break;
+        }
+    }
+    if (slot < 0) {
+        return ZPICO_ERR_FULL;
+    }
+
+    // Initialize slot context
+    pending_get_slot_t *ps = &g_pending_gets[slot];
+    ps->ctx.len = 0;
+    ps->ctx.received = false;
+    ps->ctx.done = false;
+    ps->in_use = true;
+
+    z_view_keyexpr_t ke;
+    z_view_keyexpr_from_str(&ke, keyexpr);
+
+    z_get_options_t opts;
+    z_get_options_default(&opts);
+    opts.timeout_ms = (uint64_t)timeout_ms;
+
+    // Declare payload_bytes in the same scope as opts and z_get() so it stays
+    // alive until z_get() consumes it (z_move takes the address).
+    z_owned_bytes_t payload_bytes;
+    if (payload != NULL && payload_len > 0) {
+        z_bytes_copy_from_buf(&payload_bytes, payload, payload_len);
+        opts.payload = z_move(payload_bytes);
+    }
+
+    z_owned_closure_reply_t callback;
+    z_closure(&callback, shim_pending_get_reply_handler, shim_pending_get_dropper, &ps->ctx);
+
+    if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
+              z_move(callback), &opts) < 0) {
+        ps->in_use = false;
+        return ZPICO_ERR_GENERIC;
+    }
+
+    return slot;
+}
+
+int32_t zenoh_shim_get_check(int32_t handle,
+                              uint8_t *reply_buf, size_t reply_buf_size) {
+    if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
+        return ZPICO_ERR_INVALID;
+    }
+
+    pending_get_slot_t *ps = &g_pending_gets[handle];
+    if (!ps->in_use) {
+        return ZPICO_ERR_INVALID;
+    }
+
+    if (ps->ctx.received) {
+        // Reply arrived — copy and release slot
+        if (ps->ctx.len > reply_buf_size) {
+            ps->in_use = false;
+            return ZPICO_ERR_FULL;
+        }
+        memcpy(reply_buf, ps->ctx.buf, ps->ctx.len);
+        int32_t len = (int32_t)ps->ctx.len;
+        ps->in_use = false;
+        return len;
+    }
+
+    if (ps->ctx.done) {
+        // Reply channel closed without a reply — timeout
+        ps->in_use = false;
+        return -9;  // ZPICO_ERR_TIMEOUT
+    }
+
+    // Not yet — still pending
+    return 0;
 }
 
 // ============================================================================

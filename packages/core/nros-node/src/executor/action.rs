@@ -586,7 +586,7 @@ impl<A: RosAction> ActionClientHandle<A> {
     }
 
     /// Send a goal to the action server (blocks until accepted/rejected).
-    pub fn send_goal<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+    pub fn send_goal_blocking<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
         goal: &A::Goal,
@@ -601,8 +601,8 @@ impl<A: RosAction> ActionClientHandle<A> {
         }
     }
 
-    /// Cancel an active goal.
-    pub fn cancel_goal<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+    /// Cancel an active goal (blocking).
+    pub fn cancel_goal_blocking<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
         goal_id: &nros_core::GoalId,
@@ -617,8 +617,8 @@ impl<A: RosAction> ActionClientHandle<A> {
         }
     }
 
-    /// Get the result of a completed goal.
-    pub fn get_result<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+    /// Get the result of a completed goal (blocking).
+    pub fn get_result_blocking<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
         goal_id: &nros_core::GoalId,

@@ -1859,6 +1859,8 @@ pub struct ShimServiceClient {
     context: *const ShimContext,
     /// Timeout in milliseconds
     timeout_ms: u32,
+    /// Handle to a pending non-blocking get operation (None if idle)
+    pending_handle: Option<i32>,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
@@ -1886,6 +1888,7 @@ impl ShimServiceClient {
             keyexpr_len: bytes.len(),
             context: context as *const ShimContext,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
+            pending_handle: None,
             _phantom: PhantomData,
         })
     }
@@ -1914,6 +1917,38 @@ impl ServiceClientTrait for ShimServiceClient {
             .map_err(TransportError::from)?;
 
         Ok(result)
+    }
+
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error> {
+        let context = unsafe { &*self.context };
+
+        let handle = context
+            .get_start(&self.keyexpr[..=self.keyexpr_len], request, self.timeout_ms)
+            .map_err(TransportError::from)?;
+
+        self.pending_handle = Some(handle);
+        Ok(())
+    }
+
+    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
+        let handle = match self.pending_handle {
+            Some(h) => h,
+            None => return Ok(None),
+        };
+
+        let context = unsafe { &*self.context };
+
+        match context.get_check(handle, reply_buf) {
+            Ok(Some(len)) => {
+                self.pending_handle = None;
+                Ok(Some(len))
+            }
+            Ok(None) => Ok(None),
+            Err(e) => {
+                self.pending_handle = None;
+                Err(TransportError::from(e))
+            }
+        }
     }
 }
 

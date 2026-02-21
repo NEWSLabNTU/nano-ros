@@ -1,13 +1,14 @@
 //! XRCE-DDS action client — Fibonacci action via XRCE Agent.
 //!
-//! Uses the typed `EmbeddedActionClient` API (no raw CDR needed).
+//! Uses the Promise API: `send_goal()` / `get_result()` return promises
+//! that are polled with `spin_once()` + `try_recv()`.
 //!
 //! Environment variables:
 //!   XRCE_AGENT_ADDR     — Agent UDP address (default: "127.0.0.1:2019")
 //!   XRCE_DOMAIN_ID      — ROS domain ID (default: 0)
 //!   XRCE_FIBONACCI_ORDER — Fibonacci sequence order to request (default: 5)
 
-use nros::{Executor, ExecutorConfig, NodeError};
+use nros::{Executor, ExecutorConfig};
 use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
@@ -46,24 +47,45 @@ fn main() {
 
     println!("Action client ready");
 
-    // Send goal
+    // Send goal using the Promise pattern
     let goal = FibonacciGoal { order };
-    let goal_id = match action_client.send_goal(&goal) {
-        Ok(id) => {
-            println!("Goal accepted: {:?}", id);
-            id
-        }
-        Err(NodeError::ServiceRequestFailed) => {
-            println!("Goal rejected");
-            let _ = executor.close();
-            return;
-        }
+    let (goal_id, mut promise) = match action_client.send_goal(&goal) {
+        Ok(pair) => pair,
         Err(e) => {
             eprintln!("send_goal failed: {:?}", e);
             let _ = executor.close();
             return;
         }
     };
+
+    // Poll for goal acceptance
+    let start = Instant::now();
+    let timeout = std::time::Duration::from_secs(10);
+    let accepted = loop {
+        executor.spin_once(10);
+        match promise.try_recv() {
+            Ok(Some(accepted)) => break accepted,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    eprintln!("Timed out waiting for goal acceptance");
+                    let _ = executor.close();
+                    return;
+                }
+            }
+            Err(e) => {
+                eprintln!("send_goal failed: {:?}", e);
+                let _ = executor.close();
+                return;
+            }
+        }
+    };
+
+    if !accepted {
+        println!("Goal rejected");
+        let _ = executor.close();
+        return;
+    }
+    println!("Goal accepted: {:?}", goal_id);
 
     // Wait for feedback
     let mut feedback_count = 0usize;
@@ -99,13 +121,35 @@ fn main() {
         executor.spin_once(100);
     }
 
-    // Get result
-    match action_client.get_result(&goal_id) {
-        Ok((status, result)) => {
-            println!("Result: status={}, sequence={:?}", status, result.sequence);
-        }
+    // Get result using the Promise pattern
+    let mut result_promise = match action_client.get_result(&goal_id) {
+        Ok(p) => p,
         Err(e) => {
             eprintln!("get_result failed: {:?}", e);
+            let _ = executor.close();
+            return;
+        }
+    };
+
+    let result_start = Instant::now();
+    let result_timeout = std::time::Duration::from_secs(10);
+    loop {
+        executor.spin_once(10);
+        match result_promise.try_recv() {
+            Ok(Some((status, result))) => {
+                println!("Result: status={}, sequence={:?}", status, result.sequence);
+                break;
+            }
+            Ok(None) => {
+                if result_start.elapsed() > result_timeout {
+                    eprintln!("get_result timed out");
+                    break;
+                }
+            }
+            Err(e) => {
+                eprintln!("get_result failed: {:?}", e);
+                break;
+            }
         }
     }
 

@@ -110,13 +110,13 @@ pub use executor::{
     ActionClientHandle, ActionServerHandle, EmbeddedActionClient, EmbeddedActionServer,
     EmbeddedActiveGoal, EmbeddedCompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
     EmbeddedServiceServer, Executor, ExecutorConfig, ExecutorSemantics, GuardConditionHandle,
-    HandleId, HandleSet, InvocationMode, Node, NodeError, RawServiceCallback,
+    HandleId, HandleSet, InvocationMode, Node, NodeError, Promise, RawServiceCallback,
     RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
     SpinPeriodPollingResult, Subscription, Trigger,
 };
 
 #[cfg(feature = "std")]
-pub use executor::SpinPeriodResult;
+pub use executor::{SpinPeriodResult, block_on};
 
 // Backward compatibility type aliases (Phase 43.13)
 /// Alias for [`Executor`].

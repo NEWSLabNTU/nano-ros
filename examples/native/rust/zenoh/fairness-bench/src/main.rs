@@ -133,7 +133,7 @@ fn publish_scenario_1() {
     }
 }
 
-/// Send 100 blocking service requests to /bench2/add.
+/// Send 100 service requests to /bench2/add using Promise pattern.
 fn client_scenario_2() {
     let config = ExecutorConfig::from_env().node_name("client2");
     let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
@@ -148,7 +148,21 @@ fn client_scenario_2() {
 
     for i in 0..100i64 {
         let request = AddTwoIntsRequest { a: i, b: i + 1 };
-        let _ = client.call(&request);
+        if let Ok(mut promise) = client.call(&request) {
+            let start = Instant::now();
+            loop {
+                executor.spin_once(10);
+                match promise.try_recv() {
+                    Ok(Some(_)) => break,
+                    Ok(None) => {
+                        if start.elapsed() > Duration::from_secs(5) {
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
+            }
+        }
         std::thread::sleep(Duration::from_millis(10));
     }
 }
@@ -194,7 +208,21 @@ fn publish_scenario_3() {
                 a: svc_seq,
                 b: svc_seq + 1,
             };
-            let _ = client.call(&req);
+            if let Ok(mut promise) = client.call(&req) {
+                let call_start = Instant::now();
+                loop {
+                    executor.spin_once(10);
+                    match promise.try_recv() {
+                        Ok(Some(_)) => break,
+                        Ok(None) => {
+                            if call_start.elapsed() > Duration::from_secs(5) {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    }
+                }
+            }
             svc_seq += 1;
             last_svc = now;
         }

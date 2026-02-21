@@ -730,6 +730,53 @@ impl ShimContext {
 
         Ok(ret as usize)
     }
+
+    /// Start a non-blocking query (for async service client).
+    ///
+    /// Returns a slot handle on success that can be polled with [`get_check()`](Self::get_check).
+    pub fn get_start(&self, keyexpr: &[u8], payload: &[u8], timeout_ms: u32) -> Result<i32> {
+        let (payload_ptr, payload_len) = if payload.is_empty() {
+            (core::ptr::null(), 0)
+        } else {
+            (payload.as_ptr(), payload.len())
+        };
+
+        let ret = unsafe {
+            zpico_sys::zenoh_shim_get_start(
+                keyexpr.as_ptr().cast(),
+                payload_ptr,
+                payload_len,
+                timeout_ms,
+            )
+        };
+
+        if ret < 0 {
+            return Err(ShimError::from_code(ret));
+        }
+
+        Ok(ret)
+    }
+
+    /// Check for a reply to a pending non-blocking query.
+    ///
+    /// Returns `Ok(Some(len))` when a reply has arrived, `Ok(None)` if still
+    /// pending, or `Err` on failure/timeout.
+    pub fn get_check(&self, handle: i32, reply_buf: &mut [u8]) -> Result<Option<usize>> {
+        let ret = unsafe {
+            zpico_sys::zenoh_shim_get_check(handle, reply_buf.as_mut_ptr(), reply_buf.len())
+        };
+
+        if ret > 0 {
+            Ok(Some(ret as usize))
+        } else if ret == 0 {
+            Ok(None)
+        } else {
+            if ret == -9 {
+                return Err(ShimError::Timeout);
+            }
+            Err(ShimError::from_code(ret))
+        }
+    }
 }
 
 #[cfg(any(

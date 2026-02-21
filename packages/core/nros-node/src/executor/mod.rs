@@ -38,4 +38,6 @@ pub use action::{ActionClientHandle, ActionServerHandle};
 pub use handles::*;
 pub use node::Node;
 pub use spin::Executor;
+#[cfg(feature = "std")]
+pub use spin::block_on;
 pub use types::*;

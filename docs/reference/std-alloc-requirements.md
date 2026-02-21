@@ -18,14 +18,14 @@ std or alloc.
 
 ## Summary by Crate
 
-| Crate       | no_std base                                                                                               | alloc additions                                                     | std additions                                                               |
-|-------------|-----------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------|-----------------------------------------------------------------------------|
-| nros-serdes | CDR ser/de for primitives, `heapless` types, `&str`, `[T; N]`                                             | `String` and `Vec<T>` ser/de                                        | (none)                                                                      |
-| nros-core   | Time, Duration, Clock (atomic fallback), lifecycle, logger, error types, action types                     | (none)                                                              | `Clock::now()` via `SystemTime`, `std::error::Error` impls                  |
-| nros-rmw    | All traits, QoS, sync primitives, safety/E2E protocol                                                     | `handle_request_boxed()` (Box\<Reply\>)                             | (none)                                                                      |
-| nros-params | `ParameterServer`, `ParameterValue`, all parameter types (heapless)                                       | (none)                                                              | `ParameterVariant` impls for `std::string::String`, `std::vec::Vec`         |
-| nros-node   | `Executor::open()`, `create_node()`, `spin_once()`, pub/sub/service/action, timers (fn pointer callbacks) | Boxed timer callbacks, `handle_request_boxed()`, parameter services | `spin_blocking()`, `spin_period()`, `ExecutorConfig::from_env()`, halt flag |
-| nros        | Re-exports from above                                                                                     | (same as above)                                                     | `SpinPeriodResult` re-export                                                |
+| Crate       | no_std base                                                                                                                          | alloc additions                                                     | std additions                                                                             |
+|-------------|--------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| nros-serdes | CDR ser/de for primitives, `heapless` types, `&str`, `[T; N]`                                                                        | `String` and `Vec<T>` ser/de                                        | (none)                                                                                    |
+| nros-core   | Time, Duration, Clock (atomic fallback), lifecycle, logger, error types, action types                                                | (none)                                                              | `Clock::now()` via `SystemTime`, `std::error::Error` impls                                |
+| nros-rmw    | All traits, QoS, sync primitives, safety/E2E protocol                                                                                | `handle_request_boxed()` (Box\<Reply\>)                             | (none)                                                                                    |
+| nros-params | `ParameterServer`, `ParameterValue`, all parameter types (heapless)                                                                  | (none)                                                              | `ParameterVariant` impls for `std::string::String`, `std::vec::Vec`                       |
+| nros-node   | `Executor::open()`, `create_node()`, `spin_once()`, `spin_async()`, `Promise`, pub/sub/service/action, timers (fn pointer callbacks) | Boxed timer callbacks, `handle_request_boxed()`, parameter services | `spin_blocking()`, `spin_period()`, `block_on()`, `ExecutorConfig::from_env()`, halt flag |
+| nros        | Re-exports from above                                                                                                                | (same as above)                                                     | `SpinPeriodResult`, `block_on` re-exports                                                 |
 
 ## Detailed API Availability
 
@@ -46,11 +46,24 @@ std or alloc.
 
 **Services:**
 - `node.create_service::<S>(name)` — service server (poll with `handle_request()`)
-- `node.create_client::<S>(name)` — service client (blocking `call()`)
+- `node.create_client::<S>(name)` — service client
+- `client.call(&request)` — non-blocking, returns `Promise<Reply>`
+- `promise.try_recv()` — poll for reply (returns `Ok(Some(reply))` or `Ok(None)`)
+- `promise.await` — async poll (implements `core::future::Future`)
 
 **Actions:**
 - `node.create_action_server::<A>(name)` / `node.create_action_client::<A>(name)`
+- `action_client.send_goal(&goal)` — returns `Promise<GoalId>`
+- `action_client.cancel_goal(&goal_id)` — returns `Promise<CancelResponse>`
+- `action_client.get_result(&goal_id)` — returns `Promise<(GoalStatus, Result)>`
 - Full goal lifecycle: send, cancel, get result, feedback, status
+
+**Async:**
+- `executor.spin_async()` — async spin loop (drives I/O, dispatches callbacks, yields between iterations)
+- `Promise<'a, T, Cli>` — allocation-free promise, borrows client's reply slot
+- `Promise::try_recv()` — non-blocking poll for reply
+- `Promise: Future` — implements `core::future::Future` for `.await`
+- Uses only `core::future` and `core::task` — no external async runtime dependency
 
 **Timers:**
 - `TimerHandle` with function pointer callbacks (`fn()`)
@@ -110,6 +123,7 @@ protocol layer requires it.
 | `Executor::spin_blocking(options)`                            | nros-node/spin.rs    | Uses `std::thread::sleep()`, `Arc<AtomicBool>`          |
 | `Executor::spin_period(duration)`                             | nros-node/spin.rs    | Uses `std::time::Instant`, `std::thread::sleep()`       |
 | `Executor::halt_flag()`                                       | nros-node/spin.rs    | Returns `Arc<AtomicBool>` for cross-thread cancellation |
+| `block_on(future)`                                            | nros-node/spin.rs    | Minimal single-future executor using `thread::yield_now` |
 | `SpinPeriodResult`                                            | nros-node/types.rs   | Contains `std::time::Duration`                          |
 | `ParameterVariant` for `std::string::String`, `std::vec::Vec` | nros-params/types.rs | Convenience conversions for std types                   |
 
@@ -120,7 +134,8 @@ protocol layer requires it.
 nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-bare-metal"] }
 ```
 Full pub/sub, services, actions, timers (fn pointers), parameters (local).
-Use `spin_once()` or `spin_period_polling()` in your main loop.
+Async: `spin_async()`, `Promise`, `try_recv()`, `.await` — all available without std or alloc.
+Use `spin_once()` or `spin_period_polling()` in your main loop, or `spin_async()` with an async runtime (Embassy, RTIC v2).
 
 **Embedded with allocator (e.g., Zephyr with heap):**
 ```toml
@@ -132,7 +147,8 @@ Adds boxed timer callbacks and `handle_request_boxed()` for large service replie
 ```toml
 nros = { version = "*", features = ["rmw-zenoh", "platform-posix"] }
 ```
-Full API including `spin_blocking()`, `spin_period()`, `from_env()`, system clock.
+Full API including `spin_blocking()`, `spin_period()`, `block_on()`, `from_env()`, system clock.
+`block_on()` provides a minimal single-future async executor for desktop use without Embassy.
 
 **Desktop with parameter services:**
 ```toml

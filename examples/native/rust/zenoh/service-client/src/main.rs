@@ -1,7 +1,8 @@
 //! Native Service Client Example
 //!
-//! Demonstrates a ROS 2 service client using nros with the Executor API.
-//! Service clients use blocking calls, so no spin() is needed.
+//! Demonstrates a ROS 2 service client using nros with the Promise API.
+//! The client sends a request (non-blocking), then drives I/O with
+//! `spin_once()` while polling the promise with `try_recv()`.
 //!
 //! # Usage
 //!
@@ -41,25 +42,46 @@ fn main() {
         .expect("Failed to create client");
     info!("Service client created for: /add_two_ints");
 
-    // Make several service calls
+    // Make several service calls using the Promise pattern
     let test_cases = [(5, 3), (10, 20), (100, 200), (-5, 10)];
 
     for (a, b) in test_cases {
         let request = AddTwoIntsRequest { a, b };
         info!("Calling service: {} + {} = ?", a, b);
 
-        match client.call(&request) {
-            Ok(response) => {
-                info!("Response: {} + {} = {}", a, b, response.sum);
-                assert_eq!(response.sum, a + b, "Sum mismatch!");
-            }
+        // Non-blocking: send request and get a promise
+        let mut promise = match client.call(&request) {
+            Ok(p) => p,
             Err(e) => {
-                error!("Service call failed: {:?}", e);
-                error!("Make sure the service server is running:");
-                error!("  cargo run -p native-rs-service-server");
+                error!("Failed to send request: {:?}", e);
                 std::process::exit(1);
             }
-        }
+        };
+
+        // Drive I/O and poll for the reply
+        let start = std::time::Instant::now();
+        let timeout = std::time::Duration::from_secs(5);
+        let response = loop {
+            executor.spin_once(10);
+            match promise.try_recv() {
+                Ok(Some(reply)) => break reply,
+                Ok(None) => {
+                    if start.elapsed() > timeout {
+                        error!("Service call timed out");
+                        error!("Make sure the service server is running:");
+                        error!("  cargo run -p native-rs-service-server");
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => {
+                    error!("Service call failed: {:?}", e);
+                    std::process::exit(1);
+                }
+            }
+        };
+
+        info!("Response: {} + {} = {}", a, b, response.sum);
+        assert_eq!(response.sum, a + b, "Sum mismatch!");
 
         std::thread::sleep(std::time::Duration::from_millis(500));
     }

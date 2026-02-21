@@ -1189,6 +1189,23 @@ impl ServiceClientTrait for XrceServiceClient {
     type Error = TransportError;
 
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, TransportError> {
+        self.send_request_raw(request)?;
+
+        // Wait for reply with retries
+        for _ in 0..SERVICE_REPLY_RETRIES {
+            unsafe {
+                xrce_sys::uxr_run_session_time(&raw mut SESSION, SERVICE_REPLY_TIMEOUT_MS);
+            }
+
+            if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
+                return Ok(len);
+            }
+        }
+
+        Err(TransportError::Timeout)
+    }
+
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
         unsafe {
             let slot = &SERVICE_CLIENT_SLOTS[self.slot_index];
 
@@ -1207,29 +1224,36 @@ impl ServiceClientTrait for XrceServiceClient {
                 return Err(TransportError::ServiceRequestFailed);
             }
 
-            // Wait for reply with retries
-            for _ in 0..SERVICE_REPLY_RETRIES {
-                xrce_sys::uxr_run_session_time(&raw mut SESSION, SERVICE_REPLY_TIMEOUT_MS);
+            Ok(())
+        }
+    }
 
-                if slot.has_reply.load(Ordering::Acquire) {
-                    // Check for overflow (reply exceeded static buffer capacity)
-                    if slot.overflow.load(Ordering::Acquire) {
-                        slot.overflow.store(false, Ordering::Release);
-                        slot.has_reply.store(false, Ordering::Release);
-                        return Err(TransportError::MessageTooLarge);
-                    }
-                    let len = slot.len.load(Ordering::Acquire);
-                    if len > reply_buf.len() {
-                        slot.has_reply.store(false, Ordering::Release);
-                        return Err(TransportError::BufferTooSmall);
-                    }
-                    reply_buf[..len].copy_from_slice(&slot.data[..len]);
-                    slot.has_reply.store(false, Ordering::Release);
-                    return Ok(len);
-                }
+    fn try_recv_reply_raw(
+        &mut self,
+        reply_buf: &mut [u8],
+    ) -> Result<Option<usize>, TransportError> {
+        unsafe {
+            let slot = &SERVICE_CLIENT_SLOTS[self.slot_index];
+
+            if !slot.has_reply.load(Ordering::Acquire) {
+                return Ok(None);
             }
 
-            Err(TransportError::Timeout)
+            // Check for overflow (reply exceeded static buffer capacity)
+            if slot.overflow.load(Ordering::Acquire) {
+                slot.overflow.store(false, Ordering::Release);
+                slot.has_reply.store(false, Ordering::Release);
+                return Err(TransportError::MessageTooLarge);
+            }
+
+            let len = slot.len.load(Ordering::Acquire);
+            if len > reply_buf.len() {
+                slot.has_reply.store(false, Ordering::Release);
+                return Err(TransportError::BufferTooSmall);
+            }
+            reply_buf[..len].copy_from_slice(&slot.data[..len]);
+            slot.has_reply.store(false, Ordering::Release);
+            Ok(Some(len))
         }
     }
 }

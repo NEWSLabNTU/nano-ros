@@ -61,6 +61,7 @@ struct ShimConfig {
     max_subscribers: usize,
     max_queryables: usize,
     max_liveliness: usize,
+    max_pending_gets: usize,
     get_reply_buf_size: usize,
     get_poll_interval_ms: usize,
 }
@@ -72,6 +73,7 @@ impl ShimConfig {
             max_subscribers: env_usize("ZPICO_MAX_SUBSCRIBERS", 8),
             max_queryables: env_usize("ZPICO_MAX_QUERYABLES", 8),
             max_liveliness: env_usize("ZPICO_MAX_LIVELINESS", 16),
+            max_pending_gets: env_usize("ZPICO_MAX_PENDING_GETS", 4),
             get_reply_buf_size: env_usize("ZPICO_GET_REPLY_BUF_SIZE", 4096),
             get_poll_interval_ms: env_usize("ZPICO_GET_POLL_INTERVAL_MS", 10),
         }
@@ -87,8 +89,14 @@ impl ShimConfig {
              /// Maximum number of concurrent queryables (set via ZPICO_MAX_QUERYABLES, default 8).\n\
              pub const ZPICO_MAX_QUERYABLES: usize = {};\n\
              /// Maximum number of concurrent liveliness tokens (set via ZPICO_MAX_LIVELINESS, default 16).\n\
-             pub const ZPICO_MAX_LIVELINESS: usize = {};\n",
-            self.max_publishers, self.max_subscribers, self.max_queryables, self.max_liveliness,
+             pub const ZPICO_MAX_LIVELINESS: usize = {};\n\
+             /// Maximum number of concurrent pending get operations (set via ZPICO_MAX_PENDING_GETS, default 4).\n\
+             pub const ZPICO_MAX_PENDING_GETS: usize = {};\n",
+            self.max_publishers,
+            self.max_subscribers,
+            self.max_queryables,
+            self.max_liveliness,
+            self.max_pending_gets,
         );
         std::fs::write(out_dir.join("shim_constants.rs"), contents).unwrap();
     }
@@ -110,6 +118,10 @@ impl ShimConfig {
         build.define(
             "ZPICO_MAX_LIVELINESS",
             self.max_liveliness.to_string().as_str(),
+        );
+        build.define(
+            "ZPICO_MAX_PENDING_GETS",
+            self.max_pending_gets.to_string().as_str(),
         );
         build.define(
             "ZPICO_GET_REPLY_BUF_SIZE",

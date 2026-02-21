@@ -896,10 +896,69 @@ pub trait ServiceClientTrait {
     /// Error type for service operations
     type Error;
 
-    /// Send a service request and wait for reply
+    /// Send a service request and wait for reply (blocking)
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error>;
 
-    /// Call a service with typed messages
+    /// Send a service request without waiting for a reply (non-blocking).
+    ///
+    /// The caller must subsequently poll [`try_recv_reply_raw`](Self::try_recv_reply_raw)
+    /// to retrieve the reply.
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error>;
+
+    /// Poll for a reply to the most recently sent request (non-blocking).
+    ///
+    /// Returns `Ok(Some(len))` when a reply has arrived, `Ok(None)` if not yet
+    /// available, or `Err` on failure.
+    fn try_recv_reply_raw(&mut self, reply_buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
+
+    /// Send a typed service request without waiting for a reply (non-blocking).
+    ///
+    /// Serializes the request into `req_buf` and calls [`send_request_raw`](Self::send_request_raw).
+    fn send_request<S: RosService>(
+        &mut self,
+        request: &S::Request,
+        req_buf: &mut [u8],
+    ) -> Result<(), Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        use nros_core::CdrWriter;
+
+        let mut writer =
+            CdrWriter::new_with_header(req_buf).map_err(|_| TransportError::BufferTooSmall)?;
+        request
+            .serialize(&mut writer)
+            .map_err(|_| TransportError::SerializationError)?;
+        let req_len = writer.position();
+
+        self.send_request_raw(&req_buf[..req_len])
+    }
+
+    /// Poll for a typed reply to the most recently sent request (non-blocking).
+    ///
+    /// Calls [`try_recv_reply_raw`](Self::try_recv_reply_raw) and deserializes if available.
+    fn try_recv_reply<S: RosService>(
+        &mut self,
+        reply_buf: &mut [u8],
+    ) -> Result<Option<S::Reply>, Self::Error>
+    where
+        Self::Error: From<TransportError>,
+    {
+        use nros_core::CdrReader;
+
+        match self.try_recv_reply_raw(reply_buf)? {
+            Some(len) => {
+                let mut reader = CdrReader::new_with_header(&reply_buf[..len])
+                    .map_err(|_| TransportError::DeserializationError)?;
+                let reply = S::Reply::deserialize(&mut reader)
+                    .map_err(|_| TransportError::DeserializationError)?;
+                Ok(Some(reply))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// Call a service with typed messages (blocking)
     fn call<S: RosService>(
         &mut self,
         request: &S::Request,

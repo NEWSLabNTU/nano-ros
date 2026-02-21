@@ -1,6 +1,6 @@
 //! Native Action Client Example
 //!
-//! Demonstrates a ROS 2 action client using nros with the Executor API.
+//! Demonstrates a ROS 2 action client using nros with the Promise API.
 //! This example sends a Fibonacci action goal and receives feedback
 //! as the sequence is computed.
 //!
@@ -46,31 +46,50 @@ fn main() {
     let goal = FibonacciGoal { order: 10 };
     info!("Sending goal: order={}", goal.order);
 
-    // Send goal
-    let goal_id = match client.send_goal(&goal) {
-        Ok(id) => {
-            info!("Goal accepted! ID: {:?}", id);
-            id
-        }
-        Err(NodeError::ServiceRequestFailed) => {
-            warn!("Goal was rejected by the server");
-            std::process::exit(1);
-        }
+    // Send goal using the Promise pattern
+    let (goal_id, mut promise) = match client.send_goal(&goal) {
+        Ok(pair) => pair,
         Err(e) => {
             error!("Failed to send goal: {:?}", e);
             std::process::exit(1);
         }
     };
 
+    // Drive I/O and poll for goal acceptance
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(10);
+    let accepted = loop {
+        executor.spin_once(10);
+        match promise.try_recv() {
+            Ok(Some(accepted)) => break accepted,
+            Ok(None) => {
+                if start.elapsed() > timeout {
+                    error!("Timed out waiting for goal acceptance");
+                    std::process::exit(1);
+                }
+            }
+            Err(e) => {
+                error!("Goal send failed: {:?}", e);
+                std::process::exit(1);
+            }
+        }
+    };
+
+    if !accepted {
+        warn!("Goal was rejected by the server");
+        std::process::exit(1);
+    }
+    info!("Goal accepted! ID: {:?}", goal_id);
+
     info!("Waiting for feedback and result...");
 
     // Poll for feedback
     let mut feedback_count = 0;
     let start_time = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(30);
+    let feedback_timeout = std::time::Duration::from_secs(30);
 
     loop {
-        if start_time.elapsed() > timeout {
+        if start_time.elapsed() > feedback_timeout {
             error!("Timeout waiting for result");
             break;
         }

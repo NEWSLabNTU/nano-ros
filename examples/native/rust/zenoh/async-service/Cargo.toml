@@ -1,0 +1,12 @@
+[package]
+name = "native-rs-async-service"
+version = "0.1.0"
+edition = "2024"
+description = "Example async service client using nros with embassy_futures::select"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix"] }
+example_interfaces = { version = "*", default-features = false }
+embassy-futures = "0.1"
+log = "0.4"
+env_logger = "0.10"

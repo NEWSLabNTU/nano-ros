@@ -186,12 +186,102 @@ impl<Svc: RosService, Cli: ServiceClientTrait, const REQ_BUF: usize, const REPLY
 where
     Cli::Error: From<TransportError>,
 {
-    /// Call the service with a typed request and wait for reply.
-    pub fn call(&mut self, request: &Svc::Request) -> Result<Svc::Reply, NodeError> {
+    /// Call the service (non-blocking). Returns a [`Promise`] that can be polled.
+    ///
+    /// Use with [`Executor::spin_once()`] to drive I/O while waiting:
+    ///
+    /// ```ignore
+    /// let mut promise = client.call(&request)?;
+    /// loop {
+    ///     executor.spin_once(10);
+    ///     if let Some(reply) = promise.try_recv()? {
+    ///         break;
+    ///     }
+    /// }
+    /// ```
+    pub fn call(
+        &mut self,
+        request: &Svc::Request,
+    ) -> Result<Promise<'_, Svc::Reply, Cli>, NodeError> {
+        // Serialize request into req_buffer
+        let mut writer = CdrWriter::new_with_header(&mut self.req_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+        request
+            .serialize(&mut writer)
+            .map_err(|_| NodeError::Serialization)?;
+        let req_len = writer.position();
+
+        // Send the request (non-blocking)
         self.handle
-            .call::<Svc>(request, &mut self.req_buffer, &mut self.reply_buffer)
-            .map_err(|_| NodeError::ServiceRequestFailed)
+            .send_request_raw(&self.req_buffer[..req_len])
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+
+        Ok(Promise {
+            handle: &mut self.handle,
+            reply_buffer: &mut self.reply_buffer,
+            parse: cdr_deserialize_reply::<Svc>,
+        })
     }
+}
+
+// ============================================================================
+// Promise
+// ============================================================================
+
+/// A pending reply from a non-blocking service or action call.
+///
+/// Poll with [`try_recv()`](Promise::try_recv) to check for the reply.
+/// Implements [`Future`](core::future::Future) for use with async executors.
+pub struct Promise<'a, T, Cli: ServiceClientTrait> {
+    pub(crate) handle: &'a mut Cli,
+    pub(crate) reply_buffer: &'a mut [u8],
+    pub(crate) parse: fn(&[u8]) -> Result<T, NodeError>,
+}
+
+impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
+    /// Try to receive the reply (non-blocking).
+    ///
+    /// Returns `Ok(Some(reply))` if the reply has arrived,
+    /// `Ok(None)` if still pending.
+    pub fn try_recv(&mut self) -> Result<Option<T>, NodeError> {
+        match self
+            .handle
+            .try_recv_reply_raw(self.reply_buffer)
+            .map_err(|_| NodeError::ServiceRequestFailed)?
+        {
+            Some(len) => {
+                let reply = (self.parse)(&self.reply_buffer[..len])?;
+                Ok(Some(reply))
+            }
+            None => Ok(None),
+        }
+    }
+}
+
+impl<T, Cli: ServiceClientTrait> core::future::Future for Promise<'_, T, Cli> {
+    type Output = Result<T, NodeError>;
+
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        let this = self.get_mut();
+        match this.try_recv() {
+            Ok(Some(reply)) => core::task::Poll::Ready(Ok(reply)),
+            Ok(None) => {
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            }
+            Err(e) => core::task::Poll::Ready(Err(e)),
+        }
+    }
+}
+
+/// Deserialize a CDR-encoded service reply.
+fn cdr_deserialize_reply<Svc: RosService>(data: &[u8]) -> Result<Svc::Reply, NodeError> {
+    let mut reader =
+        CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
+    Svc::Reply::deserialize(&mut reader).map_err(|_| NodeError::ServiceRequestFailed)
 }
 
 // ============================================================================
@@ -593,8 +683,50 @@ impl<
     const FEEDBACK_BUF: usize,
 > EmbeddedActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
-    /// Send a goal to the action server.
-    pub fn send_goal(&mut self, goal: &A::Goal) -> Result<nros_core::GoalId, NodeError> {
+    /// Send a goal (non-blocking). Returns the goal ID and a [`Promise`] for acceptance.
+    ///
+    /// The promise resolves to `true` if accepted, `false` if rejected.
+    pub fn send_goal(
+        &mut self,
+        goal: &A::Goal,
+    ) -> Result<(nros_core::GoalId, Promise<'_, bool, Cli>), NodeError> {
+        self.goal_counter += 1;
+        let mut goal_id = nros_core::GoalId::default();
+        let counter_bytes = self.goal_counter.to_le_bytes();
+        goal_id.uuid[..8].copy_from_slice(&counter_bytes);
+
+        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+
+        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
+        for b in &goal_id.uuid {
+            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
+        }
+
+        goal.serialize(&mut writer)
+            .map_err(|_| NodeError::Serialization)?;
+
+        let req_len = writer.position();
+
+        self.send_goal_client
+            .send_request_raw(&self.goal_buffer[..req_len])
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+
+        Ok((
+            goal_id,
+            Promise {
+                handle: &mut self.send_goal_client,
+                reply_buffer: &mut self.result_buffer,
+                parse: parse_goal_accepted,
+            },
+        ))
+    }
+
+    /// Send a goal and block until accepted/rejected (arena-internal).
+    pub(crate) fn send_goal_blocking(
+        &mut self,
+        goal: &A::Goal,
+    ) -> Result<nros_core::GoalId, NodeError> {
         self.goal_counter += 1;
         let mut goal_id = nros_core::GoalId::default();
         let counter_bytes = self.goal_counter.to_le_bytes();
@@ -661,8 +793,36 @@ impl<
         Ok(Some((goal_id, feedback)))
     }
 
-    /// Cancel a goal.
+    /// Cancel a goal (non-blocking). Returns a [`Promise`] for the cancel response.
     pub fn cancel_goal(
+        &mut self,
+        goal_id: &nros_core::GoalId,
+    ) -> Result<Promise<'_, nros_core::CancelResponse, Cli>, NodeError> {
+        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+
+        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
+        for b in &goal_id.uuid {
+            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
+        }
+        writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
+        writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
+
+        let req_len = writer.position();
+
+        self.cancel_goal_client
+            .send_request_raw(&self.goal_buffer[..req_len])
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+
+        Ok(Promise {
+            handle: &mut self.cancel_goal_client,
+            reply_buffer: &mut self.result_buffer,
+            parse: parse_cancel_response,
+        })
+    }
+
+    /// Cancel a goal and block until response arrives (arena-internal).
+    pub(crate) fn cancel_goal_blocking(
         &mut self,
         goal_id: &nros_core::GoalId,
     ) -> Result<nros_core::CancelResponse, NodeError> {
@@ -690,8 +850,34 @@ impl<
         Ok(nros_core::CancelResponse::from_i8(return_code).unwrap_or_default())
     }
 
-    /// Get the result of a completed goal.
+    /// Get the result of a completed goal (non-blocking). Returns a [`Promise`].
     pub fn get_result(
+        &mut self,
+        goal_id: &nros_core::GoalId,
+    ) -> Result<Promise<'_, (nros_core::GoalStatus, A::Result), Cli>, NodeError> {
+        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+
+        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
+        for b in &goal_id.uuid {
+            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
+        }
+
+        let req_len = writer.position();
+
+        self.get_result_client
+            .send_request_raw(&self.goal_buffer[..req_len])
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+
+        Ok(Promise {
+            handle: &mut self.get_result_client,
+            reply_buffer: &mut self.result_buffer,
+            parse: parse_result_response::<A>,
+        })
+    }
+
+    /// Get the result of a completed goal (blocking, arena-internal).
+    pub(crate) fn get_result_blocking(
         &mut self,
         goal_id: &nros_core::GoalId,
     ) -> Result<(nros_core::GoalStatus, A::Result), NodeError> {
@@ -721,4 +907,33 @@ impl<
 
         Ok((status, result))
     }
+}
+
+/// Parse a goal acceptance response (bool).
+fn parse_goal_accepted(data: &[u8]) -> Result<bool, NodeError> {
+    let mut reader =
+        CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
+    let accepted = reader.read_u8().unwrap_or(0) != 0;
+    Ok(accepted)
+}
+
+/// Parse a cancel response.
+fn parse_cancel_response(data: &[u8]) -> Result<nros_core::CancelResponse, NodeError> {
+    let mut reader =
+        CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
+    let return_code = reader.read_i8().unwrap_or(2);
+    Ok(nros_core::CancelResponse::from_i8(return_code).unwrap_or_default())
+}
+
+/// Parse an action result response (status + result).
+fn parse_result_response<A: RosAction>(
+    data: &[u8],
+) -> Result<(nros_core::GoalStatus, A::Result), NodeError> {
+    let mut reader =
+        CdrReader::new_with_header(data).map_err(|_| NodeError::ServiceRequestFailed)?;
+    let status_code = reader.read_i8().unwrap_or(0);
+    let status = nros_core::GoalStatus::from_i8(status_code).unwrap_or_default();
+    let result =
+        A::Result::deserialize(&mut reader).map_err(|_| NodeError::ServiceRequestFailed)?;
+    Ok((status, result))
 }

@@ -499,4 +499,21 @@ int32_t zenoh_shim_get(const char *_keyexpr,
                        uintptr_t _reply_buf_size,
                        uint32_t _timeout_ms);
 
+/**
+ * Start a non-blocking query (for async service client).
+ *
+ * Returns a non-negative slot handle on success, negative error code on failure.
+ */
+int32_t zenoh_shim_get_start(const char *_keyexpr,
+                             const uint8_t *_payload,
+                             uintptr_t _payload_len,
+                             uint32_t _timeout_ms);
+
+/**
+ * Check for a reply to a pending non-blocking query.
+ *
+ * Returns positive byte count on reply, 0 if still pending, negative on error/timeout.
+ */
+int32_t zenoh_shim_get_check(int32_t _handle, uint8_t *_reply_buf, uintptr_t _reply_buf_size);
+
 #endif  /* ZENOH_SHIM_H */

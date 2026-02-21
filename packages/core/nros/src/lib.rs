@@ -294,11 +294,11 @@ pub mod internals {
 pub use nros_node::{
     EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
     EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorConfig,
-    Node, NodeError, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Subscription,
+    Node, NodeError, Promise, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Subscription,
 };
 
 #[cfg(feature = "std")]
-pub use nros_node::SpinPeriodResult;
+pub use nros_node::{SpinPeriodResult, block_on};
 
 // Backward compatibility type aliases (Phase 43.13)
 pub use nros_node::{

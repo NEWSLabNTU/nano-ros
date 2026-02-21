@@ -1,8 +1,8 @@
 //! nros Zephyr Action Client Example (Rust)
 //!
 //! A ROS 2 compatible action client running on Zephyr RTOS using the nros API.
-//! The client sends a Fibonacci goal and receives feedback as the sequence
-//! is computed.
+//! Uses the Promise API: `send_goal()` / `get_result()` return promises
+//! that are polled with `spin_once()` + `try_recv()`.
 
 #![no_std]
 
@@ -37,27 +37,41 @@ fn run() -> Result<(), NodeError> {
     info!("Waiting for server...");
     zephyr::time::sleep(zephyr::time::Duration::secs(3));
 
-    // Send goal
+    // Send goal using the Promise pattern
     let goal = FibonacciGoal { order: 10 };
     info!("Sending goal: order={}", goal.order);
 
-    let goal_id = match action_client.send_goal(&goal) {
-        Ok(id) => {
-            info!(
-                "Goal accepted! ID: {:02x}{:02x}{:02x}{:02x}...",
-                id.uuid[0], id.uuid[1], id.uuid[2], id.uuid[3]
-            );
-            id
-        }
-        Err(NodeError::ServiceRequestFailed) => {
-            warn!("Goal was rejected by the server");
-            return Ok(());
-        }
-        Err(e) => {
-            error!("Failed to send goal: {:?}", e);
-            return Err(e);
+    let (goal_id, mut promise) = action_client.send_goal(&goal)?;
+
+    // Poll for goal acceptance
+    let mut attempts = 0u32;
+    let accepted = loop {
+        executor.spin_once(10);
+        match promise.try_recv() {
+            Ok(Some(accepted)) => break accepted,
+            Ok(None) => {
+                attempts += 1;
+                if attempts > 1000 {
+                    error!("Timed out waiting for goal acceptance");
+                    return Ok(());
+                }
+            }
+            Err(e) => {
+                error!("Failed to send goal: {:?}", e);
+                return Err(e);
+            }
         }
     };
+
+    if !accepted {
+        warn!("Goal was rejected by the server");
+        return Ok(());
+    }
+
+    info!(
+        "Goal accepted! ID: {:02x}{:02x}{:02x}{:02x}...",
+        goal_id.uuid[0], goal_id.uuid[1], goal_id.uuid[2], goal_id.uuid[3]
+    );
 
     info!("Waiting for feedback and result...");
 
@@ -105,17 +119,32 @@ fn run() -> Result<(), NodeError> {
         }
     }
 
-    // Get final result
-    match action_client.get_result(&goal_id) {
-        Ok((status, result)) => {
-            info!(
-                "Result: status={:?}, sequence={:?}",
-                status,
-                result.sequence.as_slice()
-            );
-        }
-        Err(e) => {
-            error!("Failed to get result: {:?}", e);
+    // Get final result using the Promise pattern
+    let mut result_promise = action_client.get_result(&goal_id)?;
+
+    let mut result_attempts = 0u32;
+    loop {
+        executor.spin_once(10);
+        match result_promise.try_recv() {
+            Ok(Some((status, result))) => {
+                info!(
+                    "Result: status={:?}, sequence={:?}",
+                    status,
+                    result.sequence.as_slice()
+                );
+                break;
+            }
+            Ok(None) => {
+                result_attempts += 1;
+                if result_attempts > 1000 {
+                    error!("Timed out waiting for result");
+                    break;
+                }
+            }
+            Err(e) => {
+                error!("Failed to get result: {:?}", e);
+                break;
+            }
         }
     }
 

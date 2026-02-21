@@ -136,14 +136,48 @@ impl Publisher for MockPublisher {
     }
 }
 
-/// Dummy service client.
-struct MockServiceClient;
+/// Mock service client with controllable async reply behavior.
+struct MockServiceClient {
+    /// Pre-loaded reply data to return on next `try_recv_reply_raw` call.
+    pending_reply: Cell<Option<([u8; 256], usize)>>,
+}
+
+impl MockServiceClient {
+    fn new() -> Self {
+        Self {
+            pending_reply: Cell::new(None),
+        }
+    }
+
+    /// Load a reply that will be returned by the next `try_recv_reply_raw` call.
+    fn load_reply(&self, data: [u8; 256], len: usize) {
+        self.pending_reply.set(Some((data, len)));
+    }
+}
 
 impl ServiceClientTrait for MockServiceClient {
     type Error = TransportError;
 
     fn call_raw(&mut self, _req: &[u8], _reply_buf: &mut [u8]) -> Result<usize, TransportError> {
         Err(TransportError::Timeout)
+    }
+
+    fn send_request_raw(&mut self, _request: &[u8]) -> Result<(), TransportError> {
+        Ok(())
+    }
+
+    fn try_recv_reply_raw(
+        &mut self,
+        reply_buf: &mut [u8],
+    ) -> Result<Option<usize>, TransportError> {
+        match self.pending_reply.get() {
+            Some((data, len)) => {
+                reply_buf[..len].copy_from_slice(&data[..len]);
+                self.pending_reply.set(None);
+                Ok(Some(len))
+            }
+            None => Ok(None),
+        }
     }
 }
 
@@ -190,7 +224,7 @@ impl Session for MockSession {
         &mut self,
         _service: &ServiceInfo,
     ) -> Result<MockServiceClient, TransportError> {
-        Ok(MockServiceClient)
+        Ok(MockServiceClient::new())
     }
 
     fn close(&mut self) -> Result<(), TransportError> {
@@ -1480,4 +1514,99 @@ fn test_timer_delta_accumulates_when_trigger_fails() {
     let _result = executor.spin_once(60); // elapsed=110, fires!
     // Timer callback fired even though trigger didn't pass
     assert_eq!(count.load(std::sync::atomic::Ordering::SeqCst), 1);
+}
+
+// ====================================================================
+// Service type for Promise tests
+// ====================================================================
+
+/// Simple test service: AddTwoInts-like.
+struct TestService;
+
+#[derive(Debug, Clone, PartialEq)]
+struct TestServiceRequest {
+    a: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+struct TestServiceReply {
+    sum: i32,
+}
+
+impl RosMessage for TestServiceRequest {
+    const TYPE_NAME: &'static str = "test/srv/TestService_Request";
+    const TYPE_HASH: &'static str = "test_hash";
+}
+
+impl Serialize for TestServiceRequest {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        writer.write_i32(self.a)
+    }
+}
+
+impl Deserialize for TestServiceRequest {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            a: reader.read_i32()?,
+        })
+    }
+}
+
+impl RosMessage for TestServiceReply {
+    const TYPE_NAME: &'static str = "test/srv/TestService_Reply";
+    const TYPE_HASH: &'static str = "test_hash";
+}
+
+impl Serialize for TestServiceReply {
+    fn serialize(&self, writer: &mut CdrWriter) -> Result<(), SerError> {
+        writer.write_i32(self.sum)
+    }
+}
+
+impl Deserialize for TestServiceReply {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError> {
+        Ok(Self {
+            sum: reader.read_i32()?,
+        })
+    }
+}
+
+impl nros_core::RosService for TestService {
+    type Request = TestServiceRequest;
+    type Reply = TestServiceReply;
+    const SERVICE_NAME: &'static str = "test/srv/dds_/TestService_";
+    const SERVICE_HASH: &'static str = "test_hash";
+}
+
+// ====================================================================
+// Promise tests
+// ====================================================================
+
+#[test]
+fn test_promise_try_recv_returns_none_then_some() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+
+    let mut node = executor.create_node("test").unwrap();
+    let mut client = node.create_client::<TestService>("/test_svc").unwrap();
+
+    // Start a non-blocking call
+    let request = TestServiceRequest { a: 42 };
+    let mut promise = client.call(&request).unwrap();
+
+    // No reply loaded yet — should return None
+    assert!(promise.try_recv().unwrap().is_none());
+
+    // Load a CDR-encoded reply into the mock
+    let mut reply_buf = [0u8; 256];
+    let mut writer = CdrWriter::new_with_header(&mut reply_buf).unwrap();
+    writer.write_i32(99).unwrap();
+    let reply_len = writer.position();
+
+    // Access the mock client through the promise handle
+    promise.handle.load_reply(reply_buf, reply_len);
+
+    // Now try_recv should return the reply
+    let reply = promise.try_recv().unwrap().unwrap();
+    assert_eq!(reply.sum, 99);
 }

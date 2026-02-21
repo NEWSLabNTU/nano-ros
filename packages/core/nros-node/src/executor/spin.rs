@@ -1032,6 +1032,40 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         }
     }
 
+    /// Drive I/O and dispatch callbacks asynchronously.
+    ///
+    /// Runs forever, yielding between poll cycles so that other async tasks
+    /// (e.g., [`Promise`](super::handles::Promise)) can make progress.
+    ///
+    /// Uses only `core::future` — no external async runtime dependency.
+    ///
+    /// # Usage patterns
+    ///
+    /// ```ignore
+    /// // Pattern 1: select with a promise (embassy-futures)
+    /// use embassy_futures::select::{select, Either};
+    /// let promise = client.call(&req)?;
+    /// let Either::Second(reply) = select(executor.spin_async(), promise).await
+    ///     else { unreachable!() };
+    ///
+    /// // Pattern 2: manual polling (no async runtime)
+    /// let mut promise = client.call(&req)?;
+    /// loop {
+    ///     executor.spin_once(10);
+    ///     if let Ok(Some(r)) = promise.try_recv() { break r; }
+    /// }
+    /// ```
+    pub async fn spin_async(&mut self) -> ! {
+        loop {
+            self.spin_once(1);
+            core::future::poll_fn::<(), _>(|cx| {
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            })
+            .await;
+        }
+    }
+
     // ========================================================================
     // spin_one_period (no_std)
     // ========================================================================
@@ -1402,6 +1436,66 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     /// ```
     pub fn halt_flag(&self) -> std::sync::Arc<std::sync::atomic::AtomicBool> {
         self.halt_flag.clone()
+    }
+}
+
+// ============================================================================
+// block_on — minimal single-future executor for std targets
+// ============================================================================
+
+/// Run a future to completion on the current thread.
+///
+/// This is a minimal single-future executor for desktop/POSIX targets.
+/// Embedded targets should use their chosen async runtime (Embassy, RTIC)
+/// instead.
+///
+/// # Example
+///
+/// ```ignore
+/// use embassy_futures::select::{select, Either};
+///
+/// nros::block_on(async {
+///     let promise = client.call(&req)?;
+///     let Either::Second(reply) = select(executor.spin_async(), promise).await
+///         else { unreachable!() };
+///     println!("sum = {}", reply?.sum);
+///     Ok::<(), NodeError>(())
+/// });
+/// ```
+#[cfg(feature = "std")]
+pub fn block_on<F: core::future::Future>(future: F) -> F::Output {
+    use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
+
+    fn raw_waker() -> RawWaker {
+        fn clone(_: *const ()) -> RawWaker {
+            raw_waker()
+        }
+        fn wake(data: *const ()) {
+            wake_by_ref(data);
+        }
+        fn wake_by_ref(_: *const ()) {
+            // Unpark is a no-op if the thread is not parked, so this is safe
+            // to call from any context.
+        }
+        fn drop(_: *const ()) {}
+
+        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
+        RawWaker::new(core::ptr::null(), &VTABLE)
+    }
+
+    let waker = unsafe { Waker::from_raw(raw_waker()) };
+    let mut cx = Context::from_waker(&waker);
+    let mut future = core::pin::pin!(future);
+
+    loop {
+        match future.as_mut().poll(&mut cx) {
+            Poll::Ready(output) => return output,
+            Poll::Pending => {
+                // Yield to avoid busy-spinning. Our Promise wakes immediately
+                // via wake_by_ref(), so a brief yield is sufficient.
+                std::thread::yield_now();
+            }
+        }
     }
 }
 

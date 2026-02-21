@@ -530,4 +530,29 @@ mod cbindgen_stubs {
     ) -> i32 {
         0
     }
+
+    /// Start a non-blocking query (for async service client).
+    ///
+    /// Returns a non-negative slot handle on success, negative error code on failure.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zenoh_shim_get_start(
+        _keyexpr: *const c_char,
+        _payload: *const u8,
+        _payload_len: usize,
+        _timeout_ms: u32,
+    ) -> i32 {
+        -1 // stub: not available
+    }
+
+    /// Check for a reply to a pending non-blocking query.
+    ///
+    /// Returns positive byte count on reply, 0 if still pending, negative on error/timeout.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zenoh_shim_get_check(
+        _handle: i32,
+        _reply_buf: *mut u8,
+        _reply_buf_size: usize,
+    ) -> i32 {
+        -1 // stub: not available
+    }
 }

@@ -877,7 +877,7 @@ where
 {
     let entry =
         unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
-    entry.client.send_goal(goal)
+    entry.client.send_goal_blocking(goal)
 }
 
 /// Action client: cancel goal via arena entry.
@@ -903,7 +903,7 @@ where
 {
     let entry =
         unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
-    entry.client.cancel_goal(goal_id)
+    entry.client.cancel_goal_blocking(goal_id)
 }
 
 /// Action client: get result via arena entry.
@@ -929,7 +929,7 @@ where
 {
     let entry =
         unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
-    entry.client.get_result(goal_id)
+    entry.client.get_result_blocking(goal_id)
 }
 
 use nros_rmw::ServiceClientTrait;

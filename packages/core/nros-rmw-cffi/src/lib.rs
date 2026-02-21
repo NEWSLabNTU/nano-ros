@@ -341,6 +341,8 @@ impl Session for CffiSession {
         Ok(CffiServiceClient {
             vtable: self.vtable,
             handle,
+            pending_request: [0u8; 4096],
+            pending_len: 0,
         })
     }
 
@@ -510,6 +512,10 @@ impl Drop for CffiServiceServer {
 pub struct CffiServiceClient {
     vtable: &'static NrosRmwVtable,
     handle: CffiHandle,
+    /// Stored request for blocking fallback in `try_recv_reply_raw`
+    pending_request: [u8; 4096],
+    /// Length of stored pending request (0 = no pending request)
+    pending_len: usize,
 }
 
 impl ServiceClientTrait for CffiServiceClient {
@@ -529,6 +535,31 @@ impl ServiceClientTrait for CffiServiceClient {
             return Err(TransportError::ServiceRequestFailed);
         }
         Ok(rc as usize)
+    }
+
+    fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
+        if request.len() > self.pending_request.len() {
+            return Err(TransportError::BufferTooSmall);
+        }
+        self.pending_request[..request.len()].copy_from_slice(request);
+        self.pending_len = request.len();
+        Ok(())
+    }
+
+    fn try_recv_reply_raw(
+        &mut self,
+        reply_buf: &mut [u8],
+    ) -> Result<Option<usize>, TransportError> {
+        if self.pending_len == 0 {
+            return Ok(None);
+        }
+        // Blocking fallback: copy request to stack, then call_raw
+        let mut req_copy = [0u8; 4096];
+        let req_len = self.pending_len;
+        req_copy[..req_len].copy_from_slice(&self.pending_request[..req_len]);
+        self.pending_len = 0;
+        let len = self.call_raw(&req_copy[..req_len], reply_buf)?;
+        Ok(Some(len))
     }
 }
 

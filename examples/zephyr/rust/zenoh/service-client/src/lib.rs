@@ -1,7 +1,8 @@
 //! nros Zephyr Service Client Example (Rust)
 //!
 //! A ROS 2 compatible service client running on Zephyr RTOS using the nros API.
-//! The client sends AddTwoInts service requests.
+//! Uses the Promise API: `client.call()` returns immediately, then
+//! `spin_once()` + `try_recv()` drives I/O and polls for the reply.
 
 #![no_std]
 
@@ -44,9 +45,30 @@ fn run() -> Result<(), NodeError> {
         };
         info!("[{}] Sending: {} + {}", count, req.a, req.b);
 
-        match client.call(&req) {
-            Ok(resp) => info!("[{}] Response: sum={}", count, resp.sum),
-            Err(e) => error!("[{}] Call failed: {:?}", count, e),
+        // Non-blocking: send request and get a promise
+        let mut promise = client.call(&req)?;
+
+        // Drive I/O and poll for the reply
+        let mut attempts = 0u32;
+        loop {
+            executor.spin_once(10);
+            match promise.try_recv() {
+                Ok(Some(resp)) => {
+                    info!("[{}] Response: sum={}", count, resp.sum);
+                    break;
+                }
+                Ok(None) => {
+                    attempts += 1;
+                    if attempts > 500 {
+                        error!("[{}] Timed out", count);
+                        break;
+                    }
+                }
+                Err(e) => {
+                    error!("[{}] Call failed: {:?}", count, e);
+                    break;
+                }
+            }
         }
 
         count += 1;

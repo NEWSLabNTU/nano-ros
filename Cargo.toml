@@ -41,6 +41,7 @@ exclude = [
     "examples/native/rust/zenoh/custom-msg",
     "examples/native/rust/zenoh/service-server",
     "examples/native/rust/zenoh/service-client",
+    "examples/native/rust/zenoh/async-service",
     "examples/native/rust/zenoh/action-server",
     "examples/native/rust/zenoh/action-client",
     "examples/native/rust/zenoh/fairness-bench",

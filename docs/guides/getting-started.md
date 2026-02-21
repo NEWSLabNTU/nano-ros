@@ -326,6 +326,105 @@ Example — increase zenoh defrag to 128 KB for large point clouds:
 ZPICO_FRAG_MAX_SIZE=131072 cargo build --features rmw-zenoh,platform-posix
 ```
 
+## Service Calls with Promise API
+
+nros provides a non-blocking, allocation-free Promise API for service calls.
+`client.call(&request)` returns a `Promise<Reply>` immediately — the reply
+can be polled with `try_recv()` or `.await`ed in an async context.
+
+### Three Usage Patterns
+
+**Pattern 1: Sync polling (no async runtime needed)**
+
+The simplest approach — call `spin_once()` in a loop to drive I/O while
+polling the promise with `try_recv()`:
+
+```rust
+use nros::prelude::*;
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
+
+fn main() {
+    let config = ExecutorConfig::from_env().node_name("client");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+    let mut node = executor.create_node("client").unwrap();
+    let mut client = node.create_client::<AddTwoInts>("/add_two_ints").unwrap();
+
+    // call() sends the request and returns a Promise immediately
+    let mut promise = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap();
+
+    // Drive I/O and poll for the reply
+    let reply = loop {
+        executor.spin_once(10);  // drives I/O, dispatches callbacks
+        if let Ok(Some(reply)) = promise.try_recv() {
+            break reply;
+        }
+    };
+    println!("sum = {}", reply.sum);
+}
+```
+
+**Pattern 2: Async with `select` (one-off calls)**
+
+Uses `embassy_futures::select` to concurrently drive `spin_async()` and
+await the promise. When the promise resolves, `select` returns:
+
+```rust
+use embassy_futures::select::{select, Either};
+
+// Inside an async context (Embassy task, RTIC task, or block_on)
+let promise = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap();
+match select(executor.spin_async(), promise).await {
+    Either::First(_) => unreachable!(),  // spin_async() never returns
+    Either::Second(result) => {
+        let reply = result.unwrap();
+        println!("sum = {}", reply.sum);
+    }
+}
+```
+
+On desktop, wrap the async block with `nros::block_on()`:
+
+```rust
+nros::block_on(async {
+    let promise = client.call(&request).unwrap();
+    let Either::Second(result) = select(executor.spin_async(), promise).await
+        else { unreachable!() };
+    println!("sum = {}", result.unwrap().sum);
+});
+```
+
+**Pattern 3: Background spin task (sequential calls)**
+
+Spawn `spin_async()` as a long-lived task, then `.await` promises directly
+without wrapping each one in `select`:
+
+```rust
+#[embassy_executor::task]
+async fn spin_task(mut executor: Executor<RmwSession, 4, 4096>) -> ! {
+    executor.spin_async().await
+}
+
+// In the main task, after spawning spin_task:
+let reply1 = client_a.call(&req1).unwrap().await.unwrap();
+let reply2 = client_b.call(&req2).unwrap().await.unwrap();
+```
+
+### Async Dependencies
+
+The Promise and `spin_async()` APIs use only `core::future` — no external
+runtime dependency. They work on `no_std`/`no_alloc` targets.
+
+For async combinators (`select`, `join`), add `embassy-futures`:
+
+```toml
+[dependencies]
+embassy-futures = "0.1"  # no_std, no_alloc, runtime-agnostic
+```
+
+For desktop `block_on()`, enable the `std` feature on nros (enabled by default).
+
+See `examples/native/rust/zenoh/async-service/` for a complete working example.
+
 ## Next Steps
 
 - Browse the [examples/](../examples/) directory for more patterns (services, actions, subscribers)
