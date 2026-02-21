@@ -984,7 +984,7 @@ fn test_trigger_always_fires_without_data() {
     executor.set_invocation(id, InvocationMode::Always);
 
     // No data, but trigger Always → dispatch phase runs, callback fires
-    let result = executor.spin_once(0);
+    let _result = executor.spin_once(0);
     // Subscription try_recv returns None, so subscriptions_processed stays 0
     // but the callback IS invoked (Always invocation) — try_process returns Ok(false)
     // because there's no actual data
@@ -1316,6 +1316,134 @@ fn test_trigger_all_with_mixed_handles() {
     let result = executor.spin_once(100);
     assert_eq!(result.subscriptions_processed, 1);
     assert_eq!(result.timers_fired, 1);
+}
+
+// ====================================================================
+// Phase 47: Trigger::AllOf sensor fusion pattern
+// ====================================================================
+
+#[test]
+fn test_trigger_allof_fires_when_both_ready() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+
+    let id_a = executor
+        .add_subscription::<TestMsg, _>("/sensor_a", |_: &TestMsg| {})
+        .unwrap();
+    let id_b = executor
+        .add_subscription::<TestMsg, _>("/sensor_b", |_: &TestMsg| {})
+        .unwrap();
+
+    // AllOf — dispatch only when BOTH subscriptions have data
+    executor.set_trigger(Trigger::AllOf(id_a | id_b));
+
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    let off_a = executor.entries[0].as_ref().unwrap().offset;
+    let off_b = executor.entries[1].as_ref().unwrap().offset;
+
+    // Load data only into sensor_a → trigger should NOT fire
+    let (data, len) = encode_test_msg(1);
+    unsafe { &*(arena_ptr.add(off_a) as *const MockSubscriber) }.load(data, len);
+
+    let result = executor.spin_once(0);
+    assert_eq!(
+        result.subscriptions_processed, 0,
+        "AllOf should not fire with only one ready"
+    );
+
+    // Now load data into both sensors → trigger should fire
+    let (data_a, len_a) = encode_test_msg(10);
+    let (data_b, len_b) = encode_test_msg(20);
+    unsafe { &*(arena_ptr.add(off_a) as *const MockSubscriber) }.load(data_a, len_a);
+    unsafe { &*(arena_ptr.add(off_b) as *const MockSubscriber) }.load(data_b, len_b);
+
+    let result = executor.spin_once(0);
+    assert_eq!(
+        result.subscriptions_processed, 2,
+        "AllOf should fire when both ready"
+    );
+}
+
+#[test]
+fn test_trigger_allof_empty_set_always_fires() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+
+    executor
+        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .unwrap();
+
+    // AllOf with empty set → vacuously true, always dispatches
+    executor.set_trigger(Trigger::AllOf(HandleSet::EMPTY));
+
+    // No data loaded, but trigger passes (empty set)
+    let result = executor.spin_once(0);
+    // Subscription still has no data, so callback won't fire (try_recv returns None)
+    assert_eq!(result.subscriptions_processed, 0);
+}
+
+// ====================================================================
+// Phase 47: Trigger::AnyOf dispatches on any handle in set
+// ====================================================================
+
+#[test]
+fn test_trigger_anyof_fires_when_one_ready() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+
+    let id_a = executor
+        .add_subscription::<TestMsg, _>("/topic_a", |_: &TestMsg| {})
+        .unwrap();
+    let id_b = executor
+        .add_subscription::<TestMsg, _>("/topic_b", |_: &TestMsg| {})
+        .unwrap();
+
+    // AnyOf — dispatch when ANY handle in set has data
+    executor.set_trigger(Trigger::AnyOf(id_a | id_b));
+
+    // No data → trigger should NOT fire
+    let result = executor.spin_once(0);
+    assert_eq!(
+        result.subscriptions_processed, 0,
+        "AnyOf should not fire with none ready"
+    );
+
+    // Load data only into topic_a → trigger SHOULD fire
+    let (data, len) = encode_test_msg(42);
+    let meta_a = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe { &*(arena_ptr.add(meta_a.offset) as *const MockSubscriber) }.load(data, len);
+
+    let result = executor.spin_once(0);
+    assert!(
+        result.subscriptions_processed >= 1,
+        "AnyOf should fire when one handle ready"
+    );
+}
+
+#[test]
+fn test_trigger_anyof_empty_set_never_fires() {
+    let session = MockSession::new();
+    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+
+    executor
+        .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
+        .unwrap();
+
+    // AnyOf with empty set → always false, never dispatches
+    executor.set_trigger(Trigger::AnyOf(HandleSet::EMPTY));
+
+    // Load data — trigger still won't pass (empty set, bits & 0 == 0)
+    let (data, len) = encode_test_msg(1);
+    let meta = executor.entries[0].as_ref().unwrap();
+    let arena_ptr = executor.arena.as_ptr() as *const u8;
+    unsafe { &*(arena_ptr.add(meta.offset) as *const MockSubscriber) }.load(data, len);
+
+    let result = executor.spin_once(0);
+    assert_eq!(
+        result.subscriptions_processed, 0,
+        "AnyOf(EMPTY) should never fire"
+    );
 }
 
 // ====================================================================

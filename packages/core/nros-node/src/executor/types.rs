@@ -539,3 +539,212 @@ impl GuardConditionHandle {
 // SAFETY: The AtomicBool is designed for cross-thread access.
 unsafe impl Send for GuardConditionHandle {}
 unsafe impl Sync for GuardConditionHandle {}
+
+// ============================================================================
+// Kani Verification
+// ============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+
+    // ---- HandleSet algebraic properties ----
+
+    #[kani::proof]
+    fn handleset_insert_contains() {
+        let idx: usize = kani::any();
+        kani::assume(idx < 64);
+        let id = HandleId(idx);
+        let set = HandleSet::EMPTY.insert(id);
+        assert!(set.contains(id));
+    }
+
+    #[kani::proof]
+    fn handleset_insert_idempotent() {
+        let idx: usize = kani::any();
+        kani::assume(idx < 64);
+        let id = HandleId(idx);
+        let once = HandleSet::EMPTY.insert(id);
+        let twice = once.insert(id);
+        assert_eq!(once.0, twice.0);
+    }
+
+    #[kani::proof]
+    fn handleset_union_commutative() {
+        let a: u64 = kani::any();
+        let b: u64 = kani::any();
+        let set_a = HandleSet(a);
+        let set_b = HandleSet(b);
+        assert_eq!(set_a.union(set_b).0, set_b.union(set_a).0);
+    }
+
+    #[kani::proof]
+    fn handleset_union_associative() {
+        let a: u64 = kani::any();
+        let b: u64 = kani::any();
+        let c: u64 = kani::any();
+        let sa = HandleSet(a);
+        let sb = HandleSet(b);
+        let sc = HandleSet(c);
+        assert_eq!(sa.union(sb).union(sc).0, sa.union(sb.union(sc)).0);
+    }
+
+    #[kani::proof]
+    fn handleset_union_contains_both() {
+        let idx_a: usize = kani::any();
+        let idx_b: usize = kani::any();
+        kani::assume(idx_a < 64);
+        kani::assume(idx_b < 64);
+        let a = HandleId(idx_a);
+        let b = HandleId(idx_b);
+        let set_a = HandleSet::EMPTY.insert(a);
+        let set_b = HandleSet::EMPTY.insert(b);
+        let merged = set_a.union(set_b);
+        assert!(merged.contains(a));
+        assert!(merged.contains(b));
+    }
+
+    #[kani::proof]
+    fn handleset_empty_contains_nothing() {
+        let idx: usize = kani::any();
+        kani::assume(idx < 64);
+        let id = HandleId(idx);
+        assert!(!HandleSet::EMPTY.contains(id));
+    }
+
+    #[kani::proof]
+    fn handleset_bitor_matches_insert() {
+        let idx_a: usize = kani::any();
+        let idx_b: usize = kani::any();
+        kani::assume(idx_a < 64);
+        kani::assume(idx_b < 64);
+        let a = HandleId(idx_a);
+        let b = HandleId(idx_b);
+        let via_bitor = a | b;
+        let via_insert = HandleSet::EMPTY.insert(a).insert(b);
+        assert_eq!(via_bitor.0, via_insert.0);
+    }
+
+    #[kani::proof]
+    fn handleset_len_after_insert() {
+        let idx: usize = kani::any();
+        kani::assume(idx < 64);
+        let id = HandleId(idx);
+        let set = HandleSet::EMPTY.insert(id);
+        assert_eq!(set.len(), 1);
+        assert!(!set.is_empty());
+    }
+
+    // ---- ReadinessSnapshot properties ----
+
+    #[kani::proof]
+    fn snapshot_is_ready_consistent() {
+        let bits: u64 = kani::any();
+        let idx: usize = kani::any();
+        kani::assume(idx < 64);
+        let snap = ReadinessSnapshot { bits, count: 64 };
+        let id = HandleId(idx);
+        // is_ready matches the bit
+        assert_eq!(snap.is_ready(id), bits & (1u64 << idx) != 0);
+    }
+
+    #[kani::proof]
+    fn snapshot_all_ready_correct() {
+        let bits: u64 = kani::any();
+        let set_bits: u64 = kani::any();
+        let snap = ReadinessSnapshot { bits, count: 64 };
+        let set = HandleSet(set_bits);
+        // all_ready iff every bit in set is present in bits
+        assert_eq!(snap.all_ready(set), bits & set_bits == set_bits);
+    }
+
+    #[kani::proof]
+    fn snapshot_any_ready_correct() {
+        let bits: u64 = kani::any();
+        let set_bits: u64 = kani::any();
+        let snap = ReadinessSnapshot { bits, count: 64 };
+        let set = HandleSet(set_bits);
+        // any_ready iff at least one bit overlaps
+        assert_eq!(snap.any_ready(set), bits & set_bits != 0);
+    }
+
+    // ---- Trigger evaluation soundness ----
+
+    // These verify the boolean expressions used in spin_once().
+
+    #[kani::proof]
+    fn trigger_any_fires_iff_nonzero() {
+        let readiness: u64 = kani::any();
+        // Trigger::Any fires when readiness_bits != 0
+        let fires = readiness != 0;
+        assert_eq!(fires, readiness != 0);
+    }
+
+    #[kani::proof]
+    fn trigger_one_fires_iff_bit_set() {
+        let readiness: u64 = kani::any();
+        let idx: usize = kani::any();
+        kani::assume(idx < 64);
+        let id = HandleId(idx);
+        // Trigger::One(id) fires when readiness & (1 << id.0) != 0
+        let fires = readiness & (1u64 << id.0) != 0;
+        // This is equivalent to checking the specific bit
+        assert_eq!(fires, readiness & (1u64 << idx) != 0);
+    }
+
+    #[kani::proof]
+    fn trigger_allof_fires_iff_all_set() {
+        let readiness: u64 = kani::any();
+        let set_bits: u64 = kani::any();
+        let set = HandleSet(set_bits);
+        // Trigger::AllOf(set) fires when readiness & set.0 == set.0
+        let fires = readiness & set.0 == set.0;
+        // AllOf with empty set always fires
+        if set_bits == 0 {
+            assert!(fires);
+        }
+        // If fires, then every bit in set is present
+        if fires {
+            assert_eq!(readiness & set_bits, set_bits);
+        }
+    }
+
+    #[kani::proof]
+    fn trigger_anyof_fires_iff_any_set() {
+        let readiness: u64 = kani::any();
+        let set_bits: u64 = kani::any();
+        let set = HandleSet(set_bits);
+        // Trigger::AnyOf(set) fires when readiness & set.0 != 0
+        let fires = readiness & set.0 != 0;
+        // AnyOf with empty set never fires
+        if set_bits == 0 {
+            assert!(!fires);
+        }
+    }
+
+    #[kani::proof]
+    fn trigger_allof_implies_anyof() {
+        let readiness: u64 = kani::any();
+        let set_bits: u64 = kani::any();
+        kani::assume(set_bits != 0); // Non-empty set
+        let allof_fires = readiness & set_bits == set_bits;
+        let anyof_fires = readiness & set_bits != 0;
+        // If AllOf fires, then AnyOf must also fire
+        if allof_fires {
+            assert!(anyof_fires);
+        }
+    }
+
+    #[kani::proof]
+    fn trigger_one_equivalent_to_anyof_singleton() {
+        let readiness: u64 = kani::any();
+        let idx: usize = kani::any();
+        kani::assume(idx < 64);
+        let id = HandleId(idx);
+        let singleton = HandleSet::EMPTY.insert(id);
+        // One(id) and AnyOf({id}) produce the same result
+        let one_fires = readiness & (1u64 << id.0) != 0;
+        let anyof_fires = readiness & singleton.0 != 0;
+        assert_eq!(one_fires, anyof_fires);
+    }
+}

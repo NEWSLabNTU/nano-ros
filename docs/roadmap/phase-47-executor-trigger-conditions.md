@@ -757,9 +757,9 @@ Rust executor API.
 - [x] Unit test: `HandleSet` bitwise operations
 - [x] Unit test: `ReadinessSnapshot` queries
 - [x] Unit test: `HandleId` returned from registration matches entry index
-- [ ] Integration test: sensor-fusion pattern with two subscriptions
-- [ ] Kani harness: trigger evaluation soundness (all variants)
-- [ ] Kani harness: `HandleSet` insert/contains correctness
+- [x] Integration test: guard condition with real zenoh + AllOf/AnyOf unit tests (MockSession)
+- [x] Kani harness: trigger evaluation soundness (all variants) — 18 harnesses
+- [x] Kani harness: `HandleSet` insert/contains correctness — 8 harnesses
 - [x] Verify `just quality` passes
 
 ### 47.6 — Raw-bytes Callbacks

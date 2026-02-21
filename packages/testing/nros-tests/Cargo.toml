@@ -30,11 +30,15 @@ nros-serdes = { path = "../../core/nros-serdes", optional = true }
 nros-rmw = { path = "../../core/nros-rmw", optional = true }
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", features = ["platform-posix", "std"], optional = true }
 
+# Node + executor API (optional, for trigger condition integration tests)
+nros-node = { path = "../../core/nros-node", features = ["std", "rmw-zenoh", "platform-posix", "ros-humble"], optional = true }
+
 [features]
 default = []
 types = ["nros-core", "nros-serdes"]
 rmw = ["nros-rmw", "nros-rmw-zenoh", "nros-core", "nros-serdes"]
 safety-e2e = ["rmw", "nros-rmw/safety-e2e", "nros-rmw-zenoh/safety-e2e"]
+trigger-test = ["dep:nros-node", "nros-core", "nros-serdes"]
 
 [lib]
 name = "nros_tests"
@@ -85,3 +89,8 @@ path = "tests/safety_e2e.rs"
 [[test]]
 name = "large_msg"
 path = "tests/large_msg.rs"
+
+[[test]]
+name = "trigger_conditions"
+path = "tests/trigger_conditions.rs"
+required-features = ["trigger-test"]

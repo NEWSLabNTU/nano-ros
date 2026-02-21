@@ -718,7 +718,7 @@ verify-kani:
     set -euo pipefail
     echo "=== Kani Verification ==="
     failed=0
-    for crate in nros-serdes nros-core nros-params nros-ghost-types; do
+    for crate in nros-serdes nros-core nros-params nros-ghost-types nros-node; do
         echo ""
         echo "--- Verifying $crate ---"
         cargo kani -p "$crate" || { echo "[FAIL] $crate"; failed=$((failed + 1)); }
