@@ -37,61 +37,61 @@ nros-c  →  nros-rmw (transport traits)
 nros-c  ✗  does NOT delegate to nros-node executor
 ```
 
-Phase 47 (prerequisite) adds trigger conditions and `InvocationMode` to
-nros-node. Phase 49 adds the remaining missing capabilities to nros-node
-(raw-bytes callbacks, guard conditions, LET semantics, session-borrowing
-executor) and rewrites nros-c to delegate.
+Phase 47 (prerequisite) adds all nros-node executor infrastructure: trigger
+conditions, `InvocationMode`, raw-bytes callbacks, guard conditions, LET
+semantics, and session-borrowing executor. Phase 49 uses this complete
+Rust API to rewrite nros-c as a thin delegation layer.
 
 ---
 
 ## Goals
 
-1. **Eliminate duplicated executor logic** — nros-c delegates to nros-node's
+1. **Rename C API prefix** — align `nano_ros_*` functions and types to `nros_*`,
+   matching the naming convention used in Rust crates, Kconfig, and macros
+2. **Eliminate duplicated executor logic** — nros-c delegates to nros-node's
    `Executor` for spin, trigger evaluation, handle management, and dispatch
-2. **Add raw-bytes callback support to nros-node** — C callbacks receive
+3. **Add raw-bytes callback support to nros-node** — C callbacks receive
    `(*const u8, usize)`, not typed `&M`; nros-node must support this natively
-3. **Add guard conditions to nros-node** — atomic signal type usable from
+4. **Add guard conditions to nros-node** — atomic signal type usable from
    any thread or ISR
-4. **Add LET semantics to nros-node** — logical execution time: sample all
+5. **Add LET semantics to nros-node** — logical execution time: sample all
    subscriptions at spin start, process from snapshot
-5. **Preserve C API compatibility** — all existing C headers, function
-   signatures, and struct layouts remain unchanged
 6. **Reduce nros-c line count** — target ~60% reduction in migrated modules
 
 ## Non-Goals
 
 - Migrating C-specific modules (CDR marshaling, `#[repr(C)]` structs,
-  publisher/subscription init) — these are inherently FFI-boundary code
-- Changing the C header (`nano_ros/executor.h`) public interface
-- Adding new C API features — this phase is purely structural migration
+  publisher init) — these are inherently FFI-boundary code
+- Adding new C API features — this phase is structural migration + naming
+  alignment
 - Removing the `#![allow(unsafe_op_in_unsafe_fn)]` attribute from nros-c
 
 ---
 
 ## Current State Inventory
 
-| Module | Lines | Category | Notes |
-|--------|------:|----------|-------|
-| `executor.rs` | 1,788 | Self-implemented | Dispatch, spin, triggers, LET, handle mgmt |
-| `action.rs` | 1,086 | Self-implemented | Goal state machine, UUID tracking |
-| `cdr.rs` | 1,174 | C-specific | Raw CDR serialization for C types |
-| `parameter.rs` | 1,222 | C-specific | Parameter server C bindings |
-| `service.rs` | 838 | C-specific | Service server/client init + raw dispatch |
-| `lifecycle.rs` | 728 | C-specific | Lifecycle state machine C bindings |
-| `publisher.rs` | 549 | C-specific | Publisher init + raw publish |
-| `subscription.rs` | 465 | C-specific | Subscription init + raw recv |
-| `guard_condition.rs` | 450 | Self-implemented | Atomic flag + callback |
-| `node.rs` | 349 | C-specific | Metadata container |
-| `timer.rs` | 348 | Self-implemented | Period tracking + callback |
-| `clock.rs` | 315 | C-specific | Clock C bindings |
-| `support.rs` | 283 | C-specific | Session/support init |
-| `platform.rs` | 183 | C-specific | Platform abstraction C bindings |
-| `qos.rs` | 122 | C-specific | QoS profile C bindings |
-| `lib.rs` | 85 | C-specific | Module declarations |
-| `error.rs` | 50 | C-specific | Error code definitions |
-| `constants.rs` | 28 | C-specific | Build-time constants |
-| `config.rs` | 6 | C-specific | Config re-exports |
-| **Total** | **10,069** | | |
+| Module               |      Lines | Category         | Notes                                      |
+|----------------------|-----------:|------------------|--------------------------------------------|
+| `executor.rs`        |      1,788 | Self-implemented | Dispatch, spin, triggers, LET, handle mgmt |
+| `action.rs`          |      1,086 | Self-implemented | Goal state machine, UUID tracking          |
+| `cdr.rs`             |      1,174 | C-specific       | Raw CDR serialization for C types          |
+| `parameter.rs`       |      1,222 | C-specific       | Parameter server C bindings                |
+| `service.rs`         |        838 | C-specific       | Service server/client init + raw dispatch  |
+| `lifecycle.rs`       |        728 | C-specific       | Lifecycle state machine C bindings         |
+| `publisher.rs`       |        549 | C-specific       | Publisher init + raw publish               |
+| `subscription.rs`    |        465 | C-specific       | Subscription init + raw recv               |
+| `guard_condition.rs` |        450 | Self-implemented | Atomic flag + callback                     |
+| `node.rs`            |        349 | C-specific       | Metadata container                         |
+| `timer.rs`           |        348 | Self-implemented | Period tracking + callback                 |
+| `clock.rs`           |        315 | C-specific       | Clock C bindings                           |
+| `support.rs`         |        283 | C-specific       | Session/support init                       |
+| `platform.rs`        |        183 | C-specific       | Platform abstraction C bindings            |
+| `qos.rs`             |        122 | C-specific       | QoS profile C bindings                     |
+| `lib.rs`             |         85 | C-specific       | Module declarations                        |
+| `error.rs`           |         50 | C-specific       | Error code definitions                     |
+| `constants.rs`       |         28 | C-specific       | Build-time constants                       |
+| `config.rs`          |          6 | C-specific       | Config re-exports                          |
+| **Total**            | **10,069** |                  |                                            |
 
 **Migration targets** (self-implemented): executor.rs, timer.rs,
 guard_condition.rs, action.rs = **3,672 lines** (36% of crate).
@@ -128,14 +128,43 @@ The executor stores `*mut S` and dereferences it in `drive_io()` /
 - Action goal state machine and concurrent goal tracking
 
 **Stays in nros-c (inherently C-specific):**
-- Publisher/subscription/service init (creates RMW types directly — C has no
-  generics for typed wrappers)
 - CDR marshaling (`cdr.rs`)
 - Parameter server bindings (`parameter.rs`)
 - Lifecycle bindings (`lifecycle.rs`)
 - Node metadata container (`node.rs`)
 - All `#[repr(C)]` struct definitions
 - QoS, clock, platform, error, constants modules
+
+### Delegation Approach for Subscription/Service/Action Init
+
+The key insight enabling delegation is that C init functions
+(`nros_subscription_init()`, `nros_service_init()`, etc.) do NOT need to
+create the RMW subscriber/server themselves. Instead:
+
+1. **Init stores metadata only** — `nros_subscription_init()` saves the topic
+   name, QoS settings, and type info into the `nros_subscription_t` struct,
+   but does NOT create the RMW subscriber.
+2. **Executor registration creates the RMW handle** —
+   `nros_executor_add_subscription()` calls `executor.add_subscription_raw()`,
+   which internally calls `session.create_subscriber()` AND registers the
+   callback in the arena. The returned `HandleId` is stored in the subscription
+   struct.
+3. **No ownership conflict** — the nros-node `Executor` owns both the RMW
+   subscriber and the callback entry in its arena. The C subscription struct
+   is a lightweight metadata handle, not an owner.
+
+This mirrors how `Node::create_subscription()` works in the Rust API: the
+executor creates and owns the subscriber. The C API just defers this creation
+from `init()` to `executor_add_*()`.
+
+The same pattern applies to services and action servers/clients:
+- `nros_service_init()` → stores metadata
+- `nros_executor_add_service()` → calls `executor.add_service_raw()` → creates
+  RMW service server + registers callback
+- `nros_action_server_init()` → stores metadata
+- `nros_executor_add_action_server()` → calls
+  `executor.add_action_server_raw()` → creates sub-services + registers
+  callbacks
 
 ### Raw-Bytes Callback Approach
 
@@ -162,243 +191,157 @@ trigger evaluation, invocation mode checks, and LET sampling.
 
 ---
 
+## Prerequisites
+
+Phase 49 requires the following nros-node Rust API to be complete before
+any C API work begins:
+
+| Prerequisite | Phase | Sub-phase | Status |
+|--------------|-------|-----------|--------|
+| Trigger conditions (`Trigger` enum, `InvocationMode`, three-phase `spin_once()`) | 47 | 47.1–47.5 | Not Started |
+| Raw-bytes callbacks (`add_subscription_raw()`, `add_service_raw()`) | 47 | 47.6 | Not Started |
+| Guard conditions (`add_guard_condition()`, `GuardConditionHandle`) | 47 | 47.7 | Not Started |
+| LET semantics (pre-sample phase in `spin_once()`) | 47 | 47.8 | Not Started |
+| Session-borrowing executor (`from_session_ptr()`, `SessionStore`) | 47 | 47.9 | Not Started |
+
+All Rust executor infrastructure is implemented in Phase 47. Phase 49 is
+purely C API work: rename the `nano_ros_` prefix and rewrite nros-c modules
+to delegate to nros-node.
+
+---
+
 ## Sub-phases
 
-### 49.1 — Raw-bytes Callbacks in nros-node
+### 49.1 — C API Prefix Rename (`nano_ros_` → `nros_`)
 
-Add raw-bytes entry types to the executor arena, enabling callbacks that
-receive CDR bytes without deserialization. This is the foundation for nros-c
-delegation.
+Rename all C-facing items from the `nano_ros_` prefix to `nros_`, aligning
+the C API with the code-level naming convention used everywhere else (Rust
+crate names, Kconfig symbols, header directory, macros). This must happen
+**before** the delegation migration (49.2–49.4) so that the new thin-wrapper
+code is written with the final names from the start.
 
-**Arena entry types:**
+**Current state:**
+- **Functions**: 142 `nano_ros_*()` declarations across 20 headers
+- **Types**: 46 `nano_ros_*_t` typedefs (structs/enums)
+- **Exception**: `nros_node_t` already uses `nros_` prefix
+- **Macros**: Already use `NROS_` prefix (no change needed)
+- **Headers**: Already in `nros/` directory (no change needed)
+- **CMake**: `NanoRos::NanoRos` target, `NANO_ROS_RMW` variable,
+  `nano_ros_generate_interfaces()` function, `NanoRosConfig.cmake`
 
-- `SubRawEntry<Sub, const RX_BUF: usize>` — subscriber handle + raw fn ptr +
-  context pointer + receive buffer
-- `SrvRawEntry<Srv, const REQ_BUF: usize, const REPLY_BUF: usize>` — service
-  server handle + raw fn ptr + context pointer + request/reply buffers
+**Rename scope:**
 
-**Dispatch functions:**
+| Category | From | To | Count |
+|----------|------|----|------:|
+| C functions | `nano_ros_support_init()` | `nros_support_init()` | ~142 |
+| C types | `nano_ros_publisher_t` | `nros_publisher_t` | ~46 |
+| CMake target | `NanoRos::NanoRos` | `Nros::Nros` | 1 |
+| CMake variable | `NANO_ROS_RMW` | `NROS_RMW` | 1 |
+| CMake function | `nano_ros_generate_interfaces()` | `nros_generate_interfaces()` | 1 |
+| CMake config | `NanoRosConfig.cmake` | `NrosConfig.cmake` | 1 |
+| Codegen binary | `nros-codegen` (unchanged) | — | 0 |
+| Build dir | `build/nano_ros_c/` | `build/nros_c/` | 1 |
+| Generated targets | `std_msgs__nano_ros_c` | `std_msgs__nros_c` | ~5 |
+| CLAUDE.md | naming convention section | update | 1 |
+| Docs | various .md files | update | ~10 |
+| C examples | 14 `main.c` files | update | 14 |
+| Zephyr CMake | `zephyr/CMakeLists.txt` | update | 1 |
 
-- `sub_raw_try_process()` — calls `try_recv_raw()` on subscriber, invokes
-  raw callback with `(data_ptr, data_len, context)`
-- `srv_raw_try_process()` — calls `try_recv_request()` on service server,
-  invokes raw callback with request bytes, collects reply bytes, calls
-  `send_reply()` with raw reply
-
-**Registration methods:**
-
-- `Executor::add_subscription_raw()` → `HandleId`
-- `Executor::add_service_raw()` → `HandleId`
-
-**Callback type definitions:**
-
-```rust
-pub type RawSubscriptionCallback =
-    unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void);
-
-pub type RawServiceCallback =
-    unsafe extern "C" fn(
-        req: *const u8, req_len: usize,
-        resp: *mut u8, resp_cap: usize, resp_len: *mut usize,
-        context: *mut c_void,
-    ) -> bool;
-```
-
-**Has-data functions:**
-
-- `sub_raw_has_data()` — delegates to `subscriber.has_data()`
-- `srv_raw_has_data()` — delegates to `server.has_request()`
+**NOT renamed:**
+- `cargo nano-ros` CLI command (user-facing tool name, kept for clarity)
+- Kconfig symbols (already `CONFIG_NROS_*`)
+- C macros (already `NROS_*`)
+- Header directory (already `nros/`)
 
 **Tasks:**
 
-- [ ] Define `RawSubscriptionCallback` and `RawServiceCallback` type aliases
-  in `executor/types.rs`
-- [ ] Add `SubRawEntry<Sub, RX_BUF>` struct to `executor/arena.rs`
-- [ ] Add `SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>` struct to `executor/arena.rs`
-- [ ] Implement `sub_raw_try_process()` in `executor/arena.rs`
-- [ ] Implement `srv_raw_try_process()` in `executor/arena.rs`
-- [ ] Implement `sub_raw_has_data()` and `srv_raw_has_data()`
-- [ ] Add `Executor::add_subscription_raw()` to `executor/spin.rs`
-- [ ] Add `Executor::add_service_raw()` to `executor/spin.rs`
-- [ ] Add `EntryKind::SubscriptionRaw` and `EntryKind::ServiceRaw` variants
-  (or reuse existing kinds)
-- [ ] Unit tests for raw subscription dispatch
-- [ ] Unit tests for raw service dispatch
+- [ ] Rename all `nano_ros_*()` functions to `nros_*()` in C headers
+  (`packages/core/nros-c/include/nros/*.h`)
+- [ ] Rename all `nano_ros_*_t` types to `nros_*_t` in C headers
+- [ ] Update all `#[unsafe(no_mangle)]` function names in nros-c Rust source
+  (`packages/core/nros-c/src/*.rs`)
+- [ ] Update all `#[repr(C)]` struct names to match renamed typedefs
+- [ ] Rename CMake target `NanoRos::NanoRos` → `Nros::Nros` and update
+  config files (`NanoRosConfig.cmake` → `NrosConfig.cmake`, etc.)
+- [ ] Rename CMake variable `NANO_ROS_RMW` → `NROS_RMW`
+- [ ] Rename CMake function `nano_ros_generate_interfaces()` →
+  `nros_generate_interfaces()`
+- [ ] Update codegen C backend to emit `nros_*` names
+  (`packages/codegen/packages/nano-ros-codegen-c/`)
+- [ ] Update all C example `main.c` files (14 files in
+  `examples/native/c/` and `examples/zephyr/c/`)
+- [ ] Update `zephyr/CMakeLists.txt` and `zephyr/cmake/` modules
+- [ ] Update CLAUDE.md naming convention section
+- [ ] Update all documentation references (~10 .md files)
+- [ ] Add backward-compat `#define` aliases in a single
+  `nros/compat.h` header (optional, can be removed in a future release)
+- [ ] `just quality` passes
+- [ ] `just test-c` passes
+- [ ] Zephyr C examples build
 
-**Files:** `nros-node/src/executor/{arena.rs, spin.rs, types.rs}`
-
----
-
-### 49.2 — Guard Conditions in nros-node
-
-nros-node currently has no guard condition type. Guard conditions are manual
-triggers — an atomic flag that can be set from any thread or ISR to wake the
-executor. They are used for shutdown signaling, inter-thread notifications,
-and custom event injection.
-
-**New type:**
-
-```rust
-pub struct GuardCondition {
-    triggered: AtomicBool,
-    callback: Option<(unsafe extern "C" fn(*mut c_void), *mut c_void)>,
-}
-```
-
-**Arena integration:**
-
-- `GuardConditionEntry` — guard condition + callback fn + context
-- `guard_try_process()` — check flag, clear, invoke callback if set
-- `guard_has_data()` — check triggered flag
-
-**Registration:**
-
-- `Executor::add_guard_condition()` → `HandleId`
-
-**Tasks:**
-
-- [ ] Create `nros-node/src/guard_condition.rs` with `GuardCondition` struct
-- [ ] Implement `trigger()`, `is_triggered()`, `clear()` methods
-- [ ] Implement optional callback storage and invocation
-- [ ] Ensure `Send + Sync` safety (atomic flag is inherently thread-safe)
-- [ ] Add `GuardConditionEntry` to `executor/arena.rs`
-- [ ] Implement `guard_try_process()` dispatch function
-- [ ] Implement `guard_has_data()` readiness function
-- [ ] Add `Executor::add_guard_condition()` to `executor/spin.rs`
-- [ ] Add `EntryKind::GuardCondition` variant to `executor/types.rs`
-- [ ] Integrate into spin_once readiness scan (Phase 47's three-phase flow)
-- [ ] Unit tests for guard condition trigger/clear/callback
-- [ ] Unit tests for executor integration (spin_once processes guard conditions)
-
-**Files:** new `nros-node/src/guard_condition.rs`,
-`nros-node/src/executor/{arena.rs, spin.rs, types.rs, mod.rs}`
+**Files:** `packages/core/nros-c/include/nros/*.h`,
+`packages/core/nros-c/src/*.rs`, `CMakeLists.txt`,
+`zephyr/CMakeLists.txt`, `zephyr/cmake/*.cmake`,
+`packages/codegen/packages/nano-ros-codegen-c/`,
+all C example `main.c` files, CLAUDE.md, various docs
 
 ---
 
-### 49.3 — LET Semantics in nros-node
-
-Logical Execution Time (LET) semantics: sample all subscription data at the
-start of each spin cycle, then process callbacks from the snapshot. This
-prevents data races where a callback sees newer data than earlier callbacks
-in the same cycle. nros-c implements this in `executor.rs:844-873`.
-
-**New types:**
-
-```rust
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub enum ExecutorSemantics {
-    /// Standard interleaved execution (default). Each callback sees the
-    /// latest data at the time it runs.
-    #[default]
-    RclcppExecutor,
-
-    /// Logical Execution Time. All subscriptions are sampled at spin start;
-    /// callbacks process from the snapshot.
-    LogicalExecutionTime,
-}
-```
-
-**Mechanism:**
-
-- Add `semantics: ExecutorSemantics` field to `Executor`
-- Add `Executor::set_semantics()` method
-- Modify spin_once: if LET, iterate all subscription entries and call
-  `try_recv_raw()` / `try_recv()` into per-entry LET buffer before the
-  dispatch phase. During dispatch, callbacks read from the LET buffer
-  instead of calling recv again.
-- Services always use immediate mode (request-reply is inherently sequential)
-- LET buffer field added to `SubEntry` / `SubRawEntry` (compile-time sized
-  via const generic `RX_BUF`)
-
-**Tasks:**
-
-- [ ] Define `ExecutorSemantics` enum in `executor/types.rs`
-- [ ] Add `semantics` field to `Executor` struct
-- [ ] Add `Executor::set_semantics()` public method
-- [ ] Add LET buffer field to `SubEntry` and `SubRawEntry`
-- [ ] Add `try_sample()` function that copies latest data into LET buffer
-- [ ] Modify `sub_try_process()` to read from LET buffer when in LET mode
-- [ ] Modify `sub_raw_try_process()` similarly
-- [ ] Add pre-sample phase to `spin_once()` between readiness scan and
-  dispatch (only when `semantics == LogicalExecutionTime`)
-- [ ] Unit tests for LET semantics (data sampled once, consistent snapshot)
-- [ ] Unit tests verifying default RclcppExecutor behavior is unchanged
-
-**Files:** `nros-node/src/executor/{types.rs, spin.rs, arena.rs}`
-
----
-
-### 49.4 — Session-Borrowing Executor
-
-nros-node's `Executor<S>` owns the session. The C API requires the support
-object to own the session, with the executor borrowing it. Add an unsafe
-constructor that accepts a raw pointer to an externally-owned session.
-
-**API:**
-
-```rust
-impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>
-    Executor<S, MAX_CBS, CB_ARENA>
-{
-    /// Create an executor that borrows a session via raw pointer.
-    ///
-    /// # Safety
-    /// - `session_ptr` must point to a valid, initialized `S`
-    /// - The session must outlive the executor
-    /// - No other code may move or drop the session while the executor exists
-    pub unsafe fn from_session_ptr(session_ptr: *mut S) -> Self { ... }
-}
-```
-
-**Implementation options:**
-
-1. Store `*mut S` in a newtype that derefs to `&mut S` — executor code
-   unchanged
-2. Store an enum `Owned(S) | Borrowed(*mut S)` — dispatch on variant
-
-Option 1 is simpler; option 2 avoids UB if the raw pointer is ever null.
-Recommend option 2 with a debug assertion on the pointer.
-
-**Tasks:**
-
-- [ ] Add session storage enum or newtype to executor
-- [ ] Implement `from_session_ptr()` constructor
-- [ ] Ensure `drive_io()` and `spin_once()` work with borrowed session
-- [ ] Add `session()` / `session_mut()` accessors that handle both variants
-- [ ] Unit tests for borrowed-session executor lifecycle
-- [ ] Document safety requirements in doc comments
-
-**Files:** `nros-node/src/executor/spin.rs`
-
----
-
-### 49.5 — nros-c Executor Migration
+### 49.2 — nros-c Executor Migration
 
 Rewrite `nros-c/src/executor.rs` to hold an opaque nros-node `Executor` in
 the `_internal` field and delegate all operations.
 
+**Delegation approach:**
+
+The executor struct `nros_executor_t._internal` stores a
+`*mut Executor<RmwSession, MAX_HANDLES, ARENA_SIZE>`. All C API functions
+dereference this pointer and delegate.
+
+For subscriptions and services, the C init function (`nros_subscription_init`)
+stores metadata only (topic name, QoS, type info) — it does NOT create the
+RMW subscriber. The executor registration function
+(`nros_executor_add_subscription`) calls `executor.add_subscription_raw()`,
+which creates the RMW subscriber AND registers the callback in the arena.
+The returned `HandleId` is stored in the C subscription struct. This mirrors
+how `Node::create_subscription()` works in the Rust API and eliminates the
+ownership conflict where subscribers would otherwise be created outside the
+executor.
+
 **Delegation table:**
 
-| C API function | Delegates to |
-|----------------|-------------|
-| `nano_ros_executor_init()` | `Executor::from_session_ptr()` |
-| `nano_ros_executor_add_subscription()` | `executor.add_subscription_raw()` |
-| `nano_ros_executor_add_timer()` | `executor.add_timer()` |
-| `nano_ros_executor_add_service()` | `executor.add_service_raw()` |
-| `nano_ros_executor_add_guard_condition()` | `executor.add_guard_condition()` |
-| `nano_ros_executor_set_trigger()` | wraps C fn ptr as `Trigger::Predicate` |
-| `nano_ros_executor_set_semantics()` | `executor.set_semantics()` |
-| `nano_ros_executor_spin_some()` | `executor.spin_once()` |
-| `nano_ros_executor_spin()` | loop over `executor.spin_once()` |
-| `nano_ros_executor_spin_period()` | `executor.spin_period()` or manual drift-comp loop |
-| `nano_ros_executor_spin_one_period()` | `executor.spin_one_period()` |
+| C API function (post-rename)              | Delegates to                                       |
+|-------------------------------------------|----------------------------------------------------|
+| `nros_executor_init()`                    | `Executor::from_session_ptr()`                     |
+| `nros_executor_add_subscription()`        | `executor.add_subscription_raw()`                  |
+| `nros_executor_add_timer()`               | `executor.add_timer()`                             |
+| `nros_executor_add_service()`             | `executor.add_service_raw()`                       |
+| `nros_executor_add_guard_condition()`     | `executor.add_guard_condition()`                   |
+| `nros_executor_set_trigger()`             | wraps C fn ptr as `Trigger::Predicate`             |
+| `nros_executor_set_semantics()`           | `executor.set_semantics()`                         |
+| `nros_executor_spin_some()`               | `executor.spin_once()`                             |
+| `nros_executor_spin()`                    | loop over `executor.spin_once()`                   |
+| `nros_executor_spin_period()`             | `executor.spin_period()` or manual drift-comp loop |
+| `nros_executor_spin_one_period()`         | `executor.spin_one_period()`                       |
+
+**Subscription/service init changes:**
+
+```c
+// Before: nros_subscription_init() created RMW subscriber in _internal
+// After:  nros_subscription_init() stores topic, qos, type_info only
+//         nros_executor_add_subscription() creates subscriber + registers callback
+```
+
+The same pattern applies to services and action servers/clients.
 
 **What remains in nros-c:**
 
 - Built-in triggers (`trigger_any` / `trigger_all` / `trigger_one` /
   `trigger_always`) — C-exported convenience functions
-- `#[repr(C)]` struct definitions for `nano_ros_executor_t`
+- `#[repr(C)]` struct definitions for `nros_executor_t`
 - Conversion between C enum values and Rust enums
+- `nros_subscription_init()` / `nros_service_init()` — simplified to metadata
+  storage only (no RMW handle creation)
 
 **Concrete executor type:**
 
@@ -409,78 +352,80 @@ type CExecutor = nros_node::Executor<RmwSession, {MAX_HANDLES}, {ARENA_SIZE}>;
 Constants come from `build.rs` (already exists: `NROS_EXECUTOR_MAX_HANDLES`,
 arena size derived from handle/buffer counts).
 
-**Expected reduction:** ~1,788 lines → ~400 lines. C header unchanged.
+**Expected reduction:** ~1,788 lines → ~400 lines.
 
 **Tasks:**
 
 - [ ] Add `nros-node` as explicit dependency in `nros-c/Cargo.toml` (or
   access via `nros` unified crate)
 - [ ] Define concrete `CExecutor` type alias with build-time constants
-- [ ] Rewrite `nano_ros_executor_init()` to create `Executor::from_session_ptr()`
-- [ ] Rewrite `nano_ros_executor_add_subscription()` to delegate to
-  `add_subscription_raw()`
-- [ ] Rewrite `nano_ros_executor_add_timer()` to delegate to `add_timer()`
-- [ ] Rewrite `nano_ros_executor_add_service()` to delegate to
-  `add_service_raw()`
-- [ ] Rewrite `nano_ros_executor_add_guard_condition()` to delegate
-- [ ] Rewrite `nano_ros_executor_set_trigger()` — wrap C fn ptr as
+- [ ] Rewrite `nros_executor_init()` to create `Executor::from_session_ptr()`
+- [ ] Refactor `nros_subscription_init()` to store metadata only (no RMW
+  subscriber creation)
+- [ ] Rewrite `nros_executor_add_subscription()` to call
+  `executor.add_subscription_raw()` — creates subscriber + registers callback
+- [ ] Refactor `nros_service_init()` to store metadata only
+- [ ] Rewrite `nros_executor_add_service()` to call
+  `executor.add_service_raw()` — creates service + registers callback
+- [ ] Rewrite `nros_executor_add_timer()` to delegate to `add_timer()`
+- [ ] Rewrite `nros_executor_add_guard_condition()` to delegate
+- [ ] Rewrite `nros_executor_set_trigger()` — wrap C fn ptr as
   `Trigger::Predicate`
-- [ ] Rewrite `nano_ros_executor_set_semantics()` to delegate
-- [ ] Rewrite `nano_ros_executor_spin_some()` to call `executor.spin_once()`
-- [ ] Rewrite `nano_ros_executor_spin()` as loop over `spin_once()`
-- [ ] Rewrite `nano_ros_executor_spin_period()` to delegate
-- [ ] Rewrite `nano_ros_executor_spin_one_period()` to delegate
+- [ ] Rewrite `nros_executor_set_semantics()` to delegate
+- [ ] Rewrite `nros_executor_spin_some()` to call `executor.spin_once()`
+- [ ] Rewrite `nros_executor_spin()` as loop over `spin_once()`
+- [ ] Rewrite `nros_executor_spin_period()` to delegate
+- [ ] Rewrite `nros_executor_spin_one_period()` to delegate
 - [ ] Keep built-in trigger functions as C-exported wrappers
-- [ ] Verify C header compatibility — no signature changes
 - [ ] Remove self-implemented dispatch logic, handle arrays, LET buffers
 
-**Files:** `nros-c/src/executor.rs`, `nros-c/Cargo.toml`
+**Files:** `nros-c/src/executor.rs`, `nros-c/src/subscription.rs`,
+`nros-c/src/service.rs`, `nros-c/Cargo.toml`
 
 ---
 
-### 49.6 — nros-c Timer and Guard Condition Migration
+### 49.3 — nros-c Timer and Guard Condition Migration
 
-**Timer:** Replace `nano_ros_timer_t._internal` with nros-node's Timer type.
+**Timer:** Replace `nros_timer_t._internal` with nros-node's Timer type.
 Init, cancel, reset, call, and is_ready all delegate to Rust.
 
-| C API function | Delegates to |
-|----------------|-------------|
-| `nano_ros_timer_init()` | `Timer::new()` |
-| `nano_ros_timer_cancel()` | `timer.cancel()` |
-| `nano_ros_timer_reset()` | `timer.reset()` |
-| `nano_ros_timer_call()` | `timer.call()` |
-| `nano_ros_timer_is_ready()` | `timer.is_ready()` |
-| `nano_ros_timer_get_period()` | `timer.period()` |
+| C API function (post-rename) | Delegates to       |
+|------------------------------|--------------------|
+| `nros_timer_init()`          | `Timer::new()`     |
+| `nros_timer_cancel()`        | `timer.cancel()`   |
+| `nros_timer_reset()`         | `timer.reset()`    |
+| `nros_timer_call()`          | `timer.call()`     |
+| `nros_timer_is_ready()`      | `timer.is_ready()` |
+| `nros_timer_get_period()`    | `timer.period()`   |
 
 **Expected reduction:** ~348 → ~150 lines.
 
-**Guard condition:** Replace `nano_ros_guard_condition_t._internal` with
+**Guard condition:** Replace `nros_guard_condition_t._internal` with
 nros-node's `GuardCondition`. Trigger, clear, and callback all delegate.
 
-| C API function | Delegates to |
-|----------------|-------------|
-| `nano_ros_guard_condition_init()` | `GuardCondition::new()` |
-| `nano_ros_guard_condition_trigger()` | `guard.trigger()` |
-| `nano_ros_guard_condition_clear()` | `guard.clear()` |
-| `nano_ros_guard_condition_is_triggered()` | `guard.is_triggered()` |
+| C API function (post-rename)         | Delegates to            |
+|--------------------------------------|-------------------------|
+| `nros_guard_condition_init()`        | `GuardCondition::new()` |
+| `nros_guard_condition_trigger()`     | `guard.trigger()`       |
+| `nros_guard_condition_clear()`       | `guard.clear()`         |
+| `nros_guard_condition_is_triggered()`| `guard.is_triggered()`  |
 
 **Expected reduction:** ~450 → ~150 lines.
 
 **Tasks:**
 
-- [ ] Rewrite `nano_ros_timer_init()` to create nros-node Timer
+- [ ] Rewrite `nros_timer_init()` to create nros-node Timer
 - [ ] Delegate `cancel()`, `reset()`, `call()`, `is_ready()`, `get_period()`
-- [ ] Rewrite `nano_ros_guard_condition_init()` to create nros-node
+- [ ] Rewrite `nros_guard_condition_init()` to create nros-node
   GuardCondition
 - [ ] Delegate `trigger()`, `clear()`, `is_triggered()`
-- [ ] Verify C header compatibility — no signature changes
 - [ ] Remove self-implemented state machines from both files
 
 **Files:** `nros-c/src/timer.rs`, `nros-c/src/guard_condition.rs`
 
 ---
 
-### 49.7 — nros-c Action Migration
+### 49.4 — nros-c Action Migration
 
 Rewrite action server and client to wrap nros-node's action types using
 raw-bytes variants. Goal state machine, concurrent goal tracking, and
@@ -490,16 +435,25 @@ feedback publishing all delegate to nros-node.
 but for action sub-services: goal request, cancel request, result request,
 feedback publish, status publish).
 
-**Delegation:**
+**Delegation approach:**
 
-| C API function | Delegates to |
-|----------------|-------------|
-| `nano_ros_action_server_init()` | `Executor::add_action_server_raw()` |
-| `nano_ros_action_send_result()` | `action_server.send_result()` |
-| `nano_ros_action_publish_feedback()` | `action_server.publish_feedback()` |
-| `nano_ros_action_client_init()` | `Executor::add_action_client_raw()` |
-| `nano_ros_action_send_goal()` | `action_client.send_goal()` |
-| `nano_ros_action_get_result()` | `action_client.get_result()` |
+Like subscriptions (49.2), action init functions store metadata only. The
+executor registration (`nros_executor_add_action_server()`) calls
+`executor.add_action_server_raw()`, which creates all sub-services and
+registers callbacks.
+
+**Delegation table:**
+
+| C API function (post-rename)       | Delegates to                        |
+|------------------------------------|-------------------------------------|
+| `nros_action_server_init()`        | stores metadata only                |
+| `nros_executor_add_action_server()`| `executor.add_action_server_raw()` |
+| `nros_action_send_result()`        | `action_server.send_result()`       |
+| `nros_action_publish_feedback()`   | `action_server.publish_feedback()`  |
+| `nros_action_client_init()`        | stores metadata only                |
+| `nros_executor_add_action_client()`| `executor.add_action_client_raw()` |
+| `nros_action_send_goal()`          | `action_client.send_goal()`         |
+| `nros_action_get_result()`         | `action_client.get_result()`        |
 
 **Expected reduction:** ~1,086 → ~400 lines.
 
@@ -508,19 +462,20 @@ feedback publish, status publish).
 - [ ] Add raw-bytes action server entry type to nros-node arena
 - [ ] Add raw-bytes action client entry type to nros-node arena
 - [ ] Implement raw-bytes dispatch for action sub-services
-- [ ] Rewrite `nano_ros_action_server_init()` to delegate
-- [ ] Rewrite `nano_ros_action_client_init()` to delegate
+- [ ] Refactor `nros_action_server_init()` to store metadata only
+- [ ] Rewrite `nros_executor_add_action_server()` to delegate
+- [ ] Refactor `nros_action_client_init()` to store metadata only
+- [ ] Rewrite `nros_executor_add_action_client()` to delegate
 - [ ] Delegate goal state transitions to nros-node
 - [ ] Delegate feedback publishing to nros-node
 - [ ] Delegate result handling to nros-node
-- [ ] Verify C header compatibility — no signature changes
 - [ ] Remove self-implemented goal state machine and UUID tracking
 
 **Files:** `nros-c/src/action.rs`, `nros-node/src/executor/action.rs`
 
 ---
 
-### 49.8 — Tests and Verification
+### 49.5 — Tests and Verification
 
 Validate that the migration preserves all existing behavior and add new
 tests for nros-node capabilities added in this phase.
@@ -555,45 +510,61 @@ tests for nros-node capabilities added in this phase.
 ## What Stays in nros-c (Not Migrated)
 
 These modules are inherently C-specific — they handle `#[repr(C)]` struct
-marshaling, raw CDR bytes, and direct RMW type creation that cannot be
-wrapped around generic Rust types:
+marshaling, raw CDR bytes, and metadata storage:
 
-| Module | Lines | Reason |
-|--------|------:|--------|
-| `publisher.rs` | 549 | Init creates `RmwPublisher` directly (C has no generics) |
-| `subscription.rs` | 465 | Init creates `RmwSubscriber` directly |
-| `service.rs` | 838 | Init creates `RmwServiceServer`/`Client` directly |
-| `cdr.rs` | 1,174 | Raw CDR serialization for C struct types |
-| `parameter.rs` | 1,222 | Parameter server C bindings |
-| `lifecycle.rs` | 728 | Lifecycle state machine C bindings |
-| `node.rs` | 349 | Metadata container (`#[repr(C)]`) |
-| `clock.rs` | 315 | Clock C bindings |
-| `support.rs` | 283 | Session/support init |
-| `platform.rs` | 183 | Platform abstraction C bindings |
-| `qos.rs` | 122 | QoS profile C bindings |
-| `lib.rs` | 85 | Module declarations |
-| `error.rs` | 50 | Error code definitions |
-| `constants.rs` | 28 | Build-time constants |
-| `config.rs` | 6 | Config re-exports |
+| Module            | Lines | Reason                                                            |
+|-------------------|------:|-------------------------------------------------------------------|
+| `publisher.rs`    |   549 | Init creates `RmwPublisher` directly (C has no generics)          |
+| `subscription.rs` |   465 | Simplified to metadata storage; RMW creation moves to executor    |
+| `service.rs`      |   838 | Simplified to metadata storage; RMW creation moves to executor    |
+| `cdr.rs`          | 1,174 | Raw CDR serialization for C struct types                          |
+| `parameter.rs`    | 1,222 | Parameter server C bindings                                       |
+| `lifecycle.rs`    |   728 | Lifecycle state machine C bindings                                |
+| `node.rs`         |   349 | Metadata container (`#[repr(C)]`)                                 |
+| `clock.rs`        |   315 | Clock C bindings                                                  |
+| `support.rs`      |   283 | Session/support init                                              |
+| `platform.rs`     |   183 | Platform abstraction C bindings                                   |
+| `qos.rs`          |   122 | QoS profile C bindings                                            |
+| `lib.rs`          |    85 | Module declarations                                               |
+| `error.rs`        |    50 | Error code definitions                                            |
+| `constants.rs`    |    28 | Build-time constants                                              |
+| `config.rs`       |     6 | Config re-exports                                                 |
+
+Note: `subscription.rs` and `service.rs` are simplified during 49.2 — their
+init functions change from "create RMW handle" to "store metadata". The RMW
+handle creation moves into the executor registration path, which delegates to
+nros-node.
 
 ---
 
 ## Files to Create/Modify
 
-| File | Changes |
-|------|---------|
-| `nros-node/src/executor/types.rs` | `RawSubscriptionCallback`, `RawServiceCallback`, `ExecutorSemantics`, `EntryKind::GuardCondition` |
-| `nros-node/src/executor/arena.rs` | `SubRawEntry`, `SrvRawEntry`, `GuardConditionEntry`, `sub_raw_try_process()`, `srv_raw_try_process()`, `guard_try_process()`, `*_has_data()` fns, LET buffer fields |
-| `nros-node/src/executor/spin.rs` | `add_subscription_raw()`, `add_service_raw()`, `add_guard_condition()`, `set_semantics()`, `from_session_ptr()`, LET pre-sample phase |
-| `nros-node/src/executor/action.rs` | Raw-bytes action server/client entry types |
-| `nros-node/src/executor/mod.rs` | Re-export new public types |
-| `nros-node/src/guard_condition.rs` | New file: `GuardCondition` struct |
-| `nros-node/src/lib.rs` | `pub mod guard_condition;` |
-| `nros-c/src/executor.rs` | Rewrite to delegate to nros-node `Executor` |
-| `nros-c/src/timer.rs` | Rewrite to delegate to nros-node `Timer` |
-| `nros-c/src/guard_condition.rs` | Rewrite to delegate to nros-node `GuardCondition` |
-| `nros-c/src/action.rs` | Rewrite to delegate to nros-node action types |
-| `nros-c/Cargo.toml` | Ensure `nros-node` dependency (may already have via `nros`) |
+**49.1 (C API rename):**
+
+| File                                | Changes                                    |
+|-------------------------------------|--------------------------------------------|
+| `nros-c/include/nros/*.h` (20 files)| Rename `nano_ros_*` → `nros_*` in all decls|
+| `nros-c/src/*.rs` (19 files)        | Rename `nano_ros_*` → `nros_*` in FFI fns  |
+| `CMakeLists.txt`                    | `NANO_ROS_RMW` → `NROS_RMW`               |
+| `cmake/*.cmake`                     | `NanoRos` → `Nros` in targets and configs  |
+| `zephyr/CMakeLists.txt`             | Update target names                        |
+| `zephyr/cmake/*.cmake`              | Update function/target names               |
+| `nano-ros-codegen-c/`               | Emit `nros_*` names in generated code      |
+| C example `main.c` files (14)       | Update all API calls                       |
+| `CLAUDE.md`                         | Update naming convention section            |
+| Various docs (~10 .md files)        | Update references                          |
+
+**49.2–49.4 (nros-c delegation):**
+
+| File                               | Changes                                                     |
+|------------------------------------|-------------------------------------------------------------|
+| `nros-c/src/executor.rs`          | Rewrite to delegate to nros-node `Executor`                  |
+| `nros-c/src/subscription.rs`      | Simplify to metadata storage (RMW creation moves to executor)|
+| `nros-c/src/service.rs`           | Simplify to metadata storage (RMW creation moves to executor)|
+| `nros-c/src/timer.rs`             | Rewrite to delegate to nros-node `Timer`                     |
+| `nros-c/src/guard_condition.rs`   | Rewrite to delegate to nros-node `GuardCondition`            |
+| `nros-c/src/action.rs`            | Rewrite to delegate to nros-node action types                |
+| `nros-c/Cargo.toml`               | Ensure `nros-node` dependency                                |
 
 ---
 

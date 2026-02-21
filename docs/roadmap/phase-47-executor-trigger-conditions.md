@@ -660,18 +660,18 @@ nros-c ✗ does NOT use nros-node
 
 Self-implementations in nros-c:
 
-| Component | nros-c | nros-node equivalent |
-|-----------|--------|---------------------|
-| Executor struct | `nano_ros_executor_t` (fixed arrays) | `Executor<S, MAX_CBS, CB_ARENA>` (arena) |
-| Spin loop | `spin_some()` with manual dispatch | `spin_once()` with `CallbackMeta` dispatch |
-| Trigger conditions | `nano_ros_executor_trigger_t` fn ptr | **Not yet** (Phase 47 adds this) |
-| Invocation mode | `NROS_EXECUTOR_ON_NEW_DATA` / `ALWAYS` | **Not yet** (Phase 47 adds this) |
-| LET semantics | Per-handle LET buffers + sampling | **Not in nros-node** |
-| Timer | `nano_ros_timer_t` (own period tracking) | `TimerEntry<F>` in arena |
-| Guard condition | `nano_ros_guard_condition_t` | **Not in nros-node** |
-| Subscription dispatch | `process_subscription()` (raw bytes) | `sub_try_process()` (typed deserialize) |
-| Service dispatch | `process_service_request()` (raw bytes) | `srv_try_process()` (typed deserialize) |
-| Action | Own goal UUID tracking | `ActionServerArenaEntry` / `ActionClientArenaEntry` |
+| Component             | nros-c                                   | nros-node equivalent                                |
+|-----------------------|------------------------------------------|-----------------------------------------------------|
+| Executor struct       | `nano_ros_executor_t` (fixed arrays)     | `Executor<S, MAX_CBS, CB_ARENA>` (arena)            |
+| Spin loop             | `spin_some()` with manual dispatch       | `spin_once()` with `CallbackMeta` dispatch          |
+| Trigger conditions    | `nano_ros_executor_trigger_t` fn ptr     | **Not yet** (Phase 47 adds this)                    |
+| Invocation mode       | `NROS_EXECUTOR_ON_NEW_DATA` / `ALWAYS`   | **Not yet** (Phase 47 adds this)                    |
+| LET semantics         | Per-handle LET buffers + sampling        | **Not in nros-node**                                |
+| Timer                 | `nano_ros_timer_t` (own period tracking) | `TimerEntry<F>` in arena                            |
+| Guard condition       | `nano_ros_guard_condition_t`             | **Not in nros-node**                                |
+| Subscription dispatch | `process_subscription()` (raw bytes)     | `sub_try_process()` (typed deserialize)             |
+| Service dispatch      | `process_service_request()` (raw bytes)  | `srv_try_process()` (typed deserialize)             |
+| Action                | Own goal UUID tracking                   | `ActionServerArenaEntry` / `ActionClientArenaEntry` |
 
 ### Missing Features in nros-node Required for Unification
 
@@ -693,14 +693,10 @@ must exist in the Rust executor first:
 
 ### Unification Path
 
-Phase 47 addresses item 1. Items 2–5 should be scoped as a separate phase
-("Phase 48 — nros-c Executor Unification") that:
-
-1. Adds raw-bytes subscription/service callbacks to `nros-node`
-2. Adds LET semantics as an `ExecutorSemantics` enum on the Rust executor
-3. Adds `GuardCondition` type
-4. Rewrites `nros-c/src/executor.rs` to hold an opaque `Executor<RmwSession,
-   MAX, ARENA>` and delegate `spin_some()` → `spin_once()`, register → arena
+Phase 47 addresses item 1 (trigger conditions) and items 2–5 (nros-node
+infrastructure prerequisites) in sub-phases 47.6–47.9. Phase 49 then
+handles the C API refactor (rename + delegation) on top of the complete
+Rust executor API.
 
 ---
 
@@ -766,17 +762,157 @@ Phase 47 addresses item 1. Items 2–5 should be scoped as a separate phase
 - [ ] Kani harness: `HandleSet` insert/contains correctness
 - [ ] Verify `just quality` passes
 
+### 47.6 — Raw-bytes Callbacks
+
+C callbacks receive `(*const u8, usize)`, not typed `&M`. Add raw-bytes
+entry types to the executor arena so the C API can delegate to nros-node
+without deserializing/re-serializing CDR data.
+
+**New types:**
+
+- `RawSubscriptionCallback` — `unsafe extern "C" fn(data: *const u8, len: usize, context: *mut c_void)`
+- `RawServiceCallback` — `unsafe extern "C" fn(req: *const u8, req_len: usize, resp: *mut u8, resp_cap: usize, resp_len: *mut usize, context: *mut c_void) -> bool`
+- `SubRawEntry<Sub, RX_BUF>` — subscriber + raw fn ptr + context + buffer
+- `SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>` — service server + raw fn ptr + context + buffers
+
+**Dispatch functions:**
+
+- `sub_raw_try_process()` — `try_recv_raw()` → raw callback
+- `srv_raw_try_process()` — `try_recv_request()` → raw callback → `send_reply()`
+- `sub_raw_has_data()` / `srv_raw_has_data()` — delegates to transport `has_data()`/`has_request()`
+
+**Registration:**
+
+- `Executor::add_subscription_raw()` → `HandleId`
+- `Executor::add_service_raw()` → `HandleId`
+
+**Tasks:**
+
+- [ ] Define `RawSubscriptionCallback` and `RawServiceCallback` type aliases
+  in `executor/types.rs`
+- [ ] Add `SubRawEntry<Sub, RX_BUF>` struct to `executor/arena.rs`
+- [ ] Add `SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>` struct to `executor/arena.rs`
+- [ ] Implement `sub_raw_try_process()` and `srv_raw_try_process()`
+- [ ] Implement `sub_raw_has_data()` and `srv_raw_has_data()`
+- [ ] Add `Executor::add_subscription_raw()` and `add_service_raw()`
+- [ ] Unit tests for raw subscription dispatch
+- [ ] Unit tests for raw service dispatch
+
+**Files:** `nros-node/src/executor/{arena.rs, spin.rs, types.rs}`
+
+### 47.7 — Guard Conditions
+
+Guard conditions are manual triggers — an atomic flag that can be set from
+any thread or ISR to wake the executor. Used for shutdown signaling,
+inter-thread notifications, and custom event injection.
+
+**Arena integration:**
+
+- `GuardConditionEntry` — atomic bool flag + callback fn + context
+- `guard_try_process()` — check flag, clear, invoke callback if set
+- `guard_has_data()` — check triggered flag
+- `GuardConditionHandle` — external handle for triggering (Send + Sync)
+
+**Registration:**
+
+- `Executor::add_guard_condition()` → `HandleId`
+
+Guard conditions are excluded from `Trigger::All` (like timers — they are
+event-driven, not data-driven).
+
+**Tasks:**
+
+- [ ] Add `GuardConditionEntry` to `executor/arena.rs`
+- [ ] Add `GuardConditionHandle` to `executor/types.rs`
+- [ ] Implement `guard_try_process()` dispatch function
+- [ ] Implement `guard_has_data()` readiness function
+- [ ] Add `EntryKind::GuardCondition` variant
+- [ ] Add `Executor::add_guard_condition()` → returns `(HandleId, GuardConditionHandle)`
+- [ ] Ensure `GuardConditionHandle` is `Send + Sync`
+- [ ] Unit tests for guard condition trigger/clear/callback
+- [ ] Unit tests for executor integration (spin_once processes guard conditions)
+
+**Files:** `nros-node/src/executor/{arena.rs, spin.rs, types.rs}`
+
+### 47.8 — LET Semantics
+
+Logical Execution Time: sample all subscription data at the start of each
+spin cycle, then process callbacks from the snapshot. Prevents data races
+where a callback sees newer data than earlier callbacks in the same cycle.
+
+**Types:**
+
+```rust
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ExecutorSemantics {
+    #[default]
+    RclcppExecutor,
+    LogicalExecutionTime,
+}
+```
+
+**Mechanism:**
+
+- Add `semantics: ExecutorSemantics` field to `Executor`
+- Add `Executor::set_semantics()` method
+- If LET: pre-sample all subscription entries into per-entry buffer before
+  dispatch phase. Callbacks read from snapshot, not live transport.
+- Services always use immediate mode (request-reply is sequential)
+- LET buffer reuses existing `RX_BUF` const generic on sub entries
+
+**Tasks:**
+
+- [ ] Define `ExecutorSemantics` enum in `executor/types.rs`
+- [ ] Add `semantics` field to `Executor` struct
+- [ ] Add `Executor::set_semantics()` method
+- [ ] Add LET buffer field to `SubEntry` and `SubRawEntry`
+- [ ] Implement pre-sample phase in `spin_once()` (between readiness scan
+  and dispatch, only when `semantics == LogicalExecutionTime`)
+- [ ] Modify `sub_try_process()` / `sub_raw_try_process()` to read from
+  LET buffer when in LET mode
+- [ ] Unit tests for LET semantics (data sampled once, consistent snapshot)
+- [ ] Unit tests verifying default RclcppExecutor behavior is unchanged
+
+**Files:** `nros-node/src/executor/{types.rs, spin.rs, arena.rs}`
+
+### 47.9 — Session-Borrowing Executor
+
+nros-node's `Executor<S>` owns the session. The C API requires the support
+object to own the session, with the executor borrowing it.
+
+**Implementation:**
+
+Store an enum `SessionStore<S>` with `Owned(S)` / `Borrowed(*mut S)` and
+`Deref`/`DerefMut` impls. The existing code uses `self.session` unchanged.
+
+```rust
+pub unsafe fn from_session_ptr(session_ptr: *mut S) -> Self
+```
+
+**Tasks:**
+
+- [ ] Add `SessionStore<S>` enum to executor
+- [ ] Implement `Deref`/`DerefMut` for `SessionStore`
+- [ ] Implement `from_session_ptr()` constructor
+- [ ] Add `session()` / `session_mut()` accessors
+- [ ] Ensure `from_session()` wraps in `SessionStore::Owned`
+- [ ] Unit tests for borrowed-session executor lifecycle
+- [ ] Document safety requirements
+
+**Files:** `nros-node/src/executor/spin.rs`
+
 ---
 
 ## Files to Modify
 
-| File | Changes |
-|------|---------|
-| `packages/core/nros-node/src/executor/types.rs` | `HandleId`, `HandleSet`, `ReadinessSnapshot`, `InvocationMode`, `Trigger` |
-| `packages/core/nros-node/src/executor/arena.rs` | `has_data` + `invocation` on `CallbackMeta`; `*_has_data()` fns |
-| `packages/core/nros-node/src/executor/spin.rs` | Three-phase `spin_once()`; `trigger` field; `set_trigger()`/`set_invocation()` API; return `HandleId` from registration |
-| `packages/core/nros-node/src/executor/action.rs` | Set `has_data`/`invocation` in action registration; `handle_id()` accessor |
-| `packages/core/nros-node/src/executor/mod.rs` | Re-export new public types |
+| File                                             | Changes                                                                                                                 |
+|--------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------|
+| `packages/core/nros-node/src/executor/types.rs`  | `HandleId`, `HandleSet`, `ReadinessSnapshot`, `InvocationMode`, `Trigger`, `RawSubscriptionCallback`, `RawServiceCallback`, `ExecutorSemantics`, `GuardConditionHandle` |
+| `packages/core/nros-node/src/executor/arena.rs`  | `has_data` + `invocation` on `CallbackMeta`; `*_has_data()` fns; `SubRawEntry`, `SrvRawEntry`, `GuardConditionEntry`; LET buffer fields |
+| `packages/core/nros-node/src/executor/spin.rs`   | Three-phase `spin_once()`; `trigger`/`semantics` fields; `set_trigger()`/`set_invocation()`/`set_semantics()` API; `SessionStore`; `from_session_ptr()`; `add_subscription_raw()`/`add_service_raw()`/`add_guard_condition()`; return `HandleId` from registration |
+| `packages/core/nros-node/src/executor/action.rs` | Set `has_data`/`invocation` in action registration; `handle_id()` accessor                                              |
+| `packages/core/nros-node/src/executor/mod.rs`    | Re-export new public types                                                                                              |
+| `packages/core/nros-node/src/lib.rs`             | Re-export new types from executor module                                                                                |
 
 ## Verification
 
