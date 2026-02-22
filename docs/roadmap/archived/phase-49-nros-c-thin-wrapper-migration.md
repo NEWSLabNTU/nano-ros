@@ -1,6 +1,6 @@
 # Phase 49 — nros-c Thin Wrapper Migration
 
-## Status: In Progress (49.1–49.13 complete)
+## Status: Complete (49.1–49.13)
 
 ## Background
 
@@ -527,8 +527,7 @@ All existing tests pass.
 **Existing tests (must pass):**
 
 - [x] `just test-c` — all 15 C API tests pass (including action tests)
-- [ ] Zephyr C examples build and run (`just test-zephyr` C tests) — not
-  yet re-tested
+- [x] Zephyr C examples build and run (`just test-zephyr` — 22/22 pass)
 - [x] Native C examples build and run (verified via `test-c`)
 - [x] `just quality` passes (format, clippy, nextest, miri, QEMU)
 
@@ -623,11 +622,11 @@ nros-node.
 
 1. [x] `just quality` — full format + clippy + nextest + miri + QEMU — PASSES
 2. [x] `just test-c` — all 15 C API tests + 2 codegen tests pass
-3. [ ] Zephyr C examples build and run — not yet re-tested
+3. [x] Zephyr C examples build and run — `just test-zephyr` 22/22 pass
 4. [x] Native C examples build and run (via test-c)
 5. [x] nros-node unit tests for raw-bytes dispatch, guard conditions, LET
    semantics — 86 tests from Phase 47
-6. [ ] Kani bounded model checking on new types — deferred with 49.4
+6. [x] Kani bounded model checking — 33 harnesses added (13 service.rs + 20 action.rs)
 7. [x] Line count audit — see Post-migration table above
 8. [x] cbindgen-generated struct layouts verified correct (49.13)
 
@@ -937,14 +936,18 @@ generates headers directly from Rust types, making drift impossible.
 
 ---
 
-## Remaining Work
+## Verification (49.1–49.13)
 
-### Immediate (no blockers)
+- [x] `just quality` — format, clippy (workspace + embedded + feature combos), nextest, miri
+- [x] `just test-c` — all 15 C API tests pass
+- [x] `just test-zephyr` — all 22 Zephyr tests pass (builds, smoke, E2E)
+- [x] `cargo nextest run -p nros-c` — 23/23 unit tests pass
+- [x] `cargo nextest run -p nros-node` — 94/94 unit tests pass
+- [x] Clippy clean: zenoh, xrce, cffi, and embedded (`thumbv7em-none-eabihf`) targets
 
-- **Zephyr C example re-test**: Run `just test-zephyr` to verify C examples
-  still build and run on Zephyr native_sim
+---
 
-### Not Planned
+## Not Planned
 
 - **Publisher migration**: Publisher init creates `RmwPublisher` directly,
   which is appropriate for the C API (no generics to delegate)
