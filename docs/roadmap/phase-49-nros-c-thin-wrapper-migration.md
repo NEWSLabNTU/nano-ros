@@ -1,6 +1,6 @@
 # Phase 49 — nros-c Thin Wrapper Migration
 
-## Status: In Progress (49.1–49.4 complete)
+## Status: In Progress (49.1–49.12 complete)
 
 ## Background
 
@@ -632,6 +632,226 @@ nros-node.
 
 ---
 
+### 49.6 — Wire C Action Client — COMPLETE
+
+Wired the action client stubs (`nros_action_send_goal`, `nros_action_cancel_goal`,
+`nros_action_get_result`) to actually communicate over the transport, and added
+a new `nros_action_try_recv_feedback()` function for non-blocking feedback polling.
+
+**Design:** Unlike the action server (which uses executor arena via
+`add_action_server_raw()`), the action client creates RMW entities during init
+(like the service client). `nros_action_client_init()` accesses the session via
+`node_ref.get_support_mut()` → `get_session_mut()`, creates 3 service clients
+(send_goal, cancel_goal, get_result) and 1 feedback subscriber, then constructs
+an `ActionClientCore` stored as `Box<ActionClientInternal>` in `_internal`.
+
+**Key struct:**
+
+```rust
+struct ActionClientInternal {
+    core: ActionClientCore<RmwServiceClient, RmwSubscriber, MSG_BUF, MSG_BUF, MSG_BUF>,
+}
+```
+
+**Delegation table:**
+
+| C API function                    | Delegates to                                    |
+|-----------------------------------|-------------------------------------------------|
+| `nros_action_client_init()`       | Creates `ActionClientCore` via session           |
+| `nros_action_send_goal()`         | `core.send_goal_raw(goal_data)`                  |
+| `nros_action_cancel_goal()`       | `core.send_cancel_request(goal_id)`              |
+| `nros_action_get_result()`        | `core.send_get_result_request()` + poll loop     |
+| `nros_action_try_recv_feedback()` | `core.try_recv_feedback_raw()` + callback        |
+| `nros_action_client_fini()`       | Drops `Box<ActionClientInternal>`                |
+
+**New C API function:** `nros_action_try_recv_feedback(client)` — non-blocking
+feedback poll. If feedback is available, invokes the feedback callback (if set).
+Returns `NROS_RET_OK` if feedback dispatched, `NROS_RET_TIMEOUT` if none.
+
+**Tasks:**
+
+- [x] Add `ActionClientInternal` struct wrapping `ActionClientCore`
+- [x] Wire `nros_action_client_init()` — create 3 service clients + 1 subscriber
+- [x] Wire `nros_action_send_goal()` — `core.send_goal_raw()`
+- [x] Wire `nros_action_cancel_goal()` — `core.send_cancel_request()`
+- [x] Wire `nros_action_get_result()` — send request + poll loop
+- [x] Add `nros_action_try_recv_feedback()` — non-blocking feedback poll
+- [x] Wire `nros_action_client_fini()` — drop Box
+- [x] Add C header declaration for `nros_action_try_recv_feedback()`
+- [x] `cargo clippy -p nros-c` passes clean
+
+**Files:** `nros-c/src/action.rs`, `nros-c/include/nros/action.h`
+
+---
+
+### 49.7 — Native C XRCE Service Examples — COMPLETE
+
+Created 2 native C examples for service server and client using XRCE-DDS
+transport. The C API is RMW-agnostic — the only difference from zenoh examples
+is the locator string and build-time RMW selection (`-DNANO_ROS_RMW=xrce`).
+
+**Examples created:**
+
+| Example | Directory |
+|---------|-----------|
+| Service server | `examples/native/c/xrce/service-server/` |
+| Service client | `examples/native/c/xrce/service-client/` |
+
+Each has: `CMakeLists.txt`, `src/main.c`, `.gitignore`
+
+**CMake pattern:** `nano_ros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" SKIP_INSTALL)`
+
+**Tasks:**
+
+- [x] Create `examples/native/c/xrce/service-server/` (CMake, main.c, .gitignore)
+- [x] Create `examples/native/c/xrce/service-client/` (CMake, main.c, .gitignore)
+
+---
+
+### 49.8 — Native C XRCE Action Examples — COMPLETE
+
+Created 2 native C examples for action server and client using XRCE-DDS
+transport. Action server includes `nros_executor_add_action_server()`.
+Action client uses generated types for Fibonacci goal/result/feedback.
+
+**Examples created:**
+
+| Example | Directory |
+|---------|-----------|
+| Action server | `examples/native/c/xrce/action-server/` |
+| Action client | `examples/native/c/xrce/action-client/` |
+
+**Tasks:**
+
+- [x] Create `examples/native/c/xrce/action-server/` (CMake, main.c, .gitignore)
+- [x] Create `examples/native/c/xrce/action-client/` (CMake, main.c, .gitignore)
+
+---
+
+### 49.9 — Zephyr C Service Examples (Zenoh + XRCE) — COMPLETE
+
+Created 4 Zephyr C examples for service server and client using both Zenoh
+and XRCE-DDS transports.
+
+**Examples created:**
+
+| Example | Directory |
+|---------|-----------|
+| Zenoh service server | `examples/zephyr/c/zenoh/service-server/` |
+| Zenoh service client | `examples/zephyr/c/zenoh/service-client/` |
+| XRCE service server  | `examples/zephyr/c/xrce/service-server/`  |
+| XRCE service client  | `examples/zephyr/c/xrce/service-client/`  |
+
+Each has: `CMakeLists.txt`, `prj.conf`, `src/main.c`
+
+**Zephyr patterns:**
+- Zenoh: `zpico_zephyr_wait_network()`, `CONFIG_NROS_ZENOH_LOCATOR`
+- XRCE: `xrce_zephyr_wait_network()` + `xrce_zephyr_init()`, `CONFIG_NROS_XRCE_AGENT_ADDR`
+
+**Tasks:**
+
+- [x] Create 4 Zephyr service examples (zenoh/xrce × server/client)
+
+---
+
+### 49.10 — Zephyr C Action Examples (Zenoh + XRCE) — COMPLETE
+
+Created 4 Zephyr C examples for action server and client using both Zenoh
+and XRCE-DDS transports. Action servers include `nros_executor_add_action_server()`.
+
+**Examples created:**
+
+| Example | Directory |
+|---------|-----------|
+| Zenoh action server | `examples/zephyr/c/zenoh/action-server/` |
+| Zenoh action client | `examples/zephyr/c/zenoh/action-client/` |
+| XRCE action server  | `examples/zephyr/c/xrce/action-server/`  |
+| XRCE action client  | `examples/zephyr/c/xrce/action-client/`  |
+
+**Tasks:**
+
+- [x] Create 4 Zephyr action examples (zenoh/xrce × server/client)
+
+---
+
+### 49.11 — Kani Verification for service.rs — COMPLETE
+
+Added 13 Kani bounded model checking harnesses for `service.rs`, covering
+service server and client null-pointer safety, state validation, and
+double-init rejection.
+
+**Service server harnesses (6):**
+- `service_init_null_ptrs` — NULL for each of 6 params → `NROS_RET_INVALID_ARGUMENT`
+- `service_init_none_callback` — `callback: None` → `NROS_RET_INVALID_ARGUMENT`
+- `service_init_uninit_node` — uninitialized node → `NROS_RET_NOT_INIT`
+- `service_zero_initialized_state` — default state is UNINITIALIZED
+- `service_fini_null_safety` — NULL → `NROS_RET_INVALID_ARGUMENT`
+- `service_double_init_rejected` — re-init → `NROS_RET_BAD_SEQUENCE`
+
+**Service client harnesses (5):**
+- `client_init_null_ptrs` — NULL for each of 4 params
+- `client_init_uninit_node` — uninitialized node → `NROS_RET_NOT_INIT`
+- `client_zero_initialized_state` — default state
+- `client_fini_null_safety` — NULL and wrong-state checks
+- `client_call_null_safety` — NULL for each of 6 params of `nros_client_call`
+
+**Utility harnesses (2):**
+- `service_name_getter_null` — NULL → NULL
+- `client_name_getter_null` — NULL → NULL
+
+**Files:** `nros-c/src/service.rs`
+
+---
+
+### 49.12 — Kani Verification for action.rs — COMPLETE
+
+Added 20 Kani bounded model checking harnesses for `action.rs`, covering
+action server/client null-pointer safety, state validation, goal handle
+operations, and UUID utilities.
+
+**Action server harnesses (8):**
+- `action_server_init_null_ptrs` — NULL for each of 8 params
+- `action_server_init_none_goal_callback` — `goal_callback: None` → `INVALID_ARGUMENT`
+- `action_server_init_uninit_node` — uninitialized node → `NOT_INIT`
+- `action_server_zero_initialized_state` — default state, all pointers null
+- `action_server_fini_null_safety` — NULL and wrong-state checks
+- `action_server_double_init_rejected` — `BAD_SEQUENCE` on re-init
+- `action_server_active_goal_count_null` — NULL → 0
+- `action_publish_feedback_null_ptrs` — NULL goal/feedback → `INVALID_ARGUMENT`
+
+**Action client harnesses (6):**
+- `action_client_init_null_ptrs` — NULL for each of 4 params
+- `action_client_init_uninit_node` — `NOT_INIT`
+- `action_client_zero_initialized_state` — default state
+- `action_client_fini_null_safety` — NULL and wrong-state
+- `action_send_goal_null_ptrs` — NULL for each of 4 params
+- `action_get_result_null_ptrs` — NULL for each of 5 params
+
+**Goal handle harnesses (3):**
+- `goal_succeed_null_ptr` — NULL → `INVALID_ARGUMENT`
+- `goal_abort_null_ptr` — NULL → `INVALID_ARGUMENT`
+- `goal_canceled_null_ptr` — NULL → `INVALID_ARGUMENT`
+
+**UUID / Utility harnesses (3):**
+- `goal_uuid_generate_null` — NULL → `INVALID_ARGUMENT`
+- `goal_uuid_equal_null` — NULL → false
+- `goal_status_to_string_all_variants` — all 7 variants → non-null
+
+**Files:** `nros-c/src/action.rs`
+
+---
+
+## Example Coverage Matrix (after 49.7–49.10)
+
+| Platform | RMW   | talker | listener | service-server | service-client | action-server | action-client |
+|----------|-------|:------:|:--------:|:--------------:|:--------------:|:-------------:|:-------------:|
+| Native   | Zenoh | YES    | YES      | YES            | YES            | YES           | YES           |
+| Native   | XRCE  | YES    | YES      | YES            | YES            | YES           | YES           |
+| Zephyr   | Zenoh | YES    | YES      | YES            | YES            | YES           | YES           |
+| Zephyr   | XRCE  | YES    | YES      | YES            | YES            | YES           | YES           |
+
+---
+
 ## Remaining Work
 
 ### Immediate (no blockers)
@@ -639,13 +859,6 @@ nros-node.
 - **Zephyr C example re-test**: Run `just test-zephyr` to verify C examples
   still build and run on Zephyr native_sim. Expected to pass since the C API
   signature is unchanged (only internal delegation changed).
-
-### Future (not blocking)
-
-- **Action client delegation**: Add `add_action_client_raw` to nros-node
-  executor, then delegate C client functions
-- **Kani harnesses**: GuardCondition atomicity, ExecutorSemantics sampling,
-  raw-bytes entry types
 
 ### Not Planned
 
