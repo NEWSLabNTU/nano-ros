@@ -182,13 +182,10 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 
 | Phase | Focus | Status |
 |-------|-------|--------|
-| 16 | ROS 2 Interop Completion | In Progress |
 | 23 | Arduino precompiled library | Not Started |
-| 34 | RMW abstraction + XRCE-DDS | In Progress |
-| 35 | Safety hardening & E2E protocol | In Progress |
-| 36 | Multi-backend integration tests | Not Started |
-| 40 | Large message support | In Progress |
-| 49 | nros-c thin wrapper migration | In Progress (49.1–49.4 done) |
+| 41 | Iron type hash support | Not Started |
+| 51 | Board crate `run()` API | In Progress |
+| 53 | UDP transport support | In Progress |
 | 54 | FreeRTOS platform support (lwIP) | Not Started |
 
 ## Quick Reference

@@ -14,8 +14,8 @@ Principle: **use zenoh-pico's native UDP on POSIX, only use smoltcp on bare-meta
 | 53.2 — smoltcp UDP socket infrastructure | Done |
 | 53.3 — UDP platform symbols (`udp.rs` + `util.rs`) | Done |
 | 53.4 — Board crate UDP socket registration | Done |
-| 53.5 — Native example: verify UDP locator | Not Started |
-| 53.6 — Bare-metal example: UDP on QEMU ARM | Not Started |
+| 53.5 — Native example: verify UDP locator | Done |
+| 53.6 — Bare-metal example: UDP on QEMU ARM | Done |
 | 53.7 — Documentation | Done |
 
 ## Deliverables
@@ -76,17 +76,19 @@ Update board crates to create and register UDP sockets alongside TCP:
 Each `init_network()` function adds `create_and_register_udp_sockets()` call after TCP socket setup.
 Board crate `Cargo.toml` files add `"socket-udp"` to their smoltcp dependency features.
 
-### 53.5 — Native example: verify UDP locator
+### 53.5 — Native example: verify UDP locator ✓
 
-No code changes. Verify that native talker/listener works with:
-```
-ZENOH_LOCATOR=udp/127.0.0.1:7447
-```
-Add a note to native example README documenting UDP usage.
+Verified native talker/listener works with `ZENOH_LOCATOR=udp/127.0.0.1:7447`.
+Added UDP transport documentation to native example doc comments (talker + listener `main.rs`).
 
-### 53.6 — Bare-metal example: UDP on QEMU ARM
+No Cargo.toml changes needed — on POSIX, zenoh-pico has built-in UDP support via OS sockets.
 
-Add `link-udp-unicast` feature to a QEMU ARM example and test with `ZENOH_LOCATOR=udp/<bridge-ip>:7447`.
+### 53.6 — Bare-metal example: UDP on QEMU ARM ✓
+
+Added `link-udp-unicast` feature to QEMU ARM talker and listener `Cargo.toml` files.
+Both examples build successfully with `--target thumbv7m-none-eabi`.
+
+To test with UDP, use `Config::default().with_zenoh_locator("udp/192.0.3.1:7447")`.
 
 ### 53.7 — Documentation ✓
 

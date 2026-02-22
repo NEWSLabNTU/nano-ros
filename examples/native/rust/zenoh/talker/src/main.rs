@@ -13,6 +13,16 @@
 //! cargo run -p native-rs-talker
 //! ```
 //!
+//! # UDP transport
+//!
+//! zenoh-pico supports UDP on native/POSIX without any extra features.
+//! Start zenohd with a UDP listener and set `ZENOH_LOCATOR`:
+//!
+//! ```bash
+//! zenohd --listen udp/0.0.0.0:7447
+//! ZENOH_LOCATOR=udp/127.0.0.1:7447 cargo run -p native-rs-talker
+//! ```
+//!
 //! # Enabling debug logs:
 //! ```bash
 //! RUST_LOG=debug cargo run -p native-rs-talker
