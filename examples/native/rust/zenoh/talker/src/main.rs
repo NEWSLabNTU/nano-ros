@@ -23,6 +23,29 @@
 //! ZENOH_LOCATOR=udp/127.0.0.1:7447 cargo run -p native-rs-talker
 //! ```
 //!
+//! # TLS transport
+//!
+//! TLS requires system mbedTLS (`sudo apt install libmbedtls-dev`) and the
+//! `link-tls` feature. Generate a self-signed certificate, start zenohd with
+//! a TLS listener, then connect with `ZENOH_TLS_ROOT_CA_CERTIFICATE` pointing
+//! to the CA certificate:
+//!
+//! ```bash
+//! # Generate test certificate
+//! openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+//!   -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+//!
+//! # Start zenohd with TLS
+//! zenohd --no-multicast-scouting --listen tls/localhost:7447 \
+//!   --cfg 'transport/link/tls/listen_certificate:"cert.pem"' \
+//!   --cfg 'transport/link/tls/listen_private_key:"key.pem"'
+//!
+//! # Run talker with TLS (--features link-tls)
+//! ZENOH_LOCATOR=tls/localhost:7447 \
+//!   ZENOH_TLS_ROOT_CA_CERTIFICATE=cert.pem \
+//!   cargo run -p native-rs-talker --features link-tls
+//! ```
+//!
 //! # Enabling debug logs:
 //! ```bash
 //! RUST_LOG=debug cargo run -p native-rs-talker

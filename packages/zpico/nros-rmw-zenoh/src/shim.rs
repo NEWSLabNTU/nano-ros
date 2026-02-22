@@ -88,7 +88,8 @@ const GID_PRNG_MULTIPLIER: u64 = 0x517cc1b727220a95;
 const LOCATOR_BUFFER_SIZE: usize = 128;
 
 /// Property key/value buffer size for session configuration.
-const CONFIG_PROPERTY_SIZE: usize = 64;
+/// Must be large enough for file paths (TLS certificates, etc.).
+const CONFIG_PROPERTY_SIZE: usize = 256;
 
 /// Maximum number of session configuration properties.
 const MAX_SESSION_PROPERTIES: usize = 8;
@@ -665,6 +666,13 @@ impl ShimSession {
                 ("ZENOH_MULTICAST_SCOUTING", "multicast_scouting"),
                 ("ZENOH_SCOUTING_TIMEOUT", "scouting_timeout_ms"),
                 ("ZENOH_LISTEN", "listen"),
+                // TLS configuration
+                ("ZENOH_TLS_ROOT_CA_CERTIFICATE", "root_ca_certificate"),
+                (
+                    "ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64",
+                    "root_ca_certificate_base64",
+                ),
+                ("ZENOH_TLS_VERIFY_NAME_ON_CONNECT", "verify_name_on_connect"),
             ];
             for &(env_name, prop_key) in env_mappings {
                 if let Ok(val) = std::env::var(env_name) {

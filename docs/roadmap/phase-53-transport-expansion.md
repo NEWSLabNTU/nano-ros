@@ -25,7 +25,7 @@ nano-ros initially only supported TCP for the zenoh-pico transport layer. This p
 
 - [x] 53.8 — Feature forwarding chain for `link-tls`
 - [x] 53.9 — POSIX TLS: enable zenoh-pico's built-in mbedTLS support
-- [ ] 53.10 — Native example: verify TLS locator
+- [x] 53.10 — Native example: verify TLS locator
 - [ ] 53.11 — Bare-metal platform header: add `_tls_sock` field
 - [ ] 53.12 — mbedTLS build integration for bare-metal
 - [ ] 53.13 — Bare-metal TLS platform symbols (`tls.rs`)
@@ -227,29 +227,40 @@ On POSIX, zenoh-pico's `src/system/unix/tls.c` provides the complete TLS impleme
 
 **System package requirement:** `libmbedtls-dev` (install with `sudo apt install libmbedtls-dev`)
 
-### 53.10 — Native example: verify TLS locator
+### 53.10 — Native example: verify TLS locator ✓
 
-Verify native talker/listener works with TLS:
+Verified native talker/listener exchange messages over TLS (14 messages).
+
+**Changes made:**
+
+- `packages/zpico/zpico-sys/build.rs` — Generate pkg-config `.pc` files for mbedTLS
+  (Ubuntu's `libmbedtls-dev` doesn't ship them; zenoh-pico's CMake uses `pkg_check_modules`)
+- `packages/zpico/zpico-sys/c/shim/zenoh_shim.c` — Map TLS property keys
+  (`root_ca_certificate`, `root_ca_certificate_base64`, `verify_name_on_connect`)
+  to zenoh-pico `Z_CONFIG_TLS_*` constants
+- `packages/zpico/nros-rmw-zenoh/src/shim.rs` — Add env var mappings
+  (`ZENOH_TLS_ROOT_CA_CERTIFICATE`, `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64`,
+  `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`); increase property buffer to 256 bytes
+- `examples/native/rust/zenoh/{talker,listener}/Cargo.toml` — Add `link-tls` feature
+- `examples/native/rust/zenoh/{talker,listener}/src/main.rs` — TLS doc comments
+
+**Usage:**
 
 ```bash
-# Generate test certificates
+# Generate test certificate
 openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
   -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
 
 # Start zenohd with TLS
-zenohd --listen tls/localhost:7447 \
-  --cfg "transport/tls/listen_certificate:cert.pem" \
-  --cfg "transport/tls/listen_private_key:key.pem"
+zenohd --no-multicast-scouting --listen tls/localhost:7447 \
+  --cfg 'transport/link/tls/listen_certificate:"cert.pem"' \
+  --cfg 'transport/link/tls/listen_private_key:"key.pem"'
 
 # Run with TLS locator
-ZENOH_LOCATOR=tls/localhost:7447 cargo run -p native-rs-talker
+ZENOH_LOCATOR=tls/localhost:7447 \
+  ZENOH_TLS_ROOT_CA_CERTIFICATE=cert.pem \
+  cargo run -p native-rs-talker --features link-tls
 ```
-
-Add TLS documentation to native example doc comments.
-
-**Acceptance criteria:**
-- Native talker/listener exchange messages over TLS
-- Doc comments updated with TLS usage instructions
 
 ### 53.11 — Bare-metal platform header: add `_tls_sock` field
 

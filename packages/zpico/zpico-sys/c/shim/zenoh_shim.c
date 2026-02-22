@@ -408,6 +408,14 @@ int32_t zenoh_shim_init_with_config(const char *locator,
             config_key = Z_CONFIG_LISTEN_KEY;
         } else if (strcmp(properties[i].key, "add_timestamp") == 0) {
             config_key = Z_CONFIG_ADD_TIMESTAMP_KEY;
+#if Z_FEATURE_LINK_TLS == 1
+        } else if (strcmp(properties[i].key, "root_ca_certificate") == 0) {
+            config_key = Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_KEY;
+        } else if (strcmp(properties[i].key, "root_ca_certificate_base64") == 0) {
+            config_key = Z_CONFIG_TLS_ROOT_CA_CERTIFICATE_BASE64_KEY;
+        } else if (strcmp(properties[i].key, "verify_name_on_connect") == 0) {
+            config_key = Z_CONFIG_TLS_VERIFY_NAME_ON_CONNECT_KEY;
+#endif
         } else {
             // Unknown key — silently ignore
             continue;
