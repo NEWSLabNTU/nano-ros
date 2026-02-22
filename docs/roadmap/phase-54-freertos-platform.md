@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-freertos` as a new platform axis value, enabling nros nodes on FreeRTOS + lwIP boards (STM32, NXP, Renesas, etc.) via both zenoh-pico and XRCE-DDS backends. Validate on QEMU MPS2-AN385 (Cortex-M3 + LAN9118 Ethernet) before requiring real hardware.
 
-**Status**: In Progress (54.1–54.5 done)
+**Status**: In Progress (54.1–54.8 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -199,9 +199,9 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `freertos` fea
 - [x] 54.3 — xrce-sys build.rs FreeRTOS compilation
 - [x] 54.4 — Platform header and shim adjustments
 - [x] 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
-- [ ] 54.6 — LAN9118 lwIP netif driver
-- [ ] 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
-- [ ] 54.8 — QEMU board crate (nros-mps2-an385-freertos)
+- [x] 54.6 — LAN9118 lwIP netif driver
+- [x] 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
+- [x] 54.8 — QEMU board crate (nros-mps2-an385-freertos)
 - [ ] 54.9 — Rust zenoh examples (pubsub, service, action)
 - [ ] 54.10 — C zenoh examples (pubsub, service, action)
 - [ ] 54.11 — Integration tests + `just test-freertos` recipe
@@ -300,7 +300,9 @@ void  lan9118_lwip_poll(struct netif *netif);        // RX: poll RX FIFO → net
 
 Polling is appropriate for the QEMU environment. On real hardware, interrupt-driven RX would replace `lan9118_lwip_poll()`.
 
-**Files**: `packages/drivers/lan9118-lwip/include/lan9118_lwip.h`, `packages/drivers/lan9118-lwip/src/lan9118_lwip.c`
+**Status**: Done
+
+**Files**: `packages/drivers/lan9118-lwip/include/lan9118_lwip.h`, `packages/drivers/lan9118-lwip/src/lan9118_lwip.c`, `packages/drivers/lan9118-lwip/CMakeLists.txt`
 
 ### 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
 
@@ -345,7 +347,9 @@ packages/boards/nros-mps2-an385-freertos/config/
 - Sections: `.text`, `.data`, `.bss`, `.heap` (for FreeRTOS heap_4.c)
 - Stack at end of RAM
 
-**Files**: `packages/boards/nros-mps2-an385-freertos/config/FreeRTOSConfig.h`, `lwipopts.h`, `mps2_an385.ld`
+**Status**: Done
+
+**Files**: `packages/boards/nros-mps2-an385-freertos/config/FreeRTOSConfig.h`, `config/lwipopts.h`, `config/arch/cc.h`, `config/mps2_an385.ld`
 
 ### 54.8 — QEMU board crate (nros-mps2-an385-freertos)
 
@@ -395,7 +399,9 @@ The application task runs the user closure, which creates `Executor::open()` + n
 - `cortex-m-rt` (Cortex-M runtime, entry macro)
 - `cortex-m-semihosting` (QEMU output)
 
-**Files**: `packages/boards/nros-mps2-an385-freertos/`
+**Status**: Done
+
+**Files**: `packages/boards/nros-mps2-an385-freertos/Cargo.toml`, `build.rs`, `src/lib.rs`, `src/config.rs`, `src/node.rs`, `src/error.rs`
 
 ### 54.9 — Rust zenoh examples (pubsub, service, action)
 
