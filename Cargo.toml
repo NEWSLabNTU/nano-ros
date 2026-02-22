@@ -54,6 +54,13 @@ exclude = [
     "examples/qemu-arm/rust/core/wcet-bench",
     "examples/qemu-arm/rust/zenoh/large-msg-test",
     "examples/qemu-arm/rust/standalone/lan9118",
+    # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)
+    "examples/qemu-arm-freertos/rust/zenoh/talker",
+    "examples/qemu-arm-freertos/rust/zenoh/listener",
+    "examples/qemu-arm-freertos/rust/zenoh/service-server",
+    "examples/qemu-arm-freertos/rust/zenoh/service-client",
+    "examples/qemu-arm-freertos/rust/zenoh/action-server",
+    "examples/qemu-arm-freertos/rust/zenoh/action-client",
     # STM32F4 examples
     "examples/stm32f4/rust/zenoh/talker",
     "examples/stm32f4/rust/zenoh/polling",

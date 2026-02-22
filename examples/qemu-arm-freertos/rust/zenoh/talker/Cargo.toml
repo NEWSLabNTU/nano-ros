@@ -1,0 +1,21 @@
+[package]
+name = "qemu-freertos-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Talker example on QEMU MPS2-AN385 with FreeRTOS + lwIP"
+
+[[bin]]
+name = "qemu-freertos-talker"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+nros-mps2-an385-freertos = { path = "../../../../../packages/boards/nros-mps2-an385-freertos" }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-freertos", "link-tcp", "link-udp-unicast", "ros-humble"] }
+std_msgs = { version = "*", default-features = false }
+panic-semihosting = { version = "0.6", features = ["exit"] }

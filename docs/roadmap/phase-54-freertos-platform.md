@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-freertos` as a new platform axis value, enabling nros nodes on FreeRTOS + lwIP boards (STM32, NXP, Renesas, etc.) via both zenoh-pico and XRCE-DDS backends. Validate on QEMU MPS2-AN385 (Cortex-M3 + LAN9118 Ethernet) before requiring real hardware.
 
-**Status**: In Progress (54.1–54.8 done)
+**Status**: In Progress (54.1–54.11 done, 54.10 deferred, 54.12 remaining)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -202,9 +202,9 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `freertos` fea
 - [x] 54.6 — LAN9118 lwIP netif driver
 - [x] 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
 - [x] 54.8 — QEMU board crate (nros-mps2-an385-freertos)
-- [ ] 54.9 — Rust zenoh examples (pubsub, service, action)
-- [ ] 54.10 — C zenoh examples (pubsub, service, action)
-- [ ] 54.11 — Integration tests + `just test-freertos` recipe
+- [x] 54.9 — Rust zenoh examples (pubsub, service, action)
+- [ ] 54.10 — C zenoh examples (pubsub, service, action) — **Deferred** (nros-c Phase 49 migration in progress)
+- [x] 54.11 — Integration tests + `just test-freertos` recipe
 - [ ] 54.12 — Documentation
 
 ### 54.1 — Feature flag wiring
@@ -459,7 +459,9 @@ fn main() -> ! {
 
 **Build target**: `thumbv7m-none-eabi` (Cortex-M3), `--release` for size optimization.
 
-**Files**: `examples/qemu-arm-freertos/rust/zenoh/`
+**Status**: Done
+
+**Files**: `examples/qemu-arm-freertos/rust/zenoh/{talker,listener,service-server,service-client,action-server,action-client}/` — each with `Cargo.toml`, `.cargo/config.toml`, `package.xml`, `.gitignore`, `src/main.rs`
 
 ### 54.10 — C zenoh examples (pubsub, service, action)
 
@@ -496,6 +498,8 @@ Each C example follows the native C example patterns in `examples/native/c/zenoh
 - Uses `nros_executor_open()` / `nros_node_create()` / `nros_publisher_create()` C API
 - Board init (LAN9118, lwIP, FreeRTOS) handled by the board crate's `run()` equivalent or a C `board_init()` function
 - Output via semihosting `printf()` or ARM semihosting syscalls
+
+**Status**: Deferred — nros-c Phase 49 migration (thin wrapper) is still in progress; C examples require stable C API.
 
 **Files**: `examples/qemu-arm-freertos/c/zenoh/`
 
@@ -571,6 +575,8 @@ just test-freertos verbose=false  # With live output
 - 5s stabilization delay between subscriber connection and publisher start
 - Verify zenohd on bridge IP (`192.0.3.1:7447`)
 - `max-threads = 1` for tests sharing the TAP bridge
+
+**Status**: Done
 
 **Files**: `packages/testing/nros-tests/tests/freertos_qemu.rs`, `.config/nextest.toml`, `justfile`
 

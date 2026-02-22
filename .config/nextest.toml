@@ -118,6 +118,15 @@ filter = "binary(nuttx_qemu)"
 test-group = "nuttx-qemu"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
+# FreeRTOS QEMU tests: sequential builds, shared TAP bridge
+[test-groups.freertos-qemu]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(freertos_qemu)"
+test-group = "freertos-qemu"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
 [profile.ci]
 # CI profile with stricter timeouts
 slow-timeout = { period = "30s", terminate-after = 2 }
