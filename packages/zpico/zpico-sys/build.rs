@@ -756,6 +756,21 @@ fn build_zenoh_pico_native(
     // TLS support via mbedTLS (zenoh-pico's CMakeLists.txt handles finding mbedTLS)
     if link.tls {
         cmake_cfg.define("Z_FEATURE_LINK_TLS", "1");
+
+        // Ubuntu's libmbedtls-dev doesn't ship pkg-config .pc files, but
+        // zenoh-pico's CMakeLists.txt uses pkg_check_modules to find mbedTLS.
+        // Generate .pc files so CMake can discover the system libraries.
+        let pc_dir = out_dir.join("pkgconfig");
+        generate_mbedtls_pc_files(&pc_dir);
+        // Prepend our pc dir so CMake's FindPkgConfig picks it up first.
+        let existing = env::var("PKG_CONFIG_PATH").unwrap_or_default();
+        let new_path = if existing.is_empty() {
+            pc_dir.display().to_string()
+        } else {
+            format!("{}:{existing}", pc_dir.display())
+        };
+        // SAFETY: build scripts are single-threaded; no other thread reads this variable.
+        unsafe { env::set_var("PKG_CONFIG_PATH", &new_path) };
     }
 
     let dst = cmake_cfg.build();
@@ -1498,6 +1513,44 @@ fn get_picolibc_sysroot() -> Option<PathBuf> {
         return Some(fallback);
     }
     None
+}
+
+/// Generate pkg-config `.pc` files for mbedTLS.
+///
+/// Ubuntu's `libmbedtls-dev` doesn't ship `.pc` files, but zenoh-pico's
+/// CMakeLists.txt uses `pkg_check_modules` to discover mbedTLS. We generate
+/// minimal `.pc` files pointing to the system library paths so CMake can
+/// find the installed libraries.
+fn generate_mbedtls_pc_files(pc_dir: &Path) {
+    std::fs::create_dir_all(pc_dir).unwrap();
+
+    // Detect library directory (multi-arch on Debian/Ubuntu)
+    let lib_dir = if Path::new("/usr/lib/x86_64-linux-gnu/libmbedtls.so").exists() {
+        "/usr/lib/x86_64-linux-gnu"
+    } else if Path::new("/usr/lib/aarch64-linux-gnu/libmbedtls.so").exists() {
+        "/usr/lib/aarch64-linux-gnu"
+    } else {
+        "/usr/lib"
+    };
+
+    for (name, libs, requires) in [
+        ("mbedcrypto", "-lmbedcrypto", ""),
+        ("mbedx509", "-lmbedx509", "mbedcrypto"),
+        ("mbedtls", "-lmbedtls", "mbedx509"),
+    ] {
+        let pc = format!(
+            "prefix=/usr\n\
+             libdir={lib_dir}\n\
+             includedir=/usr/include\n\n\
+             Name: {name}\n\
+             Description: mbed TLS - {name}\n\
+             Version: 2.28.0\n\
+             Libs: -L${{libdir}} {libs}\n\
+             Cflags: -I${{includedir}}\n\
+             Requires: {requires}\n"
+        );
+        std::fs::write(pc_dir.join(format!("{name}.pc")), pc).unwrap();
+    }
 }
 
 /// Generate zenoh-pico version header for embedded builds.

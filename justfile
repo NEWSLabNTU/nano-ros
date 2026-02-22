@@ -1293,6 +1293,12 @@ setup:
     check_apt cmake                          cmake
     check_apt socat                          socat
     check_apt gcc-riscv64-unknown-elf        riscv64-unknown-elf-gcc
+    # mbedTLS: check via header (library package, no binary)
+    if [ -f /usr/include/mbedtls/ssl.h ]; then
+        printf "  %-40s %s\n" "libmbedtls-dev" "[already installed]"
+    else
+        apt_pkgs+=("libmbedtls-dev")
+    fi
     # picolibc: check via sysroot or known path (no binary to test)
     picolibc_found=false
     if command -v riscv64-unknown-elf-gcc &>/dev/null; then
