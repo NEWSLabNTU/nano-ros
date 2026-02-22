@@ -200,6 +200,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 51 | Board crate `run()` API | In Progress |
 | 53 | UDP transport support | In Progress |
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1, 54.5 done) |
+| 55 | NuttX platform support | Not Started |
 
 ## Quick Reference
 
