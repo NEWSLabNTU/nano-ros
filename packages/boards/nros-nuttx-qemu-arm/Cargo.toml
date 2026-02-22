@@ -1,0 +1,14 @@
+[package]
+name = "nros-nuttx-qemu-arm"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "NuttX QEMU ARM virt board crate for nros (Cortex-A7 + virtio-net)"
+
+[lib]
+name = "nros_nuttx_qemu_arm"
+
+[dependencies]
+# No platform crate needed — NuttX is POSIX-compatible, zenoh-pico reuses unix/ platform.
+# No smoltcp/lwIP needed — NuttX has built-in BSD sockets.
+# No custom Ethernet driver — NuttX has virtio-net built into the kernel.

@@ -102,6 +102,7 @@ exclude = [
     "packages/boards/nros-esp32",
     "packages/boards/nros-esp32-qemu",
     "packages/boards/nros-stm32f4",
+    "packages/boards/nros-nuttx-qemu-arm",
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
