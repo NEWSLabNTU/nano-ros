@@ -60,7 +60,7 @@ nano-ros/
 │       └── interfaces/            # Bundled .msg/.srv files
 ├── examples/                  # Standalone example packages (4-level: platform/lang/rmw/use-case)
 │   ├── native/                # Desktop/Linux examples
-│   │   ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*, custom-msg)
+│   │   ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*, async-service, custom-msg)
 │   │   ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener, service-*, action-*)
 │   │   └── c/zenoh/              # C + zenoh (talker, listener, custom-msg)
 │   ├── qemu-arm/              # QEMU bare-metal ARM (MPS2-AN385)
@@ -80,7 +80,7 @@ nano-ros/
 │   │       ├── core/             # nros-core only (embassy)
 │   │       └── standalone/       # No nros deps (smoltcp)
 │   └── zephyr/                # Zephyr RTOS
-│       ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*)
+│       ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*, async-service)
 │       ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener)
 │       ├── c/zenoh/              # C + zenoh (talker, listener)
 │       └── c/xrce/               # C + XRCE-DDS (talker, listener)

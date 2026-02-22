@@ -20,7 +20,10 @@
 | 48.12     | New async example                                           | Done     |
 | 48.13     | Remove blocking methods                                     | Done     |
 | 48.14     | Documentation updates                                       | Done     |
-| —         | `block_on` for std targets                                  | Done     |
+| 48.15     | Remove `block_on` from nros API                             | Done     |
+| 48.16     | Revise native async example (tokio background spin)         | Done     |
+| 48.17     | New Zephyr async example (Embassy background spin)          | Done     |
+| 48.18     | Documentation updates (remove `block_on` references)        | Done     |
 
 ### Completed
 
@@ -34,15 +37,57 @@
 - **48.9**: Added non-blocking `send_goal()`, `cancel_goal()`, `get_result()` returning Promises on `EmbeddedActionClient`; renamed old methods to `_blocking` suffix; arena-based `ActionClientHandle` stays blocking
 - **48.10**: Unit tests (2 Promise tests + 296 total pass), integration tests (154 pass including service and action tests exercising Promise pattern)
 - **48.11**: All 7 example files migrated from `_blocking` calls to Promise+`spin_once()`+`try_recv()` pattern (3 service clients, 3 action clients, fairness-bench keeps `call_blocking` in subprocesses)
-- **block_on**: Minimal single-future executor for std targets using `RawWaker`/`thread::yield_now()`, re-exported from `nros`
 - **CFFI fallback**: `CffiServiceClient` stores request in buffer, falls back to blocking `call_raw()` for `try_recv_reply_raw()`
-- **Re-exports**: `Promise` and `block_on` re-exported from `nros-node` and `nros`
-
-### Deferred
-
-- ~~**48.12 — New async example**~~ Done: `examples/native/rust/zenoh/async-service/` — demonstrates `block_on` + `embassy_futures::select(spin_async(), promise).await` pattern for concurrent I/O and service calls
+- **Re-exports**: `Promise` re-exported from `nros-node` and `nros`
+- ~~**48.12 — New async example**~~ Done: `examples/native/rust/zenoh/async-service/` — to be revised in 48.16
 - ~~**48.13 — Remove blocking methods**~~ Done: removed `call_blocking()` from `EmbeddedServiceClient`; downgraded `send_goal_blocking`/`cancel_goal_blocking`/`get_result_blocking` to `pub(crate)` on `EmbeddedActionClient` (arena code still needs them internally); migrated fairness-bench's remaining `call_blocking` usages to Promise pattern
-- ~~**48.14 — Documentation updates**~~ Done: updated `docs/reference/std-alloc-requirements.md` with Promise, `spin_async()`, `block_on()` entries; added "Service Calls with Promise API" section to `docs/guides/getting-started.md` documenting all three usage patterns (sync polling, async select, background spin)
+- ~~**48.14 — Documentation updates**~~ Done: updated `docs/reference/std-alloc-requirements.md` with Promise, `spin_async()` entries; added "Service Calls with Promise API" section to `docs/guides/getting-started.md`
+- ~~**48.15 — Remove `block_on` from nros API**~~ Done: deleted `block_on` function from `spin.rs`; removed re-exports from `nros-node/executor/mod.rs`, `nros-node/lib.rs`, `nros/lib.rs`
+- ~~**48.16 — Revise native async example (tokio)**~~ Done: replaced `embassy-futures` + `nros::block_on` with tokio `current_thread` + `spawn_local` background spin pattern in `examples/native/rust/zenoh/async-service/`
+- ~~**48.17 — Zephyr async example (Embassy)**~~ Done: new `examples/zephyr/rust/zenoh/async-service/` using `zephyr::embassy::Executor` (`executor-zephyr` feature, `k_sem`-backed kernel waking); background spin via `#[embassy_executor::task]`
+- ~~**48.18 — Documentation updates**~~ Done: removed all `block_on` references from `std-alloc-requirements.md` and `getting-started.md`; updated async patterns to show tokio (desktop) and Embassy (Zephyr) background spin
+
+### Pending — Runtime Externalization (48.15–48.18)
+
+The `block_on()` function was initially added as a convenience for std targets but
+doesn't belong in nano-ros — async runtime functions should come from external crates
+(tokio for desktop, Embassy for embedded). The following work items remove `block_on`
+and revise examples to use the **background spin pattern** with proper external runtimes.
+
+Background spin is single-threaded concurrent: spawn `spin_async()` as a task managed
+by the async runtime, then `.await` Promises directly from the main task. This works
+because `EmbeddedServiceClient` is an owned type (no lifetime tied to Node/Executor) —
+after creating the client, the executor can be moved to a background spin task while the
+client operates independently via shared global transport state.
+
+**48.15 — Remove `block_on` from nros API:**
+- Delete `block_on` function from `nros-node/src/executor/spin.rs`
+- Remove re-exports from `nros-node/src/executor/mod.rs`, `nros-node/src/lib.rs`, `nros/src/lib.rs`
+
+**48.16 — Revise native async example (tokio):**
+- Replace `embassy-futures` + `nros::block_on` with `tokio` (`current_thread` + `spawn_local`)
+- Pattern: `tokio::task::spawn_local(async move { executor.spin_async().await })` for
+  background spin, then `client.call(&req).unwrap().await` for service calls
+- Shows the background spin pattern on desktop with the standard async runtime
+
+**48.17 — New Zephyr async example (Embassy):**
+- `examples/zephyr/rust/zenoh/async-service/` with `zephyr::embassy::Executor` (`executor-zephyr` feature)
+- Kernel-backed waking via `k_sem_take`/`k_sem_give` (no busy-loop, proper power efficiency)
+- Uses `nros::RmwSession` type alias to name concrete executor type in Embassy task signatures
+- Pattern: `#[embassy_executor::task] async fn spin_task(mut exec: NrosExecutor) -> !`
+- First Embassy usage in Zephyr examples
+
+**48.18 — Documentation updates:**
+- Remove all `block_on` references from `std-alloc-requirements.md` and `getting-started.md`
+- Update async patterns: sync polling (unchanged), tokio background spin (native), Embassy background spin (Zephyr)
+- Update Phase 48 doc examples and status
+
+**Example matrix:**
+
+| | Native (POSIX) | Zephyr |
+|---|---|---|
+| **Sync** | `service-client` (existing, spin_once + try_recv) | `service-client` (existing, spin_once + try_recv) |
+| **Async** | `async-service` (revised: tokio background spin) | `async-service` (new: Embassy background spin) |
 
 ## Background
 
@@ -94,26 +139,25 @@ single thread.
    Unlike rclrs which uses `futures::channel::oneshot::Receiver` (requires
    alloc), our `Promise` borrows the client's reply slot (no_alloc).
 
-3. **nros does not provide async combinators.** Use `embassy-futures`
-   (no_std, no_alloc, runtime-agnostic despite the name) for `select`,
-   `join`, `yield_now`, etc. These work with any executor — Embassy,
-   RTIC, custom, even tokio.
+3. **nros does not provide async runtimes or combinators.** The async
+   runtime comes from the application's chosen crate — tokio for desktop,
+   Embassy for embedded. nros only provides `core::future`-based primitives
+   (`Promise`, `spin_async`).
 
-4. **Three concurrency patterns are supported:**
-   - **`select` pattern** — `select(executor.spin_async(), promise).await`
-     for simple one-off calls. The spin runs alongside the promise and is
-     dropped when the promise resolves.
-   - **Background spin task** — spawn `spin_async()` as a long-lived task,
-     then the main code `.await`s promises freely without wrapping each
-     one in `select`. This is the analog of
-     `std::thread::spawn(|| executor.spin_blocking())` on multi-threaded
-     systems.
+4. **Two concurrency patterns are supported:**
+   - **Background spin task (recommended)** — spawn `spin_async()` as a
+     task in the async runtime (tokio `spawn_local`, Embassy `Spawner::spawn`),
+     then `.await` promises directly from the main task. This works because
+     `EmbeddedServiceClient` is an owned type with no lifetime tied to the
+     executor — after creating the client, the executor can be moved to a
+     background task. Single-threaded, no multi-threading required.
    - **Manual polling** — call `promise.try_recv()` in a `spin_once()` loop
      for sync code that doesn't use an async runtime.
 
 ### Non-Goals
 
 - Bundling or depending on a specific async runtime (Embassy, RTIC, etc.)
+- Providing `block_on` or any future executor — use tokio, Embassy, etc.
 - Providing async combinators (`select`, `join`, etc.) — use `embassy-futures`
 - Async publish/subscribe (pub/sub is already non-blocking via `try_recv`)
 - Multi-threaded async (single-threaded cooperative only)
@@ -161,7 +205,7 @@ The async layer is **orthogonal** to the three existing feature axes
 
 | Runtime | Platforms                            | no_std | no_alloc | Zephyr                | Notes                             |
 |---------|--------------------------------------|--------|----------|-----------------------|-----------------------------------|
-| Embassy | Cortex-M/A/R, RISC-V, AVR, WASM, std | Yes    | Yes      | Yes (executor-zephyr) | Dominant embedded runtime         |
+| Embassy | Cortex-M/A/R, RISC-V, AVR, WASM, std | Yes    | Yes      | Yes (`executor-zephyr` — `k_sem`-backed) | Dominant embedded runtime         |
 | RTIC v2 | Cortex-M only                        | Yes    | Yes      | No                    | Hardware interrupt priorities     |
 | Custom  | Any                                  | Yes    | Yes      | —                     | Application implements `RawWaker` |
 
@@ -170,56 +214,54 @@ nano-ros futures on it.
 
 ### Application usage patterns
 
-**Pattern 1: Async with `select` — one-off calls**
+**Pattern 1: Background spin task (recommended for async)**
 
-Uses `embassy_futures::select` to drive `spin_async` alongside a
-single promise. When the promise resolves, `select` returns and
-`spin_async` is dropped.
+Spawn `spin_async()` as a concurrent task, then `.await` promises
+directly. Works because `EmbeddedServiceClient` is an owned type —
+after creating the client, the executor can be moved to a background task.
 
+*Native with tokio:*
 ```rust
-use embassy_futures::select::{select, Either};
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+    let mut client = {
+        let mut node = executor.create_node("client").unwrap();
+        node.create_client::<AddTwoInts>("/add").unwrap()
+    }; // node dropped, executor free to move
 
-async fn one_call(executor: &mut Executor<...>, client: &mut Client<...>) {
-    let promise = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap();
-    match select(executor.spin_async(), promise).await {
-        Either::First(_) => unreachable!(),  // spin_async never returns
-        Either::Second(reply) => info!("sum = {}", reply.unwrap().sum),
-    }
+    let local = tokio::task::LocalSet::new();
+    local.run_until(async move {
+        tokio::task::spawn_local(async move {
+            executor.spin_async().await;
+        });
+        let reply = client.call(&req).unwrap().await.unwrap();
+    }).await;
 }
 ```
 
-For multiple concurrent promises, use `select3`/`select4` or `join`:
-
+*Embedded with Embassy:*
 ```rust
-use embassy_futures::select::{select3, Either3};
+type NrosExecutor = nros::Executor<nros::RmwSession, 0, 0>;
 
-// Spin + two concurrent promises
-let p1 = client_a.call(&req1)?;
-let p2 = client_b.call(&req2)?;
-match select3(executor.spin_async(), p1, p2).await {
-    Either3::First(_) => unreachable!(),
-    Either3::Second(r1) => { /* p1 resolved first */ }
-    Either3::Third(r2) => { /* p2 resolved first */ }
-}
-```
-
-**Pattern 2: Async with background spin — sequential calls**
-
-```rust
 #[embassy_executor::task]
-async fn spin_task(mut executor: Executor<RmwSession, 4, 4096>) -> ! {
-    executor.spin_async().await  // drives I/O forever
+async fn spin_task(mut exec: NrosExecutor) -> ! {
+    exec.spin_async().await
 }
 
 #[embassy_executor::task]
-async fn app_task() {
-    // executor moved to spin_task; await promises directly
-    let reply1 = client_a.call(&req1).unwrap().await;
-    let reply2 = client_b.call(&req2).unwrap().await;
+async fn app_main(spawner: embassy_executor::Spawner) {
+    let mut nros_exec = nros::Executor::<_, 0, 0>::open(&config).unwrap();
+    let mut client = {
+        let mut node = nros_exec.create_node("client").unwrap();
+        node.create_client::<AddTwoInts>("/add").unwrap()
+    };
+    spawner.spawn(spin_task(nros_exec)).unwrap();
+    let reply = client.call(&req).unwrap().await.unwrap();
 }
 ```
 
-**Pattern 3: Sync manual polling — no async runtime**
+**Pattern 2: Sync manual polling — no async runtime**
 
 ```rust
 fn main_loop(executor: &mut Executor<...>, client: &mut Client<...>) {
@@ -281,8 +323,8 @@ split this into:
 |------------|-------|----------------------------------|-----------------------------------------------------------------------|
 | POSIX      | zenoh | `select()` on socket fd          | New non-blocking C shim for `z_get`                                   |
 | POSIX      | XRCE  | `uxr_run_session_time()`         | Split: buffer request + short `uxr_run_session_time` + check slot     |
-| Zephyr     | zenoh | `select()` on socket fd          | Same as POSIX zenoh; Embassy executor-zephyr handles idle via `k_sem` |
-| Zephyr     | XRCE  | `uxr_run_session_time()`         | Same as POSIX XRCE; Embassy executor-zephyr handles idle via `k_sem`  |
+| Zephyr     | zenoh | `select()` on socket fd          | Same as POSIX zenoh; `executor-zephyr` sleeps via `k_sem_take` |
+| Zephyr     | XRCE  | `uxr_run_session_time()`         | Same as POSIX XRCE; `executor-zephyr` sleeps via `k_sem_take`  |
 | bare-metal | zenoh | smoltcp poll loop                | Non-blocking C shim + smoltcp pump in `drive_io`                      |
 | bare-metal | XRCE  | smoltcp + `uxr_run_session_time` | Same split as POSIX XRCE                                              |
 
@@ -663,11 +705,11 @@ are unaffected — they use raw buffer APIs, not the Rust Promise type.
 
 ### 48.12 — New async example
 
-Add a new async example demonstrating the `select` + Promise pattern:
+Add a new async example demonstrating the async Promise pattern:
 
-- `examples/native/rust/zenoh/async-service/` — async service client with
-  `embassy_futures::select(spin_async(), promise)`, using `nros::block_on`
-  (no Embassy runtime dependency, self-contained)
+- `examples/native/rust/zenoh/async-service/` — async service client
+  (originally used `embassy_futures::select` + `nros::block_on`;
+  revised in 48.16 to use tokio background spin pattern)
 
 ### 48.13 — Remove `call_blocking()` and action `*_blocking()` methods
 
@@ -793,6 +835,7 @@ use nros::{Executor, ExecutorConfig, NodeError};
 extern "C" fn rust_main() {
     unsafe { zephyr::set_logger().ok() };
 
+    // executor-zephyr: k_sem-backed sleeping (no busy-loop)
     let zephyr_executor = zephyr::embassy::Executor::new();
     zephyr_executor.run(|spawner| {
         spawner.spawn(ros_main()).unwrap();
@@ -1128,45 +1171,45 @@ version. Only the RTIC app structure and timing primitives differ.
 
 ### Example 7: Native POSIX (desktop testing)
 
-For development and testing on Linux/macOS. The Promise API unifies
-sync and async patterns — no async runtime needed for sync usage.
+For development and testing on Linux/macOS. Two patterns: sync polling
+(no runtime needed) and async with tokio background spin.
 
 ```rust
+// Sync polling — no async runtime needed
 use nros::{Executor, ExecutorConfig};
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 
 fn main() {
     let config = ExecutorConfig::from_env().node_name("client");
-    let mut executor = Executor::<_, 0, 0>::open(&config)
-        .expect("Failed to open session");
+    let mut executor = Executor::<_, 0, 0>::open(&config).unwrap();
     let mut node = executor.create_node("client").unwrap();
     let mut client = node.create_client::<AddTwoInts>("/add").unwrap();
 
-    println!("Service client ready");
-
-    // Pattern 1: Sync polling with try_recv() — no async runtime needed.
-    // This is the manual spin loop pattern (works everywhere).
     let mut promise = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap();
     let reply = loop {
         executor.spin_once(10);
-        if let Ok(Some(reply)) = promise.try_recv() {
-            break reply;
-        }
+        if let Ok(Some(reply)) = promise.try_recv() { break reply; }
     };
     println!("sum = {}", reply.sum);
+}
+```
 
-    // Pattern 2: Async with block_on — for desktop code that wants .await.
-    use embassy_futures::select::{select, Either};
-    nros::block_on(async {
-        let promise = client.call(&AddTwoIntsRequest { a: 3, b: 4 }).unwrap();
-        let Either::Second(reply) = select(executor.spin_async(), promise).await
-            else { unreachable!() };
-        println!("sum = {}", reply.unwrap().sum);
-    });
+```rust
+// Async with tokio background spin
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+    let mut client = {
+        let mut node = executor.create_node("client").unwrap();
+        node.create_client::<AddTwoInts>("/add").unwrap()
+    };
 
-    // Pattern 3: Blocking call (legacy) — still available for simplicity.
-    let reply = client.call_blocking(&AddTwoIntsRequest { a: 5, b: 6 }).unwrap();
-    println!("sum = {}", reply.sum);
+    let local = tokio::task::LocalSet::new();
+    local.run_until(async move {
+        tokio::task::spawn_local(async move { executor.spin_async().await });
+        let reply = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap().await.unwrap();
+        println!("sum = {}", reply.sum);
+    }).await;
 }
 ```
 
@@ -1208,27 +1251,24 @@ The `Either` return type requires a match, but since `spin_async()`
 never returns, the first arm is always `unreachable!()`. This is a
 minor ergonomic cost that avoids nros reinventing combinator code.
 
-### `nros::block_on` — minimal executor for `std` targets
+### Async runtime — external (not provided by nros)
 
-For POSIX/desktop use without an external async runtime:
+nros does **not** provide `block_on` or any async executor. The async
+runtime comes from the application's chosen crate:
 
-```rust
-// In nros-node, behind #[cfg(feature = "std")]
-pub fn block_on<F: Future>(future: F) -> F::Output {
-    // Minimal single-future executor using std::thread::park/unpark.
-    // Polls the future in a loop, parking the thread between wakeups.
-}
-```
-
-This lets POSIX examples use the async API without adding Embassy as
-a dependency. Embedded targets use their chosen runtime instead.
+| Platform | Runtime | Dependency |
+|----------|---------|------------|
+| Desktop/POSIX | tokio (`current_thread`) | `tokio = { version = "1", features = ["rt", "macros"] }` |
+| Zephyr | Embassy (`executor-zephyr`) | `zephyr = { version = "0.1.0", features = ["executor-zephyr"] }` + `embassy-executor = "0.7"` (no `arch-*` features) |
+| Bare-metal | Embassy | `embassy-executor` with arch-specific feature (`arch-cortex-m`, `arch-riscv32`, etc.) |
+| RTIC v2 | RTIC | (built-in async support) |
 
 ### Summary: what differs vs what stays the same
 
 | Aspect         | Varies by platform/runtime                                                                        | Same everywhere                    |
 |----------------|---------------------------------------------------------------------------------------------------|------------------------------------|
 | Entry point    | `rust_main` (Zephyr), `#[embassy_executor::main]` (bare-metal), `fn main` (POSIX), `#[rtic::app]` | —                                  |
-| Executor setup | `zephyr::embassy::Executor`, Embassy Cortex-M, RTIC dispatchers, `block_on`                       | —                                  |
+| Executor setup | `zephyr::embassy::Executor` (Zephyr, `k_sem`-backed), Embassy Cortex-M (WFE), RTIC dispatchers, tokio `current_thread` | —                                  |
 | Timing         | `embassy_time::Timer`, `rtic_monotonics`, `std::thread::sleep`                                    | —                                  |
 | Logging        | `log` (Zephyr), `defmt` (bare-metal), `println` (POSIX)                                           | —                                  |
 | nros config    | —                                                                                                 | `ExecutorConfig::new(locator)`     |

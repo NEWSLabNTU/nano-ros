@@ -116,7 +116,7 @@ pub use executor::{
 };
 
 #[cfg(feature = "std")]
-pub use executor::{SpinPeriodResult, block_on};
+pub use executor::SpinPeriodResult;
 
 // Backward compatibility type aliases (Phase 43.13)
 /// Alias for [`Executor`].

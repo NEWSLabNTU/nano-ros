@@ -66,6 +66,7 @@ exclude = [
     "examples/zephyr/rust/zenoh/service-client",
     "examples/zephyr/rust/zenoh/action-server",
     "examples/zephyr/rust/zenoh/action-client",
+    "examples/zephyr/rust/zenoh/async-service",
     # Reference implementations (library, not an example)
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp link layer (embedded-only, requires cross-compilation)

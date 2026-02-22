@@ -1,12 +1,13 @@
-//! Async Service Client Example
+//! Async Service Client Example — tokio background spin
 //!
-//! Demonstrates the async/await API for service calls using nros.
-//! Uses `embassy_futures::select` to concurrently drive I/O (`spin_async`)
-//! and await a service reply (`Promise` as a `Future`).
+//! Demonstrates the background spin pattern for async service calls:
+//! 1. Create executor → create client (owned, no lifetime to executor)
+//! 2. Move executor to a background `spin_async()` task via `spawn_local`
+//! 3. `.await` Promises directly from the main task
 //!
-//! This pattern allows subscription callbacks, timers, and other handlers
-//! to fire while a service call is in flight — solving the fundamental
-//! problem of blocking `call()` on single-threaded embedded systems.
+//! This pattern uses tokio's `current_thread` runtime with `LocalSet` for
+//! single-threaded cooperative concurrency — no multi-threading needed.
+//! The same pattern works with Embassy on embedded targets.
 //!
 //! # Usage
 //!
@@ -24,91 +25,71 @@
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 use log::{error, info};
 use nros::prelude::*;
-use std::sync::atomic::{AtomicU32, Ordering};
 
-/// Count of subscription messages received while service calls are in flight.
-static SUB_COUNT: AtomicU32 = AtomicU32::new(0);
-
-fn main() {
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
     env_logger::init();
 
-    info!("nros Async Service Client Example");
-    info!("==================================");
+    info!("nros Async Service Client Example (tokio background spin)");
+    info!("==========================================================");
 
-    // Create executor with enough capacity for subscription + service client
+    // Create executor
     let config = ExecutorConfig::from_env().node_name("async_service_client");
     let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
 
-    // Register a subscription to show callbacks fire during async service calls
-    executor
-        .add_subscription::<example_interfaces::srv::AddTwoIntsRequest, _>(
-            "/async_demo_heartbeat",
-            |_msg: &AddTwoIntsRequest| {
-                SUB_COUNT.fetch_add(1, Ordering::Relaxed);
-            },
-        )
-        .expect("Failed to add subscription");
-
-    // Create node and service client
-    let mut node = executor
-        .create_node("async_service_client")
-        .expect("Failed to create node");
-
-    let mut client = node
-        .create_client::<AddTwoInts>("/add_two_ints")
-        .expect("Failed to create client");
+    // Create client — it's an owned type (no lifetime tied to node or executor).
+    // After this block, the node is dropped and the executor is free to move.
+    let mut client = {
+        let mut node = executor
+            .create_node("async_service_client")
+            .expect("Failed to create node");
+        node.create_client::<AddTwoInts>("/add_two_ints")
+            .expect("Failed to create client")
+    };
 
     info!("Service client created for: /add_two_ints");
-    info!("Using async/await pattern with embassy_futures::select");
+    info!("Using tokio background spin pattern");
 
-    // Run the async workflow with block_on
-    nros::block_on(async {
-        let test_cases = [(5, 3), (10, 20), (100, 200), (-5, 10)];
+    // LocalSet enables spawn_local (single-threaded, no Send bound needed)
+    let local = tokio::task::LocalSet::new();
+    local
+        .run_until(async move {
+            // Spawn spin_async() as a background task on the same thread.
+            // This drives I/O so service replies can arrive.
+            tokio::task::spawn_local(async move {
+                executor.spin_async().await;
+            });
 
-        for (a, b) in test_cases {
-            let request = AddTwoIntsRequest { a, b };
-            info!("Calling service: {} + {} = ?", a, b);
+            // Sequential service calls — just .await the Promise directly.
+            // The background spin task drives I/O concurrently.
+            let test_cases = [(5, 3), (10, 20), (100, 200), (-5, 10)];
 
-            // Send the request (non-blocking), get a Promise future
-            let promise = match client.call(&request) {
-                Ok(p) => p,
-                Err(e) => {
-                    error!("Failed to send request: {:?}", e);
-                    std::process::exit(1);
-                }
-            };
+            for (a, b) in test_cases {
+                let request = AddTwoIntsRequest { a, b };
+                info!("Calling service: {} + {} = ?", a, b);
 
-            // Use select to concurrently:
-            //   - spin_async(): drives I/O so the reply can arrive
-            //   - promise: resolves when the reply is received
-            let response =
-                match embassy_futures::select::select(executor.spin_async(), promise).await {
-                    // spin_async() returns `!` so this branch is unreachable
-                    embassy_futures::select::Either::First(never) => match never {},
-                    embassy_futures::select::Either::Second(result) => match result {
+                let reply = match client.call(&request) {
+                    Ok(promise) => match promise.await {
                         Ok(reply) => reply,
                         Err(e) => {
                             error!("Service call failed: {:?}", e);
                             std::process::exit(1);
                         }
                     },
+                    Err(e) => {
+                        error!("Failed to send request: {:?}", e);
+                        std::process::exit(1);
+                    }
                 };
 
-            info!("Response: {} + {} = {}", a, b, response.sum);
-            assert_eq!(response.sum, a + b, "Sum mismatch!");
+                info!("Response: {} + {} = {}", a, b, reply.sum);
+                assert_eq!(reply.sum, a + b, "Sum mismatch!");
 
-            // Brief pause between calls
-            std::thread::sleep(std::time::Duration::from_millis(500));
-        }
+                // Brief pause between calls
+                tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+            }
 
-        let sub_msgs = SUB_COUNT.load(Ordering::Relaxed);
-        if sub_msgs > 0 {
-            info!(
-                "Subscription received {} messages during service calls",
-                sub_msgs
-            );
-        }
-
-        info!("All async service calls completed successfully!");
-    });
+            info!("All async service calls completed successfully!");
+        })
+        .await;
 }

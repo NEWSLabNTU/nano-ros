@@ -317,6 +317,8 @@ build-zephyr:
     west build -b native_sim/native/64 -d build-action-server -p auto nros/examples/zephyr/rust/zenoh/action-server
     echo "  Building zephyr/rust/zenoh/action-client -> build-action-client/"
     west build -b native_sim/native/64 -d build-action-client -p auto nros/examples/zephyr/rust/zenoh/action-client
+    echo "  Building zephyr/rust/zenoh/async-service -> build-async-service/"
+    west build -b native_sim/native/64 -d build-async-service -p auto nros/examples/zephyr/rust/zenoh/async-service
     echo "Zephyr Rust examples built successfully!"
 
 # Build Zephyr C examples
@@ -367,7 +369,7 @@ build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-xrce
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples

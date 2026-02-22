@@ -298,7 +298,7 @@ pub use nros_node::{
 };
 
 #[cfg(feature = "std")]
-pub use nros_node::{SpinPeriodResult, block_on};
+pub use nros_node::SpinPeriodResult;
 
 // Backward compatibility type aliases (Phase 43.13)
 pub use nros_node::{

@@ -1,0 +1,43 @@
+# SPDX-License-Identifier: Apache-2.0
+# nros Zephyr Async Service Client Example (Rust)
+#
+# Demonstrates the background spin pattern using Embassy executor with
+# Zephyr's kernel-backed waking (k_sem). Single-threaded cooperative
+# concurrency — spin_async() runs as a background Embassy task while the
+# main task .awaits Promises directly.
+
+[package]
+# Name must be "rustapp" for zephyr-lang-rust integration
+name = "rustapp"
+version = "0.1.0"
+edition = "2024"
+description = "nros async service client for Zephyr RTOS (Embassy background spin)"
+license = "Apache-2.0"
+
+[lib]
+crate-type = ["staticlib"]
+
+[dependencies]
+# Zephyr support with kernel-backed Embassy executor (k_sem waking)
+zephyr = { version = "0.1.0", features = ["executor-zephyr"] }
+log = "0.4"
+
+# nros unified API (patched to local via .cargo/config.toml)
+nros = { version = "*", default-features = false, features = ["rmw-zenoh", "platform-zephyr"] }
+
+# Generated message types (patched to local via .cargo/config.toml)
+example_interfaces = { version = "*", default-features = false }
+
+# Embassy task macro + Spawner type (no arch-* features — executor-zephyr provides __pender)
+embassy-executor = { version = "0.7", default-features = false }
+
+# StaticCell for Embassy executor storage
+static_cell = "2"
+
+[features]
+default = []
+
+[profile.release]
+opt-level = "s"
+lto = true
+debug = false

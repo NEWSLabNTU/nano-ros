@@ -1439,66 +1439,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 }
 
-// ============================================================================
-// block_on — minimal single-future executor for std targets
-// ============================================================================
-
-/// Run a future to completion on the current thread.
-///
-/// This is a minimal single-future executor for desktop/POSIX targets.
-/// Embedded targets should use their chosen async runtime (Embassy, RTIC)
-/// instead.
-///
-/// # Example
-///
-/// ```ignore
-/// use embassy_futures::select::{select, Either};
-///
-/// nros::block_on(async {
-///     let promise = client.call(&req)?;
-///     let Either::Second(reply) = select(executor.spin_async(), promise).await
-///         else { unreachable!() };
-///     println!("sum = {}", reply?.sum);
-///     Ok::<(), NodeError>(())
-/// });
-/// ```
-#[cfg(feature = "std")]
-pub fn block_on<F: core::future::Future>(future: F) -> F::Output {
-    use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
-
-    fn raw_waker() -> RawWaker {
-        fn clone(_: *const ()) -> RawWaker {
-            raw_waker()
-        }
-        fn wake(data: *const ()) {
-            wake_by_ref(data);
-        }
-        fn wake_by_ref(_: *const ()) {
-            // Unpark is a no-op if the thread is not parked, so this is safe
-            // to call from any context.
-        }
-        fn drop(_: *const ()) {}
-
-        static VTABLE: RawWakerVTable = RawWakerVTable::new(clone, wake, wake_by_ref, drop);
-        RawWaker::new(core::ptr::null(), &VTABLE)
-    }
-
-    let waker = unsafe { Waker::from_raw(raw_waker()) };
-    let mut cx = Context::from_waker(&waker);
-    let mut future = core::pin::pin!(future);
-
-    loop {
-        match future.as_mut().poll(&mut cx) {
-            Poll::Ready(output) => return output,
-            Poll::Pending => {
-                // Yield to avoid busy-spinning. Our Promise wakes immediately
-                // via wake_by_ref(), so a brief yield is sufficient.
-                std::thread::yield_now();
-            }
-        }
-    }
-}
-
 impl<S, const MAX_CBS: usize, const CB_ARENA: usize> Drop for Executor<S, MAX_CBS, CB_ARENA> {
     fn drop(&mut self) {
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;

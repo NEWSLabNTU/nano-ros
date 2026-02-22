@@ -332,7 +332,7 @@ nros provides a non-blocking, allocation-free Promise API for service calls.
 `client.call(&request)` returns a `Promise<Reply>` immediately — the reply
 can be polled with `try_recv()` or `.await`ed in an async context.
 
-### Three Usage Patterns
+### Two Usage Patterns
 
 **Pattern 1: Sync polling (no async runtime needed)**
 
@@ -363,56 +363,76 @@ fn main() {
 }
 ```
 
-**Pattern 2: Async with `select` (one-off calls)**
+**Pattern 2: Background spin task (recommended for async)**
 
-Uses `embassy_futures::select` to concurrently drive `spin_async()` and
-await the promise. When the promise resolves, `select` returns:
+Spawn `spin_async()` as a background task in your async runtime, then
+`.await` promises directly. This works because `ServiceClient` is an owned
+type — after creating the client, the executor can be moved to a background task.
+
+*Desktop with tokio:*
 
 ```rust
-use embassy_futures::select::{select, Either};
+use nros::prelude::*;
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 
-// Inside an async context (Embassy task, RTIC task, or block_on)
-let promise = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap();
-match select(executor.spin_async(), promise).await {
-    Either::First(_) => unreachable!(),  // spin_async() never returns
-    Either::Second(result) => {
-        let reply = result.unwrap();
+#[tokio::main(flavor = "current_thread")]
+async fn main() {
+    let config = ExecutorConfig::from_env().node_name("client");
+    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+
+    // Create client (owned — no lifetime tied to node or executor)
+    let mut client = {
+        let mut node = executor.create_node("client").unwrap();
+        node.create_client::<AddTwoInts>("/add_two_ints").unwrap()
+    }; // node dropped, executor free to move
+
+    let local = tokio::task::LocalSet::new();
+    local.run_until(async move {
+        // Background spin (same thread, cooperative)
+        tokio::task::spawn_local(async move {
+            executor.spin_async().await;
+        });
+
+        // Sequential calls — just .await the Promise
+        let reply = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap().await.unwrap();
         println!("sum = {}", reply.sum);
-    }
+    }).await;
 }
 ```
 
-On desktop, wrap the async block with `nros::block_on()`:
+*Zephyr with Embassy (`executor-zephyr` — kernel-backed waking):*
 
 ```rust
-nros::block_on(async {
-    let promise = client.call(&request).unwrap();
-    let Either::Second(result) = select(executor.spin_async(), promise).await
-        else { unreachable!() };
-    println!("sum = {}", result.unwrap().sum);
-});
-```
+type NrosExecutor = nros::Executor<nros::RmwSession, 0, 0>;
 
-**Pattern 3: Background spin task (sequential calls)**
-
-Spawn `spin_async()` as a long-lived task, then `.await` promises directly
-without wrapping each one in `select`:
-
-```rust
 #[embassy_executor::task]
-async fn spin_task(mut executor: Executor<RmwSession, 4, 4096>) -> ! {
-    executor.spin_async().await
+async fn spin_task(mut exec: NrosExecutor) -> ! {
+    exec.spin_async().await
 }
 
-// In the main task, after spawning spin_task:
-let reply1 = client_a.call(&req1).unwrap().await.unwrap();
-let reply2 = client_b.call(&req2).unwrap().await.unwrap();
+#[embassy_executor::task]
+async fn app_main(spawner: embassy_executor::Spawner) {
+    let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let mut nros_exec = nros::Executor::<_, 0, 0>::open(&config).unwrap();
+    let mut client = {
+        let mut node = nros_exec.create_node("client").unwrap();
+        node.create_client::<AddTwoInts>("/add_two_ints").unwrap()
+    };
+    spawner.spawn(spin_task(nros_exec)).unwrap();
+
+    let reply = client.call(&AddTwoIntsRequest { a: 1, b: 2 }).unwrap().await.unwrap();
+}
 ```
 
 ### Async Dependencies
 
 The Promise and `spin_async()` APIs use only `core::future` — no external
 runtime dependency. They work on `no_std`/`no_alloc` targets.
+
+nros does **not** provide an async runtime. Use an external crate:
+- **Desktop**: `tokio` (`current_thread` + `spawn_local`)
+- **Zephyr**: `zephyr` crate with `executor-zephyr` feature (kernel-backed `k_sem` waking)
+- **Bare-metal**: `embassy-executor` with arch-specific feature (`arch-cortex-m`, etc.)
 
 For async combinators (`select`, `join`), add `embassy-futures`:
 
@@ -421,9 +441,8 @@ For async combinators (`select`, `join`), add `embassy-futures`:
 embassy-futures = "0.1"  # no_std, no_alloc, runtime-agnostic
 ```
 
-For desktop `block_on()`, enable the `std` feature on nros (enabled by default).
-
-See `examples/native/rust/zenoh/async-service/` for a complete working example.
+See `examples/native/rust/zenoh/async-service/` (tokio) and
+`examples/zephyr/rust/zenoh/async-service/` (Embassy) for complete working examples.
 
 ## Next Steps
 
