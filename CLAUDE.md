@@ -4,745 +4,193 @@ Lightweight ROS 2 client for embedded real-time systems (Zephyr, NuttX). `no_std
 
 ### Naming Convention
 
-- **nano-ros** — the project name, used in prose, documentation, and user-facing text
-- **nros** — the code-level shorthand, used in crate names (`nros-core`, `nros-rmw-zenoh`), Rust identifiers (`nros_core::`, `nros_serdes::`), Kconfig symbols (`CONFIG_NROS_*`), C function names (`nros_support_init`), C type names (`nros_node_t`, `nros_publisher_t`), and C struct prefixes
-- **nano_ros** — C header directory (`nano_ros/`), CMake targets (`NanoRos::NanoRos`), CMake function (`nano_ros_generate_interfaces()`)
+- **nano-ros** — project name (prose, docs, user-facing text)
+- **nros** — code shorthand (crate names, Rust/C identifiers, Kconfig `CONFIG_NROS_*`)
+- **nano_ros** — C header dir (`nano_ros/`), CMake targets (`NanoRos::NanoRos`), CMake function (`nano_ros_generate_interfaces()`)
 
 ## Workspace Structure
 
 ```
 nano-ros/
 ├── packages/
-│   ├── core/                      # The nano-ros library stack
-│   │   ├── nros/              # Unified API (re-exports all sub-crates)
-│   │   ├── nros-core/         # Core types, traits, node abstraction
-│   │   ├── nros-serdes/       # CDR serialization
-│   │   ├── nros-macros/       # #[derive(RosMessage)] proc macros
-│   │   ├── nros-params/       # Parameter server
-│   │   ├── nros-rmw/          # Transport abstraction (middleware traits)
-│   │   ├── nros-node/         # High-level node API + parameter_services
-│   │   └── nros-c/            # C API for embedded systems
-│   ├── zpico/                     # Zenoh-pico transport backend
-│   │   ├── nros-rmw-zenoh/        # Safe Rust API for zenoh-pico
-│   │   ├── zpico-sys/             # FFI + C shim + zenoh-pico submodule
-│   │   ├── zpico-smoltcp/         # TCP/UDP via smoltcp IP stack
-│   │   ├── zpico-zephyr/          # Zephyr platform support (C glue, CMake)
-│   │   ├── zpico-platform-mps2-an385/ # QEMU ARM FFI symbols (no nros deps)
-│   │   ├── zpico-platform-esp32/  # ESP32-C3 WiFi FFI symbols
-│   │   ├── zpico-platform-esp32-qemu/ # ESP32-C3 QEMU FFI symbols
-│   │   └── zpico-platform-stm32f4/   # STM32F4 FFI symbols
-│   ├── xrce/                      # XRCE-DDS transport backend
-│   │   ├── nros-rmw-xrce/         # XRCE-DDS RMW implementation
-│   │   ├── xrce-sys/              # FFI + Micro-XRCE-DDS-Client submodule
-│   │   ├── xrce-smoltcp/          # UDP via smoltcp IP stack
-│   │   ├── xrce-zephyr/           # Zephyr platform support (C glue)
-│   │   └── xrce-platform-mps2-an385/ # QEMU ARM FFI symbols
-│   ├── boards/                    # Board support crates (hardware init + run())
-│   │   ├── nros-mps2-an385/       # QEMU ARM board (run() API)
-│   │   ├── nros-esp32/            # ESP32-C3 WiFi board (run() API)
-│   │   ├── nros-esp32-qemu/       # ESP32-C3 QEMU board (run() API)
-│   │   └── nros-stm32f4/          # STM32F4 board (run() API)
-│   ├── drivers/                   # Hardware drivers
-│   │   ├── lan9118-smoltcp/       # LAN9118 Ethernet driver for smoltcp
-│   │   └── openeth-smoltcp/       # OpenCores Ethernet driver for smoltcp
-│   ├── interfaces/                # Generated ROS 2 types
-│   │   └── rcl-interfaces/        # nros-rcl-interfaces + nros-builtin-interfaces
-│   │       └── generated/         # manually maintained (nros- prefixed)
-│   ├── testing/                   # Test infrastructure
-│   │   └── nros-tests/            # Integration test crate
-│   ├── verification/              # Formal verification
-│   │   ├── nros-ghost-types/      # Ghost model types (workspace member)
-│   │   └── nros-verification/     # Verus deductive proofs (excluded from workspace)
-│   ├── reference/                 # Low-level platform reference implementations
-│   │   └── qemu-smoltcp-bridge/   # smoltcp bridge library
-│   └── codegen/                   # Message binding generator (cargo nano-ros)
-│       ├── packages/              # Cargo workspace (cargo-nano-ros, rosidl-*, etc.)
-│       └── interfaces/            # Bundled .msg/.srv files
-├── examples/                  # Standalone example packages (4-level: platform/lang/rmw/use-case)
-│   ├── native/                # Desktop/Linux examples
-│   │   ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*, async-service, custom-msg)
-│   │   ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener, service-*, action-*)
-│   │   └── c/zenoh/              # C + zenoh (talker, listener, custom-msg)
-│   ├── qemu-arm/              # QEMU bare-metal ARM (MPS2-AN385)
-│   │   └── rust/
-│   │       ├── zenoh/            # Networked (talker, listener)
-│   │       ├── core/             # nros-core only (cdr-test, wcet-bench)
-│   │       └── standalone/       # No nros deps (lan9118)
-│   ├── qemu-esp32/            # QEMU ESP32-C3 (RISC-V)
-│   │   └── rust/zenoh/           # Networked (talker, listener)
-│   ├── esp32/                 # ESP32-C3 hardware
-│   │   └── rust/
-│   │       ├── zenoh/            # Networked (talker, listener)
-│   │       └── standalone/       # No nros deps (hello-world)
-│   ├── stm32f4/               # STM32F4 microcontrollers
-│   │   └── rust/
-│   │       ├── zenoh/            # Networked (talker, polling, rtic)
-│   │       ├── core/             # nros-core only (embassy)
-│   │       └── standalone/       # No nros deps (smoltcp)
-│   └── zephyr/                # Zephyr RTOS
-│       ├── rust/zenoh/           # Rust + zenoh (talker, listener, service-*, action-*, async-service)
-│       ├── rust/xrce/            # Rust + XRCE-DDS (talker, listener)
-│       ├── c/zenoh/              # C + zenoh (talker, listener)
-│       └── c/xrce/               # C + XRCE-DDS (talker, listener)
-├── scripts/zenohd/            # Zenohd build scripts
-│   ├── build.sh               # Build zenohd from submodule
-│   └── zenoh/                 # Zenoh 1.6.2 submodule
-├── scripts/zephyr/            # Zephyr setup scripts
-│   ├── setup.sh               # Initialize workspace
-│   └── setup-network.sh       # Configure TAP interface
-├── CMakeLists.txt             # Top-level CMake (Corrosion, nros-c + codegen)
-├── docker/                    # Docker development environment
-│   ├── Dockerfile.qemu-arm    # QEMU 7.2 + ARM toolchain
-│   └── docker-compose.yml     # Container orchestration
-├── external/                  # Reference projects (git-ignored)
-├── tests/                     # Test scripts and docs
-├── docs/                      # Detailed documentation
-├── zephyr/                    # Zephyr module definition
-│   ├── Kconfig                # RMW backend, API selection, tuning knobs
-│   ├── CMakeLists.txt         # Compiles transport C sources, builds nros-c
-│   └── cmake/                 # nros_cargo_build(), nros_generate_interfaces()
-├── zephyr-workspace -> ../nano-ros-workspace/  # Symlink to Zephyr workspace
-└── west.yml                   # Zephyr west manifest
+│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c
+│   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
+│   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
+│   ├── boards/         # Board support: nros-mps2-an385, nros-esp32, nros-esp32-qemu, nros-stm32f4
+│   ├── drivers/        # lan9118-smoltcp, openeth-smoltcp
+│   ├── interfaces/     # rcl-interfaces (generated/, checked into git)
+│   ├── testing/        # nros-tests (integration test crate)
+│   ├── verification/   # nros-ghost-types, nros-verification (Verus proofs, excluded from workspace)
+│   ├── reference/      # qemu-smoltcp-bridge
+│   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
+├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm, qemu-esp32, esp32, stm32f4, zephyr)
+├── scripts/            # zenohd build, Zephyr setup
+├── docker/             # QEMU dev environment
+├── tests/              # Shell-based test scripts
+├── docs/               # Guides, reference, design, roadmap
+├── zephyr/             # Zephyr module (Kconfig, CMakeLists.txt, cmake/)
+└── CMakeLists.txt      # Top-level CMake (Corrosion, nros-c + codegen)
 ```
 
 ## Build Commands
 
 ```bash
 just setup          # Install toolchains, cargo tools, check system deps
-just build          # Generate bindings + build workspace (native + embedded) + examples
-just build-zenohd   # Build zenohd 1.6.2 from submodule (for integration tests)
-just check          # Format check + clippy (native + embedded + features + examples)
-just quality        # Format + check + test (= format check test)
+just build          # Generate bindings + build workspace + examples
+just build-zenohd   # Build zenohd 1.6.2 from submodule
+just check          # Format check + clippy
+just quality        # Format + check + test
 just doc            # Generate docs
+just verify         # Kani + Verus verification
+just generate-bindings   # Regenerate all generated/ dirs
+```
 
-# Formal verification
-just verify-kani    # Kani bounded model checking (115 harnesses)
-just verify-verus   # Verus unbounded deductive proofs (92 proofs)
-just verify         # Both Kani + Verus
-
-# Message bindings
-just generate-bindings      # Regenerate all generated/ dirs (uses bundled interfaces)
-just clean-bindings         # Remove all generated/ dirs (including rcl-interfaces)
-just regenerate-bindings    # clean-bindings + generate-bindings
-
-# ESP32-C3 (RISC-V)
-just build-zenoh-pico-riscv    # Cross-compile zenoh-pico for ESP32-C3 RISC-V
-just build-examples-esp32      # Build WiFi ESP32 examples (needs SSID/PASSWORD env vars)
-just build-examples-esp32-qemu # Build QEMU ESP32 examples + flash images
-just test-qemu-esp32-basic     # ESP32-C3 QEMU boot test (no networking)
-
-# Test groups (by infrastructure requirement)
-just test-unit          # Unit tests only (no external deps)
-just test-miri          # Miri UB detection (nros-serdes, nros-core, nros-params)
-just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
-just test-qemu-esp32    # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
-just test-integration   # All Rust integration tests (builds zenohd automatically)
-just test               # test-unit + test-miri + test-qemu + test-integration
-just test-zephyr        # Zephyr E2E tests — zenoh (needs west + TAP)
-just test-zephyr-xrce   # Zephyr E2E tests — XRCE (needs west + TAP + XRCE Agent)
-just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh)
+Test groups:
+```bash
+just test-unit          # Unit tests (no external deps)
+just test-miri          # Miri UB detection
+just test-qemu          # QEMU bare-metal tests
+just test-integration   # Rust integration tests (builds zenohd automatically)
+just test               # unit + miri + qemu + integration
+just test-zephyr        # Zephyr E2E (needs west + TAP)
+just test-zephyr-xrce   # Zephyr E2E — XRCE (needs west + TAP + Agent)
+just test-ros2          # ROS 2 interop (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
 just test-all           # Everything
-just test-kill-orphans  # Kill orphaned test processes from previous runs
 ```
 
-### First-Time Setup
-
-```bash
-just setup   # Installs: rustup targets, cargo-nextest, cargo-nano-ros,
-             # XRCE Agent, socat. Checks for: arm-none-eabi-gcc, qemu-system-arm, cmake
-```
-
-For missing system dependencies on Ubuntu:
-```bash
-sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat
-```
+First-time: `just setup`, then `sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat` for missing deps.
 
 ## Environment Variables
 
-Examples use `ExecutorConfig::from_env()` for configuration:
+Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `ROS_DOMAIN_ID` | ROS 2 domain ID | `0` |
-| `ZENOH_LOCATOR` | Router address (e.g., `tcp/192.168.1.1:7447`) | `tcp/127.0.0.1:7447` |
-| `ZENOH_MODE` | Session mode: `client` or `peer` | `client` |
-
-Build-time environment variables:
-
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `ZENOH_PICO_DIR` | CMake install prefix for pre-built zenoh-pico (use with `system-zenohpico` feature on `zpico-sys`) | Only with `system-zenohpico` |
-| `SSID` | WiFi network name for ESP32 examples | Required for `build-examples-esp32` |
-| `PASSWORD` | WiFi password for ESP32 examples | Required for `build-examples-esp32` |
-
-Build-time buffer tuning (optional — platform-appropriate defaults apply if unset):
-
-**Zenoh-pico (`ZPICO_*`):**
-
-| Variable | Description | Default | Crate |
-|----------|-------------|---------|-------|
-| `ZPICO_FRAG_MAX_SIZE` | Max reassembled message size after defragmentation | `65536` / `2048` | zpico-sys |
-| `ZPICO_BATCH_UNICAST_SIZE` | Max unicast batch size before fragmentation | `65536` / `1024` | zpico-sys |
-| `ZPICO_BATCH_MULTICAST_SIZE` | Max multicast batch size | `8192` / `1024` | zpico-sys |
-| `ZPICO_MAX_PUBLISHERS` | Max concurrent publishers in zenoh shim | `8` | zpico-sys |
-| `ZPICO_MAX_SUBSCRIBERS` | Max concurrent subscribers in zenoh shim | `8` | zpico-sys |
-| `ZPICO_MAX_QUERYABLES` | Max concurrent queryables in zenoh shim | `8` | zpico-sys |
-| `ZPICO_MAX_LIVELINESS` | Max concurrent liveliness tokens in zenoh shim | `16` | zpico-sys |
-| `ZPICO_SUBSCRIBER_BUFFER_SIZE` | Per-subscriber static buffer in zenoh shim | `1024` | nros-rmw-zenoh |
-| `ZPICO_SERVICE_BUFFER_SIZE` | Per-service-server static buffer in zenoh shim | `1024` | nros-rmw-zenoh |
-| `ZPICO_GET_REPLY_BUF_SIZE` | Stack buffer for service client replies | `4096` | zpico-sys |
-| `ZPICO_GET_POLL_INTERVAL_MS` | Single-threaded polling interval in `zenoh_shim_get()` | `10` | zpico-sys |
-| `ZPICO_SMOLTCP_MAX_SOCKETS` | Max concurrent TCP sockets (smoltcp) | `4` | zpico-smoltcp |
-| `ZPICO_SMOLTCP_BUFFER_SIZE` | Per-socket staging buffer (smoltcp) | `2048` | zpico-smoltcp |
-| `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp) | `30000` | zpico-smoltcp |
-| `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS` | TCP read/write timeout (smoltcp) | `10000` | zpico-smoltcp |
-
-**XRCE-DDS (`XRCE_*`):**
-
-| Variable | Description | Default | Crate |
-|----------|-------------|---------|-------|
-| `XRCE_TRANSPORT_MTU` | Custom transport MTU; also sizes stream buffers (4x MTU) and UDP staging | `4096` / `512` | xrce-sys |
-| `XRCE_MAX_SUBSCRIBERS` | Max concurrent subscribers | `8` | nros-rmw-xrce |
-| `XRCE_MAX_SERVICE_SERVERS` | Max concurrent service servers | `4` | nros-rmw-xrce |
-| `XRCE_MAX_SERVICE_CLIENTS` | Max concurrent service clients | `4` | nros-rmw-xrce |
-| `XRCE_BUFFER_SIZE` | Per-slot static buffer size | `1024` | nros-rmw-xrce |
-| `XRCE_STREAM_HISTORY` | Reliable stream history depth (must be >= 2) | `4` | nros-rmw-xrce |
-| `XRCE_ENTITY_CREATION_TIMEOUT_MS` | Timeout for entity creation | `1000` | nros-rmw-xrce |
-| `XRCE_SERVICE_REPLY_TIMEOUT_MS` | Timeout for service replies | `1000` | nros-rmw-xrce |
-| `XRCE_SERVICE_REPLY_RETRIES` | Number of service reply retries | `5` | nros-rmw-xrce |
-| `XRCE_MAX_SESSION_CONNECTION_ATTEMPTS` | Max session connection attempts | `10` | xrce-sys |
-| `XRCE_MIN_SESSION_CONNECTION_INTERVAL` | Min interval between connection attempts (ms) | `25` | xrce-sys |
-| `XRCE_MIN_HEARTBEAT_TIME_INTERVAL` | Min heartbeat interval (ms) | `100` | xrce-sys |
-| `XRCE_UDP_META_COUNT` | In-flight UDP packets per direction (smoltcp) | `4` | xrce-smoltcp |
-
-**Core (`NROS_*`):**
-
-| Variable | Description | Default | Crate |
-|----------|-------------|---------|-------|
-| `NROS_EXECUTOR_MAX_HANDLES` | Max handles in a C API executor | `16` | nros-c |
-| `NROS_MAX_SUBSCRIPTIONS` | Max subscriptions in a C API executor | `8` | nros-c |
-| `NROS_MAX_TIMERS` | Max timers in a C API executor | `8` | nros-c |
-| `NROS_MAX_SERVICES` | Max services in a C API executor | `4` | nros-c |
-| `NROS_LET_BUFFER_SIZE` | Buffer size for LET semantics per handle | `512` | nros-c |
-| `NROS_MESSAGE_BUFFER_SIZE` | Max buffer size for subscription/service data | `4096` | nros-c |
-| `NROS_MAX_CONCURRENT_GOALS` | Max concurrent goals per action server | `4` | nros-c |
-| `NROS_MAX_PARAMETERS` | Max parameters in parameter server | `32` | nros-params |
-| `NROS_MAX_PARAM_NAME_LEN` | Max parameter name length | `64` | nros-params |
-| `NROS_MAX_STRING_VALUE_LEN` | Max string parameter value length | `256` | nros-params |
-| `NROS_MAX_ARRAY_LEN` | Max parameter array length | `32` | nros-params |
-| `NROS_MAX_BYTE_ARRAY_LEN` | Max byte array parameter length | `256` | nros-params |
+Build-time buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
 
 ## Development Practices
 
 ### Quality Checks
 **Always run `just quality` after completing a task.**
 
-### System Packages
-**Never install system packages directly.** Inform the user what's needed:
-```
-QEMU ARM emulator required. Please run: sudo apt install qemu-system-arm
-```
-
-### Privileged Commands
-**Never execute sudo commands directly.** Provide the command for the user to run.
+### System Packages & Privileges
+**Never install system packages or run sudo directly.** Inform the user what's needed.
 
 ### Unused Variables
 - Rename to `_name` with a comment explaining why
 - Use `#[allow(dead_code)]` for test struct fields
 
 ### Testing
-- **Reusable tests** belong in `packages/testing/nros-tests/tests/` (Rust integration tests) or `tests/` (shell scripts)
-- **Temporary/exploratory tests** can be run directly in the Bash tool, but should be converted to proper test scripts once the feature is validated
-- Test scripts in `tests/` should have justfile entries for easy invocation (e.g., `just test-ros2-interop-debug`)
-- ROS 2 interop tests requiring `rmw_zenoh_cpp` go in `packages/testing/nros-tests/tests/rmw_interop.rs` or `tests/ros2-interop-debug.sh`
+- **Reusable tests** → `packages/testing/nros-tests/tests/` (Rust) or `tests/` (shell scripts)
+- **Temporary tests** → Bash tool directly, convert to proper tests once validated
+- Test scripts in `tests/` should have justfile entries
+- Use `just test-*` recipes. All accept a `verbose` argument for live output.
+- JUnit XML: `target/nextest/default/junit.xml` (auto-generated by nextest)
+- Non-nextest tests use `tests/run-test.sh` wrapper → logs in `test-logs/latest/`
+- See `tests/README.md` for full test infrastructure docs
 
 ### QEMU Networked Test Rules
-For QEMU tests involving pub/sub communication via zenohd + TAP networking:
-- **Each QEMU peer must use a different TAP device** (e.g., talker on `tap-qemu0`, listener on `tap-qemu1`). This applies to all QEMU platforms (ARM and ESP32-C3).
-- **Start the subscriber first, then the publisher.** Zenoh doesn't buffer messages for unknown subscribers.
-- **Add 5s stabilization delay** between subscriber connection and publisher start, to allow subscription propagation through zenohd.
-- **Verify zenohd on the bridge IP** (e.g., `192.0.3.1:7447`), not just localhost. QEMU instances reach zenohd via the bridge.
-- **Use `max-threads = 1` nextest test groups** for tests sharing a fixed zenoh port.
-- See `tests/README.md` section "QEMU Networked Test Practices" for full details and example ordering.
-
-### Test Output and Logs
-
-All Rust tests run through **cargo-nextest** which provides concise colored progress output. Test results are automatically saved as JUnit XML.
-
-**Output modes (all `just test-*` recipes accept a `verbose` argument):**
-```bash
-just test-integration           # Concise: colored progress bar, failures shown at end
-just test-integration verbose   # Verbose: all test output streamed live
-```
-
-**JUnit XML logs** are generated automatically by nextest (configured in `.config/nextest.toml`):
-- Written to: `target/nextest/default/junit.xml`
-- Contains per-test pass/fail status and stdout/stderr for failing tests
-- Each nextest invocation overwrites the file (re-run a specific suite to get its XML)
-- View with: `just test-report` (requires `junit-cli-report-viewer`)
-
-**Non-nextest tests** (QEMU semihosting, C shell scripts) use `tests/run-test.sh` wrapper:
-- Captures output to timestamped log files in `test-logs/latest/`
-- Prints one-line `[PASS]`/`[FAIL]` summary per test
-- `--qemu` flag parses semihosting `[PASS]`/`[FAIL]` markers
-
-**Configuration files:**
-- `.config/nextest.toml` — nextest profiles, JUnit output, test groups (e.g., zephyr max-threads=1)
-- `tests/run-test.sh` — wrapper for non-cargo tests
+- **Each QEMU peer must use a different TAP device** (talker on `tap-qemu0`, listener on `tap-qemu1`)
+- **Start subscriber first, then publisher.** Zenoh doesn't buffer for unknown subscribers.
+- **5s stabilization delay** between subscriber connection and publisher start
+- **Verify zenohd on bridge IP** (e.g., `192.0.3.1:7447`), not just localhost
+- **Use `max-threads = 1` nextest test groups** for tests sharing a fixed zenoh port
 
 ### Temporary Files
-- Create all temporary files (scripts, test data, scratch work) in `$project/tmp/` directory (not `/tmp`)
-- Use Write/Edit tools to create files (avoid cat + heredoc patterns)
-- The `tmp/` directory is git-ignored and can be cleaned freely
+- Create in `$project/tmp/` (git-ignored), not `/tmp`
+- Use Write/Edit tools (avoid cat + heredoc)
 
 ### `.gitignore` Practices
-- **Per-example `.gitignore` files**: Each example that produces build artifacts should have its own `.gitignore` that ignores the exact generated directories (e.g., `/target/`, `/target-safety/`, `/generated/`)
-- **Root `.gitignore`**: Only for repo-wide patterns (e.g., `/target/` for the workspace root, editor temp files). Do not add example-specific patterns here
-- **Use leading `/`**: Always use `/target/` (not `target/`) to match only the exact directory at that level, avoiding unintended matches in subdirectories
-- **When adding a new `--target-dir`** in test builders (to isolate builds with different features), add the corresponding directory to the example's `.gitignore`
+- Per-example `.gitignore` for build artifacts (`/target/`, `/generated/`)
+- Root `.gitignore` only for repo-wide patterns
+- Always use leading `/` (e.g., `/target/` not `target/`)
+- When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`
 
-### Writing Tests
-
-**Integration tests** go in `packages/testing/nros-tests/tests/`. Each file is a test suite:
-```
-packages/testing/nros-tests/
-├── src/              # Test utilities and fixtures
-│   ├── lib.rs        # wait_for_pattern(), count_pattern(), etc.
-│   ├── fixtures/     # rstest fixtures (ZenohRouter, binary builders)
-│   ├── process.rs    # Managed child process helpers
-│   ├── qemu.rs       # QEMU process management
-│   ├── ros2.rs       # ROS 2 process helpers
-│   └── zephyr.rs     # Zephyr native_sim helpers
-└── tests/            # Integration test suites
-    ├── nano2nano.rs  # nros ↔ nros pub/sub
-    ├── zero_copy.rs  # Zero-copy receive (unstable-zenoh-api)
-    ├── safety_e2e.rs # Safety protocol E2E (CRC, seq tracking)
-    ├── services.rs   # Service server/client tests
-    ├── actions.rs    # Action server/client tests
-    ├── emulator.rs   # QEMU bare-metal tests
-    ├── zephyr.rs     # Zephyr E2E tests
-    ├── rmw_interop.rs # ROS 2 interop tests
-    └── ...           # Other suites
-```
-
-The `tests/` directory at project root contains shell-based test scripts (C tests, Zephyr C tests, ROS 2 interop shell tests).
-
-**Running tests:** Use `just test-*` recipes. Avoid writing large test scripts in the Bash tool. Only use Bash for temporary one-off test commands.
-```bash
-just test-unit          # Unit tests (no deps)
-just test-miri          # Miri UB detection on embedded-safe crates
-just test-integration   # All integration tests (needs zenohd)
-just test-zephyr        # Zephyr E2E (needs west + TAP)
-just test-ros2          # ROS 2 interop (needs ROS 2)
-just test-c             # C API tests (needs cmake)
-just test-report        # View JUnit XML report (needs junit-cli-report-viewer)
-```
-
-**Unit tests** (per-crate `#[cfg(test)]` modules) go in each crate's source files as usual.
-
-**Parallel build isolation:** Nextest runs each test file as a separate binary/process in parallel. When multiple test binaries build the **same example** with **different features**, the output binary (e.g., `target/release/listener`) gets overwritten by whichever build finishes last. This causes test failures when a process runs a binary built with the wrong features. Fix: use `--target-dir` to give each feature variant its own output directory (e.g., `target-safety/`, `target-zero-copy/`). See `build_native_listener_safety()` and `build_native_listener_zero_copy()` in `fixtures/binaries.rs` for examples. Remember to add the new target directory to the example's `.gitignore`.
+### Parallel Build Isolation
+Nextest runs test files in parallel. When multiple tests build the same example with different features, use `--target-dir` to isolate output directories (e.g., `target-safety/`, `target-zero-copy/`). See `fixtures/binaries.rs` for examples.
 
 ## Key Design Patterns
 
 ### Zenoh Version Unification
-All zenoh components are pinned to **1.6.2** for compatibility with rmw_zenoh_cpp (ros-humble-zenoh-cpp-vendor 0.1.8):
-- **zenohd**: Built from submodule at `scripts/zenohd/zenoh/` via `just build-zenohd` → `build/zenohd/zenohd`
-- **zenoh-pico**: Submodule at `packages/zpico/zpico-sys/zenoh-pico/` (1.6.2)
-- **rmw_zenoh_cpp**: Bundles zenoh-c 1.6.2
-
-Test infrastructure (`nros-tests`) and shell scripts automatically use the local build at `build/zenohd/zenohd` when available, falling back to the system `zenohd`.
+All zenoh components pinned to **1.6.2** (compatible with rmw_zenoh_cpp). zenohd built from `scripts/zenohd/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
 
 ### Rust Edition 2024
-All crates use Rust edition 2024. Key syntax changes from edition 2021:
-
-- **Extern blocks require `unsafe`**: `unsafe extern "C" { ... }`
-- **no_mangle requires `unsafe`**: `#[unsafe(no_mangle)]`
-- **Unsafe fn bodies require explicit blocks**: Unsafe operations inside `unsafe fn` need `unsafe { ... }` blocks
-
-The `nros-c` crate keeps `#![allow(unsafe_op_in_unsafe_fn)]` because it's a pure C FFI wrapper with 420+ unsafe operations where adding explicit blocks would add verbosity without safety improvement.
+- `unsafe extern "C" { ... }` (extern blocks require `unsafe`)
+- `#[unsafe(no_mangle)]` (no_mangle requires `unsafe`)
+- Unsafe operations inside `unsafe fn` need explicit `unsafe { ... }` blocks
+- `nros-c` keeps `#![allow(unsafe_op_in_unsafe_fn)]` (420+ FFI operations)
 
 ### API Alignment
-
-The nros API follows established ROS 2 client library conventions:
-
-- **Rust API**: Follows [rclrs](external/ros2_rust) (ROS 2 Rust client) 0.7.0 naming
-- **C API**: Follows rclc (ROS 2 C client) naming
-
-Key naming rules:
-- `create_publisher()`, `create_subscription()` (not `create_subscriber`)
-- `create_service()`, `create_client()`
+- **Rust API**: follows rclrs 0.7.0 naming; **C API**: follows rclc naming
+- `create_publisher()`, `create_subscription()`, `create_service()`, `create_client()`
 - `create_action_server()`, `create_action_client()`
-- Clean type names: `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`
-- Error type: `RclrsError` for the unified error enum
+- Types: `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`
+- Error: `RclrsError`
 
 ### `no_std` Support
 All core crates support `#![no_std]` with optional `std`/`alloc` features.
 
 ### Message Types
-Generated per-project using `cargo nano-ros generate-rust` from `package.xml`. See [docs/guides/message-generation.md](docs/guides/message-generation.md).
+Generated via `cargo nano-ros generate-rust` from `package.xml`. **Never hand-write message types.** See [message-generation.md](docs/guides/message-generation.md) and [creating-examples.md](docs/guides/creating-examples.md).
 
-**All examples must use generated message bindings** — never hand-write message types. Each example has a `package.xml` declaring its ROS interface dependencies and a `generated/` directory with the output of `cargo nano-ros generate-rust`. See [docs/guides/creating-examples.md](docs/guides/creating-examples.md) for the full guide.
+- Example `generated/` dirs are gitignored, recreated by `just generate-bindings`
+- Only `packages/interfaces/rcl-interfaces/generated/` is checked into git (uses `nros-` prefixed names)
+- `.cargo/config.toml` is manually maintained per example (`[patch.crates-io]` + platform settings)
+- Bundled interfaces at `packages/codegen/interfaces/` (no ROS 2 env needed)
+- `nros-core` re-exports `heapless` for generated code
 
-**Example `generated/` directories are gitignored** and recreated by `just generate-bindings` (called automatically by `just build`). Only `packages/interfaces/rcl-interfaces/generated/` is checked into git (workspace member — cargo requires member paths on disk). These internal packages use `nros-` prefixed names (`nros-builtin-interfaces`, `nros-rcl-interfaces`) to avoid lockfile collisions with user-generated packages of the same ROS 2 name.
+### C API
+See [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) for CMake integration, code generation, and system install.
 
-**`.cargo/config.toml` is manually maintained** per example. Each contains `[patch.crates-io]` entries pointing to the local workspace crates, along with platform-specific `[build]` and `[target.*]` settings. The codegen tool does not touch these files.
-
-**Bundled interfaces**: Standard .msg files (`std_msgs`, `builtin_interfaces`) are shipped at `packages/codegen/interfaces/` so codegen works without a ROS 2 environment. The ament index takes precedence when available; bundled files fill gaps.
-
-**heapless re-export**: `nros-core` re-exports `heapless` (`pub use heapless;`) so generated code can reference `nros_core::heapless::String<256>` etc. without requiring a separate `heapless` dependency.
-
-**Inline codegen mode**: `rosidl-codegen` supports an inline mode (`NanoRosCodegenMode::Inline`) where generated code uses `nros_core::` prefixed imports and `super::` relative paths for cross-package references. This is used for single-crate scenarios; the standard `cargo nano-ros generate-rust` (separate crates per package) remains the primary workflow.
-
-**Installing cargo-nano-ros:**
-```bash
-# From the nros repository root
-just install-cargo-nano-ros
-
-# Or manually:
-cargo install --path packages/codegen/packages/cargo-nano-ros --locked
-
-# Or from git (external users):
-cargo install --git https://github.com/jerry73204/nano-ros --path packages/codegen/packages/cargo-nano-ros
-```
-
-**Regenerating bindings:**
-```bash
-just generate-bindings      # Regenerate all (uses bundled interfaces, no ROS 2 needed)
-just regenerate-bindings    # Clean + regenerate from scratch
-```
-
-### C API and CMake Integration
-C examples use a config-mode CMake package. Run `just install-local` first to create the pseudo-install layout at `build/install/`. Both zenoh and XRCE library variants are installed.
-
-The nros C API is built via CMake + [Corrosion](https://github.com/corrosion-rs/corrosion) (v0.6.1), which integrates Cargo into CMake. The top-level `CMakeLists.txt` builds one RMW variant per invocation; `just install-local` runs cmake twice (zenoh + xrce) to the same prefix.
-
-```cmake
-find_package(NanoRos REQUIRED CONFIG)
-target_link_libraries(my_app PRIVATE NanoRos::NanoRos)
-```
-This provides include dirs, static library, and platform link libs (pthread, dl, m) automatically.
-
-**RMW backend selection:** The `NANO_ROS_RMW` CMake variable selects which library variant to link (default: `zenoh`). Pass `-DNANO_ROS_RMW=xrce` for XRCE examples.
-
-**C code generation** uses `nano_ros_generate_interfaces()` (from `NanoRosGenerateInterfaces.cmake`, included automatically by `find_package(NanoRos CONFIG)`). The codegen tool (`nros-codegen`) is installed to `$PREFIX/bin/` by `just install-local`.
-
-**System install for package maintainers:**
-```bash
-cmake -S . -B build -DNANO_ROS_RMW=zenoh -DCMAKE_BUILD_TYPE=Release
-cmake --build build
-cmake --install build --prefix /usr/local
-
-# Multi-RMW: run cmake twice to same prefix (library names don't collide)
-cmake -S . -B build-xrce -DNANO_ROS_RMW=xrce -DCMAKE_BUILD_TYPE=Release
-cmake --build build-xrce
-cmake --install build-xrce --prefix /usr/local
-```
-
-**C example coding practice**: Always use `nano_ros_generate_interfaces()` for message/service/action types — never hand-write CDR serialization or struct definitions. The API mirrors `rosidl_generate_interfaces()` from standard ROS 2: interface files are positional arguments resolved first locally, then via ament index, then from bundled interfaces.
-```cmake
-# Standard ROS 2 package — resolved via AMENT_PREFIX_PATH or bundled
-nano_ros_generate_interfaces(std_msgs
-    "msg/Int32.msg"
-    SKIP_INSTALL
-)
-
-# Another standard package
-nano_ros_generate_interfaces(example_interfaces
-    "srv/AddTwoInts.srv"
-    "action/Fibonacci.action"
-    SKIP_INSTALL
-)
-
-# Custom project-local interfaces
-nano_ros_generate_interfaces(${PROJECT_NAME}
-    "msg/Temperature.msg"
-    SKIP_INSTALL
-)
-```
-Resolution order for each file: `${CMAKE_CURRENT_SOURCE_DIR}/<file>` → `${AMENT_PREFIX_PATH}/share/<target>/<file>` → `<install_prefix>/share/nano-ros/interfaces/<target>/<file>`. Type info structs (`nros_message_type_t`, `nros_service_type_t`, `nros_action_type_t`) are all defined in `nros/types.h`.
-
-**nros-c thin wrapper principle:** `nros-c` (`packages/core/nros-c/`) must be a thin FFI wrapper over the Rust `nros-node` API — it should expose `#[unsafe(no_mangle)] extern "C"` functions that delegate to `nros-node` types, not reimplement logic. Any feature needed by the C API (executor, timers, subscriptions, services, actions, trigger conditions, LET semantics, guard conditions) must first be implemented in `nros-node` as reusable Rust types, then wrapped by `nros-c`. This avoids duplicated logic, ensures both APIs share the same tested core, and keeps `nros-c` maintainable. When adding new C API features, always add the underlying capability to `nros-node` first, then add the C wrapper.
+**nros-c thin wrapper principle:** `nros-c` must be a thin FFI wrapper over `nros-node` — delegate to Rust types, don't reimplement logic. New C API features must first be implemented in `nros-node`, then wrapped.
 
 ### Platform Backends
-Features are organized into three orthogonal axes:
-- **RMW backend** (select one): `rmw-zenoh` (zenoh-pico), `rmw-xrce` (XRCE-DDS)
-- **Platform** (select one): `platform-posix` (desktop), `platform-zephyr` (Zephyr RTOS), `platform-bare-metal` (bare-metal)
-- **ROS edition** (select one): `ros-humble`, `ros-iron`
+Three orthogonal axes (NEVER cross-imply):
+- **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
+- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`
+- **ROS edition** (one): `ros-humble`, `ros-iron`
 
-**Orthogonality principle:** The three axes (RMW, platform, ROS edition) are strictly independent. A feature on one axis must NEVER imply a feature on another axis. For example, `platform-posix` must not activate `rmw-zenoh` or `ros-humble`. Compile-time checks enforce mutual exclusivity within each axis (e.g., cannot enable both `rmw-zenoh` and `rmw-xrce`), but selecting zero features on an axis is valid — the crate compiles with reduced functionality. This applies to all crates: `nros`, `nros-node`, `nros-c`, and board crates.
+Mutual exclusivity enforced at compile-time. Zero features on an axis is valid (reduced functionality).
+Default features: `std` only. Platform features forwarded via Cargo `?` syntax.
 
-**Cross-cutting feature:** `unstable-zenoh-api` enables zero-copy receive in the zenoh RMW backend. It is orthogonal to the three axes above. Feature chain: `nros` → `nros-node` → `nros-rmw-zenoh` → `zpico-sys`. The zero-copy path is transparent — `create_subscription_with_info()` automatically uses it when enabled.
-
-Platform features are forwarded to the active RMW backend via Cargo `?` syntax (e.g., `nros-rmw-zenoh?/platform-posix`).
-Default features: `std` only. Users must explicitly select RMW backend, platform, and ROS edition.
+**Cross-cutting:** `unstable-zenoh-api` enables zero-copy receive (orthogonal to axes above).
 
 ### Parameter Services
-Enable with `param-services` feature in `nros-node`:
-```toml
-nros-node = { version = "*", features = ["param-services"] }
-```
-- Provides ROS 2 parameter service handlers (`~/get_parameters`, `~/set_parameters`, etc.)
-- Uses generated `nros-rcl-interfaces` types from `packages/interfaces/rcl-interfaces/generated/`
-- Handlers return `Box<Response>` due to large heapless arrays (~1MB per ParameterValue)
+Enable with `param-services` feature in `nros-node`. Provides `~/get_parameters`, `~/set_parameters`, etc. Uses `nros-rcl-interfaces` types. Handlers return `Box<Response>` (large heapless arrays).
 
 ### Formal Verification
-
-Two complementary verification tools are used:
-
-- **Kani** (bounded model checking) — `#[cfg(kani)]` harnesses inside production crates. 115 harnesses across nros-serdes, nros-core, nros-params, nros-c, nros-ghost-types, nros-node. Run with `just verify-kani`.
-- **Verus** (unbounded deductive proofs) — separate crate at `packages/verification/nros-verification/` (excluded from workspace). 92 proofs across scheduling, time arithmetic, CDR serialization, GoalStatus state machine, parameter types, E2E data path, safety protocol, and executor progress guarantees. Includes 12 E2E proofs (bug existence, publish chain, executor delivery, post-fix correctness, service buffer), 8 safety proofs, and 8 progress proofs. Run with `just verify-verus`.
-
-```bash
-just verify          # Run both Kani + Verus (requires both toolchains)
-just verify-kani     # Kani only (~3 min, requires cargo-kani: just setup)
-just verify-verus    # Verus only (~1 sec, requires Verus: just setup-verus)
-```
-
-`just verify-kani` runs `cargo kani` on each of the 4 crates sequentially. Kani's `goto-cc` (CBMC 6.8.0) can occasionally crash with `unexpected end of input stream` (exit status 70) — this is an intermittent CBMC toolchain issue, not a code bug. Retry resolves it.
-
-`just verify-verus` runs `cargo verus verify` in the verification crate. Requires the Verus toolchain in `tools/` (installed by `just setup-verus`).
-
-Key Verus patterns:
-- `external_type_specification` without `external_body` makes enums **transparent** (variant matching works)
-- `external_type_specification` with `external_body` makes types **opaque** (no variant matching)
-- `assume_specification[Type::method](self_: &Type, ...)` links production fn to spec — `&self` becomes `self_: &Type`
-- Never add `[package.metadata.verus] verify = true` to production crates with fn pointers or closures (causes THIR erasure crash)
-
-See [docs/guides/verus-verification.md](docs/guides/verus-verification.md) for full coding practices.
+- **Kani**: 115 bounded model checking harnesses. `just verify-kani` (~3 min)
+- **Verus**: 92 unbounded deductive proofs. `just verify-verus` (~1 sec)
+- Key Verus rules: `external_type_specification` without `external_body` = transparent enum; with = opaque. Never add `verify = true` to production crates with fn pointers/closures.
+- See [docs/guides/verus-verification.md](docs/guides/verus-verification.md)
 
 ### ROS 2 Interop
-Uses rmw_zenoh-compatible protocol. Key format for Humble:
-- Data keyexpr: `<domain>/<topic>/<type>/TypeHashNotSupported`
-- Liveliness: `@ros2_lv/.../<type>/RIHS01_<hash>/<qos>`
-
-See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
+rmw_zenoh-compatible protocol. Key format: `<domain>/<topic>/<type>/TypeHashNotSupported`. See [docs/reference/rmw_zenoh_interop.md](docs/reference/rmw_zenoh_interop.md).
 
 ## Development Phases
 
-Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadmap/archived/`.
+Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/roadmap/) for details.
 
 | Phase | Focus | Status |
 |-------|-------|--------|
 | 16 | ROS 2 Interop Completion | In Progress |
-| 22 | ESP32-C3 platform support | Complete (22.6 deferred) |
 | 23 | Arduino precompiled library | Not Started |
 | 34 | RMW abstraction + XRCE-DDS | In Progress |
 | 35 | Safety hardening & E2E protocol | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
-| 37 | Executor progress guarantees | Complete |
 | 40 | Large message support | In Progress |
-| 42 | Extensible RMW layer | Complete |
-| 43 | RMW-agnostic embedded API | Complete |
-| 47 | Executor trigger conditions + nros-node prerequisites | Complete |
-| 49 | nros-c thin wrapper migration | In Progress (49.1–49.3 complete) |
-| 50 | Action API redesign | Complete |
-| 51 | Board crate `run()` API | Complete |
+| 49 | nros-c thin wrapper migration | In Progress (49.1–49.3 done) |
 
-**Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
+## Quick Reference
 
-**Phase 34**: 34.1-34.8 complete. RMW factory trait, zenoh backend, board refactor, XRCE-DDS FFI (`xrce-sys`), UDP transport (`xrce-smoltcp`), RMW implementation (`nros-rmw-xrce`), platform symbols, integration test infrastructure.
-
-**Phase 36**: Multi-backend integration tests. XRCE service test binaries, hardened pub/sub tests, `xrce` feature on `nros` crate. See `docs/roadmap/phase-36-multi-backend-integration-tests.md`.
-
-**Phase 37**: Complete. Service buffer stuck-state bug fixed, 8 progress proofs added (92 total Verus proofs), fairness evaluation found no issues (single-slot buffer prevents starvation by design).
-
-**Phase 42**: Complete. Generic `Executor<S>` (formerly `EmbeddedExecutor<S>`) / `Node<S>` replacing duplicated `ShimNode`/`XrceNode`, `drive_io()` on Session trait, C function table adapter (`nros-rmw-cffi`), feature wiring. `shim.rs` and `xrce.rs` deleted, all examples migrated.
-
-**Phase 43**: Complete. RMW-agnostic embedded API. All 13 sub-phases done: factory (`Executor::open()`), arena-based callbacks (`add_subscription`/`add_service`/`add_timer`/`add_action_server`/`add_action_client`), `spin_once()`/`spin_blocking()`/`spin_period()`, executor unification (deleted `PollingExecutor`/`BasicExecutor`/`Context`), type renames (`Executor`, `Node`, `NodeError`, `ExecutorConfig`, `Subscription`). Backward compat aliases provided for old `Embedded*` names.
-
-**Phase 47**: Complete. Executor trigger conditions + nros-node prerequisites. Three-phase `spin_once()` (readiness scan → trigger evaluation → dispatch). Core types: `HandleId`, `HandleSet`, `Trigger` (7 variants), `InvocationMode`, `ReadinessSnapshot`. Raw-bytes callbacks (`add_subscription_raw`/`add_service_raw`), guard conditions (`GuardConditionHandle`), LET semantics (`ExecutorSemantics::LogicalExecutionTime` with pre-sample phase), session-borrowing executor (`SessionStore::Borrowed`). 86 unit tests.
-
-**Phase 51**: Complete. Board crate `run()` API replaces `run_node()`. Board crates now only handle hardware/network init — users create `Executor::open()` inside the `run()` closure for full API access. Simplified `Node`, `Publisher`, `Subscription` types removed. Board crates no longer depend on `nros-rmw`/`nros-rmw-zenoh`/`nros-core`. All 8 embedded examples migrated. `portable-atomic` added to `nros-node` for riscv32imc (ESP32-C3) support.
-
-**Phase 49**: nros-c thin wrapper migration. 49.1 complete: C API prefix renamed from `nano_ros_` to `nros_` (~142 functions, ~46 types). 49.2 complete: executor.rs rewritten to delegate to nros-node `Executor` (dispatch, triggers, LET, spin). Subscription/service init simplified to metadata-only (RMW handles created during executor registration via `add_subscription_raw_with_qos_sized()` etc). 49.3 complete: timer cancel/reset forward to nros-node executor; guard conditions use `GuardConditionHandle` for thread-safe triggering. 49.4 (action migration) deferred — current action.rs works and action tests pass. `just quality` and `just test-c` (15 tests) pass. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
-
-See [docs/roadmap/](docs/roadmap/) for details.
-
-### Distribution UX (Future)
-
-Planned improvements for toolchain distribution:
-- **crates.io publishing**: `cargo-nano-ros`, `nros-core`, `nros-serdes`, pre-generated standard message crates — eliminates `[patch.crates-io]`
-- **Pre-built binaries**: GitHub releases for `nros` binary
-- **`cargo nano-ros init`**: Template scaffolding for new projects
-- **C single-archive release**: library + headers + cmake modules + codegen binary
+See [docs/guides/quick-reference.md](docs/guides/quick-reference.md) for manual testing, ROS 2 interop, Docker, QEMU, and Zephyr setup commands.
 
 ## Documentation Index
 
 ```
 docs/
-├── guides/          # Getting started, setup, how-to
-├── reference/       # Protocol specs, comparisons
-├── design/          # Active architecture docs
-│   └── archived/    # Superseded design docs
-├── research/        # Autoware porting analysis
-└── roadmap/         # Active phases (16, 22-24, 34-37, 40)
-    └── archived/    # Completed phases (1-15, 17-21, 24-33, 37-42, 44-46)
+├── guides/          # getting-started, creating-examples, message-generation, quick-reference,
+│                    # qemu-bare-metal, zephyr-setup, verus-verification, troubleshooting
+├── reference/       # environment-variables, c-api-cmake, rmw_zenoh_interop, api-comparison-rclrs
+├── design/          # rmw-layer-design, ghost-model-validation
+└── roadmap/         # Active + archived phases
 ```
-
-Key docs: [getting-started](docs/guides/getting-started.md), [creating-examples](docs/guides/creating-examples.md), [message-generation](docs/guides/message-generation.md), [troubleshooting](docs/guides/troubleshooting.md), [rmw-layer-design](docs/design/rmw-layer-design.md), [rmw_zenoh interop](docs/reference/rmw_zenoh_interop.md), [tests/README](tests/README.md).
-
-## Quick Reference
-
-### Manual Testing
-```bash
-# Build zenohd first (one-time)
-just build-zenohd
-
-# Terminal 1: Router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
-
-# Terminal 2: Talker
-cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
-
-# Terminal 3: Listener
-cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zenoh
-```
-
-### ROS 2 Interop
-```bash
-# Terminal 1: Router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
-
-# Terminal 2: nros talker
-cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
-
-# Terminal 3: ROS 2 listener
-source /opt/ros/humble/setup.bash
-export RMW_IMPLEMENTATION=rmw_zenoh_cpp
-ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
-```
-
-### Actions
-ROS 2 actions support long-running tasks with feedback and cancellation.
-
-```bash
-# Terminal 1: Router
-./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
-
-# Terminal 2: Action server (Fibonacci example)
-cd examples/native/rust/zenoh/action-server && cargo run
-
-# Terminal 3: Action client
-cd examples/native/rust/zenoh/action-client && cargo run
-```
-
-**Zephyr action tests:**
-```bash
-just build-zephyr-actions      # Build server and client
-just test-rust-zephyr-actions  # Run E2E tests (requires TAP setup)
-```
-
-See `docs/roadmap/phase-6-actions.md` for API details.
-
-### Zephyr Setup
-```bash
-./scripts/zephyr/setup.sh              # Initialize workspace + create symlink
-sudo ./scripts/zephyr/setup-network.sh # Configure bridge network (zeth-br)
-just test-zephyr                       # Run zenoh tests
-just test-zephyr-xrce                  # Run XRCE tests
-```
-
-The `zephyr-workspace` symlink points to the actual workspace (default: `../nano-ros-workspace/`).
-Scripts use this symlink to locate the workspace. For custom workspace locations, update the symlink:
-```bash
-ln -sfn /path/to/custom-workspace zephyr-workspace
-```
-
-**Zephyr module**: nros registers as a Zephyr module via `zephyr/module.yml`. The `zephyr/Kconfig` exposes all configuration. The `zephyr/CMakeLists.txt` compiles transport C sources and (for C API) builds `libnros_c.a` via Cargo.
-
-**RMW backend selection** in `prj.conf`:
-```ini
-# Zenoh (default — connects to zenohd router)
-CONFIG_NROS=y
-CONFIG_NROS_RMW_ZENOH=y       # (default, can be omitted)
-
-# XRCE-DDS (connects to Micro-XRCE-DDS Agent)
-CONFIG_NROS=y
-CONFIG_NROS_RMW_XRCE=y
-CONFIG_NROS_XRCE_AGENT_ADDR="192.0.2.2"
-CONFIG_NROS_XRCE_AGENT_PORT=2018
-```
-
-**API selection** in `prj.conf`:
-```ini
-CONFIG_NROS_RUST_API=y         # Rust API (default) — uses rust_cargo_application()
-CONFIG_NROS_C_API=y            # C API — links libnros_c.a, uses nros_generate_interfaces()
-```
-
-Zenoh requires `CONFIG_POSIX_API=y` and elevated mutex counts. XRCE requires `CONFIG_NET_SOCKETS=y`. See existing examples in `examples/zephyr/` for complete `prj.conf` templates.
-
-See [docs/guides/zephyr-setup.md](docs/guides/zephyr-setup.md) for details.
-
-### Docker Development Environment
-
-Docker provides QEMU 7.2 (from Debian bookworm) which fixes TAP networking issues present in Ubuntu 22.04's QEMU 6.2.
-
-```bash
-# One-time setup: add yourself to docker group
-sudo usermod -aG docker $USER
-# Log out and back in, or run: newgrp docker
-
-# Build and use Docker environment
-just docker-build              # Build nano-ros-qemu image
-just docker-shell              # Interactive shell
-just docker-test-qemu          # Run QEMU tests in container
-just docker-help               # Show all Docker commands
-```
-
-See `docs/reference/qemu-physical-device-compatibility.md` for QEMU/physical device analysis.
-
-### QEMU Bare-Metal Testing
-
-Run bare-metal Cortex-M3 examples on QEMU (MPS2-AN385 machine with LAN9118 Ethernet).
-
-```bash
-# Build prerequisites
-just build-zenoh-pico-arm     # Build zenoh-pico for ARM Cortex-M3
-just build-examples-qemu      # Build all QEMU examples
-
-# Non-networked tests (no setup required)
-just test-qemu-basic          # Run serialization test
-just test-qemu-lan9118        # Run Ethernet driver test
-
-# Networked talker/listener test (Docker Compose - recommended)
-just docker-qemu-test         # Runs zenohd, talker, listener in separate containers
-```
-
-**Docker Compose Architecture:**
-```
-┌─────────────────────────────────────────────────────────────┐
-│              Docker Network: 172.20.0.0/24                  │
-│                                                             │
-│  ┌─────────────┐  ┌─────────────┐  ┌─────────────────────┐  │
-│  │   zenohd    │  │   talker    │  │      listener       │  │
-│  │ 172.20.0.2  │  │ 172.20.0.10 │  │    172.20.0.11      │  │
-│  │             │  │  ┌───────┐  │  │  ┌───────────────┐  │  │
-│  │             │  │  │ QEMU  │  │  │  │     QEMU      │  │  │
-│  │             │  │  │ ARM   │──┼──┼──│     ARM       │  │  │
-│  │             │  │  │ TAP   │  │  │  │     TAP       │  │  │
-│  │             │  │  └───────┘  │  │  └───────────────┘  │  │
-│  └──────▲──────┘  └──────┼──────┘  └─────────┼───────────┘  │
-│         └────────────────┴───────────────────┘              │
-│                    NAT to zenohd                            │
-└─────────────────────────────────────────────────────────────┘
-```
-
-Each container has isolated TAP networking with NAT to reach zenohd.
-
-**Manual networked test (3 terminals, requires host TAP setup):**
-```bash
-# Terminal 1: Setup network + start router
-just setup-qemu-network                    # Requires sudo
-./build/zenohd/zenohd --listen tcp/0.0.0.0:7447
-
-# Terminal 2: Talker (192.0.2.10)
-./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \
-    --binary examples/qemu-arm/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker
-
-# Terminal 3: Listener (192.0.2.11)
-./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 \
-    --binary examples/qemu-arm/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener
-```
-
-Run `just qemu-help` for more options.

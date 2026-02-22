@@ -1,8 +1,8 @@
 //! Native Service Client Example
 //!
 //! Demonstrates a ROS 2 service client using nros with the Promise API.
-//! The client sends a request (non-blocking), then drives I/O with
-//! `spin_once()` while polling the promise with `try_recv()`.
+//! The client sends a request (non-blocking), then waits for the reply
+//! using `promise.wait()` which drives I/O internally.
 //!
 //! # Usage
 //!
@@ -58,25 +58,14 @@ fn main() {
             }
         };
 
-        // Drive I/O and poll for the reply
-        let start = std::time::Instant::now();
-        let timeout = std::time::Duration::from_secs(5);
-        let response = loop {
-            executor.spin_once(10);
-            match promise.try_recv() {
-                Ok(Some(reply)) => break reply,
-                Ok(None) => {
-                    if start.elapsed() > timeout {
-                        error!("Service call timed out");
-                        error!("Make sure the service server is running:");
-                        error!("  cargo run -p native-rs-service-server");
-                        std::process::exit(1);
-                    }
-                }
-                Err(e) => {
-                    error!("Service call failed: {:?}", e);
-                    std::process::exit(1);
-                }
+        // Wait for the reply (drives I/O internally)
+        let response = match promise.wait(&mut executor, 5000) {
+            Ok(reply) => reply,
+            Err(e) => {
+                error!("Service call failed: {:?}", e);
+                error!("Make sure the service server is running:");
+                error!("  cargo run -p native-rs-service-server");
+                std::process::exit(1);
             }
         };
 

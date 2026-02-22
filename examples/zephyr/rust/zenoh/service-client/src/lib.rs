@@ -2,7 +2,7 @@
 //!
 //! A ROS 2 compatible service client running on Zephyr RTOS using the nros API.
 //! Uses the Promise API: `client.call()` returns immediately, then
-//! `spin_once()` + `try_recv()` drives I/O and polls for the reply.
+//! `promise.wait()` drives I/O and waits for the reply.
 
 #![no_std]
 
@@ -48,26 +48,13 @@ fn run() -> Result<(), NodeError> {
         // Non-blocking: send request and get a promise
         let mut promise = client.call(&req)?;
 
-        // Drive I/O and poll for the reply
-        let mut attempts = 0u32;
-        loop {
-            executor.spin_once(10);
-            match promise.try_recv() {
-                Ok(Some(resp)) => {
-                    info!("[{}] Response: sum={}", count, resp.sum);
-                    break;
-                }
-                Ok(None) => {
-                    attempts += 1;
-                    if attempts > 500 {
-                        error!("[{}] Timed out", count);
-                        break;
-                    }
-                }
-                Err(e) => {
-                    error!("[{}] Call failed: {:?}", count, e);
-                    break;
-                }
+        // Wait for the reply (drives I/O internally)
+        match promise.wait(&mut executor, 5000) {
+            Ok(resp) => {
+                info!("[{}] Response: sum={}", count, resp.sum);
+            }
+            Err(e) => {
+                error!("[{}] Call failed: {:?}", count, e);
             }
         }
 

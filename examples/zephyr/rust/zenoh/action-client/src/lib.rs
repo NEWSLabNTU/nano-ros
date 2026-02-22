@@ -2,7 +2,7 @@
 //!
 //! A ROS 2 compatible action client running on Zephyr RTOS using the nros API.
 //! Uses the Promise API: `send_goal()` / `get_result()` return promises
-//! that are polled with `spin_once()` + `try_recv()`.
+//! that are resolved with `promise.wait()` which drives I/O internally.
 
 #![no_std]
 
@@ -43,23 +43,12 @@ fn run() -> Result<(), NodeError> {
 
     let (goal_id, mut promise) = action_client.send_goal(&goal)?;
 
-    // Poll for goal acceptance
-    let mut attempts = 0u32;
-    let accepted = loop {
-        executor.spin_once(10);
-        match promise.try_recv() {
-            Ok(Some(accepted)) => break accepted,
-            Ok(None) => {
-                attempts += 1;
-                if attempts > 1000 {
-                    error!("Timed out waiting for goal acceptance");
-                    return Ok(());
-                }
-            }
-            Err(e) => {
-                error!("Failed to send goal: {:?}", e);
-                return Err(e);
-            }
+    // Wait for goal acceptance (drives I/O internally)
+    let accepted = match promise.wait(&mut executor, 10000) {
+        Ok(accepted) => accepted,
+        Err(e) => {
+            error!("Goal acceptance failed: {:?}", e);
+            return Err(e);
         }
     };
 
@@ -122,29 +111,16 @@ fn run() -> Result<(), NodeError> {
     // Get final result using the Promise pattern
     let mut result_promise = action_client.get_result(&goal_id)?;
 
-    let mut result_attempts = 0u32;
-    loop {
-        executor.spin_once(10);
-        match result_promise.try_recv() {
-            Ok(Some((status, result))) => {
-                info!(
-                    "Result: status={:?}, sequence={:?}",
-                    status,
-                    result.sequence.as_slice()
-                );
-                break;
-            }
-            Ok(None) => {
-                result_attempts += 1;
-                if result_attempts > 1000 {
-                    error!("Timed out waiting for result");
-                    break;
-                }
-            }
-            Err(e) => {
-                error!("Failed to get result: {:?}", e);
-                break;
-            }
+    match result_promise.wait(&mut executor, 10000) {
+        Ok((status, result)) => {
+            info!(
+                "Result: status={:?}, sequence={:?}",
+                status,
+                result.sequence.as_slice()
+            );
+        }
+        Err(e) => {
+            error!("Failed to get result: {:?}", e);
         }
     }
 

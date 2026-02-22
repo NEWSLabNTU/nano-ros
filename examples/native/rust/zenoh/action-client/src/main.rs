@@ -1,8 +1,8 @@
 //! Native Action Client Example
 //!
 //! Demonstrates a ROS 2 action client using nros with the Promise API.
-//! This example sends a Fibonacci action goal and receives feedback
-//! as the sequence is computed.
+//! Sends a Fibonacci goal, waits for acceptance with `promise.wait()`,
+//! then polls for feedback as the sequence is computed.
 //!
 //! # Usage
 //!
@@ -55,23 +55,12 @@ fn main() {
         }
     };
 
-    // Drive I/O and poll for goal acceptance
-    let start = std::time::Instant::now();
-    let timeout = std::time::Duration::from_secs(10);
-    let accepted = loop {
-        executor.spin_once(10);
-        match promise.try_recv() {
-            Ok(Some(accepted)) => break accepted,
-            Ok(None) => {
-                if start.elapsed() > timeout {
-                    error!("Timed out waiting for goal acceptance");
-                    std::process::exit(1);
-                }
-            }
-            Err(e) => {
-                error!("Goal send failed: {:?}", e);
-                std::process::exit(1);
-            }
+    // Wait for goal acceptance (drives I/O internally)
+    let accepted = match promise.wait(&mut executor, 10000) {
+        Ok(accepted) => accepted,
+        Err(e) => {
+            error!("Goal acceptance failed: {:?}", e);
+            std::process::exit(1);
         }
     };
 

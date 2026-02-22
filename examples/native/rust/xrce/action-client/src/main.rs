@@ -1,7 +1,7 @@
 //! XRCE-DDS action client — Fibonacci action via XRCE Agent.
 //!
 //! Uses the Promise API: `send_goal()` / `get_result()` return promises
-//! that are polled with `spin_once()` + `try_recv()`.
+//! that are resolved with `promise.wait()` which drives I/O internally.
 //!
 //! Environment variables:
 //!   XRCE_AGENT_ADDR     — Agent UDP address (default: "127.0.0.1:2019")
@@ -58,25 +58,13 @@ fn main() {
         }
     };
 
-    // Poll for goal acceptance
-    let start = Instant::now();
-    let timeout = std::time::Duration::from_secs(10);
-    let accepted = loop {
-        executor.spin_once(10);
-        match promise.try_recv() {
-            Ok(Some(accepted)) => break accepted,
-            Ok(None) => {
-                if start.elapsed() > timeout {
-                    eprintln!("Timed out waiting for goal acceptance");
-                    let _ = executor.close();
-                    return;
-                }
-            }
-            Err(e) => {
-                eprintln!("send_goal failed: {:?}", e);
-                let _ = executor.close();
-                return;
-            }
+    // Wait for goal acceptance (drives I/O internally)
+    let accepted = match promise.wait(&mut executor, 10000) {
+        Ok(accepted) => accepted,
+        Err(e) => {
+            eprintln!("Goal acceptance failed: {:?}", e);
+            let _ = executor.close();
+            return;
         }
     };
 
@@ -131,25 +119,12 @@ fn main() {
         }
     };
 
-    let result_start = Instant::now();
-    let result_timeout = std::time::Duration::from_secs(10);
-    loop {
-        executor.spin_once(10);
-        match result_promise.try_recv() {
-            Ok(Some((status, result))) => {
-                println!("Result: status={}, sequence={:?}", status, result.sequence);
-                break;
-            }
-            Ok(None) => {
-                if result_start.elapsed() > result_timeout {
-                    eprintln!("get_result timed out");
-                    break;
-                }
-            }
-            Err(e) => {
-                eprintln!("get_result failed: {:?}", e);
-                break;
-            }
+    match result_promise.wait(&mut executor, 10000) {
+        Ok((status, result)) => {
+            println!("Result: status={}, sequence={:?}", status, result.sequence);
+        }
+        Err(e) => {
+            eprintln!("get_result failed: {:?}", e);
         }
     }
 
