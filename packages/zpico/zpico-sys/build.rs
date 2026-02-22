@@ -20,6 +20,7 @@ struct LinkFeatures {
     udp_multicast: bool,
     serial: bool,
     raweth: bool,
+    tls: bool,
 }
 
 impl LinkFeatures {
@@ -31,6 +32,7 @@ impl LinkFeatures {
             udp_multicast: env::var("CARGO_FEATURE_LINK_UDP_MULTICAST").is_ok(),
             serial: env::var("CARGO_FEATURE_LINK_SERIAL").is_ok(),
             raweth: env::var("CARGO_FEATURE_LINK_RAWETH").is_ok(),
+            tls: env::var("CARGO_FEATURE_LINK_TLS").is_ok(),
         }
     }
 
@@ -48,6 +50,9 @@ impl LinkFeatures {
     }
     fn raweth_flag(&self) -> u8 {
         self.raweth as u8
+    }
+    fn tls_flag(&self) -> u8 {
+        self.tls as u8
     }
 }
 
@@ -267,7 +272,7 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
     writeln!(header, "#define Z_FEATURE_LINK_BLUETOOTH 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_WS 0").unwrap();
     writeln!(header, "#define Z_FEATURE_LINK_SERIAL_USB 0").unwrap();
-    writeln!(header, "#define Z_FEATURE_LINK_TLS 0").unwrap();
+    writeln!(header, "#define Z_FEATURE_LINK_TLS {}", link.tls_flag()).unwrap();
     writeln!(
         header,
         "#define Z_FEATURE_RAWETH_TRANSPORT {}",
@@ -384,7 +389,7 @@ fn main() {
         let zenoh_pico_include = if use_system {
             use_system_zenoh_pico()
         } else {
-            build_zenoh_pico_native(&zenoh_pico_src, &out_dir, &buf_config)
+            build_zenoh_pico_native(&zenoh_pico_src, &out_dir, &buf_config, &link_features)
         };
         if backend_count > 0 && !use_zephyr && !use_freertos {
             build_c_shim(
@@ -668,6 +673,7 @@ fn build_zenoh_pico_native(
     zenoh_pico_src: &Path,
     out_dir: &Path,
     buf: &ZenohBufferConfig,
+    link: &LinkFeatures,
 ) -> PathBuf {
     let zenoh_pico_build = out_dir.join("zenoh-pico-build");
 
@@ -681,7 +687,8 @@ fn build_zenoh_pico_native(
     // Note: Z_FEATURE_INTEREST must be enabled for proper message routing between
     // clients on different networks (e.g., Zephyr on TAP vs native on localhost).
     // Both clients must have matching INTEREST settings for the router to route properly.
-    let dst = cmake::Config::new(&zenoh_pico_build)
+    let mut cmake_cfg = cmake::Config::new(&zenoh_pico_build);
+    cmake_cfg
         .define("BUILD_SHARED_LIBS", "OFF")
         .define("BUILD_EXAMPLES", "OFF")
         .define("BUILD_TESTING", "OFF")
@@ -702,8 +709,14 @@ fn build_zenoh_pico_native(
         // zenoh-pico CMakeLists.txt uses FRAG_MAX_SIZE / BATCH_*_SIZE (no Z_ prefix)
         .define("FRAG_MAX_SIZE", buf.frag_max_size.to_string())
         .define("BATCH_UNICAST_SIZE", buf.batch_unicast_size.to_string())
-        .define("BATCH_MULTICAST_SIZE", buf.batch_multicast_size.to_string())
-        .build();
+        .define("BATCH_MULTICAST_SIZE", buf.batch_multicast_size.to_string());
+
+    // TLS support via mbedTLS (zenoh-pico's CMakeLists.txt handles finding mbedTLS)
+    if link.tls {
+        cmake_cfg.define("Z_FEATURE_LINK_TLS", "1");
+    }
+
+    let dst = cmake_cfg.build();
 
     // Link the static library
     println!("cargo:rustc-link-search=native={}/lib", dst.display());
@@ -715,6 +728,13 @@ fn build_zenoh_pico_native(
         println!("cargo:rustc-link-lib=pthread");
     } else if target.contains("windows") {
         println!("cargo:rustc-link-lib=ws2_32");
+    }
+
+    // Link mbedTLS libraries (zenoh-pico's static lib references mbedTLS symbols)
+    if link.tls {
+        println!("cargo:rustc-link-lib=mbedtls");
+        println!("cargo:rustc-link-lib=mbedx509");
+        println!("cargo:rustc-link-lib=mbedcrypto");
     }
 
     // Return installed include dir (not source dir) so the cc shim build gets
@@ -911,6 +931,7 @@ fn build_c_shim(
             if link.udp_multicast { "1" } else { "0" },
         );
         build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+        build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
         build.define(
             "Z_FEATURE_RAWETH_TRANSPORT",
             if link.raweth { "1" } else { "0" },
@@ -1053,6 +1074,7 @@ fn build_zenoh_pico_embedded(
         if link.udp_multicast { "1" } else { "0" },
     );
     build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_TLS", if link.tls { "1" } else { "0" });
     build.define("Z_FEATURE_LINK_WS", "0");
     build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
     build.define(

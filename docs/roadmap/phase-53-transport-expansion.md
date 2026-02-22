@@ -23,8 +23,8 @@ nano-ros initially only supported TCP for the zenoh-pico transport layer. This p
 
 ### TLS Transport
 
-- [ ] 53.8 — Feature forwarding chain for `link-tls`
-- [ ] 53.9 — POSIX TLS: enable zenoh-pico's built-in mbedTLS support
+- [x] 53.8 — Feature forwarding chain for `link-tls`
+- [x] 53.9 — POSIX TLS: enable zenoh-pico's built-in mbedTLS support
 - [ ] 53.10 — Native example: verify TLS locator
 - [ ] 53.11 — Bare-metal platform header: add `_tls_sock` field
 - [ ] 53.12 — mbedTLS build integration for bare-metal
@@ -190,13 +190,13 @@ For Cortex-M targets with limited RAM, use PSK (pre-shared key) mode to avoid ce
 
 zenoh-pico supports 12 TLS config parameters. For bare-metal client mode, only these are needed:
 
-| Parameter | Purpose |
-|-----------|---------|
+| Parameter                    | Purpose                                   |
+|------------------------------|-------------------------------------------|
 | `root_ca_certificate_base64` | CA cert (base64-encoded, stored in flash) |
-| `verify_name_on_connect` | Hostname verification (default: true) |
-| `enable_mtls` | Mutual TLS (optional) |
-| `connect_private_key_base64` | Client key for mTLS (optional) |
-| `connect_certificate_base64` | Client cert for mTLS (optional) |
+| `verify_name_on_connect`     | Hostname verification (default: true)     |
+| `enable_mtls`                | Mutual TLS (optional)                     |
+| `connect_private_key_base64` | Client key for mTLS (optional)            |
+| `connect_certificate_base64` | Client cert for mTLS (optional)           |
 
 File-path variants (`root_ca_certificate`, etc.) are not available on bare-metal (no filesystem).
 
@@ -204,44 +204,28 @@ File-path variants (`root_ca_certificate`, etc.) are not available on bare-metal
 
 ## TLS Deliverables
 
-### 53.8 — Feature forwarding chain for `link-tls`
+### 53.8 — Feature forwarding chain for `link-tls` ✓
 
-Add `link-tls` feature flag and forward through the crate chain:
+Added `link-tls` feature flag and forwarded through the crate chain:
 
-**`packages/zpico/zpico-sys/Cargo.toml`:**
-- Add `link-tls = []` to `[features]`
+- `packages/zpico/zpico-sys/Cargo.toml` — added `link-tls = []`
+- `packages/zpico/zpico-sys/build.rs` — added `tls` to `LinkFeatures`, `Z_FEATURE_LINK_TLS` now dynamic
+- `packages/zpico/nros-rmw-zenoh/Cargo.toml` — added `link-tls = ["zpico-sys/link-tls"]`
+- `packages/core/nros/Cargo.toml` — added `link-tls = ["nros-rmw-zenoh?/link-tls"]`
 
-**`packages/zpico/zpico-sys/build.rs`:**
-- Add `tls` field to `LinkFeatures` struct
-- Add `tls_flag()` method
-- Change `Z_FEATURE_LINK_TLS` from hardcoded `0` to `link.tls_flag()`
+`just quality` passes without `link-tls` enabled.
 
-**`packages/zpico/nros-rmw-zenoh/Cargo.toml`:**
-- Add `link-tls = ["zpico-sys/link-tls"]`
+### 53.9 — POSIX TLS: enable zenoh-pico's built-in mbedTLS support ✓
 
-**`packages/core/nros/Cargo.toml`:**
-- Add `link-tls = ["nros-rmw-zenoh?/link-tls"]`
-
-**Acceptance criteria:**
-- `Z_FEATURE_LINK_TLS` is `1` when `link-tls` feature is enabled, `0` otherwise
-- No regressions: `just quality` passes without `link-tls` enabled
-
-### 53.9 — POSIX TLS: enable zenoh-pico's built-in mbedTLS support
-
-On POSIX, zenoh-pico's `src/system/unix/tls.c` provides the complete TLS implementation. Enable it by linking mbedTLS.
+On POSIX, zenoh-pico's `src/system/unix/tls.c` provides the complete TLS implementation.
 
 **`packages/zpico/zpico-sys/build.rs`:**
-- When `link-tls` is enabled on POSIX targets: add mbedTLS include paths and link flags
-- Use `pkg-config` to find mbedTLS (matching zenoh-pico's CMakeLists.txt approach)
-- Link `mbedtls`, `mbedx509`, `mbedcrypto`
+- `build_zenoh_pico_native()` passes `-DZ_FEATURE_LINK_TLS=1` to CMake when `link-tls` enabled
+- CMake's own `FindPkgConfig` handles finding mbedTLS (pkg-config)
+- After CMake build: links `mbedtls`, `mbedx509`, `mbedcrypto` via `cargo:rustc-link-lib`
+- TLS define also propagated to `build_c_shim()` and `build_zenoh_pico_embedded()`
 
-**`packages/zpico/zpico-sys/Cargo.toml`:**
-- Add `pkg-config` to build-dependencies (for finding mbedTLS)
-
-**Acceptance criteria:**
-- `cargo build -p zpico-sys --features "posix,link-tcp,link-tls"` succeeds
-- Native talker builds with `link-tls` feature
-- System package requirement: `libmbedtls-dev` (documented, not auto-installed)
+**System package requirement:** `libmbedtls-dev` (install with `sudo apt install libmbedtls-dev`)
 
 ### 53.10 — Native example: verify TLS locator
 
@@ -376,33 +360,33 @@ Add `link-tls` feature to a QEMU ARM example and test with `ZENOH_LOCATOR=tls/<b
 
 ### UDP (complete)
 
-| File | Change |
-|------|--------|
-| `packages/core/nros/Cargo.toml` | Add `link-udp-unicast` feature |
-| `packages/zpico/nros-rmw-zenoh/Cargo.toml` | Add `link-udp-unicast` feature |
-| `packages/zpico/zpico-smoltcp/Cargo.toml` | Add `socket-udp`, `link-udp-unicast` |
-| `packages/zpico/zpico-smoltcp/src/bridge.rs` | Separate UDP socket table + poll loop |
-| `packages/zpico/zpico-smoltcp/src/udp.rs` | **New** — UDP platform symbols |
-| `packages/zpico/zpico-smoltcp/src/util.rs` | **New** — shared parse helpers |
-| `packages/zpico/zpico-smoltcp/src/tcp.rs` | Use shared util module |
-| `packages/zpico/zpico-smoltcp/src/lib.rs` | UDP buffer statics + registration |
-| `packages/zpico/zpico-smoltcp/build.rs` | MAX_UDP_SOCKETS config |
-| `packages/boards/nros-*/src/node.rs` | UDP socket registration in `init_network()` |
-| `packages/boards/nros-*/Cargo.toml` | Add `socket-udp` to smoltcp features |
+| File                                         | Change                                      |
+|----------------------------------------------|---------------------------------------------|
+| `packages/core/nros/Cargo.toml`              | Add `link-udp-unicast` feature              |
+| `packages/zpico/nros-rmw-zenoh/Cargo.toml`   | Add `link-udp-unicast` feature              |
+| `packages/zpico/zpico-smoltcp/Cargo.toml`    | Add `socket-udp`, `link-udp-unicast`        |
+| `packages/zpico/zpico-smoltcp/src/bridge.rs` | Separate UDP socket table + poll loop       |
+| `packages/zpico/zpico-smoltcp/src/udp.rs`    | **New** — UDP platform symbols              |
+| `packages/zpico/zpico-smoltcp/src/util.rs`   | **New** — shared parse helpers              |
+| `packages/zpico/zpico-smoltcp/src/tcp.rs`    | Use shared util module                      |
+| `packages/zpico/zpico-smoltcp/src/lib.rs`    | UDP buffer statics + registration           |
+| `packages/zpico/zpico-smoltcp/build.rs`      | MAX_UDP_SOCKETS config                      |
+| `packages/boards/nros-*/src/node.rs`         | UDP socket registration in `init_network()` |
+| `packages/boards/nros-*/Cargo.toml`          | Add `socket-udp` to smoltcp features        |
 
 ### TLS
 
-| File | Change |
-|------|--------|
-| `packages/zpico/zpico-sys/Cargo.toml` | Add `link-tls` feature |
-| `packages/zpico/zpico-sys/build.rs` | TLS feature flag + mbedTLS linking (POSIX) |
-| `packages/zpico/nros-rmw-zenoh/Cargo.toml` | Add `link-tls` feature forwarding |
-| `packages/core/nros/Cargo.toml` | Add `link-tls` feature forwarding |
-| `packages/zpico/zpico-sys/c/platform/zenoh_bare_metal_platform.h` | Add `_tls_sock` field |
-| `packages/zpico/zpico-smoltcp/Cargo.toml` | Add `link-tls` feature, `cc` dep |
-| `packages/zpico/zpico-smoltcp/build.rs` | mbedTLS cross-compilation |
-| `packages/zpico/zpico-smoltcp/src/tls.rs` | **New** — TLS platform symbols + BIO callbacks |
-| `packages/zpico/zpico-smoltcp/src/tcp.rs` | Add `_tls_sock` to `ZSysNetSocket` |
+| File                                                              | Change                                         |
+|-------------------------------------------------------------------|------------------------------------------------|
+| `packages/zpico/zpico-sys/Cargo.toml`                             | Add `link-tls` feature                         |
+| `packages/zpico/zpico-sys/build.rs`                               | TLS feature flag + mbedTLS linking (POSIX)     |
+| `packages/zpico/nros-rmw-zenoh/Cargo.toml`                        | Add `link-tls` feature forwarding              |
+| `packages/core/nros/Cargo.toml`                                   | Add `link-tls` feature forwarding              |
+| `packages/zpico/zpico-sys/c/platform/zenoh_bare_metal_platform.h` | Add `_tls_sock` field                          |
+| `packages/zpico/zpico-smoltcp/Cargo.toml`                         | Add `link-tls` feature, `cc` dep               |
+| `packages/zpico/zpico-smoltcp/build.rs`                           | mbedTLS cross-compilation                      |
+| `packages/zpico/zpico-smoltcp/src/tls.rs`                         | **New** — TLS platform symbols + BIO callbacks |
+| `packages/zpico/zpico-smoltcp/src/tcp.rs`                         | Add `_tls_sock` to `ZSysNetSocket`             |
 
 ## Verification
 

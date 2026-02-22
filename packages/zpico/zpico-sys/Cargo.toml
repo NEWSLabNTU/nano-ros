@@ -28,6 +28,7 @@ link-udp-unicast = []
 link-udp-multicast = []
 link-serial = []
 link-raweth = []
+link-tls = []
 # Use a pre-built zenoh-pico instead of building from the submodule.
 # Set ZENOH_PICO_DIR to the CMake install prefix (must contain lib/libzenohpico.a
 # and include/zenoh-pico.h). Only supported for native targets.
