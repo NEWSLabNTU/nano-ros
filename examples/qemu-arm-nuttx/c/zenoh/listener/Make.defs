@@ -1,0 +1,3 @@
+ifneq ($(CONFIG_NROS_NUTTX_C_LISTENER),)
+CONFIGURED_APPS += $(APPDIR)/examples/nuttx_c_listener
+endif

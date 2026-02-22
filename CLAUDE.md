@@ -60,6 +60,7 @@ just test-zephyr-xrce   # Zephyr E2E — XRCE (needs west + TAP + Agent)
 just test-ros2          # ROS 2 interop (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
 just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + TAP)
+just test-nuttx         # NuttX QEMU E2E (needs NUTTX_DIR + nightly + qemu-system-arm)
 just test-all           # Everything
 ```
 
@@ -205,7 +206,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 51 | Board crate `run()` API | In Progress |
 | 53 | UDP + TLS transport support | Complete |
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.8 done) |
-| 55 | NuttX platform support | In Progress (55.1–55.7 done) |
+| 55 | NuttX platform support | In Progress (55.1–55.10 done) |
 
 ## Quick Reference
 

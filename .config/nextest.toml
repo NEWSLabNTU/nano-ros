@@ -27,6 +27,10 @@ max-threads = 1
 [test-groups.c_api]
 max-threads = 1
 
+# NuttX QEMU tests: sequential builds, shared TAP bridge
+[test-groups.nuttx-qemu]
+max-threads = 1
+
 # XRCE-DDS tests: single Agent instance per test
 [test-groups.xrce]
 max-threads = 1
@@ -107,6 +111,12 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 [[profile.default.overrides]]
 filter = "binary(zero_copy)"
 slow-timeout = { period = "60s", terminate-after = 2 }
+
+# NuttX QEMU tests: nightly build + QEMU ARM virt
+[[profile.default.overrides]]
+filter = "binary(nuttx_qemu)"
+test-group = "nuttx-qemu"
+slow-timeout = { period = "120s", terminate-after = 3 }
 
 [profile.ci]
 # CI profile with stricter timeouts

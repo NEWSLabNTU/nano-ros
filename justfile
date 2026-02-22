@@ -498,6 +498,35 @@ test-qemu-esp32 verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Build NuttX QEMU ARM virt examples (requires NUTTX_DIR + nightly)
+build-examples-nuttx:
+    #!/usr/bin/env bash
+    set -e
+    echo "Building NuttX QEMU ARM virt examples..."
+    if [ -z "$NUTTX_DIR" ]; then
+        echo "ERROR: NUTTX_DIR not set. Run: just setup-nuttx && export NUTTX_DIR=\$(pwd)/external/nuttx"
+        exit 1
+    fi
+    for example in talker listener service-server service-client action-server action-client; do
+        echo "  Building $example..."
+        (cd examples/qemu-arm-nuttx/rust/zenoh/$example && cargo +nightly build --release)
+    done
+    echo "NuttX QEMU examples built!"
+
+# Run NuttX QEMU integration tests (build + verification via nextest)
+test-nuttx verbose="":
+    #!/usr/bin/env bash
+    set -e
+    if [ -z "$NUTTX_DIR" ]; then
+        echo "ERROR: NUTTX_DIR not set. Run: just setup-nuttx && export NUTTX_DIR=\$(pwd)/external/nuttx"
+        exit 1
+    fi
+    args=(-p nros-tests --test nuttx_qemu --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # Run basic QEMU test (nros serialization on Cortex-M3)
 test-qemu-basic verbose="": build-examples-qemu _init-test-logs
     ./tests/run-test.sh --name qemu-basic --log {{LOG_DIR}}/latest/qemu-basic.log \

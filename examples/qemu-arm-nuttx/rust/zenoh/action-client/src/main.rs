@@ -1,0 +1,64 @@
+//! NuttX QEMU ARM Action Client Example
+//!
+//! Sends a Fibonacci goal to `/fibonacci`, receives feedback.
+//! Uses NuttX QEMU ARM virt (Cortex-A7 + virtio-net).
+
+use example_interfaces::action::{Fibonacci, FibonacciGoal};
+use nros::prelude::*;
+use nros_nuttx_qemu_arm::{Config, run};
+
+fn main() {
+    run(Config::client(), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("fibonacci_action_client");
+        let mut executor = Executor::<_, 8, 8192>::open(&exec_config)?;
+        let mut node = executor.create_node("fibonacci_action_client")?;
+
+        println!("Creating action client: /fibonacci (Fibonacci)");
+        let mut client = node.create_action_client::<Fibonacci>("/fibonacci")?;
+        println!("Client ready");
+        println!();
+
+        let goal = FibonacciGoal { order: 10 };
+        println!("Sending goal: order={}", goal.order);
+
+        let (goal_id, mut promise) = client.send_goal(&goal)?;
+        let accepted = promise.wait(&mut executor, 10000)?;
+
+        if !accepted {
+            println!("Goal rejected!");
+            return Ok(());
+        }
+        println!("Goal accepted! ID: {:?}", goal_id);
+        println!();
+        println!("Waiting for feedback...");
+
+        let mut stream = client.feedback_stream_for(goal_id);
+        let mut feedback_count = 0;
+        for _ in 0..30 {
+            match stream.wait_next(&mut executor, 1000) {
+                Ok(Some(feedback)) => {
+                    feedback_count += 1;
+                    println!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
+
+                    if feedback.sequence.len() as i32 > goal.order {
+                        println!();
+                        println!("All feedback received!");
+                        println!("Final sequence: {:?}", feedback.sequence);
+                        break;
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("Feedback error: {:?}", e);
+                    break;
+                }
+            }
+        }
+
+        println!();
+        println!("Action client finished.");
+        Ok::<(), NodeError>(())
+    })
+}

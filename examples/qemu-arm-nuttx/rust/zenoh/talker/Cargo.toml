@@ -1,0 +1,17 @@
+[package]
+name = "nuttx-rs-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "NuttX QEMU ARM talker example using nros"
+
+[[bin]]
+name = "nuttx-rs-talker"
+test = false
+bench = false
+
+[dependencies]
+nros-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-nuttx-qemu-arm" }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-nuttx", "ros-humble"] }
+std_msgs = { version = "*", default-features = false }
