@@ -179,6 +179,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 36 | Multi-backend integration tests | Not Started |
 | 40 | Large message support | In Progress |
 | 49 | nros-c thin wrapper migration | In Progress (49.1–49.4 done) |
+| 54 | FreeRTOS platform support (lwIP) | Not Started |
 
 ## Quick Reference
 
