@@ -326,12 +326,19 @@ fn main() {
     let use_zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
     let use_bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
     let use_freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
+    let use_nuttx = env::var("CARGO_FEATURE_NUTTX").is_ok();
 
     // Count enabled backends
-    let backend_count = [use_posix, use_zephyr, use_bare_metal, use_freertos]
-        .iter()
-        .filter(|&&b| b)
-        .count();
+    let backend_count = [
+        use_posix,
+        use_zephyr,
+        use_bare_metal,
+        use_freertos,
+        use_nuttx,
+    ]
+    .iter()
+    .filter(|&&b| b)
+    .count();
 
     if backend_count == 0 {
         // No backend selected - just build zenoh-pico and generate bindings
@@ -341,7 +348,8 @@ fn main() {
 
     if backend_count > 1 {
         panic!(
-            "Only one platform backend can be selected at a time (posix, zephyr, bare-metal, or freertos)"
+            "Only one platform backend can be selected at a time \
+             (posix, zephyr, bare-metal, freertos, or nuttx)"
         );
     }
 
@@ -377,7 +385,8 @@ fn main() {
     generate_header(&manifest_dir, &include_dir);
 
     // Read buffer config with platform-appropriate defaults
-    let buf_config = ZenohBufferConfig::from_env(use_posix);
+    // NuttX is POSIX-compatible, use same defaults as posix
+    let buf_config = ZenohBufferConfig::from_env(use_posix || use_nuttx);
 
     // Read shim slot counts from ZPICO_MAX_* env vars and generate Rust consts
     let shim_config = ShimConfig::from_env();
@@ -430,6 +439,19 @@ fn main() {
             &link_features,
             &shim_config,
         );
+    } else if use_nuttx {
+        // Embedded + NuttX: build zenoh-pico + unix platform (NuttX is POSIX-compatible) + shim.
+        // Reuses zenoh-pico's unix/system.c + unix/network.c with ZENOH_NUTTX define.
+        generate_config_header(&out_dir, &link_features, &buf_config);
+        build_zenoh_pico_nuttx(
+            &zenoh_pico_src,
+            &c_dir,
+            &include_dir,
+            &out_dir,
+            &target,
+            &link_features,
+            &shim_config,
+        );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
     // For no-backend: nothing to build (minimal configuration for header generation).
@@ -443,6 +465,8 @@ fn main() {
         println!("cargo:rustc-cfg=shim_backend=\"bare-metal\"");
     } else if use_freertos {
         println!("cargo:rustc-cfg=shim_backend=\"freertos\"");
+    } else if use_nuttx {
+        println!("cargo:rustc-cfg=shim_backend=\"nuttx\"");
     }
 
     // Rerun triggers
@@ -464,6 +488,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
     println!("cargo:rerun-if-env-changed=LWIP_DIR");
     println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
+    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
 }
 
 /// Check if the RISC-V GCC supports picolibc specs (provides C standard library headers)
@@ -495,6 +520,7 @@ fn has_picolibc_specs() -> bool {
 fn is_embedded_target(target: &str) -> bool {
     target.contains("zephyr")
         || target.contains("none")
+        || target.contains("nuttx")
         || target.contains("thumbv")
         || target.contains("riscv")
 }
@@ -1281,6 +1307,129 @@ fn build_zenoh_pico_freertos(
     shim.apply_to_cc(&mut build);
 
     // Embedded-optimized compiler flags
+    build
+        .opt_level(2)
+        .flag("-ffunction-sections")
+        .flag("-fdata-sections")
+        .warnings(false);
+
+    build.compile("zenohpico");
+}
+
+/// Build zenoh-pico for NuttX targets.
+///
+/// NuttX is POSIX-compliant, so we reuse the unix/ platform sources (system.c + network.c)
+/// with a ZENOH_NUTTX define for RNG adaptation. NuttX provides pthreads, BSD sockets,
+/// clock_gettime(), and /dev/urandom — all needed by the unix platform layer.
+///
+/// Only requires NUTTX_DIR (for NuttX system headers). No lwIP or FreeRTOS dirs needed.
+fn build_zenoh_pico_nuttx(
+    zenoh_pico_src: &Path,
+    c_dir: &Path,
+    include_dir: &Path,
+    out_dir: &Path,
+    target: &str,
+    link: &LinkFeatures,
+    shim: &ShimConfig,
+) {
+    // Read NuttX environment variable
+    let nuttx_dir = PathBuf::from(env::var("NUTTX_DIR").unwrap_or_else(|_| {
+        panic!(
+            "NUTTX_DIR not set. Point it at the NuttX OS source directory.\n\
+             Run `just setup-nuttx` to download, then set:\n\
+             export NUTTX_DIR=$PWD/external/nuttx"
+        );
+    }));
+
+    // Validate directory exists
+    if !nuttx_dir.join("include").exists() {
+        panic!(
+            "NUTTX_DIR={}: missing include/ directory. Is this a valid NuttX source?",
+            nuttx_dir.display()
+        );
+    }
+
+    let mut build = cc::Build::new();
+
+    // Generate version header in OUT_DIR
+    let version_include_dir = out_dir.join("zenoh-pico-version");
+    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
+
+    // ARM Cortex-A cross-compilation flags
+    if target.contains("armv7a") {
+        build.flag("-march=armv7-a");
+    }
+
+    // Collect zenoh-pico core sources (excluding platform-specific system backends)
+    let src_dir = zenoh_pico_src.join("src");
+    for subdir in &[
+        "api",
+        "collections",
+        "link",
+        "net",
+        "protocol",
+        "session",
+        "transport",
+        "utils",
+    ] {
+        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
+    }
+    // Common system sources (shared across all platforms)
+    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+
+    // Unix platform sources (NuttX is POSIX-compatible)
+    build.file(src_dir.join("system/unix/system.c"));
+    build.file(src_dir.join("system/unix/network.c"));
+
+    // Shim (high-level API wrapper)
+    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+
+    // Include paths (order matters — generated config takes precedence)
+    let generated_config_dir = out_dir.join("zenoh-config");
+    build.include(&generated_config_dir);
+    build.include(zenoh_pico_src.join("include"));
+    build.include(&version_include_dir);
+    build.include(include_dir);
+
+    // NuttX system headers (provides POSIX types: pthread, sockets, etc.)
+    build.include(nuttx_dir.join("include"));
+
+    // Platform defines
+    // ZENOH_GENERIC: tells zenoh-pico config.h to use our generated config header
+    // ZENOH_NUTTX: tells platform.h to use unix.h types, and system.c to use /dev/urandom
+    build.define("ZENOH_GENERIC", None);
+    build.define("ZENOH_NUTTX", None);
+    build.define("ZENOH_DEBUG", "0");
+
+    // NuttX has real POSIX threads
+    build.define("Z_FEATURE_MULTI_THREAD", "1");
+
+    // Link features (same as embedded — controlled by Cargo link-* features)
+    build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
+    build.define(
+        "Z_FEATURE_LINK_UDP_UNICAST",
+        if link.udp_unicast { "1" } else { "0" },
+    );
+    build.define(
+        "Z_FEATURE_LINK_UDP_MULTICAST",
+        if link.udp_multicast { "1" } else { "0" },
+    );
+    build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_WS", "0");
+    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
+    build.define(
+        "Z_FEATURE_RAWETH_TRANSPORT",
+        if link.raweth { "1" } else { "0" },
+    );
+    build.define("Z_FEATURE_SCOUTING_UDP", "0");
+    if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
+        build.define("Z_FEATURE_UNSTABLE_API", "1");
+    }
+
+    // Pass shim slot counts as -D flags
+    shim.apply_to_cc(&mut build);
+
+    // Compiler flags
     build
         .opt_level(2)
         .flag("-ffunction-sections")

@@ -8,7 +8,7 @@ links = "zenoh_shim"
 
 [lints.rust]
 # cbindgen sets cfg(cbindgen) when parsing - allow it without warnings
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "bare-metal", "freertos"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx"))'] }
 
 [lib]
 name = "zpico_sys"

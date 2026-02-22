@@ -24,7 +24,7 @@ nano-ros/
 │   ├── reference/      # qemu-smoltcp-bridge
 │   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
 ├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm, qemu-arm-freertos, qemu-esp32, esp32, stm32f4, zephyr)
-├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip
+├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps
 ├── scripts/            # zenohd build, Zephyr setup
 ├── docker/             # QEMU dev environment
 ├── tests/              # Shell-based test scripts
@@ -38,6 +38,7 @@ nano-ros/
 ```bash
 just setup              # Install toolchains, cargo tools, check system deps
 just setup-freertos     # Download FreeRTOS kernel + lwIP (optional, for platform-freertos)
+just setup-nuttx        # Download NuttX RTOS + apps (optional, for platform-nuttx)
 just build              # Generate bindings + build workspace + examples
 just build-zenohd       # Build zenohd 1.6.2 from submodule
 just check              # Format check + clippy
@@ -64,6 +65,7 @@ just test-all           # Everything
 
 First-time: `just setup`, then `sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat` for missing deps.
 For FreeRTOS development: `just setup-freertos` (downloads FreeRTOS kernel + lwIP to `external/`).
+For NuttX development: `just setup-nuttx` (downloads NuttX RTOS + apps to `external/`).
 
 ## Environment Variables
 
@@ -74,6 +76,9 @@ FreeRTOS build-time (only with `platform-freertos` feature):
 - `FREERTOS_PORT` — portable layer (e.g., `GCC/ARM_CM3`, `GCC/ARM_CM7/r0p1`)
 - `LWIP_DIR` — path to lwIP source (e.g., `external/lwip`)
 - `FREERTOS_CONFIG_DIR` — path to `FreeRTOSConfig.h` + `lwipopts.h`
+
+NuttX build-time (only with `platform-nuttx` feature):
+- `NUTTX_DIR` — path to NuttX RTOS source (e.g., `external/nuttx`)
 
 Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
 
@@ -168,7 +173,7 @@ See [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) for CMake int
 ### Platform Backends
 Three orthogonal axes (NEVER cross-imply):
 - **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
-- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`, `platform-freertos`
+- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`, `platform-freertos`, `platform-nuttx`
 - **ROS edition** (one): `ros-humble`, `ros-iron`
 
 Mutual exclusivity enforced at compile-time. Zero features on an axis is valid (reduced functionality).
@@ -200,7 +205,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 51 | Board crate `run()` API | In Progress |
 | 53 | UDP transport support | In Progress |
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1, 54.5 done) |
-| 55 | NuttX platform support | Not Started |
+| 55 | NuttX platform support | In Progress (55.1–55.5 done) |
 
 ## Quick Reference
 

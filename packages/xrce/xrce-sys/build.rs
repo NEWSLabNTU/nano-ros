@@ -19,23 +19,29 @@ fn main() {
     let bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
     let zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
     let freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
+    let nuttx = env::var("CARGO_FEATURE_NUTTX").is_ok();
 
-    let platform_count = [posix, bare_metal, zephyr, freertos]
+    let platform_count = [posix, bare_metal, zephyr, freertos, nuttx]
         .iter()
         .filter(|&&x| x)
         .count();
     if platform_count > 1 {
-        panic!("Features `posix`, `bare-metal`, `zephyr`, and `freertos` are mutually exclusive");
+        panic!(
+            "Features `posix`, `bare-metal`, `zephyr`, `freertos`, and `nuttx` are mutually exclusive"
+        );
     }
+
+    // NuttX is POSIX-compatible (has clock_gettime, BSD sockets, pthreads)
+    let posix_compat = posix || nuttx;
 
     // Read MTU from environment variable with platform-appropriate default.
     // Posix builds use 4096 for larger message support; embedded uses 512.
-    let default_mtu = if posix { 4096 } else { 512 };
+    let default_mtu = if posix_compat { 4096 } else { 512 };
     let mtu = env_usize("XRCE_TRANSPORT_MTU", default_mtu);
 
     // Generate config headers
     generate_ucdr_config(&out_dir);
-    generate_uxr_config(&out_dir, posix, mtu);
+    generate_uxr_config(&out_dir, posix_compat, mtu);
 
     // Compile C sources
     let mut build = cc::Build::new();
@@ -103,10 +109,10 @@ fn main() {
     build.file(uxr_src.join("profile/transport/stream_framing/stream_framing_protocol.c"));
 
     // Platform-conditional: time.c
-    // - POSIX: compile time.c (uses clock_gettime)
+    // - POSIX/NuttX: compile time.c (uses clock_gettime)
     // - Zephyr: skip time.c (uxr_millis/uxr_nanos provided by xrce_zephyr.c)
     // - Bare-metal: skip time.c (uxr_millis/uxr_nanos provided by platform crate)
-    if posix {
+    if posix_compat {
         build.file(uxr_src.join("util/time.c"));
     }
 
@@ -116,10 +122,11 @@ fn main() {
     build.compile("xrce_client");
 
     // Generate compile-time size check and Rust constants
-    generate_size_check(&out_dir, &manifest_dir, posix, mtu);
+    generate_size_check(&out_dir, &manifest_dir, posix_compat, mtu);
 
     // Re-run if config changes
     println!("cargo:rerun-if-changed=build.rs");
+    println!("cargo:rerun-if-env-changed=NUTTX_DIR");
 }
 
 fn generate_ucdr_config(out_dir: &Path) {
@@ -145,7 +152,7 @@ fn generate_ucdr_config(out_dir: &Path) {
     .unwrap();
 }
 
-fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
+fn generate_uxr_config(out_dir: &Path, posix_compat: bool, mtu: usize) {
     let freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
     let max_session_conn_attempts = env_usize("XRCE_MAX_SESSION_CONNECTION_ATTEMPTS", 10);
     let min_session_conn_interval = env_usize("XRCE_MIN_SESSION_CONNECTION_INTERVAL", 25);
@@ -153,7 +160,7 @@ fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
     let dir = out_dir.join("include/uxr/client");
     fs::create_dir_all(&dir).unwrap();
 
-    let platform_define = if posix {
+    let platform_define = if posix_compat {
         "#define UCLIENT_PLATFORM_POSIX"
     } else if freertos {
         "#define UCLIENT_PLATFORM_FREERTOS"
