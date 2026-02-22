@@ -198,7 +198,7 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `freertos` fea
 - [ ] 54.2 — zpico-sys build.rs FreeRTOS+lwIP compilation
 - [ ] 54.3 — xrce-sys build.rs FreeRTOS compilation
 - [ ] 54.4 — Platform header and shim adjustments
-- [ ] 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
+- [x] 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
 - [ ] 54.6 — LAN9118 lwIP netif driver
 - [ ] 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
 - [ ] 54.8 — QEMU board crate (nros-mps2-an385-freertos)
@@ -251,17 +251,17 @@ Review `zenoh_shim.c` for any `#ifdef ZENOH_ZEPHYR` or `#ifdef ZPICO_SMOLTCP` gu
 
 ### 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
 
-Add a `just setup-freertos` recipe that acquires FreeRTOS kernel and lwIP sources for QEMU testing. The recipe should:
+**Status**: Done
 
-1. Clone FreeRTOS kernel to `external/freertos-kernel/` (git submodule or shallow clone of `FreeRTOS/FreeRTOS-Kernel` at a pinned tag, e.g. `V11.1.0`)
-2. Clone lwIP to `external/lwip/` (git submodule or shallow clone of `lwip-tcpip/lwip` at a pinned tag, e.g. `STABLE-2_2_0_RELEASE`)
-3. Set/print the required environment variables (`FREERTOS_DIR`, `LWIP_DIR`, `FREERTOS_PORT=GCC/ARM_CM3`, `FREERTOS_CONFIG_DIR`)
+Added `just setup-freertos` recipe that:
+1. Shallow-clones FreeRTOS kernel (`V11.2.0`) to `external/freertos-kernel/`
+2. Shallow-clones lwIP (`STABLE-2_2_1_RELEASE`) to `external/lwip/`
+3. Prints environment variable configuration for all four required vars
+4. Idempotent — skips if already present, warns if tag mismatch
 
-Update `just setup` to mention `just setup-freertos` as an optional step for FreeRTOS development.
+Pinned versions are declared as justfile variables (`FREERTOS_KERNEL_TAG`, `LWIP_TAG`) for easy bumping. The `just setup` recipe mentions `just setup-freertos` as an optional step. Added `/external/` to `.gitignore`.
 
-The `external/` directory is already gitignored. Pin specific tags for reproducible builds.
-
-**Files**: `justfile`, `external/` directory
+**Files**: `justfile`, `.gitignore`
 
 ### 54.6 — LAN9118 lwIP netif driver
 
