@@ -1,6 +1,6 @@
 # nano-ros
 
-Lightweight ROS 2 client for embedded real-time systems (Zephyr, NuttX). `no_std` compatible.
+Lightweight ROS 2 client for embedded real-time systems (Zephyr, FreeRTOS, NuttX). `no_std` compatible.
 
 ### Naming Convention
 
@@ -16,14 +16,15 @@ nano-ros/
 │   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c
 │   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
 │   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
-│   ├── boards/         # Board support: nros-mps2-an385, nros-esp32, nros-esp32-qemu, nros-stm32f4
-│   ├── drivers/        # lan9118-smoltcp, openeth-smoltcp
+│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-esp32, nros-esp32-qemu, nros-stm32f4
+│   ├── drivers/        # lan9118-smoltcp, lan9118-lwip, openeth-smoltcp
 │   ├── interfaces/     # rcl-interfaces (generated/, checked into git)
 │   ├── testing/        # nros-tests (integration test crate)
 │   ├── verification/   # nros-ghost-types, nros-verification (Verus proofs, excluded from workspace)
 │   ├── reference/      # qemu-smoltcp-bridge
 │   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
-├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm, qemu-esp32, esp32, stm32f4, zephyr)
+├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm, qemu-arm-freertos, qemu-esp32, esp32, stm32f4, zephyr)
+├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip
 ├── scripts/            # zenohd build, Zephyr setup
 ├── docker/             # QEMU dev environment
 ├── tests/              # Shell-based test scripts
@@ -35,14 +36,15 @@ nano-ros/
 ## Build Commands
 
 ```bash
-just setup          # Install toolchains, cargo tools, check system deps
-just build          # Generate bindings + build workspace + examples
-just build-zenohd   # Build zenohd 1.6.2 from submodule
-just check          # Format check + clippy
-just quality        # Format + check + test
-just doc            # Generate docs
-just verify         # Kani + Verus verification
-just generate-bindings   # Regenerate all generated/ dirs
+just setup              # Install toolchains, cargo tools, check system deps
+just setup-freertos     # Download FreeRTOS kernel + lwIP (optional, for platform-freertos)
+just build              # Generate bindings + build workspace + examples
+just build-zenohd       # Build zenohd 1.6.2 from submodule
+just check              # Format check + clippy
+just quality            # Format + check + test
+just doc                # Generate docs
+just verify             # Kani + Verus verification
+just generate-bindings  # Regenerate all generated/ dirs
 ```
 
 Test groups:
@@ -56,16 +58,24 @@ just test-zephyr        # Zephyr E2E (needs west + TAP)
 just test-zephyr-xrce   # Zephyr E2E — XRCE (needs west + TAP + Agent)
 just test-ros2          # ROS 2 interop (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
+just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + TAP)
 just test-all           # Everything
 ```
 
 First-time: `just setup`, then `sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat` for missing deps.
+For FreeRTOS development: `just setup-freertos` (downloads FreeRTOS kernel + lwIP to `external/`).
 
 ## Environment Variables
 
 Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
-Build-time buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
+FreeRTOS build-time (only with `platform-freertos` feature):
+- `FREERTOS_DIR` — path to FreeRTOS kernel source (e.g., `external/freertos-kernel`)
+- `FREERTOS_PORT` — portable layer (e.g., `GCC/ARM_CM3`, `GCC/ARM_CM7/r0p1`)
+- `LWIP_DIR` — path to lwIP source (e.g., `external/lwip`)
+- `FREERTOS_CONFIG_DIR` — path to `FreeRTOSConfig.h` + `lwipopts.h`
+
+Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
 
 ## Development Practices
 
@@ -153,10 +163,12 @@ See [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) for CMake int
 
 **nros-c thin wrapper principle:** `nros-c` must be a thin FFI wrapper over `nros-node` — delegate to Rust types, don't reimplement logic. New C API features must first be implemented in `nros-node`, then wrapped.
 
+**cbindgen header generation:** C headers are auto-generated from Rust `#[repr(C)]` types by cbindgen v0.29 during `cargo build`. The generated `nros_generated.h` is included by thin per-module header stubs. All struct fields on `#[repr(C)]` types must be `pub` for cbindgen to include them. `visibility.h`, `platform.h`, and `types.h` (for `nros_service_type_t`) remain hand-written. Platform FFI imports in `platform.rs` use `/// cbindgen:ignore` to avoid conflicts with `static inline` definitions.
+
 ### Platform Backends
 Three orthogonal axes (NEVER cross-imply):
 - **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
-- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`
+- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`, `platform-freertos`
 - **ROS edition** (one): `ros-humble`, `ros-iron`
 
 Mutual exclusivity enforced at compile-time. Zero features on an axis is valid (reduced functionality).
@@ -184,9 +196,10 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 |-------|-------|--------|
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
+| 49 | nros-c thin wrapper migration | In Progress (49.1–49.13 complete) |
 | 51 | Board crate `run()` API | In Progress |
 | 53 | UDP transport support | In Progress |
-| 54 | FreeRTOS platform support (lwIP) | Not Started |
+| 54 | FreeRTOS platform support (lwIP) | In Progress (54.1, 54.5 done) |
 
 ## Quick Reference
 
@@ -197,7 +210,7 @@ See [docs/guides/quick-reference.md](docs/guides/quick-reference.md) for manual 
 ```
 docs/
 ├── guides/          # getting-started, creating-examples, message-generation, quick-reference,
-│                    # qemu-bare-metal, zephyr-setup, verus-verification, troubleshooting
+│                    # qemu-bare-metal, zephyr-setup, freertos-setup, verus-verification, troubleshooting
 ├── reference/       # environment-variables, c-api-cmake, rmw_zenoh_interop, api-comparison-rclrs
 ├── design/          # rmw-layer-design, ghost-model-validation
 └── roadmap/         # Active + archived phases
