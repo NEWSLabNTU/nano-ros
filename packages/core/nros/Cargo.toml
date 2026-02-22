@@ -49,6 +49,7 @@ platform-freertos = [
 
 # Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
 link-tcp = ["nros-rmw-zenoh?/link-tcp"]
+link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast"]
 
 # XRCE transport refinements (posix-only)
 xrce-udp = ["nros-rmw-xrce?/posix-udp", "nros-node/posix-udp"]

@@ -127,9 +127,10 @@ where
     // Step 7: Initialize transport bridge
     SmoltcpBridge::init();
 
-    // Create and register TCP sockets via transport crate
+    // Create and register TCP + UDP sockets via transport crate
     unsafe {
         zpico_smoltcp::create_and_register_sockets(&mut sockets);
+        zpico_smoltcp::create_and_register_udp_sockets(&mut sockets);
     }
 
     // Store global state for poll callback

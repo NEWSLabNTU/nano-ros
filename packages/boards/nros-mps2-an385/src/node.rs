@@ -92,9 +92,10 @@ fn init_network<D: EthernetDevice + 'static>(
     let ip_seed = u32::from_be_bytes(config.ip);
     random::seed(ip_seed);
 
-    // Create and register TCP sockets via transport crate
+    // Create and register TCP + UDP sockets via transport crate
     unsafe {
         zpico_smoltcp::create_and_register_sockets(sockets);
+        zpico_smoltcp::create_and_register_udp_sockets(sockets);
     }
 
     // Store global state for poll callback

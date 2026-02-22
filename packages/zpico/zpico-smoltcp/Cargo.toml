@@ -6,7 +6,7 @@ license = "MIT OR Apache-2.0"
 description = "smoltcp TCP link layer for nros (bare-metal systems)"
 
 [dependencies]
-zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp"] }
+zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp", "link-udp-unicast"] }
 smoltcp = { version = "0.12", default-features = false, features = [
-    "medium-ethernet", "proto-ipv4", "socket-tcp",
+    "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp",
 ] }

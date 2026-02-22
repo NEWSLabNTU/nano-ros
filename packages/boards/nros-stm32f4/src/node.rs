@@ -98,9 +98,10 @@ where
     let ip_seed = u32::from_be_bytes(config.ip);
     random::seed(ip_seed);
 
-    // Create and register TCP sockets via transport crate
+    // Create and register TCP + UDP sockets via transport crate
     unsafe {
         zpico_smoltcp::create_and_register_sockets(&mut sockets);
+        zpico_smoltcp::create_and_register_udp_sockets(&mut sockets);
     }
 
     // Store global state for poll callback (in zpico-platform-stm32f4)

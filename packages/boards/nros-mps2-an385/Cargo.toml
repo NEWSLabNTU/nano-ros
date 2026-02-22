@@ -24,6 +24,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet",
     "proto-ipv4",
     "socket-tcp",
+    "socket-udp",
 ] }
 
 # Semihosting for QEMU output

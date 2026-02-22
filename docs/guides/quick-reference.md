@@ -16,6 +16,21 @@ cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
 cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zenoh
 ```
 
+## UDP Transport
+
+On native/POSIX, zenoh-pico has built-in UDP support via OS sockets:
+
+```bash
+# Use UDP instead of TCP for the zenoh locator
+ZENOH_LOCATOR=udp/127.0.0.1:7447 cargo run --features zenoh
+```
+
+On bare-metal, enable the `link-udp-unicast` feature to use UDP over smoltcp:
+
+```toml
+nros = { features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "link-udp-unicast"] }
+```
+
 ## ROS 2 Interop
 
 ```bash

@@ -29,6 +29,7 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet",
     "proto-ipv4",
     "socket-tcp",
+    "socket-udp",
 ] }
 
 # Atomics for riscv32imc (no hardware atomic support)

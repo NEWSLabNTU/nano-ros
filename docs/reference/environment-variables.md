@@ -7,7 +7,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | Variable        | Description                                   | Default              |
 |-----------------|-----------------------------------------------|----------------------|
 | `ROS_DOMAIN_ID` | ROS 2 domain ID                               | `0`                  |
-| `ZENOH_LOCATOR` | Router address (e.g., `tcp/192.168.1.1:7447`) | `tcp/127.0.0.1:7447` |
+| `ZENOH_LOCATOR` | Router address (`tcp/…` or `udp/…`)           | `tcp/127.0.0.1:7447` |
 | `ZENOH_MODE`    | Session mode: `client` or `peer`              | `client`             |
 
 ## Build-Time Configuration
@@ -38,6 +38,7 @@ All optional — platform-appropriate defaults apply if unset.
 | `ZPICO_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
 | `ZPICO_GET_POLL_INTERVAL_MS`       | Single-threaded polling interval in `zenoh_shim_get()` | `10`             | zpico-sys      |
 | `ZPICO_SMOLTCP_MAX_SOCKETS`        | Max concurrent TCP sockets (smoltcp)                   | `4`              | zpico-smoltcp  |
+| `ZPICO_SMOLTCP_MAX_UDP_SOCKETS`    | Max concurrent UDP sockets (smoltcp)                   | `2`              | zpico-smoltcp  |
 | `ZPICO_SMOLTCP_BUFFER_SIZE`        | Per-socket staging buffer (smoltcp)                    | `2048`           | zpico-smoltcp  |
 | `ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS` | TCP connection timeout (smoltcp)                       | `30000`          | zpico-smoltcp  |
 | `ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS`  | TCP read/write timeout (smoltcp)                       | `10000`          | zpico-smoltcp  |

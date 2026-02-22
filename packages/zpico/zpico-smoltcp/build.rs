@@ -10,6 +10,7 @@ fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
     let max_sockets = env_usize("ZPICO_SMOLTCP_MAX_SOCKETS", 4);
+    let max_udp_sockets = env_usize("ZPICO_SMOLTCP_MAX_UDP_SOCKETS", 2);
     let buffer_size = env_usize("ZPICO_SMOLTCP_BUFFER_SIZE", 2048);
     let connect_timeout_ms = env_usize("ZPICO_SMOLTCP_CONNECT_TIMEOUT_MS", 30_000);
     let socket_timeout_ms = env_usize("ZPICO_SMOLTCP_SOCKET_TIMEOUT_MS", 10_000);
@@ -22,10 +23,22 @@ fn main() {
         );
     }
 
+    if max_udp_sockets > 2 {
+        panic!(
+            "ZPICO_SMOLTCP_MAX_UDP_SOCKETS={max_udp_sockets} exceeds 2. \
+             Increasing beyond 2 requires adding static UDP buffer \
+             declarations in zpico-smoltcp/src/lib.rs."
+        );
+    }
+
     let contents = format!(
-        "/// Maximum number of concurrent sockets \
+        "/// Maximum number of concurrent TCP sockets \
          (set via ZPICO_SMOLTCP_MAX_SOCKETS, default 4).\n\
          pub const MAX_SOCKETS: usize = {max_sockets};\n\
+         \n\
+         /// Maximum number of concurrent UDP sockets \
+         (set via ZPICO_SMOLTCP_MAX_UDP_SOCKETS, default 2).\n\
+         pub const MAX_UDP_SOCKETS: usize = {max_udp_sockets};\n\
          \n\
          /// Per-socket staging buffer size in bytes \
          (set via ZPICO_SMOLTCP_BUFFER_SIZE, default 2048).\n\

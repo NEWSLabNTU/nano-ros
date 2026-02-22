@@ -9,13 +9,14 @@
 use smoltcp::iface::{Interface, PollResult, SocketHandle, SocketSet};
 use smoltcp::phy::Device;
 use smoltcp::socket::tcp::{Socket as TcpSocket, State as TcpState};
+use smoltcp::socket::udp::{Socket as UdpSocket, UdpMetadata};
 use smoltcp::wire::{IpAddress, IpEndpoint, Ipv4Address};
 
 // ============================================================================
 // Configuration
 // ============================================================================
 
-pub use crate::config::{MAX_SOCKETS, SOCKET_BUFFER_SIZE};
+pub use crate::config::{MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE};
 pub(crate) use crate::config::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
 
 /// RFC 6056 ephemeral port range lower bound.
@@ -102,6 +103,85 @@ static mut SOCKET_TX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS] =
     [[0u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS];
 
 // ============================================================================
+// UDP Socket State
+// ============================================================================
+
+/// State for a single UDP socket in the bridge table
+#[derive(Clone, Copy)]
+struct UdpSocketEntry {
+    /// Socket is allocated to zenoh-pico
+    allocated: bool,
+    /// smoltcp socket handle (raw index, converted to SocketHandle when used).
+    /// `usize::MAX` means no handle assigned.
+    handle_raw: usize,
+    /// Remote IPv4 address (for sendto)
+    remote_ip: [u8; 4],
+    /// Remote port (for sendto)
+    remote_port: u16,
+    /// Local port (bound port)
+    local_port: u16,
+    /// RX staging buffer position and length
+    rx_pos: usize,
+    rx_len: usize,
+    /// TX staging buffer position and length
+    tx_pos: usize,
+    tx_len: usize,
+    /// TX target endpoint (per-packet, set by send)
+    tx_remote_ip: [u8; 4],
+    tx_remote_port: u16,
+}
+
+impl UdpSocketEntry {
+    fn has_handle(&self) -> bool {
+        self.handle_raw != usize::MAX
+    }
+
+    fn handle(&self) -> SocketHandle {
+        debug_assert!(self.has_handle());
+        unsafe { core::mem::transmute(self.handle_raw) }
+    }
+}
+
+impl Default for UdpSocketEntry {
+    fn default() -> Self {
+        Self {
+            allocated: false,
+            handle_raw: usize::MAX,
+            remote_ip: [0; 4],
+            remote_port: 0,
+            local_port: 0,
+            rx_pos: 0,
+            rx_len: 0,
+            tx_pos: 0,
+            tx_len: 0,
+            tx_remote_ip: [0; 4],
+            tx_remote_port: 0,
+        }
+    }
+}
+
+/// Global UDP socket table
+static mut UDP_SOCKET_TABLE: [UdpSocketEntry; MAX_UDP_SOCKETS] = [UdpSocketEntry {
+    allocated: false,
+    handle_raw: usize::MAX,
+    remote_ip: [0; 4],
+    remote_port: 0,
+    local_port: 0,
+    rx_pos: 0,
+    rx_len: 0,
+    tx_pos: 0,
+    tx_len: 0,
+    tx_remote_ip: [0; 4],
+    tx_remote_port: 0,
+}; MAX_UDP_SOCKETS];
+
+/// UDP socket RX/TX staging buffers
+static mut UDP_SOCKET_RX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS] =
+    [[0u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS];
+static mut UDP_SOCKET_TX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS] =
+    [[0u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS];
+
+// ============================================================================
 // Bridge State
 // ============================================================================
 
@@ -165,11 +245,15 @@ impl SmoltcpBridge {
             for i in 0..MAX_SOCKETS {
                 (*table)[i] = SocketEntry::default();
             }
+            let udp_table = &raw mut UDP_SOCKET_TABLE;
+            for i in 0..MAX_UDP_SOCKETS {
+                (*udp_table)[i] = UdpSocketEntry::default();
+            }
             BRIDGE_STATE.initialized = true;
         }
     }
 
-    /// Register a pre-created smoltcp socket handle with the bridge.
+    /// Register a pre-created smoltcp TCP socket handle with the bridge.
     ///
     /// Returns the bridge slot index, or -1 if no slots available.
     pub fn register_socket(handle: usize) -> i32 {
@@ -181,6 +265,33 @@ impl SmoltcpBridge {
                     entry.allocated = false;
                     entry.handle_raw = handle;
                     entry.connected = false;
+                    entry.local_port = NEXT_EPHEMERAL_PORT;
+                    NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
+                    if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
+                        NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START;
+                    }
+                    entry.rx_pos = 0;
+                    entry.rx_len = 0;
+                    entry.tx_pos = 0;
+                    entry.tx_len = 0;
+                    return i as i32;
+                }
+            }
+            -1
+        }
+    }
+
+    /// Register a pre-created smoltcp UDP socket handle with the bridge.
+    ///
+    /// Returns the bridge slot index, or -1 if no slots available.
+    pub fn register_udp_socket(handle: usize) -> i32 {
+        unsafe {
+            let table = &raw mut UDP_SOCKET_TABLE;
+            for i in 0..MAX_UDP_SOCKETS {
+                let entry = &mut (*table)[i];
+                if !entry.has_handle() {
+                    entry.allocated = false;
+                    entry.handle_raw = handle;
                     entry.local_port = NEXT_EPHEMERAL_PORT;
                     NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
                     if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
@@ -212,7 +323,7 @@ impl SmoltcpBridge {
         // Poll the interface
         let activity = iface.poll(timestamp, device, sockets);
 
-        // Process each active socket
+        // Process each active TCP socket
         unsafe {
             let table = &raw mut SOCKET_TABLE;
             for idx in 0..MAX_SOCKETS {
@@ -297,6 +408,71 @@ impl SmoltcpBridge {
                             entry.connected = false;
                         }
                         _ => {}
+                    }
+                }
+            }
+        }
+
+        // Process each active UDP socket
+        unsafe {
+            let table = &raw mut UDP_SOCKET_TABLE;
+            for idx in 0..MAX_UDP_SOCKETS {
+                let entry = &mut (*table)[idx];
+                if !entry.allocated || !entry.has_handle() {
+                    continue;
+                }
+
+                let handle = entry.handle();
+                let socket = sockets.get_mut::<UdpSocket>(handle);
+
+                // Auto-bind to ephemeral port if not yet bound
+                if !socket.is_open() {
+                    let _ = socket.bind(entry.local_port);
+                }
+
+                // Transfer TX data to socket
+                if entry.tx_len > entry.tx_pos && socket.can_send() {
+                    let tx_buf = &UDP_SOCKET_TX_BUFFERS[idx];
+                    let data = &tx_buf[entry.tx_pos..entry.tx_len];
+                    let meta = UdpMetadata {
+                        endpoint: IpEndpoint::new(
+                            IpAddress::Ipv4(Ipv4Address::new(
+                                entry.tx_remote_ip[0],
+                                entry.tx_remote_ip[1],
+                                entry.tx_remote_ip[2],
+                                entry.tx_remote_ip[3],
+                            )),
+                            entry.tx_remote_port,
+                        ),
+                        local_address: None,
+                        meta: Default::default(),
+                    };
+                    if socket.send_slice(data, meta).is_ok() {
+                        entry.tx_pos = 0;
+                        entry.tx_len = 0;
+                    }
+                }
+
+                // Transfer RX data from socket
+                if socket.can_recv() {
+                    // Compact RX buffer if needed
+                    if entry.rx_pos > 0 {
+                        let remaining = entry.rx_len - entry.rx_pos;
+                        let rx_buf = &mut UDP_SOCKET_RX_BUFFERS[idx];
+                        rx_buf.copy_within(entry.rx_pos..entry.rx_len, 0);
+                        entry.rx_len = remaining;
+                        entry.rx_pos = 0;
+                    }
+
+                    // Read more data if space available
+                    let available = SOCKET_BUFFER_SIZE - entry.rx_len;
+                    if available > 0 {
+                        let rx_buf = &mut UDP_SOCKET_RX_BUFFERS[idx];
+                        if let Ok((received, _meta)) =
+                            socket.recv_slice(&mut rx_buf[entry.rx_len..])
+                        {
+                            entry.rx_len += received;
+                        }
                     }
                 }
             }
@@ -455,6 +631,163 @@ impl SmoltcpBridge {
             let tx_buf = &mut SOCKET_TX_BUFFERS[handle as usize];
             tx_buf[entry.tx_len..entry.tx_len + to_copy].copy_from_slice(&data[..to_copy]);
             entry.tx_len += to_copy;
+
+            to_copy as i32
+        }
+    }
+
+    // ========================================================================
+    // Internal UDP socket operations (called from udp.rs)
+    // ========================================================================
+
+    /// Allocate a UDP socket from the table. Returns slot index or -1.
+    pub(crate) fn udp_socket_open() -> i32 {
+        unsafe {
+            let table = &raw mut UDP_SOCKET_TABLE;
+            for i in 0..MAX_UDP_SOCKETS {
+                let entry = &mut (*table)[i];
+                if !entry.allocated && entry.has_handle() {
+                    entry.allocated = true;
+                    entry.remote_ip = [0; 4];
+                    entry.remote_port = 0;
+                    entry.rx_pos = 0;
+                    entry.rx_len = 0;
+                    entry.tx_pos = 0;
+                    entry.tx_len = 0;
+                    entry.tx_remote_ip = [0; 4];
+                    entry.tx_remote_port = 0;
+                    return i as i32;
+                }
+            }
+            -1
+        }
+    }
+
+    /// Set the remote endpoint for a UDP socket. Returns 0 on success, -1 on error.
+    pub(crate) fn udp_socket_set_remote(handle: i32, ip: &[u8; 4], port: u16) -> i32 {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 {
+            return -1;
+        }
+
+        unsafe {
+            let entry = &mut UDP_SOCKET_TABLE[handle as usize];
+            if !entry.allocated {
+                return -1;
+            }
+
+            entry.remote_ip = *ip;
+            entry.remote_port = port;
+            0
+        }
+    }
+
+    /// Get the local port for a UDP socket.
+    #[allow(dead_code)]
+    pub(crate) fn udp_socket_local_port(handle: i32) -> u16 {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 {
+            return 0;
+        }
+
+        unsafe { UDP_SOCKET_TABLE[handle as usize].local_port }
+    }
+
+    /// Close a UDP socket. Returns 0 on success, -1 on error.
+    pub(crate) fn udp_socket_close(handle: i32) -> i32 {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 {
+            return -1;
+        }
+
+        unsafe {
+            let entry = &mut UDP_SOCKET_TABLE[handle as usize];
+            entry.allocated = false;
+            entry.remote_ip = [0; 4];
+            entry.remote_port = 0;
+            entry.tx_remote_ip = [0; 4];
+            entry.tx_remote_port = 0;
+            0
+        }
+    }
+
+    /// Check if UDP socket has data available to receive.
+    pub(crate) fn udp_socket_can_recv(handle: i32) -> bool {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 {
+            return false;
+        }
+
+        unsafe {
+            let entry = &UDP_SOCKET_TABLE[handle as usize];
+            entry.allocated && entry.rx_len > entry.rx_pos
+        }
+    }
+
+    /// Check if UDP socket can accept data for sending.
+    pub(crate) fn udp_socket_can_send(handle: i32) -> bool {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 {
+            return false;
+        }
+
+        unsafe {
+            let entry = &UDP_SOCKET_TABLE[handle as usize];
+            entry.allocated && entry.tx_len < SOCKET_BUFFER_SIZE
+        }
+    }
+
+    /// Receive data from the UDP socket's staging buffer.
+    /// Returns bytes copied, 0 if no data, or -1 on error.
+    pub(crate) fn udp_socket_recv(handle: i32, buf: &mut [u8]) -> i32 {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 || buf.is_empty() {
+            return -1;
+        }
+
+        unsafe {
+            let entry = &mut UDP_SOCKET_TABLE[handle as usize];
+            if !entry.allocated {
+                return -1;
+            }
+
+            let available = entry.rx_len.saturating_sub(entry.rx_pos);
+            if available == 0 {
+                return 0;
+            }
+
+            let to_copy = available.min(buf.len());
+            let rx_buf = &UDP_SOCKET_RX_BUFFERS[handle as usize];
+            buf[..to_copy].copy_from_slice(&rx_buf[entry.rx_pos..entry.rx_pos + to_copy]);
+            entry.rx_pos += to_copy;
+
+            if entry.rx_pos >= entry.rx_len {
+                entry.rx_pos = 0;
+                entry.rx_len = 0;
+            }
+
+            to_copy as i32
+        }
+    }
+
+    /// Send data into the UDP socket's TX staging buffer with a per-packet endpoint.
+    /// Returns bytes copied, 0 if buffer full, or -1 on error.
+    pub(crate) fn udp_socket_send(handle: i32, data: &[u8], ip: &[u8; 4], port: u16) -> i32 {
+        if handle < 0 || handle >= MAX_UDP_SOCKETS as i32 || data.is_empty() {
+            return -1;
+        }
+
+        unsafe {
+            let entry = &mut UDP_SOCKET_TABLE[handle as usize];
+            if !entry.allocated {
+                return -1;
+            }
+
+            let available = SOCKET_BUFFER_SIZE.saturating_sub(entry.tx_len);
+            if available == 0 {
+                return 0;
+            }
+
+            let to_copy = available.min(data.len());
+            let tx_buf = &mut UDP_SOCKET_TX_BUFFERS[handle as usize];
+            tx_buf[entry.tx_len..entry.tx_len + to_copy].copy_from_slice(&data[..to_copy]);
+            entry.tx_len += to_copy;
+            entry.tx_remote_ip = *ip;
+            entry.tx_remote_port = port;
 
             to_copy as i32
         }
