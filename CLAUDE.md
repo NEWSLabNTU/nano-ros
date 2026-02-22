@@ -108,6 +108,16 @@ Build-time buffer tuning: see [docs/reference/environment-variables.md](docs/ref
 ### Parallel Build Isolation
 Nextest runs test files in parallel. When multiple tests build the same example with different features, use `--target-dir` to isolate output directories (e.g., `target-safety/`, `target-zero-copy/`). See `fixtures/binaries.rs` for examples.
 
+### Roadmap Documents (`docs/roadmap/`)
+Phase docs follow a standard structure:
+- **Header**: Goal, Status, Priority, Depends on
+- **Overview**: Background and motivation
+- **Architecture/Design**: Diagrams, key decisions
+- **Work Items**: Checklist (`- [ ] 54.1 — Title`) at top, then `### 54.1 — Title` subsections with details and `**Files**` list
+- **Acceptance Criteria**: Checklist (`- [ ]` items) — testable conditions for phase completion
+- **Notes**: Caveats, gotchas, implementation details
+- Mark items `- [x]` when complete. Completed phases move to `docs/roadmap/archived/`.
+
 ## Key Design Patterns
 
 ### Zenoh Version Unification
