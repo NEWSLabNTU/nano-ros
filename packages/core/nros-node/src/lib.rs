@@ -94,7 +94,7 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator};
 #[cfg(not(feature = "rmw-zenoh"))]
 pub use node::{PublisherOptions, SubscriberOptions};
 
-// Re-export session mode (used by EmbeddedConfig)
+// Re-export session mode (used by ExecutorConfig)
 pub use nros_rmw::SessionMode;
 
 // Re-export timer types
@@ -107,26 +107,12 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
 // Re-export generic embedded node types (always available, no feature gate)
 pub use executor::{
-    ActionClientHandle, ActionServerHandle, EmbeddedActionClient, EmbeddedActionServer,
-    EmbeddedActiveGoal, EmbeddedCompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, Executor, ExecutorConfig, ExecutorSemantics, GuardConditionHandle,
-    HandleId, HandleSet, InvocationMode, Node, NodeError, Promise, RawServiceCallback,
-    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
+    ActionClient, ActionServer, ActionServerHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher,
+    EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorConfig, ExecutorSemantics,
+    GuardConditionHandle, HandleId, HandleSet, InvocationMode, Node, NodeError, Promise,
+    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
     SpinPeriodPollingResult, Subscription, Trigger,
 };
 
 #[cfg(feature = "std")]
 pub use executor::SpinPeriodResult;
-
-// Backward compatibility type aliases (Phase 43.13)
-/// Alias for [`Executor`].
-pub type EmbeddedExecutor<S, const MAX_CBS: usize, const CB_ARENA: usize> =
-    Executor<S, MAX_CBS, CB_ARENA>;
-/// Alias for [`Node`].
-pub type EmbeddedNode<'a, S> = Node<'a, S>;
-/// Alias for [`NodeError`].
-pub type EmbeddedNodeError = NodeError;
-/// Alias for [`ExecutorConfig`].
-pub type EmbeddedConfig<'a> = ExecutorConfig<'a>;
-/// Alias for [`Subscription`].
-pub type EmbeddedSubscription<M, Sub, const RX_BUF: usize> = Subscription<M, Sub, RX_BUF>;

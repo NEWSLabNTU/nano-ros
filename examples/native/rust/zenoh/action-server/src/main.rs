@@ -48,7 +48,7 @@ fn main() {
     // Main loop - handle incoming goals
     loop {
         // Try to accept new goals
-        match server.try_accept_goal(|goal: &FibonacciGoal| {
+        match server.try_accept_goal(|_goal_id, goal: &FibonacciGoal| {
             info!("Received goal request: order={}", goal.order);
             GoalResponse::AcceptAndExecute
         }) {

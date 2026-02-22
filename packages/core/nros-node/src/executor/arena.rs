@@ -6,7 +6,7 @@ use nros_core::MessageInfo;
 use nros_core::{CdrReader, RosAction, RosMessage, RosService};
 use nros_rmw::{Publisher, ServiceServerTrait, Subscriber, TransportError};
 
-use super::handles::{EmbeddedActionClient, EmbeddedActionServer};
+use super::handles::{ActionServer, ActiveGoal};
 use super::types::{InvocationMode, NodeError, RawServiceCallback, RawSubscriptionCallback};
 
 // ============================================================================
@@ -20,7 +20,6 @@ pub(crate) enum EntryKind {
     Service,
     Timer,
     ActionServer,
-    ActionClient,
     GuardCondition,
 }
 
@@ -138,25 +137,9 @@ pub(crate) struct ActionServerArenaEntry<
     const FEEDBACK_BUF: usize,
     const MAX_GOALS: usize,
 > {
-    pub(crate) server:
-        EmbeddedActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+    pub(crate) server: ActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
     pub(crate) goal_callback: GoalF,
     pub(crate) cancel_callback: CancelF,
-}
-
-/// Concrete action client entry stored in the arena.
-#[repr(C)]
-pub(crate) struct ActionClientArenaEntry<
-    A: RosAction,
-    Cli,
-    Sub,
-    FeedbackF,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
-> {
-    pub(crate) client: EmbeddedActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
-    pub(crate) feedback_callback: FeedbackF,
 }
 
 /// Concrete subscription entry for raw (untyped) callbacks.
@@ -414,7 +397,7 @@ where
     A::Result: Clone + Default,
     Srv: ServiceServerTrait,
     Pub: Publisher,
-    GoalF: FnMut(&A::Goal) -> nros_core::GoalResponse,
+    GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
     CancelF: FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse,
 {
     let entry = unsafe {
@@ -447,7 +430,10 @@ where
     }
 
     // Handle new goals
-    if matches!(server.try_accept_goal(|g| (goal_callback)(g)), Ok(Some(_))) {
+    if matches!(
+        server.try_accept_goal(|id, g| (goal_callback)(id, g)),
+        Ok(Some(_))
+    ) {
         did_work = true;
     }
 
@@ -457,56 +443,6 @@ where
     }
 
     Ok(did_work)
-}
-
-/// Monomorphized action client dispatch function.
-///
-/// Polls feedback from the action server.
-///
-/// # Safety
-/// `ptr` must point to a valid, aligned `ActionClientArenaEntry<...>`.
-pub(crate) unsafe fn action_client_try_process<
-    A,
-    Cli,
-    Sub,
-    FeedbackF,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
->(
-    ptr: *mut u8,
-    _delta_ms: u64,
-) -> Result<bool, TransportError>
-where
-    A: RosAction,
-    Cli: ServiceClientTrait,
-    Sub: Subscriber,
-    FeedbackF: FnMut(&nros_core::GoalId, &A::Feedback),
-{
-    let entry = unsafe {
-        &mut *(ptr as *mut ActionClientArenaEntry<
-            A,
-            Cli,
-            Sub,
-            FeedbackF,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-        >)
-    };
-    let ActionClientArenaEntry {
-        client,
-        feedback_callback,
-    } = entry;
-
-    match client.try_recv_feedback() {
-        Ok(Some((goal_id, feedback))) => {
-            (feedback_callback)(&goal_id, &feedback);
-            Ok(true)
-        }
-        Ok(None) => Ok(false),
-        Err(_) => Err(TransportError::DeserializationError),
-    }
 }
 
 /// Monomorphized raw subscription dispatch function.
@@ -872,82 +808,62 @@ pub(crate) unsafe fn as_set_goal_status<
     entry.server.set_goal_status(goal_id, status);
 }
 
-/// Action client: send goal via arena entry.
+/// Action server: get active goal count via arena entry.
 ///
 /// # Safety
-/// `ptr` must point to a valid `ActionClientArenaEntry`.
-pub(crate) unsafe fn ac_send_goal<
+/// `ptr` must point to a valid `ActionServerArenaEntry`.
+pub(crate) unsafe fn as_active_goal_count<
     A,
-    Cli,
-    Sub,
-    FeedbackF,
+    Srv,
+    Pub,
+    GoalF,
+    CancelF,
     const GB: usize,
     const RB: usize,
     const FB: usize,
+    const MG: usize,
 >(
-    ptr: *mut u8,
-    goal: &A::Goal,
-) -> Result<nros_core::GoalId, NodeError>
+    ptr: *const u8,
+) -> usize
 where
     A: RosAction,
-    Cli: ServiceClientTrait,
-    Sub: Subscriber,
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
 {
-    let entry =
-        unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
-    entry.client.send_goal_blocking(goal)
+    let entry = unsafe {
+        &*(ptr as *const ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
+    };
+    entry.server.active_goal_count()
 }
 
-/// Action client: cancel goal via arena entry.
+/// Action server: iterate active goals via arena entry.
+///
+/// Calls `f` for each active goal.
 ///
 /// # Safety
-/// `ptr` must point to a valid `ActionClientArenaEntry`.
-pub(crate) unsafe fn ac_cancel_goal<
+/// `ptr` must point to a valid `ActionServerArenaEntry`.
+pub(crate) unsafe fn as_for_each_active_goal<
     A,
-    Cli,
-    Sub,
-    FeedbackF,
+    Srv,
+    Pub,
+    GoalF,
+    CancelF,
     const GB: usize,
     const RB: usize,
     const FB: usize,
+    const MG: usize,
 >(
-    ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
-) -> Result<nros_core::CancelResponse, NodeError>
-where
+    ptr: *const u8,
+    f: &mut dyn FnMut(&ActiveGoal<A>),
+) where
     A: RosAction,
-    Cli: ServiceClientTrait,
-    Sub: Subscriber,
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
 {
-    let entry =
-        unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
-    entry.client.cancel_goal_blocking(goal_id)
+    let entry = unsafe {
+        &*(ptr as *const ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
+    };
+    for goal in entry.server.active_goals() {
+        f(goal);
+    }
 }
-
-/// Action client: get result via arena entry.
-///
-/// # Safety
-/// `ptr` must point to a valid `ActionClientArenaEntry`.
-pub(crate) unsafe fn ac_get_result<
-    A,
-    Cli,
-    Sub,
-    FeedbackF,
-    const GB: usize,
-    const RB: usize,
-    const FB: usize,
->(
-    ptr: *mut u8,
-    goal_id: &nros_core::GoalId,
-) -> Result<(nros_core::GoalStatus, A::Result), NodeError>
-where
-    A: RosAction,
-    Cli: ServiceClientTrait,
-    Sub: Subscriber,
-{
-    let entry =
-        unsafe { &mut *(ptr as *mut ActionClientArenaEntry<A, Cli, Sub, FeedbackF, GB, RB, FB>) };
-    entry.client.get_result_blocking(goal_id)
-}
-
-use nros_rmw::ServiceClientTrait;

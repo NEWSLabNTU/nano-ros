@@ -53,7 +53,7 @@ fn run() -> Result<(), NodeError> {
         let _ = action_server.try_handle_get_result();
 
         // Try to accept a new goal
-        let accepted = action_server.try_accept_goal(|goal| {
+        let accepted = action_server.try_accept_goal(|_goal_id, goal| {
             info!("Goal request: order={}", goal.order);
             if goal.order >= 0 {
                 GoalResponse::AcceptAndExecute

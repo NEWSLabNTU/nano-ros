@@ -292,26 +292,20 @@ pub mod internals {
 
 // Re-export embedded node types (always available, no feature gate)
 pub use nros_node::{
-    EmbeddedActionClient, EmbeddedActionServer, EmbeddedActiveGoal, EmbeddedCompletedGoal,
-    EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorConfig,
-    Node, NodeError, Promise, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Subscription,
+    ActionClient, ActionServer, ActiveGoal, CompletedGoal, EmbeddedPublisher,
+    EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorConfig, Node, NodeError,
+    Promise, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Subscription,
 };
 
 #[cfg(feature = "std")]
 pub use nros_node::SpinPeriodResult;
-
-// Backward compatibility type aliases (Phase 43.13)
-pub use nros_node::{
-    EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedSubscription,
-};
 
 // Re-export service types
 pub use nros_core::{ServiceClient, ServiceServer};
 
 // Re-export action types
 pub use nros_core::{
-    ActionClient, ActionServer, CancelResponse, GoalId, GoalInfo, GoalResponse, GoalStatus,
-    GoalStatusStamped, RosAction,
+    CancelResponse, GoalId, GoalInfo, GoalResponse, GoalStatus, GoalStatusStamped, RosAction,
 };
 
 // Re-export lifecycle types (always available, no_std compatible)
@@ -348,11 +342,6 @@ pub mod prelude {
         EmbeddedPublisher, Executor, ExecutorConfig, Node, NodeError, SessionMode, SpinOnceResult,
         SpinOptions, SpinPeriodPollingResult, Subscription,
     };
-    // Backward compat aliases
-    pub use crate::{
-        EmbeddedConfig, EmbeddedExecutor, EmbeddedNode, EmbeddedNodeError, EmbeddedSubscription,
-    };
-
     // Standalone node options (no-transport simulation mode)
     #[cfg(not(feature = "rmw-zenoh"))]
     pub use crate::{PublisherOptions, SubscriberOptions};

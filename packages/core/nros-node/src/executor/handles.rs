@@ -258,6 +258,37 @@ impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
     }
 }
 
+impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
+    /// Block until the reply arrives, spinning the executor.
+    ///
+    /// Internally calls `executor.spin_once()` in a loop until the reply
+    /// arrives or `timeout_ms` is exhausted. This is equivalent to the
+    /// manual spin+poll loop pattern but more ergonomic for simple use cases.
+    ///
+    /// No borrow conflict: `executor` and `self` (which borrows the standalone
+    /// client) are disjoint objects.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`NodeError::Timeout`] if the reply does not arrive within
+    /// `timeout_ms` milliseconds.
+    pub fn wait<S: nros_rmw::Session, const M: usize, const C: usize>(
+        &mut self,
+        executor: &mut super::Executor<S, M, C>,
+        timeout_ms: u64,
+    ) -> Result<T, NodeError> {
+        let spin_interval_ms = 10u64;
+        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        for _ in 0..max_spins {
+            executor.spin_once(spin_interval_ms as i32);
+            if let Some(result) = self.try_recv()? {
+                return Ok(result);
+            }
+        }
+        Err(NodeError::Timeout)
+    }
+}
+
 impl<T, Cli: ServiceClientTrait> core::future::Future for Promise<'_, T, Cli> {
     type Output = Result<T, NodeError>;
 
@@ -290,7 +321,7 @@ fn cdr_deserialize_reply<Svc: RosService>(data: &[u8]) -> Result<Svc::Reply, Nod
 
 /// Active goal tracking for action server.
 #[derive(Clone)]
-pub struct EmbeddedActiveGoal<A: RosAction> {
+pub struct ActiveGoal<A: RosAction> {
     /// Goal ID.
     pub goal_id: nros_core::GoalId,
     /// Current status.
@@ -300,7 +331,7 @@ pub struct EmbeddedActiveGoal<A: RosAction> {
 }
 
 /// Completed goal with result.
-pub struct EmbeddedCompletedGoal<A: RosAction> {
+pub struct CompletedGoal<A: RosAction> {
     /// Goal ID.
     pub goal_id: nros_core::GoalId,
     /// Final status.
@@ -310,11 +341,11 @@ pub struct EmbeddedCompletedGoal<A: RosAction> {
 }
 
 // ============================================================================
-// EmbeddedActionServer
+// ActionServer
 // ============================================================================
 
 /// Typed action server with goal state management.
-pub struct EmbeddedActionServer<
+pub struct ActionServer<
     A: RosAction,
     Srv,
     Pub,
@@ -327,9 +358,9 @@ pub struct EmbeddedActionServer<
     pub(crate) cancel_goal_server: Srv,
     pub(crate) get_result_server: Srv,
     pub(crate) feedback_publisher: Pub,
-    pub(crate) _status_publisher: Pub,
-    pub(crate) active_goals: heapless::Vec<EmbeddedActiveGoal<A>, MAX_GOALS>,
-    pub(crate) completed_goals: heapless::Vec<EmbeddedCompletedGoal<A>, MAX_GOALS>,
+    pub(crate) status_publisher: Pub,
+    pub(crate) active_goals: heapless::Vec<ActiveGoal<A>, MAX_GOALS>,
+    pub(crate) completed_goals: heapless::Vec<CompletedGoal<A>, MAX_GOALS>,
     pub(crate) goal_buffer: [u8; GOAL_BUF],
     pub(crate) result_buffer: [u8; RESULT_BUF],
     pub(crate) feedback_buffer: [u8; FEEDBACK_BUF],
@@ -344,7 +375,7 @@ impl<
     const RESULT_BUF: usize,
     const FEEDBACK_BUF: usize,
     const MAX_GOALS: usize,
-> EmbeddedActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
+> ActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
 {
     /// Try to accept a new goal.
     ///
@@ -352,7 +383,7 @@ impl<
     /// handler to decide acceptance. Returns the goal ID if accepted.
     pub fn try_accept_goal(
         &mut self,
-        goal_handler: impl FnOnce(&A::Goal) -> nros_core::GoalResponse,
+        goal_handler: impl FnOnce(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
     ) -> Result<Option<nros_core::GoalId>, NodeError>
     where
         A::Goal: Clone,
@@ -392,7 +423,7 @@ impl<
         let goal = A::Goal::deserialize(&mut reader)
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
 
-        let response = goal_handler(&goal);
+        let response = goal_handler(&goal_id, &goal);
         let accepted = response.is_accepted();
 
         // Serialize response: accepted (bool) + stamp (Time)
@@ -410,11 +441,12 @@ impl<
             .map_err(|_| NodeError::ServiceReplyFailed)?;
 
         if accepted {
-            let _ = self.active_goals.push(EmbeddedActiveGoal {
+            let _ = self.active_goals.push(ActiveGoal {
                 goal_id,
                 status: nros_core::GoalStatus::Accepted,
                 goal,
             });
+            let _ = self.publish_status_array();
             Ok(Some(goal_id))
         } else {
             Ok(None)
@@ -446,6 +478,8 @@ impl<
     }
 
     /// Set a goal's status.
+    ///
+    /// Also publishes the updated `GoalStatusArray` on the status topic.
     pub fn set_goal_status(&mut self, goal_id: &nros_core::GoalId, status: nros_core::GoalStatus) {
         for goal in &mut self.active_goals {
             if goal.goal_id.uuid == goal_id.uuid {
@@ -453,9 +487,12 @@ impl<
                 break;
             }
         }
+        let _ = self.publish_status_array();
     }
 
     /// Complete a goal and store the result.
+    ///
+    /// Also publishes the updated `GoalStatusArray` on the status topic.
     pub fn complete_goal(
         &mut self,
         goal_id: &nros_core::GoalId,
@@ -470,11 +507,46 @@ impl<
             self.active_goals.swap_remove(pos);
         }
 
-        let _ = self.completed_goals.push(EmbeddedCompletedGoal {
+        let _ = self.completed_goals.push(CompletedGoal {
             goal_id: *goal_id,
             status,
             result,
         });
+        let _ = self.publish_status_array();
+    }
+
+    /// Publish the current GoalStatusArray on the status topic.
+    ///
+    /// Serializes all active goals' statuses as a CDR sequence of
+    /// `GoalStatusStamped` and publishes them.
+    fn publish_status_array(&self) -> Result<(), NodeError> {
+        // Status buffer: 4 (CDR header) + 4 (sequence len) + per-goal ~40 bytes
+        // (GoalId UUID 4+16, stamp 8, status 1, alignment padding)
+        // Fixed 512-byte buffer covers up to ~12 concurrent goals.
+        let mut buf = [0u8; 512];
+        let mut writer =
+            CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
+
+        // Write sequence length (number of active goals)
+        writer
+            .write_u32(self.active_goals.len() as u32)
+            .map_err(|_| NodeError::Serialization)?;
+
+        // Write each GoalStatusStamped
+        for goal in &self.active_goals {
+            let stamped = nros_core::GoalStatusStamped::new(
+                nros_core::GoalInfo::with_id(goal.goal_id),
+                goal.status,
+            );
+            stamped
+                .serialize(&mut writer)
+                .map_err(|_| NodeError::Serialization)?;
+        }
+
+        let len = writer.position();
+        self.status_publisher
+            .publish_raw(&buf[..len])
+            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
     /// Try to handle a cancel_goal request.
@@ -633,14 +705,14 @@ impl<
     }
 
     /// Get a reference to an active goal.
-    pub fn get_goal(&self, goal_id: &nros_core::GoalId) -> Option<&EmbeddedActiveGoal<A>> {
+    pub fn get_goal(&self, goal_id: &nros_core::GoalId) -> Option<&ActiveGoal<A>> {
         self.active_goals
             .iter()
             .find(|g| g.goal_id.uuid == goal_id.uuid)
     }
 
     /// Get all active goals.
-    pub fn active_goals(&self) -> &[EmbeddedActiveGoal<A>] {
+    pub fn active_goals(&self) -> &[ActiveGoal<A>] {
         &self.active_goals
     }
 
@@ -651,11 +723,11 @@ impl<
 }
 
 // ============================================================================
-// EmbeddedActionClient
+// ActionClient
 // ============================================================================
 
 /// Typed action client handle.
-pub struct EmbeddedActionClient<
+pub struct ActionClient<
     A: RosAction,
     Cli,
     Sub,
@@ -681,7 +753,7 @@ impl<
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
     const FEEDBACK_BUF: usize,
-> EmbeddedActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+> ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
     /// Send a goal (non-blocking). Returns the goal ID and a [`Promise`] for acceptance.
     ///
@@ -720,46 +792,6 @@ impl<
                 parse: parse_goal_accepted,
             },
         ))
-    }
-
-    /// Send a goal and block until accepted/rejected (arena-internal).
-    pub(crate) fn send_goal_blocking(
-        &mut self,
-        goal: &A::Goal,
-    ) -> Result<nros_core::GoalId, NodeError> {
-        self.goal_counter += 1;
-        let mut goal_id = nros_core::GoalId::default();
-        let counter_bytes = self.goal_counter.to_le_bytes();
-        goal_id.uuid[..8].copy_from_slice(&counter_bytes);
-
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-        for b in &goal_id.uuid {
-            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-        }
-
-        goal.serialize(&mut writer)
-            .map_err(|_| NodeError::Serialization)?;
-
-        let req_len = writer.position();
-
-        let reply_len = self
-            .send_goal_client
-            .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
-
-        let mut reader = CdrReader::new_with_header(&self.result_buffer[..reply_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        let accepted = reader.read_u8().unwrap_or(0) != 0;
-
-        if accepted {
-            Ok(goal_id)
-        } else {
-            Err(NodeError::ServiceRequestFailed)
-        }
     }
 
     /// Try to receive feedback (non-blocking).
@@ -821,35 +853,6 @@ impl<
         })
     }
 
-    /// Cancel a goal and block until response arrives (arena-internal).
-    pub(crate) fn cancel_goal_blocking(
-        &mut self,
-        goal_id: &nros_core::GoalId,
-    ) -> Result<nros_core::CancelResponse, NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-        for b in &goal_id.uuid {
-            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-        }
-        writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-        writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
-
-        let req_len = writer.position();
-
-        let reply_len = self
-            .cancel_goal_client
-            .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
-
-        let mut reader = CdrReader::new_with_header(&self.result_buffer[..reply_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        let return_code = reader.read_i8().unwrap_or(2);
-        Ok(nros_core::CancelResponse::from_i8(return_code).unwrap_or_default())
-    }
-
     /// Get the result of a completed goal (non-blocking). Returns a [`Promise`].
     pub fn get_result(
         &mut self,
@@ -874,38 +877,6 @@ impl<
             reply_buffer: &mut self.result_buffer,
             parse: parse_result_response::<A>,
         })
-    }
-
-    /// Get the result of a completed goal (blocking, arena-internal).
-    pub(crate) fn get_result_blocking(
-        &mut self,
-        goal_id: &nros_core::GoalId,
-    ) -> Result<(nros_core::GoalStatus, A::Result), NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-        for b in &goal_id.uuid {
-            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-        }
-
-        let req_len = writer.position();
-
-        let reply_len = self
-            .get_result_client
-            .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
-
-        let mut reader = CdrReader::new_with_header(&self.result_buffer[..reply_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        let status_code = reader.read_i8().unwrap_or(0);
-        let status = nros_core::GoalStatus::from_i8(status_code).unwrap_or_default();
-
-        let result = A::Result::deserialize(&mut reader)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        Ok((status, result))
     }
 }
 

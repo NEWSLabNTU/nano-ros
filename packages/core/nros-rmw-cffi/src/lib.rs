@@ -13,7 +13,7 @@
 //!
 //! # Usage (Rust consumer)
 //!
-//! Enable the `rmw-cffi` feature on `nros` and use `EmbeddedExecutor<CffiSession>`.
+//! Enable the `rmw-cffi` feature on `nros` and use `Executor<CffiSession>`.
 
 #![no_std]
 

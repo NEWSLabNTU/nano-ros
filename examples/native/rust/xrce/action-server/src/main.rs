@@ -1,6 +1,6 @@
 //! XRCE-DDS action server — Fibonacci action via XRCE Agent.
 //!
-//! Uses the typed `EmbeddedActionServer` API (no raw CDR needed).
+//! Uses the typed `ActionServer` API (no raw CDR needed).
 //!
 //! Environment variables:
 //!   XRCE_AGENT_ADDR  — Agent UDP address (default: "127.0.0.1:2019")
@@ -57,7 +57,7 @@ fn main() {
 
         // Try to accept a new goal
         let accepted = action_server
-            .try_accept_goal(|goal| {
+            .try_accept_goal(|_goal_id, goal| {
                 println!("Received goal: order={}", goal.order);
                 GoalResponse::AcceptAndExecute
             })

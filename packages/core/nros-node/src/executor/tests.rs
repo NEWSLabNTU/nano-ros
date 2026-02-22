@@ -627,7 +627,7 @@ fn test_add_action_server_registers() {
     let handle = executor
         .add_action_server::<TestAction, _, _>(
             "/test_action",
-            |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+            |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
         )
         .unwrap();
@@ -645,7 +645,7 @@ fn test_action_server_spin_once_no_requests() {
     let _handle = executor
         .add_action_server::<TestAction, _, _>(
             "/test_action",
-            |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+            |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
         )
         .unwrap();
@@ -656,66 +656,21 @@ fn test_action_server_spin_once_no_requests() {
     assert!(!result.any_work());
 }
 
-// ====================================================================
-// Action client tests
-// ====================================================================
-
 #[test]
-fn test_add_action_client_registers() {
-    let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
-
-    let handle = executor
-        .add_action_client::<TestAction, _>(
-            "/test_action",
-            |_id: &nros_core::GoalId, _feedback: &TestFeedback| {},
-        )
-        .unwrap();
-
-    assert!(executor.entries[0].is_some());
-    assert_eq!(handle.entry_index, 0);
-}
-
-#[test]
-fn test_action_client_spin_once_no_feedback() {
-    let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
-
-    let _handle = executor
-        .add_action_client::<TestAction, _>(
-            "/test_action",
-            |_id: &nros_core::GoalId, _feedback: &TestFeedback| {},
-        )
-        .unwrap();
-
-    let result = executor.spin_once(10);
-    assert_eq!(result.subscriptions_processed, 0);
-    assert!(!result.any_work());
-}
-
-#[test]
-fn test_action_server_and_client_coexist() {
+fn test_action_server_registers_and_spins() {
     let session = MockSession::new();
     let mut executor: Executor<MockSession, 8, 65536> = Executor::from_session(session);
 
     let _server_handle = executor
         .add_action_server::<TestAction, _, _>(
             "/test_action",
-            |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+            |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
         )
         .unwrap();
 
-    let _client_handle = executor
-        .add_action_client::<TestAction, _>(
-            "/test_action",
-            |_id: &nros_core::GoalId, _feedback: &TestFeedback| {},
-        )
-        .unwrap();
-
-    // Both registered
+    // Action server registered
     assert!(executor.entries[0].is_some());
-    assert!(executor.entries[1].is_some());
 
     let result = executor.spin_once(10);
     assert!(!result.any_work());
@@ -736,18 +691,12 @@ fn test_drop_with_mixed_entries() {
     let _server = executor
         .add_action_server::<TestAction, _, _>(
             "/act",
-            |_goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
+            |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
         )
         .unwrap();
-    let _client = executor
-        .add_action_client::<TestAction, _>(
-            "/act",
-            |_id: &nros_core::GoalId, _fb: &TestFeedback| {},
-        )
-        .unwrap();
 
-    // Drop must clean up all 4 entries without panicking
+    // Drop must clean up all 3 entries without panicking
 }
 
 // ====================================================================

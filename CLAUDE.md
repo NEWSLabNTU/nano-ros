@@ -536,6 +536,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 | 43 | RMW-agnostic embedded API | Complete |
 | 47 | Executor trigger conditions + nros-node prerequisites | Complete |
 | 49 | nros-c thin wrapper migration | In Progress (49.1–49.3 complete) |
+| 50 | Action API redesign | Complete |
 | 51 | Board crate `run()` API | Complete |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).

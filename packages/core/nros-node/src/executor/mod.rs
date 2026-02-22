@@ -34,7 +34,7 @@ pub mod action;
 mod tests;
 
 // Flat re-exports so users write `executor::Executor` etc.
-pub use action::{ActionClientHandle, ActionServerHandle};
+pub use action::ActionServerHandle;
 pub use handles::*;
 pub use node::Node;
 pub use spin::Executor;

@@ -277,6 +277,8 @@ pub enum NodeError {
     ServiceRequestFailed,
     /// Service reply failed.
     ServiceReplyFailed,
+    /// Operation timed out.
+    Timeout,
 }
 
 impl From<TransportError> for NodeError {

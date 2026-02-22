@@ -6,8 +6,8 @@ use nros_core::{RosAction, RosMessage, RosService};
 use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo, TransportError};
 
 use super::handles::{
-    EmbeddedActionClient, EmbeddedActionServer, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, Subscription,
+    ActionClient, ActionServer, EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer,
+    Subscription,
 };
 use super::types::NodeError;
 
@@ -182,7 +182,7 @@ impl<'a, S: Session> Node<'a, S> {
         &mut self,
         action_name: &str,
     ) -> Result<
-        EmbeddedActionServer<A, S::ServiceServerHandle, S::PublisherHandle, 1024, 1024, 1024, 4>,
+        ActionServer<A, S::ServiceServerHandle, S::PublisherHandle, 1024, 1024, 1024, 4>,
         NodeError,
     > {
         self.create_action_server_sized::<A, 1024, 1024, 1024, 4>(action_name)
@@ -199,7 +199,7 @@ impl<'a, S: Session> Node<'a, S> {
         &mut self,
         action_name: &str,
     ) -> Result<
-        EmbeddedActionServer<
+        ActionServer<
             A,
             S::ServiceServerHandle,
             S::PublisherHandle,
@@ -261,12 +261,12 @@ impl<'a, S: Session> Node<'a, S> {
             .create_publisher(&status_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
-        Ok(EmbeddedActionServer {
+        Ok(ActionServer {
             send_goal_server,
             cancel_goal_server,
             get_result_server,
             feedback_publisher,
-            _status_publisher: status_publisher,
+            status_publisher,
             active_goals: heapless::Vec::new(),
             completed_goals: heapless::Vec::new(),
             goal_buffer: [0u8; GOAL_BUF],
@@ -281,7 +281,7 @@ impl<'a, S: Session> Node<'a, S> {
         &mut self,
         action_name: &str,
     ) -> Result<
-        EmbeddedActionClient<A, S::ServiceClientHandle, S::SubscriberHandle, 1024, 1024, 1024>,
+        ActionClient<A, S::ServiceClientHandle, S::SubscriberHandle, 1024, 1024, 1024>,
         NodeError,
     > {
         self.create_action_client_sized::<A, 1024, 1024, 1024>(action_name)
@@ -297,7 +297,7 @@ impl<'a, S: Session> Node<'a, S> {
         &mut self,
         action_name: &str,
     ) -> Result<
-        EmbeddedActionClient<
+        ActionClient<
             A,
             S::ServiceClientHandle,
             S::SubscriberHandle,
@@ -346,7 +346,7 @@ impl<'a, S: Session> Node<'a, S> {
             .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
-        Ok(EmbeddedActionClient {
+        Ok(ActionClient {
             send_goal_client,
             cancel_goal_client,
             get_result_client,

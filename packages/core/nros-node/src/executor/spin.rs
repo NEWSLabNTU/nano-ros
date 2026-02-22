@@ -1116,7 +1116,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             let data_ptr = unsafe { arena_ptr.add(meta.offset) };
             match unsafe { (meta.try_process)(data_ptr, delta_ms) } {
                 Ok(true) => match meta.kind {
-                    EntryKind::Subscription | EntryKind::ActionClient => {
+                    EntryKind::Subscription => {
                         result.subscriptions_processed += 1;
                     }
                     EntryKind::Service | EntryKind::ActionServer => {
@@ -1127,7 +1127,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 },
                 Ok(false) => {}
                 Err(_) => match meta.kind {
-                    EntryKind::Subscription | EntryKind::ActionClient => {
+                    EntryKind::Subscription => {
                         result.subscription_errors += 1;
                     }
                     EntryKind::Service | EntryKind::ActionServer => {
