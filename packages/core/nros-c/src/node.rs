@@ -30,17 +30,17 @@ pub struct nros_node_t {
     /// Current state
     pub state: nros_node_state_t,
     /// Node name storage
-    name: [u8; MAX_NAME_LEN],
+    pub name: [u8; MAX_NAME_LEN],
     /// Node name length
-    name_len: usize,
+    pub name_len: usize,
     /// Namespace storage
-    namespace: [u8; MAX_NAMESPACE_LEN],
+    pub namespace: [u8; MAX_NAMESPACE_LEN],
     /// Namespace length
-    namespace_len: usize,
+    pub namespace_len: usize,
     /// Pointer to parent support context
-    support: *const nros_support_t,
+    pub support: *const nros_support_t,
     /// Opaque pointer to internal Rust node
-    _internal: *mut core::ffi::c_void,
+    pub _internal: *mut core::ffi::c_void,
 }
 
 impl Default for nros_node_t {
@@ -304,10 +304,7 @@ mod verification {
     #[kani::unwind(5)]
     fn node_zero_initialized_state() {
         let node = nros_node_get_zero_initialized();
-        assert_eq!(
-            node.state,
-            nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED
-        );
+        assert_eq!(node.state, nros_node_state_t::NROS_NODE_STATE_UNINITIALIZED);
         assert!(node.support.is_null());
         assert!(node._internal.is_null());
     }

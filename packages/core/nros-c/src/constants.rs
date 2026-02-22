@@ -26,3 +26,10 @@ pub const MAX_TYPE_NAME_LEN: usize = 256;
 
 /// Maximum length of a type hash (RIHS format)
 pub const MAX_TYPE_HASH_LEN: usize = 128;
+
+/// Maximum number of concurrent goals per action server.
+///
+/// This is a fixed constant (not configurable via env var) because it
+/// affects `nros_action_server_t` struct layout. Changing it requires
+/// recompiling both Rust and C code.
+pub const NROS_MAX_CONCURRENT_GOALS: usize = 4;

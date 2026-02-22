@@ -37,15 +37,15 @@ pub struct nros_guard_condition_t {
     /// Triggered flag (volatile for cross-thread visibility)
     pub triggered: bool,
     /// Callback function
-    callback: nros_guard_condition_callback_t,
+    pub callback: nros_guard_condition_callback_t,
     /// User context pointer
-    context: *mut c_void,
+    pub context: *mut c_void,
     /// Pointer to parent support context
-    _support: *const nros_support_t,
+    pub _support: *const nros_support_t,
     /// Handle ID from executor registration (usize::MAX = not registered)
-    handle_id: usize,
+    pub handle_id: usize,
     /// Guard condition handle for external triggering (set by executor)
-    _guard_handle: *mut core::ffi::c_void,
+    pub _guard_handle: *mut core::ffi::c_void,
 }
 
 // Safety: The triggered flag is designed for cross-thread access.
@@ -125,8 +125,7 @@ pub unsafe extern "C" fn nros_guard_condition_init(
     let support_ref = &*support;
 
     // Check if already initialized
-    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED
-    {
+    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -426,8 +425,7 @@ mod tests {
         unsafe {
             // Manually set up an initialized guard condition (bypassing support check)
             let mut guard = nros_guard_condition_get_zero_initialized();
-            guard.state =
-                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+            guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
             // Initially not triggered
             assert!(!nros_guard_condition_is_triggered(&guard));
@@ -448,8 +446,7 @@ mod tests {
     fn test_guard_condition_is_valid_initialized() {
         unsafe {
             let mut guard = nros_guard_condition_get_zero_initialized();
-            guard.state =
-                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+            guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
             let result = nros_guard_condition_is_valid(&guard);
             assert_eq!(result, 1);
@@ -460,8 +457,7 @@ mod tests {
     fn test_guard_condition_fini_initialized() {
         unsafe {
             let mut guard = nros_guard_condition_get_zero_initialized();
-            guard.state =
-                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+            guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
             guard.triggered = true;
 
             let ret = nros_guard_condition_fini(&mut guard);
@@ -481,8 +477,7 @@ mod tests {
     fn test_guard_condition_set_callback_initialized() {
         unsafe {
             let mut guard = nros_guard_condition_get_zero_initialized();
-            guard.state =
-                nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
+            guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED;
 
             let context_value: i32 = 42;
             let ret = nros_guard_condition_set_callback(

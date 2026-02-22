@@ -478,6 +478,7 @@ dependencies = [
 name = "nros-c"
 version = "0.1.0"
 dependencies = [
+ "cbindgen",
  "nros",
  "nros-core",
  "nros-node",

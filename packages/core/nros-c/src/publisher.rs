@@ -25,6 +25,18 @@ pub struct nros_message_type_t {
     pub serialized_size_max: usize,
 }
 
+/// Service type information.
+///
+/// Provides type name and hash for a ROS 2 service type.
+/// Used by generated code from `nano_ros_generate_interfaces()`.
+#[repr(C)]
+pub struct nros_service_type_t {
+    /// Type name (e.g., "example_interfaces::srv::dds_::AddTwoInts_")
+    pub type_name: *const c_char,
+    /// Type hash (RIHS format)
+    pub type_hash: *const c_char,
+}
+
 /// Publisher state
 #[repr(C)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -43,21 +55,21 @@ pub struct nros_publisher_t {
     /// Current state
     pub state: nros_publisher_state_t,
     /// Topic name storage
-    topic_name: [u8; MAX_TOPIC_LEN],
+    pub topic_name: [u8; MAX_TOPIC_LEN],
     /// Topic name length
-    topic_name_len: usize,
+    pub topic_name_len: usize,
     /// Type name storage
-    type_name: [u8; MAX_TYPE_NAME_LEN],
+    pub type_name: [u8; MAX_TYPE_NAME_LEN],
     /// Type name length
-    type_name_len: usize,
+    pub type_name_len: usize,
     /// Type hash storage
-    type_hash: [u8; MAX_TYPE_HASH_LEN],
+    pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
-    type_hash_len: usize,
+    pub type_hash_len: usize,
     /// Pointer to parent node
-    node: *const nros_node_t,
+    pub node: *const nros_node_t,
     /// Opaque pointer to internal Rust publisher
-    _internal: *mut core::ffi::c_void,
+    pub _internal: *mut core::ffi::c_void,
 }
 
 impl Default for nros_publisher_t {
@@ -391,9 +403,7 @@ pub unsafe extern "C" fn nros_publish_raw(
 /// # Safety
 /// * `publisher` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_publisher_fini(
-    publisher: *mut nros_publisher_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn nros_publisher_fini(publisher: *mut nros_publisher_t) -> nros_ret_t {
     if publisher.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -408,8 +418,9 @@ pub unsafe extern "C" fn nros_publisher_fini(
     #[cfg(feature = "alloc")]
     {
         if !publisher._internal.is_null() {
-            let _pub =
-                alloc::boxed::Box::from_raw(publisher._internal as *mut nros::internals::RmwPublisher);
+            let _pub = alloc::boxed::Box::from_raw(
+                publisher._internal as *mut nros::internals::RmwPublisher,
+            );
             // Publisher is dropped here
         }
     }
@@ -452,9 +463,7 @@ pub unsafe extern "C" fn nros_publisher_get_topic_name(
 /// # Returns
 /// * Non-zero if valid, 0 if invalid or NULL
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_publisher_is_valid(
-    publisher: *const nros_publisher_t,
-) -> c_int {
+pub unsafe extern "C" fn nros_publisher_is_valid(publisher: *const nros_publisher_t) -> c_int {
     if publisher.is_null() {
         return 0;
     }

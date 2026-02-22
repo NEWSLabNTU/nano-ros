@@ -40,8 +40,11 @@ nros-rmw = { path = "../nros-rmw", default-features = false }
 nros-core = { path = "../nros-core", default-features = false }
 paste = "1"
 
+[build-dependencies]
+cbindgen = "0.29"
+
 [lints.rust]
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)', 'cfg(cbindgen)'] }
 
 [package.metadata.docs.rs]
 all-features = true

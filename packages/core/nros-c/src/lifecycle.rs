@@ -41,11 +41,9 @@ pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED: u8 =
 pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE: u8 =
     LifecycleTransition::ShutdownInactive as u8;
 /// Lifecycle transition: Shutdown (from Active)
-pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE: u8 =
-    LifecycleTransition::ShutdownActive as u8;
+pub const NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE: u8 = LifecycleTransition::ShutdownActive as u8;
 /// Lifecycle transition: Error Recovery
-pub const NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY: u8 =
-    LifecycleTransition::ErrorRecovery as u8;
+pub const NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY: u8 = LifecycleTransition::ErrorRecovery as u8;
 
 /// Transition result: Success
 pub const NROS_LIFECYCLE_RET_OK: u8 = TransitionResult::Success as u8;
@@ -257,9 +255,7 @@ pub unsafe extern "C" fn nros_lifecycle_change_state(
 /// # Returns
 /// * Current state as u8, or 0 if sm is NULL or not initialized
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_lifecycle_get_state(
-    sm: *const nros_lifecycle_state_machine_t,
-) -> u8 {
+pub unsafe extern "C" fn nros_lifecycle_get_state(sm: *const nros_lifecycle_state_machine_t) -> u8 {
     if sm.is_null() {
         return 0;
     }
@@ -495,11 +491,7 @@ mod tests {
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
             nros_lifecycle_init(&mut sm, node_ptr);
 
-            nros_lifecycle_register_on_configure(
-                &mut sm,
-                Some(cb_success),
-                core::ptr::null_mut(),
-            );
+            nros_lifecycle_register_on_configure(&mut sm, Some(cb_success), core::ptr::null_mut());
 
             // Configure
             assert_eq!(
@@ -524,10 +516,7 @@ mod tests {
 
             // Shutdown
             assert_eq!(
-                nros_lifecycle_change_state(
-                    &mut sm,
-                    NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE
-                ),
+                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE),
                 NROS_RET_OK
             );
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_FINALIZED);
@@ -594,14 +583,9 @@ mod tests {
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
             nros_lifecycle_init(&mut sm, node_ptr);
 
-            nros_lifecycle_register_on_configure(
-                &mut sm,
-                Some(cb_failure),
-                core::ptr::null_mut(),
-            );
+            nros_lifecycle_register_on_configure(&mut sm, Some(cb_failure), core::ptr::null_mut());
 
-            let ret =
-                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
+            let ret = nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
             assert_eq!(ret, NROS_RET_ERROR);
             // State rolled back to Unconfigured
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_UNCONFIGURED);
@@ -616,14 +600,9 @@ mod tests {
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
             nros_lifecycle_init(&mut sm, node_ptr);
 
-            nros_lifecycle_register_on_configure(
-                &mut sm,
-                Some(cb_error),
-                core::ptr::null_mut(),
-            );
+            nros_lifecycle_register_on_configure(&mut sm, Some(cb_error), core::ptr::null_mut());
 
-            let ret =
-                nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
+            let ret = nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
             assert_eq!(ret, NROS_RET_ERROR);
             assert_eq!(sm.current_state, NROS_LIFECYCLE_STATE_ERROR_PROCESSING);
         }
@@ -688,11 +667,7 @@ mod tests {
             let node_ptr = &dummy_node as *const u8 as *const nros_node_t;
             nros_lifecycle_init(&mut sm, node_ptr);
 
-            nros_lifecycle_register_on_configure(
-                &mut sm,
-                Some(cb_counting),
-                core::ptr::null_mut(),
-            );
+            nros_lifecycle_register_on_configure(&mut sm, Some(cb_counting), core::ptr::null_mut());
 
             nros_lifecycle_change_state(&mut sm, NROS_LIFECYCLE_TRANSITION_CONFIGURE);
             assert_eq!(CALLBACK_COUNT.load(Ordering::Relaxed), 1);

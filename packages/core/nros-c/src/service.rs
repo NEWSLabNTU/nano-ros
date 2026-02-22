@@ -58,27 +58,27 @@ pub struct nros_service_t {
     /// Current state
     pub state: nros_service_state_t,
     /// Service name storage
-    pub(crate) service_name: [u8; MAX_SERVICE_NAME_LEN],
+    pub service_name: [u8; MAX_SERVICE_NAME_LEN],
     /// Service name length
-    pub(crate) service_name_len: usize,
+    pub service_name_len: usize,
     /// Type name storage
-    pub(crate) type_name: [u8; MAX_TYPE_NAME_LEN],
+    pub type_name: [u8; MAX_TYPE_NAME_LEN],
     /// Type name length
-    pub(crate) type_name_len: usize,
+    pub type_name_len: usize,
     /// Type hash storage
-    pub(crate) type_hash: [u8; MAX_TYPE_HASH_LEN],
+    pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
-    pub(crate) type_hash_len: usize,
+    pub type_hash_len: usize,
     /// User callback function
-    callback: nros_service_callback_t,
+    pub callback: nros_service_callback_t,
     /// User context pointer
-    context: *mut c_void,
+    pub context: *mut c_void,
     /// Pointer to parent node
-    node: *const nros_node_t,
+    pub node: *const nros_node_t,
     /// Handle ID from executor registration (usize::MAX = not registered)
-    handle_id: usize,
+    pub handle_id: usize,
     /// Opaque pointer to internal Rust service server
-    _internal: *mut c_void,
+    pub _internal: *mut c_void,
 }
 
 impl Default for nros_service_t {
@@ -456,21 +456,21 @@ pub struct nros_client_t {
     /// Current state
     pub state: nros_client_state_t,
     /// Service name storage
-    service_name: [u8; MAX_SERVICE_NAME_LEN],
+    pub service_name: [u8; MAX_SERVICE_NAME_LEN],
     /// Service name length
-    service_name_len: usize,
+    pub service_name_len: usize,
     /// Type name storage
-    type_name: [u8; MAX_TYPE_NAME_LEN],
+    pub type_name: [u8; MAX_TYPE_NAME_LEN],
     /// Type name length
-    type_name_len: usize,
+    pub type_name_len: usize,
     /// Type hash storage
-    type_hash: [u8; MAX_TYPE_HASH_LEN],
+    pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
-    type_hash_len: usize,
+    pub type_hash_len: usize,
     /// Pointer to parent node
-    node: *const nros_node_t,
+    pub node: *const nros_node_t,
     /// Opaque pointer to internal Rust service client
-    _internal: *mut c_void,
+    pub _internal: *mut c_void,
 }
 
 impl Default for nros_client_t {
@@ -665,8 +665,9 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
     #[cfg(feature = "alloc")]
     {
         if !client._internal.is_null() {
-            let _client_handle =
-                alloc::boxed::Box::from_raw(client._internal as *mut nros::internals::RmwServiceClient);
+            let _client_handle = alloc::boxed::Box::from_raw(
+                client._internal as *mut nros::internals::RmwServiceClient,
+            );
             // Client is dropped here
         }
     }
@@ -968,10 +969,7 @@ mod verification {
 
         // UNINITIALIZED → NOT_INIT
         let mut svc = nros_service_get_zero_initialized();
-        assert_eq!(
-            unsafe { nros_service_fini(&mut svc) },
-            NROS_RET_NOT_INIT,
-        );
+        assert_eq!(unsafe { nros_service_fini(&mut svc) }, NROS_RET_NOT_INIT,);
     }
 
     #[kani::proof]
@@ -1115,10 +1113,7 @@ mod verification {
 
         // UNINITIALIZED → NOT_INIT
         let mut client = nros_client_get_zero_initialized();
-        assert_eq!(
-            unsafe { nros_client_fini(&mut client) },
-            NROS_RET_NOT_INIT,
-        );
+        assert_eq!(unsafe { nros_client_fini(&mut client) }, NROS_RET_NOT_INIT,);
     }
 
     #[kani::proof]

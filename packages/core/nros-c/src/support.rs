@@ -32,11 +32,11 @@ pub struct nros_support_t {
     /// Domain ID (ROS_DOMAIN_ID)
     pub domain_id: u8,
     /// Locator string storage
-    locator: [u8; MAX_LOCATOR_LEN],
+    pub locator: [u8; MAX_LOCATOR_LEN],
     /// Locator string length
-    locator_len: usize,
+    pub locator_len: usize,
     /// Opaque pointer to internal Rust context (middleware session)
-    _internal: *mut core::ffi::c_void,
+    pub _internal: *mut core::ffi::c_void,
 }
 
 impl Default for nros_support_t {

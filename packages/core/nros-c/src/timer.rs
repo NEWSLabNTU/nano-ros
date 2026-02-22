@@ -40,15 +40,15 @@ pub struct nros_timer_t {
     /// Last trigger time in nanoseconds
     pub last_call_time_ns: u64,
     /// User callback function
-    callback: nros_timer_callback_t,
+    pub callback: nros_timer_callback_t,
     /// User context pointer
-    context: *mut c_void,
+    pub context: *mut c_void,
     /// Pointer to parent support context
-    support: *const nros_support_t,
+    pub support: *const nros_support_t,
     /// Handle ID from executor registration (usize::MAX = not registered)
-    handle_id: usize,
+    pub handle_id: usize,
     /// Opaque pointer to internal executor (set by nros_executor_add_timer)
-    _executor: *mut c_void,
+    pub _executor: *mut c_void,
 }
 
 impl Default for nros_timer_t {

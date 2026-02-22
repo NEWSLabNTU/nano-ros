@@ -8,8 +8,8 @@ use core::ffi::c_int;
 use core::ptr;
 
 use crate::action::{
-    nros_action_server_state_t, nros_action_server_t, ActionServerInternal,
-    cancel_callback_trampoline, goal_callback_trampoline,
+    ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline,
+    nros_action_server_state_t, nros_action_server_t,
 };
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
@@ -19,6 +19,7 @@ use crate::support::{nros_support_state_t, nros_support_t};
 use crate::timer::{nros_timer_state_t, nros_timer_t};
 
 pub use crate::config::*;
+use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 
 // ============================================================================
 // Internal Rust executor type
@@ -38,7 +39,8 @@ const CB_ARENA_SIZE: usize = NROS_EXECUTOR_MAX_HANDLES * MESSAGE_BUFFER_SIZE * 2
 /// - `MAX_CBS = NROS_EXECUTOR_MAX_HANDLES` — max callback entries
 /// - `CB_ARENA = CB_ARENA_SIZE` — arena byte budget
 #[cfg(feature = "alloc")]
-pub(crate) type CExecutor = nros_node::Executor<nros::internals::RmwSession, NROS_EXECUTOR_MAX_HANDLES, CB_ARENA_SIZE>;
+pub(crate) type CExecutor =
+    nros_node::Executor<nros::internals::RmwSession, NROS_EXECUTOR_MAX_HANDLES, CB_ARENA_SIZE>;
 
 /// Get a mutable reference to the internal executor.
 ///
@@ -126,25 +128,25 @@ pub struct nros_executor_t {
     /// Data communication semantics
     pub semantics: nros_executor_semantics_t,
     /// Pointer to support context
-    support: *const nros_support_t,
+    pub support: *const nros_support_t,
     /// Trigger function (NULL = default "any" trigger)
     pub trigger: nros_executor_trigger_t,
     /// User context for trigger function
     pub trigger_context: *mut core::ffi::c_void,
     /// Number of handles registered
-    handle_count: usize,
+    pub handle_count: usize,
     /// Maximum handles (configured at init)
-    max_handles: usize,
+    pub max_handles: usize,
     /// Number of subscription handles
-    subscription_count: usize,
+    pub subscription_count: usize,
     /// Number of timer handles
-    timer_count: usize,
+    pub timer_count: usize,
     /// Number of service handles
-    service_count: usize,
+    pub service_count: usize,
     /// Next invocation time in nanoseconds for drift-compensated spin_period
-    invocation_time_ns: u64,
+    pub invocation_time_ns: u64,
     /// Opaque pointer to internal Rust executor (`Box<CExecutor>`)
-    _internal: *mut core::ffi::c_void,
+    pub _internal: *mut core::ffi::c_void,
 }
 
 impl Default for nros_executor_t {
@@ -453,9 +455,7 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
     }
 
     // Check subscription state
-    if subscription_ref.state
-        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
-    {
+    if subscription_ref.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -666,12 +666,10 @@ pub unsafe extern "C" fn nros_executor_add_service(
         let service_name = core::str::from_utf8_unchecked(
             &service_ref.service_name[..service_ref.service_name_len],
         );
-        let type_str = core::str::from_utf8_unchecked(
-            &service_ref.type_name[..service_ref.type_name_len],
-        );
-        let type_hash_str = core::str::from_utf8_unchecked(
-            &service_ref.type_hash[..service_ref.type_hash_len],
-        );
+        let type_str =
+            core::str::from_utf8_unchecked(&service_ref.type_name[..service_ref.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&service_ref.type_hash[..service_ref.type_hash_len]);
 
         // Get callback and context
         let callback = match service_ref.get_callback() {
@@ -730,9 +728,7 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
     }
 
     // Check guard condition state
-    if guard_ref.state
-        != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
-    {
+    if guard_ref.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -823,15 +819,12 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         let rust_exec = get_executor(executor._internal);
 
         // Extract metadata from action server struct
-        let action_name = core::str::from_utf8_unchecked(
-            &server_ref.action_name[..server_ref.action_name_len],
-        );
-        let type_str = core::str::from_utf8_unchecked(
-            &server_ref.type_name[..server_ref.type_name_len],
-        );
-        let type_hash_str = core::str::from_utf8_unchecked(
-            &server_ref.type_hash[..server_ref.type_hash_len],
-        );
+        let action_name =
+            core::str::from_utf8_unchecked(&server_ref.action_name[..server_ref.action_name_len]);
+        let type_str =
+            core::str::from_utf8_unchecked(&server_ref.type_name[..server_ref.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&server_ref.type_hash[..server_ref.type_hash_len]);
 
         // Get the goal callback (required — validated during init)
         let c_goal_callback = match server_ref.goal_callback {
@@ -955,9 +948,7 @@ pub unsafe extern "C" fn nros_executor_spin_some(
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_spin(
-    executor: *mut nros_executor_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn nros_executor_spin(executor: *mut nros_executor_t) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -1058,9 +1049,7 @@ pub unsafe extern "C" fn nros_executor_spin_one_period(
 /// # Safety
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_stop(
-    executor: *mut nros_executor_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn nros_executor_stop(executor: *mut nros_executor_t) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -1079,9 +1068,7 @@ pub unsafe extern "C" fn nros_executor_stop(
 /// # Safety
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_fini(
-    executor: *mut nros_executor_t,
-) -> nros_ret_t {
+pub unsafe extern "C" fn nros_executor_fini(executor: *mut nros_executor_t) -> nros_ret_t {
     if executor.is_null() {
         return NROS_RET_INVALID_ARGUMENT;
     }
@@ -1118,9 +1105,7 @@ pub unsafe extern "C" fn nros_executor_fini(
 
 /// Get the number of handles in the executor.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_handle_count(
-    executor: *const nros_executor_t,
-) -> c_int {
+pub unsafe extern "C" fn nros_executor_get_handle_count(executor: *const nros_executor_t) -> c_int {
     if executor.is_null() {
         return 0;
     }
@@ -1258,11 +1243,7 @@ mod tests {
                 ptr::null_mut()
             ));
 
-            assert!(!nros_executor_trigger_any(
-                [].as_ptr(),
-                0,
-                ptr::null_mut()
-            ));
+            assert!(!nros_executor_trigger_any([].as_ptr(), 0, ptr::null_mut()));
         }
     }
 
@@ -1290,11 +1271,7 @@ mod tests {
                 ptr::null_mut()
             ));
 
-            assert!(!nros_executor_trigger_all(
-                [].as_ptr(),
-                0,
-                ptr::null_mut()
-            ));
+            assert!(!nros_executor_trigger_all([].as_ptr(), 0, ptr::null_mut()));
         }
     }
 
@@ -1353,9 +1330,8 @@ mod tests {
         ];
 
         for (case, expected) in test_cases {
-            let c_result = unsafe {
-                nros_executor_trigger_all(case.as_ptr(), case.len(), ptr::null_mut())
-            };
+            let c_result =
+                unsafe { nros_executor_trigger_all(case.as_ptr(), case.len(), ptr::null_mut()) };
             assert_eq!(
                 c_result, *expected,
                 "trigger_all mismatch for {:?}: got {}, expected {}",
@@ -1509,10 +1485,7 @@ mod tests {
     fn test_remaining_handles_null() {
         unsafe {
             assert_eq!(nros_executor_get_remaining_handles(ptr::null()), -1);
-            assert_eq!(
-                nros_executor_get_remaining_subscriptions(ptr::null()),
-                -1
-            );
+            assert_eq!(nros_executor_get_remaining_subscriptions(ptr::null()), -1);
             assert_eq!(nros_executor_get_remaining_timers(ptr::null()), -1);
             assert_eq!(nros_executor_get_remaining_services(ptr::null()), -1);
         }

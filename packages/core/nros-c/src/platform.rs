@@ -15,6 +15,7 @@
 // FFI Declarations (for no_std)
 // ============================================================================
 
+/// cbindgen:ignore
 #[cfg(not(feature = "std"))]
 unsafe extern "C" {
     /// Get current monotonic time in nanoseconds.

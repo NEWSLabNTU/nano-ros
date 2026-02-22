@@ -1,6 +1,6 @@
 # Phase 49 — nros-c Thin Wrapper Migration
 
-## Status: In Progress (49.1–49.12 complete)
+## Status: In Progress (49.1–49.13 complete)
 
 ## Background
 
@@ -622,13 +622,14 @@ nros-node.
 ## Verification
 
 1. [x] `just quality` — full format + clippy + nextest + miri + QEMU — PASSES
-2. [x] `just test-c` — all 15 C API tests pass unchanged
+2. [x] `just test-c` — all 15 C API tests + 2 codegen tests pass
 3. [ ] Zephyr C examples build and run — not yet re-tested
 4. [x] Native C examples build and run (via test-c)
 5. [x] nros-node unit tests for raw-bytes dispatch, guard conditions, LET
    semantics — 86 tests from Phase 47
 6. [ ] Kani bounded model checking on new types — deferred with 49.4
 7. [x] Line count audit — see Post-migration table above
+8. [x] cbindgen-generated struct layouts verified correct (49.13)
 
 ---
 
@@ -852,13 +853,96 @@ operations, and UUID utilities.
 
 ---
 
+### 49.13 — cbindgen C Header Generation — COMPLETE
+
+Auto-generated C headers from Rust `#[repr(C)]` types using cbindgen v0.29,
+eliminating the class of bugs where Rust struct fields are added/changed without
+updating C headers (6 such mismatches were found and fixed immediately before
+this sub-phase).
+
+**Background:** The thin wrapper migration (49.2–49.4) added fields to several
+`#[repr(C)]` structs (`handle_id`, `_executor`, `_guard_handle`, `qos`, etc.)
+without updating the corresponding C headers. This caused silent memory corruption
+where writes to Rust struct fields overflowed into adjacent C memory. cbindgen
+generates headers directly from Rust types, making drift impossible.
+
+**Approach:**
+- cbindgen generates a single `nros_generated.h` (~3400 lines) from all
+  `#[repr(C)]` types during `cargo build`
+- Per-module headers become thin stubs that `#include "nros/nros_generated.h"`
+- `visibility.h` and `platform.h` stay hand-written (preprocessor macros)
+- `types.h` stub also defines `nros_service_type_t` (not referenced by any
+  `extern "C"` function, so cbindgen omits it as unreachable)
+- Build-time constants stay in build.rs (don't affect struct layout)
+
+**Key design decisions:**
+
+1. **Field visibility**: Made all `pub(crate)`/private fields on `#[repr(C)]`
+   structs `pub`. cbindgen only includes `pub` fields. ~60 fields across 10
+   structs. Safe because these are FFI types — C accesses all fields directly.
+
+2. **`rmw_modules!` workaround**: cbindgen can't expand `macro_rules!`. Added
+   `#[cfg(cbindgen)]` module declarations (cbindgen sets `cfg(cbindgen)=true`
+   automatically). Wrapped existing `rmw_modules!` in `#[cfg(not(cbindgen))]`.
+
+3. **Build-time array sizes**: Only `NROS_MAX_CONCURRENT_GOALS` affects struct
+   layout. Moved from env-var config to fixed `const` in `constants.rs` (default
+   4). Other 6 build-time constants don't affect struct layout, stay in build.rs.
+
+4. **Function attributes**: `[fn].prefix = "NROS_PUBLIC"` for visibility.
+
+5. **Missing Rust type**: Added `nros_service_type_t` to publisher.rs. cbindgen
+   doesn't generate it (no function references it), so `types.h` stub defines
+   it manually alongside the generated header include.
+
+6. **Constant naming**: `[export.rename]` in cbindgen.toml maps Rust names
+   (`MAX_TOPIC_LEN`) to C names (`NROS_MAX_TOPIC_LEN`).
+
+7. **Platform FFI imports**: Added `/// cbindgen:ignore` to the `unsafe extern "C"`
+   block in `platform.rs` to prevent cbindgen from generating declarations that
+   conflict with `static inline` definitions in `platform/posix.h`.
+
+**Tasks:**
+
+- [x] Make all `pub(crate)`/private fields on `#[repr(C)]` structs `pub`
+      (executor.rs, timer.rs, subscription.rs, service.rs, guard_condition.rs,
+      action.rs, publisher.rs, node.rs, support.rs — ~60 fields across 10 structs)
+- [x] Move `NROS_MAX_CONCURRENT_GOALS` from build.rs to `constants.rs`
+- [x] Add `nros_service_type_t` to Rust (in publisher.rs alongside message_type)
+- [x] Add `#[cfg(cbindgen)]` module declarations to `lib.rs`
+- [x] Create `cbindgen.toml` (based on zpico-sys pattern, with `[export.rename]`
+      for 8 constants, `NROS_PUBLIC` prefix, `usize_is_size_t = true`)
+- [x] Add `cbindgen = "0.29"` to `[build-dependencies]` in Cargo.toml
+- [x] Add `generate_header()` to build.rs (generates `include/nros/nros_generated.h`)
+- [x] Replace 14 per-module C headers with thin `#include` stubs
+- [x] Add `include/nros/.gitignore` for generated header
+- [x] Add `/// cbindgen:ignore` to platform.rs FFI extern block
+- [x] Verify: `just quality` passes (format, clippy, 246 unit tests)
+- [x] Verify: `just test-c` passes (15 C API tests + 2 codegen tests)
+
+**Files:**
+
+| File | Change |
+|------|--------|
+| `nros-c/Cargo.toml` | Add `cbindgen = "0.29"` build-dep, `cfg(cbindgen)` to check-cfg |
+| `nros-c/build.rs` | Add `generate_header()`, remove `NROS_MAX_CONCURRENT_GOALS` from config |
+| `nros-c/cbindgen.toml` | New — cbindgen configuration |
+| `nros-c/src/lib.rs` | Add `#[cfg(cbindgen)]` module declarations, wrap `rmw_modules!` |
+| `nros-c/src/constants.rs` | Add `NROS_MAX_CONCURRENT_GOALS = 4` |
+| `nros-c/src/platform.rs` | Add `/// cbindgen:ignore` to extern block |
+| `nros-c/src/publisher.rs` | Add `nros_service_type_t`, make fields `pub` |
+| `nros-c/src/*.rs` (9 files) | Make ~60 fields `pub` on `#[repr(C)]` structs |
+| `nros-c/include/nros/*.h` (14 files) | Replace with thin `#include` stubs |
+| `nros-c/include/nros/.gitignore` | New — ignore `nros_generated.h` |
+
+---
+
 ## Remaining Work
 
 ### Immediate (no blockers)
 
 - **Zephyr C example re-test**: Run `just test-zephyr` to verify C examples
-  still build and run on Zephyr native_sim. Expected to pass since the C API
-  signature is unchanged (only internal delegation changed).
+  still build and run on Zephyr native_sim
 
 ### Not Planned
 

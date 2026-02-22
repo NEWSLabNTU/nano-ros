@@ -38,29 +38,29 @@ pub struct nros_subscription_t {
     /// Current state
     pub state: nros_subscription_state_t,
     /// Topic name storage
-    pub(crate) topic_name: [u8; MAX_TOPIC_LEN],
+    pub topic_name: [u8; MAX_TOPIC_LEN],
     /// Topic name length
-    pub(crate) topic_name_len: usize,
+    pub topic_name_len: usize,
     /// Type name storage
-    pub(crate) type_name: [u8; MAX_TYPE_NAME_LEN],
+    pub type_name: [u8; MAX_TYPE_NAME_LEN],
     /// Type name length
-    pub(crate) type_name_len: usize,
+    pub type_name_len: usize,
     /// Type hash storage
-    pub(crate) type_hash: [u8; MAX_TYPE_HASH_LEN],
+    pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
-    pub(crate) type_hash_len: usize,
+    pub type_hash_len: usize,
     /// User callback function
-    callback: nros_subscription_callback_t,
+    pub callback: nros_subscription_callback_t,
     /// User context pointer
-    context: *mut c_void,
+    pub context: *mut c_void,
     /// Pointer to parent node
-    node: *const nros_node_t,
+    pub node: *const nros_node_t,
     /// QoS settings (stored during init, used by executor registration)
-    qos: crate::qos::nros_qos_t,
+    pub qos: crate::qos::nros_qos_t,
     /// Handle ID from executor registration (usize::MAX = not registered)
-    handle_id: usize,
+    pub handle_id: usize,
     /// Opaque pointer to internal Rust subscriber (unused in executor model)
-    _internal: *mut c_void,
+    pub _internal: *mut c_void,
 }
 
 impl Default for nros_subscription_t {
@@ -229,9 +229,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     let type_info = &*type_info;
 
     // Check if subscription is already initialized
-    if subscription.state
-        != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED
-    {
+    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED {
         return NROS_RET_BAD_SEQUENCE;
     }
 
@@ -332,8 +330,7 @@ pub unsafe extern "C" fn nros_subscription_fini(
 
     let subscription = &mut *subscription;
 
-    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
-    {
+    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
         return NROS_RET_NOT_INIT;
     }
 
@@ -365,8 +362,7 @@ pub unsafe extern "C" fn nros_subscription_get_topic_name(
     }
 
     let subscription = &*subscription;
-    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
-    {
+    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
         return ptr::null();
     }
 
@@ -389,8 +385,7 @@ pub unsafe extern "C" fn nros_subscription_is_valid(
     }
 
     let subscription = &*subscription;
-    if subscription.state == nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
-    {
+    if subscription.state == nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
         1
     } else {
         0
