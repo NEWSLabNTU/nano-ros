@@ -20,6 +20,8 @@ use crate::bridge::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
 pub(crate) struct ZSysNetSocket {
     pub(crate) _handle: i8,
     pub(crate) _connected: bool,
+    #[cfg(feature = "link-tls")]
+    pub(crate) _tls_sock: *mut core::ffi::c_void,
 }
 
 /// Network endpoint (IPv4 address + port).
@@ -90,6 +92,10 @@ pub extern "C" fn _z_open_tcp(
     unsafe {
         (*sock)._handle = -1;
         (*sock)._connected = false;
+        #[cfg(feature = "link-tls")]
+        {
+            (*sock)._tls_sock = core::ptr::null_mut();
+        }
     }
 
     // Allocate a socket from the bridge

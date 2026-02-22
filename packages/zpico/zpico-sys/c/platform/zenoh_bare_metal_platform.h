@@ -57,10 +57,19 @@ typedef uint64_t z_time_t;
 /**
  * Socket handle.
  * Generic handle index plus connection state.
+ *
+ * Note: zenoh-pico's link layer code references `_fd` (POSIX field name).
+ * We alias `_fd` to `_handle` for compatibility with link/unicast/tls.c.
  */
 typedef struct {
-    int8_t _handle;     // Socket handle (-1 = invalid)
+    union {
+        int8_t _handle;     // Socket handle (-1 = invalid)
+        int8_t _fd;         // POSIX-compatible alias for link layer code
+    };
     bool _connected;    // Connection state
+#if Z_FEATURE_LINK_TLS == 1
+    void *_tls_sock;    // Pointer to _z_tls_socket_t (back-pointer from TCP socket to TLS context)
+#endif
 } _z_sys_net_socket_t;
 
 /**

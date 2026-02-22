@@ -1,10 +1,16 @@
 //! Bump allocator for zenoh-pico memory management
 //!
 //! Provides `z_malloc`, `z_realloc`, `z_free` implementations.
-//! Uses a simple bump allocator with 64KB heap (no deallocation support).
+//! Uses a simple bump allocator (no deallocation support).
+//!
+//! Heap size: 64KB default, 128KB when `link-tls` is enabled
+//! (mbedTLS needs ~40KB for TLS context, certificates, and crypto).
 
 use core::ptr;
 
+#[cfg(feature = "link-tls")]
+const HEAP_SIZE: usize = 128 * 1024;
+#[cfg(not(feature = "link-tls"))]
 const HEAP_SIZE: usize = 64 * 1024;
 static mut HEAP_MEM: [u8; HEAP_SIZE] = [0u8; HEAP_SIZE];
 static mut HEAP_POS: usize = 0;

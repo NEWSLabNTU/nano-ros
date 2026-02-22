@@ -915,3 +915,20 @@ pub extern "C" fn smoltcp_set_poll_callback(callback: PollCallbackFn) {
 pub extern "C" fn smoltcp_get_poll_count() -> u32 {
     unsafe { SMOLTCP_POLL_COUNT }
 }
+
+/// Poll the network stack from C code.
+///
+/// Used by TLS platform symbols (tls_bare_metal.c) to pump the cooperative
+/// smoltcp stack during TLS handshake and I/O operations.
+#[unsafe(no_mangle)]
+pub extern "C" fn smoltcp_poll_network() {
+    SmoltcpBridge::poll_network();
+}
+
+/// Get current time in milliseconds from C code.
+///
+/// Used by TLS platform symbols for timeout handling.
+#[unsafe(no_mangle)]
+pub extern "C" fn smoltcp_clock_ms() -> u64 {
+    SmoltcpBridge::clock_now_ms()
+}

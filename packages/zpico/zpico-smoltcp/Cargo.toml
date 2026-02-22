@@ -5,8 +5,13 @@ edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "smoltcp TCP link layer for nros (bare-metal systems)"
 
+[features]
+default = []
+link-tls = ["zpico-sys/link-tls"]
+
 [dependencies]
 zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp", "link-udp-unicast"] }
 smoltcp = { version = "0.12", default-features = false, features = [
     "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp",
 ] }
+

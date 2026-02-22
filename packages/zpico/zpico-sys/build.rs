@@ -1143,6 +1143,61 @@ fn build_zenoh_pico_embedded(
     // Pass shim slot counts as -D flags so zenoh_shim.c gets them
     shim.apply_to_cc(&mut build);
 
+    // mbedTLS — when Z_FEATURE_LINK_TLS=1:
+    // 1. Add mbedTLS include paths for zenoh-pico's link/unicast/tls.c
+    // 2. Compile mbedTLS library sources (for crypto/TLS primitives)
+    // 3. Compile TLS platform symbols (tls_bare_metal.c, entropy_bare_metal.c)
+    //
+    // Everything is compiled into the same `zenohpico` archive so the linker
+    // can resolve references between zenoh-pico's link layer and the TLS
+    // platform implementation without circular archive dependencies.
+    if link.tls {
+        let zpico_sys_dir = zenoh_pico_src.parent().unwrap();
+        let mbedtls_dir = zpico_sys_dir.join("mbedtls");
+        let mbedtls_include = mbedtls_dir.join("include");
+        let mbedtls_library = mbedtls_dir.join("library");
+        if !mbedtls_include.exists() {
+            panic!(
+                "mbedTLS submodule not found at {:?}. Run: git submodule update --init",
+                mbedtls_include
+            );
+        }
+        build.include(&mbedtls_include);
+
+        // zpico-smoltcp provides the bare-metal mbedTLS config header
+        let smoltcp_c_dir = zpico_sys_dir.join("../zpico-smoltcp/c");
+        if smoltcp_c_dir.exists() {
+            build.include(&smoltcp_c_dir);
+        }
+        build.define("MBEDTLS_CONFIG_FILE", "\"mbedtls_config.h\"");
+
+        // Compile mbedTLS library sources (excluding POSIX-only files)
+        let excluded_mbedtls = ["net_sockets.c", "timing.c", "threading.c", "psa_its_file.c"];
+        if let Ok(entries) = std::fs::read_dir(&mbedtls_library) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "c") {
+                    let filename = path.file_name().unwrap().to_str().unwrap();
+                    if !excluded_mbedtls.contains(&filename) {
+                        build.file(&path);
+                    }
+                }
+            }
+        }
+
+        // TLS platform symbols (bare-metal implementation via smoltcp)
+        let tls_src = smoltcp_c_dir.join("tls_bare_metal.c");
+        if tls_src.exists() {
+            build.file(&tls_src);
+        }
+
+        // Entropy source (DWT-based, weak symbol)
+        let entropy_src = smoltcp_c_dir.join("entropy_bare_metal.c");
+        if entropy_src.exists() {
+            build.file(&entropy_src);
+        }
+    }
+
     // Embedded-optimized compiler flags
     build
         .opt_level(2)

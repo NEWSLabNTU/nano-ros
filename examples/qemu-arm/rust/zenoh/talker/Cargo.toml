@@ -15,6 +15,8 @@ bench = false
 default = []
 # Use Docker network configuration (different IPs for container-based testing)
 docker = ["nros-mps2-an385/docker"]
+# TLS transport support (connects to zenohd over TLS)
+link-tls = ["nros-mps2-an385/link-tls", "nros/link-tls"]
 
 [dependencies]
 # Board crate for hardware + network init

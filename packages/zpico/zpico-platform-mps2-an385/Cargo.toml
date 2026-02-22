@@ -8,6 +8,11 @@ description = "Zenoh-pico system primitives for QEMU MPS2-AN385 (no nros depende
 [lib]
 name = "zpico_platform_mps2_an385"
 
+[features]
+default = []
+# TLS support (enables mbedTLS cross-compilation and TLS platform symbols)
+link-tls = ["zpico-smoltcp/link-tls", "zpico-sys/link-tls"]
+
 [dependencies]
 # Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
 zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp"] }

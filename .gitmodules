@@ -13,3 +13,6 @@
 [submodule "packages/xrce/xrce-sys/micro-cdr"]
 	path = packages/xrce/xrce-sys/micro-cdr
 	url = https://github.com/eProsima/Micro-CDR.git
+[submodule "packages/zpico/zpico-sys/mbedtls"]
+	path = packages/zpico/zpico-sys/mbedtls
+	url = https://github.com/Mbed-TLS/mbedtls.git

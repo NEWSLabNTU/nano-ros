@@ -35,3 +35,5 @@ panic-semihosting = "0.6"
 default = []
 # Docker networking mode (container with NAT)
 docker = []
+# TLS support (requires mbedTLS, increases heap)
+link-tls = ["zpico-smoltcp/link-tls", "zpico-platform-mps2-an385/link-tls"]
