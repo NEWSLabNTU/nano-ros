@@ -107,11 +107,12 @@ pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
 // Re-export generic embedded node types (always available, no feature gate)
 pub use executor::{
-    ActionClient, ActionServer, ActionServerHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher,
-    EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorConfig, ExecutorSemantics,
-    GuardConditionHandle, HandleId, HandleSet, InvocationMode, Node, NodeError, Promise,
-    RawServiceCallback, RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Subscription, Trigger,
+    ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
+    ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
+    EmbeddedServiceServer, Executor, ExecutorConfig, ExecutorSemantics, GuardConditionHandle,
+    HandleId, HandleSet, InvocationMode, Node, NodeError, Promise, RawActiveGoal,
+    RawCancelCallback, RawGoalCallback, RawServiceCallback, RawSubscriptionCallback,
+    ReadinessSnapshot, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Subscription, Trigger,
 };
 
 #[cfg(feature = "std")]

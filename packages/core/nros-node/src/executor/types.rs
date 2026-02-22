@@ -508,6 +508,32 @@ pub type RawServiceCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 ) -> bool;
 
+/// Raw action goal callback that receives CDR bytes without deserialization.
+///
+/// # Safety
+/// - `goal_id` is valid for the duration of the call
+/// - `goal_data` is valid for `goal_len` bytes
+///
+/// Returns a `GoalResponse` value (0=Reject, 1=AcceptAndExecute, 2=AcceptAndDefer).
+pub type RawGoalCallback = unsafe extern "C" fn(
+    goal_id: *const nros_core::GoalId,
+    goal_data: *const u8,
+    goal_len: usize,
+    context: *mut core::ffi::c_void,
+) -> nros_core::GoalResponse;
+
+/// Raw action cancel callback.
+///
+/// # Safety
+/// - `goal_id` is valid for the duration of the call
+///
+/// Returns a `CancelResponse` value (0=Ok, 1=Rejected, 2=UnknownGoal, 3=GoalTerminated).
+pub type RawCancelCallback = unsafe extern "C" fn(
+    goal_id: *const nros_core::GoalId,
+    status: nros_core::GoalStatus,
+    context: *mut core::ffi::c_void,
+) -> nros_core::CancelResponse;
+
 // ============================================================================
 // ExecutorSemantics
 // ============================================================================

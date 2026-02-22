@@ -6,8 +6,12 @@ use nros_core::MessageInfo;
 use nros_core::{CdrReader, RosAction, RosMessage, RosService};
 use nros_rmw::{Publisher, ServiceServerTrait, Subscriber, TransportError};
 
+use super::action_core::ActionServerCore;
 use super::handles::{ActionServer, ActiveGoal};
-use super::types::{InvocationMode, NodeError, RawServiceCallback, RawSubscriptionCallback};
+use super::types::{
+    InvocationMode, NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback,
+    RawSubscriptionCallback,
+};
 
 // ============================================================================
 // Callback metadata
@@ -140,6 +144,24 @@ pub(crate) struct ActionServerArenaEntry<
     pub(crate) server: ActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
     pub(crate) goal_callback: GoalF,
     pub(crate) cancel_callback: CancelF,
+}
+
+/// Concrete action server entry for raw (untyped) callbacks.
+///
+/// Uses [`ActionServerCore`] directly (no typed `ActionServer<A>` wrapper).
+#[repr(C)]
+pub(crate) struct ActionServerRawArenaEntry<
+    Srv,
+    Pub,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+    const MAX_GOALS: usize,
+> {
+    pub(crate) core: ActionServerCore<Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+    pub(crate) goal_callback: RawGoalCallback,
+    pub(crate) cancel_callback: RawCancelCallback,
+    pub(crate) context: *mut core::ffi::c_void,
 }
 
 /// Concrete subscription entry for raw (untyped) callbacks.
@@ -439,6 +461,81 @@ where
 
     // Handle result requests
     if matches!(server.try_handle_get_result(), Ok(Some(_))) {
+        did_work = true;
+    }
+
+    Ok(did_work)
+}
+
+/// Monomorphized raw action server dispatch function.
+///
+/// Polls goal acceptance, cancel handling, and result serving using raw bytes.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `ActionServerRawArenaEntry<...>`.
+pub(crate) unsafe fn action_server_raw_try_process<
+    Srv,
+    Pub,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+    const MAX_GOALS: usize,
+>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionServerRawArenaEntry<
+            Srv,
+            Pub,
+            GOAL_BUF,
+            RESULT_BUF,
+            FEEDBACK_BUF,
+            MAX_GOALS,
+        >)
+    };
+    let ActionServerRawArenaEntry {
+        core,
+        goal_callback,
+        cancel_callback,
+        context,
+    } = entry;
+
+    let mut did_work = false;
+
+    // Handle cancels first
+    if let Ok(Some(_)) =
+        core.try_handle_cancel(|id, st| unsafe { (*cancel_callback)(id, st, *context) })
+    {
+        did_work = true;
+    }
+
+    // Handle new goals
+    if let Ok(Some(raw_req)) = core.try_recv_goal_request() {
+        let goal_data = &core.goal_buffer()[..raw_req.data_len];
+        let response = unsafe {
+            (*goal_callback)(
+                &raw_req.goal_id,
+                goal_data.as_ptr(),
+                raw_req.data_len,
+                *context,
+            )
+        };
+
+        if response.is_accepted() {
+            let _ = core.accept_goal(raw_req.goal_id, raw_req.sequence_number);
+        } else {
+            let _ = core.reject_goal(raw_req.sequence_number);
+        }
+        did_work = true;
+    }
+
+    // Handle result requests (empty default result for raw API)
+    if let Ok(Some(_)) = core.try_handle_get_result_raw(&[]) {
         did_work = true;
     }
 
@@ -836,9 +933,131 @@ where
     entry.server.active_goal_count()
 }
 
+/// Raw action server: publish feedback via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerRawArenaEntry`.
+pub(crate) unsafe fn as_raw_publish_feedback<
+    Srv,
+    Pub,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+    feedback_data: *const u8,
+    feedback_len: usize,
+) -> Result<(), NodeError>
+where
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+    let feedback_cdr = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
+    entry.core.publish_feedback_raw(goal_id, feedback_cdr)
+}
+
+/// Raw action server: complete a goal via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerRawArenaEntry`.
+pub(crate) unsafe fn as_raw_complete_goal<
+    Srv,
+    Pub,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+    status: nros_core::GoalStatus,
+    result_data: *const u8,
+    result_len: usize,
+) where
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+    let result_cdr = unsafe { core::slice::from_raw_parts(result_data, result_len) };
+    entry.core.complete_goal_raw(goal_id, status, result_cdr);
+}
+
+/// Raw action server: set goal status via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerRawArenaEntry`.
+pub(crate) unsafe fn as_raw_set_goal_status<
+    Srv,
+    Pub,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *mut u8,
+    goal_id: &nros_core::GoalId,
+    status: nros_core::GoalStatus,
+) where
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+    entry.core.set_goal_status(goal_id, status);
+}
+
+/// Raw action server: get active goal count via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerRawArenaEntry`.
+pub(crate) unsafe fn as_raw_active_goal_count<
+    Srv,
+    Pub,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *const u8,
+) -> usize
+where
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+    entry.core.active_goal_count()
+}
+
+/// Raw action server: iterate active goals via arena entry.
+///
+/// # Safety
+/// `ptr` must point to a valid `ActionServerRawArenaEntry`.
+pub(crate) unsafe fn as_raw_for_each_active_goal<
+    Srv,
+    Pub,
+    const GB: usize,
+    const RB: usize,
+    const FB: usize,
+    const MG: usize,
+>(
+    ptr: *const u8,
+    f: &mut dyn FnMut(&super::action_core::RawActiveGoal),
+) where
+    Srv: ServiceServerTrait,
+    Pub: Publisher,
+{
+    let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+    for goal in entry.core.active_goals() {
+        f(goal);
+    }
+}
+
 /// Action server: iterate active goals via arena entry.
 ///
-/// Calls `f` for each active goal.
+/// Calls `f` for each active goal, reconstructing `ActiveGoal<A>` from
+/// the core's `RawActiveGoal` and the parallel typed goals vec.
 ///
 /// # Safety
 /// `ptr` must point to a valid `ActionServerArenaEntry`.
@@ -856,14 +1075,20 @@ pub(crate) unsafe fn as_for_each_active_goal<
     ptr: *const u8,
     f: &mut dyn FnMut(&ActiveGoal<A>),
 ) where
-    A: RosAction,
+    A: RosAction + 'static,
+    A::Goal: Clone,
     Srv: ServiceServerTrait,
     Pub: Publisher,
 {
     let entry = unsafe {
         &*(ptr as *const ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
     };
-    for goal in entry.server.active_goals() {
-        f(goal);
+    for (i, raw_goal) in entry.server.core.active_goals().iter().enumerate() {
+        let active = ActiveGoal {
+            goal_id: raw_goal.goal_id,
+            status: raw_goal.status,
+            goal: entry.server.typed_goals[i].clone(),
+        };
+        f(&active);
     }
 }

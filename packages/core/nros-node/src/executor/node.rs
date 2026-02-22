@@ -262,17 +262,22 @@ impl<'a, S: Session> Node<'a, S> {
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(ActionServer {
-            send_goal_server,
-            cancel_goal_server,
-            get_result_server,
-            feedback_publisher,
-            status_publisher,
-            active_goals: heapless::Vec::new(),
+            core: super::action_core::ActionServerCore {
+                send_goal_server,
+                cancel_goal_server,
+                get_result_server,
+                feedback_publisher,
+                status_publisher,
+                active_goals: heapless::Vec::new(),
+                completed_results: heapless::Vec::new(),
+                result_slab: [0u8; RESULT_BUF],
+                result_slab_used: 0,
+                goal_buffer: [0u8; GOAL_BUF],
+                feedback_buffer: [0u8; FEEDBACK_BUF],
+                cancel_buffer: [0u8; 256],
+            },
+            typed_goals: heapless::Vec::new(),
             completed_goals: heapless::Vec::new(),
-            goal_buffer: [0u8; GOAL_BUF],
-            result_buffer: [0u8; RESULT_BUF],
-            feedback_buffer: [0u8; FEEDBACK_BUF],
-            cancel_buffer: [0u8; 256],
         })
     }
 
@@ -347,14 +352,16 @@ impl<'a, S: Session> Node<'a, S> {
             .map_err(|_| NodeError::ActionCreationFailed)?;
 
         Ok(ActionClient {
-            send_goal_client,
-            cancel_goal_client,
-            get_result_client,
-            feedback_subscriber,
-            goal_buffer: [0u8; GOAL_BUF],
-            result_buffer: [0u8; RESULT_BUF],
-            feedback_buffer: [0u8; FEEDBACK_BUF],
-            goal_counter: 0,
+            core: super::action_core::ActionClientCore {
+                send_goal_client,
+                cancel_goal_client,
+                get_result_client,
+                feedback_subscriber,
+                goal_buffer: [0u8; GOAL_BUF],
+                result_buffer: [0u8; RESULT_BUF],
+                feedback_buffer: [0u8; FEEDBACK_BUF],
+                goal_counter: 0,
+            },
             _phantom: PhantomData,
         })
     }

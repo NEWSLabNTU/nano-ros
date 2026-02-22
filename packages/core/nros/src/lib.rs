@@ -292,9 +292,11 @@ pub mod internals {
 
 // Re-export embedded node types (always available, no feature gate)
 pub use nros_node::{
-    ActionClient, ActionServer, ActiveGoal, CompletedGoal, EmbeddedPublisher,
-    EmbeddedServiceClient, EmbeddedServiceServer, Executor, ExecutorConfig, Node, NodeError,
-    Promise, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Subscription,
+    ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
+    ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
+    EmbeddedServiceServer, Executor, ExecutorConfig, Node, NodeError, Promise, RawActiveGoal,
+    RawCancelCallback, RawGoalCallback, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
+    Subscription,
 };
 
 #[cfg(feature = "std")]

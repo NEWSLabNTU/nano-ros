@@ -345,6 +345,10 @@ pub struct CompletedGoal<A: RosAction> {
 // ============================================================================
 
 /// Typed action server with goal state management.
+///
+/// Wraps [`ActionServerCore`](super::action_core::ActionServerCore) for
+/// raw-bytes protocol handling, adding typed goal/feedback/result
+/// serialization at the boundary.
 pub struct ActionServer<
     A: RosAction,
     Srv,
@@ -354,17 +358,18 @@ pub struct ActionServer<
     const FEEDBACK_BUF: usize = 1024,
     const MAX_GOALS: usize = 4,
 > {
-    pub(crate) send_goal_server: Srv,
-    pub(crate) cancel_goal_server: Srv,
-    pub(crate) get_result_server: Srv,
-    pub(crate) feedback_publisher: Pub,
-    pub(crate) status_publisher: Pub,
-    pub(crate) active_goals: heapless::Vec<ActiveGoal<A>, MAX_GOALS>,
+    pub(crate) core: super::action_core::ActionServerCore<
+        Srv,
+        Pub,
+        GOAL_BUF,
+        RESULT_BUF,
+        FEEDBACK_BUF,
+        MAX_GOALS,
+    >,
+    /// Typed goal data parallel to `core.active_goals`.
+    pub(crate) typed_goals: heapless::Vec<A::Goal, MAX_GOALS>,
+    /// Completed goals with typed results.
     pub(crate) completed_goals: heapless::Vec<CompletedGoal<A>, MAX_GOALS>,
-    pub(crate) goal_buffer: [u8; GOAL_BUF],
-    pub(crate) result_buffer: [u8; RESULT_BUF],
-    pub(crate) feedback_buffer: [u8; FEEDBACK_BUF],
-    pub(crate) cancel_buffer: [u8; 256],
 }
 
 impl<
@@ -388,67 +393,33 @@ impl<
     where
         A::Goal: Clone,
     {
-        let request = self
-            .send_goal_server
-            .try_recv_request(&mut self.goal_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))?;
-
-        let request = match request {
+        let raw_req = self.core.try_recv_goal_request()?;
+        let raw_req = match raw_req {
             Some(r) => r,
             None => return Ok(None),
         };
 
-        let data_len = request.data.len();
-        let sequence_number = request.sequence_number;
-        #[allow(clippy::drop_non_drop)]
-        drop(request);
-
-        let mut reader = CdrReader::new_with_header(&self.goal_buffer[..data_len])
+        // Deserialize the goal from the buffer (GoalId already extracted by core)
+        let mut reader = CdrReader::new_with_header(&self.core.goal_buffer()[..raw_req.data_len])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        // Read goal_id (UUID as CDR sequence)
-        let uuid_len = reader
-            .read_u32()
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?
-            as usize;
-        let mut goal_id = nros_core::GoalId::default();
-        if uuid_len == 16 {
-            for byte in &mut goal_id.uuid {
-                *byte = reader
-                    .read_u8()
-                    .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-            }
+        // Skip past the GoalId (4-byte len + 16 UUID bytes)
+        let _ = reader.read_u32();
+        for _ in 0..16 {
+            let _ = reader.read_u8();
         }
-
         let goal = A::Goal::deserialize(&mut reader)
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
 
-        let response = goal_handler(&goal_id, &goal);
+        let response = goal_handler(&raw_req.goal_id, &goal);
         let accepted = response.is_accepted();
 
-        // Serialize response: accepted (bool) + stamp (Time)
-        let mut writer = CdrWriter::new_with_header(&mut self.result_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-        writer
-            .write_u8(if accepted { 1 } else { 0 })
-            .map_err(|_| NodeError::Serialization)?;
-        writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-        writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
-        let reply_len = writer.position();
-
-        self.send_goal_server
-            .send_reply(sequence_number, &self.result_buffer[..reply_len])
-            .map_err(|_| NodeError::ServiceReplyFailed)?;
-
         if accepted {
-            let _ = self.active_goals.push(ActiveGoal {
-                goal_id,
-                status: nros_core::GoalStatus::Accepted,
-                goal,
-            });
-            let _ = self.publish_status_array();
-            Ok(Some(goal_id))
+            self.core
+                .accept_goal(raw_req.goal_id, raw_req.sequence_number)?;
+            let _ = self.typed_goals.push(goal);
+            Ok(Some(raw_req.goal_id))
         } else {
+            self.core.reject_goal(raw_req.sequence_number)?;
             Ok(None)
         }
     }
@@ -459,35 +430,23 @@ impl<
         goal_id: &nros_core::GoalId,
         feedback: &A::Feedback,
     ) -> Result<(), NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.feedback_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-        for b in &goal_id.uuid {
-            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-        }
-
+        // Serialize feedback into a temp buffer (without CDR header or GoalId)
+        let mut tmp = [0u8; FEEDBACK_BUF];
+        let mut writer = CdrWriter::new(&mut tmp);
         feedback
             .serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;
+        let feedback_len = writer.position();
 
-        let len = writer.position();
-        self.feedback_publisher
-            .publish_raw(&self.feedback_buffer[..len])
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
+        self.core
+            .publish_feedback_raw(goal_id, &tmp[..feedback_len])
     }
 
     /// Set a goal's status.
     ///
     /// Also publishes the updated `GoalStatusArray` on the status topic.
     pub fn set_goal_status(&mut self, goal_id: &nros_core::GoalId, status: nros_core::GoalStatus) {
-        for goal in &mut self.active_goals {
-            if goal.goal_id.uuid == goal_id.uuid {
-                goal.status = status;
-                break;
-            }
-        }
-        let _ = self.publish_status_array();
+        self.core.set_goal_status(goal_id, status);
     }
 
     /// Complete a goal and store the result.
@@ -499,54 +458,32 @@ impl<
         status: nros_core::GoalStatus,
         result: A::Result,
     ) {
+        // Serialize result for the core slab
+        let mut tmp = [0u8; RESULT_BUF];
+        let mut writer = CdrWriter::new(&mut tmp);
+        let result_len = match result.serialize(&mut writer) {
+            Ok(()) => writer.position(),
+            Err(_) => 0,
+        };
+
+        // Remove typed goal parallel to core's active_goals removal
         if let Some(pos) = self
-            .active_goals
+            .core
+            .active_goals()
             .iter()
             .position(|g| g.goal_id.uuid == goal_id.uuid)
         {
-            self.active_goals.swap_remove(pos);
+            self.typed_goals.swap_remove(pos);
         }
+
+        self.core
+            .complete_goal_raw(goal_id, status, &tmp[..result_len]);
 
         let _ = self.completed_goals.push(CompletedGoal {
             goal_id: *goal_id,
             status,
             result,
         });
-        let _ = self.publish_status_array();
-    }
-
-    /// Publish the current GoalStatusArray on the status topic.
-    ///
-    /// Serializes all active goals' statuses as a CDR sequence of
-    /// `GoalStatusStamped` and publishes them.
-    fn publish_status_array(&self) -> Result<(), NodeError> {
-        // Status buffer: 4 (CDR header) + 4 (sequence len) + per-goal ~40 bytes
-        // (GoalId UUID 4+16, stamp 8, status 1, alignment padding)
-        // Fixed 512-byte buffer covers up to ~12 concurrent goals.
-        let mut buf = [0u8; 512];
-        let mut writer =
-            CdrWriter::new_with_header(&mut buf).map_err(|_| NodeError::BufferTooSmall)?;
-
-        // Write sequence length (number of active goals)
-        writer
-            .write_u32(self.active_goals.len() as u32)
-            .map_err(|_| NodeError::Serialization)?;
-
-        // Write each GoalStatusStamped
-        for goal in &self.active_goals {
-            let stamped = nros_core::GoalStatusStamped::new(
-                nros_core::GoalInfo::with_id(goal.goal_id),
-                goal.status,
-            );
-            stamped
-                .serialize(&mut writer)
-                .map_err(|_| NodeError::Serialization)?;
-        }
-
-        let len = writer.position();
-        self.status_publisher
-            .publish_raw(&buf[..len])
-            .map_err(|_| NodeError::Transport(TransportError::PublishFailed))
     }
 
     /// Try to handle a cancel_goal request.
@@ -557,168 +494,46 @@ impl<
             nros_core::GoalStatus,
         ) -> nros_core::CancelResponse,
     ) -> Result<Option<(nros_core::GoalId, nros_core::CancelResponse)>, NodeError> {
-        let request = self
-            .cancel_goal_server
-            .try_recv_request(&mut self.cancel_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))?;
-
-        let request = match request {
-            Some(r) => r,
-            None => return Ok(None),
-        };
-
-        let data_len = request.data.len();
-        let sequence_number = request.sequence_number;
-        #[allow(clippy::drop_non_drop)]
-        drop(request);
-
-        let mut reader = CdrReader::new_with_header(&self.cancel_buffer[..data_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        let mut goal_id = nros_core::GoalId::default();
-        let uuid_len = reader.read_u32().unwrap_or(0) as usize;
-        if uuid_len == 16 {
-            for byte in &mut goal_id.uuid {
-                *byte = reader.read_u8().unwrap_or(0);
-            }
-        }
-
-        let current_status = self
-            .active_goals
-            .iter()
-            .find(|g| g.goal_id.uuid == goal_id.uuid)
-            .map(|g| g.status)
-            .unwrap_or(nros_core::GoalStatus::Unknown);
-
-        let response = cancel_handler(&goal_id, current_status);
-
-        if response == nros_core::CancelResponse::Ok {
-            self.set_goal_status(&goal_id, nros_core::GoalStatus::Canceling);
-        }
-
-        // Serialize response: return_code (i8) + goals_canceling (sequence of GoalInfo)
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-        writer
-            .write_i8(response as i8)
-            .map_err(|_| NodeError::Serialization)?;
-
-        let num_canceling = if response == nros_core::CancelResponse::Ok {
-            1u32
-        } else {
-            0u32
-        };
-        writer
-            .write_u32(num_canceling)
-            .map_err(|_| NodeError::Serialization)?;
-        if response == nros_core::CancelResponse::Ok {
-            writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-            for b in &goal_id.uuid {
-                writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-            }
-            writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-            writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
-        }
-        let reply_len = writer.position();
-
-        self.cancel_goal_server
-            .send_reply(sequence_number, &self.goal_buffer[..reply_len])
-            .map_err(|_| NodeError::ServiceReplyFailed)?;
-
-        Ok(Some((goal_id, response)))
+        self.core.try_handle_cancel(cancel_handler)
     }
 
     /// Try to handle a get_result request.
     pub fn try_handle_get_result(&mut self) -> Result<Option<nros_core::GoalId>, NodeError>
     where
-        A::Result: Clone,
+        A::Result: Clone + Default,
     {
-        let request = self
-            .get_result_server
-            .try_recv_request(&mut self.goal_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::ServiceRequestFailed))?;
-
-        let request = match request {
-            Some(r) => r,
-            None => return Ok(None),
+        // Serialize default result for non-completed goals
+        let mut default_buf = [0u8; RESULT_BUF];
+        let mut writer = CdrWriter::new(&mut default_buf);
+        let default_len = match A::Result::default().serialize(&mut writer) {
+            Ok(()) => writer.position(),
+            Err(_) => 0,
         };
 
-        let data_len = request.data.len();
-        let sequence_number = request.sequence_number;
-        #[allow(clippy::drop_non_drop)]
-        drop(request);
-
-        let mut reader = CdrReader::new_with_header(&self.goal_buffer[..data_len])
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        let mut goal_id = nros_core::GoalId::default();
-        let uuid_len = reader.read_u32().unwrap_or(0) as usize;
-        if uuid_len == 16 {
-            for byte in &mut goal_id.uuid {
-                *byte = reader.read_u8().unwrap_or(0);
-            }
-        }
-
-        let completed = self
-            .completed_goals
-            .iter()
-            .find(|g| g.goal_id.uuid == goal_id.uuid);
-
-        let active = self
-            .active_goals
-            .iter()
-            .find(|g| g.goal_id.uuid == goal_id.uuid);
-
-        let mut writer = CdrWriter::new_with_header(&mut self.result_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        if let Some(completed_goal) = completed {
-            writer
-                .write_i8(completed_goal.status as i8)
-                .map_err(|_| NodeError::Serialization)?;
-            completed_goal
-                .result
-                .serialize(&mut writer)
-                .map_err(|_| NodeError::Serialization)?;
-        } else if let Some(active_goal) = active {
-            writer
-                .write_i8(active_goal.status as i8)
-                .map_err(|_| NodeError::Serialization)?;
-            A::Result::default()
-                .serialize(&mut writer)
-                .map_err(|_| NodeError::Serialization)?;
-        } else {
-            writer
-                .write_i8(nros_core::GoalStatus::Unknown as i8)
-                .map_err(|_| NodeError::Serialization)?;
-            A::Result::default()
-                .serialize(&mut writer)
-                .map_err(|_| NodeError::Serialization)?;
-        }
-
-        let reply_len = writer.position();
-        self.get_result_server
-            .send_reply(sequence_number, &self.result_buffer[..reply_len])
-            .map_err(|_| NodeError::ServiceReplyFailed)?;
-
-        Ok(Some(goal_id))
+        self.core
+            .try_handle_get_result_raw(&default_buf[..default_len])
     }
 
     /// Get a reference to an active goal.
-    pub fn get_goal(&self, goal_id: &nros_core::GoalId) -> Option<&ActiveGoal<A>> {
-        self.active_goals
+    pub fn get_goal(&self, goal_id: &nros_core::GoalId) -> Option<ActiveGoal<A>>
+    where
+        A::Goal: Clone,
+    {
+        self.core
+            .active_goals()
             .iter()
-            .find(|g| g.goal_id.uuid == goal_id.uuid)
-    }
-
-    /// Get all active goals.
-    pub fn active_goals(&self) -> &[ActiveGoal<A>] {
-        &self.active_goals
+            .enumerate()
+            .find(|(_, g)| g.goal_id.uuid == goal_id.uuid)
+            .map(|(i, raw)| ActiveGoal {
+                goal_id: raw.goal_id,
+                status: raw.status,
+                goal: self.typed_goals[i].clone(),
+            })
     }
 
     /// Get the number of active goals.
     pub fn active_goal_count(&self) -> usize {
-        self.active_goals.len()
+        self.core.active_goal_count()
     }
 }
 
@@ -727,6 +542,10 @@ impl<
 // ============================================================================
 
 /// Typed action client handle.
+///
+/// Wraps [`ActionClientCore`](super::action_core::ActionClientCore) for
+/// raw-bytes protocol handling, adding typed goal/feedback/result
+/// serialization at the boundary.
 pub struct ActionClient<
     A: RosAction,
     Cli,
@@ -735,14 +554,8 @@ pub struct ActionClient<
     const RESULT_BUF: usize = 1024,
     const FEEDBACK_BUF: usize = 1024,
 > {
-    pub(crate) send_goal_client: Cli,
-    pub(crate) cancel_goal_client: Cli,
-    pub(crate) get_result_client: Cli,
-    pub(crate) feedback_subscriber: Sub,
-    pub(crate) goal_buffer: [u8; GOAL_BUF],
-    pub(crate) result_buffer: [u8; RESULT_BUF],
-    pub(crate) feedback_buffer: [u8; FEEDBACK_BUF],
-    pub(crate) goal_counter: u64,
+    pub(crate) core:
+        super::action_core::ActionClientCore<Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
     pub(crate) _phantom: PhantomData<A>,
 }
 
@@ -762,33 +575,20 @@ impl<
         &mut self,
         goal: &A::Goal,
     ) -> Result<(nros_core::GoalId, Promise<'_, bool, Cli>), NodeError> {
-        self.goal_counter += 1;
-        let mut goal_id = nros_core::GoalId::default();
-        let counter_bytes = self.goal_counter.to_le_bytes();
-        goal_id.uuid[..8].copy_from_slice(&counter_bytes);
-
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-        for b in &goal_id.uuid {
-            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-        }
-
+        // Serialize goal into a temp buffer (without CDR header or GoalId)
+        let mut tmp = [0u8; GOAL_BUF];
+        let mut writer = CdrWriter::new(&mut tmp);
         goal.serialize(&mut writer)
             .map_err(|_| NodeError::Serialization)?;
+        let goal_len = writer.position();
 
-        let req_len = writer.position();
-
-        self.send_goal_client
-            .send_request_raw(&self.goal_buffer[..req_len])
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
+        let goal_id = self.core.send_goal_raw(&tmp[..goal_len])?;
 
         Ok((
             goal_id,
             Promise {
-                handle: &mut self.send_goal_client,
-                reply_buffer: &mut self.result_buffer,
+                handle: &mut self.core.send_goal_client,
+                reply_buffer: &mut self.core.result_buffer,
                 parse: parse_goal_accepted,
             },
         ))
@@ -798,25 +598,18 @@ impl<
     pub fn try_recv_feedback(
         &mut self,
     ) -> Result<Option<(nros_core::GoalId, A::Feedback)>, NodeError> {
-        let data = self
-            .feedback_subscriber
-            .try_recv_raw(&mut self.feedback_buffer)
-            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        let len = match data {
-            Some(len) => len,
+        let (goal_id, len) = match self.core.try_recv_feedback_raw()? {
+            Some(v) => v,
             None => return Ok(None),
         };
 
-        let mut reader = CdrReader::new_with_header(&self.feedback_buffer[..len])
+        // Deserialize feedback from the core's feedback buffer (after GoalId)
+        let mut reader = CdrReader::new_with_header(&self.core.feedback_buffer[..len])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-
-        let mut goal_id = nros_core::GoalId::default();
-        let uuid_len = reader.read_u32().unwrap_or(0) as usize;
-        if uuid_len == 16 {
-            for byte in &mut goal_id.uuid {
-                *byte = reader.read_u8().unwrap_or(0);
-            }
+        // Skip GoalId (4 + 16 bytes)
+        let _ = reader.read_u32();
+        for _ in 0..16 {
+            let _ = reader.read_u8();
         }
 
         let feedback = A::Feedback::deserialize(&mut reader)
@@ -830,25 +623,11 @@ impl<
         &mut self,
         goal_id: &nros_core::GoalId,
     ) -> Result<Promise<'_, nros_core::CancelResponse, Cli>, NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-        for b in &goal_id.uuid {
-            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-        }
-        writer.write_i32(0).map_err(|_| NodeError::Serialization)?;
-        writer.write_u32(0).map_err(|_| NodeError::Serialization)?;
-
-        let req_len = writer.position();
-
-        self.cancel_goal_client
-            .send_request_raw(&self.goal_buffer[..req_len])
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
+        self.core.send_cancel_request(goal_id)?;
 
         Ok(Promise {
-            handle: &mut self.cancel_goal_client,
-            reply_buffer: &mut self.result_buffer,
+            handle: &mut self.core.cancel_goal_client,
+            reply_buffer: &mut self.core.result_buffer,
             parse: parse_cancel_response,
         })
     }
@@ -858,23 +637,11 @@ impl<
         &mut self,
         goal_id: &nros_core::GoalId,
     ) -> Result<Promise<'_, (nros_core::GoalStatus, A::Result), Cli>, NodeError> {
-        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
-            .map_err(|_| NodeError::BufferTooSmall)?;
-
-        writer.write_u32(16).map_err(|_| NodeError::Serialization)?;
-        for b in &goal_id.uuid {
-            writer.write_u8(*b).map_err(|_| NodeError::Serialization)?;
-        }
-
-        let req_len = writer.position();
-
-        self.get_result_client
-            .send_request_raw(&self.goal_buffer[..req_len])
-            .map_err(|_| NodeError::ServiceRequestFailed)?;
+        self.core.send_get_result_request(goal_id)?;
 
         Ok(Promise {
-            handle: &mut self.get_result_client,
-            reply_buffer: &mut self.result_buffer,
+            handle: &mut self.core.get_result_client,
+            reply_buffer: &mut self.core.result_buffer,
             parse: parse_result_response::<A>,
         })
     }

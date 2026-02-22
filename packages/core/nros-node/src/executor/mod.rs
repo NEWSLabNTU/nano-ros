@@ -22,6 +22,7 @@
 //! }
 //! ```
 
+pub mod action_core;
 mod arena;
 mod handles;
 mod node;
@@ -34,7 +35,8 @@ pub mod action;
 mod tests;
 
 // Flat re-exports so users write `executor::Executor` etc.
-pub use action::ActionServerHandle;
+pub use action::{ActionServerHandle, ActionServerRawHandle};
+pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
 pub use handles::*;
 pub use node::Node;
 pub use spin::Executor;
