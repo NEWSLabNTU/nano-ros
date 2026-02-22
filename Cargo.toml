@@ -44,6 +44,7 @@ exclude = [
     "examples/native/rust/zenoh/async-service",
     "examples/native/rust/zenoh/action-server",
     "examples/native/rust/zenoh/action-client",
+    "examples/native/rust/zenoh/async-action",
     "examples/native/rust/zenoh/fairness-bench",
     "examples/native/rust/zenoh/stress-test",
     # QEMU ARM examples (bare-metal Cortex-M3)

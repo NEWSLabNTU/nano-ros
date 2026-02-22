@@ -62,49 +62,38 @@ fn run() -> Result<(), NodeError> {
         goal_id.uuid[0], goal_id.uuid[1], goal_id.uuid[2], goal_id.uuid[3]
     );
 
-    info!("Waiting for feedback and result...");
+    info!("Waiting for feedback...");
 
-    // Wait for feedback
-    let mut feedback_count: u32 = 0;
-    let mut no_feedback_cycles: u32 = 0;
-    let max_wait_cycles = 200; // 20 seconds max (100ms per cycle)
-
-    for cycle in 0..max_wait_cycles {
-        executor.spin_once(100);
-
-        // Check for feedback
-        match action_client.try_recv_feedback() {
-            Ok(Some((fid, feedback))) => {
-                if fid.uuid == goal_id.uuid {
+    // Receive feedback via FeedbackStream (drives I/O internally, filters by goal ID)
+    {
+        let mut stream = action_client.feedback_stream_for(goal_id);
+        let mut feedback_count: u32 = 0;
+        for _ in 0..20 {
+            // 20 x 1000ms = 20 second max
+            match stream.wait_next(&mut executor, 1000) {
+                Ok(Some(feedback)) => {
                     feedback_count += 1;
                     info!(
                         "Feedback #{}: {:?}",
                         feedback_count,
                         feedback.sequence.as_slice()
                     );
-                    no_feedback_cycles = 0;
 
-                    // Check if we have all feedback (order + 1 values)
                     if feedback.sequence.len() as i32 > goal.order {
                         info!("Received all feedback, action completed!");
                         break;
                     }
                 }
-            }
-            Ok(None) => {
-                no_feedback_cycles += 1;
-                if no_feedback_cycles > 50 && feedback_count == 0 {
-                    error!("No feedback received after 5 seconds");
+                Ok(None) => {
+                    if feedback_count == 0 {
+                        error!("No feedback received, retrying...");
+                    }
+                }
+                Err(e) => {
+                    error!("Feedback error: {:?}", e);
                     break;
                 }
             }
-            Err(e) => {
-                error!("Feedback error: {:?}", e);
-            }
-        }
-
-        if cycle == max_wait_cycles - 1 {
-            error!("Timeout waiting for action completion");
         }
     }
 

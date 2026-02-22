@@ -9,7 +9,6 @@
 //!   XRCE_FIBONACCI_ORDER — Fibonacci sequence order to request (default: 5)
 
 use nros::{Executor, ExecutorConfig};
-use std::time::Instant;
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};
 
@@ -75,31 +74,31 @@ fn main() {
     }
     println!("Goal accepted: {:?}", goal_id);
 
-    // Wait for feedback
-    let mut feedback_count = 0usize;
-    let start = Instant::now();
-    let feedback_timeout = std::time::Duration::from_secs(15);
+    // Receive feedback via FeedbackStream (drives I/O internally, filters by goal ID)
+    {
+        let mut stream = action_client.feedback_stream_for(goal_id);
+        let mut feedback_count = 0usize;
+        for _ in 0..15 {
+            // 15 x 1000ms = 15 second max
+            match stream.wait_next(&mut executor, 1000) {
+                Ok(Some(feedback)) => {
+                    feedback_count += 1;
+                    println!(
+                        "Feedback {}: sequence_len={}",
+                        feedback_count,
+                        feedback.sequence.len()
+                    );
 
-    while start.elapsed() < feedback_timeout {
-        executor.spin_once(100);
-
-        match action_client.try_recv_feedback() {
-            Ok(Some((_fid, feedback))) => {
-                feedback_count += 1;
-                println!(
-                    "Feedback {}: sequence_len={}",
-                    feedback_count,
-                    feedback.sequence.len()
-                );
-
-                if feedback.sequence.len() as i32 > order {
-                    println!("All feedback received");
+                    if feedback.sequence.len() as i32 > order {
+                        println!("All feedback received");
+                        break;
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    eprintln!("Feedback receive error: {:?}", e);
                     break;
                 }
-            }
-            Ok(None) => {}
-            Err(e) => {
-                eprintln!("Feedback receive error: {:?}", e);
             }
         }
     }

@@ -36,6 +36,9 @@ safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
 unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
 
+# Async feedback stream (futures_core::Stream impl on FeedbackStream)
+stream = ["dep:futures-core"]
+
 # Parameter services (ros2 param CLI support)
 param-services = ["dep:nros-rcl-interfaces", "alloc"]
 
@@ -49,6 +52,7 @@ nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 log = { workspace = true, optional = true }
+futures-core = { version = "0.3", default-features = false, optional = true }
 nros-rcl-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
 
 [dev-dependencies]

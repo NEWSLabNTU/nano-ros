@@ -645,6 +645,254 @@ impl<
             parse: parse_result_response::<A>,
         })
     }
+
+    /// Create a feedback stream (receives feedback for all goals).
+    ///
+    /// The stream borrows `&mut self` exclusively. Drop it before calling
+    /// `get_result()` or `cancel_goal()`.
+    pub fn feedback_stream(
+        &mut self,
+    ) -> FeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF> {
+        FeedbackStream { client: self }
+    }
+
+    /// Create a goal-filtered feedback stream.
+    ///
+    /// Only yields feedback for the given `goal_id`, returning `A::Feedback`
+    /// directly (without the `GoalId` wrapper).
+    pub fn feedback_stream_for(
+        &mut self,
+        goal_id: nros_core::GoalId,
+    ) -> GoalFeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF> {
+        GoalFeedbackStream {
+            client: self,
+            goal_id,
+        }
+    }
+}
+
+// ============================================================================
+// FeedbackStream
+// ============================================================================
+
+/// A stream of feedback messages from an action server.
+///
+/// Created by [`ActionClient::feedback_stream()`]. Receives feedback for
+/// all active goals. The stream never self-terminates — use combinators
+/// like `take_while` or `break` to stop.
+///
+/// Three access modes:
+/// - **Async (`Stream`)**: Enable the `stream` feature for
+///   [`futures_core::Stream`] + `StreamExt` combinators
+/// - **Async (no deps)**: Use [`next()`](FeedbackStream::next) in
+///   `while let` loops (always available)
+/// - **Sync**: Use [`wait_next()`](FeedbackStream::wait_next) which
+///   drives the executor internally
+pub struct FeedbackStream<
+    'a,
+    A: RosAction,
+    Cli,
+    Sub,
+    const GOAL_BUF: usize = 1024,
+    const RESULT_BUF: usize = 1024,
+    const FEEDBACK_BUF: usize = 1024,
+> {
+    client: &'a mut ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+}
+
+impl<
+    A: RosAction,
+    Cli: ServiceClientTrait,
+    Sub: Subscriber,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+> FeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+{
+    /// Async: wait for the next feedback message (no `futures` dependency needed).
+    ///
+    /// Requires a background task running `executor.spin_async()` to drive
+    /// I/O. Returns `None` only on error.
+    ///
+    /// When the `stream` feature is enabled, prefer `StreamExt::next()` or
+    /// `TryStreamExt::try_next()` for combinator support.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let mut stream = client.feedback_stream();
+    /// while let Some(result) = stream.recv().await {
+    ///     let (goal_id, feedback) = result?;
+    ///     // process feedback...
+    /// }
+    /// ```
+    pub async fn recv(&mut self) -> Option<Result<(nros_core::GoalId, A::Feedback), NodeError>> {
+        core::future::poll_fn(|cx| match self.client.try_recv_feedback() {
+            Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
+            Ok(None) => {
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            }
+            Err(e) => core::task::Poll::Ready(Some(Err(e))),
+        })
+        .await
+    }
+
+    /// Sync: wait for the next feedback message, spinning the executor.
+    ///
+    /// Returns `Ok(Some(feedback))` if a message arrives within `timeout_ms`,
+    /// or `Ok(None)` on timeout. Unlike [`Promise::wait()`], timeout is not
+    /// an error — the caller typically retries in a loop.
+    pub fn wait_next<S: nros_rmw::Session, const M: usize, const C: usize>(
+        &mut self,
+        executor: &mut super::Executor<S, M, C>,
+        timeout_ms: u64,
+    ) -> Result<Option<(nros_core::GoalId, A::Feedback)>, NodeError> {
+        let spin_interval_ms = 10u64;
+        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        for _ in 0..max_spins {
+            executor.spin_once(spin_interval_ms as i32);
+            if let Some(item) = self.client.try_recv_feedback()? {
+                return Ok(Some(item));
+            }
+        }
+        Ok(None)
+    }
+}
+
+#[cfg(feature = "stream")]
+impl<
+    A: RosAction,
+    Cli: ServiceClientTrait + Unpin,
+    Sub: Subscriber + Unpin,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+> futures_core::Stream for FeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+{
+    type Item = Result<(nros_core::GoalId, A::Feedback), NodeError>;
+
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match this.client.try_recv_feedback() {
+            Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
+            Ok(None) => {
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            }
+            Err(e) => core::task::Poll::Ready(Some(Err(e))),
+        }
+    }
+}
+
+// ============================================================================
+// GoalFeedbackStream
+// ============================================================================
+
+/// A goal-filtered feedback stream.
+///
+/// Created by [`ActionClient::feedback_stream_for()`]. Only yields feedback
+/// messages matching the specified goal ID.
+pub struct GoalFeedbackStream<
+    'a,
+    A: RosAction,
+    Cli,
+    Sub,
+    const GOAL_BUF: usize = 1024,
+    const RESULT_BUF: usize = 1024,
+    const FEEDBACK_BUF: usize = 1024,
+> {
+    client: &'a mut ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    goal_id: nros_core::GoalId,
+}
+
+impl<
+    A: RosAction,
+    Cli: ServiceClientTrait,
+    Sub: Subscriber,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+> GoalFeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+{
+    /// Async: wait for the next feedback message for this goal (no `futures` dependency needed).
+    ///
+    /// When the `stream` feature is enabled, prefer `StreamExt::next()` or
+    /// `TryStreamExt::try_next()` for combinator support.
+    pub async fn recv(&mut self) -> Option<Result<A::Feedback, NodeError>> {
+        core::future::poll_fn(|cx| match self.client.try_recv_feedback() {
+            Ok(Some((id, feedback))) if id.uuid == self.goal_id.uuid => {
+                core::task::Poll::Ready(Some(Ok(feedback)))
+            }
+            Ok(Some(_)) => {
+                // Feedback for a different goal — keep polling
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            }
+            Ok(None) => {
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            }
+            Err(e) => core::task::Poll::Ready(Some(Err(e))),
+        })
+        .await
+    }
+
+    /// Sync: wait for the next feedback message for this goal, spinning the executor.
+    pub fn wait_next<S: nros_rmw::Session, const M: usize, const C: usize>(
+        &mut self,
+        executor: &mut super::Executor<S, M, C>,
+        timeout_ms: u64,
+    ) -> Result<Option<A::Feedback>, NodeError> {
+        let spin_interval_ms = 10u64;
+        let max_spins = (timeout_ms / spin_interval_ms).max(1);
+        for _ in 0..max_spins {
+            executor.spin_once(spin_interval_ms as i32);
+            if let Some((id, feedback)) = self.client.try_recv_feedback()?
+                && id.uuid == self.goal_id.uuid
+            {
+                return Ok(Some(feedback));
+            }
+        }
+        Ok(None)
+    }
+}
+
+#[cfg(feature = "stream")]
+impl<
+    A: RosAction,
+    Cli: ServiceClientTrait + Unpin,
+    Sub: Subscriber + Unpin,
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+> futures_core::Stream for GoalFeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+{
+    type Item = Result<A::Feedback, NodeError>;
+
+    fn poll_next(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Option<Self::Item>> {
+        let this = self.get_mut();
+        match this.client.try_recv_feedback() {
+            Ok(Some((id, feedback))) if id.uuid == this.goal_id.uuid => {
+                core::task::Poll::Ready(Some(Ok(feedback)))
+            }
+            Ok(Some(_)) => {
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            }
+            Ok(None) => {
+                cx.waker().wake_by_ref();
+                core::task::Poll::Pending
+            }
+            Err(e) => core::task::Poll::Ready(Some(Err(e))),
+        }
+    }
 }
 
 /// Parse a goal acceptance response (bool).

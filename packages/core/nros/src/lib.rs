@@ -294,9 +294,9 @@ pub mod internals {
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, Executor, ExecutorConfig, Node, NodeError, Promise, RawActiveGoal,
-    RawCancelCallback, RawGoalCallback, SpinOnceResult, SpinOptions, SpinPeriodPollingResult,
-    Subscription,
+    EmbeddedServiceServer, Executor, ExecutorConfig, FeedbackStream, GoalFeedbackStream, Node,
+    NodeError, Promise, RawActiveGoal, RawCancelCallback, RawGoalCallback, SpinOnceResult,
+    SpinOptions, SpinPeriodPollingResult, Subscription,
 };
 
 #[cfg(feature = "std")]

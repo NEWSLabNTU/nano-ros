@@ -2,7 +2,7 @@
 //!
 //! Demonstrates a ROS 2 action client using nros with the Promise API.
 //! Sends a Fibonacci goal, waits for acceptance with `promise.wait()`,
-//! then polls for feedback as the sequence is computed.
+//! then receives feedback via `FeedbackStream::wait_next()`.
 //!
 //! # Usage
 //!
@@ -70,39 +70,28 @@ fn main() {
     }
     info!("Goal accepted! ID: {:?}", goal_id);
 
-    info!("Waiting for feedback and result...");
+    info!("Waiting for feedback...");
 
-    // Poll for feedback
+    // Receive feedback via FeedbackStream (drives I/O internally, filters by goal ID)
+    let mut stream = client.feedback_stream_for(goal_id);
     let mut feedback_count = 0;
-    let start_time = std::time::Instant::now();
-    let feedback_timeout = std::time::Duration::from_secs(30);
+    for _ in 0..30 {
+        // 30 x 1000ms = 30 second max
+        match stream.wait_next(&mut executor, 1000) {
+            Ok(Some(feedback)) => {
+                feedback_count += 1;
+                info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
 
-    loop {
-        if start_time.elapsed() > feedback_timeout {
-            error!("Timeout waiting for result");
-            break;
-        }
-
-        executor.spin_once(100);
-
-        match client.try_recv_feedback() {
-            Ok(Some((fid, feedback))) => {
-                if fid == goal_id {
-                    feedback_count += 1;
-                    info!("Feedback #{}: {:?}", feedback_count, feedback.sequence);
-
-                    if feedback.sequence.len() as i32 > goal.order {
-                        info!("Received all feedback, action completed!");
-                        info!("Final sequence: {:?}", feedback.sequence);
-                        break;
-                    }
+                if feedback.sequence.len() as i32 > goal.order {
+                    info!("Received all feedback, action completed!");
+                    info!("Final sequence: {:?}", feedback.sequence);
+                    break;
                 }
             }
-            Ok(None) => {
-                std::thread::sleep(std::time::Duration::from_millis(50));
-            }
+            Ok(None) => {} // no feedback in this window, retry
             Err(e) => {
                 error!("Error receiving feedback: {:?}", e);
+                break;
             }
         }
     }

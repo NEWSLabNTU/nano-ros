@@ -55,6 +55,9 @@ safety-e2e = ["nros-node/safety-e2e", "nros-rmw/safety-e2e", "nros-rmw-zenoh?/sa
 # Zero-copy receive via z_bytes_get_contiguous_view (unstable zenoh-pico API)
 unstable-zenoh-api = ["nros-node/unstable-zenoh-api", "nros-rmw-zenoh?/unstable-zenoh-api"]
 
+# Async feedback stream (futures_core::Stream impl on FeedbackStream)
+stream = ["nros-node/stream"]
+
 # Parameter services for ROS 2 interop (ros2 param list/get/set)
 param-services = ["nros-node/param-services"]
 

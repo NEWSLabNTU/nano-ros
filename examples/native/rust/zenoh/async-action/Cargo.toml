@@ -1,0 +1,13 @@
+[package]
+name = "native-rs-async-action"
+version = "0.1.0"
+edition = "2024"
+description = "Example async action client using nros with tokio background spin and StreamExt"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix", "stream"] }
+example_interfaces = { version = "*", default-features = false }
+futures = { version = "0.3", default-features = false, features = ["std"] }
+tokio = { version = "1", features = ["rt", "macros", "time"] }
+log = "0.4"
+env_logger = "0.10"
