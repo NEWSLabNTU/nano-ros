@@ -7,6 +7,10 @@
 use core::ffi::c_int;
 use core::ptr;
 
+use crate::action::{
+    nros_action_server_state_t, nros_action_server_t, ActionServerInternal,
+    cancel_callback_trampoline, goal_callback_trampoline,
+};
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
 use crate::service::{nros_service_state_t, nros_service_t};
@@ -41,7 +45,7 @@ pub(crate) type CExecutor = nros_node::Executor<nros::internals::RmwSession, NRO
 /// # Safety
 /// The `_internal` pointer must be valid and point to a live `CExecutor`.
 #[cfg(feature = "alloc")]
-unsafe fn get_executor(internal: *mut core::ffi::c_void) -> &'static mut CExecutor {
+pub(crate) unsafe fn get_executor(internal: *mut core::ffi::c_void) -> &'static mut CExecutor {
     &mut *(internal as *mut CExecutor)
 }
 
@@ -767,6 +771,119 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
                 NROS_RET_OK
             }
             Err(_) => NROS_RET_ERROR,
+        }
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    {
+        NROS_RET_ERROR
+    }
+}
+
+/// Add an action server to the executor.
+///
+/// Extracts metadata from the action server struct, creates callback
+/// trampolines, and registers with the internal nros-node executor via
+/// `add_action_server_raw_sized()`.
+///
+/// # Safety
+/// * All pointers must be valid and point to initialized objects
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_add_action_server(
+    executor: *mut nros_executor_t,
+    server: *mut nros_action_server_t,
+) -> nros_ret_t {
+    if executor.is_null() || server.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let executor = &mut *executor;
+    let server_ref = &*server;
+
+    // Check executor state
+    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
+    }
+
+    // Check server state
+    if server_ref.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
+    }
+
+    // Check capacity
+    if executor.handle_count >= executor.max_handles {
+        return NROS_RET_FULL;
+    }
+
+    #[cfg(feature = "alloc")]
+    {
+        if executor._internal.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+        let rust_exec = get_executor(executor._internal);
+
+        // Extract metadata from action server struct
+        let action_name = core::str::from_utf8_unchecked(
+            &server_ref.action_name[..server_ref.action_name_len],
+        );
+        let type_str = core::str::from_utf8_unchecked(
+            &server_ref.type_name[..server_ref.type_name_len],
+        );
+        let type_hash_str = core::str::from_utf8_unchecked(
+            &server_ref.type_hash[..server_ref.type_hash_len],
+        );
+
+        // Get the goal callback (required — validated during init)
+        let c_goal_callback = match server_ref.goal_callback {
+            Some(cb) => cb,
+            None => return NROS_RET_INVALID_ARGUMENT,
+        };
+
+        // Create the internal struct (handle filled after registration)
+        let internal = alloc::boxed::Box::new(ActionServerInternal {
+            handle: None,
+            executor_ptr: executor._internal,
+            c_goal_callback,
+            c_cancel_callback: server_ref.cancel_callback,
+            c_accepted_callback: server_ref.accepted_callback,
+            c_context: server_ref.context,
+            server_ptr: server,
+        });
+
+        // Leak the Box to get a stable pointer for the callback context.
+        // Ownership transfers to the action server's `_internal` field.
+        let internal_ptr = alloc::boxed::Box::into_raw(internal);
+        let context = internal_ptr as *mut core::ffi::c_void;
+
+        // Register with the nros-node executor using trampolines
+        let result = rust_exec
+            .add_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
+                action_name,
+                type_str,
+                type_hash_str,
+                goal_callback_trampoline,
+                cancel_callback_trampoline,
+                context,
+            );
+
+        match result {
+            Ok(handle) => {
+                // Fill in the handle now that registration succeeded
+                let internal_ref = &mut *internal_ptr;
+                internal_ref.handle = Some(handle);
+
+                // Store the internal pointer in the server struct
+                let server_mut = &mut *server;
+                server_mut._internal = context;
+
+                executor.handle_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => {
+                // Registration failed — reclaim the Box to free memory
+                let _internal = alloc::boxed::Box::from_raw(internal_ptr);
+                NROS_RET_ERROR
+            }
         }
     }
 

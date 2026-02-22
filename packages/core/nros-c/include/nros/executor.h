@@ -17,6 +17,7 @@
 #include "nros/timer.h"
 #include "nros/service.h"
 #include "nros/guard_condition.h"
+#include "nros/action.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -267,6 +268,25 @@ NROS_PUBLIC NROS_WARN_UNUSED
 nros_ret_t nros_executor_add_guard_condition(
     nros_executor_t *executor,
     nros_guard_condition_t *guard);
+
+/**
+ * Add an action server to the executor.
+ *
+ * Registers the action server with the executor. The action server must
+ * have been initialized with nros_action_server_init() before calling this.
+ *
+ * @param executor Pointer to an initialized executor
+ * @param server Pointer to an initialized action server
+ *
+ * @return NROS_RET_OK on success
+ * @return NROS_RET_INVALID_ARGUMENT if any pointer is NULL
+ * @return NROS_RET_FULL if executor is full
+ * @return NROS_RET_NOT_INIT if not initialized
+ */
+NROS_PUBLIC NROS_WARN_UNUSED
+nros_ret_t nros_executor_add_action_server(
+    nros_executor_t *executor,
+    nros_action_server_t *server);
 
 /**
  * Spin the executor once.

@@ -178,7 +178,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 35 | Safety hardening & E2E protocol | In Progress |
 | 36 | Multi-backend integration tests | Not Started |
 | 40 | Large message support | In Progress |
-| 49 | nros-c thin wrapper migration | In Progress (49.1–49.3 done) |
+| 49 | nros-c thin wrapper migration | In Progress (49.1–49.4 done) |
 
 ## Quick Reference
 

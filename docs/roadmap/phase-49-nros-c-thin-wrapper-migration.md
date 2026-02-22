@@ -1,6 +1,6 @@
 # Phase 49 — nros-c Thin Wrapper Migration
 
-## Status: In Progress (49.1–49.3 complete, 49.4 deferred)
+## Status: In Progress (49.1–49.4 complete)
 
 ## Background
 
@@ -105,7 +105,7 @@ Rust API to rewrite nros-c as a thin delegation layer.
 | `timer.rs`           |    348 |   395 |   +47 | Added `_executor` ptr, cancel/reset forward  |
 | `guard_condition.rs` |    450 |   498 |   +48 | Added `GuardConditionHandle` storage         |
 | `support.rs`         |    283 |   288 |    +5 | Added `get_session_ptr()` helper             |
-| `action.rs`          |  1,086 | 1,086 |     0 | Deferred (49.4)                              |
+| `action.rs`          |  1,086 | 1,291 |  +205 | Delegates to nros-node ActionServerRawHandle |
 | Other modules        |  4,811 | 4,720 |   -91 | Minor rename changes                         |
 | **Total**            | **10,069** | **9,643** | **-426** |                                   |
 
@@ -450,45 +450,79 @@ slight increase due to alloc-gated methods).
 
 ---
 
-### 49.4 — nros-c Action Migration — DEFERRED
+### 49.4 — nros-c Action Server Migration — COMPLETE
 
-Deferred to a future phase. The current nros-c action implementation
-(1,086 lines) is functional and already tested (C API action tests pass).
-Adding raw-bytes action entry types to nros-node's arena would require
-significant new infrastructure:
+Rewrote the action server module to delegate to nros-node's
+`ActionServerRawHandle` and `Executor::add_action_server_raw()` API. Follows
+the same metadata-only init → executor registration pattern as subscriptions
+(49.2) and services (49.2).
 
-- Raw-bytes action server entry type with 5 sub-services (goal request,
-  cancel request, result request, feedback publish, status publish)
-- Raw-bytes action client entry type with matching sub-services
-- Goal state machine in nros-node (currently only in nros-c and nros-node's
-  typed `ActionServer`)
-- UUID tracking and concurrent goal management in the arena
+**Pattern:**
 
-The effort-to-benefit ratio doesn't justify it right now — the action module
-works correctly, the C API tests pass, and there's no feature duplication
-risk (actions aren't evolving like the executor was).
+1. `nros_action_server_init()` stores metadata (name, type, callbacks) only
+2. `nros_executor_add_action_server()` creates `Box<ActionServerInternal>`,
+   registers with nros-node via `add_action_server_raw_sized()`, stores the
+   returned `ActionServerRawHandle`
+3. Operation functions (`publish_feedback`, `succeed`, `abort`, `canceled`,
+   `execute`) delegate through the handle
 
-**Remaining tasks (for future phase):**
+**Callback trampolines:**
 
-- [ ] Add raw-bytes action server entry type to nros-node arena
-- [ ] Add raw-bytes action client entry type to nros-node arena
-- [ ] Implement raw-bytes dispatch for action sub-services
-- [ ] Refactor `nros_action_server_init()` to store metadata only
-- [ ] Rewrite `nros_executor_add_action_server()` to delegate
-- [ ] Refactor `nros_action_client_init()` to store metadata only
-- [ ] Rewrite `nros_executor_add_action_client()` to delegate
-- [ ] Delegate goal state transitions to nros-node
-- [ ] Delegate feedback publishing to nros-node
-- [ ] Delegate result handling to nros-node
-- [ ] Remove self-implemented goal state machine and UUID tracking
+Two trampolines bridge C and Rust callback ABIs:
 
-**Files:** `nros-c/src/action.rs`, `nros-node/src/executor/action.rs`
+- `goal_callback_trampoline`: Wraps C `nros_goal_callback_t` as
+  `RawGoalCallback`. On acceptance, fills a C-side goal slot and calls the
+  accepted callback. GoalResponse enum values match (0=Reject, 1=Execute,
+  2=Defer).
+- `cancel_callback_trampoline`: Wraps C `nros_cancel_callback_t` as
+  `RawCancelCallback`. Maps inverted response codes (C: REJECT=0/ACCEPT=1
+  vs Rust: Ok=0/Rejected=1). Finds matching C-side goal slot by UUID.
+
+**Delegation table:**
+
+| C API function                            | Delegates to                                |
+|-------------------------------------------|---------------------------------------------|
+| `nros_action_server_init()`               | Metadata storage only                       |
+| `nros_executor_add_action_server()`       | `executor.add_action_server_raw_sized()`    |
+| `nros_action_publish_feedback()`          | `handle.publish_feedback_raw()`             |
+| `nros_action_succeed()`                   | `handle.complete_goal_raw(Succeeded)`       |
+| `nros_action_abort()`                     | `handle.complete_goal_raw(Aborted)`         |
+| `nros_action_canceled()`                  | `handle.complete_goal_raw(Canceled)`        |
+| `nros_action_execute()`                   | `handle.set_goal_status(Executing)`         |
+| `nros_action_server_get_active_goal_count()` | C-side counter (maintained by trampolines) |
+| `nros_action_server_fini()`               | Drops `Box<ActionServerInternal>`           |
+
+**What stays as stubs:** Client functions (`send_goal`, `cancel_goal`,
+`get_result`) remain stubs — no `add_action_client_raw` on executor yet.
+
+**Line count:** action.rs 1,086 → 1,291 lines (added `ActionServerInternal`,
+trampolines, and delegation logic).
+
+**Tasks:**
+
+- [x] Add `ActionServerInternal` struct (handle, executor_ptr, C callbacks)
+- [x] Add `goal_callback_trampoline` (wraps C goal callback as RawGoalCallback)
+- [x] Add `cancel_callback_trampoline` (wraps C cancel callback as
+  RawCancelCallback, maps inverted response codes)
+- [x] Simplify `nros_action_server_init()` to metadata-only
+- [x] Add `nros_executor_add_action_server()` to executor.rs
+- [x] Add C header declaration for `nros_executor_add_action_server()`
+- [x] Rewrite `nros_action_publish_feedback()` → `handle.publish_feedback_raw()`
+- [x] Rewrite `nros_action_succeed/abort/canceled()` → `handle.complete_goal_raw()`
+- [x] Rewrite `nros_action_execute()` → `handle.set_goal_status(Executing)`
+- [x] Update `nros_action_server_fini()` to drop Box
+- [x] Fix clippy warnings (collapsible_if)
+- [x] All 76 nros-c unit tests pass
+- [x] Build + clippy clean
+
+**Files:** `nros-c/src/action.rs`, `nros-c/src/executor.rs`,
+`nros-c/include/nros/executor.h`
 
 ---
 
-### 49.5 — Tests and Verification — COMPLETE (for 49.1–49.3)
+### 49.5 — Tests and Verification — COMPLETE (for 49.1–49.4)
 
-All existing tests pass. Formal verification items deferred with 49.4.
+All existing tests pass.
 
 **Existing tests (must pass):**
 
@@ -515,10 +549,9 @@ All existing tests pass. Formal verification items deferred with 49.4.
   subscription, service, lifecycle, parameter, platform, etc.)
 - [x] Both rmw-zenoh and rmw-xrce backends compile cleanly with no warnings
 
-**Deferred (with 49.4):**
+**Future (not blocking):**
 
-- [ ] Raw action server dispatch
-- [ ] Raw action client dispatch
+- [ ] Raw action client dispatch (needs `add_action_client_raw`)
 - [ ] Kani harnesses for `GuardCondition` (trigger/clear atomicity)
 - [ ] Kani harnesses for `ExecutorSemantics` (LET sampling correctness)
 - [ ] Kani harnesses for raw-bytes entry types
@@ -607,12 +640,10 @@ nros-node.
   still build and run on Zephyr native_sim. Expected to pass since the C API
   signature is unchanged (only internal delegation changed).
 
-### Deferred (49.4 — Action Migration)
+### Future (not blocking)
 
-- **Raw-bytes action types in nros-node**: Add arena entry types for action
-  server/client with raw CDR bytes
-- **Action delegation**: Rewrite `nros-c/src/action.rs` (1,086 lines) to
-  delegate goal state machine and sub-service dispatch to nros-node
+- **Action client delegation**: Add `add_action_client_raw` to nros-node
+  executor, then delegate C client functions
 - **Kani harnesses**: GuardCondition atomicity, ExecutorSemantics sampling,
   raw-bytes entry types
 

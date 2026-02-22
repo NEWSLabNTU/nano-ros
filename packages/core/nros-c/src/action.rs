@@ -2,6 +2,13 @@
 //!
 //! Actions provide long-running task execution with feedback and cancellation.
 //! This module implements both action servers and clients.
+//!
+//! The action server follows the same metadata-only init → executor registration
+//! pattern as subscriptions and services:
+//! 1. `nros_action_server_init()` stores metadata (name, type, callbacks)
+//! 2. `nros_executor_add_action_server()` creates RMW entities and registers
+//!    with the nros-node executor
+//! 3. Operation functions delegate through `ActionServerRawHandle`
 
 use core::ffi::{c_char, c_void};
 use core::ptr;
@@ -9,7 +16,6 @@ use core::ptr;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
-use crate::support::nros_support_state_t;
 
 // ============================================================================
 // Constants
@@ -197,33 +203,33 @@ pub struct nros_action_server_t {
     /// Current state
     pub state: nros_action_server_state_t,
     /// Action name storage
-    action_name: [u8; MAX_ACTION_NAME_LEN],
+    pub(crate) action_name: [u8; MAX_ACTION_NAME_LEN],
     /// Action name length
-    action_name_len: usize,
+    pub(crate) action_name_len: usize,
     /// Type name storage
-    type_name: [u8; MAX_TYPE_NAME_LEN],
+    pub(crate) type_name: [u8; MAX_TYPE_NAME_LEN],
     /// Type name length
-    type_name_len: usize,
+    pub(crate) type_name_len: usize,
     /// Type hash storage
-    type_hash: [u8; MAX_TYPE_HASH_LEN],
+    pub(crate) type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
-    type_hash_len: usize,
+    pub(crate) type_hash_len: usize,
     /// Goal callback
-    goal_callback: nros_goal_callback_t,
+    pub(crate) goal_callback: nros_goal_callback_t,
     /// Cancel callback
-    cancel_callback: nros_cancel_callback_t,
+    pub(crate) cancel_callback: nros_cancel_callback_t,
     /// Accepted callback
-    accepted_callback: nros_accepted_callback_t,
+    pub(crate) accepted_callback: nros_accepted_callback_t,
     /// User context pointer
-    context: *mut c_void,
+    pub(crate) context: *mut c_void,
     /// Goal handles
     goals: [nros_goal_handle_t; NROS_MAX_CONCURRENT_GOALS],
     /// Number of active goals
     active_goal_count: usize,
     /// Pointer to parent node
     node: *const nros_node_t,
-    /// Opaque pointer to internal implementation
-    _internal: *mut c_void,
+    /// Opaque pointer to internal implementation (`Box<ActionServerInternal>`)
+    pub(crate) _internal: *mut c_void,
 }
 
 impl Default for nros_action_server_t {
@@ -253,6 +259,164 @@ impl Default for nros_action_server_t {
     }
 }
 
+// ============================================================================
+// Internal implementation (delegates to nros-node executor)
+// ============================================================================
+
+/// Internal state created during executor registration.
+///
+/// Holds the `ActionServerRawHandle` and C callback pointers needed by
+/// the goal/cancel trampolines.
+#[cfg(feature = "alloc")]
+pub(crate) struct ActionServerInternal {
+    /// Handle returned by `Executor::add_action_server_raw()`.
+    /// `None` until registration completes (set immediately after).
+    pub(crate) handle: Option<nros_node::ActionServerRawHandle>,
+    /// Pointer to the internal Rust executor (`CExecutor`).
+    pub(crate) executor_ptr: *mut c_void,
+    /// C goal callback from init.
+    pub(crate) c_goal_callback: unsafe extern "C" fn(
+        *const nros_goal_uuid_t,
+        *const u8,
+        usize,
+        *mut c_void,
+    ) -> nros_goal_response_t,
+    /// C cancel callback from init (may be None).
+    pub(crate) c_cancel_callback: nros_cancel_callback_t,
+    /// C accepted callback from init (may be None).
+    pub(crate) c_accepted_callback: nros_accepted_callback_t,
+    /// C user context from init.
+    pub(crate) c_context: *mut c_void,
+    /// Pointer back to the C action server struct.
+    pub(crate) server_ptr: *mut nros_action_server_t,
+}
+
+/// Goal callback trampoline for nros-node.
+///
+/// Wraps the C `nros_goal_callback_t` as a `RawGoalCallback`. On acceptance,
+/// fills a C-side goal slot and calls the C accepted callback.
+#[cfg(feature = "alloc")]
+pub(crate) unsafe extern "C" fn goal_callback_trampoline(
+    goal_id: *const nros_core::GoalId,
+    goal_data: *const u8,
+    goal_len: usize,
+    context: *mut c_void,
+) -> nros_core::GoalResponse {
+    let internal = &*(context as *const ActionServerInternal);
+    let server = &mut *internal.server_ptr;
+
+    // GoalId and nros_goal_uuid_t are layout-compatible (both [u8; 16])
+    let uuid_ptr = goal_id as *const nros_goal_uuid_t;
+
+    // Call the C goal callback
+    let c_response =
+        (internal.c_goal_callback)(uuid_ptr, goal_data, goal_len, internal.c_context);
+
+    // Map C response to Rust GoalResponse
+    let response = match c_response {
+        nros_goal_response_t::NROS_GOAL_REJECT => return nros_core::GoalResponse::Reject,
+        nros_goal_response_t::NROS_GOAL_ACCEPT_AND_EXECUTE => {
+            nros_core::GoalResponse::AcceptAndExecute
+        }
+        nros_goal_response_t::NROS_GOAL_ACCEPT_AND_DEFER => {
+            nros_core::GoalResponse::AcceptAndDefer
+        }
+    };
+
+    // Goal was accepted — fill a C-side goal slot
+    if let Some(slot) = server.goals.iter_mut().find(|g| !g.active) {
+        slot.uuid = *uuid_ptr;
+        slot.status = match response {
+            nros_core::GoalResponse::AcceptAndExecute => {
+                nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING
+            }
+            nros_core::GoalResponse::AcceptAndDefer => {
+                nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED
+            }
+            _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+        };
+        slot.active = true;
+        slot.server = internal.server_ptr;
+        server.active_goal_count += 1;
+
+        // Call the accepted callback
+        if let Some(cb) = internal.c_accepted_callback {
+            cb(slot as *mut _, internal.c_context);
+        }
+    }
+
+    response
+}
+
+/// Cancel callback trampoline for nros-node.
+///
+/// The Rust `RawCancelCallback` receives `(goal_id, status, context)`,
+/// while the C `nros_cancel_callback_t` receives `(goal_handle, context)`.
+/// This trampoline finds the matching C-side goal slot, updates its status
+/// to CANCELING, and calls the C cancel callback.
+#[cfg(feature = "alloc")]
+pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
+    goal_id: *const nros_core::GoalId,
+    _status: nros_core::GoalStatus,
+    context: *mut c_void,
+) -> nros_core::CancelResponse {
+    let internal = &*(context as *const ActionServerInternal);
+    let server = &mut *internal.server_ptr;
+
+    // Find the C-side goal matching this goal_id
+    let goal_id_ref = &*goal_id;
+    let goal_slot = server
+        .goals
+        .iter_mut()
+        .find(|g| g.active && g.uuid.uuid == goal_id_ref.uuid);
+
+    match (internal.c_cancel_callback, goal_slot) {
+        (Some(cb), Some(goal)) => {
+            // Update goal status to canceling before calling the callback
+            goal.status = nros_goal_status_t::NROS_GOAL_STATUS_CANCELING;
+
+            let c_response = cb(goal as *mut _, internal.c_context);
+
+            // Map C cancel response to Rust CancelResponse
+            // C: REJECT=0, ACCEPT=1
+            // Rust: Ok=0 (accepted), Rejected=1
+            match c_response {
+                nros_cancel_response_t::NROS_CANCEL_ACCEPT => nros_core::CancelResponse::Ok,
+                nros_cancel_response_t::NROS_CANCEL_REJECT => {
+                    // Revert status since cancel was rejected
+                    goal.status = nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING;
+                    nros_core::CancelResponse::Rejected
+                }
+            }
+        }
+        (None, _) => {
+            // No cancel callback — accept by default
+            nros_core::CancelResponse::Ok
+        }
+        (_, None) => {
+            // Goal not found in C-side tracking
+            nros_core::CancelResponse::UnknownGoal
+        }
+    }
+}
+
+/// Get the `ActionServerInternal` from a server's `_internal` pointer.
+#[cfg(feature = "alloc")]
+unsafe fn get_internal(
+    server: *const nros_action_server_t,
+) -> Option<&'static ActionServerInternal> {
+    let ptr = (*server)._internal;
+    if ptr.is_null() {
+        None
+    } else {
+        Some(&*(ptr as *const ActionServerInternal))
+    }
+}
+
+// ============================================================================
+// Action Server Functions
+// ============================================================================
+
 /// Get a zero-initialized action server.
 #[unsafe(no_mangle)]
 pub extern "C" fn nros_action_server_get_zero_initialized() -> nros_action_server_t {
@@ -260,6 +424,9 @@ pub extern "C" fn nros_action_server_get_zero_initialized() -> nros_action_serve
 }
 
 /// Initialize an action server.
+///
+/// Stores metadata (name, type, callbacks). RMW entity creation is deferred
+/// to `nros_executor_add_action_server()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_init(
     server: *mut nros_action_server_t,
@@ -358,37 +525,11 @@ pub unsafe extern "C" fn nros_action_server_init(
         goal.server = server_ptr;
     }
 
-    // Create internal action server using zenoh (when implemented)
-    #[cfg(feature = "alloc")]
-    {
-        // Get mutable support reference to access the session
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
+    // RMW entity creation is deferred to nros_executor_add_action_server()
+    server._internal = ptr::null_mut();
+    server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
 
-        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-            return NROS_RET_NOT_INIT;
-        }
-
-        // For now, actions are implemented as a combination of services and topics
-        // The full implementation would create:
-        // - SendGoal service
-        // - CancelGoal service
-        // - GetResult service
-        // - Feedback topic
-        // - Status topic
-
-        // Mark as initialized (basic implementation)
-        server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
-        NROS_RET_OK
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        // For no_std, not yet implemented
-        NROS_RET_ERROR
-    }
+    NROS_RET_OK
 }
 
 /// Publish feedback for an executing goal.
@@ -402,7 +543,7 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
         return NROS_RET_INVALID_ARGUMENT;
     }
 
-    let goal = &mut *goal;
+    let goal = &*goal;
 
     // Check goal is in executing state
     if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING {
@@ -415,16 +556,32 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
 
     #[cfg(feature = "alloc")]
     {
-        // In a full implementation, publish feedback to the feedback topic
-        // For now, just validate the data
-        let _data = core::slice::from_raw_parts(feedback, feedback_len);
-        NROS_RET_OK
+        if goal.server.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+        let internal = match get_internal(goal.server) {
+            Some(i) => i,
+            None => return NROS_RET_NOT_INIT,
+        };
+        let handle = match internal.handle {
+            Some(h) => h,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let goal_id = nros_core::GoalId {
+            uuid: goal.uuid.uuid,
+        };
+        let data = core::slice::from_raw_parts(feedback, feedback_len);
+
+        match handle.publish_feedback_raw(executor, &goal_id, data) {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
     }
 
     #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    NROS_RET_ERROR
 }
 
 /// Mark a goal as succeeded with a result.
@@ -451,29 +608,49 @@ pub unsafe extern "C" fn nros_action_succeed(
 
     #[cfg(feature = "alloc")]
     {
-        // Store result and update status
-        if !result.is_null() {
-            let _data = core::slice::from_raw_parts(result, result_len);
+        if goal.server.is_null() {
+            return NROS_RET_NOT_INIT;
         }
+        let internal = match get_internal(goal.server) {
+            Some(i) => i,
+            None => return NROS_RET_NOT_INIT,
+        };
+        let handle = match internal.handle {
+            Some(h) => h,
+            None => return NROS_RET_NOT_INIT,
+        };
 
+        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let goal_id = nros_core::GoalId {
+            uuid: goal.uuid.uuid,
+        };
+        let result_data = if !result.is_null() {
+            core::slice::from_raw_parts(result, result_len)
+        } else {
+            &[]
+        };
+
+        // Delegate to nros-node executor
+        handle.complete_goal_raw(
+            executor,
+            &goal_id,
+            nros_core::GoalStatus::Succeeded,
+            result_data,
+        );
+
+        // Update C-side goal state
         goal.status = nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED;
-
-        // Deactivate goal and update server count
         goal.active = false;
-        if !goal.server.is_null() {
-            let server = &mut *goal.server;
-            if server.active_goal_count > 0 {
-                server.active_goal_count -= 1;
-            }
+        let server = &mut *goal.server;
+        if server.active_goal_count > 0 {
+            server.active_goal_count -= 1;
         }
 
         NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    NROS_RET_ERROR
 }
 
 /// Mark a goal as aborted with an optional result.
@@ -502,28 +679,47 @@ pub unsafe extern "C" fn nros_action_abort(
 
     #[cfg(feature = "alloc")]
     {
-        if !result.is_null() {
-            let _data = core::slice::from_raw_parts(result, result_len);
+        if goal.server.is_null() {
+            return NROS_RET_NOT_INIT;
         }
+        let internal = match get_internal(goal.server) {
+            Some(i) => i,
+            None => return NROS_RET_NOT_INIT,
+        };
+        let handle = match internal.handle {
+            Some(h) => h,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let goal_id = nros_core::GoalId {
+            uuid: goal.uuid.uuid,
+        };
+        let result_data = if !result.is_null() {
+            core::slice::from_raw_parts(result, result_len)
+        } else {
+            &[]
+        };
+
+        handle.complete_goal_raw(
+            executor,
+            &goal_id,
+            nros_core::GoalStatus::Aborted,
+            result_data,
+        );
 
         goal.status = nros_goal_status_t::NROS_GOAL_STATUS_ABORTED;
-
-        // Deactivate goal and update server count
         goal.active = false;
-        if !goal.server.is_null() {
-            let server = &mut *goal.server;
-            if server.active_goal_count > 0 {
-                server.active_goal_count -= 1;
-            }
+        let server = &mut *goal.server;
+        if server.active_goal_count > 0 {
+            server.active_goal_count -= 1;
         }
 
         NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    NROS_RET_ERROR
 }
 
 /// Mark a goal as canceled with an optional result.
@@ -550,28 +746,47 @@ pub unsafe extern "C" fn nros_action_canceled(
 
     #[cfg(feature = "alloc")]
     {
-        if !result.is_null() {
-            let _data = core::slice::from_raw_parts(result, result_len);
+        if goal.server.is_null() {
+            return NROS_RET_NOT_INIT;
         }
+        let internal = match get_internal(goal.server) {
+            Some(i) => i,
+            None => return NROS_RET_NOT_INIT,
+        };
+        let handle = match internal.handle {
+            Some(h) => h,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let goal_id = nros_core::GoalId {
+            uuid: goal.uuid.uuid,
+        };
+        let result_data = if !result.is_null() {
+            core::slice::from_raw_parts(result, result_len)
+        } else {
+            &[]
+        };
+
+        handle.complete_goal_raw(
+            executor,
+            &goal_id,
+            nros_core::GoalStatus::Canceled,
+            result_data,
+        );
 
         goal.status = nros_goal_status_t::NROS_GOAL_STATUS_CANCELED;
-
-        // Deactivate goal and update server count
         goal.active = false;
-        if !goal.server.is_null() {
-            let server = &mut *goal.server;
-            if server.active_goal_count > 0 {
-                server.active_goal_count -= 1;
-            }
+        let server = &mut *goal.server;
+        if server.active_goal_count > 0 {
+            server.active_goal_count -= 1;
         }
 
         NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    NROS_RET_ERROR
 }
 
 /// Execute a goal (transition from accepted to executing).
@@ -592,6 +807,19 @@ pub unsafe extern "C" fn nros_action_execute(
 
     if !goal.active {
         return NROS_RET_NOT_ALLOWED;
+    }
+
+    // Update nros-node side if registered with executor
+    #[cfg(feature = "alloc")]
+    if !goal.server.is_null()
+        && let Some(internal) = get_internal(goal.server)
+        && let Some(handle) = internal.handle
+    {
+        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let goal_id = nros_core::GoalId {
+            uuid: goal.uuid.uuid,
+        };
+        handle.set_goal_status(executor, &goal_id, nros_core::GoalStatus::Executing);
     }
 
     goal.status = nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING;
@@ -626,15 +854,18 @@ pub unsafe extern "C" fn nros_action_server_fini(
         return NROS_RET_NOT_INIT;
     }
 
-    // Clean up internal resources
+    // Drop the internal implementation
     #[cfg(feature = "alloc")]
     {
-        // Clean up any internal handles
         if !server._internal.is_null() {
-            // Would clean up action-specific resources here
-            server._internal = ptr::null_mut();
+            let _internal = alloc::boxed::Box::from_raw(
+                server._internal as *mut ActionServerInternal,
+            );
+            // ActionServerInternal is dropped here
         }
     }
+
+    server._internal = ptr::null_mut();
 
     // Reset all goal handles
     for goal in server.goals.iter_mut() {
@@ -801,29 +1032,11 @@ pub unsafe extern "C" fn nros_action_client_init(
     // Store node pointer
     client.node = node;
 
-    // Create internal action client using zenoh (when implemented)
-    #[cfg(feature = "alloc")]
-    {
-        // Get mutable support reference to access the session
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
+    // Client init is metadata-only (same as server)
+    client._internal = ptr::null_mut();
+    client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
 
-        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-            return NROS_RET_NOT_INIT;
-        }
-
-        // Mark as initialized (basic implementation)
-        client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
-        NROS_RET_OK
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        // For no_std, not yet implemented
-        NROS_RET_ERROR
-    }
+    NROS_RET_OK
 }
 
 /// Set feedback callback.
@@ -888,15 +1101,13 @@ pub unsafe extern "C" fn nros_action_send_goal(
             return NROS_RET_ERROR;
         }
 
-        // In a full implementation, send the goal via the SendGoal service
+        // Client send_goal not yet wired to executor
         let _data = core::slice::from_raw_parts(goal, goal_len);
         NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    NROS_RET_ERROR
 }
 
 /// Request cancellation of a goal.
@@ -917,15 +1128,12 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
 
     #[cfg(feature = "alloc")]
     {
-        // In a full implementation, send cancel request via the CancelGoal service
         let _uuid = &*goal_uuid;
         NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    NROS_RET_ERROR
 }
 
 /// Request result of a goal (blocking).
@@ -955,18 +1163,13 @@ pub unsafe extern "C" fn nros_action_get_result(
 
     #[cfg(feature = "alloc")]
     {
-        // In a full implementation, call the GetResult service
         let _uuid = &*goal_uuid;
         let _buf = core::slice::from_raw_parts_mut(result, result_capacity);
-
-        // For now, return timeout as we haven't implemented the actual communication
         NROS_RET_TIMEOUT
     }
 
     #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    NROS_RET_ERROR
 }
 
 /// Finalize an action client.
