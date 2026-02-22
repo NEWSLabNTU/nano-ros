@@ -1079,6 +1079,9 @@ regenerate-bindings: clean-bindings generate-bindings
 FREERTOS_KERNEL_TAG := "V11.2.0"
 LWIP_TAG := "STABLE-2_2_1_RELEASE"
 
+# Pinned NuttX version (used by setup-nuttx)
+NUTTX_TAG := "nuttx-12.8.0"
+
 # Download FreeRTOS kernel and lwIP sources for FreeRTOS platform development
 # Sources are placed in external/ and pointed to by environment variables.
 # Run this before building with --features platform-freertos.
@@ -1133,6 +1136,58 @@ setup-freertos:
     echo ""
     echo "For QEMU MPS2-AN385 (Cortex-M3), use FREERTOS_PORT=GCC/ARM_CM3."
     echo "For STM32F7 (Cortex-M7), use FREERTOS_PORT=GCC/ARM_CM7/r0p1."
+    echo ""
+    echo "Setup complete!"
+
+# Download NuttX RTOS and apps sources for NuttX platform development.
+# Sources are placed in external/ and pointed to by NUTTX_DIR environment variable.
+# Run this before building with --features platform-nuttx.
+setup-nuttx:
+    #!/usr/bin/env bash
+    set -e
+    echo "=== NuttX Setup ==="
+    echo ""
+    NUTTX_DIR="$(pwd)/external/nuttx"
+    NUTTX_APPS_DIR="$(pwd)/external/nuttx-apps"
+
+    # --- NuttX RTOS ---
+    if [ -d "$NUTTX_DIR/include" ]; then
+        tag=$(cd "$NUTTX_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
+        echo "NuttX already present at $NUTTX_DIR (tag: $tag)"
+        if [ "$tag" != "{{NUTTX_TAG}}" ]; then
+            echo "  WARNING: expected {{NUTTX_TAG}}, found $tag"
+            echo "  To update: rm -rf $NUTTX_DIR && just setup-nuttx"
+        fi
+    else
+        echo "Cloning NuttX {{NUTTX_TAG}}..."
+        git clone --depth 1 --branch "{{NUTTX_TAG}}" \
+            https://github.com/apache/nuttx.git "$NUTTX_DIR"
+        echo "  -> $NUTTX_DIR"
+    fi
+    echo ""
+
+    # --- NuttX Apps ---
+    if [ -d "$NUTTX_APPS_DIR/include" ]; then
+        tag=$(cd "$NUTTX_APPS_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
+        echo "NuttX apps already present at $NUTTX_APPS_DIR (tag: $tag)"
+        if [ "$tag" != "{{NUTTX_TAG}}" ]; then
+            echo "  WARNING: expected {{NUTTX_TAG}}, found $tag"
+            echo "  To update: rm -rf $NUTTX_APPS_DIR && just setup-nuttx"
+        fi
+    else
+        echo "Cloning NuttX apps {{NUTTX_TAG}}..."
+        git clone --depth 1 --branch "{{NUTTX_TAG}}" \
+            https://github.com/apache/nuttx-apps.git "$NUTTX_APPS_DIR"
+        echo "  -> $NUTTX_APPS_DIR"
+    fi
+    echo ""
+
+    echo "=== Environment Variables ==="
+    echo ""
+    echo "Add these to your shell or .cargo/config.toml [env] section:"
+    echo ""
+    echo "  export NUTTX_DIR=$NUTTX_DIR"
+    echo "  export NUTTX_APPS_DIR=$NUTTX_APPS_DIR"
     echo ""
     echo "Setup complete!"
 
@@ -1215,6 +1270,7 @@ setup:
     echo ""
     echo "Optional (run separately):"
     echo "  just setup-freertos    — Download FreeRTOS kernel + lwIP for platform-freertos dev"
+    echo "  just setup-nuttx       — Download NuttX RTOS + apps for platform-nuttx dev"
     echo ""
     read -r -p "Proceed? [Y/n] " answer
     if [[ "$answer" =~ ^[Nn] ]]; then
