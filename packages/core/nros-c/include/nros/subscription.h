@@ -52,7 +52,12 @@ typedef void (*nros_subscription_callback_t)(
 // Subscription Structure
 // ============================================================================
 
-/** Subscription structure */
+/**
+ * Subscription structure.
+ *
+ * IMPORTANT: This struct layout must match the Rust `nros_subscription_t` in
+ * `packages/core/nros-c/src/subscription.rs` exactly (field order, types, sizes).
+ */
 typedef struct nros_subscription_t {
     /** Current state */
     nros_subscription_state_t state;
@@ -74,8 +79,12 @@ typedef struct nros_subscription_t {
     void *context;
     /** Pointer to parent node */
     const nros_node_t *node;
-    /** Opaque pointer to internal Rust subscriber */
-    void *internal;
+    /** QoS settings (internal, do not touch) */
+    nros_qos_t _qos;
+    /** Handle ID from executor registration (internal, do not touch) */
+    size_t _handle_id;
+    /** Opaque pointer to internal Rust subscriber (internal, do not touch) */
+    void *_internal;
 } nros_subscription_t;
 
 // ============================================================================

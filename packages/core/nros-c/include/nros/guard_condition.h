@@ -59,6 +59,12 @@ typedef void (*nros_guard_condition_callback_t)(void *context);
  * - nros_guard_condition_trigger() is safe to call from any thread
  * - Other functions should only be called from the executor thread
  */
+/**
+ * Guard condition structure.
+ *
+ * IMPORTANT: This struct layout must match the Rust `nros_guard_condition_t` in
+ * `packages/core/nros-c/src/guard_condition.rs` exactly (field order, types, sizes).
+ */
 typedef struct nros_guard_condition_t {
     /** Current state */
     nros_guard_condition_state_t state;
@@ -70,6 +76,10 @@ typedef struct nros_guard_condition_t {
     void *context;
     /** Pointer to parent support context */
     void *_support;
+    /** Handle ID from executor registration (internal, do not touch) */
+    size_t _handle_id;
+    /** Guard condition handle for external triggering (internal, do not touch) */
+    void *_guard_handle;
 } nros_guard_condition_t;
 
 // ============================================================================

@@ -61,7 +61,12 @@ typedef bool (*nros_service_callback_t)(
 // Service Structure
 // ============================================================================
 
-/** Service server structure */
+/**
+ * Service server structure.
+ *
+ * IMPORTANT: This struct layout must match the Rust `nros_service_t` in
+ * `packages/core/nros-c/src/service.rs` exactly (field order, types, sizes).
+ */
 typedef struct nros_service_t {
     /** Current state */
     nros_service_state_t state;
@@ -83,8 +88,10 @@ typedef struct nros_service_t {
     void *context;
     /** Pointer to parent node */
     const nros_node_t *node;
-    /** Opaque pointer to internal Rust service server */
-    void *internal;
+    /** Handle ID from executor registration (internal, do not touch) */
+    size_t _handle_id;
+    /** Opaque pointer to internal Rust service server (internal, do not touch) */
+    void *_internal;
 } nros_service_t;
 
 // ============================================================================

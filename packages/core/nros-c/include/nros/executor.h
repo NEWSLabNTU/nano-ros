@@ -55,22 +55,6 @@ typedef enum nros_executor_state_t {
     NROS_EXECUTOR_STATE_SHUTDOWN = 3,
 } nros_executor_state_t;
 
-/** Handle type for executor */
-typedef enum nros_executor_handle_type_t {
-    /** No handle (empty slot) */
-    NROS_EXECUTOR_HANDLE_NONE = 0,
-    /** Subscription handle */
-    NROS_EXECUTOR_HANDLE_SUBSCRIPTION = 1,
-    /** Timer handle */
-    NROS_EXECUTOR_HANDLE_TIMER = 2,
-    /** Service handle */
-    NROS_EXECUTOR_HANDLE_SERVICE = 3,
-    /** Client handle */
-    NROS_EXECUTOR_HANDLE_CLIENT = 4,
-    /** Guard condition handle */
-    NROS_EXECUTOR_HANDLE_GUARD_CONDITION = 5,
-} nros_executor_handle_type_t;
-
 /** Callback invocation mode */
 typedef enum nros_executor_invocation_t {
     /** Only invoke callback when new data is available */
@@ -103,33 +87,19 @@ typedef bool (*nros_executor_trigger_t)(
 // Executor Structures
 // ============================================================================
 
-/** Executor handle (union-like structure) */
-typedef struct nros_executor_handle_t {
-    /** Handle type */
-    nros_executor_handle_type_t handle_type;
-    /** Invocation mode (for subscriptions) */
-    nros_executor_invocation_t invocation;
-    /** Handle pointer (type depends on handle_type) */
-    void *handle;
-    /** Flag indicating if handle has new data ready */
-    bool data_ready;
-} nros_executor_handle_t;
-
 /**
  * Executor structure.
  *
- * The executor manages a fixed array of handles and processes them
- * in the order they were added.
+ * Thin wrapper over an internal Rust executor. All dispatch logic, trigger
+ * evaluation, LET semantics, and I/O driving are handled internally.
+ * The C struct retains state, timeout, and per-type counters for API compat.
+ *
+ * IMPORTANT: This struct layout must match the Rust `nros_executor_t` in
+ * `packages/core/nros-c/src/executor.rs` exactly (field order, types, sizes).
  */
 typedef struct nros_executor_t {
     /** Current state */
     nros_executor_state_t state;
-    /** Handle array */
-    nros_executor_handle_t handles[NROS_EXECUTOR_MAX_HANDLES];
-    /** Number of handles in use */
-    size_t handle_count;
-    /** Maximum handles (configured at init) */
-    size_t max_handles;
     /** Timeout in nanoseconds for spin_some */
     uint64_t timeout_ns;
     /** Data communication semantics */
@@ -140,20 +110,20 @@ typedef struct nros_executor_t {
     nros_executor_trigger_t trigger;
     /** User context for trigger function */
     void *trigger_context;
-    /** LET buffers (internal) */
-    uint8_t _let_buffers[NROS_EXECUTOR_MAX_HANDLES][512];
-    /** LET buffer lengths (internal) */
-    size_t _let_buffer_lens[NROS_EXECUTOR_MAX_HANDLES];
-    /** LET data availability flags (internal) */
-    bool _let_data_available[NROS_EXECUTOR_MAX_HANDLES];
-    /** Next invocation time in nanoseconds (internal) */
-    uint64_t _invocation_time_ns;
+    /** Number of handles in use */
+    size_t handle_count;
+    /** Maximum handles (configured at init) */
+    size_t max_handles;
     /** Number of subscription handles */
     size_t subscription_count;
     /** Number of timer handles */
     size_t timer_count;
     /** Number of service handles */
     size_t service_count;
+    /** Next invocation time in nanoseconds (internal) */
+    uint64_t _invocation_time_ns;
+    /** Opaque pointer to internal Rust executor (do not touch) */
+    void *_internal;
 } nros_executor_t;
 
 // ============================================================================

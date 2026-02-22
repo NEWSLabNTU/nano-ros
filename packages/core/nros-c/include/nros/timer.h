@@ -55,7 +55,12 @@ typedef void (*nros_timer_callback_t)(
 // Timer Structure
 // ============================================================================
 
-/** Timer structure */
+/**
+ * Timer structure.
+ *
+ * IMPORTANT: This struct layout must match the Rust `nros_timer_t` in
+ * `packages/core/nros-c/src/timer.rs` exactly (field order, types, sizes).
+ */
 typedef struct nros_timer_t {
     /** Current state */
     nros_timer_state_t state;
@@ -69,6 +74,10 @@ typedef struct nros_timer_t {
     void *context;
     /** Pointer to parent support context */
     const nros_support_t *support;
+    /** Handle ID from executor registration (internal, do not touch) */
+    size_t _handle_id;
+    /** Opaque pointer to internal executor (internal, do not touch) */
+    void *_executor;
 } nros_timer_t;
 
 // ============================================================================

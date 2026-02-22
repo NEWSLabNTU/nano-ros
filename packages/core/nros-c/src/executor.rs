@@ -942,10 +942,6 @@ pub unsafe extern "C" fn nros_executor_spin_some(
         if result.any_work() {
             NROS_RET_OK
         } else {
-            // If nothing was processed and we had a timeout, sleep briefly
-            if timeout_ns > 0 {
-                crate::platform::sleep_ns(timeout_ns.min(10_000_000));
-            }
             NROS_RET_TIMEOUT
         }
     }
@@ -1005,7 +1001,10 @@ pub unsafe extern "C" fn nros_executor_spin_period(
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
 
     while executor_ref.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING {
-        let _ = nros_executor_spin_some(executor, 0);
+        // Pass period_ns as the timeout so that spin_once uses it as the
+        // timer delta — timers accumulate elapsed time from this value.
+        // drive_io() will block for up to period_ms waiting for I/O.
+        let _ = nros_executor_spin_some(executor, period_ns);
 
         // Accumulate next invocation time to prevent drift
         executor_ref.invocation_time_ns += period_ns;
@@ -1041,7 +1040,9 @@ pub unsafe extern "C" fn nros_executor_spin_one_period(
 
     let start = crate::platform::get_time_ns();
 
-    let _ = nros_executor_spin_some(executor, 0);
+    // Pass period_ns as the timeout so that spin_once uses it as the
+    // timer delta — timers accumulate elapsed time from this value.
+    let _ = nros_executor_spin_some(executor, period_ns);
 
     // Sleep for remaining time in period
     let elapsed = crate::platform::get_time_ns().saturating_sub(start);

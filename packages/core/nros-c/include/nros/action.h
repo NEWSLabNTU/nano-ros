@@ -101,10 +101,16 @@ typedef struct nros_goal_uuid_t {
 // Goal Handle
 // ============================================================================
 
+// Forward declaration
+struct nros_action_server_t;
+
 /**
  * Goal handle structure.
  *
  * Represents a single goal on the action server.
+ *
+ * IMPORTANT: This struct layout must match the Rust `nros_goal_handle_t` in
+ * `packages/core/nros-c/src/action.rs` exactly (field order, types, sizes).
  */
 typedef struct nros_goal_handle_t {
     /** Goal UUID */
@@ -115,6 +121,8 @@ typedef struct nros_goal_handle_t {
     bool active;
     /** User context pointer for this goal */
     void *context;
+    /** Pointer back to the action server (internal, do not touch) */
+    struct nros_action_server_t *_server;
 } nros_goal_handle_t;
 
 // ============================================================================
@@ -179,10 +187,25 @@ typedef void (*nros_accepted_callback_t)(
 
 /**
  * Action server structure.
+ *
+ * IMPORTANT: This struct layout must match the Rust `nros_action_server_t` in
+ * `packages/core/nros-c/src/action.rs` exactly (field order, types, sizes).
  */
 typedef struct nros_action_server_t {
     /** Current state */
     nros_action_server_state_t state;
+    /** Action name storage (internal, do not touch) */
+    uint8_t _action_name[NROS_MAX_ACTION_NAME_LEN];
+    /** Action name length (internal, do not touch) */
+    size_t _action_name_len;
+    /** Type name storage (internal, do not touch) */
+    uint8_t _type_name[NROS_MAX_TYPE_NAME_LEN];
+    /** Type name length (internal, do not touch) */
+    size_t _type_name_len;
+    /** Type hash storage (internal, do not touch) */
+    uint8_t _type_hash[NROS_MAX_TYPE_HASH_LEN];
+    /** Type hash length (internal, do not touch) */
+    size_t _type_hash_len;
     /** Goal callback */
     nros_goal_callback_t goal_callback;
     /** Cancel callback */
@@ -195,7 +218,9 @@ typedef struct nros_action_server_t {
     nros_goal_handle_t goals[NROS_MAX_CONCURRENT_GOALS];
     /** Number of active goals */
     size_t active_goal_count;
-    /** Opaque pointer to internal implementation */
+    /** Pointer to parent node (internal, do not touch) */
+    const struct nros_node_t *_node;
+    /** Opaque pointer to internal implementation (internal, do not touch) */
     void *_internal;
 } nros_action_server_t;
 
