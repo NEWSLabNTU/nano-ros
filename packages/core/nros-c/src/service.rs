@@ -791,3 +791,418 @@ pub unsafe extern "C" fn nros_client_is_valid(client: *const nros_client_t) -> c
         0
     }
 }
+
+// ============================================================================
+// Kani Verification
+// ============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::error::*;
+    use core::ptr;
+
+    // Helper to create a dummy type_info
+    fn dummy_message_type() -> nros_message_type_t {
+        let type_name = b"example_interfaces::srv::dds_::AddTwoInts_\0";
+        let type_hash = b"RIHS01_test\0";
+        nros_message_type_t {
+            type_name: type_name.as_ptr() as *const core::ffi::c_char,
+            type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
+            serialized_size_max: 16,
+        }
+    }
+
+    // Helper callback for service init
+    unsafe extern "C" fn dummy_callback(
+        _req: *const u8,
+        _req_len: usize,
+        _resp: *mut u8,
+        _resp_cap: usize,
+        _resp_len: *mut usize,
+        _ctx: *mut core::ffi::c_void,
+    ) -> bool {
+        true
+    }
+
+    // -- Service Server Harnesses --
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_init_null_ptrs() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_message_type();
+        let mut node = crate::node::nros_node_get_zero_initialized();
+
+        // NULL service
+        assert_eq!(
+            unsafe {
+                nros_service_init(
+                    ptr::null_mut(),
+                    &node,
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                    Some(dummy_callback),
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL node
+        let mut svc = nros_service_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_service_init(
+                    &mut svc,
+                    ptr::null(),
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                    Some(dummy_callback),
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL type_info
+        let mut svc = nros_service_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_service_init(
+                    &mut svc,
+                    &node,
+                    ptr::null(),
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                    Some(dummy_callback),
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL service_name
+        let mut svc = nros_service_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_service_init(
+                    &mut svc,
+                    &node,
+                    &type_info,
+                    ptr::null(),
+                    Some(dummy_callback),
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_init_none_callback() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_message_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        let mut svc = nros_service_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_service_init(
+                    &mut svc,
+                    &node,
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_init_uninit_node() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_message_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        // Node is UNINITIALIZED → NOT_INIT
+        let mut svc = nros_service_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_service_init(
+                    &mut svc,
+                    &node,
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                    Some(dummy_callback),
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_zero_initialized_state() {
+        let svc = nros_service_get_zero_initialized();
+        assert_eq!(
+            svc.state,
+            nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
+        );
+        assert!(svc.node.is_null());
+        assert!(svc._internal.is_null());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_fini_null_safety() {
+        // NULL → INVALID_ARGUMENT
+        assert_eq!(
+            unsafe { nros_service_fini(ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // UNINITIALIZED → NOT_INIT
+        let mut svc = nros_service_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_service_fini(&mut svc) },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_double_init_rejected() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_message_type();
+        let mut node = crate::node::nros_node_get_zero_initialized();
+        // Manually set node to initialized state for this test
+        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+
+        let mut svc = nros_service_get_zero_initialized();
+        // First init succeeds (metadata only)
+        let ret = unsafe {
+            nros_service_init(
+                &mut svc,
+                &node,
+                &type_info,
+                svc_name.as_ptr() as *const core::ffi::c_char,
+                Some(dummy_callback),
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(ret, NROS_RET_OK);
+
+        // Second init → BAD_SEQUENCE
+        assert_eq!(
+            unsafe {
+                nros_service_init(
+                    &mut svc,
+                    &node,
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                    Some(dummy_callback),
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_BAD_SEQUENCE,
+        );
+    }
+
+    // -- Service Client Harnesses --
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_init_null_ptrs() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_message_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        // NULL client
+        assert_eq!(
+            unsafe {
+                nros_client_init(
+                    ptr::null_mut(),
+                    &node,
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL node
+        let mut client = nros_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_client_init(
+                    &mut client,
+                    ptr::null(),
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL type_info
+        let mut client = nros_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_client_init(
+                    &mut client,
+                    &node,
+                    ptr::null(),
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL service_name
+        let mut client = nros_client_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_client_init(&mut client, &node, &type_info, ptr::null()) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_init_uninit_node() {
+        let svc_name = b"/add_two_ints\0";
+        let type_info = dummy_message_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        let mut client = nros_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_client_init(
+                    &mut client,
+                    &node,
+                    &type_info,
+                    svc_name.as_ptr() as *const core::ffi::c_char,
+                )
+            },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_zero_initialized_state() {
+        let client = nros_client_get_zero_initialized();
+        assert_eq!(
+            client.state,
+            nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
+        );
+        assert!(client.node.is_null());
+        assert!(client._internal.is_null());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_fini_null_safety() {
+        // NULL → INVALID_ARGUMENT
+        assert_eq!(
+            unsafe { nros_client_fini(ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // UNINITIALIZED → NOT_INIT
+        let mut client = nros_client_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_client_fini(&mut client) },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_call_null_safety() {
+        let req = [0u8; 8];
+        let mut resp = [0u8; 8];
+        let mut resp_len: usize = 0;
+
+        // NULL client
+        assert_eq!(
+            unsafe {
+                nros_client_call(
+                    ptr::null_mut(),
+                    req.as_ptr(),
+                    req.len(),
+                    resp.as_mut_ptr(),
+                    resp.len(),
+                    &mut resp_len,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL request_data
+        let mut client = nros_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_client_call(
+                    &mut client,
+                    ptr::null(),
+                    0,
+                    resp.as_mut_ptr(),
+                    resp.len(),
+                    &mut resp_len,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL response_data
+        assert_eq!(
+            unsafe {
+                nros_client_call(
+                    &mut client,
+                    req.as_ptr(),
+                    req.len(),
+                    ptr::null_mut(),
+                    0,
+                    &mut resp_len,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL response_len
+        assert_eq!(
+            unsafe {
+                nros_client_call(
+                    &mut client,
+                    req.as_ptr(),
+                    req.len(),
+                    resp.as_mut_ptr(),
+                    resp.len(),
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    // -- Name Getter Harnesses --
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn service_name_getter_null() {
+        let result = unsafe { nros_service_get_service_name(ptr::null()) };
+        assert!(result.is_null());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn client_name_getter_null() {
+        let result = unsafe { nros_client_get_service_name(ptr::null()) };
+        assert!(result.is_null());
+    }
+}

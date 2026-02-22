@@ -1535,3 +1535,560 @@ pub extern "C" fn nros_goal_status_to_string(status: nros_goal_status_t) -> *con
         nros_goal_status_t::NROS_GOAL_STATUS_ABORTED => c"ABORTED".as_ptr(),
     }
 }
+
+// ============================================================================
+// Kani Verification
+// ============================================================================
+
+#[cfg(kani)]
+mod verification {
+    use super::*;
+    use crate::error::*;
+    use core::ptr;
+
+    // Helper to create a dummy action type info
+    fn dummy_action_type() -> nros_action_type_t {
+        let type_name = b"example_interfaces::action::dds_::Fibonacci_\0";
+        let type_hash = b"RIHS01_test\0";
+        nros_action_type_t {
+            type_name: type_name.as_ptr() as *const core::ffi::c_char,
+            type_hash: type_hash.as_ptr() as *const core::ffi::c_char,
+            goal_serialized_size_max: 8,
+            result_serialized_size_max: 264,
+            feedback_serialized_size_max: 264,
+        }
+    }
+
+    // Helper goal callback
+    unsafe extern "C" fn dummy_goal_callback(
+        _uuid: *const nros_goal_uuid_t,
+        _req: *const u8,
+        _len: usize,
+        _ctx: *mut core::ffi::c_void,
+    ) -> nros_goal_response_t {
+        nros_goal_response_t::NROS_GOAL_ACCEPT_AND_EXECUTE
+    }
+
+    // -- Action Server Harnesses --
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_server_init_null_ptrs() {
+        let action_name = b"/fibonacci\0";
+        let type_info = dummy_action_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        // NULL server
+        assert_eq!(
+            unsafe {
+                nros_action_server_init(
+                    ptr::null_mut(),
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                    Some(dummy_goal_callback),
+                    None,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL node
+        let mut srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_server_init(
+                    &mut srv,
+                    ptr::null(),
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                    Some(dummy_goal_callback),
+                    None,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL action_name
+        let mut srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_server_init(
+                    &mut srv,
+                    &node,
+                    ptr::null(),
+                    &type_info,
+                    Some(dummy_goal_callback),
+                    None,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL type_info
+        let mut srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_server_init(
+                    &mut srv,
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    ptr::null(),
+                    Some(dummy_goal_callback),
+                    None,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_server_init_none_goal_callback() {
+        let action_name = b"/fibonacci\0";
+        let type_info = dummy_action_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        let mut srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_server_init(
+                    &mut srv,
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                    None, // goal_callback is required
+                    None,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_server_init_uninit_node() {
+        let action_name = b"/fibonacci\0";
+        let type_info = dummy_action_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        let mut srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_server_init(
+                    &mut srv,
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                    Some(dummy_goal_callback),
+                    None,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_server_zero_initialized_state() {
+        let srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            srv.state,
+            nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
+        );
+        assert!(srv._internal.is_null());
+        assert!(srv.node.is_null());
+        assert_eq!(srv.active_goal_count, 0);
+        assert!(srv.goal_callback.is_none());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_server_fini_null_safety() {
+        // NULL → INVALID_ARGUMENT
+        assert_eq!(
+            unsafe { nros_action_server_fini(ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // UNINITIALIZED → NOT_INIT
+        let mut srv = nros_action_server_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_action_server_fini(&mut srv) },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_server_double_init_rejected() {
+        let action_name = b"/fibonacci\0";
+        let type_info = dummy_action_type();
+        let mut node = crate::node::nros_node_get_zero_initialized();
+        node.state = crate::node::nros_node_state_t::NROS_NODE_STATE_INITIALIZED;
+
+        let mut srv = nros_action_server_get_zero_initialized();
+        let ret = unsafe {
+            nros_action_server_init(
+                &mut srv,
+                &node,
+                action_name.as_ptr() as *const core::ffi::c_char,
+                &type_info,
+                Some(dummy_goal_callback),
+                None,
+                None,
+                ptr::null_mut(),
+            )
+        };
+        assert_eq!(ret, NROS_RET_OK);
+
+        // Second init → BAD_SEQUENCE
+        assert_eq!(
+            unsafe {
+                nros_action_server_init(
+                    &mut srv,
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                    Some(dummy_goal_callback),
+                    None,
+                    None,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_BAD_SEQUENCE,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_server_active_goal_count_null() {
+        let count = unsafe { nros_action_server_get_active_goal_count(ptr::null()) };
+        assert_eq!(count, 0);
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_publish_feedback_null_ptrs() {
+        let feedback = [0u8; 8];
+
+        // NULL goal
+        assert_eq!(
+            unsafe { nros_action_publish_feedback(ptr::null_mut(), feedback.as_ptr(), 8) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL feedback
+        let mut goal = nros_goal_handle_t::default();
+        assert_eq!(
+            unsafe { nros_action_publish_feedback(&mut goal, ptr::null(), 0) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    // -- Action Client Harnesses --
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_client_init_null_ptrs() {
+        let action_name = b"/fibonacci\0";
+        let type_info = dummy_action_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        // NULL client
+        assert_eq!(
+            unsafe {
+                nros_action_client_init(
+                    ptr::null_mut(),
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL node
+        let mut cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_client_init(
+                    &mut cli,
+                    ptr::null(),
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL action_name
+        let mut cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_action_client_init(&mut cli, &node, ptr::null(), &type_info) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL type_info
+        let mut cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_client_init(
+                    &mut cli,
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    ptr::null(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_client_init_uninit_node() {
+        let action_name = b"/fibonacci\0";
+        let type_info = dummy_action_type();
+        let node = crate::node::nros_node_get_zero_initialized();
+
+        let mut cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_client_init(
+                    &mut cli,
+                    &node,
+                    action_name.as_ptr() as *const core::ffi::c_char,
+                    &type_info,
+                )
+            },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_client_zero_initialized_state() {
+        let cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            cli.state,
+            nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
+        );
+        assert!(cli.node.is_null());
+        assert!(cli._internal.is_null());
+        assert!(cli.feedback_callback.is_none());
+        assert!(cli.result_callback.is_none());
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_client_fini_null_safety() {
+        // NULL → INVALID_ARGUMENT
+        assert_eq!(
+            unsafe { nros_action_client_fini(ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // UNINITIALIZED → NOT_INIT
+        let mut cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_action_client_fini(&mut cli) },
+            NROS_RET_NOT_INIT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_send_goal_null_ptrs() {
+        let goal_data = [0u8; 8];
+        let mut uuid = nros_goal_uuid_t::default();
+
+        // NULL client
+        assert_eq!(
+            unsafe {
+                nros_action_send_goal(ptr::null_mut(), goal_data.as_ptr(), 8, &mut uuid)
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL goal
+        let mut cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            unsafe { nros_action_send_goal(&mut cli, ptr::null(), 0, &mut uuid) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL uuid
+        assert_eq!(
+            unsafe {
+                nros_action_send_goal(&mut cli, goal_data.as_ptr(), 8, ptr::null_mut())
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn action_get_result_null_ptrs() {
+        let uuid = nros_goal_uuid_t::default();
+        let mut status = nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN;
+        let mut result_buf = [0u8; 8];
+        let mut result_len: usize = 0;
+
+        // NULL client
+        assert_eq!(
+            unsafe {
+                nros_action_get_result(
+                    ptr::null_mut(),
+                    &uuid,
+                    &mut status,
+                    result_buf.as_mut_ptr(),
+                    8,
+                    &mut result_len,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL uuid
+        let mut cli = nros_action_client_get_zero_initialized();
+        assert_eq!(
+            unsafe {
+                nros_action_get_result(
+                    &mut cli,
+                    ptr::null(),
+                    &mut status,
+                    result_buf.as_mut_ptr(),
+                    8,
+                    &mut result_len,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL status
+        assert_eq!(
+            unsafe {
+                nros_action_get_result(
+                    &mut cli,
+                    &uuid,
+                    ptr::null_mut(),
+                    result_buf.as_mut_ptr(),
+                    8,
+                    &mut result_len,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL result
+        assert_eq!(
+            unsafe {
+                nros_action_get_result(
+                    &mut cli,
+                    &uuid,
+                    &mut status,
+                    ptr::null_mut(),
+                    8,
+                    &mut result_len,
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+
+        // NULL result_len
+        assert_eq!(
+            unsafe {
+                nros_action_get_result(
+                    &mut cli,
+                    &uuid,
+                    &mut status,
+                    result_buf.as_mut_ptr(),
+                    8,
+                    ptr::null_mut(),
+                )
+            },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    // -- Goal Handle Harnesses --
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn goal_succeed_null_ptr() {
+        assert_eq!(
+            unsafe { nros_action_succeed(ptr::null_mut(), ptr::null(), 0) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn goal_abort_null_ptr() {
+        assert_eq!(
+            unsafe { nros_action_abort(ptr::null_mut(), ptr::null(), 0) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn goal_canceled_null_ptr() {
+        assert_eq!(
+            unsafe { nros_action_canceled(ptr::null_mut(), ptr::null(), 0) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    // -- UUID / Utility Harnesses --
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn goal_uuid_generate_null() {
+        assert_eq!(
+            unsafe { nros_goal_uuid_generate(ptr::null_mut()) },
+            NROS_RET_INVALID_ARGUMENT,
+        );
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn goal_uuid_equal_null() {
+        let uuid = nros_goal_uuid_t::default();
+
+        assert!(!unsafe { nros_goal_uuid_equal(ptr::null(), &uuid) });
+        assert!(!unsafe { nros_goal_uuid_equal(&uuid, ptr::null()) });
+        assert!(!unsafe { nros_goal_uuid_equal(ptr::null(), ptr::null()) });
+    }
+
+    #[kani::proof]
+    #[kani::unwind(5)]
+    fn goal_status_to_string_all_variants() {
+        let statuses = [
+            nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+            nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
+            nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
+            nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
+            nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+            nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+            nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+        ];
+
+        for status in statuses {
+            let s = nros_goal_status_to_string(status);
+            assert!(!s.is_null());
+        }
+    }
+}
