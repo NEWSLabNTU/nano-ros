@@ -157,8 +157,12 @@ fn test_c_talker_listener_communication(
     // Wait for messages to flow
     std::thread::sleep(Duration::from_secs(6));
 
-    // Kill talker first
-    talker.kill();
+    // Kill talker first, but capture its output
+    let talker_output = talker
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    eprintln!("C talker output:\n{}", talker_output);
 
     // Collect listener output
     let listener_output = listener
