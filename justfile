@@ -3,6 +3,13 @@ CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable
 
 LOG_DIR := "test-logs"
 
+# Default paths for external SDKs (used by setup-* recipes)
+FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "external/freertos-kernel")
+FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
+LWIP_DIR := env("LWIP_DIR", justfile_directory() / "external/lwip")
+FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-mps2-an385-freertos/config")
+NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "external/nuttx")
+
 default:
     @just --list
 
@@ -38,6 +45,7 @@ format:
         echo "."
         find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
             -not -path '*/generated/*' -not -path '*/zephyr/*' \
+            -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
             -exec dirname {} \; | sort
     } | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +nightly fmt && echo "  fmt {}"'
@@ -80,13 +88,19 @@ test verbose="": build-zenohd
         echo "All standard tests passed!"
     fi
 
-# Run all tests including Zephyr, ROS 2 interop, C API, XRCE, large_msg
+# Run all tests including Zephyr, ROS 2 interop, C API, XRCE, NuttX, FreeRTOS, large_msg
 # Single nextest run (entire workspace) + Miri + C codegen
 test-all verbose="": build-zenohd
     #!/usr/bin/env bash
     set +e
     failed=0
     just _init-test-logs
+    # Export env vars so NuttX/FreeRTOS integration tests can build examples
+    export NUTTX_DIR="{{NUTTX_DIR}}"
+    export FREERTOS_DIR="{{FREERTOS_DIR}}"
+    export FREERTOS_PORT="{{FREERTOS_PORT}}"
+    export LWIP_DIR="{{LWIP_DIR}}"
+    export FREERTOS_CONFIG_DIR="{{FREERTOS_CONFIG_DIR}}"
     args=(--workspace --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -219,7 +233,7 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -243,6 +257,7 @@ format-examples:
     echo "Formatting examples..."
     find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
         -not -path '*/generated/*' -not -path '*/zephyr/*' \
+        -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
         -exec dirname {} \; | sort \
     | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +nightly fmt && echo "  fmt {}"'
@@ -253,7 +268,7 @@ check-examples:
     #!/usr/bin/env bash
     set -e
     echo "Checking examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -498,13 +513,14 @@ test-qemu-esp32 verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-# Build NuttX QEMU ARM virt examples (requires NUTTX_DIR + nightly)
+# Build NuttX QEMU ARM virt examples (requires nuttx in external/)
 build-examples-nuttx:
     #!/usr/bin/env bash
     set -e
+    export NUTTX_DIR="{{NUTTX_DIR}}"
     echo "Building NuttX QEMU ARM virt examples..."
-    if [ -z "$NUTTX_DIR" ]; then
-        echo "ERROR: NUTTX_DIR not set. Run: just setup-nuttx && export NUTTX_DIR=\$(pwd)/external/nuttx"
+    if [ ! -d "$NUTTX_DIR/include" ]; then
+        echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just setup-nuttx"
         exit 1
     fi
     for example in talker listener service-server service-client action-server action-client; do
@@ -517,11 +533,57 @@ build-examples-nuttx:
 test-nuttx verbose="":
     #!/usr/bin/env bash
     set -e
-    if [ -z "$NUTTX_DIR" ]; then
-        echo "ERROR: NUTTX_DIR not set. Run: just setup-nuttx && export NUTTX_DIR=\$(pwd)/external/nuttx"
+    export NUTTX_DIR="{{NUTTX_DIR}}"
+    if [ ! -d "$NUTTX_DIR/include" ]; then
+        echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just setup-nuttx"
         exit 1
     fi
     args=(-p nros-tests --test nuttx_qemu --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
+# Build FreeRTOS QEMU MPS2-AN385 examples (requires freertos-kernel + lwip in external/)
+build-examples-freertos:
+    #!/usr/bin/env bash
+    set -e
+    export FREERTOS_DIR="{{FREERTOS_DIR}}"
+    export FREERTOS_PORT="{{FREERTOS_PORT}}"
+    export LWIP_DIR="{{LWIP_DIR}}"
+    export FREERTOS_CONFIG_DIR="{{FREERTOS_CONFIG_DIR}}"
+    echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
+    if [ ! -d "$FREERTOS_DIR/include" ]; then
+        echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
+        exit 1
+    fi
+    if [ ! -d "$LWIP_DIR/src/include" ]; then
+        echo "ERROR: lwIP not found at $LWIP_DIR. Run: just setup-freertos"
+        exit 1
+    fi
+    for example in talker listener service-server service-client action-server action-client; do
+        echo "  Building $example..."
+        (cd examples/qemu-arm-freertos/rust/zenoh/$example && cargo build --release)
+    done
+    echo "FreeRTOS QEMU examples built!"
+
+# Run FreeRTOS QEMU integration tests (build + verification via nextest)
+test-freertos verbose="":
+    #!/usr/bin/env bash
+    set -e
+    export FREERTOS_DIR="{{FREERTOS_DIR}}"
+    export FREERTOS_PORT="{{FREERTOS_PORT}}"
+    export LWIP_DIR="{{LWIP_DIR}}"
+    export FREERTOS_CONFIG_DIR="{{FREERTOS_CONFIG_DIR}}"
+    if [ ! -d "$FREERTOS_DIR/include" ]; then
+        echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
+        exit 1
+    fi
+    if [ ! -d "$LWIP_DIR/src/include" ]; then
+        echo "ERROR: lwIP not found at $LWIP_DIR. Run: just setup-freertos"
+        exit 1
+    fi
+    args=(-p nros-tests --test freertos_qemu --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi

@@ -59,9 +59,9 @@ just test-zephyr        # Zephyr E2E (needs west + TAP)
 just test-zephyr-xrce   # Zephyr E2E — XRCE (needs west + TAP + Agent)
 just test-ros2          # ROS 2 interop (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
-just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + TAP)
-just test-nuttx         # NuttX QEMU E2E (needs NUTTX_DIR + nightly + qemu-system-arm)
-just test-all           # Everything
+just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + arm-none-eabi-gcc)
+just test-nuttx         # NuttX QEMU E2E (needs nightly + qemu-system-arm)
+just test-all           # Everything (includes NuttX + FreeRTOS in one nextest run)
 ```
 
 First-time: `just setup`, then `sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat` for missing deps.
@@ -72,14 +72,12 @@ For NuttX development: `just setup-nuttx` (downloads NuttX RTOS + apps to `exter
 
 Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
-FreeRTOS build-time (only with `platform-freertos` feature):
-- `FREERTOS_DIR` — path to FreeRTOS kernel source (e.g., `external/freertos-kernel`)
-- `FREERTOS_PORT` — portable layer (e.g., `GCC/ARM_CM3`, `GCC/ARM_CM7/r0p1`)
-- `LWIP_DIR` — path to lwIP source (e.g., `external/lwip`)
-- `FREERTOS_CONFIG_DIR` — path to `FreeRTOSConfig.h` + `lwipopts.h`
-
-NuttX build-time (only with `platform-nuttx` feature):
-- `NUTTX_DIR` — path to NuttX RTOS source (e.g., `external/nuttx`)
+FreeRTOS/NuttX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx`). Override via env vars if sources are elsewhere:
+- `FREERTOS_DIR` — FreeRTOS kernel source (default: `external/freertos-kernel`)
+- `FREERTOS_PORT` — portable layer (default: `GCC/ARM_CM3`)
+- `LWIP_DIR` — lwIP source (default: `external/lwip`)
+- `FREERTOS_CONFIG_DIR` — `FreeRTOSConfig.h` + `lwipopts.h` (default: board crate's `config/`)
+- `NUTTX_DIR` — NuttX RTOS source (default: `external/nuttx`)
 
 Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
 
