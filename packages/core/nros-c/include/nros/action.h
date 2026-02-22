@@ -550,6 +550,20 @@ nros_ret_t nros_action_get_result(
     size_t *result_len);
 
 /**
+ * Try to receive feedback for an active goal (non-blocking).
+ *
+ * If feedback is available, invokes the feedback callback (if set).
+ *
+ * @param client Pointer to an initialized action client
+ * @return NROS_RET_OK if feedback was received and dispatched
+ * @return NROS_RET_TIMEOUT if no feedback is available
+ * @return NROS_RET_INVALID_ARGUMENT if client is NULL
+ * @return NROS_RET_NOT_INIT if not initialized
+ */
+NROS_PUBLIC NROS_WARN_UNUSED
+nros_ret_t nros_action_try_recv_feedback(nros_action_client_t *client);
+
+/**
  * Finalize an action client.
  *
  * @param client Pointer to an initialized action client

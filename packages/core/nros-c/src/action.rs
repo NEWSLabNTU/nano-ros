@@ -263,6 +263,22 @@ impl Default for nros_action_server_t {
 // Internal implementation (delegates to nros-node executor)
 // ============================================================================
 
+/// Internal state for the action client.
+///
+/// Holds the `ActionClientCore` created during `nros_action_client_init()`.
+/// The core contains 3 service clients (send_goal, cancel_goal, get_result)
+/// and 1 feedback subscriber.
+#[cfg(feature = "alloc")]
+struct ActionClientInternal {
+    core: nros_node::ActionClientCore<
+        nros::internals::RmwServiceClient,
+        nros::internals::RmwSubscriber,
+        { crate::executor::MESSAGE_BUFFER_SIZE },
+        { crate::executor::MESSAGE_BUFFER_SIZE },
+        { crate::executor::MESSAGE_BUFFER_SIZE },
+    >,
+}
+
 /// Internal state created during executor registration.
 ///
 /// Holds the `ActionServerRawHandle` and C callback pointers needed by
@@ -1032,8 +1048,92 @@ pub unsafe extern "C" fn nros_action_client_init(
     // Store node pointer
     client.node = node;
 
-    // Client init is metadata-only (same as server)
-    client._internal = ptr::null_mut();
+    // Create the ActionClientCore with 3 service clients + 1 feedback subscriber.
+    // This follows the service client init pattern (service.rs:590-634).
+    #[cfg(feature = "alloc")]
+    {
+        use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
+
+        // Get mutable support reference to access the session
+        let support_mut = match node_ref.get_support_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        if support_mut.state != crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let domain_id = support_mut.domain_id as u32;
+
+        let session = match support_mut.get_session_mut() {
+            Some(s) => s,
+            None => return NROS_RET_NOT_INIT,
+        };
+
+        let action_name_str =
+            core::str::from_utf8_unchecked(&client.action_name[..client.action_name_len]);
+        let type_str = core::str::from_utf8_unchecked(&client.type_name[..client.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&client.type_hash[..client.type_hash_len]);
+
+        let action_info =
+            ActionInfo::new(action_name_str, type_str, type_hash_str).with_domain(domain_id);
+
+        // Create send_goal service client
+        let send_goal_keyexpr: nros_core::heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info =
+            ServiceInfo::new(&send_goal_keyexpr, type_str, type_hash_str).with_domain(0);
+        let send_goal_client = match session.create_service_client(&send_goal_info) {
+            Ok(c) => c,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        // Create cancel_goal service client
+        let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            type_hash_str,
+        )
+        .with_domain(0);
+        let cancel_goal_client = match session.create_service_client(&cancel_goal_info) {
+            Ok(c) => c,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        // Create get_result service client
+        let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
+        let get_result_info =
+            ServiceInfo::new(&get_result_keyexpr, type_str, type_hash_str).with_domain(0);
+        let get_result_client = match session.create_service_client(&get_result_info) {
+            Ok(c) => c,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        // Create feedback subscriber (best-effort QoS)
+        let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
+        let feedback_topic =
+            TopicInfo::new(&feedback_keyexpr, type_str, type_hash_str).with_domain(0);
+        let feedback_subscriber =
+            match session.create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT) {
+                Ok(s) => s,
+                Err(_) => return NROS_RET_ERROR,
+            };
+
+        // Construct ActionClientCore
+        let core = nros_node::ActionClientCore::new(
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_subscriber,
+        );
+
+        let internal = alloc::boxed::Box::new(ActionClientInternal { core });
+        client._internal = alloc::boxed::Box::into_raw(internal) as *mut _;
+    }
+
     client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
 
     NROS_RET_OK
@@ -1095,15 +1195,22 @@ pub unsafe extern "C" fn nros_action_send_goal(
 
     #[cfg(feature = "alloc")]
     {
-        // Generate a UUID for this goal
-        let uuid = &mut *goal_uuid;
-        if nros_goal_uuid_generate(uuid) != NROS_RET_OK {
-            return NROS_RET_ERROR;
+        if client._internal.is_null() {
+            return NROS_RET_NOT_INIT;
         }
 
-        // Client send_goal not yet wired to executor
-        let _data = core::slice::from_raw_parts(goal, goal_len);
-        NROS_RET_OK
+        let internal = &mut *(client._internal as *mut ActionClientInternal);
+        let goal_data = core::slice::from_raw_parts(goal, goal_len);
+
+        match internal.core.send_goal_raw(goal_data) {
+            Ok(goal_id) => {
+                // Copy the generated GoalId to the output UUID
+                let uuid = &mut *goal_uuid;
+                uuid.uuid = goal_id.uuid;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
     }
 
     #[cfg(not(feature = "alloc"))]
@@ -1128,8 +1235,18 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
 
     #[cfg(feature = "alloc")]
     {
-        let _uuid = &*goal_uuid;
-        NROS_RET_OK
+        if client._internal.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let internal = &mut *(client._internal as *mut ActionClientInternal);
+        let uuid = &*goal_uuid;
+        let goal_id = nros_core::GoalId { uuid: uuid.uuid };
+
+        match internal.core.send_cancel_request(&goal_id) {
+            Ok(()) => NROS_RET_OK,
+            Err(_) => NROS_RET_ERROR,
+        }
     }
 
     #[cfg(not(feature = "alloc"))]
@@ -1163,9 +1280,137 @@ pub unsafe extern "C" fn nros_action_get_result(
 
     #[cfg(feature = "alloc")]
     {
-        let _uuid = &*goal_uuid;
-        let _buf = core::slice::from_raw_parts_mut(result, result_capacity);
-        NROS_RET_TIMEOUT
+        if client._internal.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let internal = &mut *(client._internal as *mut ActionClientInternal);
+        let uuid = &*goal_uuid;
+        let goal_id = nros_core::GoalId { uuid: uuid.uuid };
+
+        // Send the get_result request
+        if internal.core.send_get_result_request(&goal_id).is_err() {
+            return NROS_RET_ERROR;
+        }
+
+        // Poll for the reply with timeout (same approach as nros_client_call)
+        let mut attempts = 0u32;
+        loop {
+            match internal.core.try_recv_get_result_reply() {
+                Ok(Some(len)) => {
+                    // GetResult response CDR: header (4) + status (int8=1 + 3 pad) + result
+                    if len < 4 {
+                        return NROS_RET_ERROR;
+                    }
+
+                    // Status is the first byte after CDR header
+                    let buf = internal.core.result_buffer_ref();
+                    let raw_status = buf[4];
+                    *status = match raw_status {
+                        1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
+                        2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
+                        3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
+                        4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+                        5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+                        6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+                        _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+                    };
+
+                    // Result data starts after CDR header (4) + status (1) + padding (3)
+                    let result_offset = 8usize;
+                    let result_data_len = len.saturating_sub(result_offset);
+
+                    if result_data_len > result_capacity {
+                        return NROS_RET_ERROR;
+                    }
+
+                    let out = core::slice::from_raw_parts_mut(result, result_capacity);
+                    out[..result_data_len].copy_from_slice(
+                        &buf[result_offset..result_offset + result_data_len],
+                    );
+                    *result_len = result_data_len;
+
+                    return NROS_RET_OK;
+                }
+                Ok(None) => {
+                    attempts += 1;
+                    if attempts > 3000 {
+                        return NROS_RET_TIMEOUT;
+                    }
+                    #[cfg(feature = "std")]
+                    std::thread::sleep(std::time::Duration::from_millis(1));
+                    #[cfg(not(feature = "std"))]
+                    core::hint::spin_loop();
+                }
+                Err(_) => return NROS_RET_ERROR,
+            }
+        }
+    }
+
+    #[cfg(not(feature = "alloc"))]
+    NROS_RET_ERROR
+}
+
+/// Try to receive feedback for an active goal (non-blocking).
+///
+/// If feedback is available, invokes the feedback callback (if set).
+/// Returns `NROS_RET_OK` if feedback was received and dispatched,
+/// `NROS_RET_TIMEOUT` if no feedback is available.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_try_recv_feedback(
+    client: *mut nros_action_client_t,
+) -> nros_ret_t {
+    if client.is_null() {
+        return NROS_RET_INVALID_ARGUMENT;
+    }
+
+    let client = &mut *client;
+
+    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
+        return NROS_RET_NOT_INIT;
+    }
+
+    #[cfg(feature = "alloc")]
+    {
+        if client._internal.is_null() {
+            return NROS_RET_NOT_INIT;
+        }
+
+        let internal = &mut *(client._internal as *mut ActionClientInternal);
+
+        match internal.core.try_recv_feedback_raw() {
+            Ok(Some((goal_id, len))) => {
+                // Feedback CDR contains: CDR header (4) + GoalId (16) + feedback data
+                // The GoalId has already been parsed by try_recv_feedback_raw.
+                // The full raw data (including CDR header + GoalId) is in feedback_buffer.
+                // We need to extract just the feedback payload for the C callback.
+                // After CDR header (4) + GoalId (16 bytes via CDR) = ~24 bytes offset
+                // However, the exact offset depends on CDR encoding. The feedback_buffer
+                // contains the full received message. For the C callback, pass the raw
+                // feedback bytes starting after the GoalId framing.
+
+                if let Some(cb) = client.feedback_callback {
+                    let uuid = nros_goal_uuid_t {
+                        uuid: goal_id.uuid,
+                    };
+
+                    // Feedback CDR layout: header (4) + GoalId UUID (16) = 20 bytes
+                    let fb_offset = 20usize;
+                    let fb_len = len.saturating_sub(fb_offset);
+                    let fb_ptr = if fb_len > 0 {
+                        internal.core.feedback_buffer_ref()[fb_offset..].as_ptr()
+                    } else {
+                        ptr::null()
+                    };
+
+                    cb(&uuid, fb_ptr, fb_len, client.context);
+                }
+
+                NROS_RET_OK
+            }
+            Ok(None) => NROS_RET_TIMEOUT,
+            Err(_) => NROS_RET_ERROR,
+        }
     }
 
     #[cfg(not(feature = "alloc"))]
@@ -1187,14 +1432,17 @@ pub unsafe extern "C" fn nros_action_client_fini(
         return NROS_RET_NOT_INIT;
     }
 
-    // Clean up internal resources
+    // Drop the internal ActionClientCore
     #[cfg(feature = "alloc")]
     {
         if !client._internal.is_null() {
-            client._internal = ptr::null_mut();
+            let _internal =
+                alloc::boxed::Box::from_raw(client._internal as *mut ActionClientInternal);
+            // ActionClientInternal (and its ActionClientCore) is dropped here
         }
     }
 
+    client._internal = ptr::null_mut();
     client.feedback_callback = None;
     client.result_callback = None;
     client.context = ptr::null_mut();

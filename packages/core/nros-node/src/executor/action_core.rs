@@ -489,6 +489,25 @@ impl<
     const FEEDBACK_BUF: usize,
 > ActionClientCore<Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
+    /// Create a new action client core from the raw transport handles.
+    pub fn new(
+        send_goal_client: Cli,
+        cancel_goal_client: Cli,
+        get_result_client: Cli,
+        feedback_subscriber: Sub,
+    ) -> Self {
+        Self {
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_subscriber,
+            goal_buffer: [0u8; GOAL_BUF],
+            result_buffer: [0u8; RESULT_BUF],
+            feedback_buffer: [0u8; FEEDBACK_BUF],
+            goal_counter: 0,
+        }
+    }
+
     /// Send a goal with raw CDR bytes. Returns the generated GoalId.
     ///
     /// The `goal_cdr` bytes are the serialized goal data (without GoalId framing).
@@ -579,5 +598,29 @@ impl<
         self.get_result_client
             .send_request_raw(&self.goal_buffer[..req_len])
             .map_err(|_| NodeError::ServiceRequestFailed)
+    }
+
+    /// Poll for a get_result reply (non-blocking, raw bytes).
+    ///
+    /// Returns `Ok(Some(total_len))` if a reply arrived (data in result buffer),
+    /// `Ok(None)` if no reply yet.
+    ///
+    /// After receiving, use [`result_buffer_ref()`](Self::result_buffer_ref)
+    /// to access the raw CDR data. The layout is: CDR header (4) + status
+    /// byte (1) + padding (3) + result data.
+    pub fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        self.get_result_client
+            .try_recv_reply_raw(&mut self.result_buffer)
+            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+    }
+
+    /// Read-only access to the result buffer (after polling a reply).
+    pub fn result_buffer_ref(&self) -> &[u8] {
+        &self.result_buffer
+    }
+
+    /// Read-only access to the feedback buffer (after receiving feedback).
+    pub fn feedback_buffer_ref(&self) -> &[u8] {
+        &self.feedback_buffer
     }
 }
