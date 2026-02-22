@@ -417,6 +417,19 @@ fn main() {
             &link_features,
             &shim_config,
         );
+    } else if use_freertos {
+        // Embedded + FreeRTOS: build zenoh-pico + FreeRTOS platform + shim with cc.
+        // Uses zenoh-pico's built-in FreeRTOS+lwIP platform (system.c + lwip/network.c).
+        generate_config_header(&out_dir, &link_features, &buf_config);
+        build_zenoh_pico_freertos(
+            &zenoh_pico_src,
+            &c_dir,
+            &include_dir,
+            &out_dir,
+            &target,
+            &link_features,
+            &shim_config,
+        );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
     // For no-backend: nothing to build (minimal configuration for header generation).
@@ -430,9 +443,6 @@ fn main() {
         println!("cargo:rustc-cfg=shim_backend=\"bare-metal\"");
     } else if use_freertos {
         println!("cargo:rustc-cfg=shim_backend=\"freertos\"");
-        println!(
-            "cargo:warning=No build path for freertos yet — zenoh-pico C build is not implemented (see Phase 54.2)"
-        );
     }
 
     // Rerun triggers
@@ -443,11 +453,17 @@ fn main() {
     println!("cargo:rerun-if-changed=c/platform/zenoh_generic_platform.h");
     println!("cargo:rerun-if-changed=zenoh-pico/src/system/unix/network.c");
     println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
+    println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/system.c");
+    println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/lwip/network.c");
     println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
     println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
     println!("cargo:rerun-if-changed=src/ffi.rs");
     println!("cargo:rerun-if-changed=src/lib.rs");
     println!("cargo:rerun-if-changed=cbindgen.toml");
+    println!("cargo:rerun-if-env-changed=FREERTOS_DIR");
+    println!("cargo:rerun-if-env-changed=FREERTOS_PORT");
+    println!("cargo:rerun-if-env-changed=LWIP_DIR");
+    println!("cargo:rerun-if-env-changed=FREERTOS_CONFIG_DIR");
 }
 
 /// Check if the RISC-V GCC supports picolibc specs (provides C standard library headers)
@@ -1084,6 +1100,184 @@ fn build_zenoh_pico_embedded(
     build.define("Z_FEATURE_SCOUTING_UDP", "0");
 
     // Pass shim slot counts as -D flags so zenoh_shim.c gets them
+    shim.apply_to_cc(&mut build);
+
+    // Embedded-optimized compiler flags
+    build
+        .opt_level(2)
+        .flag("-ffunction-sections")
+        .flag("-fdata-sections")
+        .warnings(false);
+
+    build.compile("zenohpico");
+}
+
+/// Build zenoh-pico + FreeRTOS platform layer + shim for embedded FreeRTOS+lwIP targets.
+///
+/// Uses zenoh-pico's built-in FreeRTOS system implementation (`system.c`) and
+/// lwIP network layer (`lwip/network.c`). FreeRTOS has real threads, so
+/// `Z_FEATURE_MULTI_THREAD=1` is set (unlike bare-metal).
+///
+/// Required environment variables:
+/// - `FREERTOS_DIR` — path to FreeRTOS kernel source (e.g., `external/freertos-kernel`)
+/// - `FREERTOS_PORT` — portable layer (e.g., `GCC/ARM_CM3`)
+/// - `LWIP_DIR` — path to lwIP source (e.g., `external/lwip`)
+/// - `FREERTOS_CONFIG_DIR` — path to directory with `FreeRTOSConfig.h` + `lwipopts.h`
+#[allow(clippy::too_many_arguments)]
+fn build_zenoh_pico_freertos(
+    zenoh_pico_src: &Path,
+    c_dir: &Path,
+    include_dir: &Path,
+    out_dir: &Path,
+    target: &str,
+    link: &LinkFeatures,
+    shim: &ShimConfig,
+) {
+    // Read FreeRTOS environment variables
+    let freertos_dir = PathBuf::from(env::var("FREERTOS_DIR").unwrap_or_else(|_| {
+        panic!(
+            "FREERTOS_DIR not set. Point it at the FreeRTOS kernel source directory.\n\
+             Run `just setup-freertos` to download, then set:\n\
+             export FREERTOS_DIR=$PWD/external/freertos-kernel"
+        );
+    }));
+    let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| {
+        panic!(
+            "FREERTOS_PORT not set. Set it to the FreeRTOS portable layer.\n\
+             Example: export FREERTOS_PORT=GCC/ARM_CM3"
+        );
+    });
+    let lwip_dir = PathBuf::from(env::var("LWIP_DIR").unwrap_or_else(|_| {
+        panic!(
+            "LWIP_DIR not set. Point it at the lwIP source directory.\n\
+             Run `just setup-freertos` to download, then set:\n\
+             export LWIP_DIR=$PWD/external/lwip"
+        );
+    }));
+    let freertos_config_dir = PathBuf::from(env::var("FREERTOS_CONFIG_DIR").unwrap_or_else(|_| {
+        panic!(
+            "FREERTOS_CONFIG_DIR not set. Point it at a directory containing\n\
+             FreeRTOSConfig.h and lwipopts.h for your board.\n\
+             Example: export FREERTOS_CONFIG_DIR=packages/boards/nros-mps2-an385-freertos/config"
+        );
+    }));
+
+    // Validate directories exist
+    if !freertos_dir.join("include").exists() {
+        panic!(
+            "FREERTOS_DIR={}: missing include/ directory. Is this a valid FreeRTOS kernel source?",
+            freertos_dir.display()
+        );
+    }
+    let port_dir = freertos_dir.join("portable").join(&freertos_port);
+    if !port_dir.exists() {
+        panic!(
+            "FREERTOS_DIR/portable/{} not found at {}",
+            freertos_port,
+            port_dir.display()
+        );
+    }
+    if !lwip_dir.join("src").join("include").exists() {
+        panic!(
+            "LWIP_DIR={}: missing src/include/ directory. Is this a valid lwIP source?",
+            lwip_dir.display()
+        );
+    }
+
+    let mut build = cc::Build::new();
+
+    // Generate version header in OUT_DIR
+    let version_include_dir = out_dir.join("zenoh-pico-version");
+    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
+
+    // ARM Cortex-M cross-compilation flags
+    if target.contains("thumbv7m") && !target.contains("thumbv7me") {
+        build.flag("-mcpu=cortex-m3").flag("-mthumb");
+    } else if target.contains("thumbv7em") {
+        build
+            .flag("-mcpu=cortex-m4")
+            .flag("-mthumb")
+            .flag("-mfpu=fpv4-sp-d16")
+            .flag("-mfloat-abi=hard");
+    }
+
+    // Collect zenoh-pico core sources (excluding platform-specific system backends)
+    let src_dir = zenoh_pico_src.join("src");
+    for subdir in &[
+        "api",
+        "collections",
+        "link",
+        "net",
+        "protocol",
+        "session",
+        "transport",
+        "utils",
+    ] {
+        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
+    }
+    // Common system sources (shared across all platforms)
+    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+
+    // FreeRTOS platform sources (threading, clock, memory, random)
+    build.file(src_dir.join("system/freertos/system.c"));
+    // lwIP network layer (TCP/UDP sockets via lwIP's POSIX-compatible API)
+    build.file(src_dir.join("system/freertos/lwip/network.c"));
+
+    // Shim (high-level API wrapper)
+    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+
+    // Include paths (order matters — generated config takes precedence)
+    let generated_config_dir = out_dir.join("zenoh-config");
+    build.include(&generated_config_dir);
+    build.include(zenoh_pico_src.join("include"));
+    build.include(&version_include_dir);
+    build.include(include_dir);
+
+    // FreeRTOS kernel headers
+    build.include(freertos_dir.join("include"));
+    build.include(&port_dir);
+
+    // User-provided config (FreeRTOSConfig.h, lwipopts.h)
+    build.include(&freertos_config_dir);
+
+    // lwIP headers
+    build.include(lwip_dir.join("src/include"));
+    // lwIP FreeRTOS port (provides arch/sys_arch.h for threaded mode)
+    build.include(lwip_dir.join("contrib/ports/freertos/include"));
+
+    // Platform defines
+    // ZENOH_GENERIC: tells zenoh-pico config.h to use our generated config header
+    // ZENOH_FREERTOS_LWIP: tells zenoh-pico platform.h to use FreeRTOS+lwIP types
+    build.define("ZENOH_GENERIC", None);
+    build.define("ZENOH_FREERTOS_LWIP", None);
+    build.define("ZENOH_DEBUG", "0");
+
+    // FreeRTOS has real threads — override the #ifndef default of 0 in config header
+    build.define("Z_FEATURE_MULTI_THREAD", "1");
+
+    // Link features (same as embedded — controlled by Cargo link-* features)
+    build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
+    build.define(
+        "Z_FEATURE_LINK_UDP_UNICAST",
+        if link.udp_unicast { "1" } else { "0" },
+    );
+    build.define(
+        "Z_FEATURE_LINK_UDP_MULTICAST",
+        if link.udp_multicast { "1" } else { "0" },
+    );
+    build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_WS", "0");
+    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
+    build.define(
+        "Z_FEATURE_RAWETH_TRANSPORT",
+        if link.raweth { "1" } else { "0" },
+    );
+    build.define("Z_FEATURE_SCOUTING_UDP", "0");
+    if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
+        build.define("Z_FEATURE_UNSTABLE_API", "1");
+    }
+
+    // Pass shim slot counts as -D flags
     shim.apply_to_cc(&mut build);
 
     // Embedded-optimized compiler flags

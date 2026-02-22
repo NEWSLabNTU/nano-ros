@@ -28,6 +28,9 @@
 // Platform-specific select()
 #if defined(ZENOH_ZEPHYR)
 #include <zephyr/posix/sys/select.h>
+#elif defined(ZENOH_FREERTOS_LWIP)
+// lwIP provides select(), fd_set, etc. via lwip/sockets.h (already included
+// by zenoh-pico's freertos/lwip.h platform header)
 #elif !defined(ZPICO_SMOLTCP)
 #include <sys/select.h>
 #endif
@@ -817,7 +820,7 @@ int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
 /**
  * Extract the socket file descriptor from the zenoh session.
  *
- * Path: g_session → _z_session_t._tp._transport._unicast._peers → first peer → _socket._fd
+ * Path: g_session → _z_session_t._tp._transport._unicast._peers → first peer → _socket
  *
  * Returns -1 if the session is not unicast or has no connected peers.
  */
@@ -831,7 +834,12 @@ static int _zenoh_shim_get_session_fd(void) {
     if (peer == NULL) {
         return -1;
     }
+    // FreeRTOS+lwIP uses _socket (int), POSIX/bare-metal uses _fd
+#if defined(ZENOH_FREERTOS_LWIP) || defined(ZENOH_FREERTOS_PLUS_TCP)
+    return peer->_socket._socket;
+#else
     return peer->_socket._fd;
+#endif
 }
 #endif
 

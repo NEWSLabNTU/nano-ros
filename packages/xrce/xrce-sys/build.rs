@@ -146,6 +146,7 @@ fn generate_ucdr_config(out_dir: &Path) {
 }
 
 fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
+    let freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
     let max_session_conn_attempts = env_usize("XRCE_MAX_SESSION_CONNECTION_ATTEMPTS", 10);
     let min_session_conn_interval = env_usize("XRCE_MIN_SESSION_CONNECTION_INTERVAL", 25);
     let min_heartbeat_time_interval = env_usize("XRCE_MIN_HEARTBEAT_TIME_INTERVAL", 100);
@@ -154,6 +155,8 @@ fn generate_uxr_config(out_dir: &Path, posix: bool, mtu: usize) {
 
     let platform_define = if posix {
         "#define UCLIENT_PLATFORM_POSIX"
+    } else if freertos {
+        "#define UCLIENT_PLATFORM_FREERTOS"
     } else {
         "/* no platform define for bare-metal */"
     };

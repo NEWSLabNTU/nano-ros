@@ -10,6 +10,7 @@
 //! - `platform-posix` - Uses POSIX threads, for desktop testing
 //! - `platform-zephyr` - Uses Zephyr RTOS threads
 //! - `platform-bare-metal` - Uses polling (bare-metal platforms)
+//! - `platform-freertos` - Uses FreeRTOS threads + lwIP sockets
 
 #![no_std]
 
@@ -22,7 +23,8 @@ extern crate alloc;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub(crate) mod config;
 pub mod keyexpr;
@@ -31,7 +33,8 @@ pub mod zpico;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub mod shim;
 
@@ -42,7 +45,8 @@ pub use zpico::{ShimError, ShimZenohId};
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub use zpico::{
     ShimContext, ShimLivelinessToken, ShimPublisher as ZpicoPublisher, ShimQueryable,
@@ -53,7 +57,8 @@ pub use zpico::{
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,
@@ -95,42 +100,49 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub type ZenohTransport = ShimTransport;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub type ZenohSession = ShimSession;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub type ZenohPublisher = ShimPublisher;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub type ZenohSubscriber = ShimSubscriber;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub type ZenohServiceClient = ShimServiceClient;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub type ZenohServiceServer = ShimServiceServer;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub type LivelinessToken = ShimLivelinessToken;

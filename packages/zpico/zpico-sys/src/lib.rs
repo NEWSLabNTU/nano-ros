@@ -11,6 +11,7 @@
 //! - `posix` - Uses POSIX threads, for desktop testing
 //! - `zephyr` - Uses Zephyr RTOS threads
 //! - `bare-metal` - Uses polling (bare-metal platforms)
+//! - `freertos` - Uses FreeRTOS threads + lwIP sockets
 
 #![no_std]
 
@@ -20,7 +21,12 @@ extern crate std;
 // Note: The smoltcp platform uses a custom bump allocator for C FFI (zenoh-pico),
 // not Rust's global allocator. The `alloc` crate is NOT needed.
 
-#[cfg(any(feature = "posix", feature = "zephyr", feature = "bare-metal"))]
+#[cfg(any(
+    feature = "posix",
+    feature = "zephyr",
+    feature = "bare-metal",
+    feature = "freertos"
+))]
 use core::ffi::c_void;
 
 // ============================================================================
@@ -65,7 +71,12 @@ pub struct zenoh_shim_property_t {
 // Note: Excluded from cbindgen - these are Rust imports of C functions,
 // not declarations for the header file.
 #[cfg(all(
-    any(feature = "posix", feature = "zephyr", feature = "bare-metal"),
+    any(
+        feature = "posix",
+        feature = "zephyr",
+        feature = "bare-metal",
+        feature = "freertos"
+    ),
     not(cbindgen)
 ))]
 #[allow(improper_ctypes)]

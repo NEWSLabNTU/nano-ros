@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-freertos` as a new platform axis value, enabling nros nodes on FreeRTOS + lwIP boards (STM32, NXP, Renesas, etc.) via both zenoh-pico and XRCE-DDS backends. Validate on QEMU MPS2-AN385 (Cortex-M3 + LAN9118 Ethernet) before requiring real hardware.
 
-**Status**: In Progress (54.1 done)
+**Status**: In Progress (54.1–54.5 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -195,9 +195,9 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `freertos` fea
 ## Work Items
 
 - [x] 54.1 — Feature flag wiring
-- [ ] 54.2 — zpico-sys build.rs FreeRTOS+lwIP compilation
-- [ ] 54.3 — xrce-sys build.rs FreeRTOS compilation
-- [ ] 54.4 — Platform header and shim adjustments
+- [x] 54.2 — zpico-sys build.rs FreeRTOS+lwIP compilation
+- [x] 54.3 — xrce-sys build.rs FreeRTOS compilation
+- [x] 54.4 — Platform header and shim adjustments
 - [x] 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
 - [ ] 54.6 — LAN9118 lwIP netif driver
 - [ ] 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
@@ -228,7 +228,9 @@ Add a FreeRTOS compilation branch in `zpico-sys/build.rs` that:
 
 The shim needs minimal changes: the `select()`-based polling path already works with lwIP's POSIX-compatible socket API. May need a `#ifdef ZENOH_FREERTOS` guard for FreeRTOS-specific includes or logging.
 
-**Files**: `packages/zpico/zpico-sys/build.rs`, possibly `packages/zpico/zpico-sys/c/shim/zenoh_shim.c`
+**Status**: Done
+
+**Files**: `packages/zpico/zpico-sys/build.rs`, `packages/zpico/zpico-sys/c/shim/zenoh_shim.c`, `packages/zpico/zpico-sys/src/lib.rs`, `packages/zpico/nros-rmw-zenoh/src/lib.rs`, `packages/zpico/nros-rmw-zenoh/src/zpico.rs`
 
 ### 54.3 — xrce-sys build.rs FreeRTOS compilation
 
@@ -239,6 +241,8 @@ Add a FreeRTOS branch in `xrce-sys/build.rs` that:
 4. Adds FreeRTOS + lwIP include paths
 5. Optionally compiles `src/c/profile/transport/ip/udp/udp_transport_freertos_plus_tcp.c` for native FreeRTOS+TCP UDP, or uses the custom transport callback interface with lwIP sockets
 
+**Status**: Done
+
 **Files**: `packages/xrce/xrce-sys/build.rs`
 
 ### 54.4 — Platform header and shim adjustments
@@ -247,7 +251,9 @@ Create `zpico-sys/c/platform/zenoh_freertos_platform.h` if needed, or verify tha
 
 Review `zenoh_shim.c` for any `#ifdef ZENOH_ZEPHYR` or `#ifdef ZPICO_SMOLTCP` guards that need a FreeRTOS equivalent. The lwIP socket path should mostly match the existing `else` (non-smoltcp, non-zephyr) code path that uses `select()`.
 
-**Files**: `packages/zpico/zpico-sys/c/platform/`, `packages/zpico/zpico-sys/c/shim/zenoh_shim.c`
+**Status**: Done
+
+**Files**: `packages/zpico/zpico-sys/c/shim/zenoh_shim.c`
 
 ### 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
 

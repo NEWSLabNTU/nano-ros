@@ -6,13 +6,15 @@
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 use core::ffi::c_void;
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 use core::marker::PhantomData;
 
@@ -29,7 +31,8 @@ pub use zpico_sys::{
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 use zpico_sys::{
     zenoh_shim_close, zenoh_shim_declare_liveliness, zenoh_shim_declare_publisher,
@@ -76,6 +79,7 @@ pub enum ShimError {
     feature = "platform-posix",
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
+    feature = "platform-freertos",
     test
 ))]
 impl ShimError {
@@ -190,7 +194,8 @@ impl ShimZenohId {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub struct ShimLivelinessToken {
     handle: i32,
@@ -199,7 +204,8 @@ pub struct ShimLivelinessToken {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl ShimLivelinessToken {
     /// Get the liveliness handle
@@ -211,7 +217,8 @@ impl ShimLivelinessToken {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl Drop for ShimLivelinessToken {
     fn drop(&mut self) {
@@ -235,7 +242,8 @@ impl Drop for ShimLivelinessToken {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub struct ShimQueryable {
     handle: i32,
@@ -244,7 +252,8 @@ pub struct ShimQueryable {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl ShimQueryable {
     /// Get the queryable handle
@@ -256,7 +265,8 @@ impl ShimQueryable {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl Drop for ShimQueryable {
     fn drop(&mut self) {
@@ -282,7 +292,8 @@ impl Drop for ShimQueryable {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub struct ShimContext {
     _private: PhantomData<*const ()>,
@@ -291,7 +302,8 @@ pub struct ShimContext {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl ShimContext {
     /// Create a new shim context with the given locator
@@ -782,7 +794,8 @@ impl ShimContext {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl Drop for ShimContext {
     fn drop(&mut self) {
@@ -802,7 +815,8 @@ impl Drop for ShimContext {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub struct ShimPublisher<'a> {
     handle: i32,
@@ -812,7 +826,8 @@ pub struct ShimPublisher<'a> {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl<'a> ShimPublisher<'a> {
     /// Publish data
@@ -871,7 +886,8 @@ impl<'a> ShimPublisher<'a> {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl<'a> Drop for ShimPublisher<'a> {
     fn drop(&mut self) {
@@ -891,7 +907,8 @@ impl<'a> Drop for ShimPublisher<'a> {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 pub struct ShimSubscriber<'a> {
     handle: i32,
@@ -901,7 +918,8 @@ pub struct ShimSubscriber<'a> {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl<'a> ShimSubscriber<'a> {
     /// Get the subscriber handle
@@ -913,7 +931,8 @@ impl<'a> ShimSubscriber<'a> {
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
-    feature = "platform-bare-metal"
+    feature = "platform-bare-metal",
+    feature = "platform-freertos"
 ))]
 impl<'a> Drop for ShimSubscriber<'a> {
     fn drop(&mut self) {
