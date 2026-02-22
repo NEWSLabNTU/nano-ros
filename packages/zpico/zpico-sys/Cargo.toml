@@ -8,7 +8,7 @@ links = "zenoh_shim"
 
 [lints.rust]
 # cbindgen sets cfg(cbindgen) when parsing - allow it without warnings
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "bare-metal"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "bare-metal", "freertos"))'] }
 
 [lib]
 name = "zpico_sys"
@@ -19,6 +19,7 @@ default = []
 posix = []
 zephyr = []
 bare-metal = []
+freertos = []
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.

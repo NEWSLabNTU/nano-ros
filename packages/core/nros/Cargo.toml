@@ -41,6 +41,11 @@ platform-bare-metal = [
     "nros-rmw-zenoh?/platform-bare-metal",
     "nros-rmw-xrce?/platform-bare-metal",
 ]
+platform-freertos = [
+    "nros-node/platform-freertos",
+    "nros-rmw-zenoh?/platform-freertos",
+    "nros-rmw-xrce?/platform-freertos",
+]
 
 # Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
 link-tcp = ["nros-rmw-zenoh?/link-tcp"]

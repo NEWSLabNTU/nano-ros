@@ -18,10 +18,14 @@ fn main() {
     let posix = env::var("CARGO_FEATURE_POSIX").is_ok();
     let bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
     let zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
+    let freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
 
-    let platform_count = [posix, bare_metal, zephyr].iter().filter(|&&x| x).count();
+    let platform_count = [posix, bare_metal, zephyr, freertos]
+        .iter()
+        .filter(|&&x| x)
+        .count();
     if platform_count > 1 {
-        panic!("Features `posix`, `bare-metal`, and `zephyr` are mutually exclusive");
+        panic!("Features `posix`, `bare-metal`, `zephyr`, and `freertos` are mutually exclusive");
     }
 
     // Read MTU from environment variable with platform-appropriate default.

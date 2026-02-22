@@ -320,9 +320,10 @@ fn main() {
     let use_posix = env::var("CARGO_FEATURE_POSIX").is_ok();
     let use_zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
     let use_bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
+    let use_freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
 
     // Count enabled backends
-    let backend_count = [use_posix, use_zephyr, use_bare_metal]
+    let backend_count = [use_posix, use_zephyr, use_bare_metal, use_freertos]
         .iter()
         .filter(|&&b| b)
         .count();
@@ -335,7 +336,7 @@ fn main() {
 
     if backend_count > 1 {
         panic!(
-            "Only one platform backend can be selected at a time (posix, zephyr, or bare-metal)"
+            "Only one platform backend can be selected at a time (posix, zephyr, bare-metal, or freertos)"
         );
     }
 
@@ -385,7 +386,7 @@ fn main() {
         } else {
             build_zenoh_pico_native(&zenoh_pico_src, &out_dir, &buf_config)
         };
-        if backend_count > 0 && !use_zephyr {
+        if backend_count > 0 && !use_zephyr && !use_freertos {
             build_c_shim(
                 &c_dir,
                 &include_dir,
@@ -422,6 +423,11 @@ fn main() {
         println!("cargo:rustc-cfg=shim_backend=\"zephyr\"");
     } else if use_bare_metal {
         println!("cargo:rustc-cfg=shim_backend=\"bare-metal\"");
+    } else if use_freertos {
+        println!("cargo:rustc-cfg=shim_backend=\"freertos\"");
+        println!(
+            "cargo:warning=No build path for freertos yet — zenoh-pico C build is not implemented (see Phase 54.2)"
+        );
     }
 
     // Rerun triggers

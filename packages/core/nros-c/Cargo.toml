@@ -27,6 +27,7 @@ xrce-serial = ["nros/xrce-serial"]
 # Platform backends (select one — orthogonal to RMW and ROS version)
 platform-posix = ["nros/platform-posix"]
 platform-zephyr = ["nros/platform-zephyr"]
+platform-freertos = ["nros/platform-freertos"]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = ["nros/ros-humble"]

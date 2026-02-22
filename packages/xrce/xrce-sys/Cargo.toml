@@ -10,6 +10,7 @@ default = []
 posix = []
 bare-metal = []
 zephyr = []
+freertos = []
 std = []
 
 [build-dependencies]
