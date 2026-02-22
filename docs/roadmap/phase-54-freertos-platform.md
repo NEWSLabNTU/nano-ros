@@ -1,8 +1,8 @@
 # Phase 54: FreeRTOS Platform Support
 
-**Goal**: Add `platform-freertos` as a new platform axis value, enabling nros nodes on FreeRTOS + lwIP boards (STM32, NXP, Renesas, etc.) via both zenoh-pico and XRCE-DDS backends.
+**Goal**: Add `platform-freertos` as a new platform axis value, enabling nros nodes on FreeRTOS + lwIP boards (STM32, NXP, Renesas, etc.) via both zenoh-pico and XRCE-DDS backends. Validate on QEMU MPS2-AN385 (Cortex-M3 + LAN9118 Ethernet) before requiring real hardware.
 
-**Status**: Not Started
+**Status**: In Progress (54.1 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -26,6 +26,38 @@ Both zenoh-pico and Micro-XRCE-DDS-Client ship FreeRTOS support with two IP stac
 
 The zenoh-pico FreeRTOS+TCP variant lacks UDP multicast (needed for zenoh scouting/peer discovery) and TCP_NODELAY (needed for low-latency ROS 2 messaging). These are blocking gaps. FreeRTOS+TCP can be added as a sub-variant later if needed.
 
+### Why QEMU MPS2-AN385 (Not Real Hardware First)
+
+No QEMU STM32 machine has Ethernet emulation (not mainline, not any maintained fork). However, mainline QEMU's **MPS2-AN385** (Cortex-M3 + LAN9118 Ethernet) — the same machine nano-ros already uses for bare-metal tests — supports FreeRTOS:
+
+- **FreeRTOS has an official `CORTEX_M3_MPS2_QEMU_GCC` demo** with semihosting support
+- FreeRTOS-Plus-TCP ships a LAN9118 network driver for this target
+- The existing TAP bridge infrastructure (`scripts/qemu/setup-network.sh`, `launch-mps2-an385.sh`) works unchanged
+- No external QEMU forks or hardware purchases needed
+
+The gap is an **lwIP `netif` driver for LAN9118** (FreeRTOS-Plus-TCP has one, lwIP does not). This is bounded work (~200–300 LOC C) using the same MMIO registers as the existing `lan9118-smoltcp` Rust driver.
+
+```
+┌─────────────────────────────────────────────────┐
+│  Host (Linux)                                    │
+│                                                  │
+│  ┌──────────┐    ┌──────────┐    ┌──────────┐  │
+│  │ zenohd   │    │ QEMU     │    │ QEMU     │  │
+│  │ on bridge│    │ mps2-an385│   │ mps2-an385│  │
+│  │ 192.0.3.1│    │ FreeRTOS │    │ FreeRTOS │  │
+│  │          │    │ +lwIP    │    │ +lwIP    │  │
+│  │          │    │ +zenoh-  │    │ +zenoh-  │  │
+│  │          │    │  pico    │    │  pico    │  │
+│  │          │    │ talker   │    │ listener │  │
+│  └────┬─────┘    └────┬─────┘    └────┬─────┘  │
+│       │               │               │         │
+│  ─────┴───────────────┴───────────────┴─────    │
+│       br-qemu     tap-qemu0      tap-qemu1      │
+└─────────────────────────────────────────────────┘
+```
+
+Same topology as existing bare-metal QEMU tests — FreeRTOS+lwIP inside the guest instead of bare-metal+smoltcp.
+
 ### Existing Infrastructure
 
 **Already implemented** (no work needed):
@@ -35,12 +67,16 @@ The zenoh-pico FreeRTOS+TCP variant lacks UDP multicast (needed for zenoh scouti
 - nros executor is generic over `Session` trait — works with any backend
 - Board crate `run()` pattern established (Phase 51)
 - Feature orthogonality enforced (Phase 42)
+- QEMU MPS2-AN385 infrastructure: launch scripts, TAP bridge, QemuProcess test fixture
+- LAN9118 Rust driver: `packages/drivers/lan9118-smoltcp/` (register definitions reusable)
 
 **Needs implementation** (this phase):
 - `platform-freertos` feature flag chain through all crates
-- zpico-sys build.rs FreeRTOS compilation branch
-- xrce-sys build.rs FreeRTOS compilation branch
-- At least one board crate + example
+- zpico-sys / xrce-sys build.rs FreeRTOS compilation branches
+- LAN9118 lwIP `netif` driver (C, ~200–300 LOC)
+- FreeRTOS QEMU board crate (`nros-mps2-an385-freertos`)
+- Examples: pubsub, service, action in both Rust and C
+- Integration tests with `just test-freertos` recipe
 
 ## Architecture
 
@@ -79,7 +115,7 @@ The zenoh-pico FreeRTOS+TCP variant lacks UDP multicast (needed for zenoh scouti
 └───────────────────────┬──────────────────────────┘
                         │
 ┌───────────────────────┴──────────────────────────┐
-│              Board Crate (e.g. nros-nucleo-f767)  │
+│      Board Crate (e.g. nros-mps2-an385-freertos) │
 │    HAL init, Ethernet driver, lwIP netif, run()  │
 └──────────────────────────────────────────────────┘
 ```
@@ -110,6 +146,10 @@ Following the Phase 51 pattern, the board crate's `run()` function:
 
 zpico-sys build.rs compiles zenoh-pico sources via the `cc` crate, selecting FreeRTOS+lwIP platform files. The user provides `FREERTOS_DIR` and `LWIP_DIR` environment variables pointing to their FreeRTOS and lwIP source trees. This mirrors how ESP32 and STM32 HAL crates handle vendor SDK paths.
 
+**6. QEMU MPS2-AN385 as first validation target**
+
+Rather than requiring a physical STM32 board, the first FreeRTOS board crate targets QEMU's MPS2-AN385. FreeRTOS has an official demo for this machine (`CORTEX_M3_MPS2_QEMU_GCC`), and nano-ros already has the TAP bridge infrastructure. The only new C code is the LAN9118 lwIP `netif` driver. Hardware board crates (STM32F767 Nucleo, etc.) follow as a separate phase once the QEMU path is validated.
+
 ## Feature Flag Chain
 
 ```
@@ -121,7 +161,7 @@ nros/Cargo.toml:
   ]
 
 nros-node/Cargo.toml:
-  platform-freertos = []
+  platform-freertos = ["nros-rmw-zenoh?/platform-freertos", "nros-rmw-xrce?/platform-freertos"]
 
 nros-rmw-zenoh/Cargo.toml:
   platform-freertos = ["zpico-sys/freertos"]
@@ -136,10 +176,7 @@ xrce-sys/Cargo.toml:
   freertos = []          # new feature (alongside posix, bare-metal, zephyr)
 
 nros-c/Cargo.toml:
-  platform-freertos = [
-      "nros-node/platform-freertos",
-      "nros-rmw-zenoh?/platform-freertos",
-  ]
+  platform-freertos = ["nros/platform-freertos"]
 ```
 
 Mutual exclusivity: `posix`, `zephyr`, `bare-metal`, `freertos` — enforced by compile-time panic in build.rs.
@@ -149,28 +186,34 @@ Mutual exclusivity: `posix`, `zephyr`, `bare-metal`, `freertos` — enforced by 
 | Variable              | Description                                                       | Required |
 |-----------------------|-------------------------------------------------------------------|----------|
 | `FREERTOS_DIR`        | Path to FreeRTOS kernel source (contains `include/`, `portable/`) | Yes      |
-| `FREERTOS_PORT`       | FreeRTOS portable layer (e.g., `GCC/ARM_CM7`, `GCC/RISC-V`)       | Yes      |
+| `FREERTOS_PORT`       | FreeRTOS portable layer (e.g., `GCC/ARM_CM3`, `GCC/ARM_CM7`)     | Yes      |
 | `LWIP_DIR`            | Path to lwIP source (contains `src/include/`, `src/core/`)        | Yes      |
-| `FREERTOS_CONFIG_DIR` | Path to directory containing `FreeRTOSConfig.h` and `lwipopts.h`  | Yes      |
+| `FREERTOS_CONFIG_DIR` | Path to directory containing `FreeRTOSConfig.h` and `lwipopts.h` | Yes      |
 
 These are only needed by zpico-sys and xrce-sys build.rs when the `freertos` feature is active.
 
 ## Work Items
 
-- [ ] 54.1 — Feature flag wiring
+- [x] 54.1 — Feature flag wiring
 - [ ] 54.2 — zpico-sys build.rs FreeRTOS+lwIP compilation
 - [ ] 54.3 — xrce-sys build.rs FreeRTOS compilation
 - [ ] 54.4 — Platform header and shim adjustments
-- [ ] 54.5 — First board crate: STM32F767 Nucleo (zenoh)
-- [ ] 54.6 — Example: FreeRTOS talker + listener
-- [ ] 54.7 — Integration test
-- [ ] 54.8 — Documentation
+- [ ] 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
+- [ ] 54.6 — LAN9118 lwIP netif driver
+- [ ] 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
+- [ ] 54.8 — QEMU board crate (nros-mps2-an385-freertos)
+- [ ] 54.9 — Rust zenoh examples (pubsub, service, action)
+- [ ] 54.10 — C zenoh examples (pubsub, service, action)
+- [ ] 54.11 — Integration tests + `just test-freertos` recipe
+- [ ] 54.12 — Documentation
 
 ### 54.1 — Feature flag wiring
 
 Add `platform-freertos` / `freertos` features to all crates in the chain. Update mutual exclusivity checks in `zpico-sys/build.rs` and `xrce-sys/build.rs` to include `freertos`.
 
-**Files**: `nros/Cargo.toml`, `nros-node/Cargo.toml`, `nros-rmw-zenoh/Cargo.toml`, `nros-rmw-xrce/Cargo.toml`, `zpico-sys/Cargo.toml`, `xrce-sys/Cargo.toml`, `nros-c/Cargo.toml`
+**Status**: Done
+
+**Files**: `nros/Cargo.toml`, `nros-node/Cargo.toml`, `nros-rmw-zenoh/Cargo.toml`, `nros-rmw-xrce/Cargo.toml`, `zpico-sys/Cargo.toml`, `xrce-sys/Cargo.toml`, `nros-c/Cargo.toml`, `zpico-sys/build.rs`, `xrce-sys/build.rs`
 
 ### 54.2 — zpico-sys build.rs FreeRTOS+lwIP compilation
 
@@ -206,75 +249,342 @@ Review `zenoh_shim.c` for any `#ifdef ZENOH_ZEPHYR` or `#ifdef ZPICO_SMOLTCP` gu
 
 **Files**: `packages/zpico/zpico-sys/c/platform/`, `packages/zpico/zpico-sys/c/shim/zenoh_shim.c`
 
-### 54.5 — First board crate: STM32F767 Nucleo (zenoh)
+### 54.5 — `just setup` FreeRTOS+lwIP dependency acquisition
 
-Create `packages/boards/nros-nucleo-f767/` targeting the Nucleo-F767ZI board (ARM Cortex-M7, 512 KB RAM, Ethernet MAC, widely available ~$25). This board has a built-in Ethernet PHY making it ideal for a first FreeRTOS target.
+Add a `just setup-freertos` recipe that acquires FreeRTOS kernel and lwIP sources for QEMU testing. The recipe should:
 
-Board crate structure:
+1. Clone FreeRTOS kernel to `external/freertos-kernel/` (git submodule or shallow clone of `FreeRTOS/FreeRTOS-Kernel` at a pinned tag, e.g. `V11.1.0`)
+2. Clone lwIP to `external/lwip/` (git submodule or shallow clone of `lwip-tcpip/lwip` at a pinned tag, e.g. `STABLE-2_2_0_RELEASE`)
+3. Set/print the required environment variables (`FREERTOS_DIR`, `LWIP_DIR`, `FREERTOS_PORT=GCC/ARM_CM3`, `FREERTOS_CONFIG_DIR`)
+
+Update `just setup` to mention `just setup-freertos` as an optional step for FreeRTOS development.
+
+The `external/` directory is already gitignored. Pin specific tags for reproducible builds.
+
+**Files**: `justfile`, `external/` directory
+
+### 54.6 — LAN9118 lwIP netif driver
+
+Write a C lwIP `netif` driver for the LAN9118 Ethernet controller (QEMU MPS2-AN385). This is the key new C code enabling FreeRTOS networking on QEMU.
+
+**Location**: `packages/drivers/lan9118-lwip/` (new, C-only library)
+
 ```
-packages/boards/nros-nucleo-f767/
-├── Cargo.toml
+packages/drivers/lan9118-lwip/
+├── include/
+│   └── lan9118_lwip.h     # Public API: lan9118_lwip_init(), lwIP netif callbacks
 └── src/
-    ├── lib.rs          # pub mod, re-exports
-    ├── config.rs       # Config (IP, gateway, zenoh locator, domain_id)
-    ├── node.rs         # run() — HAL init, lwIP, FreeRTOS scheduler, user closure
+    └── lan9118_lwip.c     # ~200–300 LOC
+```
+
+**Implementation**:
+- MMIO register definitions: reuse from `packages/drivers/lan9118-smoltcp/src/regs.rs` (same hardware)
+- Reference: FreeRTOS-Plus-TCP LAN9118 driver at `FreeRTOS-Plus-TCP/source/portable/NetworkInterface/MPS2_AN385/ether_lan9118/`
+- lwIP `netif` interface: implement `init()`, `linkoutput()` (TX), and input polling (RX → `netif->input()`)
+- Base address: `0x40200000` (MPS2-AN385 default, same as existing driver)
+- Init sequence: software reset → TX FIFO config → PHY config → MAC enable (mirrors `lan9118-smoltcp`)
+- Frame handling: read/write via LAN9118 TX/RX data FIFOs, check status words
+
+**lwIP netif callbacks**:
+```c
+err_t lan9118_lwip_init(struct netif *netif);       // Hardware init, set linkoutput/output
+err_t lan9118_lwip_output(struct netif *netif, struct pbuf *p);  // TX: pbuf → TX FIFO
+void  lan9118_lwip_poll(struct netif *netif);        // RX: poll RX FIFO → netif->input()
+```
+
+Polling is appropriate for the QEMU environment. On real hardware, interrupt-driven RX would replace `lan9118_lwip_poll()`.
+
+**Files**: `packages/drivers/lan9118-lwip/include/lan9118_lwip.h`, `packages/drivers/lan9118-lwip/src/lan9118_lwip.c`
+
+### 54.7 — FreeRTOS QEMU config (FreeRTOSConfig.h, lwipopts.h, linker script)
+
+Create board-specific configuration files for FreeRTOS + lwIP on QEMU MPS2-AN385.
+
+**Location**: `packages/boards/nros-mps2-an385-freertos/config/`
+
+```
+packages/boards/nros-mps2-an385-freertos/config/
+├── FreeRTOSConfig.h    # FreeRTOS kernel config
+├── lwipopts.h          # lwIP stack config
+└── mps2_an385.ld       # Linker script (with heap section)
+```
+
+**FreeRTOSConfig.h** key settings:
+- `configCPU_CLOCK_HZ`: 25 MHz (MPS2-AN385 QEMU default)
+- `configTOTAL_HEAP_SIZE`: 64 KB (zenoh-pico needs ~12–20 KB; lwIP needs ~8–16 KB)
+- `configMAX_PRIORITIES`: 8
+- `configMINIMAL_STACK_SIZE`: 256 words
+- `configUSE_RECURSIVE_MUTEXES`: 1 (required by zenoh-pico)
+- `configUSE_COUNTING_SEMAPHORES`: 1
+- `configUSE_TIMERS`: 1
+- `configTIMER_TASK_STACK_DEPTH`: 512 words
+- Semihosting-compatible `configASSERT()` for QEMU debugging
+
+**lwipopts.h** key settings:
+- `NO_SYS`: 0 (threaded mode — requires FreeRTOS)
+- `LWIP_SOCKET`: 1 (BSD socket API for zenoh-pico)
+- `LWIP_TCP`: 1, `LWIP_UDP`: 1
+- `LWIP_NETCONN`: 1 (needed by socket layer)
+- `TCP_NODELAY`: 1 (low-latency messaging)
+- `MEM_SIZE`: 16384 (lwIP heap)
+- `MEMP_NUM_PBUF`: 32
+- `PBUF_POOL_SIZE`: 24
+- `TCP_MSS`: 1460
+- `TCP_SND_BUF`: 4 * TCP_MSS
+- `LWIP_NETIF_STATUS_CALLBACK`: 1
+
+**Linker script** (`mps2_an385.ld`):
+- Based on FreeRTOS `CORTEX_M3_MPS2_QEMU_GCC` demo linker script
+- 4 MB RAM at 0x21000000 (QEMU MPS2-AN385 SSRAM)
+- Sections: `.text`, `.data`, `.bss`, `.heap` (for FreeRTOS heap_4.c)
+- Stack at end of RAM
+
+**Files**: `packages/boards/nros-mps2-an385-freertos/config/FreeRTOSConfig.h`, `lwipopts.h`, `mps2_an385.ld`
+
+### 54.8 — QEMU board crate (nros-mps2-an385-freertos)
+
+Create the FreeRTOS board crate for QEMU MPS2-AN385, following the Phase 51 pattern established by `nros-mps2-an385` (bare-metal).
+
+**Location**: `packages/boards/nros-mps2-an385-freertos/`
+
+```
+packages/boards/nros-mps2-an385-freertos/
+├── Cargo.toml
+├── build.rs            # Compile FreeRTOS kernel + lwIP + LAN9118 netif via cc
+├── config/             # FreeRTOSConfig.h, lwipopts.h, mps2_an385.ld (from 54.7)
+└── src/
+    ├── lib.rs          # Re-exports, entry macro, println!, exit_success/exit_failure
+    ├── config.rs       # Config builder (IP, gateway, zenoh locator, domain_id)
+    ├── node.rs         # run() — FreeRTOS init, lwIP init, LAN9118 netif, scheduler start
     └── error.rs        # Board error type
 ```
 
-Dependencies:
-- `stm32f7xx-hal` (or `embassy-stm32` with FreeRTOS interop) for Ethernet MAC
-- FreeRTOS kernel (via env var, compiled by build.rs or linked externally)
-- lwIP (via env var, compiled by build.rs or linked externally)
+**build.rs** responsibilities:
+1. Compile FreeRTOS kernel: `tasks.c`, `queue.c`, `list.c`, `timers.c`, `event_groups.c`, `stream_buffer.c`, `port.c` (from `$FREERTOS_PORT`), `heap_4.c`
+2. Compile lwIP core: `tcp.c`, `udp.c`, `ip4.c`, `pbuf.c`, `mem.c`, `memp.c`, `netif.c`, `sockets.c`, `tcpip.c`, `sys_arch.c` (FreeRTOS port)
+3. Compile LAN9118 lwIP netif driver (from 54.6)
+4. Include paths: FreeRTOS headers, lwIP headers, config dir, LAN9118 driver headers
+5. Link the resulting static library
 
-The `run()` function:
-1. Init clocks, GPIO, Ethernet MAC via HAL
-2. Init lwIP: create netif, set IP/gateway/netmask, start DHCP if configured
-3. Start FreeRTOS scheduler (or assume it's already running)
-4. Call user closure from a FreeRTOS task with sufficient stack
+**`run()` function** sequence:
+1. Init NVIC (interrupt priorities for FreeRTOS)
+2. Init SysTick (FreeRTOS tick source)
+3. Init LAN9118 hardware (MAC address, PHY config)
+4. Init lwIP (`tcpip_init()`, create `netif`, set IP config)
+5. Start lwIP `netif` (link up)
+6. Create application FreeRTOS task (runs user closure with sufficient stack)
+7. Start FreeRTOS scheduler (`vTaskStartScheduler()`)
 
-**Note**: The exact HAL crate and init sequence depends on the chosen board. STM32F767 is the recommended first target, but a different board (NXP, Renesas) could be substituted.
+The application task runs the user closure, which creates `Executor::open()` + nodes. The lwIP `tcpip_thread` and zenoh-pico's background read task run as separate FreeRTOS tasks.
 
-### 54.6 — Example: FreeRTOS talker + listener
+**Config builder** mirrors `nros-mps2-an385`:
+- `Config::default()` — talker preset (192.0.3.10, gateway 192.0.3.1)
+- `Config::listener()` — listener preset (192.0.3.11)
+- `with_mac()`, `with_ip()`, `with_gateway()`, `with_zenoh_locator()`, `with_domain_id()`
 
-Create examples following the 4-level convention:
+**Semihosting**: `println!` via ARM semihosting (`SYS_WRITE0`), `exit_success()`/`exit_failure()` via `SYS_EXIT` for QEMU test automation.
+
+**Dependencies**:
+- `nros` with `rmw-zenoh,platform-freertos,ros-humble`
+- `cortex-m-rt` (Cortex-M runtime, entry macro)
+- `cortex-m-semihosting` (QEMU output)
+
+**Files**: `packages/boards/nros-mps2-an385-freertos/`
+
+### 54.9 — Rust zenoh examples (pubsub, service, action)
+
+Create Rust examples for FreeRTOS on QEMU following the 4-level convention.
+
+**Location**: `examples/qemu-arm-freertos/rust/zenoh/`
+
 ```
-examples/freertos/
-└── rust/zenoh/
-    ├── talker/
-    │   ├── Cargo.toml
-    │   ├── .cargo/config.toml
-    │   ├── package.xml
-    │   └── src/main.rs
-    └── listener/
-        ├── Cargo.toml
-        ├── .cargo/config.toml
-        ├── package.xml
-        └── src/main.rs
+examples/qemu-arm-freertos/rust/zenoh/
+├── talker/              # Pub: std_msgs/Int32 on /chatter
+├── listener/            # Sub: std_msgs/Int32 on /chatter
+├── service-server/      # Srv: example_interfaces/AddTwoInts
+├── service-client/      # Cli: example_interfaces/AddTwoInts
+├── action-server/       # Act: example_interfaces/Fibonacci
+└── action-client/       # Act: example_interfaces/Fibonacci
 ```
 
-Each example uses `nros` with `rmw-zenoh,platform-freertos,ros-humble` features. The entry point calls the board crate's `run()`, then `Executor::open()` inside the closure.
+Each example has:
+```
+├── Cargo.toml           # deps: nros, nros-mps2-an385-freertos, generated msg types
+├── .cargo/config.toml   # target, patch.crates-io, runner (QEMU launch)
+├── package.xml          # For cargo-nano-ros message generation
+├── .gitignore           # /target/, /generated/
+└── src/main.rs
+```
 
-### 54.7 — Integration test
+**Entry point pattern** (same as bare-metal QEMU examples):
+```rust
+#![no_std]
+#![no_main]
 
-Add a test in `packages/testing/nros-tests/tests/` (or `tests/`) that:
-1. Builds the FreeRTOS talker/listener examples
-2. Runs them (QEMU with FreeRTOS, or hardware-in-the-loop)
-3. Verifies message exchange
+use nros::prelude::*;
+use nros_mps2_an385_freertos::{Config, println, run};
+use panic_semihosting as _;
 
-If QEMU testing is feasible (e.g., QEMU STM32 with FreeRTOS+lwIP), add `just test-freertos` recipe. Otherwise, document the manual test procedure.
+#[nros_mps2_an385_freertos::entry]
+fn main() -> ! {
+    run(Config::default(), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("talker");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("talker")?;
+        // ...
+        Ok::<(), NodeError>(())
+    })
+}
+```
 
-### 54.8 — Documentation
+**Pubsub**: Talker publishes 10 `Int32` messages, listener subscribes with `try_recv()` and exits after receiving 3+ messages (matches existing bare-metal pattern).
 
-- Update `CLAUDE.md` workspace structure and platform backends sections
+**Service**: Server registers `AddTwoInts` handler, client sends request and verifies response. Both use `spin_once()` polling. Client exits after receiving correct response.
+
+**Action**: Server handles `Fibonacci` goal (computes N terms), client sends goal, polls for acceptance, then polls for result. Both use `spin_once()` polling. Client verifies result matches expected Fibonacci sequence.
+
+**Build target**: `thumbv7m-none-eabi` (Cortex-M3), `--release` for size optimization.
+
+**Files**: `examples/qemu-arm-freertos/rust/zenoh/`
+
+### 54.10 — C zenoh examples (pubsub, service, action)
+
+Create C examples using `nros-c` for FreeRTOS on QEMU. These use CMake + the nros-c static library.
+
+**Location**: `examples/qemu-arm-freertos/c/zenoh/`
+
+```
+examples/qemu-arm-freertos/c/zenoh/
+├── CMakeLists.txt       # Top-level CMake (builds nros-c + all examples)
+├── talker/
+│   ├── CMakeLists.txt
+│   └── main.c
+├── listener/
+│   ├── CMakeLists.txt
+│   └── main.c
+├── service-server/
+│   ├── CMakeLists.txt
+│   └── main.c
+├── service-client/
+│   ├── CMakeLists.txt
+│   └── main.c
+├── action-server/
+│   ├── CMakeLists.txt
+│   └── main.c
+└── action-client/
+    ├── CMakeLists.txt
+    └── main.c
+```
+
+**Build approach**: Cross-compile `nros-c` as a static library for `thumbv7m-none-eabi` with `--features "rmw-zenoh,platform-freertos,ros-humble"`, then link C examples against it. The CMake build calls `cargo build` for `nros-c`, then compiles C sources with `arm-none-eabi-gcc` and links everything together.
+
+Each C example follows the native C example patterns in `examples/native/c/zenoh/` but adapted for bare-metal:
+- Uses `nros_executor_open()` / `nros_node_create()` / `nros_publisher_create()` C API
+- Board init (LAN9118, lwIP, FreeRTOS) handled by the board crate's `run()` equivalent or a C `board_init()` function
+- Output via semihosting `printf()` or ARM semihosting syscalls
+
+**Files**: `examples/qemu-arm-freertos/c/zenoh/`
+
+### 54.11 — Integration tests + `just test-freertos` recipe
+
+Add automated QEMU-based integration tests and justfile recipes.
+
+**Test fixture**: Extend `QemuProcess` in `packages/testing/nros-tests/src/qemu.rs` or add `FreeRtosQemuProcess` with the same interface. The QEMU launch command is identical to bare-metal (`qemu-system-arm -machine mps2-an385 -cpu cortex-m3`).
+
+**Rust integration tests** in `packages/testing/nros-tests/tests/`:
+
+```rust
+// tests/freertos_qemu.rs
+
+#[rstest]
+fn test_freertos_pubsub(zenohd: ZenohRouter) {
+    // Build talker + listener
+    // Start listener on tap-qemu1 (192.0.3.11)
+    // Wait 5s stabilization
+    // Start talker on tap-qemu0 (192.0.3.10)
+    // Verify listener received messages
+    // Verify talker completed publishing
+}
+
+#[rstest]
+fn test_freertos_service(zenohd: ZenohRouter) {
+    // Build service-server + service-client
+    // Start server on tap-qemu0
+    // Wait 5s stabilization
+    // Start client on tap-qemu1
+    // Verify client received correct response
+}
+
+#[rstest]
+fn test_freertos_action(zenohd: ZenohRouter) {
+    // Build action-server + action-client
+    // Start server on tap-qemu0
+    // Wait 5s stabilization
+    // Start client on tap-qemu1
+    // Verify client received goal acceptance + result
+}
+```
+
+**Nextest config** (`.config/nextest.toml`):
+```toml
+[test-groups.freertos-qemu]
+max-threads = 1  # TAP bridge exclusive access
+
+[[profile.default.overrides]]
+filter = "test(freertos_qemu)"
+test-group = "freertos-qemu"
+slow-timeout = { period = "60s", terminate-after = 2 }
+```
+
+**Justfile recipes**:
+```
+just build-examples-freertos      # Build all FreeRTOS QEMU examples (Rust + C)
+just test-freertos                # Run FreeRTOS QEMU integration tests
+just test-freertos verbose=false  # With live output
+```
+
+`just test-freertos` should:
+1. Verify `qemu-system-arm` is installed
+2. Build FreeRTOS examples
+3. Set up TAP bridge (or verify it exists)
+4. Start zenohd on bridge IP
+5. Run nextest with `freertos_qemu` filter
+6. Clean up
+
+**QEMU test rules** (same as existing bare-metal):
+- Each QEMU peer uses a different TAP device (talker on `tap-qemu0`, listener on `tap-qemu1`)
+- Start subscriber/server first, then publisher/client
+- 5s stabilization delay between subscriber connection and publisher start
+- Verify zenohd on bridge IP (`192.0.3.1:7447`)
+- `max-threads = 1` for tests sharing the TAP bridge
+
+**Files**: `packages/testing/nros-tests/tests/freertos_qemu.rs`, `.config/nextest.toml`, `justfile`
+
+### 54.12 — Documentation
+
+- Update `CLAUDE.md`:
+  - Add `nros-mps2-an385-freertos` to workspace structure under `packages/boards/`
+  - Add `lan9118-lwip` to workspace structure under `packages/drivers/`
+  - Add `qemu-arm-freertos` to examples list
+  - Update platform backends section to include `platform-freertos`
+  - Add `just test-freertos` to test groups table
+  - Add `just setup-freertos` to build commands
 - Update `docs/guides/getting-started.md` with FreeRTOS quick start
 - Add `docs/guides/freertos-setup.md` covering:
-  - FreeRTOS + lwIP source acquisition
+  - FreeRTOS + lwIP source acquisition (`just setup-freertos`)
   - Environment variable configuration
-  - Board-specific setup (STM32CubeMX project generation, etc.)
+  - QEMU testing workflow (`just test-freertos`)
+  - Board-specific setup for real hardware (STM32CubeMX, etc.)
   - Building and flashing
+- Update `docs/reference/environment-variables.md` with FreeRTOS build-time variables
+
+**Files**: `CLAUDE.md`, `docs/guides/freertos-setup.md`, `docs/guides/getting-started.md`, `docs/reference/environment-variables.md`
 
 ## Future Extensions (Out of Scope)
 
+- **Hardware board crate: STM32F767 Nucleo** — real hardware target with STM32 Ethernet MAC + lwIP. Follows same pattern as `nros-mps2-an385-freertos` but with `stm32f7xx-hal` and STM32-specific Ethernet driver. Requires physical Nucleo-F767ZI board (~$25).
 - **FreeRTOS+TCP sub-variant**: Add once zenoh-pico upstream completes multicast and TCP_NODELAY support
 - **C API on FreeRTOS**: Zephyr-style CMake module with `nros_cargo_build()` for FreeRTOS CMake projects
 - **Additional boards**: NXP i.MX RT, Renesas RA, Raspberry Pi Pico W
@@ -283,12 +593,19 @@ If QEMU testing is feasible (e.g., QEMU STM32 with FreeRTOS+lwIP), add `just tes
 
 ## Acceptance Criteria
 
-- [ ] `platform-freertos` feature compiles cleanly for at least one target triple
+- [ ] `platform-freertos` feature compiles cleanly for `thumbv7m-none-eabi`
 - [ ] Mutual exclusivity enforced: enabling `platform-freertos` + `platform-posix` panics at build time
 - [ ] Feature flag chain works: `nros` → `nros-node` → `nros-rmw-zenoh` → `zpico-sys` all forward correctly
-- [ ] At least one board crate with `run()` builds
-- [ ] Talker/listener example exchanges messages over Ethernet via zenohd router
-- [ ] `just quality` passes (FreeRTOS-specific crates excluded from default workspace build if cross-compilation target unavailable)
+- [ ] LAN9118 lwIP `netif` driver initializes and exchanges frames on QEMU MPS2-AN385
+- [ ] QEMU board crate `run()` starts FreeRTOS scheduler + lwIP + zenoh-pico session
+- [ ] Rust pubsub example exchanges messages over QEMU TAP bridge via zenohd
+- [ ] Rust service example completes request/response cycle on QEMU
+- [ ] Rust action example completes goal/result cycle on QEMU
+- [ ] C pubsub example exchanges messages over QEMU TAP bridge via zenohd
+- [ ] C service example completes request/response cycle on QEMU
+- [ ] C action example completes goal/result cycle on QEMU
+- [ ] `just test-freertos` runs all QEMU integration tests and passes
+- [ ] `just quality` passes (FreeRTOS board crate excluded from default workspace if `FREERTOS_DIR` unset)
 - [ ] Orthogonality preserved: `platform-freertos` does not imply any RMW backend or ROS edition
 
 ## Notes
@@ -298,3 +615,6 @@ If QEMU testing is feasible (e.g., QEMU STM32 with FreeRTOS+lwIP), add `just tes
 - **No `z_realloc`**: FreeRTOS's standard allocator doesn't support `realloc()` — zenoh-pico's FreeRTOS platform returns NULL. This is fine; zenoh-pico handles the fallback (alloc + copy + free) internally.
 - **Priority tuning**: The zenoh-pico background read task runs at `configMAX_PRIORITIES / 2` by default. For real-time ROS 2 nodes, the user may need to adjust task priorities to ensure the application task preempts networking when needed.
 - **lwIP `tcpip_thread`**: lwIP's threaded mode runs a `tcpip_thread` that processes protocol events. This is a FreeRTOS task separate from both the application task and zenoh-pico's read task. Typical FreeRTOS+lwIP applications need 3+ tasks minimum.
+- **QEMU MPS2-AN385 RAM**: 4 MB SSRAM at 0x21000000. More than sufficient for FreeRTOS + lwIP + zenoh-pico + application. Real MCUs will have less (256–512 KB).
+- **LAN9118 vs real Ethernet MACs**: The LAN9118 is a simple MMIO Ethernet controller. Real STM32/NXP boards use DMA-based Ethernet MACs (e.g., STM32 ETH peripheral). The lwIP netif driver for LAN9118 is QEMU-specific; real boards use vendor-provided lwIP ports.
+- **Semihosting performance**: ARM semihosting is slow (traps to QEMU host). Avoid `println!` in hot paths. Test output should be minimal (pass/fail markers only in loops).
