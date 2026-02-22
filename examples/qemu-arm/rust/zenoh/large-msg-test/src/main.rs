@@ -6,8 +6,8 @@
 #![no_std]
 #![no_main]
 
-use nros_mps2_an385::prelude::*;
-use nros_mps2_an385::println;
+use nros::prelude::*;
+use nros_mps2_an385::{Config, println, run};
 use panic_semihosting as _;
 
 /// Build a test payload with integrity markers.
@@ -36,9 +36,15 @@ fn build_payload(buf: &mut [u8], seq: u32, size: usize) {
     }
 }
 
-#[entry]
+#[nros_mps2_an385::entry]
 fn main() -> ! {
-    run_node(Config::default(), |node| {
+    run(Config::default(), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("large_msg_test");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("large_msg_test")?;
+
         println!("Large message publish test");
         println!("=========================");
 
@@ -46,7 +52,7 @@ fn main() -> ! {
 
         // Poll to establish connection
         for _ in 0..50 {
-            node.spin_once(10);
+            executor.spin_once(10);
         }
 
         let test_sizes: &[usize] = &[64, 128, 256, 512, 768, 1024];
@@ -68,7 +74,7 @@ fn main() -> ! {
             }
             // Allow network processing between publishes
             for _ in 0..10 {
-                node.spin_once(10);
+                executor.spin_once(10);
             }
         }
 
@@ -79,6 +85,6 @@ fn main() -> ! {
             println!("FAILED: {} passed, {} failed", passed, failed);
         }
 
-        Ok(())
+        Ok::<(), NodeError>(())
     })
 }

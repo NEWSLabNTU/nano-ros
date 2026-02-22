@@ -165,7 +165,7 @@ pub(crate) struct SrvRawEntry<Srv, const REQ_BUF: usize, const REPLY_BUF: usize>
 /// Concrete guard condition entry stored in the arena.
 #[repr(C)]
 pub(crate) struct GuardConditionEntry<F> {
-    pub(crate) flag: core::sync::atomic::AtomicBool,
+    pub(crate) flag: portable_atomic::AtomicBool,
     pub(crate) callback: F,
 }
 
@@ -588,7 +588,7 @@ where
     F: FnMut(),
 {
     let entry = unsafe { &mut *(ptr as *mut GuardConditionEntry<F>) };
-    if entry.flag.swap(false, core::sync::atomic::Ordering::AcqRel) {
+    if entry.flag.swap(false, portable_atomic::Ordering::AcqRel) {
         (entry.callback)();
         Ok(true)
     } else {
@@ -681,7 +681,7 @@ where
 /// `ptr` must point to a valid `GuardConditionEntry<F>`.
 pub(crate) unsafe fn guard_has_data<F>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const GuardConditionEntry<F>) };
-    entry.flag.load(core::sync::atomic::Ordering::Acquire)
+    entry.flag.load(portable_atomic::Ordering::Acquire)
 }
 
 /// Timers and action entries are always considered ready.

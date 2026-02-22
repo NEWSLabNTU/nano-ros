@@ -47,6 +47,7 @@ nros-rmw-xrce = { workspace = true, default-features = false, optional = true }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }
+portable-atomic = { version = "1", default-features = false }
 log = { workspace = true, optional = true }
 nros-rcl-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
 

@@ -1,17 +1,14 @@
-//! Simplified node API for ESP32 WiFi bare-metal
+//! Hardware initialization and entry point for ESP32 WiFi bare-metal
 //!
-//! Handles WiFi connection, DHCP, smoltcp interface, and zenoh-pico session
-//! setup, exposing only ROS concepts to the user.
+//! Handles WiFi connection, DHCP, and smoltcp interface setup, then calls
+//! user code with the configuration. Users create their own `nros` executor
+//! and node inside the callback.
 //!
-//! Uses `nros-rmw-zenoh` for transport and `zpico-smoltcp` for socket management.
+//! Uses `zpico-smoltcp` for socket management.
 
 use esp_hal::rng::Rng;
 use esp_hal::time::Instant;
 use esp_radio::wifi::{self, ClientConfig, ModeConfig, WifiDevice};
-use nros_core::RosMessage;
-use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
-use nros_rmw_zenoh::ZenohRmw;
-use nros_rmw_zenoh::shim::ShimSession;
 use zpico_smoltcp::SmoltcpBridge;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::socket::dhcpv4;
@@ -19,82 +16,12 @@ use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
 use zpico_platform_esp32::clock;
 use crate::config::{IpMode, NodeConfig};
-use crate::error::Error;
-use crate::publisher::Publisher;
 use zpico_platform_esp32::random;
-use crate::subscriber::Subscription;
 
 // NOTE: We intentionally do NOT define a `type Result<T>` alias in this module.
 // The `esp_println::println!` macro uses `?` internally which expands to
 // `Result<(), core::fmt::Error>`. A `type Result<T>` alias here would shadow
 // `core::result::Result` and cause "expected 1 generic argument but 2 supplied" errors.
-
-/// Simplified node for ESP32 WiFi applications
-///
-/// This hides all low-level WiFi/smoltcp details.
-/// Users interact only with ROS concepts (publishers, subscriptions).
-pub struct Node {
-    session: ShimSession,
-    domain_id: u32,
-}
-
-impl Node {
-    /// Create a typed publisher for a ROS 2 topic
-    pub fn create_publisher<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> core::result::Result<Publisher<M>, Error> {
-        let topic_info = TopicInfo {
-            name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
-            domain_id: self.domain_id,
-        };
-        let publisher = self.session.create_publisher(&topic_info, QosSettings::default())?;
-        Ok(Publisher::new(publisher))
-    }
-
-    /// Create a typed subscription for a ROS 2 topic (pull-based)
-    ///
-    /// Returns a `Subscription` that you poll with `try_recv()` in your main loop.
-    pub fn create_subscription<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> core::result::Result<Subscription<M>, Error> {
-        let topic_info = TopicInfo {
-            name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
-            domain_id: self.domain_id,
-        };
-        let subscriber = self.session.create_subscriber(&topic_info, QosSettings::default())?;
-        Ok(Subscription::new(subscriber))
-    }
-
-    /// Process network events and dispatch callbacks
-    ///
-    /// Call this periodically to handle:
-    /// - WiFi traffic
-    /// - TCP/IP processing
-    /// - Zenoh protocol messages
-    /// - Subscriber callbacks
-    ///
-    /// # Arguments
-    ///
-    /// * `timeout_ms` - Max wait time (0 = non-blocking)
-    pub fn spin_once(&mut self, timeout_ms: u32) {
-        let _ = self.session.spin_once(timeout_ms);
-    }
-
-    /// Shutdown the node gracefully
-    pub fn shutdown(self) {
-        // ShimSession closes on drop
-        drop(self.session);
-        unsafe {
-            zpico_platform_esp32::network::clear_network_state();
-        }
-    }
-}
 
 /// Helper to create a socket set with pre-allocated storage
 unsafe fn create_socket_set() -> SocketSet<'static> {
@@ -102,19 +29,20 @@ unsafe fn create_socket_set() -> SocketSet<'static> {
     SocketSet::new(&mut storage[..])
 }
 
-/// Run a node with the given WiFi and node configuration
+/// Run an ESP32 WiFi application
 ///
 /// This is the main entry point for ESP32 WiFi applications.
-/// It handles all WiFi, network, and zenoh initialization, then calls
-/// your application code with a ready-to-use `Node`.
+/// It handles all WiFi, network, and smoltcp initialization, then calls
+/// your application code with the configuration. Users create their own
+/// `nros` executor and node inside the callback.
 ///
 /// # Returns
 ///
 /// Never returns (`-> !`). Loops forever after the application function completes
 /// or on error.
-pub fn run_node<F>(config: NodeConfig, f: F) -> !
+pub fn run<F, E: core::fmt::Debug>(config: NodeConfig, f: F) -> !
 where
-    F: FnOnce(&mut Node) -> core::result::Result<(), Error>,
+    F: FnOnce(&NodeConfig) -> core::result::Result<(), E>,
 {
     esp_println::println!("");
     esp_println::println!("========================================");
@@ -318,42 +246,15 @@ where
         zpico_smoltcp::set_poll_callback(zpico_platform_esp32::network::smoltcp_network_poll);
     }
 
-    // Step 11: Open zenoh session via RMW layer
     esp_println::println!("");
-    esp_println::println!("Connecting to zenoh router...");
-
-    let rmw_config = RmwConfig {
-        locator: config.zenoh_locator,
-        mode: SessionMode::Client,
-        domain_id: config.domain_id,
-        node_name: "node",
-        namespace: "",
-    };
-
-    let session = match ZenohRmw::open(&rmw_config) {
-        Ok(s) => s,
-        Err(e) => {
-            esp_println::println!("ERROR: zenoh session open failed ({:?})", e);
-            loop {
-                core::hint::spin_loop();
-            }
-        }
-    };
-
-    esp_println::println!("Connected!");
+    esp_println::println!("Hardware initialization complete.");
     esp_println::println!("");
 
-    // Step 12: Create node and run user application
-    let mut node = Node {
-        session,
-        domain_id: config.domain_id,
-    };
-
-    match f(&mut node) {
+    // Step 11: Run user application
+    match f(&config) {
         Ok(()) => {
             esp_println::println!("");
             esp_println::println!("Application completed successfully.");
-            node.shutdown();
             esp_println::println!("");
             esp_println::println!("========================================");
             esp_println::println!("  Done");
@@ -362,7 +263,6 @@ where
         Err(e) => {
             esp_println::println!("");
             esp_println::println!("Application error: {:?}", e);
-            node.shutdown();
         }
     }
 

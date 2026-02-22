@@ -1,22 +1,26 @@
 //! Simple QEMU Listener using nros-mps2-an385
 //!
 //! Subscribes to typed `std_msgs/Int32` messages on `/chatter`.
-//! Compare with qemu-rs-listener to see the reduced boilerplate.
 
 #![no_std]
 #![no_main]
 
-use nros_mps2_an385::prelude::*;
-use nros_mps2_an385::println;
+use nros::prelude::*;
+use nros_mps2_an385::{Config, println, run};
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
-#[entry]
+#[nros_mps2_an385::entry]
 fn main() -> ! {
     // Use listener config (different IP/MAC than talker)
-    run_node(Config::listener(), |node| {
-        println!("Subscribing to /chatter (std_msgs/Int32)");
+    run(Config::listener(), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("listener");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("listener")?;
 
+        println!("Subscribing to /chatter (std_msgs/Int32)");
         let mut subscription = node.create_subscription::<Int32>("/chatter")?;
 
         println!("Subscriber declared");
@@ -27,7 +31,7 @@ fn main() -> ! {
         let mut poll_count = 0u32;
 
         loop {
-            node.spin_once(10);
+            executor.spin_once(10);
 
             if let Some(msg) = subscription.try_recv()? {
                 msg_count += 1;
@@ -48,6 +52,6 @@ fn main() -> ! {
             }
         }
 
-        Ok(())
+        Ok::<(), NodeError>(())
     })
 }

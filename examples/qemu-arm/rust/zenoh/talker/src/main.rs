@@ -1,20 +1,24 @@
 //! Simple QEMU Talker using nros-mps2-an385
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`.
-//! Compare with qemu-rs-talker — this is the same but demonstrates
-//! how little boilerplate the platform crate requires.
 
 #![no_std]
 #![no_main]
 
-use nros_mps2_an385::prelude::*;
-use nros_mps2_an385::println;
+use nros::prelude::*;
+use nros_mps2_an385::{Config, println, run};
 use panic_semihosting as _;
 use std_msgs::msg::Int32;
 
-#[entry]
+#[nros_mps2_an385::entry]
 fn main() -> ! {
-    run_node(Config::default(), |node| {
+    run(Config::default(), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("talker");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("talker")?;
+
         println!("Declaring publisher on /chatter (std_msgs/Int32)");
         let publisher = node.create_publisher::<Int32>("/chatter")?;
         println!("Publisher declared");
@@ -25,7 +29,7 @@ fn main() -> ! {
         for i in 0..10i32 {
             // Poll to process network events
             for _ in 0..100 {
-                node.spin_once(10);
+                executor.spin_once(10);
             }
 
             if let Err(e) = publisher.publish(&Int32 { data: i }) {
@@ -38,6 +42,6 @@ fn main() -> ! {
         println!("");
         println!("Done publishing 10 messages.");
 
-        Ok(())
+        Ok::<(), NodeError>(())
     })
 }

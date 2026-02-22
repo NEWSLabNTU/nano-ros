@@ -542,6 +542,15 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
 
     // Build with separate build directory for each example
     // This allows talker and listener to coexist
+    //
+    // Add build/install/bin to PATH so nros-codegen is found by
+    // nros_generate_interfaces() in C API examples.
+    let install_bin = root.join("build/install/bin");
+    let path_env = match std::env::var("PATH") {
+        Ok(existing) => format!("{}:{}", install_bin.display(), existing),
+        Err(_) => install_bin.display().to_string(),
+    };
+
     let output = Command::new("west")
         .args([
             "build",
@@ -555,6 +564,7 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         .arg(&example_path)
         .current_dir(&workspace)
         .env("ZEPHYR_BASE", workspace.join("zephyr"))
+        .env("PATH", &path_env)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .output()

@@ -140,6 +140,9 @@ if(CONFIG_NROS_C_API)
     # Add nros-c include directories for user code
     zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-c/include)
 
+    # Define platform macro so nros/platform.h selects the Zephyr backend
+    zephyr_compile_definitions(NROS_PLATFORM_ZEPHYR)
+
     # Make nros_generate_interfaces() available for C examples
     include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_generate_interfaces.cmake)
 
@@ -148,6 +151,11 @@ if(CONFIG_NROS_C_API)
         set(_nros_features "rmw-zenoh,platform-zephyr,ros-humble")
     elseif(CONFIG_NROS_RMW_XRCE)
         set(_nros_features "rmw-xrce,platform-zephyr,ros-humble")
+    endif()
+
+    # native_sim targets run on Linux and support std (needed for panic handler)
+    if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
+        string(APPEND _nros_features ",std")
     endif()
 
     # Build nros-c static library via Cargo

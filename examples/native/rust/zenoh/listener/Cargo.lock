@@ -411,6 +411,7 @@ dependencies = [
  "nros-rmw",
  "nros-rmw-xrce",
  "nros-rmw-zenoh",
+ "portable-atomic",
 ]
 
 [[package]]

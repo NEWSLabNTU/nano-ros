@@ -634,6 +634,7 @@ dependencies = [
  "nros-core",
  "nros-params",
  "nros-rmw",
+ "portable-atomic",
 ]
 
 [[package]]

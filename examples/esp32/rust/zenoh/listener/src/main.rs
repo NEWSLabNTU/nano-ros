@@ -19,8 +19,8 @@
 #![no_main]
 
 use esp_backtrace as _;
-use nros_esp32::esp_println;
-use nros_esp32::prelude::*;
+use nros::prelude::*;
+use nros_esp32::{NodeConfig, WifiConfig, entry, esp_println, run};
 use std_msgs::msg::Int32;
 
 /// WiFi credentials (set via environment variables at compile time)
@@ -31,9 +31,14 @@ nros_esp32::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
-    run_node(NodeConfig::new(WifiConfig::new(SSID, PASSWORD)), |node| {
-        esp_println::println!("Subscribing to /chatter (std_msgs/Int32)");
+    run(NodeConfig::new(WifiConfig::new(SSID, PASSWORD)), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("listener");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("listener")?;
 
+        esp_println::println!("Subscribing to /chatter (std_msgs/Int32)");
         let mut subscription = node.create_subscription::<Int32>("/chatter")?;
 
         esp_println::println!("Subscriber declared");
@@ -44,7 +49,7 @@ fn main() -> ! {
         let mut poll_count = 0u32;
 
         loop {
-            node.spin_once(10);
+            executor.spin_once(10);
 
             if let Some(msg) = subscription.try_recv()? {
                 msg_count += 1;
@@ -65,6 +70,6 @@ fn main() -> ! {
             }
         }
 
-        Ok(())
+        Ok::<(), NodeError>(())
     })
 }

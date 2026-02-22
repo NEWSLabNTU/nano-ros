@@ -83,6 +83,10 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
         unsafe {
             nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
         }
+        #[cfg(feature = "platform-zephyr")]
+        unsafe {
+            nros_rmw_xrce::zephyr::init_zephyr_transport(config.locator);
+        }
 
         let rmw_config = nros_rmw::RmwConfig {
             locator: config.locator,
@@ -863,13 +867,13 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             core::ptr::write(
                 entry_ptr,
                 GuardConditionEntry {
-                    flag: core::sync::atomic::AtomicBool::new(false),
+                    flag: portable_atomic::AtomicBool::new(false),
                     callback,
                 },
             );
 
             // Create a handle pointing to the flag in the arena
-            let flag_ptr = &(*entry_ptr).flag as *const core::sync::atomic::AtomicBool;
+            let flag_ptr = &(*entry_ptr).flag as *const portable_atomic::AtomicBool;
             let guard_handle = GuardConditionHandle::new(flag_ptr);
 
             self.entries[slot] = Some(CallbackMeta {

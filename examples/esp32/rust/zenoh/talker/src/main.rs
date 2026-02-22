@@ -19,8 +19,8 @@
 #![no_main]
 
 use esp_backtrace as _;
-use nros_esp32::esp_println;
-use nros_esp32::prelude::*;
+use nros::prelude::*;
+use nros_esp32::{NodeConfig, WifiConfig, entry, esp_println, run};
 use std_msgs::msg::Int32;
 
 /// WiFi credentials (set via environment variables at compile time)
@@ -31,7 +31,13 @@ nros_esp32::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
-    run_node(NodeConfig::new(WifiConfig::new(SSID, PASSWORD)), |node| {
+    run(NodeConfig::new(WifiConfig::new(SSID, PASSWORD)), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("talker");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("talker")?;
+
         // Declare publisher
         esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
         let publisher = node.create_publisher::<Int32>("/chatter")?;
@@ -44,7 +50,7 @@ fn main() -> ! {
         for i in 0..10i32 {
             // Poll to process network events
             for _ in 0..100 {
-                node.spin_once(10);
+                executor.spin_once(10);
             }
 
             if let Err(e) = publisher.publish(&Int32 { data: i }) {
@@ -57,6 +63,6 @@ fn main() -> ! {
         esp_println::println!("");
         esp_println::println!("Done publishing 10 messages.");
 
-        Ok(())
+        Ok::<(), NodeError>(())
     })
 }

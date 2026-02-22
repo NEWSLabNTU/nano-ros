@@ -16,6 +16,14 @@ default = []
 docker = ["nros-mps2-an385/docker"]
 
 [dependencies]
+# Board crate for hardware + network init
 nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+
+# nros Executor API
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "link-tcp"] }
+
+# Generated message types
 std_msgs = { version = "*", default-features = false }
+
+# Panic handler
 panic-semihosting = { version = "0.6", features = ["exit"] }

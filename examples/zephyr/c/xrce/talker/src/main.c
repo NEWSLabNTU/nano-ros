@@ -20,10 +20,6 @@
 
 LOG_MODULE_REGISTER(nros_xrce_talker, LOG_LEVEL_INF);
 
-/* Stringify helper for Kconfig integers */
-#define _STRINGIFY(x) #x
-#define STRINGIFY(x) _STRINGIFY(x)
-
 /* ============================================================================
  * Application
  * ============================================================================ */

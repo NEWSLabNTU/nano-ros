@@ -31,18 +31,26 @@ use panic_probe as _;
 // defmt 0.3 requires a timestamp function in each binary crate
 defmt::timestamp!("{=u64:us}", { 0 });
 
+use nros::prelude::*;
 use nros_stm32f4::prelude::*;
+use nros_stm32f4::zpico_platform_stm32f4::clock::clock_ms;
 use std_msgs::msg::Int32;
 
 /// Poll interval in milliseconds
-const POLL_INTERVAL_MS: u32 = 10;
+const POLL_INTERVAL_MS: i32 = 10;
 
 /// Publish interval in milliseconds
 const PUBLISH_INTERVAL_MS: u32 = 1000;
 
 #[entry]
 fn main() -> ! {
-    run_node(Config::nucleo_f429zi(), |node| {
+    run(Config::nucleo_f429zi(), |config| -> Result<(), NodeError> {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("talker");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("talker")?;
+
         info!("Creating publisher for /chatter (std_msgs/Int32)...");
         let publisher = node.create_publisher::<Int32>("/chatter")?;
 
@@ -51,9 +59,9 @@ fn main() -> ! {
         let mut last_publish_ms: u64 = 0;
 
         loop {
-            node.spin_once(POLL_INTERVAL_MS);
+            executor.spin_once(POLL_INTERVAL_MS);
 
-            let now_ms = node.now_ms();
+            let now_ms = clock_ms();
             if now_ms - last_publish_ms >= PUBLISH_INTERVAL_MS as u64 {
                 last_publish_ms = now_ms;
                 counter = counter.wrapping_add(1);

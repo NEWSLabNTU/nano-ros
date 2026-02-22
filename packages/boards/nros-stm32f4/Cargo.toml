@@ -3,7 +3,7 @@ name = "nros-stm32f4"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "STM32F4 board crate for nros (simplified node API)"
+description = "STM32F4 board crate for nros (hardware + network init)"
 
 [lib]
 name = "nros_stm32f4"
@@ -12,9 +12,6 @@ name = "nros_stm32f4"
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
 zpico-platform-stm32f4 = { path = "../../zpico/zpico-platform-stm32f4" }
 
-# RMW abstraction + zenoh backend
-nros-rmw = { path = "../../core/nros-rmw", default-features = false }
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "link-tcp"] }
 # TCP link layer via smoltcp
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
 
@@ -38,9 +35,6 @@ smoltcp = { version = "0.12", default-features = false, features = [
 # Logging
 defmt = "0.3"
 
-# Core types (RosMessage, CDR serialization)
-nros-core = { path = "../../core/nros-core", default-features = false }
-
 [features]
 default = ["stm32f429"]
 
@@ -53,7 +47,3 @@ stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32-eth/stm32f437", "zpico-platform-s
 stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32-eth/stm32f439", "zpico-platform-stm32f4/stm32f439"]
 stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32-eth/stm32f469", "zpico-platform-stm32f4/stm32f469"]
 stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32-eth/stm32f479", "zpico-platform-stm32f4/stm32f479"]
-
-# ROS edition (controls data keyexpr type hash format)
-ros-humble = ["nros-rmw-zenoh/ros-humble"]
-ros-iron = ["nros-rmw-zenoh/ros-iron"]

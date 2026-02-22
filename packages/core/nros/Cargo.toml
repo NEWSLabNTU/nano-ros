@@ -42,6 +42,9 @@ platform-bare-metal = [
     "nros-rmw-xrce?/platform-bare-metal",
 ]
 
+# Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
+link-tcp = ["nros-rmw-zenoh?/link-tcp"]
+
 # XRCE transport refinements (posix-only)
 xrce-udp = ["nros-rmw-xrce?/posix-udp", "nros-node/posix-udp"]
 xrce-serial = ["nros-rmw-xrce?/posix-serial", "nros-node/posix-serial"]

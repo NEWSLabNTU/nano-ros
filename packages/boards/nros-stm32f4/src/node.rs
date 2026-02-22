@@ -1,16 +1,12 @@
-//! High-level Node API and platform initialization for STM32F4
+//! Platform initialization and `run()` entry point for STM32F4.
 //!
-//! Uses `nros-rmw-zenoh` for transport and `zpico-smoltcp` for socket management.
+//! Uses `zpico-smoltcp` for socket management and `stm32-eth` for Ethernet.
 
-use nros_core::RosMessage;
-use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
-use nros_rmw_zenoh::ZenohRmw;
-use nros_rmw_zenoh::shim::ShimSession;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use stm32_eth::{
     EthPins, Parts, PartsIn,
-    dma::{EthernetDMA, RxRingEntry, TxRingEntry},
+    dma::{RxRingEntry, TxRingEntry},
 };
 use stm32f4xx_hal::{gpio::GpioExt, pac, prelude::*, rcc::RccExt};
 use zpico_smoltcp::SmoltcpBridge;
@@ -20,8 +16,6 @@ use crate::config::Config;
 use crate::error::{Error, Result};
 use zpico_platform_stm32f4::phy;
 use zpico_platform_stm32f4::random;
-use crate::publisher::Publisher;
-use crate::subscriber::Subscription;
 
 // ============================================================================
 // Static Buffer Allocation
@@ -43,106 +37,39 @@ static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_C
 // Public API
 // ============================================================================
 
-/// High-level node handle for pub/sub operations
-pub struct Node {
-    session: ShimSession,
-    domain_id: u32,
-}
-
-impl Node {
-    /// Create a typed publisher for a ROS 2 topic
-    pub fn create_publisher<M: RosMessage>(&mut self, topic: &str) -> Result<Publisher<M>> {
-        let topic_info = TopicInfo {
-            name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
-            domain_id: self.domain_id,
-        };
-        let publisher = self.session.create_publisher(&topic_info, QosSettings::default())?;
-        Ok(Publisher::new(publisher))
-    }
-
-    /// Create a typed subscription for a ROS 2 topic (pull-based)
-    ///
-    /// Returns a `Subscription` that you poll with `try_recv()` in your main loop.
-    pub fn create_subscription<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> Result<Subscription<M>> {
-        let topic_info = TopicInfo {
-            name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
-            domain_id: self.domain_id,
-        };
-        let subscriber = self.session.create_subscriber(&topic_info, QosSettings::default())?;
-        Ok(Subscription::new(subscriber))
-    }
-
-    /// Process network events and callbacks
-    ///
-    /// This must be called periodically to:
-    /// - Handle network traffic
-    /// - Process zenoh protocol messages
-    ///
-    /// # Arguments
-    ///
-    /// * `timeout_ms` - Maximum time to spend processing (0 = non-blocking)
-    pub fn spin_once(&mut self, timeout_ms: u32) {
-        let _ = self.session.spin_once(timeout_ms);
-    }
-
-    /// Get current uptime in milliseconds
-    pub fn now_ms(&self) -> u64 {
-        clock::clock_ms()
-    }
-}
-
-impl Drop for Node {
-    fn drop(&mut self) {
-        defmt::info!("Shutting down node...");
-        // ShimSession closes on drop (handled by the session field)
-        unsafe {
-            zpico_platform_stm32f4::network::clear_network_state();
-        }
-    }
-}
-
-// ============================================================================
-// Initialization
-// ============================================================================
-
-/// Entry point for platform-based applications
+/// Run an application with the given configuration.
 ///
-/// Initializes all hardware and zenoh infrastructure, then calls the
-/// user-provided closure with a ready-to-use `Node`.
+/// This is the main entry point for STM32F4 applications.
+/// It handles all hardware and network initialization, then calls
+/// your application code with a reference to the config.
+///
+/// Inside the closure, use `Executor::open()` to create an executor
+/// with full API access (publishers, subscriptions, services, actions,
+/// timers, callbacks).
 ///
 /// # Example
 ///
-/// ```no_run
-/// use nros_stm32f4::prelude::*;
+/// ```ignore
+/// use nros_stm32f4::{Config, run};
+/// use nros::prelude::*;
 ///
-/// // Define a message type
-/// struct Int32 { data: i32 }
-/// // ... impl Serialize, Deserialize, RosMessage ...
-///
-/// #[entry]
-/// fn main() -> ! {
-///     run_node(Config::nucleo_f429zi(), |node| {
-///         let pub_ = node.create_publisher::<Int32>("/chatter")?;
-///         pub_.publish(&Int32 { data: 42 })?;
-///         Ok(())
-///     })
-/// }
+/// run(Config::nucleo_f429zi(), |config| {
+///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
+///         .domain_id(config.domain_id);
+///     let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+///     let mut node = executor.create_node("my_node")?;
+///     // Full Executor API: publishers, subscriptions, services, actions...
+///     Ok(())
+/// })
 /// ```
 ///
-/// # Panics
+/// # Returns
 ///
-/// Panics if hardware initialization fails.
+/// Never returns (`-> !`). Enters idle loop on completion or error.
 #[allow(static_mut_refs)]
-pub fn run_node<F>(config: Config, f: F) -> !
+pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
-    F: FnOnce(&mut Node) -> Result<()>,
+    F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
     defmt::info!("nros STM32F4 platform starting...");
     defmt::info!(
@@ -181,52 +108,23 @@ where
         zpico_platform_stm32f4::network::set_network_state(
             &mut iface as *mut Interface,
             &mut sockets as *mut SocketSet<'static>,
-            &mut dma as *mut EthernetDMA<'static, 'static>,
+            &mut dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
         );
 
         zpico_smoltcp::set_poll_callback(zpico_platform_stm32f4::network::smoltcp_network_poll);
     }
 
-    // Open zenoh session via RMW layer
-    defmt::info!("Connecting to zenoh router...");
+    defmt::info!("Network ready.");
 
-    let rmw_config = RmwConfig {
-        locator: config.zenoh_locator,
-        mode: SessionMode::Client,
-        domain_id: config.domain_id,
-        node_name: "node",
-        namespace: "",
-    };
-
-    let session = match ZenohRmw::open(&rmw_config) {
-        Ok(s) => s,
-        Err(e) => {
-            defmt::error!("Error opening session: {:?}", defmt::Debug2Format(&e));
-            loop {
-                cortex_m::asm::wfi();
-            }
-        }
-    };
-
-    defmt::info!("Zenoh session opened");
-
-    // Create node
-    let mut node = Node {
-        session,
-        domain_id: config.domain_id,
-    };
-
-    // Run user code
-    match f(&mut node) {
+    // Run user application
+    match f(&config) {
         Ok(()) => {
             defmt::info!("Application completed successfully");
         }
         Err(e) => {
-            defmt::error!("Application error: {:?}", e);
+            defmt::error!("Application error: {:?}", defmt::Debug2Format(&e));
         }
     }
-
-    // Node will be dropped here, closing zenoh session
 
     defmt::info!("Entering idle loop");
     loop {
@@ -248,7 +146,7 @@ where
 #[allow(static_mut_refs)]
 unsafe fn init_hardware(
     config: &Config,
-) -> Result<(EthernetDMA<'static, 'static>, Interface, SocketSet<'static>)> {
+) -> Result<(stm32_eth::dma::EthernetDMA<'static, 'static>, Interface, SocketSet<'static>)> {
     // Get access to device peripherals
     let dp = pac::Peripherals::take().ok_or(Error::HardwareInit)?;
     let cp = cortex_m::Peripherals::take().ok_or(Error::HardwareInit)?;

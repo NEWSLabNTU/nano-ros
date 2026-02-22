@@ -579,6 +579,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros"
+version = "0.1.0"
+dependencies = [
+ "nros-core",
+ "nros-macros",
+ "nros-node",
+ "nros-params",
+ "nros-rmw",
+ "nros-rmw-xrce",
+ "nros-rmw-zenoh",
+]
+
+[[package]]
 name = "nros-core"
 version = "0.1.0"
 dependencies = [
@@ -588,11 +601,49 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
+name = "nros-node"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-params",
+ "nros-rmw",
+ "nros-rmw-xrce",
+ "nros-rmw-zenoh",
+ "portable-atomic",
+]
+
+[[package]]
+name = "nros-params"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+]
+
+[[package]]
 name = "nros-rmw"
 version = "0.1.0"
 dependencies = [
  "heapless",
  "nros-core",
+]
+
+[[package]]
+name = "nros-rmw-xrce"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-rmw",
+ "xrce-sys",
 ]
 
 [[package]]
@@ -620,9 +671,6 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "defmt 0.3.100",
- "nros-core",
- "nros-rmw",
- "nros-rmw-zenoh",
  "smoltcp",
  "stm32-eth",
  "stm32f4xx-hal",
@@ -896,6 +944,7 @@ version = "0.1.0"
 dependencies = [
  "defmt 0.3.100",
  "defmt-rtt",
+ "nros",
  "nros-stm32f4",
  "panic-probe",
  "std_msgs",
@@ -1232,6 +1281,13 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "xrce-sys"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

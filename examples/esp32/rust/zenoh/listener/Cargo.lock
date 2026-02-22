@@ -789,6 +789,7 @@ version = "0.1.0"
 dependencies = [
  "esp-backtrace",
  "esp-hal",
+ "nros",
  "nros-esp32",
  "std_msgs",
 ]
@@ -1141,6 +1142,19 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros"
+version = "0.1.0"
+dependencies = [
+ "nros-core",
+ "nros-macros",
+ "nros-node",
+ "nros-params",
+ "nros-rmw",
+ "nros-rmw-xrce",
+ "nros-rmw-zenoh",
+]
+
+[[package]]
 name = "nros-core"
 version = "0.1.0"
 dependencies = [
@@ -1161,13 +1175,39 @@ dependencies = [
  "esp-println",
  "esp-radio",
  "esp-rtos",
- "nros-core",
- "nros-rmw",
- "nros-rmw-zenoh",
  "portable-atomic",
  "smoltcp",
  "zpico-platform-esp32",
  "zpico-smoltcp",
+]
+
+[[package]]
+name = "nros-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.115",
+]
+
+[[package]]
+name = "nros-node"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-core",
+ "nros-params",
+ "nros-rmw",
+ "nros-rmw-xrce",
+ "nros-rmw-zenoh",
+ "portable-atomic",
+]
+
+[[package]]
+name = "nros-params"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
 ]
 
 [[package]]
@@ -1176,6 +1216,15 @@ version = "0.1.0"
 dependencies = [
  "heapless 0.8.0",
  "nros-core",
+]
+
+[[package]]
+name = "nros-rmw-xrce"
+version = "0.1.0"
+dependencies = [
+ "heapless 0.8.0",
+ "nros-rmw",
+ "xrce-sys",
 ]
 
 [[package]]
@@ -1921,6 +1970,13 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "xrce-sys"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

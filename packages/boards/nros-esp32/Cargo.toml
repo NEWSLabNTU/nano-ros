@@ -3,7 +3,7 @@ name = "nros-esp32"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "ESP32-C3 WiFi board crate for nros (simplified node API)"
+description = "ESP32-C3 WiFi board crate for nros (hardware init + run() entry point)"
 
 [lib]
 name = "nros_esp32"
@@ -12,9 +12,6 @@ name = "nros_esp32"
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
 zpico-platform-esp32 = { path = "../../zpico/zpico-platform-esp32" }
 
-# RMW abstraction + zenoh backend
-nros-rmw = { path = "../../core/nros-rmw", default-features = false }
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, features = ["platform-bare-metal", "link-tcp"] }
 # TCP link layer via smoltcp
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
 
@@ -38,19 +35,9 @@ smoltcp = { version = "0.12", default-features = false, features = [
     "proto-dhcpv4",
 ] }
 
-# Core types (RosMessage, CDR serialization)
-nros-core = { path = "../../core/nros-core", default-features = false }
-
 # Atomics for riscv32imc (no hardware atomic support)
 # unsafe-assume-single-core is safe because ESP32-C3 is single-core
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
 
 # Critical section for safe interior mutability in statics
 critical-section = "1"
-
-[features]
-default = []
-
-# ROS edition (controls data keyexpr type hash format)
-ros-humble = ["nros-rmw-zenoh/ros-humble"]
-ros-iron = ["nros-rmw-zenoh/ros-iron"]

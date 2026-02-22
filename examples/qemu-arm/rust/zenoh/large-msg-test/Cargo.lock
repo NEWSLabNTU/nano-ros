@@ -404,12 +404,34 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d5439c4ad607c3c23abf66de8c8bf57ba8adcd1f129e699851a6e43935d339d"
 
 [[package]]
+name = "nros"
+version = "0.1.0"
+dependencies = [
+ "nros-core",
+ "nros-macros",
+ "nros-node",
+ "nros-params",
+ "nros-rmw",
+ "nros-rmw-xrce",
+ "nros-rmw-zenoh",
+]
+
+[[package]]
 name = "nros-core"
 version = "0.1.0"
 dependencies = [
  "heapless",
  "log",
  "nros-serdes",
+]
+
+[[package]]
+name = "nros-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
@@ -420,13 +442,30 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "lan9118-smoltcp",
- "nros-core",
- "nros-rmw",
- "nros-rmw-zenoh",
  "panic-semihosting",
  "smoltcp",
  "zpico-platform-mps2-an385",
  "zpico-smoltcp",
+]
+
+[[package]]
+name = "nros-node"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-core",
+ "nros-params",
+ "nros-rmw",
+ "nros-rmw-xrce",
+ "nros-rmw-zenoh",
+ "portable-atomic",
+]
+
+[[package]]
+name = "nros-params"
+version = "0.1.0"
+dependencies = [
+ "heapless",
 ]
 
 [[package]]
@@ -435,6 +474,15 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "nros-core",
+]
+
+[[package]]
+name = "nros-rmw-xrce"
+version = "0.1.0"
+dependencies = [
+ "heapless",
+ "nros-rmw",
+ "xrce-sys",
 ]
 
 [[package]]
@@ -506,6 +554,7 @@ dependencies = [
 name = "qemu-bsp-large-msg-test"
 version = "0.1.0"
 dependencies = [
+ "nros",
  "nros-mps2-an385",
  "panic-semihosting",
  "std_msgs",
@@ -923,6 +972,13 @@ dependencies = [
  "serde_json",
  "unicode-xid",
  "wasmparser",
+]
+
+[[package]]
+name = "xrce-sys"
+version = "0.1.0"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

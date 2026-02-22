@@ -37,11 +37,11 @@ nano-ros/
 │   │   ├── xrce-smoltcp/          # UDP via smoltcp IP stack
 │   │   ├── xrce-zephyr/           # Zephyr platform support (C glue)
 │   │   └── xrce-platform-mps2-an385/ # QEMU ARM FFI symbols
-│   ├── boards/                    # Board support crates (user API)
-│   │   ├── nros-mps2-an385/       # QEMU ARM board (Node API)
-│   │   ├── nros-esp32/            # ESP32-C3 WiFi board
-│   │   ├── nros-esp32-qemu/       # ESP32-C3 QEMU board
-│   │   └── nros-stm32f4/          # STM32F4 board
+│   ├── boards/                    # Board support crates (hardware init + run())
+│   │   ├── nros-mps2-an385/       # QEMU ARM board (run() API)
+│   │   ├── nros-esp32/            # ESP32-C3 WiFi board (run() API)
+│   │   ├── nros-esp32-qemu/       # ESP32-C3 QEMU board (run() API)
+│   │   └── nros-stm32f4/          # STM32F4 board (run() API)
 │   ├── drivers/                   # Hardware drivers
 │   │   ├── lan9118-smoltcp/       # LAN9118 Ethernet driver for smoltcp
 │   │   └── openeth-smoltcp/       # OpenCores Ethernet driver for smoltcp
@@ -536,6 +536,7 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 | 43 | RMW-agnostic embedded API | Complete |
 | 47 | Executor trigger conditions + nros-node prerequisites | Complete |
 | 49 | nros-c thin wrapper migration | Not Started |
+| 51 | Board crate `run()` API | Complete |
 
 **Phase 16**: Core implementation complete. Remaining: ROS 2 integration tests (services, actions, discovery), Iron+ type hash (future).
 
@@ -550,6 +551,8 @@ Completed phases (1-15, 17-21, 24-33, 37-42, 44-46) are archived in `docs/roadma
 **Phase 43**: Complete. RMW-agnostic embedded API. All 13 sub-phases done: factory (`Executor::open()`), arena-based callbacks (`add_subscription`/`add_service`/`add_timer`/`add_action_server`/`add_action_client`), `spin_once()`/`spin_blocking()`/`spin_period()`, executor unification (deleted `PollingExecutor`/`BasicExecutor`/`Context`), type renames (`Executor`, `Node`, `NodeError`, `ExecutorConfig`, `Subscription`). Backward compat aliases provided for old `Embedded*` names.
 
 **Phase 47**: Complete. Executor trigger conditions + nros-node prerequisites. Three-phase `spin_once()` (readiness scan → trigger evaluation → dispatch). Core types: `HandleId`, `HandleSet`, `Trigger` (7 variants), `InvocationMode`, `ReadinessSnapshot`. Raw-bytes callbacks (`add_subscription_raw`/`add_service_raw`), guard conditions (`GuardConditionHandle`), LET semantics (`ExecutorSemantics::LogicalExecutionTime` with pre-sample phase), session-borrowing executor (`SessionStore::Borrowed`). 86 unit tests.
+
+**Phase 51**: Complete. Board crate `run()` API replaces `run_node()`. Board crates now only handle hardware/network init — users create `Executor::open()` inside the `run()` closure for full API access. Simplified `Node`, `Publisher`, `Subscription` types removed. Board crates no longer depend on `nros-rmw`/`nros-rmw-zenoh`/`nros-core`. All 8 embedded examples migrated. `portable-atomic` added to `nros-node` for riscv32imc (ESP32-C3) support.
 
 **Phase 49**: nros-c thin wrapper migration. Requires Phase 47 (which adds raw-bytes callbacks, guard conditions, LET semantics, and session-borrowing executor to nros-node). 49.1 complete: C API prefix renamed from `nano_ros_` to `nros_` (~142 functions, ~46 types). 49.2–49.4: rewrites nros-c executor (1,788 lines), timer (348), guard condition (450), and action (1,086) modules to delegate to nros-node instead of self-implementing. Key design: C init functions store metadata only, executor registration creates RMW handles via `add_subscription_raw()` etc. See `docs/roadmap/phase-49-nros-c-thin-wrapper-migration.md`.
 

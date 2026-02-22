@@ -242,7 +242,7 @@ pub mod internals {
 
             #[cfg(feature = "platform-zephyr")]
             unsafe {
-                nros_rmw_xrce::zephyr::init_zephyr_transport();
+                nros_rmw_xrce::zephyr::init_zephyr_transport(locator);
             }
 
             let config = nros_rmw::RmwConfig {

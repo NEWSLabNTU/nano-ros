@@ -67,6 +67,9 @@ exclude = [
     "examples/zephyr/rust/zenoh/action-server",
     "examples/zephyr/rust/zenoh/action-client",
     "examples/zephyr/rust/zenoh/async-service",
+    # Zephyr XRCE examples (require Zephyr workspace + XRCE Agent)
+    "examples/zephyr/rust/xrce/talker",
+    "examples/zephyr/rust/xrce/listener",
     # Reference implementations (library, not an example)
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp link layer (embedded-only, requires cross-compilation)

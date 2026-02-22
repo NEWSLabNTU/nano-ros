@@ -1,13 +1,9 @@
-//! Simplified node API for QEMU bare-metal
+//! Platform initialization and `run()` entry point for QEMU bare-metal.
 //!
-//! Uses `nros-rmw-zenoh` for transport and `zpico-smoltcp` for socket management.
+//! Uses `zpico-smoltcp` for socket management and `lan9118-smoltcp` for Ethernet.
 
 use cortex_m_semihosting::hprintln;
 use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
-use nros_core::RosMessage;
-use nros_rmw::{QosSettings, Rmw, RmwConfig, Session, SessionMode, TopicInfo};
-use nros_rmw_zenoh::ZenohRmw;
-use nros_rmw_zenoh::shim::ShimSession;
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::phy::Device;
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
@@ -18,11 +14,9 @@ use zpico_platform_mps2_an385::{clock, network, random};
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::exit_failure;
-use crate::publisher::Publisher;
-use crate::subscriber::Subscription;
 
-/// Trait for Ethernet devices that can be used with Node
-pub trait EthernetDevice: Device {
+/// Trait for Ethernet devices that can be used with the platform
+trait EthernetDevice: Device {
     /// Get the MAC address
     fn mac_address(&self) -> [u8; 6];
 }
@@ -31,61 +25,6 @@ pub trait EthernetDevice: Device {
 impl EthernetDevice for Lan9118 {
     fn mac_address(&self) -> [u8; 6] {
         Lan9118::mac_address(self)
-    }
-}
-
-// ============================================================================
-// Public API
-// ============================================================================
-
-/// Simplified node for QEMU bare-metal applications
-pub struct Node {
-    session: ShimSession,
-    domain_id: u32,
-}
-
-impl Node {
-    /// Create a typed publisher for a ROS 2 topic
-    pub fn create_publisher<M: RosMessage>(&mut self, topic: &str) -> Result<Publisher<M>> {
-        let topic_info = TopicInfo {
-            name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
-            domain_id: self.domain_id,
-        };
-        let publisher = self.session.create_publisher(&topic_info, QosSettings::default())?;
-        Ok(Publisher::new(publisher))
-    }
-
-    /// Create a typed subscription for a ROS 2 topic (pull-based)
-    ///
-    /// Returns a `Subscription` that you poll with `try_recv()` in your main loop.
-    pub fn create_subscription<M: RosMessage>(
-        &mut self,
-        topic: &str,
-    ) -> Result<Subscription<M>> {
-        let topic_info = TopicInfo {
-            name: topic,
-            type_name: M::TYPE_NAME,
-            type_hash: M::TYPE_HASH,
-            domain_id: self.domain_id,
-        };
-        let subscriber = self.session.create_subscriber(&topic_info, QosSettings::default())?;
-        Ok(Subscription::new(subscriber))
-    }
-
-    /// Process network events and dispatch callbacks
-    pub fn spin_once(&mut self, timeout_ms: u32) {
-        let _ = self.session.spin_once(timeout_ms);
-    }
-
-    /// Shutdown the node gracefully
-    pub fn shutdown(self) {
-        // ShimSession closes on drop
-        drop(self.session);
-        unsafe {
-            network::clear_network_state();
-        }
     }
 }
 
@@ -172,18 +111,38 @@ fn init_network<D: EthernetDevice + 'static>(
     Ok(())
 }
 
-/// Run a node with the given configuration
+/// Run an application with the given configuration.
 ///
 /// This is the main entry point for QEMU bare-metal applications.
 /// It handles all hardware and network initialization, then calls
-/// your application code with a ready-to-use `Node`.
+/// your application code with a reference to the config.
+///
+/// Inside the closure, use `Executor::open()` to create an executor
+/// with full API access (publishers, subscriptions, services, actions,
+/// timers, callbacks).
+///
+/// # Example
+///
+/// ```ignore
+/// use nros_mps2_an385::{Config, run};
+/// use nros::prelude::*;
+///
+/// run(Config::default(), |config| {
+///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
+///         .domain_id(config.domain_id);
+///     let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+///     let mut node = executor.create_node("my_node")?;
+///     // Full Executor API: publishers, subscriptions, services, actions...
+///     Ok(())
+/// })
+/// ```
 ///
 /// # Returns
 ///
 /// Never returns (`-> !`). Calls `exit_success()` on Ok, `exit_failure()` on Err.
-pub fn run_node<F>(config: Config, f: F) -> !
+pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
-    F: FnOnce(&mut Node) -> Result<()>,
+    F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
     // Enable DWT cycle counter for timing measurements
     zpico_platform_mps2_an385::timing::CycleCounter::enable();
@@ -234,41 +193,14 @@ where
         exit_failure();
     }
 
-    // Open zenoh session via RMW layer
+    hprintln!("Network ready.");
     hprintln!("");
-    hprintln!("Connecting to zenoh router...");
-
-    let rmw_config = RmwConfig {
-        locator: config.zenoh_locator,
-        mode: SessionMode::Client,
-        domain_id: config.domain_id,
-        node_name: "node",
-        namespace: "",
-    };
-
-    let session = match ZenohRmw::open(&rmw_config) {
-        Ok(s) => s,
-        Err(e) => {
-            hprintln!("Error opening session: {:?}", e);
-            exit_failure();
-        }
-    };
-
-    hprintln!("Connected!");
-    hprintln!("");
-
-    // Create wrapper node
-    let mut node = Node {
-        session,
-        domain_id: config.domain_id,
-    };
 
     // Run user application
-    match f(&mut node) {
+    match f(&config) {
         Ok(()) => {
             hprintln!("");
             hprintln!("Application completed successfully.");
-            node.shutdown();
             hprintln!("");
             hprintln!("========================================");
             hprintln!("  Done");
@@ -278,7 +210,6 @@ where
         Err(e) => {
             hprintln!("");
             hprintln!("Application error: {:?}", e);
-            node.shutdown();
             exit_failure();
         }
     }

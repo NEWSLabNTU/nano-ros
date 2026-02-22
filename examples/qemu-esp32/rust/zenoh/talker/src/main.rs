@@ -1,7 +1,7 @@
 //! Simple ESP32-C3 QEMU Talker using nros-esp32-qemu
 //!
 //! Publishes typed `std_msgs/Int32` messages on `/chatter`.
-//! Compare with qemu-bsp-talker — this is the ESP32-C3 equivalent.
+//! Compare with qemu-bsp-talker -- this is the ESP32-C3 equivalent.
 //!
 //! # Building
 //!
@@ -20,6 +20,7 @@
 #![no_main]
 
 use esp_backtrace as _;
+use nros::prelude::*;
 use nros_esp32_qemu::esp_println;
 use nros_esp32_qemu::prelude::*;
 use std_msgs::msg::Int32;
@@ -28,7 +29,13 @@ nros_esp32_qemu::esp_bootloader_esp_idf::esp_app_desc!();
 
 #[entry]
 fn main() -> ! {
-    run_node(Config::default(), |node| {
+    run(Config::default(), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("talker");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut node = executor.create_node("talker")?;
+
         esp_println::println!("Declaring publisher on /chatter (std_msgs/Int32)");
         let publisher = node.create_publisher::<Int32>("/chatter")?;
         esp_println::println!("Publisher declared");
@@ -39,7 +46,7 @@ fn main() -> ! {
         for i in 0..5i32 {
             // Poll to process network events
             for _ in 0..3 {
-                node.spin_once(10);
+                executor.spin_once(10);
             }
 
             if let Err(e) = publisher.publish(&Int32 { data: i }) {
@@ -52,6 +59,6 @@ fn main() -> ! {
         esp_println::println!("");
         esp_println::println!("Done publishing 5 messages.");
 
-        Ok(())
+        Ok::<(), NodeError>(())
     })
 }

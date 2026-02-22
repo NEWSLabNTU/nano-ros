@@ -515,11 +515,11 @@ pub enum ExecutorSemantics {
 /// Obtained from [`Executor::add_guard_condition()`](super::Executor::add_guard_condition).
 /// Safe to use from any thread.
 pub struct GuardConditionHandle {
-    flag: *const core::sync::atomic::AtomicBool,
+    flag: *const portable_atomic::AtomicBool,
 }
 
 impl GuardConditionHandle {
-    pub(crate) fn new(flag: *const core::sync::atomic::AtomicBool) -> Self {
+    pub(crate) fn new(flag: *const portable_atomic::AtomicBool) -> Self {
         Self { flag }
     }
 
@@ -531,7 +531,7 @@ impl GuardConditionHandle {
         // (the arena is part of the Executor which must not be dropped while
         // this handle is in use).
         unsafe {
-            (*self.flag).store(true, core::sync::atomic::Ordering::Release);
+            (*self.flag).store(true, portable_atomic::Ordering::Release);
         }
     }
 }
