@@ -35,6 +35,15 @@ SECTIONS
         *(.rodata)
         *(.rodata*)
         . = ALIGN(4);
+    } > FLASH
+
+    /* ARM exception unwinding (placed in FLASH after .text) */
+    .ARM.exidx :
+    {
+        __exidx_start = .;
+        *(.ARM.exidx*)
+        __exidx_end = .;
+        . = ALIGN(4);
         _etext = .;
     } > FLASH
 
@@ -61,6 +70,8 @@ SECTIONS
         . = ALIGN(4);
         _ebss = .;
         __bss_end__ = _ebss;
+        end = .;           /* newlib _sbrk heap start */
+        __end__ = .;
     } > RAM
 
     /* Ensure enough room for the main stack */

@@ -11,6 +11,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <sys/time.h>
 
 /* Diagnostics — use semihosting for QEMU */
 extern void semihosting_write0(const char *s);

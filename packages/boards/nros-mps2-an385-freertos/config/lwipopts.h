@@ -8,6 +8,13 @@
 #ifndef LWIPOPTS_H
 #define LWIPOPTS_H
 
+/* ---- Compatibility with newlib ---- */
+/* Use newlib's struct timeval / fd_set instead of lwIP's private copies.
+ * Without this, zenoh-pico (which includes <stdio.h> via newlib) gets a
+ * redefinition error for struct timeval. */
+#define LWIP_TIMEVAL_PRIVATE            0
+#define LWIP_FD_SET_PRIVATE             0
+
 /* ---- OS integration ---- */
 #define NO_SYS                          0
 #define LWIP_SOCKET                     1
@@ -24,7 +31,7 @@
 #define LWIP_IPV4                       1
 #define LWIP_IPV6                       0
 #define LWIP_DHCP                       0
-#define LWIP_DNS                        0
+#define LWIP_DNS                        1
 #define LWIP_IGMP                       0
 #define LWIP_RAW                        0
 

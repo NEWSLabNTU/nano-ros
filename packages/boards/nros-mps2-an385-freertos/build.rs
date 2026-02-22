@@ -26,9 +26,9 @@ fn main() {
         .unwrap()
         .write_all(include_bytes!("config/mps2_an385.ld"))
         .unwrap();
+    // Make the linker script discoverable by the final binary.
+    // The binary's .cargo/config.toml specifies `-Tmps2_an385.ld` via rustflags.
     println!("cargo:rustc-link-search={}", out_dir.display());
-    println!("cargo:rustc-link-arg=-Tmps2_an385.ld");
-    println!("cargo:rustc-link-arg=--nmagic");
 
     // --- Environment variables ---
     let freertos_dir = env_path("FREERTOS_DIR");
@@ -154,6 +154,21 @@ fn main() {
     println!("cargo:rustc-link-lib=static=lwip");
     println!("cargo:rustc-link-lib=static=freertos");
 
+    // --- Newlib (libc + nosys stubs for bare-metal) ---
+    // zenoh-pico and lwIP use standard C library functions (atoi, strtoul, snprintf, etc.)
+    // Use --print-file-name to discover multilib-correct paths (--print-sysroot is empty
+    // on some distros).
+    let libc_path = gcc_print_file("libc.a");
+    let libc_dir = Path::new(&libc_path).parent().unwrap();
+    println!("cargo:rustc-link-search={}", libc_dir.display());
+    // GCC's own library (libgcc.a) for ARM intrinsics
+    let libgcc_path = gcc_print_file("libgcc.a");
+    let libgcc_dir = Path::new(&libgcc_path).parent().unwrap();
+    println!("cargo:rustc-link-search={}", libgcc_dir.display());
+    println!("cargo:rustc-link-lib=static=c");
+    println!("cargo:rustc-link-lib=static=nosys");
+    println!("cargo:rustc-link-lib=static=gcc");
+
     // --- Rerun triggers ---
     println!("cargo:rerun-if-changed=config/FreeRTOSConfig.h");
     println!("cargo:rerun-if-changed=config/lwipopts.h");
@@ -197,6 +212,21 @@ fn add_lwip_includes(build: &mut cc::Build, lwip_dir: &Path) {
     build
         .include(lwip_dir.join("src/include"))
         .include(lwip_dir.join("contrib/ports/freertos/include"));
+}
+
+fn gcc_print_file(name: &str) -> String {
+    let out = std::process::Command::new("arm-none-eabi-gcc")
+        .args(["-mcpu=cortex-m3", "-mthumb", &format!("--print-file-name={name}")])
+        .output()
+        .expect("arm-none-eabi-gcc not found");
+    let path = String::from_utf8(out.stdout).unwrap();
+    let path = path.trim().to_string();
+    // If GCC can't resolve the file it echoes the bare name back
+    assert!(
+        Path::new(&path).is_absolute(),
+        "arm-none-eabi-gcc could not locate {name}"
+    );
+    path
 }
 
 /// C startup code: vector table, Reset_Handler, default handlers, FreeRTOS
