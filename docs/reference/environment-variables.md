@@ -13,6 +13,12 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` | Base64-encoded CA certificate for TLS          | (none)               |
 | `ZENOH_TLS_VERIFY_NAME_ON_CONNECT`     | Verify server hostname in TLS (`true`/`false`) | (none)               |
 
+### TLS Notes
+
+- **POSIX**: requires `libmbedtls-dev` (`just setup` installs it). File-path and base64 cert loading are both supported.
+- **Bare-metal**: only `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` is supported (no filesystem). The certificate is embedded at build time.
+- The `link-tls` Cargo feature must be enabled on both the example and the `nros` crate.
+
 ## Build-Time Configuration
 
 | Variable         | Description                                                                                        | Required                            |

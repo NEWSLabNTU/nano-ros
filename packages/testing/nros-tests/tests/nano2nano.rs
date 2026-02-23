@@ -3,8 +3,8 @@
 //! Tests communication between native nros binaries via zenoh.
 
 use nros_tests::fixtures::{
-    ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, require_zenohd,
-    talker_binary, zenohd_unique,
+    ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, listener_tls_binary,
+    require_zenohd, talker_binary, talker_tls_binary, tls_certs, zenohd_unique,
 };
 use rstest::rstest;
 use std::path::PathBuf;
@@ -369,6 +369,79 @@ fn test_gid_consistency(
         gid_values.len(),
         first_gid
     );
+}
+
+// =============================================================================
+// TLS Transport Tests
+// =============================================================================
+
+/// Test that TLS talker/listener communicate through a TLS-enabled zenohd
+#[rstest]
+fn test_tls_talker_listener_communication(
+    talker_tls_binary: PathBuf,
+    listener_tls_binary: PathBuf,
+) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_zenohd() {
+        return;
+    }
+
+    if !tls_certs::is_openssl_available() {
+        eprintln!("[SKIP] openssl not available — cannot generate TLS certs");
+        return;
+    }
+
+    // Generate self-signed certificate
+    let certs = tls_certs::TlsCerts::generate().expect("Failed to generate TLS certs");
+
+    // Start zenohd with TLS listener
+    let router = ZenohRouter::start_tls_unique(certs.cert_path(), certs.key_path())
+        .expect("Failed to start zenohd with TLS");
+    let locator = router.locator();
+    eprintln!("TLS router at: {}", locator);
+
+    let cert_path = certs.cert_path().to_str().unwrap().to_string();
+
+    // Start listener with TLS locator and CA certificate
+    let mut listener_cmd = Command::new(&listener_tls_binary);
+    listener_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("ZENOH_TLS_ROOT_CA_CERTIFICATE", &cert_path)
+        .env("RUST_LOG", "info");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener-tls")
+        .expect("Failed to start TLS listener");
+
+    // Wait for listener to be ready
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(10));
+
+    // Start talker with TLS locator and CA certificate
+    let mut talker_cmd = Command::new(&talker_tls_binary);
+    talker_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("ZENOH_TLS_ROOT_CA_CERTIFICATE", &cert_path);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker-tls")
+        .expect("Failed to start TLS talker");
+
+    // Wait for listener to receive messages
+    let listener_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(15))
+        .unwrap_or_default();
+
+    // Kill talker
+    talker.kill();
+
+    eprintln!("TLS Listener output:\n{}", listener_output);
+
+    let received_count = count_pattern(&listener_output, "Received:");
+    eprintln!("TLS Listener received {} messages", received_count);
+
+    assert!(
+        received_count > 0,
+        "TLS listener should receive at least 1 message"
+    );
+    eprintln!("[PASS] TLS talker/listener communication works");
 }
 
 // =============================================================================

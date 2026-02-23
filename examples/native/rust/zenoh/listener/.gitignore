@@ -1,4 +1,5 @@
 /target/
 /target-safety/
+/target-tls/
 /target-zero-copy/
 /generated/

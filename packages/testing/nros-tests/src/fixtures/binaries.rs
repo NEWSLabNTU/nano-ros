@@ -31,6 +31,12 @@ static NATIVE_LISTENER_SAFETY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the native-rs-listener binary with unstable-zenoh-api (zero-copy)
 static NATIVE_LISTENER_ZERO_COPY_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native-rs-talker binary with link-tls
+static NATIVE_TALKER_TLS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native-rs-listener binary with link-tls
+static NATIVE_LISTENER_TLS_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the native-rs-action-server binary
 static NATIVE_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -312,6 +318,118 @@ pub fn talker_binary() -> PathBuf {
 pub fn listener_binary() -> PathBuf {
     build_native_listener()
         .expect("Failed to build native-rs-listener")
+        .to_path_buf()
+}
+
+/// Build native-rs-talker with link-tls feature (cached)
+///
+/// Uses a separate `target-tls` directory to avoid overwriting the
+/// standard talker binary that other parallel test processes use.
+pub fn build_native_talker_tls() -> TestResult<&'static Path> {
+    NATIVE_TALKER_TLS_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let example_dir = root.join("examples/native/rust/zenoh/talker");
+            let target_dir = example_dir.join("target-tls");
+
+            eprintln!("Building native/rust/zenoh/talker (link-tls)...");
+
+            let output = cmd!(
+                "cargo",
+                "build",
+                "--release",
+                "--features",
+                "link-tls",
+                "--target-dir",
+                target_dir.to_str().unwrap()
+            )
+            .dir(&example_dir)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let binary_path = target_dir.join("release/talker");
+            if !binary_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Binary not found after build: {}",
+                    binary_path.display()
+                )));
+            }
+
+            Ok(binary_path)
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native-rs-listener with link-tls feature (cached)
+///
+/// Uses a separate `target-tls` directory to avoid overwriting the
+/// standard listener binary that other parallel test processes use.
+pub fn build_native_listener_tls() -> TestResult<&'static Path> {
+    NATIVE_LISTENER_TLS_BINARY
+        .get_or_try_init(|| {
+            let root = project_root();
+            let example_dir = root.join("examples/native/rust/zenoh/listener");
+            let target_dir = example_dir.join("target-tls");
+
+            eprintln!("Building native/rust/zenoh/listener (link-tls)...");
+
+            let output = cmd!(
+                "cargo",
+                "build",
+                "--release",
+                "--features",
+                "link-tls",
+                "--target-dir",
+                target_dir.to_str().unwrap()
+            )
+            .dir(&example_dir)
+            .stderr_to_stdout()
+            .stdout_capture()
+            .unchecked()
+            .run()
+            .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+            if !output.status.success() {
+                return Err(TestError::BuildFailed(
+                    String::from_utf8_lossy(&output.stdout).to_string(),
+                ));
+            }
+
+            let binary_path = target_dir.join("release/listener");
+            if !binary_path.exists() {
+                return Err(TestError::BuildFailed(format!(
+                    "Binary not found after build: {}",
+                    binary_path.display()
+                )));
+            }
+
+            Ok(binary_path)
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the native-rs-talker binary path (with link-tls)
+#[rstest::fixture]
+pub fn talker_tls_binary() -> PathBuf {
+    build_native_talker_tls()
+        .expect("Failed to build native-rs-talker with link-tls")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the native-rs-listener binary path (with link-tls)
+#[rstest::fixture]
+pub fn listener_tls_binary() -> PathBuf {
+    build_native_listener_tls()
+        .expect("Failed to build native-rs-listener with link-tls")
         .to_path_buf()
 }
 

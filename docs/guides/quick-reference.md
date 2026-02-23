@@ -31,6 +31,44 @@ On bare-metal, enable the `link-udp-unicast` feature to use UDP over smoltcp:
 nros = { features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "link-udp-unicast"] }
 ```
 
+## TLS Transport
+
+TLS layers on top of TCP using mbedTLS. Requires a self-signed certificate (or real CA cert) and the `link-tls` Cargo feature.
+
+**Generate a test certificate:**
+```bash
+openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:prime256v1 \
+  -keyout key.pem -out cert.pem -days 365 -nodes -subj "/CN=localhost"
+```
+
+**Native/POSIX** (requires `libmbedtls-dev` — installed by `just setup`):
+
+```bash
+# Terminal 1: Router with TLS
+./build/zenohd/zenohd --no-multicast-scouting --listen tls/localhost:7447 \
+  --cfg 'transport/link/tls/listen_certificate:"cert.pem"' \
+  --cfg 'transport/link/tls/listen_private_key:"key.pem"'
+
+# Terminal 2: Talker with TLS
+ZENOH_LOCATOR=tls/localhost:7447 \
+  ZENOH_TLS_ROOT_CA_CERTIFICATE=cert.pem \
+  cargo run -p native-rs-talker --features link-tls
+```
+
+**Bare-metal** (QEMU ARM):
+
+On bare-metal, only base64-encoded certificates are supported (no filesystem).
+Build with `--features link-tls`:
+
+```bash
+# Build TLS-enabled examples
+cd examples/qemu-arm/rust/zenoh/talker
+cargo build --release --features link-tls
+```
+
+The CA certificate must be passed via `ZENOH_TLS_ROOT_CA_CERTIFICATE_BASE64` at runtime
+(through the zenoh config), or embedded in the binary at build time.
+
 ## ROS 2 Interop
 
 ```bash

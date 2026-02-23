@@ -57,6 +57,8 @@ fn kill_listeners_on_port(port: u16) {
 /// Uses OS-assigned ephemeral ports to allow parallel test execution
 /// across nextest's separate test processes.
 ///
+/// Supports both TCP and TLS listeners.
+///
 /// # Example
 ///
 /// ```ignore
@@ -69,6 +71,7 @@ fn kill_listeners_on_port(port: u16) {
 pub struct ZenohRouter {
     handle: Child,
     port: u16,
+    tls: bool,
 }
 
 impl ZenohRouter {
@@ -102,7 +105,72 @@ impl ZenohRouter {
             return Err(TestError::Timeout);
         }
 
-        Ok(Self { handle, port })
+        Ok(Self {
+            handle,
+            port,
+            tls: false,
+        })
+    }
+
+    /// Start a router with TLS listener on the specified port
+    ///
+    /// # Arguments
+    /// * `port` - TCP port to listen on
+    /// * `cert_path` - Path to PEM certificate file
+    /// * `key_path` - Path to PEM private key file
+    pub fn start_tls(
+        port: u16,
+        cert_path: &std::path::Path,
+        key_path: &std::path::Path,
+    ) -> TestResult<Self> {
+        kill_listeners_on_port(port);
+
+        let locator = format!("tls/0.0.0.0:{}", port);
+        let cert_cfg = format!(
+            "transport/link/tls/listen_certificate:\"{}\"",
+            cert_path.display()
+        );
+        let key_cfg = format!(
+            "transport/link/tls/listen_private_key:\"{}\"",
+            key_path.display()
+        );
+
+        let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
+        cmd.args([
+            "--listen",
+            &locator,
+            "--no-multicast-scouting",
+            "--cfg",
+            &cert_cfg,
+            "--cfg",
+            &key_cfg,
+        ])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+        #[cfg(unix)]
+        crate::process::set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        // Wait for zenohd to be ready (TLS port accepting connections)
+        if !wait_for_port(port, Duration::from_secs(10)) {
+            return Err(TestError::Timeout);
+        }
+
+        Ok(Self {
+            handle,
+            port,
+            tls: true,
+        })
+    }
+
+    /// Start a TLS router on an OS-assigned ephemeral port (parallel-safe)
+    pub fn start_tls_unique(
+        cert_path: &std::path::Path,
+        key_path: &std::path::Path,
+    ) -> TestResult<Self> {
+        let port = allocate_ephemeral_port()
+            .map_err(|e| TestError::ProcessFailed(format!("Failed to allocate port: {}", e)))?;
+        Self::start_tls(port, cert_path, key_path)
     }
 
     /// Start a router on an OS-assigned ephemeral port (parallel-safe)
@@ -113,8 +181,16 @@ impl ZenohRouter {
     }
 
     /// Get the locator string for connecting to this router
+    ///
+    /// TLS connections use `localhost` (not `127.0.0.1`) to match
+    /// the CN=localhost in our self-signed test certificates, which
+    /// avoids hostname verification failures.
     pub fn locator(&self) -> String {
-        format!("tcp/127.0.0.1:{}", self.port)
+        if self.tls {
+            format!("tls/localhost:{}", self.port)
+        } else {
+            format!("tcp/127.0.0.1:{}", self.port)
+        }
     }
 
     /// Get the port number

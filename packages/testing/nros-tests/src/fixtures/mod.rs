@@ -7,11 +7,13 @@
 //! Also re-exports utilities from sibling modules for convenience.
 
 mod binaries;
+pub mod tls_certs;
 #[allow(hidden_glob_reexports)] // rstest fixture creates a module matching the fn name
 mod xrce_agent;
 mod zenohd_router;
 
 pub use binaries::*;
+pub use tls_certs::*;
 pub use xrce_agent::*;
 pub use zenohd_router::*;
 
