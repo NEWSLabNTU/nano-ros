@@ -249,6 +249,128 @@ impl ServiceBufferGhost {
 }
 
 // ======================================================================
+// Staging Buffer (SmoltcpBridge)
+// ======================================================================
+
+/// Ghost model of the SmoltcpBridge staging buffer state machine.
+///
+/// Models the `rx_pos/rx_len/tx_pos/tx_len` fields of `SocketEntry` (TCP) and
+/// `UdpSocketEntry` (UDP) in `zpico-smoltcp/src/bridge.rs`. Both TCP and UDP
+/// use identical staging buffer logic for recv/send/compact/fill.
+///
+/// Source (bridge.rs:32-54 for TCP, 109-132 for UDP):
+/// ```ignore
+/// struct SocketEntry {
+///     // ... connection fields ...
+///     rx_pos: usize,
+///     rx_len: usize,
+///     tx_pos: usize,
+///     tx_len: usize,
+/// }
+/// ```
+///
+/// Invariants:
+/// - `rx_pos <= rx_len <= capacity`
+/// - `tx_pos <= tx_len <= capacity`
+pub struct StagingBufferGhost {
+    /// Current read position in the RX buffer
+    pub rx_pos: usize,
+    /// Total valid bytes in the RX buffer (from position 0)
+    pub rx_len: usize,
+    /// Current drain position in the TX buffer (only advanced by poll)
+    pub tx_pos: usize,
+    /// Total valid bytes in the TX buffer (from position 0)
+    pub tx_len: usize,
+    /// Buffer capacity (SOCKET_BUFFER_SIZE in production)
+    pub capacity: usize,
+}
+
+impl StagingBufferGhost {
+    /// Initial empty state.
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            rx_pos: 0,
+            rx_len: 0,
+            tx_pos: 0,
+            tx_len: 0,
+            capacity,
+        }
+    }
+
+    /// Models `socket_recv` / `udp_socket_recv` (bridge.rs:582-610, 737-764).
+    ///
+    /// Copies `min(available, user_buf_len)` bytes from `rx_buf[rx_pos..]`,
+    /// advances `rx_pos`. When `rx_pos >= rx_len`, resets both to 0.
+    ///
+    /// Returns bytes copied.
+    pub fn recv(&mut self, user_buf_len: usize) -> usize {
+        let available = self.rx_len.saturating_sub(self.rx_pos);
+        if available == 0 {
+            return 0;
+        }
+        let to_copy = available.min(user_buf_len);
+        self.rx_pos += to_copy;
+
+        // Reset if all consumed
+        if self.rx_pos >= self.rx_len {
+            self.rx_pos = 0;
+            self.rx_len = 0;
+        }
+        to_copy
+    }
+
+    /// Models `socket_send` / `udp_socket_send` (bridge.rs:614-637, 769-794).
+    ///
+    /// Appends `min(available_space, data_len)` bytes at `tx_buf[tx_len..]`,
+    /// advances `tx_len`. Note: `tx_pos` is NOT modified (only poll drains TX).
+    ///
+    /// Returns bytes copied.
+    pub fn send(&mut self, data_len: usize) -> usize {
+        let available = self.capacity.saturating_sub(self.tx_len);
+        if available == 0 {
+            return 0;
+        }
+        let to_copy = available.min(data_len);
+        self.tx_len += to_copy;
+        to_copy
+    }
+
+    /// Models RX buffer compaction in `poll()` (bridge.rs:387-392, 459-465).
+    ///
+    /// Moves `rx_buf[rx_pos..rx_len]` to `rx_buf[0..rx_len-rx_pos]`.
+    /// Called during poll when `rx_pos > 0` and socket can receive.
+    pub fn compact_rx(&mut self) {
+        if self.rx_pos > 0 {
+            let remaining = self.rx_len - self.rx_pos;
+            self.rx_len = remaining;
+            self.rx_pos = 0;
+        }
+    }
+
+    /// Models TX drain in `poll()` for TCP (bridge.rs:372-382).
+    ///
+    /// Sends `sent` bytes from `tx_buf[tx_pos..tx_len]`, advances `tx_pos`.
+    /// When `tx_pos >= tx_len`, resets both to 0.
+    pub fn drain_tx(&mut self, sent: usize) {
+        if sent > 0 {
+            self.tx_pos += sent;
+            if self.tx_pos >= self.tx_len {
+                self.tx_pos = 0;
+                self.tx_len = 0;
+            }
+        }
+    }
+
+    /// Models RX fill in `poll()` (bridge.rs:395-404, 467-476).
+    ///
+    /// Appends `received` bytes at `rx_buf[rx_len..]` from the smoltcp socket.
+    /// Called after compaction.
+    pub fn fill_rx(&mut self, received: usize) {
+        self.rx_len += received;
+    }
+}
+
+// ======================================================================
 // Kani Bounded Model Checking
 // ======================================================================
 
@@ -537,6 +659,229 @@ mod verification {
 
         let _ = buf.try_recv_request();
         assert_eq!(buf.buf_capacity, original_cap);
+    }
+
+    // ------------------------------------------------------------------
+    // StagingBuffer invariants (Phase 56.3)
+    // ------------------------------------------------------------------
+
+    /// After recv, `rx_pos <= rx_len <= capacity`.
+    #[kani::proof]
+    fn staging_invariant_after_recv() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        // Fill some data
+        let fill: usize = kani::any();
+        kani::assume(fill <= cap);
+        buf.rx_len = fill;
+
+        // Partially consume
+        let consume_pos: usize = kani::any();
+        kani::assume(consume_pos <= fill);
+        buf.rx_pos = consume_pos;
+
+        let user_len: usize = kani::any();
+        kani::assume(user_len > 0 && user_len <= cap);
+        buf.recv(user_len);
+
+        assert!(buf.rx_pos <= buf.rx_len);
+        assert!(buf.rx_len <= buf.capacity);
+    }
+
+    /// After send, `tx_pos <= tx_len <= capacity`.
+    #[kani::proof]
+    fn staging_invariant_after_send() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        // Pre-existing TX data
+        let existing: usize = kani::any();
+        kani::assume(existing <= cap);
+        buf.tx_len = existing;
+
+        let data_len: usize = kani::any();
+        kani::assume(data_len > 0 && data_len <= cap);
+        buf.send(data_len);
+
+        assert!(buf.tx_pos <= buf.tx_len);
+        assert!(buf.tx_len <= buf.capacity);
+    }
+
+    /// Compaction preserves data length and resets rx_pos to 0.
+    #[kani::proof]
+    fn staging_compact_preserves_data_length() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        let rx_len: usize = kani::any();
+        kani::assume(rx_len <= cap);
+        buf.rx_len = rx_len;
+
+        let rx_pos: usize = kani::any();
+        kani::assume(rx_pos <= rx_len);
+        buf.rx_pos = rx_pos;
+
+        let old_available = buf.rx_len - buf.rx_pos;
+        buf.compact_rx();
+
+        assert_eq!(buf.rx_pos, 0);
+        assert_eq!(buf.rx_len, old_available);
+        assert!(buf.rx_len <= buf.capacity);
+    }
+
+    /// If data is available (rx_len > rx_pos), recv returns > 0.
+    #[kani::proof]
+    fn staging_recv_progress() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        let rx_len: usize = kani::any();
+        kani::assume(rx_len > 0 && rx_len <= cap);
+        buf.rx_len = rx_len;
+
+        let rx_pos: usize = kani::any();
+        kani::assume(rx_pos < rx_len); // strictly less → data available
+        buf.rx_pos = rx_pos;
+
+        let user_len: usize = kani::any();
+        kani::assume(user_len > 0 && user_len <= cap);
+        let copied = buf.recv(user_len);
+
+        assert!(copied > 0);
+    }
+
+    /// If space is available (tx_len < capacity), send returns > 0.
+    #[kani::proof]
+    fn staging_send_progress() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        let tx_len: usize = kani::any();
+        kani::assume(tx_len < cap); // strictly less → space available
+        buf.tx_len = tx_len;
+
+        let data_len: usize = kani::any();
+        kani::assume(data_len > 0 && data_len <= cap);
+        let copied = buf.send(data_len);
+
+        assert!(copied > 0);
+    }
+
+    /// Full send→drain→fill→recv cycle preserves all invariants.
+    #[kani::proof]
+    fn staging_full_cycle() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 64);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        // Step 1: Application sends data
+        let send_len: usize = kani::any();
+        kani::assume(send_len > 0 && send_len <= cap);
+        let sent = buf.send(send_len);
+        assert!(sent > 0);
+        assert!(buf.tx_pos <= buf.tx_len);
+        assert!(buf.tx_len <= buf.capacity);
+
+        // Step 2: Poll drains TX to socket
+        let drain_amount: usize = kani::any();
+        kani::assume(drain_amount <= buf.tx_len - buf.tx_pos);
+        buf.drain_tx(drain_amount);
+        assert!(buf.tx_pos <= buf.tx_len);
+        assert!(buf.tx_len <= buf.capacity);
+
+        // Step 3: Poll compacts RX + fills from socket
+        buf.compact_rx();
+        let received: usize = kani::any();
+        kani::assume(received <= buf.capacity - buf.rx_len);
+        buf.fill_rx(received);
+        assert!(buf.rx_pos <= buf.rx_len);
+        assert!(buf.rx_len <= buf.capacity);
+
+        // Step 4: Application receives data
+        if buf.rx_len > buf.rx_pos {
+            let user_len: usize = kani::any();
+            kani::assume(user_len > 0 && user_len <= cap);
+            let copied = buf.recv(user_len);
+            assert!(copied > 0);
+        }
+        assert!(buf.rx_pos <= buf.rx_len);
+        assert!(buf.rx_len <= buf.capacity);
+    }
+
+    /// rx_pos + available data never exceeds capacity; tx_len never exceeds capacity.
+    #[kani::proof]
+    fn staging_no_overlap() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        // Arbitrary valid state
+        let rx_pos: usize = kani::any();
+        let rx_len: usize = kani::any();
+        kani::assume(rx_pos <= rx_len && rx_len <= cap);
+        buf.rx_pos = rx_pos;
+        buf.rx_len = rx_len;
+
+        // Compact + fill
+        buf.compact_rx();
+        let received: usize = kani::any();
+        kani::assume(received <= buf.capacity - buf.rx_len);
+        buf.fill_rx(received);
+
+        assert!(buf.rx_len <= buf.capacity);
+        assert!(buf.rx_pos <= buf.rx_len);
+
+        // TX invariant
+        let tx_len: usize = kani::any();
+        kani::assume(tx_len <= cap);
+        buf.tx_len = tx_len;
+        let data_len: usize = kani::any();
+        kani::assume(data_len <= cap);
+        buf.send(data_len);
+
+        assert!(buf.tx_len <= buf.capacity);
+    }
+
+    /// When rx_pos == rx_len (empty), recv returns 0.
+    #[kani::proof]
+    fn staging_empty_recv_returns_zero() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        // Set rx_pos == rx_len (empty buffer — either both 0 or both equal)
+        let pos: usize = kani::any();
+        kani::assume(pos <= cap);
+        buf.rx_pos = pos;
+        buf.rx_len = pos;
+
+        let user_len: usize = kani::any();
+        kani::assume(user_len > 0 && user_len <= cap);
+        let copied = buf.recv(user_len);
+
+        assert_eq!(copied, 0);
+    }
+
+    /// When tx_len == capacity (full), send returns 0.
+    #[kani::proof]
+    fn staging_full_send_returns_zero() {
+        let cap: usize = kani::any();
+        kani::assume(cap > 0 && cap <= 256);
+        let mut buf = StagingBufferGhost::new(cap);
+
+        buf.tx_len = cap; // buffer is full
+
+        let data_len: usize = kani::any();
+        kani::assume(data_len > 0 && data_len <= cap);
+        let copied = buf.send(data_len);
+
+        assert_eq!(copied, 0);
     }
 }
 

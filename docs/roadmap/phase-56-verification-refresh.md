@@ -29,7 +29,7 @@ subscriber/service layer outward toward the network.**
 |---------------------------------------------|----------------------|
 | 56.1 — Fix Verus trigger specs              | **Done** (99 proofs) |
 | 56.2 — Service buffer post-fix Verus proofs | **Done** (102 proofs) |
-| 56.3 — Staging buffer ghost model + Kani    | Not Started          |
+| 56.3 — Staging buffer ghost model + Kani    | **Done** (25 Kani)   |
 | 56.4 — Ephemeral port Kani harness          | Not Started          |
 
 ## Deliverables
@@ -148,50 +148,39 @@ SocketEntry { rx_pos, rx_len, tx_pos, tx_len, ... }
 
 **`nros-ghost-types/src/lib.rs`:**
 
-- [ ] Add `StagingBufferGhost` struct:
-      ```rust
-      pub struct StagingBufferGhost {
-          pub rx_pos: usize,
-          pub rx_len: usize,
-          pub tx_pos: usize,
-          pub tx_len: usize,
-          pub capacity: usize,
-      }
-      ```
-- [ ] Add `StagingBufferGhost::new(capacity)` constructor
-- [ ] Add `recv(user_buf_len) -> (usize, Self)` — models `socket_recv`:
-      copies `min(available, user_buf_len)` bytes, advances `rx_pos`
-- [ ] Add `send(data_len) -> (usize, Self)` — models `socket_send`:
-      copies `min(available_space, data_len)` bytes, advances `tx_len`
-- [ ] Add `compact_rx() -> Self` — models the `copy_within` compaction in
-      `poll()`: moves `[rx_pos..rx_len]` to `[0..rx_len-rx_pos]`
-- [ ] Add `drain_tx() -> Self` — models TX transfer in `poll()`: clears
-      `tx_pos` and `tx_len` when fully sent
-- [ ] Add `fill_rx(received) -> Self` — models RX transfer in `poll()`:
-      appends `received` bytes after compaction
+- [x] Add `StagingBufferGhost` struct with `rx_pos`, `rx_len`, `tx_pos`,
+      `tx_len`, `capacity` fields
+- [x] Add `StagingBufferGhost::new(capacity)` constructor
+- [x] Add `recv(&mut self, user_buf_len) -> usize` — models `socket_recv`:
+      copies `min(available, user_buf_len)` bytes, advances `rx_pos`,
+      resets both to 0 when fully consumed
+- [x] Add `send(&mut self, data_len) -> usize` — models `socket_send`:
+      appends `min(available_space, data_len)` bytes at `tx_len`
+- [x] Add `compact_rx(&mut self)` — models `copy_within` compaction in
+      `poll()`: `rx_len = rx_len - rx_pos`, `rx_pos = 0`
+- [x] Add `drain_tx(&mut self, sent)` — models TX transfer in `poll()`:
+      advances `tx_pos`, resets both when fully drained
+- [x] Add `fill_rx(&mut self, received)` — models RX fill in `poll()`:
+      `rx_len += received`
 
 #### Kani harnesses
 
-- [ ] `staging_invariant_after_recv` — `rx_pos <= rx_len <= capacity` after
-      recv
-- [ ] `staging_invariant_after_send` — `tx_pos <= tx_len <= capacity` after
-      send
-- [ ] `staging_compact_preserves_data_length` — after compaction,
-      `new_rx_len == old_rx_len - old_rx_pos` and `new_rx_pos == 0`
-- [ ] `staging_recv_progress` — if `rx_len > rx_pos`, recv returns > 0
-- [ ] `staging_send_progress` — if `tx_len < capacity`, send returns > 0
-- [ ] `staging_full_cycle` — send → poll‐drain → fill‐rx → recv cycle
-      preserves all invariants
-- [ ] `staging_no_overlap` — `rx_pos + (rx_len - rx_pos)` never exceeds
-      capacity; `tx_len` never exceeds capacity
-- [ ] `staging_empty_recv_returns_zero` — when `rx_pos == rx_len`, recv
-      returns 0
-- [ ] `staging_full_send_returns_zero` — when `tx_len == capacity`, send
-      returns 0
+- [x] `staging_invariant_after_recv` — `rx_pos <= rx_len <= capacity`
+- [x] `staging_invariant_after_send` — `tx_pos <= tx_len <= capacity`
+- [x] `staging_compact_preserves_data_length` — `new_rx_len == old_available`,
+      `new_rx_pos == 0`
+- [x] `staging_recv_progress` — if `rx_len > rx_pos`, recv returns > 0
+- [x] `staging_send_progress` — if `tx_len < capacity`, send returns > 0
+- [x] `staging_full_cycle` — send → drain → compact → fill → recv preserves
+      all invariants
+- [x] `staging_no_overlap` — compact + fill never exceeds capacity;
+      send never exceeds capacity
+- [x] `staging_empty_recv_returns_zero` — `rx_pos == rx_len` → recv returns 0
+- [x] `staging_full_send_returns_zero` — `tx_len == capacity` → send returns 0
 
 #### Verification
 
-- [ ] `cargo kani -p nros-ghost-types` passes (16 existing + 9 new = 25)
+- [x] `cargo kani -p nros-ghost-types` passes (16 existing + 9 new = 25)
 
 ### 56.4 — Ephemeral Port Kani Harness
 
