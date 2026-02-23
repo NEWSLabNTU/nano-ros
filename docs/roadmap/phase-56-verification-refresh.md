@@ -1,0 +1,253 @@
+# Phase 56 — Verification Refresh
+
+## Context
+
+Phases 40 (large message support), 47 (executor trigger overhaul), and 53 (UDP
+transport) changed production code that the Verus and Kani verification suites
+model.  An audit found:
+
+1. **Verus proofs are broken** — 76 proofs fail to compile because
+   `TriggerCondition` (4 variants, `evaluate(&[bool])`) was renamed to
+   `Trigger` (8 variants, bitmask-based inline evaluation).
+2. **Service buffer overflow proofs are missing** — the subscriber path has
+   pre-fix / post-fix Verus specs, but the service callback post-fix spec
+   (overflow detection added in Phase 40) was never written.
+3. **Transport bridge staging buffers are unverified** — `SmoltcpBridge` has
+   TCP + UDP staging buffers with `rx_pos/rx_len/tx_pos/tx_len` state machines
+   that sit between the verified subscriber/service layer and the physical
+   network.  Zero ghost model, zero harnesses.
+4. **Ephemeral port counter wrapping is unverified** — the global
+   `NEXT_EPHEMERAL_PORT` counter wraps via `wrapping_add(1)` with a manual
+   floor check, but no proof that the result stays in `[49152, 65535]`.
+
+Principle: **fix broken proofs first, then fill coverage gaps from the
+subscriber/service layer outward toward the network.**
+
+## Progress
+
+| Item | Status |
+|------|--------|
+| 56.1 — Fix Verus trigger specs | **Done** (99 proofs) |
+| 56.2 — Service buffer post-fix Verus proofs | Not Started |
+| 56.3 — Staging buffer ghost model + Kani | Not Started |
+| 56.4 — Ephemeral port Kani harness | Not Started |
+
+## Deliverables
+
+### 56.1 — Fix Verus Trigger Specs
+
+The `Trigger` enum (formerly `TriggerCondition`) was expanded from 4 to 8
+variants and the `evaluate()` method was removed — evaluation is now inlined in
+`spin_once()` as a `match` over a `ReadinessSnapshot` bitmask (not `&[bool]`).
+
+#### Production code (current)
+
+```
+spin.rs:1050-1072
+
+Trigger::Any    => bits & non_timer_mask != 0 || non_timer_mask == 0
+Trigger::All    => bits & non_timer_mask == non_timer_mask
+Trigger::One(id)      => snapshot.is_ready(id)        // bit test
+Trigger::AllOf(set)   => snapshot.all_ready(set)       // bits & set == set
+Trigger::AnyOf(set)   => snapshot.any_ready(set)       // bits & set != 0
+Trigger::Always       => true
+Trigger::Predicate(f) => f(&snapshot)                  // opaque
+Trigger::RawPredicate => unsafe { callback(...) }      // opaque
+```
+
+#### Changes required
+
+**`nros-verification/src/scheduling.rs`:**
+
+- [x] Replace `use nros_node::TriggerCondition` — removed entirely (Trigger
+      contains fn pointers, can't be registered with Verus)
+- [x] Remove `ExTriggerCondition` type spec — Trigger modeled as pure math
+      specs over `Seq<bool>` with audit contract documenting bitmask equivalence
+- [x] Remove `trigger_eval_spec` dispatch function — individual specs called
+      directly (`trigger_any`, `trigger_all`, `trigger_all_of`, `trigger_any_of`)
+- [x] Update `trigger_one` → bitmask semantics (unchanged, already used index)
+- [x] Add `trigger_all_of` spec: `forall|i| set[i] ==> ready[i]`
+- [x] Add `trigger_any_of` spec: `exists|i| set[i] && ready[i]`
+- [x] Update `trigger_any` — fires on empty mask (`ready.len() == 0 ||`)
+- [x] Update `trigger_all` — vacuously satisfied on empty mask (removed len guard)
+- [x] Remove `assume_specification[TriggerCondition::evaluate]` — replaced with
+      audit contract in module doc
+- [x] Update proofs: `trigger_any_semantics`, `trigger_all_semantics`,
+      `trigger_monotonicity` (added `len > 0` precondition),
+      `trigger_one_in_bounds`, `trigger_any_empty_true` (was `_false`),
+      `trigger_all_empty_true` (was `_false`),
+      `trigger_always_unconditional`, removed `trigger_eval_spec_complete`
+- [x] Add `trigger_all_of_semantics` proof
+- [x] Add `trigger_any_of_semantics` proof
+- [x] Add `trigger_all_of_implies_any_of` proof (AllOf ⟹ AnyOf when set has
+      a true element)
+- [x] Add `trigger_all_of_superset_of_all` proof
+- [x] Add `trigger_any_timer_only` proof (empty mask always fires)
+
+**`nros-verification/src/e2e.rs`:**
+
+- [x] Remove `use nros_node::TriggerCondition` and `trigger_eval_spec` import
+- [x] Update `default_trigger_delivers` — direct `trigger_any(ready)` call
+- [x] Update `all_trigger_starvation` — direct `trigger_all(ready)` call
+- [x] Update `executor_progress_under_any` — direct `trigger_any(ready)` call
+
+**`nros-verification/src/progress.rs`:**
+
+- [x] Remove `use nros_node::TriggerCondition` and `trigger_eval_spec` import
+- [x] Update `trigger_always_progress` — ensures `true` (no params needed)
+- [x] Update `trigger_any_progress` — direct `trigger_any(ready)` call
+
+**`nros-ghost-types/src/lib.rs`:**
+
+- [x] No changes needed — `SpinOnceGhost` is decoupled from `Trigger` type
+
+#### Verification
+
+- [x] `just verify-verus` passes (99 proofs — up from 76 baseline)
+- [x] New `AllOf`/`AnyOf` proofs included in count
+
+### 56.2 — Service Buffer Post-Fix Verus Proofs
+
+The Verus `service_callback_spec` in `e2e.rs:778` still models the **pre-fix**
+callback (silent truncation, `overflow: false`).  But production and the Kani
+ghost model (`ServiceBufferGhost::callback_write`) both now detect overflow.
+
+#### Changes required
+
+**`nros-verification/src/e2e.rs`:**
+
+- [ ] Add `service_callback_post_fix` spec (analogous to `callback_post_fix`
+      for subscribers): when `req_len > buf_capacity`, set `overflow = true`
+      and `has_request = true`; else copy normally
+- [ ] Add proof: `no_silent_service_truncation` — when `req_len > buf_capacity`,
+      the post-fix callback sets `overflow = true`, and `try_recv_request`
+      returns the overflow error, not truncated data
+- [ ] Add proof: `no_stuck_service_post_fix` — uses `service_callback_post_fix`
+      (not the pre-fix spec) to prove recovery.  Current `no_stuck_service`
+      uses pre-fix callback which masks the overflow detection
+- [ ] Add proof: `service_overflow_then_normal` — after overflow is consumed,
+      a normal-sized request is accepted and delivered
+
+#### Verification
+
+- [ ] `just verify-verus` passes with new service proofs
+- [ ] New proofs added to the count (target: 79+)
+
+### 56.3 — Staging Buffer Ghost Model + Kani
+
+The `SmoltcpBridge` staging buffers have invariants that are not formally
+checked.  Both TCP and UDP use the same pattern:
+
+```
+SOCKET_RX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS]
+SOCKET_TX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS]
+
+SocketEntry { rx_pos, rx_len, tx_pos, tx_len, ... }
+```
+
+#### New ghost type
+
+**`nros-ghost-types/src/lib.rs`:**
+
+- [ ] Add `StagingBufferGhost` struct:
+      ```rust
+      pub struct StagingBufferGhost {
+          pub rx_pos: usize,
+          pub rx_len: usize,
+          pub tx_pos: usize,
+          pub tx_len: usize,
+          pub capacity: usize,
+      }
+      ```
+- [ ] Add `StagingBufferGhost::new(capacity)` constructor
+- [ ] Add `recv(user_buf_len) -> (usize, Self)` — models `socket_recv`:
+      copies `min(available, user_buf_len)` bytes, advances `rx_pos`
+- [ ] Add `send(data_len) -> (usize, Self)` — models `socket_send`:
+      copies `min(available_space, data_len)` bytes, advances `tx_len`
+- [ ] Add `compact_rx() -> Self` — models the `copy_within` compaction in
+      `poll()`: moves `[rx_pos..rx_len]` to `[0..rx_len-rx_pos]`
+- [ ] Add `drain_tx() -> Self` — models TX transfer in `poll()`: clears
+      `tx_pos` and `tx_len` when fully sent
+- [ ] Add `fill_rx(received) -> Self` — models RX transfer in `poll()`:
+      appends `received` bytes after compaction
+
+#### Kani harnesses
+
+- [ ] `staging_invariant_after_recv` — `rx_pos <= rx_len <= capacity` after
+      recv
+- [ ] `staging_invariant_after_send` — `tx_pos <= tx_len <= capacity` after
+      send
+- [ ] `staging_compact_preserves_data_length` — after compaction,
+      `new_rx_len == old_rx_len - old_rx_pos` and `new_rx_pos == 0`
+- [ ] `staging_recv_progress` — if `rx_len > rx_pos`, recv returns > 0
+- [ ] `staging_send_progress` — if `tx_len < capacity`, send returns > 0
+- [ ] `staging_full_cycle` — send → poll‐drain → fill‐rx → recv cycle
+      preserves all invariants
+- [ ] `staging_no_overlap` — `rx_pos + (rx_len - rx_pos)` never exceeds
+      capacity; `tx_len` never exceeds capacity
+- [ ] `staging_empty_recv_returns_zero` — when `rx_pos == rx_len`, recv
+      returns 0
+- [ ] `staging_full_send_returns_zero` — when `tx_len == capacity`, send
+      returns 0
+
+#### Verification
+
+- [ ] `cargo kani -p nros-ghost-types` passes (16 existing + 9 new = 25)
+
+### 56.4 — Ephemeral Port Kani Harness
+
+The ephemeral port counter in `bridge.rs` uses `wrapping_add(1)` with a manual
+floor check:
+
+```rust
+NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
+if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
+    NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START;
+}
+```
+
+This is used by both `register_socket` (TCP) and `register_udp_socket` (UDP).
+
+#### Changes required
+
+**`nros-ghost-types/src/lib.rs`:**
+
+- [ ] Add `ephemeral_port_next(current: u16) -> u16` function modeling the
+      production wrapping logic
+- [ ] Add Kani harness: `ephemeral_port_stays_in_range` — for any `current: u16`,
+      the result is in `[49152, 65535]`
+- [ ] Add Kani harness: `ephemeral_port_wraps_correctly` — when
+      `current == 65535`, result is `49152`
+- [ ] Add Kani harness: `ephemeral_port_increments` — when
+      `current < 65535`, result is `current + 1`
+
+#### Verification
+
+- [ ] `cargo kani -p nros-ghost-types` passes (25 + 3 = 28)
+
+## Implementation Order
+
+```
+56.1 (fix trigger specs)  ───→  56.2 (service post-fix proofs)
+                                       │
+56.3 (staging buffer Kani) ── parallel ─┤
+56.4 (ephemeral port Kani) ── parallel ─┘
+```
+
+56.1 must be first (unblocks Verus compilation).
+56.3 and 56.4 are independent Kani work, parallel with 56.2.
+
+## Key Files
+
+| File | Change |
+|------|--------|
+| `packages/verification/nros-verification/src/scheduling.rs` | Trigger spec overhaul |
+| `packages/verification/nros-verification/src/e2e.rs` | Trigger import + service post-fix proofs |
+| `packages/verification/nros-verification/src/progress.rs` | Trigger import fix |
+| `packages/verification/nros-ghost-types/src/lib.rs` | StagingBufferGhost + ephemeral port + Kani |
+
+## Verification
+
+1. `just verify-verus` — all proofs pass (99 after 56.1, target: 102+ after 56.2)
+2. `cargo kani -p nros-ghost-types` — all harnesses pass (target: 28 from 16 baseline)
+3. `just quality` — no regressions

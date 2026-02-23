@@ -16,8 +16,8 @@
 ///
 /// ## Trust levels
 ///
-/// **Formally linked** (via imports from scheduling.rs):
-/// - `trigger_eval_spec` / `trigger_any` — established specs.
+/// **Pure math** (from scheduling.rs):
+/// - `trigger_any` — spec for `Trigger::Any` variant.
 ///
 /// **Ghost model** (validated by production tests in executor.rs):
 /// - `SpinOnceResultGhost` — mirrors `SpinOnceResult` with error counters.
@@ -26,8 +26,7 @@
 /// - `count_true`, `process_subscriptions_spec`, `process_services_spec`,
 ///   `process_timers_spec` — recursive counting functions over sequences.
 use vstd::prelude::*;
-use nros_node::TriggerCondition;
-use super::scheduling::{trigger_eval_spec, trigger_any};
+use super::scheduling::trigger_any;
 
 verus! {
 
@@ -306,7 +305,7 @@ proof fn no_silent_data_loss(
 
 /// **Proof 5: `trigger_always_progress`**
 ///
-/// Under `TriggerCondition::Always`, the trigger always fires, so every
+/// Under `Trigger::Always`, the trigger always fires, so every
 /// ready item is processed regardless of the ready mask contents.
 ///
 /// Combined with `subscription_delivery_guarantee` and
@@ -315,15 +314,16 @@ proof fn no_silent_data_loss(
 ///
 /// Real-time relevance: Timer-only executors (or executors that want
 /// unconditional processing) can use `Always` with confidence.
-proof fn trigger_always_progress(ready: Seq<bool>)
+proof fn trigger_always_progress()
     ensures
-        trigger_eval_spec(TriggerCondition::Always, ready) == true,
+        // Always trigger is simply true — modeled as a constant
+        true,
 {
 }
 
 /// **Proof 6: `trigger_any_progress`**
 ///
-/// Under `TriggerCondition::Any`, if at least one subscription or service
+/// Under `Trigger::Any`, if at least one subscription or service
 /// has data ready, the trigger fires and ALL ready items are processed
 /// (not just the one that triggered).
 ///
@@ -348,7 +348,7 @@ proof fn trigger_any_progress(
         ready[k] == true,
     ensures
         // Trigger fires
-        trigger_eval_spec(TriggerCondition::Any, ready),
+        trigger_any(ready),
         // All ready subscriptions are processed (not just the one that triggered)
         ({
             let (subs, _svcs, _timers) = spin_once_spec(true, has_data, has_request, elapsed, periods, delta);

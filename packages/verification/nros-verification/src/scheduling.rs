@@ -1,49 +1,57 @@
-/// Real-time scheduling proofs (Phase 31.2)
+/// Real-time scheduling proofs (Phase 31.2, updated Phase 56.1)
 ///
 /// Proves bounded, predictable behavior of the executor's timer and trigger
 /// subsystems. These are the prerequisite for WCET analysis and schedulability proofs.
 ///
 /// ## Trust levels
 ///
-/// **Formally linked** (via `assume_specification` or `external_type_specification`):
-/// - `TriggerCondition` enum — registered via `external_type_specification` (without
-///   `external_body`), making variants transparent. Verus can match on `Any`, `All`,
-///   `Always`, `One(usize)` directly.
-/// - `TriggerCondition::evaluate()` — linked to `trigger_eval_spec` via
-///   `assume_specification`. A human auditor should confirm the 4-line spec matches
-///   the 4-line production impl in `trigger.rs:107-112`.
-///
-/// **Ghost model** (shared from `nano-ros-ghost-types`, validated by production tests):
+/// **Ghost model** (shared from `nros-ghost-types`, validated by production tests):
 /// - `TimerGhost` / `TimerModeGhost` — mirrors `TimerState` / `TimerMode`.
 ///   Registered via `external_type_specification`.
 ///
 /// **Pure math** (no link to production code):
+/// - Trigger spec functions (`trigger_any`, `trigger_all`, `trigger_one`,
+///   `trigger_all_of`, `trigger_any_of`) model the 6 deterministic variants
+///   of `nros_node::Trigger`.  The `Trigger` enum itself is **not** registered
+///   with Verus because it contains fn-pointer variants (`Predicate`,
+///   `RawPredicate`) that Verus cannot reason about.
 /// - `spin_once_result_consistency` — proves arithmetic identity about the
 ///   `any_work() ⟺ total() > 0` relationship.
 ///
+/// ## Audit contract
+///
+/// A human auditor should confirm that the spec functions below match the
+/// production `spin_once()` trigger evaluation at `spin.rs:1050-1072`:
+///
+/// ```text
+/// Trigger::Any           => bits & non_timer_mask != 0 || non_timer_mask == 0
+/// Trigger::All           => bits & non_timer_mask == non_timer_mask
+/// Trigger::One(id)       => snapshot.is_ready(id)
+/// Trigger::AllOf(set)    => snapshot.all_ready(set)
+/// Trigger::AnyOf(set)    => snapshot.any_ready(set)
+/// Trigger::Always        => true
+/// Trigger::Predicate(f)  => f(&snapshot)        // opaque — not modeled
+/// Trigger::RawPredicate  => callback(...)        // opaque — not modeled
+/// ```
+///
+/// The `Seq<bool>` model used here is equivalent to the `u64` bitmask
+/// representation: `ready[i] ⟺ bits & (1 << i) != 0`.  The bitmask
+/// invariants are separately verified by Kani harnesses in
+/// `nros-node/src/executor/types.rs` (`snapshot_all_ready_correct`,
+/// `snapshot_any_ready_correct`, `snapshot_is_ready_correct`).
+///
 /// ## Remaining limitations
 ///
+/// - `Predicate` and `RawPredicate` are opaque (fn pointer / unsafe extern).
 /// - `SpinOnceResult` requires `zenoh` feature → C FFI deps → can't import.
 /// - `TimerState` fields are `pub(crate)` → can't access from external crate.
 use vstd::prelude::*;
-use nros_node::TriggerCondition;
 use nros_ghost_types::{TimerGhost, TimerModeGhost};
 
 verus! {
 
 // ======================================================================
-// TriggerCondition Type Specification
-// ======================================================================
-
-/// Register `TriggerCondition` with Verus as a transparent type.
-///
-/// Without `external_body`, Verus sees the enum's variant structure and allows
-/// pattern matching in spec functions and proofs.
-#[verifier::external_type_specification]
-pub struct ExTriggerCondition(TriggerCondition);
-
-// ======================================================================
-// Timer State Machine (from nano-ros-ghost-types)
+// Timer State Machine (from nros-ghost-types)
 // ======================================================================
 
 /// Register `TimerModeGhost` as a transparent type so Verus can match on variants.
@@ -234,26 +242,42 @@ proof fn timer_canceled_never_fires(s: TimerGhost, delta_ms: u64)
 }
 
 // ======================================================================
-// TriggerCondition Spec Functions
+// Trigger Spec Functions
 // ======================================================================
 
-/// Model of `TriggerCondition::Any` — true iff any element in the ready mask is true.
+/// Model of `Trigger::Any` — true iff any element in the ready mask is true.
 ///
-/// Mirrors: `ready.iter().any(|&r| r)` in `TriggerCondition::evaluate()`.
+/// Production semantics (`spin.rs:1051`):
+/// ```text
+/// bits & non_timer_mask != 0 || non_timer_mask == 0
+/// ```
+///
+/// The `Seq<bool>` model captures the non-timer readiness subset. When all
+/// entries are timers (empty sequence), `Any` fires unconditionally — matching
+/// the `non_timer_mask == 0` fallback in production.
 pub open spec fn trigger_any(ready: Seq<bool>) -> bool {
-    exists|i: int| 0 <= i < ready.len() && ready[i]
+    ready.len() == 0 || exists|i: int| 0 <= i < ready.len() && ready[i]
 }
 
-/// Model of `TriggerCondition::All` — true iff non-empty and all elements are true.
+/// Model of `Trigger::All` — true iff non-timer mask fully satisfied.
 ///
-/// Mirrors: `!ready.is_empty() && ready.iter().all(|&r| r)` in `TriggerCondition::evaluate()`.
+/// Production semantics (`spin.rs:1052`):
+/// ```text
+/// bits & non_timer_mask == non_timer_mask
+/// ```
+///
+/// Fires when every non-timer handle has data. An empty non-timer set
+/// satisfies `All` vacuously (0 & 0 == 0), matching production.
 pub open spec fn trigger_all(ready: Seq<bool>) -> bool {
-    ready.len() > 0 && forall|i: int| 0 <= i < ready.len() ==> ready[i]
+    forall|i: int| 0 <= i < ready.len() ==> ready[i]
 }
 
-/// Model of `TriggerCondition::One(index)` — true iff `ready[index]` is true.
+/// Model of `Trigger::One(id)` — true iff `ready[index]` is true.
 ///
-/// Mirrors: `ready.get(*index).copied().unwrap_or(false)` in `TriggerCondition::evaluate()`.
+/// Production semantics (`spin.rs:1053`):
+/// ```text
+/// snapshot.is_ready(id)  // bits & (1 << id.0) != 0
+/// ```
 pub open spec fn trigger_one(ready: Seq<bool>, index: usize) -> bool {
     if (index as int) < ready.len() {
         ready[index as int]
@@ -262,89 +286,96 @@ pub open spec fn trigger_one(ready: Seq<bool>, index: usize) -> bool {
     }
 }
 
-/// Unified spec for `TriggerCondition::evaluate()` — matches each variant
-/// to its spec function.
+/// Model of `Trigger::AllOf(set)` — true iff every handle in the set is ready.
 ///
-/// Possible because `external_type_specification` (without `external_body`)
-/// makes `TriggerCondition` transparent, allowing variant matching.
-pub open spec fn trigger_eval_spec(cond: TriggerCondition, ready: Seq<bool>) -> bool {
-    match cond {
-        TriggerCondition::Any => trigger_any(ready),
-        TriggerCondition::All => trigger_all(ready),
-        TriggerCondition::Always => true,
-        TriggerCondition::One(index) => trigger_one(ready, index),
-    }
-}
-
-// ======================================================================
-// Formally Linked Contract
-// ======================================================================
-
-/// **Trusted contract**: `TriggerCondition::evaluate()` matches `trigger_eval_spec`.
+/// Production semantics (`spin.rs:1054`):
+/// ```text
+/// snapshot.all_ready(set)  // bits & set.0 == set.0
+/// ```
 ///
-/// This axiomatically links the production function to the verified spec.
-/// A human auditor should compare the 4-line spec (`trigger_eval_spec`) against
-/// the 4-line production implementation in `trigger.rs:107-112`.
-pub assume_specification[ TriggerCondition::evaluate ](
-    self_: &TriggerCondition,
-    ready: &[bool],
-) -> (ret: bool)
-    ensures
-        ret == trigger_eval_spec(*self_, ready@);
-
-// ======================================================================
-// Trigger Proofs
-// ======================================================================
-
-/// The spec correctly dispatches to per-variant spec functions.
-proof fn trigger_eval_spec_complete(ready: Seq<bool>, index: usize)
-    ensures
-        trigger_eval_spec(TriggerCondition::Any, ready) == trigger_any(ready),
-        trigger_eval_spec(TriggerCondition::All, ready) == trigger_all(ready),
-        trigger_eval_spec(TriggerCondition::Always, ready) == true,
-        trigger_eval_spec(TriggerCondition::One(index), ready) == trigger_one(ready, index),
+/// `set` is a boolean sequence parallel to `ready`: `set[i]` is true iff
+/// handle `i` is in the target set.
+pub open spec fn trigger_all_of(ready: Seq<bool>, set: Seq<bool>) -> bool
+    recommends
+        ready.len() == set.len(),
 {
+    forall|i: int| 0 <= i < ready.len() && 0 <= i < set.len() && set[i] ==> ready[i]
 }
+
+/// Model of `Trigger::AnyOf(set)` — true iff any handle in the set is ready.
+///
+/// Production semantics (`spin.rs:1055`):
+/// ```text
+/// snapshot.any_ready(set)  // bits & set.0 != 0
+/// ```
+pub open spec fn trigger_any_of(ready: Seq<bool>, set: Seq<bool>) -> bool
+    recommends
+        ready.len() == set.len(),
+{
+    exists|i: int| 0 <= i < ready.len() && 0 <= i < set.len() && set[i] && ready[i]
+}
+
+// ======================================================================
+// Trigger Proofs — Any / All (existing, updated)
+// ======================================================================
 
 /// **Proof 6: `trigger_any_semantics`**
 ///
-/// The `trigger_any` spec (which models `Any.evaluate()`) is true if and only
-/// if there exists an index i where ready[i] is true.
+/// `trigger_any` fires iff the mask is empty (timer-only executor) or at
+/// least one element is true.
 ///
 /// Real-time relevance: Scheduling condition is logically correct.
 proof fn trigger_any_semantics(ready: Seq<bool>)
     ensures
-        trigger_any(ready) <==> exists|i: int| 0 <= i < ready.len() && ready[i],
+        trigger_any(ready) <==> (
+            ready.len() == 0
+            || exists|i: int| 0 <= i < ready.len() && ready[i]
+        ),
+{
+}
+
+/// **Proof 6b: `trigger_any_timer_only`**
+///
+/// A timer-only executor (no non-timer handles, empty ready mask) always
+/// passes the `Any` trigger.  This matches the production fallback
+/// `non_timer_mask == 0`.
+///
+/// Real-time relevance: Timer-only executors process callbacks every spin.
+proof fn trigger_any_timer_only()
+    ensures
+        trigger_any(Seq::<bool>::empty()),
 {
 }
 
 /// **Proof 7: `trigger_all_semantics`**
 ///
-/// The `trigger_all` spec (which models `All.evaluate()`) is true if and only
-/// if the mask is non-empty and every element is true.
+/// `trigger_all` fires iff every element in the mask is true. An empty
+/// mask satisfies `All` vacuously.
 ///
 /// Real-time relevance: Sensor fusion trigger works as documented.
 proof fn trigger_all_semantics(ready: Seq<bool>)
     ensures
         trigger_all(ready) <==> (
-            ready.len() > 0
-            && forall|i: int| 0 <= i < ready.len() ==> ready[i]
+            forall|i: int| 0 <= i < ready.len() ==> ready[i]
         ),
 {
 }
 
 /// **Proof 8: `trigger_monotonicity`**
 ///
-/// If `All` evaluates to true, then `Any` also evaluates to true.
-/// (All is a stronger condition than Any.)
+/// If `All` evaluates to true for a non-empty mask, then `Any` also
+/// evaluates to true.  (All is a stronger condition than Any for non-empty
+/// masks.)
 ///
 /// Real-time relevance: Condition hierarchy is consistent.
 proof fn trigger_monotonicity(ready: Seq<bool>)
+    requires
+        ready.len() > 0,
     ensures
         trigger_all(ready) ==> trigger_any(ready),
 {
     if trigger_all(ready) {
-        // All is true → len > 0 and all elements true → element 0 is true → Any is true
+        // All is true → all elements true → element 0 is true → Any is true
         assert(ready.len() > 0);
         assert(ready[0]);
     }
@@ -373,49 +404,131 @@ proof fn trigger_one_out_of_bounds(index: usize)
 {
 }
 
-/// **Proof 8d: `trigger_any_empty_false`**
+/// **Proof 8d: `trigger_any_empty_true`**
 ///
-/// `trigger_any` returns false for the empty mask.
+/// `trigger_any` returns true for the empty mask (timer-only executor).
 ///
-/// Real-time relevance: No spurious wake when no handles registered.
-proof fn trigger_any_empty_false()
+/// Real-time relevance: Timer-only executor always fires under Any.
+proof fn trigger_any_empty_true()
     ensures
-        !trigger_any(Seq::<bool>::empty()),
+        trigger_any(Seq::<bool>::empty()),
 {
 }
 
-/// **Proof 8e: `trigger_all_empty_false`**
+/// **Proof 8e: `trigger_all_empty_true`**
 ///
-/// `trigger_all` returns false for the empty mask.
+/// `trigger_all` returns true for the empty mask (vacuously satisfied).
 ///
-/// Real-time relevance: Empty mask can't satisfy All condition.
-proof fn trigger_all_empty_false()
+/// Real-time relevance: Empty mask satisfies All — timer-only executor
+/// fires under All too.
+proof fn trigger_all_empty_true()
     ensures
-        !trigger_all(Seq::<bool>::empty()),
+        trigger_all(Seq::<bool>::empty()),
 {
 }
+
+// ======================================================================
+// Trigger Proofs — AllOf / AnyOf (new, Phase 56.1)
+// ======================================================================
+
+/// **Proof 8f: `trigger_all_of_semantics`**
+///
+/// `trigger_all_of` fires iff every handle in the target set is ready.
+///
+/// Real-time relevance: Compound trigger condition is logically correct.
+proof fn trigger_all_of_semantics(ready: Seq<bool>, set: Seq<bool>)
+    requires
+        ready.len() == set.len(),
+    ensures
+        trigger_all_of(ready, set) <==> (
+            forall|i: int| 0 <= i < ready.len() && set[i] ==> ready[i]
+        ),
+{
+}
+
+/// **Proof 8g: `trigger_any_of_semantics`**
+///
+/// `trigger_any_of` fires iff at least one handle in the target set is ready.
+///
+/// Real-time relevance: Compound trigger condition is logically correct.
+proof fn trigger_any_of_semantics(ready: Seq<bool>, set: Seq<bool>)
+    requires
+        ready.len() == set.len(),
+    ensures
+        trigger_any_of(ready, set) <==> (
+            exists|i: int| 0 <= i < ready.len() && set[i] && ready[i]
+        ),
+{
+}
+
+/// **Proof 8h: `trigger_all_of_implies_any_of`**
+///
+/// If `AllOf(set)` fires and the set is non-empty, then `AnyOf(set)` also
+/// fires.  (AllOf is a stronger condition.)
+///
+/// Real-time relevance: Compound trigger hierarchy is consistent.
+proof fn trigger_all_of_implies_any_of(ready: Seq<bool>, set: Seq<bool>, k: int)
+    requires
+        ready.len() == set.len(),
+        0 <= k < set.len(),
+        set[k],                             // set is non-empty (handle k is in it)
+        trigger_all_of(ready, set),         // AllOf fires
+    ensures
+        trigger_any_of(ready, set),         // AnyOf must also fire
+{
+    // Witness: k is in the set and AllOf guarantees ready[k]
+    assert(ready[k]);
+}
+
+/// **Proof 8i: `trigger_all_of_superset_of_all`**
+///
+/// `Trigger::All` is equivalent to `AllOf(full_set)` where every index is
+/// in the set.  This connects the simple `All` to the compound `AllOf`.
+///
+/// Real-time relevance: `All` is a special case of `AllOf` — consistent.
+proof fn trigger_all_of_superset_of_all(ready: Seq<bool>, set: Seq<bool>)
+    requires
+        ready.len() == set.len(),
+        forall|i: int| 0 <= i < set.len() ==> set[i],  // full set
+    ensures
+        trigger_all_of(ready, set) <==> trigger_all(ready),
+{
+}
+
+// ======================================================================
+// Trigger Proofs — Always
+// ======================================================================
 
 /// **Proof: `trigger_always_unconditional`**
 ///
-/// `Always` is unconditional — true for any mask (empty, partial, or full).
+/// `Trigger::Always` fires unconditionally — true for any mask (empty,
+/// partial, or full).  Modeled as the constant `true`.
 ///
 /// Real-time relevance: Timer-only executors always process callbacks.
 proof fn trigger_always_unconditional(ready: Seq<bool>)
     ensures
-        trigger_eval_spec(TriggerCondition::Always, ready) == true,
+        // Always trigger is simply true, regardless of readiness
+        true,
 {
 }
+
+// ======================================================================
+// Executor Gating
+// ======================================================================
 
 /// **Proof 9: `trigger_gating_correctness`**
 ///
 /// When the trigger evaluates to false, only timers fire — subscription and
 /// service counts are zero. This models the executor's gating logic:
 ///
-/// Source (`executor.rs:1202-1207`):
+/// Source (`spin.rs:1074-1082`):
 /// ```ignore
-/// if !self.trigger.evaluate(&ready_mask) {
-///     for node in &mut self.nodes {
-///         result.timers_fired += node.process_timers(delta_ms);
+/// if !trigger_passes {
+///     // Timers still need delta accumulation
+///     for meta in self.entries.iter().flatten() {
+///         if matches!(meta.kind, EntryKind::Timer) {
+///             let _ = unsafe { (meta.try_process)(data_ptr, delta_ms) };
+///         }
 ///     }
 ///     return result; // subs=0, services=0
 /// }

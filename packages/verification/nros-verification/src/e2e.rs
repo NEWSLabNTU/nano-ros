@@ -20,11 +20,11 @@
 ///
 /// ## Trust levels
 ///
-/// **Formally linked** (via `assume_specification` from `scheduling.rs`):
-/// - `default_trigger_delivers` and `all_trigger_starvation` build on the existing
-///   `trigger_eval_spec` / `trigger_any_semantics` / `trigger_all_semantics` proofs.
+/// **Pure math** (from `scheduling.rs`):
+/// - `default_trigger_delivers` and `all_trigger_starvation` build on the
+///   `trigger_any` / `trigger_all` spec functions from `scheduling.rs`.
 ///
-/// **Ghost model** (shared from `nano-ros-ghost-types`, validated by production tests):
+/// **Ghost model** (shared from `nros-ghost-types`, validated by production tests):
 /// - `SubscriberBufferGhost` — mirrors `SubscriberBuffer` state machine.
 /// - `PublishChainGhost` — mirrors the publish call chain result propagation.
 /// - `SpinOnceGhost` — mirrors `spin_once()` control flow.
@@ -32,9 +32,8 @@
 /// **Pure math** (no link to production code):
 /// - `sequence_number_monotonicity` — arithmetic identity on atomic increment.
 use vstd::prelude::*;
-use nros_node::TriggerCondition;
 use nros_ghost_types::{SubscriberBufferGhost, ServiceBufferGhost, PublishChainGhost, SpinOnceGhost};
-use super::scheduling::{trigger_eval_spec, trigger_any, trigger_all};
+use super::scheduling::{trigger_any, trigger_all};
 
 verus! {
 
@@ -277,12 +276,11 @@ pub open spec fn spin_once_invariant(g: SpinOnceGhost) -> bool {
 
 /// **Proof 5: `default_trigger_delivers`**
 ///
-/// Under `TriggerCondition::Any` (the default), if any subscription has
-/// `has_data == true`, then `trigger.evaluate(&ready_mask)` returns `true`
+/// Under `Trigger::Any` (the default), if any subscription has
+/// `has_data == true`, then `trigger_any(ready)` returns `true`
 /// and subscriptions are processed (path B).
 ///
-/// Builds on the existing `trigger_any_semantics` proof from scheduling.rs:
-/// `Any ⟺ ∃i. ready[i]`.
+/// Builds on the `trigger_any` spec from scheduling.rs.
 ///
 /// Real-time relevance: Users who don't customize triggers are guaranteed
 /// that messages are processed when available.
@@ -293,8 +291,6 @@ proof fn default_trigger_delivers(ready: Seq<bool>, k: int)
         ready[k] == true,     // subscription k has data
     ensures
         // Any trigger fires when at least one subscription has data
-        trigger_eval_spec(TriggerCondition::Any, ready),
-        // Which means trigger_any is true
         trigger_any(ready),
 {
     // Witness: k is the index where ready[k] == true
@@ -303,12 +299,11 @@ proof fn default_trigger_delivers(ready: Seq<bool>, k: int)
 
 /// **Proof 6: `all_trigger_starvation`**
 ///
-/// Under `TriggerCondition::All`, if any subscription `k` never has data
-/// (`ready[k] == false`), then `trigger.evaluate(&ready_mask)` returns
-/// `false` and NO subscription callbacks are ever invoked.
+/// Under `Trigger::All`, if any subscription `k` never has data
+/// (`ready[k] == false`), then `trigger_all(ready)` returns `false`
+/// and NO subscription callbacks are ever invoked.
 ///
-/// Builds on the existing `trigger_all_semantics` proof from scheduling.rs:
-/// `All ⟺ len > 0 ∧ ∀i. ready[i]`.
+/// Builds on the `trigger_all` spec from scheduling.rs.
 ///
 /// This is finding F5 from the E2E verification analysis.
 ///
@@ -321,7 +316,6 @@ proof fn all_trigger_starvation(ready: Seq<bool>, k: int)
         ready[k] == false,     // subscription k has no data
     ensures
         // All trigger does NOT fire
-        !trigger_eval_spec(TriggerCondition::All, ready),
         !trigger_all(ready),
         // Consequence: subscriptions and services are not processed
         // (follows from spin_once_invariant with trigger_result == false)
@@ -372,7 +366,7 @@ proof fn timer_non_starvation(trigger_result: bool, timers_path_a: usize, timers
 
 /// **Proof 8: `executor_progress_under_any`**
 ///
-/// Under `TriggerCondition::Any`, if at least one subscription has data,
+/// Under `Trigger::Any`, if at least one subscription has data,
 /// the trigger fires (path B), and if `process_subscriptions()` succeeds
 /// for at least one subscription, then `subscriptions_processed >= 1`.
 ///
@@ -394,7 +388,7 @@ proof fn executor_progress_under_any(
         subs_processed >= 1,        // at least one subscription processed successfully
     ensures
         // Trigger fires
-        trigger_eval_spec(TriggerCondition::Any, ready),
+        trigger_any(ready),
         // Result reflects processed subscriptions
         ({
             let g = SpinOnceGhost {
