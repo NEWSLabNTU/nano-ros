@@ -25,12 +25,12 @@ subscriber/service layer outward toward the network.**
 
 ## Progress
 
-| Item | Status |
-|------|--------|
-| 56.1 — Fix Verus trigger specs | **Done** (99 proofs) |
-| 56.2 — Service buffer post-fix Verus proofs | Not Started |
-| 56.3 — Staging buffer ghost model + Kani | Not Started |
-| 56.4 — Ephemeral port Kani harness | Not Started |
+| Item                                        | Status               |
+|---------------------------------------------|----------------------|
+| 56.1 — Fix Verus trigger specs              | **Done** (99 proofs) |
+| 56.2 — Service buffer post-fix Verus proofs | **Done** (102 proofs) |
+| 56.3 — Staging buffer ghost model + Kani    | Not Started          |
+| 56.4 — Ephemeral port Kani harness          | Not Started          |
 
 ## Deliverables
 
@@ -116,22 +116,21 @@ ghost model (`ServiceBufferGhost::callback_write`) both now detect overflow.
 
 **`nros-verification/src/e2e.rs`:**
 
-- [ ] Add `service_callback_post_fix` spec (analogous to `callback_post_fix`
-      for subscribers): when `req_len > buf_capacity`, set `overflow = true`
-      and `has_request = true`; else copy normally
-- [ ] Add proof: `no_silent_service_truncation` — when `req_len > buf_capacity`,
-      the post-fix callback sets `overflow = true`, and `try_recv_request`
-      returns the overflow error, not truncated data
-- [ ] Add proof: `no_stuck_service_post_fix` — uses `service_callback_post_fix`
-      (not the pre-fix spec) to prove recovery.  Current `no_stuck_service`
-      uses pre-fix callback which masks the overflow detection
-- [ ] Add proof: `service_overflow_then_normal` — after overflow is consumed,
-      a normal-sized request is accepted and delivered
+- [x] Add `service_callback_post_fix` spec — overflow detection on write
+      (mirrors subscriber `callback_post_fix`)
+- [x] Add `try_recv_request_full` spec — 4-path recv with overflow check
+      (supersedes `try_recv_request_post_fix` which lacked overflow path)
+- [x] Add proof 16: `no_silent_service_truncation` — overflow callback →
+      recv returns overflow error, not truncated data
+- [x] Add proof 17: `no_stuck_service_post_fix` — using post-fix callback,
+      all 3 error paths (overflow/BufferTooSmall/success) clear has_request
+- [x] Add proof 18: `service_overflow_then_normal` — full recovery cycle:
+      overflow → consume → normal request accepted and delivered
 
 #### Verification
 
-- [ ] `just verify-verus` passes with new service proofs
-- [ ] New proofs added to the count (target: 79+)
+- [x] `just verify-verus` passes with new service proofs (102 total)
+- [x] New proofs added to the count (99 → 102, +3 proofs)
 
 ### 56.3 — Staging Buffer Ghost Model + Kani
 
@@ -248,6 +247,6 @@ This is used by both `register_socket` (TCP) and `register_udp_socket` (UDP).
 
 ## Verification
 
-1. `just verify-verus` — all proofs pass (99 after 56.1, target: 102+ after 56.2)
+1. `just verify-verus` — all proofs pass (102 after 56.2)
 2. `cargo kani -p nros-ghost-types` — all harnesses pass (target: 28 from 16 baseline)
 3. `just quality` — no regressions

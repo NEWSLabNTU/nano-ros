@@ -928,4 +928,242 @@ proof fn no_stuck_service(req_len: usize, buf_capacity: usize, rx_buf_len: usize
 {
 }
 
+// ======================================================================
+// Service Buffer Overflow Detection Proofs (Phase 56.2)
+// ======================================================================
+
+/// State after the **post-fix** service callback writes to the buffer.
+///
+/// Models `queryable_callback` after Phase 40 overflow detection (shim.rs:1672-1692).
+///
+/// Key difference from `service_callback_spec`: oversized requests set
+/// `overflow = true` instead of silently truncating to `buf_capacity`.
+///
+/// Production code:
+/// ```ignore
+/// if payload_len > buffer.data.len() {
+///     buffer.overflow.store(true, Ordering::Release);
+///     buffer.has_request.store(true, Ordering::Release);
+/// } else {
+///     buffer.overflow.store(false, Ordering::Release);
+///     // ... copy data ...
+///     buffer.len.store(payload_len, Ordering::Release);
+///     buffer.has_request.store(true, Ordering::Release);
+/// }
+/// ```
+pub open spec fn service_callback_post_fix(
+    req_len: usize,
+    buf_capacity: usize,
+) -> ServiceBufferGhost {
+    if req_len > buf_capacity {
+        // Overflow branch: flag without copying data
+        ServiceBufferGhost {
+            has_request: true,
+            overflow: true,
+            stored_len: 0,  // len not updated in overflow path
+            buf_capacity,
+        }
+    } else {
+        // Normal branch: copy data, clear overflow
+        ServiceBufferGhost {
+            has_request: true,
+            overflow: false,
+            stored_len: req_len,
+            buf_capacity,
+        }
+    }
+}
+
+/// State after the **full post-fix** `try_recv_request` reads from the buffer.
+///
+/// Models the production `try_recv_request` (shim.rs:1771-1824) with all three
+/// error paths:
+/// 1. No request → None
+/// 2. Overflow → MessageTooLarge, clear both flags
+/// 3. BufferTooSmall (stored_len > rx_buf_len) → clear has_request
+/// 4. Success → copy data, clear has_request
+///
+/// This supersedes `try_recv_request_post_fix` which lacked the overflow check.
+///
+/// Returns `(new_state, got_request, got_overflow_error, got_size_error)`.
+pub open spec fn try_recv_request_full(
+    buf: ServiceBufferGhost,
+    rx_buf_len: usize,
+) -> (ServiceBufferGhost, bool, bool, bool)
+{
+    if !buf.has_request {
+        // No request available
+        (buf, false, false, false)
+    } else if buf.overflow {
+        // Overflow detected — return MessageTooLarge, clear both flags
+        (ServiceBufferGhost {
+            has_request: false,
+            overflow: false,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, false, true, false)
+    } else if buf.stored_len > rx_buf_len {
+        // BufferTooSmall — clear has_request (no stuck service)
+        (ServiceBufferGhost {
+            has_request: false,
+            overflow: buf.overflow,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, false, false, true)
+    } else {
+        // Success — copy data, clear has_request
+        (ServiceBufferGhost {
+            has_request: false,
+            overflow: buf.overflow,
+            stored_len: buf.stored_len,
+            buf_capacity: buf.buf_capacity,
+        }, true, false, false)
+    }
+}
+
+/// **Proof 16: `no_silent_service_truncation`**
+///
+/// Proves that in the post-fix code, when `req_len > buf_capacity`, the
+/// callback sets `overflow = true`, and `try_recv_request` returns an overflow
+/// error (MessageTooLarge). The consumer **never** receives truncated data.
+///
+/// Mirrors `no_silent_truncation` (Proof 10) for the service buffer.
+///
+/// Contrast with `service_callback_spec` (pre-fix) which stored
+/// `min(req_len, buf_capacity)` bytes with no overflow flag.
+///
+/// Real-time relevance: Data integrity — the consumer either receives the
+/// complete request or an explicit error. No silent corruption.
+proof fn no_silent_service_truncation(
+    req_len: usize,
+    buf_capacity: usize,
+    rx_buf_len: usize,
+)
+    requires
+        req_len > buf_capacity,    // request exceeds buffer
+        buf_capacity > 0,
+    ensures
+        ({
+            let buf = service_callback_post_fix(req_len, buf_capacity);
+            // Callback sets overflow flag (not silent truncation)
+            &&& buf.overflow
+            // try_recv_request detects the overflow
+            &&& ({
+                let (new_state, got_request, got_overflow, got_size_error) =
+                    try_recv_request_full(buf, rx_buf_len);
+                // Overflow error is returned to the consumer
+                &&& got_overflow
+                // No data is returned (consumer doesn't see truncated bytes)
+                &&& !got_request
+                // Both flags are cleared — service recovers
+                &&& !new_state.has_request
+                &&& !new_state.overflow
+            })
+        }),
+{
+}
+
+/// **Proof 17: `no_stuck_service_post_fix`**
+///
+/// Proves that with the post-fix callback (overflow detection), after **any**
+/// error path in `try_recv_request`, `has_request` is cleared to `false`.
+/// The next callback can store a new request and the service recovers.
+///
+/// Supersedes `no_stuck_service` (Proof 12) which used the pre-fix callback
+/// spec. The pre-fix callback always sets `overflow: false`, so the overflow
+/// path in try_recv_request was never exercised.
+///
+/// This proof uses `service_callback_post_fix` to cover all three paths:
+/// overflow, BufferTooSmall, and success.
+///
+/// Real-time relevance: Liveness recovery — after any transient error
+/// (including overflow from large requests), the service accepts new
+/// requests on the next callback invocation.
+proof fn no_stuck_service_post_fix(
+    req_len: usize,
+    buf_capacity: usize,
+    rx_buf_len: usize,
+)
+    requires
+        buf_capacity > 0,
+    ensures
+        // For ANY request (normal or oversized), after callback + try_recv:
+        ({
+            let buf = service_callback_post_fix(req_len, buf_capacity);
+            let (new_state, got_request, got_overflow, got_size_error) =
+                try_recv_request_full(buf, rx_buf_len);
+            // has_request is ALWAYS cleared (regardless of which path was taken)
+            &&& !new_state.has_request
+            // A subsequent callback can store a new request
+            &&& ({
+                let after_new_req = service_callback_post_fix(42, buf_capacity);
+                // The new callback sets has_request = true (service recovered)
+                after_new_req.has_request
+            })
+        }),
+{
+}
+
+/// **Proof 18: `service_overflow_then_normal`**
+///
+/// Proves the full recovery cycle: an oversized request triggers overflow,
+/// the overflow is consumed by `try_recv_request` (returning an error),
+/// and a subsequent normal-sized request is accepted and delivered
+/// successfully.
+///
+/// Mirrors the subscriber's `no_stuck_subscription` recovery test for
+/// the complete overflow→consume→normal cycle.
+///
+/// Real-time relevance: Proves that a single oversized request does not
+/// permanently degrade the service. Normal operation resumes after the
+/// overflow is consumed.
+proof fn service_overflow_then_normal(
+    big_req_len: usize,
+    buf_capacity: usize,
+    normal_req_len: usize,
+    rx_buf_len: usize,
+)
+    requires
+        big_req_len > buf_capacity,           // first request overflows
+        buf_capacity > 0,
+        normal_req_len <= buf_capacity,       // follow-up fits
+        normal_req_len <= rx_buf_len,         // follow-up fits in rx buffer
+    ensures
+        ({
+            // Step 1: Oversized request triggers overflow
+            let buf_overflow = service_callback_post_fix(big_req_len, buf_capacity);
+            &&& buf_overflow.overflow
+            &&& buf_overflow.has_request
+
+            // Step 2: Consumer reads — gets overflow error
+            &&& ({
+                let (after_overflow, got_request, got_overflow, _got_size_error) =
+                    try_recv_request_full(buf_overflow, rx_buf_len);
+                &&& got_overflow
+                &&& !got_request
+                &&& !after_overflow.has_request
+                &&& !after_overflow.overflow
+
+                // Step 3: Normal request arrives and is stored
+                &&& ({
+                    let buf_normal = service_callback_post_fix(normal_req_len, after_overflow.buf_capacity);
+                    &&& buf_normal.has_request
+                    &&& !buf_normal.overflow
+                    &&& buf_normal.stored_len == normal_req_len
+
+                    // Step 4: Consumer reads — gets the normal request
+                    &&& ({
+                        let (final_state, got_request2, got_overflow2, got_size_error2) =
+                            try_recv_request_full(buf_normal, rx_buf_len);
+                        &&& got_request2
+                        &&& !got_overflow2
+                        &&& !got_size_error2
+                        &&& !final_state.has_request
+                    })
+                })
+            })
+        }),
+{
+}
+
 } // verus!
