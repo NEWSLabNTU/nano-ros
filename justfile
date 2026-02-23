@@ -1347,6 +1347,7 @@ setup:
     echo "       - thumbv7em-none-eabihf  (ARM Cortex-M4F)"
     echo "       - thumbv7m-none-eabi     (ARM Cortex-M3)"
     echo "       - riscv32imc-unknown-none-elf (ESP32-C3 RISC-V)"
+    echo "       - armv7a-nuttx-eabi      (NuttX ARM, Tier 3 via build-std)"
     echo "  5. Install cargo tools + verification toolchains:"
     echo "       - cargo-nextest          (test runner)"
     echo "       - espflash               (ESP32 flash tool)"
@@ -1430,6 +1431,13 @@ setup:
     rustup target add thumbv7m-none-eabi
     rustup target add riscv32imc-unknown-none-elf
     rustup +nightly target add thumbv7m-none-eabi
+    # NuttX: armv7a-nuttx-eabi is Tier 3 — can't install via rustup, uses -Z build-std.
+    # Verify the nightly compiler knows about it (rust-src installed in step 3).
+    if rustc +nightly --print target-list 2>/dev/null | grep -q armv7a-nuttx-eabi; then
+        echo "  armv7a-nuttx-eabi (NuttX Tier 3): supported via nightly + build-std"
+    else
+        echo "  WARNING: armv7a-nuttx-eabi not in nightly target list — NuttX builds may fail"
+    fi
     echo ""
 
     echo "=== [5/7] Installing cargo tools + verification toolchains ==="
