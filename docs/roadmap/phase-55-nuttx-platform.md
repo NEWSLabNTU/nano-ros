@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-nuttx` as a new platform axis value, enabling nros nodes on NuttX via both zenoh-pico and XRCE-DDS backends. Validate on QEMU ARM virt machine (Cortex-A7 + virtio-net) before requiring real hardware.
 
-**Status**: In Progress (55.1–55.10 done)
+**Status**: In Progress (55.1–55.10, 55.12 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -174,10 +174,10 @@ Mutual exclusivity: `posix`, `zephyr`, `bare-metal`, `freertos`, `nuttx` — enf
 
 ## Environment Variables
 
-| Variable | Description | Required |
-|----------|-------------|----------|
-| `NUTTX_DIR` | Path to NuttX OS source (contains `include/`, `arch/`) | Yes |
-| `NUTTX_APPS_DIR` | Path to NuttX apps source (contains `Application.mk`) | Yes |
+| Variable         | Description                                            | Required |
+|------------------|--------------------------------------------------------|----------|
+| `NUTTX_DIR`      | Path to NuttX OS source (contains `include/`, `arch/`) | Yes      |
+| `NUTTX_APPS_DIR` | Path to NuttX apps source (contains `Application.mk`)  | Yes      |
 
 Simpler than FreeRTOS (no separate `FREERTOS_PORT`, `LWIP_DIR`, `FREERTOS_CONFIG_DIR`). NuttX provides all system headers in one place.
 
@@ -194,6 +194,7 @@ Simpler than FreeRTOS (no separate `FREERTOS_PORT`, `LWIP_DIR`, `FREERTOS_CONFIG
 - [x] 55.9 — C zenoh examples (pubsub, service, action)
 - [x] 55.10 — Integration tests + `just test-nuttx` recipe
 - [ ] 55.11 — Documentation
+- [x] 55.12 — E2E network tests (pubsub, service, action over QEMU TAP bridge)
 
 ### 55.1 — Feature flag wiring
 
@@ -449,6 +450,54 @@ just test-nuttx verbose=false  # With live output
 - Update `docs/reference/environment-variables.md` with NuttX build-time variables
 
 **Files**: `CLAUDE.md`, `docs/guides/nuttx-setup.md`, `docs/reference/environment-variables.md`
+
+### 55.12 — E2E network tests (pubsub, service, action)
+
+Replace the placeholder network tests in `nuttx_qemu.rs` with real E2E tests that verify message exchange between NuttX QEMU instances via zenohd + TAP bridge.
+
+**Architecture**: Each NuttX example binary is compiled for `armv7a-nuttx-eabi` and currently links against NuttX's std but does NOT include the NuttX kernel (unlike FreeRTOS where `build.rs` compiles the kernel into the binary). For E2E tests:
+
+1. The NuttX kernel must be built separately via `build-nuttx.sh` → `$NUTTX_DIR/nuttx`
+2. The Rust app binary must be integrated into the NuttX image (as a builtin app or via ROMFS + ELF loading)
+3. The resulting NuttX+app ELF is booted by QEMU
+
+**NuttX QEMU launch** (per instance):
+```bash
+qemu-system-arm -M virt -cpu cortex-a7 -nographic \
+    -kernel <nuttx-image> \
+    -nic tap,ifname=tap-qemu0,script=no,downscript=no
+```
+
+**Test flow** (e.g., pubsub):
+1. Check prerequisites: NuttX kernel built, TAP bridge up, zenohd available
+2. Build example binaries (cached via OnceCell)
+3. Start zenohd on `tcp/0.0.0.0:7447` (bridge IP 192.0.3.1)
+4. Launch listener QEMU on `tap-qemu1` → wait for "Waiting for messages..." marker
+5. Launch talker QEMU on `tap-qemu0` → wait for "Publishing messages..."
+6. Wait for listener to print "Received" (up to 30s for NuttX boot + zenoh connection)
+7. Kill both QEMU instances, verify message count
+
+**QemuProcess extension**: Add `start_nuttx_virt()` method to `qemu.rs` for ARM virt machine with TAP networking. Uses `ManagedProcess` for output pattern matching.
+
+**TAP bridge prerequisite**: Tests check for `tap-qemu0` and `tap-qemu1` interfaces. Skip with helpful message if not found (`sudo ./scripts/qemu/setup-network.sh`).
+
+**IP assignments** (hardcoded in board crate Config):
+- Talker: 192.0.3.10 on `tap-qemu0`
+- Listener: 192.0.3.11 on `tap-qemu1`
+- Server: 192.0.3.12 on `tap-qemu0`
+- Client: 192.0.3.13 on `tap-qemu1`
+
+**Tests** (3 E2E + 1 boot test):
+- `test_nuttx_boot` — verify NuttX kernel boots to NSH prompt
+- `test_nuttx_pubsub_e2e` — talker + listener exchange Int32 messages
+- `test_nuttx_service_e2e` — service server + client complete AddTwoInts calls
+- `test_nuttx_action_e2e` — action server + client complete Fibonacci goal
+
+**Key difference from native tests**: NuttX binaries have hardcoded `tcp/192.0.3.1:7447` locator, so zenohd must use fixed port 7447 (not ephemeral). Tests use `nuttx-qemu` nextest group with `max-threads = 1`.
+
+**Dependency**: Full E2E requires NuttX build integration (board crate `build.rs` that links NuttX kernel into cargo output, or `build-nuttx.sh` extended to embed Rust apps). Until then, tests skip gracefully with `require_nuttx_e2e()`.
+
+**Files**: `packages/testing/nros-tests/tests/nuttx_qemu.rs`, `packages/testing/nros-tests/src/qemu.rs`
 
 ## Future Extensions (Out of Scope)
 

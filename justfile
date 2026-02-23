@@ -3,12 +3,12 @@ CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable
 
 LOG_DIR := "test-logs"
 
-# Default paths for external SDKs (used by setup-* recipes)
-FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "external/freertos-kernel")
-FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
-LWIP_DIR := env("LWIP_DIR", justfile_directory() / "external/lwip")
-FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-mps2-an385-freertos/config")
-NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "external/nuttx")
+# Default paths for external SDKs — exported so all recipes (build + test) see them
+export FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "external/freertos-kernel")
+export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
+export LWIP_DIR := env("LWIP_DIR", justfile_directory() / "external/lwip")
+export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-mps2-an385-freertos/config")
+export NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "external/nuttx")
 
 default:
     @just --list
@@ -95,12 +95,6 @@ test-all verbose="": build-zenohd
     set +e
     failed=0
     just _init-test-logs
-    # Export env vars so NuttX/FreeRTOS integration tests can build examples
-    export NUTTX_DIR="{{NUTTX_DIR}}"
-    export FREERTOS_DIR="{{FREERTOS_DIR}}"
-    export FREERTOS_PORT="{{FREERTOS_PORT}}"
-    export LWIP_DIR="{{LWIP_DIR}}"
-    export FREERTOS_CONFIG_DIR="{{FREERTOS_CONFIG_DIR}}"
     args=(--workspace --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
@@ -517,7 +511,6 @@ test-qemu-esp32 verbose="":
 build-examples-nuttx:
     #!/usr/bin/env bash
     set -e
-    export NUTTX_DIR="{{NUTTX_DIR}}"
     echo "Building NuttX QEMU ARM virt examples..."
     if [ ! -d "$NUTTX_DIR/include" ]; then
         echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just setup-nuttx"
@@ -533,7 +526,6 @@ build-examples-nuttx:
 test-nuttx verbose="":
     #!/usr/bin/env bash
     set -e
-    export NUTTX_DIR="{{NUTTX_DIR}}"
     if [ ! -d "$NUTTX_DIR/include" ]; then
         echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just setup-nuttx"
         exit 1
@@ -548,10 +540,6 @@ test-nuttx verbose="":
 build-examples-freertos:
     #!/usr/bin/env bash
     set -e
-    export FREERTOS_DIR="{{FREERTOS_DIR}}"
-    export FREERTOS_PORT="{{FREERTOS_PORT}}"
-    export LWIP_DIR="{{LWIP_DIR}}"
-    export FREERTOS_CONFIG_DIR="{{FREERTOS_CONFIG_DIR}}"
     echo "Building FreeRTOS QEMU MPS2-AN385 examples..."
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
@@ -571,10 +559,6 @@ build-examples-freertos:
 test-freertos verbose="":
     #!/usr/bin/env bash
     set -e
-    export FREERTOS_DIR="{{FREERTOS_DIR}}"
-    export FREERTOS_PORT="{{FREERTOS_PORT}}"
-    export LWIP_DIR="{{LWIP_DIR}}"
-    export FREERTOS_CONFIG_DIR="{{FREERTOS_CONFIG_DIR}}"
     if [ ! -d "$FREERTOS_DIR/include" ]; then
         echo "ERROR: FreeRTOS not found at $FREERTOS_DIR. Run: just setup-freertos"
         exit 1
@@ -1359,10 +1343,8 @@ setup:
     echo "      libglib2.0-dev, libpixman-1-dev, libgcrypt20-dev, libslirp-dev)"
     echo "  7. Build Micro-XRCE-DDS Agent from source → build/xrce-agent/MicroXRCEAgent"
     echo "     (XRCE-DDS integration tests — requires cmake, g++)"
-    echo ""
-    echo "Optional (run separately):"
-    echo "  just setup-freertos    — Download FreeRTOS kernel + lwIP for platform-freertos dev"
-    echo "  just setup-nuttx       — Download NuttX RTOS + apps for platform-nuttx dev"
+    echo "  8. Download FreeRTOS kernel + lwIP → external/freertos-kernel, external/lwip"
+    echo "  9. Download NuttX RTOS + apps → external/nuttx, external/nuttx-apps"
     echo ""
     read -r -p "Proceed? [Y/n] " answer
     if [[ "$answer" =~ ^[Nn] ]]; then
@@ -1371,7 +1353,7 @@ setup:
     fi
     echo ""
 
-    echo "=== [1/7] System packages (apt) ==="
+    echo "=== [1/9] System packages (apt) ==="
     apt_pkgs=()
     check_apt() {
         if command -v "$2" &>/dev/null; then
@@ -1415,18 +1397,18 @@ setup:
     fi
     echo ""
 
-    echo "=== [2/7] Installing Rust toolchains ==="
+    echo "=== [2/9] Installing Rust toolchains ==="
     rustup toolchain install stable
     rustup toolchain install nightly
     echo ""
 
-    echo "=== [3/7] Adding rustup components ==="
+    echo "=== [3/9] Adding rustup components ==="
     rustup component add rustfmt clippy rust-src
     rustup component add llvm-tools
     rustup component add --toolchain nightly rustfmt miri rust-src llvm-tools
     echo ""
 
-    echo "=== [4/7] Adding cross-compilation targets ==="
+    echo "=== [4/9] Adding cross-compilation targets ==="
     rustup target add thumbv7em-none-eabihf
     rustup target add thumbv7m-none-eabi
     rustup target add riscv32imc-unknown-none-elf
@@ -1440,18 +1422,23 @@ setup:
     fi
     echo ""
 
-    echo "=== [5/7] Installing cargo tools + verification toolchains ==="
+    echo "=== [5/9] Installing cargo tools + verification toolchains ==="
     cargo install cargo-nextest --locked
     cargo install cargo-llvm-cov --locked
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
     cargo install rustfilt --locked || echo "WARNING: rustfilt install failed (non-fatal)"
     cargo install cargo-show-asm --locked || echo "WARNING: cargo-show-asm install failed (non-fatal)"
-    cargo install --locked kani-verifier && cargo kani setup || echo "WARNING: kani install failed (non-fatal)"
+    if command -v cargo-kani &>/dev/null && [ -d "$HOME/.kani" ]; then
+        kani_ver=$(basename "$(ls -d "$HOME"/.kani/kani-* 2>/dev/null | grep -v '\.tar' | head -1)" 2>/dev/null || true)
+        echo "kani-verifier already installed ($kani_ver)"
+    else
+        cargo install --locked kani-verifier && cargo kani setup || echo "WARNING: kani install failed (non-fatal)"
+    fi
     just setup-verus || echo "WARNING: Verus setup failed (non-fatal)"
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
     echo ""
 
-    echo "=== [6/7] Building Espressif QEMU (qemu-system-riscv32) ==="
+    echo "=== [6/9] Building Espressif QEMU (qemu-system-riscv32) ==="
     if command -v qemu-system-riscv32 &>/dev/null; then
         echo "Already installed: $(qemu-system-riscv32 --version | head -1)"
         echo "Skipping build. To reinstall, run: ./scripts/esp32/install-espressif-qemu.sh"
@@ -1460,7 +1447,7 @@ setup:
     fi
     echo ""
 
-    echo "=== [7/7] Building Micro-XRCE-DDS Agent ==="
+    echo "=== [7/9] Building Micro-XRCE-DDS Agent ==="
     if [ -f "build/xrce-agent/MicroXRCEAgent" ]; then
         echo "Already built: build/xrce-agent/MicroXRCEAgent"
         echo "To rebuild, run: just build-xrce-agent"
@@ -1468,6 +1455,15 @@ setup:
         ./scripts/xrce-agent/build.sh || echo "WARNING: XRCE Agent build failed (non-fatal, needed for just test-xrce)"
     fi
     echo ""
+
+    echo "=== [8/9] Downloading FreeRTOS kernel + lwIP ==="
+    just setup-freertos || echo "WARNING: FreeRTOS setup failed (non-fatal, needed for just test-freertos)"
+    echo ""
+
+    echo "=== [9/9] Downloading NuttX RTOS + apps ==="
+    just setup-nuttx || echo "WARNING: NuttX setup failed (non-fatal, needed for just test-nuttx)"
+    echo ""
+
     echo "Setup complete!"
 
 # Setup all network bridges (QEMU + Zephyr, requires sudo)

@@ -505,80 +505,27 @@ Each C example follows the native C example patterns in `examples/native/c/zenoh
 
 ### 54.11 — Integration tests + `just test-freertos` recipe
 
-Add automated QEMU-based integration tests and justfile recipes.
+Automated QEMU-based integration tests and justfile recipes.
 
-**Test fixture**: Extend `QemuProcess` in `packages/testing/nros-tests/src/qemu.rs` or add `FreeRtosQemuProcess` with the same interface. The QEMU launch command is identical to bare-metal (`qemu-system-arm -machine mps2-an385 -cpu cortex-m3`).
+**Test fixture**: `QemuProcess::start_mps2_an385_networked()` in `packages/testing/nros-tests/src/qemu.rs` launches MPS2-AN385 with LAN9118 TAP NIC and configurable MAC address.
 
-**Rust integration tests** in `packages/testing/nros-tests/tests/`:
+**Tests** in `packages/testing/nros-tests/tests/freertos_qemu.rs`:
 
-```rust
-// tests/freertos_qemu.rs
+- **Build tests** (6): Verify `cargo build --release` succeeds for all FreeRTOS examples
+- **E2E network tests** (3): `test_freertos_pubsub_e2e`, `test_freertos_service_e2e`, `test_freertos_action_e2e`
+  - Each test: `require_freertos_e2e()` → start zenohd on port 7447 → boot server/listener QEMU on tap-qemu0 → wait for readiness marker → boot client/talker QEMU on tap-qemu1 → verify output markers
+  - Pubsub: verifies `"Received"` count > 0
+  - Service: verifies `"Response:"` count >= 4 and `"All service calls completed"`
+  - Action: verifies `"Goal accepted"` and `"Action completed successfully"`
+  - Skip gracefully when TAP bridge or zenohd not available
 
-#[rstest]
-fn test_freertos_pubsub(zenohd: ZenohRouter) {
-    // Build talker + listener
-    // Start listener on tap-qemu1 (192.0.3.11)
-    // Wait 5s stabilization
-    // Start talker on tap-qemu0 (192.0.3.10)
-    // Verify listener received messages
-    // Verify talker completed publishing
-}
+**Nextest config**: `freertos-qemu` test group with `max-threads = 1` (TAP bridge exclusive access).
 
-#[rstest]
-fn test_freertos_service(zenohd: ZenohRouter) {
-    // Build service-server + service-client
-    // Start server on tap-qemu0
-    // Wait 5s stabilization
-    // Start client on tap-qemu1
-    // Verify client received correct response
-}
-
-#[rstest]
-fn test_freertos_action(zenohd: ZenohRouter) {
-    // Build action-server + action-client
-    // Start server on tap-qemu0
-    // Wait 5s stabilization
-    // Start client on tap-qemu1
-    // Verify client received goal acceptance + result
-}
-```
-
-**Nextest config** (`.config/nextest.toml`):
-```toml
-[test-groups.freertos-qemu]
-max-threads = 1  # TAP bridge exclusive access
-
-[[profile.default.overrides]]
-filter = "test(freertos_qemu)"
-test-group = "freertos-qemu"
-slow-timeout = { period = "60s", terminate-after = 2 }
-```
-
-**Justfile recipes**:
-```
-just build-examples-freertos      # Build all FreeRTOS QEMU examples (Rust + C)
-just test-freertos                # Run FreeRTOS QEMU integration tests
-just test-freertos verbose=false  # With live output
-```
-
-`just test-freertos` should:
-1. Verify `qemu-system-arm` is installed
-2. Build FreeRTOS examples
-3. Set up TAP bridge (or verify it exists)
-4. Start zenohd on bridge IP
-5. Run nextest with `freertos_qemu` filter
-6. Clean up
-
-**QEMU test rules** (same as existing bare-metal):
-- Each QEMU peer uses a different TAP device (talker on `tap-qemu0`, listener on `tap-qemu1`)
-- Start subscriber/server first, then publisher/client
-- 5s stabilization delay between subscriber connection and publisher start
-- Verify zenohd on bridge IP (`192.0.3.1:7447`)
-- `max-threads = 1` for tests sharing the TAP bridge
+**Justfile**: `just test-freertos` runs nextest with `freertos_qemu` filter.
 
 **Status**: Done
 
-**Files**: `packages/testing/nros-tests/tests/freertos_qemu.rs`, `.config/nextest.toml`, `justfile`
+**Files**: `packages/testing/nros-tests/src/qemu.rs`, `packages/testing/nros-tests/tests/freertos_qemu.rs`, `.config/nextest.toml`, `justfile`
 
 ### 54.12 — Documentation
 

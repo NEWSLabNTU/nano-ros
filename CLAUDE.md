@@ -36,9 +36,9 @@ nano-ros/
 ## Build Commands
 
 ```bash
-just setup              # Install toolchains, cargo tools, check system deps
-just setup-freertos     # Download FreeRTOS kernel + lwIP (optional, for platform-freertos)
-just setup-nuttx        # Download NuttX RTOS + apps (optional, for platform-nuttx)
+just setup              # Install toolchains, cargo tools, download FreeRTOS/NuttX SDKs
+just setup-freertos     # Download FreeRTOS kernel + lwIP (included in just setup)
+just setup-nuttx        # Download NuttX RTOS + apps (included in just setup)
 just build              # Generate bindings + build workspace + examples
 just build-zenohd       # Build zenohd 1.6.2 from submodule
 just check              # Format check + clippy
@@ -64,9 +64,7 @@ just test-nuttx         # NuttX QEMU E2E (needs nightly + qemu-system-arm)
 just test-all           # Everything (includes NuttX + FreeRTOS in one nextest run)
 ```
 
-First-time: `just setup`, then `sudo apt install gcc-arm-none-eabi qemu-system-arm cmake socat` for missing deps.
-For FreeRTOS development: `just setup-freertos` (downloads FreeRTOS kernel + lwIP to `external/`).
-For NuttX development: `just setup-nuttx` (downloads NuttX RTOS + apps to `external/`).
+First-time: `just setup` installs everything (toolchains, cargo tools, system deps, FreeRTOS/NuttX SDKs).
 
 ## Environment Variables
 
@@ -204,7 +202,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 51 | Board crate `run()` API | In Progress |
 | 53 | UDP + TLS transport support | Complete |
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred) |
-| 55 | NuttX platform support | In Progress (55.1–55.10 done) |
+| 55 | NuttX platform support | In Progress (55.1–55.12 done, 55.11 remaining) |
 
 ## Quick Reference
 
