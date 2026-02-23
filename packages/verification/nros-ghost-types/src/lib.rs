@@ -371,6 +371,33 @@ impl StagingBufferGhost {
 }
 
 // ======================================================================
+// Ephemeral Port Counter
+// ======================================================================
+
+/// Start of the IANA ephemeral port range.
+pub const EPHEMERAL_PORT_START: u16 = 49152;
+
+/// Models the ephemeral port increment logic in `SmoltcpBridge` (bridge.rs:269-271, 296-298).
+///
+/// Production code:
+/// ```ignore
+/// NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
+/// if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
+///     NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START;
+/// }
+/// ```
+///
+/// Used by both `register_socket` (TCP) and `register_udp_socket` (UDP).
+pub fn ephemeral_port_next(current: u16) -> u16 {
+    let next = current.wrapping_add(1);
+    if next < EPHEMERAL_PORT_START {
+        EPHEMERAL_PORT_START
+    } else {
+        next
+    }
+}
+
+// ======================================================================
 // Kani Bounded Model Checking
 // ======================================================================
 
@@ -882,6 +909,42 @@ mod verification {
         let copied = buf.send(data_len);
 
         assert_eq!(copied, 0);
+    }
+
+    // ------------------------------------------------------------------
+    // Ephemeral port invariants (Phase 56.4)
+    // ------------------------------------------------------------------
+
+    /// For any input, the result is in [49152, 65535].
+    #[kani::proof]
+    fn ephemeral_port_stays_in_range() {
+        let current: u16 = kani::any();
+        let next = ephemeral_port_next(current);
+        assert!(next >= EPHEMERAL_PORT_START);
+        // u16::MAX == 65535, so next <= 65535 is guaranteed by the type
+    }
+
+    /// When current == 65535 (u16::MAX), wrapping_add(1) overflows to 0,
+    /// which is < EPHEMERAL_PORT_START, so result is EPHEMERAL_PORT_START.
+    #[kani::proof]
+    fn ephemeral_port_wraps_correctly() {
+        let next = ephemeral_port_next(65535);
+        assert_eq!(next, EPHEMERAL_PORT_START);
+    }
+
+    /// When current < 65535 and current >= EPHEMERAL_PORT_START - 1,
+    /// the result is current + 1 (no wrap needed).
+    #[kani::proof]
+    fn ephemeral_port_increments() {
+        let current: u16 = kani::any();
+        kani::assume(current < 65535);
+        let next = ephemeral_port_next(current);
+        if current >= EPHEMERAL_PORT_START - 1 {
+            assert_eq!(next, current + 1);
+        } else {
+            // Below range: floor kicks in
+            assert_eq!(next, EPHEMERAL_PORT_START);
+        }
     }
 }
 

@@ -30,7 +30,7 @@ subscriber/service layer outward toward the network.**
 | 56.1 — Fix Verus trigger specs              | **Done** (99 proofs) |
 | 56.2 — Service buffer post-fix Verus proofs | **Done** (102 proofs) |
 | 56.3 — Staging buffer ghost model + Kani    | **Done** (25 Kani)   |
-| 56.4 — Ephemeral port Kani harness          | Not Started          |
+| 56.4 — Ephemeral port Kani harness          | **Done** (28 Kani)   |
 
 ## Deliverables
 
@@ -200,18 +200,16 @@ This is used by both `register_socket` (TCP) and `register_udp_socket` (UDP).
 
 **`nros-ghost-types/src/lib.rs`:**
 
-- [ ] Add `ephemeral_port_next(current: u16) -> u16` function modeling the
-      production wrapping logic
-- [ ] Add Kani harness: `ephemeral_port_stays_in_range` — for any `current: u16`,
-      the result is in `[49152, 65535]`
-- [ ] Add Kani harness: `ephemeral_port_wraps_correctly` — when
-      `current == 65535`, result is `49152`
-- [ ] Add Kani harness: `ephemeral_port_increments` — when
-      `current < 65535`, result is `current + 1`
+- [x] Add `ephemeral_port_next(current: u16) -> u16` function + `EPHEMERAL_PORT_START` const
+- [x] Add Kani harness: `ephemeral_port_stays_in_range` — for any `current: u16`,
+      result is in `[49152, 65535]`
+- [x] Add Kani harness: `ephemeral_port_wraps_correctly` — `65535` → `49152`
+- [x] Add Kani harness: `ephemeral_port_increments` — in-range inputs increment
+      by 1, below-range inputs floor to `49152`
 
 #### Verification
 
-- [ ] `cargo kani -p nros-ghost-types` passes (25 + 3 = 28)
+- [x] `cargo kani -p nros-ghost-types` passes (25 + 3 = 28)
 
 ## Implementation Order
 
@@ -237,5 +235,5 @@ This is used by both `register_socket` (TCP) and `register_udp_socket` (UDP).
 ## Verification
 
 1. `just verify-verus` — all proofs pass (102 after 56.2)
-2. `cargo kani -p nros-ghost-types` — all harnesses pass (target: 28 from 16 baseline)
+2. `cargo kani -p nros-ghost-types` — all harnesses pass (28 from 16 baseline)
 3. `just quality` — no regressions
