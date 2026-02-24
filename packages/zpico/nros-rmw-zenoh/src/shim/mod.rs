@@ -921,8 +921,8 @@ mod tests {
 mod ghost_checks {
     use super::*;
     use nros_ghost_types::{ServiceBufferGhost, SubscriberBufferGhost};
-    use service::{SERVICE_BUFFERS, ServiceBuffer};
-    use subscriber::{SUBSCRIBER_BUFFERS, SubscriberBuffer};
+    use service::ServiceBuffer;
+    use subscriber::SubscriberBuffer;
 
     /// Structural check: construct SubscriberBufferGhost from SubscriberBuffer private fields.
     /// If a field is renamed or retyped, this fails to compile.

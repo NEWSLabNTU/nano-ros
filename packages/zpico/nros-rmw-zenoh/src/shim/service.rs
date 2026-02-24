@@ -58,11 +58,67 @@ impl ServiceBuffer {
 /// Static buffers for service servers.
 ///
 /// Count matches `ZPICO_MAX_QUERYABLES` from zpico-sys.
-pub(super) static mut SERVICE_BUFFERS: [ServiceBuffer; ZPICO_MAX_QUERYABLES] =
+static mut SERVICE_BUFFERS: [ServiceBuffer; ZPICO_MAX_QUERYABLES] =
     [const { ServiceBuffer::new() }; ZPICO_MAX_QUERYABLES];
 
 /// Next available service buffer index
 static NEXT_SERVICE_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
+
+// ============================================================================
+// ServiceBufferRef — safe accessor wrapper
+// ============================================================================
+
+/// Safe accessor for a statically-allocated service buffer.
+///
+/// Encapsulates the `unsafe` access to `SERVICE_BUFFERS` by validating
+/// the index once at construction time. Subsequent accesses via [`get()`]
+/// are safe because the index is guaranteed in-bounds.
+///
+/// # Safety invariant
+///
+/// `SERVICE_BUFFERS` is a module-level `static mut` with a fixed address
+/// and element count equal to `ZPICO_MAX_QUERYABLES`. The index is validated
+/// at construction and never changes, so every `get()` / `get_mut()` call
+/// dereferences a valid, in-bounds element.
+pub(super) struct ServiceBufferRef {
+    index: usize,
+}
+
+impl ServiceBufferRef {
+    /// Create a new buffer reference with bounds validation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= ZPICO_MAX_QUERYABLES`.
+    pub(super) fn new(index: usize) -> Self {
+        assert!(
+            index < ZPICO_MAX_QUERYABLES,
+            "service buffer index out of bounds: {index} >= {ZPICO_MAX_QUERYABLES}"
+        );
+        Self { index }
+    }
+
+    /// Get an immutable reference to the service buffer.
+    ///
+    /// Safety is guaranteed by the bounds check at construction time.
+    /// All shared fields use atomic types, preventing data races.
+    pub(super) fn get(&self) -> &ServiceBuffer {
+        // Safety: index was validated at construction time.
+        // SERVICE_BUFFERS is a module-level static with fixed address.
+        unsafe { &SERVICE_BUFFERS[self.index] }
+    }
+
+    /// Get a mutable reference to the service buffer.
+    ///
+    /// Only called from callbacks, which are invoked synchronously
+    /// (single-threaded) by zenoh-pico — no concurrent mutable access.
+    pub(super) fn get_mut(&mut self) -> &mut ServiceBuffer {
+        // Safety: index was validated at construction time.
+        // Mutable access is only used by callbacks invoked synchronously
+        // by zenoh-pico, so there are no concurrent mutable accesses.
+        unsafe { &mut SERVICE_BUFFERS[self.index] }
+    }
+}
 
 /// Sequence counter for service requests
 pub(super) static SERVICE_SEQ_COUNTER: AtomicSeqCounter = AtomicSeqCounter::new(0);
@@ -80,48 +136,54 @@ extern "C" fn queryable_callback(
         return;
     }
 
-    // Safety: We control access to SERVICE_BUFFERS and the callback is single-threaded
-    unsafe {
-        let buffer = &mut SERVICE_BUFFERS[buffer_index];
+    let mut buf_ref = ServiceBufferRef {
+        index: buffer_index,
+    };
+    let buffer = buf_ref.get_mut();
 
-        // Copy keyexpr
-        let keyexpr_copy_len = keyexpr_len.min(buffer.keyexpr.len() - 1);
+    // Copy keyexpr
+    let keyexpr_copy_len = keyexpr_len.min(buffer.keyexpr.len() - 1);
+    // Safety: keyexpr pointer is valid for keyexpr_copy_len bytes (from C shim)
+    unsafe {
         core::ptr::copy_nonoverlapping(
             keyexpr as *const u8,
             buffer.keyexpr.as_mut_ptr(),
             keyexpr_copy_len,
         );
-        buffer.keyexpr[keyexpr_copy_len] = 0; // Null terminate
-        buffer
-            .keyexpr_len
-            .store(keyexpr_copy_len, Ordering::Release);
+    }
+    buffer.keyexpr[keyexpr_copy_len] = 0; // Null terminate
+    buffer
+        .keyexpr_len
+        .store(keyexpr_copy_len, Ordering::Release);
 
-        if payload_len > buffer.data.len() {
-            // Request exceeds static buffer capacity — flag as overflow.
-            // Store keyexpr + sequence_number for diagnostics, but skip payload.
-            buffer.overflow.store(true, Ordering::Release);
-            let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
-            buffer.sequence_number.store(seq, Ordering::Release);
-            buffer.has_request.store(true, Ordering::Release);
-        } else {
-            // Normal case: copy payload
-            buffer.overflow.store(false, Ordering::Release);
-            if !payload.is_null() && payload_len > 0 {
+    if payload_len > buffer.data.len() {
+        // Request exceeds static buffer capacity — flag as overflow.
+        // Store keyexpr + sequence_number for diagnostics, but skip payload.
+        buffer.overflow.store(true, Ordering::Release);
+        let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+        buffer.sequence_number.store(seq, Ordering::Release);
+        buffer.has_request.store(true, Ordering::Release);
+    } else {
+        // Normal case: copy payload
+        buffer.overflow.store(false, Ordering::Release);
+        if !payload.is_null() && payload_len > 0 {
+            // Safety: payload pointer is valid for payload_len bytes (from C shim)
+            unsafe {
                 core::ptr::copy_nonoverlapping(payload, buffer.data.as_mut_ptr(), payload_len);
             }
-            buffer.len.store(payload_len, Ordering::Release);
-
-            // Set sequence number
-            let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
-            buffer.sequence_number.store(seq, Ordering::Release);
-
-            buffer.has_request.store(true, Ordering::Release);
         }
+        buffer.len.store(payload_len, Ordering::Release);
 
-        // Wake the executor spin loop (if waiting)
-        #[cfg(feature = "std")]
-        signal_executor_wake();
+        // Set sequence number
+        let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+        buffer.sequence_number.store(seq, Ordering::Release);
+
+        buffer.has_request.store(true, Ordering::Release);
     }
+
+    // Wake the executor spin loop (if waiting)
+    #[cfg(feature = "std")]
+    signal_executor_wake();
 }
 
 // ============================================================================
@@ -135,8 +197,8 @@ extern "C" fn queryable_callback(
 pub struct ZenohServiceServer {
     /// The queryable handle (kept alive to maintain registration)
     _queryable: Queryable,
-    /// Index into the static buffer array
-    buffer_index: usize,
+    /// Safe accessor for the static service buffer
+    buf: ServiceBufferRef,
     /// Keyexpr buffer for replying (copied from last request)
     reply_keyexpr: [u8; 256],
     /// Keyexpr length
@@ -181,7 +243,7 @@ impl ZenohServiceServer {
 
         Ok(Self {
             _queryable: queryable,
-            buffer_index,
+            buf: ServiceBufferRef::new(buffer_index),
             reply_keyexpr: [0u8; 256],
             reply_keyexpr_len: 0,
             context: context as *const Context,
@@ -194,17 +256,14 @@ impl ServiceServerTrait for ZenohServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
-        // Safety: We own this buffer index and access is atomic
-        let buffer = unsafe { &SERVICE_BUFFERS[self.buffer_index] };
-        buffer.has_request.load(Ordering::Acquire)
+        self.buf.get().has_request.load(Ordering::Acquire)
     }
 
     fn try_recv_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, Self::Error> {
-        // Safety: We own this buffer index and access is atomic
-        let buffer = unsafe { &SERVICE_BUFFERS[self.buffer_index] };
+        let buffer = self.buf.get();
 
         if !buffer.has_request.load(Ordering::Acquire) {
             return Ok(None);
@@ -226,17 +285,14 @@ impl ServiceServerTrait for ZenohServiceServer {
         }
 
         // Copy data and keyexpr
+        // Safety: buffer data and keyexpr are valid up to their respective lengths
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                SERVICE_BUFFERS[self.buffer_index].data.as_ptr(),
-                buf.as_mut_ptr(),
-                len,
-            );
+            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
 
             // Save keyexpr for potential reply
             let keyexpr_len = buffer.keyexpr_len.load(Ordering::Acquire);
             core::ptr::copy_nonoverlapping(
-                SERVICE_BUFFERS[self.buffer_index].keyexpr.as_ptr(),
+                buffer.keyexpr.as_ptr(),
                 self.reply_keyexpr.as_mut_ptr(),
                 keyexpr_len,
             );
@@ -402,34 +458,32 @@ mod tests {
 
     // --- Service buffer helpers ---
 
-    /// Simulate a service request callback by writing directly to SERVICE_BUFFERS[slot].
+    /// Simulate a service request callback by writing directly to the service buffer.
     pub(in crate::shim) fn simulate_service_request(slot: usize, payload: &[u8], keyexpr: &[u8]) {
-        unsafe {
-            let buffer = &mut SERVICE_BUFFERS[slot];
-            let copy_len = payload.len().min(buffer.data.len());
-            buffer.data[..copy_len].copy_from_slice(&payload[..copy_len]);
-            buffer.len.store(copy_len, Ordering::Release);
+        let mut buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get_mut();
+        let copy_len = payload.len().min(buffer.data.len());
+        buffer.data[..copy_len].copy_from_slice(&payload[..copy_len]);
+        buffer.len.store(copy_len, Ordering::Release);
 
-            let klen = keyexpr.len().min(buffer.keyexpr.len() - 1);
-            buffer.keyexpr[..klen].copy_from_slice(&keyexpr[..klen]);
-            buffer.keyexpr[klen] = 0;
-            buffer.keyexpr_len.store(klen, Ordering::Release);
+        let klen = keyexpr.len().min(buffer.keyexpr.len() - 1);
+        buffer.keyexpr[..klen].copy_from_slice(&keyexpr[..klen]);
+        buffer.keyexpr[klen] = 0;
+        buffer.keyexpr_len.store(klen, Ordering::Release);
 
-            let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
-            buffer.sequence_number.store(seq, Ordering::Release);
+        let seq = SERVICE_SEQ_COUNTER.fetch_add(1, Ordering::Relaxed);
+        buffer.sequence_number.store(seq, Ordering::Release);
 
-            buffer.has_request.store(true, Ordering::Release);
-        }
+        buffer.has_request.store(true, Ordering::Release);
     }
 
     /// Reset a service buffer to idle state.
     pub(in crate::shim) fn reset_service_buffer(slot: usize) {
-        unsafe {
-            let buffer = &mut SERVICE_BUFFERS[slot];
-            buffer.has_request.store(false, Ordering::Release);
-            buffer.len.store(0, Ordering::Release);
-            buffer.keyexpr_len.store(0, Ordering::Release);
-        }
+        let mut buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get_mut();
+        buffer.has_request.store(false, Ordering::Release);
+        buffer.len.store(0, Ordering::Release);
+        buffer.keyexpr_len.store(0, Ordering::Release);
     }
 
     /// Try to receive a service request from a buffer slot.
@@ -438,7 +492,8 @@ mod tests {
         slot: usize,
         recv_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
-        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        let buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get();
 
         if !buffer.has_request.load(Ordering::Acquire) {
             return Ok(None);
@@ -450,12 +505,9 @@ mod tests {
             return Err(TransportError::BufferTooSmall);
         }
 
+        // Safety: Data is valid up to len bytes
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                SERVICE_BUFFERS[slot].data.as_ptr(),
-                recv_buf.as_mut_ptr(),
-                len,
-            );
+            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), recv_buf.as_mut_ptr(), len);
         }
 
         buffer.has_request.store(false, Ordering::Release);
@@ -464,21 +516,20 @@ mod tests {
 
     /// Read the keyexpr from a service buffer slot (for keyexpr preservation tests).
     fn read_service_keyexpr(slot: usize) -> heapless::Vec<u8, 256> {
-        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        let buf_ref = ServiceBufferRef::new(slot);
+        let buffer = buf_ref.get();
         let klen = buffer.keyexpr_len.load(Ordering::Acquire);
         let mut v = heapless::Vec::new();
-        unsafe {
-            for i in 0..klen {
-                let _ = v.push(SERVICE_BUFFERS[slot].keyexpr[i]);
-            }
+        for i in 0..klen {
+            let _ = v.push(buffer.keyexpr[i]);
         }
         v
     }
 
     /// Read the sequence number from a service buffer slot.
     fn read_service_seq(slot: usize) -> i64 {
-        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
-        buffer.sequence_number.load(Ordering::Acquire).into()
+        let buf_ref = ServiceBufferRef::new(slot);
+        buf_ref.get().sequence_number.load(Ordering::Acquire).into()
     }
 
     // ========================================================================
@@ -497,7 +548,7 @@ mod tests {
         let result = try_recv_service(slot, &mut small_buf);
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
-        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        let buffer = ServiceBufferRef::new(slot).get();
         assert!(
             !buffer.has_request.load(Ordering::Acquire),
             "has_request must be cleared after BufferTooSmall to avoid stuck state"
@@ -547,7 +598,7 @@ mod tests {
         let result = try_recv_service(slot, &mut buf);
         assert!(matches!(result, Ok(None)));
 
-        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        let buffer = ServiceBufferRef::new(slot).get();
         assert!(!buffer.has_request.load(Ordering::Acquire));
     }
 
@@ -558,7 +609,7 @@ mod tests {
 
         simulate_service_request(slot, b"request_data", b"svc/test");
 
-        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        let buffer = ServiceBufferRef::new(slot).get();
         assert!(buffer.has_request.load(Ordering::Acquire));
 
         let mut recv_buf = [0u8; 1024];
@@ -598,7 +649,7 @@ mod tests {
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
         // has_request cleared (post-fix behavior)
-        let buffer = unsafe { &SERVICE_BUFFERS[slot] };
+        let buffer = ServiceBufferRef::new(slot).get();
         assert!(!buffer.has_request.load(Ordering::Acquire));
 
         // Next request accepted
@@ -698,7 +749,7 @@ mod tests {
         assert_eq!(&recv_buf[..9], b"req_seven");
 
         // slot_a still has request
-        let buffer_a = unsafe { &SERVICE_BUFFERS[slot_a] };
+        let buffer_a = ServiceBufferRef::new(slot_a).get();
         assert!(buffer_a.has_request.load(Ordering::Acquire));
 
         let result = try_recv_service(slot_a, &mut recv_buf);

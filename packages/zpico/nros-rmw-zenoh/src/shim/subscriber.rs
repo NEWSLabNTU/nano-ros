@@ -69,11 +69,67 @@ impl SubscriberBuffer {
 /// Count matches `ZPICO_MAX_SUBSCRIBERS` from zpico-sys (the C shim
 /// allocates the same number of subscriber entries). We use static buffers
 /// because the shim callback mechanism requires a static context pointer.
-pub(super) static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZPICO_MAX_SUBSCRIBERS] =
+static mut SUBSCRIBER_BUFFERS: [SubscriberBuffer; ZPICO_MAX_SUBSCRIBERS] =
     [const { SubscriberBuffer::new() }; ZPICO_MAX_SUBSCRIBERS];
 
 /// Next available buffer index
 pub(super) static NEXT_BUFFER_INDEX: AtomicUsize = AtomicUsize::new(0);
+
+// ============================================================================
+// SubscriberBufferRef — safe accessor wrapper
+// ============================================================================
+
+/// Safe accessor for a statically-allocated subscriber buffer.
+///
+/// Encapsulates the `unsafe` access to `SUBSCRIBER_BUFFERS` by validating
+/// the index once at construction time. Subsequent accesses via [`get()`]
+/// are safe because the index is guaranteed in-bounds.
+///
+/// # Safety invariant
+///
+/// `SUBSCRIBER_BUFFERS` is a module-level `static mut` with a fixed address
+/// and element count equal to `ZPICO_MAX_SUBSCRIBERS`. The index is validated
+/// at construction and never changes, so every `get()` / `get_mut()` call
+/// dereferences a valid, in-bounds element.
+pub(super) struct SubscriberBufferRef {
+    index: usize,
+}
+
+impl SubscriberBufferRef {
+    /// Create a new buffer reference with bounds validation.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `index >= ZPICO_MAX_SUBSCRIBERS`.
+    pub(super) fn new(index: usize) -> Self {
+        assert!(
+            index < ZPICO_MAX_SUBSCRIBERS,
+            "subscriber buffer index out of bounds: {index} >= {ZPICO_MAX_SUBSCRIBERS}"
+        );
+        Self { index }
+    }
+
+    /// Get an immutable reference to the subscriber buffer.
+    ///
+    /// Safety is guaranteed by the bounds check at construction time.
+    /// All shared fields use atomic types, preventing data races.
+    pub(super) fn get(&self) -> &SubscriberBuffer {
+        // Safety: index was validated at construction time.
+        // SUBSCRIBER_BUFFERS is a module-level static with fixed address.
+        unsafe { &SUBSCRIBER_BUFFERS[self.index] }
+    }
+
+    /// Get a mutable reference to the subscriber buffer.
+    ///
+    /// Only called from callbacks, which are invoked synchronously
+    /// (single-threaded) by zenoh-pico — no concurrent mutable access.
+    pub(super) fn get_mut(&mut self) -> &mut SubscriberBuffer {
+        // Safety: index was validated at construction time.
+        // Mutable access is only used by callbacks invoked synchronously
+        // by zenoh-pico, so there are no concurrent mutable accesses.
+        unsafe { &mut SUBSCRIBER_BUFFERS[self.index] }
+    }
+}
 
 /// Notify callback invoked by the C shim after direct-write to the static buffer.
 ///
@@ -90,39 +146,42 @@ extern "C" fn subscriber_notify_callback(
         return;
     }
 
-    // Safety: We control access to SUBSCRIBER_BUFFERS and the callback is single-threaded
-    unsafe {
-        let buffer = &mut SUBSCRIBER_BUFFERS[buffer_index];
+    let mut buf_ref = SubscriberBufferRef {
+        index: buffer_index,
+    };
+    let buffer = buf_ref.get_mut();
 
-        if len > buffer.data.len() {
-            // Overflow: the C shim called us with the oversized length so we can flag it.
-            buffer.overflow.store(true, Ordering::Release);
-            buffer.has_data.store(true, Ordering::Release);
-        } else {
-            // Payload already written by C shim — just store metadata
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.len.store(len, Ordering::Release);
+    if len > buffer.data.len() {
+        // Overflow: the C shim called us with the oversized length so we can flag it.
+        buffer.overflow.store(true, Ordering::Release);
+        buffer.has_data.store(true, Ordering::Release);
+    } else {
+        // Payload already written by C shim — just store metadata
+        buffer.overflow.store(false, Ordering::Release);
+        buffer.len.store(len, Ordering::Release);
 
-            // Copy attachment data if present
-            if !attachment.is_null() && attachment_len > 0 {
-                let att_copy_len = attachment_len.min(buffer.attachment.len());
+        // Copy attachment data if present
+        if !attachment.is_null() && attachment_len > 0 {
+            let att_copy_len = attachment_len.min(buffer.attachment.len());
+            // Safety: attachment pointer is valid for att_copy_len bytes (from C shim)
+            unsafe {
                 core::ptr::copy_nonoverlapping(
                     attachment,
                     buffer.attachment.as_mut_ptr(),
                     att_copy_len,
                 );
-                buffer.attachment_len.store(att_copy_len, Ordering::Release);
-            } else {
-                buffer.attachment_len.store(0, Ordering::Release);
             }
-
-            buffer.has_data.store(true, Ordering::Release);
+            buffer.attachment_len.store(att_copy_len, Ordering::Release);
+        } else {
+            buffer.attachment_len.store(0, Ordering::Release);
         }
 
-        // Wake the executor spin loop (if waiting)
-        #[cfg(feature = "std")]
-        signal_executor_wake();
+        buffer.has_data.store(true, Ordering::Release);
     }
+
+    // Wake the executor spin loop (if waiting)
+    #[cfg(feature = "std")]
+    signal_executor_wake();
 }
 
 // ============================================================================
@@ -133,8 +192,8 @@ extern "C" fn subscriber_notify_callback(
 pub struct ZenohSubscriber {
     /// The subscriber handle (kept alive to maintain subscription)
     _subscriber: crate::zpico::Subscriber<'static>,
-    /// Index into the static buffer array
-    buffer_index: usize,
+    /// Safe accessor for the static subscriber buffer
+    buf: SubscriberBufferRef,
     /// E2E safety validator (tracks sequence numbers, validates CRC)
     #[cfg(feature = "safety-e2e")]
     safety_validator: nros_rmw::SafetyValidator,
@@ -152,6 +211,8 @@ impl ZenohSubscriber {
             NEXT_BUFFER_INDEX.fetch_sub(1, Ordering::SeqCst);
             return Err(TransportError::SubscriberCreationFailed);
         }
+
+        let mut buf = SubscriberBufferRef::new(buffer_index);
 
         // Generate the topic key with wildcard for type hash
         let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key_wildcard();
@@ -171,12 +232,12 @@ impl ZenohSubscriber {
         // Create subscriber with direct-write: the C shim reads payload directly
         // into SUBSCRIBER_BUFFERS[buffer_index].data via z_bytes_reader_read(),
         // avoiding the z_bytes_to_slice() malloc.
-        // Safety: SUBSCRIBER_BUFFERS is module-level static — fixed address.
         let subscriber = unsafe {
-            let buf_ptr = SUBSCRIBER_BUFFERS[buffer_index].data.as_mut_ptr();
-            let buf_capacity = SUBSCRIBER_BUFFERS[buffer_index].data.len();
+            let buffer = buf.get_mut();
+            let buf_ptr = buffer.data.as_mut_ptr();
+            let buf_capacity = buffer.data.len();
             // AtomicBool has the same layout as bool — cast is safe for __atomic_load_n
-            let locked_ptr = SUBSCRIBER_BUFFERS[buffer_index].locked.as_ptr() as *const bool;
+            let locked_ptr = buffer.locked.as_ptr() as *const bool;
             let sub_result = context.declare_subscriber_direct_write_raw(
                 &keyexpr_buf,
                 buf_ptr,
@@ -196,7 +257,7 @@ impl ZenohSubscriber {
 
         Ok(Self {
             _subscriber: subscriber,
-            buffer_index,
+            buf,
             #[cfg(feature = "safety-e2e")]
             safety_validator: nros_rmw::SafetyValidator::new(),
             _phantom: PhantomData,
@@ -217,8 +278,7 @@ impl ZenohSubscriber {
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, TransportError> {
-        // Safety: We own this buffer index and access is atomic
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+        let buffer = self.buf.get();
 
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(None);
@@ -241,19 +301,16 @@ impl ZenohSubscriber {
         buffer.locked.store(true, Ordering::Release);
 
         // Copy payload data
+        // Safety: data is valid up to len bytes, buffer is locked
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                SUBSCRIBER_BUFFERS[self.buffer_index].data.as_ptr(),
-                buf.as_mut_ptr(),
-                len,
-            );
+            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
         }
 
         // Parse attachment for sequence number and CRC
         let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
         let (message_seq, crc_valid) = if attachment_len >= RMW_ATTACHMENT_SIZE {
             // Extract sequence number (bytes 0..8, LE)
-            let att = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].attachment };
+            let att = &buffer.attachment;
             let seq = i64::from_le_bytes([
                 att[0], att[1], att[2], att[3], att[4], att[5], att[6], att[7],
             ]);
@@ -297,8 +354,7 @@ impl ZenohSubscriber {
         &mut self,
         buf: &mut [u8],
     ) -> Result<Option<(usize, Option<MessageInfo>)>, TransportError> {
-        // Safety: We own this buffer index and access is atomic
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+        let buffer = self.buf.get();
 
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(None);
@@ -325,19 +381,13 @@ impl ZenohSubscriber {
         // Copy payload data
         // Safety: Data is valid up to len bytes, buffer is locked
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                SUBSCRIBER_BUFFERS[self.buffer_index].data.as_ptr(),
-                buf.as_mut_ptr(),
-                len,
-            );
+            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
         }
 
         // Parse attachment if present
         let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
         let message_info = if attachment_len > 0 {
-            // Safety: attachment is valid up to attachment_len bytes
-            let attachment_slice =
-                unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].attachment[..attachment_len] };
+            let attachment_slice = &buffer.attachment[..attachment_len];
             MessageInfo::from_attachment(attachment_slice)
         } else {
             None
@@ -359,7 +409,7 @@ impl ZenohSubscriber {
         &mut self,
         f: impl FnOnce(&[u8], Option<MessageInfo>),
     ) -> Result<bool, TransportError> {
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+        let buffer = self.buf.get();
 
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(false);
@@ -378,17 +428,13 @@ impl ZenohSubscriber {
         // Parse attachment while locked (attachment is small: 33-37 bytes)
         let attachment_len = buffer.attachment_len.load(Ordering::Acquire);
         let message_info = if attachment_len > 0 {
-            let attachment_slice =
-                unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].attachment[..attachment_len] };
+            let attachment_slice = &buffer.attachment[..attachment_len];
             MessageInfo::from_attachment(attachment_slice)
         } else {
             None
         };
 
-        f(
-            unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].data[..len] },
-            message_info,
-        );
+        f(&buffer.data[..len], message_info);
 
         buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
@@ -401,14 +447,11 @@ impl Subscriber for ZenohSubscriber {
     type Error = TransportError;
 
     fn has_data(&self) -> bool {
-        // Safety: We own this buffer index and access is atomic
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
-        buffer.has_data.load(Ordering::Acquire)
+        self.buf.get().has_data.load(Ordering::Acquire)
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {
-        // Safety: We own this buffer index and access is atomic
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+        let buffer = self.buf.get();
 
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(None);
@@ -435,11 +478,7 @@ impl Subscriber for ZenohSubscriber {
         // Copy data
         // Safety: Data is valid up to len bytes, buffer is locked
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                SUBSCRIBER_BUFFERS[self.buffer_index].data.as_ptr(),
-                buf.as_mut_ptr(),
-                len,
-            );
+            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
         }
 
         buffer.locked.store(false, Ordering::Release);
@@ -449,7 +488,7 @@ impl Subscriber for ZenohSubscriber {
     }
 
     fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, Self::Error> {
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index] };
+        let buffer = self.buf.get();
 
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(false);
@@ -465,7 +504,7 @@ impl Subscriber for ZenohSubscriber {
 
         // Lock buffer, process in-place, then unlock
         buffer.locked.store(true, Ordering::Release);
-        f(unsafe { &SUBSCRIBER_BUFFERS[self.buffer_index].data[..len] });
+        f(&buffer.data[..len]);
         buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
 
@@ -622,40 +661,38 @@ mod tests {
 
     // --- Subscription buffer helpers ---
 
-    /// Simulate a subscription callback by writing directly to SUBSCRIBER_BUFFERS[slot].
+    /// Simulate a subscription callback by writing directly to the subscriber buffer.
     /// Mirrors the logic in `subscriber_callback_with_attachment` (post-40.4: checks locked).
     pub(in crate::shim) fn simulate_subscription_callback(slot: usize, payload: &[u8]) {
-        unsafe {
-            let buffer = &mut SUBSCRIBER_BUFFERS[slot];
+        let mut buf_ref = SubscriberBufferRef::new(slot);
+        let buffer = buf_ref.get_mut();
 
-            // Post-40.4: check locked flag — drop message if reader is processing
-            if buffer.locked.load(Ordering::Acquire) {
-                return;
-            }
+        // Post-40.4: check locked flag — drop message if reader is processing
+        if buffer.locked.load(Ordering::Acquire) {
+            return;
+        }
 
-            if payload.len() > buffer.data.len() {
-                buffer.overflow.store(true, Ordering::Release);
-                buffer.has_data.store(true, Ordering::Release);
-            } else {
-                buffer.overflow.store(false, Ordering::Release);
-                buffer.data[..payload.len()].copy_from_slice(payload);
-                buffer.len.store(payload.len(), Ordering::Release);
-                buffer.attachment_len.store(0, Ordering::Release);
-                buffer.has_data.store(true, Ordering::Release);
-            }
+        if payload.len() > buffer.data.len() {
+            buffer.overflow.store(true, Ordering::Release);
+            buffer.has_data.store(true, Ordering::Release);
+        } else {
+            buffer.overflow.store(false, Ordering::Release);
+            buffer.data[..payload.len()].copy_from_slice(payload);
+            buffer.len.store(payload.len(), Ordering::Release);
+            buffer.attachment_len.store(0, Ordering::Release);
+            buffer.has_data.store(true, Ordering::Release);
         }
     }
 
     /// Reset a subscriber buffer to idle state.
     pub(in crate::shim) fn reset_subscriber_buffer(slot: usize) {
-        unsafe {
-            let buffer = &mut SUBSCRIBER_BUFFERS[slot];
-            buffer.has_data.store(false, Ordering::Release);
-            buffer.overflow.store(false, Ordering::Release);
-            buffer.locked.store(false, Ordering::Release);
-            buffer.len.store(0, Ordering::Release);
-            buffer.attachment_len.store(0, Ordering::Release);
-        }
+        let mut buf_ref = SubscriberBufferRef::new(slot);
+        let buffer = buf_ref.get_mut();
+        buffer.has_data.store(false, Ordering::Release);
+        buffer.overflow.store(false, Ordering::Release);
+        buffer.locked.store(false, Ordering::Release);
+        buffer.len.store(0, Ordering::Release);
+        buffer.attachment_len.store(0, Ordering::Release);
     }
 
     /// Try to receive from a subscriber buffer slot.
@@ -664,7 +701,8 @@ mod tests {
         slot: usize,
         recv_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buf_ref = SubscriberBufferRef::new(slot);
+        let buffer = buf_ref.get();
 
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(None);
@@ -682,12 +720,9 @@ mod tests {
             return Err(TransportError::BufferTooSmall);
         }
 
+        // Safety: Data is valid up to len bytes
         unsafe {
-            core::ptr::copy_nonoverlapping(
-                SUBSCRIBER_BUFFERS[slot].data.as_ptr(),
-                recv_buf.as_mut_ptr(),
-                len,
-            );
+            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), recv_buf.as_mut_ptr(), len);
         }
         buffer.has_data.store(false, Ordering::Release);
 
@@ -698,7 +733,8 @@ mod tests {
     fn process_in_place_subscription(
         slot: usize,
     ) -> Result<Option<alloc::vec::Vec<u8>>, TransportError> {
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buf_ref = SubscriberBufferRef::new(slot);
+        let buffer = buf_ref.get();
 
         if !buffer.has_data.load(Ordering::Acquire) {
             return Ok(None);
@@ -714,7 +750,7 @@ mod tests {
         buffer.locked.store(true, Ordering::Release);
 
         // Read data in-place (equivalent to closure in process_raw_in_place)
-        let data = unsafe { SUBSCRIBER_BUFFERS[slot].data[..len].to_vec() };
+        let data = buffer.data[..len].to_vec();
 
         buffer.locked.store(false, Ordering::Release);
         buffer.has_data.store(false, Ordering::Release);
@@ -736,7 +772,7 @@ mod tests {
         assert!(matches!(result, Ok(None)));
 
         // State unchanged
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = SubscriberBufferRef::new(slot).get();
         assert!(!buffer.has_data.load(Ordering::Acquire));
         assert!(!buffer.overflow.load(Ordering::Acquire));
     }
@@ -749,7 +785,7 @@ mod tests {
         let payload = [0x42u8; 100];
         simulate_subscription_callback(slot, &payload);
 
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = SubscriberBufferRef::new(slot).get();
         assert!(buffer.has_data.load(Ordering::Acquire));
         assert!(!buffer.overflow.load(Ordering::Acquire));
 
@@ -770,7 +806,7 @@ mod tests {
         let payload = [0xFFu8; 1024];
         simulate_subscription_callback(slot, &payload);
 
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = SubscriberBufferRef::new(slot).get();
         assert!(buffer.has_data.load(Ordering::Acquire));
         assert!(!buffer.overflow.load(Ordering::Acquire));
 
@@ -789,7 +825,7 @@ mod tests {
         let payload = [0xAAu8; 2000];
         simulate_subscription_callback(slot, &payload);
 
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = SubscriberBufferRef::new(slot).get();
         assert!(buffer.has_data.load(Ordering::Acquire));
         assert!(buffer.overflow.load(Ordering::Acquire));
 
@@ -822,7 +858,7 @@ mod tests {
         assert!(matches!(result, Err(TransportError::BufferTooSmall)));
 
         // has_data cleared (the oversized message is dropped)
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = SubscriberBufferRef::new(slot).get();
         assert!(!buffer.has_data.load(Ordering::Acquire));
 
         // Recovery: next callback accepted
@@ -889,7 +925,7 @@ mod tests {
 
         simulate_subscription_callback(slot, b"");
 
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = SubscriberBufferRef::new(slot).get();
         assert!(buffer.has_data.load(Ordering::Acquire));
 
         let mut recv_buf = [0u8; 1024];
@@ -914,7 +950,7 @@ mod tests {
         assert_eq!(&recv_buf[..10], b"slot_seven");
 
         // slot_a still has data
-        let buffer_a = unsafe { &SUBSCRIBER_BUFFERS[slot_a] };
+        let buffer_a = SubscriberBufferRef::new(slot_a).get();
         assert!(buffer_a.has_data.load(Ordering::Acquire));
 
         let result = try_recv_subscription(slot_a, &mut recv_buf);
@@ -964,7 +1000,7 @@ mod tests {
         assert!(matches!(result, Err(TransportError::MessageTooLarge)));
 
         // Both flags cleared after overflow
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = SubscriberBufferRef::new(slot).get();
         assert!(!buffer.has_data.load(Ordering::Acquire));
         assert!(!buffer.overflow.load(Ordering::Acquire));
     }
@@ -977,39 +1013,28 @@ mod tests {
         // Write "original" payload
         let original = [0x11u8; 100];
         simulate_subscription_callback(slot, &original);
-        assert!(unsafe { SUBSCRIBER_BUFFERS[slot].has_data.load(Ordering::Acquire) });
+        let buf_ref = SubscriberBufferRef::new(slot);
+        assert!(buf_ref.get().has_data.load(Ordering::Acquire));
 
         // Manually set locked=true (simulating in-place processing)
-        unsafe {
-            SUBSCRIBER_BUFFERS[slot]
-                .locked
-                .store(true, Ordering::Release)
-        };
+        buf_ref.get().locked.store(true, Ordering::Release);
 
         // Attempt callback with "replacement" — should be dropped
         let replacement = [0x22u8; 100];
         simulate_subscription_callback(slot, &replacement);
 
         // Buffer still contains original data (100 bytes of 0x11)
-        let stored_len = unsafe { SUBSCRIBER_BUFFERS[slot].len.load(Ordering::Acquire) };
+        let stored_len = buf_ref.get().len.load(Ordering::Acquire);
         assert_eq!(stored_len, 100);
-        unsafe {
-            assert_eq!(&SUBSCRIBER_BUFFERS[slot].data[..100], &original);
-        }
+        assert_eq!(&buf_ref.get().data[..100], &original);
 
         // Unlock and verify next callback succeeds
-        unsafe {
-            SUBSCRIBER_BUFFERS[slot]
-                .locked
-                .store(false, Ordering::Release)
-        };
+        buf_ref.get().locked.store(false, Ordering::Release);
 
         simulate_subscription_callback(slot, &replacement);
-        let stored_len = unsafe { SUBSCRIBER_BUFFERS[slot].len.load(Ordering::Acquire) };
+        let stored_len = buf_ref.get().len.load(Ordering::Acquire);
         assert_eq!(stored_len, 100);
-        unsafe {
-            assert_eq!(&SUBSCRIBER_BUFFERS[slot].data[..100], &replacement);
-        }
+        assert_eq!(&buf_ref.get().data[..100], &replacement);
 
         reset_subscriber_buffer(slot);
     }
@@ -1022,11 +1047,13 @@ mod tests {
         // Write payload to buffer
         simulate_subscription_callback(slot, b"test_lock_state");
 
+        let buf_ref = SubscriberBufferRef::new(slot);
+
         // Verify locked=false before processing
-        assert!(!unsafe { SUBSCRIBER_BUFFERS[slot].locked.load(Ordering::Acquire) });
+        assert!(!buf_ref.get().locked.load(Ordering::Acquire));
 
         // Process in-place — during the closure the buffer should be locked
-        let buffer = unsafe { &SUBSCRIBER_BUFFERS[slot] };
+        let buffer = buf_ref.get();
         assert!(buffer.has_data.load(Ordering::Acquire));
 
         let len = buffer.len.load(Ordering::Acquire);
@@ -1036,7 +1063,7 @@ mod tests {
         assert!(buffer.locked.load(Ordering::Acquire));
 
         // Read data (simulating closure)
-        let _data = unsafe { SUBSCRIBER_BUFFERS[slot].data[..len].to_vec() };
+        let _data = buffer.data[..len].to_vec();
 
         // Unlock and clear
         buffer.locked.store(false, Ordering::Release);

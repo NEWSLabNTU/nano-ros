@@ -17,7 +17,7 @@ blocks; smaller files > monoliths.**
 | 57.1 — Remove "Shim" smurf prefix       | Done        |
 | 57.2 — Split shim.rs (3,426 lines)      | Done        |
 | 57.3 — Split other large files          | Done        |
-| 57.4 — Safe buffer accessor wrappers    | Not Started |
+| 57.4 — Safe buffer accessor wrappers    | Done        |
 | 57.5 — Minor unsafe & API cleanups      | Not Started |
 | 57.6 — TCP/UDP staging deduplication    | Not Started |
 | 57.7 — nros-c validation macros         | Not Started |
@@ -174,7 +174,7 @@ always the same: "we own this buffer index and access is atomic."
 
 #### Changes
 
-- [ ] Add `SubscriberBufferRef` wrapper:
+- [x] Add `SubscriberBufferRef` wrapper:
       ```rust
       struct SubscriberBufferRef { index: usize }
       impl SubscriberBufferRef {
@@ -185,10 +185,10 @@ always the same: "we own this buffer index and access is atomic."
           }
       }
       ```
-- [ ] Add `ServiceBufferRef` wrapper (same pattern)
-- [ ] Replace all `unsafe { &SUBSCRIBER_BUFFERS[idx] }` with `self.buf.get()`
-- [ ] Replace all `unsafe { &mut SERVICE_BUFFERS[idx] }` with `self.buf.get_mut()`
-- [ ] Validate `index < MAX` at construction time (panic on OOB)
+- [x] Add `ServiceBufferRef` wrapper (same pattern)
+- [x] Replace all `unsafe { &SUBSCRIBER_BUFFERS[idx] }` with `self.buf.get()`
+- [x] Replace all `unsafe { &mut SERVICE_BUFFERS[idx] }` with `self.buf.get_mut()`
+- [x] Validate `index < MAX` at construction time (panic on OOB)
 
 #### Impact
 
@@ -198,8 +198,8 @@ always the same: "we own this buffer index and access is atomic."
 
 #### Verification
 
-- [ ] `just quality` passes
-- [ ] Miri tests still pass (no UB introduced)
+- [x] `just quality` passes
+- [x] Miri tests still pass (no UB introduced)
 
 ---
 
