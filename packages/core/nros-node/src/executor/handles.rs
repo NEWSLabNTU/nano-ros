@@ -7,6 +7,14 @@ use nros_rmw::{Publisher, ServiceClientTrait, ServiceServerTrait, Subscriber, Tr
 
 use super::types::{DEFAULT_TX_BUF, NodeError};
 
+/// Default polling interval (ms) for sync wait loops.
+const DEFAULT_SPIN_INTERVAL_MS: u64 = 10;
+
+/// UUID byte count in a ROS 2 GoalId.
+///
+/// CDR encoding: 4-byte sequence-length prefix (`read_u32`) + 16 UUID bytes.
+const GOAL_UUID_SIZE: usize = 16;
+
 // ============================================================================
 // EmbeddedPublisher
 // ============================================================================
@@ -277,7 +285,7 @@ impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
         executor: &mut super::Executor<S, M, C>,
         timeout_ms: u64,
     ) -> Result<T, NodeError> {
-        let spin_interval_ms = 10u64;
+        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
         let max_spins = (timeout_ms / spin_interval_ms).max(1);
         for _ in 0..max_spins {
             executor.spin_once(spin_interval_ms as i32);
@@ -402,9 +410,9 @@ impl<
         // Deserialize the goal from the buffer (GoalId already extracted by core)
         let mut reader = CdrReader::new_with_header(&self.core.goal_buffer()[..raw_req.data_len])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-        // Skip past the GoalId (4-byte len + 16 UUID bytes)
+        // Skip past the GoalId (CDR length prefix + UUID bytes)
         let _ = reader.read_u32();
-        for _ in 0..16 {
+        for _ in 0..GOAL_UUID_SIZE {
             let _ = reader.read_u8();
         }
         let goal = A::Goal::deserialize(&mut reader)
@@ -606,9 +614,9 @@ impl<
         // Deserialize feedback from the core's feedback buffer (after GoalId)
         let mut reader = CdrReader::new_with_header(&self.core.feedback_buffer[..len])
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))?;
-        // Skip GoalId (4 + 16 bytes)
+        // Skip GoalId (CDR length prefix + UUID bytes)
         let _ = reader.read_u32();
-        for _ in 0..16 {
+        for _ in 0..GOAL_UUID_SIZE {
             let _ = reader.read_u8();
         }
 
@@ -748,7 +756,7 @@ impl<
         executor: &mut super::Executor<S, M, C>,
         timeout_ms: u64,
     ) -> Result<Option<(nros_core::GoalId, A::Feedback)>, NodeError> {
-        let spin_interval_ms = 10u64;
+        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
         let max_spins = (timeout_ms / spin_interval_ms).max(1);
         for _ in 0..max_spins {
             executor.spin_once(spin_interval_ms as i32);
@@ -847,7 +855,7 @@ impl<
         executor: &mut super::Executor<S, M, C>,
         timeout_ms: u64,
     ) -> Result<Option<A::Feedback>, NodeError> {
-        let spin_interval_ms = 10u64;
+        let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
         let max_spins = (timeout_ms / spin_interval_ms).max(1);
         for _ in 0..max_spins {
             executor.spin_once(spin_interval_ms as i32);

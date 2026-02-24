@@ -21,7 +21,7 @@ blocks; smaller files > monoliths.**
 | 57.5 — Minor unsafe & API cleanups      | Done        |
 | 57.6 — TCP/UDP staging deduplication    | Done        |
 | 57.7 — nros-c validation macros         | Done        |
-| 57.8 — Extract magic constants          | Not Started |
+| 57.8 — Extract magic constants          | Done        |
 
 ## Deliverables
 
@@ -351,14 +351,14 @@ improve readability and auditability.
 Bare strings like `"0/0/NN"`, `"0/11/MP"`, `"0/11/MS"` encode rmw_zenoh
 protocol constants. These should be named:
 
-- [ ] `const LIVELINESS_PREFIX: &str = "@ros2_lv"`
-- [ ] `const ENTITY_NODE: &str = "NN"`
-- [ ] `const ENTITY_PUBLISHER: &str = "MP"`
-- [ ] `const ENTITY_SUBSCRIBER: &str = "MS"`
-- [ ] `const ENTITY_SERVICE_SERVER: &str = "SS"`
-- [ ] `const ENTITY_SERVICE_CLIENT: &str = "SC"`
-- [ ] `const PROTO_VERSION_NODE: &str = "0/0"` (node liveliness version)
-- [ ] `const PROTO_VERSION_TOPIC: &str = "0/11"` (topic/service liveliness version)
+- [x] `const LIVELINESS_PREFIX: &str = "@ros2_lv"`
+- [x] `const ENTITY_NODE: &str = "NN"`
+- [x] `const ENTITY_PUBLISHER: &str = "MP"`
+- [x] `const ENTITY_SUBSCRIBER: &str = "MS"`
+- [x] `const ENTITY_SERVICE_SERVER: &str = "SS"`
+- [x] `const ENTITY_SERVICE_CLIENT: &str = "SC"`
+- [x] `const PROTO_VERSION_NODE: &str = "0/0"` (node liveliness version)
+- [x] `const PROTO_VERSION_TOPIC: &str = "0/11"` (topic/service liveliness version)
 
 #### Repeated polling interval
 
@@ -366,8 +366,8 @@ protocol constants. These should be named:
 
 `spin_interval_ms: 10u64` appears 3 times:
 
-- [ ] Extract `const DEFAULT_SPIN_INTERVAL_MS: u64 = 10`
-- [ ] Replace all 3 call sites
+- [x] Extract `const DEFAULT_SPIN_INTERVAL_MS: u64 = 10`
+- [x] Replace all 3 call sites
 
 #### GoalId structure sizes
 
@@ -375,14 +375,15 @@ protocol constants. These should be named:
 
 Hardcoded `16` for UUID byte count and implicit `4` for length prefix:
 
-- [ ] `const GOAL_UUID_SIZE: usize = 16`
-- [ ] `const GOAL_ID_CDR_HEADER: usize = 4` (CDR sequence length prefix)
-- [ ] Replace `for _ in 0..16` and offset calculations
+- [x] `const GOAL_UUID_SIZE: usize = 16`
+- [x] `GOAL_ID_CDR_HEADER` documented in `GOAL_UUID_SIZE` doc comment
+      (implicit in `read_u32()` — no literal `4` to replace)
+- [x] Replace `for _ in 0..16` (2 sites) with `for _ in 0..GOAL_UUID_SIZE`
 
 #### Verification
 
-- [ ] `just quality` passes
-- [ ] `grep -rn '0/0/NN\|0/11/MP\|0/11/MS\|0/11/SS\|0/11/SC' packages/`
+- [x] `just quality` passes
+- [x] `grep -rn '0/0/NN\|0/11/MP\|0/11/MS\|0/11/SS\|0/11/SC' packages/`
       returns zero hits in non-constant code
 
 ## Implementation Order

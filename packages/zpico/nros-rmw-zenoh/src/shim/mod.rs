@@ -344,7 +344,20 @@ impl MessageInfo {
 /// ROS 2 liveliness key expression builder for the shim transport
 ///
 /// Generates the key expressions required for ROS 2 discovery via rmw_zenoh.
+///
+/// Protocol format:
+/// `{PREFIX}/{domain_id}/{zid}/{version}/{entity}/%/{ns}/{node}[/{topic}/{type}/{hash}/{qos}]`
 pub struct Ros2Liveliness;
+
+// rmw_zenoh liveliness protocol constants
+const LIVELINESS_PREFIX: &str = "@ros2_lv";
+const PROTO_VERSION_NODE: &str = "0/0";
+const PROTO_VERSION_TOPIC: &str = "0/11";
+const ENTITY_NODE: &str = "NN";
+const ENTITY_PUBLISHER: &str = "MP";
+const ENTITY_SUBSCRIBER: &str = "MS";
+const ENTITY_SERVICE_SERVER: &str = "SS";
+const ENTITY_SERVICE_CLIENT: &str = "SC";
 
 impl Ros2Liveliness {
     /// Build a node liveliness key expression
@@ -369,9 +382,12 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/0/NN/%/{}/{}",
+                "{}/{}/{}/{}/{}/%/{}/{}",
+                LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
+                PROTO_VERSION_NODE,
+                ENTITY_NODE,
                 ns_mangled.as_str(),
                 node_name
             ),
@@ -402,9 +418,12 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/MP/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
+                PROTO_VERSION_TOPIC,
+                ENTITY_PUBLISHER,
                 ns_mangled.as_str(),
                 node_name,
                 topic_mangled.as_str(),
@@ -438,9 +457,12 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/MS/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
+                PROTO_VERSION_TOPIC,
+                ENTITY_SUBSCRIBER,
                 ns_mangled.as_str(),
                 node_name,
                 topic_mangled.as_str(),
@@ -474,9 +496,12 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/SS/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
+                PROTO_VERSION_TOPIC,
+                ENTITY_SERVICE_SERVER,
                 ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
@@ -510,9 +535,12 @@ impl Ros2Liveliness {
         let _ = core::fmt::write(
             &mut key,
             format_args!(
-                "@ros2_lv/{}/{}/0/11/SC/%/{}/{}/{}/{}/{}/{}",
+                "{}/{}/{}/{}/{}/%/{}/{}/{}/{}/{}/{}",
+                LIVELINESS_PREFIX,
                 domain_id,
                 zid_str,
+                PROTO_VERSION_TOPIC,
+                ENTITY_SERVICE_CLIENT,
                 ns_mangled.as_str(),
                 node_name,
                 service_mangled.as_str(),
