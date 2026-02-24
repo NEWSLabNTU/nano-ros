@@ -16,7 +16,7 @@ blocks; smaller files > monoliths.**
 |-----------------------------------------|-------------|
 | 57.1 — Remove "Shim" smurf prefix       | Done        |
 | 57.2 — Split shim.rs (3,426 lines)      | Done        |
-| 57.3 — Split other large files          | Not Started |
+| 57.3 — Split other large files          | Done        |
 | 57.4 — Safe buffer accessor wrappers    | Not Started |
 | 57.5 — Minor unsafe & API cleanups      | Not Started |
 | 57.6 — TCP/UDP staging deduplication    | Not Started |
@@ -153,17 +153,16 @@ nros-rmw-zenoh/src/
 
 #### Steps
 
-- [ ] Split `nros-c/src/action.rs` → `action_server.rs` + `action_client.rs`
-      + shared `action_common.rs` (UUID, status, type support)
-- [ ] Split `rosidl-codegen/src/generator.rs` → `generator/msg.rs`,
+- [x] Split `nros-c/src/action.rs` → `action/server.rs` + `action/client.rs`
+      + shared `action/common.rs` (UUID, status, type support, callbacks)
+- [x] Split `rosidl-codegen/src/generator.rs` → `generator/msg.rs`,
       `generator/srv.rs`, `generator/action.rs`, `generator/common.rs`
-- [ ] Evaluate `nros-rmw/src/traits.rs` — split if > 1,400 lines after
-      other changes
+- [x] Evaluate `nros-rmw/src/traits.rs` — 1,343 lines, below 1,400 threshold, skip
 
 #### Verification
 
-- [ ] `just quality` passes
-- [ ] No public API changes
+- [x] `just quality` passes
+- [x] No public API changes
 
 ---
 
