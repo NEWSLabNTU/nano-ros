@@ -140,8 +140,23 @@ fn doxygen_postprocess(path: &Path) {
     let mut out = String::with_capacity(content.len());
     let mut section = DocSection::None;
     let mut prev_blank = false; // tracks whether the last emitted line was " *"
+    let mut added_file_tag = false; // inject @file once in the first doc block
 
     for line in content.lines() {
+        // Inject @file into the first doc comment so Doxygen generates
+        // a "File Members" page listing all global functions/defines.
+        if !added_file_tag
+            && line.trim()
+                == "* nros C API — Auto-generated type definitions and function declarations"
+        {
+            push_line(&mut out, " * @file");
+            push_line(
+                &mut out,
+                " * @brief nros C API — types and function declarations",
+            );
+            added_file_tag = true;
+            continue;
+        }
         // Detect section headers: " * # Parameters", " * # Returns", " * # Safety"
         if let Some(heading) = line.strip_prefix(" * # ") {
             let lower = heading.trim().to_ascii_lowercase();

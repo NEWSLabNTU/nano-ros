@@ -6,10 +6,11 @@
 PROJECT_NAME           = "nros C API"
 PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time systems"
 
-# Input: post-processed headers with Doxygen tags
-INPUT                  = include/nros/
+# Input: post-processed headers with Doxygen tags + mainpage
+INPUT                  = include/nros/ docs/mainpage.md
 RECURSIVE              = YES
-FILE_PATTERNS          = *.h
+FILE_PATTERNS          = *.h *.md
+USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
 
 # Output alongside rustdoc under target/doc/
 OUTPUT_DIRECTORY       = ../../../target/doc/c-api
@@ -22,10 +23,10 @@ TYPEDEF_HIDES_STRUCT   = YES
 EXTRACT_ALL            = NO
 EXTRACT_STATIC         = YES
 
-# Warnings
+# Warnings (WARN_NO_PARAMDOC off — many thin wrappers lack @param/@return)
 WARN_IF_UNDOCUMENTED   = YES
 WARN_IF_DOC_ERROR      = YES
-WARN_NO_PARAMDOC       = YES
+WARN_NO_PARAMDOC       = NO
 
 # No LaTeX, just HTML
 GENERATE_HTML          = YES

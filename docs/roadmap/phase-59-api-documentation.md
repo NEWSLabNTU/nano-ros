@@ -303,7 +303,7 @@ cargo doc -p nros-rmw --no-deps`).
       returns 0 (no Rust-isms in generated header)
 - [x] `grep '_origin\|_context\|_ready\|_count' include/nros/nros_generated.h`
       returns 0 for function parameter names (underscore prefixes removed)
-- [ ] `doxygen Doxyfile` completes with 0 warnings on documented items
+- [x] `doxygen Doxyfile` completes with 0 warnings on documented items
 - [x] `cargo doc --workspace --no-deps` completes with no broken intra-doc links
 - [x] `just doc` generates both Rust and C API docs under `target/doc/`
 - [x] `just quality` still passes (no regressions from doc comment changes)
