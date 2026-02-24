@@ -75,7 +75,7 @@ pub struct nros_service_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Handle ID from executor registration (usize::MAX = not registered)
+    /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
     /// Opaque pointer to internal Rust service server
     pub _internal: *mut c_void,

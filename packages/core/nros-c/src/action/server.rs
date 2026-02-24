@@ -57,7 +57,7 @@ pub struct nros_action_server_t {
     pub active_goal_count: usize,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque pointer to internal implementation (`Box<ActionServerInternal>`)
+    /// Opaque pointer to internal implementation
     pub _internal: *mut c_void,
 }
 
@@ -94,11 +94,11 @@ impl Default for nros_action_server_t {
 
 /// Internal state created during executor registration.
 ///
-/// Holds the `ActionServerRawHandle` and C callback pointers needed by
+/// Holds the action server handle and C callback pointers needed by
 /// the goal/cancel trampolines.
 #[cfg(feature = "alloc")]
 pub(crate) struct ActionServerInternal {
-    /// Handle returned by `Executor::add_action_server_raw()`.
+    /// Handle returned by executor registration.
     /// `None` until registration completes (set immediately after).
     pub(crate) handle: Option<nros_node::ActionServerRawHandle>,
     /// Pointer to the internal Rust executor (`CExecutor`).

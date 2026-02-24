@@ -117,7 +117,7 @@ pub enum nros_executor_state_t {
 /// Executor structure.
 ///
 /// The executor delegates all dispatch logic to an internal
-/// `nros_node::Executor`. The C struct retains state, timeout, and
+/// executor. The C struct retains state, timeout, and
 /// per-type counters for API compatibility.
 #[repr(C)]
 pub struct nros_executor_t {
@@ -145,7 +145,7 @@ pub struct nros_executor_t {
     pub service_count: usize,
     /// Next invocation time in nanoseconds for drift-compensated spin_period
     pub invocation_time_ns: u64,
-    /// Opaque pointer to internal Rust executor (`Box<CExecutor>`)
+    /// Opaque pointer to internal Rust executor
     pub _internal: *mut core::ffi::c_void,
 }
 
@@ -351,8 +351,9 @@ pub unsafe extern "C" fn nros_executor_set_trigger(
 pub unsafe extern "C" fn nros_executor_trigger_any(
     ready: *const bool,
     count: usize,
-    _context: *mut core::ffi::c_void,
+    context: *mut core::ffi::c_void,
 ) -> bool {
+    let _ = context;
     for i in 0..count {
         if *ready.add(i) {
             return true;
@@ -369,8 +370,9 @@ pub unsafe extern "C" fn nros_executor_trigger_any(
 pub unsafe extern "C" fn nros_executor_trigger_all(
     ready: *const bool,
     count: usize,
-    _context: *mut core::ffi::c_void,
+    context: *mut core::ffi::c_void,
 ) -> bool {
+    let _ = context;
     if count == 0 {
         return false;
     }
@@ -388,10 +390,11 @@ pub unsafe extern "C" fn nros_executor_trigger_all(
 /// * `ready` and `count` are unused
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_trigger_always(
-    _ready: *const bool,
-    _count: usize,
-    _context: *mut core::ffi::c_void,
+    ready: *const bool,
+    count: usize,
+    context: *mut core::ffi::c_void,
 ) -> bool {
+    let _ = (ready, count, context);
     true
 }
 
@@ -401,7 +404,7 @@ pub unsafe extern "C" fn nros_executor_trigger_always(
 ///
 /// # Safety
 /// * `ready` must point to a valid array of at least `count` booleans
-/// * `context` is interpreted as a `usize` index
+/// * `context` is interpreted as a `size_t` index
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_trigger_one(
     ready: *const bool,
@@ -756,8 +759,7 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
 /// Add an action server to the executor.
 ///
 /// Extracts metadata from the action server struct, creates callback
-/// trampolines, and registers with the internal nros-node executor via
-/// `add_action_server_raw_sized()`.
+/// trampolines, and registers with the internal executor.
 ///
 /// # Safety
 /// * All pointers must be valid and point to initialized objects
@@ -866,7 +868,7 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
 
 /// Spin the executor once.
 ///
-/// Drives middleware I/O, then calls `spin_once()` on the internal executor.
+/// Drives middleware I/O, then dispatches ready callbacks.
 ///
 /// # Safety
 /// * `executor` must be a valid pointer to an initialized executor

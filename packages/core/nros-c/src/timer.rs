@@ -45,7 +45,7 @@ pub struct nros_timer_t {
     pub context: *mut c_void,
     /// Pointer to parent support context
     pub support: *const nros_support_t,
-    /// Handle ID from executor registration (usize::MAX = not registered)
+    /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
     /// Opaque pointer to internal executor (set by nros_executor_add_timer)
     pub _executor: *mut c_void,

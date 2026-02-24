@@ -19,9 +19,10 @@ use core::ffi::c_char;
 pub unsafe extern "C" fn nros_cdr_write_bool(
     ptr: *mut *mut u8,
     end: *const u8,
-    _origin: *const u8,
+    origin: *const u8,
     value: bool,
 ) -> i32 {
+    let _ = origin;
     if ptr.is_null() || (*ptr).is_null() {
         return -1;
     }
@@ -39,9 +40,10 @@ pub unsafe extern "C" fn nros_cdr_write_bool(
 pub unsafe extern "C" fn nros_cdr_write_u8(
     ptr: *mut *mut u8,
     end: *const u8,
-    _origin: *const u8,
+    origin: *const u8,
     value: u8,
 ) -> i32 {
+    let _ = origin;
     if ptr.is_null() || (*ptr).is_null() {
         return -1;
     }
@@ -290,9 +292,10 @@ unsafe fn align_read_ptr(
 pub unsafe extern "C" fn nros_cdr_read_bool(
     ptr: *mut *const u8,
     end: *const u8,
-    _origin: *const u8,
+    origin: *const u8,
     value: *mut bool,
 ) -> i32 {
+    let _ = origin;
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
         return -1;
     }
@@ -310,9 +313,10 @@ pub unsafe extern "C" fn nros_cdr_read_bool(
 pub unsafe extern "C" fn nros_cdr_read_u8(
     ptr: *mut *const u8,
     end: *const u8,
-    _origin: *const u8,
+    origin: *const u8,
     value: *mut u8,
 ) -> i32 {
+    let _ = origin;
     if ptr.is_null() || (*ptr).is_null() || value.is_null() {
         return -1;
     }

@@ -77,8 +77,8 @@ Output: `target/doc/c-api/html/` (git-ignored, alongside `target/doc/` from rust
 ## Work Items
 
 - [x] 59.1 — build.rs Doxygen post-processor
-- [ ] 59.2 — Fix Rust-isms in source doc comments
-- [ ] 59.3 — Fix underscore-prefixed C parameter names
+- [x] 59.2 — Fix Rust-isms in source doc comments
+- [x] 59.3 — Fix underscore-prefixed C parameter names
 - [ ] 59.4 — Audit doc coverage for undocumented public items
 - [ ] 59.5 — Add Doxyfile and justfile recipes
 - [ ] 59.6 — Rustdoc quality pass

@@ -57,7 +57,7 @@ pub struct nros_subscription_t {
     pub node: *const nros_node_t,
     /// QoS settings (stored during init, used by executor registration)
     pub qos: crate::qos::nros_qos_t,
-    /// Handle ID from executor registration (usize::MAX = not registered)
+    /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
     /// Opaque pointer to internal Rust subscriber (unused in executor model)
     pub _internal: *mut c_void,

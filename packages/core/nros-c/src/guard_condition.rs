@@ -42,7 +42,7 @@ pub struct nros_guard_condition_t {
     pub context: *mut c_void,
     /// Pointer to parent support context
     pub _support: *const nros_support_t,
-    /// Handle ID from executor registration (usize::MAX = not registered)
+    /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
     /// Guard condition handle for external triggering (set by executor)
     pub _guard_handle: *mut core::ffi::c_void,
