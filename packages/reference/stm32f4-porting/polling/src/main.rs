@@ -318,8 +318,8 @@ fn main() -> ! {
     info!("smoltcp bridge initialized");
 
     // When zenoh-pico is available:
-    // use nros_rmw_zenoh::ShimContext;
-    // let ctx = ShimContext::new(ZENOH_ROUTER).expect("Failed to connect");
+    // use nros_rmw_zenoh::Context;
+    // let ctx = Context::new(ZENOH_ROUTER).expect("Failed to connect");
     // let publisher = ctx.declare_publisher(b"nros/polling/counter\0").unwrap();
 
     // ═══════════════════════════════════════════════════════════════════════

@@ -111,12 +111,12 @@ unsafe extern "C" {
     // Subscribers
     pub fn zenoh_shim_declare_subscriber(
         keyexpr: *const core::ffi::c_char,
-        callback: ShimCallback,
+        callback: ZpicoCallback,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zenoh_shim_declare_subscriber_with_attachment(
         keyexpr: *const core::ffi::c_char,
-        callback: ShimCallbackWithAttachment,
+        callback: ZpicoCallbackWithAttachment,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zenoh_shim_declare_subscriber_direct_write(
@@ -124,12 +124,12 @@ unsafe extern "C" {
         buf_ptr: *mut u8,
         buf_capacity: usize,
         locked_ptr: *const bool,
-        callback: ShimNotifyCallback,
+        callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zenoh_shim_subscribe_zero_copy(
         keyexpr: *const core::ffi::c_char,
-        callback: ShimZeroCopyCallback,
+        callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zenoh_shim_undeclare_subscriber(handle: i32) -> i32;
@@ -141,7 +141,7 @@ unsafe extern "C" {
     // Queryables (for services)
     pub fn zenoh_shim_declare_queryable(
         keyexpr: *const core::ffi::c_char,
-        callback: ShimQueryCallback,
+        callback: ZpicoQueryCallback,
         ctx: *mut c_void,
     ) -> i32;
     pub fn zenoh_shim_undeclare_queryable(handle: i32) -> i32;

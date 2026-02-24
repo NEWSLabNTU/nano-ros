@@ -20,11 +20,11 @@ use core::marker::PhantomData;
 
 // Re-export FFI types and constants from sys crate
 pub use zpico_sys::{
-    ShimCallback, ShimCallbackWithAttachment, ShimNotifyCallback, ShimQueryCallback,
-    ShimZeroCopyCallback, ZPICO_ERR_CONFIG, ZPICO_ERR_FULL, ZPICO_ERR_GENERIC, ZPICO_ERR_INVALID,
-    ZPICO_ERR_KEYEXPR, ZPICO_ERR_PUBLISH, ZPICO_ERR_SESSION, ZPICO_ERR_TASK, ZPICO_ERR_TIMEOUT,
-    ZPICO_MAX_LIVELINESS, ZPICO_MAX_PUBLISHERS, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SUBSCRIBERS,
-    ZPICO_OK, ZPICO_RMW_GID_SIZE, ZPICO_ZID_SIZE, zenoh_shim_property_t,
+    ZPICO_ERR_CONFIG, ZPICO_ERR_FULL, ZPICO_ERR_GENERIC, ZPICO_ERR_INVALID, ZPICO_ERR_KEYEXPR,
+    ZPICO_ERR_PUBLISH, ZPICO_ERR_SESSION, ZPICO_ERR_TASK, ZPICO_ERR_TIMEOUT, ZPICO_MAX_LIVELINESS,
+    ZPICO_MAX_PUBLISHERS, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SUBSCRIBERS, ZPICO_OK,
+    ZPICO_RMW_GID_SIZE, ZPICO_ZID_SIZE, ZpicoCallback, ZpicoCallbackWithAttachment,
+    ZpicoNotifyCallback, ZpicoQueryCallback, ZpicoZeroCopyCallback, zenoh_shim_property_t,
 };
 
 // Import FFI functions from sys crate
@@ -52,7 +52,7 @@ use zpico_sys::{
 
 /// Error type for shim operations
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum ShimError {
+pub enum ZpicoError {
     /// Generic error
     Generic,
     /// Configuration error
@@ -82,54 +82,54 @@ pub enum ShimError {
     feature = "platform-freertos",
     test
 ))]
-impl ShimError {
+impl ZpicoError {
     fn from_code(code: i32) -> Self {
         match code {
-            -1 => ShimError::Generic,
-            -2 => ShimError::Config,
-            -3 => ShimError::Session,
-            -4 => ShimError::Task,
-            -5 => ShimError::KeyExpr,
-            -6 => ShimError::Full,
-            -7 => ShimError::Invalid,
-            -8 => ShimError::Publish,
-            _ => ShimError::Generic,
+            -1 => ZpicoError::Generic,
+            -2 => ZpicoError::Config,
+            -3 => ZpicoError::Session,
+            -4 => ZpicoError::Task,
+            -5 => ZpicoError::KeyExpr,
+            -6 => ZpicoError::Full,
+            -7 => ZpicoError::Invalid,
+            -8 => ZpicoError::Publish,
+            _ => ZpicoError::Generic,
         }
     }
 }
 
-impl core::fmt::Display for ShimError {
+impl core::fmt::Display for ZpicoError {
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         match self {
-            ShimError::Generic => write!(f, "generic error"),
-            ShimError::Config => write!(f, "configuration error"),
-            ShimError::Session => write!(f, "session error"),
-            ShimError::Task => write!(f, "task creation error"),
-            ShimError::KeyExpr => write!(f, "invalid key expression"),
-            ShimError::Full => write!(f, "resource limit reached"),
-            ShimError::Invalid => write!(f, "invalid handle"),
-            ShimError::Publish => write!(f, "publish error"),
-            ShimError::NotOpen => write!(f, "session not open"),
-            ShimError::Timeout => write!(f, "query timeout"),
+            ZpicoError::Generic => write!(f, "generic error"),
+            ZpicoError::Config => write!(f, "configuration error"),
+            ZpicoError::Session => write!(f, "session error"),
+            ZpicoError::Task => write!(f, "task creation error"),
+            ZpicoError::KeyExpr => write!(f, "invalid key expression"),
+            ZpicoError::Full => write!(f, "resource limit reached"),
+            ZpicoError::Invalid => write!(f, "invalid handle"),
+            ZpicoError::Publish => write!(f, "publish error"),
+            ZpicoError::NotOpen => write!(f, "session not open"),
+            ZpicoError::Timeout => write!(f, "query timeout"),
         }
     }
 }
 
 /// Result type for shim operations
-pub type Result<T> = core::result::Result<T, ShimError>;
+pub type Result<T> = core::result::Result<T, ZpicoError>;
 
 // ============================================================================
-// ShimZenohId
+// ZenohId
 // ============================================================================
 
 /// A 16-byte Zenoh session ID
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub struct ShimZenohId {
+pub struct ZenohId {
     /// The raw 16-byte ID
     pub id: [u8; 16],
 }
 
-impl ShimZenohId {
+impl ZenohId {
     /// Create a new ZenohId from raw bytes
     pub fn from_bytes(bytes: [u8; 16]) -> Self {
         Self { id: bytes }
@@ -178,7 +178,7 @@ impl ShimZenohId {
 }
 
 // ============================================================================
-// ShimLivelinessToken
+// LivelinessToken
 // ============================================================================
 
 /// A liveliness token for ROS 2 discovery
@@ -197,7 +197,7 @@ impl ShimZenohId {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-pub struct ShimLivelinessToken {
+pub struct LivelinessToken {
     handle: i32,
 }
 
@@ -207,7 +207,7 @@ pub struct ShimLivelinessToken {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl ShimLivelinessToken {
+impl LivelinessToken {
     /// Get the liveliness handle
     pub fn handle(&self) -> i32 {
         self.handle
@@ -220,7 +220,7 @@ impl ShimLivelinessToken {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl Drop for ShimLivelinessToken {
+impl Drop for LivelinessToken {
     fn drop(&mut self) {
         unsafe {
             zenoh_shim_undeclare_liveliness(self.handle);
@@ -229,7 +229,7 @@ impl Drop for ShimLivelinessToken {
 }
 
 // ============================================================================
-// ShimQueryable
+// Queryable
 // ============================================================================
 
 /// A queryable for receiving service requests
@@ -245,7 +245,7 @@ impl Drop for ShimLivelinessToken {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-pub struct ShimQueryable {
+pub struct Queryable {
     handle: i32,
 }
 
@@ -255,7 +255,7 @@ pub struct ShimQueryable {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl ShimQueryable {
+impl Queryable {
     /// Get the queryable handle
     pub fn handle(&self) -> i32 {
         self.handle
@@ -268,7 +268,7 @@ impl ShimQueryable {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl Drop for ShimQueryable {
+impl Drop for Queryable {
     fn drop(&mut self) {
         unsafe {
             zenoh_shim_undeclare_queryable(self.handle);
@@ -277,7 +277,7 @@ impl Drop for ShimQueryable {
 }
 
 // ============================================================================
-// ShimContext
+// Context
 // ============================================================================
 
 /// Context for managing zenoh-pico shim session
@@ -287,7 +287,7 @@ impl Drop for ShimQueryable {
 ///
 /// # Note
 ///
-/// Only one `ShimContext` can exist at a time due to the global state
+/// Only one `Context` can exist at a time due to the global state
 /// in the C shim.
 #[cfg(any(
     feature = "platform-posix",
@@ -295,7 +295,7 @@ impl Drop for ShimQueryable {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-pub struct ShimContext {
+pub struct Context {
     _private: PhantomData<*const ()>,
 }
 
@@ -305,7 +305,7 @@ pub struct ShimContext {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl ShimContext {
+impl Context {
     /// Create a new shim context with the given locator
     ///
     /// The locator should be a null-terminated string like `b"tcp/127.0.0.1:7447\0"`.
@@ -317,15 +317,15 @@ impl ShimContext {
         // Safety: locator is a valid byte slice, cast to c_char for C string
         let ret = unsafe { zenoh_shim_init(locator.as_ptr().cast()) };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
 
         let ret = unsafe { zenoh_shim_open() };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
 
-        Ok(ShimContext {
+        Ok(Context {
             _private: PhantomData,
         })
     }
@@ -366,15 +366,15 @@ impl ShimContext {
             )
         };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
 
         let ret = unsafe { zenoh_shim_open() };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
 
-        Ok(ShimContext {
+        Ok(Context {
             _private: PhantomData,
         })
     }
@@ -400,13 +400,13 @@ impl ShimContext {
     ///
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of publishers has been reached.
-    pub fn declare_publisher(&self, keyexpr: &[u8]) -> Result<ShimPublisher<'_>> {
+    pub fn declare_publisher(&self, keyexpr: &[u8]) -> Result<Publisher<'_>> {
         let handle = unsafe { zenoh_shim_declare_publisher(keyexpr.as_ptr().cast()) };
         if handle < 0 {
-            return Err(ShimError::from_code(handle));
+            return Err(ZpicoError::from_code(handle));
         }
 
-        Ok(ShimPublisher {
+        Ok(Publisher {
             handle,
             _ctx: PhantomData,
         })
@@ -429,16 +429,16 @@ impl ShimContext {
     pub unsafe fn declare_subscriber_raw<'a>(
         &'a self,
         keyexpr: &[u8],
-        callback: ShimCallback,
+        callback: ZpicoCallback,
         ctx: *mut c_void,
-    ) -> Result<ShimSubscriber<'a>> {
+    ) -> Result<Subscriber<'a>> {
         let handle =
             unsafe { zenoh_shim_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
-            return Err(ShimError::from_code(handle));
+            return Err(ZpicoError::from_code(handle));
         }
 
-        Ok(ShimSubscriber {
+        Ok(Subscriber {
             handle,
             _ctx: PhantomData,
         })
@@ -461,17 +461,17 @@ impl ShimContext {
     pub unsafe fn declare_subscriber_with_attachment_raw<'a>(
         &'a self,
         keyexpr: &[u8],
-        callback: ShimCallbackWithAttachment,
+        callback: ZpicoCallbackWithAttachment,
         ctx: *mut c_void,
-    ) -> Result<ShimSubscriber<'a>> {
+    ) -> Result<Subscriber<'a>> {
         let handle = unsafe {
             zenoh_shim_declare_subscriber_with_attachment(keyexpr.as_ptr().cast(), callback, ctx)
         };
         if handle < 0 {
-            return Err(ShimError::from_code(handle));
+            return Err(ZpicoError::from_code(handle));
         }
 
-        Ok(ShimSubscriber {
+        Ok(Subscriber {
             handle,
             _ctx: PhantomData,
         })
@@ -493,9 +493,9 @@ impl ShimContext {
         buf_ptr: *mut u8,
         buf_capacity: usize,
         locked_ptr: *const bool,
-        callback: ShimNotifyCallback,
+        callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
-    ) -> Result<ShimSubscriber<'a>> {
+    ) -> Result<Subscriber<'a>> {
         let handle = unsafe {
             zenoh_shim_declare_subscriber_direct_write(
                 keyexpr.as_ptr().cast(),
@@ -507,10 +507,10 @@ impl ShimContext {
             )
         };
         if handle < 0 {
-            return Err(ShimError::from_code(handle));
+            return Err(ZpicoError::from_code(handle));
         }
 
-        Ok(ShimSubscriber {
+        Ok(Subscriber {
             handle,
             _ctx: PhantomData,
         })
@@ -528,16 +528,16 @@ impl ShimContext {
     pub unsafe fn subscribe_zero_copy_raw<'a>(
         &'a self,
         keyexpr: &[u8],
-        callback: ShimZeroCopyCallback,
+        callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
-    ) -> Result<ShimSubscriber<'a>> {
+    ) -> Result<Subscriber<'a>> {
         let handle =
             unsafe { zenoh_shim_subscribe_zero_copy(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
-            return Err(ShimError::from_code(handle));
+            return Err(ZpicoError::from_code(handle));
         }
 
-        Ok(ShimSubscriber {
+        Ok(Subscriber {
             handle,
             _ctx: PhantomData,
         })
@@ -560,7 +560,7 @@ impl ShimContext {
     pub fn poll(&self, timeout_ms: u32) -> Result<i32> {
         let ret = unsafe { zenoh_shim_poll(timeout_ms) };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
         Ok(ret)
     }
@@ -580,7 +580,7 @@ impl ShimContext {
     pub fn spin_once(&self, timeout_ms: u32) -> Result<i32> {
         let ret = unsafe { zenoh_shim_spin_once(timeout_ms) };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
         Ok(ret)
     }
@@ -589,13 +589,13 @@ impl ShimContext {
     ///
     /// The Zenoh ID uniquely identifies this session in the Zenoh network.
     /// It is used in liveliness token key expressions for ROS 2 discovery.
-    pub fn zid(&self) -> Result<ShimZenohId> {
+    pub fn zid(&self) -> Result<ZenohId> {
         let mut id = [0u8; 16];
         let ret = unsafe { zenoh_shim_get_zid(id.as_mut_ptr()) };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
-        Ok(ShimZenohId::from_bytes(id))
+        Ok(ZenohId::from_bytes(id))
     }
 
     /// Declare a liveliness token for ROS 2 discovery
@@ -606,13 +606,13 @@ impl ShimContext {
     ///
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of liveliness tokens has been reached.
-    pub fn declare_liveliness(&self, keyexpr: &[u8]) -> Result<ShimLivelinessToken> {
+    pub fn declare_liveliness(&self, keyexpr: &[u8]) -> Result<LivelinessToken> {
         let handle = unsafe { zenoh_shim_declare_liveliness(keyexpr.as_ptr().cast()) };
         if handle < 0 {
-            return Err(ShimError::from_code(handle));
+            return Err(ZpicoError::from_code(handle));
         }
 
-        Ok(ShimLivelinessToken { handle })
+        Ok(LivelinessToken { handle })
     }
 
     /// Declare a queryable for receiving service requests
@@ -632,16 +632,16 @@ impl ShimContext {
     pub unsafe fn declare_queryable_raw(
         &self,
         keyexpr: &[u8],
-        callback: ShimQueryCallback,
+        callback: ZpicoQueryCallback,
         ctx: *mut c_void,
-    ) -> Result<ShimQueryable> {
+    ) -> Result<Queryable> {
         let handle =
             unsafe { zenoh_shim_declare_queryable(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
-            return Err(ShimError::from_code(handle));
+            return Err(ZpicoError::from_code(handle));
         }
 
-        Ok(ShimQueryable { handle })
+        Ok(Queryable { handle })
     }
 
     /// Reply to a query (must be called within query callback)
@@ -683,7 +683,7 @@ impl ShimContext {
             )
         };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
         Ok(())
     }
@@ -735,9 +735,9 @@ impl ShimContext {
         if ret < 0 {
             // Check for timeout specifically (error code -9 from C shim)
             if ret == -9 {
-                return Err(ShimError::Timeout);
+                return Err(ZpicoError::Timeout);
             }
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
 
         Ok(ret as usize)
@@ -763,7 +763,7 @@ impl ShimContext {
         };
 
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
 
         Ok(ret)
@@ -784,9 +784,9 @@ impl ShimContext {
             Ok(None)
         } else {
             if ret == -9 {
-                return Err(ShimError::Timeout);
+                return Err(ZpicoError::Timeout);
             }
-            Err(ShimError::from_code(ret))
+            Err(ZpicoError::from_code(ret))
         }
     }
 }
@@ -797,7 +797,7 @@ impl ShimContext {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl Drop for ShimContext {
+impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
             zenoh_shim_close();
@@ -806,21 +806,21 @@ impl Drop for ShimContext {
 }
 
 // ============================================================================
-// ShimPublisher
+// Publisher
 // ============================================================================
 
 /// Publisher handle for sending data
 ///
-/// Created via `ShimContext::declare_publisher()`.
+/// Created via `Context::declare_publisher()`.
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-pub struct ShimPublisher<'a> {
+pub struct Publisher<'a> {
     handle: i32,
-    _ctx: PhantomData<&'a ShimContext>,
+    _ctx: PhantomData<&'a Context>,
 }
 
 #[cfg(any(
@@ -829,7 +829,7 @@ pub struct ShimPublisher<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl<'a> ShimPublisher<'a> {
+impl<'a> Publisher<'a> {
     /// Publish data
     ///
     /// # Errors
@@ -838,7 +838,7 @@ impl<'a> ShimPublisher<'a> {
     pub fn publish(&self, data: &[u8]) -> Result<()> {
         let ret = unsafe { zenoh_shim_publish(self.handle, data.as_ptr(), data.len()) };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
         Ok(())
     }
@@ -872,7 +872,7 @@ impl<'a> ShimPublisher<'a> {
             )
         };
         if ret < 0 {
-            return Err(ShimError::from_code(ret));
+            return Err(ZpicoError::from_code(ret));
         }
         Ok(())
     }
@@ -889,7 +889,7 @@ impl<'a> ShimPublisher<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl<'a> Drop for ShimPublisher<'a> {
+impl<'a> Drop for Publisher<'a> {
     fn drop(&mut self) {
         unsafe {
             zenoh_shim_undeclare_publisher(self.handle);
@@ -898,21 +898,21 @@ impl<'a> Drop for ShimPublisher<'a> {
 }
 
 // ============================================================================
-// ShimSubscriber
+// Subscriber
 // ============================================================================
 
 /// Subscriber handle for receiving data
 ///
-/// Created via `ShimContext::declare_subscriber_raw()`.
+/// Created via `Context::declare_subscriber_raw()`.
 #[cfg(any(
     feature = "platform-posix",
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-pub struct ShimSubscriber<'a> {
+pub struct Subscriber<'a> {
     handle: i32,
-    _ctx: PhantomData<&'a ShimContext>,
+    _ctx: PhantomData<&'a Context>,
 }
 
 #[cfg(any(
@@ -921,7 +921,7 @@ pub struct ShimSubscriber<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl<'a> ShimSubscriber<'a> {
+impl<'a> Subscriber<'a> {
     /// Get the subscriber handle
     pub fn handle(&self) -> i32 {
         self.handle
@@ -934,7 +934,7 @@ impl<'a> ShimSubscriber<'a> {
     feature = "platform-bare-metal",
     feature = "platform-freertos"
 ))]
-impl<'a> Drop for ShimSubscriber<'a> {
+impl<'a> Drop for Subscriber<'a> {
     fn drop(&mut self) {
         unsafe {
             zenoh_shim_undeclare_subscriber(self.handle);
@@ -954,20 +954,20 @@ mod tests {
 
     #[test]
     fn test_error_from_code() {
-        assert_eq!(ShimError::from_code(-1), ShimError::Generic);
-        assert_eq!(ShimError::from_code(-2), ShimError::Config);
-        assert_eq!(ShimError::from_code(-3), ShimError::Session);
-        assert_eq!(ShimError::from_code(-4), ShimError::Task);
-        assert_eq!(ShimError::from_code(-5), ShimError::KeyExpr);
-        assert_eq!(ShimError::from_code(-6), ShimError::Full);
-        assert_eq!(ShimError::from_code(-7), ShimError::Invalid);
-        assert_eq!(ShimError::from_code(-8), ShimError::Publish);
-        assert_eq!(ShimError::from_code(-99), ShimError::Generic);
+        assert_eq!(ZpicoError::from_code(-1), ZpicoError::Generic);
+        assert_eq!(ZpicoError::from_code(-2), ZpicoError::Config);
+        assert_eq!(ZpicoError::from_code(-3), ZpicoError::Session);
+        assert_eq!(ZpicoError::from_code(-4), ZpicoError::Task);
+        assert_eq!(ZpicoError::from_code(-5), ZpicoError::KeyExpr);
+        assert_eq!(ZpicoError::from_code(-6), ZpicoError::Full);
+        assert_eq!(ZpicoError::from_code(-7), ZpicoError::Invalid);
+        assert_eq!(ZpicoError::from_code(-8), ZpicoError::Publish);
+        assert_eq!(ZpicoError::from_code(-99), ZpicoError::Generic);
     }
 
     #[test]
     fn test_error_display() {
-        assert_eq!(format!("{}", ShimError::Generic), "generic error");
-        assert_eq!(format!("{}", ShimError::Session), "session error");
+        assert_eq!(format!("{}", ZpicoError::Generic), "generic error");
+        assert_eq!(format!("{}", ZpicoError::Session), "session error");
     }
 }

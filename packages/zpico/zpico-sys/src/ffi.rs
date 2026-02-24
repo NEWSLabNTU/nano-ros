@@ -59,7 +59,7 @@ pub const ZPICO_ERR_TIMEOUT: i32 = -9;
 /// * `data` - Pointer to received data buffer
 /// * `len` - Length of data in bytes
 /// * `ctx` - User-provided context pointer
-pub type ShimCallback = extern "C" fn(data: *const u8, len: usize, ctx: *mut c_void);
+pub type ZpicoCallback = extern "C" fn(data: *const u8, len: usize, ctx: *mut c_void);
 
 /// Callback function type for receiving samples with attachment (RMW compatible).
 ///
@@ -69,7 +69,7 @@ pub type ShimCallback = extern "C" fn(data: *const u8, len: usize, ctx: *mut c_v
 /// * `attachment` - Pointer to attachment buffer (may be NULL)
 /// * `attachment_len` - Length of attachment in bytes
 /// * `ctx` - User-provided context pointer
-pub type ShimCallbackWithAttachment = extern "C" fn(
+pub type ZpicoCallbackWithAttachment = extern "C" fn(
     data: *const u8,
     len: usize,
     attachment: *const u8,
@@ -87,7 +87,7 @@ pub type ShimCallbackWithAttachment = extern "C" fn(
 /// * `attachment` - Pointer to attachment buffer (may be NULL)
 /// * `attachment_len` - Length of attachment in bytes
 /// * `ctx` - User-provided context pointer
-pub type ShimNotifyCallback =
+pub type ZpicoNotifyCallback =
     extern "C" fn(len: usize, attachment: *const u8, attachment_len: usize, ctx: *mut c_void);
 
 /// Zero-copy callback: data pointer is borrowed from zenoh-pico's receive buffer.
@@ -99,7 +99,7 @@ pub type ShimNotifyCallback =
 /// * `attachment` - Pointer to attachment buffer (may be NULL)
 /// * `attachment_len` - Length of attachment in bytes
 /// * `ctx` - User-provided context pointer
-pub type ShimZeroCopyCallback = extern "C" fn(
+pub type ZpicoZeroCopyCallback = extern "C" fn(
     data: *const u8,
     len: usize,
     attachment: *const u8,
@@ -115,7 +115,7 @@ pub type ShimZeroCopyCallback = extern "C" fn(
 /// * `payload` - Pointer to request payload (may be NULL)
 /// * `payload_len` - Length of payload in bytes
 /// * `ctx` - User-provided context pointer
-pub type ShimQueryCallback = extern "C" fn(
+pub type ZpicoQueryCallback = extern "C" fn(
     keyexpr: *const core::ffi::c_char,
     keyexpr_len: usize,
     payload: *const u8,
@@ -249,7 +249,7 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_declare_subscriber(
         _keyexpr: *const c_char,
-        _callback: ShimCallback,
+        _callback: ZpicoCallback,
         _ctx: *mut c_void,
     ) -> i32 {
         0
@@ -267,7 +267,7 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_declare_subscriber_with_attachment(
         _keyexpr: *const c_char,
-        _callback: ShimCallbackWithAttachment,
+        _callback: ZpicoCallbackWithAttachment,
         _ctx: *mut c_void,
     ) -> i32 {
         0
@@ -296,7 +296,7 @@ mod cbindgen_stubs {
         _buf_ptr: *mut u8,
         _buf_capacity: usize,
         _locked_ptr: *const bool,
-        _callback: ShimNotifyCallback,
+        _callback: ZpicoNotifyCallback,
         _ctx: *mut c_void,
     ) -> i32 {
         0
@@ -318,7 +318,7 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_subscribe_zero_copy(
         _keyexpr: *const c_char,
-        _callback: ShimZeroCopyCallback,
+        _callback: ZpicoZeroCopyCallback,
         _ctx: *mut c_void,
     ) -> i32 {
         0
@@ -466,7 +466,7 @@ mod cbindgen_stubs {
     #[unsafe(no_mangle)]
     pub extern "C" fn zenoh_shim_declare_queryable(
         _keyexpr: *const c_char,
-        _callback: ShimQueryCallback,
+        _callback: ZpicoQueryCallback,
         _ctx: *mut c_void,
     ) -> i32 {
         0

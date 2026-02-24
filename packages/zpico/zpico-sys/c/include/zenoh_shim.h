@@ -103,7 +103,7 @@ typedef struct zenoh_shim_property_t {
  * * `len` - Length of data in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ShimCallback)(const uint8_t *data, uintptr_t len, void *ctx);
+typedef void (*ZpicoCallback)(const uint8_t *data, uintptr_t len, void *ctx);
 
 /**
  * Callback function type for receiving samples with attachment (RMW compatible).
@@ -115,11 +115,11 @@ typedef void (*ShimCallback)(const uint8_t *data, uintptr_t len, void *ctx);
  * * `attachment_len` - Length of attachment in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ShimCallbackWithAttachment)(const uint8_t *data,
-                                           uintptr_t len,
-                                           const uint8_t *attachment,
-                                           uintptr_t attachment_len,
-                                           void *ctx);
+typedef void (*ZpicoCallbackWithAttachment)(const uint8_t *data,
+                                            uintptr_t len,
+                                            const uint8_t *attachment,
+                                            uintptr_t attachment_len,
+                                            void *ctx);
 
 /**
  * Notify callback for direct-write subscribers.
@@ -133,10 +133,10 @@ typedef void (*ShimCallbackWithAttachment)(const uint8_t *data,
  * * `attachment_len` - Length of attachment in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ShimNotifyCallback)(uintptr_t len,
-                                   const uint8_t *attachment,
-                                   uintptr_t attachment_len,
-                                   void *ctx);
+typedef void (*ZpicoNotifyCallback)(uintptr_t len,
+                                    const uint8_t *attachment,
+                                    uintptr_t attachment_len,
+                                    void *ctx);
 
 /**
  * Zero-copy callback: data pointer is borrowed from zenoh-pico's receive buffer.
@@ -149,11 +149,11 @@ typedef void (*ShimNotifyCallback)(uintptr_t len,
  * * `attachment_len` - Length of attachment in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ShimZeroCopyCallback)(const uint8_t *data,
-                                     uintptr_t len,
-                                     const uint8_t *attachment,
-                                     uintptr_t attachment_len,
-                                     void *ctx);
+typedef void (*ZpicoZeroCopyCallback)(const uint8_t *data,
+                                      uintptr_t len,
+                                      const uint8_t *attachment,
+                                      uintptr_t attachment_len,
+                                      void *ctx);
 
 /**
  * Callback function type for receiving queries (service requests).
@@ -165,11 +165,11 @@ typedef void (*ShimZeroCopyCallback)(const uint8_t *data,
  * * `payload_len` - Length of payload in bytes
  * * `ctx` - User-provided context pointer
  */
-typedef void (*ShimQueryCallback)(const char *keyexpr,
-                                  uintptr_t keyexpr_len,
-                                  const uint8_t *payload,
-                                  uintptr_t payload_len,
-                                  void *ctx);
+typedef void (*ZpicoQueryCallback)(const char *keyexpr,
+                                   uintptr_t keyexpr_len,
+                                   const uint8_t *payload,
+                                   uintptr_t payload_len,
+                                   void *ctx);
 
 /**
  * Initialize zenoh configuration with client mode and connect locator.
@@ -268,7 +268,7 @@ int32_t zenoh_shim_undeclare_publisher(int32_t _handle);
  * # Returns
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
-int32_t zenoh_shim_declare_subscriber(const char *_keyexpr, ShimCallback _callback, void *_ctx);
+int32_t zenoh_shim_declare_subscriber(const char *_keyexpr, ZpicoCallback _callback, void *_ctx);
 
 /**
  * Declare a subscriber with attachment support for RMW compatibility.
@@ -282,7 +282,7 @@ int32_t zenoh_shim_declare_subscriber(const char *_keyexpr, ShimCallback _callba
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
 int32_t zenoh_shim_declare_subscriber_with_attachment(const char *_keyexpr,
-                                                      ShimCallbackWithAttachment _callback,
+                                                      ZpicoCallbackWithAttachment _callback,
                                                       void *_ctx);
 
 /**
@@ -308,7 +308,7 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *_keyexpr,
                                                    uint8_t *_buf_ptr,
                                                    uintptr_t _buf_capacity,
                                                    const bool *_locked_ptr,
-                                                   ShimNotifyCallback _callback,
+                                                   ZpicoNotifyCallback _callback,
                                                    void *_ctx);
 
 /**
@@ -327,7 +327,7 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *_keyexpr,
  * Subscriber handle (>= 0) on success, negative error code on failure.
  */
 int32_t zenoh_shim_subscribe_zero_copy(const char *_keyexpr,
-                                       ShimZeroCopyCallback _callback,
+                                       ZpicoZeroCopyCallback _callback,
                                        void *_ctx);
 
 /**
@@ -445,7 +445,9 @@ int32_t zenoh_shim_publish_with_attachment(int32_t _handle,
  * # Returns
  * Queryable handle (>= 0) on success, negative error code on failure.
  */
-int32_t zenoh_shim_declare_queryable(const char *_keyexpr, ShimQueryCallback _callback, void *_ctx);
+int32_t zenoh_shim_declare_queryable(const char *_keyexpr,
+                                     ZpicoQueryCallback _callback,
+                                     void *_ctx);
 
 /**
  * Undeclare a queryable.

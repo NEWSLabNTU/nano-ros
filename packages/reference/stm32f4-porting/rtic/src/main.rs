@@ -10,7 +10,7 @@
 //! ├── poll_network (priority 2)
 //! │   └── Polls smoltcp, bridges to zenoh-pico platform buffers
 //! ├── zenoh_poll (priority 2)
-//! │   └── Calls ShimContext::spin_once() for zenoh processing
+//! │   └── Calls Context::spin_once() for zenoh processing
 //! └── publisher_task (priority 1)
 //!     └── Periodic publishing of sensor data
 //! ```
@@ -299,10 +299,10 @@ mod app {
         // Note: The following code requires zenoh-pico to be cross-compiled for
         // ARM Cortex-M. When available, uncomment this section:
         //
-        // use nros_rmw_zenoh::ShimContext;
+        // use nros_rmw_zenoh::Context;
         //
         // info!("Connecting to zenoh router...");
-        // match ShimContext::new(ZENOH_ROUTER) {
+        // match Context::new(ZENOH_ROUTER) {
         //     Ok(ctx) => {
         //         info!("Connected to zenoh router!");
         //

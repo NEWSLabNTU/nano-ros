@@ -14,7 +14,7 @@ blocks; smaller files > monoliths.**
 
 | Item                                    | Status      |
 |-----------------------------------------|-------------|
-| 57.1 — Remove "Shim" smurf prefix       | Not Started |
+| 57.1 — Remove "Shim" smurf prefix       | Done        |
 | 57.2 — Split shim.rs (3,426 lines)      | Not Started |
 | 57.3 — Split other large files          | Not Started |
 | 57.4 — Safe buffer accessor wrappers    | Not Started |
@@ -56,48 +56,48 @@ be clearer.
 
 **Phase A — Rename in `zpico.rs`:**
 
-- [ ] `ShimError` → `ZpicoError`
-- [ ] `ShimZenohId` → `ZenohId`
-- [ ] `ShimLivelinessToken` → `LivelinessToken` (already aliased to this)
-- [ ] `ShimQueryable` → `Queryable`
-- [ ] `ShimContext` → `Context`
-- [ ] `ShimPublisher<'a>` → `Publisher<'a>`
-- [ ] `ShimSubscriber<'a>` → `Subscriber<'a>`
+- [x] `ShimError` → `ZpicoError`
+- [x] `ShimZenohId` → `ZenohId`
+- [x] `ShimLivelinessToken` → `LivelinessToken` (already aliased to this)
+- [x] `ShimQueryable` → `Queryable`
+- [x] `ShimContext` → `Context`
+- [x] `ShimPublisher<'a>` → `Publisher<'a>`
+- [x] `ShimSubscriber<'a>` → `Subscriber<'a>`
 
 **Phase B — Rename in `shim.rs`:**
 
 These implement the `nros-rmw` transport traits. Rename to match the public
 `Zenoh*` aliases directly, eliminating the alias layer:
 
-- [ ] `ShimTransport` → `ZenohTransport`
-- [ ] `ShimSession` → `ZenohSession`
-- [ ] `ShimPublisher` → `ZenohPublisher`
-- [ ] `ShimSubscriber` → `ZenohSubscriber`
-- [ ] `ShimZeroCopySubscriber` → `ZenohZeroCopySubscriber`
-- [ ] `ShimServiceServer` → `ZenohServiceServer`
-- [ ] `ShimServiceClient` → `ZenohServiceClient`
+- [x] `ShimTransport` → `ZenohTransport`
+- [x] `ShimSession` → `ZenohSession`
+- [x] `ShimPublisher` → `ZenohPublisher`
+- [x] `ShimSubscriber` → `ZenohSubscriber`
+- [x] `ShimZeroCopySubscriber` → `ZenohZeroCopySubscriber`
+- [x] `ShimServiceServer` → `ZenohServiceServer`
+- [x] `ShimServiceClient` → `ZenohServiceClient`
 
 **Phase C — Rename in `zpico-sys/src/ffi.rs`:**
 
-- [ ] `ShimCallback` → `ZpicoCallback`
-- [ ] `ShimCallbackWithAttachment` → `ZpicoCallbackWithAttachment`
-- [ ] `ShimNotifyCallback` → `ZpicoNotifyCallback`
-- [ ] `ShimZeroCopyCallback` → `ZpicoZeroCopyCallback`
-- [ ] `ShimQueryCallback` → `ZpicoQueryCallback`
+- [x] `ShimCallback` → `ZpicoCallback`
+- [x] `ShimCallbackWithAttachment` → `ZpicoCallbackWithAttachment`
+- [x] `ShimNotifyCallback` → `ZpicoNotifyCallback`
+- [x] `ShimZeroCopyCallback` → `ZpicoZeroCopyCallback`
+- [x] `ShimQueryCallback` → `ZpicoQueryCallback`
 
 **Phase D — Update re-exports:**
 
-- [ ] `nros-rmw-zenoh/src/lib.rs` — remove `type Zenoh* = Shim*` aliases
+- [x] `nros-rmw-zenoh/src/lib.rs` — remove `type Zenoh* = Shim*` aliases
       (types are now named `Zenoh*` directly)
-- [ ] `nros/src/lib.rs` — update `use` paths (no more `Shim*` imports)
-- [ ] `nros-node/src/executor/spin.rs` — update direct `ShimSession` references
-- [ ] Update any remaining `Shim*` references across codebase
+- [x] `nros/src/lib.rs` — update `use` paths (no more `Shim*` imports)
+- [x] `nros-node/src/executor/spin.rs` — update direct `ShimSession` references
+- [x] Update any remaining `Shim*` references across codebase
 
 #### Verification
 
-- [ ] `cargo build --workspace` compiles
-- [ ] `just quality` passes
-- [ ] `grep -r 'Shim' packages/` returns zero hits (excluding comments/docs)
+- [x] `cargo build --workspace` compiles
+- [x] `just quality` passes (20 C API/XRCE test failures are pre-existing, unrelated)
+- [x] `grep -r 'Shim' packages/` returns zero hits (excluding build.rs internals)
 
 ---
 

@@ -128,24 +128,23 @@ pub mod internals {
     // Zenoh backend internal types
     #[cfg(feature = "rmw-zenoh")]
     pub use nros_rmw_zenoh::{
-        RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, ShimLivelinessToken, ShimPublisher,
-        ShimServiceClient, ShimServiceServer, ShimSession, ShimSubscriber, ShimTransport,
-        ShimZenohId, ZenohId, ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohTransport,
+        LivelinessToken, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, ZenohId, ZenohPublisher,
+        ZenohServiceClient, ZenohServiceServer, ZenohSession, ZenohSubscriber, ZenohTransport,
     };
 
     // ── Backend-agnostic type aliases ────────────────────────────────────
     // These resolve to the concrete types of the active RMW backend.
 
     #[cfg(feature = "rmw-zenoh")]
-    pub type RmwSession = nros_rmw_zenoh::ShimSession;
+    pub type RmwSession = nros_rmw_zenoh::ZenohSession;
     #[cfg(feature = "rmw-zenoh")]
-    pub type RmwPublisher = nros_rmw_zenoh::ShimPublisher;
+    pub type RmwPublisher = nros_rmw_zenoh::ZenohPublisher;
     #[cfg(feature = "rmw-zenoh")]
-    pub type RmwSubscriber = nros_rmw_zenoh::ShimSubscriber;
+    pub type RmwSubscriber = nros_rmw_zenoh::ZenohSubscriber;
     #[cfg(feature = "rmw-zenoh")]
-    pub type RmwServiceServer = nros_rmw_zenoh::ShimServiceServer;
+    pub type RmwServiceServer = nros_rmw_zenoh::ZenohServiceServer;
     #[cfg(feature = "rmw-zenoh")]
-    pub type RmwServiceClient = nros_rmw_zenoh::ShimServiceClient;
+    pub type RmwServiceClient = nros_rmw_zenoh::ZenohServiceClient;
 
     #[cfg(feature = "rmw-xrce")]
     pub use nros_rmw_xrce::{

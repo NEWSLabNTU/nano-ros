@@ -42,7 +42,7 @@ use nros_rmw::Rmw;
 
 #[cfg(feature = "rmw-zenoh")]
 impl<const MAX_CBS: usize, const CB_ARENA: usize>
-    Executor<nros_rmw_zenoh::ShimSession, MAX_CBS, CB_ARENA>
+    Executor<nros_rmw_zenoh::ZenohSession, MAX_CBS, CB_ARENA>
 {
     /// Open a new executor session using the zenoh-pico backend.
     ///
@@ -60,7 +60,7 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
             mode: config.mode,
             properties: &[],
         };
-        let session = nros_rmw_zenoh::ShimSession::new(&tc)
+        let session = nros_rmw_zenoh::ZenohSession::new(&tc)
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
         Ok(Self::from_session(session))
     }

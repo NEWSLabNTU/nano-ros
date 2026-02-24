@@ -586,7 +586,7 @@ pub open spec fn callback_with_lock(
 
 /// State after `process_raw_in_place` processes the buffer in-place.
 ///
-/// Models `ShimSubscriber::process_raw_in_place` (shim.rs):
+/// Models `ZenohSubscriber::process_raw_in_place` (shim.rs):
 /// ```ignore
 /// if !has_data → return Ok(false)
 /// if overflow → clear overflow+has_data, return Err(MessageTooLarge)

@@ -766,19 +766,23 @@ impl Session for XrceSession {
             let mut service_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let service_name_ptr = to_c_str(service.name, &mut service_name_buf);
 
-            let req_type: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_request_type(service.type_name);
+            let req_type: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_request_type(service.type_name);
             let mut req_type_buf = [0u8; DDS_NAME_BUF_SIZE];
             let req_type_ptr = to_c_str(req_type.as_str(), &mut req_type_buf);
 
-            let reply_type: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_reply_type(service.type_name);
+            let reply_type: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_reply_type(service.type_name);
             let mut reply_type_buf = [0u8; DDS_NAME_BUF_SIZE];
             let reply_type_ptr = to_c_str(reply_type.as_str(), &mut reply_type_buf);
 
-            let req_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_request_topic(service.name);
+            let req_topic: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_request_topic(service.name);
             let mut req_topic_buf = [0u8; DDS_NAME_BUF_SIZE];
             let req_topic_ptr = to_c_str(req_topic.as_str(), &mut req_topic_buf);
 
-            let reply_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_reply_topic(service.name);
+            let reply_topic: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_reply_topic(service.name);
             let mut reply_topic_buf = [0u8; DDS_NAME_BUF_SIZE];
             let reply_topic_ptr = to_c_str(reply_topic.as_str(), &mut reply_topic_buf);
 
@@ -854,19 +858,23 @@ impl Session for XrceSession {
             let mut service_name_buf = [0u8; DDS_NAME_BUF_SIZE];
             let service_name_ptr = to_c_str(service.name, &mut service_name_buf);
 
-            let req_type: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_request_type(service.type_name);
+            let req_type: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_request_type(service.type_name);
             let mut req_type_buf = [0u8; DDS_NAME_BUF_SIZE];
             let req_type_ptr = to_c_str(req_type.as_str(), &mut req_type_buf);
 
-            let reply_type: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_reply_type(service.type_name);
+            let reply_type: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_reply_type(service.type_name);
             let mut reply_type_buf = [0u8; DDS_NAME_BUF_SIZE];
             let reply_type_ptr = to_c_str(reply_type.as_str(), &mut reply_type_buf);
 
-            let req_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_request_topic(service.name);
+            let req_topic: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_request_topic(service.name);
             let mut req_topic_buf = [0u8; DDS_NAME_BUF_SIZE];
             let req_topic_ptr = to_c_str(req_topic.as_str(), &mut req_topic_buf);
 
-            let reply_topic: heapless::String<DDS_NAME_BUF_SIZE> = naming::dds_reply_topic(service.name);
+            let reply_topic: heapless::String<DDS_NAME_BUF_SIZE> =
+                naming::dds_reply_topic(service.name);
             let mut reply_topic_buf = [0u8; DDS_NAME_BUF_SIZE];
             let reply_topic_ptr = to_c_str(reply_topic.as_str(), &mut reply_topic_buf);
 

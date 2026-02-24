@@ -489,7 +489,7 @@ type ParamServer<Svc, Srv> =
 /// - `get_parameters` / `set_parameters` / `set_parameters_atomically`
 /// - `list_parameters` / `describe_parameters` / `get_parameter_types`
 ///
-/// Generic over the service server handle type `Srv` (e.g., `ShimServiceServer`).
+/// Generic over the service server handle type `Srv` (e.g., `ZenohServiceServer`).
 ///
 /// Boxed when stored in executor to avoid 48KB+ on the stack
 /// (6 servers × 8KB buffers each).

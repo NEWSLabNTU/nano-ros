@@ -1,4 +1,4 @@
-//! Shim transport backend
+//! Zenoh transport backend
 //!
 //! Provides a transport backend using the nros-rmw-zenoh wrapper.
 //! This is designed for embedded platforms that need a simpler API than
@@ -20,7 +20,7 @@
 //!
 //! ```ignore
 //! use nros_rmw::{Transport, TransportConfig, SessionMode};
-//! use nros_rmw_zenoh::ShimTransport;
+//! use nros_rmw_zenoh::ZenohTransport;
 //!
 //! // Create config
 //! let config = TransportConfig {
@@ -30,7 +30,7 @@
 //! };
 //!
 //! // Open session
-//! let mut session = ShimTransport::open(&config).expect("Failed to open session");
+//! let mut session = ZenohTransport::open(&config).expect("Failed to open session");
 //!
 //! // Must poll periodically
 //! session.spin_once(10)?;
@@ -55,12 +55,12 @@ use nros_rmw::{
 
 use crate::keyexpr::{QosKeyExpr, ServiceKeyExpr, TopicKeyExpr};
 use crate::zpico::{
-    ShimContext, ShimError, ShimLivelinessToken, ShimZenohId, ZPICO_MAX_QUERYABLES,
-    ZPICO_MAX_SUBSCRIBERS, ZPICO_RMW_GID_SIZE,
+    Context, LivelinessToken, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SUBSCRIBERS, ZPICO_RMW_GID_SIZE,
+    ZpicoError,
 };
 
 // Re-export for convenience
-pub use crate::zpico::ShimZenohId as ZenohId;
+pub use crate::zpico::ZenohId;
 
 // ============================================================================
 // Constants
@@ -165,19 +165,19 @@ static EXECUTOR_WAKE: std::sync::LazyLock<(std::sync::Mutex<bool>, std::sync::Co
 // Error Conversion
 // ============================================================================
 
-impl From<ShimError> for TransportError {
-    fn from(err: ShimError) -> Self {
+impl From<ZpicoError> for TransportError {
+    fn from(err: ZpicoError) -> Self {
         match err {
-            ShimError::Generic => TransportError::ConnectionFailed,
-            ShimError::Config => TransportError::InvalidConfig,
-            ShimError::Session => TransportError::ConnectionFailed,
-            ShimError::Task => TransportError::TaskStartFailed,
-            ShimError::KeyExpr => TransportError::InvalidConfig,
-            ShimError::Full => TransportError::PublisherCreationFailed,
-            ShimError::Invalid => TransportError::InvalidConfig,
-            ShimError::Publish => TransportError::PublishFailed,
-            ShimError::NotOpen => TransportError::Disconnected,
-            ShimError::Timeout => TransportError::Timeout,
+            ZpicoError::Generic => TransportError::ConnectionFailed,
+            ZpicoError::Config => TransportError::InvalidConfig,
+            ZpicoError::Session => TransportError::ConnectionFailed,
+            ZpicoError::Task => TransportError::TaskStartFailed,
+            ZpicoError::KeyExpr => TransportError::InvalidConfig,
+            ZpicoError::Full => TransportError::PublisherCreationFailed,
+            ZpicoError::Invalid => TransportError::InvalidConfig,
+            ZpicoError::Publish => TransportError::PublishFailed,
+            ZpicoError::NotOpen => TransportError::Disconnected,
+            ZpicoError::Timeout => TransportError::Timeout,
         }
     }
 }
@@ -341,7 +341,7 @@ impl Ros2Liveliness {
     /// - `/ns/sub` → `%ns%sub`
     pub fn node_keyexpr<const N: usize>(
         domain_id: u32,
-        zid: &ShimZenohId,
+        zid: &ZenohId,
         namespace: &str,
         node_name: &str,
     ) -> heapless::String<N> {
@@ -369,7 +369,7 @@ impl Ros2Liveliness {
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn publisher_keyexpr<const N: usize>(
         domain_id: u32,
-        zid: &ShimZenohId,
+        zid: &ZenohId,
         namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
@@ -406,7 +406,7 @@ impl Ros2Liveliness {
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn subscriber_keyexpr<const N: usize>(
         domain_id: u32,
-        zid: &ShimZenohId,
+        zid: &ZenohId,
         namespace: &str,
         node_name: &str,
         topic: &TopicInfo,
@@ -442,7 +442,7 @@ impl Ros2Liveliness {
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn service_server_keyexpr<const N: usize>(
         domain_id: u32,
-        zid: &ShimZenohId,
+        zid: &ZenohId,
         namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
@@ -478,7 +478,7 @@ impl Ros2Liveliness {
     /// Note: type_hash already includes the `RIHS01_` prefix from generated code
     pub fn service_client_keyexpr<const N: usize>(
         domain_id: u32,
-        zid: &ShimZenohId,
+        zid: &ZenohId,
         namespace: &str,
         node_name: &str,
         service: &ServiceInfo,
@@ -523,20 +523,20 @@ impl Ros2Liveliness {
 }
 
 // ============================================================================
-// ShimTransport
+// ZenohTransport
 // ============================================================================
 
-/// Shim transport backend for embedded platforms
+/// Zenoh transport backend for embedded platforms
 ///
 /// Uses nros-rmw-zenoh for a simplified API suitable for bare-metal systems.
-pub struct ShimTransport;
+pub struct ZenohTransport;
 
-impl Transport for ShimTransport {
+impl Transport for ZenohTransport {
     type Error = TransportError;
-    type Session = ShimSession;
+    type Session = ZenohSession;
 
     fn open(config: &TransportConfig) -> Result<Self::Session, Self::Error> {
-        ShimSession::new(config)
+        ZenohSession::new(config)
     }
 }
 
@@ -567,7 +567,7 @@ impl Transport for ShimTransport {
 pub struct ZenohRmw;
 
 impl Rmw for ZenohRmw {
-    type Session = ShimSession;
+    type Session = ZenohSession;
     type Error = TransportError;
 
     fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error> {
@@ -576,23 +576,23 @@ impl Rmw for ZenohRmw {
             mode: config.mode,
             properties: &[],
         };
-        ShimSession::new(&transport_config)
+        ZenohSession::new(&transport_config)
     }
 }
 
 // ============================================================================
-// ShimSession
+// ZenohSession
 // ============================================================================
 
-/// Shim session wrapping nros-rmw-zenoh ShimContext
+/// Zenoh session wrapping nros-rmw-zenoh Context
 ///
 /// This session requires manual polling via `spin_once()` or `poll()`.
 /// There are no background threads.
-pub struct ShimSession {
-    context: ShimContext,
+pub struct ZenohSession {
+    context: Context,
 }
 
-impl ShimSession {
+impl ZenohSession {
     /// Create a new shim session with the given configuration
     ///
     /// # Arguments
@@ -704,7 +704,7 @@ impl ShimSession {
             Some(locator.as_slice())
         };
 
-        let context = ShimContext::with_config(locator_opt, mode, &c_props[..prop_count])
+        let context = Context::with_config(locator_opt, mode, &c_props[..prop_count])
             .map_err(TransportError::from)?;
 
         Ok(Self { context })
@@ -753,8 +753,8 @@ impl ShimSession {
             .map_err(TransportError::from)
     }
 
-    /// Get a reference to the underlying ShimContext
-    pub fn inner(&self) -> &ShimContext {
+    /// Get a reference to the underlying Context
+    pub fn inner(&self) -> &Context {
         &self.context
     }
 
@@ -762,7 +762,7 @@ impl ShimSession {
     ///
     /// The Zenoh ID uniquely identifies this session in the Zenoh network.
     /// It is used in liveliness token key expressions for ROS 2 discovery.
-    pub fn zid(&self) -> Result<ShimZenohId, TransportError> {
+    pub fn zid(&self) -> Result<ZenohId, TransportError> {
         self.context.zid().map_err(TransportError::from)
     }
 
@@ -772,22 +772,19 @@ impl ShimSession {
     /// allowing ROS 2 nodes using rmw_zenoh to discover this entity.
     ///
     /// The key expression should be null-terminated.
-    pub fn declare_liveliness(
-        &self,
-        keyexpr: &[u8],
-    ) -> Result<ShimLivelinessToken, TransportError> {
+    pub fn declare_liveliness(&self, keyexpr: &[u8]) -> Result<LivelinessToken, TransportError> {
         self.context
             .declare_liveliness(keyexpr)
             .map_err(TransportError::from)
     }
 }
 
-impl Session for ShimSession {
+impl Session for ZenohSession {
     type Error = TransportError;
-    type PublisherHandle = ShimPublisher;
-    type SubscriberHandle = ShimSubscriber;
-    type ServiceServerHandle = ShimServiceServer;
-    type ServiceClientHandle = ShimServiceClient;
+    type PublisherHandle = ZenohPublisher;
+    type SubscriberHandle = ZenohSubscriber;
+    type ServiceServerHandle = ZenohServiceServer;
+    type ServiceClientHandle = ZenohServiceClient;
 
     fn create_publisher(
         &mut self,
@@ -810,7 +807,7 @@ impl Session for ShimSession {
         }
         #[cfg(not(feature = "std"))]
         let _ = &qos;
-        ShimPublisher::new(&self.context, topic)
+        ZenohPublisher::new(&self.context, topic)
     }
 
     fn create_subscriber(
@@ -818,21 +815,21 @@ impl Session for ShimSession {
         topic: &TopicInfo,
         _qos: QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
-        ShimSubscriber::new(&self.context, topic)
+        ZenohSubscriber::new(&self.context, topic)
     }
 
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
-        ShimServiceServer::new(&self.context, service)
+        ZenohServiceServer::new(&self.context, service)
     }
 
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
-        ShimServiceClient::new(&self.context, service)
+        ZenohServiceClient::new(&self.context, service)
     }
 
     fn close(&mut self) -> Result<(), Self::Error> {
@@ -846,14 +843,14 @@ impl Session for ShimSession {
 }
 
 // ============================================================================
-// ShimPublisher
+// ZenohPublisher
 // ============================================================================
 
-/// Shim publisher wrapping nros-rmw-zenoh ShimPublisher
+/// Zenoh publisher wrapping nros-rmw-zenoh ZenohPublisher
 ///
 /// Includes RMW attachment support for rmw_zenoh compatibility.
-pub struct ShimPublisher {
-    publisher: crate::zpico::ShimPublisher<'static>,
+pub struct ZenohPublisher {
+    publisher: crate::zpico::Publisher<'static>,
     /// RMW GID (generated once per publisher)
     rmw_gid: [u8; RMW_GID_SIZE],
     /// Sequence number counter (atomic for interior mutability)
@@ -862,9 +859,9 @@ pub struct ShimPublisher {
     timestamp_counter: AtomicSeqCounter,
 }
 
-impl ShimPublisher {
+impl ZenohPublisher {
     /// Create a new publisher for the given topic
-    pub fn new(context: &ShimContext, topic: &TopicInfo) -> Result<Self, TransportError> {
+    pub fn new(context: &Context, topic: &TopicInfo) -> Result<Self, TransportError> {
         // Generate the topic key with null terminator
         let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
 
@@ -880,17 +877,17 @@ impl ShimPublisher {
         keyexpr_buf[..bytes.len()].copy_from_slice(bytes);
         keyexpr_buf[bytes.len()] = 0;
 
-        // Safety: We need to extend the lifetime because ShimPublisher borrows from ShimContext.
+        // Safety: We need to extend the lifetime because ZenohPublisher borrows from Context.
         // This is safe because:
-        // 1. ShimPublisher is stored in ShimSession which owns the ShimContext
+        // 1. ZenohPublisher is stored in ZenohSession which owns the Context
         // 2. The underlying C shim manages its own state
         // 3. We transmute the lifetime to 'static for storage
         let publisher = unsafe {
             let pub_result = context.declare_publisher(&keyexpr_buf);
             match pub_result {
                 Ok(p) => core::mem::transmute::<
-                    crate::zpico::ShimPublisher<'_>,
-                    crate::zpico::ShimPublisher<'static>,
+                    crate::zpico::Publisher<'_>,
+                    crate::zpico::Publisher<'static>,
                 >(p),
                 Err(e) => return Err(TransportError::from(e)),
             }
@@ -926,7 +923,7 @@ impl ShimPublisher {
     }
 }
 
-impl Publisher for ShimPublisher {
+impl Publisher for ZenohPublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error> {
@@ -995,7 +992,7 @@ impl Publisher for ShimPublisher {
 }
 
 // ============================================================================
-// ShimSubscriber
+// ZenohSubscriber
 // ============================================================================
 
 /// Attachment buffer size: 33 bytes normally, 37 with safety CRC
@@ -1108,10 +1105,10 @@ extern "C" fn subscriber_notify_callback(
     }
 }
 
-/// Shim subscriber wrapping nros-rmw-zenoh ShimSubscriber
-pub struct ShimSubscriber {
+/// Zenoh subscriber wrapping nros-rmw-zenoh ZenohSubscriber
+pub struct ZenohSubscriber {
     /// The subscriber handle (kept alive to maintain subscription)
-    _subscriber: crate::zpico::ShimSubscriber<'static>,
+    _subscriber: crate::zpico::Subscriber<'static>,
     /// Index into the static buffer array
     buffer_index: usize,
     /// E2E safety validator (tracks sequence numbers, validates CRC)
@@ -1121,9 +1118,9 @@ pub struct ShimSubscriber {
     _phantom: PhantomData<()>,
 }
 
-impl ShimSubscriber {
+impl ZenohSubscriber {
     /// Create a new subscriber for the given topic
-    pub fn new(context: &ShimContext, topic: &TopicInfo) -> Result<Self, TransportError> {
+    pub fn new(context: &Context, topic: &TopicInfo) -> Result<Self, TransportError> {
         // Allocate a buffer index
         let buffer_index = NEXT_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
         if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
@@ -1166,8 +1163,8 @@ impl ShimSubscriber {
             );
             match sub_result {
                 Ok(s) => core::mem::transmute::<
-                    crate::zpico::ShimSubscriber<'_>,
-                    crate::zpico::ShimSubscriber<'static>,
+                    crate::zpico::Subscriber<'_>,
+                    crate::zpico::Subscriber<'static>,
                 >(s),
                 Err(e) => return Err(TransportError::from(e)),
             }
@@ -1183,7 +1180,7 @@ impl ShimSubscriber {
     }
 }
 
-impl ShimSubscriber {
+impl ZenohSubscriber {
     /// Try to receive a validated message with E2E integrity status.
     ///
     /// Checks CRC-32 integrity and sequence continuity. Returns
@@ -1376,7 +1373,7 @@ impl ShimSubscriber {
     }
 }
 
-impl Subscriber for ShimSubscriber {
+impl Subscriber for ZenohSubscriber {
     type Error = TransportError;
 
     fn has_data(&self) -> bool {
@@ -1477,7 +1474,7 @@ impl Subscriber for ShimSubscriber {
         buf: &mut [u8],
     ) -> Result<Option<(usize, nros_rmw::IntegrityStatus)>, Self::Error> {
         // Delegate to the inherent safety validation method
-        ShimSubscriber::try_recv_validated(self, buf)
+        ZenohSubscriber::try_recv_validated(self, buf)
     }
 
     fn deserialization_error(&self) -> Self::Error {
@@ -1486,7 +1483,7 @@ impl Subscriber for ShimSubscriber {
 }
 
 // ============================================================================
-// ShimZeroCopySubscriber (unstable-zenoh-api)
+// ZenohZeroCopySubscriber (unstable-zenoh-api)
 // ============================================================================
 
 // Type alias for the zero-copy callback closure.
@@ -1495,7 +1492,7 @@ type ZeroCopyCallbackBox = alloc::boxed::Box<dyn FnMut(&[u8], Option<MessageInfo
 
 /// Zero-copy subscriber that deserializes directly from zenoh-pico's internal buffer.
 ///
-/// Unlike [`ShimSubscriber`] which uses a poll model (static buffer + `has_data` flag),
+/// Unlike [`ZenohSubscriber`] which uses a poll model (static buffer + `has_data` flag),
 /// this subscriber uses a push model: the C callback invokes a Rust closure that
 /// processes the message inline. No payload copies are made.
 ///
@@ -1508,9 +1505,9 @@ type ZeroCopyCallbackBox = alloc::boxed::Box<dyn FnMut(&[u8], Option<MessageInfo
 /// - **Posix (std):** The callback fires on zenoh-pico's background read thread.
 ///   The user callback runs there too. This is acceptable behind an explicit opt-in feature.
 #[cfg(all(feature = "unstable-zenoh-api", feature = "alloc"))]
-pub struct ShimZeroCopySubscriber {
+pub struct ZenohZeroCopySubscriber {
     /// Subscriber handle — kept alive to maintain the zenoh subscription.
-    _subscriber: crate::zpico::ShimSubscriber<'static>,
+    _subscriber: crate::zpico::Subscriber<'static>,
     /// The callback must outlive the subscriber. We leak it (intentionally)
     /// since subscriptions have static lifetime in the shim model.
     _callback: core::mem::ManuallyDrop<ZeroCopyCallbackBox>,
@@ -1538,12 +1535,12 @@ extern "C" fn zero_copy_trampoline(
 }
 
 #[cfg(all(feature = "unstable-zenoh-api", feature = "alloc"))]
-impl ShimZeroCopySubscriber {
+impl ZenohZeroCopySubscriber {
     /// Create a zero-copy subscriber that invokes `callback` directly from the
     /// zenoh-pico receive path. The payload slice is borrowed from zenoh-pico's
     /// internal buffer and is only valid for the duration of the callback.
     pub fn new(
-        context: &ShimContext,
+        context: &Context,
         topic: &nros_rmw::TopicInfo,
         callback: impl FnMut(&[u8], Option<MessageInfo>) + Send + 'static,
     ) -> Result<Self, nros_rmw::TransportError> {
@@ -1576,8 +1573,8 @@ impl ShimZeroCopySubscriber {
                 context.subscribe_zero_copy_raw(&keyexpr_buf, zero_copy_trampoline, ctx_ptr);
             match sub_result {
                 Ok(s) => core::mem::transmute::<
-                    crate::zpico::ShimSubscriber<'_>,
-                    crate::zpico::ShimSubscriber<'static>,
+                    crate::zpico::Subscriber<'_>,
+                    crate::zpico::Subscriber<'static>,
                 >(s),
                 Err(e) => return Err(nros_rmw::TransportError::from(e)),
             }
@@ -1697,13 +1694,13 @@ extern "C" fn queryable_callback(
     }
 }
 
-/// Shim service server using queryables
+/// Zenoh service server using queryables
 ///
 /// Receives service requests via queryable callbacks.
 /// Note: The reply mechanism is limited due to the callback model.
-pub struct ShimServiceServer {
+pub struct ZenohServiceServer {
     /// The queryable handle (kept alive to maintain registration)
-    _queryable: crate::zpico::ShimQueryable,
+    _queryable: crate::zpico::Queryable,
     /// Index into the static buffer array
     buffer_index: usize,
     /// Keyexpr buffer for replying (copied from last request)
@@ -1711,14 +1708,14 @@ pub struct ShimServiceServer {
     /// Keyexpr length
     reply_keyexpr_len: usize,
     /// Reference to context for replying
-    context: *const ShimContext,
+    context: *const Context,
     /// Phantom to indicate ownership
     _phantom: PhantomData<()>,
 }
 
-impl ShimServiceServer {
+impl ZenohServiceServer {
     /// Create a new service server for the given service
-    pub fn new(context: &ShimContext, service: &ServiceInfo) -> Result<Self, TransportError> {
+    pub fn new(context: &Context, service: &ServiceInfo) -> Result<Self, TransportError> {
         // Allocate a buffer index
         let buffer_index = NEXT_SERVICE_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
         if buffer_index >= ZPICO_MAX_QUERYABLES {
@@ -1753,13 +1750,13 @@ impl ShimServiceServer {
             buffer_index,
             reply_keyexpr: [0u8; 256],
             reply_keyexpr_len: 0,
-            context: context as *const ShimContext,
+            context: context as *const Context,
             _phantom: PhantomData,
         })
     }
 }
 
-impl ServiceServerTrait for ShimServiceServer {
+impl ServiceServerTrait for ZenohServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
@@ -1855,16 +1852,16 @@ impl ServiceServerTrait for ShimServiceServer {
 /// Default timeout for service calls in milliseconds
 const SERVICE_DEFAULT_TIMEOUT_MS: u32 = 5000;
 
-/// Shim service client using z_get queries
+/// Zenoh service client using z_get queries
 ///
 /// Service clients send requests via z_get and receive responses from queryables.
-pub struct ShimServiceClient {
+pub struct ZenohServiceClient {
     /// Service key expression (null-terminated)
     keyexpr: [u8; 257],
     /// Length of valid keyexpr
     keyexpr_len: usize,
     /// Reference to context for making queries
-    context: *const ShimContext,
+    context: *const Context,
     /// Timeout in milliseconds
     timeout_ms: u32,
     /// Handle to a pending non-blocking get operation (None if idle)
@@ -1873,9 +1870,9 @@ pub struct ShimServiceClient {
     _phantom: PhantomData<()>,
 }
 
-impl ShimServiceClient {
+impl ZenohServiceClient {
     /// Create a new service client for the given service
-    pub fn new(context: &ShimContext, service: &ServiceInfo) -> Result<Self, TransportError> {
+    pub fn new(context: &Context, service: &ServiceInfo) -> Result<Self, TransportError> {
         // Generate wildcard service key for queries (matches any type hash from ROS 2)
         let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key_wildcard();
 
@@ -1894,7 +1891,7 @@ impl ShimServiceClient {
         Ok(Self {
             keyexpr: keyexpr_buf,
             keyexpr_len: bytes.len(),
-            context: context as *const ShimContext,
+            context: context as *const Context,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
             pending_handle: None,
             _phantom: PhantomData,
@@ -1907,7 +1904,7 @@ impl ShimServiceClient {
     }
 }
 
-impl ServiceClientTrait for ShimServiceClient {
+impl ServiceClientTrait for ZenohServiceClient {
     type Error = TransportError;
 
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error> {
@@ -1975,11 +1972,11 @@ mod tests {
     #[test]
     fn test_error_conversion() {
         assert_eq!(
-            TransportError::from(ShimError::Config),
+            TransportError::from(ZpicoError::Config),
             TransportError::InvalidConfig
         );
         assert_eq!(
-            TransportError::from(ShimError::Publish),
+            TransportError::from(ZpicoError::Publish),
             TransportError::PublishFailed
         );
     }
@@ -2099,7 +2096,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_node_keyexpr() {
-        let zid = ShimZenohId::from_bytes([
+        let zid = ZenohId::from_bytes([
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
             0x0f, 0x10,
         ]);
@@ -2115,7 +2112,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_node_keyexpr_with_namespace() {
-        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let zid = ZenohId::from_bytes([0u8; 16]);
 
         // Non-root namespace: "/demo" mangles to "%demo"
         let keyexpr = Ros2Liveliness::node_keyexpr::<256>(0, &zid, "/demo", "talker");
@@ -2128,7 +2125,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_publisher_keyexpr() {
-        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let zid = ZenohId::from_bytes([0u8; 16]);
         let topic = TopicInfo {
             name: "/chatter",
             type_name: "std_msgs::msg::dds_::String_",
@@ -2150,7 +2147,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_publisher_keyexpr_with_namespace() {
-        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let zid = ZenohId::from_bytes([0u8; 16]);
         let topic = TopicInfo {
             name: "/chatter",
             type_name: "std_msgs::msg::dds_::String_",
@@ -2165,7 +2162,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_subscriber_keyexpr() {
-        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let zid = ZenohId::from_bytes([0u8; 16]);
         let topic = TopicInfo {
             name: "/chatter",
             type_name: "std_msgs::msg::dds_::Int32_",
@@ -2185,7 +2182,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_service_server_keyexpr() {
-        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let zid = ZenohId::from_bytes([0u8; 16]);
         let service = ServiceInfo {
             name: "/add_two_ints",
             type_name: "example_interfaces::srv::dds_::AddTwoInts",
@@ -2205,7 +2202,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_service_server_keyexpr_with_namespace() {
-        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let zid = ZenohId::from_bytes([0u8; 16]);
         let service = ServiceInfo {
             name: "/add_two_ints",
             type_name: "example_interfaces::srv::dds_::AddTwoInts",
@@ -2221,7 +2218,7 @@ mod tests {
 
     #[test]
     fn test_ros2_liveliness_service_client_keyexpr() {
-        let zid = ShimZenohId::from_bytes([0u8; 16]);
+        let zid = ZenohId::from_bytes([0u8; 16]);
         let service = ServiceInfo {
             name: "/add_two_ints",
             type_name: "example_interfaces::srv::dds_::AddTwoInts",
@@ -2322,7 +2319,7 @@ mod tests {
     #[test]
     fn test_zenoh_id_to_hex_lsb_first() {
         // Test that ZenohId is formatted in LSB-first order
-        let zid = ShimZenohId::from_bytes([
+        let zid = ZenohId::from_bytes([
             0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
             0x0f, 0x10,
         ]);
@@ -2442,7 +2439,7 @@ mod ghost_checks {
     /// Helper: parse attachment bytes and validate CRC against payload.
     ///
     /// This mirrors the logic in `try_recv_validated()` but is testable
-    /// without creating a full `ShimSubscriber` (which requires a zenoh session).
+    /// without creating a full `ZenohSubscriber` (which requires a zenoh session).
     #[cfg(feature = "safety-e2e")]
     fn validate_from_buffers(
         payload: &[u8],

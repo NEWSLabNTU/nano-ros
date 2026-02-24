@@ -138,7 +138,11 @@ unsafe extern "C" fn serial_transport_read(
             events: libc::POLLIN,
             revents: 0,
         };
-        let timeout_ms = if timeout <= 0 { SERIAL_DEFAULT_TIMEOUT_MS } else { timeout };
+        let timeout_ms = if timeout <= 0 {
+            SERIAL_DEFAULT_TIMEOUT_MS
+        } else {
+            timeout
+        };
         let poll_ret = libc::poll(&mut pfd, 1, timeout_ms);
 
         if poll_ret <= 0 {

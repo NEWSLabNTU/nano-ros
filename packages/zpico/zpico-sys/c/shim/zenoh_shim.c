@@ -54,9 +54,9 @@ extern uint64_t smoltcp_clock_now_ms(void);
 typedef struct {
     z_owned_subscriber_t subscriber;
     union {
-        ShimCallback callback;                     // Legacy callback (payload only)
-        ShimCallbackWithAttachment callback_ext;   // Extended callback (with attachment)
-        ShimNotifyCallback notify;                 // Direct-write notify (len + attachment)
+        ZpicoCallback callback;                     // Legacy callback (payload only)
+        ZpicoCallbackWithAttachment callback_ext;   // Extended callback (with attachment)
+        ZpicoNotifyCallback notify;                 // Direct-write notify (len + attachment)
     };
     void *ctx;
     bool active;
@@ -68,7 +68,7 @@ typedef struct {
     const bool *locked_ptr; // Pointer to Rust SUBSCRIBER_BUFFERS[i].locked (AtomicBool)
 #if defined(Z_FEATURE_UNSTABLE_API)
     bool zero_copy;        // true = zero-copy mode (borrows from zenoh-pico buffer)
-    ShimZeroCopyCallback zero_copy_cb;
+    ZpicoZeroCopyCallback zero_copy_cb;
 #endif
 } subscriber_entry_t;
 
@@ -87,7 +87,7 @@ typedef struct {
 // Queryable entry for service servers
 typedef struct {
     z_owned_queryable_t queryable;
-    ShimQueryCallback callback;
+    ZpicoQueryCallback callback;
     void *ctx;
     bool active;
 } queryable_entry_t;
@@ -595,7 +595,7 @@ int32_t zenoh_shim_undeclare_publisher(int32_t handle) {
 // ============================================================================
 
 int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
-                                       ShimCallback callback,
+                                       ZpicoCallback callback,
                                        void *ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
@@ -642,7 +642,7 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
 }
 
 int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
-                                                       ShimCallbackWithAttachment callback,
+                                                       ZpicoCallbackWithAttachment callback,
                                                        void *ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
@@ -692,7 +692,7 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
                                                      uint8_t *buf_ptr,
                                                      size_t buf_capacity,
                                                      const bool *locked_ptr,
-                                                     ShimNotifyCallback callback,
+                                                     ZpicoNotifyCallback callback,
                                                      void *ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
@@ -746,7 +746,7 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
 
 #if defined(Z_FEATURE_UNSTABLE_API)
 int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
-                                        ShimZeroCopyCallback callback,
+                                        ZpicoZeroCopyCallback callback,
                                         void *ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
@@ -798,7 +798,7 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
 #else
 // Stub when unstable API is not enabled — returns error
 int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
-                                        ShimZeroCopyCallback callback,
+                                        ZpicoZeroCopyCallback callback,
                                         void *ctx) {
     (void)keyexpr;
     (void)callback;
@@ -1075,7 +1075,7 @@ int32_t zenoh_shim_publish_with_attachment(int32_t handle,
 // ============================================================================
 
 int32_t zenoh_shim_declare_queryable(const char *keyexpr,
-                                      ShimQueryCallback callback,
+                                      ZpicoQueryCallback callback,
                                       void *ctx) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
