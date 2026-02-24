@@ -332,7 +332,7 @@ impl<A: RosAction> Copy for ActionServerHandle<A> {}
 impl<A: RosAction> ActionServerHandle<A> {
     /// Get the [`HandleId`] for this action server.
     ///
-    /// Used with [`Trigger::One`] or [`HandleSet`] for trigger configuration.
+    /// Used with `Trigger::One` or `HandleSet` for trigger configuration.
     pub fn handle_id(&self) -> HandleId {
         HandleId(self.entry_index)
     }

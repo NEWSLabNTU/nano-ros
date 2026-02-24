@@ -28,9 +28,13 @@ pub struct RawActiveGoal {
 /// Completed goal result metadata — indexes into the result slab.
 #[derive(Clone, Copy)]
 pub struct CompletedResultEntry {
+    /// Unique identifier for the completed goal.
     pub goal_id: GoalId,
+    /// Terminal status of the goal.
     pub status: GoalStatus,
+    /// Byte offset into the result slab.
     pub offset: usize,
+    /// Length of the serialised result in bytes.
     pub len: usize,
 }
 

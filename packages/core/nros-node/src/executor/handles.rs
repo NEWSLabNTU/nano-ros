@@ -196,7 +196,7 @@ where
 {
     /// Call the service (non-blocking). Returns a [`Promise`] that can be polled.
     ///
-    /// Use with [`Executor::spin_once()`] to drive I/O while waiting:
+    /// Use with `Executor::spin_once()` to drive I/O while waiting:
     ///
     /// ```ignore
     /// let mut promise = client.call(&request)?;
@@ -691,8 +691,8 @@ impl<
 ///
 /// Three access modes:
 /// - **Async (`Stream`)**: Enable the `stream` feature for
-///   [`futures_core::Stream`] + `StreamExt` combinators
-/// - **Async (no deps)**: Use [`next()`](FeedbackStream::next) in
+///   `futures_core::Stream` + `StreamExt` combinators
+/// - **Async (no deps)**: Use `next()` in
 ///   `while let` loops (always available)
 /// - **Sync**: Use [`wait_next()`](FeedbackStream::wait_next) which
 ///   drives the executor internally

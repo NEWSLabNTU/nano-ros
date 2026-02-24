@@ -13,12 +13,16 @@ use nros_core::lifecycle::{
 pub enum LifecycleError {
     /// The requested transition is not valid from the current state.
     InvalidTransition {
+        /// The state the node was in when the transition was attempted.
         from: LifecycleState,
+        /// The transition that was requested.
         transition: LifecycleTransition,
     },
     /// The transition callback returned a non-success result.
     CallbackFailed {
+        /// The transition that was attempted.
         transition: LifecycleTransition,
+        /// The result returned by the callback.
         result: TransitionResult,
     },
     /// The node is in the Finalized state and cannot transition.
