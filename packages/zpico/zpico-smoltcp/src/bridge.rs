@@ -26,10 +26,150 @@ const EPHEMERAL_PORT_START: u16 = 49152;
 static mut NEXT_EPHEMERAL_PORT: u16 = EPHEMERAL_PORT_START;
 
 // ============================================================================
+// Staging State (shared between TCP and UDP)
+// ============================================================================
+
+/// Staging buffer state for bidirectional data transfer between zenoh-pico
+/// and smoltcp.
+///
+/// Tracks read/write cursors within external RX and TX buffers. Used by both
+/// `SocketEntry` (TCP) and `UdpSocketEntry` (UDP).
+#[derive(Clone, Copy)]
+struct StagingState {
+    /// RX: next byte to consume (read cursor)
+    rx_pos: usize,
+    /// RX: one past last valid byte (write cursor)
+    rx_len: usize,
+    /// TX: next byte to send (read cursor)
+    tx_pos: usize,
+    /// TX: one past last valid byte (write cursor)
+    tx_len: usize,
+}
+
+impl StagingState {
+    const INIT: Self = Self {
+        rx_pos: 0,
+        rx_len: 0,
+        tx_pos: 0,
+        tx_len: 0,
+    };
+
+    fn reset(&mut self) {
+        *self = Self::INIT;
+    }
+
+    fn has_rx_data(&self) -> bool {
+        self.rx_len > self.rx_pos
+    }
+
+    fn has_tx_space(&self) -> bool {
+        self.tx_len < SOCKET_BUFFER_SIZE
+    }
+
+    fn has_tx_pending(&self) -> bool {
+        self.tx_len > self.tx_pos
+    }
+
+    /// Pending TX data slice.
+    fn tx_pending<'a>(&self, tx_buf: &'a [u8; SOCKET_BUFFER_SIZE]) -> &'a [u8] {
+        &tx_buf[self.tx_pos..self.tx_len]
+    }
+
+    /// Available space at the end of the RX buffer.
+    fn rx_space(&self) -> usize {
+        SOCKET_BUFFER_SIZE - self.rx_len
+    }
+
+    /// Read from the RX staging buffer into `dst`.
+    ///
+    /// Returns bytes copied, or 0 if no data available.
+    fn recv(&mut self, rx_buf: &[u8; SOCKET_BUFFER_SIZE], dst: &mut [u8]) -> i32 {
+        let available = self.rx_len.saturating_sub(self.rx_pos);
+        if available == 0 {
+            return 0;
+        }
+
+        let to_copy = available.min(dst.len());
+        dst[..to_copy].copy_from_slice(&rx_buf[self.rx_pos..self.rx_pos + to_copy]);
+        self.rx_pos += to_copy;
+
+        if self.rx_pos >= self.rx_len {
+            self.rx_pos = 0;
+            self.rx_len = 0;
+        }
+
+        to_copy as i32
+    }
+
+    /// Write `data` into the TX staging buffer.
+    ///
+    /// Returns bytes copied, or 0 if buffer full.
+    fn send(&mut self, tx_buf: &mut [u8; SOCKET_BUFFER_SIZE], data: &[u8]) -> i32 {
+        let available = SOCKET_BUFFER_SIZE.saturating_sub(self.tx_len);
+        if available == 0 {
+            return 0;
+        }
+
+        let to_copy = available.min(data.len());
+        tx_buf[self.tx_len..self.tx_len + to_copy].copy_from_slice(&data[..to_copy]);
+        self.tx_len += to_copy;
+
+        to_copy as i32
+    }
+
+    /// Compact RX buffer by shifting unconsumed data to the front.
+    fn compact_rx(&mut self, rx_buf: &mut [u8; SOCKET_BUFFER_SIZE]) {
+        if self.rx_pos > 0 {
+            let remaining = self.rx_len - self.rx_pos;
+            rx_buf.copy_within(self.rx_pos..self.rx_len, 0);
+            self.rx_len = remaining;
+            self.rx_pos = 0;
+        }
+    }
+
+    /// Record that the socket sent `sent` bytes from the TX buffer
+    /// (incremental drain for TCP).
+    fn advance_tx(&mut self, sent: usize) {
+        self.tx_pos += sent;
+        if self.tx_pos >= self.tx_len {
+            self.tx_pos = 0;
+            self.tx_len = 0;
+        }
+    }
+
+    /// Reset TX after an atomic send (UDP sends entire datagram at once).
+    fn reset_tx(&mut self) {
+        self.tx_pos = 0;
+        self.tx_len = 0;
+    }
+
+    /// Record that `received` bytes were written into rx_buf[rx_len..].
+    fn advance_rx(&mut self, received: usize) {
+        self.rx_len += received;
+    }
+}
+
+// ============================================================================
+// Ephemeral Port Allocation
+// ============================================================================
+
+/// Allocate the next ephemeral port (RFC 6056, starting at 49152).
+fn allocate_ephemeral_port() -> u16 {
+    unsafe {
+        let port = NEXT_EPHEMERAL_PORT;
+        NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
+        if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
+            NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START;
+        }
+        port
+    }
+}
+
+// ============================================================================
 // Socket State
 // ============================================================================
 
-/// State for a single socket in the bridge table
+/// State for a single TCP socket in the bridge table
 #[derive(Clone, Copy)]
 struct SocketEntry {
     /// Socket is allocated to zenoh-pico
@@ -45,15 +185,21 @@ struct SocketEntry {
     local_port: u16,
     /// Connection state (for zenoh-pico)
     connected: bool,
-    /// RX staging buffer position and length
-    rx_pos: usize,
-    rx_len: usize,
-    /// TX staging buffer position and length
-    tx_pos: usize,
-    tx_len: usize,
+    /// RX/TX staging buffer state
+    staging: StagingState,
 }
 
 impl SocketEntry {
+    const INIT: Self = Self {
+        allocated: false,
+        handle_raw: usize::MAX,
+        remote_ip: [0; 4],
+        remote_port: 0,
+        local_port: 0,
+        connected: false,
+        staging: StagingState::INIT,
+    };
+
     fn has_handle(&self) -> bool {
         self.handle_raw != usize::MAX
     }
@@ -67,34 +213,12 @@ impl SocketEntry {
 
 impl Default for SocketEntry {
     fn default() -> Self {
-        Self {
-            allocated: false,
-            handle_raw: usize::MAX,
-            remote_ip: [0; 4],
-            remote_port: 0,
-            local_port: 0,
-            connected: false,
-            rx_pos: 0,
-            rx_len: 0,
-            tx_pos: 0,
-            tx_len: 0,
-        }
+        Self::INIT
     }
 }
 
 /// Global socket table
-static mut SOCKET_TABLE: [SocketEntry; MAX_SOCKETS] = [SocketEntry {
-    allocated: false,
-    handle_raw: usize::MAX,
-    remote_ip: [0; 4],
-    remote_port: 0,
-    local_port: 0,
-    connected: false,
-    rx_pos: 0,
-    rx_len: 0,
-    tx_pos: 0,
-    tx_len: 0,
-}; MAX_SOCKETS];
+static mut SOCKET_TABLE: [SocketEntry; MAX_SOCKETS] = [SocketEntry::INIT; MAX_SOCKETS];
 
 /// Socket RX/TX staging buffers (used between zenoh-pico and smoltcp poll)
 static mut SOCKET_RX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_SOCKETS] =
@@ -120,18 +244,25 @@ struct UdpSocketEntry {
     remote_port: u16,
     /// Local port (bound port)
     local_port: u16,
-    /// RX staging buffer position and length
-    rx_pos: usize,
-    rx_len: usize,
-    /// TX staging buffer position and length
-    tx_pos: usize,
-    tx_len: usize,
+    /// RX/TX staging buffer state
+    staging: StagingState,
     /// TX target endpoint (per-packet, set by send)
     tx_remote_ip: [u8; 4],
     tx_remote_port: u16,
 }
 
 impl UdpSocketEntry {
+    const INIT: Self = Self {
+        allocated: false,
+        handle_raw: usize::MAX,
+        remote_ip: [0; 4],
+        remote_port: 0,
+        local_port: 0,
+        staging: StagingState::INIT,
+        tx_remote_ip: [0; 4],
+        tx_remote_port: 0,
+    };
+
     fn has_handle(&self) -> bool {
         self.handle_raw != usize::MAX
     }
@@ -144,36 +275,13 @@ impl UdpSocketEntry {
 
 impl Default for UdpSocketEntry {
     fn default() -> Self {
-        Self {
-            allocated: false,
-            handle_raw: usize::MAX,
-            remote_ip: [0; 4],
-            remote_port: 0,
-            local_port: 0,
-            rx_pos: 0,
-            rx_len: 0,
-            tx_pos: 0,
-            tx_len: 0,
-            tx_remote_ip: [0; 4],
-            tx_remote_port: 0,
-        }
+        Self::INIT
     }
 }
 
 /// Global UDP socket table
-static mut UDP_SOCKET_TABLE: [UdpSocketEntry; MAX_UDP_SOCKETS] = [UdpSocketEntry {
-    allocated: false,
-    handle_raw: usize::MAX,
-    remote_ip: [0; 4],
-    remote_port: 0,
-    local_port: 0,
-    rx_pos: 0,
-    rx_len: 0,
-    tx_pos: 0,
-    tx_len: 0,
-    tx_remote_ip: [0; 4],
-    tx_remote_port: 0,
-}; MAX_UDP_SOCKETS];
+static mut UDP_SOCKET_TABLE: [UdpSocketEntry; MAX_UDP_SOCKETS] =
+    [UdpSocketEntry::INIT; MAX_UDP_SOCKETS];
 
 /// UDP socket RX/TX staging buffers
 static mut UDP_SOCKET_RX_BUFFERS: [[u8; SOCKET_BUFFER_SIZE]; MAX_UDP_SOCKETS] =
@@ -265,15 +373,8 @@ impl SmoltcpBridge {
                     entry.allocated = false;
                     entry.handle_raw = handle;
                     entry.connected = false;
-                    entry.local_port = NEXT_EPHEMERAL_PORT;
-                    NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
-                    if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
-                        NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START;
-                    }
-                    entry.rx_pos = 0;
-                    entry.rx_len = 0;
-                    entry.tx_pos = 0;
-                    entry.tx_len = 0;
+                    entry.local_port = allocate_ephemeral_port();
+                    entry.staging.reset();
                     return i as i32;
                 }
             }
@@ -292,15 +393,8 @@ impl SmoltcpBridge {
                 if !entry.has_handle() {
                     entry.allocated = false;
                     entry.handle_raw = handle;
-                    entry.local_port = NEXT_EPHEMERAL_PORT;
-                    NEXT_EPHEMERAL_PORT = NEXT_EPHEMERAL_PORT.wrapping_add(1);
-                    if NEXT_EPHEMERAL_PORT < EPHEMERAL_PORT_START {
-                        NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START;
-                    }
-                    entry.rx_pos = 0;
-                    entry.rx_len = 0;
-                    entry.tx_pos = 0;
-                    entry.tx_len = 0;
+                    entry.local_port = allocate_ephemeral_port();
+                    entry.staging.reset();
                     return i as i32;
                 }
             }
@@ -368,38 +462,26 @@ impl SmoltcpBridge {
                         TcpState::Established => {
                             entry.connected = true;
 
-                            // Transfer TX data to socket
-                            if entry.tx_len > entry.tx_pos && socket.can_send() {
+                            // Transfer TX data to socket (incremental)
+                            if entry.staging.has_tx_pending() && socket.can_send() {
                                 let tx_buf = &SOCKET_TX_BUFFERS[idx];
-                                let data = &tx_buf[entry.tx_pos..entry.tx_len];
+                                let data = entry.staging.tx_pending(tx_buf);
                                 if let Ok(sent) = socket.send_slice(data) {
-                                    entry.tx_pos += sent;
-                                    if entry.tx_pos >= entry.tx_len {
-                                        entry.tx_pos = 0;
-                                        entry.tx_len = 0;
-                                    }
+                                    entry.staging.advance_tx(sent);
                                 }
                             }
 
                             // Transfer RX data from socket
                             if socket.can_recv() {
-                                // Compact RX buffer if needed
-                                if entry.rx_pos > 0 {
-                                    let remaining = entry.rx_len - entry.rx_pos;
-                                    let rx_buf = &mut SOCKET_RX_BUFFERS[idx];
-                                    rx_buf.copy_within(entry.rx_pos..entry.rx_len, 0);
-                                    entry.rx_len = remaining;
-                                    entry.rx_pos = 0;
-                                }
+                                entry.staging.compact_rx(&mut SOCKET_RX_BUFFERS[idx]);
 
-                                // Read more data if space available
-                                let available = SOCKET_BUFFER_SIZE - entry.rx_len;
-                                if available > 0 {
+                                let space = entry.staging.rx_space();
+                                if space > 0 {
                                     let rx_buf = &mut SOCKET_RX_BUFFERS[idx];
                                     if let Ok(received) =
-                                        socket.recv_slice(&mut rx_buf[entry.rx_len..])
+                                        socket.recv_slice(&mut rx_buf[entry.staging.rx_len..])
                                     {
-                                        entry.rx_len += received;
+                                        entry.staging.advance_rx(received);
                                     }
                                 }
                             }
@@ -430,10 +512,10 @@ impl SmoltcpBridge {
                     let _ = socket.bind(entry.local_port);
                 }
 
-                // Transfer TX data to socket
-                if entry.tx_len > entry.tx_pos && socket.can_send() {
+                // Transfer TX data to socket (atomic — entire datagram)
+                if entry.staging.has_tx_pending() && socket.can_send() {
                     let tx_buf = &UDP_SOCKET_TX_BUFFERS[idx];
-                    let data = &tx_buf[entry.tx_pos..entry.tx_len];
+                    let data = entry.staging.tx_pending(tx_buf);
                     let meta = UdpMetadata {
                         endpoint: IpEndpoint::new(
                             IpAddress::Ipv4(Ipv4Address::new(
@@ -448,30 +530,21 @@ impl SmoltcpBridge {
                         meta: Default::default(),
                     };
                     if socket.send_slice(data, meta).is_ok() {
-                        entry.tx_pos = 0;
-                        entry.tx_len = 0;
+                        entry.staging.reset_tx();
                     }
                 }
 
                 // Transfer RX data from socket
                 if socket.can_recv() {
-                    // Compact RX buffer if needed
-                    if entry.rx_pos > 0 {
-                        let remaining = entry.rx_len - entry.rx_pos;
-                        let rx_buf = &mut UDP_SOCKET_RX_BUFFERS[idx];
-                        rx_buf.copy_within(entry.rx_pos..entry.rx_len, 0);
-                        entry.rx_len = remaining;
-                        entry.rx_pos = 0;
-                    }
+                    entry.staging.compact_rx(&mut UDP_SOCKET_RX_BUFFERS[idx]);
 
-                    // Read more data if space available
-                    let available = SOCKET_BUFFER_SIZE - entry.rx_len;
-                    if available > 0 {
+                    let space = entry.staging.rx_space();
+                    if space > 0 {
                         let rx_buf = &mut UDP_SOCKET_RX_BUFFERS[idx];
                         if let Ok((received, _meta)) =
-                            socket.recv_slice(&mut rx_buf[entry.rx_len..])
+                            socket.recv_slice(&mut rx_buf[entry.staging.rx_len..])
                         {
-                            entry.rx_len += received;
+                            entry.staging.advance_rx(received);
                         }
                     }
                 }
@@ -496,10 +569,7 @@ impl SmoltcpBridge {
                     entry.connected = false;
                     entry.remote_ip = [0; 4];
                     entry.remote_port = 0;
-                    entry.rx_pos = 0;
-                    entry.rx_len = 0;
-                    entry.tx_pos = 0;
-                    entry.tx_len = 0;
+                    entry.staging.reset();
                     return i as i32;
                 }
             }
@@ -561,7 +631,7 @@ impl SmoltcpBridge {
 
         unsafe {
             let entry = &SOCKET_TABLE[handle as usize];
-            entry.allocated && entry.rx_len > entry.rx_pos
+            entry.allocated && entry.staging.has_rx_data()
         }
     }
 
@@ -573,7 +643,7 @@ impl SmoltcpBridge {
 
         unsafe {
             let entry = &SOCKET_TABLE[handle as usize];
-            entry.allocated && entry.connected && entry.tx_len < SOCKET_BUFFER_SIZE
+            entry.allocated && entry.connected && entry.staging.has_tx_space()
         }
     }
 
@@ -590,22 +660,7 @@ impl SmoltcpBridge {
                 return -1;
             }
 
-            let available = entry.rx_len.saturating_sub(entry.rx_pos);
-            if available == 0 {
-                return 0;
-            }
-
-            let to_copy = available.min(buf.len());
-            let rx_buf = &SOCKET_RX_BUFFERS[handle as usize];
-            buf[..to_copy].copy_from_slice(&rx_buf[entry.rx_pos..entry.rx_pos + to_copy]);
-            entry.rx_pos += to_copy;
-
-            if entry.rx_pos >= entry.rx_len {
-                entry.rx_pos = 0;
-                entry.rx_len = 0;
-            }
-
-            to_copy as i32
+            entry.staging.recv(&SOCKET_RX_BUFFERS[handle as usize], buf)
         }
     }
 
@@ -622,17 +677,7 @@ impl SmoltcpBridge {
                 return -1;
             }
 
-            let available = SOCKET_BUFFER_SIZE.saturating_sub(entry.tx_len);
-            if available == 0 {
-                return 0;
-            }
-
-            let to_copy = available.min(data.len());
-            let tx_buf = &mut SOCKET_TX_BUFFERS[handle as usize];
-            tx_buf[entry.tx_len..entry.tx_len + to_copy].copy_from_slice(&data[..to_copy]);
-            entry.tx_len += to_copy;
-
-            to_copy as i32
+            entry.staging.send(&mut SOCKET_TX_BUFFERS[handle as usize], data)
         }
     }
 
@@ -650,10 +695,7 @@ impl SmoltcpBridge {
                     entry.allocated = true;
                     entry.remote_ip = [0; 4];
                     entry.remote_port = 0;
-                    entry.rx_pos = 0;
-                    entry.rx_len = 0;
-                    entry.tx_pos = 0;
-                    entry.tx_len = 0;
+                    entry.staging.reset();
                     entry.tx_remote_ip = [0; 4];
                     entry.tx_remote_port = 0;
                     return i as i32;
@@ -716,7 +758,7 @@ impl SmoltcpBridge {
 
         unsafe {
             let entry = &UDP_SOCKET_TABLE[handle as usize];
-            entry.allocated && entry.rx_len > entry.rx_pos
+            entry.allocated && entry.staging.has_rx_data()
         }
     }
 
@@ -728,7 +770,7 @@ impl SmoltcpBridge {
 
         unsafe {
             let entry = &UDP_SOCKET_TABLE[handle as usize];
-            entry.allocated && entry.tx_len < SOCKET_BUFFER_SIZE
+            entry.allocated && entry.staging.has_tx_space()
         }
     }
 
@@ -745,22 +787,9 @@ impl SmoltcpBridge {
                 return -1;
             }
 
-            let available = entry.rx_len.saturating_sub(entry.rx_pos);
-            if available == 0 {
-                return 0;
-            }
-
-            let to_copy = available.min(buf.len());
-            let rx_buf = &UDP_SOCKET_RX_BUFFERS[handle as usize];
-            buf[..to_copy].copy_from_slice(&rx_buf[entry.rx_pos..entry.rx_pos + to_copy]);
-            entry.rx_pos += to_copy;
-
-            if entry.rx_pos >= entry.rx_len {
-                entry.rx_pos = 0;
-                entry.rx_len = 0;
-            }
-
-            to_copy as i32
+            entry
+                .staging
+                .recv(&UDP_SOCKET_RX_BUFFERS[handle as usize], buf)
         }
     }
 
@@ -777,19 +806,13 @@ impl SmoltcpBridge {
                 return -1;
             }
 
-            let available = SOCKET_BUFFER_SIZE.saturating_sub(entry.tx_len);
-            if available == 0 {
-                return 0;
-            }
-
-            let to_copy = available.min(data.len());
-            let tx_buf = &mut UDP_SOCKET_TX_BUFFERS[handle as usize];
-            tx_buf[entry.tx_len..entry.tx_len + to_copy].copy_from_slice(&data[..to_copy]);
-            entry.tx_len += to_copy;
+            let result = entry
+                .staging
+                .send(&mut UDP_SOCKET_TX_BUFFERS[handle as usize], data);
             entry.tx_remote_ip = *ip;
             entry.tx_remote_port = port;
 
-            to_copy as i32
+            result
         }
     }
 

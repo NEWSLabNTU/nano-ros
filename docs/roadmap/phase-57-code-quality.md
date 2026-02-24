@@ -19,7 +19,7 @@ blocks; smaller files > monoliths.**
 | 57.3 — Split other large files          | Done        |
 | 57.4 — Safe buffer accessor wrappers    | Done        |
 | 57.5 — Minor unsafe & API cleanups      | Done        |
-| 57.6 — TCP/UDP staging deduplication    | Not Started |
+| 57.6 — TCP/UDP staging deduplication    | Done        |
 | 57.7 — nros-c validation macros         | Not Started |
 | 57.8 — Extract magic constants          | Not Started |
 
@@ -264,23 +264,20 @@ logic.
 
 #### Changes
 
-- [ ] Extract common staging fields into a `StagingState` struct:
-      ```rust
-      struct StagingState {
-          rx_pos: usize, rx_len: usize,
-          tx_pos: usize, tx_len: usize,
-      }
-      ```
-- [ ] Add methods on `StagingState`: `recv()`, `send()`, `compact_rx()`,
-      `fill_rx()`, `drain_tx_incremental()`, `drain_tx_atomic()`
-- [ ] Embed `StagingState` in both `SocketEntry` and `UdpSocketEntry`
-- [ ] Refactor `socket_recv`/`udp_socket_recv` to delegate to
+- [x] Extract common staging fields into `StagingState` struct with methods:
+      `recv()`, `send()`, `compact_rx()`, `advance_tx()`, `advance_rx()`,
+      `reset_tx()`, `reset()`, `has_rx_data()`, `has_tx_space()`,
+      `has_tx_pending()`, `tx_pending()`, `rx_space()`
+- [x] Embed `StagingState` in both `SocketEntry` and `UdpSocketEntry`
+- [x] Refactor `socket_recv`/`udp_socket_recv` to delegate to
       `StagingState::recv()`
-- [ ] Refactor `socket_send`/`udp_socket_send` to delegate to
+- [x] Refactor `socket_send`/`udp_socket_send` to delegate to
       `StagingState::send()`
-- [ ] Refactor poll compaction/fill to delegate to `StagingState` methods
-- [ ] Extract `register_socket_common()` helper for shared slot allocation +
-      ephemeral port logic
+- [x] Refactor poll compaction/fill to delegate to `StagingState` methods
+- [x] Extract `allocate_ephemeral_port()` helper for shared ephemeral port
+      logic
+- [x] Add `const INIT` to `SocketEntry` and `UdpSocketEntry` (replaces
+      verbose static initializers)
 
 #### Impact
 
@@ -290,8 +287,8 @@ logic.
 
 #### Verification
 
-- [ ] `just quality` passes
-- [ ] QEMU networked tests pass (TCP + UDP paths exercised)
+- [x] `just quality` passes
+- [x] QEMU networked tests pass (TCP + UDP paths exercised)
 
 ---
 
