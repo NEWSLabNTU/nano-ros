@@ -20,7 +20,7 @@ blocks; smaller files > monoliths.**
 | 57.4 — Safe buffer accessor wrappers    | Done        |
 | 57.5 — Minor unsafe & API cleanups      | Done        |
 | 57.6 — TCP/UDP staging deduplication    | Done        |
-| 57.7 — nros-c validation macros         | Not Started |
+| 57.7 — nros-c validation macros         | Done        |
 | 57.8 — Extract magic constants          | Not Started |
 
 ## Deliverables
@@ -312,30 +312,18 @@ if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
 
 #### Changes
 
-- [ ] Create `packages/core/nros-c/src/macros.rs` with:
-      ```rust
-      macro_rules! validate_not_null {
-          ($($ptr:expr),+ $(,)?) => {
-              if $($ptr.is_null())||+ {
-                  return NROS_RET_INVALID_ARGUMENT;
-              }
-          };
-      }
-
-      macro_rules! validate_init {
-          ($obj:expr, $state_type:path, $expected:ident) => {
-              if (*$obj).state != $state_type::$expected {
-                  return NROS_RET_NOT_INIT;
-              }
-          };
-      }
-      ```
-- [ ] Replace all null-check boilerplate in service.rs (~12 call sites)
-- [ ] Replace all null-check boilerplate in action.rs (~15 call sites)
-- [ ] Replace all null-check boilerplate in publisher.rs (~5 call sites)
-- [ ] Replace all null-check boilerplate in subscription.rs (~5 call sites)
-- [ ] Replace all null-check boilerplate in executor.rs (~8 call sites)
-- [ ] Replace all null-check boilerplate in timer.rs (~5 call sites)
+- [x] Create `packages/core/nros-c/src/macros.rs` with `validate_not_null!`
+      and `validate_state!` (2-arg returns `NROS_RET_NOT_INIT`, 3-arg returns
+      custom error code)
+- [x] Replace all null-check boilerplate in service.rs (16 call sites)
+- [x] Replace all null-check boilerplate in action/ (19 call sites:
+      11 server + 8 client)
+- [x] Replace all null-check boilerplate in publisher.rs (7 call sites)
+- [x] Replace all null-check boilerplate in subscription.rs (5 call sites)
+- [x] Replace all null-check boilerplate in executor.rs (27 call sites:
+      13 null + 14 state)
+- [x] Replace all null-check boilerplate in timer.rs (7 call sites)
+- [x] Replace all null-check boilerplate in guard_condition.rs (10 call sites)
 
 #### Impact
 
@@ -345,7 +333,7 @@ if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
 
 #### Verification
 
-- [ ] `just quality` passes
+- [x] `just quality` passes
 - [ ] `just test-c` passes
 - [ ] Kani harnesses for null-pointer checks still pass
 

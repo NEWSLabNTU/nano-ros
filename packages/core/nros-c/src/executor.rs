@@ -195,9 +195,7 @@ pub unsafe extern "C" fn nros_executor_init(
     support: *const nros_support_t,
     max_handles: usize,
 ) -> nros_ret_t {
-    if executor.is_null() || support.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor, support);
 
     if max_handles == 0 {
         return NROS_RET_INVALID_ARGUMENT;
@@ -206,15 +204,15 @@ pub unsafe extern "C" fn nros_executor_init(
     let executor = &mut *executor;
     let support_ref = &*support;
 
-    // Check if executor is already initialized
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if support is initialized
-    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(
+        support_ref,
+        nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+    );
 
     // Create the internal nros-node executor using a borrowed session pointer
     #[cfg(feature = "alloc")]
@@ -246,9 +244,7 @@ pub unsafe extern "C" fn nros_executor_set_timeout(
     executor: *mut nros_executor_t,
     timeout_ns: u64,
 ) -> nros_ret_t {
-    if executor.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor);
 
     let executor = &mut *executor;
 
@@ -271,9 +267,7 @@ pub unsafe extern "C" fn nros_executor_set_semantics(
     executor: *mut nros_executor_t,
     semantics: nros_executor_semantics_t,
 ) -> nros_ret_t {
-    if executor.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor);
 
     let executor = &mut *executor;
 
@@ -312,9 +306,7 @@ pub unsafe extern "C" fn nros_executor_set_trigger(
     trigger: nros_executor_trigger_t,
     context: *mut core::ffi::c_void,
 ) -> nros_ret_t {
-    if executor.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor);
 
     let executor = &mut *executor;
 
@@ -442,22 +434,19 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
     subscription: *mut nros_subscription_t,
     invocation: nros_executor_invocation_t,
 ) -> nros_ret_t {
-    if executor.is_null() || subscription.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor, subscription);
 
     let executor = &mut *executor;
     let subscription_ref = &*subscription;
 
-    // Check executor state
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
-
-    // Check subscription state
-    if subscription_ref.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        subscription_ref,
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    );
 
     // Check capacity (overall and per-type)
     if executor.handle_count >= executor.max_handles {
@@ -542,22 +531,16 @@ pub unsafe extern "C" fn nros_executor_add_timer(
     executor: *mut nros_executor_t,
     timer: *mut nros_timer_t,
 ) -> nros_ret_t {
-    if executor.is_null() || timer.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor, timer);
 
     let executor = &mut *executor;
     let timer_ref = &*timer;
 
-    // Check executor state
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
-
-    // Check timer state
-    if timer_ref.state != nros_timer_state_t::NROS_TIMER_STATE_RUNNING {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(timer_ref, nros_timer_state_t::NROS_TIMER_STATE_RUNNING);
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
@@ -630,22 +613,19 @@ pub unsafe extern "C" fn nros_executor_add_service(
     executor: *mut nros_executor_t,
     service: *mut nros_service_t,
 ) -> nros_ret_t {
-    if executor.is_null() || service.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor, service);
 
     let executor = &mut *executor;
     let service_ref = &*service;
 
-    // Check executor state
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
-
-    // Check service state
-    if service_ref.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        service_ref,
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+    );
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
@@ -715,22 +695,19 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
     executor: *mut nros_executor_t,
     guard: *mut nros_guard_condition_t,
 ) -> nros_ret_t {
-    if executor.is_null() || guard.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor, guard);
 
     let executor = &mut *executor;
     let guard_ref = &*guard;
 
-    // Check executor state
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
-
-    // Check guard condition state
-    if guard_ref.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        guard_ref,
+        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
+    );
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
@@ -789,22 +766,19 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
     executor: *mut nros_executor_t,
     server: *mut nros_action_server_t,
 ) -> nros_ret_t {
-    if executor.is_null() || server.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor, server);
 
     let executor = &mut *executor;
     let server_ref = &*server;
 
-    // Check executor state
-    if executor.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
-
-    // Check server state
-    if server_ref.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        server_ref,
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
+    );
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
@@ -901,9 +875,7 @@ pub unsafe extern "C" fn nros_executor_spin_some(
     executor: *mut nros_executor_t,
     timeout_ns: u64,
 ) -> nros_ret_t {
-    if executor.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor);
 
     let executor = &mut *executor;
 
@@ -949,15 +921,14 @@ pub unsafe extern "C" fn nros_executor_spin_some(
 /// * `executor` must be a valid pointer to an initialized executor
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_spin(executor: *mut nros_executor_t) -> nros_ret_t {
-    if executor.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor);
 
     let executor_ref = &mut *executor;
 
-    if executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor_ref,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
 
     executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
 
@@ -978,15 +949,18 @@ pub unsafe extern "C" fn nros_executor_spin_period(
     executor: *mut nros_executor_t,
     period_ns: u64,
 ) -> nros_ret_t {
-    if executor.is_null() || period_ns == 0 {
+    validate_not_null!(executor);
+
+    if period_ns == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let executor_ref = &mut *executor;
 
-    if executor_ref.state != nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        executor_ref,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
 
     executor_ref.state = nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING;
     executor_ref.invocation_time_ns = crate::platform::get_time_ns();
@@ -1017,7 +991,9 @@ pub unsafe extern "C" fn nros_executor_spin_one_period(
     executor: *mut nros_executor_t,
     period_ns: u64,
 ) -> nros_ret_t {
-    if executor.is_null() || period_ns == 0 {
+    validate_not_null!(executor);
+
+    if period_ns == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
@@ -1050,9 +1026,7 @@ pub unsafe extern "C" fn nros_executor_spin_one_period(
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_stop(executor: *mut nros_executor_t) -> nros_ret_t {
-    if executor.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor);
 
     let executor = &mut *executor;
 
@@ -1069,9 +1043,7 @@ pub unsafe extern "C" fn nros_executor_stop(executor: *mut nros_executor_t) -> n
 /// * `executor` must be a valid pointer
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_executor_fini(executor: *mut nros_executor_t) -> nros_ret_t {
-    if executor.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(executor);
 
     let executor = &mut *executor;
 

@@ -110,24 +110,18 @@ pub unsafe extern "C" fn nros_action_client_init(
     action_name: *const core::ffi::c_char,
     type_info: *const nros_action_type_t,
 ) -> nros_ret_t {
-    // Validate required arguments
-    if client.is_null() || node.is_null() || action_name.is_null() || type_info.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client, node, action_name, type_info);
 
     let client = &mut *client;
     let node_ref = &*node;
     let type_info = &*type_info;
 
-    // Check if client is already initialized
-    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy action name
     let name_ptr = action_name as *const u8;
@@ -279,9 +273,7 @@ pub unsafe extern "C" fn nros_action_client_set_feedback_callback(
     callback: nros_feedback_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
-    if client.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client);
 
     let client = &mut *client;
     client.feedback_callback = callback;
@@ -297,9 +289,7 @@ pub unsafe extern "C" fn nros_action_client_set_result_callback(
     callback: nros_result_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
-    if client.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client);
 
     let client = &mut *client;
     client.result_callback = callback;
@@ -316,15 +306,14 @@ pub unsafe extern "C" fn nros_action_send_goal(
     goal_len: usize,
     goal_uuid: *mut nros_goal_uuid_t,
 ) -> nros_ret_t {
-    if client.is_null() || goal.is_null() || goal_uuid.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client, goal, goal_uuid);
 
     let client = &mut *client;
 
-    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
 
     #[cfg(feature = "alloc")]
     {
@@ -356,15 +345,14 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
     client: *mut nros_action_client_t,
     goal_uuid: *const nros_goal_uuid_t,
 ) -> nros_ret_t {
-    if client.is_null() || goal_uuid.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client, goal_uuid);
 
     let client = &mut *client;
 
-    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
 
     #[cfg(feature = "alloc")]
     {
@@ -396,20 +384,14 @@ pub unsafe extern "C" fn nros_action_get_result(
     result_capacity: usize,
     result_len: *mut usize,
 ) -> nros_ret_t {
-    if client.is_null()
-        || goal_uuid.is_null()
-        || status.is_null()
-        || result.is_null()
-        || result_len.is_null()
-    {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client, goal_uuid, status, result, result_len);
 
     let client = &mut *client;
 
-    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
 
     #[cfg(feature = "alloc")]
     {
@@ -492,15 +474,14 @@ pub unsafe extern "C" fn nros_action_get_result(
 pub unsafe extern "C" fn nros_action_try_recv_feedback(
     client: *mut nros_action_client_t,
 ) -> nros_ret_t {
-    if client.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client);
 
     let client = &mut *client;
 
-    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
 
     #[cfg(feature = "alloc")]
     {
@@ -550,15 +531,14 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
 /// Finalize an action client.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client_t) -> nros_ret_t {
-    if client.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client);
 
     let client = &mut *client;
 
-    if client.state != nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
 
     // Drop the internal ActionClientCore
     #[cfg(feature = "alloc")]

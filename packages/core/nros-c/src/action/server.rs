@@ -264,10 +264,7 @@ pub unsafe extern "C" fn nros_action_server_init(
     accepted_callback: nros_accepted_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
-    // Validate required arguments
-    if server.is_null() || node.is_null() || action_name.is_null() || type_info.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(server, node, action_name, type_info);
 
     if goal_callback.is_none() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -277,15 +274,12 @@ pub unsafe extern "C" fn nros_action_server_init(
     let node_ref = &*node;
     let type_info = &*type_info;
 
-    // Check if server is already initialized
-    if server.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        server,
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy action name
     let name_ptr = action_name as *const u8;
@@ -365,9 +359,7 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
     feedback: *const u8,
     feedback_len: usize,
 ) -> nros_ret_t {
-    if goal.is_null() || feedback.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(goal, feedback);
 
     let goal = &*goal;
 
@@ -417,9 +409,7 @@ pub unsafe extern "C" fn nros_action_succeed(
     result: *const u8,
     result_len: usize,
 ) -> nros_ret_t {
-    if goal.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(goal);
 
     let goal = &mut *goal;
 
@@ -486,9 +476,7 @@ pub unsafe extern "C" fn nros_action_abort(
     result: *const u8,
     result_len: usize,
 ) -> nros_ret_t {
-    if goal.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(goal);
 
     let goal = &mut *goal;
 
@@ -555,9 +543,7 @@ pub unsafe extern "C" fn nros_action_canceled(
     result: *const u8,
     result_len: usize,
 ) -> nros_ret_t {
-    if goal.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(goal);
 
     let goal = &mut *goal;
 
@@ -618,9 +604,7 @@ pub unsafe extern "C" fn nros_action_canceled(
 /// Execute a goal (transition from accepted to executing).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_execute(goal: *mut nros_goal_handle_t) -> nros_ret_t {
-    if goal.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(goal);
 
     let goal = &mut *goal;
 
@@ -666,15 +650,14 @@ pub unsafe extern "C" fn nros_action_server_get_active_goal_count(
 /// Finalize an action server.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server_t) -> nros_ret_t {
-    if server.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(server);
 
     let server = &mut *server;
 
-    if server.state != nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        server,
+        nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
+    );
 
     // Drop the internal implementation
     #[cfg(feature = "alloc")]

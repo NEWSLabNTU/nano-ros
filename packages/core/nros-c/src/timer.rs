@@ -120,10 +120,7 @@ pub unsafe extern "C" fn nros_timer_init(
     callback: nros_timer_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
-    // Validate arguments
-    if timer.is_null() || support.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(timer, support);
 
     if callback.is_none() || period_ns == 0 {
         return NROS_RET_INVALID_ARGUMENT;
@@ -132,15 +129,15 @@ pub unsafe extern "C" fn nros_timer_init(
     let timer = &mut *timer;
     let support_ref = &*support;
 
-    // Check if timer is already initialized
-    if timer.state != nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if support is initialized
-    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        timer,
+        nros_timer_state_t::NROS_TIMER_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(
+        support_ref,
+        nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+    );
 
     timer.period_ns = period_ns;
     timer.callback = callback;
@@ -166,9 +163,7 @@ pub unsafe extern "C" fn nros_timer_init(
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_timer_cancel(timer: *mut nros_timer_t) -> nros_ret_t {
-    if timer.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(timer);
 
     let timer = &mut *timer;
 
@@ -207,9 +202,7 @@ pub unsafe extern "C" fn nros_timer_cancel(timer: *mut nros_timer_t) -> nros_ret
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_timer_reset(timer: *mut nros_timer_t) -> nros_ret_t {
-    if timer.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(timer);
 
     let timer = &mut *timer;
 
@@ -242,9 +235,7 @@ pub unsafe extern "C" fn nros_timer_reset(timer: *mut nros_timer_t) -> nros_ret_
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_timer_fini(timer: *mut nros_timer_t) -> nros_ret_t {
-    if timer.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(timer);
 
     let timer = &mut *timer;
 
@@ -308,15 +299,11 @@ pub unsafe extern "C" fn nros_timer_call(
     timer: *mut nros_timer_t,
     current_time_ns: u64,
 ) -> nros_ret_t {
-    if timer.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(timer);
 
     let timer_ref = &mut *timer;
 
-    if timer_ref.state != nros_timer_state_t::NROS_TIMER_STATE_RUNNING {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(timer_ref, nros_timer_state_t::NROS_TIMER_STATE_RUNNING);
 
     // Update last call time
     timer_ref.last_call_time_ns = current_time_ns;

@@ -202,24 +202,18 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
     topic_name: *const c_char,
     qos: *const nros_qos_t,
 ) -> nros_ret_t {
-    // Validate required arguments
-    if publisher.is_null() || node.is_null() || type_info.is_null() || topic_name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(publisher, node, type_info, topic_name);
 
     let publisher = &mut *publisher;
     let node_ref = &*node;
     let type_info = &*type_info;
 
-    // Check if publisher is already initialized
-    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy topic name
     let topic_ptr = topic_name as *const u8;
@@ -291,9 +285,10 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
             None => return NROS_RET_NOT_INIT,
         };
 
-        if support_mut.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-            return NROS_RET_NOT_INIT;
-        }
+        validate_state!(
+            support_mut,
+            nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+        );
 
         // Save domain_id before borrowing session
         let domain_id = support_mut.domain_id as u32;
@@ -357,15 +352,17 @@ pub unsafe extern "C" fn nros_publish_raw(
     data: *const u8,
     len: usize,
 ) -> nros_ret_t {
-    if publisher.is_null() || data.is_null() || len == 0 {
+    validate_not_null!(publisher, data);
+    if len == 0 {
         return NROS_RET_INVALID_ARGUMENT;
     }
 
     let publisher = &*publisher;
 
-    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
 
     #[cfg(feature = "alloc")]
     {
@@ -404,15 +401,14 @@ pub unsafe extern "C" fn nros_publish_raw(
 /// * `publisher` must be a valid pointer
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_publisher_fini(publisher: *mut nros_publisher_t) -> nros_ret_t {
-    if publisher.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(publisher);
 
     let publisher = &mut *publisher;
 
-    if publisher.state != nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        publisher,
+        nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
+    );
 
     // Clean up internal resources
     #[cfg(feature = "alloc")]

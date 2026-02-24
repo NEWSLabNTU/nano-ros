@@ -152,10 +152,7 @@ pub unsafe extern "C" fn nros_service_init(
     callback: nros_service_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
-    // Validate required arguments
-    if service.is_null() || node.is_null() || type_info.is_null() || service_name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(service, node, type_info, service_name);
 
     if callback.is_none() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -165,15 +162,12 @@ pub unsafe extern "C" fn nros_service_init(
     let node_ref = &*node;
     let type_info = &*type_info;
 
-    // Check if service is already initialized
-    if service.state != nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        service,
+        nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy service name
     let name_ptr = service_name as *const u8;
@@ -249,15 +243,14 @@ pub unsafe extern "C" fn nros_service_init(
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros_ret_t {
-    if service.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(service);
 
     let service = &mut *service;
 
-    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        service,
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+    );
 
     // The service server lives in the executor arena (if registered),
     // so we don't drop anything here — just reset metadata.
@@ -293,19 +286,14 @@ pub unsafe extern "C" fn nros_service_take_request(
     request_len: *mut usize,
     sequence_number: *mut i64,
 ) -> nros_ret_t {
-    if service.is_null()
-        || request_data.is_null()
-        || request_len.is_null()
-        || sequence_number.is_null()
-    {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(service, request_data, request_len, sequence_number);
 
     let service = &mut *service;
 
-    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        service,
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+    );
 
     #[cfg(feature = "alloc")]
     {
@@ -357,15 +345,14 @@ pub unsafe extern "C" fn nros_service_send_response(
     response_data: *const u8,
     response_len: usize,
 ) -> nros_ret_t {
-    if service.is_null() || response_data.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(service, response_data);
 
     let service = &mut *service;
 
-    if service.state != nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        service,
+        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
+    );
 
     #[cfg(feature = "alloc")]
     {
@@ -515,24 +502,18 @@ pub unsafe extern "C" fn nros_client_init(
     type_info: *const nros_message_type_t,
     service_name: *const c_char,
 ) -> nros_ret_t {
-    // Validate required arguments
-    if client.is_null() || node.is_null() || type_info.is_null() || service_name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client, node, type_info, service_name);
 
     let client = &mut *client;
     let node_ref = &*node;
     let type_info = &*type_info;
 
-    // Check if client is already initialized
-    if client.state != nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        client,
+        nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy service name
     let name_ptr = service_name as *const u8;
@@ -651,15 +632,11 @@ pub unsafe extern "C" fn nros_client_init(
 /// * `NROS_RET_NOT_INIT` if not initialized
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_ret_t {
-    if client.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client);
 
     let client = &mut *client;
 
-    if client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(client, nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED);
 
     // Clean up internal resources
     #[cfg(feature = "alloc")]
@@ -707,19 +684,11 @@ pub unsafe extern "C" fn nros_client_call(
     response_capacity: usize,
     response_len: *mut usize,
 ) -> nros_ret_t {
-    if client.is_null()
-        || request_data.is_null()
-        || response_data.is_null()
-        || response_len.is_null()
-    {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(client, request_data, response_data, response_len);
 
     let client = &mut *client;
 
-    if client.state != nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(client, nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED);
 
     #[cfg(feature = "alloc")]
     {

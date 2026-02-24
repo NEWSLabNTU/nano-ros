@@ -117,22 +117,20 @@ pub unsafe extern "C" fn nros_guard_condition_init(
     guard: *mut nros_guard_condition_t,
     support: *const nros_support_t,
 ) -> nros_ret_t {
-    if guard.is_null() || support.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(guard, support);
 
     let guard = &mut *guard;
     let support_ref = &*support;
 
-    // Check if already initialized
-    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
-
-    // Check if support is initialized
-    if support_ref.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        guard,
+        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
+    validate_state!(
+        support_ref,
+        nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
+    );
 
     guard._support = support;
     guard.triggered = false;
@@ -150,15 +148,14 @@ pub unsafe extern "C" fn nros_guard_condition_set_callback(
     callback: nros_guard_condition_callback_t,
     context: *mut c_void,
 ) -> nros_ret_t {
-    if guard.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(guard);
 
     let guard = &mut *guard;
 
-    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        guard,
+        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
+    );
 
     guard.callback = callback;
     guard.context = context;
@@ -175,15 +172,14 @@ pub unsafe extern "C" fn nros_guard_condition_set_callback(
 pub unsafe extern "C" fn nros_guard_condition_trigger(
     guard: *mut nros_guard_condition_t,
 ) -> nros_ret_t {
-    if guard.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(guard);
 
     let guard = &mut *guard;
 
-    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        guard,
+        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
+    );
 
     // If registered with an executor, trigger via the executor's guard handle
     #[cfg(feature = "alloc")]
@@ -222,9 +218,7 @@ pub unsafe extern "C" fn nros_guard_condition_is_triggered(
 pub unsafe extern "C" fn nros_guard_condition_clear(
     guard: *mut nros_guard_condition_t,
 ) -> nros_ret_t {
-    if guard.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(guard);
 
     let guard = &mut *guard;
 
@@ -257,15 +251,14 @@ pub unsafe extern "C" fn nros_guard_condition_is_valid(
 pub unsafe extern "C" fn nros_guard_condition_fini(
     guard: *mut nros_guard_condition_t,
 ) -> nros_ret_t {
-    if guard.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(guard);
 
     let guard = &mut *guard;
 
-    if guard.state != nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        guard,
+        nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
+    );
 
     // Clean up the guard handle if allocated
     #[cfg(feature = "alloc")]

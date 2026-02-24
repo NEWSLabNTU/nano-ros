@@ -215,10 +215,7 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     context: *mut c_void,
     qos: *const nros_qos_t,
 ) -> nros_ret_t {
-    // Validate required arguments
-    if subscription.is_null() || node.is_null() || type_info.is_null() || topic_name.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(subscription, node, type_info, topic_name);
 
     if callback.is_none() {
         return NROS_RET_INVALID_ARGUMENT;
@@ -228,15 +225,13 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
     let node_ref = &*node;
     let type_info = &*type_info;
 
-    // Check if subscription is already initialized
-    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED {
-        return NROS_RET_BAD_SEQUENCE;
-    }
+    validate_state!(
+        subscription,
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_UNINITIALIZED,
+        NROS_RET_BAD_SEQUENCE
+    );
 
-    // Check if node is initialized
-    if node_ref.state != nros_node_state_t::NROS_NODE_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(node_ref, nros_node_state_t::NROS_NODE_STATE_INITIALIZED);
 
     // Copy topic name
     let topic_ptr = topic_name as *const u8;
@@ -324,15 +319,14 @@ pub unsafe extern "C" fn nros_subscription_init_with_qos(
 pub unsafe extern "C" fn nros_subscription_fini(
     subscription: *mut nros_subscription_t,
 ) -> nros_ret_t {
-    if subscription.is_null() {
-        return NROS_RET_INVALID_ARGUMENT;
-    }
+    validate_not_null!(subscription);
 
     let subscription = &mut *subscription;
 
-    if subscription.state != nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED {
-        return NROS_RET_NOT_INIT;
-    }
+    validate_state!(
+        subscription,
+        nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
+    );
 
     // The subscriber lives in the executor arena (if registered),
     // so we don't drop anything here — just reset metadata.
