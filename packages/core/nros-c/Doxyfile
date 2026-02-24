@@ -1,0 +1,41 @@
+# Doxyfile for nros C API documentation
+#
+# Usage: doxygen packages/core/nros-c/Doxyfile
+# Or:    just doc-c
+
+PROJECT_NAME           = "nros C API"
+PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time systems"
+
+# Input: post-processed headers with Doxygen tags
+INPUT                  = include/nros/
+RECURSIVE              = YES
+FILE_PATTERNS          = *.h
+
+# Output alongside rustdoc under target/doc/
+OUTPUT_DIRECTORY       = ../../../target/doc/c-api
+
+# C-optimised output
+OPTIMIZE_OUTPUT_FOR_C  = YES
+TYPEDEF_HIDES_STRUCT   = YES
+
+# Only documented items (undocumented items flagged by WARN_IF_UNDOCUMENTED)
+EXTRACT_ALL            = NO
+EXTRACT_STATIC         = YES
+
+# Warnings
+WARN_IF_UNDOCUMENTED   = YES
+WARN_IF_DOC_ERROR      = YES
+WARN_NO_PARAMDOC       = YES
+
+# No LaTeX, just HTML
+GENERATE_HTML          = YES
+GENERATE_LATEX         = NO
+
+# Preprocessing: expand NROS_PUBLIC so Doxygen sees the declarations
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+PREDEFINED             = NROS_PUBLIC=
+
+# Sort members alphabetically within their sections
+SORT_MEMBER_DOCS       = YES
+SORT_BRIEF_DOCS        = YES

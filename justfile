@@ -1480,9 +1480,31 @@ teardown-network:
     sudo ./scripts/zephyr/setup-network.sh --down
     @echo "All network bridges removed!"
 
-# Generate documentation
-doc:
-    cargo doc --no-deps --open
+# Generate Rust API documentation (rustdoc)
+doc-rust:
+    cargo doc --workspace --no-deps
+
+# Generate C API documentation (Doxygen)
+# Requires doxygen — skips with a warning if not installed.
+# The generated header must exist (run `cargo build -p nros-c` first).
+doc-c:
+    #!/usr/bin/env bash
+    set -e
+    if ! command -v doxygen &>/dev/null; then
+        echo "WARNING: doxygen not found — skipping C API docs."
+        echo "Install with: sudo apt install doxygen"
+        exit 0
+    fi
+    header="packages/core/nros-c/include/nros/nros_generated.h"
+    if [ ! -f "$header" ]; then
+        echo "Generated header not found, building nros-c first..."
+        cargo build -p nros-c --features "rmw-zenoh,platform-posix,ros-humble"
+    fi
+    (cd packages/core/nros-c && doxygen Doxyfile)
+    echo "C API docs generated: target/doc/c-api/html/index.html"
+
+# Generate all documentation (Rust + C)
+doc: doc-rust doc-c
 
 # Clean all build artifacts created by `just build`
 clean: clean-examples clean-zephyr clean-zenohd
