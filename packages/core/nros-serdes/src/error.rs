@@ -1,15 +1,18 @@
-//! Error types for CDR serialization/deserialization
+//! Error types for CDR serialization and deserialization.
+//!
+//! Two error enums cover the two directions: [`SerError`] for writes and
+//! [`DeserError`] for reads. Both are `Copy` and `no_std`-compatible.
 
 use core::fmt;
 
-/// Serialization error
+/// Serialization error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SerError {
-    /// Buffer is too small to hold the serialized data
+    /// Buffer is too small to hold the serialized data.
     BufferTooSmall,
-    /// String is too long to serialize
+    /// String length exceeds `u32::MAX` (CDR uses a 4-byte length prefix).
     StringTooLong,
-    /// Sequence is too long to serialize
+    /// Sequence length exceeds `u32::MAX` (CDR uses a 4-byte length prefix).
     SequenceTooLong,
 }
 
@@ -23,18 +26,18 @@ impl fmt::Display for SerError {
     }
 }
 
-/// Deserialization error
+/// Deserialization error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DeserError {
-    /// Unexpected end of buffer
+    /// Unexpected end of buffer (tried to read past available data).
     UnexpectedEof,
-    /// Invalid data encountered
+    /// Invalid data encountered (e.g., boolean value other than 0 or 1).
     InvalidData,
-    /// Invalid UTF-8 in string
+    /// Invalid UTF-8 in a CDR string field.
     InvalidUtf8,
-    /// Sequence length exceeds capacity
+    /// Decoded sequence/string length exceeds the `heapless` container capacity.
     CapacityExceeded,
-    /// Invalid encapsulation header
+    /// The 4-byte CDR encapsulation header is missing or invalid.
     InvalidHeader,
 }
 

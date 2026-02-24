@@ -1128,15 +1128,15 @@ pub enum ParameterValueGhost {
     Double,
     /// heapless::String payload abstracted
     String,
-    /// heapless::Vec<u8> payload abstracted
+    /// `heapless::Vec<u8>` payload abstracted
     ByteArray,
-    /// heapless::Vec<bool> payload abstracted
+    /// `heapless::Vec<bool>` payload abstracted
     BoolArray,
-    /// heapless::Vec<i64> payload abstracted
+    /// `heapless::Vec<i64>` payload abstracted
     IntegerArray,
-    /// heapless::Vec<f64> payload abstracted
+    /// `heapless::Vec<f64>` payload abstracted
     DoubleArray,
-    /// heapless::Vec<String> payload abstracted
+    /// `heapless::Vec<String>` payload abstracted
     StringArray,
 }
 

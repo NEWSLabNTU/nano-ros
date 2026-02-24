@@ -144,7 +144,9 @@ pub enum TimerMode {
 #[cfg(feature = "alloc")]
 pub type TimerCallback = alloc::boxed::Box<dyn FnMut() + Send>;
 
-/// Timer callback function pointer (no heap required)
+/// Timer callback as a bare function pointer (`no_std`, no heap required).
+///
+/// Use this instead of [`TimerCallback`] when heap allocation is unavailable.
 pub type TimerCallbackFn = fn();
 
 /// Internal timer state

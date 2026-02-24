@@ -1,6 +1,12 @@
-//! Transport abstraction traits
+//! Transport abstraction traits.
 //!
-//! These traits define the interface for transport backends (zenoh-pico, etc.)
+//! Defines the backend-agnostic interface that transport implementations
+//! (zenoh-pico, XRCE-DDS) must satisfy. The core trait hierarchy is:
+//!
+//! - [`Session`] — connection lifecycle and handle creation
+//! - [`Publisher`] / [`Subscriber`] — pub/sub data transport
+//! - [`ServiceServerTrait`] / [`ServiceClientTrait`] — request/reply
+//! - [`Rmw`] — top-level factory that creates sessions
 
 use nros_core::{Deserialize, RosMessage, RosService, Serialize};
 

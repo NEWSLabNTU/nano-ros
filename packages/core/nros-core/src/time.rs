@@ -1,4 +1,8 @@
-//! ROS time types
+//! ROS time types.
+//!
+//! Provides [`Time`] (seconds + nanoseconds) and [`Duration`] with
+//! arithmetic, conversions, and CDR serialization. All types are `no_std`
+//! compatible and use integer arithmetic only (no `f64::floor`/`f64::abs`).
 
 use core::ops::{Add, Sub};
 use nros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Serialize};

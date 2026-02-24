@@ -1,19 +1,32 @@
-//! RMW abstraction layer for nros
+//! RMW (ROS Middleware) abstraction layer for nros.
 //!
-//! This crate provides the middleware-agnostic transport traits for nros,
-//! allowing different backends to be used interchangeably.
+//! This crate provides the middleware-agnostic transport traits that
+//! backend crates (`nros-rmw-zenoh`, `nros-rmw-xrce`) implement.
+//! Application code depends on these traits, not on a concrete backend,
+//! so the transport can be swapped at compile time via Cargo features.
+//!
+//! # Trait hierarchy
+//!
+//! ```text
+//! Rmw              — top-level factory, creates Sessions
+//! └─ Session       — connection lifecycle, creates handles
+//!    ├─ Publisher   — publish serialised messages
+//!    ├─ Subscriber  — receive messages (polling or callback)
+//!    ├─ ServiceServer — request/reply (server side)
+//!    └─ ServiceClient — request/reply (client side)
+//! ```
+//!
+//! See [`traits`] for the full trait definitions.
 //!
 //! # Features
 //!
-//! - `std` - Enable standard library support
-//! - `alloc` - Enable heap allocation
+//! - `std` — Enable standard library support
+//! - `alloc` — Enable heap allocation
 //!
 //! # Synchronization Backends
 //!
-//! - `sync-spin` - Use spin::Mutex (default, works everywhere)
-//! - `sync-critical-section` - Use critical sections (RTIC/Embassy compatible)
-//!
-//! For RTIC applications, enable `sync-critical-section` feature.
+//! - `sync-spin` — Use `spin::Mutex` (default, works everywhere)
+//! - `sync-critical-section` — Use critical sections (RTIC/Embassy compatible)
 
 #![no_std]
 

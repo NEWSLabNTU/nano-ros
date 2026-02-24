@@ -1,4 +1,8 @@
-//! Primitive type serialization implementations
+//! [`Serialize`] and [`Deserialize`] implementations for primitive types.
+//!
+//! Covers: `bool`, `u8`–`u64`, `i8`–`i64`, `f32`, `f64`, `char`, `&str`,
+//! fixed-size arrays, `heapless::String`, and `heapless::Vec`.
+//! With the `alloc` feature: `String` and `Vec<T>`.
 
 use crate::cdr::{CdrReader, CdrWriter};
 use crate::error::{DeserError, SerError};

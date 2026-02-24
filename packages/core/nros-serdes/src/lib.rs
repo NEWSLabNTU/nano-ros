@@ -1,11 +1,29 @@
-//! CDR serialization/deserialization for nros
+//! CDR serialization/deserialization for nros.
 //!
-//! Implements OMG Common Data Representation (CDR) encoding compatible with ROS 2.
+//! Implements OMG Common Data Representation (CDR) encoding compatible with
+//! ROS 2. All types use little-endian byte order with natural alignment.
+//!
+//! # Examples
+//!
+//! ```
+//! use nros_serdes::{CdrWriter, CdrReader, Serialize, Deserialize, SerError, DeserError};
+//!
+//! // Serialize a u32 into a CDR buffer
+//! let mut buf = [0u8; 64];
+//! let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+//! 42u32.serialize(&mut writer).unwrap();
+//! let len = writer.position();
+//!
+//! // Deserialize it back
+//! let mut reader = CdrReader::new_with_header(&buf[..len]).unwrap();
+//! let value = u32::deserialize(&mut reader).unwrap();
+//! assert_eq!(value, 42);
+//! ```
 //!
 //! # Features
 //!
-//! - `std` - Enable standard library support
-//! - `alloc` - Enable heap allocation (String, Vec)
+//! - `std` — Enable standard library support
+//! - `alloc` — Enable heap allocation (`String`, `Vec<T>`)
 
 #![no_std]
 

@@ -264,16 +264,26 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 
     /// Set the executor-level trigger condition.
+    ///
+    /// Controls which handles must be ready before `spin_once` dispatches
+    /// callbacks. Defaults to [`Trigger::AnyReady`](crate::Trigger).
     pub fn set_trigger(&mut self, trigger: Trigger) {
         self.trigger = trigger;
     }
 
     /// Set the executor data communication semantics.
+    ///
+    /// Choose between `Direct` (process in place) and `LET`
+    /// (snapshot-then-process) semantics. See [`ExecutorSemantics`].
     pub fn set_semantics(&mut self, semantics: ExecutorSemantics) {
         self.semantics = semantics;
     }
 
     /// Set the invocation mode for a specific handle.
+    ///
+    /// Controls whether the callback fires on every spin
+    /// ([`Always`](InvocationMode::Always)) or only when new data
+    /// arrives ([`OnNewData`](InvocationMode::OnNewData), the default).
     pub fn set_invocation(&mut self, id: HandleId, mode: InvocationMode) {
         if let Some(Some(meta)) = self.entries.get_mut(id.0) {
             meta.invocation = mode;
@@ -822,8 +832,10 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
 
     /// Register a raw (untyped) service callback.
     ///
+    /// Register a raw (untyped) service callback with default 1024-byte buffers.
+    ///
     /// The callback receives and produces CDR bytes without typed
-    /// deserialization/serialization.
+    /// deserialization/serialization. Used by the C API wrapper.
     pub fn add_service_raw(
         &mut self,
         service_name: &str,
@@ -845,7 +857,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         )
     }
 
-    /// Register a raw service callback with custom buffer sizes.
+    /// Register a raw (untyped) service callback with custom buffer sizes.
+    ///
+    /// `REQ_BUF` and `REPLY_BUF` set the stack-allocated CDR buffers
+    /// for the request and reply respectively. Increase for services
+    /// with large payloads (e.g., parameter services).
     pub fn add_service_raw_sized<const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,

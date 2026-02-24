@@ -4,7 +4,7 @@
 a single set of Rust source comments, with no external toolchain dependencies beyond
 what `just setup` already provides.
 
-**Status**: Not Started
+**Status**: In Progress
 **Priority**: Medium
 **Depends on**: Phase 57 (Code Quality)
 
@@ -81,7 +81,11 @@ Output: `target/doc/c-api/html/` (git-ignored, alongside `target/doc/` from rust
 - [x] 59.3 — Fix underscore-prefixed C parameter names
 - [x] 59.4 — Audit doc coverage for undocumented public items
 - [x] 59.5 — Add Doxyfile and justfile recipes
-- [ ] 59.6 — Rustdoc quality pass
+- [x] 59.6 — Document missing public items in nros-node
+- [x] 59.7 — Document missing public items in nros-core and nros-serdes
+- [x] 59.8 — Expand sparse module-level docs
+- [x] 59.9 — Add crate-level examples to nros-rmw and nros-serdes
+- [ ] 59.10 — Fix broken intra-doc links in nros-rmw trait docs
 
 ### 59.1 — build.rs Doxygen Post-Processor
 
@@ -187,37 +191,128 @@ with a warning if `doxygen` is not in PATH). Doxygen is NOT added to
 - `packages/core/nros-c/Doxyfile`
 - `justfile`
 
-### 59.6 — Rustdoc Quality Pass
+### 59.6 — Document Missing Public Items in nros-node
 
-Review `cargo doc` output for the public Rust crates. Fix:
+Add `///` doc comments to undocumented public items in nros-node.
 
-- Broken intra-doc links (`[`Type`]` references that don't resolve)
-- Missing module-level docs (`//!` at top of `lib.rs` / `mod.rs`)
-- Inconsistent formatting (some functions have `# Examples`, most don't —
-  pick a consistent style)
+**Missing type docs:**
+- `SessionStore<S>` (executor/spin.rs:132) — public struct, no doc
+- `TimerCallbackFn` (timer.rs:148) — type alias, no doc
 
-Focus crates: `nros-node`, `nros-core`, `nros-rmw`, `nros-serdes`.
-Informational crates (`nros-c`, platform crates) are lower priority since
-their primary audience uses the C header or board crate API.
+**Missing method docs on `ActionServerHandle`** (executor/action.rs:341-410):
+- `publish_feedback()` — publish feedback for an active goal
+- `complete_goal()` — mark goal as succeeded/aborted/canceled
+- `set_goal_status()` — update goal status
+- `active_goal_count()` — number of active goals
+- `for_each_active_goal()` — iterate over active goals
+
+**Missing method docs on `Executor`:**
+- `add_service_raw()` / `add_service_raw_sized()` (spin.rs:827-905)
+- Setter methods with 1-line docs: `set_trigger`, `set_semantics`,
+  `set_invocation` — expand to 2-3 sentences
 
 **Files**:
-- `packages/core/nros-node/src/lib.rs`
-- `packages/core/nros-core/src/lib.rs`
+- `packages/core/nros-node/src/executor/action.rs`
+- `packages/core/nros-node/src/executor/spin.rs`
+- `packages/core/nros-node/src/timer.rs`
+
+### 59.7 — Document Missing Public Items in nros-core and nros-serdes
+
+**nros-core** — add docs to:
+- `ServiceResult` type alias (service.rs:89)
+- `ServiceCallback` type alias (service.rs:92)
+
+**nros-serdes** — add docs to:
+- `error.rs` — add module-level `//!` doc
+- `SerError::StringTooLong` / `SequenceTooLong` — state limits (u32::MAX)
+- `DeserError::CapacityExceeded` — clarify heapless container overflow
+- `CdrWriter::origin` field — explain alignment-relative-to-header purpose
+- `CdrWriter::new_with_header()` — explain origin=4 alignment shift
+
+**Files**:
+- `packages/core/nros-core/src/service.rs`
+- `packages/core/nros-serdes/src/error.rs`
+- `packages/core/nros-serdes/src/cdr.rs`
+
+### 59.8 — Expand Sparse Module-Level Docs
+
+Several modules have 1-line `//!` docs. Expand to 3-5 lines explaining
+purpose, key types, and relationship to other modules.
+
+- `nros-core/src/types.rs` — "Core ROS type traits" → explain
+  `RosMessage`, `RosService`, and generated type pattern
+- `nros-core/src/time.rs` — "ROS time types" → explain `Time`,
+  `Duration`, monotonic semantics, no_std compatibility
+- `nros-rmw/src/traits.rs` — "Transport abstraction traits" → explain
+  Session/Publisher/Subscriber/Service trait hierarchy
+- `nros-serdes/src/primitives.rs` — "Primitive type serialization
+  implementations" → list covered types (bool, integers, floats, strings,
+  heapless containers, alloc types behind feature gate)
+
+**Files**:
+- `packages/core/nros-core/src/types.rs`
+- `packages/core/nros-core/src/time.rs`
+- `packages/core/nros-rmw/src/traits.rs`
+- `packages/core/nros-serdes/src/primitives.rs`
+
+### 59.9 — Add Crate-Level Examples to nros-rmw and nros-serdes
+
+Both crates lack end-to-end examples in their `lib.rs` docs.
+
+**nros-serdes** — add `# Examples` showing:
+```rust
+let mut buf = [0u8; 256];
+let mut w = CdrWriter::new_with_header(&mut buf)?;
+msg.serialize(&mut w)?;
+let mut r = CdrReader::new(&buf[..w.position()])?;
+let decoded = MyMsg::deserialize(&mut r)?;
+```
+
+**nros-rmw** — add `# Examples` showing the trait hierarchy and how
+backends plug in (conceptual, using `ignore` block since concrete
+sessions require a backend crate).
+
+**Files**:
 - `packages/core/nros-rmw/src/lib.rs`
 - `packages/core/nros-serdes/src/lib.rs`
 
+### 59.10 — Fix Broken Intra-Doc Links in nros-rmw Trait Docs
+
+Several trait method docs reference types that don't resolve or use
+unclear terminology:
+
+- `process_raw_in_place()` — "buffer is locked during `f`" → clarify
+  re-entrancy prevention for zero-copy access
+- `drive_io()` — "Pull-based backends override this" → explain
+  zenoh-pico/XRCE-DDS require network I/O polling
+- `try_recv_raw_with_info()` — "RMW attachment" → explain publisher GID
+  and timestamp metadata from ROS 2
+
+Also fix any `[`Type`]` links that fail to resolve when building docs
+for nros-rmw in isolation (run `RUSTDOCFLAGS="-W rustdoc::broken_intra_doc_links"
+cargo doc -p nros-rmw --no-deps`).
+
+**Files**:
+- `packages/core/nros-rmw/src/traits.rs`
+
 ## Acceptance Criteria
 
-- [ ] `cargo build -p nros-c` produces `nros_generated.h` with Doxygen tags
+- [x] `cargo build -p nros-c` produces `nros_generated.h` with Doxygen tags
       (`@param`, `@retval`, `@pre`) — no raw `# Parameters` headings remain
-- [ ] `grep -c 'usize::MAX\|Box<\|nros_node::' include/nros/nros_generated.h`
+- [x] `grep -c 'usize::MAX\|Box<\|nros_node::' include/nros/nros_generated.h`
       returns 0 (no Rust-isms in generated header)
-- [ ] `grep '_origin\|_context\|_ready\|_count' include/nros/nros_generated.h`
+- [x] `grep '_origin\|_context\|_ready\|_count' include/nros/nros_generated.h`
       returns 0 for function parameter names (underscore prefixes removed)
 - [ ] `doxygen Doxyfile` completes with 0 warnings on documented items
-- [ ] `cargo doc --workspace --no-deps` completes with no broken intra-doc links
-- [ ] `just doc` generates both Rust and C API docs under `target/doc/`
-- [ ] `just quality` still passes (no regressions from doc comment changes)
+- [x] `cargo doc --workspace --no-deps` completes with no broken intra-doc links
+- [x] `just doc` generates both Rust and C API docs under `target/doc/`
+- [x] `just quality` still passes (no regressions from doc comment changes)
+- [x] `RUSTDOCFLAGS="-W missing_docs" cargo doc -p nros-node --no-deps`
+      completes with 0 warnings
+- [x] `RUSTDOCFLAGS="-W missing_docs" cargo doc -p nros-core --no-deps`
+      completes with 0 warnings
+- [x] All four focus crates have `//!` module docs of 3+ lines on every
+      public module
 
 ## Notes
 

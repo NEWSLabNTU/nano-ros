@@ -86,12 +86,15 @@ pub struct ServiceRequest<'a, S: RosService> {
     pub raw_data: &'a [u8],
 }
 
-/// Result type for service calls
+/// Result type for service calls.
+///
+/// Wraps `Result<T, NanoRosError>` for convenience in service handler signatures.
 pub type ServiceResult<T> = Result<T, NanoRosError>;
 
-/// Callback type for service handlers
+/// Synchronous service handler function pointer.
 ///
-/// Takes a request and returns a response.
+/// Takes a reference to the deserialized request and returns the reply.
+/// Used by [`ServiceServer`] for simple request-reply patterns.
 pub type ServiceCallback<S> = fn(&<S as RosService>::Request) -> <S as RosService>::Reply;
 
 #[cfg(test)]

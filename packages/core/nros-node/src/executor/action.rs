@@ -338,6 +338,10 @@ impl<A: RosAction> ActionServerHandle<A> {
     }
 
     /// Publish feedback for an active goal.
+    ///
+    /// Serialises the feedback message and sends it to all clients
+    /// monitoring this goal. Returns an error if the handle slot has
+    /// been removed from the executor.
     pub fn publish_feedback<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
@@ -354,7 +358,11 @@ impl<A: RosAction> ActionServerHandle<A> {
         }
     }
 
-    /// Complete a goal with final status and result.
+    /// Complete a goal with a terminal status and result payload.
+    ///
+    /// The goal is moved from the active set to the completed-results
+    /// slab. Clients waiting on a result will receive the response.
+    /// `status` should be one of `Succeeded`, `Aborted`, or `Canceled`.
     pub fn complete_goal<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
@@ -371,7 +379,10 @@ impl<A: RosAction> ActionServerHandle<A> {
         }
     }
 
-    /// Update a goal's status.
+    /// Update a goal's status without completing it.
+    ///
+    /// Use this to transition a goal to `Executing` or `Canceling`
+    /// while it is still active. To finish a goal, use [`complete_goal`](Self::complete_goal).
     pub fn set_goal_status<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
@@ -387,7 +398,9 @@ impl<A: RosAction> ActionServerHandle<A> {
         }
     }
 
-    /// Get the number of active goals.
+    /// Get the number of currently active goals.
+    ///
+    /// Returns 0 if the action server handle has been removed from the executor.
     pub fn active_goal_count<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &Executor<S, MAX_CBS, CB_ARENA>,
@@ -404,9 +417,10 @@ impl<A: RosAction> ActionServerHandle<A> {
         }
     }
 
-    /// Iterate over active goals.
+    /// Iterate over all currently active goals.
     ///
-    /// Calls `f` for each currently active goal.
+    /// Calls `f` for each goal that has been accepted but not yet
+    /// completed. Useful for monitoring progress or canceling stale goals.
     pub fn for_each_active_goal<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &Executor<S, MAX_CBS, CB_ARENA>,
@@ -683,7 +697,9 @@ impl ActionServerRawHandle {
         HandleId(self.entry_index)
     }
 
-    /// Publish feedback with raw CDR bytes.
+    /// Publish feedback with raw CDR bytes (untyped variant).
+    ///
+    /// Used by the C API when feedback is already serialised.
     pub fn publish_feedback_raw<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
@@ -705,7 +721,9 @@ impl ActionServerRawHandle {
         }
     }
 
-    /// Complete a goal with raw CDR result bytes.
+    /// Complete a goal with raw CDR result bytes (untyped variant).
+    ///
+    /// Moves the goal from the active set to the completed-results slab.
     pub fn complete_goal_raw<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
@@ -728,7 +746,10 @@ impl ActionServerRawHandle {
         }
     }
 
-    /// Update a goal's status.
+    /// Update a goal's status without completing it.
+    ///
+    /// Use this to transition a goal to `Executing` or `Canceling`
+    /// while it is still active. To finish a goal, use [`complete_goal_raw`](Self::complete_goal_raw).
     pub fn set_goal_status<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
@@ -744,7 +765,9 @@ impl ActionServerRawHandle {
         }
     }
 
-    /// Get the number of active goals.
+    /// Get the number of currently active goals.
+    ///
+    /// Returns 0 if the action server handle has been removed from the executor.
     pub fn active_goal_count<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &Executor<S, MAX_CBS, CB_ARENA>,
@@ -761,7 +784,9 @@ impl ActionServerRawHandle {
         }
     }
 
-    /// Iterate over active goals (raw).
+    /// Iterate over all currently active goals (raw/untyped variant).
+    ///
+    /// Calls `f` for each goal that has been accepted but not yet completed.
     pub fn for_each_active_goal<S, const MAX_CBS: usize, const CB_ARENA: usize>(
         &self,
         executor: &Executor<S, MAX_CBS, CB_ARENA>,

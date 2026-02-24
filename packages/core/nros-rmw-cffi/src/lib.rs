@@ -2,7 +2,7 @@
 //!
 //! This crate provides a vtable-based bridge so that backends written in C,
 //! C++, Zig, Ada, or any language with a C-compatible ABI can implement the
-//! nros [`Session`] / [`Publisher`] / [`Subscriber`] / service traits without
+//! nros `Session` / `Publisher` / `Subscriber` / service traits without
 //! writing Rust code.
 //!
 //! # Usage (C backend implementor)

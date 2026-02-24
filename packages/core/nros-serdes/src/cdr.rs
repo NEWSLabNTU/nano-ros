@@ -3,12 +3,17 @@
 use crate::CDR_LE_HEADER;
 use crate::error::{DeserError, SerError};
 
-/// CDR writer for serialization
+/// CDR writer for serialization.
 ///
-/// Handles alignment and endianness for CDR encoding.
+/// Handles alignment and endianness for ROS 2 CDR encoding.
+/// Alignment is computed relative to `origin` — when a 4-byte CDR
+/// header is present, `origin = 4` so that fields align correctly
+/// within the payload portion of the buffer.
 pub struct CdrWriter<'a> {
     buf: &'a mut [u8],
     pos: usize,
+    /// Byte offset where payload data begins (0 for raw, 4 after CDR header).
+    /// Alignment padding is calculated as `(pos - origin) % alignment`.
     origin: usize,
 }
 
@@ -22,9 +27,12 @@ impl<'a> CdrWriter<'a> {
         }
     }
 
-    /// Create a new CDR writer with encapsulation header
+    /// Create a new CDR writer with the 4-byte encapsulation header.
     ///
-    /// Writes the 4-byte CDR header and sets origin for alignment calculations.
+    /// Writes `[0x00, 0x01, 0x00, 0x00]` (CDR little-endian) at the start
+    /// and sets `origin = 4` so subsequent alignment is relative to the
+    /// payload, not the header. This is the normal entry point for
+    /// serialising ROS 2 messages.
     pub fn new_with_header(buf: &'a mut [u8]) -> Result<Self, SerError> {
         if buf.len() < 4 {
             return Err(SerError::BufferTooSmall);
