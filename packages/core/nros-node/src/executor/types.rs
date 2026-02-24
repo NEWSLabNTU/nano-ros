@@ -557,32 +557,37 @@ pub enum ExecutorSemantics {
 /// Handle for triggering a guard condition from outside the executor.
 ///
 /// Obtained from [`Executor::add_guard_condition()`](super::Executor::add_guard_condition).
-/// Safe to use from any thread.
+/// Safe to use from any thread — the inner `&'static AtomicBool` is inherently
+/// `Send + Sync`.
 pub struct GuardConditionHandle {
-    flag: *const portable_atomic::AtomicBool,
+    // The AtomicBool lives in the executor's arena, which is never moved or
+    // deallocated while handles exist. The 'static lifetime is asserted at
+    // construction time (see `new()`).
+    flag: &'static portable_atomic::AtomicBool,
 }
 
 impl GuardConditionHandle {
-    pub(crate) fn new(flag: *const portable_atomic::AtomicBool) -> Self {
-        Self { flag }
+    /// Create a handle from a raw pointer to an arena-allocated `AtomicBool`.
+    ///
+    /// # Safety
+    ///
+    /// The pointed-to `AtomicBool` must outlive this handle. This is guaranteed
+    /// when the `AtomicBool` lives in the executor arena (which is never moved
+    /// or deallocated while handles exist).
+    pub(crate) unsafe fn new(flag: *const portable_atomic::AtomicBool) -> Self {
+        // SAFETY: Caller guarantees the AtomicBool outlives this handle.
+        Self {
+            flag: unsafe { &*flag },
+        }
     }
 
     /// Trigger the guard condition.
     ///
     /// The executor will invoke the associated callback on the next spin iteration.
     pub fn trigger(&self) {
-        // SAFETY: The flag lives in the arena which outlives this handle
-        // (the arena is part of the Executor which must not be dropped while
-        // this handle is in use).
-        unsafe {
-            (*self.flag).store(true, portable_atomic::Ordering::Release);
-        }
+        self.flag.store(true, portable_atomic::Ordering::Release);
     }
 }
-
-// SAFETY: The AtomicBool is designed for cross-thread access.
-unsafe impl Send for GuardConditionHandle {}
-unsafe impl Sync for GuardConditionHandle {}
 
 // ============================================================================
 // Kani Verification

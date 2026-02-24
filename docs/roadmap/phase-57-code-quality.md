@@ -18,7 +18,7 @@ blocks; smaller files > monoliths.**
 | 57.2 — Split shim.rs (3,426 lines)      | Done        |
 | 57.3 — Split other large files          | Done        |
 | 57.4 — Safe buffer accessor wrappers    | Done        |
-| 57.5 — Minor unsafe & API cleanups      | Not Started |
+| 57.5 — Minor unsafe & API cleanups      | Done        |
 | 57.6 — TCP/UDP staging deduplication    | Not Started |
 | 57.7 — nros-c validation macros         | Not Started |
 | 57.8 — Extract magic constants          | Not Started |
@@ -209,38 +209,38 @@ Small improvements found during the audit. Each is independent.
 
 #### GuardConditionHandle raw pointer
 
-**File:** `nros-node/src/executor/types.rs:561-581`
+**File:** `nros-node/src/executor/types.rs`
 
-- [ ] Replace `flag: *const AtomicBool` with a phantom-lifetime wrapper or
-      an index into the arena, removing the need for `unsafe impl Send/Sync`
+- [x] Replace `flag: *const AtomicBool` with `flag: &'static AtomicBool`,
+      removing the need for `unsafe impl Send/Sync`. The `'static` lifetime
+      is asserted at construction time via `unsafe fn new()`.
 
 #### CsMutex: prefer `with()` over `lock()`
 
-**File:** `nros-rmw/src/sync.rs:128-139`
+**File:** `nros-rmw/src/sync.rs`
 
-- [ ] Add `#[doc(hidden)]` or deprecation notice on `lock()` method
-- [ ] Document that `with()` (closure-based) is the preferred API
-- [ ] (Optional) Remove `lock()` if no callers remain after audit
+- [x] Add `#[deprecated]` on `cs_impl::lock()` pointing to `with()`
+- [x] Add `with()` method to `spin_impl::Mutex` for API consistency
+- [x] Document that `with()` (closure-based) is the preferred API
 
 #### Document AtomicBool ABI assumption
 
-**File:** `nros-rmw-zenoh/src/shim.rs:1158`
+**File:** `nros-rmw-zenoh/src/shim/subscriber.rs`
 
-- [ ] Add comment explaining `AtomicBool::as_ptr() as *const bool` cast
+- [x] Add comment explaining `AtomicBool::as_ptr() as *const bool` cast
       assumes identical ABI (true for all Rust targets)
 
 #### XRCE init wrapper safety
 
-**File:** `nros/src/lib.rs:164-175`
+**File:** `nros/src/lib.rs`
 
-- [ ] The `init_posix_udp()` wrapper contains an `unsafe` block calling
-      `init_posix_udp_transport()` — the wrapper itself is safe. Ensure the
-      inner function is marked `unsafe fn` if it has safety preconditions,
-      or remove the `unsafe` block if the inner function is actually safe.
+- [x] Mark `init_posix_udp()` and `init_posix_serial()` wrappers as
+      `unsafe fn` — inner functions have safety preconditions (no concurrent
+      calls, single active transport) that the wrapper cannot verify.
 
 #### Verification
 
-- [ ] `just quality` passes
+- [x] `just quality` passes
 
 ---
 
@@ -253,14 +253,14 @@ logic.
 
 #### Duplicated pairs
 
-| TCP function | UDP function | Similarity |
-|---|---|---|
-| `register_socket` (259-282) | `register_udp_socket` (287-309) | ~90% — same slot search, ephemeral port alloc, buffer reset |
-| `socket_recv` (582-610) | `udp_socket_recv` (737-765) | ~95% — identical available calc, copy, pos reset |
-| `socket_send` (614-637) | `udp_socket_send` (769-794) | ~85% — identical space calc, copy; UDP adds endpoint |
-| `SocketEntry` (32-54) | `UdpSocketEntry` (109-132) | ~70% — same staging fields, UDP adds per-packet endpoint |
-| poll TCP TX drain (372-382) | poll UDP TX drain (434-454) | ~60% — TCP incremental, UDP atomic |
-| poll TCP RX compact+fill (387-404) | poll UDP RX compact+fill (459-476) | ~95% — identical compaction and fill |
+| TCP function                       | UDP function                       | Similarity                                                  |
+|------------------------------------|------------------------------------|-------------------------------------------------------------|
+| `register_socket` (259-282)        | `register_udp_socket` (287-309)    | ~90% — same slot search, ephemeral port alloc, buffer reset |
+| `socket_recv` (582-610)            | `udp_socket_recv` (737-765)        | ~95% — identical available calc, copy, pos reset            |
+| `socket_send` (614-637)            | `udp_socket_send` (769-794)        | ~85% — identical space calc, copy; UDP adds endpoint        |
+| `SocketEntry` (32-54)              | `UdpSocketEntry` (109-132)         | ~70% — same staging fields, UDP adds per-packet endpoint    |
+| poll TCP TX drain (372-382)        | poll UDP TX drain (434-454)        | ~60% — TCP incremental, UDP atomic                          |
+| poll TCP RX compact+fill (387-404) | poll UDP RX compact+fill (459-476) | ~95% — identical compaction and fill                        |
 
 #### Changes
 

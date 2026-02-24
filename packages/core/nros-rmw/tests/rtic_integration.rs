@@ -12,8 +12,8 @@ fn test_mutex_available() {
     use nros_rmw::sync::Mutex;
 
     let mutex = Mutex::new(42);
-    let guard = mutex.lock();
-    assert_eq!(*guard, 42);
+    let value = mutex.with(|v| *v);
+    assert_eq!(value, 42);
 }
 
 /// Test Mutex with() closure API if available

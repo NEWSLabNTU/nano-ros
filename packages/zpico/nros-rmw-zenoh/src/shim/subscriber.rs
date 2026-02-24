@@ -236,7 +236,10 @@ impl ZenohSubscriber {
             let buffer = buf.get_mut();
             let buf_ptr = buffer.data.as_mut_ptr();
             let buf_capacity = buffer.data.len();
-            // AtomicBool has the same layout as bool — cast is safe for __atomic_load_n
+            // AtomicBool is guaranteed to have the same in-memory representation
+            // as bool on all Rust targets (size 1, align 1). The C shim reads
+            // this via __atomic_load_n(ptr, __ATOMIC_ACQUIRE), which requires a
+            // pointer to the underlying bool storage — hence the cast.
             let locked_ptr = buffer.locked.as_ptr() as *const bool;
             let sub_result = context.declare_subscriber_direct_write_raw(
                 &keyexpr_buf,

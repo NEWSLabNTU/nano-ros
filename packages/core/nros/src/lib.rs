@@ -158,16 +158,24 @@ pub mod internals {
     #[cfg(feature = "rmw-xrce")]
     pub mod xrce_transport {
         /// Initialize POSIX UDP transport for XRCE-DDS.
+        ///
+        /// # Safety
+        ///
+        /// Must not be called concurrently. Only one transport may be active.
         #[cfg(feature = "xrce-udp")]
-        pub fn init_posix_udp(agent_addr: &str) {
+        pub unsafe fn init_posix_udp(agent_addr: &str) {
             unsafe {
                 nros_rmw_xrce::posix_udp::init_posix_udp_transport(agent_addr);
             }
         }
 
         /// Initialize POSIX serial transport for XRCE-DDS.
+        ///
+        /// # Safety
+        ///
+        /// Must not be called concurrently. Only one transport may be active.
         #[cfg(feature = "xrce-serial")]
-        pub fn init_posix_serial(pty_path: &str) {
+        pub unsafe fn init_posix_serial(pty_path: &str) {
             unsafe {
                 nros_rmw_xrce::posix_serial::init_posix_serial_transport(pty_path);
             }

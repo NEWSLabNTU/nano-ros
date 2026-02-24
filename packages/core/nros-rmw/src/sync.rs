@@ -3,6 +3,10 @@
 //! This module provides a unified interface for different mutex implementations,
 //! allowing the transport layer to work with various executor backends.
 //!
+//! All backends expose a single API: [`Mutex::with()`], which executes a
+//! closure while holding the lock. This closure-based API guarantees correct
+//! lock release across all backends (spin, critical-section, no-sync).
+//!
 //! # Feature Flags
 //!
 //! - `sync-spin` (default for zenoh): Uses `spin::Mutex` - works everywhere but not RTIC-compatible
@@ -14,32 +18,6 @@
 //! For RTIC applications, use `sync-critical-section` feature. This ensures that
 //! mutex operations use `critical_section::with()` which is compatible with RTIC's
 //! Stack Resource Policy (SRP) scheduling.
-
-use core::cell::UnsafeCell;
-use core::ops::{Deref, DerefMut};
-
-/// A mutex guard that provides access to the protected data
-pub struct MutexGuard<'a, T> {
-    data: &'a UnsafeCell<T>,
-    #[cfg(feature = "sync-critical-section")]
-    _cs: critical_section::CriticalSection<'a>,
-}
-
-impl<T> Deref for MutexGuard<'_, T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        // SAFETY: We hold the lock
-        unsafe { &*self.data.get() }
-    }
-}
-
-impl<T> DerefMut for MutexGuard<'_, T> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        // SAFETY: We hold the lock exclusively
-        unsafe { &mut *self.data.get() }
-    }
-}
 
 // ============================================================================
 // spin::Mutex implementation (default)
@@ -60,9 +38,12 @@ mod spin_impl {
             }
         }
 
-        /// Lock the mutex and return a guard
-        pub fn lock(&self) -> spin::MutexGuard<'_, T> {
-            self.inner.lock()
+        /// Lock the mutex and execute the closure with access to the data.
+        pub fn with<F, R>(&self, f: F) -> R
+        where
+            F: FnOnce(&mut T) -> R,
+        {
+            f(&mut self.inner.lock())
         }
     }
 
@@ -81,8 +62,7 @@ pub use spin_impl::Mutex;
 
 #[cfg(all(feature = "sync-critical-section", not(feature = "sync-spin")))]
 mod cs_impl {
-    use super::*;
-    use core::sync::atomic::{AtomicBool, Ordering};
+    use core::cell::UnsafeCell;
 
     /// Mutex using critical sections (RTIC/Embassy compatible)
     ///
@@ -90,7 +70,6 @@ mod cs_impl {
     /// which is compatible with RTIC's Stack Resource Policy (SRP) scheduling.
     pub struct Mutex<T> {
         data: UnsafeCell<T>,
-        locked: AtomicBool,
     }
 
     impl<T> Mutex<T> {
@@ -98,14 +77,10 @@ mod cs_impl {
         pub const fn new(value: T) -> Self {
             Self {
                 data: UnsafeCell::new(value),
-                locked: AtomicBool::new(false),
             }
         }
 
-        /// Lock the mutex and execute the closure with access to the data
-        ///
-        /// This is the preferred API for critical-section based mutexes as it
-        /// ensures the lock is properly released.
+        /// Lock the mutex and execute the closure with access to the data.
         pub fn with<F, R>(&self, f: F) -> R
         where
             F: FnOnce(&mut T) -> R,
@@ -116,59 +91,12 @@ mod cs_impl {
                 f(data)
             })
         }
-
-        /// Lock the mutex and return a guard
-        ///
-        /// Note: For critical-section based mutexes, prefer using `with()` instead
-        /// as it provides better guarantees about lock release.
-        pub fn lock(&self) -> CsMutexGuard<'_, T> {
-            // Enter critical section
-            // Note: This is a simplified implementation. In practice, the guard
-            // should hold the critical section token.
-            while self
-                .locked
-                .compare_exchange_weak(false, true, Ordering::Acquire, Ordering::Relaxed)
-                .is_err()
-            {
-                core::hint::spin_loop();
-            }
-            CsMutexGuard {
-                mutex: self,
-                data: unsafe { &mut *self.data.get() },
-            }
-        }
     }
 
     // SAFETY: Mutex is Send if T is Send
     unsafe impl<T: Send> Send for Mutex<T> {}
     // SAFETY: Mutex is Sync if T is Send (access is protected by critical section)
     unsafe impl<T: Send> Sync for Mutex<T> {}
-
-    /// Guard for critical-section based mutex
-    pub struct CsMutexGuard<'a, T> {
-        mutex: &'a Mutex<T>,
-        data: &'a mut T,
-    }
-
-    impl<T> Deref for CsMutexGuard<'_, T> {
-        type Target = T;
-
-        fn deref(&self) -> &Self::Target {
-            self.data
-        }
-    }
-
-    impl<T> DerefMut for CsMutexGuard<'_, T> {
-        fn deref_mut(&mut self) -> &mut Self::Target {
-            self.data
-        }
-    }
-
-    impl<T> Drop for CsMutexGuard<'_, T> {
-        fn drop(&mut self) {
-            self.mutex.locked.store(false, Ordering::Release);
-        }
-    }
 }
 
 #[cfg(all(feature = "sync-critical-section", not(feature = "sync-spin")))]
@@ -199,17 +127,12 @@ mod nosync_impl {
             }
         }
 
-        /// Lock the mutex and execute the closure with access to the data
+        /// Lock the mutex and execute the closure with access to the data.
         pub fn with<F, R>(&self, f: F) -> R
         where
             F: FnOnce(&mut T) -> R,
         {
             f(&mut self.inner.borrow_mut())
-        }
-
-        /// Lock the mutex and return a guard
-        pub fn lock(&self) -> core::cell::RefMut<'_, T> {
-            self.inner.borrow_mut()
         }
     }
 
