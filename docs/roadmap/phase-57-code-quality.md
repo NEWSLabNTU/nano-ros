@@ -15,7 +15,7 @@ blocks; smaller files > monoliths.**
 | Item                                    | Status      |
 |-----------------------------------------|-------------|
 | 57.1 — Remove "Shim" smurf prefix       | Done        |
-| 57.2 — Split shim.rs (3,426 lines)      | Not Started |
+| 57.2 — Split shim.rs (3,426 lines)      | Done        |
 | 57.3 — Split other large files          | Not Started |
 | 57.4 — Safe buffer accessor wrappers    | Not Started |
 | 57.5 — Minor unsafe & API cleanups      | Not Started |
@@ -129,16 +129,16 @@ nros-rmw-zenoh/src/
 
 #### Steps
 
-- [ ] Create `shim/` directory
-- [ ] Move types into sub-modules (one `git mv` + split per module)
-- [ ] Ensure `pub use` re-exports maintain the same public API
-- [ ] Update all internal `use` paths within `nros-rmw-zenoh`
-- [ ] Update external imports (`nros`, `nros-node`, etc.)
+- [x] Create `shim/` directory
+- [x] Move types into sub-modules (one `git mv` + split per module)
+- [x] Ensure `pub use` re-exports maintain the same public API
+- [x] Update all internal `use` paths within `nros-rmw-zenoh`
+- [x] Update external imports (`nros`, `nros-node`, etc.)
 
 #### Verification
 
-- [ ] No public API changes (same types accessible from same paths)
-- [ ] `just quality` passes
+- [x] No public API changes (same types accessible from same paths)
+- [x] `just quality` passes
 
 ---
 
