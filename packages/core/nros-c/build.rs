@@ -4,6 +4,9 @@
 //!    with compile-time configurable constants for the executor.
 //! 2. Runs cbindgen to generate `include/nros/nros_generated.h` from
 //!    Rust `#[repr(C)]` types, preventing C/Rust struct layout drift.
+//! 3. Post-processes the generated header: converts Rust Markdown doc
+//!    comments (`# Parameters`, `# Returns`, `# Safety`) into Doxygen
+//!    tags (`@param`, `@retval`, `@pre`) so C users get structured docs.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -84,6 +87,7 @@ fn generate_header(manifest_dir: &Path) {
     match result {
         Ok(bindings) => {
             bindings.write_to_file(&output_path);
+            doxygen_postprocess(&output_path);
         }
         Err(e) => {
             // cbindgen may fail if dependencies aren't available (e.g.,
@@ -102,4 +106,143 @@ fn env_usize(name: &str, default: usize) -> usize {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+// ---------------------------------------------------------------------------
+// Doxygen post-processor
+// ---------------------------------------------------------------------------
+
+/// Which doc-comment section the state machine is currently inside.
+#[derive(PartialEq)]
+enum DocSection {
+    None,
+    Params,
+    Returns,
+    Safety,
+}
+
+/// Post-process cbindgen output: convert Rust Markdown doc comments to Doxygen.
+///
+/// Runs a single-pass line-by-line state machine over the generated header:
+///
+///   `# Parameters` + `` * `name` - desc ``   →  `@param name desc`
+///   `# Returns`    + `` * `NROS_RET_*` … ``  →  `@retval NROS_RET_* …`
+///   `# Returns`    + `* plain text`          →  `@return plain text`
+///   `# Safety`     + `* text`                →  `@pre text.`
+///
+/// Also performs global Rust-ism replacements (usize::MAX → SIZE_MAX, etc.).
+fn doxygen_postprocess(path: &Path) {
+    let content = match std::fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(_) => return,
+    };
+
+    let mut out = String::with_capacity(content.len());
+    let mut section = DocSection::None;
+    let mut prev_blank = false; // tracks whether the last emitted line was " *"
+
+    for line in content.lines() {
+        // Detect section headers: " * # Parameters", " * # Returns", " * # Safety"
+        if let Some(heading) = line.strip_prefix(" * # ") {
+            let lower = heading.trim().to_ascii_lowercase();
+            if lower == "parameters" {
+                section = DocSection::Params;
+                if !prev_blank {
+                    push_line(&mut out, " *");
+                    prev_blank = true;
+                }
+                continue;
+            } else if lower.starts_with("return") {
+                section = DocSection::Returns;
+                if !prev_blank {
+                    push_line(&mut out, " *");
+                    prev_blank = true;
+                }
+                continue;
+            } else if lower == "safety" {
+                section = DocSection::Safety;
+                if !prev_blank {
+                    push_line(&mut out, " *");
+                    prev_blank = true;
+                }
+                continue;
+            } else {
+                section = DocSection::None;
+                // fall through — keep unknown headings as-is
+            }
+        }
+
+        // A blank doc line (" *") ends the current section
+        if line.trim_end() == " *" && section != DocSection::None {
+            section = DocSection::None;
+            // fall through — emit the blank line normally
+        }
+
+        // Transform bullets according to current section
+        if section == DocSection::Params {
+            //  " * * `name` - description"  →  " * @param name description"
+            if let Some(rest) = line.strip_prefix(" * * `")
+                && let Some((name, desc)) = rest.split_once("` - ")
+            {
+                push_line(&mut out, &format!(" * @param {name} {desc}"));
+                prev_blank = false;
+                continue;
+            }
+        } else if section == DocSection::Returns {
+            //  " * * `NROS_RET_OK` on success"  →  " * @retval NROS_RET_OK on success"
+            //  " * * `true` if …"               →  " * @return true if …"
+            //  " * * Non-zero if …"             →  " * @return Non-zero if …"
+            if let Some(rest) = line.strip_prefix(" * * `")
+                && let Some((val, desc)) = rest.split_once("` ")
+            {
+                if val.starts_with("NROS_RET_") {
+                    push_line(&mut out, &format!(" * @retval {val} {desc}"));
+                } else {
+                    push_line(&mut out, &format!(" * @return {val} {desc}"));
+                }
+                prev_blank = false;
+                continue;
+            } else if let Some(rest) = line.strip_prefix(" * * ") {
+                push_line(&mut out, &format!(" * @return {rest}"));
+                prev_blank = false;
+                continue;
+            }
+        } else if section == DocSection::Safety {
+            //  " * * All pointers must be valid"  →  " * @pre All pointers must be valid."
+            if let Some(rest) = line.strip_prefix(" * * ") {
+                let clean = rest.replace('`', "").replace("usize", "size_t");
+                if clean.ends_with('.') {
+                    push_line(&mut out, &format!(" * @pre {clean}"));
+                } else {
+                    push_line(&mut out, &format!(" * @pre {clean}."));
+                }
+                prev_blank = false;
+                continue;
+            }
+        }
+
+        // Global Rust-ism replacements
+        let line = line
+            .replace("usize::MAX", "SIZE_MAX")
+            .replace(" (`Box<CExecutor>`)", "")
+            .replace(" (`Box<ActionServerInternal>`)", "")
+            .replace("`nros_node::Executor`", "the internal executor")
+            .replace("nros_node::Executor", "the internal executor")
+            .replace(
+                "`add_action_server_raw_sized()`",
+                "add_action_server_raw_sized()",
+            )
+            .replace("`spin_once()`", "spin_once()");
+
+        prev_blank = line.trim_end() == " *";
+        push_line(&mut out, &line);
+    }
+
+    let _ = std::fs::write(path, out);
+}
+
+/// Append a line (with newline) to the output buffer.
+fn push_line(out: &mut String, line: &str) {
+    out.push_str(line);
+    out.push('\n');
 }
