@@ -13,13 +13,19 @@ Reference for debugging LAN9118 Ethernet on QEMU MPS2-AN385 with FreeRTOS + lwIP
 
 **Task priorities** (highest to lowest):
 
-| Priority | Task | Role |
-|----------|------|------|
-| 4 | `tcpip_thread` | lwIP TCP/IP processing (set via `TCPIP_THREAD_PRIO`) |
-| 3 | app task | zenoh-pico / nros application logic |
-| 2 | timer task | FreeRTOS software timer service |
-| 1 | poll task | Calls `lan9118_lwip_poll()` to drain RX FIFO |
-| 0 | idle | WFI hook (critical for QEMU -- see Section 4) |
+| Priority | Task             | Role                                                            |
+|----------|------------------|-----------------------------------------------------------------|
+| 4        | `tcpip_thread`   | lwIP TCP/IP processing (set via `TCPIP_THREAD_PRIO`)            |
+| 4        | poll task        | Calls `lan9118_lwip_poll()` to drain RX FIFO                    |
+| 4        | zenoh read/lease | zenoh-pico background tasks (default: `configMAX_PRIORITIES/2`) |
+| 3        | app task         | zenoh-pico / nros application logic                             |
+| 2        | timer task       | FreeRTOS software timer service                                 |
+| 0        | idle             | WFI hook (critical for QEMU -- see Section 4)                   |
+
+**Poll task at priority 4**: The poll task must run at the same priority as the zenoh-pico
+read task (which uses a 100ms `recv()` timeout loop). At lower priority, the read task
+monopolizes CPU time and the poll task can't drain the LAN9118 RX FIFO, causing TCP
+keep-alives to be missed and zenoh sessions to expire.
 
 **Data flow**: LAN9118 RX FIFO --> poll task (`lan9118_lwip_poll`) --> `tcpip_input` --> `tcpip_thread` --> socket recv buffers --> zenoh-pico
 
@@ -27,36 +33,36 @@ Reference for debugging LAN9118 Ethernet on QEMU MPS2-AN385 with FreeRTOS + lwIP
 
 Direct registers (base + offset):
 
-| Offset | Name | Description |
-|--------|------|-------------|
-| `0x00` | `RX_DATA_PORT` | RX FIFO data read (32-bit words) |
-| `0x20` | `TX_DATA_PORT` | TX FIFO data write (32-bit words, also TX commands) |
-| `0x40` | `RX_STAT_PORT` | RX status FIFO (packet length, error flags) |
-| `0x50` | `ID_REV` | Chip ID + revision (upper 16 = `0x9220` or `0x0118`) |
-| `0x54` | `IRQ_CFG` | IRQ output configuration (default `0x22000111`) |
-| `0x58` | `INT_STS` | Interrupt status (TX/RX activity flags) |
-| `0x5C` | `INT_EN` | Interrupt enable mask |
-| `0x68` | `FIFO_INT` | FIFO interrupt threshold levels |
-| `0x6C` | `RX_CFG` | RX configuration |
-| `0x70` | `TX_CFG` | TX configuration (bit 1 = `TX_ON`) |
-| `0x74` | `HW_CFG` | Hardware config (bit 0 = soft reset, bits 19:16 = TX FIFO size) |
-| `0x78` | `RX_DP_CTRL` | RX data path control (bit 31 = fast-forward/discard) |
-| `0x7C` | `RX_FIFO_INF` | RX FIFO info (bits 23:16 = status entries used, bits 15:0 = data bytes used) |
-| `0x80` | `TX_FIFO_INF` | TX FIFO info (bits 15:0 = data free space) |
-| `0x88` | `GPIO_CFG` | GPIO/LED configuration |
-| `0xA4` | `MAC_CSR_CMD` | MAC CSR indirect access command (bit 31 = busy, bit 30 = read) |
-| `0xA8` | `MAC_CSR_DATA` | MAC CSR indirect access data |
-| `0xAC` | `AFC_CFG` | Auto flow control configuration |
+| Offset | Name           | Description                                                                  |
+|--------|----------------|------------------------------------------------------------------------------|
+| `0x00` | `RX_DATA_PORT` | RX FIFO data read (32-bit words)                                             |
+| `0x20` | `TX_DATA_PORT` | TX FIFO data write (32-bit words, also TX commands)                          |
+| `0x40` | `RX_STAT_PORT` | RX status FIFO (packet length, error flags)                                  |
+| `0x50` | `ID_REV`       | Chip ID + revision (upper 16 = `0x9220` or `0x0118`)                         |
+| `0x54` | `IRQ_CFG`      | IRQ output configuration (default `0x22000111`)                              |
+| `0x58` | `INT_STS`      | Interrupt status (TX/RX activity flags)                                      |
+| `0x5C` | `INT_EN`       | Interrupt enable mask                                                        |
+| `0x68` | `FIFO_INT`     | FIFO interrupt threshold levels                                              |
+| `0x6C` | `RX_CFG`       | RX configuration                                                             |
+| `0x70` | `TX_CFG`       | TX configuration (bit 1 = `TX_ON`)                                           |
+| `0x74` | `HW_CFG`       | Hardware config (bit 0 = soft reset, bits 19:16 = TX FIFO size)              |
+| `0x78` | `RX_DP_CTRL`   | RX data path control (bit 31 = fast-forward/discard)                         |
+| `0x7C` | `RX_FIFO_INF`  | RX FIFO info (bits 23:16 = status entries used, bits 15:0 = data bytes used) |
+| `0x80` | `TX_FIFO_INF`  | TX FIFO info (bits 15:0 = data free space)                                   |
+| `0x88` | `GPIO_CFG`     | GPIO/LED configuration                                                       |
+| `0xA4` | `MAC_CSR_CMD`  | MAC CSR indirect access command (bit 31 = busy, bit 30 = read)               |
+| `0xA8` | `MAC_CSR_DATA` | MAC CSR indirect access data                                                 |
+| `0xAC` | `AFC_CFG`      | Auto flow control configuration                                              |
 
 Indirect MAC CSR registers (accessed via `MAC_CSR_CMD` / `MAC_CSR_DATA`):
 
-| Index | Name | Key Bits |
-|-------|------|----------|
-| 1 | `MAC_CR` | bit 3 = TXEN, bit 2 = RXEN, bit 18 = PRMS (promiscuous) |
-| 2 | `ADDRH` | MAC address bytes 5:4 |
-| 3 | `ADDRL` | MAC address bytes 3:0 |
-| 6 | `MII_ACC` | PHY register access (bit 0 = busy, bit 1 = write) |
-| 7 | `MII_DATA` | PHY register data |
+| Index | Name       | Key Bits                                                |
+|-------|------------|---------------------------------------------------------|
+| 1     | `MAC_CR`   | bit 3 = TXEN, bit 2 = RXEN, bit 18 = PRMS (promiscuous) |
+| 2     | `ADDRH`    | MAC address bytes 5:4                                   |
+| 3     | `ADDRL`    | MAC address bytes 3:0                                   |
+| 6     | `MII_ACC`  | PHY register access (bit 0 = busy, bit 1 = write)       |
+| 7     | `MII_DATA` | PHY register data                                       |
 
 **MAC CSR access protocol**: Write `MAC_CSR_CMD` with busy + read/write + register index, poll until busy clears, then read/write `MAC_CSR_DATA`. Always check busy before starting.
 
@@ -175,6 +181,30 @@ reg_write(base, 0x54 /* IRQ_CFG */, 0x22000111u);
 **Cause**: The packet length in `RX_STAT_PORT` includes the 4-byte FCS/CRC. All 32-bit words must be read from `RX_DATA_PORT` including the CRC bytes, even though the CRC is not passed to lwIP.
 
 **Fix**: Read `(pkt_len + 3) / 4` words from the FIFO (where `pkt_len` includes CRC), but only copy `pkt_len - 4` bytes to the pbuf. The driver already handles this correctly.
+
+### Deterministic `rand()` causes duplicate Zenoh session IDs
+
+**Problem**: When running two QEMU instances (talker + listener), the second instance's `z_open()` hangs and zenohd closes the TCP connection (visible as `FIN-WAIT-2` in `ss -tnp`).
+
+**Cause**: zenoh-pico generates a 16-byte session ID via `z_random_fill()` → `LWIP_RAND()` → `rand()`. On FreeRTOS, `rand()` starts from default seed 1 on every boot. All QEMU instances generate identical random sequences → identical Zenoh session IDs → zenohd rejects the duplicate by closing the connection.
+
+**Diagnosis**: Monitor zenohd connections during startup:
+```bash
+watch -n0.5 'ss -tnp | grep 7447'
+```
+If both QEMU instances use the same source port or the second connection immediately transitions to `FIN-WAIT-2`, duplicate session IDs are the cause.
+
+**Fix**: Seed `srand()` with a value unique to each node during `nros_freertos_init_network()`. Use the node's IP address (guaranteed unique per node) with a multiplicative hash to spread bits:
+```c
+uint32_t seed = ((uint32_t)ip[0] << 24) | ((uint32_t)ip[1] << 16)
+              | ((uint32_t)ip[2] << 8)  | (uint32_t)ip[3];
+seed = seed * 2654435761u;  /* Knuth multiplicative hash */
+seed ^= ((uint32_t)mac[4] << 8) | (uint32_t)mac[5];
+if (seed == 0) seed = 1;
+srand(seed);
+```
+
+**Caveat**: Do NOT use a simple XOR of MAC and IP — common address patterns can cancel out (e.g., MAC `...00` XOR IP `...0A` equals MAC `...01` XOR IP `...0B`).
 
 ### WFI in idle hook is mandatory for QEMU networking
 

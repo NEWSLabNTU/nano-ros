@@ -391,6 +391,23 @@ int nros_freertos_init_network(
 {
     ip4_addr_t ipaddr, mask, gateway;
 
+    /* Seed the C stdlib RNG with a value unique to this node.
+     * Without this, rand() starts from seed 1 on every boot, causing
+     * all QEMU instances to generate identical zenoh-pico session IDs
+     * (16 bytes from LWIP_RAND → rand()). zenohd rejects duplicate
+     * session IDs, so the second QEMU's z_open() always fails.
+     *
+     * Use IP octets directly — each node has a unique IP. Multiply to
+     * spread bits and avoid XOR cancellation between MAC and IP. */
+    {
+        uint32_t seed = ((uint32_t)ip[0] << 24) | ((uint32_t)ip[1] << 16)
+                      | ((uint32_t)ip[2] << 8)  | (uint32_t)ip[3];
+        seed = seed * 2654435761u;  /* Knuth multiplicative hash */
+        seed ^= ((uint32_t)mac[4] << 8) | (uint32_t)mac[5];
+        if (seed == 0) seed = 1;
+        srand(seed);
+    }
+
     IP4_ADDR(&ipaddr,  ip[0], ip[1], ip[2], ip[3]);
     IP4_ADDR(&mask,    netmask[0], netmask[1], netmask[2], netmask[3]);
     IP4_ADDR(&gateway, gw[0], gw[1], gw[2], gw[3]);
