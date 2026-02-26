@@ -187,6 +187,27 @@ config NROS_MAX_LIVELINESS
       Maximum number of concurrent liveliness tokens in the shim layer.
       Maps to ZPICO_MAX_LIVELINESS.
 
+config NROS_MAX_PENDING_GETS
+    int "Maximum concurrent pending get operations"
+    default 4
+    help
+      Maximum number of concurrent pending get (service call) operations.
+      Maps to ZPICO_MAX_PENDING_GETS.
+
+config NROS_GET_REPLY_BUF_SIZE
+    int "Get reply buffer size"
+    default 4096
+    help
+      Size of the buffer for get (service call) reply payloads (bytes).
+      Maps to ZPICO_GET_REPLY_BUF_SIZE.
+
+config NROS_GET_POLL_INTERVAL_MS
+    int "Get poll interval (ms)"
+    default 10
+    help
+      Polling interval for pending get operations (milliseconds).
+      Maps to ZPICO_GET_POLL_INTERVAL_MS.
+
 config NROS_FRAG_MAX_SIZE
     int "Maximum reassembled message size"
     default 2048
