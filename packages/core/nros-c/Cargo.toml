@@ -28,6 +28,8 @@ xrce-serial = ["nros/xrce-serial"]
 platform-posix = ["nros/platform-posix"]
 platform-zephyr = ["nros/platform-zephyr"]
 platform-freertos = ["nros/platform-freertos"]
+platform-nuttx = ["nros/platform-nuttx"]
+platform-threadx = ["nros/platform-threadx"]
 
 # ROS edition (orthogonal to RMW and platform)
 ros-humble = ["nros/ros-humble"]

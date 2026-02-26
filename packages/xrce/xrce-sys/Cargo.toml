@@ -11,6 +11,8 @@ posix = []
 bare-metal = []
 zephyr = []
 freertos = []
+nuttx = []
+threadx = []
 std = []
 
 [build-dependencies]

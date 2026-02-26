@@ -20,14 +20,15 @@ fn main() {
     let zephyr = env::var("CARGO_FEATURE_ZEPHYR").is_ok();
     let freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
     let nuttx = env::var("CARGO_FEATURE_NUTTX").is_ok();
+    let threadx = env::var("CARGO_FEATURE_THREADX").is_ok();
 
-    let platform_count = [posix, bare_metal, zephyr, freertos, nuttx]
+    let platform_count = [posix, bare_metal, zephyr, freertos, nuttx, threadx]
         .iter()
         .filter(|&&x| x)
         .count();
     if platform_count > 1 {
         panic!(
-            "Features `posix`, `bare-metal`, `zephyr`, `freertos`, and `nuttx` are mutually exclusive"
+            "Features `posix`, `bare-metal`, `zephyr`, `freertos`, `nuttx`, and `threadx` are mutually exclusive"
         );
     }
 

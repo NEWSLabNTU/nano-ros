@@ -110,10 +110,24 @@ compile_error!("`rmw-cffi` and `rmw-xrce` are mutually exclusive.");
 #[cfg(any(
     all(feature = "platform-posix", feature = "platform-zephyr"),
     all(feature = "platform-posix", feature = "platform-bare-metal"),
+    all(feature = "platform-posix", feature = "platform-freertos"),
+    all(feature = "platform-posix", feature = "platform-nuttx"),
+    all(feature = "platform-posix", feature = "platform-threadx"),
     all(feature = "platform-zephyr", feature = "platform-bare-metal"),
+    all(feature = "platform-zephyr", feature = "platform-freertos"),
+    all(feature = "platform-zephyr", feature = "platform-nuttx"),
+    all(feature = "platform-zephyr", feature = "platform-threadx"),
+    all(feature = "platform-bare-metal", feature = "platform-freertos"),
+    all(feature = "platform-bare-metal", feature = "platform-nuttx"),
+    all(feature = "platform-bare-metal", feature = "platform-threadx"),
+    all(feature = "platform-freertos", feature = "platform-nuttx"),
+    all(feature = "platform-freertos", feature = "platform-threadx"),
+    all(feature = "platform-nuttx", feature = "platform-threadx"),
 ))]
 compile_error!(
-    "`platform-posix`, `platform-zephyr`, and `platform-bare-metal` are mutually exclusive."
+    "Platform features are mutually exclusive — select at most one of: \
+     `platform-posix`, `platform-zephyr`, `platform-bare-metal`, \
+     `platform-freertos`, `platform-nuttx`, `platform-threadx`."
 );
 
 // At most one ROS edition.

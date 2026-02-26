@@ -46,6 +46,16 @@ platform-freertos = [
     "nros-rmw-zenoh?/platform-freertos",
     "nros-rmw-xrce?/platform-freertos",
 ]
+platform-nuttx = [
+    "nros-node/platform-nuttx",
+    "nros-rmw-zenoh?/platform-nuttx",
+    "nros-rmw-xrce?/platform-nuttx",
+]
+platform-threadx = [
+    "nros-node/platform-threadx",
+    "nros-rmw-zenoh?/platform-threadx",
+    "nros-rmw-xrce?/platform-threadx",
+]
 
 # Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
 link-tcp = ["nros-rmw-zenoh?/link-tcp"]

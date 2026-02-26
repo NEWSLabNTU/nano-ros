@@ -327,6 +327,7 @@ fn main() {
     let use_bare_metal = env::var("CARGO_FEATURE_BARE_METAL").is_ok();
     let use_freertos = env::var("CARGO_FEATURE_FREERTOS").is_ok();
     let use_nuttx = env::var("CARGO_FEATURE_NUTTX").is_ok();
+    let use_threadx = env::var("CARGO_FEATURE_THREADX").is_ok();
 
     // Count enabled backends
     let backend_count = [
@@ -335,6 +336,7 @@ fn main() {
         use_bare_metal,
         use_freertos,
         use_nuttx,
+        use_threadx,
     ]
     .iter()
     .filter(|&&b| b)
@@ -349,7 +351,7 @@ fn main() {
     if backend_count > 1 {
         panic!(
             "Only one platform backend can be selected at a time \
-             (posix, zephyr, bare-metal, freertos, or nuttx)"
+             (posix, zephyr, bare-metal, freertos, nuttx, or threadx)"
         );
     }
 

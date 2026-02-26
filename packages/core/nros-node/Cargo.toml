@@ -30,6 +30,8 @@ platform-posix = ["nros-rmw-zenoh?/platform-posix", "nros-rmw-xrce?/platform-pos
 platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr", "nros-rmw-xrce?/platform-zephyr"]
 platform-bare-metal = ["nros-rmw-zenoh?/platform-bare-metal", "nros-rmw-xrce?/platform-bare-metal"]
 platform-freertos = ["nros-rmw-zenoh?/platform-freertos", "nros-rmw-xrce?/platform-freertos"]
+platform-nuttx = ["nros-rmw-zenoh?/platform-nuttx", "nros-rmw-xrce?/platform-nuttx"]
+platform-threadx = ["nros-rmw-zenoh?/platform-threadx", "nros-rmw-xrce?/platform-threadx"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]

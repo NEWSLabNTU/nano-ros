@@ -11,6 +11,8 @@ platform-posix = ["xrce-sys/posix"]
 platform-bare-metal = ["xrce-sys/bare-metal"]
 platform-zephyr = ["xrce-sys/zephyr"]
 platform-freertos = ["xrce-sys/freertos"]
+platform-nuttx = ["xrce-sys/nuttx"]
+platform-threadx = ["xrce-sys/threadx"]
 posix-udp = ["platform-posix"]
 posix-serial = ["platform-posix", "dep:libc"]
 
