@@ -529,8 +529,8 @@ fn test_c_rust_service_interop(zenohd_unique: ZenohRouter, c_service_server_bina
     let mut server = ManagedProcess::spawn_command(server_cmd, "c-service-server")
         .expect("Failed to start C service server");
 
-    // Wait for server to be ready
-    std::thread::sleep(Duration::from_secs(3));
+    // Wait for server to register service queryable with zenohd
+    std::thread::sleep(Duration::from_secs(5));
 
     // Start Rust client
     let mut client_cmd = Command::new(&rust_client);
@@ -539,9 +539,9 @@ fn test_c_rust_service_interop(zenohd_unique: ZenohRouter, c_service_server_bina
     let mut client = ManagedProcess::spawn_command(client_cmd, "rust-service-client")
         .expect("Failed to start Rust service client");
 
-    // Wait for client to complete
+    // Wait for client to complete (4 calls × 5s timeout + 3 × 500ms sleep ≈ 22s)
     let client_output = client
-        .wait_for_output_pattern("completed successfully", Duration::from_secs(15))
+        .wait_for_output_pattern("completed successfully", Duration::from_secs(30))
         .or_else(|_| client.wait_for_all_output(Duration::from_secs(2)))
         .unwrap_or_default();
 

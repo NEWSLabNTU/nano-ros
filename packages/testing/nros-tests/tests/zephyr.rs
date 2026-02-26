@@ -1167,9 +1167,13 @@ fn test_native_server_zephyr_client() {
     eprintln!("\n=== Zephyr client output ===\n{}", zephyr_output);
 
     // Check Zephyr client status
-    let zephyr_connected = zephyr_output.contains("Session opened");
-    let zephyr_sent_request =
-        zephyr_output.contains("Sending request") || zephyr_output.contains("Request:");
+    // "Session opened" or "Service client ready" or "Sending:" all indicate connection
+    let zephyr_connected = zephyr_output.contains("Session opened")
+        || zephyr_output.contains("Service client ready")
+        || zephyr_output.contains("Sending:");
+    let zephyr_sent_request = zephyr_output.contains("Sending request")
+        || zephyr_output.contains("Request:")
+        || zephyr_output.contains("Sending:");
     let zephyr_got_response = zephyr_output.contains("Response:") || zephyr_output.contains("sum=");
 
     // Check native server status
@@ -1183,20 +1187,29 @@ fn test_native_server_zephyr_client() {
             "\nSUCCESS: Zephyr client received {} responses from native server",
             response_count
         );
-    } else if zephyr_connected && zephyr_sent_request && server_received {
-        eprintln!("\nPARTIAL: Communication established but no response received");
-        eprintln!("  Zephyr connected: {}", zephyr_connected);
-        eprintln!("  Zephyr sent request: {}", zephyr_sent_request);
-        eprintln!("  Server received request: {}", server_received);
+    } else if zephyr_connected && zephyr_sent_request {
+        panic!(
+            "Zephyr service E2E failed — client sent requests but all timed out.\n\
+             Server received request: {}\n\
+             This indicates a zenoh queryable discovery issue. Verify:\n\
+             - Zephyr binary rebuilt after CMakeLists.txt changes: `west build`\n\
+             - zenohd running on bridge IP and reachable from both native and Zephyr processes",
+            server_received
+        );
     } else if !zephyr_connected {
-        panic!("Zephyr client failed to connect to zenohd");
+        panic!(
+            "Zephyr service E2E failed — client did not connect to zenohd.\n\
+             This is an environment issue. Verify:\n\
+             - Zephyr bridge: `ip addr show zeth-br` (should have 192.0.2.2)\n\
+             - Zephyr binary up to date: rebuild with `west build`\n\
+             - zenohd reachable on bridge IP"
+        );
     } else {
-        eprintln!("\nWARNING: Service communication incomplete");
-        eprintln!("  Zephyr connected: {}", zephyr_connected);
-        eprintln!("  Zephyr sent request: {}", zephyr_sent_request);
-        eprintln!("  Server received request: {}", server_received);
-        eprintln!("  Zephyr got response: {}", zephyr_got_response);
-        // Don't fail - this may be due to known zenoh-pico limitations
+        panic!(
+            "Zephyr service E2E failed — incomplete communication.\n\
+             Zephyr connected: {}, sent request: {}, got response: {}, server received: {}",
+            zephyr_connected, zephyr_sent_request, zephyr_got_response, server_received
+        );
     }
 }
 
