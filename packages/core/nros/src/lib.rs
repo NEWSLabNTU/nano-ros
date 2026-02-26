@@ -84,12 +84,14 @@
 //!
 //! ## Further Reading
 //!
-//! - [Getting Started](https://github.com/jerry73204/nano-ros/blob/main/docs/guides/getting-started.md)
-//!   — full setup walkthrough
-//! - [Creating Examples](https://github.com/jerry73204/nano-ros/blob/main/docs/guides/creating-examples.md)
-//!   — how to create new examples with message generation
+//! - [`guide`] — tutorials: getting started, services, configuration,
+//!   ROS 2 interop, and troubleshooting
 //! - [Message Generation](https://github.com/jerry73204/nano-ros/blob/main/docs/guides/message-generation.md)
-//!   — code generation workflow for ROS 2 message types
+//!   — codegen reference (all options, output structure, bundled interfaces)
+//! - [Environment Variables](https://github.com/jerry73204/nano-ros/blob/main/docs/reference/environment-variables.md)
+//!   — complete buffer tuning reference
+//! - [ROS 2 Interop](https://github.com/jerry73204/nano-ros/blob/main/docs/reference/rmw_zenoh_interop.md)
+//!   — protocol details (key expressions, liveliness, attachments)
 //! - [Examples](https://github.com/jerry73204/nano-ros/tree/main/examples)
 //!   — working examples by platform (native, QEMU, ESP32, Zephyr)
 
@@ -123,6 +125,8 @@ extern crate std;
 
 #[cfg(feature = "alloc")]
 extern crate alloc;
+
+pub mod guide;
 
 // Re-export core types
 pub use nros_core::{

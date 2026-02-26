@@ -107,6 +107,15 @@ just doc          # doc-rust + doc-c
 - [x] 59.15 — Add Executor const generic guidance to Rust crate docs
 - [x] 59.16 — Explain Session trait in nros crate-level docs
 - [x] 59.17 — Link to guides and examples from nros crate docs
+- [x] 59.18 — Rust: Getting Started tutorial in crate docs
+- [x] 59.19 — Rust: Service calls and Promise API guide
+- [x] 59.20 — Rust: Configuration and environment variables reference
+- [x] 59.21 — Rust: ROS 2 interoperability guide
+- [x] 59.22 — Rust: Troubleshooting section
+- [ ] 59.23 — C: Getting Started and CMake integration guide
+- [ ] 59.24 — C: Configuration and environment variables reference
+- [ ] 59.25 — C: ROS 2 interoperability guide
+- [ ] 59.26 — C: Troubleshooting section
 
 ### 59.1 — build.rs Doxygen Post-Processor (SUPERSEDED)
 
@@ -354,6 +363,215 @@ Use relative `[text](url)` links that work in both rustdoc and GitHub.
 **Files**:
 - `packages/core/nros/src/lib.rs`
 
+### 59.18 — Rust: Getting Started Tutorial in Crate Docs
+
+The `nros` crate docs link to `getting-started.md` on GitHub, but docs.rs
+users can't follow those links without leaving the API reference. Include
+an abridged Getting Started tutorial directly in the crate-level docs:
+
+- Prerequisites (Rust nightly, zenohd)
+- Creating a project (`Cargo.toml` with nros dependency)
+- Declaring message dependencies (`package.xml`)
+- Generating message bindings (`cargo nano-ros generate-rust`)
+- Writing a publisher (already partly covered by Quick Start)
+- Building and running (zenohd + cargo run)
+
+Adapt from `docs/guides/getting-started.md` (Rust section, lines 24–147)
+and `docs/guides/message-generation.md` (workflow + command options).
+Keep it concise — this is an inline tutorial, not a reproduction of the
+full guides.
+
+**Source files**:
+- `docs/guides/getting-started.md` (Rust section)
+- `docs/guides/message-generation.md` (workflow, options, output structure)
+
+**Files**:
+- `packages/core/nros/src/lib.rs`
+
+### 59.19 — Rust: Service Calls and Promise API Guide
+
+The Promise API is a key usage pattern with no coverage in docs.rs.
+Add a "Service Calls" section to the crate docs covering:
+
+- `client.call(&request)` returns a `Promise<Reply>` immediately
+- **Pattern 1: Sync polling** — `spin_once()` loop + `promise.try_recv()`
+- **Pattern 2: Async** — spawn `spin_async()` background task, `.await`
+  the promise (tokio `LocalSet` example, Embassy example)
+- Async dependencies: `core::future` only, no runtime dependency
+- Mention `embassy-futures` for `select`/`join` combinators
+
+Adapt from `docs/guides/getting-started.md` lines 329–445.
+
+**Source files**:
+- `docs/guides/getting-started.md` (Service Calls with Promise API section)
+
+**Files**:
+- `packages/core/nros/src/lib.rs`
+
+### 59.20 — Rust: Configuration and Environment Variables Reference
+
+Users need runtime configuration and buffer tuning info without leaving
+docs.rs. Add a "Configuration" section:
+
+- **Runtime environment variables**: `ROS_DOMAIN_ID`, `ZENOH_LOCATOR`,
+  `ZENOH_MODE`, TLS variables — table with defaults
+- **Buffer tuning**: `ZPICO_*` and `XRCE_*` build-time variables with
+  posix/embedded defaults — table format
+- **`NROS_*` core variables**: `NROS_EXECUTOR_MAX_HANDLES`,
+  `NROS_MAX_SUBSCRIPTIONS`, etc.
+- Brief note: set env vars before `cargo build`; `cargo clean -p zpico-sys`
+  after changing
+
+Adapt from `docs/reference/environment-variables.md`.
+
+**Source files**:
+- `docs/reference/environment-variables.md`
+
+**Files**:
+- `packages/core/nros/src/lib.rs`
+
+### 59.21 — Rust: ROS 2 Interoperability Guide
+
+Users integrating with ROS 2 need to know the protocol requirements and
+common pitfalls. Add a "ROS 2 Interoperability" section:
+
+- Quick start: 3-terminal setup (zenohd, nros talker, ROS 2 listener)
+- Key requirement: `RMW_IMPLEMENTATION=rmw_zenoh_cpp` on the ROS 2 side
+- QoS compatibility: use `--qos-reliability best_effort` for Humble
+- Common issues: topic not visible (liveliness tokens), no messages
+  received (keyexpr format), QoS mismatch
+- Version compatibility: Humble (`TypeHashNotSupported`) vs Iron+ (`RIHS01_`)
+
+Adapt from `docs/reference/rmw_zenoh_interop.md`.
+
+**Source files**:
+- `docs/reference/rmw_zenoh_interop.md`
+
+**Files**:
+- `packages/core/nros/src/lib.rs`
+
+### 59.22 — Rust: Troubleshooting Section
+
+Common issues and their solutions should be findable from docs.rs.
+Add a "Troubleshooting" section covering the most frequent Rust-relevant
+issues:
+
+- **Message too large**: explain the buffer layer stack (defrag → batch →
+  shim → user), env vars to increase limits, `_sized` method variants
+- **zenoh version mismatch**: zenoh-pico and zenohd must match (1.6.2)
+- **Build issues**: submodule not found, CMake cache stale
+- **zenoh-pico error codes**: quick reference table (-3, -78, -128)
+
+Adapt from `docs/guides/troubleshooting.md`.
+
+**Source files**:
+- `docs/guides/troubleshooting.md`
+
+**Files**:
+- `packages/core/nros/src/lib.rs`
+
+### 59.23 — C: Getting Started and CMake Integration Guide
+
+The C mainpage.md has a minimal Quick Start but no project setup
+instructions. Create a Doxygen page `docs/getting-started.md` with:
+
+- Prerequisites (build nros-c library, install codegen tool)
+- CMake project setup (`find_package(NanoRos)`, `target_link_libraries`)
+- Code generation (`nano_ros_generate_interfaces()` with examples)
+- RMW backend selection (`-DNANO_ROS_RMW=zenoh` vs `xrce`)
+- Full C publisher example (timer-based, with executor)
+- Build and run steps (zenohd + cmake + make)
+- System install instructions (`cmake --install`)
+- Zephyr CMake integration (Kconfig `CONFIG_NROS_C_API=y`)
+
+Adapt from `docs/guides/getting-started.md` (C section) and
+`docs/reference/c-api-cmake.md`.
+
+Add the page to Doxyfile INPUT and link from mainpage.md via `@subpage`.
+
+**Source files**:
+- `docs/guides/getting-started.md` (C API section)
+- `docs/reference/c-api-cmake.md`
+
+**Files**:
+- `packages/core/nros-c/docs/getting-started.md` (new)
+- `packages/core/nros-c/docs/mainpage.md` (add @subpage link)
+- `packages/core/nros-c/Doxyfile` (add to INPUT)
+
+### 59.24 — C: Configuration and Environment Variables Reference
+
+Create a Doxygen page `docs/configuration.md` with C-relevant
+configuration:
+
+- **Runtime environment variables**: `ROS_DOMAIN_ID`, `ZENOH_LOCATOR`,
+  `ZENOH_MODE` — table with defaults
+- **C API buffer tuning** (`NROS_*`): `NROS_EXECUTOR_MAX_HANDLES`,
+  `NROS_MAX_SUBSCRIPTIONS`, `NROS_MAX_TIMERS`, `NROS_MAX_SERVICES`,
+  `NROS_LET_BUFFER_SIZE`, `NROS_MESSAGE_BUFFER_SIZE`,
+  `NROS_MAX_CONCURRENT_GOALS`, `NROS_MAX_PARAMETERS`, etc.
+- **Transport buffer tuning** (`ZPICO_*`, `XRCE_*`): the subset relevant
+  to C users (frag size, batch size, MTU)
+- Note: set env vars before `cmake --build`; delete CMakeCache.txt after
+  changing
+
+Adapt from `docs/reference/environment-variables.md`.
+
+Add the page to Doxyfile INPUT and link from mainpage.md via `@subpage`.
+
+**Source files**:
+- `docs/reference/environment-variables.md`
+
+**Files**:
+- `packages/core/nros-c/docs/configuration.md` (new)
+- `packages/core/nros-c/docs/mainpage.md` (add @subpage link)
+- `packages/core/nros-c/Doxyfile` (add to INPUT)
+
+### 59.25 — C: ROS 2 Interoperability Guide
+
+Create a Doxygen page `docs/ros2-interop.md` with:
+
+- Quick start: 3-terminal setup (zenohd, C talker, ROS 2 listener)
+- Key requirement: `RMW_IMPLEMENTATION=rmw_zenoh_cpp`
+- QoS compatibility notes
+- Common issues and solutions (same content as Rust version but
+  with C examples)
+
+Adapt from `docs/reference/rmw_zenoh_interop.md`.
+
+Add the page to Doxyfile INPUT and link from mainpage.md via `@subpage`.
+
+**Source files**:
+- `docs/reference/rmw_zenoh_interop.md`
+
+**Files**:
+- `packages/core/nros-c/docs/ros2-interop.md` (new)
+- `packages/core/nros-c/docs/mainpage.md` (add @subpage link)
+- `packages/core/nros-c/Doxyfile` (add to INPUT)
+
+### 59.26 — C: Troubleshooting Section
+
+Create a Doxygen page `docs/troubleshooting.md` with C-relevant issues:
+
+- **Message too large**: buffer layer stack, env vars, `_sized` C API
+  variants
+- **zenoh version mismatch**: zenoh-pico and zenohd must match
+- **Build issues**: submodule not found, CMake cache stale
+- **FFI callback crashes**: stable pointer requirement (static storage,
+  don't move structs after passing to C), `extern "C"` ABI
+- **zenoh-pico error codes**: quick reference table
+
+Adapt from `docs/guides/troubleshooting.md`.
+
+Add the page to Doxyfile INPUT and link from mainpage.md via `@subpage`.
+
+**Source files**:
+- `docs/guides/troubleshooting.md`
+
+**Files**:
+- `packages/core/nros-c/docs/troubleshooting.md` (new)
+- `packages/core/nros-c/docs/mainpage.md` (add @subpage link)
+- `packages/core/nros-c/Doxyfile` (add to INPUT)
+
 ## Acceptance Criteria
 
 - [x] `cargo build -p nros-c` produces `nros_generated.h` with Doxygen tags
@@ -378,6 +596,18 @@ Use relative `[text](url)` links that work in both rustdoc and GitHub.
 - [x] `is_valid()` / `is_ready()` return wording is consistent across all headers
 - [x] Rust crate docs explain Executor const generics and Session trait
 - [x] Rust crate docs link to guides and examples
+- [x] `nros` crate docs include Getting Started tutorial with message generation
+      workflow (no external link needed for first-time setup)
+- [x] `nros` crate docs include Promise API patterns (sync polling + async)
+- [x] `nros` crate docs include environment variables and buffer tuning tables
+- [x] `nros` crate docs include ROS 2 interop quick start and common issues
+- [x] `nros` crate docs include troubleshooting section for common errors
+- [ ] C Doxygen docs include Getting Started page with CMake setup and codegen
+- [ ] C Doxygen docs include configuration/environment variables page
+- [ ] C Doxygen docs include ROS 2 interoperability page
+- [ ] C Doxygen docs include troubleshooting page
+- [ ] All new Doxygen pages linked from mainpage.md via `@subpage`
+- [ ] `doxygen Doxyfile` completes with 0 warnings after adding new pages
 
 ## Notes
 
