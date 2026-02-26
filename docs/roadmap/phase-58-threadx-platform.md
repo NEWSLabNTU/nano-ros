@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-threadx` as a new platform axis value, enabling nros nodes on Eclipse ThreadX + NetX Duo. Validate with two targets: Linux simulation port (PoC, fastest iteration) and QEMU RISC-V 64-bit virt machine (official ThreadX QEMU port with virtio-net Ethernet). ThreadX's IEC 61508 SIL 4 / ISO 26262 ASIL D certifications combined with nano-ros's Kani/Verus formal verification create a uniquely strong safety argument.
 
-**Status**: Not Started
+**Status**: In Progress (58.2 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -259,7 +259,7 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 ## Work Items
 
 - [ ] 58.1 — Feature flag wiring
-- [ ] 58.2 — `just setup-threadx` dependency acquisition
+- [x] 58.2 — `just setup-threadx` dependency acquisition
 - [ ] 58.3 — zpico-sys build.rs ThreadX + NetX Duo compilation
 - [ ] 58.4 — zenoh-pico NetX Duo BSD socket network transport
 - [ ] 58.5 — Linux simulation board crate (`nros-threadx-linux`)
@@ -291,15 +291,17 @@ Add `platform-threadx` / `threadx` features to all crates in the chain. Update m
 ### 58.2 — `just setup-threadx` dependency acquisition
 
 Add `just setup-threadx` recipe that:
-1. Shallow-clones `eclipse-threadx/threadx` (latest release tag) to `external/threadx/`
-2. Shallow-clones `eclipse-threadx/netxduo` (matching tag) to `external/netxduo/`
-3. Shallow-clones `eclipse-threadx/threadx-learn-samples` to `external/threadx-learn-samples/` (contains `nx_linux_network_driver.c`)
+1. Shallow-clones `eclipse-threadx/threadx` (`v6.4.5.202504_rel`) to `external/threadx/`
+2. Shallow-clones `eclipse-threadx/netxduo` (`v6.4.5.202504_rel`) to `external/netxduo/`
+3. Shallow-clones `eclipse-threadx/threadx-learn-samples` (main) to `external/threadx-learn-samples/` (contains `nx_linux_network_driver.c`)
 4. Prints environment variable configuration
-5. Idempotent — skips if already present
+5. Idempotent — skips if already present, warns on tag mismatch
 
-All repos are already gitignored via the `/external/` pattern.
+Pinned version declared as `THREADX_TAG` justfile variable. All repos gitignored via `/external/` in `.gitignore`. Updated `just setup` from 9 steps to 10 steps.
 
-**Files**: `justfile`
+**Status**: Done
+
+**Files**: `justfile`, `.gitignore`
 
 ### 58.3 — zpico-sys build.rs ThreadX + NetX Duo compilation
 

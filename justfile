@@ -1157,6 +1157,9 @@ LWIP_TAG := "STABLE-2_2_1_RELEASE"
 # Pinned NuttX version (used by setup-nuttx)
 NUTTX_TAG := "nuttx-12.8.0"
 
+# Pinned ThreadX version (used by setup-threadx)
+THREADX_TAG := "v6.4.5.202504_rel"
+
 # Download FreeRTOS kernel and lwIP sources for FreeRTOS platform development
 # Sources are placed in external/ and pointed to by environment variables.
 # Run this before building with --features platform-freertos.
@@ -1266,6 +1269,75 @@ setup-nuttx:
     echo ""
     echo "Setup complete!"
 
+# Download ThreadX kernel, NetX Duo, and learn-samples for ThreadX platform development.
+# Sources are placed in external/ and pointed to by environment variables.
+# Run this before building with --features platform-threadx.
+setup-threadx:
+    #!/usr/bin/env bash
+    set -e
+    echo "=== ThreadX + NetX Duo Setup ==="
+    echo ""
+    THREADX_DIR="$(pwd)/external/threadx"
+    NETX_DIR="$(pwd)/external/netxduo"
+    THREADX_LEARN_DIR="$(pwd)/external/threadx-learn-samples"
+
+    # --- ThreadX Kernel ---
+    if [ -d "$THREADX_DIR/common" ]; then
+        tag=$(cd "$THREADX_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
+        echo "ThreadX already present at $THREADX_DIR (tag: $tag)"
+        if [ "$tag" != "{{THREADX_TAG}}" ]; then
+            echo "  WARNING: expected {{THREADX_TAG}}, found $tag"
+            echo "  To update: rm -rf $THREADX_DIR && just setup-threadx"
+        fi
+    else
+        echo "Cloning ThreadX {{THREADX_TAG}}..."
+        git clone --depth 1 --branch "{{THREADX_TAG}}" \
+            https://github.com/eclipse-threadx/threadx.git "$THREADX_DIR"
+        echo "  -> $THREADX_DIR"
+    fi
+    echo ""
+
+    # --- NetX Duo ---
+    if [ -d "$NETX_DIR/common" ]; then
+        tag=$(cd "$NETX_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
+        echo "NetX Duo already present at $NETX_DIR (tag: $tag)"
+        if [ "$tag" != "{{THREADX_TAG}}" ]; then
+            echo "  WARNING: expected {{THREADX_TAG}}, found $tag"
+            echo "  To update: rm -rf $NETX_DIR && just setup-threadx"
+        fi
+    else
+        echo "Cloning NetX Duo {{THREADX_TAG}}..."
+        git clone --depth 1 --branch "{{THREADX_TAG}}" \
+            https://github.com/eclipse-threadx/netxduo.git "$NETX_DIR"
+        echo "  -> $NETX_DIR"
+    fi
+    echo ""
+
+    # --- ThreadX Learn Samples (contains nx_linux_network_driver.c) ---
+    if [ -d "$THREADX_LEARN_DIR/courses" ]; then
+        echo "ThreadX learn-samples already present at $THREADX_LEARN_DIR"
+    else
+        echo "Cloning ThreadX learn-samples (main branch)..."
+        git clone --depth 1 \
+            https://github.com/eclipse-threadx/threadx-learn-samples.git "$THREADX_LEARN_DIR"
+        echo "  -> $THREADX_LEARN_DIR"
+    fi
+    echo ""
+
+    echo "=== Environment Variables ==="
+    echo ""
+    echo "Add these to your shell or .cargo/config.toml [env] section:"
+    echo ""
+    echo "  export THREADX_DIR=$THREADX_DIR"
+    echo "  export THREADX_CONFIG_DIR=<board-crate>/config"
+    echo "  export NETX_DIR=$NETX_DIR"
+    echo "  export NETX_CONFIG_DIR=<board-crate>/config"
+    echo ""
+    echo "The Linux network driver is at:"
+    echo "  $THREADX_LEARN_DIR/courses/netxduo/Driver/nx_linux_network_driver.c"
+    echo ""
+    echo "Setup complete!"
+
 # Download Verus binary from GitHub releases to tools/verus
 setup-verus:
     #!/usr/bin/env bash
@@ -1353,7 +1425,7 @@ setup:
     fi
     echo ""
 
-    echo "=== [1/9] System packages (apt) ==="
+    echo "=== [1/10] System packages (apt) ==="
     apt_pkgs=()
     check_apt() {
         if command -v "$2" &>/dev/null; then
@@ -1397,18 +1469,18 @@ setup:
     fi
     echo ""
 
-    echo "=== [2/9] Installing Rust toolchains ==="
+    echo "=== [2/10] Installing Rust toolchains ==="
     rustup toolchain install stable
     rustup toolchain install nightly
     echo ""
 
-    echo "=== [3/9] Adding rustup components ==="
+    echo "=== [3/10] Adding rustup components ==="
     rustup component add rustfmt clippy rust-src
     rustup component add llvm-tools
     rustup component add --toolchain nightly rustfmt miri rust-src llvm-tools
     echo ""
 
-    echo "=== [4/9] Adding cross-compilation targets ==="
+    echo "=== [4/10] Adding cross-compilation targets ==="
     rustup target add thumbv7em-none-eabihf
     rustup target add thumbv7m-none-eabi
     rustup target add riscv32imc-unknown-none-elf
@@ -1422,7 +1494,7 @@ setup:
     fi
     echo ""
 
-    echo "=== [5/9] Installing cargo tools + verification toolchains ==="
+    echo "=== [5/10] Installing cargo tools + verification toolchains ==="
     cargo install cargo-nextest --locked
     cargo install cargo-llvm-cov --locked
     cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
@@ -1438,7 +1510,7 @@ setup:
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
     echo ""
 
-    echo "=== [6/9] Building Espressif QEMU (qemu-system-riscv32) ==="
+    echo "=== [6/10] Building Espressif QEMU (qemu-system-riscv32) ==="
     if command -v qemu-system-riscv32 &>/dev/null; then
         echo "Already installed: $(qemu-system-riscv32 --version | head -1)"
         echo "Skipping build. To reinstall, run: ./scripts/esp32/install-espressif-qemu.sh"
@@ -1447,7 +1519,7 @@ setup:
     fi
     echo ""
 
-    echo "=== [7/9] Building Micro-XRCE-DDS Agent ==="
+    echo "=== [7/10] Building Micro-XRCE-DDS Agent ==="
     if [ -f "build/xrce-agent/MicroXRCEAgent" ]; then
         echo "Already built: build/xrce-agent/MicroXRCEAgent"
         echo "To rebuild, run: just build-xrce-agent"
@@ -1456,12 +1528,16 @@ setup:
     fi
     echo ""
 
-    echo "=== [8/9] Downloading FreeRTOS kernel + lwIP ==="
+    echo "=== [8/10] Downloading FreeRTOS kernel + lwIP ==="
     just setup-freertos || echo "WARNING: FreeRTOS setup failed (non-fatal, needed for just test-freertos)"
     echo ""
 
-    echo "=== [9/9] Downloading NuttX RTOS + apps ==="
+    echo "=== [9/10] Downloading NuttX RTOS + apps ==="
     just setup-nuttx || echo "WARNING: NuttX setup failed (non-fatal, needed for just test-nuttx)"
+    echo ""
+
+    echo "=== [10/10] Downloading ThreadX + NetX Duo ==="
+    just setup-threadx || echo "WARNING: ThreadX setup failed (non-fatal, needed for just test-threadx)"
     echo ""
 
     echo "Setup complete!"
