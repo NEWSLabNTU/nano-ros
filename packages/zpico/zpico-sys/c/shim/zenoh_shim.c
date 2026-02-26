@@ -14,8 +14,24 @@
 
 #ifdef ZENOH_ZEPHYR
 #include <zephyr/kernel.h>  // For printk
+#elif defined(ZENOH_FREERTOS_LWIP)
+// On FreeRTOS, route printk to semihosting for debug output.
+// Uses SYS_WRITE0 semihosting call (null-terminated string to stdout).
+#include <stdio.h>
+static void _freertos_printk(const char *fmt, ...) {
+    char buf[128];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    // ARM semihosting SYS_WRITE0 (op=0x04): write null-terminated string
+    register unsigned r0 __asm__("r0") = 0x04;
+    register const char *r1 __asm__("r1") = buf;
+    __asm__ volatile("bkpt #0xAB" : : "r"(r0), "r"(r1) : "memory");
+}
+#define printk(...) _freertos_printk(__VA_ARGS__)
 #else
-#define printk(...)  // No-op on non-Zephyr platforms
+#define printk(...)  // No-op on other platforms
 #endif
 
 // Internal zenoh-pico headers for socket FD access (select()-based timeout)
@@ -871,6 +887,16 @@ int32_t zenoh_shim_poll(uint32_t timeout_ms) {
     } while (smoltcp_clock_now_ms() - start < timeout_ms);
     return ret;
 
+#elif defined(ZENOH_FREERTOS_LWIP)
+    // FreeRTOS+lwIP: background read task handles data. Use vTaskDelay()
+    // instead of select() to yield CPU time. lwIP's select() can interact
+    // poorly with the background read task calling recv() on the same socket.
+    extern void vTaskDelay(unsigned long);
+    if (timeout_ms > 0) {
+        vTaskDelay(timeout_ms);
+    }
+    return 0;
+
 #elif Z_FEATURE_MULTI_THREAD == 1
     // Multi-threaded (Zephyr/POSIX): background read task handles data.
     // Use select() to wait for activity or timeout — do NOT call zp_read()
@@ -922,6 +948,19 @@ int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
     } while (smoltcp_clock_now_ms() - start < timeout_ms);
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
     return ret;
+
+#elif defined(ZENOH_FREERTOS_LWIP)
+    // FreeRTOS+lwIP: background read and lease tasks handle data and
+    // keep-alives respectively. Just yield CPU time with vTaskDelay()
+    // to let lower-priority tasks (network poll) run. Do NOT call
+    // zp_send_keep_alive() here — the lease task handles it, and
+    // sending from the app task contends on the TX mutex which can
+    // block indefinitely when the background tasks hold it.
+    extern void vTaskDelay(unsigned long);
+    if (timeout_ms > 0) {
+        vTaskDelay(timeout_ms);
+    }
+    return 0;
 
 #elif Z_FEATURE_MULTI_THREAD == 1
     // Multi-threaded (Zephyr/POSIX): background read task handles data.

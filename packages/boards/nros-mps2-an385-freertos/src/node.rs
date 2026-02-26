@@ -1,10 +1,10 @@
 //! Platform initialization and `run()` entry point for QEMU FreeRTOS.
 //!
 //! Sequence:
-//! 1. Init LAN9118 + lwIP via C glue (`nros_freertos_init_network`)
-//! 2. Create a FreeRTOS application task that runs the user closure
-//! 3. Create a network polling task
-//! 4. Start the FreeRTOS scheduler (does not return)
+//! 1. Print banner and network config
+//! 2. Create a FreeRTOS application task
+//! 3. Start the FreeRTOS scheduler (does not return)
+//! 4. Inside the app task: init LAN9118 + lwIP, start poll task, run user closure
 
 use core::ffi::c_void;
 
@@ -33,6 +33,10 @@ unsafe extern "C" {
         arg: *mut c_void,
         priority: u32,
     ) -> i32;
+
+    fn nros_freertos_test_tcp_connect(ip: *const u8, port: u16) -> i32;
+    fn nros_freertos_diag_network();
+    fn nros_freertos_get_netif_state() -> i32;
 }
 
 /// Application task stack size in words (8 KB = 2048 words).
@@ -44,8 +48,17 @@ const POLL_TASK_STACK: u32 = 256;
 /// Application task priority (above normal, below tcpip_thread).
 const APP_TASK_PRIORITY: u32 = 3;
 
-/// Network poll task priority (low — just feeding frames to lwIP).
-const POLL_TASK_PRIORITY: u32 = 1;
+/// Network poll task priority.
+///
+/// Must match or exceed the zenoh-pico read/lease task priority
+/// (configMAX_PRIORITIES/2 = 4) so the poll task gets fair CPU time via
+/// round-robin time-slicing. The data pipeline is:
+///   LAN9118 NIC → poll task → tcpip_input() → tcpip_thread → socket → read task
+///
+/// At priority < 4, the zenoh-pico read task's 100ms recv() timeout loop
+/// can prevent the poll task from draining the LAN9118 RX FIFO, causing
+/// TCP keep-alives to be missed and sessions to expire.
+const POLL_TASK_PRIORITY: u32 = 4;
 
 /// Network poll interval in milliseconds.
 const POLL_INTERVAL_MS: u32 = 5;
@@ -58,6 +71,10 @@ struct AppContext<F> {
 
 /// FreeRTOS task entry for the application closure.
 ///
+/// Initializes the network stack (requires the scheduler to be running so
+/// lwIP's tcpip_thread can execute), starts the poll task, then runs the
+/// user closure.
+///
 /// # Safety
 /// `arg` must point to a valid `AppContext<F>` allocated on the stack of
 /// `run()` which lives until the scheduler exits (i.e., forever).
@@ -67,6 +84,56 @@ where
     E: core::fmt::Debug,
 {
     let ctx = unsafe { &mut *(arg as *mut AppContext<F>) };
+
+    // Initialize LAN9118 + lwIP. This must happen inside a task (after the
+    // scheduler starts) because tcpip_init() creates the tcpip_thread, and
+    // the init-done callback only fires once that thread runs. The busy-wait
+    // with vTaskDelay() yields to it correctly now that the scheduler is active.
+    if let Err(e) = init_network(&ctx.config) {
+        hprintln!("Error initializing network: {:?}", e);
+        exit_failure();
+    }
+    hprintln!("Network ready.");
+    hprintln!("");
+
+    // Start the network poll task AFTER init_network registers the netif.
+    // Creating it earlier would poll an uninitialized netif during vTaskDelay
+    // inside init_network.
+    let ret = unsafe {
+        nros_freertos_create_task(
+            poll_task_entry,
+            b"net_poll\0".as_ptr(),
+            POLL_TASK_STACK,
+            core::ptr::null_mut(),
+            POLL_TASK_PRIORITY,
+        )
+    };
+    if ret != 0 {
+        hprintln!("Error creating network poll task");
+        exit_failure();
+    }
+
+    // Brief delay to let the network stabilize: the poll task needs a few
+    // iterations to flush stale RX data, and the TAP link + bridge need
+    // time to come up before TCP connections can succeed.
+    unsafe {
+        unsafe extern "C" {
+            fn vTaskDelay(ticks: u32);
+        }
+        vTaskDelay(2000); // 2 seconds at 1 kHz tick rate
+    }
+
+    // Verify lwIP netif state before running application
+    let netif_state = unsafe { nros_freertos_get_netif_state() };
+    if netif_state & 0xF != 0xF {
+        hprintln!(
+            "WARNING: lwIP netif not ready (default={} up={} link={} ip={})",
+            netif_state & 1 != 0,
+            netif_state & 2 != 0,
+            netif_state & 4 != 0,
+            netif_state & 8 != 0,
+        );
+    }
 
     // Take the closure out of the context so we can call it (FnOnce).
     // Safety: this task entry is only called once by FreeRTOS.
@@ -162,7 +229,6 @@ where
     hprintln!("========================================");
     hprintln!("");
 
-    // Initialize LAN9118 + lwIP
     hprintln!("Initializing LAN9118 + lwIP...");
     hprintln!(
         "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
@@ -181,42 +247,40 @@ where
         config.ip[3]
     );
 
-    if let Err(e) = init_network(&config) {
-        hprintln!("Error initializing network: {:?}", e);
-        exit_failure();
-    }
-    hprintln!("Network ready.");
-    hprintln!("");
-
-    // Build the application context (lives on this stack frame, which persists
-    // because `nros_freertos_start_scheduler()` never returns).
-    let mut ctx = AppContext {
-        config,
-        closure: f,
-    };
-
-    // Create network poll task
-    let ret = unsafe {
-        nros_freertos_create_task(
-            poll_task_entry,
-            b"net_poll\0".as_ptr(),
-            POLL_TASK_STACK,
-            core::ptr::null_mut(),
-            POLL_TASK_PRIORITY,
-        )
-    };
-    if ret != 0 {
-        hprintln!("Error creating network poll task");
-        exit_failure();
+    // Allocate the application context on the FreeRTOS heap.
+    //
+    // CRITICAL: The pre-scheduler MSP stack is reclaimed by FreeRTOS when
+    // vPortStartFirstTask() resets MSP to _estack. After that, SysTick
+    // and other exception handlers use the same memory for stacking,
+    // corrupting any local variables. Using pvPortMalloc() places the
+    // context in heap memory that is safe from MSP reuse.
+    unsafe extern "C" {
+        fn pvPortMalloc(size: u32) -> *mut c_void;
     }
 
-    // Create application task
+    let ctx_ptr = unsafe {
+        let size = core::mem::size_of::<AppContext<F>>() as u32;
+        let ptr = pvPortMalloc(size) as *mut AppContext<F>;
+        assert!(!ptr.is_null(), "Failed to allocate AppContext");
+        core::ptr::write(
+            ptr,
+            AppContext {
+                config,
+                closure: f,
+            },
+        );
+        ptr
+    };
+
+    // Create application task — network init and poll task creation happen
+    // inside this task after the scheduler starts, because tcpip_init()
+    // requires the scheduler to run its tcpip_thread.
     let ret = unsafe {
         nros_freertos_create_task(
             app_task_entry::<F, E>,
             b"nros_app\0".as_ptr(),
             APP_TASK_STACK,
-            &mut ctx as *mut AppContext<F> as *mut c_void,
+            ctx_ptr as *mut c_void,
             APP_TASK_PRIORITY,
         )
     };

@@ -22,6 +22,12 @@
 #define LWIP_COMPAT_SOCKETS             1
 #define LWIP_POSIX_SOCKETS_IO_NAMES     1
 
+/* Disable core locking — netif setup runs in the app task after tcpip_init
+ * completes, and zenoh-pico uses the socket API (which is thread-safe).
+ * Without this, netif_add/netif_set_up assert on an uninitialized mutex
+ * because they're called outside the tcpip_thread. */
+#define LWIP_TCPIP_CORE_LOCKING         0
+
 /* ---- Core protocols ---- */
 #define LWIP_TCP                        1
 #define LWIP_UDP                        1
@@ -59,12 +65,14 @@
 #define LWIP_TCP_KEEPALIVE              1
 #define LWIP_SO_RCVTIMEO                1
 #define LWIP_SO_SNDTIMEO                1
+#define LWIP_SO_LINGER                  1
 #define SO_REUSE                        1
 
 /* ---- Netif ---- */
 #define LWIP_NETIF_STATUS_CALLBACK      1
 #define LWIP_NETIF_LINK_CALLBACK        1
 #define LWIP_SINGLE_NETIF              1
+#define LWIP_NETIF_API                  1
 
 /* ---- Threading (FreeRTOS) ---- */
 #define TCPIP_THREAD_STACKSIZE          (4 * 1024)

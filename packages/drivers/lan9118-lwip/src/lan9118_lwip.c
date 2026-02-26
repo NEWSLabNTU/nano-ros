@@ -245,9 +245,10 @@ reset_done:
     /* 5. GPIO / LEDs */
     reg_write(base, REG_GPIO_CFG, 0x70070000u);
 
-    /* 6. Interrupts — disable all, clear pending */
+    /* 6. Interrupts — disable all, clear pending, configure IRQ line */
     reg_write(base, REG_INT_EN, 0);
     reg_write(base, REG_INT_STS, 0xFFFFFFFFu);
+    reg_write(base, 0x54 /* IRQ_CFG */, IRQ_CFG_DEFAULT);
 
     /* 7. PHY init */
     uint16_t phy_id1;

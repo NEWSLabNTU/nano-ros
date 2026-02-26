@@ -27,7 +27,7 @@
 /* ---- Memory ---- */
 #define configSUPPORT_STATIC_ALLOCATION         0
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
-#define configTOTAL_HEAP_SIZE                   ((size_t)(64 * 1024))
+#define configTOTAL_HEAP_SIZE                   ((size_t)(256 * 1024))
 #define configAPPLICATION_ALLOCATED_HEAP        0
 
 /* ---- Synchronisation ---- */
@@ -79,7 +79,7 @@ extern void freertos_assert_failed(const char *file, int line);
     if ((x) == 0) { freertos_assert_failed(__FILE__, __LINE__); }
 
 /* ---- Hook functions ---- */
-#define configUSE_IDLE_HOOK                     0
+#define configUSE_IDLE_HOOK                     1
 #define configUSE_TICK_HOOK                     0
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configCHECK_FOR_STACK_OVERFLOW          0

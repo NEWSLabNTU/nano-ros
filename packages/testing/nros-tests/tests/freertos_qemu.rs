@@ -407,7 +407,7 @@ fn test_freertos_pubsub_e2e() {
         .unwrap_or_default();
 
     // Wait for talker to finish publishing
-    let _talker_output = talker
+    let talker_output = talker
         .wait_for_output(Duration::from_secs(15))
         .unwrap_or_default();
 
@@ -415,12 +415,18 @@ fn test_freertos_pubsub_e2e() {
     listener.kill();
 
     eprintln!("Listener output:\n{}", listener_output);
+    eprintln!("Talker output:\n{}", talker_output);
 
     // Verify listener booted and received messages
     if !listener_output.contains("Waiting for messages") {
-        eprintln!("[SKIP] Listener did not reach readiness — FreeRTOS+lwIP init may have failed");
-        eprintln!("Check: zenohd on 192.0.3.1:7447, TAP bridge up, firmware built correctly");
-        return;
+        panic!(
+            "FreeRTOS pubsub E2E failed — listener did not reach readiness.\n\
+             This is an environment issue. Verify:\n\
+             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
+             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
+             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - Firmware built: `just build-examples-freertos`"
+        );
     }
 
     let received_count = count_pattern(&listener_output, "Received");
@@ -432,7 +438,6 @@ fn test_freertos_pubsub_e2e() {
             received_count
         );
     } else {
-        eprintln!("[FAIL] FreeRTOS pubsub E2E: no messages received");
         panic!("FreeRTOS pubsub E2E failed — listener received 0 messages");
     }
 }
@@ -467,6 +472,10 @@ fn test_freertos_service_e2e() {
         QemuProcess::start_mps2_an385_networked(client_bin, "tap-qemu1", "02:00:00:00:00:01")
             .expect("Failed to start client QEMU");
 
+    // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
+    // before it can discover the server's service queryable.
+    std::thread::sleep(Duration::from_secs(15));
+
     // Wait for client to complete all service calls (4 calls: 5+3, 10+20, 100+200, -5+10)
     // The completion marker "All service calls completed" triggers early return.
     let client_output = client
@@ -500,9 +509,23 @@ fn test_freertos_service_e2e() {
             "[PARTIAL] FreeRTOS service E2E: {} of 4 responses",
             response_count
         );
+    } else if !client_output.contains("Service client ready")
+        && !client_output.contains("Network ready")
+    {
+        panic!(
+            "FreeRTOS service E2E failed — client did not reach readiness.\n\
+             This is an environment issue. Verify:\n\
+             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
+             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
+             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - Firmware built: `just build-examples-freertos`"
+        );
     } else {
-        eprintln!("[FAIL] FreeRTOS service E2E: no responses received");
-        panic!("FreeRTOS service E2E failed — client received 0 responses");
+        panic!(
+            "FreeRTOS service E2E failed — client received 0 responses.\n\
+             Client reached readiness but no service replies were received.\n\
+             This may indicate a zenoh queryable discovery timeout."
+        );
     }
 }
 
@@ -536,7 +559,11 @@ fn test_freertos_action_e2e() {
         QemuProcess::start_mps2_an385_networked(client_bin, "tap-qemu1", "02:00:00:00:00:01")
             .expect("Failed to start client QEMU");
 
-    // Fibonacci computation + FreeRTOS boot + zenoh connect.
+    // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
+    // before it can discover the server's action queryables.
+    std::thread::sleep(Duration::from_secs(15));
+
+    // Fibonacci computation + zenoh connect.
     // The completion marker "Action completed successfully" triggers early return.
     let client_output = client
         .wait_for_output(Duration::from_secs(60))
@@ -561,6 +588,18 @@ fn test_freertos_action_e2e() {
         eprintln!(
             "[PASS] FreeRTOS action E2E: goal accepted, {} feedback msgs, completed",
             feedback_count
+        );
+    } else if !client_output.contains("Network ready")
+        && !client_output.contains("Action client ready")
+        && !goal_accepted
+    {
+        panic!(
+            "FreeRTOS action E2E failed — client did not reach readiness.\n\
+             This is an environment issue. Verify:\n\
+             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
+             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
+             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - Firmware built: `just build-examples-freertos`"
         );
     } else {
         eprintln!("[FAIL] FreeRTOS action E2E:");
