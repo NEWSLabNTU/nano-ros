@@ -26,7 +26,11 @@ INPUT                  = include/nros/nros.h \
                          include/nros/clock.h \
                          include/nros/visibility.h \
                          include/nros/platform.h \
-                         docs/mainpage.md
+                         docs/mainpage.md \
+                         docs/getting-started.md \
+                         docs/configuration.md \
+                         docs/ros2-interop.md \
+                         docs/troubleshooting.md
 RECURSIVE              = NO
 FILE_PATTERNS          = *.h *.md
 USE_MDFILE_AS_MAINPAGE = docs/mainpage.md

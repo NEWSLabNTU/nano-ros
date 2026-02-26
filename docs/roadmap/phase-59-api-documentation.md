@@ -112,10 +112,10 @@ just doc          # doc-rust + doc-c
 - [x] 59.20 — Rust: Configuration and environment variables reference
 - [x] 59.21 — Rust: ROS 2 interoperability guide
 - [x] 59.22 — Rust: Troubleshooting section
-- [ ] 59.23 — C: Getting Started and CMake integration guide
-- [ ] 59.24 — C: Configuration and environment variables reference
-- [ ] 59.25 — C: ROS 2 interoperability guide
-- [ ] 59.26 — C: Troubleshooting section
+- [x] 59.23 — C: Getting Started and CMake integration guide
+- [x] 59.24 — C: Configuration and environment variables reference
+- [x] 59.25 — C: ROS 2 interoperability guide
+- [x] 59.26 — C: Troubleshooting section
 
 ### 59.1 — build.rs Doxygen Post-Processor (SUPERSEDED)
 
@@ -602,12 +602,12 @@ Add the page to Doxyfile INPUT and link from mainpage.md via `@subpage`.
 - [x] `nros` crate docs include environment variables and buffer tuning tables
 - [x] `nros` crate docs include ROS 2 interop quick start and common issues
 - [x] `nros` crate docs include troubleshooting section for common errors
-- [ ] C Doxygen docs include Getting Started page with CMake setup and codegen
-- [ ] C Doxygen docs include configuration/environment variables page
-- [ ] C Doxygen docs include ROS 2 interoperability page
-- [ ] C Doxygen docs include troubleshooting page
-- [ ] All new Doxygen pages linked from mainpage.md via `@subpage`
-- [ ] `doxygen Doxyfile` completes with 0 warnings after adding new pages
+- [x] C Doxygen docs include Getting Started page with CMake setup and codegen
+- [x] C Doxygen docs include configuration/environment variables page
+- [x] C Doxygen docs include ROS 2 interoperability page
+- [x] C Doxygen docs include troubleshooting page
+- [x] All new Doxygen pages linked from mainpage.md via `@subpage`
+- [x] `doxygen Doxyfile` completes with 0 warnings after adding new pages
 
 ## Notes
 

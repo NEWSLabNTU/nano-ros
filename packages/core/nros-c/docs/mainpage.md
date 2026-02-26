@@ -61,3 +61,10 @@ all module headers include automatically.
 
 An internal `nros_generated.h` (produced by cbindgen) is used for
 compile-time drift detection — it is not part of the public API.
+
+## Guides
+
+- @subpage getting_started — project setup, CMake integration, and code generation
+- @subpage configuration — environment variables and buffer tuning
+- @subpage ros2_interop — interoperability with ROS 2 via rmw_zenoh
+- @subpage troubleshooting — common issues and solutions
