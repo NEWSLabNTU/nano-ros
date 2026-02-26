@@ -387,8 +387,9 @@ fn main() {
     generate_header(&manifest_dir, &include_dir);
 
     // Read buffer config with platform-appropriate defaults
-    // NuttX is POSIX-compatible, use same defaults as posix
-    let buf_config = ZenohBufferConfig::from_env(use_posix || use_nuttx);
+    // NuttX is POSIX-compatible, use same defaults as posix.
+    // ThreadX uses NetX Duo BSD sockets, treat as posix-like for buffer defaults.
+    let buf_config = ZenohBufferConfig::from_env(use_posix || use_nuttx || use_threadx);
 
     // Read shim slot counts from ZPICO_MAX_* env vars and generate Rust consts
     let shim_config = ShimConfig::from_env();
@@ -454,6 +455,19 @@ fn main() {
             &link_features,
             &shim_config,
         );
+    } else if use_threadx {
+        // ThreadX: build zenoh-pico + custom ThreadX system/network layer + shim.
+        // Uses our own system.c (ThreadX tasks/mutex/clock) + network.c (NetX Duo BSD sockets).
+        generate_config_header(&out_dir, &link_features, &buf_config);
+        build_zenoh_pico_threadx(
+            &zenoh_pico_src,
+            &c_dir,
+            &include_dir,
+            &out_dir,
+            &target,
+            &link_features,
+            &shim_config,
+        );
     }
     // For Zephyr: C code is built by Zephyr's build system, not Cargo.
     // For no-backend: nothing to build (minimal configuration for header generation).
@@ -469,6 +483,8 @@ fn main() {
         println!("cargo:rustc-cfg=shim_backend=\"freertos\"");
     } else if use_nuttx {
         println!("cargo:rustc-cfg=shim_backend=\"nuttx\"");
+    } else if use_threadx {
+        println!("cargo:rustc-cfg=shim_backend=\"threadx\"");
     }
 
     // Rerun triggers
@@ -1509,6 +1525,194 @@ fn build_zenoh_pico_nuttx(
         .warnings(false);
 
     build.compile("zenohpico");
+}
+
+/// Build zenoh-pico for Eclipse ThreadX targets.
+///
+/// ThreadX provides threading, clock, and memory via tx_api.h.
+/// Networking uses NetX Duo's BSD socket API (nxd_bsd.h).
+///
+/// Requires THREADX_DIR, THREADX_CONFIG_DIR, NETX_DIR, and NETX_CONFIG_DIR env vars.
+/// The board crate compiles ThreadX kernel + NetX Duo library; we only use their headers.
+fn build_zenoh_pico_threadx(
+    zenoh_pico_src: &Path,
+    c_dir: &Path,
+    include_dir: &Path,
+    out_dir: &Path,
+    target: &str,
+    link: &LinkFeatures,
+    shim: &ShimConfig,
+) {
+    // Read ThreadX environment variables
+    let threadx_dir = PathBuf::from(env::var("THREADX_DIR").unwrap_or_else(|_| {
+        panic!(
+            "THREADX_DIR not set. Point it at the ThreadX kernel source directory.\n\
+             Run `just setup-threadx` to download, then set:\n\
+             export THREADX_DIR=$PWD/external/threadx"
+        );
+    }));
+    let threadx_config_dir = PathBuf::from(env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
+        panic!(
+            "THREADX_CONFIG_DIR not set. Point it at a directory containing tx_user.h.\n\
+             Example: export THREADX_CONFIG_DIR=packages/boards/nros-threadx-linux/config"
+        );
+    }));
+    let netx_dir = PathBuf::from(env::var("NETX_DIR").unwrap_or_else(|_| {
+        panic!(
+            "NETX_DIR not set. Point it at the NetX Duo source directory.\n\
+             Run `just setup-threadx` to download, then set:\n\
+             export NETX_DIR=$PWD/external/netxduo"
+        );
+    }));
+    let netx_config_dir = PathBuf::from(env::var("NETX_CONFIG_DIR").unwrap_or_else(|_| {
+        panic!(
+            "NETX_CONFIG_DIR not set. Point it at a directory containing nx_user.h.\n\
+             Example: export NETX_CONFIG_DIR=packages/boards/nros-threadx-linux/config"
+        );
+    }));
+
+    // Validate directories exist
+    if !threadx_dir.join("common").join("inc").exists() {
+        panic!(
+            "THREADX_DIR={}: missing common/inc/ directory. Is this a valid ThreadX source?",
+            threadx_dir.display()
+        );
+    }
+    if !netx_dir.join("common").join("inc").exists() {
+        panic!(
+            "NETX_DIR={}: missing common/inc/ directory. Is this a valid NetX Duo source?",
+            netx_dir.display()
+        );
+    }
+
+    let mut build = cc::Build::new();
+
+    // Generate version header in OUT_DIR
+    let version_include_dir = out_dir.join("zenoh-pico-version");
+    generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
+
+    // RISC-V cross-compilation flags
+    if target.contains("riscv64") {
+        build.flag("-march=rv64gc").flag("-mabi=lp64d");
+    } else if target.contains("riscv32") {
+        build.flag("-march=rv32gc").flag("-mabi=ilp32d");
+    }
+    // ARM Cortex-M cross-compilation flags
+    if target.contains("thumbv7m") && !target.contains("thumbv7me") {
+        build.flag("-mcpu=cortex-m3").flag("-mthumb");
+    } else if target.contains("thumbv7em") {
+        build
+            .flag("-mcpu=cortex-m4")
+            .flag("-mthumb")
+            .flag("-mfpu=fpv4-sp-d16")
+            .flag("-mfloat-abi=hard");
+    }
+
+    // Collect zenoh-pico core sources (excluding platform-specific system backends)
+    let src_dir = zenoh_pico_src.join("src");
+    for subdir in &[
+        "api",
+        "collections",
+        "link",
+        "net",
+        "protocol",
+        "session",
+        "transport",
+        "utils",
+    ] {
+        add_c_sources_recursive(&mut build, &src_dir.join(subdir));
+    }
+    // Common system sources (shared across all platforms)
+    add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
+
+    // ThreadX platform sources (our custom system + network layer)
+    let platform_dir = c_dir.join("platform");
+    build.file(platform_dir.join("zenoh_threadx_system.c"));
+    build.file(platform_dir.join("zenoh_threadx_network.c"));
+
+    // Shim (high-level API wrapper)
+    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+
+    // Include paths (order matters — generated config takes precedence)
+    let generated_config_dir = out_dir.join("zenoh-config");
+    build.include(&generated_config_dir);
+    build.include(zenoh_pico_src.join("include"));
+    build.include(&version_include_dir);
+    build.include(include_dir);
+
+    // ThreadX kernel headers (tx_api.h, tx_thread.h, etc.)
+    build.include(threadx_dir.join("common/inc"));
+
+    // ThreadX user config (tx_user.h)
+    build.include(&threadx_config_dir);
+
+    // ThreadX Linux port headers (tx_port.h — platform-specific types)
+    // Detect port directory: Linux sim uses ports/linux/gnu/, RISC-V uses ports/risc-v64/gnu/
+    if !is_embedded_target(target) {
+        build.include(threadx_dir.join("ports/linux/gnu/include"));
+    } else if target.contains("riscv64") {
+        build.include(threadx_dir.join("ports/risc-v64/gnu/include"));
+    }
+
+    // NetX Duo headers (nx_api.h, nxd_bsd.h, etc.)
+    build.include(netx_dir.join("common/inc"));
+    build.include(netx_dir.join("addons/BSD"));
+
+    // NetX Duo user config (nx_user.h)
+    build.include(&netx_config_dir);
+
+    // Platform defines
+    // ZENOH_GENERIC: tells zenoh-pico config.h to use our generated config header
+    // ZENOH_THREADX: tells zenoh_generic_platform.h to use ThreadX types and system layer
+    build.define("ZENOH_GENERIC", None);
+    build.define("ZENOH_THREADX", None);
+    build.define("ZENOH_DEBUG", "0");
+
+    // ThreadX has real threads — multi-thread support
+    build.define("Z_FEATURE_MULTI_THREAD", "1");
+
+    // Link features (controlled by Cargo link-* features)
+    build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
+    build.define(
+        "Z_FEATURE_LINK_UDP_UNICAST",
+        if link.udp_unicast { "1" } else { "0" },
+    );
+    build.define(
+        "Z_FEATURE_LINK_UDP_MULTICAST",
+        if link.udp_multicast { "1" } else { "0" },
+    );
+    build.define("Z_FEATURE_LINK_SERIAL", if link.serial { "1" } else { "0" });
+    build.define("Z_FEATURE_LINK_WS", "0");
+    build.define("Z_FEATURE_LINK_BLUETOOTH", "0");
+    build.define(
+        "Z_FEATURE_RAWETH_TRANSPORT",
+        if link.raweth { "1" } else { "0" },
+    );
+    build.define("Z_FEATURE_SCOUTING_UDP", "0");
+    if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
+        build.define("Z_FEATURE_UNSTABLE_API", "1");
+    }
+
+    // Pass shim slot counts as -D flags
+    shim.apply_to_cc(&mut build);
+
+    // Compiler flags
+    build
+        .opt_level(2)
+        .flag("-ffunction-sections")
+        .flag("-fdata-sections")
+        .warnings(false);
+
+    build.compile("zenohpico");
+
+    // Rerun triggers for ThreadX-specific files
+    println!("cargo:rerun-if-changed=c/platform/zenoh_threadx_system.c");
+    println!("cargo:rerun-if-changed=c/platform/zenoh_threadx_network.c");
+    println!("cargo:rerun-if-changed=c/platform/zenoh_threadx_platform.h");
+    println!("cargo:rerun-if-env-changed=THREADX_DIR");
+    println!("cargo:rerun-if-env-changed=THREADX_CONFIG_DIR");
+    println!("cargo:rerun-if-env-changed=NETX_DIR");
+    println!("cargo:rerun-if-env-changed=NETX_CONFIG_DIR");
 }
 
 /// Recursively collect all .c files from a directory and add them to a cc::Build.

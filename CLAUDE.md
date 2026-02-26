@@ -204,7 +204,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred) |
 | 55 | NuttX platform support | In Progress (55.1–55.12 done, 55.11 remaining) |
 | 57 | Code quality improvements | Complete |
-| 58 | ThreadX platform support (NetX Duo) | In Progress (58.2 done) |
+| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.4 done) |
 | 59 | API documentation (rustdoc + Doxygen) | Complete |
 
 ## Quick Reference

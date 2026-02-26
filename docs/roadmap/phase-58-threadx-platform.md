@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-threadx` as a new platform axis value, enabling nros nodes on Eclipse ThreadX + NetX Duo. Validate with two targets: Linux simulation port (PoC, fastest iteration) and QEMU RISC-V 64-bit virt machine (official ThreadX QEMU port with virtio-net Ethernet). ThreadX's IEC 61508 SIL 4 / ISO 26262 ASIL D certifications combined with nano-ros's Kani/Verus formal verification create a uniquely strong safety argument.
 
-**Status**: In Progress (58.2 done)
+**Status**: In Progress (58.1–58.4 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -258,10 +258,10 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 
 ## Work Items
 
-- [ ] 58.1 — Feature flag wiring
+- [x] 58.1 — Feature flag wiring
 - [x] 58.2 — `just setup-threadx` dependency acquisition
-- [ ] 58.3 — zpico-sys build.rs ThreadX + NetX Duo compilation
-- [ ] 58.4 — zenoh-pico NetX Duo BSD socket network transport
+- [x] 58.3 — zpico-sys build.rs ThreadX + NetX Duo compilation
+- [x] 58.4 — zenoh-pico NetX Duo BSD socket network transport
 - [ ] 58.5 — Linux simulation board crate (`nros-threadx-linux`)
 - [ ] 58.6 — Rust zenoh examples — Linux simulation (pubsub, service, action)
 - [ ] 58.7 — Linux simulation integration tests + `just test-threadx-linux` recipe
@@ -274,19 +274,21 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 
 ### 58.1 — Feature flag wiring
 
-Add `platform-threadx` / `threadx` features to all crates in the chain. Update mutual exclusivity checks from 6-way to 7-way.
+Add `platform-threadx` / `threadx` features to all crates in the chain. Update mutual exclusivity checks from 5-way to 6-way. Also backfilled missing `platform-nuttx` / `nuttx` features that were in build.rs but not in Cargo.toml files.
+
+**Status**: Done
 
 **Files**:
-- `packages/core/nros/Cargo.toml` — add `platform-threadx` feature
-- `packages/core/nros/src/lib.rs` — expand `compile_error!` to include `platform-threadx`
-- `packages/core/nros-node/Cargo.toml` — add `platform-threadx`
-- `packages/zpico/nros-rmw-zenoh/Cargo.toml` — add `platform-threadx = ["zpico-sys/threadx"]`
-- `packages/xrce/nros-rmw-xrce/Cargo.toml` — add `platform-threadx = ["xrce-sys/threadx"]`
-- `packages/zpico/zpico-sys/Cargo.toml` — add `threadx = []` feature
-- `packages/zpico/zpico-sys/build.rs` — add `use_threadx` to backend detection + 7-way exclusivity
-- `packages/xrce/xrce-sys/Cargo.toml` — add `threadx = []` feature
-- `packages/xrce/xrce-sys/build.rs` — add `threadx` to mutual exclusivity
-- `packages/core/nros-c/Cargo.toml` — add `platform-threadx = ["nros/platform-threadx"]`
+- `packages/core/nros/Cargo.toml` — added `platform-nuttx` and `platform-threadx` features
+- `packages/core/nros/src/lib.rs` — expanded `compile_error!` to 6-way platform exclusivity
+- `packages/core/nros-node/Cargo.toml` — added `platform-nuttx` and `platform-threadx`
+- `packages/zpico/nros-rmw-zenoh/Cargo.toml` — added `platform-nuttx`, `platform-threadx`
+- `packages/xrce/nros-rmw-xrce/Cargo.toml` — added `platform-nuttx`, `platform-threadx`
+- `packages/zpico/zpico-sys/Cargo.toml` — added `nuttx = []`, `threadx = []` features + updated check-cfg
+- `packages/zpico/zpico-sys/build.rs` — added `use_threadx` to backend detection + 6-way exclusivity
+- `packages/xrce/xrce-sys/Cargo.toml` — added `nuttx = []`, `threadx = []` features
+- `packages/xrce/xrce-sys/build.rs` — added `threadx` to mutual exclusivity
+- `packages/core/nros-c/Cargo.toml` — added `platform-nuttx`, `platform-threadx`
 
 ### 58.2 — `just setup-threadx` dependency acquisition
 
@@ -305,23 +307,16 @@ Pinned version declared as `THREADX_TAG` justfile variable. All repos gitignored
 
 ### 58.3 — zpico-sys build.rs ThreadX + NetX Duo compilation
 
-Add a ThreadX compilation branch in `zpico-sys/build.rs`.
+Added `build_zenoh_pico_threadx()` function to `zpico-sys/build.rs`. When `use_threadx` is true:
+1. Read `THREADX_DIR`, `THREADX_CONFIG_DIR`, `NETX_DIR`, `NETX_CONFIG_DIR` env vars with validation
+2. Compile zenoh-pico core sources + custom system.c + network.c + shim
+3. Include paths: ThreadX kernel headers, NetX Duo headers (including BSD addon), user config headers
+4. Define `ZENOH_GENERIC` + `ZENOH_THREADX`, set `Z_FEATURE_MULTI_THREAD=1`
+5. Auto-detect port headers: Linux sim → `ports/linux/gnu/include`, RISC-V → `ports/risc-v64/gnu/include`
 
-When `use_threadx` is true:
-1. Read `THREADX_DIR`, `THREADX_CONFIG_DIR`, `NETX_DIR`, `NETX_CONFIG_DIR` env vars
-2. Compile zenoh-pico core sources (api, collections, link, net, protocol, session, transport, utils)
-3. Compile `src/system/threadx/system.c` (threading, clock, memory — zenoh-pico built-in)
-4. Compile the new NetX Duo BSD socket network transport (58.4)
-5. Add include paths: ThreadX headers, NetX Duo headers, user config headers
-6. Generate config header with `Z_FEATURE_MULTI_THREAD=1`, `Z_FEATURE_LINK_TCP=1`, `Z_FEATURE_LINK_UDP_UNICAST=1`
-7. Compile the C shim (`zenoh_shim.c`) — `select()` path works with NetX Duo BSD sockets
-8. Define `ZENOH_THREADX` for all compilations
+Note: The board crate compiles ThreadX kernel + NetX Duo library; zpico-sys only uses their headers.
 
-**Two build profiles**:
-- **Linux simulation** (`target = x86_64-unknown-linux-gnu` + `threadx` feature): Compile ThreadX Linux port (`ports/linux/gnu/`) + NetX Duo + Linux network driver. Link with `-lpthread`.
-- **RISC-V embedded** (`target = riscv64gc-unknown-none-elf` or similar): Compile ThreadX RISC-V port (`ports/risc-v64/gnu/`) + NetX Duo + virtio-net driver.
-
-Target detection via `CARGO_CFG_TARGET_OS` and `CARGO_CFG_TARGET_ARCH` in build.rs.
+**Status**: Done
 
 **Files**: `packages/zpico/zpico-sys/build.rs`
 
@@ -329,24 +324,25 @@ Target detection via `CARGO_CFG_TARGET_OS` and `CARGO_CFG_TARGET_ARCH` in build.
 
 Write a network transport layer for zenoh-pico using NetX Duo's BSD socket API. This replaces the serial-only transport in `src/system/threadx/network.c`.
 
-**Location**: `packages/zpico/zpico-sys/c/platform/zenoh_threadx_network.c`
-
 Implements zenoh-pico's network interface functions using NetX Duo BSD:
 - `_z_open_tcp()` → `socket(AF_INET, SOCK_STREAM, 0)` + `connect()`
 - `_z_listen_tcp()` → `socket()` + `bind()` + `listen()`
-- `_z_close_tcp()` → `closesocket()`
+- `_z_close_tcp()` → `soc_close()`
 - `_z_read_tcp()` → `recv()`
 - `_z_send_tcp()` → `send()`
 - `_z_open_udp_unicast()` → `socket(AF_INET, SOCK_DGRAM, 0)` + `connect()`
-- `_z_read_udp_unicast()` → `recvfrom()`
+- `_z_read_udp_unicast()` → `recv()`
 - `_z_send_udp_unicast()` → `sendto()`
-- `select()` wrappers for event polling
 
-NetX Duo BSD `select()` only supports `readfds`. Add `#ifdef ZENOH_THREADX` guard to skip `writefds` in the shim's poll loop.
+Also includes a custom ThreadX system layer (`zenoh_threadx_system.c`) providing threading (TX_THREAD), mutex (TX_MUTEX), condvar (TX_MUTEX+TX_SEMAPHORE), clock (tx_time_get), sleep (tx_thread_sleep), memory (tx_byte_allocate/tx_byte_release), and random functions. A custom platform header (`zenoh_threadx_platform.h`) defines the types. The generic platform header dispatches to ThreadX types when `ZENOH_THREADX` is defined.
 
-**Estimated size**: ~300–500 LOC C (similar to zenoh-pico's `unix/network.c` but simplified — no multicast, no raweth).
+**Status**: Done
 
-**Files**: `packages/zpico/zpico-sys/c/platform/zenoh_threadx_network.c`
+**Files**:
+- `packages/zpico/zpico-sys/c/platform/zenoh_threadx_network.c` — **New** (~320 LOC) — BSD socket transport
+- `packages/zpico/zpico-sys/c/platform/zenoh_threadx_system.c` — **New** (~300 LOC) — System layer
+- `packages/zpico/zpico-sys/c/platform/zenoh_threadx_platform.h` — **New** — Platform types
+- `packages/zpico/zpico-sys/c/platform/zenoh_generic_platform.h` — Updated to dispatch for ThreadX
 
 ### 58.5 — Linux simulation board crate (`nros-threadx-linux`)
 
