@@ -1503,6 +1503,18 @@ doc-c:
     (cd packages/core/nros-c && doxygen Doxyfile)
     echo "C API docs generated: target/doc/c-api/html/index.html"
 
+# Verify hand-written C headers are syntactically correct.
+# Signature drift against Rust is caught at link time by `just test-c`.
+doc-c-check:
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking C headers for syntax errors..."
+    cc -fsyntax-only \
+        -Ipackages/core/nros-c/include \
+        -include packages/core/nros-c/include/nros/nros.h \
+        -x c /dev/null
+    echo "All C headers are syntactically correct."
+
 # Generate all documentation (Rust + C)
 doc: doc-rust doc-c
 

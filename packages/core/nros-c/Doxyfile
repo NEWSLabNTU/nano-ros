@@ -6,9 +6,28 @@
 PROJECT_NAME           = "nros C API"
 PROJECT_BRIEF          = "Lightweight ROS 2 client for embedded real-time systems"
 
-# Input: post-processed headers with Doxygen tags + mainpage
-INPUT                  = include/nros/ docs/mainpage.md
-RECURSIVE              = YES
+# Input: hand-written per-module headers + mainpage
+# Exclude nros_generated.h (internal cbindgen artifact for drift detection)
+INPUT                  = include/nros/nros.h \
+                         include/nros/types.h \
+                         include/nros/init.h \
+                         include/nros/node.h \
+                         include/nros/publisher.h \
+                         include/nros/subscription.h \
+                         include/nros/service.h \
+                         include/nros/client.h \
+                         include/nros/executor.h \
+                         include/nros/timer.h \
+                         include/nros/guard_condition.h \
+                         include/nros/lifecycle.h \
+                         include/nros/action.h \
+                         include/nros/parameter.h \
+                         include/nros/cdr.h \
+                         include/nros/clock.h \
+                         include/nros/visibility.h \
+                         include/nros/platform.h \
+                         docs/mainpage.md
+RECURSIVE              = NO
 FILE_PATTERNS          = *.h *.md
 USE_MDFILE_AS_MAINPAGE = docs/mainpage.md
 
@@ -23,10 +42,10 @@ TYPEDEF_HIDES_STRUCT   = YES
 EXTRACT_ALL            = NO
 EXTRACT_STATIC         = YES
 
-# Warnings (WARN_NO_PARAMDOC off — many thin wrappers lack @param/@return)
+# Warnings — enable WARN_NO_PARAMDOC now that headers have full Doxygen docs
 WARN_IF_UNDOCUMENTED   = YES
 WARN_IF_DOC_ERROR      = YES
-WARN_NO_PARAMDOC       = NO
+WARN_NO_PARAMDOC       = YES
 
 # No LaTeX, just HTML
 GENERATE_HTML          = YES

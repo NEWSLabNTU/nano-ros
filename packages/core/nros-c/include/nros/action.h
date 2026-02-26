@@ -1,5 +1,499 @@
-/* nros action API — see nros_generated.h for declarations */
+/**
+ * @file action.h
+ * @brief Action server and client API.
+ *
+ * Actions provide long-running goal-oriented communication with
+ * feedback and cancellation support.
+ */
+
 #ifndef NROS_ACTION_H
 #define NROS_ACTION_H
-#include "nros/nros_generated.h"
+
+#include "nros/types.h"
+
+#ifdef __cplusplus
+extern "C" {
 #endif
+
+/* Forward declarations */
+struct nros_node_t;
+struct nros_action_server_t;
+struct nros_goal_handle_t;
+
+/* ===================================================================
+ * Types — Enums
+ * =================================================================== */
+
+/**
+ * Goal status enumeration.
+ *
+ * Compatible with action_msgs/msg/GoalStatus values.
+ */
+typedef enum nros_goal_status_t {
+    /** Goal state is unknown. */
+    NROS_GOAL_STATUS_UNKNOWN = 0,
+    /** Goal was accepted and is pending execution. */
+    NROS_GOAL_STATUS_ACCEPTED = 1,
+    /** Goal is currently being executed. */
+    NROS_GOAL_STATUS_EXECUTING = 2,
+    /** Goal is being canceled. */
+    NROS_GOAL_STATUS_CANCELING = 3,
+    /** Goal completed successfully. */
+    NROS_GOAL_STATUS_SUCCEEDED = 4,
+    /** Goal was canceled. */
+    NROS_GOAL_STATUS_CANCELED = 5,
+    /** Goal was aborted (failed). */
+    NROS_GOAL_STATUS_ABORTED = 6,
+} nros_goal_status_t;
+
+/** Goal response codes for goal request handling. */
+typedef enum nros_goal_response_t {
+    /** Reject the goal. */
+    NROS_GOAL_REJECT = 0,
+    /** Accept the goal and start executing immediately. */
+    NROS_GOAL_ACCEPT_AND_EXECUTE = 1,
+    /** Accept the goal but defer execution. */
+    NROS_GOAL_ACCEPT_AND_DEFER = 2,
+} nros_goal_response_t;
+
+/** Cancel response codes. */
+typedef enum nros_cancel_response_t {
+    /** Reject the cancel request. */
+    NROS_CANCEL_REJECT = 0,
+    /** Accept the cancel request. */
+    NROS_CANCEL_ACCEPT = 1,
+} nros_cancel_response_t;
+
+/** Action client state. */
+typedef enum nros_action_client_state_t {
+    /** Not initialized. */
+    NROS_ACTION_CLIENT_STATE_UNINITIALIZED = 0,
+    /** Initialized and ready. */
+    NROS_ACTION_CLIENT_STATE_INITIALIZED = 1,
+    /** Shutdown. */
+    NROS_ACTION_CLIENT_STATE_SHUTDOWN = 2,
+} nros_action_client_state_t;
+
+/** Action server state. */
+typedef enum nros_action_server_state_t {
+    /** Not initialized. */
+    NROS_ACTION_SERVER_STATE_UNINITIALIZED = 0,
+    /** Initialized and ready. */
+    NROS_ACTION_SERVER_STATE_INITIALIZED = 1,
+    /** Shutdown. */
+    NROS_ACTION_SERVER_STATE_SHUTDOWN = 2,
+} nros_action_server_state_t;
+
+/* ===================================================================
+ * Types — Structs and Callbacks
+ * =================================================================== */
+
+/** Goal UUID structure (16 bytes). */
+typedef struct nros_goal_uuid_t {
+    /** UUID bytes. */
+    uint8_t uuid[16];
+} nros_goal_uuid_t;
+
+/** Action type information. */
+typedef struct nros_action_type_t {
+    /** Action type name (e.g., "example_interfaces::action::Fibonacci"). */
+    const char *type_name;
+    /** Action type hash. */
+    const char *type_hash;
+    /** Maximum serialized size of goal message. */
+    size_t goal_serialized_size_max;
+    /** Maximum serialized size of result message. */
+    size_t result_serialized_size_max;
+    /** Maximum serialized size of feedback message. */
+    size_t feedback_serialized_size_max;
+} nros_action_type_t;
+
+/* --- Client callbacks --- */
+
+/** Feedback callback type (for client). */
+typedef void (*nros_feedback_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                         const uint8_t *feedback,
+                                         size_t feedback_len,
+                                         void *context);
+
+/** Result callback type (for client). */
+typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                       enum nros_goal_status_t status,
+                                       const uint8_t *result,
+                                       size_t result_len,
+                                       void *context);
+
+/* --- Server callbacks --- */
+
+/** Goal request callback type. */
+typedef enum nros_goal_response_t (*nros_goal_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
+                                                          const uint8_t *goal_request,
+                                                          size_t goal_len,
+                                                          void *context);
+
+/** Cancel request callback type. */
+typedef enum nros_cancel_response_t (*nros_cancel_callback_t)(struct nros_goal_handle_t *goal,
+                                                              void *context);
+
+/** Goal accepted callback type. */
+typedef void (*nros_accepted_callback_t)(struct nros_goal_handle_t *goal, void *context);
+
+/* --- Goal handle --- */
+
+/** Goal handle structure. */
+typedef struct nros_goal_handle_t {
+    /** Goal UUID. */
+    struct nros_goal_uuid_t uuid;
+    /** Current status. */
+    enum nros_goal_status_t status;
+    /** Whether this goal slot is in use. */
+    bool active;
+    /** User context pointer for this goal. */
+    void *context;
+    /** Pointer back to the action server (internal). */
+    struct nros_action_server_t *server;
+} nros_goal_handle_t;
+
+/* --- Client struct --- */
+
+/** Action client structure. */
+typedef struct nros_action_client_t {
+    /** Current state. */
+    enum nros_action_client_state_t state;
+    /** Action name storage. */
+    uint8_t action_name[NROS_MAX_ACTION_NAME_LEN];
+    /** Action name length. */
+    size_t action_name_len;
+    /** Type name storage. */
+    uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
+    /** Type name length. */
+    size_t type_name_len;
+    /** Type hash storage. */
+    uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
+    /** Type hash length. */
+    size_t type_hash_len;
+    /** Feedback callback. */
+    nros_feedback_callback_t feedback_callback;
+    /** Result callback. */
+    nros_result_callback_t result_callback;
+    /** User context pointer. */
+    void *context;
+    /** Pointer to parent node. */
+    const struct nros_node_t *node;
+    /** Opaque pointer to internal implementation. */
+    void *_internal;
+} nros_action_client_t;
+
+/* --- Server struct --- */
+
+/** Action server structure. */
+typedef struct nros_action_server_t {
+    /** Current state. */
+    enum nros_action_server_state_t state;
+    /** Action name storage. */
+    uint8_t action_name[NROS_MAX_ACTION_NAME_LEN];
+    /** Action name length. */
+    size_t action_name_len;
+    /** Type name storage. */
+    uint8_t type_name[NROS_MAX_TYPE_NAME_LEN];
+    /** Type name length. */
+    size_t type_name_len;
+    /** Type hash storage. */
+    uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
+    /** Type hash length. */
+    size_t type_hash_len;
+    /** Goal callback. */
+    nros_goal_callback_t goal_callback;
+    /** Cancel callback. */
+    nros_cancel_callback_t cancel_callback;
+    /** Accepted callback. */
+    nros_accepted_callback_t accepted_callback;
+    /** User context pointer. */
+    void *context;
+    /** Goal handles. */
+    struct nros_goal_handle_t goals[NROS_MAX_CONCURRENT_GOALS];
+    /** Number of active goals. */
+    size_t active_goal_count;
+    /** Pointer to parent node. */
+    const struct nros_node_t *node;
+    /** Opaque pointer to internal implementation. */
+    void *_internal;
+} nros_action_server_t;
+
+/* ===================================================================
+ * Functions — Client
+ * =================================================================== */
+
+/**
+ * @brief Get a zero-initialized action client.
+ * @return Zero-initialized @ref nros_action_client_t.
+ */
+NROS_PUBLIC struct nros_action_client_t nros_action_client_get_zero_initialized(void);
+
+/**
+ * @brief Initialise an action client.
+ *
+ * @param client      Pointer to a zero-initialized action client.
+ * @param node        Pointer to an initialized node.
+ * @param action_name Action name (null-terminated).
+ * @param type_info   Pointer to action type information.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_client_init(struct nros_action_client_t *client,
+                                   const struct nros_node_t *node,
+                                   const char *action_name,
+                                   const struct nros_action_type_t *type_info);
+
+/**
+ * @brief Set feedback callback.
+ *
+ * @param client   Pointer to an initialized action client.
+ * @param callback Feedback callback function.
+ * @param context  User context.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_client_set_feedback_callback(struct nros_action_client_t *client,
+                                                    nros_feedback_callback_t callback,
+                                                    void *context);
+
+/**
+ * @brief Set result callback.
+ *
+ * @param client   Pointer to an initialized action client.
+ * @param callback Result callback function.
+ * @param context  User context.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_client_set_result_callback(struct nros_action_client_t *client,
+                                                  nros_result_callback_t callback,
+                                                  void *context);
+
+/**
+ * @brief Send a goal request.
+ *
+ * @param client    Pointer to an initialized action client.
+ * @param goal      CDR-serialized goal data.
+ * @param goal_len  Length of goal data.
+ * @param goal_uuid Output: generated goal UUID.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_send_goal(struct nros_action_client_t *client,
+                                 const uint8_t *goal,
+                                 size_t goal_len,
+                                 struct nros_goal_uuid_t *goal_uuid);
+
+/**
+ * @brief Request cancellation of a goal.
+ *
+ * @param client    Pointer to an initialized action client.
+ * @param goal_uuid UUID of the goal to cancel.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_cancel_goal(struct nros_action_client_t *client,
+                                   const struct nros_goal_uuid_t *goal_uuid);
+
+/**
+ * @brief Request result of a goal (blocking).
+ *
+ * @param client          Pointer to an initialized action client.
+ * @param goal_uuid       UUID of the goal.
+ * @param status          Output: goal status.
+ * @param result          Buffer for CDR-serialized result.
+ * @param result_capacity Capacity of result buffer.
+ * @param result_len      Output: actual result length.
+ *
+ * @retval NROS_RET_OK      on success.
+ * @retval NROS_RET_TIMEOUT  if no result within timeout.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_get_result(struct nros_action_client_t *client,
+                                  const struct nros_goal_uuid_t *goal_uuid,
+                                  enum nros_goal_status_t *status,
+                                  uint8_t *result,
+                                  size_t result_capacity,
+                                  size_t *result_len);
+
+/**
+ * @brief Try to receive feedback for an active goal (non-blocking).
+ *
+ * If feedback is available, invokes the feedback callback (if set).
+ *
+ * @param client  Pointer to an initialized action client.
+ *
+ * @retval NROS_RET_OK      if feedback was received and dispatched.
+ * @retval NROS_RET_TIMEOUT  if no feedback is available.
+ */
+NROS_PUBLIC nros_ret_t nros_action_try_recv_feedback(struct nros_action_client_t *client);
+
+/**
+ * @brief Finalise an action client.
+ *
+ * @param client  Pointer to an initialized action client.
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC nros_ret_t nros_action_client_fini(struct nros_action_client_t *client);
+
+/* ===================================================================
+ * Functions — Goal UUID Utilities
+ * =================================================================== */
+
+/**
+ * @brief Generate a new random goal UUID.
+ *
+ * @param uuid  Output: generated UUID.
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC nros_ret_t nros_goal_uuid_generate(struct nros_goal_uuid_t *uuid);
+
+/**
+ * @brief Compare two goal UUIDs.
+ *
+ * @param a  First UUID.
+ * @param b  Second UUID.
+ * @return true if equal, false otherwise.
+ */
+NROS_PUBLIC
+bool nros_goal_uuid_equal(const struct nros_goal_uuid_t *a,
+                          const struct nros_goal_uuid_t *b);
+
+/**
+ * @brief Get status name as string.
+ *
+ * @param status  Goal status value.
+ * @return Null-terminated status name string.
+ */
+NROS_PUBLIC const char *nros_goal_status_to_string(enum nros_goal_status_t status);
+
+/* ===================================================================
+ * Functions — Server
+ * =================================================================== */
+
+/**
+ * @brief Get a zero-initialized action server.
+ * @return Zero-initialized @ref nros_action_server_t.
+ */
+NROS_PUBLIC struct nros_action_server_t nros_action_server_get_zero_initialized(void);
+
+/**
+ * @brief Initialise an action server.
+ *
+ * Stores metadata (name, type, callbacks).  RMW entity creation is
+ * deferred to nros_executor_add_action_server().
+ *
+ * @param server            Pointer to a zero-initialized action server.
+ * @param node              Pointer to an initialized node.
+ * @param action_name       Action name (null-terminated).
+ * @param type_info         Pointer to action type information.
+ * @param goal_callback     Callback for incoming goal requests.
+ * @param cancel_callback   Callback for cancel requests.
+ * @param accepted_callback Callback when a goal is accepted.
+ * @param context           User context pointer.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_server_init(struct nros_action_server_t *server,
+                                   const struct nros_node_t *node,
+                                   const char *action_name,
+                                   const struct nros_action_type_t *type_info,
+                                   nros_goal_callback_t goal_callback,
+                                   nros_cancel_callback_t cancel_callback,
+                                   nros_accepted_callback_t accepted_callback,
+                                   void *context);
+
+/**
+ * @brief Publish feedback for an executing goal.
+ *
+ * @param goal         Pointer to an active goal handle.
+ * @param feedback     CDR-serialized feedback data.
+ * @param feedback_len Length of feedback data.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_publish_feedback(struct nros_goal_handle_t *goal,
+                                        const uint8_t *feedback,
+                                        size_t feedback_len);
+
+/**
+ * @brief Mark a goal as succeeded with a result.
+ *
+ * @param goal       Pointer to an active goal handle.
+ * @param result     CDR-serialized result data.
+ * @param result_len Length of result data.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_succeed(struct nros_goal_handle_t *goal,
+                               const uint8_t *result,
+                               size_t result_len);
+
+/**
+ * @brief Mark a goal as aborted with an optional result.
+ *
+ * @param goal       Pointer to an active goal handle.
+ * @param result     CDR-serialized result data (can be NULL).
+ * @param result_len Length of result data (0 if no result).
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_abort(struct nros_goal_handle_t *goal,
+                             const uint8_t *result,
+                             size_t result_len);
+
+/**
+ * @brief Mark a goal as canceled with an optional result.
+ *
+ * @param goal       Pointer to an active goal handle.
+ * @param result     CDR-serialized result data (can be NULL).
+ * @param result_len Length of result data (0 if no result).
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_canceled(struct nros_goal_handle_t *goal,
+                                const uint8_t *result,
+                                size_t result_len);
+
+/**
+ * @brief Execute a goal (transition from accepted to executing).
+ *
+ * @param goal  Pointer to an accepted goal handle.
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC nros_ret_t nros_action_execute(struct nros_goal_handle_t *goal);
+
+/**
+ * @brief Get the number of active goals.
+ *
+ * @param server  Pointer to an action server.
+ * @return Number of active goals.
+ */
+NROS_PUBLIC
+size_t nros_action_server_get_active_goal_count(const struct nros_action_server_t *server);
+
+/**
+ * @brief Finalise an action server.
+ *
+ * @param server  Pointer to an initialized action server.
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC nros_ret_t nros_action_server_fini(struct nros_action_server_t *server);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* NROS_ACTION_H */
