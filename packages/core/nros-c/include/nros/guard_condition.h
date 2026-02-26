@@ -32,7 +32,13 @@ typedef enum nros_guard_condition_state_t {
     NROS_GUARD_CONDITION_STATE_SHUTDOWN = 2,
 } nros_guard_condition_state_t;
 
-/** Guard condition callback type. */
+/**
+ * Guard condition callback type.
+ *
+ * Called by the executor when the guard condition is triggered.
+ *
+ * @param context User-provided context pointer.
+ */
 typedef void (*nros_guard_condition_callback_t)(void *context);
 
 /** Guard condition structure. */
@@ -105,7 +111,7 @@ NROS_PUBLIC nros_ret_t nros_guard_condition_trigger(struct nros_guard_condition_
  * @brief Check if the guard condition is triggered.
  *
  * @param guard  Pointer to a guard condition.
- * @return true if triggered, false otherwise.
+ * @return @c true if triggered, @c false otherwise.
  */
 NROS_PUBLIC bool nros_guard_condition_is_triggered(const struct nros_guard_condition_t *guard);
 

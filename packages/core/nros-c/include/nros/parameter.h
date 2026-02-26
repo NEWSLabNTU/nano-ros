@@ -90,7 +90,17 @@ typedef struct nros_parameter_t {
     union nros_parameter_value_t value;
 } nros_parameter_t;
 
-/** Parameter change callback type. */
+/**
+ * Parameter change callback type.
+ *
+ * Called when a parameter value is being set.  Return @c true to accept
+ * the new value, or @c false to reject the change.
+ *
+ * @param name    Parameter name (null-terminated).
+ * @param param   Pointer to the parameter with the proposed new value.
+ * @param context User-provided context pointer.
+ * @return @c true to accept the change, @c false to reject it.
+ */
 typedef bool (*nros_param_callback_t)(const char *name,
                                       const struct nros_parameter_t *param,
                                       void *context);
@@ -332,7 +342,7 @@ nros_ret_t nros_param_set_string(struct nros_param_server_t *server,
  *
  * @param server Pointer to an initialized parameter server.
  * @param name   Parameter name.
- * @return true if the parameter exists, false otherwise.
+ * @return @c true if the parameter exists, @c false otherwise.
  */
 NROS_PUBLIC bool nros_param_has(const struct nros_param_server_t *server,
                                 const char *name);

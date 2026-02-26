@@ -110,13 +110,32 @@ typedef struct nros_action_type_t {
 
 /* --- Client callbacks --- */
 
-/** Feedback callback type (for client). */
+/**
+ * Feedback callback type (for client).
+ *
+ * Called when feedback is received for an active goal.
+ *
+ * @param goal_uuid    UUID of the goal this feedback belongs to.
+ * @param feedback     CDR-serialized feedback data.
+ * @param feedback_len Length of @p feedback in bytes.
+ * @param context      User-provided context pointer.
+ */
 typedef void (*nros_feedback_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
                                          const uint8_t *feedback,
                                          size_t feedback_len,
                                          void *context);
 
-/** Result callback type (for client). */
+/**
+ * Result callback type (for client).
+ *
+ * Called when a goal completes (succeeded, canceled, or aborted).
+ *
+ * @param goal_uuid UUID of the completed goal.
+ * @param status    Final goal status.
+ * @param result    CDR-serialized result data.
+ * @param result_len Length of @p result in bytes.
+ * @param context   User-provided context pointer.
+ */
 typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
                                        enum nros_goal_status_t status,
                                        const uint8_t *result,
@@ -125,17 +144,45 @@ typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
 
 /* --- Server callbacks --- */
 
-/** Goal request callback type. */
+/**
+ * Goal request callback type.
+ *
+ * Called when a client sends a new goal request.  Return a
+ * @ref nros_goal_response_t value to accept or reject the goal.
+ *
+ * @param goal_uuid    UUID of the requested goal.
+ * @param goal_request CDR-serialized goal request data.
+ * @param goal_len     Length of @p goal_request in bytes.
+ * @param context      User-provided context pointer.
+ * @return @ref NROS_GOAL_ACCEPT_AND_EXECUTE, @ref NROS_GOAL_ACCEPT_AND_DEFER,
+ *         or @ref NROS_GOAL_REJECT.
+ */
 typedef enum nros_goal_response_t (*nros_goal_callback_t)(const struct nros_goal_uuid_t *goal_uuid,
                                                           const uint8_t *goal_request,
                                                           size_t goal_len,
                                                           void *context);
 
-/** Cancel request callback type. */
+/**
+ * Cancel request callback type.
+ *
+ * Called when a client requests cancellation of an active goal.
+ *
+ * @param goal    Pointer to the goal handle being canceled.
+ * @param context User-provided context pointer.
+ * @return @ref NROS_CANCEL_ACCEPT or @ref NROS_CANCEL_REJECT.
+ */
 typedef enum nros_cancel_response_t (*nros_cancel_callback_t)(struct nros_goal_handle_t *goal,
                                                               void *context);
 
-/** Goal accepted callback type. */
+/**
+ * Goal accepted callback type.
+ *
+ * Called after a goal has been accepted (response was
+ * @ref NROS_GOAL_ACCEPT_AND_EXECUTE or @ref NROS_GOAL_ACCEPT_AND_DEFER).
+ *
+ * @param goal    Pointer to the newly created goal handle.
+ * @param context User-provided context pointer.
+ */
 typedef void (*nros_accepted_callback_t)(struct nros_goal_handle_t *goal, void *context);
 
 /* --- Goal handle --- */
@@ -360,7 +407,7 @@ NROS_PUBLIC nros_ret_t nros_goal_uuid_generate(struct nros_goal_uuid_t *uuid);
  *
  * @param a  First UUID.
  * @param b  Second UUID.
- * @return true if equal, false otherwise.
+ * @return @c true if equal, @c false otherwise.
  */
 NROS_PUBLIC
 bool nros_goal_uuid_equal(const struct nros_goal_uuid_t *a,

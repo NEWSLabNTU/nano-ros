@@ -62,13 +62,13 @@ typedef enum nros_executor_semantics_t {
  * Trigger function type for executor.
  *
  * A trigger function receives a boolean array indicating which handles
- * have data ready, along with the count of handles.  It returns true if
- * the executor should process callbacks.
+ * have data ready, along with the count of handles.  It returns @c true
+ * if the executor should process callbacks.
  *
  * @param ready   Pointer to boolean array (one per handle).
  * @param count   Number of elements in the array.
  * @param context User-provided context pointer.
- * @return true if the executor should process callbacks.
+ * @return @c true if the executor should process callbacks.
  */
 typedef bool (*nros_executor_trigger_t)(const bool *ready,
                                         size_t count,
