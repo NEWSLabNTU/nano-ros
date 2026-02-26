@@ -99,14 +99,14 @@ just doc          # doc-rust + doc-c
 - [x] 59.7 — Document missing public items in nros-core and nros-serdes
 - [x] 59.8 — Expand sparse module-level docs
 - [x] 59.9 — Add crate-level examples to nros-rmw and nros-serdes
-- [ ] 59.10 — Fix broken intra-doc links in nros-rmw trait docs
+- [x] 59.10 — Fix broken intra-doc links in nros-rmw trait docs
 - [x] 59.11 — Hand-written per-module C headers with Doxygen docs
 - [x] 59.12 — Fix C API Quick Start example in mainpage.md
 - [x] 59.13 — Expand thin callback typedef docs in C headers
 - [x] 59.14 — Normalise `is_valid()` return wording across C headers
-- [ ] 59.15 — Add Executor const generic guidance to Rust crate docs
-- [ ] 59.16 — Explain Session trait in nros crate-level docs
-- [ ] 59.17 — Link to guides and examples from nros crate docs
+- [x] 59.15 — Add Executor const generic guidance to Rust crate docs
+- [x] 59.16 — Explain Session trait in nros crate-level docs
+- [x] 59.17 — Link to guides and examples from nros crate docs
 
 ### 59.1 — build.rs Doxygen Post-Processor (SUPERSEDED)
 
@@ -376,8 +376,8 @@ Use relative `[text](url)` links that work in both rustdoc and GitHub.
 - [x] C Quick Start example in mainpage.md compiles and shows full lifecycle
 - [x] All callback typedefs have `@param`/`@return` docs
 - [x] `is_valid()` / `is_ready()` return wording is consistent across all headers
-- [ ] Rust crate docs explain Executor const generics and Session trait
-- [ ] Rust crate docs link to guides and examples
+- [x] Rust crate docs explain Executor const generics and Session trait
+- [x] Rust crate docs link to guides and examples
 
 ## Notes
 

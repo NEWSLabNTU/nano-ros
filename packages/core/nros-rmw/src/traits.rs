@@ -649,8 +649,11 @@ pub trait Session {
 
     /// Drive transport I/O (poll network, dispatch callbacks).
     ///
-    /// Pull-based backends (zenoh-pico, XRCE-DDS) override this to pump
-    /// network data. Push-based backends use the default no-op.
+    /// Both zenoh-pico and XRCE-DDS are pull-based: they require the
+    /// application to periodically call this method to read from the
+    /// network socket and dispatch incoming messages to subscriber
+    /// buffers.  Backends that receive data via OS callbacks (push-based)
+    /// can use the default no-op.
     ///
     /// `timeout_ms` is the maximum time to wait for data (0 = non-blocking).
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
@@ -720,9 +723,11 @@ pub trait Subscriber {
 
     /// Process the received message in-place without copying.
     ///
-    /// Calls `f` with a reference to the raw CDR bytes in the internal buffer.
-    /// The buffer is locked during `f` — the transport callback drops any
-    /// messages that arrive while the closure executes.
+    /// Calls `f` with a reference to the raw CDR bytes in the subscriber's
+    /// internal receive buffer, avoiding a copy into a caller-provided buffer.
+    /// While `f` executes the buffer is exclusively borrowed — any messages
+    /// arriving from the transport during that time are dropped to prevent
+    /// data races.
     ///
     /// Returns `Ok(true)` if a message was available and `f` was called,
     /// `Ok(false)` if no message was available.
@@ -739,13 +744,17 @@ pub trait Subscriber {
         }
     }
 
-    /// Try to receive raw data along with message info from the RMW attachment.
+    /// Try to receive raw data along with publisher metadata.
+    ///
+    /// When available, [`MessageInfo`](nros_core::MessageInfo) contains
+    /// the publisher's GID (Global Identifier) and source timestamp,
+    /// extracted from a transport-level attachment on the incoming message.
     ///
     /// Returns `Ok(Some((len, info)))` if data is available, where:
     /// - `len` is the number of bytes written to the buffer
-    /// - `info` is the parsed message info (if attachment was present)
+    /// - `info` is the parsed publisher metadata (if attachment was present)
     ///
-    /// Default: delegates to `try_recv_raw` with no info.
+    /// Default: delegates to [`try_recv_raw`](Subscriber::try_recv_raw) with no info.
     fn try_recv_raw_with_info(
         &mut self,
         buf: &mut [u8],

@@ -32,6 +32,35 @@
 //! executor.spin_blocking(SpinOptions::default());
 //! ```
 //!
+//! ## Executor Const Generics
+//!
+//! [`Executor`]`<S, MAX_CBS, CB_ARENA>` has two const parameters that
+//! control its static memory layout:
+//!
+//! - **`MAX_CBS`** — maximum number of registered callbacks (subscriptions +
+//!   timers + services + guard conditions).  Size this to the total number of
+//!   handles your node will register.
+//! - **`CB_ARENA`** — byte budget for storing callback closures inline.
+//!   4096 bytes is generous for most use cases; reduce on memory-constrained
+//!   targets.  Each closure occupies its captured-variable size (often 0–32
+//!   bytes).
+//!
+//! For messages larger than the default 1024-byte transmit buffer, use the
+//! `_sized` method variants (e.g., `add_subscription_sized`) to specify a
+//! custom buffer size.
+//!
+//! ## Transport Backends
+//!
+//! Many types are generic over `S: Session`, where `S` is the transport
+//! backend.  You do **not** need to name `S` explicitly — the compiler
+//! infers it from your enabled feature flag:
+//!
+//! - `rmw-zenoh` → `ZenohSession`
+//! - `rmw-xrce` → `XrceSession`
+//!
+//! Advanced users who need the concrete session type can access it via
+//! `nros::internals::RmwSession`.
+//!
 //! ## Crate Features
 //!
 //! Three orthogonal feature axes:
@@ -52,6 +81,17 @@
 //! **Other**:
 //! - `std` (default) - Enable standard library support
 //! - `alloc` - Enable heap allocation without full std
+//!
+//! ## Further Reading
+//!
+//! - [Getting Started](https://github.com/jerry73204/nano-ros/blob/main/docs/guides/getting-started.md)
+//!   — full setup walkthrough
+//! - [Creating Examples](https://github.com/jerry73204/nano-ros/blob/main/docs/guides/creating-examples.md)
+//!   — how to create new examples with message generation
+//! - [Message Generation](https://github.com/jerry73204/nano-ros/blob/main/docs/guides/message-generation.md)
+//!   — code generation workflow for ROS 2 message types
+//! - [Examples](https://github.com/jerry73204/nano-ros/tree/main/examples)
+//!   — working examples by platform (native, QEMU, ESP32, Zephyr)
 
 #![no_std]
 
