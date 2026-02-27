@@ -69,7 +69,7 @@ impl ZenohSession {
         // Each key/value is at most 64 bytes
         let mut key_bufs = [[0u8; CONFIG_PROPERTY_SIZE]; MAX_SESSION_PROPERTIES];
         let mut val_bufs = [[0u8; CONFIG_PROPERTY_SIZE]; MAX_SESSION_PROPERTIES];
-        let mut c_props: [crate::zpico::zenoh_shim_property_t; MAX_SESSION_PROPERTIES] =
+        let mut c_props: [crate::zpico::zpico_property_t; MAX_SESSION_PROPERTIES] =
             unsafe { core::mem::zeroed() };
 
         let mut prop_count = 0usize;
@@ -86,7 +86,7 @@ impl ZenohSession {
             key_bufs[prop_count][key_bytes.len()] = 0;
             val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
             val_bufs[prop_count][val_bytes.len()] = 0;
-            c_props[prop_count] = crate::zpico::zenoh_shim_property_t {
+            c_props[prop_count] = crate::zpico::zpico_property_t {
                 key: key_bufs[prop_count].as_ptr().cast(),
                 value: val_bufs[prop_count].as_ptr().cast(),
             };
@@ -121,7 +121,7 @@ impl ZenohSession {
                             key_bufs[prop_count][key_bytes.len()] = 0;
                             val_bufs[prop_count][..val_bytes.len()].copy_from_slice(val_bytes);
                             val_bufs[prop_count][val_bytes.len()] = 0;
-                            c_props[prop_count] = crate::zpico::zenoh_shim_property_t {
+                            c_props[prop_count] = crate::zpico::zpico_property_t {
                                 key: key_bufs[prop_count].as_ptr().cast(),
                                 value: val_bufs[prop_count].as_ptr().cast(),
                             };

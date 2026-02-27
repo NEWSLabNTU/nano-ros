@@ -4,11 +4,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 description = "C shim library for zenoh-pico with FFI bindings"
-links = "zenoh_shim"
+links = "zpico"
 
 [lints.rust]
 # cbindgen sets cfg(cbindgen) when parsing - allow it without warnings
-unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(shim_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx"))'] }
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)', 'cfg(zpico_backend, values("posix", "zephyr", "bare-metal", "freertos", "nuttx", "threadx"))'] }
 
 [lib]
 name = "zpico_sys"

@@ -24,7 +24,7 @@ pub use zpico_sys::{
     ZPICO_ERR_PUBLISH, ZPICO_ERR_SESSION, ZPICO_ERR_TASK, ZPICO_ERR_TIMEOUT, ZPICO_MAX_LIVELINESS,
     ZPICO_MAX_PUBLISHERS, ZPICO_MAX_QUERYABLES, ZPICO_MAX_SUBSCRIBERS, ZPICO_OK,
     ZPICO_RMW_GID_SIZE, ZPICO_ZID_SIZE, ZpicoCallback, ZpicoCallbackWithAttachment,
-    ZpicoNotifyCallback, ZpicoQueryCallback, ZpicoZeroCopyCallback, zenoh_shim_property_t,
+    ZpicoNotifyCallback, ZpicoQueryCallback, ZpicoZeroCopyCallback, zpico_property_t,
 };
 
 // Import FFI functions from sys crate
@@ -35,15 +35,13 @@ pub use zpico_sys::{
     feature = "platform-freertos"
 ))]
 use zpico_sys::{
-    zenoh_shim_close, zenoh_shim_declare_liveliness, zenoh_shim_declare_publisher,
-    zenoh_shim_declare_queryable, zenoh_shim_declare_subscriber,
-    zenoh_shim_declare_subscriber_direct_write, zenoh_shim_declare_subscriber_with_attachment,
-    zenoh_shim_get, zenoh_shim_get_zid, zenoh_shim_init, zenoh_shim_init_with_config,
-    zenoh_shim_is_open, zenoh_shim_open, zenoh_shim_poll, zenoh_shim_publish,
-    zenoh_shim_publish_with_attachment, zenoh_shim_query_reply, zenoh_shim_spin_once,
-    zenoh_shim_subscribe_zero_copy, zenoh_shim_undeclare_liveliness,
-    zenoh_shim_undeclare_publisher, zenoh_shim_undeclare_queryable,
-    zenoh_shim_undeclare_subscriber, zenoh_shim_uses_polling,
+    zpico_close, zpico_declare_liveliness, zpico_declare_publisher, zpico_declare_queryable,
+    zpico_declare_subscriber, zpico_declare_subscriber_direct_write,
+    zpico_declare_subscriber_with_attachment, zpico_get, zpico_get_zid, zpico_init,
+    zpico_init_with_config, zpico_is_open, zpico_open, zpico_poll, zpico_publish,
+    zpico_publish_with_attachment, zpico_query_reply, zpico_spin_once, zpico_subscribe_zero_copy,
+    zpico_undeclare_liveliness, zpico_undeclare_publisher, zpico_undeclare_queryable,
+    zpico_undeclare_subscriber, zpico_uses_polling,
 };
 
 // ============================================================================
@@ -223,7 +221,7 @@ impl LivelinessToken {
 impl Drop for LivelinessToken {
     fn drop(&mut self) {
         unsafe {
-            zenoh_shim_undeclare_liveliness(self.handle);
+            zpico_undeclare_liveliness(self.handle);
         }
     }
 }
@@ -271,7 +269,7 @@ impl Queryable {
 impl Drop for Queryable {
     fn drop(&mut self) {
         unsafe {
-            zenoh_shim_undeclare_queryable(self.handle);
+            zpico_undeclare_queryable(self.handle);
         }
     }
 }
@@ -315,12 +313,12 @@ impl Context {
     /// Returns an error if initialization or session opening fails.
     pub fn new(locator: &[u8]) -> Result<Self> {
         // Safety: locator is a valid byte slice, cast to c_char for C string
-        let ret = unsafe { zenoh_shim_init(locator.as_ptr().cast()) };
+        let ret = unsafe { zpico_init(locator.as_ptr().cast()) };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
 
-        let ret = unsafe { zenoh_shim_open() };
+        let ret = unsafe { zpico_open() };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -346,7 +344,7 @@ impl Context {
     pub fn with_config(
         locator: Option<&[u8]>,
         mode: &[u8],
-        properties: &[zpico_sys::zenoh_shim_property_t],
+        properties: &[zpico_sys::zpico_property_t],
     ) -> Result<Self> {
         let locator_ptr = match locator {
             Some(loc) => loc.as_ptr().cast(),
@@ -358,7 +356,7 @@ impl Context {
             properties.as_ptr()
         };
         let ret = unsafe {
-            zenoh_shim_init_with_config(
+            zpico_init_with_config(
                 locator_ptr,
                 mode.as_ptr().cast(),
                 props_ptr,
@@ -369,7 +367,7 @@ impl Context {
             return Err(ZpicoError::from_code(ret));
         }
 
-        let ret = unsafe { zenoh_shim_open() };
+        let ret = unsafe { zpico_open() };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -381,7 +379,7 @@ impl Context {
 
     /// Check if the session is open
     pub fn is_open(&self) -> bool {
-        unsafe { zenoh_shim_is_open() != 0 }
+        unsafe { zpico_is_open() != 0 }
     }
 
     /// Check if this backend uses polling
@@ -389,7 +387,7 @@ impl Context {
     /// If true, you must call `poll()` or `spin_once()` regularly to
     /// process network data and dispatch callbacks.
     pub fn uses_polling(&self) -> bool {
-        unsafe { zenoh_shim_uses_polling() }
+        unsafe { zpico_uses_polling() }
     }
 
     /// Declare a publisher for the given key expression
@@ -401,7 +399,7 @@ impl Context {
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of publishers has been reached.
     pub fn declare_publisher(&self, keyexpr: &[u8]) -> Result<Publisher<'_>> {
-        let handle = unsafe { zenoh_shim_declare_publisher(keyexpr.as_ptr().cast()) };
+        let handle = unsafe { zpico_declare_publisher(keyexpr.as_ptr().cast()) };
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -432,8 +430,7 @@ impl Context {
         callback: ZpicoCallback,
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
-        let handle =
-            unsafe { zenoh_shim_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx) };
+        let handle = unsafe { zpico_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -465,7 +462,7 @@ impl Context {
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
         let handle = unsafe {
-            zenoh_shim_declare_subscriber_with_attachment(keyexpr.as_ptr().cast(), callback, ctx)
+            zpico_declare_subscriber_with_attachment(keyexpr.as_ptr().cast(), callback, ctx)
         };
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
@@ -497,7 +494,7 @@ impl Context {
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
         let handle = unsafe {
-            zenoh_shim_declare_subscriber_direct_write(
+            zpico_declare_subscriber_direct_write(
                 keyexpr.as_ptr().cast(),
                 buf_ptr,
                 buf_capacity,
@@ -531,8 +528,7 @@ impl Context {
         callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
-        let handle =
-            unsafe { zenoh_shim_subscribe_zero_copy(keyexpr.as_ptr().cast(), callback, ctx) };
+        let handle = unsafe { zpico_subscribe_zero_copy(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -558,7 +554,7 @@ impl Context {
     ///
     /// Number of events processed, or error
     pub fn poll(&self, timeout_ms: u32) -> Result<i32> {
-        let ret = unsafe { zenoh_shim_poll(timeout_ms) };
+        let ret = unsafe { zpico_poll(timeout_ms) };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -578,7 +574,7 @@ impl Context {
     ///
     /// Number of events processed, or error
     pub fn spin_once(&self, timeout_ms: u32) -> Result<i32> {
-        let ret = unsafe { zenoh_shim_spin_once(timeout_ms) };
+        let ret = unsafe { zpico_spin_once(timeout_ms) };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -591,7 +587,7 @@ impl Context {
     /// It is used in liveliness token key expressions for ROS 2 discovery.
     pub fn zid(&self) -> Result<ZenohId> {
         let mut id = [0u8; 16];
-        let ret = unsafe { zenoh_shim_get_zid(id.as_mut_ptr()) };
+        let ret = unsafe { zpico_get_zid(id.as_mut_ptr()) };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -607,7 +603,7 @@ impl Context {
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of liveliness tokens has been reached.
     pub fn declare_liveliness(&self, keyexpr: &[u8]) -> Result<LivelinessToken> {
-        let handle = unsafe { zenoh_shim_declare_liveliness(keyexpr.as_ptr().cast()) };
+        let handle = unsafe { zpico_declare_liveliness(keyexpr.as_ptr().cast()) };
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -635,8 +631,7 @@ impl Context {
         callback: ZpicoQueryCallback,
         ctx: *mut c_void,
     ) -> Result<Queryable> {
-        let handle =
-            unsafe { zenoh_shim_declare_queryable(keyexpr.as_ptr().cast(), callback, ctx) };
+        let handle = unsafe { zpico_declare_queryable(keyexpr.as_ptr().cast(), callback, ctx) };
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -673,7 +668,7 @@ impl Context {
         };
 
         let ret = unsafe {
-            zenoh_shim_query_reply(
+            zpico_query_reply(
                 queryable_handle,
                 keyexpr.as_ptr().cast(),
                 data.as_ptr(),
@@ -722,7 +717,7 @@ impl Context {
         };
 
         let ret = unsafe {
-            zenoh_shim_get(
+            zpico_get(
                 keyexpr.as_ptr().cast(),
                 payload_ptr,
                 payload_len,
@@ -754,7 +749,7 @@ impl Context {
         };
 
         let ret = unsafe {
-            zpico_sys::zenoh_shim_get_start(
+            zpico_sys::zpico_get_start(
                 keyexpr.as_ptr().cast(),
                 payload_ptr,
                 payload_len,
@@ -774,9 +769,8 @@ impl Context {
     /// Returns `Ok(Some(len))` when a reply has arrived, `Ok(None)` if still
     /// pending, or `Err` on failure/timeout.
     pub fn get_check(&self, handle: i32, reply_buf: &mut [u8]) -> Result<Option<usize>> {
-        let ret = unsafe {
-            zpico_sys::zenoh_shim_get_check(handle, reply_buf.as_mut_ptr(), reply_buf.len())
-        };
+        let ret =
+            unsafe { zpico_sys::zpico_get_check(handle, reply_buf.as_mut_ptr(), reply_buf.len()) };
 
         if ret > 0 {
             Ok(Some(ret as usize))
@@ -800,7 +794,7 @@ impl Context {
 impl Drop for Context {
     fn drop(&mut self) {
         unsafe {
-            zenoh_shim_close();
+            zpico_close();
         }
     }
 }
@@ -836,7 +830,7 @@ impl<'a> Publisher<'a> {
     ///
     /// Returns an error if the publish operation fails.
     pub fn publish(&self, data: &[u8]) -> Result<()> {
-        let ret = unsafe { zenoh_shim_publish(self.handle, data.as_ptr(), data.len()) };
+        let ret = unsafe { zpico_publish(self.handle, data.as_ptr(), data.len()) };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -863,13 +857,7 @@ impl<'a> Publisher<'a> {
         };
 
         let ret = unsafe {
-            zenoh_shim_publish_with_attachment(
-                self.handle,
-                data.as_ptr(),
-                data.len(),
-                att_ptr,
-                att_len,
-            )
+            zpico_publish_with_attachment(self.handle, data.as_ptr(), data.len(), att_ptr, att_len)
         };
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
@@ -892,7 +880,7 @@ impl<'a> Publisher<'a> {
 impl<'a> Drop for Publisher<'a> {
     fn drop(&mut self) {
         unsafe {
-            zenoh_shim_undeclare_publisher(self.handle);
+            zpico_undeclare_publisher(self.handle);
         }
     }
 }
@@ -937,7 +925,7 @@ impl<'a> Subscriber<'a> {
 impl<'a> Drop for Subscriber<'a> {
     fn drop(&mut self) {
         unsafe {
-            zenoh_shim_undeclare_subscriber(self.handle);
+            zpico_undeclare_subscriber(self.handle);
         }
     }
 }

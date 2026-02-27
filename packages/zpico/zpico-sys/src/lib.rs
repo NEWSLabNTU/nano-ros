@@ -1,7 +1,7 @@
-//! zpico-sys: C shim library for zenoh-pico with FFI bindings
+//! zpico-sys: C wrapper library for zenoh-pico with FFI bindings
 //!
 //! This crate provides:
-//! - The compiled C shim library (zenoh_shim.c)
+//! - The compiled zpico C library (zpico.c)
 //! - FFI constants and types
 //! - zenoh-pico library (compiled from submodule)
 //!
@@ -58,15 +58,15 @@ pub use ffi::*;
 
 /// A key-value property for transport configuration (C-compatible)
 #[repr(C)]
-pub struct zenoh_shim_property_t {
+pub struct zpico_property_t {
     /// Property key (null-terminated C string)
     pub key: *const core::ffi::c_char,
     /// Property value (null-terminated C string)
     pub value: *const core::ffi::c_char,
 }
 
-// These extern declarations import the C shim functions.
-// The actual implementations are in c/shim/zenoh_shim.c
+// These extern declarations import the zpico C functions.
+// The actual implementations are in c/zpico/zpico.c
 //
 // Note: Excluded from cbindgen - these are Rust imports of C functions,
 // not declarations for the header file.
@@ -82,44 +82,44 @@ pub struct zenoh_shim_property_t {
 #[allow(improper_ctypes)]
 unsafe extern "C" {
     // Session lifecycle
-    pub fn zenoh_shim_init(locator: *const core::ffi::c_char) -> i32;
-    pub fn zenoh_shim_init_with_config(
+    pub fn zpico_init(locator: *const core::ffi::c_char) -> i32;
+    pub fn zpico_init_with_config(
         locator: *const core::ffi::c_char,
         mode: *const core::ffi::c_char,
-        properties: *const zenoh_shim_property_t,
+        properties: *const zpico_property_t,
         num_properties: usize,
     ) -> i32;
-    pub fn zenoh_shim_open() -> i32;
-    pub fn zenoh_shim_is_open() -> i32;
-    pub fn zenoh_shim_close();
+    pub fn zpico_open() -> i32;
+    pub fn zpico_is_open() -> i32;
+    pub fn zpico_close();
 
     // ZenohId
-    pub fn zenoh_shim_get_zid(zid_out: *mut u8) -> i32;
+    pub fn zpico_get_zid(zid_out: *mut u8) -> i32;
 
     // Publishers
-    pub fn zenoh_shim_declare_publisher(keyexpr: *const core::ffi::c_char) -> i32;
-    pub fn zenoh_shim_publish(handle: i32, data: *const u8, len: usize) -> i32;
-    pub fn zenoh_shim_publish_with_attachment(
+    pub fn zpico_declare_publisher(keyexpr: *const core::ffi::c_char) -> i32;
+    pub fn zpico_publish(handle: i32, data: *const u8, len: usize) -> i32;
+    pub fn zpico_publish_with_attachment(
         handle: i32,
         data: *const u8,
         len: usize,
         attachment: *const u8,
         attachment_len: usize,
     ) -> i32;
-    pub fn zenoh_shim_undeclare_publisher(handle: i32) -> i32;
+    pub fn zpico_undeclare_publisher(handle: i32) -> i32;
 
     // Subscribers
-    pub fn zenoh_shim_declare_subscriber(
+    pub fn zpico_declare_subscriber(
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoCallback,
         ctx: *mut c_void,
     ) -> i32;
-    pub fn zenoh_shim_declare_subscriber_with_attachment(
+    pub fn zpico_declare_subscriber_with_attachment(
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoCallbackWithAttachment,
         ctx: *mut c_void,
     ) -> i32;
-    pub fn zenoh_shim_declare_subscriber_direct_write(
+    pub fn zpico_declare_subscriber_direct_write(
         keyexpr: *const core::ffi::c_char,
         buf_ptr: *mut u8,
         buf_capacity: usize,
@@ -127,25 +127,25 @@ unsafe extern "C" {
         callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
     ) -> i32;
-    pub fn zenoh_shim_subscribe_zero_copy(
+    pub fn zpico_subscribe_zero_copy(
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
     ) -> i32;
-    pub fn zenoh_shim_undeclare_subscriber(handle: i32) -> i32;
+    pub fn zpico_undeclare_subscriber(handle: i32) -> i32;
 
     // Liveliness
-    pub fn zenoh_shim_declare_liveliness(keyexpr: *const core::ffi::c_char) -> i32;
-    pub fn zenoh_shim_undeclare_liveliness(handle: i32) -> i32;
+    pub fn zpico_declare_liveliness(keyexpr: *const core::ffi::c_char) -> i32;
+    pub fn zpico_undeclare_liveliness(handle: i32) -> i32;
 
     // Queryables (for services)
-    pub fn zenoh_shim_declare_queryable(
+    pub fn zpico_declare_queryable(
         keyexpr: *const core::ffi::c_char,
         callback: ZpicoQueryCallback,
         ctx: *mut c_void,
     ) -> i32;
-    pub fn zenoh_shim_undeclare_queryable(handle: i32) -> i32;
-    pub fn zenoh_shim_query_reply(
+    pub fn zpico_undeclare_queryable(handle: i32) -> i32;
+    pub fn zpico_query_reply(
         queryable_handle: i32,
         keyexpr: *const core::ffi::c_char,
         data: *const u8,
@@ -155,7 +155,7 @@ unsafe extern "C" {
     ) -> i32;
 
     // Service client (queries)
-    pub fn zenoh_shim_get(
+    pub fn zpico_get(
         keyexpr: *const core::ffi::c_char,
         payload: *const u8,
         payload_len: usize,
@@ -165,18 +165,18 @@ unsafe extern "C" {
     ) -> i32;
 
     // Non-blocking service client (async queries)
-    pub fn zenoh_shim_get_start(
+    pub fn zpico_get_start(
         keyexpr: *const core::ffi::c_char,
         payload: *const u8,
         payload_len: usize,
         timeout_ms: u32,
     ) -> i32;
-    pub fn zenoh_shim_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
+    pub fn zpico_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
 
     // Polling
-    pub fn zenoh_shim_poll(timeout_ms: u32) -> i32;
-    pub fn zenoh_shim_spin_once(timeout_ms: u32) -> i32;
-    pub fn zenoh_shim_uses_polling() -> bool;
+    pub fn zpico_poll(timeout_ms: u32) -> i32;
+    pub fn zpico_spin_once(timeout_ms: u32) -> i32;
+    pub fn zpico_uses_polling() -> bool;
 }
 
 // ============================================================================

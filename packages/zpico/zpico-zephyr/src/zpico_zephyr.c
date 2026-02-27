@@ -11,7 +11,7 @@
  */
 
 #include "zpico_zephyr.h"
-#include "zenoh_shim.h"
+#include "zpico.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/logging/log.h>
@@ -48,7 +48,7 @@ int32_t zpico_zephyr_init_session(const char *locator)
     LOG_INF("Initializing zenoh session");
     LOG_INF("  Locator: %s", locator);
 
-    int32_t ret = zenoh_shim_init(locator);
+    int32_t ret = zpico_init(locator);
     if (ret != ZPICO_OK) {
         LOG_ERR("Failed to initialize zenoh: %d", ret);
         return ret;
@@ -56,7 +56,7 @@ int32_t zpico_zephyr_init_session(const char *locator)
 
     LOG_INF("  Zenoh initialized");
 
-    ret = zenoh_shim_open();
+    ret = zpico_open();
     if (ret != ZPICO_OK) {
         LOG_ERR("Failed to open zenoh session: %d", ret);
         return ret;
@@ -68,6 +68,6 @@ int32_t zpico_zephyr_init_session(const char *locator)
 
 void zpico_zephyr_shutdown(void)
 {
-    zenoh_shim_close();
+    zpico_close();
     LOG_INF("Zenoh session closed");
 }

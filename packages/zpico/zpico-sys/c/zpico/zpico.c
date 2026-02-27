@@ -1,14 +1,14 @@
 /**
  * zpico-sys Core Implementation
  *
- * This file implements the zenoh shim API using zenoh-pico.
+ * This file implements the zpico API using zenoh-pico.
  * Platform-specific behavior is handled by zenoh-pico's platform layer.
  *
- * The shim provides a simplified C API that hides zenoh-pico's complex
+ * zpico provides a simplified C API that hides zenoh-pico's complex
  * ownership types from Rust FFI (avoiding struct size mismatch issues).
  */
 
-#include "zenoh_shim.h"
+#include "zpico.h"
 #include <zenoh-pico.h>
 #include <string.h>
 
@@ -176,7 +176,7 @@ static pending_get_slot_t g_pending_gets[ZPICO_MAX_PENDING_GETS];
 /**
  * Internal callback for queryable that receives queries
  */
-static void shim_query_handler(z_loaned_query_t *query, void *arg) {
+static void query_handler(z_loaned_query_t *query, void *arg) {
     int idx = (int)(intptr_t)arg;
     if (idx < 0 || idx >= ZPICO_MAX_QUERYABLES) {
         return;
@@ -235,7 +235,7 @@ static void shim_query_handler(z_loaned_query_t *query, void *arg) {
  * - with_attachment: copies payload via z_bytes_to_slice() (legacy path)
  * - legacy: copies payload only via z_bytes_to_slice()
  */
-static void shim_sample_handler(z_loaned_sample_t *sample, void *arg) {
+static void sample_handler(z_loaned_sample_t *sample, void *arg) {
     int idx = (int)(intptr_t)arg;
     if (idx < 0 || idx >= ZPICO_MAX_SUBSCRIBERS) {
         return;
@@ -367,13 +367,13 @@ static void shim_sample_handler(z_loaned_sample_t *sample, void *arg) {
 // Session Lifecycle Implementation
 // ============================================================================
 
-int32_t zenoh_shim_init(const char *locator) {
-    return zenoh_shim_init_with_config(locator, "client", NULL, 0);
+int32_t zpico_init(const char *locator) {
+    return zpico_init_with_config(locator, "client", NULL, 0);
 }
 
-int32_t zenoh_shim_init_with_config(const char *locator,
+int32_t zpico_init_with_config(const char *locator,
                                      const char *mode,
-                                     const zenoh_shim_property_t *properties,
+                                     const zpico_property_t *properties,
                                      size_t num_properties) {
     // Initialize storage
     memset(g_publishers, 0, sizeof(g_publishers));
@@ -446,7 +446,7 @@ int32_t zenoh_shim_init_with_config(const char *locator,
     return ZPICO_OK;
 }
 
-int32_t zenoh_shim_open(void) {
+int32_t zpico_open(void) {
     if (!g_initialized) {
         return ZPICO_ERR_GENERIC;
     }
@@ -457,7 +457,7 @@ int32_t zenoh_shim_open(void) {
 
     // Start background tasks only in multi-threaded mode
     // In single-threaded mode (Z_FEATURE_MULTI_THREAD=0), polling is done
-    // explicitly via zenoh_shim_poll() / zenoh_shim_spin_once()
+    // explicitly via zpico_poll() / zpico_spin_once()
 #if Z_FEATURE_MULTI_THREAD == 1
     if (zp_start_read_task(z_session_loan_mut(&g_session), NULL) < 0) {
         z_close(z_session_loan_mut(&g_session), NULL);
@@ -475,11 +475,11 @@ int32_t zenoh_shim_open(void) {
     return ZPICO_OK;
 }
 
-int32_t zenoh_shim_is_open(void) {
+int32_t zpico_is_open(void) {
     return g_session_open ? 1 : 0;
 }
 
-void zenoh_shim_close(void) {
+void zpico_close(void) {
     // Clean up publishers
     for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
         if (g_publishers[i].active) {
@@ -539,7 +539,7 @@ void zenoh_shim_close(void) {
 // Publisher Implementation
 // ============================================================================
 
-int32_t zenoh_shim_declare_publisher(const char *keyexpr) {
+int32_t zpico_declare_publisher(const char *keyexpr) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -559,14 +559,14 @@ int32_t zenoh_shim_declare_publisher(const char *keyexpr) {
     z_view_keyexpr_t ke;
     int ke_ret = z_view_keyexpr_from_str(&ke, keyexpr);
     if (ke_ret < 0) {
-        printk("zenoh_shim: z_view_keyexpr_from_str failed: %d for '%s'\n", ke_ret, keyexpr);
+        printk("zpico: z_view_keyexpr_from_str failed: %d for '%s'\n", ke_ret, keyexpr);
         return ZPICO_ERR_KEYEXPR;
     }
 
     int pub_ret = z_declare_publisher(z_session_loan(&g_session), &g_publishers[idx].publisher,
                                       z_view_keyexpr_loan(&ke), NULL);
     if (pub_ret < 0) {
-        printk("zenoh_shim: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
+        printk("zpico: z_declare_publisher failed: %d for '%s'\n", pub_ret, keyexpr);
         return ZPICO_ERR_GENERIC;
     }
 
@@ -574,7 +574,7 @@ int32_t zenoh_shim_declare_publisher(const char *keyexpr) {
     return idx;
 }
 
-int32_t zenoh_shim_publish(int32_t handle, const uint8_t *data, size_t len) {
+int32_t zpico_publish(int32_t handle, const uint8_t *data, size_t len) {
     if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -582,21 +582,21 @@ int32_t zenoh_shim_publish(int32_t handle, const uint8_t *data, size_t len) {
     z_owned_bytes_t payload;
     int bytes_ret = z_bytes_copy_from_buf(&payload, data, len);
     if (bytes_ret < 0) {
-        printk("zenoh_shim: z_bytes_copy_from_buf failed: %d\n", bytes_ret);
+        printk("zpico: z_bytes_copy_from_buf failed: %d\n", bytes_ret);
         return ZPICO_ERR_PUBLISH;
     }
 
     int put_ret = z_publisher_put(z_publisher_loan(&g_publishers[handle].publisher),
                         z_bytes_move(&payload), NULL);
     if (put_ret < 0) {
-        printk("zenoh_shim: z_publisher_put failed: %d\n", put_ret);
+        printk("zpico: z_publisher_put failed: %d\n", put_ret);
         return ZPICO_ERR_PUBLISH;
     }
 
     return ZPICO_OK;
 }
 
-int32_t zenoh_shim_undeclare_publisher(int32_t handle) {
+int32_t zpico_undeclare_publisher(int32_t handle) {
     if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -610,7 +610,7 @@ int32_t zenoh_shim_undeclare_publisher(int32_t handle) {
 // Subscriber Implementation
 // ============================================================================
 
-int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
+int32_t zpico_declare_subscriber(const char *keyexpr,
                                        ZpicoCallback callback,
                                        void *ctx) {
     if (!g_session_open) {
@@ -642,12 +642,12 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
 
     int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
                                        z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
-        printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
+        printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback = NULL;
         g_subscribers[idx].ctx = NULL;
         return ZPICO_ERR_GENERIC;
@@ -657,7 +657,7 @@ int32_t zenoh_shim_declare_subscriber(const char *keyexpr,
     return idx;
 }
 
-int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
+int32_t zpico_declare_subscriber_with_attachment(const char *keyexpr,
                                                        ZpicoCallbackWithAttachment callback,
                                                        void *ctx) {
     if (!g_session_open) {
@@ -689,12 +689,12 @@ int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
 
     int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
                                        z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
-        printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
+        printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].callback_ext = NULL;
         g_subscribers[idx].ctx = NULL;
         return ZPICO_ERR_GENERIC;
@@ -704,7 +704,7 @@ int32_t zenoh_shim_declare_subscriber_with_attachment(const char *keyexpr,
     return idx;
 }
 
-int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
+int32_t zpico_declare_subscriber_direct_write(const char *keyexpr,
                                                      uint8_t *buf_ptr,
                                                      size_t buf_capacity,
                                                      const bool *locked_ptr,
@@ -744,12 +744,12 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
 
     int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
                                        z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
-        printk("zenoh_shim: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
+        printk("zpico: z_declare_subscriber failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].notify = NULL;
         g_subscribers[idx].ctx = NULL;
         g_subscribers[idx].direct_write = false;
@@ -761,7 +761,7 @@ int32_t zenoh_shim_declare_subscriber_direct_write(const char *keyexpr,
 }
 
 #if defined(Z_FEATURE_UNSTABLE_API)
-int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
+int32_t zpico_subscribe_zero_copy(const char *keyexpr,
                                         ZpicoZeroCopyCallback callback,
                                         void *ctx) {
     if (!g_session_open) {
@@ -796,12 +796,12 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
 
     // Create closure for callback, passing index as context
     z_owned_closure_sample_t closure;
-    z_closure_sample(&closure, shim_sample_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_sample(&closure, sample_handler, NULL, (void *)(intptr_t)idx);
 
     int sub_ret = z_declare_subscriber(z_session_loan(&g_session), &g_subscribers[idx].subscriber,
                                        z_view_keyexpr_loan(&ke), z_closure_sample_move(&closure), NULL);
     if (sub_ret < 0) {
-        printk("zenoh_shim: z_declare_subscriber (zero_copy) failed: %d for '%s'\n", sub_ret, keyexpr);
+        printk("zpico: z_declare_subscriber (zero_copy) failed: %d for '%s'\n", sub_ret, keyexpr);
         g_subscribers[idx].zero_copy = false;
         g_subscribers[idx].zero_copy_cb = NULL;
         g_subscribers[idx].ctx = NULL;
@@ -813,7 +813,7 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
 }
 #else
 // Stub when unstable API is not enabled — returns error
-int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
+int32_t zpico_subscribe_zero_copy(const char *keyexpr,
                                         ZpicoZeroCopyCallback callback,
                                         void *ctx) {
     (void)keyexpr;
@@ -823,7 +823,7 @@ int32_t zenoh_shim_subscribe_zero_copy(const char *keyexpr,
 }
 #endif
 
-int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
+int32_t zpico_undeclare_subscriber(int32_t handle) {
     if (handle < 0 || handle >= ZPICO_MAX_SUBSCRIBERS || !g_subscribers[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -848,7 +848,7 @@ int32_t zenoh_shim_undeclare_subscriber(int32_t handle) {
  *
  * Returns -1 if the session is not unicast or has no connected peers.
  */
-static int _zenoh_shim_get_session_fd(void) {
+static int get_session_fd(void) {
     _z_session_t *session = _Z_RC_IN_VAL(z_session_loan(&g_session));
     if (session->_tp._type != _Z_TRANSPORT_UNICAST_TYPE) {
         return -1;
@@ -871,7 +871,7 @@ static int _zenoh_shim_get_session_fd(void) {
 // Polling Implementation
 // ============================================================================
 
-int32_t zenoh_shim_poll(uint32_t timeout_ms) {
+int32_t zpico_poll(uint32_t timeout_ms) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -901,7 +901,7 @@ int32_t zenoh_shim_poll(uint32_t timeout_ms) {
     // Multi-threaded (Zephyr/POSIX): background read task handles data.
     // Use select() to wait for activity or timeout — do NOT call zp_read()
     // since the read task holds _mutex_rx.
-    int fd = _zenoh_shim_get_session_fd();
+    int fd = get_session_fd();
     if (fd >= 0 && timeout_ms > 0) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -915,7 +915,7 @@ int32_t zenoh_shim_poll(uint32_t timeout_ms) {
 
 #else
     // Single-threaded (not smoltcp): use select() then zp_read()
-    int fd = _zenoh_shim_get_session_fd();
+    int fd = get_session_fd();
     if (fd >= 0 && timeout_ms > 0) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -932,7 +932,7 @@ int32_t zenoh_shim_poll(uint32_t timeout_ms) {
 #endif
 }
 
-int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
+int32_t zpico_spin_once(uint32_t timeout_ms) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -966,7 +966,7 @@ int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
     // Multi-threaded (Zephyr/POSIX): background read task handles data.
     // Use select() to wait for activity or timeout — do NOT call zp_read()
     // since the read task holds _mutex_rx.
-    int fd = _zenoh_shim_get_session_fd();
+    int fd = get_session_fd();
     if (fd >= 0 && timeout_ms > 0) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -981,7 +981,7 @@ int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
 
 #else
     // Single-threaded (not smoltcp): use select() then zp_read()
-    int fd = _zenoh_shim_get_session_fd();
+    int fd = get_session_fd();
     if (fd >= 0 && timeout_ms > 0) {
         fd_set read_fds;
         FD_ZERO(&read_fds);
@@ -1001,7 +1001,7 @@ int32_t zenoh_shim_spin_once(uint32_t timeout_ms) {
 #endif
 }
 
-bool zenoh_shim_uses_polling(void) {
+bool zpico_uses_polling(void) {
     // Returns true if multi-threading is disabled
 #if Z_FEATURE_MULTI_THREAD == 0
     return true;
@@ -1014,7 +1014,7 @@ bool zenoh_shim_uses_polling(void) {
 // ZenohId Implementation
 // ============================================================================
 
-int32_t zenoh_shim_get_zid(uint8_t *zid_out) {
+int32_t zpico_get_zid(uint8_t *zid_out) {
     if (!g_session_open || zid_out == NULL) {
         return ZPICO_ERR_SESSION;
     }
@@ -1028,7 +1028,7 @@ int32_t zenoh_shim_get_zid(uint8_t *zid_out) {
 // Liveliness Implementation
 // ============================================================================
 
-int32_t zenoh_shim_declare_liveliness(const char *keyexpr) {
+int32_t zpico_declare_liveliness(const char *keyexpr) {
     if (!g_session_open) {
         return ZPICO_ERR_SESSION;
     }
@@ -1061,7 +1061,7 @@ int32_t zenoh_shim_declare_liveliness(const char *keyexpr) {
     return idx;
 }
 
-int32_t zenoh_shim_undeclare_liveliness(int32_t handle) {
+int32_t zpico_undeclare_liveliness(int32_t handle) {
     if (handle < 0 || handle >= ZPICO_MAX_LIVELINESS || !g_liveliness[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -1075,7 +1075,7 @@ int32_t zenoh_shim_undeclare_liveliness(int32_t handle) {
 // Publish with Attachment Implementation
 // ============================================================================
 
-int32_t zenoh_shim_publish_with_attachment(int32_t handle,
+int32_t zpico_publish_with_attachment(int32_t handle,
                                             const uint8_t *data, size_t len,
                                             const uint8_t *attachment, size_t attachment_len) {
     if (handle < 0 || handle >= ZPICO_MAX_PUBLISHERS || !g_publishers[handle].active) {
@@ -1113,7 +1113,7 @@ int32_t zenoh_shim_publish_with_attachment(int32_t handle,
 // Queryable Implementation (for ROS 2 Services)
 // ============================================================================
 
-int32_t zenoh_shim_declare_queryable(const char *keyexpr,
+int32_t zpico_declare_queryable(const char *keyexpr,
                                       ZpicoQueryCallback callback,
                                       void *ctx) {
     if (!g_session_open) {
@@ -1144,12 +1144,12 @@ int32_t zenoh_shim_declare_queryable(const char *keyexpr,
 
     // Create closure for callback
     z_owned_closure_query_t closure;
-    z_closure_query(&closure, shim_query_handler, NULL, (void *)(intptr_t)idx);
+    z_closure_query(&closure, query_handler, NULL, (void *)(intptr_t)idx);
 
     int q_ret = z_declare_queryable(z_session_loan(&g_session), &g_queryables[idx].queryable,
                                     z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), NULL);
     if (q_ret < 0) {
-        printk("zenoh_shim: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
+        printk("zpico: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
         g_queryables[idx].callback = NULL;
         g_queryables[idx].ctx = NULL;
         return ZPICO_ERR_GENERIC;
@@ -1159,7 +1159,7 @@ int32_t zenoh_shim_declare_queryable(const char *keyexpr,
     return idx;
 }
 
-int32_t zenoh_shim_undeclare_queryable(int32_t handle) {
+int32_t zpico_undeclare_queryable(int32_t handle) {
     if (handle < 0 || handle >= ZPICO_MAX_QUERYABLES || !g_queryables[handle].active) {
         return ZPICO_ERR_INVALID;
     }
@@ -1178,7 +1178,7 @@ int32_t zenoh_shim_undeclare_queryable(int32_t handle) {
 /**
  * Internal callback for z_get reply handling
  */
-static void shim_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
+static void get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
     get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
 
     // Only process successful replies
@@ -1212,7 +1212,7 @@ static void shim_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
 /**
  * Internal callback for z_get completion (dropper)
  */
-static void shim_get_reply_dropper(void *ctx) {
+static void get_reply_dropper(void *ctx) {
     get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
 #if Z_FEATURE_MULTI_THREAD == 1
     _z_mutex_lock(&rctx->mutex);
@@ -1224,7 +1224,7 @@ static void shim_get_reply_dropper(void *ctx) {
 #endif
 }
 
-int32_t zenoh_shim_get(const char *keyexpr,
+int32_t zpico_get(const char *keyexpr,
                        const uint8_t *payload, size_t payload_len,
                        uint8_t *reply_buf, size_t reply_buf_size,
                        uint32_t timeout_ms) {
@@ -1263,7 +1263,7 @@ int32_t zenoh_shim_get(const char *keyexpr,
 
     // Create closure for reply handling with stack context
     z_owned_closure_reply_t callback;
-    z_closure(&callback, shim_get_reply_handler, shim_get_reply_dropper, &ctx);
+    z_closure(&callback, get_reply_handler, get_reply_dropper, &ctx);
 
     // Send the query
     if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
@@ -1326,18 +1326,18 @@ int32_t zenoh_shim_get(const char *keyexpr,
 // Non-blocking z_get (for async service client)
 // ============================================================================
 
-// Reply handler for pending get slots — reuses the same logic as shim_get_reply_handler
-static void shim_pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
-    shim_get_reply_handler(reply, ctx);
+// Reply handler for pending get slots — reuses the same logic as get_reply_handler
+static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
+    get_reply_handler(reply, ctx);
 }
 
 // Dropper for pending get slots — just sets the done flag (no condvar)
-static void shim_pending_get_dropper(void *ctx) {
+static void pending_get_dropper(void *ctx) {
     get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
     rctx->done = true;
 }
 
-int32_t zenoh_shim_get_start(const char *keyexpr,
+int32_t zpico_get_start(const char *keyexpr,
                               const uint8_t *payload, size_t payload_len,
                               uint32_t timeout_ms) {
     if (!g_session_open) {
@@ -1379,7 +1379,7 @@ int32_t zenoh_shim_get_start(const char *keyexpr,
     }
 
     z_owned_closure_reply_t callback;
-    z_closure(&callback, shim_pending_get_reply_handler, shim_pending_get_dropper, &ps->ctx);
+    z_closure(&callback, pending_get_reply_handler, pending_get_dropper, &ps->ctx);
 
     if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
               z_move(callback), &opts) < 0) {
@@ -1390,7 +1390,7 @@ int32_t zenoh_shim_get_start(const char *keyexpr,
     return slot;
 }
 
-int32_t zenoh_shim_get_check(int32_t handle,
+int32_t zpico_get_check(int32_t handle,
                               uint8_t *reply_buf, size_t reply_buf_size) {
     if (handle < 0 || handle >= ZPICO_MAX_PENDING_GETS) {
         return ZPICO_ERR_INVALID;
@@ -1427,7 +1427,7 @@ int32_t zenoh_shim_get_check(int32_t handle,
 // Query Reply Implementation (for service servers)
 // ============================================================================
 
-int32_t zenoh_shim_query_reply(int32_t queryable_handle,
+int32_t zpico_query_reply(int32_t queryable_handle,
                                 const char *keyexpr,
                                 const uint8_t *data, size_t len,
                                 const uint8_t *attachment, size_t attachment_len) {

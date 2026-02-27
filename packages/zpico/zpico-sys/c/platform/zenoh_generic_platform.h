@@ -10,9 +10,9 @@
 #define ZENOH_GENERIC_PLATFORM_H
 
 #if defined(ZENOH_THREADX)
-#include "zenoh_threadx_platform.h"
+#include "threadx/platform.h"
 #else
-#include "zenoh_bare_metal_platform.h"
+#include "bare-metal/platform.h"
 #endif
 
 #endif /* ZENOH_GENERIC_PLATFORM_H */

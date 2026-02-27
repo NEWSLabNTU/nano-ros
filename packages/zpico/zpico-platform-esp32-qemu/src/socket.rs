@@ -3,7 +3,7 @@
 //! These are auxiliary socket functions that zenoh-pico expects.
 //! The main TCP socket operations (_z_open_tcp, etc.) are in the transport crate.
 
-/// TCP socket type (matches zenoh_bare_metal_platform.h)
+/// TCP socket type (matches bare-metal/platform.h)
 #[repr(C)]
 pub(crate) struct ZSysNetSocket {
     pub _handle: i8,

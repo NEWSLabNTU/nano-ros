@@ -1,5 +1,5 @@
 /**
- * zenoh_threadx_network.c — zenoh-pico network transport for ThreadX + NetX Duo
+ * network.c — zenoh-pico network transport for ThreadX + NetX Duo
  *
  * Implements zenoh-pico's network interface using NetX Duo's BSD socket API
  * (nxd_bsd.h). Provides TCP and UDP unicast transport.

@@ -1,5 +1,5 @@
 /**
- * zenoh_threadx_system.c — zenoh-pico system layer for Eclipse ThreadX
+ * system.c — zenoh-pico system layer for Eclipse ThreadX
  *
  * Provides threading, memory, clock, sleep, and random functions using
  * ThreadX kernel APIs. Adapted from zenoh-pico's src/system/threadx/stm32/system.c

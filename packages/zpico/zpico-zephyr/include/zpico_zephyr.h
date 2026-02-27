@@ -35,7 +35,7 @@ int32_t zpico_zephyr_wait_network(int timeout_ms);
 /**
  * @brief Initialize and open a zenoh-pico session.
  *
- * Calls zenoh_shim_init() followed by zenoh_shim_open(). The network
+ * Calls zpico_init() followed by zpico_open(). The network
  * interface must be up before calling this function.
  *
  * @param locator Zenoh router locator (e.g., "tcp/192.0.2.2:7447")

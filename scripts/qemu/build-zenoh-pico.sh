@@ -96,9 +96,9 @@ done
 SOURCES="$SOURCES $PLATFORM_DIR/system.c"
 SOURCES="$SOURCES $PLATFORM_DIR/network.c"
 
-# Add zenoh shim (high-level API wrapper)
-SHIM_DIR="$REPO_ROOT/packages/zpico/zpico-sys/c/shim"
-SOURCES="$SOURCES $SHIM_DIR/zenoh_shim.c"
+# Add zpico (high-level API wrapper)
+ZPICO_DIR="$REPO_ROOT/packages/zpico/zpico-sys/c/zpico"
+SOURCES="$SOURCES $ZPICO_DIR/zpico.c"
 
 # Compiler flags
 CFLAGS="-mcpu=cortex-m3 -mthumb"

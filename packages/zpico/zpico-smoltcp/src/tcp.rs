@@ -11,7 +11,7 @@ use crate::util::{parse_ip_address, parse_port};
 use crate::bridge::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
 
 // ============================================================================
-// C types matching zenoh_bare_metal_platform.h
+// C types matching bare-metal/platform.h
 // ============================================================================
 
 /// Socket handle passed between zenoh-pico and platform layer.

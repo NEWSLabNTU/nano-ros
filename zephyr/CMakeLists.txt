@@ -88,9 +88,9 @@ if(CONFIG_NROS_RMW_ZENOH)
     # Shared sources: zenoh shim + zpico-zephyr platform support
     # -------------------------------------------------------------------------
 
-    # zenoh_shim.c — the C shim over zenoh-pico
+    # zpico.c — the C API layer over zenoh-pico
     zephyr_library_sources(
-        ${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/shim/zenoh_shim.c
+        ${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/zpico/zpico.c
     )
 
     # zpico_zephyr.c — Zephyr platform support (network wait, session init)
@@ -98,7 +98,7 @@ if(CONFIG_NROS_RMW_ZENOH)
         ${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/src/zpico_zephyr.c
     )
 
-    # Include directories for shim and platform headers
+    # Include directories for zpico and platform headers
     zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-sys/c/include)
     zephyr_include_directories(${NROS_REPO_DIR}/packages/zpico/zpico-zephyr/include)
 
@@ -106,7 +106,7 @@ if(CONFIG_NROS_RMW_ZENOH)
     # Transport tuning: Kconfig → C preprocessor flags
     # -------------------------------------------------------------------------
 
-    # Map Kconfig transport tuning to ZPICO_* defines consumed by zenoh_shim.c
+    # Map Kconfig transport tuning to ZPICO_* defines consumed by zpico.c
     zephyr_compile_definitions(
         ZPICO_MAX_PUBLISHERS=${CONFIG_NROS_MAX_PUBLISHERS}
         ZPICO_MAX_SUBSCRIBERS=${CONFIG_NROS_MAX_SUBSCRIBERS}

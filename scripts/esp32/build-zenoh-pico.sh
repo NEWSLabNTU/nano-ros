@@ -158,9 +158,9 @@ done
 SOURCES="$SOURCES $PLATFORM_DIR/system.c"
 SOURCES="$SOURCES $PLATFORM_DIR/network.c"
 
-# Add zenoh shim (high-level API wrapper)
-SHIM_DIR="$REPO_ROOT/packages/zpico/zpico-sys/c/shim"
-SOURCES="$SOURCES $SHIM_DIR/zenoh_shim.c"
+# Add zpico (high-level API wrapper)
+ZPICO_DIR="$REPO_ROOT/packages/zpico/zpico-sys/c/zpico"
+SOURCES="$SOURCES $ZPICO_DIR/zpico.c"
 
 # Compiler flags for ESP32-C3 (RISC-V RV32IMC)
 # Use picolibc headers for standard library (stdint.h, stdlib.h, etc.) but our own

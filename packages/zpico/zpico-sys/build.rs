@@ -2,7 +2,7 @@
 //!
 //! This builds:
 //! 1. zenoh-pico C library (via CMake for native, sources for embedded)
-//! 2. The C shim layer (zenoh_shim.c)
+//! 2. The zpico C layer (zpico.c)
 //! 3. Generates C header from Rust FFI declarations (cbindgen)
 
 use std::env;
@@ -474,22 +474,22 @@ fn main() {
 
     // Set cfg flags for Rust code
     if use_posix {
-        println!("cargo:rustc-cfg=shim_backend=\"posix\"");
+        println!("cargo:rustc-cfg=zpico_backend=\"posix\"");
     } else if use_zephyr {
-        println!("cargo:rustc-cfg=shim_backend=\"zephyr\"");
+        println!("cargo:rustc-cfg=zpico_backend=\"zephyr\"");
     } else if use_bare_metal {
-        println!("cargo:rustc-cfg=shim_backend=\"bare-metal\"");
+        println!("cargo:rustc-cfg=zpico_backend=\"bare-metal\"");
     } else if use_freertos {
-        println!("cargo:rustc-cfg=shim_backend=\"freertos\"");
+        println!("cargo:rustc-cfg=zpico_backend=\"freertos\"");
     } else if use_nuttx {
-        println!("cargo:rustc-cfg=shim_backend=\"nuttx\"");
+        println!("cargo:rustc-cfg=zpico_backend=\"nuttx\"");
     } else if use_threadx {
-        println!("cargo:rustc-cfg=shim_backend=\"threadx\"");
+        println!("cargo:rustc-cfg=zpico_backend=\"threadx\"");
     }
 
     // Rerun triggers
-    println!("cargo:rerun-if-changed=c/shim/zenoh_shim.c");
-    println!("cargo:rerun-if-changed=c/platform/zenoh_bare_metal_platform.h");
+    println!("cargo:rerun-if-changed=c/zpico/zpico.c");
+    println!("cargo:rerun-if-changed=c/platform/bare-metal/platform.h");
     println!("cargo:rerun-if-changed=c/platform/errno_override.h");
     println!("cargo:rerun-if-changed=c/platform/zenoh_generic_config.h");
     println!("cargo:rerun-if-changed=c/platform/zenoh_generic_platform.h");
@@ -552,7 +552,7 @@ fn generate_header(manifest_dir: &Path, include_dir: &Path) {
         });
     }
 
-    let output_file = include_dir.join("zenoh_shim.h");
+    let output_file = include_dir.join("zpico.h");
     let config_file = manifest_dir.join("cbindgen.toml");
 
     // Load cbindgen config
@@ -978,7 +978,7 @@ fn build_c_shim(
     build.include(zenoh_pico_include);
 
     // Core shim source
-    build.file(c_dir.join("shim/zenoh_shim.c"));
+    build.file(c_dir.join("zpico/zpico.c"));
 
     // Platform-specific configuration
     if use_posix {
@@ -1037,11 +1037,11 @@ fn build_c_shim(
         }
     }
 
-    // Pass shim slot counts as -D flags so zenoh_shim.c gets them
+    // Pass shim slot counts as -D flags so zpico.c gets them
     shim.apply_to_cc(&mut build);
 
     build.opt_level(2);
-    build.compile("zenoh_shim");
+    build.compile("zpico");
 }
 
 /// Build zenoh-pico + platform layer + shim for embedded targets using cc.
@@ -1120,7 +1120,7 @@ fn build_zenoh_pico_embedded(
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
     // Shim (high-level API wrapper)
-    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+    build.file(c_dir.join("zpico").join("zpico.c"));
 
     // Include paths
     // Generated config header takes precedence over the static one in platform_dir
@@ -1158,7 +1158,7 @@ fn build_zenoh_pico_embedded(
     );
     build.define("Z_FEATURE_SCOUTING_UDP", "0");
 
-    // Pass shim slot counts as -D flags so zenoh_shim.c gets them
+    // Pass slot counts as -D flags so zpico.c gets them
     shim.apply_to_cc(&mut build);
 
     // mbedTLS — when Z_FEATURE_LINK_TLS=1:
@@ -1338,7 +1338,7 @@ fn build_zenoh_pico_freertos(
     build.file(src_dir.join("system/freertos/lwip/network.c"));
 
     // Shim (high-level API wrapper)
-    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+    build.file(c_dir.join("zpico").join("zpico.c"));
 
     // Include paths (order matters — generated config takes precedence)
     let generated_config_dir = out_dir.join("zenoh-config");
@@ -1470,7 +1470,7 @@ fn build_zenoh_pico_nuttx(
     build.file(src_dir.join("system/unix/network.c"));
 
     // Shim (high-level API wrapper)
-    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+    build.file(c_dir.join("zpico").join("zpico.c"));
 
     // Include paths (order matters — generated config takes precedence)
     let generated_config_dir = out_dir.join("zenoh-config");
@@ -1627,11 +1627,11 @@ fn build_zenoh_pico_threadx(
 
     // ThreadX platform sources (our custom system + network layer)
     let platform_dir = c_dir.join("platform");
-    build.file(platform_dir.join("zenoh_threadx_system.c"));
-    build.file(platform_dir.join("zenoh_threadx_network.c"));
+    build.file(platform_dir.join("threadx/system.c"));
+    build.file(platform_dir.join("threadx/network.c"));
 
     // Shim (high-level API wrapper)
-    build.file(c_dir.join("shim").join("zenoh_shim.c"));
+    build.file(c_dir.join("zpico").join("zpico.c"));
 
     // Include paths (order matters — generated config takes precedence)
     let generated_config_dir = out_dir.join("zenoh-config");
@@ -1706,9 +1706,9 @@ fn build_zenoh_pico_threadx(
     build.compile("zenohpico");
 
     // Rerun triggers for ThreadX-specific files
-    println!("cargo:rerun-if-changed=c/platform/zenoh_threadx_system.c");
-    println!("cargo:rerun-if-changed=c/platform/zenoh_threadx_network.c");
-    println!("cargo:rerun-if-changed=c/platform/zenoh_threadx_platform.h");
+    println!("cargo:rerun-if-changed=c/platform/threadx/system.c");
+    println!("cargo:rerun-if-changed=c/platform/threadx/network.c");
+    println!("cargo:rerun-if-changed=c/platform/threadx/platform.h");
     println!("cargo:rerun-if-env-changed=THREADX_DIR");
     println!("cargo:rerun-if-env-changed=THREADX_CONFIG_DIR");
     println!("cargo:rerun-if-env-changed=NETX_DIR");
