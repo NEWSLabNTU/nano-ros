@@ -7,6 +7,8 @@ description = "XRCE-DDS RMW backend for nros"
 
 [features]
 default = []
+std = ["alloc", "nros-rmw/std", "xrce-sys/std"]
+alloc = ["nros-rmw/alloc"]
 platform-posix = ["xrce-sys/posix"]
 platform-bare-metal = ["xrce-sys/bare-metal"]
 platform-zephyr = ["xrce-sys/zephyr"]

@@ -14,8 +14,15 @@
 //! using atomic flags for callback→consumer data flow (same pattern as
 //! the zenoh backend).
 
-#![cfg_attr(not(any(feature = "posix-udp", feature = "posix-serial")), no_std)]
+#![no_std]
 #![allow(static_mut_refs)]
+
+#[cfg(feature = "std")]
+#[macro_use]
+extern crate std;
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 pub(crate) mod config;
 mod naming;

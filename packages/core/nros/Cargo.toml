@@ -15,12 +15,14 @@ std = [
     "nros-node/std",
     "nros-rmw/std",
     "nros-rmw-zenoh?/std",
+    "nros-rmw-xrce?/std",
     "nros-params/std",
 ]
 alloc = [
     "nros-core/alloc",
     "nros-node/alloc",
     "nros-rmw/alloc",
+    "nros-rmw-xrce?/alloc",
     "nros-params/alloc",
 ]
 

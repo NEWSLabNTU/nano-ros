@@ -10,8 +10,8 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [features]
 default = ["std"]
-std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "log"]
-alloc = ["nros-core/alloc", "nros-rmw/alloc"]
+std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "log"]
+alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
