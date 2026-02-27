@@ -34,13 +34,17 @@ unsafe extern "C" {
         priority: u32,
     ) -> i32;
 
-    fn nros_freertos_test_tcp_connect(ip: *const u8, port: u16) -> i32;
-    fn nros_freertos_diag_network();
     fn nros_freertos_get_netif_state() -> i32;
 }
 
-/// Application task stack size in words (8 KB = 2048 words).
-const APP_TASK_STACK: u32 = 2048;
+/// Application task stack size in words (64 KB = 16384 words).
+///
+/// Must be large enough for the `Executor<_, MAX_CBS, CB_ARENA>` struct,
+/// which includes an inline `[u8; CB_ARENA]` arena on the stack.
+/// Action examples use CB_ARENA=8192 (8 KB arena alone). Combined with
+/// zenoh-pico's internal stack buffers and function frames, 64 KB provides
+/// adequate headroom for all example types.
+const APP_TASK_STACK: u32 = 16384;
 
 /// Network polling task stack size in words (1 KB = 256 words).
 const POLL_TASK_STACK: u32 = 256;

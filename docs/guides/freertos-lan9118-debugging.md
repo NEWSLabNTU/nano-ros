@@ -206,6 +206,43 @@ srand(seed);
 
 **Caveat**: Do NOT use a simple XOR of MAC and IP — common address patterns can cancel out (e.g., MAC `...00` XOR IP `...0A` equals MAC `...01` XOR IP `...0B`).
 
+### Task stack overflow corrupts lwIP `tcpip_mbox`
+
+**Problem**: Service server or action server crashes with `lwIP ASSERT: Invalid mbox` during network init or shortly after `z_open()`. Simpler examples (pub/sub) work fine.
+
+**Cause**: The `Executor<S, MAX_CBS, CB_ARENA>` struct has an inline `arena: [MaybeUninit<u8>; CB_ARENA]` array that lives on the FreeRTOS task stack. Service examples use `CB_ARENA=4096` (4 KB) and action examples use `CB_ARENA=8192` (8 KB). Combined with zenoh-pico's internal stack buffers (transport TX/RX, peer structures) and Rust function frames, the total stack usage exceeds a small task stack.
+
+When the stack overflows, it corrupts adjacent memory including lwIP's global `tcpip_mbox` variable (declared in `tcpip.c`). Any subsequent call to `tcpip_input()`, `tcpip_callback()`, or `sys_mbox_trypost()` triggers the "Invalid mbox" assertion, which enters an infinite `for(;;){}` loop.
+
+**Diagnosis**: If pub/sub examples work but service/action examples crash with "Invalid mbox":
+- Compare the `CB_ARENA` sizes: talker uses `Executor::<_, 0, 0>` (no arena), service server uses `Executor::<_, 4, 4096>`, action server uses `Executor::<_, 8, 8192>`
+- Larger arena = more stack needed = more likely to overflow
+
+**Fix**: Set `APP_TASK_STACK` large enough for the largest example. 64 KB (16384 words) provides adequate headroom for all example types:
+```rust
+const APP_TASK_STACK: u32 = 16384; // 64 KB
+```
+
+**Note**: The 256 KB FreeRTOS heap (`configTOTAL_HEAP_SIZE`) has plenty of room. The constraint is the per-task stack, not total memory.
+
+### Manual-polling action server must call `try_handle_get_result()` explicitly
+
+**Problem**: Action client receives `ServiceRequestFailed` on `get_result()`, even though the server completes the goal successfully.
+
+**Cause**: When using `create_action_server()` (manual polling), the action server is NOT registered in the executor arena. `spin_once()` only processes get_result queries for arena-registered servers (i.e., those added via `add_action_server()`). Without explicit `try_handle_get_result()` calls, the server never responds to the client's get_result query, which times out after `SERVICE_DEFAULT_TIMEOUT_MS` (5 seconds).
+
+**Diagnosis**: Server output shows "Goal completed" and "Server shutting down." but client output shows "ServiceRequestFailed" after "Requesting result...".
+
+**Fix**: After `complete_goal()`, call `try_handle_get_result()` in the spin loop:
+```rust
+server.complete_goal(&goal_id, GoalStatus::Succeeded, result);
+// Must explicitly handle get_result queries since we're not arena-registered
+for _ in 0..2000 {
+    executor.spin_once(10);
+    let _ = server.try_handle_get_result();
+}
+```
+
 ### WFI in idle hook is mandatory for QEMU networking
 
 **Problem**: QEMU never delivers incoming frames (ARP replies, TCP SYN-ACKs) to the guest.
