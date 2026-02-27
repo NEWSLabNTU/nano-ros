@@ -5,7 +5,7 @@
 
 #![allow(static_mut_refs)]
 
-use std::ffi::c_int;
+use core::ffi::c_int;
 
 // ============================================================================
 // Global Transport State
@@ -54,15 +54,12 @@ unsafe extern "C" fn serial_transport_open(_transport: *mut xrce_sys::uxrCustomT
         let path_ptr = PTY_PATH.as_ptr() as *const libc::c_char;
         let fd = libc::open(path_ptr, libc::O_RDWR | libc::O_NOCTTY | libc::O_NONBLOCK);
         if fd < 0 {
-            let path_str = core::str::from_utf8(&PTY_PATH[..PTY_PATH_LEN]).unwrap_or("<invalid>");
-            eprintln!("Failed to open PTY: {}", path_str);
             return false;
         }
 
         // Configure raw mode (no echo, no canonical processing)
         let mut tty: libc::termios = core::mem::zeroed();
         if libc::tcgetattr(fd, &mut tty) != 0 {
-            eprintln!("tcgetattr failed");
             libc::close(fd);
             return false;
         }
@@ -74,7 +71,6 @@ unsafe extern "C" fn serial_transport_open(_transport: *mut xrce_sys::uxrCustomT
         tty.c_cc[libc::VMIN] = 0;
         tty.c_cc[libc::VTIME] = 1;
         if libc::tcsetattr(fd, libc::TCSANOW, &tty) != 0 {
-            eprintln!("tcsetattr failed");
             libc::close(fd);
             return false;
         }

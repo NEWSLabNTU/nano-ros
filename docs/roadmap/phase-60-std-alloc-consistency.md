@@ -2,7 +2,7 @@
 
 **Goal**: Ensure std/alloc features propagate correctly through all RMW backends and document C-level allocation behavior.
 
-**Status**: In Progress (60.1–60.4 done)
+**Status**: In Progress (60.1–60.5 done)
 
 **Priority**: Medium
 
@@ -42,7 +42,7 @@ nros          std = [...]  ← nros-rmw-xrce?/std MISSING
 - [x] 60.2 — Propagate std/alloc to nros-rmw-xrce from nros and nros-node
 - [x] 60.3 — Fix nros-rmw-xrce lib.rs no_std attribute
 - [x] 60.4 — Rewrite posix_udp.rs to use libc
-- [ ] 60.5 — Fix posix_serial.rs trivial std deps
+- [x] 60.5 — Fix posix_serial.rs trivial std deps
 - [ ] 60.6 — Document C-level allocation in std-alloc-requirements.md
 - [ ] 60.7 — Clean up unused std features in zpico-sys and xrce-sys
 
@@ -125,7 +125,7 @@ Two trivial fixes:
 
 The rest of `posix_serial.rs` already uses `libc` directly.
 
-**Status**: Pending
+**Status**: Done
 
 **Files**:
 - `packages/xrce/nros-rmw-xrce/src/posix_serial.rs` — fix imports and gated prints
