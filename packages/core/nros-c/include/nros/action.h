@@ -94,6 +94,10 @@ typedef struct nros_goal_uuid_t {
     uint8_t uuid[16];
 } nros_goal_uuid_t;
 
+/** @cond INTERNAL */
+#ifndef NROS_ACTION_TYPE_DEFINED
+#define NROS_ACTION_TYPE_DEFINED
+/** @endcond */
 /** Action type information. */
 typedef struct nros_action_type_t {
     /** Action type name (e.g., "example_interfaces::action::Fibonacci"). */
@@ -107,6 +111,9 @@ typedef struct nros_action_type_t {
     /** Maximum serialized size of feedback message. */
     size_t feedback_serialized_size_max;
 } nros_action_type_t;
+/** @cond INTERNAL */
+#endif
+/** @endcond */
 
 /* --- Client callbacks --- */
 
