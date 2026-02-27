@@ -61,6 +61,13 @@ exclude = [
     "examples/qemu-arm-freertos/rust/zenoh/service-client",
     "examples/qemu-arm-freertos/rust/zenoh/action-server",
     "examples/qemu-arm-freertos/rust/zenoh/action-client",
+    # QEMU ARM NuttX examples (Cortex-M3 + NuttX)
+    "examples/qemu-arm-nuttx/rust/zenoh/talker",
+    "examples/qemu-arm-nuttx/rust/zenoh/listener",
+    "examples/qemu-arm-nuttx/rust/zenoh/service-server",
+    "examples/qemu-arm-nuttx/rust/zenoh/service-client",
+    "examples/qemu-arm-nuttx/rust/zenoh/action-server",
+    "examples/qemu-arm-nuttx/rust/zenoh/action-client",
     # STM32F4 examples
     "examples/stm32f4/rust/zenoh/talker",
     "examples/stm32f4/rust/zenoh/polling",
