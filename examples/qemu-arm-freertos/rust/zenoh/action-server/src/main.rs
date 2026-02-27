@@ -70,9 +70,13 @@ extern "C" fn _start() -> ! {
 
                     goals_handled += 1;
                     if goals_handled >= 1 {
-                        // Exit after handling one goal (test automation)
-                        for _ in 0..200 {
+                        // Spin to serve get_result queries before shutting down.
+                        // The manual-polling action server is NOT in the executor
+                        // arena, so spin_once() alone won't process get_result
+                        // queries — we must call try_handle_get_result() explicitly.
+                        for _ in 0..2000 {
                             executor.spin_once(10);
+                            let _ = server.try_handle_get_result();
                         }
                         println!("Server shutting down.");
                         return Ok(());

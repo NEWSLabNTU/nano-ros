@@ -49,6 +49,7 @@ extern "C" fn _start() -> ! {
         println!("Goal accepted: {:?}", goal_id);
 
         // Poll for result
+        println!("Requesting result...");
         let mut result_promise = client.get_result(&goal_id)?;
         for _ in 0..10000 {
             executor.spin_once(10);
