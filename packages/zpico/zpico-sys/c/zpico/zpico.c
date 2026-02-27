@@ -34,20 +34,12 @@ static void _freertos_printk(const char *fmt, ...) {
 #define printk(...)  // No-op on other platforms
 #endif
 
-// Internal zenoh-pico headers for socket FD access (select()-based timeout)
-#ifndef ZPICO_SMOLTCP
+// Internal zenoh-pico headers for socket FD access (select()-based timeout).
+// Only needed for single-threaded builds; multi-threaded uses z_sleep_ms().
+#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
-#endif
-
-// Platform-specific select()
-#if defined(ZENOH_ZEPHYR)
-#include <zephyr/posix/sys/select.h>
-#elif defined(ZENOH_FREERTOS_LWIP)
-// lwIP provides select(), fd_set, etc. via lwip/sockets.h (already included
-// by zenoh-pico's freertos/lwip.h platform header)
-#elif !defined(ZPICO_SMOLTCP)
 #include <sys/select.h>
 #endif
 
@@ -169,6 +161,26 @@ typedef struct {
 
 static pending_get_slot_t g_pending_gets[ZPICO_MAX_PENDING_GETS];
 
+// Condition variable for multi-threaded spin_once().
+// Signaled by our callbacks (sample_handler, query_handler, get reply handlers)
+// so spin_once() can wake immediately when application data arrives, rather
+// than sleeping for the full timeout duration.
+#if Z_FEATURE_MULTI_THREAD == 1 && !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP)
+static _z_mutex_t g_spin_mutex;
+static _z_condvar_t g_spin_cv;
+static bool g_spin_cv_initialized = false;
+
+static inline void _zpico_notify_spin(void) {
+    if (g_spin_cv_initialized) {
+        _z_mutex_lock(&g_spin_mutex);
+        _z_condvar_signal(&g_spin_cv);
+        _z_mutex_unlock(&g_spin_mutex);
+    }
+}
+#else
+static inline void _zpico_notify_spin(void) {}
+#endif
+
 // ============================================================================
 // Internal Helper Functions
 // ============================================================================
@@ -225,6 +237,7 @@ static void query_handler(z_loaned_query_t *query, void *arg) {
     if (payload_data != NULL) {
         z_slice_drop(z_slice_move(&payload_slice));
     }
+    _zpico_notify_spin();
 }
 
 /**
@@ -277,6 +290,7 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
                 entry->zero_copy_cb(data, len, NULL, 0, entry->ctx);
             }
         }
+        _zpico_notify_spin();
         return;
     }
 #endif
@@ -317,6 +331,7 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
         } else {
             entry->notify(payload_len, NULL, 0, entry->ctx);
         }
+        _zpico_notify_spin();
         return;
     }
 
@@ -361,6 +376,7 @@ static void sample_handler(z_loaned_sample_t *sample, void *arg) {
     }
 
     z_slice_drop(z_slice_move(&payload_slice));
+    _zpico_notify_spin();
 }
 
 // ============================================================================
@@ -459,6 +475,12 @@ int32_t zpico_open(void) {
     // In single-threaded mode (Z_FEATURE_MULTI_THREAD=0), polling is done
     // explicitly via zpico_poll() / zpico_spin_once()
 #if Z_FEATURE_MULTI_THREAD == 1
+#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP)
+    _z_mutex_init(&g_spin_mutex);
+    _z_condvar_init(&g_spin_cv);
+    g_spin_cv_initialized = true;
+#endif
+
     if (zp_start_read_task(z_session_loan_mut(&g_session), NULL) < 0) {
         z_close(z_session_loan_mut(&g_session), NULL);
         return ZPICO_ERR_TASK;
@@ -522,6 +544,12 @@ void zpico_close(void) {
         // Stop background tasks (only in multi-threaded mode)
         zp_stop_read_task(z_session_loan_mut(&g_session));
         zp_stop_lease_task(z_session_loan_mut(&g_session));
+
+#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP)
+        g_spin_cv_initialized = false;
+        _z_condvar_drop(&g_spin_cv);
+        _z_mutex_drop(&g_spin_mutex);
+#endif
 #endif
         z_close(z_session_loan_mut(&g_session), NULL);
         g_session_open = false;
@@ -840,7 +868,10 @@ int32_t zpico_undeclare_subscriber(int32_t handle) {
 // Socket FD Helper (for select()-based timeout)
 // ============================================================================
 
-#ifndef ZPICO_SMOLTCP
+// get_session_fd() is only needed for single-threaded select()-based paths.
+// Multi-threaded builds use z_sleep_ms(); FreeRTOS uses vTaskDelay(); smoltcp
+// uses its own clock loop.
+#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
 /**
  * Extract the socket file descriptor from the zenoh session.
  *
@@ -899,17 +930,13 @@ int32_t zpico_poll(uint32_t timeout_ms) {
 
 #elif Z_FEATURE_MULTI_THREAD == 1
     // Multi-threaded (Zephyr/POSIX): background read task handles data.
-    // Use select() to wait for activity or timeout — do NOT call zp_read()
-    // since the read task holds _mutex_rx.
-    int fd = get_session_fd();
-    if (fd >= 0 && timeout_ms > 0) {
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        FD_SET(fd, &read_fds);
-        struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
-        select(fd + 1, &read_fds, NULL, NULL, &tv);
+    // Wait on condvar — see zpico_spin_once() for the rationale.
+    if (timeout_ms > 0) {
+        z_clock_t deadline = z_clock_now();
+        z_clock_advance_ms(&deadline, (unsigned long)timeout_ms);
+        _z_mutex_lock(&g_spin_mutex);
+        _z_condvar_wait_until(&g_spin_cv, &g_spin_mutex, &deadline);
+        _z_mutex_unlock(&g_spin_mutex);
     }
     return 0;
 
@@ -963,20 +990,17 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     return 0;
 
 #elif Z_FEATURE_MULTI_THREAD == 1
-    // Multi-threaded (Zephyr/POSIX): background read task handles data.
-    // Use select() to wait for activity or timeout — do NOT call zp_read()
-    // since the read task holds _mutex_rx.
-    int fd = get_session_fd();
-    if (fd >= 0 && timeout_ms > 0) {
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        FD_SET(fd, &read_fds);
-        struct timeval tv;
-        tv.tv_sec = timeout_ms / 1000;
-        tv.tv_usec = (timeout_ms % 1000) * 1000;
-        select(fd + 1, &read_fds, NULL, NULL, &tv);
+    // Multi-threaded (Zephyr/POSIX): background read and lease tasks handle
+    // data and keep-alives. Wait on a condvar that our callbacks signal when
+    // application data arrives (subscriptions, query replies, service requests).
+    // This gives near-zero latency wake-up without busy-looping on select().
+    if (timeout_ms > 0) {
+        z_clock_t deadline = z_clock_now();
+        z_clock_advance_ms(&deadline, (unsigned long)timeout_ms);
+        _z_mutex_lock(&g_spin_mutex);
+        _z_condvar_wait_until(&g_spin_cv, &g_spin_mutex, &deadline);
+        _z_mutex_unlock(&g_spin_mutex);
     }
-    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
     return 0;
 
 #else
@@ -1329,12 +1353,14 @@ int32_t zpico_get(const char *keyexpr,
 // Reply handler for pending get slots — reuses the same logic as get_reply_handler
 static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
     get_reply_handler(reply, ctx);
+    _zpico_notify_spin();
 }
 
 // Dropper for pending get slots — just sets the done flag (no condvar)
 static void pending_get_dropper(void *ctx) {
     get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
     rctx->done = true;
+    _zpico_notify_spin();
 }
 
 int32_t zpico_get_start(const char *keyexpr,
