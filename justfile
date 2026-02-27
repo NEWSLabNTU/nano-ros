@@ -9,6 +9,10 @@ export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
 export LWIP_DIR := env("LWIP_DIR", justfile_directory() / "external/lwip")
 export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-mps2-an385-freertos/config")
 export NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "external/nuttx")
+export THREADX_DIR := env("THREADX_DIR", justfile_directory() / "external/threadx")
+export THREADX_CONFIG_DIR := env("THREADX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-threadx-linux/config")
+export NETX_DIR := env("NETX_DIR", justfile_directory() / "external/netxduo")
+export NETX_CONFIG_DIR := env("NETX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-threadx-linux/config")
 
 default:
     @just --list
@@ -46,6 +50,7 @@ format:
         find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
             -not -path '*/generated/*' -not -path '*/zephyr/*' \
             -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
+            -not -path '*/threadx-linux/*' \
             -exec dirname {} \; | sort
     } | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +nightly fmt && echo "  fmt {}"'
@@ -71,7 +76,7 @@ test verbose="": build-zenohd
     set +e
     failed=0
     args=(--workspace --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg) and not binary(nuttx_qemu)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg) and not binary(nuttx_qemu) and not binary(threadx_linux)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -227,7 +232,7 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -252,6 +257,7 @@ format-examples:
     find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
         -not -path '*/generated/*' -not -path '*/zephyr/*' \
         -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
+        -not -path '*/threadx-linux/*' \
         -exec dirname {} \; | sort \
     | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +nightly fmt && echo "  fmt {}"'
@@ -262,7 +268,7 @@ check-examples:
     #!/usr/bin/env bash
     set -e
     echo "Checking examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -568,6 +574,24 @@ test-freertos verbose="":
         exit 1
     fi
     args=(-p nros-tests --test freertos_qemu --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
+# Run ThreadX Linux integration tests (build + verification via nextest)
+test-threadx-linux verbose="":
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$THREADX_DIR/common/inc" ]; then
+        echo "ERROR: ThreadX not found at $THREADX_DIR. Run: just setup-threadx"
+        exit 1
+    fi
+    if [ ! -d "$NETX_DIR/common/inc" ]; then
+        echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just setup-threadx"
+        exit 1
+    fi
+    args=(-p nros-tests --test threadx_linux --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
