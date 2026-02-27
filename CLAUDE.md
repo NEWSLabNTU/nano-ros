@@ -222,6 +222,7 @@ docs/
 │                    # freertos-lan9118-debugging, realtime-lint-guide, troubleshooting
 ├── reference/       # environment-variables, c-api-cmake, rmw_zenoh_interop, api-comparison-rclrs,
 │                    # std-alloc-requirements, micro-ros-comparison, xrce-dds-analysis
-├── design/          # rmw-layer-design, example-directory-layout, e2e-safety-protocol-integration
+├── design/          # rmw-layer-design, example-directory-layout, e2e-safety-protocol-integration,
+│                    # zonal-vehicle-architecture
 └── roadmap/         # Active + archived phases
 ```
