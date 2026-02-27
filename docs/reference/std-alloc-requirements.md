@@ -27,6 +27,19 @@ std or alloc.
 | nros-node   | `Executor::open()`, `create_node()`, `spin_once()`, `spin_async()`, `Promise`, pub/sub/service/action, timers (fn pointer callbacks) | Boxed timer callbacks, `handle_request_boxed()`, parameter services | `spin_blocking()`, `spin_period()`, `ExecutorConfig::from_env()`, halt flag |
 | nros        | Re-exports from above                                                                                                                | (same as above)                                                     | `SpinPeriodResult` re-export                                                |
 
+### RMW Backend Crates
+
+| Crate          | no_std base                                                   | alloc additions | std additions |
+|----------------|---------------------------------------------------------------|-----------------|---------------|
+| nros-rmw-zenoh | Zenoh-pico RMW implementation, all pub/sub/service/action ops | (none)          | (none)        |
+| zpico-sys      | FFI bindings to zenoh-pico C library                          | (none)          | (none)        |
+| nros-rmw-xrce  | XRCE-DDS RMW implementation, all pub/sub/service/action ops   | (none)          | (none)        |
+| xrce-sys       | FFI bindings to Micro-XRCE-DDS-Client C library               | (none)          | (none)        |
+
+All four backend crates are unconditionally `#![no_std]` and do not use `alloc`. The `std`
+feature gates only `extern crate std` (for macro availability in transport modules) and
+is propagated through the feature chain but does not add any API surface.
+
 ## Detailed API Availability
 
 ### Always Available (no_std, no alloc)
@@ -154,3 +167,20 @@ For async, use an external runtime (tokio `current_thread` + `spawn_local` for b
 nros = { version = "*", features = ["rmw-zenoh", "platform-posix", "param-services"] }
 ```
 Adds `~/get_parameters`, `~/set_parameters`, etc. for `ros2 param` CLI interop.
+
+## C-Level Allocation
+
+Both RMW backends compile and link C libraries that perform heap allocation
+independently of Rust's `alloc` feature. Disabling the Rust `alloc` feature
+eliminates Rust-side heap usage (`Box`, `Vec`, `String`) but does **not**
+eliminate allocation in the C transport layer.
+
+| Backend   | C Library            | Allocator by Platform                                                                            |
+|-----------|----------------------|--------------------------------------------------------------------------------------------------|
+| rmw-zenoh | zenoh-pico 1.6.2     | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; bare-metal: custom bump allocator |
+| rmw-xrce  | Micro-XRCE-DDS 3.0.1 | POSIX: `malloc`; Zephyr: `k_malloc`; FreeRTOS: `pvPortMalloc`; NuttX: `malloc`                   |
+
+This is by design: the C libraries manage their own session state, stream
+buffers, and protocol metadata using platform-provided allocators. The Rust
+`alloc` feature controls only the Rust API surface (boxed callbacks, heap
+containers, etc.) and is orthogonal to C-level memory management.

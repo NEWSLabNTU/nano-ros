@@ -2,7 +2,7 @@
 
 **Goal**: Ensure std/alloc features propagate correctly through all RMW backends and document C-level allocation behavior.
 
-**Status**: In Progress (60.1–60.5 done)
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -43,8 +43,8 @@ nros          std = [...]  ← nros-rmw-xrce?/std MISSING
 - [x] 60.3 — Fix nros-rmw-xrce lib.rs no_std attribute
 - [x] 60.4 — Rewrite posix_udp.rs to use libc
 - [x] 60.5 — Fix posix_serial.rs trivial std deps
-- [ ] 60.6 — Document C-level allocation in std-alloc-requirements.md
-- [ ] 60.7 — Clean up unused std features in zpico-sys and xrce-sys
+- [x] 60.6 — Document C-level allocation in std-alloc-requirements.md
+- [x] 60.7 — Clean up unused std features in zpico-sys and xrce-sys
 
 ### 60.1 — Add std/alloc features to nros-rmw-xrce
 
@@ -139,10 +139,10 @@ Add a section to the existing std-alloc reference document explaining that:
 3. The `alloc` feature controls only Rust-side heap usage (e.g., `Box`, `Vec`, `String`)
 4. Add the missing XRCE and Zenoh backend crates to the std/alloc requirements tables
 
-**Status**: Pending
+**Status**: Done
 
 **Files**:
-- `docs/reference/std-alloc-requirements.md` — add C-level allocation section and backend crate tables
+- `docs/reference/std-alloc-requirements.md` — added C-level allocation section and backend crate table
 
 ### 60.7 — Clean up unused std features in zpico-sys and xrce-sys
 
@@ -153,11 +153,12 @@ Both `-sys` crates define `std = []` (empty feature). Evaluate each:
   - Add `#[cfg(feature = "std")] extern crate std;` to `xrce-sys/src/lib.rs` for consistency, or
   - Remove the `std = []` feature if it serves no purpose
 
-**Status**: Pending
+**Resolution**: Added `#[cfg(feature = "std")] extern crate std;` to `xrce-sys/src/lib.rs` for consistency with `zpico-sys`. The feature is now activated through the chain (`nros → nros-rmw-xrce → xrce-sys`).
+
+**Status**: Done
 
 **Files**:
-- `packages/xrce/xrce-sys/Cargo.toml` — potentially remove `std = []`
-- `packages/xrce/xrce-sys/src/lib.rs` — potentially add `extern crate std` gate
+- `packages/xrce/xrce-sys/src/lib.rs` — added `extern crate std` gate
 
 ## Acceptance Criteria
 
