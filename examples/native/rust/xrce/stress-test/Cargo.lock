@@ -377,6 +377,7 @@ name = "nros-rmw-xrce"
 version = "0.1.0"
 dependencies = [
  "heapless",
+ "libc",
  "nros-rmw",
  "xrce-sys",
 ]
