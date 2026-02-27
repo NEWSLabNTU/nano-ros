@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-threadx` as a new platform axis value, enabling nros nodes on Eclipse ThreadX + NetX Duo. Validate with two targets: Linux simulation port (PoC, fastest iteration) and QEMU RISC-V 64-bit virt machine (official ThreadX QEMU port with virtio-net Ethernet). ThreadX's IEC 61508 SIL 4 / ISO 26262 ASIL D certifications combined with nano-ros's Kani/Verus formal verification create a uniquely strong safety argument.
 
-**Status**: In Progress (58.1–58.4 done)
+**Status**: In Progress (58.1–58.7 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -262,10 +262,10 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 - [x] 58.2 — `just setup-threadx` dependency acquisition
 - [x] 58.3 — zpico-sys build.rs ThreadX + NetX Duo compilation
 - [x] 58.4 — zenoh-pico NetX Duo BSD socket network transport
-- [ ] 58.5 — Linux simulation board crate (`nros-threadx-linux`)
-- [ ] 58.6 — Rust zenoh examples — Linux simulation (pubsub, service, action)
-- [ ] 58.7 — Linux simulation integration tests + `just test-threadx-linux` recipe
-- [ ] 58.8 — virtio-net NetX Duo driver
+- [x] 58.5 — Linux simulation board crate (`nros-threadx-linux`)
+- [x] 58.6 — Rust zenoh examples — Linux simulation (pubsub, service, action)
+- [x] 58.7 — Linux simulation integration tests + `just test-threadx-linux` recipe
+- [x] 58.8 — virtio-net NetX Duo driver
 - [ ] 58.9 — QEMU RISC-V board crate (`nros-threadx-qemu-riscv64`)
 - [ ] 58.10 — Rust zenoh examples — QEMU RISC-V (pubsub, service, action)
 - [ ] 58.11 — QEMU RISC-V integration tests + `just test-threadx` recipe
@@ -388,10 +388,21 @@ packages/boards/nros-threadx-linux/
 - `with_ip()`, `with_mac()`, `with_gateway()`, `with_zenoh_locator()`, `with_domain_id()`, `with_interface()`
 
 **Dependencies**:
-- `nros` with `rmw-zenoh,platform-threadx,ros-humble`
+- No direct nros dependencies — the board crate is a thin init wrapper
+- Uses `cc` build-dep to compile ThreadX kernel + NetX Duo + Linux network driver
 - No `cortex-m-rt` or semihosting (runs on host Linux)
 
-**Files**: `packages/boards/nros-threadx-linux/`
+**Status**: Done
+
+**Files**:
+- `packages/boards/nros-threadx-linux/Cargo.toml`
+- `packages/boards/nros-threadx-linux/build.rs` — Compiles ThreadX Linux port, NetX Duo, BSD sockets, Linux network driver
+- `packages/boards/nros-threadx-linux/c/app_define.c` — `tx_application_define()`: packet pool, IP instance, TCP/UDP/BSD enable, app thread
+- `packages/boards/nros-threadx-linux/config/tx_user.h` — ThreadX kernel config
+- `packages/boards/nros-threadx-linux/config/nx_user.h` — NetX Duo config (BSD sockets enabled)
+- `packages/boards/nros-threadx-linux/src/lib.rs` — Re-exports `Config` and `run`
+- `packages/boards/nros-threadx-linux/src/config.rs` — Config builder (IP, MAC, gateway, interface, zenoh locator, domain_id)
+- `packages/boards/nros-threadx-linux/src/node.rs` — `run()`: banner, FFI setup, `tx_kernel_enter()`
 
 ### 58.6 — Rust zenoh examples — Linux simulation (pubsub, service, action)
 
@@ -436,7 +447,9 @@ fn main() {
 
 **Build target**: `x86_64-unknown-linux-gnu` (host native).
 
-**Files**: `examples/threadx-linux/rust/zenoh/`
+**Status**: Done
+
+**Files**: `examples/threadx-linux/rust/zenoh/{talker,listener,service-server,service-client,action-server,action-client}/` — each with `Cargo.toml`, `.cargo/config.toml`, `package.xml`, `.gitignore`, `src/main.rs`
 
 ### 58.7 — Linux simulation integration tests + `just test-threadx-linux` recipe
 
@@ -453,7 +466,13 @@ Automated integration tests using ThreadX Linux simulation binaries.
 
 **Justfile**: `just test-threadx-linux` runs nextest with `threadx_linux` filter.
 
-**Files**: `packages/testing/nros-tests/tests/threadx_linux.rs`, `.config/nextest.toml`, `justfile`
+**Status**: Done
+
+**Files**:
+- `packages/testing/nros-tests/tests/threadx_linux.rs` — 17 tests (1 detection, 7 build, 3 E2E with ManagedProcess)
+- `.config/nextest.toml` — `threadx-linux` test group (max-threads=1, 120s timeout)
+- `justfile` — `THREADX_DIR`/`NETX_DIR` exports, `test-threadx-linux` recipe, `threadx-linux` excluded from `format`/`build-examples`/`check-examples`/`test`
+- `Cargo.toml` — 6 ThreadX Linux examples added to workspace exclude list
 
 ### 58.8 — virtio-net NetX Duo driver
 

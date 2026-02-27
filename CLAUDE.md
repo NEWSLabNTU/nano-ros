@@ -205,8 +205,8 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 55 | NuttX platform support | In Progress (55.1–55.10, 55.12 done, 55.11 remaining) |
 | 56 | Verification refresh | Complete |
 | 57 | Code quality improvements | Complete |
-| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.4 done) |
-| 59 | API documentation (rustdoc + Doxygen) | In Progress |
+| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.7 done) |
+| 59 | API documentation (rustdoc + Doxygen) | Complete |
 
 ## Quick Reference
 
