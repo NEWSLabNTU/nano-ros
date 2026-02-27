@@ -1381,8 +1381,9 @@ int32_t zpico_get_start(const char *keyexpr,
     z_owned_closure_reply_t callback;
     z_closure(&callback, pending_get_reply_handler, pending_get_dropper, &ps->ctx);
 
-    if (z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
-              z_move(callback), &opts) < 0) {
+    z_result_t zret = z_get(z_session_loan(&g_session), z_view_keyexpr_loan(&ke), "",
+                             z_move(callback), &opts);
+    if (zret < 0) {
         ps->in_use = false;
         return ZPICO_ERR_GENERIC;
     }
