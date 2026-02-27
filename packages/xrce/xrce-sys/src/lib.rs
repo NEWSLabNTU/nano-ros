@@ -7,6 +7,9 @@
 #![no_std]
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
+#[cfg(feature = "std")]
+extern crate std;
+
 use core::ffi::{c_char, c_int, c_void};
 
 // ============================================================================
