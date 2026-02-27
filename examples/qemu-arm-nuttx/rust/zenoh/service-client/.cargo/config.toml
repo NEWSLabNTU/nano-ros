@@ -4,6 +4,12 @@ target = "armv7a-nuttx-eabi"
 [unstable]
 build-std = ["std", "panic_abort"]
 
+[target.armv7a-nuttx-eabi]
+linker = "arm-none-eabi-gcc"
+
+[env]
+CC_armv7a_nuttx_eabi = "arm-none-eabi-gcc"
+
 [patch.crates-io]
 nros-core = { path = "../../../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../../../packages/core/nros-serdes" }

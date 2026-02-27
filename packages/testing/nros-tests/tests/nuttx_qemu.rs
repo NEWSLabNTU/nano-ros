@@ -47,6 +47,27 @@ fn is_nuttx_available() -> bool {
         .unwrap_or(false)
 }
 
+/// Check if NuttX has been configured (config.h exists)
+///
+/// NuttX must be configured (via `build-nuttx.sh` or `make olddefconfig`) before
+/// C code can be compiled against it. NuttX's system headers (e.g., `stdbool.h`)
+/// include `<nuttx/config.h>` which is only generated during configuration.
+fn is_nuttx_configured() -> bool {
+    std::env::var("NUTTX_DIR")
+        .ok()
+        .map(|dir| Path::new(&dir).join("include/nuttx/config.h").exists())
+        .unwrap_or(false)
+}
+
+/// Check if arm-none-eabi-gcc is available (required for NuttX cross-compilation)
+fn is_arm_gcc_available() -> bool {
+    Command::new("arm-none-eabi-gcc")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
 /// Check if nightly toolchain supports armv7a-nuttx-eabi target
 ///
 /// NuttX targets are Tier 3 in Rust — they cannot be installed via `rustup target add`.
@@ -87,6 +108,18 @@ fn require_nuttx() -> bool {
     if !is_nuttx_available() {
         eprintln!("Skipping test: NUTTX_DIR not set or invalid");
         eprintln!("Run: just setup-nuttx && export NUTTX_DIR=$(pwd)/external/nuttx");
+        return false;
+    }
+    if !is_nuttx_configured() {
+        eprintln!(
+            "Skipping test: NuttX not configured ($NUTTX_DIR/include/nuttx/config.h missing)"
+        );
+        eprintln!("Run: cd packages/boards/nros-nuttx-qemu-arm && ./scripts/build-nuttx.sh");
+        return false;
+    }
+    if !is_arm_gcc_available() {
+        eprintln!("Skipping test: arm-none-eabi-gcc not found");
+        eprintln!("Install: sudo apt install gcc-arm-none-eabi");
         return false;
     }
     if !is_nuttx_toolchain_available() {
@@ -155,8 +188,12 @@ fn build_nuttx_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
 
     eprintln!("Building qemu-arm-nuttx/rust/zenoh/{}...", name);
 
+    // The cc-rs crate doesn't recognize armv7a-nuttx-eabi (Tier 3 target) and falls
+    // back to the host `cc` (x86 GCC), which fails on ARM flags like -march=armv7-a.
+    // Set the target-specific CC env var so cc-rs uses the ARM cross-compiler.
     let output = duct::cmd!("cargo", "+nightly", "build", "--release")
         .dir(&example_dir)
+        .env("CC_armv7a_nuttx_eabi", "arm-none-eabi-gcc")
         .stderr_to_stdout()
         .stdout_capture()
         .unchecked()
@@ -224,12 +261,16 @@ fn build_nuttx_action_client() -> TestResult<&'static Path> {
 #[test]
 fn test_nuttx_detection() {
     let available = is_nuttx_available();
+    let configured = is_nuttx_configured();
+    let arm_gcc = is_arm_gcc_available();
     let toolchain = is_nuttx_toolchain_available();
     let qemu = is_qemu_available();
     let tap_bridge = is_tap_bridge_available();
     let zenohd = is_zenohd_available();
     let kernel = nuttx_kernel_path();
     eprintln!("NuttX available: {}", available);
+    eprintln!("NuttX configured: {}", configured);
+    eprintln!("arm-none-eabi-gcc available: {}", arm_gcc);
     eprintln!("NuttX toolchain available: {}", toolchain);
     eprintln!("QEMU available: {}", qemu);
     eprintln!("TAP bridge available: {}", tap_bridge);
