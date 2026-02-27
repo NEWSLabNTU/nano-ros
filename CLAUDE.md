@@ -182,8 +182,8 @@ Default features: `std` only. Platform features forwarded via Cargo `?` syntax.
 Enable with `param-services` feature in `nros-node`. Provides `~/get_parameters`, `~/set_parameters`, etc. Uses `nros-rcl-interfaces` types. Handlers return `Box<Response>` (large heapless arrays).
 
 ### Formal Verification
-- **Kani**: 115 bounded model checking harnesses. `just verify-kani` (~3 min)
-- **Verus**: 92 unbounded deductive proofs. `just verify-verus` (~1 sec)
+- **Kani**: 160 bounded model checking harnesses. `just verify-kani` (~3 min)
+- **Verus**: 102 unbounded deductive proofs. `just verify-verus` (~1 sec)
 - Key Verus rules: `external_type_specification` without `external_body` = transparent enum; with = opaque. Never add `verify = true` to production crates with fn pointers/closures.
 - See [docs/guides/verus-verification.md](docs/guides/verus-verification.md)
 
@@ -198,14 +198,15 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 |-------|-------|--------|
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
-| 49 | nros-c thin wrapper migration | In Progress (49.1–49.13 complete) |
+| 49 | nros-c thin wrapper migration | Complete |
 | 51 | Board crate `run()` API | In Progress |
 | 53 | UDP + TLS transport support | Complete |
-| 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred) |
-| 55 | NuttX platform support | In Progress (55.1–55.12 done, 55.11 remaining) |
+| 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred, 54.12 remaining) |
+| 55 | NuttX platform support | In Progress (55.1–55.10, 55.12 done, 55.11 remaining) |
+| 56 | Verification refresh | Complete |
 | 57 | Code quality improvements | Complete |
 | 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.4 done) |
-| 59 | API documentation (rustdoc + Doxygen) | Complete |
+| 59 | API documentation (rustdoc + Doxygen) | In Progress |
 
 ## Quick Reference
 
@@ -216,8 +217,10 @@ See [docs/guides/quick-reference.md](docs/guides/quick-reference.md) for manual 
 ```
 docs/
 ├── guides/          # getting-started, creating-examples, message-generation, quick-reference,
-│                    # qemu-bare-metal, zephyr-setup, freertos-setup, verus-verification, troubleshooting
-├── reference/       # environment-variables, c-api-cmake, rmw_zenoh_interop, api-comparison-rclrs
-├── design/          # rmw-layer-design, ghost-model-validation
+│                    # qemu-bare-metal, zephyr-setup, esp32-setup, verus-verification,
+│                    # freertos-lan9118-debugging, realtime-lint-guide, troubleshooting
+├── reference/       # environment-variables, c-api-cmake, rmw_zenoh_interop, api-comparison-rclrs,
+│                    # std-alloc-requirements, micro-ros-comparison, xrce-dds-analysis
+├── design/          # rmw-layer-design, example-directory-layout, e2e-safety-protocol-integration
 └── roadmap/         # Active + archived phases
 ```
