@@ -1,0 +1,18 @@
+[package]
+name = "nros-threadx-linux"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "ThreadX Linux simulation board crate for nros (NetX Duo + BSD sockets)"
+
+[lib]
+name = "nros_threadx_linux"
+
+[dependencies]
+# No dependencies — std provides println!, process::exit()
+
+[build-dependencies]
+cc = "1"
+
+[features]
+default = []

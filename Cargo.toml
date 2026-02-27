@@ -118,6 +118,7 @@ exclude = [
     "packages/boards/nros-stm32f4",
     "packages/boards/nros-nuttx-qemu-arm",
     "packages/boards/nros-mps2-an385-freertos",
+    "packages/boards/nros-threadx-linux",
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)
