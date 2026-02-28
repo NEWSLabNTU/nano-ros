@@ -396,7 +396,26 @@ fn main() {
     shim_config.generate_rust_consts(&out_dir);
 
     // Build zenoh-pico and C shim
-    if !is_embedded_target(&target) {
+    //
+    // ThreadX is checked first because it uses its own build path for both
+    // native (Linux simulation) and embedded (RISC-V QEMU) targets. The
+    // ThreadX build compiles zenoh-pico with our custom system.c + network.c
+    // (NetX Duo BSD sockets) rather than the POSIX/CMake path.
+    if use_threadx {
+        // ThreadX: build zenoh-pico + custom ThreadX system/network layer + shim.
+        // Uses our own system.c (ThreadX tasks/mutex/clock) + network.c (NetX Duo BSD sockets).
+        // Works for both native (Linux sim) and embedded (RISC-V QEMU) targets.
+        generate_config_header(&out_dir, &link_features, &buf_config);
+        build_zenoh_pico_threadx(
+            &zenoh_pico_src,
+            &c_dir,
+            &include_dir,
+            &out_dir,
+            &target,
+            &link_features,
+            &shim_config,
+        );
+    } else if !is_embedded_target(&target) {
         // Native: build zenoh-pico via CMake (or use system library), then shim via cc
         let zenoh_pico_include = if use_system {
             use_system_zenoh_pico()
@@ -447,19 +466,6 @@ fn main() {
         // Reuses zenoh-pico's unix/system.c + unix/network.c with ZENOH_NUTTX define.
         generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_nuttx(
-            &zenoh_pico_src,
-            &c_dir,
-            &include_dir,
-            &out_dir,
-            &target,
-            &link_features,
-            &shim_config,
-        );
-    } else if use_threadx {
-        // ThreadX: build zenoh-pico + custom ThreadX system/network layer + shim.
-        // Uses our own system.c (ThreadX tasks/mutex/clock) + network.c (NetX Duo BSD sockets).
-        generate_config_header(&out_dir, &link_features, &buf_config);
-        build_zenoh_pico_threadx(
             &zenoh_pico_src,
             &c_dir,
             &include_dir,
@@ -1638,6 +1644,7 @@ fn build_zenoh_pico_threadx(
     build.include(&generated_config_dir);
     build.include(zenoh_pico_src.join("include"));
     build.include(&version_include_dir);
+    build.include(&platform_dir);
     build.include(include_dir);
 
     // ThreadX kernel headers (tx_api.h, tx_thread.h, etc.)
@@ -1646,17 +1653,27 @@ fn build_zenoh_pico_threadx(
     // ThreadX user config (tx_user.h)
     build.include(&threadx_config_dir);
 
-    // ThreadX Linux port headers (tx_port.h — platform-specific types)
-    // Detect port directory: Linux sim uses ports/linux/gnu/, RISC-V uses ports/risc-v64/gnu/
+    // ThreadX port headers (tx_port.h — platform-specific types)
+    // Detect port directory: Linux sim uses ports/linux/gnu/inc/, RISC-V uses ports/risc-v64/gnu/inc/
     if !is_embedded_target(target) {
-        build.include(threadx_dir.join("ports/linux/gnu/include"));
+        build.include(threadx_dir.join("ports/linux/gnu/inc"));
     } else if target.contains("riscv64") {
-        build.include(threadx_dir.join("ports/risc-v64/gnu/include"));
+        build.include(threadx_dir.join("ports/risc-v64/gnu/inc"));
     }
 
     // NetX Duo headers (nx_api.h, nxd_bsd.h, etc.)
     build.include(netx_dir.join("common/inc"));
     build.include(netx_dir.join("addons/BSD"));
+
+    // NetX Duo port headers (nx_port.h — platform-specific types)
+    // Linux sim uses ports/linux/gnu/inc/, RISC-V uses the generic linux port too
+    // (NetX Duo doesn't have a RISC-V port; the Linux port is architecture-agnostic)
+    if !is_embedded_target(target) {
+        build.include(netx_dir.join("ports/linux/gnu/inc"));
+    } else if target.contains("riscv64") {
+        // RISC-V QEMU uses the Linux port's nx_port.h (via board crate config)
+        // The board crate supplies nx_port.h through its config dir
+    }
 
     // NetX Duo user config (nx_user.h)
     build.include(&netx_config_dir);
@@ -1667,6 +1684,13 @@ fn build_zenoh_pico_threadx(
     build.define("ZENOH_GENERIC", None);
     build.define("ZENOH_THREADX", None);
     build.define("ZENOH_DEBUG", "0");
+
+    // On native Linux (ThreadX sim), NetX Duo's nxd_bsd.h remaps nx_bsd_* types to
+    // standard POSIX names (suseconds_t, fd_set, etc.), which conflict with system headers.
+    // NX_BSD_ENABLE_NATIVE_API keeps the nx_bsd_* prefix to avoid these conflicts.
+    if !is_embedded_target(target) {
+        build.define("NX_BSD_ENABLE_NATIVE_API", None);
+    }
 
     // ThreadX has real threads — multi-thread support
     build.define("Z_FEATURE_MULTI_THREAD", "1");

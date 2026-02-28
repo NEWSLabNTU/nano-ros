@@ -25,7 +25,8 @@ extern crate std;
     feature = "posix",
     feature = "zephyr",
     feature = "bare-metal",
-    feature = "freertos"
+    feature = "freertos",
+    feature = "threadx"
 ))]
 use core::ffi::c_void;
 
@@ -75,7 +76,8 @@ pub struct zpico_property_t {
         feature = "posix",
         feature = "zephyr",
         feature = "bare-metal",
-        feature = "freertos"
+        feature = "freertos",
+        feature = "threadx"
     ),
     not(cbindgen)
 ))]

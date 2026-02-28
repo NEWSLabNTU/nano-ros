@@ -11,6 +11,7 @@
 //! - `platform-zephyr` - Uses Zephyr RTOS threads
 //! - `platform-bare-metal` - Uses polling (bare-metal platforms)
 //! - `platform-freertos` - Uses FreeRTOS threads + lwIP sockets
+//! - `platform-threadx` - Uses ThreadX threads + NetX Duo sockets
 
 #![no_std]
 
@@ -24,7 +25,8 @@ extern crate alloc;
     feature = "platform-posix",
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
-    feature = "platform-freertos"
+    feature = "platform-freertos",
+    feature = "platform-threadx"
 ))]
 pub(crate) mod config;
 pub mod keyexpr;
@@ -34,7 +36,8 @@ pub mod zpico;
     feature = "platform-posix",
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
-    feature = "platform-freertos"
+    feature = "platform-freertos",
+    feature = "platform-threadx"
 ))]
 pub mod shim;
 
@@ -46,7 +49,8 @@ pub use zpico::{ZenohId, ZpicoError};
     feature = "platform-posix",
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
-    feature = "platform-freertos"
+    feature = "platform-freertos",
+    feature = "platform-threadx"
 ))]
 pub use zpico::{
     Context, LivelinessToken, Publisher as ZpicoPublisher, Queryable, Subscriber as ZpicoSubscriber,
@@ -57,7 +61,8 @@ pub use zpico::{
     feature = "platform-posix",
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
-    feature = "platform-freertos"
+    feature = "platform-freertos",
+    feature = "platform-threadx"
 ))]
 pub use shim::{
     MessageInfo, RMW_GID_SIZE, RmwAttachment, Ros2Liveliness, SERVICE_BUFFER_SIZE,

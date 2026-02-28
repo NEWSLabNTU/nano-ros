@@ -23,6 +23,9 @@ unsafe extern "C" {
 
     fn nros_threadx_set_app_callback(entry: unsafe extern "C" fn(*mut c_void), arg: *mut c_void);
 
+    // ThreadX API names (tx_*) are C macros that expand to _tx_* symbols.
+    // Rust doesn't see C macros, so we link directly to the actual symbols.
+    #[link_name = "_tx_initialize_kernel_enter"]
     fn tx_kernel_enter();
 }
 
@@ -48,6 +51,7 @@ where
     // TX_TIMER_TICKS_PER_SECOND (100), so 200 ticks = 2 seconds.
     unsafe {
         unsafe extern "C" {
+            #[link_name = "_tx_thread_sleep"]
             fn tx_thread_sleep(ticks: u32);
         }
         tx_thread_sleep(200);

@@ -203,9 +203,9 @@ void tx_application_define(void *first_unused_memory)
         printf("ERROR: BSD stack memory alloc failed (%u)\n", status);
         return;
     }
-    status = bsd_initialize(&ip_instance, &packet_pool,
-                             (CHAR *)pointer, BSD_STACK_SIZE,
-                             APP_THREAD_PRIORITY + 1);
+    status = nx_bsd_initialize(&ip_instance, &packet_pool,
+                                (CHAR *)pointer, BSD_STACK_SIZE,
+                                APP_THREAD_PRIORITY + 1);
     if (status != NX_SUCCESS) {
         printf("ERROR: BSD initialize failed (0x%x)\n", status);
         return;

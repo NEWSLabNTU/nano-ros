@@ -4,6 +4,11 @@
  * Implements zenoh-pico's network interface using NetX Duo's BSD socket API
  * (nxd_bsd.h). Provides TCP and UDP unicast transport.
  *
+ * Uses nx_bsd_* prefixed names throughout so that the code compiles both
+ * on embedded targets (where the macros remap nx_bsd_* → standard names)
+ * and on the Linux sim (where NX_BSD_ENABLE_NATIVE_API keeps the prefix
+ * to avoid conflicts with system headers).
+ *
  * Gated on ZENOH_THREADX.
  */
 
@@ -41,7 +46,7 @@ static uint16_t _z_parse_port(const char *s) {
 }
 
 /* Convert endpoint to sockaddr_in */
-static void _z_ep_to_sockaddr(const _z_sys_net_endpoint_t *ep, struct sockaddr_in *addr) {
+static void _z_ep_to_sockaddr(const _z_sys_net_endpoint_t *ep, struct nx_bsd_sockaddr_in *addr) {
     memset(addr, 0, sizeof(*addr));
     addr->sin_family = AF_INET;
     addr->sin_addr.s_addr = ep->_addr;
@@ -58,9 +63,9 @@ z_result_t _z_socket_set_non_blocking(const _z_sys_net_socket_t *sock) {
 }
 
 z_result_t _z_socket_accept(const _z_sys_net_socket_t *sock_in, _z_sys_net_socket_t *sock_out) {
-    struct sockaddr_in addr;
+    struct nx_bsd_sockaddr_in addr;
     INT addr_len = sizeof(addr);
-    sock_out->_fd = accept(sock_in->_fd, (struct sockaddr *)&addr, &addr_len);
+    sock_out->_fd = nx_bsd_accept(sock_in->_fd, (struct nx_bsd_sockaddr *)&addr, &addr_len);
     if (sock_out->_fd < 0) {
         return _Z_ERR_GENERIC;
     }
@@ -69,7 +74,7 @@ z_result_t _z_socket_accept(const _z_sys_net_socket_t *sock_in, _z_sys_net_socke
 
 void _z_socket_close(_z_sys_net_socket_t *sock) {
     if (sock->_fd >= 0) {
-        soc_close(sock->_fd);
+        nx_bsd_soc_close(sock->_fd);
         sock->_fd = -1;
     }
 }
@@ -113,7 +118,7 @@ void _z_free_endpoint_tcp(_z_sys_net_endpoint_t *ep) {
 z_result_t _z_open_tcp(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout) {
     z_result_t ret = _Z_RES_OK;
 
-    sock->_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sock->_fd = nx_bsd_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock->_fd < 0) {
         _Z_ERROR("Failed to create TCP socket");
         return _Z_ERR_GENERIC;
@@ -122,18 +127,18 @@ z_result_t _z_open_tcp(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t re
     /* Set receive timeout */
     if (tout > 0) {
         INT tv_ms = (INT)tout;
-        if (setsockopt(sock->_fd, SOL_SOCKET, SO_RCVTIMEO, &tv_ms, sizeof(tv_ms)) < 0) {
+        if (nx_bsd_setsockopt(sock->_fd, SOL_SOCKET, SO_RCVTIMEO, &tv_ms, sizeof(tv_ms)) < 0) {
             _Z_DEBUG("Warning: SO_RCVTIMEO not supported, continuing without timeout");
         }
     }
 
     /* Connect to remote endpoint */
-    struct sockaddr_in addr;
+    struct nx_bsd_sockaddr_in addr;
     _z_ep_to_sockaddr(&rep, &addr);
 
-    if (connect(sock->_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+    if (nx_bsd_connect(sock->_fd, (struct nx_bsd_sockaddr *)&addr, sizeof(addr)) < 0) {
         _Z_ERROR("TCP connect failed");
-        soc_close(sock->_fd);
+        nx_bsd_soc_close(sock->_fd);
         sock->_fd = -1;
         ret = _Z_ERR_GENERIC;
     }
@@ -144,26 +149,26 @@ z_result_t _z_open_tcp(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t re
 z_result_t _z_listen_tcp(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t lep) {
     z_result_t ret = _Z_RES_OK;
 
-    sock->_fd = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    sock->_fd = nx_bsd_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock->_fd < 0) {
         return _Z_ERR_GENERIC;
     }
 
     /* SO_REUSEADDR */
     int value = 1;
-    setsockopt(sock->_fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
+    nx_bsd_setsockopt(sock->_fd, SOL_SOCKET, SO_REUSEADDR, &value, sizeof(value));
 
-    struct sockaddr_in addr;
+    struct nx_bsd_sockaddr_in addr;
     _z_ep_to_sockaddr(&lep, &addr);
 
-    if (bind(sock->_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        soc_close(sock->_fd);
+    if (nx_bsd_bind(sock->_fd, (struct nx_bsd_sockaddr *)&addr, sizeof(addr)) < 0) {
+        nx_bsd_soc_close(sock->_fd);
         sock->_fd = -1;
         return _Z_ERR_GENERIC;
     }
 
-    if (listen(sock->_fd, 1) < 0) {
-        soc_close(sock->_fd);
+    if (nx_bsd_listen(sock->_fd, 1) < 0) {
+        nx_bsd_soc_close(sock->_fd);
         sock->_fd = -1;
         return _Z_ERR_GENERIC;
     }
@@ -176,7 +181,7 @@ void _z_close_tcp(_z_sys_net_socket_t *sock) {
 }
 
 size_t _z_read_tcp(const _z_sys_net_socket_t sock, uint8_t *ptr, size_t len) {
-    INT rb = recv(sock._fd, (CHAR *)ptr, (INT)len, 0);
+    INT rb = nx_bsd_recv(sock._fd, (CHAR *)ptr, (INT)len, 0);
     if (rb <= 0) {
         return SIZE_MAX;
     }
@@ -199,7 +204,7 @@ size_t _z_read_exact_tcp(const _z_sys_net_socket_t sock, uint8_t *ptr, size_t le
 }
 
 size_t _z_send_tcp(const _z_sys_net_socket_t sock, const uint8_t *ptr, size_t len) {
-    INT sb = send(sock._fd, (CHAR *)ptr, (INT)len, 0);
+    INT sb = nx_bsd_send(sock._fd, (CHAR *)ptr, (INT)len, 0);
     if (sb <= 0) {
         return SIZE_MAX;
     }
@@ -230,7 +235,7 @@ void _z_free_endpoint_udp(_z_sys_net_endpoint_t *ep) {
 /* ── UDP unicast sockets ─────────────────────────────────────────────────── */
 
 z_result_t _z_open_udp_unicast(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout) {
-    sock->_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    sock->_fd = nx_bsd_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock->_fd < 0) {
         return _Z_ERR_GENERIC;
     }
@@ -238,15 +243,15 @@ z_result_t _z_open_udp_unicast(_z_sys_net_socket_t *sock, const _z_sys_net_endpo
     /* Set receive timeout */
     if (tout > 0) {
         INT tv_ms = (INT)tout;
-        setsockopt(sock->_fd, SOL_SOCKET, SO_RCVTIMEO, &tv_ms, sizeof(tv_ms));
+        nx_bsd_setsockopt(sock->_fd, SOL_SOCKET, SO_RCVTIMEO, &tv_ms, sizeof(tv_ms));
     }
 
     /* Connect to remote endpoint (allows using send/recv instead of sendto/recvfrom) */
-    struct sockaddr_in addr;
+    struct nx_bsd_sockaddr_in addr;
     _z_ep_to_sockaddr(&rep, &addr);
 
-    if (connect(sock->_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        soc_close(sock->_fd);
+    if (nx_bsd_connect(sock->_fd, (struct nx_bsd_sockaddr *)&addr, sizeof(addr)) < 0) {
+        nx_bsd_soc_close(sock->_fd);
         sock->_fd = -1;
         return _Z_ERR_GENERIC;
     }
@@ -255,16 +260,16 @@ z_result_t _z_open_udp_unicast(_z_sys_net_socket_t *sock, const _z_sys_net_endpo
 }
 
 z_result_t _z_listen_udp_unicast(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t lep, uint32_t tout) {
-    sock->_fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    sock->_fd = nx_bsd_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
     if (sock->_fd < 0) {
         return _Z_ERR_GENERIC;
     }
 
-    struct sockaddr_in addr;
+    struct nx_bsd_sockaddr_in addr;
     _z_ep_to_sockaddr(&lep, &addr);
 
-    if (bind(sock->_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-        soc_close(sock->_fd);
+    if (nx_bsd_bind(sock->_fd, (struct nx_bsd_sockaddr *)&addr, sizeof(addr)) < 0) {
+        nx_bsd_soc_close(sock->_fd);
         sock->_fd = -1;
         return _Z_ERR_GENERIC;
     }
@@ -277,7 +282,7 @@ void _z_close_udp_unicast(_z_sys_net_socket_t *sock) {
 }
 
 size_t _z_read_udp_unicast(const _z_sys_net_socket_t sock, uint8_t *ptr, size_t len) {
-    INT rb = recv(sock._fd, (CHAR *)ptr, (INT)len, 0);
+    INT rb = nx_bsd_recv(sock._fd, (CHAR *)ptr, (INT)len, 0);
     if (rb <= 0) {
         return SIZE_MAX;
     }
@@ -301,11 +306,11 @@ size_t _z_read_exact_udp_unicast(const _z_sys_net_socket_t sock, uint8_t *ptr, s
 
 size_t _z_send_udp_unicast(const _z_sys_net_socket_t sock, const uint8_t *ptr, size_t len,
                             const _z_sys_net_endpoint_t rep) {
-    struct sockaddr_in addr;
+    struct nx_bsd_sockaddr_in addr;
     _z_ep_to_sockaddr(&rep, &addr);
 
-    INT sb = sendto(sock._fd, (CHAR *)ptr, (INT)len, 0,
-                    (struct sockaddr *)&addr, sizeof(addr));
+    INT sb = nx_bsd_sendto(sock._fd, (CHAR *)ptr, (INT)len, 0,
+                    (struct nx_bsd_sockaddr *)&addr, sizeof(addr));
     if (sb <= 0) {
         return SIZE_MAX;
     }
