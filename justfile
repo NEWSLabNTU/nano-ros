@@ -22,7 +22,7 @@ default:
 # =============================================================================
 
 # Build everything: refresh bindings, workspace (native + embedded) and all examples
-build: install-local generate-bindings build-workspace build-workspace-embedded build-examples
+build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-examples-threadx-linux
     @echo "All builds completed!"
 
 # Populate build/install/ with C API artifacts (libraries, headers, CMake, codegen, interfaces).
@@ -51,6 +51,7 @@ format:
             -not -path '*/generated/*' -not -path '*/zephyr/*' \
             -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
             -not -path '*/threadx-linux/*' \
+            -not -path '*/qemu-riscv64-threadx/*' \
             -exec dirname {} \; | sort
     } | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +nightly fmt && echo "  fmt {}"'
@@ -232,7 +233,7 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -258,6 +259,7 @@ format-examples:
         -not -path '*/generated/*' -not -path '*/zephyr/*' \
         -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
         -not -path '*/threadx-linux/*' \
+        -not -path '*/qemu-riscv64-threadx/*' \
         -exec dirname {} \; | sort \
     | parallel --halt now,fail=1 --line-buffer \
         'cd {} && cargo +nightly fmt && echo "  fmt {}"'
@@ -268,7 +270,7 @@ check-examples:
     #!/usr/bin/env bash
     set -e
     echo "Checking examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -578,6 +580,22 @@ test-freertos verbose="":
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
+
+# Build ThreadX Linux examples (native x86_64 simulation).
+# Skips gracefully if ThreadX SDK is not available.
+build-examples-threadx-linux:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
+        echo "Skipping ThreadX Linux examples (ThreadX/NetX not found). Run: just setup-threadx"
+        exit 0
+    fi
+    echo "Building ThreadX Linux examples..."
+    for example in talker listener service-server service-client action-server action-client; do
+        echo "  Building $example..."
+        (cd examples/threadx-linux/rust/zenoh/$example && cargo build --release)
+    done
+    echo "ThreadX Linux examples built!"
 
 # Run ThreadX Linux integration tests (build + verification via nextest)
 test-threadx-linux verbose="":
@@ -1361,6 +1379,40 @@ setup-threadx:
     echo "  $THREADX_LEARN_DIR/courses/netxduo/Driver/nx_linux_network_driver.c"
     echo ""
     echo "Setup complete!"
+
+# Build ThreadX Linux examples and apply CAP_NET_RAW (requires sudo).
+# The ThreadX Linux network driver uses AF_PACKET/SOCK_RAW for Ethernet
+# frames on TAP interfaces, which requires this capability.
+#
+# Usage:
+#   just setup-threadx-caps          # build + apply capabilities (once)
+#   just test-threadx-linux          # E2E tests now pass
+#
+# Re-run after source changes that trigger a recompile (caps are cleared
+# when the binary is rebuilt).
+setup-threadx-caps: build-examples-threadx-linux
+    #!/usr/bin/env bash
+    set -e
+    echo "=== Applying CAP_NET_RAW to ThreadX Linux binaries ==="
+    echo ""
+    EXAMPLES_DIR="examples/threadx-linux/rust/zenoh"
+    found=0
+    for dir in "$EXAMPLES_DIR"/*/; do
+        name=$(basename "$dir")
+        binary="$dir/target/release/threadx-linux-$name"
+        if [ -f "$binary" ]; then
+            echo "  setcap cap_net_raw+ep $binary"
+            sudo setcap cap_net_raw+ep "$binary"
+            found=$((found + 1))
+        fi
+    done
+    if [ $found -eq 0 ]; then
+        echo "No built ThreadX binaries found."
+        exit 1
+    fi
+    echo ""
+    echo "Applied capabilities to $found binaries."
+    echo "ThreadX E2E tests should now pass with: just test-threadx-linux"
 
 # Download Verus binary from GitHub releases to tools/verus
 setup-verus:
