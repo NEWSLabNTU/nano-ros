@@ -127,6 +127,13 @@ exclude = [
     "examples/threadx-linux/rust/zenoh/service-client",
     "examples/threadx-linux/rust/zenoh/action-server",
     "examples/threadx-linux/rust/zenoh/action-client",
+    # ThreadX QEMU RISC-V examples (require ThreadX + NetX Duo SDKs + RISC-V toolchain)
+    "examples/qemu-riscv64-threadx/rust/zenoh/talker",
+    "examples/qemu-riscv64-threadx/rust/zenoh/listener",
+    "examples/qemu-riscv64-threadx/rust/zenoh/service-server",
+    "examples/qemu-riscv64-threadx/rust/zenoh/service-client",
+    "examples/qemu-riscv64-threadx/rust/zenoh/action-server",
+    "examples/qemu-riscv64-threadx/rust/zenoh/action-client",
     # ESP32 crates (RISC-V, require nightly + esp-hal)
     "packages/drivers/openeth-smoltcp",
     # ESP32 examples (RISC-V, require nightly + esp-hal)

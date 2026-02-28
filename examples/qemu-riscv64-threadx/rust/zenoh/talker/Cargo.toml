@@ -1,0 +1,20 @@
+[package]
+name = "qemu-riscv64-threadx-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Talker example on QEMU RISC-V with ThreadX + NetX Duo + virtio-net"
+
+[[bin]]
+name = "qemu-riscv64-threadx-talker"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+nros-threadx-qemu-riscv64 = { path = "../../../../../packages/boards/nros-threadx-qemu-riscv64" }
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-threadx", "link-tcp", "link-udp-unicast", "ros-humble"] }
+std_msgs = { version = "*", default-features = false }
