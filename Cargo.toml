@@ -119,6 +119,7 @@ exclude = [
     "packages/boards/nros-nuttx-qemu-arm",
     "packages/boards/nros-mps2-an385-freertos",
     "packages/boards/nros-threadx-linux",
+    "packages/boards/nros-threadx-qemu-riscv64",
     # ThreadX Linux examples (require ThreadX + NetX Duo SDKs)
     "examples/threadx-linux/rust/zenoh/talker",
     "examples/threadx-linux/rust/zenoh/listener",
