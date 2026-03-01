@@ -46,7 +46,7 @@ static uint8_t  cfg_ip[4]      = {192, 0, 3, 10};
 static uint8_t  cfg_netmask[4] = {255, 255, 255, 0};
 static uint8_t  cfg_gateway[4] = {192, 0, 3, 1};
 static uint8_t  cfg_mac[6]     = {0x02, 0x00, 0x00, 0x00, 0x00, 0x00};
-static const char *cfg_interface_name = "tap-qemu0";
+static const char *cfg_interface_name = "veth-tx0";
 
 /* ---- Rust callback (set from Rust before tx_kernel_enter) ---- */
 static void (*rust_app_entry)(void *) = NULL;
@@ -118,7 +118,7 @@ void tx_application_define(void *first_unused_memory)
     /* Initialize the NetX system */
     nx_system_initialize();
 
-    /* Set the Linux TAP interface name before creating IP instance */
+    /* Set the Linux network interface name before creating IP instance */
     nx_linux_set_interface_name(cfg_interface_name);
 
     /* Allocate packet pool memory from byte pool */

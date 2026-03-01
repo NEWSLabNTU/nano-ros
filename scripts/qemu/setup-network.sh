@@ -119,6 +119,15 @@ teardown() {
         fi
     done
 
+    # Remove veth pairs (deleting one end removes both)
+    for i in $(seq 0 9); do
+        veth="veth-tx${i}"
+        if ip link show "$veth" &>/dev/null; then
+            ip link delete "$veth" 2>/dev/null || true
+            echo "  Removed $veth pair"
+        fi
+    done
+
     # Delete bridge
     if ip link show "$BRIDGE_NAME" &>/dev/null; then
         ip link set "$BRIDGE_NAME" down 2>/dev/null || true
@@ -166,7 +175,7 @@ ip link add name "$BRIDGE_NAME" type bridge
 ip addr add "$HOST_IP/$NETMASK" dev "$BRIDGE_NAME"
 ip link set "$BRIDGE_NAME" up
 
-# Create TAP interfaces
+# Create TAP interfaces (for QEMU bare-metal: MPS2-AN385, NuttX, etc.)
 echo ""
 echo "Creating TAP interfaces..."
 for i in $(seq 0 $((NUM_TAPS - 1))); do
@@ -177,6 +186,27 @@ for i in $(seq 0 $((NUM_TAPS - 1))); do
     ip tuntap add dev "$tap" mode tap user "$TAP_USER"
     ip link set "$tap" master "$BRIDGE_NAME"
     ip link set "$tap" up
+done
+
+# Create veth pairs (for ThreadX Linux simulation)
+#
+# ThreadX Linux uses AF_PACKET/SOCK_RAW on the network interface. AF_PACKET
+# doesn't work correctly on TAP devices with a bridge because traffic routes
+# through the TAP fd (userspace side) instead of the bridge. veth pairs are
+# purely kernel-side and work correctly with bridges and AF_PACKET.
+VETH_PREFIX="veth-tx"
+echo ""
+echo "Creating veth pairs for ThreadX Linux..."
+for i in $(seq 0 $((NUM_TAPS - 1))); do
+    veth="${VETH_PREFIX}${i}"
+    veth_br="${VETH_PREFIX}${i}-br"
+    guest_ip="192.0.3.$((10 + i))"
+
+    echo "  Creating $veth <-> $veth_br (ThreadX node IP: $guest_ip)..."
+    ip link add "$veth" type veth peer name "$veth_br"
+    ip link set "$veth_br" master "$BRIDGE_NAME"
+    ip link set "$veth" up
+    ip link set "$veth_br" up
 done
 
 # Enable IP forwarding
@@ -191,14 +221,21 @@ echo "Network configuration:"
 echo "  Bridge: $BRIDGE_NAME"
 echo "  Host IP: $HOST_IP/$NETMASK"
 echo ""
-echo "TAP interfaces:"
+echo "TAP interfaces (QEMU bare-metal):"
 for i in $(seq 0 $((NUM_TAPS - 1))); do
     tap="${TAP_PREFIX}${i}"
     guest_ip="192.0.3.$((10 + i))"
     echo "  - $tap: QEMU guest IP $guest_ip"
 done
 echo ""
-echo "Owner: $TAP_USER (can run QEMU without sudo)"
+echo "veth pairs (ThreadX Linux simulation):"
+for i in $(seq 0 $((NUM_TAPS - 1))); do
+    veth="${VETH_PREFIX}${i}"
+    guest_ip="192.0.3.$((10 + i))"
+    echo "  - $veth: ThreadX node IP $guest_ip"
+done
+echo ""
+echo "Owner: $TAP_USER (can run QEMU/ThreadX without sudo)"
 echo ""
 echo "Next steps:"
 echo "  1. Start zenoh router:"

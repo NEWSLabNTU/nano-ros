@@ -1,7 +1,12 @@
 //! Configuration for ThreadX Linux simulation nodes
 //!
 //! Same IP presets as the FreeRTOS board crate (`nros-mps2-an385-freertos`),
-//! designed for the TAP bridge topology used by ThreadX E2E tests.
+//! designed for the bridge topology used by ThreadX E2E tests.
+//!
+//! ThreadX Linux uses veth pairs (not TAP devices) because the NetX Duo Linux
+//! network driver uses AF_PACKET/SOCK_RAW, which doesn't work correctly on TAP
+//! devices with a bridge (traffic routes through the TAP fd instead of the bridge).
+//! veth pairs are purely kernel-side and work correctly with bridges and AF_PACKET.
 
 /// Network and node configuration for ThreadX Linux simulation.
 ///
@@ -9,7 +14,7 @@
 ///
 /// - IP: 192.0.3.10/24, Gateway: 192.0.3.1
 /// - Zenoh: `tcp/192.0.3.1:7447`
-/// - Interface: `tap-qemu0`
+/// - Interface: `veth-tx0`
 #[derive(Clone)]
 pub struct Config {
     /// MAC address (default: locally administered 02:00:00:00:00:00)
@@ -20,7 +25,7 @@ pub struct Config {
     pub netmask: [u8; 4],
     /// Gateway IP
     pub gateway: [u8; 4],
-    /// Linux TAP interface name
+    /// Linux network interface name (veth for ThreadX Linux simulation)
     pub interface: &'static str,
     /// Zenoh locator string
     pub zenoh_locator: &'static str,
@@ -35,7 +40,7 @@ impl Default for Config {
             ip: [192, 0, 3, 10],
             netmask: [255, 255, 255, 0],
             gateway: [192, 0, 3, 1],
-            interface: "tap-qemu0",
+            interface: "veth-tx0",
             zenoh_locator: "tcp/192.0.3.1:7447",
             domain_id: 0,
         }
@@ -50,7 +55,7 @@ impl Config {
             ip: [192, 0, 3, 11],
             netmask: [255, 255, 255, 0],
             gateway: [192, 0, 3, 1],
-            interface: "tap-qemu1",
+            interface: "veth-tx1",
             zenoh_locator: "tcp/192.0.3.1:7447",
             domain_id: 0,
         }
@@ -85,7 +90,7 @@ impl Config {
         self
     }
 
-    /// Builder: set Linux TAP interface name.
+    /// Builder: set Linux network interface name.
     pub fn with_interface(mut self, interface: &'static str) -> Self {
         self.interface = interface;
         self

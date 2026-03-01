@@ -340,6 +340,32 @@ pub fn require_tap_bridge() -> bool {
     true
 }
 
+/// Check if the veth bridge network is available for ThreadX Linux simulation.
+///
+/// Verifies that the `qemu-br` bridge and at least `veth-tx0` + `veth-tx1`
+/// interfaces exist. These are created by `sudo ./scripts/qemu/setup-network.sh`.
+///
+/// ThreadX Linux uses veth pairs (not TAP devices) because the NetX Duo Linux
+/// network driver uses AF_PACKET/SOCK_RAW, which doesn't work correctly on TAP
+/// devices with a bridge. veth pairs are purely kernel-side and route traffic
+/// through the bridge correctly.
+pub fn is_veth_bridge_available() -> bool {
+    let bridge_exists = std::path::Path::new("/sys/class/net/qemu-br").exists();
+    let veth0_exists = std::path::Path::new("/sys/class/net/veth-tx0").exists();
+    let veth1_exists = std::path::Path::new("/sys/class/net/veth-tx1").exists();
+    bridge_exists && veth0_exists && veth1_exists
+}
+
+/// Skip test if veth bridge is not available for ThreadX Linux simulation
+pub fn require_veth_bridge() -> bool {
+    if !is_veth_bridge_available() {
+        eprintln!("Skipping test: veth bridge not available for ThreadX Linux");
+        eprintln!("Setup: sudo ./scripts/qemu/setup-network.sh");
+        return false;
+    }
+    true
+}
+
 /// Check if QEMU ARM is available
 pub fn is_qemu_available() -> bool {
     Command::new("qemu-system-arm")

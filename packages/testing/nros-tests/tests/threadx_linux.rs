@@ -13,7 +13,8 @@
 
 use nros_tests::count_pattern;
 use nros_tests::fixtures::{
-    ZenohRouter, is_tap_bridge_available, is_zenohd_available, require_tap_bridge, require_zenohd,
+    ZenohRouter, is_tap_bridge_available, is_veth_bridge_available, is_zenohd_available,
+    require_veth_bridge, require_zenohd,
 };
 use nros_tests::process::{ManagedProcess, kill_process_group};
 use nros_tests::{TestError, TestResult, project_root};
@@ -108,14 +109,14 @@ fn is_raw_socket_available() -> bool {
 ///
 /// E2E tests require:
 /// 1. ThreadX build prerequisites (THREADX_DIR + NETX_DIR + learn-samples)
-/// 2. TAP bridge network (qemu-br + tap-qemu0 + tap-qemu1)
+/// 2. veth bridge network (qemu-br + veth-tx0 + veth-tx1)
 /// 3. zenohd router (built from submodule)
 /// 4. CAP_NET_RAW capability (for AF_PACKET raw socket in the Linux network driver)
 fn require_threadx_e2e() -> bool {
     if !require_threadx() {
         return false;
     }
-    if !require_tap_bridge() {
+    if !require_veth_bridge() {
         return false;
     }
     if !require_zenohd() {
@@ -238,11 +239,13 @@ fn test_threadx_detection() {
     let netx = is_netx_available();
     let samples = is_threadx_samples_available();
     let tap_bridge = is_tap_bridge_available();
+    let veth_bridge = is_veth_bridge_available();
     let zenohd = is_zenohd_available();
     eprintln!("ThreadX available: {}", threadx);
     eprintln!("NetX Duo available: {}", netx);
     eprintln!("ThreadX learn-samples available: {}", samples);
     eprintln!("TAP bridge available: {}", tap_bridge);
+    eprintln!("veth bridge available: {}", veth_bridge);
     eprintln!("zenohd available: {}", zenohd);
 }
 
@@ -433,14 +436,14 @@ fn test_threadx_pubsub_e2e() {
     let mut talker = ManagedProcess::spawn(talker_bin, &[], "threadx-linux-talker")
         .expect("Failed to start talker");
 
-    // Wait for listener to complete
+    // Wait for listener to complete (capture stdout+stderr for error diagnostics)
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_all_output(Duration::from_secs(60))
         .unwrap_or_default();
 
     // Wait for talker to finish publishing
     let talker_output = talker
-        .wait_for_output(Duration::from_secs(15))
+        .wait_for_all_output(Duration::from_secs(15))
         .unwrap_or_default();
 
     kill_process_group(talker.handle_mut());
@@ -455,7 +458,7 @@ fn test_threadx_pubsub_e2e() {
             "ThreadX pubsub E2E failed — listener did not reach readiness.\n\
              This is an environment issue. Verify:\n\
              - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
+             - veth devices: `ip link show veth-tx0 veth-tx1` (should be UP)\n\
              - zenohd reachable: bridge IP 192.0.3.1:7447"
         );
     }
@@ -506,12 +509,17 @@ fn test_threadx_service_e2e() {
 
     // Wait for client to complete all service calls (4 calls: 5+3, 10+20, 100+200, -5+10)
     let client_output = client
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_all_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    let server_output = server
+        .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
 
     kill_process_group(server.handle_mut());
     kill_process_group(client.handle_mut());
 
+    eprintln!("Server output:\n{}", server_output);
     eprintln!("Client output:\n{}", client_output);
 
     // Check for successful responses
@@ -543,7 +551,7 @@ fn test_threadx_service_e2e() {
             "ThreadX service E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
              - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
+             - veth devices: `ip link show veth-tx0 veth-tx1` (should be UP)\n\
              - zenohd reachable: bridge IP 192.0.3.1:7447"
         );
     } else {
@@ -586,14 +594,19 @@ fn test_threadx_action_e2e() {
     // Stabilization delay for client to discover server's action queryables
     std::thread::sleep(Duration::from_secs(5));
 
-    // Wait for client to complete
+    // Wait for client to complete (capture stdout+stderr for error diagnostics)
     let client_output = client
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_all_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    let server_output = server
+        .wait_for_all_output(Duration::from_secs(2))
         .unwrap_or_default();
 
     kill_process_group(server.handle_mut());
     kill_process_group(client.handle_mut());
 
+    eprintln!("Server output:\n{}", server_output);
     eprintln!("Client output:\n{}", client_output);
 
     // Verify action protocol
@@ -612,7 +625,7 @@ fn test_threadx_action_e2e() {
             "ThreadX action E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
              - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
+             - veth devices: `ip link show veth-tx0 veth-tx1` (should be UP)\n\
              - zenohd reachable: bridge IP 192.0.3.1:7447"
         );
     } else {
