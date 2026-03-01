@@ -37,8 +37,9 @@ static uint32_t _z_parse_ipv4(const char *s) {
     if (sscanf(s, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) {
         return 0;
     }
-    /* Network byte order (big-endian) */
-    return (uint32_t)((a << 24) | (b << 16) | (c << 8) | d);
+    /* sin_addr.s_addr must be in network byte order (big-endian).
+     * The manual construction gives host byte order, so apply htonl(). */
+    return htonl((uint32_t)((a << 24) | (b << 16) | (c << 8) | d));
 }
 
 static uint16_t _z_parse_port(const char *s) {
