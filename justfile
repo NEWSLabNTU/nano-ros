@@ -1673,6 +1673,10 @@ doc: doc-rust doc-c
 # Clean all build artifacts created by `just build`
 clean: clean-examples clean-zephyr clean-zenohd
     cargo clean
+    # Clean codegen workspace (separate Cargo workspace, not covered by cargo clean)
+    cargo clean --manifest-path packages/codegen/packages/Cargo.toml
+    # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
+    find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
     rm -rf build
     @echo "All build artifacts cleaned"
 
