@@ -667,23 +667,23 @@ Add a ThreadX branch in `xrce-sys/build.rs`:
 
 ## Acceptance Criteria
 
-- [ ] `platform-threadx` feature compiles cleanly for `x86_64-unknown-linux-gnu` (Linux sim)
-- [ ] `platform-threadx` feature compiles cleanly for `riscv64gc-unknown-none-elf` (QEMU RISC-V)
-- [ ] Mutual exclusivity enforced: enabling `platform-threadx` + any other platform → build error
-- [ ] Feature flag chain works: `nros` → `nros-node` → `nros-rmw-zenoh` → `zpico-sys` all forward correctly
-- [ ] ThreadX Linux sim board crate starts ThreadX kernel + NetX Duo + zenoh-pico session
-- [ ] Linux sim pubsub example exchanges messages over TAP bridge via zenohd
-- [ ] Linux sim service example completes request/response cycle
-- [ ] Linux sim action example completes goal/result cycle
-- [ ] virtio-net NetX Duo driver transmits and receives Ethernet frames on QEMU RISC-V virt
-- [ ] QEMU RISC-V board crate starts ThreadX + NetX Duo + virtio-net + zenoh-pico session
+- [x] `platform-threadx` feature compiles cleanly for `x86_64-unknown-linux-gnu` (Linux sim)
+- [x] `platform-threadx` feature compiles cleanly for `riscv64gc-unknown-none-elf` (QEMU RISC-V)
+- [x] Mutual exclusivity enforced: enabling `platform-threadx` + any other platform → build error
+- [x] Feature flag chain works: `nros` → `nros-node` → `nros-rmw-zenoh` → `zpico-sys` all forward correctly
+- [x] ThreadX Linux sim board crate starts ThreadX kernel + NetX Duo + zenoh-pico session
+- [x] Linux sim pubsub example exchanges messages over TAP bridge via zenohd
+- [x] Linux sim service example completes request/response cycle
+- [x] Linux sim action example completes goal/result cycle
+- [x] virtio-net NetX Duo driver transmits and receives Ethernet frames on QEMU RISC-V virt
+- [x] QEMU RISC-V board crate starts ThreadX + NetX Duo + virtio-net + zenoh-pico session
 - [ ] QEMU RISC-V pubsub example exchanges messages over TAP bridge via zenohd
 - [ ] QEMU RISC-V service example completes request/response cycle
 - [ ] QEMU RISC-V action example completes goal/result cycle
-- [ ] `just test-threadx-linux` runs Linux simulation integration tests and passes
+- [x] `just test-threadx-linux` runs Linux simulation integration tests and passes
 - [ ] `just test-threadx` runs all ThreadX integration tests (Linux sim + QEMU RISC-V) and passes
-- [ ] `just quality` passes (ThreadX board crates excluded from default workspace if `THREADX_DIR` unset)
-- [ ] Orthogonality preserved: `platform-threadx` does not imply any RMW backend or ROS edition
+- [x] `just quality` passes (ThreadX board crates excluded from default workspace if `THREADX_DIR` unset)
+- [x] Orthogonality preserved: `platform-threadx` does not imply any RMW backend or ROS edition
 
 ## Notes
 
@@ -691,7 +691,8 @@ Add a ThreadX branch in `xrce-sys/build.rs`:
 - **Certification artifact licensing**: ThreadX source is MIT. Safety artifacts (safety manual, V&V reports, trace matrices) require ThreadX Alliance membership (EUR 5K–25K/year) plus separate commercial license.
 - **No smoltcp or lwIP needed**: NetX Duo provides the full TCP/IP stack with BSD sockets. Neither `zpico-smoltcp` nor `lan9118-lwip` crates are used.
 - **ThreadX heap**: NetX Duo allocates packets from `NX_PACKET_POOL`. ThreadX allocates thread stacks and kernel objects from byte/block pools. The board crate must configure pool sizes large enough for zenoh-pico (~16–20 KB for typical pub/sub).
-- **Linux sim `NET_ADMIN` capability**: The `nx_linux_network_driver.c` uses `AF_PACKET`/`SOCK_RAW`, which requires `CAP_NET_ADMIN` or root. Tests must run with appropriate privileges (same as existing TAP-based tests).
+- **Linux sim `CAP_NET_RAW` capability**: The `nx_linux_network_driver.c` uses `AF_PACKET`/`SOCK_RAW`, which requires `CAP_NET_RAW`. Run `just setup-threadx-caps` after each rebuild to apply capabilities to the example binaries. The network driver uses veth pairs (not TAP devices) bridged via `br-qemu`.
+- **NetX Duo BSD socket byte order**: `sin_addr.s_addr` must be in network byte order (big-endian). `nxd_bsd.c` applies `htonl()` internally to convert to host byte order for NetX internals. The zenoh-pico `_z_parse_ipv4()` in `network.c` must return `htonl()`-wrapped values. A missing `htonl()` caused `Transport(ConnectionFailed)` — connecting to `1.3.0.192` instead of `192.0.3.1`.
 - **QEMU RISC-V memory**: The virt machine's DRAM starts at `0x80000000` with configurable size (default 128 MB). More than sufficient for ThreadX + NetX Duo + zenoh-pico + application.
 - **Preemption-threshold**: ThreadX's unique scheduling feature. Not used in the initial port but available for future real-time tuning — safety-critical tasks can set a preemption threshold to reduce context switch overhead while maintaining priority ordering.
 - **`tx_user.h` configuration**: Analogous to `FreeRTOSConfig.h`. Key settings: `TX_MAX_PRIORITIES` (32), `TX_TIMER_TICKS_PER_SECOND` (100), `TX_ENABLE_STACK_CHECKING`. Enable `TX_MISRA_ENABLE` for safety-certified builds.
