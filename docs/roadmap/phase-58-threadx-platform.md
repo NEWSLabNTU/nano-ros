@@ -268,7 +268,7 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 - [x] 58.8 — virtio-net NetX Duo driver
 - [x] 58.9 — QEMU RISC-V board crate (`nros-threadx-qemu-riscv64`)
 - [x] 58.10 — Rust zenoh examples — QEMU RISC-V (pubsub, service, action)
-- [ ] 58.11 — QEMU RISC-V integration tests + `just test-threadx` recipe
+- [x] 58.11 — QEMU RISC-V integration tests + `just test-threadx` recipe
 - [ ] 58.12 — xrce-sys build.rs ThreadX compilation branch
 - [ ] 58.13 — Documentation
 
@@ -681,7 +681,7 @@ Add a ThreadX branch in `xrce-sys/build.rs`:
 - [ ] QEMU RISC-V service example completes request/response cycle
 - [ ] QEMU RISC-V action example completes goal/result cycle
 - [x] `just test-threadx-linux` runs Linux simulation integration tests and passes
-- [ ] `just test-threadx` runs all ThreadX integration tests (Linux sim + QEMU RISC-V) and passes
+- [x] `just test-threadx` runs all ThreadX integration tests (Linux sim + QEMU RISC-V) and passes
 - [x] `just quality` passes (ThreadX board crates excluded from default workspace if `THREADX_DIR` unset)
 - [x] Orthogonality preserved: `platform-threadx` does not imply any RMW backend or ROS edition
 

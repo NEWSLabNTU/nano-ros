@@ -1597,9 +1597,28 @@ fn build_zenoh_pico_threadx(
     let version_include_dir = out_dir.join("zenoh-pico-version");
     generate_embedded_version_header(zenoh_pico_src, &version_include_dir);
 
-    // RISC-V cross-compilation flags
+    // RISC-V cross-compilation flags + picolibc sysroot
     if target.contains("riscv64") {
         build.flag("-march=rv64gc").flag("-mabi=lp64d");
+
+        // Generate errno.h shadow that avoids picolibc's TLS-based errno.
+        // picolibc declares `extern __thread int errno` which uses the tp register.
+        // On bare-metal RISC-V, tp may not be initialized → crash.
+        let errno_dir = out_dir.join("errno-override");
+        std::fs::create_dir_all(&errno_dir).unwrap();
+        std::fs::write(
+            errno_dir.join("errno.h"),
+            include_bytes!("c/platform/errno_override.h"),
+        )
+        .unwrap();
+        // errno override must be searched BEFORE picolibc headers
+        build.include(&errno_dir);
+
+        // Add picolibc sysroot for C standard library headers (stdint.h, etc.)
+        // Do NOT use --specs=picolibc.specs (it enables TLS errno)
+        if let Some(sysroot) = get_picolibc_sysroot() {
+            build.include(sysroot.join("include"));
+        }
     } else if target.contains("riscv32") {
         build.flag("-march=rv32gc").flag("-mabi=ilp32d");
     }
@@ -1685,12 +1704,15 @@ fn build_zenoh_pico_threadx(
     build.define("ZENOH_THREADX", None);
     build.define("ZENOH_DEBUG", "0");
 
-    // On native Linux (ThreadX sim), NetX Duo's nxd_bsd.h remaps nx_bsd_* types to
-    // standard POSIX names (suseconds_t, fd_set, etc.), which conflict with system headers.
+    // NetX Duo's nxd_bsd.h remaps nx_bsd_* types to standard POSIX names
+    // (suseconds_t, fd_set, in_addr_t, etc.) which conflict with system headers
+    // (glibc on Linux sim, picolibc on bare-metal RISC-V).
     // NX_BSD_ENABLE_NATIVE_API keeps the nx_bsd_* prefix to avoid these conflicts.
-    if !is_embedded_target(target) {
-        build.define("NX_BSD_ENABLE_NATIVE_API", None);
-    }
+    build.define("NX_BSD_ENABLE_NATIVE_API", None);
+
+    // Include tx_user.h / nx_user.h from the board crate config directory
+    build.define("TX_INCLUDE_USER_DEFINE_FILE", None);
+    build.define("NX_INCLUDE_USER_DEFINE_FILE", None);
 
     // ThreadX has real threads — multi-thread support
     build.define("Z_FEATURE_MULTI_THREAD", "1");

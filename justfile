@@ -22,7 +22,7 @@ default:
 # =============================================================================
 
 # Build everything: refresh bindings, workspace (native + embedded) and all examples
-build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-examples-threadx-linux
+build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-examples-threadx-linux build-examples-threadx-riscv64
     @echo "All builds completed!"
 
 # Populate build/install/ with C API artifacts (libraries, headers, CMake, codegen, interfaces).
@@ -77,7 +77,7 @@ test verbose="": build-zenohd
     set +e
     failed=0
     args=(--workspace --no-fail-fast
-          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg) and not binary(nuttx_qemu) and not binary(threadx_linux)')
+          -E 'not binary(zephyr) and not binary(rmw_interop) and not binary(xrce_ros2_interop) and not binary(esp32_emulator) and not binary(large_msg) and not binary(nuttx_qemu) and not binary(threadx_linux) and not binary(threadx_riscv64_qemu)')
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
@@ -614,6 +614,63 @@ test-threadx-linux verbose="":
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
+
+# Build ThreadX QEMU RISC-V 64 examples (requires threadx + netxduo + riscv64 gcc)
+build-examples-threadx-riscv64:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
+        echo "Skipping ThreadX QEMU RISC-V examples (ThreadX/NetX not found). Run: just setup-threadx"
+        exit 0
+    fi
+    if ! command -v riscv64-unknown-elf-gcc &>/dev/null; then
+        echo "Skipping ThreadX QEMU RISC-V examples (riscv64-unknown-elf-gcc not found)"
+        exit 0
+    fi
+    echo "Building ThreadX QEMU RISC-V 64 examples..."
+    # RISC-V board crate needs its own config dirs (not the Linux sim defaults)
+    rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+    for example in talker listener service-server service-client action-server action-client; do
+        echo "  Building $example..."
+        (cd examples/qemu-riscv64-threadx/rust/zenoh/$example && \
+         THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build --release)
+    done
+    echo "ThreadX QEMU RISC-V examples built!"
+
+# Run ThreadX QEMU RISC-V 64 integration tests (build + verification via nextest)
+test-threadx-riscv64 verbose="":
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$THREADX_DIR/common/inc" ]; then
+        echo "ERROR: ThreadX not found at $THREADX_DIR. Run: just setup-threadx"
+        exit 1
+    fi
+    if [ ! -d "$NETX_DIR/common/inc" ]; then
+        echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just setup-threadx"
+        exit 1
+    fi
+    args=(-p nros-tests --test threadx_riscv64_qemu --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
+# Run all ThreadX tests (Linux sim + QEMU RISC-V)
+test-threadx verbose="":
+    #!/usr/bin/env bash
+    set +e
+    failed=0
+    echo "=== ThreadX Linux Simulation ==="
+    just test-threadx-linux {{verbose}} || failed=1
+    echo ""
+    echo "=== ThreadX QEMU RISC-V 64 ==="
+    just test-threadx-riscv64 {{verbose}} || failed=1
+    if [ $failed -ne 0 ]; then
+        echo "FAIL: Some ThreadX tests failed."
+        exit 1
+    else
+        echo "All ThreadX tests passed!"
+    fi
 
 # Run basic QEMU test (nros serialization on Cortex-M3)
 test-qemu-basic verbose="": build-examples-qemu _init-test-logs
@@ -1471,15 +1528,16 @@ setup:
     echo ""
     echo "This will:"
     echo "  1. Install system packages via apt (may prompt for sudo):"
-    echo "       gcc-arm-none-eabi, qemu-system-arm, cmake, socat,"
+    echo "       gcc-arm-none-eabi, qemu-system-arm, qemu-system-misc, cmake, socat,"
     echo "       gcc-riscv64-unknown-elf, picolibc-riscv64-unknown-elf"
     echo "  2. Install Rust toolchains (stable + nightly)"
     echo "  3. Add rustup components: rustfmt, clippy, rust-src, miri"
     echo "  4. Add cross-compilation targets:"
-    echo "       - thumbv7em-none-eabihf  (ARM Cortex-M4F)"
-    echo "       - thumbv7m-none-eabi     (ARM Cortex-M3)"
-    echo "       - riscv32imc-unknown-none-elf (ESP32-C3 RISC-V)"
-    echo "       - armv7a-nuttx-eabi      (NuttX ARM, Tier 3 via build-std)"
+    echo "       - thumbv7em-none-eabihf       (ARM Cortex-M4F)"
+    echo "       - thumbv7m-none-eabi          (ARM Cortex-M3)"
+    echo "       - riscv32imc-unknown-none-elf  (ESP32-C3 RISC-V)"
+    echo "       - riscv64gc-unknown-none-elf   (QEMU RISC-V 64-bit)"
+    echo "       - armv7a-nuttx-eabi            (NuttX ARM, Tier 3 via build-std)"
     echo "  5. Install cargo tools + verification toolchains:"
     echo "       - cargo-nextest          (test runner)"
     echo "       - espflash               (ESP32 flash tool)"
@@ -1512,6 +1570,7 @@ setup:
     }
     check_apt gcc-arm-none-eabi              arm-none-eabi-gcc
     check_apt qemu-system-arm                qemu-system-arm
+    check_apt qemu-system-misc               qemu-system-riscv64
     check_apt cmake                          cmake
     check_apt socat                          socat
     check_apt gcc-riscv64-unknown-elf        riscv64-unknown-elf-gcc
@@ -1560,6 +1619,7 @@ setup:
     rustup target add thumbv7em-none-eabihf
     rustup target add thumbv7m-none-eabi
     rustup target add riscv32imc-unknown-none-elf
+    rustup target add riscv64gc-unknown-none-elf
     rustup +nightly target add thumbv7m-none-eabi
     # NuttX: armv7a-nuttx-eabi is Tier 3 — can't install via rustup, uses -Z build-std.
     # Verify the nightly compiler knows about it (rust-src installed in step 3).

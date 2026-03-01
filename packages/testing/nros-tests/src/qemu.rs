@@ -298,6 +298,52 @@ impl QemuProcess {
 
         Ok(Self { handle })
     }
+
+    /// Start QEMU with RISC-V 64-bit virt machine + virtio-net TAP networking
+    ///
+    /// Used for ThreadX QEMU RISC-V tests. The virt machine provides a virtio-net
+    /// MMIO interface connected to a TAP device on the host, enabling network
+    /// communication via the qemu-br bridge.
+    ///
+    /// # Arguments
+    /// * `binary` - Path to the RISC-V ELF binary to run
+    /// * `tap_iface` - TAP interface name (e.g., "tap-qemu0")
+    ///
+    /// # Returns
+    /// A managed QEMU process
+    pub fn start_riscv64_virt(binary: &Path, tap_iface: &str) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-riscv64");
+        cmd.args([
+            "-M",
+            "virt",
+            "-nographic",
+            "-global",
+            "virtio-mmio.force-legacy=false",
+            "-kernel",
+        ])
+        .arg(binary);
+
+        let netdev_arg = format!("tap,id=net0,ifname={},script=no,downscript=no", tap_iface);
+        cmd.args(["-netdev", &netdev_arg]);
+        cmd.args([
+            "-device",
+            "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0",
+        ]);
+
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
 }
 
 impl Drop for QemuProcess {
@@ -364,6 +410,17 @@ pub fn require_veth_bridge() -> bool {
         return false;
     }
     true
+}
+
+/// Check if QEMU RISC-V 64-bit is available
+pub fn is_qemu_riscv64_available() -> bool {
+    Command::new("qemu-system-riscv64")
+        .arg("--version")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
 }
 
 /// Check if QEMU ARM is available

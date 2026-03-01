@@ -136,6 +136,15 @@ filter = "binary(threadx_linux)"
 test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
+# ThreadX QEMU RISC-V tests: sequential builds, shared TAP bridge
+[test-groups.threadx-riscv64-qemu]
+max-threads = 1
+
+[[profile.default.overrides]]
+filter = "binary(threadx_riscv64_qemu)"
+test-group = "threadx-riscv64-qemu"
+slow-timeout = { period = "120s", terminate-after = 3 }
+
 [profile.ci]
 # CI profile with stricter timeouts
 slow-timeout = { period = "30s", terminate-after = 2 }
