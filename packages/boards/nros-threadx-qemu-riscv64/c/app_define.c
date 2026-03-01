@@ -14,6 +14,9 @@
 #include "nxd_bsd.h"
 #include "virtio_net_nx.h"
 
+/* ---- Global errno for bare-metal (no TLS) ---- */
+int errno;
+
 /* ---- Board init (from ThreadX QEMU virt port) ---- */
 extern int board_init(void);
 
@@ -211,7 +214,7 @@ void tx_application_define(void *first_unused_memory)
         uart_puts("ERROR: BSD stack memory alloc failed");
         return;
     }
-    status = bsd_initialize(&ip_instance, &packet_pool,
+    status = nx_bsd_initialize(&ip_instance, &packet_pool,
                              (CHAR *)pointer, BSD_STACK_SIZE,
                              APP_THREAD_PRIORITY + 1);
     if (status != NX_SUCCESS) {

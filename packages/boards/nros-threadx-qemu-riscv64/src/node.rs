@@ -23,6 +23,7 @@ unsafe extern "C" {
 
     fn nros_threadx_set_app_callback(entry: unsafe extern "C" fn(*mut c_void), arg: *mut c_void);
 
+    #[link_name = "_tx_initialize_kernel_enter"]
     fn tx_kernel_enter();
 }
 
@@ -47,6 +48,7 @@ where
     // TX_TIMER_TICKS_PER_SECOND (100), so 200 ticks = 2 seconds.
     unsafe {
         unsafe extern "C" {
+            #[link_name = "_tx_thread_sleep"]
             fn tx_thread_sleep(ticks: u32);
         }
         tx_thread_sleep(200);
@@ -139,8 +141,9 @@ where
 
     let ctx_ptr = unsafe {
         let size = core::mem::size_of::<AppContext<F>>();
-        assert!(size <= CTX_STORAGE.len(), "AppContext too large for static storage");
-        let ptr = CTX_STORAGE.as_mut_ptr() as *mut AppContext<F>;
+        let storage_ptr = core::ptr::addr_of_mut!(CTX_STORAGE);
+        assert!(size <= (*storage_ptr).len(), "AppContext too large for static storage");
+        let ptr = (*storage_ptr).as_mut_ptr() as *mut AppContext<F>;
         core::ptr::write(
             ptr,
             AppContext {

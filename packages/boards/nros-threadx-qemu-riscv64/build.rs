@@ -10,6 +10,7 @@
 
 use std::env;
 use std::path::{Path, PathBuf};
+use std::process::Command;
 
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
@@ -73,10 +74,15 @@ fn main() {
         }
     }
 
-    // RISC-V port assembly files
+    // RISC-V port assembly files (exclude tx_initialize_low_level.S —
+    // the QEMU virt board provides its own version below)
     for entry in std::fs::read_dir(threadx_port_dir.join("src")).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|e| e == "S") {
+            let name = path.file_name().unwrap().to_str().unwrap_or("");
+            if name == "tx_initialize_low_level.S" {
+                continue;
+            }
             threadx.file(&path);
         }
     }
@@ -142,6 +148,7 @@ fn main() {
     add_netx_includes(&mut glue, &netx_dir, &config_dir);
     glue.include(virtio_driver_dir.join("include"));
     glue.file(manifest_dir.join("c/app_define.c"));
+    glue.file(manifest_dir.join("c/syscalls.c"));
 
     glue.compile("glue");
 
@@ -155,8 +162,19 @@ fn main() {
     println!("cargo:rustc-link-arg=-T{}", config_dir.join("link.lds").display());
     println!("cargo:rustc-link-arg=-nostdlib");
 
+    // Link picolibc (C standard library for bare-metal RISC-V) and libgcc (compiler builtins)
+    if let Some(picolibc_lib_dir) = get_picolibc_lib_dir() {
+        println!("cargo:rustc-link-search=native={}", picolibc_lib_dir.display());
+        println!("cargo:rustc-link-lib=static=c");
+    }
+    if let Some(libgcc_dir) = get_libgcc_dir() {
+        println!("cargo:rustc-link-search=native={}", libgcc_dir.display());
+        println!("cargo:rustc-link-lib=static=gcc");
+    }
+
     // ---- Rerun triggers ----
     println!("cargo:rerun-if-changed=c/app_define.c");
+    println!("cargo:rerun-if-changed=c/syscalls.c");
     println!("cargo:rerun-if-changed=config/tx_user.h");
     println!("cargo:rerun-if-changed=config/nx_user.h");
     println!("cargo:rerun-if-changed=config/link.lds");
@@ -186,6 +204,73 @@ fn configure_riscv64(build: &mut cc::Build) {
         .define("TX_INCLUDE_USER_DEFINE_FILE", None)
         .define("NX_INCLUDE_USER_DEFINE_FILE", None);
     build.warnings(false);
+
+    // picolibc provides C standard library headers (string.h, stdint.h, etc.)
+    // Do NOT use --specs=picolibc.specs (it enables TLS errno which crashes on bare-metal)
+    if let Some(sysroot) = get_picolibc_sysroot() {
+        build.include(sysroot.join("include"));
+    }
+}
+
+/// Get the picolibc sysroot path for RISC-V (provides C standard library headers).
+fn get_picolibc_sysroot() -> Option<PathBuf> {
+    if let Ok(output) = Command::new("riscv64-unknown-elf-gcc")
+        .args([
+            "-march=rv64gc",
+            "-mabi=lp64d",
+            "--specs=picolibc.specs",
+            "-print-sysroot",
+        ])
+        .output()
+    {
+        if output.status.success() {
+            let sysroot = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !sysroot.is_empty() {
+                let path = PathBuf::from(&sysroot);
+                if path.join("include").exists() {
+                    return Some(path);
+                }
+            }
+        }
+    }
+    // Fallback: known system location
+    let fallback = PathBuf::from("/usr/lib/picolibc/riscv64-unknown-elf");
+    if fallback.join("include").exists() {
+        return Some(fallback);
+    }
+    None
+}
+
+/// Get the picolibc library directory for rv64gc/lp64d (libc.a).
+fn get_picolibc_lib_dir() -> Option<PathBuf> {
+    // Try gcc -print-sysroot with picolibc specs
+    if let Some(sysroot) = get_picolibc_sysroot() {
+        // Multilib: sysroot/lib/rv64imafdc/lp64d/ (rv64gc = rv64imafdc)
+        let multilib = sysroot.join("lib/rv64imafdc/lp64d");
+        if multilib.join("libc.a").exists() {
+            return Some(multilib);
+        }
+        // Single-lib fallback
+        let single = sysroot.join("lib");
+        if single.join("libc.a").exists() {
+            return Some(single);
+        }
+    }
+    None
+}
+
+/// Get the libgcc directory for rv64gc/lp64d.
+fn get_libgcc_dir() -> Option<PathBuf> {
+    if let Ok(output) = Command::new("riscv64-unknown-elf-gcc")
+        .args(["-march=rv64gc", "-mabi=lp64d", "-print-libgcc-file-name"])
+        .output()
+    {
+        if output.status.success() {
+            let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim().to_string());
+            return path.parent().map(|p| p.to_path_buf());
+        }
+    }
+    None
 }
 
 fn add_threadx_includes(
