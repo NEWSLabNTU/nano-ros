@@ -179,6 +179,10 @@ unsafe extern "C" {
     pub fn zpico_poll(timeout_ms: u32) -> i32;
     pub fn zpico_spin_once(timeout_ms: u32) -> i32;
     pub fn zpico_uses_polling() -> bool;
+
+    // Clock helpers (for FFI reentrancy guard timeout decomposition)
+    pub fn zpico_clock_start(clock_buf: *mut u8);
+    pub fn zpico_clock_elapsed_ms_since(clock_buf: *mut u8) -> core::ffi::c_ulong;
 }
 
 // ============================================================================

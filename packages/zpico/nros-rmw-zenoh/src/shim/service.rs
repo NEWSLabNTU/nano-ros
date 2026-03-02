@@ -12,7 +12,7 @@ use super::{
     AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, SERVICE_BUFFER_SIZE,
 };
 use crate::keyexpr::ServiceKeyExpr;
-use crate::zpico::{Queryable, ZPICO_MAX_QUERYABLES};
+use crate::zpico::{self, Queryable, ZPICO_MAX_QUERYABLES};
 
 #[cfg(feature = "std")]
 use super::signal_executor_wake;
@@ -284,21 +284,24 @@ impl ServiceServerTrait for ZenohServiceServer {
             return Err(TransportError::BufferTooSmall);
         }
 
-        // Copy data and keyexpr
-        // Safety: buffer data and keyexpr are valid up to their respective lengths
-        unsafe {
-            core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
+        // Copy data and keyexpr under FFI guard to prevent callback from
+        // overwriting the buffer mid-read (service buffers have no `locked` flag).
+        zpico::ffi_guard(|| {
+            // Safety: buffer data and keyexpr are valid up to their respective lengths
+            unsafe {
+                core::ptr::copy_nonoverlapping(buffer.data.as_ptr(), buf.as_mut_ptr(), len);
 
-            // Save keyexpr for potential reply
-            let keyexpr_len = buffer.keyexpr_len.load(Ordering::Acquire);
-            core::ptr::copy_nonoverlapping(
-                buffer.keyexpr.as_ptr(),
-                self.reply_keyexpr.as_mut_ptr(),
-                keyexpr_len,
-            );
-            self.reply_keyexpr[keyexpr_len] = 0;
-            self.reply_keyexpr_len = keyexpr_len;
-        }
+                // Save keyexpr for potential reply
+                let keyexpr_len = buffer.keyexpr_len.load(Ordering::Acquire);
+                core::ptr::copy_nonoverlapping(
+                    buffer.keyexpr.as_ptr(),
+                    self.reply_keyexpr.as_mut_ptr(),
+                    keyexpr_len,
+                );
+                self.reply_keyexpr[keyexpr_len] = 0;
+                self.reply_keyexpr_len = keyexpr_len;
+            }
+        });
 
         #[allow(clippy::useless_conversion)] // i32→i64 on embedded, no-op on std
         let seq: i64 = buffer.sequence_number.load(Ordering::Acquire).into();

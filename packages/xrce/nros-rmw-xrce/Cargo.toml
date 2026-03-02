@@ -17,9 +17,11 @@ platform-nuttx = ["xrce-sys/nuttx"]
 platform-threadx = ["xrce-sys/threadx"]
 posix-udp = ["platform-posix", "dep:libc"]
 posix-serial = ["platform-posix", "dep:libc"]
+ffi-sync = ["dep:critical-section"]
 
 [dependencies]
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }
 xrce-sys = { path = "../xrce-sys", default-features = false }
 heapless = "0.8"
 libc = { version = "0.2", optional = true }
+critical-section = { version = "1.2", optional = true }

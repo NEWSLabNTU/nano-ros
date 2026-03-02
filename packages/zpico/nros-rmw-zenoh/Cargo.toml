@@ -22,6 +22,7 @@ rtic = []
 polling = []
 sync-spin = ["nros-rmw/sync-spin"]
 sync-critical-section = ["nros-rmw/sync-critical-section"]
+ffi-sync = ["dep:critical-section"]
 log = ["dep:log"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
@@ -41,6 +42,7 @@ zpico-sys = { path = "../zpico-sys" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 log = { workspace = true, optional = true }
+critical-section = { version = "1.2", optional = true }
 
 [dev-dependencies]
 nros-ghost-types = { path = "../../verification/nros-ghost-types" }

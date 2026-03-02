@@ -20,6 +20,28 @@ use core::ffi::c_void;
 ))]
 use core::marker::PhantomData;
 
+// ============================================================================
+// FFI Reentrancy Guard
+// ============================================================================
+
+/// Execute a closure with FFI reentrancy protection.
+///
+/// When the `ffi-sync` feature is enabled, wraps the closure in
+/// `critical_section::with()` to prevent concurrent access to zpico global
+/// state from mixed-priority tasks or ISRs.
+///
+/// When the feature is disabled, this is a zero-cost passthrough.
+#[allow(dead_code)] // used only when a platform feature is enabled
+#[inline(always)]
+pub(crate) fn ffi_guard<R>(f: impl FnOnce() -> R) -> R {
+    #[cfg(feature = "ffi-sync")]
+    {
+        return critical_section::with(|_cs| f());
+    }
+    #[cfg(not(feature = "ffi-sync"))]
+    f()
+}
+
 // Re-export FFI types and constants from sys crate
 pub use zpico_sys::{
     ZPICO_ERR_CONFIG, ZPICO_ERR_FULL, ZPICO_ERR_GENERIC, ZPICO_ERR_INVALID, ZPICO_ERR_KEYEXPR,
@@ -227,9 +249,9 @@ impl LivelinessToken {
 ))]
 impl Drop for LivelinessToken {
     fn drop(&mut self) {
-        unsafe {
+        ffi_guard(|| unsafe {
             zpico_undeclare_liveliness(self.handle);
-        }
+        });
     }
 }
 
@@ -278,9 +300,9 @@ impl Queryable {
 ))]
 impl Drop for Queryable {
     fn drop(&mut self) {
-        unsafe {
+        ffi_guard(|| unsafe {
             zpico_undeclare_queryable(self.handle);
-        }
+        });
     }
 }
 
@@ -324,19 +346,21 @@ impl Context {
     ///
     /// Returns an error if initialization or session opening fails.
     pub fn new(locator: &[u8]) -> Result<Self> {
-        // Safety: locator is a valid byte slice, cast to c_char for C string
-        let ret = unsafe { zpico_init(locator.as_ptr().cast()) };
-        if ret < 0 {
-            return Err(ZpicoError::from_code(ret));
-        }
+        ffi_guard(|| {
+            // Safety: locator is a valid byte slice, cast to c_char for C string
+            let ret = unsafe { zpico_init(locator.as_ptr().cast()) };
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
 
-        let ret = unsafe { zpico_open() };
-        if ret < 0 {
-            return Err(ZpicoError::from_code(ret));
-        }
+            let ret = unsafe { zpico_open() };
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
 
-        Ok(Context {
-            _private: PhantomData,
+            Ok(Context {
+                _private: PhantomData,
+            })
         })
     }
 
@@ -367,31 +391,33 @@ impl Context {
         } else {
             properties.as_ptr()
         };
-        let ret = unsafe {
-            zpico_init_with_config(
-                locator_ptr,
-                mode.as_ptr().cast(),
-                props_ptr,
-                properties.len(),
-            )
-        };
-        if ret < 0 {
-            return Err(ZpicoError::from_code(ret));
-        }
+        ffi_guard(|| {
+            let ret = unsafe {
+                zpico_init_with_config(
+                    locator_ptr,
+                    mode.as_ptr().cast(),
+                    props_ptr,
+                    properties.len(),
+                )
+            };
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
 
-        let ret = unsafe { zpico_open() };
-        if ret < 0 {
-            return Err(ZpicoError::from_code(ret));
-        }
+            let ret = unsafe { zpico_open() };
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
 
-        Ok(Context {
-            _private: PhantomData,
+            Ok(Context {
+                _private: PhantomData,
+            })
         })
     }
 
     /// Check if the session is open
     pub fn is_open(&self) -> bool {
-        unsafe { zpico_is_open() != 0 }
+        ffi_guard(|| unsafe { zpico_is_open() != 0 })
     }
 
     /// Check if this backend uses polling
@@ -399,7 +425,7 @@ impl Context {
     /// If true, you must call `poll()` or `spin_once()` regularly to
     /// process network data and dispatch callbacks.
     pub fn uses_polling(&self) -> bool {
-        unsafe { zpico_uses_polling() }
+        ffi_guard(|| unsafe { zpico_uses_polling() })
     }
 
     /// Declare a publisher for the given key expression
@@ -411,7 +437,7 @@ impl Context {
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of publishers has been reached.
     pub fn declare_publisher(&self, keyexpr: &[u8]) -> Result<Publisher<'_>> {
-        let handle = unsafe { zpico_declare_publisher(keyexpr.as_ptr().cast()) };
+        let handle = ffi_guard(|| unsafe { zpico_declare_publisher(keyexpr.as_ptr().cast()) });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -442,7 +468,9 @@ impl Context {
         callback: ZpicoCallback,
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
-        let handle = unsafe { zpico_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx) };
+        let handle = ffi_guard(|| unsafe {
+            zpico_declare_subscriber(keyexpr.as_ptr().cast(), callback, ctx)
+        });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -473,9 +501,9 @@ impl Context {
         callback: ZpicoCallbackWithAttachment,
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
-        let handle = unsafe {
+        let handle = ffi_guard(|| unsafe {
             zpico_declare_subscriber_with_attachment(keyexpr.as_ptr().cast(), callback, ctx)
-        };
+        });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -505,7 +533,7 @@ impl Context {
         callback: ZpicoNotifyCallback,
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
-        let handle = unsafe {
+        let handle = ffi_guard(|| unsafe {
             zpico_declare_subscriber_direct_write(
                 keyexpr.as_ptr().cast(),
                 buf_ptr,
@@ -514,7 +542,7 @@ impl Context {
                 callback,
                 ctx,
             )
-        };
+        });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -540,7 +568,9 @@ impl Context {
         callback: ZpicoZeroCopyCallback,
         ctx: *mut c_void,
     ) -> Result<Subscriber<'a>> {
-        let handle = unsafe { zpico_subscribe_zero_copy(keyexpr.as_ptr().cast(), callback, ctx) };
+        let handle = ffi_guard(|| unsafe {
+            zpico_subscribe_zero_copy(keyexpr.as_ptr().cast(), callback, ctx)
+        });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -566,11 +596,43 @@ impl Context {
     ///
     /// Number of events processed, or error
     pub fn poll(&self, timeout_ms: u32) -> Result<i32> {
-        let ret = unsafe { zpico_poll(timeout_ms) };
-        if ret < 0 {
-            return Err(ZpicoError::from_code(ret));
+        // When FFI guard is enabled, decompose blocking poll into a loop
+        // of non-blocking guarded calls to keep critical sections short.
+        #[cfg(feature = "ffi-sync")]
+        {
+            let ret = ffi_guard(|| unsafe { zpico_poll(0) });
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
+            if ret > 0 || timeout_ms == 0 {
+                return Ok(ret);
+            }
+            // Loop with guarded non-blocking polls until timeout
+            let mut clock = [0u8; 16];
+            unsafe { zpico_sys::zpico_clock_start(clock.as_mut_ptr()) };
+            loop {
+                let elapsed =
+                    unsafe { zpico_sys::zpico_clock_elapsed_ms_since(clock.as_mut_ptr()) };
+                if elapsed >= timeout_ms as core::ffi::c_ulong {
+                    return Ok(0);
+                }
+                let ret = ffi_guard(|| unsafe { zpico_poll(0) });
+                if ret < 0 {
+                    return Err(ZpicoError::from_code(ret));
+                }
+                if ret > 0 {
+                    return Ok(ret);
+                }
+            }
         }
-        Ok(ret)
+        #[cfg(not(feature = "ffi-sync"))]
+        {
+            let ret = unsafe { zpico_poll(timeout_ms) };
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
+            Ok(ret)
+        }
     }
 
     /// Combined poll and keepalive operation
@@ -586,11 +648,43 @@ impl Context {
     ///
     /// Number of events processed, or error
     pub fn spin_once(&self, timeout_ms: u32) -> Result<i32> {
-        let ret = unsafe { zpico_spin_once(timeout_ms) };
-        if ret < 0 {
-            return Err(ZpicoError::from_code(ret));
+        // When FFI guard is enabled, decompose blocking spin_once into a
+        // loop of non-blocking guarded calls to keep critical sections short.
+        #[cfg(feature = "ffi-sync")]
+        {
+            let ret = ffi_guard(|| unsafe { zpico_spin_once(0) });
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
+            if ret > 0 || timeout_ms == 0 {
+                return Ok(ret);
+            }
+            // Loop with guarded non-blocking spin_once calls until timeout
+            let mut clock = [0u8; 16];
+            unsafe { zpico_sys::zpico_clock_start(clock.as_mut_ptr()) };
+            loop {
+                let elapsed =
+                    unsafe { zpico_sys::zpico_clock_elapsed_ms_since(clock.as_mut_ptr()) };
+                if elapsed >= timeout_ms as core::ffi::c_ulong {
+                    return Ok(0);
+                }
+                let ret = ffi_guard(|| unsafe { zpico_spin_once(0) });
+                if ret < 0 {
+                    return Err(ZpicoError::from_code(ret));
+                }
+                if ret > 0 {
+                    return Ok(ret);
+                }
+            }
         }
-        Ok(ret)
+        #[cfg(not(feature = "ffi-sync"))]
+        {
+            let ret = unsafe { zpico_spin_once(timeout_ms) };
+            if ret < 0 {
+                return Err(ZpicoError::from_code(ret));
+            }
+            Ok(ret)
+        }
     }
 
     /// Get the session's Zenoh ID
@@ -599,7 +693,7 @@ impl Context {
     /// It is used in liveliness token key expressions for ROS 2 discovery.
     pub fn zid(&self) -> Result<ZenohId> {
         let mut id = [0u8; 16];
-        let ret = unsafe { zpico_get_zid(id.as_mut_ptr()) };
+        let ret = ffi_guard(|| unsafe { zpico_get_zid(id.as_mut_ptr()) });
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -615,7 +709,7 @@ impl Context {
     /// Returns an error if the session is not open, the key expression is invalid,
     /// or the maximum number of liveliness tokens has been reached.
     pub fn declare_liveliness(&self, keyexpr: &[u8]) -> Result<LivelinessToken> {
-        let handle = unsafe { zpico_declare_liveliness(keyexpr.as_ptr().cast()) };
+        let handle = ffi_guard(|| unsafe { zpico_declare_liveliness(keyexpr.as_ptr().cast()) });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -643,7 +737,9 @@ impl Context {
         callback: ZpicoQueryCallback,
         ctx: *mut c_void,
     ) -> Result<Queryable> {
-        let handle = unsafe { zpico_declare_queryable(keyexpr.as_ptr().cast(), callback, ctx) };
+        let handle = ffi_guard(|| unsafe {
+            zpico_declare_queryable(keyexpr.as_ptr().cast(), callback, ctx)
+        });
         if handle < 0 {
             return Err(ZpicoError::from_code(handle));
         }
@@ -679,7 +775,7 @@ impl Context {
             None => (core::ptr::null(), 0),
         };
 
-        let ret = unsafe {
+        let ret = ffi_guard(|| unsafe {
             zpico_query_reply(
                 queryable_handle,
                 keyexpr.as_ptr().cast(),
@@ -688,7 +784,7 @@ impl Context {
                 att_ptr,
                 att_len,
             )
-        };
+        });
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -728,26 +824,72 @@ impl Context {
             (payload.as_ptr(), payload.len())
         };
 
-        let ret = unsafe {
-            zpico_get(
-                keyexpr.as_ptr().cast(),
-                payload_ptr,
-                payload_len,
-                reply_buf.as_mut_ptr(),
-                reply_buf.len(),
-                timeout_ms,
-            )
-        };
-
-        if ret < 0 {
-            // Check for timeout specifically (error code -9 from C shim)
-            if ret == -9 {
-                return Err(ZpicoError::Timeout);
+        // When FFI guard is enabled, decompose into get_start + spin loop + get_check
+        // to avoid holding the critical section for the full timeout duration.
+        #[cfg(feature = "ffi-sync")]
+        {
+            let handle = ffi_guard(|| unsafe {
+                zpico_sys::zpico_get_start(
+                    keyexpr.as_ptr().cast(),
+                    payload_ptr,
+                    payload_len,
+                    timeout_ms,
+                )
+            });
+            if handle < 0 {
+                return Err(ZpicoError::from_code(handle));
             }
-            return Err(ZpicoError::from_code(ret));
-        }
 
-        Ok(ret as usize)
+            let mut clock = [0u8; 16];
+            unsafe { zpico_sys::zpico_clock_start(clock.as_mut_ptr()) };
+            loop {
+                // Drive I/O with a non-blocking spin
+                ffi_guard(|| unsafe { zpico_spin_once(0) });
+
+                // Check for reply
+                let ret = ffi_guard(|| unsafe {
+                    zpico_sys::zpico_get_check(handle, reply_buf.as_mut_ptr(), reply_buf.len())
+                });
+                if ret > 0 {
+                    return Ok(ret as usize);
+                }
+                if ret < 0 {
+                    if ret == -9 {
+                        return Err(ZpicoError::Timeout);
+                    }
+                    return Err(ZpicoError::from_code(ret));
+                }
+
+                // Check timeout
+                let elapsed =
+                    unsafe { zpico_sys::zpico_clock_elapsed_ms_since(clock.as_mut_ptr()) };
+                if elapsed >= timeout_ms as core::ffi::c_ulong {
+                    return Err(ZpicoError::Timeout);
+                }
+            }
+        }
+        #[cfg(not(feature = "ffi-sync"))]
+        {
+            let ret = unsafe {
+                zpico_get(
+                    keyexpr.as_ptr().cast(),
+                    payload_ptr,
+                    payload_len,
+                    reply_buf.as_mut_ptr(),
+                    reply_buf.len(),
+                    timeout_ms,
+                )
+            };
+
+            if ret < 0 {
+                if ret == -9 {
+                    return Err(ZpicoError::Timeout);
+                }
+                return Err(ZpicoError::from_code(ret));
+            }
+
+            Ok(ret as usize)
+        }
     }
 
     /// Start a non-blocking query (for async service client).
@@ -760,14 +902,14 @@ impl Context {
             (payload.as_ptr(), payload.len())
         };
 
-        let ret = unsafe {
+        let ret = ffi_guard(|| unsafe {
             zpico_sys::zpico_get_start(
                 keyexpr.as_ptr().cast(),
                 payload_ptr,
                 payload_len,
                 timeout_ms,
             )
-        };
+        });
 
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
@@ -781,8 +923,9 @@ impl Context {
     /// Returns `Ok(Some(len))` when a reply has arrived, `Ok(None)` if still
     /// pending, or `Err` on failure/timeout.
     pub fn get_check(&self, handle: i32, reply_buf: &mut [u8]) -> Result<Option<usize>> {
-        let ret =
-            unsafe { zpico_sys::zpico_get_check(handle, reply_buf.as_mut_ptr(), reply_buf.len()) };
+        let ret = ffi_guard(|| unsafe {
+            zpico_sys::zpico_get_check(handle, reply_buf.as_mut_ptr(), reply_buf.len())
+        });
 
         if ret > 0 {
             Ok(Some(ret as usize))
@@ -806,9 +949,9 @@ impl Context {
 ))]
 impl Drop for Context {
     fn drop(&mut self) {
-        unsafe {
+        ffi_guard(|| unsafe {
             zpico_close();
-        }
+        });
     }
 }
 
@@ -845,7 +988,7 @@ impl<'a> Publisher<'a> {
     ///
     /// Returns an error if the publish operation fails.
     pub fn publish(&self, data: &[u8]) -> Result<()> {
-        let ret = unsafe { zpico_publish(self.handle, data.as_ptr(), data.len()) };
+        let ret = ffi_guard(|| unsafe { zpico_publish(self.handle, data.as_ptr(), data.len()) });
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -871,9 +1014,9 @@ impl<'a> Publisher<'a> {
             None => (core::ptr::null(), 0),
         };
 
-        let ret = unsafe {
+        let ret = ffi_guard(|| unsafe {
             zpico_publish_with_attachment(self.handle, data.as_ptr(), data.len(), att_ptr, att_len)
-        };
+        });
         if ret < 0 {
             return Err(ZpicoError::from_code(ret));
         }
@@ -895,9 +1038,9 @@ impl<'a> Publisher<'a> {
 ))]
 impl<'a> Drop for Publisher<'a> {
     fn drop(&mut self) {
-        unsafe {
+        ffi_guard(|| unsafe {
             zpico_undeclare_publisher(self.handle);
-        }
+        });
     }
 }
 
@@ -943,9 +1086,9 @@ impl<'a> Subscriber<'a> {
 ))]
 impl<'a> Drop for Subscriber<'a> {
     fn drop(&mut self) {
-        unsafe {
+        ffi_guard(|| unsafe {
             zpico_undeclare_subscriber(self.handle);
-        }
+        });
     }
 }
 

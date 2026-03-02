@@ -516,4 +516,15 @@ int32_t zpico_get_start(const char *_keyexpr,
  */
 int32_t zpico_get_check(int32_t _handle, uint8_t *_reply_buf, uintptr_t _reply_buf_size);
 
+/**
+ * Capture the current clock into an opaque 16-byte buffer.
+ * Used by FFI reentrancy guard timeout decomposition.
+ */
+void zpico_clock_start(uint8_t *_clock_buf);
+
+/**
+ * Return elapsed milliseconds since a clock captured by `zpico_clock_start`.
+ */
+unsigned long zpico_clock_elapsed_ms_since(uint8_t *_clock_buf);
+
 #endif  /* ZPICO_H */

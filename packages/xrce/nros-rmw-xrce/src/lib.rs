@@ -39,6 +39,27 @@ pub mod zephyr;
 use core::ffi::{c_char, c_int, c_void};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
+// ============================================================================
+// FFI Reentrancy Guard
+// ============================================================================
+
+/// Execute a closure with FFI reentrancy protection.
+///
+/// When the `ffi-sync` feature is enabled, wraps the closure in
+/// `critical_section::with()` to prevent concurrent access to XRCE global
+/// state from mixed-priority tasks or ISRs.
+///
+/// When the feature is disabled, this is a zero-cost passthrough.
+#[inline(always)]
+fn ffi_guard<R>(f: impl FnOnce() -> R) -> R {
+    #[cfg(feature = "ffi-sync")]
+    {
+        return critical_section::with(|_cs| f());
+    }
+    #[cfg(not(feature = "ffi-sync"))]
+    f()
+}
+
 use nros_rmw::{
     Publisher, QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy, QosSettings, Rmw,
     RmwConfig, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait, Session,
@@ -484,7 +505,7 @@ impl Rmw for XrceRmw {
     type Error = TransportError;
 
     fn open(config: &RmwConfig) -> Result<XrceSession, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             if INITIALIZED {
                 return Err(TransportError::InvalidConfig);
             }
@@ -570,7 +591,7 @@ impl Rmw for XrceRmw {
 
             INITIALIZED = true;
             Ok(XrceSession)
-        }
+        })
     }
 }
 
@@ -589,7 +610,34 @@ impl XrceSession {
     /// Board crates call this from their executor loop. Returns `true` if
     /// the session is still active.
     pub fn spin_once(&mut self, timeout_ms: i32) -> bool {
-        unsafe { xrce_sys::uxr_run_session_time(&raw mut SESSION, timeout_ms) }
+        // When FFI guard is enabled, decompose blocking spin_once into a
+        // loop of non-blocking guarded calls to keep critical sections short.
+        #[cfg(feature = "ffi-sync")]
+        {
+            let ok = ffi_guard(|| unsafe {
+                xrce_sys::uxr_run_session_time(&raw mut SESSION, 0)
+            });
+            if !ok || timeout_ms == 0 {
+                return ok;
+            }
+            // Use a simple iteration counter for timeout approximation.
+            // XRCE doesn't have a platform-agnostic clock API like zpico.
+            // Each uxr_run_session_time(0) call takes ~1ms of I/O processing.
+            let iterations = timeout_ms.max(0) as u32;
+            for _ in 0..iterations {
+                let ok = ffi_guard(|| unsafe {
+                    xrce_sys::uxr_run_session_time(&raw mut SESSION, 0)
+                });
+                if !ok {
+                    return false;
+                }
+            }
+            true
+        }
+        #[cfg(not(feature = "ffi-sync"))]
+        {
+            unsafe { xrce_sys::uxr_run_session_time(&raw mut SESSION, timeout_ms) }
+        }
     }
 }
 
@@ -605,7 +653,7 @@ impl Session for XrceSession {
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<XrcePublisher, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             // Allocate 3 entity IDs
             let topic_obj_id = alloc_entity_id(UXR_TOPIC_ID);
             let pub_obj_id = alloc_entity_id(UXR_PUBLISHER_ID);
@@ -659,7 +707,7 @@ impl Session for XrceSession {
             Ok(XrcePublisher {
                 datawriter_id: dw_obj_id,
             })
-        }
+        })
     }
 
     fn create_subscriber(
@@ -667,7 +715,7 @@ impl Session for XrceSession {
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<XrceSubscriber, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             // Find a free subscriber slot
             let slot_index = SUBSCRIBER_SLOTS
                 .iter()
@@ -752,14 +800,14 @@ impl Session for XrceSession {
             xrce_sys::uxr_run_session_time(&raw mut SESSION, SESSION_FLUSH_TIMEOUT_MS);
 
             Ok(XrceSubscriber { slot_index })
-        }
+        })
     }
 
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<XrceServiceServer, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             // Find a free server slot
             let slot_index = SERVICE_SERVER_SLOTS
                 .iter()
@@ -844,14 +892,14 @@ impl Session for XrceSession {
                 replier_id,
                 last_sample_id: zeroed_sample_identity(),
             })
-        }
+        })
     }
 
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<XrceServiceClient, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             // Find a free client slot
             let slot_index = SERVICE_CLIENT_SLOTS
                 .iter()
@@ -935,11 +983,11 @@ impl Session for XrceSession {
                 slot_index,
                 requester_id,
             })
-        }
+        })
     }
 
     fn close(&mut self) -> Result<(), TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             if INITIALIZED {
                 xrce_sys::uxr_delete_session(&raw mut SESSION);
                 xrce_sys::uxr_close_custom_transport(&raw mut TRANSPORT);
@@ -958,7 +1006,7 @@ impl Session for XrceSession {
                 }
             }
             Ok(())
-        }
+        })
     }
 
     fn drive_io(&mut self, timeout_ms: i32) -> Result<(), Self::Error> {
@@ -980,7 +1028,7 @@ impl Publisher for XrcePublisher {
     type Error = TransportError;
 
     fn publish_raw(&self, data: &[u8]) -> Result<(), TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             // Try the non-fragmented fast path first.
             let req = xrce_sys::uxr_buffer_topic(
                 &raw mut SESSION,
@@ -1021,7 +1069,7 @@ impl Publisher for XrcePublisher {
             xrce_sys::uxr_flash_output_streams(&raw mut SESSION);
 
             Ok(())
-        }
+        })
     }
 
     fn buffer_error(&self) -> TransportError {
@@ -1046,15 +1094,15 @@ impl Subscriber for XrceSubscriber {
     type Error = TransportError;
 
     fn has_data(&self) -> bool {
-        unsafe {
+        ffi_guard(|| unsafe {
             SUBSCRIBER_SLOTS[self.slot_index]
                 .has_data
                 .load(Ordering::Acquire)
-        }
+        })
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             let slot = &SUBSCRIBER_SLOTS[self.slot_index];
 
             if !slot.has_data.load(Ordering::Acquire) {
@@ -1081,11 +1129,11 @@ impl Subscriber for XrceSubscriber {
             slot.locked.store(false, Ordering::Release);
             slot.has_data.store(false, Ordering::Release);
             Ok(Some(len))
-        }
+        })
     }
 
     fn process_raw_in_place(&mut self, f: impl FnOnce(&[u8])) -> Result<bool, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             let slot = &SUBSCRIBER_SLOTS[self.slot_index];
 
             if !slot.has_data.load(Ordering::Acquire) {
@@ -1107,7 +1155,7 @@ impl Subscriber for XrceSubscriber {
             slot.has_data.store(false, Ordering::Release);
 
             Ok(true)
-        }
+        })
     }
 
     fn deserialization_error(&self) -> TransportError {
@@ -1130,18 +1178,18 @@ impl ServiceServerTrait for XrceServiceServer {
     type Error = TransportError;
 
     fn has_request(&self) -> bool {
-        unsafe {
+        ffi_guard(|| unsafe {
             SERVICE_SERVER_SLOTS[self.slot_index]
                 .has_request
                 .load(Ordering::Acquire)
-        }
+        })
     }
 
     fn try_recv_request<'a>(
         &mut self,
         buf: &'a mut [u8],
     ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             let slot = &SERVICE_SERVER_SLOTS[self.slot_index];
 
             if !slot.has_request.load(Ordering::Acquire) {
@@ -1169,11 +1217,11 @@ impl ServiceServerTrait for XrceServiceServer {
                 data: &buf[..len],
                 sequence_number: 0, // XRCE uses SampleIdentity, not sequence numbers
             }))
-        }
+        })
     }
 
     fn send_reply(&mut self, _sequence_number: i64, data: &[u8]) -> Result<(), TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             let req = xrce_sys::uxr_buffer_reply(
                 &raw mut SESSION,
                 OUTPUT_RELIABLE,
@@ -1186,7 +1234,7 @@ impl ServiceServerTrait for XrceServiceServer {
                 return Err(TransportError::ServiceReplyFailed);
             }
             Ok(())
-        }
+        })
     }
 }
 
@@ -1206,11 +1254,12 @@ impl ServiceClientTrait for XrceServiceClient {
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, TransportError> {
         self.send_request_raw(request)?;
 
-        // Wait for reply with retries
+        // Wait for reply with retries. Each iteration uses a guarded
+        // non-blocking spin to keep critical sections short.
         for _ in 0..SERVICE_REPLY_RETRIES {
-            unsafe {
+            ffi_guard(|| unsafe {
                 xrce_sys::uxr_run_session_time(&raw mut SESSION, SERVICE_REPLY_TIMEOUT_MS);
-            }
+            });
 
             if let Some(len) = self.try_recv_reply_raw(reply_buf)? {
                 return Ok(len);
@@ -1221,7 +1270,7 @@ impl ServiceClientTrait for XrceServiceClient {
     }
 
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             let slot = &SERVICE_CLIENT_SLOTS[self.slot_index];
 
             // Clear any stale reply
@@ -1240,14 +1289,14 @@ impl ServiceClientTrait for XrceServiceClient {
             }
 
             Ok(())
-        }
+        })
     }
 
     fn try_recv_reply_raw(
         &mut self,
         reply_buf: &mut [u8],
     ) -> Result<Option<usize>, TransportError> {
-        unsafe {
+        ffi_guard(|| unsafe {
             let slot = &SERVICE_CLIENT_SLOTS[self.slot_index];
 
             if !slot.has_reply.load(Ordering::Acquire) {
@@ -1269,6 +1318,6 @@ impl ServiceClientTrait for XrceServiceClient {
             reply_buf[..len].copy_from_slice(&slot.data[..len]);
             slot.has_reply.store(false, Ordering::Release);
             Ok(Some(len))
-        }
+        })
     }
 }

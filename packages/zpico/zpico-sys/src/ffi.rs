@@ -555,4 +555,15 @@ mod cbindgen_stubs {
     ) -> i32 {
         -1 // stub: not available
     }
+
+    /// Capture the current clock into an opaque 16-byte buffer.
+    /// Used by FFI reentrancy guard timeout decomposition.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_clock_start(_clock_buf: *mut u8) {}
+
+    /// Return elapsed milliseconds since a clock captured by `zpico_clock_start`.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_clock_elapsed_ms_since(_clock_buf: *mut u8) -> core::ffi::c_ulong {
+        0
+    }
 }

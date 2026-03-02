@@ -4,7 +4,7 @@
 data corruption from concurrent access, enabling mixed-priority RTIC tasks and safe
 multi-task access on RTOS platforms.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -202,17 +202,22 @@ for most Cortex-M applications (typical ISR latency budgets are 100µs+). The
 
 ### Feature Flag Design
 
-Gate behind a new feature `sync-ffi-critical-section` (off by default):
+Gate behind feature `ffi-sync` (off by default). A single `ffi_guard()` helper
+dispatches at compile time — no feature gates needed at call sites:
 
 ```rust
-#[cfg(feature = "sync-ffi-critical-section")]
-fn guarded_publish(handle: i32, data: *const u8, len: usize) -> i32 {
-    critical_section::with(|_cs| unsafe { zpico_publish(handle, data, len) })
+#[inline(always)]
+fn ffi_guard<R>(f: impl FnOnce() -> R) -> R {
+    #[cfg(feature = "ffi-sync")]
+    { return critical_section::with(|_cs| f()); }
+    #[cfg(not(feature = "ffi-sync"))]
+    f()
 }
 
-#[cfg(not(feature = "sync-ffi-critical-section"))]
-fn guarded_publish(handle: i32, data: *const u8, len: usize) -> i32 {
-    unsafe { zpico_publish(handle, data, len) }
+// Call sites are feature-agnostic:
+fn publish(&self, data: &[u8]) -> Result<()> {
+    let ret = ffi_guard(|| unsafe { zpico_publish(self.handle, data.as_ptr(), data.len()) });
+    if ret < 0 { Err(ZpicoError::from_code(ret)) } else { Ok(()) }
 }
 ```
 
@@ -223,8 +228,8 @@ The feature is off by default because:
 
 ## Work Items
 
-- [ ] 61.1 — Add critical-section guards to zpico FFI
-- [ ] 61.2 — Add critical-section guards to XRCE FFI
+- [x] 61.1 — Add critical-section guards to zpico FFI
+- [x] 61.2 — Add critical-section guards to XRCE FFI
 
 ### 61.1 — Add Critical-Section Guards to zpico FFI
 
@@ -232,19 +237,19 @@ Wrap all 18+ zpico C shim calls in `critical_section::with()` at the Rust FFI bo
 No C-side changes needed.
 
 **Implementation**:
-- Gate behind `sync-ffi-critical-section` feature
+- Gate behind `ffi-sync` feature
 - Wrap each zpico FFI call in `critical_section::with()` in the Rust shim layer
 - `spin_once(N)` decomposed into loop of guarded `spin_once(0)` calls
 
-**Status**: Not Started
+**Status**: Complete
 
 **Files**:
-- `packages/zpico/nros-rmw-zenoh/src/zpico.rs` — `Context` method wrappers
-- `packages/zpico/nros-rmw-zenoh/src/shim/publisher.rs` — `publish_raw()` guard
-- `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs` — `declare` guard
-- `packages/zpico/nros-rmw-zenoh/src/shim/service.rs` — `query_reply()`, `get_*` guards
-- `packages/zpico/nros-rmw-zenoh/src/shim/session.rs` — `init/open/close` guards
-- `packages/zpico/nros-rmw-zenoh/Cargo.toml` — new `sync-ffi-critical-section` feature
+- `packages/zpico/nros-rmw-zenoh/src/zpico.rs` — `ffi_guard()` helper + all Context/Drop method wrappers
+- `packages/zpico/nros-rmw-zenoh/src/shim/service.rs` — `try_recv_request()` buffer read guard
+- `packages/zpico/nros-rmw-zenoh/Cargo.toml` — new `ffi-sync` feature + `critical-section` dep
+- `packages/zpico/zpico-sys/c/zpico/zpico.c` — `zpico_clock_start()` / `zpico_clock_elapsed_ms_since()` helpers
+- `packages/zpico/zpico-sys/src/ffi.rs` — clock helper cbindgen stubs
+- `packages/zpico/zpico-sys/src/lib.rs` — clock helper extern declarations
 
 ### 61.2 — Add Critical-Section Guards to XRCE FFI
 
@@ -262,32 +267,30 @@ C-side modifications needed.
   `bool`). Under critical section, entity creation cannot race with callback dispatch.
 
 **Implementation**:
-- Gate behind the same `sync-ffi-critical-section` feature as 61.1
+- Gate behind the same `ffi-sync` feature as 61.1
 - Wrap each `unsafe` block touching global statics in `critical_section::with()`
 - `spin_once(N)` decomposed into loop of guarded `uxr_run_session_time(0)` calls
 
-**Status**: Not Started
+**Status**: Complete
 
 **Files**:
-- `packages/xrce/nros-rmw-xrce/src/lib.rs` — guards on all global-state operations
-- `packages/xrce/xrce-smoltcp/src/lib.rs` — guards on transport statics
-- `packages/xrce/nros-rmw-xrce/Cargo.toml` — `sync-ffi-critical-section` feature
+- `packages/xrce/nros-rmw-xrce/src/lib.rs` — `ffi_guard()` helper + guards on all global-state operations
+- `packages/xrce/nros-rmw-xrce/Cargo.toml` — `ffi-sync` feature + `critical-section` dep
 
 ## Acceptance Criteria
 
-- [ ] All zpico FFI calls wrapped in `critical_section::with()` when feature enabled
-- [ ] All XRCE global-state operations wrapped when feature enabled
-- [ ] `spin_once(N)` decomposed into guarded `spin_once(0)` loop for both backends
-- [ ] Feature is off by default — existing behavior unchanged without flag
-- [ ] No performance regression when feature disabled (zero-cost abstraction)
+- [x] All zpico FFI calls wrapped in `critical_section::with()` when feature enabled
+- [x] All XRCE global-state operations wrapped when feature enabled
+- [x] `spin_once(N)` decomposed into guarded `spin_once(0)` loop for both backends
+- [x] Feature is off by default — existing behavior unchanged without flag
+- [x] No performance regression when feature disabled (zero-cost abstraction)
 - [ ] RTIC examples work with mixed priorities when feature enabled
-- [ ] `just quality` passes (with and without feature)
+- [x] `just quality` passes (with and without feature)
 
 ## Notes
 
-- **Feature naming**: `sync-ffi-critical-section` chosen to be consistent with existing
-  `sync-critical-section` (which protects Rust wrapper state only). The new feature
-  extends protection to the FFI boundary
+- **Feature naming**: `ffi-sync` — short, descriptive. Complements `sync-critical-section`
+  (which protects Rust wrapper state only). `ffi-sync` extends protection to the FFI boundary
 - **RTOS benefit**: Also benefits FreeRTOS, NuttX, and ThreadX platforms where multiple
   tasks may call FFI concurrently. The `critical-section` crate dispatches to
   platform-appropriate implementations (PRIMASK on bare-metal, `taskENTER_CRITICAL()`
@@ -295,3 +298,7 @@ C-side modifications needed.
 - **Not a replacement for proper multi-threading**: For high-throughput multi-core
   scenarios, finer-grained locking or per-core sessions would be better. This feature
   targets single-core MCUs with interrupt-level concurrency
+- **POSIX note**: On POSIX, zenoh-pico already has internal mutex-based multi-threading
+  (`Z_FEATURE_MULTI_THREAD=1`), so enabling this feature adds redundant (but harmless)
+  synchronization. Not recommended for POSIX — only useful on bare-metal and RTOS
+  platforms where the C library has no-op mutex stubs

@@ -42,6 +42,9 @@ unstable-zenoh-api = ["nros-rmw-zenoh?/unstable-zenoh-api"]
 # Async feedback stream (futures_core::Stream impl on FeedbackStream)
 stream = ["dep:futures-core"]
 
+# FFI reentrancy guards (critical-section around all RMW FFI calls)
+ffi-sync = ["nros-rmw-zenoh?/ffi-sync", "nros-rmw-xrce?/ffi-sync"]
+
 # Parameter services (ros2 param CLI support)
 param-services = ["dep:nros-rcl-interfaces", "alloc"]
 

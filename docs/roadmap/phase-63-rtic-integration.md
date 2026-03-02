@@ -106,16 +106,16 @@ All nano-ros entities go in `#[local]` resources — no locks needed:
 ### Priority Design
 
 With Phase 61 (FFI guards) complete, all FFI calls are wrapped in
-`critical_section::with()` when `sync-ffi-critical-section` is enabled. This means:
+`critical_section::with()` when `ffi-sync` is enabled. This means:
 
-| Scenario                              | Without `sync-ffi-critical-section` | With `sync-ffi-critical-section` |
+| Scenario                              | Without `ffi-sync` | With `ffi-sync` |
 |---------------------------------------|-------------------------------------|----------------------------------|
 | All tasks at priority 1               | **Safe** (cooperative)              | **Safe**                         |
 | net_poll at priority 2, app at 1      | **Unsafe**                          | **Safe**                         |
 | Any mixed priorities                  | **Unsafe**                          | **Safe**                         |
 
 **Recommendation**: All initial RTIC examples use priority 1 for simplicity.
-Advanced users can enable `sync-ffi-critical-section` for mixed-priority configurations
+Advanced users can enable `ffi-sync` for mixed-priority configurations
 (e.g., higher-priority `net_poll` for lower latency). See Phase 61 for full reentrancy
 analysis.
 

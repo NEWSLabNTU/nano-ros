@@ -568,6 +568,7 @@ dependencies = [
 name = "nros-rmw-xrce"
 version = "0.1.0"
 dependencies = [
+ "critical-section",
  "heapless",
  "libc",
  "nros-rmw",
@@ -578,6 +579,7 @@ dependencies = [
 name = "nros-rmw-zenoh"
 version = "0.1.0"
 dependencies = [
+ "critical-section",
  "heapless",
  "log",
  "nros-core",
