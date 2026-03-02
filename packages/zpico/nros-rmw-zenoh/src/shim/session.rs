@@ -141,6 +141,9 @@ impl ZenohSession {
         let context = Context::with_config(locator_opt, mode, &c_props[..prop_count])
             .map_err(TransportError::from)?;
 
+        // Register the reply waker callback for async service client support
+        super::service::register_reply_waker();
+
         Ok(Self { context })
     }
 

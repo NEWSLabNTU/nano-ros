@@ -308,7 +308,7 @@ impl<T, Cli: ServiceClientTrait> core::future::Future for Promise<'_, T, Cli> {
         match this.try_recv() {
             Ok(Some(reply)) => core::task::Poll::Ready(Ok(reply)),
             Ok(None) => {
-                cx.waker().wake_by_ref();
+                this.handle.register_waker(cx.waker());
                 core::task::Poll::Pending
             }
             Err(e) => core::task::Poll::Ready(Err(e)),
@@ -738,7 +738,10 @@ impl<
         core::future::poll_fn(|cx| match self.client.try_recv_feedback() {
             Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
             Ok(None) => {
-                cx.waker().wake_by_ref();
+                self.client
+                    .core
+                    .feedback_subscriber
+                    .register_waker(cx.waker());
                 core::task::Poll::Pending
             }
             Err(e) => core::task::Poll::Ready(Some(Err(e))),
@@ -788,7 +791,10 @@ impl<
         match this.client.try_recv_feedback() {
             Ok(Some(item)) => core::task::Poll::Ready(Some(Ok(item))),
             Ok(None) => {
-                cx.waker().wake_by_ref();
+                this.client
+                    .core
+                    .feedback_subscriber
+                    .register_waker(cx.waker());
                 core::task::Poll::Pending
             }
             Err(e) => core::task::Poll::Ready(Some(Err(e))),
@@ -836,12 +842,18 @@ impl<
                 core::task::Poll::Ready(Some(Ok(feedback)))
             }
             Ok(Some(_)) => {
-                // Feedback for a different goal — keep polling
-                cx.waker().wake_by_ref();
+                // Feedback for a different goal — register waker and keep waiting
+                self.client
+                    .core
+                    .feedback_subscriber
+                    .register_waker(cx.waker());
                 core::task::Poll::Pending
             }
             Ok(None) => {
-                cx.waker().wake_by_ref();
+                self.client
+                    .core
+                    .feedback_subscriber
+                    .register_waker(cx.waker());
                 core::task::Poll::Pending
             }
             Err(e) => core::task::Poll::Ready(Some(Err(e))),
@@ -891,11 +903,17 @@ impl<
                 core::task::Poll::Ready(Some(Ok(feedback)))
             }
             Ok(Some(_)) => {
-                cx.waker().wake_by_ref();
+                this.client
+                    .core
+                    .feedback_subscriber
+                    .register_waker(cx.waker());
                 core::task::Poll::Pending
             }
             Ok(None) => {
-                cx.waker().wake_by_ref();
+                this.client
+                    .core
+                    .feedback_subscriber
+                    .register_waker(cx.waker());
                 core::task::Poll::Pending
             }
             Err(e) => core::task::Poll::Ready(Some(Err(e))),

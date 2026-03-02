@@ -161,6 +161,11 @@ typedef struct {
 
 static pending_get_slot_t g_pending_gets[ZPICO_MAX_PENDING_GETS];
 
+// Reply waker callback — invoked when a pending get slot receives a reply
+// or times out, allowing Rust async code to wake the corresponding Future.
+typedef void (*zpico_waker_fn)(int32_t slot);
+static zpico_waker_fn g_reply_waker = NULL;
+
 // Condition variable for multi-threaded spin_once().
 // Signaled by our callbacks (sample_handler, query_handler, get reply handlers)
 // so spin_once() can wake immediately when application data arrives, rather
@@ -1354,6 +1359,11 @@ int32_t zpico_get(const char *keyexpr,
 static void pending_get_reply_handler(z_loaned_reply_t *reply, void *ctx) {
     get_reply_handler(reply, ctx);
     _zpico_notify_spin();
+    if (g_reply_waker) {
+        // ctx is &ps->ctx which is the first field, so ps == (pending_get_slot_t*)ctx
+        int32_t slot = (int32_t)((pending_get_slot_t *)ctx - g_pending_gets);
+        g_reply_waker(slot);
+    }
 }
 
 // Dropper for pending get slots — just sets the done flag (no condvar)
@@ -1361,6 +1371,10 @@ static void pending_get_dropper(void *ctx) {
     get_reply_ctx_t *rctx = (get_reply_ctx_t *)ctx;
     rctx->done = true;
     _zpico_notify_spin();
+    if (g_reply_waker) {
+        int32_t slot = (int32_t)((pending_get_slot_t *)ctx - g_pending_gets);
+        g_reply_waker(slot);
+    }
 }
 
 int32_t zpico_get_start(const char *keyexpr,
@@ -1448,6 +1462,10 @@ int32_t zpico_get_check(int32_t handle,
 
     // Not yet — still pending
     return 0;
+}
+
+void zpico_set_reply_waker(zpico_waker_fn fn) {
+    g_reply_waker = fn;
 }
 
 // ============================================================================

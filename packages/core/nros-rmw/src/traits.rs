@@ -788,6 +788,16 @@ pub trait Subscriber {
         })
     }
 
+    /// Register an async waker to be notified when data arrives.
+    ///
+    /// Called from `Future::poll()` implementations to store the waker.
+    /// The transport backend calls `waker.wake()` from its receive callback
+    /// when new data is available, enabling event-driven async without
+    /// busy-polling.
+    ///
+    /// Default: no-op (backends that don't support waking simply ignore this).
+    fn register_waker(&self, _waker: &core::task::Waker) {}
+
     /// Return a deserialization error (implementation specific)
     fn deserialization_error(&self) -> Self::Error;
 }
@@ -972,6 +982,16 @@ pub trait ServiceClientTrait {
             None => Ok(None),
         }
     }
+
+    /// Register an async waker to be notified when a reply arrives.
+    ///
+    /// Called from `Future::poll()` implementations to store the waker.
+    /// The transport backend calls `waker.wake()` from its reply callback
+    /// when a response is available, enabling event-driven async without
+    /// busy-polling.
+    ///
+    /// Default: no-op (backends that don't support waking simply ignore this).
+    fn register_waker(&self, _waker: &core::task::Waker) {}
 
     /// Call a service with typed messages (blocking)
     fn call<S: RosService>(

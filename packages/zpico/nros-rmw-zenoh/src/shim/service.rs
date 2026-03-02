@@ -2,6 +2,7 @@
 
 use core::marker::PhantomData;
 
+use atomic_waker::AtomicWaker;
 use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use nros_rmw::{
@@ -339,6 +340,38 @@ impl ServiceServerTrait for ZenohServiceServer {
 }
 
 // ============================================================================
+// Reply Wakers (for async service client)
+// ============================================================================
+
+use crate::zpico::ZPICO_MAX_PENDING_GETS;
+
+/// One AtomicWaker per pending get slot. Registered by `Promise::poll()`,
+/// woken from the C shim when a reply arrives or the channel closes.
+static REPLY_WAKERS: [AtomicWaker; ZPICO_MAX_PENDING_GETS] =
+    [const { AtomicWaker::new() }; ZPICO_MAX_PENDING_GETS];
+
+/// C callback invoked by zpico.c when a pending get slot gets a reply.
+///
+/// # Safety
+///
+/// Called from C (pending_get_reply_handler / pending_get_dropper).
+/// `slot` must be in range [0, ZPICO_MAX_PENDING_GETS).
+unsafe extern "C" fn reply_waker_callback(slot: i32) {
+    if slot >= 0 && (slot as usize) < ZPICO_MAX_PENDING_GETS {
+        REPLY_WAKERS[slot as usize].wake();
+    }
+}
+
+/// Register the reply waker callback with the C shim.
+///
+/// Called once during session initialization.
+pub(super) fn register_reply_waker() {
+    unsafe {
+        zpico_sys::zpico_set_reply_waker(Some(reply_waker_callback));
+    }
+}
+
+// ============================================================================
 // Service Client
 // ============================================================================
 
@@ -399,6 +432,14 @@ impl ZenohServiceClient {
 
 impl ServiceClientTrait for ZenohServiceClient {
     type Error = TransportError;
+
+    fn register_waker(&self, waker: &core::task::Waker) {
+        if let Some(handle) = self.pending_handle
+            && (handle as usize) < ZPICO_MAX_PENDING_GETS
+        {
+            REPLY_WAKERS[handle as usize].register(waker);
+        }
+    }
 
     fn call_raw(&mut self, request: &[u8], reply_buf: &mut [u8]) -> Result<usize, Self::Error> {
         // Get context reference

@@ -556,6 +556,10 @@ mod cbindgen_stubs {
         -1 // stub: not available
     }
 
+    /// Register a reply waker callback for async service client support.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn zpico_set_reply_waker(_func: Option<unsafe extern "C" fn(i32)>) {}
+
     /// Capture the current clock into an opaque 16-byte buffer.
     /// Used by FFI reentrancy guard timeout decomposition.
     #[unsafe(no_mangle)]

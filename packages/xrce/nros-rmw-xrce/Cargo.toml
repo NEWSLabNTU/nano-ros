@@ -23,5 +23,6 @@ ffi-sync = ["dep:critical-section"]
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }
 xrce-sys = { path = "../xrce-sys", default-features = false }
 heapless = "0.8"
+atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
 libc = { version = "0.2", optional = true }
 critical-section = { version = "1.2", optional = true }

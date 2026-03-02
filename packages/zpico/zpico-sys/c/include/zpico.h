@@ -517,6 +517,11 @@ int32_t zpico_get_start(const char *_keyexpr,
 int32_t zpico_get_check(int32_t _handle, uint8_t *_reply_buf, uintptr_t _reply_buf_size);
 
 /**
+ * Register a reply waker callback for async service client support.
+ */
+void zpico_set_reply_waker(void (*_func)(int32_t));
+
+/**
  * Capture the current clock into an opaque 16-byte buffer.
  * Used by FFI reentrancy guard timeout decomposition.
  */

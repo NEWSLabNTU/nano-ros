@@ -41,6 +41,7 @@ nros-core = { workspace = true, default-features = false }
 zpico-sys = { path = "../zpico-sys" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
+atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
 log = { workspace = true, optional = true }
 critical-section = { version = "1.2", optional = true }
 

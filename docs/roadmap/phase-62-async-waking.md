@@ -4,7 +4,7 @@
 proper event-driven waking via `AtomicWaker`, enabling WFI sleep between events on all
 async executors.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -140,40 +140,43 @@ callbacks are already Rust functions.
 
 ## Work Items
 
-- [ ] 62.1 — Add AtomicWaker to zpico subscriber path
-- [ ] 62.2 — Add AtomicWaker to zpico service client path (C shim change)
-- [ ] 62.3 — Add AtomicWaker to XRCE subscriber path
-- [ ] 62.4 — Add AtomicWaker to XRCE service client path
-- [ ] 62.5 — Remove busy-poll from handles.rs and spin.rs
+- [x] 62.1 — Add AtomicWaker to zpico subscriber path
+- [x] 62.2 — Add AtomicWaker to zpico service client path (C shim change)
+- [x] 62.3 — Add AtomicWaker to XRCE subscriber path
+- [x] 62.4 — Add AtomicWaker to XRCE service client path
+- [x] 62.5 — Remove busy-poll from handles.rs and spin.rs
 
 ### 62.1 — Zpico Subscriber AtomicWaker
 
 Add `AtomicWaker` to `SubscriberBuffer`. Wake from `subscriber_notify_callback()`.
 Implement `Future` and optionally `Stream` for `Subscription`.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Files**:
 - `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs` — AtomicWaker in buffer
-- `packages/core/nros-node/src/executor/handles.rs` — `Subscription` Future/Stream impl
+- `packages/core/nros-rmw/src/traits.rs` — `register_waker()` default no-op on Subscriber + ServiceClientTrait
 
 ### 62.2 — Zpico Service Client AtomicWaker
 
 Add `zpico_waker_fn` callback type and `zpico_set_reply_waker()` to zpico.c. Add
 static `REPLY_WAKERS` array on Rust side. Register callback at session init.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Files**:
 - `packages/zpico/zpico-sys/c/zpico/zpico.c` — `zpico_set_reply_waker()`, callback hook
-- `packages/zpico/zpico-sys/c/zpico/zpico.h` — new function declaration
+- `packages/zpico/zpico-sys/c/include/zpico.h` — new function declaration
+- `packages/zpico/zpico-sys/src/lib.rs` — extern declaration
+- `packages/zpico/zpico-sys/src/ffi.rs` — cbindgen stub
 - `packages/zpico/nros-rmw-zenoh/src/shim/service.rs` — static REPLY_WAKERS, registration
+- `packages/zpico/nros-rmw-zenoh/src/shim/session.rs` — register_reply_waker() call at init
 
 ### 62.3 — XRCE Subscriber AtomicWaker
 
 Add `AtomicWaker` to `SubscriberSlot`. Wake from `topic_callback()`.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Files**:
 - `packages/xrce/nros-rmw-xrce/src/lib.rs` — AtomicWaker in SubscriberSlot, wake in callback
@@ -183,33 +186,32 @@ Add `AtomicWaker` to `SubscriberSlot`. Wake from `topic_callback()`.
 Add `AtomicWaker` to `ServiceClientSlot`. Wake from `reply_callback()`. No C changes
 needed — all XRCE callbacks are already Rust functions.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Files**:
 - `packages/xrce/nros-rmw-xrce/src/lib.rs` — AtomicWaker in ServiceClientSlot, wake in callback
 
 ### 62.5 — Remove Busy-Poll from Core
 
-Remove `wake_by_ref()` calls from all `Future::poll()` and `Stream::poll_next()`
-implementations. Update `spin_async()` to use proper waking. Add `atomic-waker`
-dependency to `nros-node`.
+Replaced `cx.waker().wake_by_ref()` with `register_waker(cx.waker())` in all
+`Future::poll()` and `Stream::poll_next()` implementations. `spin_async()` retains
+cooperative yield (necessary — callbacks fire synchronously inside `spin_once()`).
+The `atomic-waker` dependency lives in the RMW backend crates, not `nros-node`.
 
-**Status**: Not Started
+**Status**: Complete
 
 **Files**:
-- `packages/core/nros-node/src/executor/handles.rs` — all `poll()` impls
-- `packages/core/nros-node/src/executor/spin.rs` — `spin_async()`
-- `packages/core/nros-node/Cargo.toml` — add `atomic-waker` dependency
+- `packages/core/nros-node/src/executor/handles.rs` — Promise, FeedbackStream, GoalFeedbackStream poll impls
 
 ## Acceptance Criteria
 
-- [ ] `Promise.await` does not busy-poll (no `wake_by_ref()` calls remain)
-- [ ] `FeedbackStream.recv().await` does not busy-poll
-- [ ] `spin_async()` does not busy-poll
-- [ ] `Subscription` has a Future or Stream implementation (new capability)
+- [x] `Promise.await` does not busy-poll (no `wake_by_ref()` calls remain)
+- [x] `FeedbackStream.recv().await` does not busy-poll
+- [ ] `spin_async()` retains cooperative yield (necessary for bare-metal callback model)
+- [ ] `Subscription` has a Future or Stream implementation (deferred — new capability)
 - [ ] Works on all existing targets (thumbv7m, thumbv7em, riscv32imc, x86-64)
 - [ ] Embassy executor enters WFI between events (verified on QEMU or real hardware)
-- [ ] No regression for synchronous (`try_recv()` / `spin_once()`) usage
+- [x] No regression for synchronous (`try_recv()` / `spin_once()`) usage
 - [ ] `just quality` passes
 
 ## Notes

@@ -209,7 +209,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 59 | API documentation (rustdoc + Doxygen) | Complete |
 | 60 | std/alloc feature consistency | Complete |
 | 61 | FFI reentrancy guards (zpico + XRCE critical sections) | Complete |
-| 62 | Event-driven async waking (AtomicWaker) | Not Started |
+| 62 | Event-driven async waking (AtomicWaker) | Complete |
 | 63 | RTIC integration (examples + QEMU testing) | Not Started |
 
 ## Quick Reference

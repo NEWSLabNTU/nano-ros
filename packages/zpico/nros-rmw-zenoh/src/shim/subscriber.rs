@@ -2,6 +2,7 @@
 
 use core::marker::PhantomData;
 
+use atomic_waker::AtomicWaker;
 use portable_atomic::{AtomicBool, AtomicUsize, Ordering};
 
 use nros_rmw::{Subscriber, TransportError};
@@ -48,6 +49,9 @@ pub(super) struct SubscriberBuffer {
     pub(super) len: AtomicUsize,
     /// Length of valid attachment data
     pub(super) attachment_len: AtomicUsize,
+    /// Async waker — registered by `Future::poll()`, woken from callback
+    /// when data arrives. Enables event-driven async without busy-polling.
+    pub(super) waker: AtomicWaker,
 }
 
 impl SubscriberBuffer {
@@ -60,6 +64,7 @@ impl SubscriberBuffer {
             locked: AtomicBool::new(false),
             len: AtomicUsize::new(0),
             attachment_len: AtomicUsize::new(0),
+            waker: AtomicWaker::new(),
         }
     }
 }
@@ -178,6 +183,9 @@ extern "C" fn subscriber_notify_callback(
 
         buffer.has_data.store(true, Ordering::Release);
     }
+
+    // Wake any async task waiting for data on this subscriber
+    buffer.waker.wake();
 
     // Wake the executor spin loop (if waiting)
     #[cfg(feature = "std")]
@@ -451,6 +459,10 @@ impl Subscriber for ZenohSubscriber {
 
     fn has_data(&self) -> bool {
         self.buf.get().has_data.load(Ordering::Acquire)
+    }
+
+    fn register_waker(&self, waker: &core::task::Waker) {
+        self.buf.get().waker.register(waker);
     }
 
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error> {

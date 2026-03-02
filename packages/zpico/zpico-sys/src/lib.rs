@@ -175,6 +175,9 @@ unsafe extern "C" {
     ) -> i32;
     pub fn zpico_get_check(handle: i32, reply_buf: *mut u8, reply_buf_size: usize) -> i32;
 
+    // Reply waker callback (for async service client)
+    pub fn zpico_set_reply_waker(func: Option<unsafe extern "C" fn(i32)>);
+
     // Polling
     pub fn zpico_poll(timeout_ms: u32) -> i32;
     pub fn zpico_spin_once(timeout_ms: u32) -> i32;

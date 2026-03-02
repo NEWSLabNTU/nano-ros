@@ -59,6 +59,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7f202df86484c868dbad7eaa557ef785d5c66295e41b460ef922eca0723b842c"
 
 [[package]]
+name = "atomic-waker"
+version = "1.1.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1505bd5d3d116872e7271a6d4e16d81d0c8570876c8de68093a09ac269d8aac0"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
 name = "bitflags"
 version = "2.11.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -66,7 +75,7 @@ checksum = "843867be96c8daad0d758b57df9392b6d8d271134fce549de6ce169ff98a92af"
 
 [[package]]
 name = "builtin_interfaces"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "heapless",
  "nros-core",
@@ -366,6 +375,7 @@ dependencies = [
 name = "nros-rmw-xrce"
 version = "0.1.0"
 dependencies = [
+ "atomic-waker",
  "heapless",
  "nros-rmw",
  "xrce-sys",
@@ -375,6 +385,7 @@ dependencies = [
 name = "nros-rmw-zenoh"
 version = "0.1.0"
 dependencies = [
+ "atomic-waker",
  "heapless",
  "nros-core",
  "nros-rmw",
@@ -533,7 +544,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "std_msgs"
-version = "4.2.4"
+version = "4.9.1"
 dependencies = [
  "builtin_interfaces",
  "heapless",

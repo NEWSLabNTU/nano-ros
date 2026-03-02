@@ -36,6 +36,7 @@ pub mod posix_serial;
 #[cfg(feature = "platform-zephyr")]
 pub mod zephyr;
 
+use atomic_waker::AtomicWaker;
 use core::ffi::{c_char, c_int, c_void};
 use core::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
@@ -169,6 +170,7 @@ struct SubscriberSlot {
     /// The callback checks this flag and drops the message if locked,
     /// preventing a data race where the callback overwrites the buffer mid-read.
     locked: AtomicBool,
+    waker: AtomicWaker,
     datareader_id: u16,
     active: bool,
 }
@@ -181,6 +183,7 @@ impl SubscriberSlot {
             len: AtomicUsize::new(0),
             overflow: AtomicBool::new(false),
             locked: AtomicBool::new(false),
+            waker: AtomicWaker::new(),
             datareader_id: 0,
             active: false,
         }
@@ -230,6 +233,7 @@ struct ServiceClientSlot {
     has_reply: AtomicBool,
     overflow: AtomicBool,
     len: AtomicUsize,
+    waker: AtomicWaker,
     requester_id: u16,
     active: bool,
 }
@@ -241,6 +245,7 @@ impl ServiceClientSlot {
             has_reply: AtomicBool::new(false),
             overflow: AtomicBool::new(false),
             len: AtomicUsize::new(0),
+            waker: AtomicWaker::new(),
             requester_id: 0,
             active: false,
         }
@@ -412,6 +417,7 @@ unsafe extern "C" fn topic_callback(
                 slot.data[..len].copy_from_slice(src);
                 slot.len.store(len, Ordering::Release);
                 slot.has_data.store(true, Ordering::Release);
+                slot.waker.wake();
                 return;
             }
         }
@@ -481,6 +487,7 @@ unsafe extern "C" fn reply_callback(
                 slot.data[..len].copy_from_slice(src);
                 slot.len.store(len, Ordering::Release);
                 slot.has_reply.store(true, Ordering::Release);
+                slot.waker.wake();
                 return;
             }
         }
@@ -1158,6 +1165,12 @@ impl Subscriber for XrceSubscriber {
         })
     }
 
+    fn register_waker(&self, waker: &core::task::Waker) {
+        unsafe {
+            SUBSCRIBER_SLOTS[self.slot_index].waker.register(waker);
+        }
+    }
+
     fn deserialization_error(&self) -> TransportError {
         TransportError::DeserializationError
     }
@@ -1319,5 +1332,11 @@ impl ServiceClientTrait for XrceServiceClient {
             slot.has_reply.store(false, Ordering::Release);
             Ok(Some(len))
         })
+    }
+
+    fn register_waker(&self, waker: &core::task::Waker) {
+        unsafe {
+            SERVICE_CLIENT_SLOTS[self.slot_index].waker.register(waker);
+        }
     }
 }
