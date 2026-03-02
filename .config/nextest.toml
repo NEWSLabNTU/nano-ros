@@ -12,12 +12,12 @@ path = "junit.xml"
 store-success-output = false
 store-failure-output = true
 
-# ESP32 QEMU tests: exclusive access to tap-qemu0/tap-qemu1, port 7448
-[test-groups.esp32-emulator]
-max-threads = 1
-
-# Zephyr native_sim tests: exclusive access to zeth-br/zeth0/zeth1, port 7447
-[test-groups.zephyr]
+# All tests using the TAP bridge (qemu-br + tap-qemu0/tap-qemu1) or zenohd
+# on port 7447 must be serialized. Firmware hardcodes the zenohd port, and
+# TAP devices can only be used by one QEMU instance at a time.
+# Includes: zephyr (port 7447), freertos, threadx-linux, threadx-riscv64,
+# nuttx, esp32 (port 7448 but shares TAP devices).
+[test-groups.qemu-network]
 max-threads = 1
 
 # ARM QEMU tests: target directory serialization (Docker E2E is network-isolated)
@@ -25,10 +25,6 @@ max-threads = 1
 max-threads = 1
 
 [test-groups.c_api]
-max-threads = 1
-
-# NuttX QEMU tests: sequential builds, shared TAP bridge
-[test-groups.nuttx-qemu]
 max-threads = 1
 
 # XRCE-DDS tests: single Agent instance per test
@@ -41,12 +37,12 @@ max-threads = 1
 
 [[profile.default.overrides]]
 filter = "binary(esp32_emulator)"
-test-group = "esp32-emulator"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
-test-group = "zephyr"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
@@ -115,34 +111,25 @@ slow-timeout = { period = "60s", terminate-after = 2 }
 # NuttX QEMU tests: nightly build + QEMU ARM virt
 [[profile.default.overrides]]
 filter = "binary(nuttx_qemu)"
-test-group = "nuttx-qemu"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-# FreeRTOS QEMU tests: sequential builds, shared TAP bridge
-[test-groups.freertos-qemu]
-max-threads = 1
-
+# FreeRTOS QEMU tests: shared TAP bridge + port 7447
 [[profile.default.overrides]]
 filter = "binary(freertos_qemu)"
-test-group = "freertos-qemu"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-# ThreadX Linux tests: sequential, shared TAP bridge
-[test-groups.threadx-linux]
-max-threads = 1
-
+# ThreadX Linux tests: shared TAP bridge + port 7447
 [[profile.default.overrides]]
 filter = "binary(threadx_linux)"
-test-group = "threadx-linux"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-# ThreadX QEMU RISC-V tests: sequential builds, shared TAP bridge
-[test-groups.threadx-riscv64-qemu]
-max-threads = 1
-
+# ThreadX QEMU RISC-V tests: shared TAP bridge + port 7447
 [[profile.default.overrides]]
 filter = "binary(threadx_riscv64_qemu)"
-test-group = "threadx-riscv64-qemu"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [profile.ci]
