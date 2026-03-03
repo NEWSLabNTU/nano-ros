@@ -323,6 +323,10 @@ impl QemuProcess {
         cmd.args([
             "-M",
             "virt",
+            "-m",
+            "256M",
+            "-bios",
+            "none",
             "-nographic",
             "-bios",
             "none",

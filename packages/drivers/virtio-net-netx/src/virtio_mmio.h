@@ -55,9 +55,12 @@ extern "C" {
 #define VIRTIO_STATUS_DRIVER_OK         4
 #define VIRTIO_STATUS_FAILED            128
 
-/* VirtIO net feature bits */
+/* VirtIO net feature bits (page 0: bits 0-31) */
 #define VIRTIO_NET_F_MAC                (1u << 5)
 #define VIRTIO_NET_F_STATUS             (1u << 16)
+
+/* VirtIO common feature bits (page 1: bits 32-63, stored as bits 0-31) */
+#define VIRTIO_F_VERSION_1              (1u << 0)  /* Bit 32 → page 1 bit 0 */
 
 /* Interrupt status bits */
 #define VIRTIO_MMIO_INT_VRING           (1u << 0)

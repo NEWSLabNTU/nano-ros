@@ -45,6 +45,14 @@ uint32_t virtio_mmio_negotiate_features(uint64_t base,
     virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES_SEL, 0);
     virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES, negotiated);
 
+    /* Page 1 (bits 32-63): negotiate VIRTIO_F_VERSION_1.
+     * Required by VirtIO 1.x spec for modern (non-legacy) devices. */
+    virtio_mmio_write32(base, VIRTIO_MMIO_DEVICE_FEATURES_SEL, 1);
+    uint32_t dev_feat1 = virtio_mmio_read32(base, VIRTIO_MMIO_DEVICE_FEATURES);
+    uint32_t drv_feat1 = dev_feat1 & VIRTIO_F_VERSION_1;
+    virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES_SEL, 1);
+    virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES, drv_feat1);
+
     /* Set FEATURES_OK */
     uint32_t status = virtio_mmio_read32(base, VIRTIO_MMIO_STATUS);
     status |= VIRTIO_STATUS_FEATURES_OK;

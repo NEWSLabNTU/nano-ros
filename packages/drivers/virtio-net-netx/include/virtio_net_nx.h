@@ -53,6 +53,9 @@ void virtio_net_nx_configure(const struct virtio_net_nx_config *config);
  */
 VOID virtio_net_nx_driver(NX_IP_DRIVER *driver_req_ptr);
 
+/** Debug: print RX/TX queue state and interrupt status (remove after debugging) */
+void virtio_net_nx_debug_poll(void);
+
 #ifdef __cplusplus
 }
 #endif

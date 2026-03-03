@@ -46,3 +46,8 @@ int rand(void)
     _rand_seed = _rand_seed * 1103515245u + 12345u;
     return (int)((_rand_seed >> 16) & 0x7FFF);
 }
+
+long random(void)
+{
+    return (long)rand();
+}

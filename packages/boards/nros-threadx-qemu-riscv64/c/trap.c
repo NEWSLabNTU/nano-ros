@@ -79,6 +79,14 @@ void trap_handler(uintptr_t mcause, uintptr_t mepc, uintptr_t mtval)
         default: uart_puts("  Unknown exception code\n"); break;
         }
 
+        /* Dump register state for debugging */
+        uint64_t sp_val, ra_val;
+        __asm__ volatile("mv %0, sp" : "=r"(sp_val));
+        __asm__ volatile("mv %0, ra" : "=r"(ra_val));
+        uart_puts("  ra=0x"); print_hex(ra_val);
+        uart_puts(" sp=0x"); print_hex(sp_val);
+        uart_puts("\n");
+
         while (1) ;
     }
 }

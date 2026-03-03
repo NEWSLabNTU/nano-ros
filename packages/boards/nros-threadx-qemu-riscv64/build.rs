@@ -9,7 +9,6 @@
 //!   NETX_DIR             — NetX Duo source root (default: external/netxduo)
 
 use std::env;
-use std::fs::File;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -54,6 +53,8 @@ fn main() {
         "ThreadX QEMU virt board files not found at {}",
         qemu_virt_dir.display()
     );
+
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
     // ---- Build ThreadX kernel ----
     let mut threadx = cc::Build::new();
@@ -109,15 +110,15 @@ fn main() {
         threadx.file(manifest_dir.join("c").join(asm_name));
     }
 
-    // QEMU virt board support C files (board.c, plic.c, uart.c, hwtimer.c)
-    // trap.c is excluded — board crate provides its own with better diagnostics
+    // QEMU virt board support C files (board.c, plic.c, uart.c)
+    // trap.c and hwtimer.c are excluded — board crate provides its own versions
     for entry in std::fs::read_dir(&qemu_virt_dir).unwrap() {
         let path = entry.unwrap().path();
+        let name = path.file_name().unwrap().to_str().unwrap_or("");
+        if name == "trap.c" || name == "hwtimer.c" {
+            continue; // use board crate's c/ versions instead
+        }
         if path.extension().is_some_and(|e| e == "c") {
-            let name = path.file_name().unwrap().to_str().unwrap_or("");
-            if name == "trap.c" {
-                continue;
-            }
             threadx.file(&path);
         }
     }
@@ -128,11 +129,11 @@ fn main() {
     for entry in std::fs::read_dir(&qemu_virt_dir).unwrap() {
         let path = entry.unwrap().path();
         let ext = path.extension().and_then(|e| e.to_str());
+        let name = path.file_name().unwrap().to_str().unwrap_or("");
+        if name == "entry.s" {
+            continue; // use board crate's c/entry.s instead
+        }
         if ext == Some("S") || ext == Some("s") {
-            let name = path.file_name().unwrap().to_str().unwrap_or("");
-            if name == "entry.s" {
-                continue;
-            }
             threadx.file(&path);
         }
     }
@@ -184,6 +185,7 @@ fn main() {
     glue.file(manifest_dir.join("c/trap.c"));
     glue.file(manifest_dir.join("c/app_define.c"));
     glue.file(manifest_dir.join("c/syscalls.c"));
+    glue.file(manifest_dir.join("c/hwtimer.c"));
 
     glue.compile("glue");
 
@@ -197,9 +199,7 @@ fn main() {
     // rustflags = ["-C", "link-arg=-Tlink.lds"] in their .cargo/config.toml.
     // cargo:rustc-link-arg does NOT propagate from library crates to downstream
     // binaries, so we use cargo:rustc-link-search instead.
-    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
-    File::create(out_dir.join("link.lds"))
-        .unwrap()
+    std::io::BufWriter::new(std::fs::File::create(out_dir.join("link.lds")).unwrap())
         .write_all(include_bytes!("config/link.lds"))
         .unwrap();
     println!("cargo:rustc-link-search={}", out_dir.display());

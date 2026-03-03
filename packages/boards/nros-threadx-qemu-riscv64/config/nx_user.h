@@ -23,6 +23,9 @@
 #define NX_PHYSICAL_HEADER          16
 #define NX_MAX_PORT                 65535
 
+/* Extended notify — required by BSD socket layer */
+#define NX_ENABLE_EXTENDED_NOTIFY_SUPPORT
+
 /* Deferred processing — required for virtio-net interrupt-driven RX */
 #define NX_DRIVER_DEFERRED_PROCESSING
 

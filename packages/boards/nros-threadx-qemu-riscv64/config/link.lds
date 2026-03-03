@@ -9,6 +9,10 @@ SECTIONS
    */
   . = 0x80000000;
 
+  .init : {
+    KEEP(*(.text.init))
+  }
+
   .text : {
     KEEP(*(.init))
     *(.text .text.*)

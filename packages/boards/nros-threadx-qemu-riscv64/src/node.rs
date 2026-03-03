@@ -47,13 +47,13 @@ where
     uart_write_str("[rust] app_task_entry: before sleep\n");
 
     // Brief delay for network stabilization. ThreadX timer ticks at
-    // TX_TIMER_TICKS_PER_SECOND (100), so 200 ticks = 2 seconds.
+    // TX_TIMER_TICKS_PER_SECOND (100), so 50 ticks = 0.5 seconds.
     unsafe {
         unsafe extern "C" {
             #[link_name = "_tx_thread_sleep"]
             fn tx_thread_sleep(ticks: u32);
         }
-        tx_thread_sleep(200);
+        tx_thread_sleep(50);
     }
 
     uart_write_str("[rust] app_task_entry: after sleep, calling closure\n");
