@@ -18,15 +18,22 @@ use super::types::NodeError;
 /// Backend-agnostic node — borrows the session to create typed entities.
 pub struct Node<'a, S: Session> {
     name: heapless::String<64>,
+    namespace: heapless::String<64>,
     session: &'a mut S,
     domain_id: u32,
 }
 
 impl<'a, S: Session> Node<'a, S> {
     /// Create a new node (called by Executor::create_node).
-    pub(crate) fn new(name: heapless::String<64>, session: &'a mut S, domain_id: u32) -> Self {
+    pub(crate) fn new(
+        name: heapless::String<64>,
+        namespace: heapless::String<64>,
+        session: &'a mut S,
+        domain_id: u32,
+    ) -> Self {
         Self {
             name,
+            namespace,
             session,
             domain_id,
         }
@@ -68,8 +75,10 @@ impl<'a, S: Session> Node<'a, S> {
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<EmbeddedPublisher<M, S::PublisherHandle>, NodeError> {
-        let topic =
-            TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_domain(self.domain_id);
+        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH)
+            .with_domain(self.domain_id)
+            .with_node_name(&self.name)
+            .with_namespace(&self.namespace);
         let handle = self
             .session
             .create_publisher(&topic, qos)
@@ -104,8 +113,10 @@ impl<'a, S: Session> Node<'a, S> {
         topic_name: &str,
         qos: QosSettings,
     ) -> Result<Subscription<M, S::SubscriberHandle, RX_BUF>, NodeError> {
-        let topic =
-            TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_domain(self.domain_id);
+        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH)
+            .with_domain(self.domain_id)
+            .with_node_name(&self.name)
+            .with_namespace(&self.namespace);
         let handle = self
             .session
             .create_subscriber(&topic, qos)
@@ -134,7 +145,9 @@ impl<'a, S: Session> Node<'a, S> {
     ) -> Result<EmbeddedServiceServer<Svc, S::ServiceServerHandle, REQ_BUF, REPLY_BUF>, NodeError>
     {
         let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
-            .with_domain(self.domain_id);
+            .with_domain(self.domain_id)
+            .with_node_name(&self.name)
+            .with_namespace(&self.namespace);
         let handle = self
             .session
             .create_service_server(&info)
@@ -162,7 +175,9 @@ impl<'a, S: Session> Node<'a, S> {
     ) -> Result<EmbeddedServiceClient<Svc, S::ServiceClientHandle, REQ_BUF, REPLY_BUF>, NodeError>
     {
         let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
-            .with_domain(self.domain_id);
+            .with_domain(self.domain_id)
+            .with_node_name(&self.name)
+            .with_namespace(&self.namespace);
         let handle = self
             .session
             .create_service_client(&info)

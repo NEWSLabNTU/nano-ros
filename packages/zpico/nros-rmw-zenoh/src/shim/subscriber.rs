@@ -202,6 +202,8 @@ pub struct ZenohSubscriber {
     _subscriber: crate::zpico::Subscriber<'static>,
     /// Safe accessor for the static subscriber buffer
     buf: SubscriberBufferRef,
+    /// Liveliness token for ROS 2 graph discovery (kept alive for subscriber lifetime)
+    _liveliness: Option<super::LivelinessToken>,
     /// E2E safety validator (tracks sequence numbers, validates CRC)
     #[cfg(feature = "safety-e2e")]
     safety_validator: nros_rmw::SafetyValidator,
@@ -211,7 +213,11 @@ pub struct ZenohSubscriber {
 
 impl ZenohSubscriber {
     /// Create a new subscriber for the given topic
-    pub fn new(context: &Context, topic: &nros_rmw::TopicInfo) -> Result<Self, TransportError> {
+    pub fn new(
+        context: &Context,
+        topic: &nros_rmw::TopicInfo,
+        liveliness: Option<super::LivelinessToken>,
+    ) -> Result<Self, TransportError> {
         // Allocate a buffer index
         let buffer_index = NEXT_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
         if buffer_index >= ZPICO_MAX_SUBSCRIBERS {
@@ -269,6 +275,7 @@ impl ZenohSubscriber {
         Ok(Self {
             _subscriber: subscriber,
             buf,
+            _liveliness: liveliness,
             #[cfg(feature = "safety-e2e")]
             safety_validator: nros_rmw::SafetyValidator::new(),
             _phantom: PhantomData,

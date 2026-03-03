@@ -179,12 +179,11 @@ mod tests {
     #[test]
     #[cfg(not(feature = "ros-iron"))]
     fn test_topic_info_to_key_humble() {
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::Int32_",
-            type_hash: "TypeHashNotSupported",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new(
+            "/chatter",
+            "std_msgs::msg::dds_::Int32_",
+            "TypeHashNotSupported",
+        );
         let key: heapless::String<128> = topic.to_key();
         assert_eq!(
             key.as_str(),
@@ -195,12 +194,7 @@ mod tests {
     #[test]
     #[cfg(feature = "ros-iron")]
     fn test_topic_info_to_key_iron() {
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::Int32_",
-            type_hash: "RIHS01_deadbeef",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "RIHS01_deadbeef");
         let key: heapless::String<128> = topic.to_key();
         assert_eq!(
             key.as_str(),
@@ -210,12 +204,11 @@ mod tests {
 
     #[test]
     fn test_topic_info_to_key_wildcard() {
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::Int32_",
-            type_hash: "TypeHashNotSupported",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new(
+            "/chatter",
+            "std_msgs::msg::dds_::Int32_",
+            "TypeHashNotSupported",
+        );
         let key: heapless::String<128> = topic.to_key_wildcard();
         assert_eq!(key.as_str(), "0/chatter/std_msgs::msg::dds_::Int32_/*");
     }
@@ -223,12 +216,11 @@ mod tests {
     #[test]
     #[cfg(not(feature = "ros-iron"))]
     fn test_service_key() {
-        let service = ServiceInfo {
-            name: "/add_two_ints",
-            type_name: "example_interfaces::srv::dds_::AddTwoInts",
-            type_hash: "TypeHashNotSupported",
-            domain_id: 0,
-        };
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts",
+            "TypeHashNotSupported",
+        );
         let key: heapless::String<128> = service.to_key();
         assert!(key.contains("add_two_ints"));
         assert!(key.contains("TypeHashNotSupported"));
@@ -237,12 +229,11 @@ mod tests {
     #[test]
     #[cfg(feature = "ros-iron")]
     fn test_service_key_iron() {
-        let service = ServiceInfo {
-            name: "/add_two_ints",
-            type_name: "example_interfaces::srv::dds_::AddTwoInts",
-            type_hash: "RIHS01_cafebabe",
-            domain_id: 0,
-        };
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts",
+            "RIHS01_cafebabe",
+        );
         let key: heapless::String<128> = service.to_key();
         assert!(key.contains("add_two_ints"));
         assert!(key.contains("RIHS01_cafebabe"));

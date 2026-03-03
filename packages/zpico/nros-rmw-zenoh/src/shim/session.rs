@@ -4,7 +4,6 @@ use nros_rmw::{
     QosSettings, ServiceInfo, Session, SessionMode, TopicInfo, TransportConfig, TransportError,
 };
 
-#[cfg(feature = "std")]
 use super::Ros2Liveliness;
 use super::publisher::ZenohPublisher;
 use super::service::{ZenohServiceClient, ZenohServiceServer};
@@ -214,6 +213,43 @@ impl ZenohSession {
             .declare_liveliness(keyexpr)
             .map_err(TransportError::from)
     }
+
+    /// Declare a node liveliness token for ROS 2 participant discovery
+    ///
+    /// Creates an NN liveliness token so ROS 2 tools (`ros2 node list`)
+    /// can discover this node. The token is kept alive for the session lifetime.
+    pub fn declare_node_liveliness(
+        &self,
+        domain_id: u32,
+        namespace: &str,
+        node_name: &str,
+    ) -> Option<LivelinessToken> {
+        self.declare_entity_liveliness(|zid| {
+            Ros2Liveliness::node_keyexpr::<256>(domain_id, zid, namespace, node_name)
+        })
+    }
+
+    /// Helper: build a liveliness keyexpr using a closure and declare it.
+    fn declare_entity_liveliness(
+        &self,
+        build_keyexpr: impl FnOnce(&ZenohId) -> heapless::String<256>,
+    ) -> Option<LivelinessToken> {
+        let zid = self.context.zid().ok()?;
+        let keyexpr = build_keyexpr(&zid);
+
+        #[cfg(feature = "std")]
+        log::debug!("liveliness keyexpr: {}", keyexpr.as_str());
+
+        let mut buf = [0u8; 257];
+        let bytes = keyexpr.as_bytes();
+        if bytes.len() < buf.len() {
+            buf[..bytes.len()].copy_from_slice(bytes);
+            buf[bytes.len()] = 0;
+            self.context.declare_liveliness(&buf[..=bytes.len()]).ok()
+        } else {
+            None
+        }
+    }
 }
 
 impl Session for ZenohSession {
@@ -228,45 +264,77 @@ impl Session for ZenohSession {
         topic: &TopicInfo,
         qos: QosSettings,
     ) -> Result<Self::PublisherHandle, Self::Error> {
-        #[cfg(feature = "std")]
-        {
-            if let Ok(zid) = self.context.zid() {
-                let keyexpr = Ros2Liveliness::publisher_keyexpr::<256>(
+        let liveliness_token = topic.node_name.and_then(|node_name| {
+            self.declare_entity_liveliness(|zid| {
+                Ros2Liveliness::publisher_keyexpr::<256>(
                     topic.domain_id,
-                    &zid,
-                    "/",
-                    "node",
+                    zid,
+                    topic.namespace,
+                    node_name,
                     topic,
                     &qos,
-                );
-                log::debug!("liveliness keyexpr: {}", keyexpr.as_str());
-            }
-        }
-        #[cfg(not(feature = "std"))]
-        let _ = &qos;
-        ZenohPublisher::new(&self.context, topic)
+                )
+            })
+        });
+        ZenohPublisher::new(&self.context, topic, liveliness_token)
     }
 
     fn create_subscriber(
         &mut self,
         topic: &TopicInfo,
-        _qos: QosSettings,
+        qos: QosSettings,
     ) -> Result<Self::SubscriberHandle, Self::Error> {
-        ZenohSubscriber::new(&self.context, topic)
+        let liveliness_token = topic.node_name.and_then(|node_name| {
+            self.declare_entity_liveliness(|zid| {
+                Ros2Liveliness::subscriber_keyexpr::<256>(
+                    topic.domain_id,
+                    zid,
+                    topic.namespace,
+                    node_name,
+                    topic,
+                    &qos,
+                )
+            })
+        });
+        ZenohSubscriber::new(&self.context, topic, liveliness_token)
     }
 
     fn create_service_server(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceServerHandle, Self::Error> {
-        ZenohServiceServer::new(&self.context, service)
+        let liveliness_token = service.node_name.and_then(|node_name| {
+            self.declare_entity_liveliness(|zid| {
+                Ros2Liveliness::service_server_keyexpr::<256>(
+                    service.domain_id,
+                    zid,
+                    service.namespace,
+                    node_name,
+                    service,
+                    &QosSettings::services_default(),
+                )
+            })
+        });
+        ZenohServiceServer::new(&self.context, service, liveliness_token)
     }
 
     fn create_service_client(
         &mut self,
         service: &ServiceInfo,
     ) -> Result<Self::ServiceClientHandle, Self::Error> {
-        ZenohServiceClient::new(&self.context, service)
+        let liveliness_token = service.node_name.and_then(|node_name| {
+            self.declare_entity_liveliness(|zid| {
+                Ros2Liveliness::service_client_keyexpr::<256>(
+                    service.domain_id,
+                    zid,
+                    service.namespace,
+                    node_name,
+                    service,
+                    &QosSettings::services_default(),
+                )
+            })
+        });
+        ZenohServiceClient::new(&self.context, service, liveliness_token)
     }
 
     fn close(&mut self) -> Result<(), Self::Error> {

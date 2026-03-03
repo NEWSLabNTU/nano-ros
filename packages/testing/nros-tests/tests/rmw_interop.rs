@@ -591,6 +591,10 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
 
 // =============================================================================
 // Discovery Tests
+//
+// These tests verify that nros entities are visible to ROS 2 CLI tools
+// (ros2 node/topic/service list) via liveliness token discovery.
+// Entity types tested: NN (node), MP (publisher), MS (subscriber), SS (service).
 // =============================================================================
 
 #[rstest]
@@ -603,8 +607,7 @@ fn test_discovery_node_visible(zenohd_unique: ZenohRouter, talker_binary: PathBu
 
     let locator = zenohd_unique.locator();
 
-    // Start nros talker
-    eprintln!("Starting nros talker...");
+    // Start nros talker (creates node "talker" + publisher on /chatter)
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
@@ -612,24 +615,17 @@ fn test_discovery_node_visible(zenohd_unique: ZenohRouter, talker_binary: PathBu
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    // Wait for node to register
+    // Wait for liveliness token registration
     std::thread::sleep(Duration::from_secs(4));
 
-    // Check ROS 2 node list
-    eprintln!("Checking ros2 node list...");
     let node_list = ros2_node_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
-
     talker.kill();
 
     eprintln!("Node list:\n{}", node_list);
-
-    // Look for the nros node
-    if node_list.contains("talker") || node_list.contains("chatter") {
-        eprintln!("[PASS] nros node visible in ros2 node list");
-    } else {
-        eprintln!("[INFO] nros node not visible in ros2 node list");
-        eprintln!("  This may indicate liveliness token issues");
-    }
+    assert!(
+        node_list.contains("talker"),
+        "Expected 'talker' node in ros2 node list, got:\n{node_list}"
+    );
 }
 
 #[rstest]
@@ -642,8 +638,7 @@ fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathB
 
     let locator = zenohd_unique.locator();
 
-    // Start nros talker
-    eprintln!("Starting nros talker...");
+    // Start nros talker (publisher liveliness → MP entity)
     let mut talker_cmd = Command::new(&talker_binary);
     talker_cmd
         .env("RUST_LOG", "info")
@@ -651,34 +646,58 @@ fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathB
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
         .expect("Failed to start talker");
 
-    // Wait for topic to register
     std::thread::sleep(Duration::from_secs(4));
 
-    // Check ROS 2 topic list
-    eprintln!("Checking ros2 topic list...");
     let topic_list = ros2_topic_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
-
-    eprintln!("Topic list:\n{}", topic_list);
-
-    // Check topic info for /chatter
-    eprintln!("Checking ros2 topic info /chatter...");
     let topic_info = ros2_topic_info("/chatter", &locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
 
     talker.kill();
 
+    eprintln!("Topic list:\n{}", topic_list);
     eprintln!("Topic info:\n{}", topic_info);
 
-    // Look for the /chatter topic
-    if topic_list.contains("/chatter") {
-        eprintln!("[PASS] /chatter topic visible in ros2 topic list");
+    assert!(
+        topic_list.contains("/chatter"),
+        "Expected '/chatter' in ros2 topic list, got:\n{topic_list}"
+    );
+    // Publisher liveliness (MP entity) should make /chatter show 1 publisher
+    assert!(
+        topic_info.contains("Publisher count: 1"),
+        "Expected 'Publisher count: 1' in topic info, got:\n{topic_info}"
+    );
+}
 
-        if topic_info.contains("Publisher") || topic_info.contains("publisher") {
-            eprintln!("[PASS] Topic info shows publisher");
-        }
-    } else {
-        eprintln!("[INFO] /chatter topic not visible in ros2 topic list");
-        eprintln!("  This may indicate liveliness token issues");
+#[rstest]
+fn test_discovery_subscriber_visible(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
     }
+
+    let locator = zenohd_unique.locator();
+
+    // Start nros listener (subscriber liveliness → MS entity)
+    let mut listener_cmd = Command::new(&listener_binary);
+    listener_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+        .expect("Failed to start listener");
+
+    std::thread::sleep(Duration::from_secs(4));
+
+    let topic_info = ros2_topic_info("/chatter", &locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
+
+    listener.kill();
+
+    eprintln!("Topic info:\n{}", topic_info);
+
+    // Subscriber liveliness (MS entity) should make /chatter show 1 subscription
+    assert!(
+        topic_info.contains("Subscription count: 1"),
+        "Expected 'Subscription count: 1' in topic info, got:\n{topic_info}"
+    );
 }
 
 #[rstest]
@@ -691,8 +710,7 @@ fn test_discovery_service_visible(zenohd_unique: ZenohRouter, service_server_bin
 
     let locator = zenohd_unique.locator();
 
-    // Start nros service server
-    eprintln!("Starting nros service server...");
+    // Start nros service server (service liveliness → SS entity)
     let mut server_cmd = Command::new(&service_server_binary);
     server_cmd
         .env("RUST_LOG", "info")
@@ -700,24 +718,70 @@ fn test_discovery_service_visible(zenohd_unique: ZenohRouter, service_server_bin
     let mut server = ManagedProcess::spawn_command(server_cmd, "native-rs-service-server")
         .expect("Failed to start service server");
 
-    // Wait for service to register
     std::thread::sleep(Duration::from_secs(4));
 
-    // Check ROS 2 service list
-    eprintln!("Checking ros2 service list...");
     let service_list = ros2_service_list(&locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
 
     server.kill();
 
     eprintln!("Service list:\n{}", service_list);
 
-    // Look for the /add_two_ints service
-    if service_list.contains("/add_two_ints") {
-        eprintln!("[PASS] /add_two_ints service visible in ros2 service list");
-    } else {
-        eprintln!("[INFO] /add_two_ints service not visible in ros2 service list");
-        eprintln!("  This may indicate service liveliness token issues");
+    assert!(
+        service_list.contains("/add_two_ints"),
+        "Expected '/add_two_ints' in ros2 service list, got:\n{service_list}"
+    );
+}
+
+#[rstest]
+fn test_discovery_pub_sub_combined(
+    zenohd_unique: ZenohRouter,
+    talker_binary: PathBuf,
+    listener_binary: PathBuf,
+) {
+    use std::process::Command;
+
+    if !require_ros2() {
+        return;
     }
+
+    let locator = zenohd_unique.locator();
+
+    // Start listener first (subscriber registers before publisher)
+    let mut listener_cmd = Command::new(&listener_binary);
+    listener_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
+        .expect("Failed to start listener");
+
+    std::thread::sleep(Duration::from_secs(2));
+
+    // Start talker
+    let mut talker_cmd = Command::new(&talker_binary);
+    talker_cmd
+        .env("RUST_LOG", "info")
+        .env("ZENOH_LOCATOR", &locator);
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "native-rs-talker")
+        .expect("Failed to start talker");
+
+    std::thread::sleep(Duration::from_secs(4));
+
+    let topic_info = ros2_topic_info("/chatter", &locator, DEFAULT_ROS_DISTRO).unwrap_or_default();
+
+    talker.kill();
+    listener.kill();
+
+    eprintln!("Topic info (combined):\n{}", topic_info);
+
+    // Both publisher (MP) and subscriber (MS) liveliness should be visible
+    assert!(
+        topic_info.contains("Publisher count: 1"),
+        "Expected 'Publisher count: 1' in topic info, got:\n{topic_info}"
+    );
+    assert!(
+        topic_info.contains("Subscription count: 1"),
+        "Expected 'Subscription count: 1' in topic info, got:\n{topic_info}"
+    );
 }
 
 // =============================================================================

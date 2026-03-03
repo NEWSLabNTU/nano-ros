@@ -735,12 +735,7 @@ mod tests {
     #[test]
     fn test_ros2_liveliness_publisher_keyexpr() {
         let zid = ZenohId::from_bytes([0u8; 16]);
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::String_",
-            type_hash: "RIHS01_abc123",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
             Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/", "my_node", &topic, &qos);
@@ -757,12 +752,7 @@ mod tests {
     #[test]
     fn test_ros2_liveliness_publisher_keyexpr_with_namespace() {
         let zid = ZenohId::from_bytes([0u8; 16]);
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::String_",
-            type_hash: "RIHS01_abc123",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::String_", "RIHS01_abc123");
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
             Ros2Liveliness::publisher_keyexpr::<256>(0, &zid, "/demo", "talker", &topic, &qos);
@@ -772,12 +762,7 @@ mod tests {
     #[test]
     fn test_ros2_liveliness_subscriber_keyexpr() {
         let zid = ZenohId::from_bytes([0u8; 16]);
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::Int32_",
-            type_hash: "RIHS01_def456",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new("/chatter", "std_msgs::msg::dds_::Int32_", "RIHS01_def456");
         let qos = QosSettings::QOS_PROFILE_SENSOR_DATA;
         let keyexpr =
             Ros2Liveliness::subscriber_keyexpr::<256>(0, &zid, "/", "my_node", &topic, &qos);
@@ -792,12 +777,11 @@ mod tests {
     #[test]
     fn test_ros2_liveliness_service_server_keyexpr() {
         let zid = ZenohId::from_bytes([0u8; 16]);
-        let service = ServiceInfo {
-            name: "/add_two_ints",
-            type_name: "example_interfaces::srv::dds_::AddTwoInts",
-            type_hash: "RIHS01_abc123",
-            domain_id: 0,
-        };
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts",
+            "RIHS01_abc123",
+        );
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr =
             Ros2Liveliness::service_server_keyexpr::<256>(0, &zid, "/", "my_node", &service, &qos);
@@ -812,12 +796,11 @@ mod tests {
     #[test]
     fn test_ros2_liveliness_service_server_keyexpr_with_namespace() {
         let zid = ZenohId::from_bytes([0u8; 16]);
-        let service = ServiceInfo {
-            name: "/add_two_ints",
-            type_name: "example_interfaces::srv::dds_::AddTwoInts",
-            type_hash: "RIHS01_abc123",
-            domain_id: 0,
-        };
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts",
+            "RIHS01_abc123",
+        );
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr = Ros2Liveliness::service_server_keyexpr::<256>(
             0, &zid, "/demo", "my_node", &service, &qos,
@@ -828,12 +811,11 @@ mod tests {
     #[test]
     fn test_ros2_liveliness_service_client_keyexpr() {
         let zid = ZenohId::from_bytes([0u8; 16]);
-        let service = ServiceInfo {
-            name: "/add_two_ints",
-            type_name: "example_interfaces::srv::dds_::AddTwoInts",
-            type_hash: "RIHS01_abc123",
-            domain_id: 0,
-        };
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts",
+            "RIHS01_abc123",
+        );
         let qos = QosSettings::QOS_PROFILE_SERVICES_DEFAULT;
         let keyexpr =
             Ros2Liveliness::service_client_keyexpr::<256>(0, &zid, "/", "my_node", &service, &qos);
@@ -851,12 +833,11 @@ mod tests {
 
     #[test]
     fn test_topic_info_to_key_humble() {
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::Int32_",
-            type_hash: "TypeHashNotSupported",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new(
+            "/chatter",
+            "std_msgs::msg::dds_::Int32_",
+            "TypeHashNotSupported",
+        );
 
         let key: heapless::String<128> = topic.to_key();
         // Format: <domain_id>/<topic_name>/<type_name>/<type_hash>
@@ -868,12 +849,11 @@ mod tests {
 
     #[test]
     fn test_topic_info_to_key_wildcard() {
-        let topic = TopicInfo {
-            name: "/chatter",
-            type_name: "std_msgs::msg::dds_::Int32_",
-            type_hash: "TypeHashNotSupported",
-            domain_id: 0,
-        };
+        let topic = TopicInfo::new(
+            "/chatter",
+            "std_msgs::msg::dds_::Int32_",
+            "TypeHashNotSupported",
+        );
 
         let key: heapless::String<128> = topic.to_key_wildcard();
         // Format: <domain_id>/<topic_name>/<type_name>/*
@@ -886,12 +866,11 @@ mod tests {
 
     #[test]
     fn test_service_info_format() {
-        let service = ServiceInfo {
-            name: "/add_two_ints",
-            type_name: "example_interfaces::srv::dds_::AddTwoInts",
-            type_hash: "TypeHashNotSupported",
-            domain_id: 0,
-        };
+        let service = ServiceInfo::new(
+            "/add_two_ints",
+            "example_interfaces::srv::dds_::AddTwoInts",
+            "TypeHashNotSupported",
+        );
 
         // Verify service info fields are correct
         assert_eq!(service.name, "/add_two_ints");

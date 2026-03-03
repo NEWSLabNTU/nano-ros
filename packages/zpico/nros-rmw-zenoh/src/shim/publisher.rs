@@ -5,8 +5,8 @@ use portable_atomic::Ordering;
 use nros_rmw::{Publisher, TransportError};
 
 use super::{
-    AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, RMW_ATTACHMENT_SIZE,
-    RMW_GID_SIZE, RmwAttachment, TIMESTAMP_INCREMENT_NS,
+    AtomicSeqCounter, Context, KEYEXPR_BUFFER_SIZE, KEYEXPR_STRING_SIZE, LivelinessToken,
+    RMW_ATTACHMENT_SIZE, RMW_GID_SIZE, RmwAttachment, TIMESTAMP_INCREMENT_NS,
 };
 use crate::keyexpr::TopicKeyExpr;
 
@@ -28,11 +28,17 @@ pub struct ZenohPublisher {
     sequence_counter: AtomicSeqCounter,
     /// Timestamp counter (until platform time is available)
     timestamp_counter: AtomicSeqCounter,
+    /// Liveliness token for ROS 2 graph discovery (kept alive for publisher lifetime)
+    _liveliness: Option<LivelinessToken>,
 }
 
 impl ZenohPublisher {
     /// Create a new publisher for the given topic
-    pub fn new(context: &Context, topic: &nros_rmw::TopicInfo) -> Result<Self, TransportError> {
+    pub fn new(
+        context: &Context,
+        topic: &nros_rmw::TopicInfo,
+        liveliness: Option<LivelinessToken>,
+    ) -> Result<Self, TransportError> {
         // Generate the topic key with null terminator
         let key: heapless::String<KEYEXPR_STRING_SIZE> = topic.to_key();
 
@@ -69,6 +75,7 @@ impl ZenohPublisher {
             rmw_gid: RmwAttachment::generate_gid(),
             sequence_counter: AtomicSeqCounter::new(0),
             timestamp_counter: AtomicSeqCounter::new(0),
+            _liveliness: liveliness,
         })
     }
 

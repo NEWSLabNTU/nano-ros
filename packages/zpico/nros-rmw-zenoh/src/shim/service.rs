@@ -200,6 +200,8 @@ pub struct ZenohServiceServer {
     _queryable: Queryable,
     /// Safe accessor for the static service buffer
     buf: ServiceBufferRef,
+    /// Liveliness token for ROS 2 graph discovery (kept alive for server lifetime)
+    _liveliness: Option<super::LivelinessToken>,
     /// Keyexpr buffer for replying (copied from last request)
     reply_keyexpr: [u8; 256],
     /// Keyexpr length
@@ -212,7 +214,11 @@ pub struct ZenohServiceServer {
 
 impl ZenohServiceServer {
     /// Create a new service server for the given service
-    pub fn new(context: &Context, service: &ServiceInfo) -> Result<Self, TransportError> {
+    pub fn new(
+        context: &Context,
+        service: &ServiceInfo,
+        liveliness: Option<super::LivelinessToken>,
+    ) -> Result<Self, TransportError> {
         // Allocate a buffer index
         let buffer_index = NEXT_SERVICE_BUFFER_INDEX.fetch_add(1, Ordering::SeqCst);
         if buffer_index >= ZPICO_MAX_QUERYABLES {
@@ -245,6 +251,7 @@ impl ZenohServiceServer {
         Ok(Self {
             _queryable: queryable,
             buf: ServiceBufferRef::new(buffer_index),
+            _liveliness: liveliness,
             reply_keyexpr: [0u8; 256],
             reply_keyexpr_len: 0,
             context: context as *const Context,
@@ -386,6 +393,8 @@ pub struct ZenohServiceClient {
     keyexpr: [u8; 257],
     /// Length of valid keyexpr
     keyexpr_len: usize,
+    /// Liveliness token for ROS 2 graph discovery (kept alive for client lifetime)
+    _liveliness: Option<super::LivelinessToken>,
     /// Reference to context for making queries
     context: *const Context,
     /// Timeout in milliseconds
@@ -398,7 +407,11 @@ pub struct ZenohServiceClient {
 
 impl ZenohServiceClient {
     /// Create a new service client for the given service
-    pub fn new(context: &Context, service: &ServiceInfo) -> Result<Self, TransportError> {
+    pub fn new(
+        context: &Context,
+        service: &ServiceInfo,
+        liveliness: Option<super::LivelinessToken>,
+    ) -> Result<Self, TransportError> {
         // Generate wildcard service key for queries (matches any type hash from ROS 2)
         let key: heapless::String<KEYEXPR_STRING_SIZE> = service.to_key_wildcard();
 
@@ -417,6 +430,7 @@ impl ZenohServiceClient {
         Ok(Self {
             keyexpr: keyexpr_buf,
             keyexpr_len: bytes.len(),
+            _liveliness: liveliness,
             context: context as *const Context,
             timeout_ms: SERVICE_DEFAULT_TIMEOUT_MS,
             pending_handle: None,

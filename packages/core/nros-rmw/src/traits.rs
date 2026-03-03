@@ -21,6 +21,12 @@ pub struct TopicInfo<'a> {
     pub type_hash: &'a str,
     /// Domain ID (default: 0)
     pub domain_id: u32,
+    /// Node name for liveliness token generation.
+    /// `None` means no node association — no liveliness token will be declared.
+    pub node_name: Option<&'a str>,
+    /// Node namespace for liveliness token generation (default: "/").
+    /// In ROS 2, "/" is the root namespace and the standard default.
+    pub namespace: &'a str,
 }
 
 impl<'a> TopicInfo<'a> {
@@ -31,12 +37,26 @@ impl<'a> TopicInfo<'a> {
             type_name,
             type_hash,
             domain_id: 0,
+            node_name: None,
+            namespace: "/",
         }
     }
 
     /// Create topic info with custom domain ID
     pub const fn with_domain(mut self, domain_id: u32) -> Self {
         self.domain_id = domain_id;
+        self
+    }
+
+    /// Set the node name for liveliness token generation
+    pub const fn with_node_name(mut self, node_name: &'a str) -> Self {
+        self.node_name = Some(node_name);
+        self
+    }
+
+    /// Set the node namespace for liveliness token generation
+    pub const fn with_namespace(mut self, namespace: &'a str) -> Self {
+        self.namespace = namespace;
         self
     }
 }
@@ -52,6 +72,12 @@ pub struct ServiceInfo<'a> {
     pub type_hash: &'a str,
     /// Domain ID (default: 0)
     pub domain_id: u32,
+    /// Node name for liveliness token generation.
+    /// `None` means no node association — no liveliness token will be declared.
+    pub node_name: Option<&'a str>,
+    /// Node namespace for liveliness token generation (default: "/").
+    /// In ROS 2, "/" is the root namespace and the standard default.
+    pub namespace: &'a str,
 }
 
 /// Action information for action client/server
@@ -146,12 +172,26 @@ impl<'a> ServiceInfo<'a> {
             type_name,
             type_hash,
             domain_id: 0,
+            node_name: None,
+            namespace: "/",
         }
     }
 
     /// Create service info with custom domain ID
     pub const fn with_domain(mut self, domain_id: u32) -> Self {
         self.domain_id = domain_id;
+        self
+    }
+
+    /// Set the node name for liveliness token generation
+    pub const fn with_node_name(mut self, node_name: &'a str) -> Self {
+        self.node_name = Some(node_name);
+        self
+    }
+
+    /// Set the node namespace for liveliness token generation
+    pub const fn with_namespace(mut self, namespace: &'a str) -> Self {
+        self.namespace = namespace;
         self
     }
 }

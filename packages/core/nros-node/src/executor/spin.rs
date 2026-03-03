@@ -62,7 +62,9 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
         };
         let session = nros_rmw_zenoh::ZenohSession::new(&tc)
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        Ok(Self::from_session(session))
+        let mut executor = Self::from_session(session);
+        executor.set_node_identity(config.node_name, config.namespace);
+        Ok(executor)
     }
 }
 
@@ -98,7 +100,9 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
         };
         let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        Ok(Self::from_session(session))
+        let mut executor = Self::from_session(session);
+        executor.set_node_identity(config.node_name, config.namespace);
+        Ok(executor)
     }
 }
 
@@ -117,7 +121,9 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
         };
         let session = nros_rmw_cffi::CffiRmw::open(&rmw_config)
             .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        Ok(Self::from_session(session))
+        let mut executor = Self::from_session(session);
+        executor.set_node_identity(config.node_name, config.namespace);
+        Ok(executor)
     }
 }
 
@@ -177,6 +183,11 @@ pub struct Executor<S, const MAX_CBS: usize = 0, const CB_ARENA: usize = 0> {
     pub(crate) entries: [Option<CallbackMeta>; MAX_CBS],
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
+    /// Node name for entities created via `add_subscription`/`add_service`.
+    /// Empty means unset — no liveliness tokens will be declared.
+    pub(crate) node_name: heapless::String<64>,
+    /// Node namespace (default: "/").
+    pub(crate) namespace: heapless::String<64>,
     #[cfg(feature = "std")]
     pub(crate) halt_flag: std::sync::Arc<std::sync::atomic::AtomicBool>,
     #[cfg(feature = "param-services")]
@@ -196,6 +207,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             entries: [None; MAX_CBS],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
+            node_name: heapless::String::new(),
+            namespace: {
+                let mut ns = heapless::String::new();
+                let _ = ns.push_str("/");
+                ns
+            },
             #[cfg(feature = "std")]
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "param-services")]
@@ -217,10 +234,30 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             entries: [None; MAX_CBS],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
+            node_name: heapless::String::new(),
+            namespace: {
+                let mut ns = heapless::String::new();
+                let _ = ns.push_str("/");
+                ns
+            },
             #[cfg(feature = "std")]
             halt_flag: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
             #[cfg(feature = "param-services")]
             params: None,
+        }
+    }
+
+    /// Set the node name and namespace used for liveliness tokens.
+    ///
+    /// Called by `open()` to propagate config values. When `add_subscription`
+    /// or `add_service` creates entities, these values are attached to the
+    /// `TopicInfo`/`ServiceInfo` so the zenoh backend can declare liveliness.
+    pub fn set_node_identity(&mut self, node_name: &str, namespace: &str) {
+        self.node_name.clear();
+        let _ = self.node_name.push_str(node_name);
+        if !namespace.is_empty() {
+            self.namespace.clear();
+            let _ = self.namespace.push_str(namespace);
         }
     }
 
@@ -235,7 +272,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .push_str(name)
             .map_err(|_| NodeError::NameTooLong)?;
 
-        Ok(Node::new(node_name, &mut *self.session, 0))
+        Ok(Node::new(
+            node_name,
+            self.namespace.clone(),
+            &mut *self.session,
+            0,
+        ))
     }
 
     /// Drive transport I/O (poll network, dispatch callbacks).
@@ -357,7 +399,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         type Entry<M, Sub, F, const N: usize> = SubEntry<M, Sub, F, N>;
 
         let slot = self.next_entry_slot()?;
-        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
         let handle = self
             .session
             .create_subscriber(&topic, QosSettings::default())
@@ -435,7 +482,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         type Entry<M, Sub, F, const N: usize> = SubInfoEntry<M, Sub, F, N>;
 
         let slot = self.next_entry_slot()?;
-        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
         let handle = self
             .session
             .create_subscriber(&topic, QosSettings::default())
@@ -516,7 +568,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         type Entry<M, Sub, F, const N: usize> = SubSafetyEntry<M, Sub, F, N>;
 
         let slot = self.next_entry_slot()?;
-        let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
         let handle = self
             .session
             .create_subscriber(&topic, QosSettings::default())
@@ -583,7 +640,13 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         type Entry<Svc, Srv, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, Srv, F, RQ, RP>;
 
         let slot = self.next_entry_slot()?;
-        let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+            .with_namespace(&ns);
+        if !node_name.is_empty() {
+            info = info.with_node_name(&node_name);
+        }
         let handle = self
             .session
             .create_service_server(&info)
@@ -795,7 +858,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         S::SubscriberHandle: Subscriber,
     {
         let slot = self.next_entry_slot()?;
-        let topic = TopicInfo::new(topic_name, type_name, type_hash);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
         let handle = self
             .session
             .create_subscriber(&topic, qos)
@@ -875,7 +943,13 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
     {
         let slot = self.next_entry_slot()?;
-        let info = ServiceInfo::new(service_name, service_type, service_hash);
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut info =
+            ServiceInfo::new(service_name, service_type, service_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            info = info.with_node_name(&node_name);
+        }
         let handle = self
             .session
             .create_service_server(&info)
