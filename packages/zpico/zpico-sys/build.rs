@@ -1599,7 +1599,10 @@ fn build_zenoh_pico_threadx(
 
     // RISC-V cross-compilation flags + picolibc sysroot
     if target.contains("riscv64") {
-        build.flag("-march=rv64gc").flag("-mabi=lp64d");
+        build
+            .flag("-march=rv64gc")
+            .flag("-mabi=lp64d")
+            .flag("-mcmodel=medany");
 
         // Generate errno.h shadow that avoids picolibc's TLS-based errno.
         // picolibc declares `extern __thread int errno` which uses the tp register.

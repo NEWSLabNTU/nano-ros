@@ -44,6 +44,8 @@ where
 {
     let ctx = unsafe { &*(arg as *const AppContext<F>) };
 
+    uart_write_str("[rust] app_task_entry: before sleep\n");
+
     // Brief delay for network stabilization. ThreadX timer ticks at
     // TX_TIMER_TICKS_PER_SECOND (100), so 200 ticks = 2 seconds.
     unsafe {
@@ -53,6 +55,8 @@ where
         }
         tx_thread_sleep(200);
     }
+
+    uart_write_str("[rust] app_task_entry: after sleep, calling closure\n");
 
     // Take the closure out of the context so we can call it (FnOnce).
     let closure = unsafe { core::ptr::read(&ctx.closure) };

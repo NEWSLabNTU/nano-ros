@@ -4,12 +4,13 @@ ENTRY( _start )
 SECTIONS
 {
   /*
-   * ensure that entry.S / _start is at 0x80000000,
-   * where qemu's -kernel jumps.
+   * ThreadX runs in M-mode (no OpenSBI). QEMU -bios none loads -kernel at
+   * 0x80000000 and starts executing there. entry.s / _start must be first.
    */
   . = 0x80000000;
 
   .text : {
+    KEEP(*(.init))
     *(.text .text.*)
     . = ALIGN(0x1000);
     PROVIDE(etext = .);

@@ -85,24 +85,15 @@ static void app_thread_entry(ULONG input)
 {
     (void)input;
 
+    uart_puts("[app_thread] Started\n");
+
     if (rust_app_entry) {
+        uart_puts("[app_thread] Calling Rust entry...\n");
         rust_app_entry(rust_app_arg);
+        uart_puts("[app_thread] Rust entry returned\n");
     } else {
-        uart_puts("ERROR: no Rust app callback set");
+        uart_puts("ERROR: no Rust app callback set\n");
     }
-}
-
-/* ---- main() called from entry.S ---- */
-int main(void)
-{
-    /* Board init: PLIC, UART, CLINT timer */
-    board_init();
-
-    /* Enter ThreadX kernel — does not return.
-     * Calls tx_application_define() then starts scheduler. */
-    tx_kernel_enter();
-
-    return 0;
 }
 
 /* ---- ThreadX tx_application_define (called by tx_kernel_enter) ---- */
@@ -113,11 +104,12 @@ void tx_application_define(void *first_unused_memory)
 
     (void)first_unused_memory;
 
+    uart_puts("[app_define] Creating byte pool...\n");
     /* Create byte pool for all dynamic allocations */
     status = tx_byte_pool_create(&byte_pool, "nros_byte_pool",
                                   byte_pool_storage, BYTE_POOL_SIZE);
     if (status != TX_SUCCESS) {
-        uart_puts("ERROR: byte pool create failed");
+        uart_puts("ERROR: byte pool create failed\n");
         return;
     }
 
@@ -136,8 +128,10 @@ void tx_application_define(void *first_unused_memory)
     }
 
     /* Initialize the NetX system */
+    uart_puts("[app_define] Initializing NetX system...\n");
     nx_system_initialize();
 
+    uart_puts("[app_define] Configuring virtio-net...\n");
     /* Configure virtio-net driver before creating IP instance */
     {
         struct virtio_net_nx_config vcfg;
@@ -170,6 +164,7 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
+    uart_puts("[app_define] Creating IP instance...\n");
     /* Create IP instance with virtio-net driver */
     ULONG ip_addr = ((ULONG)cfg_ip[0] << 24) | ((ULONG)cfg_ip[1] << 16)
                   | ((ULONG)cfg_ip[2] << 8)  | (ULONG)cfg_ip[3];
@@ -189,6 +184,7 @@ void tx_application_define(void *first_unused_memory)
                   | ((ULONG)cfg_gateway[2] << 8)  | (ULONG)cfg_gateway[3];
     nx_ip_gateway_address_set(&ip_instance, gw_addr);
 
+    uart_puts("[app_define] Enabling ARP...\n");
     /* Enable ARP */
     status = tx_byte_allocate(&byte_pool, (VOID **)&pointer,
                                ARP_POOL_SIZE, TX_NO_WAIT);
@@ -202,11 +198,13 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
+    uart_puts("[app_define] Enabling TCP/UDP/ICMP...\n");
     /* Enable TCP, UDP, ICMP */
     nx_tcp_enable(&ip_instance);
     nx_udp_enable(&ip_instance);
     nx_icmp_enable(&ip_instance);
 
+    uart_puts("[app_define] Initializing BSD sockets...\n");
     /* Initialize BSD socket layer */
     status = tx_byte_allocate(&byte_pool, (VOID **)&pointer,
                                BSD_STACK_SIZE, TX_NO_WAIT);
@@ -218,10 +216,22 @@ void tx_application_define(void *first_unused_memory)
                              (CHAR *)pointer, BSD_STACK_SIZE,
                              APP_THREAD_PRIORITY + 1);
     if (status != NX_SUCCESS) {
-        uart_puts("ERROR: BSD initialize failed");
+        uart_puts("ERROR: BSD initialize failed, status=0x");
+        {
+            static const char hex[] = "0123456789abcdef";
+            char buf[9];
+            for (int i = 7; i >= 0; i--) {
+                buf[7 - i] = hex[(status >> (i * 4)) & 0xF];
+            }
+            buf[8] = '\0';
+            uart_puts(buf);
+        }
+        uart_puts("\n");
         return;
     }
+    uart_puts("[app_define] BSD sockets initialized\n");
 
+    uart_puts("[app_define] Creating app thread...\n");
     /* Create application thread */
     status = tx_byte_allocate(&byte_pool, (VOID **)&pointer,
                                APP_THREAD_STACK_SIZE, TX_NO_WAIT);
@@ -236,7 +246,8 @@ void tx_application_define(void *first_unused_memory)
                                APP_THREAD_PRIORITY, APP_THREAD_PRIORITY,
                                TX_NO_TIME_SLICE, TX_AUTO_START);
     if (status != TX_SUCCESS) {
-        uart_puts("ERROR: app thread create failed");
+        uart_puts("ERROR: app thread create failed\n");
         return;
     }
+    uart_puts("[app_define] App thread created, returning to kernel...\n");
 }

@@ -24,11 +24,15 @@
 #define NX_ETHERNET_RARP        0x8035
 #define NX_ETHERNET_IPV6        0x86DD
 
-/** VirtIO net header size (without VIRTIO_NET_F_MRG_RXBUF) */
-#define VIRTIO_NET_HDR_SIZE     12
+/** VirtIO net header size.
+ * Base header: flags(1) + gso_type(1) + hdr_len(2) + gso_size(2) +
+ *              csum_start(2) + csum_offset(2) = 10 bytes.
+ * Only 12 bytes if VIRTIO_NET_F_MRG_RXBUF is negotiated (adds num_buffers).
+ * We do NOT negotiate MRG_RXBUF, so use 10. */
+#define VIRTIO_NET_HDR_SIZE     10
 
 #define NUM_RX_BUFFERS          32
-#define BUFFER_SIZE             2048  /* virtio-net hdr (12) + MTU (1514) + padding */
+#define BUFFER_SIZE             2048  /* virtio-net hdr (10) + MTU (1514) + padding */
 
 /* --------------------------------------------------------------------------
  * Static state
@@ -130,7 +134,7 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
     UINT          iface_idx  = iface->nx_interface_index;
     uint64_t      base       = driver_config.mmio_base;
 
-    /* 1. Probe VirtIO MMIO device */
+    /* 1. Probe the VirtIO MMIO device */
     if (virtio_mmio_probe(base) != 0) {
         driver_req->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
         return;
@@ -151,8 +155,12 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
     }
 
     /* 4. Initialize virtqueues */
-    if (virtqueue_init(&rxq, 0, base) != 0 ||
-        virtqueue_init(&txq, 1, base) != 0) {
+    if (virtqueue_init(&rxq, 0, base) != 0) {
+        virtio_mmio_set_status(base, VIRTIO_STATUS_FAILED);
+        driver_req->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
+        return;
+    }
+    if (virtqueue_init(&txq, 1, base) != 0) {
         virtio_mmio_set_status(base, VIRTIO_STATUS_FAILED);
         driver_req->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
         return;
@@ -212,6 +220,13 @@ static void driver_enable(NX_IP_DRIVER *driver_req)
     plic_prio_set(driver_config.irq_num, 1);
     plic_irq_enable(driver_config.irq_num);
 
+    /* Set PLIC M-mode priority threshold to 0 (accept all priorities > 0).
+     * QEMU virt may not reset this register, leaving garbage that blocks IRQs. */
+    {
+        int hart = 0;  /* Single-hart system */
+        *(volatile uint32_t *)(0x0c200000UL + hart * 0x2000) = 0;
+    }
+
     iface->nx_interface_link_up = NX_TRUE;
 }
 
@@ -232,13 +247,24 @@ static void driver_disable(NX_IP_DRIVER *driver_req)
  * NX_LINK_PACKET_SEND (+ BROADCAST, ARP_SEND, ARP_RESPONSE_SEND, RARP_SEND)
  * ----------------------------------------------------------------------- */
 
+extern void uart_puts(const char *s);
+
 static void driver_packet_send(NX_IP_DRIVER *driver_req)
 {
     NX_PACKET    *packet_ptr = driver_req->nx_ip_driver_packet;
     NX_INTERFACE *iface      = driver_req->nx_ip_driver_interface;
     uint32_t      offset     = 0;
 
-    /* 1. Build virtio-net header (12 bytes, all zeros for simple TX) */
+    /* Diagnostic: trace TX commands */
+    switch (driver_req->nx_ip_driver_command) {
+    case NX_LINK_ARP_SEND:         uart_puts("[TX] ARP request\n"); break;
+    case NX_LINK_ARP_RESPONSE_SEND: uart_puts("[TX] ARP response\n"); break;
+    case NX_LINK_PACKET_SEND:      uart_puts("[TX] IP packet\n"); break;
+    case NX_LINK_PACKET_BROADCAST: uart_puts("[TX] broadcast\n"); break;
+    default:                       uart_puts("[TX] other\n"); break;
+    }
+
+    /* 1. Build virtio-net header (10 bytes, all zeros for simple TX) */
     memset(tx_buffer, 0, VIRTIO_NET_HDR_SIZE);
     offset = VIRTIO_NET_HDR_SIZE;
 
@@ -332,14 +358,15 @@ static void driver_packet_send(NX_IP_DRIVER *driver_req)
 
 static void driver_deferred_processing(NX_IP_DRIVER *driver_req)
 {
-    NX_IP *ip_ptr = driver_req->nx_ip_driver_ptr;
     uint32_t len;
     int desc_idx;
     int reposted = 0;
 
-    (void)ip_ptr;  /* Used via driver_ip_ptr */
+    (void)driver_req;
 
     rx_pending = 0;
+
+    uart_puts("[RX] deferred processing\n");
 
     /* Process all completed RX buffers */
     while ((desc_idx = virtqueue_get_used(&rxq, &len)) >= 0) {
@@ -376,10 +403,6 @@ static void driver_deferred_processing(NX_IP_DRIVER *driver_req)
         }
 
         /* Copy frame data into NX_PACKET */
-        /* Adjust prepend_ptr for 4-byte alignment of IP header */
-        packet_ptr->nx_packet_prepend_ptr += 2;
-        packet_ptr->nx_packet_append_ptr  += 2;
-
         status = nx_packet_data_append(packet_ptr, frame, frame_len,
                                        driver_ip_ptr->nx_ip_default_packet_pool,
                                        NX_NO_WAIT);
@@ -392,18 +415,27 @@ static void driver_deferred_processing(NX_IP_DRIVER *driver_req)
         }
 
         /* Extract EtherType from Ethernet header (bytes 12-13) */
-        uint16_t ethertype = ((uint16_t)frame[12] << 8) | (uint16_t)frame[13];
+        uint16_t etype = ((uint16_t)frame[12] << 8) | (uint16_t)frame[13];
+
+        /* Tag packet with the receiving interface (required by NetX handlers).
+         * Must use nx_packet_address.nx_packet_interface_ptr — this is what
+         * NetX ARP/IP processing checks (see nx_arp_packet_receive.c:305). */
+        packet_ptr->nx_packet_address.nx_packet_interface_ptr =
+            &driver_ip_ptr->nx_ip_interface[0];
 
         /* Strip Ethernet header */
         packet_ptr->nx_packet_prepend_ptr += NX_ETHERNET_SIZE;
         packet_ptr->nx_packet_length      -= NX_ETHERNET_SIZE;
 
         /* Route to appropriate NetX handler */
-        if (ethertype == NX_ETHERNET_IP || ethertype == NX_ETHERNET_IPV6) {
+        if (etype == NX_ETHERNET_IP || etype == NX_ETHERNET_IPV6) {
+            uart_puts("[RX] IP packet\n");
             _nx_ip_packet_deferred_receive(driver_ip_ptr, packet_ptr);
-        } else if (ethertype == NX_ETHERNET_ARP) {
+        } else if (etype == NX_ETHERNET_ARP) {
+            uart_puts("[RX] ARP packet\n");
             _nx_arp_packet_deferred_receive(driver_ip_ptr, packet_ptr);
-        } else if (ethertype == NX_ETHERNET_RARP) {
+        } else if (etype == NX_ETHERNET_RARP) {
+            uart_puts("[RX] RARP packet\n");
             _nx_rarp_packet_deferred_receive(driver_ip_ptr, packet_ptr);
         } else {
             nx_packet_release(packet_ptr);

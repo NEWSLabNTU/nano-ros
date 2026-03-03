@@ -11,11 +11,13 @@
 
 /* BSD socket layer.
  * NX_BSD_ENABLE_NATIVE_API: use nx_bsd_* prefixed names to avoid
- * conflicting with any system POSIX headers. */
+ * conflicting with any system POSIX headers.
+ * NX_ENABLE_EXTENDED_NOTIFY_SUPPORT: required for BSD socket layer. */
 #define NX_BSD_ENABLE
 #define NX_BSD_ENABLE_NATIVE_API
 #define NX_BSD_MAX_SOCKETS          16
 #define NX_BSD_TIMEOUT              (20 * NX_IP_PERIODIC_RATE)
+#define NX_ENABLE_EXTENDED_NOTIFY_SUPPORT
 
 /* Network parameters */
 #define NX_PHYSICAL_HEADER          16

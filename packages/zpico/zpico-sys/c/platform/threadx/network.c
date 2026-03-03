@@ -30,20 +30,21 @@
 #include "zenoh-pico/utils/logging.h"
 #include "zenoh-pico/utils/result.h"
 
-/* ── Helper: parse "a.b.c.d" → network-order uint32 ─────────────────────── */
+/* ── Helper: parse "a.b.c.d" → big-endian value for NetX BSD ────────────── */
 
 static uint32_t _z_parse_ipv4(const char *s) {
     unsigned int a, b, c, d;
     if (sscanf(s, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) {
         return 0;
     }
-    /* sin_addr.s_addr must be in network byte order (big-endian).
-     * The manual construction gives host byte order, so apply htonl(). */
-    return htonl((uint32_t)((a << 24) | (b << 16) | (c << 8) | d));
+    /* NetX BSD sin_addr.s_addr uses big-endian VALUE format (htonl is identity).
+     * Construct the value directly: 192.0.3.1 → 0xC0000301. */
+    return (uint32_t)((a << 24) | (b << 16) | (c << 8) | d);
 }
 
 static uint16_t _z_parse_port(const char *s) {
-    return htons((uint16_t)atoi(s));
+    /* NetX BSD sin_port uses host VALUE (htons is identity). */
+    return (uint16_t)atoi(s);
 }
 
 /* Convert endpoint to sockaddr_in */
@@ -98,12 +99,56 @@ z_result_t _z_socket_wait_event(void *v_peers, _z_mutex_rec_t *mutex) {
 
 #if Z_FEATURE_LINK_TCP == 1
 
+extern void uart_puts(const char *s);
+static void _diag_print_hex32(uint32_t val) {
+    static const char hex[] = "0123456789abcdef";
+    char buf[9];
+    for (int i = 7; i >= 0; i--) buf[7-i] = hex[(val >> (i*4)) & 0xF];
+    buf[8] = '\0';
+    uart_puts(buf);
+}
+
 z_result_t _z_create_endpoint_tcp(_z_sys_net_endpoint_t *ep, const char *s_address, const char *s_port) {
+    /* Test htonl behavior */
+    uint32_t test_val = 0x12345678;
+    uart_puts("[diag] htonl(0x12345678)=0x");
+    _diag_print_hex32(htonl(test_val));
+    uart_puts("\n");
+
+    /* Test sscanf */
+    unsigned int ta, tb, tc, td;
+    int rc = sscanf(s_address, "%u.%u.%u.%u", &ta, &tb, &tc, &td);
+    uart_puts("[diag] sscanf rc=");
+    _diag_print_hex32((uint32_t)rc);
+    uart_puts(" a=");
+    _diag_print_hex32(ta);
+    uart_puts(" b=");
+    _diag_print_hex32(tb);
+    uart_puts(" c=");
+    _diag_print_hex32(tc);
+    uart_puts(" d=");
+    _diag_print_hex32(td);
+    uart_puts("\n");
+
+    uint32_t raw = ((uint32_t)(ta << 24) | (tb << 16) | (tc << 8) | td);
+    uart_puts("[diag] raw=0x");
+    _diag_print_hex32(raw);
+    uart_puts(" htonl(raw)=0x");
+    _diag_print_hex32(htonl(raw));
+    uart_puts("\n");
+
     ep->_addr = _z_parse_ipv4(s_address);
     ep->_port = _z_parse_port(s_port);
 
+    uart_puts("[zpico] parsed addr=0x");
+    _diag_print_hex32(ep->_addr);
+    uart_puts(" port=0x");
+    _diag_print_hex32((uint32_t)ep->_port);
+    uart_puts("\n");
+
     if (ep->_addr == 0) {
         _Z_ERROR("Failed to parse TCP address: %s", s_address);
+        uart_puts("[zpico] FAIL: addr is 0\n");
         return _Z_ERR_GENERIC;
     }
     return _Z_RES_OK;
@@ -119,11 +164,16 @@ void _z_free_endpoint_tcp(_z_sys_net_endpoint_t *ep) {
 z_result_t _z_open_tcp(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t rep, uint32_t tout) {
     z_result_t ret = _Z_RES_OK;
 
+    uart_puts("[zpico] _z_open_tcp: creating socket...\n");
     sock->_fd = nx_bsd_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (sock->_fd < 0) {
+        uart_puts("[zpico] socket() FAILED\n");
         _Z_ERROR("Failed to create TCP socket");
         return _Z_ERR_GENERIC;
     }
+    uart_puts("[zpico] socket fd=");
+    _diag_print_hex32((uint32_t)sock->_fd);
+    uart_puts("\n");
 
     /* Set receive timeout */
     if (tout > 0) {
@@ -137,7 +187,18 @@ z_result_t _z_open_tcp(_z_sys_net_socket_t *sock, const _z_sys_net_endpoint_t re
     struct nx_bsd_sockaddr_in addr;
     _z_ep_to_sockaddr(&rep, &addr);
 
-    if (nx_bsd_connect(sock->_fd, (struct nx_bsd_sockaddr *)&addr, sizeof(addr)) < 0) {
+    uart_puts("[zpico] connecting to addr=0x");
+    _diag_print_hex32(addr.sin_addr.s_addr);
+    uart_puts(" port=0x");
+    _diag_print_hex32((uint32_t)addr.sin_port);
+    uart_puts("...\n");
+
+    int rc = nx_bsd_connect(sock->_fd, (struct nx_bsd_sockaddr *)&addr, sizeof(addr));
+    uart_puts("[zpico] connect returned ");
+    _diag_print_hex32((uint32_t)rc);
+    uart_puts("\n");
+
+    if (rc < 0) {
         _Z_ERROR("TCP connect failed");
         nx_bsd_soc_close(sock->_fd);
         sock->_fd = -1;

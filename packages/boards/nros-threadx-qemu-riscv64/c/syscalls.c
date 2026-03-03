@@ -26,3 +26,23 @@ void _exit(int status)
 /* getpid / kill: referenced by picolibc's raise() */
 int getpid(void) { return 1; }
 int kill(int pid, int sig) { (void)pid; (void)sig; return 0; }
+
+/*
+ * rand / srand — Non-TLS replacements for picolibc's TLS-based versions.
+ *
+ * picolibc uses thread-local storage (via the tp register) for rand() state.
+ * On bare-metal ThreadX, tp is 0 → any TLS access is a load from NULL → crash.
+ * These simple LCG implementations use a global variable instead.
+ */
+static unsigned int _rand_seed = 1;
+
+void srand(unsigned int seed)
+{
+    _rand_seed = seed;
+}
+
+int rand(void)
+{
+    _rand_seed = _rand_seed * 1103515245u + 12345u;
+    return (int)((_rand_seed >> 16) & 0x7FFF);
+}

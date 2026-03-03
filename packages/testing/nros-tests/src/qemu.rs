@@ -324,6 +324,8 @@ impl QemuProcess {
             "-M",
             "virt",
             "-nographic",
+            "-bios",
+            "none",
             "-global",
             "virtio-mmio.force-legacy=false",
             "-kernel",

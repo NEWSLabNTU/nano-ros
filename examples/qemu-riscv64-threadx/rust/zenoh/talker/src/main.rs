@@ -10,7 +10,7 @@ use nros_threadx_qemu_riscv64::{Config, println, run};
 use std_msgs::msg::Int32;
 
 #[unsafe(no_mangle)]
-fn _start() -> ! {
+extern "C" fn main() -> ! {
     run(Config::default(), |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)

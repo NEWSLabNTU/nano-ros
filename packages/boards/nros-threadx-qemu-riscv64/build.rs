@@ -9,6 +9,8 @@
 //!   NETX_DIR             — NetX Duo source root (default: external/netxduo)
 
 use std::env;
+use std::fs::File;
+use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -74,32 +76,63 @@ fn main() {
         }
     }
 
-    // RISC-V port assembly files (exclude tx_initialize_low_level.S —
-    // the QEMU virt board provides its own version below)
+    // RISC-V port assembly files — exclude files that the board crate
+    // overrides with ULONG=4 struct layout fixes (see c/tx_thread_*.S).
+    // Also exclude tx_initialize_low_level.S (QEMU virt board provides its own).
+    let excluded_asm: &[&str] = &[
+        "tx_initialize_low_level.S",
+        "tx_thread_schedule.S",
+        "tx_thread_context_save.S",
+        "tx_thread_context_restore.S",
+        "tx_thread_stack_build.S",
+        "tx_thread_system_return.S",
+    ];
     for entry in std::fs::read_dir(threadx_port_dir.join("src")).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|e| e == "S") {
             let name = path.file_name().unwrap().to_str().unwrap_or("");
-            if name == "tx_initialize_low_level.S" {
+            if excluded_asm.contains(&name) {
                 continue;
             }
             threadx.file(&path);
         }
     }
 
-    // QEMU virt board support C files (board.c, plic.c, uart.c, hwtimer.c, trap.c)
+    // Board-local assembly overrides (ULONG=4 struct offset fixes)
+    for asm_name in &[
+        "tx_thread_schedule.S",
+        "tx_thread_context_save.S",
+        "tx_thread_context_restore.S",
+        "tx_thread_stack_build.S",
+        "tx_thread_system_return.S",
+    ] {
+        threadx.file(manifest_dir.join("c").join(asm_name));
+    }
+
+    // QEMU virt board support C files (board.c, plic.c, uart.c, hwtimer.c)
+    // trap.c is excluded — board crate provides its own with better diagnostics
     for entry in std::fs::read_dir(&qemu_virt_dir).unwrap() {
         let path = entry.unwrap().path();
         if path.extension().is_some_and(|e| e == "c") {
+            let name = path.file_name().unwrap().to_str().unwrap_or("");
+            if name == "trap.c" {
+                continue;
+            }
             threadx.file(&path);
         }
     }
 
-    // QEMU virt assembly files (entry.s, tx_initialize_low_level.S)
+    // QEMU virt assembly files (tx_initialize_low_level.S only — entry.s is
+    // provided by the board crate with .init section placement to guarantee
+    // _start appears at 0x80000000 before any Rust .text sections)
     for entry in std::fs::read_dir(&qemu_virt_dir).unwrap() {
         let path = entry.unwrap().path();
         let ext = path.extension().and_then(|e| e.to_str());
         if ext == Some("S") || ext == Some("s") {
+            let name = path.file_name().unwrap().to_str().unwrap_or("");
+            if name == "entry.s" {
+                continue;
+            }
             threadx.file(&path);
         }
     }
@@ -147,6 +180,8 @@ fn main() {
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &qemu_virt_dir, &config_dir);
     add_netx_includes(&mut glue, &netx_dir, &config_dir);
     glue.include(virtio_driver_dir.join("include"));
+    glue.file(manifest_dir.join("c/entry.s"));
+    glue.file(manifest_dir.join("c/trap.c"));
     glue.file(manifest_dir.join("c/app_define.c"));
     glue.file(manifest_dir.join("c/syscalls.c"));
 
@@ -158,9 +193,16 @@ fn main() {
     println!("cargo:rustc-link-lib=static=netxduo");
     println!("cargo:rustc-link-lib=static=threadx");
 
-    // Linker script
-    println!("cargo:rustc-link-arg=-T{}", config_dir.join("link.lds").display());
-    println!("cargo:rustc-link-arg=-nostdlib");
+    // Linker script — copy to OUT_DIR so downstream binaries can find it via
+    // rustflags = ["-C", "link-arg=-Tlink.lds"] in their .cargo/config.toml.
+    // cargo:rustc-link-arg does NOT propagate from library crates to downstream
+    // binaries, so we use cargo:rustc-link-search instead.
+    let out_dir = PathBuf::from(env::var_os("OUT_DIR").unwrap());
+    File::create(out_dir.join("link.lds"))
+        .unwrap()
+        .write_all(include_bytes!("config/link.lds"))
+        .unwrap();
+    println!("cargo:rustc-link-search={}", out_dir.display());
 
     // Link picolibc (C standard library for bare-metal RISC-V) and libgcc (compiler builtins)
     if let Some(picolibc_lib_dir) = get_picolibc_lib_dir() {
@@ -173,9 +215,13 @@ fn main() {
     }
 
     // ---- Rerun triggers ----
+    println!("cargo:rerun-if-changed=c/entry.s");
+    println!("cargo:rerun-if-changed=c/trap.c");
     println!("cargo:rerun-if-changed=c/app_define.c");
     println!("cargo:rerun-if-changed=c/syscalls.c");
+    println!("cargo:rerun-if-changed=config/tx_port.h");
     println!("cargo:rerun-if-changed=config/tx_user.h");
+    println!("cargo:rerun-if-changed=config/nx_port.h");
     println!("cargo:rerun-if-changed=config/nx_user.h");
     println!("cargo:rerun-if-changed=config/link.lds");
     println!("cargo:rerun-if-changed=build.rs");

@@ -42,23 +42,23 @@
     }
 #define NX_CHANGE_USHORT_ENDIAN(a)      a = ((USHORT)((a >> 8) | (a << 8)) & 0xFFFF)
 
-#define __SWAP32__(val) ((((val) & 0xFF000000) >> 24 ) | (((val) & 0x00FF0000) >> 8) \
-        | (((val) & 0x0000FF00) << 8) | (((val) & 0x000000FF) << 24))
-
-#define __SWAP16__(val) (USHORT)((((val) & 0xFF00) >> 8) | (((val) & 0x00FF) << 8))
-
-#ifndef htonl
-#define htonl(val)  __SWAP32__(val)
-#endif
-#ifndef ntohl
-#define ntohl(val)  __SWAP32__(val)
-#endif
-#ifndef htons
-#define htons(val)  __SWAP16__(val)
-#endif
-#ifndef ntohs
-#define ntohs(val)  __SWAP16__(val)
-#endif
+/* NetX Duo BSD layer (nxd_bsd.h) defines htonl/ntohl/htons/ntohs as
+ * identity macros because NetX stores IP addresses as big-endian VALUES
+ * (e.g., 0xC0000301 for 192.0.3.1) regardless of hardware endianness.
+ * Force identity here and #undef any picolibc byte-swap definitions
+ * that might have been pulled in via <string.h> or <machine/endian.h>. */
+#undef htonl
+#undef ntohl
+#undef htons
+#undef ntohs
+#undef __htonl
+#undef __ntohl
+#undef __htons
+#undef __ntohs
+#define htonl(val)  (val)
+#define ntohl(val)  (val)
+#define htons(val)  (val)
+#define ntohs(val)  (val)
 
 #else /* big endian */
 #define NX_CHANGE_ULONG_ENDIAN(a)
