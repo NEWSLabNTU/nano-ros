@@ -317,13 +317,13 @@ When `MAX_CBS = 0` and `CB_ARENA = 0`, the arrays are zero-sized. This means man
 
 ### Spin Variants
 
-| Method | `no_std` | Description |
-|--------|----------|-------------|
-| `spin_once(timeout_ms)` | Yes | Single iteration: drive I/O, dispatch ready callbacks |
-| `spin_one_period(period_ms, elapsed_ms)` | Yes | Caller-timed loop (caller provides clock + sleep) |
-| `spin_blocking(SpinOptions)` | No | Loop with optional timeout/max_callbacks |
-| `spin_period(Duration)` | No | Wall-clock-timed loop |
-| `spin_async()` | Yes | Yields between iterations via `poll_fn`; works with Embassy, tokio |
+| Method                                   | `no_std` | Description                                                        |
+|------------------------------------------|----------|--------------------------------------------------------------------|
+| `spin_once(timeout_ms)`                  | Yes      | Single iteration: drive I/O, dispatch ready callbacks              |
+| `spin_one_period(period_ms, elapsed_ms)` | Yes      | Caller-timed loop (caller provides clock + sleep)                  |
+| `spin_blocking(SpinOptions)`             | No       | Loop with optional timeout/max_callbacks                           |
+| `spin_period(Duration)`                  | No       | Wall-clock-timed loop                                              |
+| `spin_async()`                           | Yes      | Yields between iterations via `poll_fn`; works with Embassy, tokio |
 
 ### Node Factory
 
@@ -412,15 +412,15 @@ graph TD
 
 ### Supported Boards
 
-| Board Crate | Target | RTOS | Network Stack | Ethernet Driver |
-|---|---|---|---|---|
-| `nros-mps2-an385` | QEMU Cortex-M3 | Bare-metal | smoltcp | lan9118-smoltcp |
-| `nros-mps2-an385-freertos` | QEMU Cortex-M3 | FreeRTOS | lwIP | lan9118-lwip |
-| `nros-esp32` | ESP32-C3 | Bare-metal | smoltcp | WiFi (esp-hal) |
-| `nros-esp32-qemu` | QEMU ESP32-C3 | Bare-metal | smoltcp | openeth-smoltcp |
-| `nros-stm32f4` | STM32F4 | Bare-metal | smoltcp | STM32 Ethernet |
-| `nros-nuttx-qemu-arm` | QEMU Cortex-A7 | NuttX | NuttX sockets | virtio-net (built-in) |
-| `nros-threadx-qemu-riscv64` | QEMU RISC-V | ThreadX | NetX Duo | virtio-net-netx |
+| Board Crate                 | Target         | RTOS       | Network Stack | Ethernet Driver       |
+|-----------------------------|----------------|------------|---------------|-----------------------|
+| `nros-mps2-an385`           | QEMU Cortex-M3 | Bare-metal | smoltcp       | lan9118-smoltcp       |
+| `nros-mps2-an385-freertos`  | QEMU Cortex-M3 | FreeRTOS   | lwIP          | lan9118-lwip          |
+| `nros-esp32`                | ESP32-C3       | Bare-metal | smoltcp       | WiFi (esp-hal)        |
+| `nros-esp32-qemu`           | QEMU ESP32-C3  | Bare-metal | smoltcp       | openeth-smoltcp       |
+| `nros-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
+| `nros-nuttx-qemu-arm`       | QEMU Cortex-A7 | NuttX      | NuttX sockets | virtio-net (built-in) |
+| `nros-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
 
 ### Platform Primitives
 
@@ -535,34 +535,160 @@ Verification crates live in `packages/verification/` and are excluded from the m
 
 ## Safety Features
 
-| Feature | Description | Compile Flag |
-|---------|-------------|--------------|
-| E2E Safety | CRC-32/ISO-HDLC integrity + sequence tracking (AUTOSAR E2E / EN 50159) | `safety-e2e` |
-| FFI Reentrancy Guard | Wraps transport FFI calls in `critical_section::with()` | `ffi-sync` |
-| LET Semantics | Logical Execution Time — deterministic snapshot dispatch | `ExecutorSemantics::LogicalExecutionTime` |
-| Mutex Backends | `sync-spin` (default), `sync-critical-section` (RTIC/Embassy), or `RefCell` (single-threaded) | `sync-spin` / `sync-critical-section` |
+| Feature              | Description                                                                                   | Compile Flag                              |
+|----------------------|-----------------------------------------------------------------------------------------------|-------------------------------------------|
+| E2E Safety           | CRC-32/ISO-HDLC integrity + sequence tracking (AUTOSAR E2E / EN 50159)                        | `safety-e2e`                              |
+| FFI Reentrancy Guard | Wraps transport FFI calls in `critical_section::with()`                                       | `ffi-sync`                                |
+| LET Semantics        | Logical Execution Time — deterministic snapshot dispatch                                      | `ExecutorSemantics::LogicalExecutionTime` |
+| Mutex Backends       | `sync-spin` (default), `sync-critical-section` (RTIC/Embassy), or `RefCell` (single-threaded) | `sync-spin` / `sync-critical-section`     |
+
+## TSN (Time-Sensitive Networking)
+
+nano-ros is designed to integrate with IEEE 802.1 TSN for deterministic real-time Ethernet in automotive and industrial deployments. TSN and nano-ros form complementary safety layers — TSN provides network-level guarantees (bounded latency, jitter, fault containment), while nano-ros's E2E protocol provides application-level guarantees (data integrity, freshness).
+
+### Safety Layer Model
+
+```mermaid
+block-beta
+  columns 1
+
+  block:L5:1
+    A["Layer 5 — Application Safety\nnano-ros heartbeat, watchdog"]
+  end
+  block:L4:1
+    B["Layer 4 — E2E Data Safety\nCRC-32, sequence counter, freshness (safety-e2e feature)"]
+  end
+  block:L3:1
+    C["Layer 3 — Transport\nzenoh-pico / XRCE-DDS pub/sub, QoS"]
+  end
+  block:L2:1
+    D["Layer 2 — Network Safety (TSN)\n802.1Qbv TAS, 802.1Qav CBS, 802.1Qci PSFP, 802.1CB FRER"]
+  end
+  block:L1:1
+    E["Layer 1 — Physical\nEthernet CRC, link integrity"]
+  end
+
+  style L4 fill:#2b8a3e,color:#fff
+  style L2 fill:#1864ab,color:#fff
+```
+
+Layers 4 (E2E) and 2 (TSN) are the two safety-critical layers. Layer 4 is implemented today via the `safety-e2e` feature. Layer 2 is available through RTOS-native TSN stacks.
+
+### TSN Standards
+
+| Standard     | Name                                       | Guarantee                                                   |
+|--------------|--------------------------------------------|-------------------------------------------------------------|
+| 802.1AS-2020 | Generalized Precision Time Protocol (gPTP) | Sub-microsecond clock sync                                  |
+| 802.1Qbv     | Time-Aware Shaper (TAS)                    | Hard real-time bounded latency via gate control lists       |
+| 802.1Qav     | Credit-Based Shaper (CBS)                  | Statistical bounded latency (Class A: 2 ms, Class B: 50 ms) |
+| 802.1Qci     | Per-Stream Filtering and Policing (PSFP)   | Ingress policing, babbling idiot protection                 |
+| 802.1CB      | Frame Replication and Elimination (FRER)   | Zero-delay failover, redundant paths                        |
+| 802.1Qbu     | Frame Preemption (FPE)                     | Preempt low-priority frames for express traffic             |
+| 802.1DG-2025 | Automotive TSN Profile                     | OEM reference profile for in-vehicle Ethernet               |
+
+### RTOS TSN Support
+
+TSN capabilities are accessed through the platform's native networking stack, not through nano-ros directly. Each RTOS provides different levels of TSN support:
+
+| RTOS     | TSN Stack             | gPTP | TAS (Qbv) | CBS (Qav) | FPE (Qbu) | Certification   |
+|----------|-----------------------|------|-----------|-----------|-----------|-----------------|
+| ThreadX  | NetX Duo TSN          | Yes  | Yes       | Yes       | Yes       | IEC 61508 SIL 4 |
+| FreeRTOS | NXP GenAVB/TSN        | Yes  | Yes       | Yes       | No        | —               |
+| Zephyr   | Native gPTP + drivers | Yes  | Partial   | Partial   | No        | —               |
+| NuttX    | —                     | No   | No        | No        | No        | —               |
+
+ThreadX + NetX Duo provides the most complete TSN support with safety certification. The NetX Duo TSN APIs (`nx_shaper_cbs_*`, `nx_shaper_tas_*`, `nx_shaper_fpe_*`) are available in `external/netxduo/tsn/`.
+
+### TSN Hardware Platforms
+
+| Platform                   | MCU           | TSN Features                     | RTOS Path                 |
+|----------------------------|---------------|----------------------------------|---------------------------|
+| NXP MIMXRT1180-EVK         | i.MX RT1180   | Integrated 5-port GbE TSN switch | FreeRTOS + GenAVB/TSN     |
+| NXP FRDM-MCXE31B           | MCX E31       | 10/100M Ethernet + TSN           | ThreadX + NetX Duo        |
+| TI AM243x LaunchPad        | Sitara AM243x | PRU-ICSSG with gPTP, TAS, CBS    | FreeRTOS (enet-tsn-stack) |
+| Microchip SAM E70 Xplained | SAME70        | QAV (CBS) via GMAC               | Zephyr                    |
+
+### Integration Architecture
+
+TSN operates below the nano-ros transport layer. The RTOS network stack configures TSN shapers and filters on the Ethernet MAC, providing deterministic delivery guarantees to all traffic — including zenoh-pico sessions — without any changes to nano-ros application code.
+
+```mermaid
+graph TD
+    subgraph "nano-ros Application"
+        APP["Executor + Node<br/>publish / subscribe"]
+    end
+
+    subgraph "nano-ros Transport"
+        E2E["E2E Safety<br/>CRC-32 + sequence (optional)"]
+        RMW_BACK["RMW Backend<br/>zenoh-pico / XRCE-DDS"]
+    end
+
+    subgraph "RTOS Network Stack"
+        SOCK["Sockets / lwIP / NetX Duo"]
+        TSN_SHAPER["TSN Shapers<br/>TAS (Qbv) · CBS (Qav) · FPE (Qbu)"]
+        PTP["gPTP Clock Sync<br/>802.1AS"]
+    end
+
+    subgraph "Hardware"
+        MAC["TSN-capable Ethernet MAC"]
+        PHY["Ethernet PHY"]
+    end
+
+    APP --> E2E --> RMW_BACK
+    RMW_BACK --> SOCK
+    SOCK --> TSN_SHAPER
+    PTP --> TSN_SHAPER
+    TSN_SHAPER --> MAC --> PHY
+
+    style E2E fill:#2b8a3e,color:#fff
+    style TSN_SHAPER fill:#1864ab,color:#fff
+    style PTP fill:#1864ab,color:#fff
+```
+
+For detailed TSN analysis, see [docs/research/tsn-safety-island-assessment.md](../research/tsn-safety-island-assessment.md) and [docs/design/zonal-vehicle-architecture.md](zonal-vehicle-architecture.md).
 
 ## Summary
 
-```
-┌─────────────────────────────────────────────────────┐
-│                  Application Code                    │
-├─────────────────────────────────────────────────────┤
-│  nros (façade) — re-exports + feature-axis gates     │
-├──────────────┬──────────────┬───────────────────────┤
-│  nros-node   │  nros-params │  nros-c (C API)       │
-│  Executor    │  Parameter   │  rclc-compatible FFI   │
-│  Node        │  Server      │                        │
-├──────────────┴──────────────┴───────────────────────┤
-│  nros-core — RosMessage, RosService, RosAction       │
-│  nros-serdes — CDR serialization                     │
-├─────────────────────────────────────────────────────┤
-│  nros-rmw — Session, Publisher, Subscriber traits    │
-├────────────┬────────────┬───────────────────────────┤
-│ rmw-zenoh  │ rmw-xrce   │ rmw-cffi (C vtable)      │
-│ zenoh-pico │ XRCE-DDS   │ any language              │
-├────────────┴────────────┴───────────────────────────┤
-│  Board Crates — HW init, network stack, run() API   │
-│  Drivers — lan9118, openeth, virtio-net              │
-└─────────────────────────────────────────────────────┘
+```mermaid
+block-beta
+  columns 3
+
+  block:row1:3
+    A1["Application Code"]
+  end
+
+  block:row2:3
+    B1["nros (façade) — re-exports + feature-axis gates"]
+  end
+
+  block:row3:3
+    C1["nros-node\nExecutor, Node"]
+    C2["nros-params\nParameterServer"]
+    C3["nros-c\nC FFI (rclc)"]
+  end
+
+  block:row4:3
+    D1["nros-core — RosMessage, RosService, RosAction\nnros-serdes — CDR serialization"]
+  end
+
+  block:row5:3
+    E1["nros-rmw — Session, Publisher, Subscriber traits"]
+  end
+
+  block:row6:3
+    F1["rmw-zenoh\nzenoh-pico"]
+    F2["rmw-xrce\nXRCE-DDS"]
+    F3["rmw-cffi\nC vtable"]
+  end
+
+  block:row7:3
+    G1["Board Crates — HW init, network stack, run() API\nDrivers — lan9118, openeth, virtio-net"]
+  end
+
+  row1 --> row2
+  row2 --> row3
+  row3 --> row4
+  row4 --> row5
+  row5 --> row6
+  row6 --> row7
 ```
