@@ -5,7 +5,7 @@ Zenoh-pico platform support for Zephyr RTOS.
 This library provides platform-level functions for running zenoh-pico on
 Zephyr: network readiness, zenoh session lifecycle, and Zephyr logging.
 
-For the full nros API, use the root Zephyr module (`zephyr/module.yml`)
+For the full nano-ros API, use the root Zephyr module (`zephyr/module.yml`)
 which provides the nros-c library (C) or Kconfig-to-Cargo bridging (Rust).
 
 ## API
@@ -27,7 +27,7 @@ zpico_zephyr_shutdown();
 
 ## Integration
 
-This crate is compiled automatically by the root nros Zephyr module when
+This crate is compiled automatically by the root nano-ros Zephyr module when
 `CONFIG_NROS=y` is set in `prj.conf`. No manual integration is needed.
 
 ## License

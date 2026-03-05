@@ -1,10 +1,10 @@
-# nros Integration Tests
+# nano-ros Integration Tests
 
-Integration tests for nros communication, platform backends, and ROS 2 interoperability.
+Integration tests for nano-ros communication, platform backends, and ROS 2 interoperability.
 
 ## Overview
 
-nros uses a Rust-based test framework with rstest fixtures in `packages/testing/nros-tests/`. This provides:
+nano-ros uses a Rust-based test framework with rstest fixtures in `packages/testing/nros-tests/`. This provides:
 
 - **Type safety** - Compile-time error checking
 - **RAII cleanup** - Automatic process cleanup via `Drop` trait
@@ -79,7 +79,7 @@ packages/testing/nros-tests/  # Rust test crate
     ├── esp32_emulator.rs       # QEMU ESP32-C3 tests (RISC-V)
     ├── executor.rs             # Executor tests
     ├── multi_node.rs           # Multi-node tests (zenoh)
-    ├── nano2nano.rs            # nros ↔ nros pub/sub tests (zenoh)
+    ├── nano2nano.rs            # nano-ros ↔ nano-ros pub/sub tests (zenoh)
     ├── params.rs               # Parameter tests (zenoh)
     ├── platform.rs             # Platform detection tests
     ├── qos.rs                  # QoS tests (zenoh)
@@ -117,7 +117,7 @@ just test-qemu-esp32    # Run all ESP32 QEMU tests
 ```
 
 ### nano2nano
-Tests communication between nros nodes:
+Tests communication between nano-ros nodes:
 - Basic pub/sub with zenohd router
 - Message delivery verification
 
@@ -136,24 +136,24 @@ Tests platform and toolchain detection:
 Tests interoperability with ROS 2 using rmw_zenoh_cpp:
 
 **Pub/Sub Tests:**
-- nros → ROS 2 communication
-- ROS 2 → nros communication
+- nano-ros → ROS 2 communication
+- ROS 2 → nano-ros communication
 - Communication matrix (all directions)
 - Key expression format verification
 
 **Service Tests:**
-- nros server → ROS 2 client
-- ROS 2 server → nros client
+- nano-ros server → ROS 2 client
+- ROS 2 server → nano-ros client
 - Service discovery
 
 **Action Tests:**
-- nros action server ↔ ROS 2 action client
-- ROS 2 action server ↔ nros action client
+- nano-ros action server ↔ ROS 2 action client
+- ROS 2 action server ↔ nano-ros action client
 
 **Discovery Tests:**
-- `ros2 node list` shows nros nodes
-- `ros2 topic list` shows nros topics
-- `ros2 service list` shows nros services
+- `ros2 node list` shows nano-ros nodes
+- `ros2 topic list` shows nano-ros topics
+- `ros2 service list` shows nano-ros services
 
 **QoS Tests:**
 - BEST_EFFORT ↔ BEST_EFFORT (works)
@@ -202,17 +202,17 @@ just test-xrce verbose  # Verbose output
 ```
 
 ### xrce_ros2_interop
-Tests interoperability between nros XRCE nodes and ROS 2 DDS nodes (4 tests):
+Tests interoperability between nano-ros XRCE nodes and ROS 2 DDS nodes (4 tests):
 
 ```
-nros XRCE node → XRCE Agent (Fast-DDS) ←DDS multicast→ ROS 2 node (rmw_fastrtps_cpp)
+nano-ros XRCE node → XRCE Agent (Fast-DDS) ←DDS multicast→ ROS 2 node (rmw_fastrtps_cpp)
 ```
 
 **Tests:**
 - ROS 2 DDS detection (rmw_fastrtps_cpp availability)
-- nros XRCE talker → ROS 2 DDS listener (pub/sub)
-- ROS 2 DDS publisher → nros XRCE listener (pub/sub)
-- nros XRCE service server + ROS 2 DDS service client (AddTwoInts)
+- nano-ros XRCE talker → ROS 2 DDS listener (pub/sub)
+- ROS 2 DDS publisher → nano-ros XRCE listener (pub/sub)
+- nano-ros XRCE service server + ROS 2 DDS service client (AddTwoInts)
 
 Tests are diagnostic/informational — they report interop status but do not hard-fail,
 because DDS interop between the XRCE Agent's bundled Fast-DDS and the system's ROS 2

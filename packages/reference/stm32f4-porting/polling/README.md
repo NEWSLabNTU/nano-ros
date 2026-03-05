@@ -1,10 +1,10 @@
 # Polling STM32F4 Example
 
-Bare-metal polling example demonstrating nros with smoltcp network stack on STM32F429ZI.
+Bare-metal polling example demonstrating nano-ros with smoltcp network stack on STM32F429ZI.
 
 ## Overview
 
-This example shows how to use nros with:
+This example shows how to use nano-ros with:
 - Simple main loop polling (no executor/RTOS)
 - smoltcp for TCP/IP networking
 - stm32-eth for Ethernet DMA

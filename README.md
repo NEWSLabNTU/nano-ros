@@ -1,8 +1,8 @@
-# nros
+# nano-ros
 
 A `no_std` ROS 2 client library for bare-metal and RTOS targets, written in Rust. Built on [zenoh-pico](https://github.com/eclipse-zenoh/zenoh-pico) for lightweight pub/sub, services, and actions over TCP, serial, or raw Ethernet.
 
-nros runs directly on microcontrollers without an OS, on RTOS kernels like Zephyr, and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 and ESP32-C3, enabling full integration testing without hardware.
+nano-ros runs directly on microcontrollers without an OS, on RTOS kernels like Zephyr, and on Linux — using the same API. It interoperates with standard ROS 2 nodes via the rmw_zenoh protocol. QEMU emulation is provided for Cortex-M3 and ESP32-C3, enabling full integration testing without hardware.
 
 The project integrates formal verification (Kani bounded model checking, CBMC for the C API) and WCET measurement (DWT cycle counters, static stack analysis) into the build pipeline, providing a foundation for schedulability analysis in safety-critical systems.
 
@@ -69,7 +69,7 @@ See [Getting Started](docs/guides/getting-started.md) for a complete walkthrough
 
 ```bash
 git clone https://github.com/jerry73204/nano-ros.git
-cd nros
+cd nano-ros
 just setup         # Install toolchains + tools
 just build-zenohd  # Build zenohd 1.6.2 from submodule
 ```
@@ -89,11 +89,11 @@ cd examples/native/rust/zenoh/listener && RUST_LOG=info cargo run --features zen
 
 ## Quick Start (C API)
 
-Build the nros C library and link against it with CMake:
+Build the nano-ros C library and link against it with CMake:
 
 ```bash
 # Build the static library
-cd nros
+cd nano-ros
 cargo build -p nros-c --release
 
 # Build a C example
@@ -115,13 +115,13 @@ See [Getting Started](docs/guides/getting-started.md) for a complete C walkthrou
 
 ## ROS 2 Interoperability
 
-nros communicates with ROS 2 nodes via the rmw_zenoh protocol:
+nano-ros communicates with ROS 2 nodes via the rmw_zenoh protocol:
 
 ```bash
 # Terminal 1: zenohd
 ./build/zenohd/zenohd --listen tcp/127.0.0.1:7447
 
-# Terminal 2: nros talker
+# Terminal 2: nano-ros talker
 cd examples/native/rust/zenoh/talker && RUST_LOG=info cargo run --features zenoh
 
 # Terminal 3: ROS 2 listener
@@ -158,7 +158,7 @@ packages/
 
 ## Message Generation
 
-nros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
+nano-ros uses `cargo nano-ros generate` to create Rust bindings from ROS 2 `.msg`/`.srv`/`.action` files. See [Message Generation](docs/guides/message-generation.md) for details.
 
 ## Documentation
 

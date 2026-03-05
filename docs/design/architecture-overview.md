@@ -1,8 +1,8 @@
-# Architecture Overview
+# nano-ros Architecture Overview
 
 nano-ros is a lightweight ROS 2 client library for embedded real-time systems. It runs on bare-metal, FreeRTOS, NuttX, ThreadX, and Zephyr — as well as Linux/POSIX — with full `no_std` support throughout the core stack.
 
-This document presents the overall architecture: the layered crate structure, RMW abstraction, executor model, board crates, and how everything composes at compile time.
+This document presents the overall nano-ros architecture: the layered crate structure, RMW abstraction, executor model, board crates, and how everything composes at compile time.
 
 ## High-Level Layer Diagram
 
@@ -17,7 +17,7 @@ block-beta
   space:3
 
   block:facade:3
-    B["nros (façade crate)"]
+    B["nano-ros façade (nros crate)"]
   end
 
   space:3
@@ -57,7 +57,7 @@ block-beta
   backends --> transport
 ```
 
-Applications depend on the `nros` façade crate, which re-exports everything and enforces compile-time mutual exclusivity of feature axes. The core library stack is middleware-agnostic. Only the RMW backend crates know about specific transport protocols.
+Applications depend on the nano-ros façade crate (`nros`), which re-exports everything and enforces compile-time mutual exclusivity of feature axes. The core library stack is middleware-agnostic. Only the RMW backend crates know about specific transport protocols.
 
 ## Crate Dependency Graph
 
@@ -71,7 +71,7 @@ graph TD
         NROS["nros<br/><i>re-exports + feature gates</i>"]
     end
 
-    subgraph "Core Library Stack"
+    subgraph "nano-ros Core Library Stack"
         NODE["nros-node<br/><i>Executor, Node, handles</i>"]
         PARAMS["nros-params<br/><i>ParameterServer</i>"]
         CORE["nros-core<br/><i>RosMessage, RosService, RosAction</i>"]
@@ -153,7 +153,7 @@ Dashed arrows indicate feature-gated optional dependencies. Solid arrows are unc
 
 ## Feature Axes
 
-nano-ros uses three orthogonal compile-time axes. Each axis is mutually exclusive, enforced by `compile_error!()` in the `nros` façade. Zero features on an axis is valid (reduced functionality).
+nano-ros uses three orthogonal compile-time axes. Each axis is mutually exclusive, enforced by `compile_error!()` in the nano-ros façade crate. Zero features on an axis is valid (reduced functionality).
 
 ```mermaid
 graph LR
@@ -461,7 +461,7 @@ graph TD
     CAPI --> RNROS
 ```
 
-The C API resolves the generic `S: Session` parameter to the concrete backend type via `nros::internals::RmwSession`. All C structs (`nros_publisher_t`, `nros_subscription_t`, etc.) are `#[repr(C)]` with `pub` fields for cbindgen visibility.
+The C API resolves the generic `S: Session` parameter to the concrete backend type via the nano-ros internals module. All C structs (`nros_publisher_t`, `nros_subscription_t`, etc.) are `#[repr(C)]` with `pub` fields for cbindgen visibility.
 
 ## Message Codegen
 
@@ -480,7 +480,7 @@ graph LR
     CLI --> BINDGEN --> OUTPUT
 ```
 
-No ROS 2 installation is required — bundled `.msg` files in `packages/codegen/interfaces/` provide all standard message definitions. Generated crate names use the `nros-` prefix (e.g., `nros-std-msgs`).
+No ROS 2 installation is required — bundled `.msg` files in `packages/codegen/interfaces/` provide all standard message definitions. Generated crate names use the `nros-` code prefix (e.g., `nros-std-msgs`).
 
 ## Data Flow: Publish
 
@@ -614,11 +614,11 @@ TSN operates below the nano-ros transport layer. The RTOS network stack configur
 
 ```mermaid
 graph TD
-    subgraph "nano-ros Application"
+    subgraph "nano-ros application"
         APP["Executor + Node<br/>publish / subscribe"]
     end
 
-    subgraph "nano-ros Transport"
+    subgraph "nano-ros transport"
         E2E["E2E Safety<br/>CRC-32 + sequence (optional)"]
         RMW_BACK["RMW Backend<br/>zenoh-pico / XRCE-DDS"]
     end
@@ -658,7 +658,7 @@ block-beta
   end
 
   block:row2:3
-    B1["nros (façade) — re-exports + feature-axis gates"]
+    B1["nano-ros façade — re-exports + feature-axis gates"]
   end
 
   block:row3:3
