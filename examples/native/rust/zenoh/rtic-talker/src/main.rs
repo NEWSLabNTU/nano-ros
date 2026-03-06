@@ -19,7 +19,9 @@ fn main() {
     let config = ExecutorConfig::from_env().node_name("talker");
     let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open session");
 
-    let mut node = executor.create_node("talker").expect("Failed to create node");
+    let mut node = executor
+        .create_node("talker")
+        .expect("Failed to create node");
     let publisher = node
         .create_publisher::<Int32>("/chatter")
         .expect("Failed to create publisher");

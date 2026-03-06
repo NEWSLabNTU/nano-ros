@@ -513,6 +513,66 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     eprintln!("[PASS] RTIC pattern communication works");
 }
 
+/// Test RTIC-pattern service server/client interop via zenoh.
+///
+/// Validates the RTIC service pattern works for end-to-end communication:
+/// - `Executor<_, 0, 0>` (zero callback arena)
+/// - `spin_once(0)` (non-blocking I/O drive)
+/// - `service.handle_request()` (manual polling on server)
+/// - `client.call()` + `promise.try_recv()` loop (on client)
+#[rstest]
+fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_zenohd() {
+        return;
+    }
+
+    let rtic_server = nros_tests::fixtures::build_native_rtic_service_server()
+        .expect("Failed to build native rtic-service-server");
+    let rtic_client = nros_tests::fixtures::build_native_rtic_service_client()
+        .expect("Failed to build native rtic-service-client");
+
+    let locator = zenohd_unique.locator();
+
+    // Start server first
+    let mut server_cmd = Command::new(rtic_server);
+    server_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "rtic-service-server")
+        .expect("Failed to start rtic-service-server");
+
+    // Wait for server readiness
+    let _ = server.wait_for_output_pattern("Waiting for requests", Duration::from_secs(5));
+
+    // Start client
+    let mut client_cmd = Command::new(rtic_client);
+    client_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-service-client")
+        .expect("Failed to start rtic-service-client");
+
+    // Wait for client to finish all calls
+    let client_output = client
+        .wait_for_output_pattern("calls succeeded", Duration::from_secs(30))
+        .unwrap_or_default();
+
+    server.kill();
+
+    let reply_count = count_pattern(&client_output, "Reply:");
+    eprintln!("RTIC service: client got {} replies", reply_count);
+    eprintln!("Client output:\n{}", client_output);
+
+    assert!(
+        reply_count > 0,
+        "RTIC-pattern service client should receive at least 1 reply"
+    );
+    eprintln!("[PASS] RTIC pattern service works");
+}
+
 // =============================================================================
 // Detection Tests
 // =============================================================================

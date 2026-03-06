@@ -19,7 +19,9 @@ fn main() {
     let config = ExecutorConfig::from_env().node_name("listener");
     let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open session");
 
-    let mut node = executor.create_node("listener").expect("Failed to create node");
+    let mut node = executor
+        .create_node("listener")
+        .expect("Failed to create node");
     let mut subscription = node
         .create_subscription::<Int32>("/chatter")
         .expect("Failed to create subscription");

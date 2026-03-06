@@ -3,7 +3,7 @@
 **Goal**: Enable nano-ros on RTIC (Real-Time Interrupt-driven Concurrency) by documenting the
 usage pattern and completing the board-crate API changes needed to support RTIC's `#[init]` model.
 
-**Status**: In Progress (63.1–63.2 done)
+**Status**: In Progress (63.1–63.3 done)
 
 **Priority**: Medium
 
@@ -556,7 +556,7 @@ mod app {
 
 - [x] 63.1 — Factor `board::init_hardware()` out of `board::run()`
 - [x] 63.2 — RTIC talker/listener example (`examples/stm32f4/rust/zenoh/rtic-{talker,listener}/`)
-- [ ] 63.3 — RTIC service example (`rtic-service-{server,client}/`)
+- [x] 63.3 — RTIC service example (`rtic-service-{server,client}/`)
 - [ ] 63.4 — RTIC action example (`rtic-action-{server,client}/`)
 - [ ] 63.5 — RTIC integration test (lm3s6965evb QEMU + lm3s6965 PAC)
 
@@ -627,14 +627,26 @@ Key patterns demonstrated:
 
 ### 63.3 — RTIC Service Example
 
-Service server and client examples. Service client demonstrates `promise.await`
-(or `try_recv()` loop for power-sensitive applications).
+Service server and client examples. Server demonstrates `handle_request()` polling.
+Client demonstrates `client.call()` + `promise.try_recv()` loop (RTIC-compatible
+pattern since `Promise::wait()` requires `&mut Executor` which is `#[local]` to net_poll).
 
-**Status**: Not Started
+**Status**: Complete
+
+**Implementation**: Both STM32F4 cross-compiled examples and native x86 test equivalents.
+The STM32F4 examples follow the same RTIC v2 patterns as 63.2 (zero callback arena,
+`spin_once(0)`, all handles `#[local]`, priority 1). The service client uses a
+`try_recv()` + `Mono::delay().await` loop instead of `Promise::wait()`.
+
+Native equivalents exercise the identical API pattern on x86 for interop testing.
+Integration test (`test_rtic_pattern_service` in `nano2nano.rs`) validates 4/4 service
+calls succeed with correct results via zenohd.
 
 **Files**:
 - `examples/stm32f4/rust/zenoh/rtic-service-server/` (new)
 - `examples/stm32f4/rust/zenoh/rtic-service-client/` (new)
+- `examples/native/rust/zenoh/rtic-service-server/` (new, test equivalent)
+- `examples/native/rust/zenoh/rtic-service-client/` (new, test equivalent)
 
 ### 63.4 — RTIC Action Example
 

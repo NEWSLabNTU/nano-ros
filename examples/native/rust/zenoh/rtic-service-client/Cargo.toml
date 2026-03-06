@@ -1,0 +1,17 @@
+[package]
+name = "native-rtic-service-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Native service client using RTIC-pattern API (zero callbacks, spin_once(0), try_recv() loop)"
+
+[[bin]]
+name = "rtic-service-client"
+path = "src/main.rs"
+
+[dependencies]
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-posix"] }
+example_interfaces = { version = "*", default-features = false }
+log = "0.4"
+env_logger = "0.11"
