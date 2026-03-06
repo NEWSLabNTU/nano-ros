@@ -52,7 +52,11 @@ static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 /// zenoh-pico transport bridge. After calling this, you can create an
 /// `Executor` and start using nano-ros.
 ///
-/// This is automatically called by [`run()`]. Call it directly only when
+/// Accepts device and core peripherals by value, avoiding ownership
+/// conflicts with frameworks like RTIC that also take peripherals.
+/// Returns the SysTick peripheral for use with monotonic timers.
+///
+/// This is automatically called by [`run()`]. Call it directly when
 /// using an alternative execution model (e.g., RTIC) that needs hardware
 /// initialized before returning control to the framework.
 ///
@@ -61,7 +65,11 @@ static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 /// Panics if hardware initialization fails (clocks, Ethernet, PHY).
 /// Must be called exactly once before any nros operations.
 #[allow(static_mut_refs)]
-pub fn init_hardware(config: &Config) {
+pub fn init_hardware(
+    config: &Config,
+    dp: pac::Peripherals,
+    cp: cortex_m::Peripherals,
+) -> cortex_m::peripheral::SYST {
     defmt::info!("nros STM32F4 platform starting...");
     defmt::info!(
         "  IP: {}.{}.{}.{}",
@@ -72,7 +80,7 @@ pub fn init_hardware(config: &Config) {
     );
 
     // Initialize platform hardware
-    let (dma, iface, sockets) = match unsafe { setup_hardware(config) } {
+    let (dma, iface, sockets, syst) = match unsafe { setup_hardware(config, dp, cp) } {
         Ok(result) => result,
         Err(e) => {
             defmt::error!("Platform init failed: {:?}", e);
@@ -117,6 +125,8 @@ pub fn init_hardware(config: &Config) {
     }
 
     defmt::info!("Network ready.");
+
+    syst
 }
 
 /// Run an application with the given configuration.
@@ -152,7 +162,19 @@ pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
-    init_hardware(&config);
+    let dp = pac::Peripherals::take().unwrap_or_else(|| {
+        defmt::error!("Device peripherals already taken");
+        loop {
+            cortex_m::asm::wfi();
+        }
+    });
+    let cp = cortex_m::Peripherals::take().unwrap_or_else(|| {
+        defmt::error!("Core peripherals already taken");
+        loop {
+            cortex_m::asm::wfi();
+        }
+    });
+    let _syst = init_hardware(&config, dp, cp);
 
     // Run user application
     match f(&config) {
@@ -176,7 +198,8 @@ where
 
 /// Initialize STM32F4 hardware and create smoltcp interface
 ///
-/// Returns (EthernetDMA, Interface, SocketSet) with all hardware configured.
+/// Returns (EthernetDMA, Interface, SocketSet, SYST) with all hardware configured.
+/// SYST is returned unused for the caller to use with a monotonic timer.
 ///
 /// # Safety
 ///
@@ -184,10 +207,14 @@ where
 #[allow(static_mut_refs)]
 unsafe fn setup_hardware(
     config: &Config,
-) -> Result<(stm32_eth::dma::EthernetDMA<'static, 'static>, Interface, SocketSet<'static>)> {
-    // Get access to device peripherals
-    let dp = pac::Peripherals::take().ok_or(Error::HardwareInit)?;
-    let cp = cortex_m::Peripherals::take().ok_or(Error::HardwareInit)?;
+    dp: pac::Peripherals,
+    cp: cortex_m::Peripherals,
+) -> Result<(
+    stm32_eth::dma::EthernetDMA<'static, 'static>,
+    Interface,
+    SocketSet<'static>,
+    cortex_m::peripheral::SYST,
+)> {
 
     // Configure clocks
     let rcc = dp.RCC.constrain();
@@ -203,7 +230,8 @@ unsafe fn setup_hardware(
     let sysclk_hz = clocks.sysclk().to_Hz();
     defmt::info!("Clocks configured: sysclk = {} Hz", sysclk_hz);
 
-    // Enable DWT cycle counter for timing
+    // Enable DWT cycle counter for timing; keep SYST for caller
+    let syst = cp.SYST;
     let mut dcb = cp.DCB;
     let mut dwt = cp.DWT;
     dcb.enable_trace();
@@ -325,5 +353,5 @@ unsafe fn setup_hardware(
     let storage = unsafe { zpico_smoltcp::get_socket_storage() };
     let sockets = SocketSet::new(&mut storage[..]);
 
-    Ok((dma, iface, sockets))
+    Ok((dma, iface, sockets, syst))
 }
