@@ -93,6 +93,12 @@ typedef unsigned short                          USHORT;
 #define ALIGN_TYPE_DEFINED
 #define ALIGN_TYPE                              ULONG64
 
+/* Override the free block marker for byte pools to be a 64-bit constant.
+ * Required on all 64-bit ports (matching cortex_a53, linux/x86_64).
+ * Default ((ULONG) 0xFFFFEEEEUL) is only 32 bits — must be ALIGN_TYPE-wide
+ * to avoid collisions with valid pointer values stored in the same field. */
+#define TX_BYTE_BLOCK_FREE                      ((ALIGN_TYPE) 0xFFFFEEEEFFFFEEEE)
+
 
 /* Define the priority levels for ThreadX.  Legal values range
    from 32 to 1024 and MUST be evenly divisible by 32.  */

@@ -27,38 +27,34 @@
 #endif
 #endif
 
-/* Define macros that swap the endian for little endian ports. */
+/* Define macros that swap the endian for little endian ports.
+ * Matches the official Cortex-M7/GNU port (netxduo/ports/cortex_m7/gnu/inc/nx_port.h).
+ *
+ * NetX Duo stores IP addresses in HOST byte order internally.
+ * NX_CHANGE_ULONG_ENDIAN converts packet header fields between host
+ * and network byte order. htonl/ntohl are real byte-swaps used by the
+ * BSD socket layer (nxd_bsd.c) to convert between BSD sockaddr (network
+ * byte order) and NetX internal structures (host byte order).
+ *
+ * picolibc's <machine/endian.h> also defines htonl as __bswap32 on LE,
+ * which is functionally equivalent. The #ifndef guards below allow
+ * picolibc's definition to take precedence when already defined. */
 #ifdef NX_LITTLE_ENDIAN
-#define NX_CHANGE_ULONG_ENDIAN(arg)                         \
-    {                                                       \
-        ULONG _i;                                           \
-        ULONG _tmp;                                         \
-        _i = (UINT)arg;                                     \
-        _tmp = _i ^ (((_i) >> 16) | (_i << 16));            \
-        _tmp &= 0xff00ffff;                                 \
-        _i = ((_i) >> 8) | (_i<<24);                        \
-        _i = _i ^ ((_tmp) >> 8);                            \
-        arg = _i;                                           \
-    }
-#define NX_CHANGE_USHORT_ENDIAN(a)      a = ((USHORT)((a >> 8) | (a << 8)) & 0xFFFF)
+#define NX_CHANGE_ULONG_ENDIAN(arg)       (arg) = __builtin_bswap32(arg)
+#define NX_CHANGE_USHORT_ENDIAN(arg)      (arg) = __builtin_bswap16(arg)
 
-/* NetX Duo BSD layer (nxd_bsd.h) defines htonl/ntohl/htons/ntohs as
- * identity macros because NetX stores IP addresses as big-endian VALUES
- * (e.g., 0xC0000301 for 192.0.3.1) regardless of hardware endianness.
- * Force identity here and #undef any picolibc byte-swap definitions
- * that might have been pulled in via <string.h> or <machine/endian.h>. */
-#undef htonl
-#undef ntohl
-#undef htons
-#undef ntohs
-#undef __htonl
-#undef __ntohl
-#undef __htons
-#undef __ntohs
-#define htonl(val)  (val)
-#define ntohl(val)  (val)
-#define htons(val)  (val)
-#define ntohs(val)  (val)
+#ifndef htonl
+#define htonl(val)  __builtin_bswap32(val)
+#endif
+#ifndef ntohl
+#define ntohl(val)  __builtin_bswap32(val)
+#endif
+#ifndef htons
+#define htons(val)  __builtin_bswap16(val)
+#endif
+#ifndef ntohs
+#define ntohs(val)  __builtin_bswap16(val)
+#endif
 
 #else /* big endian */
 #define NX_CHANGE_ULONG_ENDIAN(a)

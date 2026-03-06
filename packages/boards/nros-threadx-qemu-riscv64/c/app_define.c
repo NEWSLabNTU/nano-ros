@@ -80,12 +80,53 @@ void nros_threadx_set_app_callback(void (*entry)(void *), void *arg)
     rust_app_arg = arg;
 }
 
+/* ---- Hex print helpers for diagnostics ---- */
+static void diag_hex32(ULONG v)
+{
+    static const char hx[] = "0123456789abcdef";
+    char buf[9];
+    for (int i = 7; i >= 0; i--)
+        buf[7 - i] = hx[(v >> (i * 4)) & 0xF];
+    buf[8] = '\0';
+    uart_puts(buf);
+}
+
+static void diag_hex64(uint64_t v)
+{
+    diag_hex32((ULONG)(v >> 32));
+    diag_hex32((ULONG)(v & 0xFFFFFFFF));
+}
+
 /* ---- App thread entry: invokes the Rust closure ---- */
 static void app_thread_entry(ULONG input)
 {
     (void)input;
 
     uart_puts("[app_thread] Started\n");
+
+    /* DIAGNOSTIC: Gateway ping to verify IPv4 round-trip */
+    {
+        ULONG gw = ((ULONG)cfg_gateway[0] << 24) | ((ULONG)cfg_gateway[1] << 16)
+                  | ((ULONG)cfg_gateway[2] << 8)  | (ULONG)cfg_gateway[3];
+        NX_PACKET *resp = NULL;
+        UINT ping_status;
+
+        uart_puts("[app_thread] Pinging gateway ");
+        diag_hex32(gw);
+        uart_puts("...\n");
+
+        ping_status = nx_icmp_ping(&ip_instance, gw, "PING", 4, &resp, 500);
+        uart_puts("[app_thread] Ping status=");
+        diag_hex32(ping_status);
+        uart_puts("\n");
+
+        if (ping_status == NX_SUCCESS && resp) {
+            uart_puts("[app_thread] Ping OK! IPv4 round-trip works\n");
+            nx_packet_release(resp);
+        } else {
+            uart_puts("[app_thread] Ping FAILED\n");
+        }
+    }
 
     if (rust_app_entry) {
         uart_puts("[app_thread] Calling Rust entry...\n");
@@ -230,6 +271,33 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
     uart_puts("[app_define] BSD sockets initialized\n");
+
+    /* Diagnostic: verify pointer sizes and key addresses */
+    uart_puts("[diag] sizeof(ULONG)=");
+    diag_hex32((ULONG)sizeof(ULONG));
+    uart_puts(" sizeof(void*)=");
+    diag_hex32((ULONG)sizeof(void*));
+    uart_puts(" sizeof(ALIGN_TYPE)=");
+    diag_hex32((ULONG)sizeof(ALIGN_TYPE));
+    uart_puts("\n");
+
+    uart_puts("[diag] &ip_instance=0x");
+    diag_hex64((uint64_t)(uintptr_t)&ip_instance);
+    uart_puts("\n");
+
+    extern TX_MUTEX *nx_bsd_protection_ptr;
+    uart_puts("[diag] nx_bsd_protection_ptr=0x");
+    diag_hex64((uint64_t)(uintptr_t)nx_bsd_protection_ptr);
+    uart_puts("\n");
+
+    uart_puts("[diag] &ip_instance.nx_ip_protection=0x");
+    diag_hex64((uint64_t)(uintptr_t)&ip_instance.nx_ip_protection);
+    uart_puts("\n");
+
+    /* Verify mutex ID is valid */
+    uart_puts("[diag] mutex_id=0x");
+    diag_hex32(ip_instance.nx_ip_protection.tx_mutex_id);
+    uart_puts(" (expect 0x4d555445)\n");
 
     uart_puts("[app_define] Creating app thread...\n");
     /* Create application thread */

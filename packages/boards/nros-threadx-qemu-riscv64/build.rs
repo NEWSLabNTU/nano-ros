@@ -252,6 +252,8 @@ fn configure_riscv64(build: &mut cc::Build) {
     build.warnings(false);
 
     // picolibc provides C standard library headers (string.h, stdint.h, etc.)
+    // picolibc's <machine/endian.h> defines htonl as __bswap32 on LE, which is
+    // compatible with our nx_port.h's #ifndef-guarded __builtin_bswap32 definitions.
     // Do NOT use --specs=picolibc.specs (it enables TLS errno which crashes on bare-metal)
     if let Some(sysroot) = get_picolibc_sysroot() {
         build.include(sysroot.join("include"));

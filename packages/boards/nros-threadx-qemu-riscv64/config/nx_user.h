@@ -29,4 +29,12 @@
 /* Deferred processing — required for virtio-net interrupt-driven RX */
 #define NX_DRIVER_DEFERRED_PROCESSING
 
+/* Disable TCP/UDP/IP RX checksum verification.
+ * QEMU virtio-net uses checksum offloading — packets delivered to the guest
+ * may have partial or zero checksums (the host computes them after the tap
+ * interface). NetX would reject these as checksum errors. */
+#define NX_DISABLE_TCP_RX_CHECKSUM
+#define NX_DISABLE_UDP_RX_CHECKSUM
+#define NX_DISABLE_IP_RX_CHECKSUM
+
 #endif /* NX_USER_H */
