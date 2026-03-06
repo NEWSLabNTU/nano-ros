@@ -381,8 +381,9 @@ pub use nros_node::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
 // Re-export parameter types
 pub use nros_params::{
-    Parameter, ParameterDescriptor, ParameterServer, ParameterType, ParameterValue,
-    SetParameterResult,
+    MandatoryParameter, OptionalParameter, Parameter, ParameterBuilder, ParameterDescriptor,
+    ParameterError, ParameterServer, ParameterType, ParameterValue, ParameterVariant,
+    ReadOnlyParameter, SetParameterResult,
 };
 
 /// Prelude module for convenient imports
@@ -418,6 +419,12 @@ pub mod prelude {
 
     // Re-export parameter types
     pub use crate::{ParameterServer, ParameterType, ParameterValue};
+
+    // Re-export typed parameter API (rclrs-compatible builder pattern)
+    pub use crate::{
+        MandatoryParameter, OptionalParameter, ParameterBuilder, ParameterError, ParameterVariant,
+        ReadOnlyParameter,
+    };
 
     // Re-export action types
     pub use crate::{GoalId, GoalInfo, GoalResponse, GoalStatus, GoalStatusStamped, RosAction};

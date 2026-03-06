@@ -1510,6 +1510,39 @@ where
     pub fn params_mut(&mut self) -> Option<&mut nros_params::ParameterServer> {
         self.params.as_mut().map(|p| &mut p.server)
     }
+
+    /// Create a typed parameter builder (rclrs-compatible API).
+    ///
+    /// Returns a [`ParameterBuilder`] for fluent parameter declaration with
+    /// `.default()`, `.description()`, `.range()`, and terminal methods
+    /// `.mandatory()`, `.optional()`, or `.read_only()`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if parameter services have not been registered
+    /// (call [`register_parameter_services`] first).
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let max_speed = executor.parameter::<f64>("max_speed")
+    ///     .default(25.0)
+    ///     .description("Maximum velocity (m/s)")
+    ///     .read_only()?;
+    /// ```
+    ///
+    /// [`ParameterBuilder`]: nros_params::ParameterBuilder
+    /// [`register_parameter_services`]: Self::register_parameter_services
+    pub fn parameter<'a, T: nros_params::ParameterVariant>(
+        &'a mut self,
+        name: &'a str,
+    ) -> nros_params::ParameterBuilder<'a, T> {
+        let server =
+            self.params.as_mut().map(|p| &mut p.server).expect(
+                "parameter services not registered — call register_parameter_services() first",
+            );
+        nros_params::ParameterBuilder::new(server, name)
+    }
 }
 
 // ============================================================================
