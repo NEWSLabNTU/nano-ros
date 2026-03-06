@@ -39,4 +39,4 @@ mod config;
 mod node;
 
 pub use config::Config;
-pub use node::run;
+pub use node::{init_hardware, run};

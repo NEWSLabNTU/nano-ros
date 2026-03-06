@@ -2,6 +2,8 @@
 //!
 //! Uses `zpico-smoltcp` for socket management and `lan9118-smoltcp` for Ethernet.
 
+use core::mem::MaybeUninit;
+
 use cortex_m_semihosting::hprintln;
 use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
 use smoltcp::iface::{Interface, SocketSet};
@@ -14,6 +16,12 @@ use zpico_platform_mps2_an385::{clock, network, random};
 use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::exit_failure;
+
+// Static storage for network objects (initialized by init_hardware, must
+// outlive the function call so set_network_state pointers remain valid).
+static mut ETH_DEVICE: MaybeUninit<Lan9118> = MaybeUninit::uninit();
+static mut NET_IFACE: MaybeUninit<Interface> = MaybeUninit::uninit();
+static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 
 /// Trait for Ethernet devices that can be used with the platform
 trait EthernetDevice: Device {
@@ -112,6 +120,85 @@ fn init_network<D: EthernetDevice + 'static>(
     Ok(())
 }
 
+/// Initialize all MPS2-AN385 hardware and the network stack.
+///
+/// Sets up the DWT cycle counter, LAN9118 Ethernet, smoltcp interface,
+/// and the zenoh-pico transport bridge. After calling this, you can
+/// create an `Executor` and start using nano-ros.
+///
+/// This is automatically called by [`run()`]. Call it directly only
+/// when using an alternative execution model (e.g., RTIC) that needs
+/// hardware initialized before returning control to the framework.
+///
+/// # Panics
+///
+/// Panics if hardware initialization fails (Ethernet, network stack).
+/// Must be called exactly once before any nros operations.
+#[allow(static_mut_refs)]
+pub fn init_hardware(config: &Config) {
+    // Enable DWT cycle counter for timing measurements
+    zpico_platform_mps2_an385::timing::CycleCounter::enable();
+
+    hprintln!("");
+    hprintln!("========================================");
+    hprintln!("  nros QEMU Platform");
+    hprintln!("========================================");
+    hprintln!("");
+
+    // Initialize Ethernet driver
+    hprintln!("Initializing LAN9118 Ethernet...");
+    let eth = match create_ethernet(config.mac) {
+        Ok(e) => e,
+        Err(e) => {
+            hprintln!("Error creating Ethernet: {:?}", e);
+            exit_failure();
+        }
+    };
+
+    // Move into static storage so pointers remain valid after this function returns
+    unsafe { ETH_DEVICE.write(eth) };
+    let eth = unsafe { ETH_DEVICE.assume_init_mut() };
+
+    hprintln!(
+        "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+        config.mac[0],
+        config.mac[1],
+        config.mac[2],
+        config.mac[3],
+        config.mac[4],
+        config.mac[5]
+    );
+
+    // Create smoltcp interface and socket set
+    hprintln!("");
+    hprintln!("Creating network interface...");
+    let iface = create_interface(eth);
+    unsafe { NET_IFACE.write(iface) };
+    let sockets = unsafe { create_socket_set() };
+    unsafe { NET_SOCKETS.write(sockets) };
+
+    hprintln!(
+        "  IP: {}.{}.{}.{}",
+        config.ip[0],
+        config.ip[1],
+        config.ip[2],
+        config.ip[3]
+    );
+
+    // Initialize network stack
+    let eth = unsafe { ETH_DEVICE.assume_init_mut() };
+    let iface = unsafe { NET_IFACE.assume_init_mut() };
+    let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
+
+    if let Err(e) = init_network(eth, iface, sockets, config) {
+        hprintln!("Error initializing network: {:?}", e);
+        exit_failure();
+    }
+
+    hprintln!("Network ready.");
+    hprintln!("");
+}
+
 /// Run an application with the given configuration.
 ///
 /// This is the main entry point for QEMU bare-metal applications.
@@ -145,57 +232,7 @@ pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
-    // Enable DWT cycle counter for timing measurements
-    zpico_platform_mps2_an385::timing::CycleCounter::enable();
-
-    hprintln!("");
-    hprintln!("========================================");
-    hprintln!("  nros QEMU Platform");
-    hprintln!("========================================");
-    hprintln!("");
-
-    // Initialize Ethernet driver
-    hprintln!("Initializing LAN9118 Ethernet...");
-    let mut eth = match create_ethernet(config.mac) {
-        Ok(e) => e,
-        Err(e) => {
-            hprintln!("Error creating Ethernet: {:?}", e);
-            exit_failure();
-        }
-    };
-
-    hprintln!(
-        "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-        config.mac[0],
-        config.mac[1],
-        config.mac[2],
-        config.mac[3],
-        config.mac[4],
-        config.mac[5]
-    );
-
-    // Create smoltcp interface and socket set
-    hprintln!("");
-    hprintln!("Creating network interface...");
-    let mut iface = create_interface(&mut eth);
-    let mut sockets = unsafe { create_socket_set() };
-
-    hprintln!(
-        "  IP: {}.{}.{}.{}",
-        config.ip[0],
-        config.ip[1],
-        config.ip[2],
-        config.ip[3]
-    );
-
-    // Initialize network stack
-    if let Err(e) = init_network(&mut eth, &mut iface, &mut sockets, &config) {
-        hprintln!("Error initializing network: {:?}", e);
-        exit_failure();
-    }
-
-    hprintln!("Network ready.");
-    hprintln!("");
+    init_hardware(&config);
 
     // Run user application
     match f(&config) {

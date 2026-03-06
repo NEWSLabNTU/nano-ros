@@ -75,6 +75,20 @@ where
     }
 }
 
+/// Initialize pre-kernel hardware for ThreadX Linux simulation.
+///
+/// On ThreadX, hardware and network initialization (NetX Duo IP stack)
+/// happens inside `tx_application_define()` in C code, after the kernel
+/// starts. This function only performs minimal pre-kernel setup (currently
+/// a no-op).
+///
+/// Provided for API consistency with other board crates. For full hardware
+/// init, use [`run()`] which handles kernel startup and network init.
+pub fn init_hardware(_config: &Config) {
+    // ThreadX network init (NetX Duo) happens in tx_application_define() C code.
+    // Nothing to do before the kernel starts.
+}
+
 /// Run an application on Linux with ThreadX + NetX Duo.
 ///
 /// This is the main entry point for ThreadX Linux simulation applications.

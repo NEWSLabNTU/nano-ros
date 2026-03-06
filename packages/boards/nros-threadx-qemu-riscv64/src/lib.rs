@@ -81,7 +81,7 @@ _start:
 );
 
 pub use config::Config;
-pub use node::run;
+pub use node::{init_hardware, run};
 
 /// Print to QEMU UART console.
 ///

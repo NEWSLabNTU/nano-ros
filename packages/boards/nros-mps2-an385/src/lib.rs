@@ -30,7 +30,7 @@ pub use zpico_platform_mps2_an385;
 
 // Re-export main types
 pub use config::Config;
-pub use node::run;
+pub use node::{init_hardware, run};
 pub use zpico_platform_mps2_an385::timing::CycleCounter;
 
 /// Print to QEMU semihosting console

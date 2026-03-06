@@ -34,7 +34,7 @@ pub use zpico_platform_esp32;
 
 // Re-export main types
 pub use config::{IpMode, NodeConfig, WifiConfig};
-pub use node::run;
+pub use node::{init_hardware, run};
 pub use zpico_platform_esp32::timing::CycleCounter;
 
 // Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
@@ -49,7 +49,7 @@ pub use critical_section;
 /// Use with: `use nros_esp32::prelude::*;`
 pub mod prelude {
     pub use crate::config::{IpMode, NodeConfig, WifiConfig};
-    pub use crate::node::run;
+    pub use crate::node::{init_hardware, run};
     pub use esp_hal::main as entry;
     pub use zpico_platform_esp32::timing::CycleCounter;
 }

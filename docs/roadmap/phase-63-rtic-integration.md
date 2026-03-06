@@ -7,7 +7,7 @@ usage pattern and completing the board-crate API changes needed to support RTIC'
 
 **Priority**: Medium
 
-**Depends on**: Phase 51 (board crate `run()` API), Phase 61 (FFI guards), Phase 62 (async waking)
+**Depends on**: Phase 51 (board crate `run()` API — ✅ Complete), Phase 61 (FFI guards — ✅ Complete), Phase 62 (async waking — ✅ Complete)
 
 ## Overview
 
@@ -549,7 +549,7 @@ mod app {
 
 ## Work Items
 
-- [ ] 63.1 — Factor `board::init_hardware()` out of `board::run()`
+- [x] 63.1 — Factor `board::init_hardware()` out of `board::run()`
 - [ ] 63.2 — RTIC talker/listener example (`examples/stm32f4/rust/zenoh/rtic-{talker,listener}/`)
 - [ ] 63.3 — RTIC service example (`rtic-service-{server,client}/`)
 - [ ] 63.4 — RTIC action example (`rtic-action-{server,client}/`)
@@ -564,12 +564,25 @@ public API.
 
 This overlaps with Phase 51 (board crate `run()` API) — coordinate to avoid duplication.
 
-**Status**: Not Started
+**Status**: Complete
+
+**Implementation**: All 8 board crates now export `init_hardware()`. The 4 smoltcp-based
+crates (stm32f4, mps2-an385, esp32, esp32-qemu) use `MaybeUninit` statics to store
+network objects (Ethernet device, smoltcp Interface, SocketSet) so `set_network_state()`
+pointers remain valid after `init_hardware()` returns. The 4 RTOS-based crates (freertos,
+nuttx, threadx-linux, threadx-qemu-riscv64) have trivial implementations (no-ops) for
+API consistency — their hardware init is handled by the RTOS kernel/C code. `run()` now
+delegates to `init_hardware()` internally.
 
 **Files**:
-- `packages/boards/nros-stm32f4/src/lib.rs`
-- `packages/boards/nros-mps2-an385/src/lib.rs`
-- `packages/boards/nros-esp32/src/lib.rs`
+- `packages/boards/nros-stm32f4/src/node.rs` + `lib.rs`
+- `packages/boards/nros-mps2-an385/src/node.rs` + `lib.rs`
+- `packages/boards/nros-esp32/src/node.rs` + `lib.rs`
+- `packages/boards/nros-esp32-qemu/src/node.rs` + `lib.rs`
+- `packages/boards/nros-mps2-an385-freertos/src/node.rs` + `lib.rs`
+- `packages/boards/nros-nuttx-qemu-arm/src/node.rs` + `lib.rs`
+- `packages/boards/nros-threadx-linux/src/node.rs` + `lib.rs`
+- `packages/boards/nros-threadx-qemu-riscv64/src/node.rs` + `lib.rs`
 
 ### 63.2 — RTIC Talker/Listener Example
 
@@ -650,7 +663,7 @@ the interrupt names just need valid vector numbers not used by LAN9118 or timers
 
 ## Acceptance Criteria
 
-- [ ] `board::init_hardware()` is a public function on at least one board crate
+- [x] `board::init_hardware()` is a public function on at least one board crate
 - [ ] RTIC talker/listener example compiles and runs on target hardware (or QEMU)
 - [ ] All RTIC examples use `#[local]` for all nano-ros handles (no `#[shared]` locks)
 - [ ] All RTIC examples use only existing nano-ros API (`spin_once(0)`, `try_recv()`,
@@ -684,4 +697,12 @@ the interrupt names just need valid vector numbers not used by LAN9118 or timers
   of rclcpp's `spin_some()` — "process available work, don't block"
 - **Prerequisites**: FFI reentrancy guards (Phase 61) and event-driven async waking
   (Phase 62) are completed before this phase, so RTIC examples ship with mixed-priority
-  support and proper `.await` from day one
+  support and proper `.await` from day one. All three prerequisites (51, 61, 62) are
+  now complete — this phase is unblocked.
+- **Reference implementation**: A partial RTIC reference exists at
+  `packages/reference/stm32f4-porting/rtic/src/main.rs` (STM32F4, stm32_eth + smoltcp +
+  zpico_smoltcp). It demonstrates hardware init (clocks, GPIO, Ethernet, smoltcp interface)
+  and async tasks (`poll_network`, `zenoh_poll`, `publisher_task`) but uses `#[shared]`
+  resources (Phase 63 prescribes `#[local]`) and has zenoh operations stubbed/commented out.
+  This is a porting reference, not a production example — it should inform but not directly
+  become the Phase 63 examples.

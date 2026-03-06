@@ -31,7 +31,7 @@ pub use zpico_platform_stm32f4;
 
 // Re-export main types
 pub use config::Config;
-pub use node::run;
+pub use node::{init_hardware, run};
 pub use zpico_platform_stm32f4::timing::CycleCounter;
 
 // Re-export hardware modules from zpico-platform
@@ -43,7 +43,7 @@ pub use zpico_platform_stm32f4::pins;
 /// Use with: `use nros_stm32f4::prelude::*;`
 pub mod prelude {
     pub use crate::config::Config;
-    pub use crate::node::run;
+    pub use crate::node::{init_hardware, run};
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};
     pub use zpico_platform_stm32f4::phy::PhyType;

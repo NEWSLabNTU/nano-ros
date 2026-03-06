@@ -21,7 +21,7 @@ mod error;
 mod node;
 
 pub use config::Config;
-pub use node::run;
+pub use node::{init_hardware, run};
 
 /// Re-export semihosting for the `println!` macro.
 pub use cortex_m_semihosting;

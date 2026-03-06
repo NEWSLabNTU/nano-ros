@@ -6,6 +6,8 @@
 //!
 //! Uses `zpico-smoltcp` for socket management.
 
+use core::mem::MaybeUninit;
+
 use esp_hal::rng::Rng;
 use esp_hal::time::Instant;
 use esp_radio::wifi::{self, ClientConfig, ModeConfig, WifiDevice};
@@ -23,27 +25,37 @@ use zpico_platform_esp32::random;
 // `Result<(), core::fmt::Error>`. A `type Result<T>` alias here would shadow
 // `core::result::Result` and cause "expected 1 generic argument but 2 supplied" errors.
 
+// Static storage for network objects (initialized by init_hardware, must
+// outlive the function call so set_network_state pointers remain valid).
+//
+// WifiDevice<'d> uses PhantomData<&'d ()> — same layout for all lifetimes.
+// These statics are never dropped on no_std bare-metal (no program exit).
+static mut WIFI_DEV: MaybeUninit<WifiDevice<'static>> = MaybeUninit::uninit();
+static mut NET_IFACE: MaybeUninit<Interface> = MaybeUninit::uninit();
+static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
+
 /// Helper to create a socket set with pre-allocated storage
 unsafe fn create_socket_set() -> SocketSet<'static> {
     let storage = unsafe { zpico_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
 }
 
-/// Run an ESP32 WiFi application
+/// Initialize all ESP32 hardware, WiFi, and the network stack.
 ///
-/// This is the main entry point for ESP32 WiFi applications.
-/// It handles all WiFi, network, and smoltcp initialization, then calls
-/// your application code with the configuration. Users create their own
-/// `nros` executor and node inside the callback.
+/// Sets up ESP32 peripherals, heap allocator, WiFi connection (with
+/// optional DHCP), smoltcp interface, and the zenoh-pico transport bridge.
+/// After calling this, you can create an `Executor` and start using nano-ros.
 ///
-/// # Returns
+/// This is automatically called by [`run()`]. Call it directly only when
+/// using an alternative execution model that needs hardware initialized
+/// before returning control to the framework.
 ///
-/// Never returns (`-> !`). Loops forever after the application function completes
-/// or on error.
-pub fn run<F, E: core::fmt::Debug>(config: NodeConfig, f: F) -> !
-where
-    F: FnOnce(&NodeConfig) -> core::result::Result<(), E>,
-{
+/// # Panics
+///
+/// Panics if hardware initialization fails (WiFi, DHCP timeout).
+/// Must be called exactly once before any nros operations.
+#[allow(static_mut_refs)]
+pub fn init_hardware(config: &NodeConfig) {
     esp_println::println!("");
     esp_println::println!("========================================");
     esp_println::println!("  nros ESP32-C3 WiFi Platform");
@@ -128,12 +140,19 @@ where
     esp_println::println!("Creating network interface...");
 
     // Get MAC address from WiFi STA device
-    let mut wifi_dev = interfaces.sta;
+    let wifi_dev = interfaces.sta;
+    // Safety: WifiDevice<'d> uses PhantomData<&'d ()> — same layout for all 'd.
+    // Stored in static that is never dropped (no_std bare-metal, no exit).
+    unsafe { WIFI_DEV.write(core::mem::transmute(wifi_dev)) };
+    let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
+
     let mac = wifi_dev.mac_address();
     let mac_addr = EthernetAddress::from_bytes(&mac);
     let iface_config = smoltcp::iface::Config::new(mac_addr.into());
-    let mut iface = Interface::new(iface_config, &mut wifi_dev, clock::now());
-    let mut sockets = unsafe { create_socket_set() };
+    let iface = Interface::new(iface_config, wifi_dev, clock::now());
+    unsafe { NET_IFACE.write(iface) };
+    let sockets = unsafe { create_socket_set() };
+    unsafe { NET_SOCKETS.write(sockets) };
 
     esp_println::println!(
         "  MAC: {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
@@ -141,6 +160,9 @@ where
     );
 
     // Step 9: Configure IP (DHCP or static)
+    let iface = unsafe { NET_IFACE.assume_init_mut() };
+    let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
+
     match &config.ip_mode {
         IpMode::Dhcp => {
             esp_println::println!("  IP mode: DHCP");
@@ -153,9 +175,10 @@ where
             esp_println::println!("  Waiting for DHCP...");
             let timeout_ms = 30_000u64; // 30 second timeout
             let start = Instant::now();
+            let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
 
             loop {
-                iface.poll(clock::now(), &mut wifi_dev, &mut sockets);
+                iface.poll(clock::now(), wifi_dev, sockets);
 
                 // Check if we got an IP
                 if iface
@@ -232,16 +255,17 @@ where
 
     // Create and register TCP + UDP sockets via transport crate
     unsafe {
-        zpico_smoltcp::create_and_register_sockets(&mut sockets);
-        zpico_smoltcp::create_and_register_udp_sockets(&mut sockets);
+        zpico_smoltcp::create_and_register_sockets(sockets);
+        zpico_smoltcp::create_and_register_udp_sockets(sockets);
     }
 
     // Store global state for poll callback (via zpico-platform-esp32)
+    let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
     unsafe {
         zpico_platform_esp32::network::set_network_state(
-            &mut iface as *mut Interface,
-            &mut sockets as *mut SocketSet<'static>,
-            &mut wifi_dev as *mut WifiDevice as *mut (),
+            iface as *mut Interface,
+            sockets as *mut SocketSet<'static>,
+            wifi_dev as *mut WifiDevice as *mut (),
         );
 
         zpico_smoltcp::set_poll_callback(zpico_platform_esp32::network::smoltcp_network_poll);
@@ -251,7 +275,32 @@ where
     esp_println::println!("Hardware initialization complete.");
     esp_println::println!("");
 
-    // Step 11: Run user application
+    // Prevent wifi_controller and radio_controller from being dropped
+    // (Drop would deinit the WiFi radio). On no_std bare-metal, these
+    // leak intentionally — the program never exits.
+    // wifi_controller borrows radio_controller, so forget it first.
+    core::mem::forget(wifi_controller);
+    core::mem::forget(radio_controller);
+}
+
+/// Run an ESP32 WiFi application
+///
+/// This is the main entry point for ESP32 WiFi applications.
+/// It handles all WiFi, network, and smoltcp initialization, then calls
+/// your application code with the configuration. Users create their own
+/// `nros` executor and node inside the callback.
+///
+/// # Returns
+///
+/// Never returns (`-> !`). Loops forever after the application function completes
+/// or on error.
+pub fn run<F, E: core::fmt::Debug>(config: NodeConfig, f: F) -> !
+where
+    F: FnOnce(&NodeConfig) -> core::result::Result<(), E>,
+{
+    init_hardware(&config);
+
+    // Run user application
     match f(&config) {
         Ok(()) => {
             esp_println::println!("");

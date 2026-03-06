@@ -35,7 +35,7 @@ pub use zpico_platform_esp32_qemu;
 
 // Re-export main types
 pub use config::Config;
-pub use node::run;
+pub use node::{init_hardware, run};
 pub use zpico_platform_esp32_qemu::timing::CycleCounter;
 
 // Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
@@ -47,7 +47,7 @@ pub use portable_atomic;
 /// Use with: `use nros_esp32_qemu::prelude::*;`
 pub mod prelude {
     pub use crate::config::Config;
-    pub use crate::node::run;
+    pub use crate::node::{init_hardware, run};
     pub use esp_hal::main as entry;
     pub use zpico_platform_esp32_qemu::timing::CycleCounter;
 }

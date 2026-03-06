@@ -7,6 +7,16 @@
 
 use crate::config::Config;
 
+/// Initialize hardware for NuttX.
+///
+/// On NuttX, the kernel handles all hardware and network initialization
+/// before `main()` runs. This function is a no-op, provided for API
+/// consistency with other board crates.
+pub fn init_hardware(_config: &Config) {
+    // NuttX kernel initializes hardware (virtio-net, serial, etc.) before main().
+    // Nothing to do here.
+}
+
 /// Run an nros application on NuttX.
 ///
 /// This is the main entry point for NuttX applications. Call this from `main()`

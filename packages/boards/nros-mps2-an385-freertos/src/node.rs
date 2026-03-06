@@ -193,6 +193,21 @@ fn init_network(config: &Config) -> Result<()> {
     Ok(())
 }
 
+/// Initialize pre-scheduler hardware for MPS2-AN385 FreeRTOS.
+///
+/// On FreeRTOS, most hardware initialization (LAN9118 + lwIP) must happen
+/// inside a FreeRTOS task after the scheduler starts. This function only
+/// performs the minimal pre-scheduler setup (currently a no-op — all init
+/// happens inside [`run()`]).
+///
+/// Provided for API consistency with other board crates. For full hardware
+/// init, use [`run()`] which handles scheduler startup and network init.
+pub fn init_hardware(_config: &Config) {
+    // FreeRTOS network init requires the scheduler to be running (tcpip_init
+    // creates tcpip_thread). All meaningful init happens inside the app task
+    // created by run().
+}
+
 /// Run an application on QEMU MPS2-AN385 with FreeRTOS + lwIP.
 ///
 /// This is the main entry point for FreeRTOS board applications.

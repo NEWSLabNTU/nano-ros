@@ -2,6 +2,8 @@
 //!
 //! Uses `zpico-smoltcp` for socket management and `stm32-eth` for Ethernet.
 
+use core::mem::MaybeUninit;
+
 use smoltcp::iface::{Interface, SocketSet};
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 use stm32_eth::{
@@ -33,9 +35,89 @@ static mut RX_RING: [RxRingEntry; RX_DESC_COUNT] = [RxRingEntry::INIT; RX_DESC_C
 #[unsafe(link_section = ".ethram")]
 static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_COUNT];
 
+// Static storage for network objects (initialized by init_hardware, must
+// outlive the function call so set_network_state pointers remain valid).
+static mut ETH_DMA: MaybeUninit<stm32_eth::dma::EthernetDMA<'static, 'static>> =
+    MaybeUninit::uninit();
+static mut NET_IFACE: MaybeUninit<Interface> = MaybeUninit::uninit();
+static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
+
 // ============================================================================
 // Public API
 // ============================================================================
+
+/// Initialize all STM32F4 hardware and the network stack.
+///
+/// Sets up clocks, GPIO, Ethernet (DMA + PHY), smoltcp interface, and the
+/// zenoh-pico transport bridge. After calling this, you can create an
+/// `Executor` and start using nano-ros.
+///
+/// This is automatically called by [`run()`]. Call it directly only when
+/// using an alternative execution model (e.g., RTIC) that needs hardware
+/// initialized before returning control to the framework.
+///
+/// # Panics
+///
+/// Panics if hardware initialization fails (clocks, Ethernet, PHY).
+/// Must be called exactly once before any nros operations.
+#[allow(static_mut_refs)]
+pub fn init_hardware(config: &Config) {
+    defmt::info!("nros STM32F4 platform starting...");
+    defmt::info!(
+        "  IP: {}.{}.{}.{}",
+        config.ip[0],
+        config.ip[1],
+        config.ip[2],
+        config.ip[3]
+    );
+
+    // Initialize platform hardware
+    let (dma, iface, sockets) = match unsafe { setup_hardware(config) } {
+        Ok(result) => result,
+        Err(e) => {
+            defmt::error!("Platform init failed: {:?}", e);
+            loop {
+                cortex_m::asm::wfi();
+            }
+        }
+    };
+
+    // Move into static storage so pointers remain valid after this function returns
+    unsafe {
+        ETH_DMA.write(dma);
+        NET_IFACE.write(iface);
+        NET_SOCKETS.write(sockets);
+    }
+
+    // Initialize the transport crate's bridge
+    SmoltcpBridge::init();
+
+    // Seed RNG with IP to avoid zenoh ID collisions
+    let ip_seed = u32::from_be_bytes(config.ip);
+    random::seed(ip_seed);
+
+    // Create and register TCP + UDP sockets via transport crate
+    let sockets = unsafe { NET_SOCKETS.assume_init_mut() };
+    unsafe {
+        zpico_smoltcp::create_and_register_sockets(sockets);
+        zpico_smoltcp::create_and_register_udp_sockets(sockets);
+    }
+
+    // Store global state for poll callback (in zpico-platform-stm32f4)
+    let iface = unsafe { NET_IFACE.assume_init_mut() };
+    let dma = unsafe { ETH_DMA.assume_init_mut() };
+    unsafe {
+        zpico_platform_stm32f4::network::set_network_state(
+            iface as *mut Interface,
+            sockets as *mut SocketSet<'static>,
+            dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
+        );
+
+        zpico_smoltcp::set_poll_callback(zpico_platform_stm32f4::network::smoltcp_network_poll);
+    }
+
+    defmt::info!("Network ready.");
+}
 
 /// Run an application with the given configuration.
 ///
@@ -66,56 +148,11 @@ static mut TX_RING: [TxRingEntry; TX_DESC_COUNT] = [TxRingEntry::INIT; TX_DESC_C
 /// # Returns
 ///
 /// Never returns (`-> !`). Enters idle loop on completion or error.
-#[allow(static_mut_refs)]
 pub fn run<F, E: core::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> core::result::Result<(), E>,
 {
-    defmt::info!("nros STM32F4 platform starting...");
-    defmt::info!(
-        "  IP: {}.{}.{}.{}",
-        config.ip[0],
-        config.ip[1],
-        config.ip[2],
-        config.ip[3]
-    );
-
-    // Initialize platform hardware
-    let (mut dma, mut iface, mut sockets) = match unsafe { init_hardware(&config) } {
-        Ok(result) => result,
-        Err(e) => {
-            defmt::error!("Platform init failed: {:?}", e);
-            loop {
-                cortex_m::asm::wfi();
-            }
-        }
-    };
-
-    // Initialize the transport crate's bridge
-    SmoltcpBridge::init();
-
-    // Seed RNG with IP to avoid zenoh ID collisions
-    let ip_seed = u32::from_be_bytes(config.ip);
-    random::seed(ip_seed);
-
-    // Create and register TCP + UDP sockets via transport crate
-    unsafe {
-        zpico_smoltcp::create_and_register_sockets(&mut sockets);
-        zpico_smoltcp::create_and_register_udp_sockets(&mut sockets);
-    }
-
-    // Store global state for poll callback (in zpico-platform-stm32f4)
-    unsafe {
-        zpico_platform_stm32f4::network::set_network_state(
-            &mut iface as *mut Interface,
-            &mut sockets as *mut SocketSet<'static>,
-            &mut dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
-        );
-
-        zpico_smoltcp::set_poll_callback(zpico_platform_stm32f4::network::smoltcp_network_poll);
-    }
-
-    defmt::info!("Network ready.");
+    init_hardware(&config);
 
     // Run user application
     match f(&config) {
@@ -145,7 +182,7 @@ where
 ///
 /// Must be called only once at startup. Accesses static mutable buffers.
 #[allow(static_mut_refs)]
-unsafe fn init_hardware(
+unsafe fn setup_hardware(
     config: &Config,
 ) -> Result<(stm32_eth::dma::EthernetDMA<'static, 'static>, Interface, SocketSet<'static>)> {
     // Get access to device peripherals
