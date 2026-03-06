@@ -211,7 +211,7 @@ rclc_executor_spin(&executor);
 **nano-ros Rust — callback-based listener (~10 lines):**
 ```rust
 let config = ExecutorConfig::from_env().node_name("listener");
-let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+let mut executor: Executor<_> = Executor::open(&config)?;
 executor.add_subscription::<Int32, _>("/chatter", |msg, _info| {
     println!("Received: {}", msg.data);
 })?;
@@ -221,7 +221,7 @@ executor.spin_blocking(SpinOptions::default())?;
 **nano-ros Rust — manual publisher (~12 lines):**
 ```rust
 let config = ExecutorConfig::from_env().node_name("talker");
-let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+let mut executor: Executor<_> = Executor::open(&config)?;
 let mut node = executor.create_node("talker")?;
 let publisher = node.create_publisher::<Int32>("/chatter")?;
 

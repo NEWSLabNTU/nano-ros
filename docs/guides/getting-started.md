@@ -345,7 +345,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 
 fn main() {
     let config = ExecutorConfig::from_env().node_name("client");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+    let mut executor: Executor<_> = Executor::open(&config).unwrap();
     let mut node = executor.create_node("client").unwrap();
     let mut client = node.create_client::<AddTwoInts>("/add_two_ints").unwrap();
 
@@ -378,7 +378,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let config = ExecutorConfig::from_env().node_name("client");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+    let mut executor: Executor<_> = Executor::open(&config).unwrap();
 
     // Create client (owned — no lifetime tied to node or executor)
     let mut client = {

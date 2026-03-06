@@ -63,7 +63,7 @@ fn main() {
 
     // Create executor from environment (reads ZENOH_LOCATOR, ROS_DOMAIN_ID, ZENOH_MODE)
     let config = ExecutorConfig::from_env().node_name("talker");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
 
     // Register parameter services (when param-services feature is enabled)
     #[cfg(feature = "param-services")]

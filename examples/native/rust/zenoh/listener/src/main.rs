@@ -64,7 +64,7 @@ fn main() {
     info!("=====================================================");
 
     let config = ExecutorConfig::from_env().node_name("listener");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
 
     let mut count: u64 = 0;
     executor
@@ -101,7 +101,7 @@ fn main() {
     info!("==========================================");
 
     let config = ExecutorConfig::from_env().node_name("listener");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
 
     let mut count: u64 = 0;
     executor

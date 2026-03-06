@@ -23,7 +23,7 @@ generics control static memory layout:
 
 ```rust
 let config = ExecutorConfig::from_env().node_name("my_node");
-let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+let mut executor: Executor<_> = Executor::open(&config)?;
 ```
 
 ### Spin Methods

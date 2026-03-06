@@ -15,7 +15,7 @@
 //! use std_msgs::msg::Int32;
 //!
 //! let config = ExecutorConfig::from_env().node_name("my_node");
-//! let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+//! let mut executor: Executor<_> = Executor::open(&config)?;
 //!
 //! // Register subscription callback
 //! executor.add_subscription::<Int32, _>("/topic", |msg: &Int32| {
@@ -33,7 +33,7 @@
 //! use std_msgs::msg::Int32;
 //!
 //! let config = ExecutorConfig { locator: "tcp/192.168.1.1:7447", ..Default::default() };
-//! let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+//! let mut executor: Executor<_> = Executor::open(&config)?;
 //!
 //! // Register subscription callback
 //! executor.add_subscription::<Int32, _>("/cmd", |msg: &Int32| {
@@ -60,6 +60,7 @@ extern crate std;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod config;
 pub mod executor;
 pub mod lifecycle;
 mod node;

@@ -52,7 +52,7 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
     ///
     /// ```ignore
     /// let config = ExecutorConfig::from_env().node_name("my_node");
-    /// let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+    /// let mut executor = Executor::open(&config)?;
     /// ```
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
         let tc = nros_rmw::TransportConfig {
@@ -174,9 +174,14 @@ impl<S> core::ops::DerefMut for SessionStore<S> {
 /// and [`add_service()`](Self::add_service), with dispatch via
 /// [`spin_once()`](Self::spin_once). No heap allocation is needed.
 ///
-/// When using the defaults (`MAX_CBS = 0`, `CB_ARENA = 0`), both arrays are
-/// zero-sized — zero overhead for existing manual-polling code.
-pub struct Executor<S, const MAX_CBS: usize = 0, const CB_ARENA: usize = 0> {
+/// The defaults are set via `NROS_EXECUTOR_MAX_CBS` (default 4) and
+/// `NROS_EXECUTOR_ARENA_SIZE` (default 4096) environment variables at build time.
+/// Set both to `0` for zero overhead in manual-polling code.
+pub struct Executor<
+    S,
+    const MAX_CBS: usize = { crate::config::DEFAULT_MAX_CBS },
+    const CB_ARENA: usize = { crate::config::DEFAULT_ARENA_SIZE },
+> {
     pub(crate) session: SessionStore<S>,
     pub(crate) arena: [MaybeUninit<u8>; CB_ARENA],
     pub(crate) arena_used: usize,
@@ -357,14 +362,14 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .ok_or(NodeError::BufferTooSmall)
     }
 
-    /// Register a subscription callback with the default 1024-byte receive buffer.
+    /// Register a subscription callback with the default receive buffer size.
     ///
     /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
     ///
     /// # Example
     ///
     /// ```ignore
-    /// let mut executor: Executor<_, 4, 4096> = Executor::open(&config)?;
+    /// let mut executor = Executor::open(&config)?;
     /// executor.add_subscription::<Int32, _>("/chatter", |msg: &Int32| {
     ///     // handle message
     /// })?;
@@ -382,7 +387,9 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         F: FnMut(&M) + 'static,
         S::SubscriberHandle: Subscriber,
     {
-        self.add_subscription_sized::<M, F, 1024>(topic_name, callback)
+        self.add_subscription_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+            topic_name, callback,
+        )
     }
 
     /// Register a subscription callback with a custom receive buffer size.
@@ -465,7 +472,9 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
         S::SubscriberHandle: Subscriber,
     {
-        self.add_subscription_with_info_sized::<M, F, 1024>(topic_name, callback)
+        self.add_subscription_with_info_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+            topic_name, callback,
+        )
     }
 
     /// Register a subscription callback with MessageInfo and a custom receive buffer size.
@@ -550,7 +559,9 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
         S::SubscriberHandle: Subscriber,
     {
-        self.add_subscription_with_safety_sized::<M, F, 1024>(topic_name, callback)
+        self.add_subscription_with_safety_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
+            topic_name, callback,
+        )
     }
 
     /// Register a safety-validated subscription callback with a custom receive buffer size.
@@ -608,7 +619,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         Ok(HandleId(slot))
     }
 
-    /// Register a service callback with the default 1024-byte buffers.
+    /// Register a service callback with the default buffer size.
     ///
     /// The callback is stored in the arena and invoked during [`spin_once()`](Self::spin_once).
     pub fn add_service<Svc, F>(
@@ -622,7 +633,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         S::ServiceServerHandle: ServiceServerTrait,
         <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
     {
-        self.add_service_sized::<Svc, F, 1024, 1024>(service_name, callback)
+        self.add_service_sized::<Svc, F, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, callback)
     }
 
     /// Register a service callback with custom request/reply buffer sizes.
@@ -792,7 +803,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         S::SubscriberHandle: Subscriber,
     {
-        self.add_subscription_raw_with_qos_sized::<1024>(
+        self.add_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name,
             type_name,
             type_hash,
@@ -839,7 +850,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         S::SubscriberHandle: Subscriber,
     {
-        self.add_subscription_raw_with_qos_sized::<1024>(
+        self.add_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, type_name, type_hash, qos, callback, context,
         )
     }
@@ -900,7 +911,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
 
     /// Register a raw (untyped) service callback.
     ///
-    /// Register a raw (untyped) service callback with default 1024-byte buffers.
+    /// Register a raw (untyped) service callback with the default buffer size.
     ///
     /// The callback receives and produces CDR bytes without typed
     /// deserialization/serialization. Used by the C API wrapper.
@@ -916,7 +927,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         S::ServiceServerHandle: ServiceServerTrait,
         <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
     {
-        self.add_service_raw_sized::<1024, 1024>(
+        self.add_service_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             service_name,
             service_type,
             service_hash,
@@ -1248,7 +1259,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     /// This is the primary run loop for embedded applications:
     ///
     /// ```ignore
-    /// let mut executor: Executor<_, 4, 4096> = Executor::open(&config)?;
+    /// let mut executor: Executor<_> = Executor::open(&config)?;
     /// executor.add_subscription::<Int32, _>("/topic", |msg| { /* ... */ })?;
     /// executor.spin(10); // never returns
     /// ```
@@ -1344,7 +1355,7 @@ where
     /// # Example
     ///
     /// ```ignore
-    /// let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+    /// let mut executor = Executor::open(&config)?;
     /// executor.register_parameter_services("/demo/talker")?;
     /// executor.declare_parameter("start_value", ParameterValue::Integer(0));
     /// ```

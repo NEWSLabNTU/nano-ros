@@ -28,7 +28,7 @@ fn main() {
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("add_two_ints_server");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
 
     info!("Node created: add_two_ints_server");
 

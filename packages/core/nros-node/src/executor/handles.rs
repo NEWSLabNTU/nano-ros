@@ -57,7 +57,7 @@ impl<M: RosMessage, P: Publisher> EmbeddedPublisher<M, P> {
 // ============================================================================
 
 /// Typed subscription handle with internal receive buffer.
-pub struct Subscription<M, Sub, const RX_BUF: usize = 1024> {
+pub struct Subscription<M, Sub, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
     pub(crate) handle: Sub,
     pub(crate) buffer: [u8; RX_BUF],
     pub(crate) _phantom: PhantomData<M>,
@@ -127,8 +127,8 @@ impl<M: RosMessage, Sub: Subscriber, const RX_BUF: usize> Subscription<M, Sub, R
 pub struct EmbeddedServiceServer<
     Svc: RosService,
     Srv,
-    const REQ_BUF: usize = 1024,
-    const REPLY_BUF: usize = 1024,
+    const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const REPLY_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
     pub(crate) handle: Srv,
     pub(crate) req_buffer: [u8; REQ_BUF],
@@ -180,8 +180,8 @@ where
 pub struct EmbeddedServiceClient<
     Svc: RosService,
     Cli,
-    const REQ_BUF: usize = 1024,
-    const REPLY_BUF: usize = 1024,
+    const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const REPLY_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
     pub(crate) handle: Cli,
     pub(crate) req_buffer: [u8; REQ_BUF],
@@ -361,9 +361,9 @@ pub struct ActionServer<
     A: RosAction,
     Srv,
     Pub,
-    const GOAL_BUF: usize = 1024,
-    const RESULT_BUF: usize = 1024,
-    const FEEDBACK_BUF: usize = 1024,
+    const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const MAX_GOALS: usize = 4,
 > {
     pub(crate) core: super::action_core::ActionServerCore<
@@ -558,9 +558,9 @@ pub struct ActionClient<
     A: RosAction,
     Cli,
     Sub,
-    const GOAL_BUF: usize = 1024,
-    const RESULT_BUF: usize = 1024,
-    const FEEDBACK_BUF: usize = 1024,
+    const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
     pub(crate) core:
         super::action_core::ActionClientCore<Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
@@ -701,9 +701,9 @@ pub struct FeedbackStream<
     A: RosAction,
     Cli,
     Sub,
-    const GOAL_BUF: usize = 1024,
-    const RESULT_BUF: usize = 1024,
-    const FEEDBACK_BUF: usize = 1024,
+    const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
     client: &'a mut ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
 }
@@ -815,9 +815,9 @@ pub struct GoalFeedbackStream<
     A: RosAction,
     Cli,
     Sub,
-    const GOAL_BUF: usize = 1024,
-    const RESULT_BUF: usize = 1024,
-    const FEEDBACK_BUF: usize = 1024,
+    const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
     client: &'a mut ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
     goal_id: nros_core::GoalId,

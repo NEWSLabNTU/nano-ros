@@ -215,7 +215,7 @@ srand(seed);
 When the stack overflows, it corrupts adjacent memory including lwIP's global `tcpip_mbox` variable (declared in `tcpip.c`). Any subsequent call to `tcpip_input()`, `tcpip_callback()`, or `sys_mbox_trypost()` triggers the "Invalid mbox" assertion, which enters an infinite `for(;;){}` loop.
 
 **Diagnosis**: If pub/sub examples work but service/action examples crash with "Invalid mbox":
-- Compare the `CB_ARENA` sizes: talker uses `Executor::<_, 0, 0>` (no arena), service server uses `Executor::<_, 4, 4096>`, action server uses `Executor::<_, 8, 8192>`
+- Compare the `CB_ARENA` sizes: talker uses `Executor::<_, 0, 0>` (no arena), service server uses defaults (4 slots, 4096 arena), action server uses `Executor::<_, 8, 8192>`
 - Larger arena = more stack needed = more likely to overflow
 
 **Fix**: Set `APP_TASK_STACK` large enough for the largest example. 64 KB (16384 words) provides adequate headroom for all example types:

@@ -224,7 +224,7 @@ after creating the client, the executor can be moved to a background task.
 ```rust
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+    let mut executor = Executor::open(&config).unwrap();
     let mut client = {
         let mut node = executor.create_node("client").unwrap();
         node.create_client::<AddTwoInts>("/add").unwrap()
@@ -892,7 +892,7 @@ use embassy_futures::select::{select, Either};
 
 async fn run_async() -> Result<(), NodeError> {
     let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+    let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("sensor_node")?;
 
     // Publisher (used inside timer callback)
@@ -964,7 +964,7 @@ async fn app_task() {
 
 async fn run_app() -> Result<(), NodeError> {
     let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+    let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("multi_client")?;
 
     let mut add = node.create_client::<AddTwoInts>("/add")?;
@@ -1198,7 +1198,7 @@ fn main() {
 // Async with tokio background spin
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
-    let mut executor = Executor::<_, 4, 4096>::open(&config).unwrap();
+    let mut executor = Executor::open(&config).unwrap();
     let mut client = {
         let mut node = executor.create_node("client").unwrap();
         node.create_client::<AddTwoInts>("/add").unwrap()

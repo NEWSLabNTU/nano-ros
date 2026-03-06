@@ -35,7 +35,7 @@ async fn main() {
 
     // Create executor
     let config = ExecutorConfig::from_env().node_name("async_service_client");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
 
     // Create client — it's an owned type (no lifetime tied to node or executor).
     // After this block, the node is dropped and the executor is free to move.

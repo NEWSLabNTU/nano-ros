@@ -91,7 +91,7 @@ fn run_talker() {
     );
 
     let config = ExecutorConfig::from_env().node_name("stress_talker");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor
         .create_node("stress_talker")
@@ -156,7 +156,7 @@ fn run_listener() {
     );
 
     let config = ExecutorConfig::from_env().node_name("stress_listener");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor
         .create_node("stress_listener")

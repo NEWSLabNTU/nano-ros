@@ -25,7 +25,7 @@ extern "C" fn rust_main() {
 
 fn run() -> Result<(), NodeError> {
     let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+    let mut executor: Executor<_> = Executor::open(&config)?;
 
     let mut count: u32 = 0;
     executor.add_subscription::<Int32, _>("/chatter", move |msg: &Int32| {

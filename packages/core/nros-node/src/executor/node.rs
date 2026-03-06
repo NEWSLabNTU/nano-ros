@@ -95,8 +95,8 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_subscription<M: RosMessage>(
         &mut self,
         topic_name: &str,
-    ) -> Result<Subscription<M, S::SubscriberHandle, 1024>, NodeError> {
-        self.create_subscription_sized::<M, 1024>(topic_name)
+    ) -> Result<Subscription<M, S::SubscriberHandle>, NodeError> {
+        self.create_subscription_sized::<M, { crate::config::DEFAULT_RX_BUF_SIZE }>(topic_name)
     }
 
     /// Create a subscription with custom buffer size.
@@ -134,8 +134,8 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_service<Svc: RosService>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceServer<Svc, S::ServiceServerHandle, 1024, 1024>, NodeError> {
-        self.create_service_sized::<Svc, 1024, 1024>(service_name)
+    ) -> Result<EmbeddedServiceServer<Svc, S::ServiceServerHandle>, NodeError> {
+        self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name)
     }
 
     /// Create a service server with custom buffer sizes.
@@ -164,8 +164,8 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_client<Svc: RosService>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceClient<Svc, S::ServiceClientHandle, 1024, 1024>, NodeError> {
-        self.create_client_sized::<Svc, 1024, 1024>(service_name)
+    ) -> Result<EmbeddedServiceClient<Svc, S::ServiceClientHandle>, NodeError> {
+        self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name)
     }
 
     /// Create a service client with custom buffer sizes.
@@ -196,11 +196,8 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_action_server<A: RosAction>(
         &mut self,
         action_name: &str,
-    ) -> Result<
-        ActionServer<A, S::ServiceServerHandle, S::PublisherHandle, 1024, 1024, 1024, 4>,
-        NodeError,
-    > {
-        self.create_action_server_sized::<A, 1024, 1024, 1024, 4>(action_name)
+    ) -> Result<ActionServer<A, S::ServiceServerHandle, S::PublisherHandle>, NodeError> {
+        self.create_action_server_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(action_name)
     }
 
     /// Create an action server with custom buffer sizes.
@@ -300,11 +297,8 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_action_client<A: RosAction>(
         &mut self,
         action_name: &str,
-    ) -> Result<
-        ActionClient<A, S::ServiceClientHandle, S::SubscriberHandle, 1024, 1024, 1024>,
-        NodeError,
-    > {
-        self.create_action_client_sized::<A, 1024, 1024, 1024>(action_name)
+    ) -> Result<ActionClient<A, S::ServiceClientHandle, S::SubscriberHandle>, NodeError> {
+        self.create_action_client_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(action_name)
     }
 
     /// Create an action client with custom buffer sizes.

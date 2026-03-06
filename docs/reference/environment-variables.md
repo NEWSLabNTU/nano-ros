@@ -81,6 +81,9 @@ All optional — platform-appropriate defaults apply if unset.
 | `NROS_LET_BUFFER_SIZE`      | Buffer size for LET semantics per handle      | `512`   | nros-c      |
 | `NROS_MESSAGE_BUFFER_SIZE`  | Max buffer size for subscription/service data | `4096`  | nros-c      |
 | `NROS_MAX_CONCURRENT_GOALS` | Max concurrent goals per action server        | `4`     | nros-c      |
+| `NROS_EXECUTOR_MAX_CBS`       | Default max executor callback slots             | `4`     | nros-node   |
+| `NROS_EXECUTOR_ARENA_SIZE`    | Default executor arena size (bytes)             | `4096`  | nros-node   |
+| `NROS_SUBSCRIPTION_BUFFER_SIZE` | Default subscription/service buffer size (bytes) | `1024`  | nros-node   |
 | `NROS_MAX_PARAMETERS`       | Max parameters in parameter server            | `32`    | nros-params |
 | `NROS_MAX_PARAM_NAME_LEN`   | Max parameter name length                     | `64`    | nros-params |
 | `NROS_MAX_STRING_VALUE_LEN` | Max string parameter value length             | `256`   | nros-params |

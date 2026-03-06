@@ -92,9 +92,9 @@ fn write_goal_id(writer: &mut CdrWriter<'_>, goal_id: &GoalId) -> Result<(), Nod
 pub struct ActionServerCore<
     Srv,
     Pub,
-    const GOAL_BUF: usize = 1024,
-    const RESULT_BUF: usize = 1024,
-    const FEEDBACK_BUF: usize = 1024,
+    const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const MAX_GOALS: usize = 4,
 > {
     pub(crate) send_goal_server: Srv,
@@ -471,9 +471,9 @@ impl<
 pub struct ActionClientCore<
     Cli,
     Sub,
-    const GOAL_BUF: usize = 1024,
-    const RESULT_BUF: usize = 1024,
-    const FEEDBACK_BUF: usize = 1024,
+    const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
+    const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
     pub(crate) send_goal_client: Cli,
     pub(crate) cancel_goal_client: Cli,

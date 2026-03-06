@@ -36,7 +36,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     ///
     /// Use the returned [`ActionServerHandle`] to publish feedback and complete goals.
     ///
-    /// Uses default buffer sizes (1024 bytes) and max 4 concurrent goals.
+    /// Uses default buffer sizes and max 4 concurrent goals.
     pub fn add_action_server<A, GoalF, CancelF>(
         &mut self,
         action_name: &str,
@@ -53,7 +53,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         S::ServiceServerHandle: ServiceServerTrait,
         S::PublisherHandle: Publisher,
     {
-        self.add_action_server_sized::<A, GoalF, CancelF, 1024, 1024, 1024, 4>(
+        self.add_action_server_sized::<A, GoalF, CancelF, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
             action_name,
             goal_callback,
             cancel_callback,
@@ -462,7 +462,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         S::ServiceServerHandle: ServiceServerTrait,
         S::PublisherHandle: Publisher,
     {
-        self.add_action_server_raw_sized::<1024, 1024, 1024, 4>(
+        self.add_action_server_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
             action_name,
             type_name,
             type_hash,

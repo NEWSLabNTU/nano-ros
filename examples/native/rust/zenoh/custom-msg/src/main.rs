@@ -207,7 +207,7 @@ fn main() {
         println!("Testing pub/sub with custom messages:");
 
         let config = ExecutorConfig::from_env().node_name("custom_msg_node");
-        let mut executor = match Executor::<_, 4, 4096>::open(&config) {
+        let mut executor: Executor<_> = match Executor::open(&config) {
             Ok(e) => e,
             Err(e) => {
                 println!("Skipping pub/sub (no zenoh router): {:?}", e);

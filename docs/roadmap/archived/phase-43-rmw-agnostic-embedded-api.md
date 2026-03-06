@@ -511,7 +511,7 @@ fn main() {
         .node_name("listener");
 
     // 4 callback slots, 4KB arena
-    let mut executor = EmbeddedExecutor::<_, 4, 4096>::open(&config)
+    let mut executor = EmbeddedExecutor::open(&config)
         .expect("Failed to open session");
 
     executor.add_subscription::<Int32>("/chatter", handle_msg as fn(&Int32))
@@ -814,7 +814,7 @@ loop {
 }
 
 // After (callback + spin)
-let mut executor = EmbeddedExecutor::<_, 4, 4096>::open(&config)?;
+let mut executor = EmbeddedExecutor::open(&config)?;
 executor.add_subscription::<Int32>("/chatter", handle_msg as fn(&Int32))?;
 loop {
     executor.spin_once(100);

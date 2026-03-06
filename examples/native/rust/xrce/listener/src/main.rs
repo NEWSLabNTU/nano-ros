@@ -35,7 +35,7 @@ fn main() {
     let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_listener");
-    let mut executor = Executor::<_, 4, 4096>::open(&config).expect("Failed to open XRCE session");
+    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Register subscription callback

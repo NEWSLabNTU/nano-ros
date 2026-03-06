@@ -16,7 +16,7 @@ extern "C" fn _start() -> ! {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_server");
-        let mut executor = Executor::<_, 4, 4096>::open(&exec_config)?;
+        let mut executor: Executor<_> = Executor::open(&exec_config)?;
 
         executor.add_service::<AddTwoInts, _>("/add_two_ints", |request| {
             let sum = request.a + request.b;

@@ -169,7 +169,7 @@ impl SpinOptions {
 /// let config = ExecutorConfig::new("tcp/127.0.0.1:7447")
 ///     .node_name("talker")
 ///     .domain_id(0);
-/// let mut executor = Executor::open(&config)?;
+/// let mut executor: Executor<_> = Executor::open(&config)?;
 /// ```
 pub struct ExecutorConfig<'a> {
     /// Middleware-specific connection string.
@@ -288,7 +288,7 @@ impl From<TransportError> for NodeError {
 }
 
 /// Default transmit buffer size (bytes).
-pub(crate) const DEFAULT_TX_BUF: usize = 1024;
+pub(crate) const DEFAULT_TX_BUF: usize = crate::config::DEFAULT_RX_BUF_SIZE;
 
 // ============================================================================
 // HandleId

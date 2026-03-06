@@ -19,7 +19,7 @@
 //! use std_msgs::msg::Int32;
 //!
 //! let config = ExecutorConfig::from_env().node_name("my_node");
-//! let mut executor = Executor::<_, 4, 4096>::open(&config)?;
+//! let mut executor: Executor<_> = Executor::open(&config)?;
 //!
 //! let mut node = executor.create_node("my_node")?;
 //! let publisher = node.create_publisher::<Int32>("/my_topic")?;
