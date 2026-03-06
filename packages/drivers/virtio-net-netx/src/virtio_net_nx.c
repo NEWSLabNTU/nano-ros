@@ -40,14 +40,15 @@ static void dbg_hex64(uint64_t v) {
 #define NX_ETHERNET_IPV6        0x86DD
 
 /** VirtIO net header size.
- * Modern VirtIO (VIRTIO_F_VERSION_1, i.e. MMIO version 2) always includes
- * the num_buffers field in the header, making it 12 bytes:
- * flags(1) + gso_type(1) + hdr_len(2) + gso_size(2) +
- * csum_start(2) + csum_offset(2) + num_buffers(2) = 12 bytes. */
-#define VIRTIO_NET_HDR_SIZE     12
+ * Legacy MMIO (version 1): 10 bytes (no num_buffers unless MRG_RXBUF negotiated).
+ * Modern MMIO (version 2): 12 bytes (num_buffers always present).
+ * QEMU 6.x uses version 1, QEMU 7+ uses version 2.
+ * We detect at runtime and store in virtio_net_hdr_size. */
+#define VIRTIO_NET_HDR_SIZE_V1  10
+#define VIRTIO_NET_HDR_SIZE_V2  12
 
 #define NUM_RX_BUFFERS          32
-#define BUFFER_SIZE             2048  /* virtio-net hdr (12) + MTU (1514) + padding */
+#define BUFFER_SIZE             2048  /* virtio-net hdr (10 or 12) + MTU (1514) + padding */
 
 /* --------------------------------------------------------------------------
  * Static state
@@ -57,6 +58,7 @@ static struct virtio_net_nx_config driver_config;
 static NX_IP *driver_ip_ptr;
 static struct virtqueue rxq, txq;
 static volatile int rx_pending;
+static uint32_t virtio_net_hdr_size = VIRTIO_NET_HDR_SIZE_V1; /* set at probe time */
 
 /* Static RX/TX packet buffers -- no dynamic allocation */
 static uint8_t rx_buffers[NUM_RX_BUFFERS][BUFFER_SIZE]
@@ -165,10 +167,13 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
             uart_puts(" ver="); dbg_hex32(ver);
             uart_puts(" devid="); dbg_hex32(devid);
             uart_puts("\n");
-            if (magic == VIRTIO_MMIO_MAGIC && ver == 2 && devid == VIRTIO_DEV_NET && !found) {
+            if (magic == VIRTIO_MMIO_MAGIC && (ver == 1 || ver == 2) && devid == VIRTIO_DEV_NET && !found) {
                 base = scan;
                 driver_config.mmio_base = base;
                 driver_config.irq_num = (int)((scan - 0x10000000) / 0x1000);
+                virtio_net_hdr_size = (ver == 2) ? VIRTIO_NET_HDR_SIZE_V2 : VIRTIO_NET_HDR_SIZE_V1;
+                extern uint32_t virtio_mmio_version;
+                virtio_mmio_version = ver;
                 found = 1;
             }
         }
@@ -320,9 +325,9 @@ static void driver_packet_send(NX_IP_DRIVER *driver_req)
     default:                       uart_puts("[TX] other\n"); break;
     }
 
-    /* 1. Build virtio-net header (10 bytes, all zeros for simple TX) */
-    memset(tx_buffer, 0, VIRTIO_NET_HDR_SIZE);
-    offset = VIRTIO_NET_HDR_SIZE;
+    /* 1. Build virtio-net header (all zeros for simple TX) */
+    memset(tx_buffer, 0, virtio_net_hdr_size);
+    offset = virtio_net_hdr_size;
 
     /* 2. Build Ethernet header (14 bytes) */
     /* Destination MAC from driver request */
@@ -460,8 +465,8 @@ static void driver_deferred_processing(NX_IP_DRIVER *driver_req)
         virtqueue_free_desc(&rxq, (uint16_t)desc_idx);
 
         /* Skip virtio-net header */
-        uint8_t *frame = buf + VIRTIO_NET_HDR_SIZE;
-        uint32_t frame_len = len - VIRTIO_NET_HDR_SIZE;
+        uint8_t *frame = buf + virtio_net_hdr_size;
+        uint32_t frame_len = len - virtio_net_hdr_size;
 
         if (frame_len < NX_ETHERNET_SIZE) {
             /* Runt frame -- re-post buffer and continue */

@@ -1,8 +1,9 @@
 /**
  * Split virtqueue implementation
  *
- * All memory is statically allocated from arrays sized for two queues
- * (RX + TX), each with VIRTQUEUE_SIZE descriptors.
+ * Supports both MMIO v1 (legacy) and v2 (modern) layouts.
+ * For v1, the desc/avail/used arrays must be contiguous with the used ring
+ * aligned to a page boundary.  For v2, separate static arrays are fine.
  */
 
 #include "virtqueue.h"
@@ -12,23 +13,34 @@
 /* --------------------------------------------------------------------------
  * Static memory for two queues (RX=0, TX=1)
  *
- * Each queue needs:
- *   desc:  VIRTQUEUE_SIZE * 16 bytes = 1024 bytes
- *   avail: 6 + VIRTQUEUE_SIZE * 2    = 134 bytes
- *   used:  6 + VIRTQUEUE_SIZE * 8    = 518 bytes
+ * For MMIO v1 (legacy), QEMU derives avail/used addresses from the PFN:
+ *   desc_addr  = pfn * page_size
+ *   avail_addr = desc_addr + num * sizeof(vring_desc)
+ *   used_addr  = align_up(avail_addr + sizeof(vring_avail), page_size)
  *
- * Total: ~1676 bytes per queue, ~3352 bytes for both.
- * Alignment: desc 16-byte, avail 2-byte, used 4-byte (spec 2.7.x).
+ * For VIRTQUEUE_SIZE=64, page_size=4096:
+ *   desc:  64 * 16 = 1024 bytes  (offset 0)
+ *   avail: 6 + 64*2 = 134 bytes  (offset 1024)
+ *   padding: 4096 - 1024 - 134 = 2938 bytes
+ *   used:  6 + 64*8 = 518 bytes  (offset 4096)
+ *   Total per queue: 4096 + 518 = 4614 bytes, rounded up to 8192.
+ *
+ * We allocate a single contiguous buffer per queue, page-aligned, that
+ * works for both v1 and v2.
  * ----------------------------------------------------------------------- */
 
-#define NUM_QUEUES 2
+#define NUM_QUEUES   2
+#define PAGE_SIZE    4096
 
-static struct virtq_desc  queue_desc[NUM_QUEUES][VIRTQUEUE_SIZE]
-    __attribute__((aligned(16)));
-static struct virtq_avail queue_avail[NUM_QUEUES]
-    __attribute__((aligned(2)));
-static struct virtq_used  queue_used[NUM_QUEUES]
-    __attribute__((aligned(4)));
+/* Size of the contiguous vring region per queue.
+ * Must be a multiple of PAGE_SIZE so that each queue element in the
+ * vring_mem array is page-aligned (required for v1 PFN addressing).
+ * Two pages: desc+avail in page 0, used in page 1. */
+#define VRING_SIZE   (2 * PAGE_SIZE)
+
+/* Contiguous vring memory, page-aligned */
+static uint8_t vring_mem[NUM_QUEUES][VRING_SIZE]
+    __attribute__((aligned(PAGE_SIZE)));
 
 int virtqueue_init(struct virtqueue *vq, uint32_t queue_idx,
                    uint64_t mmio_base)
@@ -37,14 +49,16 @@ int virtqueue_init(struct virtqueue *vq, uint32_t queue_idx,
         return -1;
     }
 
-    /* Zero out all ring memory */
-    memset(&queue_desc[queue_idx], 0, sizeof(queue_desc[queue_idx]));
-    memset(&queue_avail[queue_idx], 0, sizeof(queue_avail[queue_idx]));
-    memset(&queue_used[queue_idx], 0, sizeof(queue_used[queue_idx]));
+    uint8_t *base = vring_mem[queue_idx];
+    memset(base, 0, VRING_SIZE);
 
-    vq->desc  = queue_desc[queue_idx];
-    vq->avail = &queue_avail[queue_idx];
-    vq->used  = &queue_used[queue_idx];
+    /* Lay out arrays at standard vring offsets */
+    vq->desc  = (struct virtq_desc *)base;
+    /* avail ring starts right after the descriptor table */
+    vq->avail = (struct virtq_avail *)(base + VIRTQUEUE_SIZE * sizeof(struct virtq_desc));
+    /* used ring starts at next page boundary */
+    vq->used  = (struct virtq_used *)(base + PAGE_SIZE);
+
     vq->num   = VIRTQUEUE_SIZE;
     vq->free_head = 0;
     vq->num_free  = VIRTQUEUE_SIZE;

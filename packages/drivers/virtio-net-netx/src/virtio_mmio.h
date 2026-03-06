@@ -25,9 +25,15 @@ extern "C" {
 #define VIRTIO_MMIO_DEVICE_FEATURES_SEL 0x014
 #define VIRTIO_MMIO_DRIVER_FEATURES     0x020
 #define VIRTIO_MMIO_DRIVER_FEATURES_SEL 0x024
+/* MMIO v1 only: guest page size (must be set before QUEUE_PFN) */
+#define VIRTIO_MMIO_GUEST_PAGE_SIZE     0x028
 #define VIRTIO_MMIO_QUEUE_SEL           0x030
 #define VIRTIO_MMIO_QUEUE_NUM_MAX       0x034
 #define VIRTIO_MMIO_QUEUE_NUM           0x038
+/* MMIO v1 (legacy) registers */
+#define VIRTIO_MMIO_QUEUE_ALIGN         0x03c
+#define VIRTIO_MMIO_QUEUE_PFN           0x040
+/* MMIO v2 (modern) registers */
 #define VIRTIO_MMIO_QUEUE_READY         0x044
 #define VIRTIO_MMIO_QUEUE_NOTIFY        0x050
 #define VIRTIO_MMIO_INTERRUPT_STATUS    0x060

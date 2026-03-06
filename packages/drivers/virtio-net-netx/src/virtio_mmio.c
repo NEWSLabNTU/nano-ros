@@ -1,11 +1,17 @@
 /**
- * VirtIO MMIO transport implementation (modern, version 2 only)
+ * VirtIO MMIO transport implementation
  *
- * Implements probe, feature negotiation, status transitions, and
- * virtqueue address configuration for VirtIO MMIO devices.
+ * Supports both legacy (version 1) and modern (version 2) MMIO transport.
+ * QEMU 6.x uses version 1, QEMU 7+ may use version 2.
  */
 
 #include "virtio_mmio.h"
+
+/* Global MMIO version detected at probe time (default v1 for safety) */
+uint32_t virtio_mmio_version = 1;
+
+/* MMIO v1 page size for PFN calculation */
+#define VIRTIO_MMIO_PAGE_SIZE 4096
 
 int virtio_mmio_probe(uint64_t base)
 {
@@ -17,7 +23,7 @@ int virtio_mmio_probe(uint64_t base)
     }
 
     version = virtio_mmio_read32(base, VIRTIO_MMIO_VERSION);
-    if (version != 2) {
+    if (version != 1 && version != 2) {
         return -1;
     }
 
@@ -26,6 +32,7 @@ int virtio_mmio_probe(uint64_t base)
         return -1;
     }
 
+    virtio_mmio_version = version;
     return 0;
 }
 
@@ -45,13 +52,15 @@ uint32_t virtio_mmio_negotiate_features(uint64_t base,
     virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES_SEL, 0);
     virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES, negotiated);
 
-    /* Page 1 (bits 32-63): negotiate VIRTIO_F_VERSION_1.
-     * Required by VirtIO 1.x spec for modern (non-legacy) devices. */
-    virtio_mmio_write32(base, VIRTIO_MMIO_DEVICE_FEATURES_SEL, 1);
-    uint32_t dev_feat1 = virtio_mmio_read32(base, VIRTIO_MMIO_DEVICE_FEATURES);
-    uint32_t drv_feat1 = dev_feat1 & VIRTIO_F_VERSION_1;
-    virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES_SEL, 1);
-    virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES, drv_feat1);
+    if (virtio_mmio_version == 2) {
+        /* Page 1 (bits 32-63): negotiate VIRTIO_F_VERSION_1.
+         * Required by VirtIO 1.x spec for modern (non-legacy) devices. */
+        virtio_mmio_write32(base, VIRTIO_MMIO_DEVICE_FEATURES_SEL, 1);
+        uint32_t dev_feat1 = virtio_mmio_read32(base, VIRTIO_MMIO_DEVICE_FEATURES);
+        uint32_t drv_feat1 = dev_feat1 & VIRTIO_F_VERSION_1;
+        virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES_SEL, 1);
+        virtio_mmio_write32(base, VIRTIO_MMIO_DRIVER_FEATURES, drv_feat1);
+    }
 
     /* Set FEATURES_OK */
     uint32_t status = virtio_mmio_read32(base, VIRTIO_MMIO_STATUS);
@@ -99,26 +108,47 @@ int virtio_mmio_setup_queue(uint64_t base, uint32_t queue_idx, uint32_t num,
     /* Set queue size */
     virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_NUM, num);
 
-    /* Set descriptor table address */
-    virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_DESC_LOW,
-                        (uint32_t)(desc_addr & 0xFFFFFFFF));
-    virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_DESC_HIGH,
-                        (uint32_t)(desc_addr >> 32));
+    if (virtio_mmio_version == 1) {
+        /* MMIO v1 (legacy): set guest page size, alignment, then PFN.
+         * The device computes avail/used addresses from the PFN base.
+         * desc_addr must be page-aligned. */
+        extern void uart_puts(const char *s);
+        extern int snprintf(char *, unsigned long, const char *, ...);
+        {
+            char buf[128];
+            uint32_t pfn = (uint32_t)(desc_addr / VIRTIO_MMIO_PAGE_SIZE);
+            snprintf(buf, sizeof(buf),
+                     "[vq] q%u: desc=0x%lx avail=0x%lx used=0x%lx pfn=%u\n",
+                     queue_idx, (unsigned long)desc_addr,
+                     (unsigned long)avail_addr, (unsigned long)used_addr, pfn);
+            uart_puts(buf);
+        }
+        virtio_mmio_write32(base, VIRTIO_MMIO_GUEST_PAGE_SIZE,
+                            VIRTIO_MMIO_PAGE_SIZE);
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_ALIGN,
+                            VIRTIO_MMIO_PAGE_SIZE);
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_PFN,
+                            (uint32_t)(desc_addr / VIRTIO_MMIO_PAGE_SIZE));
+    } else {
+        /* MMIO v2 (modern): set each address separately */
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_DESC_LOW,
+                            (uint32_t)(desc_addr & 0xFFFFFFFF));
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_DESC_HIGH,
+                            (uint32_t)(desc_addr >> 32));
 
-    /* Set available ring address */
-    virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_AVAIL_LOW,
-                        (uint32_t)(avail_addr & 0xFFFFFFFF));
-    virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_AVAIL_HIGH,
-                        (uint32_t)(avail_addr >> 32));
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_AVAIL_LOW,
+                            (uint32_t)(avail_addr & 0xFFFFFFFF));
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_AVAIL_HIGH,
+                            (uint32_t)(avail_addr >> 32));
 
-    /* Set used ring address */
-    virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_USED_LOW,
-                        (uint32_t)(used_addr & 0xFFFFFFFF));
-    virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_USED_HIGH,
-                        (uint32_t)(used_addr >> 32));
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_USED_LOW,
+                            (uint32_t)(used_addr & 0xFFFFFFFF));
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_USED_HIGH,
+                            (uint32_t)(used_addr >> 32));
 
-    /* Mark queue ready */
-    virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_READY, 1);
+        /* Mark queue ready (v2 only) */
+        virtio_mmio_write32(base, VIRTIO_MMIO_QUEUE_READY, 1);
+    }
 
     return 0;
 }
