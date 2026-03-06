@@ -445,6 +445,75 @@ fn test_tls_talker_listener_communication(
 }
 
 // =============================================================================
+// RTIC Pattern Tests (zero callbacks, spin_once(0), try_recv())
+// =============================================================================
+
+/// Test RTIC-pattern talker/listener interop via zenoh.
+///
+/// Validates the RTIC integration pattern works for end-to-end communication:
+/// - `Executor<_, 0, 0>` (zero callback arena)
+/// - `spin_once(0)` (non-blocking I/O drive)
+/// - `publisher.publish()` (direct, outside executor)
+/// - `subscription.try_recv()` (manual polling)
+#[rstest]
+fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_zenohd() {
+        return;
+    }
+
+    let rtic_talker = nros_tests::fixtures::build_native_rtic_talker()
+        .expect("Failed to build native rtic-talker");
+    let rtic_listener = nros_tests::fixtures::build_native_rtic_listener()
+        .expect("Failed to build native rtic-listener");
+
+    let locator = zenohd_unique.locator();
+
+    // Start listener first
+    let mut listener_cmd = Command::new(rtic_listener);
+    listener_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
+    let mut listener = ManagedProcess::spawn_command(listener_cmd, "rtic-listener")
+        .expect("Failed to start rtic-listener");
+
+    // Wait for listener readiness
+    let _ = listener.wait_for_output_pattern("Waiting for", Duration::from_secs(5));
+
+    // Start talker
+    let mut talker_cmd = Command::new(rtic_talker);
+    talker_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
+    let mut talker = ManagedProcess::spawn_command(talker_cmd, "rtic-talker")
+        .expect("Failed to start rtic-talker");
+
+    // Wait for talker to finish publishing
+    let _ = talker.wait_for_output_pattern("Done publishing", Duration::from_secs(30));
+
+    // Wait for listener to receive messages
+    let listener_output = listener
+        .wait_for_output_pattern("Received:", Duration::from_secs(10))
+        .unwrap_or_default();
+
+    talker.kill();
+
+    let received_count = count_pattern(&listener_output, "Received:");
+    eprintln!(
+        "RTIC pattern: listener received {} messages",
+        received_count
+    );
+
+    assert!(
+        received_count > 0,
+        "RTIC-pattern listener should receive at least 1 message"
+    );
+    eprintln!("[PASS] RTIC pattern communication works");
+}
+
+// =============================================================================
 // Detection Tests
 // =============================================================================
 

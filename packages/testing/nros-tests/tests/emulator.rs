@@ -307,6 +307,73 @@ fn test_qemu_bsp_listener_builds() {
 }
 
 // =============================================================================
+// RTIC Build Tests (STM32F4, cross-compiled only — no QEMU for this board)
+// =============================================================================
+
+/// Check if thumbv7em-none-eabihf target is installed (STM32F4/Cortex-M4F)
+fn require_arm_m4_toolchain() {
+    if !std::process::Command::new("rustup")
+        .args(["target", "list", "--installed"])
+        .output()
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("thumbv7em-none-eabihf"))
+        .unwrap_or(false)
+    {
+        eprintln!("Skipping test: thumbv7em-none-eabihf target not installed");
+        return;
+    }
+}
+
+/// Test that stm32f4-rtic-talker builds successfully.
+/// Unlike QEMU BSP tests, STM32F4 examples build zenoh-pico from source
+/// during cargo build (via zpico-sys build script) — no pre-built library needed.
+#[test]
+fn test_rtic_talker_builds() {
+    require_arm_m4_toolchain();
+
+    let result = nros_tests::fixtures::build_rtic_talker();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!(
+                "SUCCESS: stm32f4-rtic-talker builds at {}",
+                binary.display()
+            );
+        }
+        Err(e) => {
+            panic!("stm32f4-rtic-talker build failed: {:?}", e);
+        }
+    }
+}
+
+/// Test that stm32f4-rtic-listener builds successfully.
+#[test]
+fn test_rtic_listener_builds() {
+    require_arm_m4_toolchain();
+
+    let result = nros_tests::fixtures::build_rtic_listener();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!(
+                "SUCCESS: stm32f4-rtic-listener builds at {}",
+                binary.display()
+            );
+        }
+        Err(e) => {
+            panic!("stm32f4-rtic-listener build failed: {:?}", e);
+        }
+    }
+}
+
+// =============================================================================
 // BSP Network Tests (Require Docker or TAP)
 // =============================================================================
 //

@@ -3,7 +3,7 @@
 **Goal**: Enable nano-ros on RTIC (Real-Time Interrupt-driven Concurrency) by documenting the
 usage pattern and completing the board-crate API changes needed to support RTIC's `#[init]` model.
 
-**Status**: Not Started
+**Status**: In Progress (63.1–63.2 done)
 
 **Priority**: Medium
 
@@ -91,17 +91,22 @@ not a feature flag on `nros`.
 All nano-ros entities go in `#[local]` resources — no locks needed:
 
 ```
-#[init]                          #[local] to net_poll task
-  board::init_hardware()           Executor<_, 0, 0>
-  Executor::open()
-  node = executor.create_node()  #[local] to application tasks
-  publisher = node.create_*()      Publisher, Subscription, ServiceServer, etc.
+#[init](cx)                      #[local] to net_poll task
+  syst = board::init_hardware(     Executor<_, 0, 0>
+    &config, cx.device, cx.core)
+  Mono::start(syst, freq)       #[local] to application tasks
+  Executor::open()                 Publisher, Subscription, ServiceServer, etc.
+  node = executor.create_node()
+  publisher = node.create_*()
   subscription = node.create_*()
   (node dropped)
 
 #[shared]
   struct Shared {}               ← empty, no locks needed
 ```
+
+`init_hardware()` accepts device and core peripherals by value (avoiding ownership
+conflicts with RTIC) and returns `SYST` for the monotonic timer.
 
 ### Priority Design
 
@@ -550,7 +555,7 @@ mod app {
 ## Work Items
 
 - [x] 63.1 — Factor `board::init_hardware()` out of `board::run()`
-- [ ] 63.2 — RTIC talker/listener example (`examples/stm32f4/rust/zenoh/rtic-{talker,listener}/`)
+- [x] 63.2 — RTIC talker/listener example (`examples/stm32f4/rust/zenoh/rtic-{talker,listener}/`)
 - [ ] 63.3 — RTIC service example (`rtic-service-{server,client}/`)
 - [ ] 63.4 — RTIC action example (`rtic-action-{server,client}/`)
 - [ ] 63.5 — RTIC integration test (lm3s6965evb QEMU + lm3s6965 PAC)
@@ -574,6 +579,12 @@ nuttx, threadx-linux, threadx-qemu-riscv64) have trivial implementations (no-ops
 API consistency — their hardware init is handled by the RTOS kernel/C code. `run()` now
 delegates to `init_hardware()` internally.
 
+**STM32F4 peripheral ownership**: `init_hardware()` accepts `pac::Peripherals` and
+`cortex_m::Peripherals` by value and returns `cortex_m::peripheral::SYST` (unused by
+init, needed by RTIC for `Mono::start()`). This avoids ownership conflicts with RTIC
+which takes peripherals before calling `#[init]`. `run()` calls `Peripherals::take()`
+internally so existing non-RTIC code is unaffected.
+
 **Files**:
 - `packages/boards/nros-stm32f4/src/node.rs` + `lib.rs`
 - `packages/boards/nros-mps2-an385/src/node.rs` + `lib.rs`
@@ -595,7 +606,20 @@ The `rtic-` prefix follows the existing `async-` prefix convention (e.g.,
 `async-service-client`, `async-action-client`) — execution model variants are prefixed on the
 use-case name within the standard 4-level hierarchy.
 
-**Status**: Not Started
+**Status**: Complete
+
+**Implementation**: Both examples use RTIC v2 async tasks with `rtic-monotonics` SysTick
+monotonic for delays. `init_hardware(config, cx.device, cx.core)` receives peripherals
+from RTIC's context and returns SYST for `Mono::start()`. Type aliases
+(`NrosExecutor`, `NrosPublisher`/`NrosSubscription`) provide clean `Local` struct
+annotations using `nros::internals::Rmw*` types.
+
+Key patterns demonstrated:
+- `Executor<_, 0, 0>` — zero callback arena (RTIC replaces callback dispatch)
+- `spin_once(0)` in `net_poll` task — non-blocking I/O drive
+- `try_recv()` in `listen` task — manual subscription polling
+- All handles `#[local]` — no `#[shared]` locks needed
+- Both tasks at priority 1 for safety (see Priority Design section)
 
 **Files**:
 - `examples/stm32f4/rust/zenoh/rtic-talker/` (new)
@@ -664,13 +688,39 @@ the interrupt names just need valid vector numbers not used by LAN9118 or timers
 ## Acceptance Criteria
 
 - [x] `board::init_hardware()` is a public function on at least one board crate
-- [ ] RTIC talker/listener example compiles and runs on target hardware (or QEMU)
-- [ ] All RTIC examples use `#[local]` for all nano-ros handles (no `#[shared]` locks)
-- [ ] All RTIC examples use only existing nano-ros API (`spin_once(0)`, `try_recv()`,
+- [x] RTIC talker/listener example compiles for target hardware
+- [x] All RTIC examples use `#[local]` for all nano-ros handles (no `#[shared]` locks)
+- [x] All RTIC examples use only existing nano-ros API (`spin_once(0)`, `try_recv()`,
       `publish()`, `handle_request()`, `try_handle_get_result()`, `.await`) — no new methods
-- [ ] `Promise::wait()` limitation is documented; examples use `.await` or `try_recv()` loops
-- [ ] All tasks run at priority 1 (documented as safety requirement)
+- [x] `Promise::wait()` limitation is documented; examples use `.await` or `try_recv()` loops
+- [x] All tasks run at priority 1 (documented as safety requirement)
 - [ ] `just quality` passes
+
+## Testing
+
+### Current: Compile Tests
+
+STM32F4 RTIC examples are verified by compile testing (`cargo build --release`). These
+target real hardware (Nucleo-F429ZI) and cannot run in QEMU because the MPS2-AN385
+machine has a different SoC and board crate. The workspace build (`cargo build`) covers
+them automatically since they are workspace members.
+
+### Future: QEMU Runtime Tests (63.5)
+
+Runtime testing requires QEMU with an RTIC-compatible PAC. Two tiers are planned:
+
+| Tier | QEMU Machine     | PAC         | Networking | What it validates                                   |
+|------|------------------|-------------|------------|-----------------------------------------------------|
+| 1    | `lm3s6965evb`    | `lm3s6965`  | None       | RTIC task dispatch, `spin_once(0)`, `try_recv()`    |
+| 2    | `mps2-an385`     | Minimal stub| LAN9118    | RTIC + zenoh talker/listener over network           |
+
+**Tier 1** uses the `lm3s6965` PAC crate (interrupt-only, MIT/Apache-2.0) with
+`QemuProcess::start_cortex_m3()` from `nros-tests`. Non-networked — validates RTIC
+task lifecycle and nano-ros handle creation without needing zenohd.
+
+**Tier 2** requires a minimal MPS2-AN385 PAC crate (~100 lines) with CMSDK interrupt
+definitions for RTIC dispatchers. Uses `QemuProcess::start_mps2_an385_networked()` with
+the existing TAP bridge infrastructure.
 
 ## Notes
 

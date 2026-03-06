@@ -47,6 +47,8 @@ exclude = [
     "examples/native/rust/zenoh/async-action-client",
     "examples/native/rust/zenoh/fairness-bench",
     "examples/native/rust/zenoh/stress-test",
+    "examples/native/rust/zenoh/rtic-talker",
+    "examples/native/rust/zenoh/rtic-listener",
     # QEMU ARM examples (bare-metal Cortex-M3)
     "examples/qemu-arm-baremetal/rust/zenoh/talker",
     "examples/qemu-arm-baremetal/rust/zenoh/listener",
@@ -71,7 +73,8 @@ exclude = [
     # STM32F4 examples
     "examples/stm32f4/rust/zenoh/talker",
     "examples/stm32f4/rust/zenoh/polling",
-    "examples/stm32f4/rust/zenoh/rtic",
+    "examples/stm32f4/rust/zenoh/rtic-talker",
+    "examples/stm32f4/rust/zenoh/rtic-listener",
     "examples/stm32f4/rust/core/embassy",
     "examples/stm32f4/rust/standalone/smoltcp",
     # Zephyr examples

@@ -746,6 +746,78 @@ pub fn qemu_bsp_listener_binary() -> PathBuf {
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
+// RTIC Example Builders (STM32F4, cross-compiled)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cached path to the stm32f4-rtic-talker binary
+static RTIC_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the stm32f4-rtic-listener binary
+static RTIC_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native rtic-talker binary
+static NATIVE_RTIC_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native rtic-listener binary
+static NATIVE_RTIC_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build stm32f4-rtic-talker (cached)
+pub fn build_rtic_talker() -> TestResult<&'static Path> {
+    RTIC_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "stm32f4/rust/zenoh/rtic-talker",
+                "stm32f4-rtic-talker",
+                None,
+                Some("thumbv7em-none-eabihf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build stm32f4-rtic-listener (cached)
+pub fn build_rtic_listener() -> TestResult<&'static Path> {
+    RTIC_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "stm32f4/rust/zenoh/rtic-listener",
+                "stm32f4-rtic-listener",
+                None,
+                Some("thumbv7em-none-eabihf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native rtic-talker (cached)
+pub fn build_native_rtic_talker() -> TestResult<&'static Path> {
+    NATIVE_RTIC_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/rtic-talker",
+                "rtic-talker",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native rtic-listener (cached)
+pub fn build_native_rtic_listener() -> TestResult<&'static Path> {
+    NATIVE_RTIC_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/rtic-listener",
+                "rtic-listener",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
 // XRCE-DDS Example Builders
 // ═══════════════════════════════════════════════════════════════════════════
 
