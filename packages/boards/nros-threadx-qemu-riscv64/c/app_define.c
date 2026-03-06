@@ -7,6 +7,7 @@
  * back into Rust.
  */
 
+#include <stdlib.h>
 #include <string.h>
 
 #include "tx_api.h"
@@ -157,15 +158,19 @@ void tx_application_define(void *first_unused_memory)
     /* Export byte pool for zpico-sys ThreadX memory allocator */
     zpico_threadx_byte_pool = &byte_pool;
 
-    /* Seed a simple PRNG with IP-based value */
+    /* Seed the C stdlib RNG with a value unique to this node.
+     * Without this, rand() starts from seed 1 on every boot, causing
+     * all QEMU instances to generate identical zenoh-pico session IDs
+     * (16 bytes from z_random_fill → rand()). zenohd rejects duplicate
+     * session IDs, so the second QEMU's z_open() always fails.
+     */
     {
         uint32_t seed = ((uint32_t)cfg_ip[0] << 24) | ((uint32_t)cfg_ip[1] << 16)
                       | ((uint32_t)cfg_ip[2] << 8)  | (uint32_t)cfg_ip[3];
         seed = seed * 2654435761u;  /* Knuth multiplicative hash */
         seed ^= ((uint32_t)cfg_mac[4] << 8) | (uint32_t)cfg_mac[5];
         if (seed == 0) seed = 1;
-        /* Store as global for rand() equivalent — board has no stdlib */
-        (void)seed;
+        srand(seed);
     }
 
     /* Initialize the NetX system */
