@@ -573,6 +573,71 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     eprintln!("[PASS] RTIC pattern service works");
 }
 
+/// Test RTIC-pattern action server/client interop via zenoh.
+///
+/// Validates the RTIC action pattern works for end-to-end communication:
+/// - `Executor<_, 0, 0>` (zero callback arena)
+/// - `spin_once(0)` (non-blocking I/O drive)
+/// - `server.try_accept_goal()`, `publish_feedback()`, `complete_goal()`,
+///   `try_handle_get_result()` (manual polling on server)
+/// - `client.send_goal()` + `promise.try_recv()`, `try_recv_feedback()` (on client)
+#[rstest]
+fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
+    use nros_tests::count_pattern;
+    use std::process::Command;
+
+    if !require_zenohd() {
+        return;
+    }
+
+    let rtic_server = nros_tests::fixtures::build_native_rtic_action_server()
+        .expect("Failed to build native rtic-action-server");
+    let rtic_client = nros_tests::fixtures::build_native_rtic_action_client()
+        .expect("Failed to build native rtic-action-client");
+
+    let locator = zenohd_unique.locator();
+
+    // Start server first
+    let mut server_cmd = Command::new(rtic_server);
+    server_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
+    let mut server = ManagedProcess::spawn_command(server_cmd, "rtic-action-server")
+        .expect("Failed to start rtic-action-server");
+
+    // Wait for server readiness
+    let _ = server.wait_for_output_pattern("Waiting for goals", Duration::from_secs(5));
+
+    // Start client
+    let mut client_cmd = Command::new(rtic_client);
+    client_cmd
+        .env("ZENOH_LOCATOR", &locator)
+        .env("RUST_LOG", "info");
+    let mut client = ManagedProcess::spawn_command(client_cmd, "rtic-action-client")
+        .expect("Failed to start rtic-action-client");
+
+    // Wait for client to finish
+    let client_output = client
+        .wait_for_output_pattern("goal accepted", Duration::from_secs(30))
+        .unwrap_or_default();
+
+    server.kill();
+
+    let feedback_count = count_pattern(&client_output, "Feedback #");
+    let accepted = count_pattern(&client_output, "Goal accepted");
+    eprintln!(
+        "RTIC action: accepted={}, feedback={}",
+        accepted, feedback_count
+    );
+    eprintln!("Client output:\n{}", client_output);
+
+    assert!(
+        accepted > 0,
+        "RTIC-pattern action client should get goal accepted"
+    );
+    eprintln!("[PASS] RTIC pattern action works");
+}
+
 // =============================================================================
 // Detection Tests
 // =============================================================================

@@ -3,7 +3,7 @@
 **Goal**: Enable nano-ros on RTIC (Real-Time Interrupt-driven Concurrency) by documenting the
 usage pattern and completing the board-crate API changes needed to support RTIC's `#[init]` model.
 
-**Status**: In Progress (63.1–63.3 done)
+**Status**: In Progress (63.1–63.4 done)
 
 **Priority**: Medium
 
@@ -557,7 +557,7 @@ mod app {
 - [x] 63.1 — Factor `board::init_hardware()` out of `board::run()`
 - [x] 63.2 — RTIC talker/listener example (`examples/stm32f4/rust/zenoh/rtic-{talker,listener}/`)
 - [x] 63.3 — RTIC service example (`rtic-service-{server,client}/`)
-- [ ] 63.4 — RTIC action example (`rtic-action-{server,client}/`)
+- [x] 63.4 — RTIC action example (`rtic-action-{server,client}/`)
 - [ ] 63.5 — RTIC integration test (lm3s6965evb QEMU + lm3s6965 PAC)
 
 ### 63.1 — Factor `board::init_hardware()` out of `board::run()`
@@ -650,15 +650,27 @@ calls succeed with correct results via zenohd.
 
 ### 63.4 — RTIC Action Example
 
-Action server and client examples. Server demonstrates explicit `try_handle_get_result()`
-calls (required in manual-poll mode). Client demonstrates `promise.await` for goal
-acceptance and result, `stream.recv().await` for feedback.
+Action server and client examples. Server demonstrates explicit `try_accept_goal()`,
+`publish_feedback()`, `complete_goal()`, and `try_handle_get_result()` calls (required
+in manual-poll mode — action server is NOT arena-registered). Client demonstrates
+`send_goal()` + `promise.try_recv()` for acceptance and `try_recv_feedback()` for
+feedback polling (RTIC-compatible patterns since `Promise::wait()` and
+`FeedbackStream::wait_next()` require `&mut Executor`).
 
-**Status**: Not Started
+**Status**: Complete
+
+**Implementation**: Both STM32F4 cross-compiled examples and native x86 test equivalents.
+The action server computes Fibonacci sequences, publishing feedback after each step and
+calling `try_handle_get_result()` explicitly after `complete_goal()`. The action client
+uses `try_recv()` loops for goal acceptance and `try_recv_feedback()` filtered by
+`goal_id.uuid` for feedback. Native integration test (`test_rtic_pattern_action` in
+`nano2nano.rs`) validates goal acceptance and 6 feedback messages via zenohd.
 
 **Files**:
 - `examples/stm32f4/rust/zenoh/rtic-action-server/` (new)
 - `examples/stm32f4/rust/zenoh/rtic-action-client/` (new)
+- `examples/native/rust/zenoh/rtic-action-server/` (new, test equivalent)
+- `examples/native/rust/zenoh/rtic-action-client/` (new, test equivalent)
 
 ### 63.5 — RTIC Integration Test
 

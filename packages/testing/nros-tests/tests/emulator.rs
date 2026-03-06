@@ -421,6 +421,54 @@ fn test_rtic_service_client_builds() {
     }
 }
 
+/// Test that stm32f4-rtic-action-server builds successfully.
+#[test]
+fn test_rtic_action_server_builds() {
+    require_arm_m4_toolchain();
+
+    let result = nros_tests::fixtures::build_rtic_action_server();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!(
+                "SUCCESS: stm32f4-rtic-action-server builds at {}",
+                binary.display()
+            );
+        }
+        Err(e) => {
+            panic!("stm32f4-rtic-action-server build failed: {:?}", e);
+        }
+    }
+}
+
+/// Test that stm32f4-rtic-action-client builds successfully.
+#[test]
+fn test_rtic_action_client_builds() {
+    require_arm_m4_toolchain();
+
+    let result = nros_tests::fixtures::build_rtic_action_client();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!(
+                "SUCCESS: stm32f4-rtic-action-client builds at {}",
+                binary.display()
+            );
+        }
+        Err(e) => {
+            panic!("stm32f4-rtic-action-client build failed: {:?}", e);
+        }
+    }
+}
+
 // =============================================================================
 // BSP Network Tests (Require Docker or TAP)
 // =============================================================================

@@ -1,0 +1,50 @@
+[package]
+name = "stm32f4-rtic-action-client"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "RTIC action client example for nros on STM32F4"
+
+[[bin]]
+name = "stm32f4-rtic-action-client"
+path = "src/main.rs"
+
+[dependencies]
+# Platform crate handles all hardware setup
+nros-stm32f4 = { path = "../../../../../packages/boards/nros-stm32f4" }
+
+# nros Executor API
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "ros-humble"] }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+example_interfaces = { version = "*", default-features = false }
+
+# RTIC v2
+rtic = { version = "2.1", features = ["thumbv7-backend"] }
+rtic-monotonics = { version = "2.0", features = ["cortex-m-systick"] }
+
+# STM32F4 PAC (for RTIC device attribute and dispatchers)
+stm32f4xx-hal = { version = "0.21", features = ["stm32f429"] }
+
+# Cortex-M runtime
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+
+# Panic handler + logging
+panic-probe = { version = "0.3", features = ["print-defmt"] }
+defmt = "0.3"
+defmt-rtt = "0.4"
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = 3
+overflow-checks = false
+
+[profile.dev]
+codegen-units = 1
+debug = 2
+incremental = false
+opt-level = 1

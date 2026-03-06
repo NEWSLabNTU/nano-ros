@@ -773,6 +773,18 @@ static RTIC_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the stm32f4-rtic-service-client binary
 static RTIC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the native rtic-action-server binary
+static NATIVE_RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native rtic-action-client binary
+static NATIVE_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the stm32f4-rtic-action-server binary
+static RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the stm32f4-rtic-action-client binary
+static RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Build stm32f4-rtic-talker (cached)
 pub fn build_rtic_talker() -> TestResult<&'static Path> {
     RTIC_TALKER_BINARY
@@ -873,6 +885,62 @@ pub fn build_rtic_service_client() -> TestResult<&'static Path> {
             build_example(
                 "stm32f4/rust/zenoh/rtic-service-client",
                 "stm32f4-rtic-service-client",
+                None,
+                Some("thumbv7em-none-eabihf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native rtic-action-server (cached)
+pub fn build_native_rtic_action_server() -> TestResult<&'static Path> {
+    NATIVE_RTIC_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/rtic-action-server",
+                "rtic-action-server",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build native rtic-action-client (cached)
+pub fn build_native_rtic_action_client() -> TestResult<&'static Path> {
+    NATIVE_RTIC_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "native/rust/zenoh/rtic-action-client",
+                "rtic-action-client",
+                None,
+                None,
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build stm32f4-rtic-action-server (cached)
+pub fn build_rtic_action_server() -> TestResult<&'static Path> {
+    RTIC_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "stm32f4/rust/zenoh/rtic-action-server",
+                "stm32f4-rtic-action-server",
+                None,
+                Some("thumbv7em-none-eabihf"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build stm32f4-rtic-action-client (cached)
+pub fn build_rtic_action_client() -> TestResult<&'static Path> {
+    RTIC_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "stm32f4/rust/zenoh/rtic-action-client",
+                "stm32f4-rtic-action-client",
                 None,
                 Some("thumbv7em-none-eabihf"),
             )
