@@ -1,5 +1,5 @@
 [package]
-name = "native-rs-async-action"
+name = "native-rs-async-action-client"
 version = "0.1.0"
 edition = "2024"
 description = "Example async action client using nros with tokio background spin and StreamExt"

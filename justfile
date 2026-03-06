@@ -241,7 +241,7 @@ build-examples:
         toolchain=""
         if [ "$platform" != "native" ]; then flags="--release"; fi
         # ESP32 WiFi examples need SSID/PASSWORD env vars and nightly toolchain
-        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32" ]; then
+        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
             toolchain="+nightly"
         fi
@@ -277,7 +277,7 @@ check-examples:
         env_prefix=""
         if [ "$platform" != "native" ]; then flags="--release"; fi
         # ESP32 WiFi examples need SSID/PASSWORD env vars and nightly toolchain
-        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32" ]; then
+        if [ "$platform" = "esp32" ] || [ "$platform" = "qemu-esp32-baremetal" ]; then
             env_prefix="SSID=${SSID:-test} PASSWORD=${PASSWORD:-test}"
         fi
         echo "  check $dir"
@@ -334,8 +334,8 @@ build-zephyr:
     west build -b native_sim/native/64 -d build-action-server -p auto nros/examples/zephyr/rust/zenoh/action-server
     echo "  Building zephyr/rust/zenoh/action-client -> build-action-client/"
     west build -b native_sim/native/64 -d build-action-client -p auto nros/examples/zephyr/rust/zenoh/action-client
-    echo "  Building zephyr/rust/zenoh/async-service -> build-async-service/"
-    west build -b native_sim/native/64 -d build-async-service -p auto nros/examples/zephyr/rust/zenoh/async-service
+    echo "  Building zephyr/rust/zenoh/async-service-client -> build-async-service-client/"
+    west build -b native_sim/native/64 -d build-async-service-client -p auto nros/examples/zephyr/rust/zenoh/async-service-client
     echo "Zephyr Rust examples built successfully!"
 
 # Build Zephyr C examples
@@ -386,7 +386,7 @@ build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-xrce
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -396,12 +396,12 @@ rebuild-zephyr: clean-zephyr build-zephyr
 # Examples - QEMU (Cortex-M3)
 # =============================================================================
 
-# Build QEMU ARM examples (auto-discovered from examples/qemu-arm/)
+# Build QEMU ARM examples (auto-discovered from examples/qemu-arm-baremetal/)
 build-examples-qemu:
     #!/usr/bin/env bash
     set -e
     echo "Building QEMU ARM examples..."
-    for toml in $(find examples/qemu-arm -mindepth 3 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
+    for toml in $(find examples/qemu-arm-baremetal -mindepth 3 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' | sort); do
         dir="$(dirname "$toml")"
         echo "  build $dir"
         (cd "$dir" && cargo build --release)
@@ -459,14 +459,14 @@ build-examples-esp32-qemu:
     echo "Building ESP32 QEMU examples..."
     for ex in talker listener; do
         echo "  Building qemu-esp32/rust/zenoh/$ex..."
-        (cd examples/qemu-esp32/rust/zenoh/$ex && cargo +nightly build --release)
+        (cd examples/qemu-esp32-baremetal/rust/zenoh/$ex && cargo +nightly build --release)
     done
     echo ""
     echo "Creating flash images..."
     mkdir -p build/esp32-qemu
     for ex in talker listener; do
         bin_name="esp32-qemu-$ex"
-        elf="examples/qemu-esp32/rust/zenoh/$ex/target/riscv32imc-unknown-none-elf/release/$bin_name"
+        elf="examples/qemu-esp32-baremetal/rust/zenoh/$ex/target/riscv32imc-unknown-none-elf/release/$bin_name"
         out="build/esp32-qemu/$bin_name.bin"
         if command -v espflash &>/dev/null; then
             espflash save-image --chip esp32c3 --flash-size 4mb --merge "$elf" "$out"
@@ -678,7 +678,7 @@ test-qemu-basic verbose="": build-examples-qemu _init-test-logs
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu-arm/rust/core/cdr-test/target/thumbv7m-none-eabi/release/qemu-rs-test
+            -kernel examples/qemu-arm-baremetal/rust/core/cdr-test/target/thumbv7m-none-eabi/release/qemu-rs-test
 
 # Run WCET benchmark on QEMU (DWT cycle counter)
 test-qemu-wcet verbose="": build-examples-qemu _init-test-logs
@@ -686,7 +686,7 @@ test-qemu-wcet verbose="": build-examples-qemu _init-test-logs
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu-arm/rust/core/wcet-bench/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
+            -kernel examples/qemu-arm-baremetal/rust/core/wcet-bench/target/thumbv7m-none-eabi/release/qemu-rs-wcet-bench
 
 # Run LAN9118 Ethernet driver test (mps2-an385)
 test-qemu-lan9118 verbose="": build-examples-qemu _init-test-logs
@@ -694,7 +694,7 @@ test-qemu-lan9118 verbose="": build-examples-qemu _init-test-logs
         --qemu {{ if verbose != "" { "--verbose" } else { "" } }} -- \
         qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
             -semihosting-config enable=on,target=native \
-            -kernel examples/qemu-arm/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
+            -kernel examples/qemu-arm-baremetal/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
 # Check if QEMU is installed
 check-qemu:
@@ -734,12 +734,12 @@ test-qemu-zenoh: build-examples-qemu
     echo ""
     echo "To run manually:"
     echo "  Terminal 1: zenohd --listen tcp/0.0.0.0:7447"
-    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-arm/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
-    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-arm/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
+    echo "  Terminal 2: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
+    echo "  Terminal 3: ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 --binary examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
     echo ""
     echo "Binaries built at:"
-    echo "  examples/qemu-arm/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
-    echo "  examples/qemu-arm/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
+    echo "  examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker"
+    echo "  examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener"
     echo ""
     echo "Note: Automated test not yet implemented (requires QEMU 7.0+)"
     echo "============================================"
@@ -824,7 +824,7 @@ show-asm-list pkg target="":
 # Analyze per-function stack usage (requires nightly + llvm-tools)
 # Usage: just check-stack [example-dir] [top]
 # Default: examples/qemu/rs-wcet-bench, top 30
-check-stack example="examples/qemu-arm/rust/core/wcet-bench" top="30":
+check-stack example="examples/qemu-arm-baremetal/rust/core/wcet-bench" top="30":
     ./scripts/stack-analysis.sh {{example}} --top {{top}}
 
 # Analyze stack usage of a pre-built ELF (e.g. Zephyr west build output)
@@ -847,10 +847,10 @@ check-stack-all top="10":
     failed=0
     # Rust examples (QEMU ARM — no exclude, show full picture)
     for example in \
-        examples/qemu-arm/rust/core/wcet-bench \
-        examples/qemu-arm/rust/core/cdr-test \
-        examples/qemu-arm/rust/zenoh/talker \
-        examples/qemu-arm/rust/zenoh/listener \
+        examples/qemu-arm-baremetal/rust/core/wcet-bench \
+        examples/qemu-arm-baremetal/rust/core/cdr-test \
+        examples/qemu-arm-baremetal/rust/zenoh/talker \
+        examples/qemu-arm-baremetal/rust/zenoh/listener \
     ; do
         echo "================================================================"
         ./scripts/stack-analysis.sh "$example" --top {{top}} || { echo "[FAIL] $example"; failed=$((failed + 1)); }

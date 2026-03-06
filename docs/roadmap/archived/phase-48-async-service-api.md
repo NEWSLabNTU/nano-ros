@@ -39,12 +39,12 @@
 - **48.11**: All 7 example files migrated from `_blocking` calls to Promise+`spin_once()`+`try_recv()` pattern (3 service clients, 3 action clients, fairness-bench keeps `call_blocking` in subprocesses)
 - **CFFI fallback**: `CffiServiceClient` stores request in buffer, falls back to blocking `call_raw()` for `try_recv_reply_raw()`
 - **Re-exports**: `Promise` re-exported from `nros-node` and `nros`
-- ~~**48.12 — New async example**~~ Done: `examples/native/rust/zenoh/async-service/` — to be revised in 48.16
+- ~~**48.12 — New async example**~~ Done: `examples/native/rust/zenoh/async-service-client/` — to be revised in 48.16
 - ~~**48.13 — Remove blocking methods**~~ Done: removed `call_blocking()` from `EmbeddedServiceClient`; downgraded `send_goal_blocking`/`cancel_goal_blocking`/`get_result_blocking` to `pub(crate)` on `EmbeddedActionClient` (arena code still needs them internally); migrated fairness-bench's remaining `call_blocking` usages to Promise pattern
 - ~~**48.14 — Documentation updates**~~ Done: updated `docs/reference/std-alloc-requirements.md` with Promise, `spin_async()` entries; added "Service Calls with Promise API" section to `docs/guides/getting-started.md`
 - ~~**48.15 — Remove `block_on` from nros API**~~ Done: deleted `block_on` function from `spin.rs`; removed re-exports from `nros-node/executor/mod.rs`, `nros-node/lib.rs`, `nros/lib.rs`
-- ~~**48.16 — Revise native async example (tokio)**~~ Done: replaced `embassy-futures` + `nros::block_on` with tokio `current_thread` + `spawn_local` background spin pattern in `examples/native/rust/zenoh/async-service/`
-- ~~**48.17 — Zephyr async example (Embassy)**~~ Done: new `examples/zephyr/rust/zenoh/async-service/` using `zephyr::embassy::Executor` (`executor-zephyr` feature, `k_sem`-backed kernel waking); background spin via `#[embassy_executor::task]`
+- ~~**48.16 — Revise native async example (tokio)**~~ Done: replaced `embassy-futures` + `nros::block_on` with tokio `current_thread` + `spawn_local` background spin pattern in `examples/native/rust/zenoh/async-service-client/`
+- ~~**48.17 — Zephyr async example (Embassy)**~~ Done: new `examples/zephyr/rust/zenoh/async-service-client/` using `zephyr::embassy::Executor` (`executor-zephyr` feature, `k_sem`-backed kernel waking); background spin via `#[embassy_executor::task]`
 - ~~**48.18 — Documentation updates**~~ Done: removed all `block_on` references from `std-alloc-requirements.md` and `getting-started.md`; updated async patterns to show tokio (desktop) and Embassy (Zephyr) background spin
 
 ### Pending — Runtime Externalization (48.15–48.18)
@@ -71,7 +71,7 @@ client operates independently via shared global transport state.
 - Shows the background spin pattern on desktop with the standard async runtime
 
 **48.17 — New Zephyr async example (Embassy):**
-- `examples/zephyr/rust/zenoh/async-service/` with `zephyr::embassy::Executor` (`executor-zephyr` feature)
+- `examples/zephyr/rust/zenoh/async-service-client/` with `zephyr::embassy::Executor` (`executor-zephyr` feature)
 - Kernel-backed waking via `k_sem_take`/`k_sem_give` (no busy-loop, proper power efficiency)
 - Uses `nros::RmwSession` type alias to name concrete executor type in Embassy task signatures
 - Pattern: `#[embassy_executor::task] async fn spin_task(mut exec: NrosExecutor) -> !`
@@ -87,7 +87,7 @@ client operates independently via shared global transport state.
 | | Native (POSIX) | Zephyr |
 |---|---|---|
 | **Sync** | `service-client` (existing, spin_once + try_recv) | `service-client` (existing, spin_once + try_recv) |
-| **Async** | `async-service` (revised: tokio background spin) | `async-service` (new: Embassy background spin) |
+| **Async** | `async-service-client` (revised: tokio background spin) | `async-service-client` (new: Embassy background spin) |
 
 ## Background
 
@@ -707,7 +707,7 @@ are unaffected — they use raw buffer APIs, not the Rust Promise type.
 
 Add a new async example demonstrating the async Promise pattern:
 
-- `examples/native/rust/zenoh/async-service/` — async service client
+- `examples/native/rust/zenoh/async-service-client/` — async service client
   (originally used `embassy_futures::select` + `nros::block_on`;
   revised in 48.16 to use tokio background spin pattern)
 

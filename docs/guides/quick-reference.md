@@ -62,7 +62,7 @@ Build with `--features link-tls`:
 
 ```bash
 # Build TLS-enabled examples
-cd examples/qemu-arm/rust/zenoh/talker
+cd examples/qemu-arm-baremetal/rust/zenoh/talker
 cargo build --release --features link-tls
 ```
 
@@ -163,11 +163,11 @@ just setup-qemu-network                    # Requires sudo
 
 # Terminal 2: Talker (192.0.2.10)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 \
-    --binary examples/qemu-arm/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker
+    --binary examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker
 
 # Terminal 3: Listener (192.0.2.11)
 ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu1 \
-    --binary examples/qemu-arm/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener
+    --binary examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener
 ```
 
 Run `just qemu-help` for more options.

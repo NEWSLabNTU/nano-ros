@@ -441,8 +441,8 @@ For async combinators (`select`, `join`), add `embassy-futures`:
 embassy-futures = "0.1"  # no_std, no_alloc, runtime-agnostic
 ```
 
-See `examples/native/rust/zenoh/async-service/` (tokio) and
-`examples/zephyr/rust/zenoh/async-service/` (Embassy) for complete working examples.
+See `examples/native/rust/zenoh/async-service-client/` (tokio) and
+`examples/zephyr/rust/zenoh/async-service-client/` (Embassy) for complete working examples.
 
 ## Next Steps
 

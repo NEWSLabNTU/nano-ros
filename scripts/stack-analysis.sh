@@ -9,7 +9,7 @@
 #   ./scripts/stack-analysis.sh [example-dir] [--top N] [--filter PATTERN]
 #   ./scripts/stack-analysis.sh --elf path/to/binary.elf [--top N] [--filter PATTERN]
 #
-# Defaults to examples/qemu-arm/rust/core/wcet-bench if no example-dir given.
+# Defaults to examples/qemu-arm-baremetal/rust/core/wcet-bench if no example-dir given.
 # Paths are resolved relative to the repository root (auto-detected).
 #
 # The --elf flag skips the cargo build and analyzes a pre-built ELF directly.
@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
             echo "       $0 --elf path/to/binary.elf [--top N] [--filter PATTERN]"
             echo ""
             echo "  example-dir   Path to the Rust example to build and analyze"
-            echo "                (default: examples/qemu-arm/rust/core/wcet-bench)"
+            echo "                (default: examples/qemu-arm-baremetal/rust/core/wcet-bench)"
             echo "                Relative paths are resolved from the repository root."
             echo "  --elf FILE    Analyze a pre-built ELF binary (skips cargo build)."
             echo "                Useful for Zephyr examples built via west."
@@ -129,7 +129,7 @@ if [[ -n "$ELF_FILE" ]]; then
 # =============================================================================
 else
     # Resolve example dir: if relative, resolve from repo root
-    EXAMPLE_DIR="${EXAMPLE_DIR:-examples/qemu-arm/rust/core/wcet-bench}"
+    EXAMPLE_DIR="${EXAMPLE_DIR:-examples/qemu-arm-baremetal/rust/core/wcet-bench}"
     if [[ "$EXAMPLE_DIR" != /* ]]; then
         EXAMPLE_DIR="$REPO_ROOT/$EXAMPLE_DIR"
     fi

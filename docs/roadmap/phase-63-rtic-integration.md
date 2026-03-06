@@ -579,7 +579,7 @@ polling. STM32F4 is chosen because `nros-stm32f4` board crate already exists and
 `stm32f4xx-hal` PAC provides interrupt definitions for RTIC's `dispatchers`.
 
 The `rtic-` prefix follows the existing `async-` prefix convention (e.g.,
-`async-service`, `async-action`) — execution model variants are prefixed on the
+`async-service-client`, `async-action-client`) — execution model variants are prefixed on the
 use-case name within the standard 4-level hierarchy.
 
 **Status**: Not Started

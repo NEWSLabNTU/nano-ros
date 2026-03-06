@@ -137,7 +137,7 @@ pub fn build_qemu_test() -> TestResult<&'static Path> {
     QEMU_TEST_BINARY
         .get_or_try_init(|| {
             let root = project_root();
-            let example_dir = root.join("examples/qemu-arm/rust/core/cdr-test");
+            let example_dir = root.join("examples/qemu-arm-baremetal/rust/core/cdr-test");
 
             eprintln!("Building qemu-test...");
 
@@ -282,7 +282,7 @@ pub fn build_qemu_wcet_bench() -> TestResult<&'static Path> {
     QEMU_WCET_BENCH_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm/rust/core/wcet-bench",
+                "qemu-arm-baremetal/rust/core/wcet-bench",
                 "qemu-rs-wcet-bench",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -296,7 +296,7 @@ pub fn build_qemu_lan9118() -> TestResult<&'static Path> {
     QEMU_LAN9118_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm/rust/standalone/lan9118",
+                "qemu-arm-baremetal/rust/standalone/lan9118",
                 "qemu-rs-lan9118",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -706,7 +706,7 @@ pub fn build_qemu_bsp_talker() -> TestResult<&'static Path> {
     QEMU_BSP_TALKER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm/rust/zenoh/talker",
+                "qemu-arm-baremetal/rust/zenoh/talker",
                 "qemu-bsp-talker",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -720,7 +720,7 @@ pub fn build_qemu_bsp_listener() -> TestResult<&'static Path> {
     QEMU_BSP_LISTENER_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm/rust/zenoh/listener",
+                "qemu-arm-baremetal/rust/zenoh/listener",
                 "qemu-bsp-listener",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1040,7 +1040,7 @@ pub fn build_qemu_large_msg_test() -> TestResult<&'static Path> {
     QEMU_LARGE_MSG_TEST_BINARY
         .get_or_try_init(|| {
             build_example(
-                "qemu-arm/rust/zenoh/large-msg-test",
+                "qemu-arm-baremetal/rust/zenoh/large-msg-test",
                 "qemu-bsp-large-msg-test",
                 None,
                 Some("thumbv7m-none-eabi"),
@@ -1394,7 +1394,7 @@ pub fn c_xrce_listener_binary() -> PathBuf {
 /// can't use the generic `build_example()` which uses stable `cargo build`.
 fn build_esp32_qemu_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-esp32/rust/zenoh/{}", name));
+    let example_dir = root.join(format!("examples/qemu-esp32-baremetal/rust/zenoh/{}", name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(

@@ -114,7 +114,7 @@ while let Some((id, fb)) = stream.wait_next(&mut executor, 1000)? {
 | `examples/native/rust/zenoh/action-client/src/main.rs` | Use `wait_next` |
 | `examples/native/rust/xrce/action-client/src/main.rs` | Use `wait_next` |
 | `examples/zephyr/rust/zenoh/action-client/src/lib.rs` | Use `wait_next` |
-| `examples/native/rust/zenoh/async-action/` | New example with `StreamExt` |
+| `examples/native/rust/zenoh/async-action-client/` | New example with `StreamExt` |
 | `justfile` | Add `stream` feature to check matrix (if needed) |
 
 ## Acceptance Criteria

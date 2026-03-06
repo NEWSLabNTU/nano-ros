@@ -158,15 +158,15 @@ Restructure `examples/` from flat `platform/example-name` to `platform/language/
 | `examples/native/c-listener`        | `examples/native/c/zenoh/listener`           |
 | `examples/native/c-custom-msg`      | `examples/native/c/zenoh/custom-msg`         |
 | `examples/native/c-baremetal-demo`  | `examples/native/c/zenoh/baremetal-demo`     |
-| `examples/qemu/bsp-talker`          | `examples/qemu-arm/rust/zenoh/talker`        |
-| `examples/qemu/bsp-listener`        | `examples/qemu-arm/rust/zenoh/listener`      |
-| `examples/qemu/rs-test`             | `examples/qemu-arm/rust/core/cdr-test`       |
-| `examples/qemu/rs-wcet-bench`       | `examples/qemu-arm/rust/core/wcet-bench`     |
+| `examples/qemu/bsp-talker`          | `examples/qemu-arm-baremetal/rust/zenoh/talker`        |
+| `examples/qemu/bsp-listener`        | `examples/qemu-arm-baremetal/rust/zenoh/listener`      |
+| `examples/qemu/rs-test`             | `examples/qemu-arm-baremetal/rust/core/cdr-test`       |
+| `examples/qemu/rs-wcet-bench`       | `examples/qemu-arm-baremetal/rust/core/wcet-bench`     |
 | `examples/esp32/bsp-talker`         | `examples/esp32/rust/zenoh/talker`           |
 | `examples/esp32/bsp-listener`       | `examples/esp32/rust/zenoh/listener`         |
 | `examples/esp32/hello-world`        | `examples/esp32/rust/standalone/hello-world` |
-| `examples/esp32/qemu-talker`        | `examples/qemu-esp32/rust/zenoh/talker`      |
-| `examples/esp32/qemu-listener`      | `examples/qemu-esp32/rust/zenoh/listener`    |
+| `examples/esp32/qemu-talker`        | `examples/qemu-esp32-baremetal/rust/zenoh/talker`      |
+| `examples/esp32/qemu-listener`      | `examples/qemu-esp32-baremetal/rust/zenoh/listener`    |
 | `examples/stm32f4/bsp-talker`       | `examples/stm32f4/rust/zenoh/talker`         |
 | `examples/zephyr/rs-talker`         | `examples/zephyr/rust/zenoh/talker`          |
 | `examples/zephyr/rs-listener`       | `examples/zephyr/rust/zenoh/listener`        |
@@ -181,7 +181,7 @@ Restructure `examples/` from flat `platform/example-name` to `platform/language/
 
 | Current                              | New                                         |
 |--------------------------------------|---------------------------------------------|
-| `packages/reference/qemu-lan9118`    | `examples/qemu-arm/rust/standalone/lan9118` |
+| `packages/reference/qemu-lan9118`    | `examples/qemu-arm-baremetal/rust/standalone/lan9118` |
 | `packages/reference/stm32f4-polling` | `examples/stm32f4/rust/zenoh/polling`       |
 | `packages/reference/stm32f4-rtic`    | `examples/stm32f4/rust/zenoh/rtic`          |
 | `packages/reference/stm32f4-embassy` | `examples/stm32f4/rust/core/embassy`        |
@@ -256,7 +256,7 @@ find examples -name Cargo.toml -mindepth 4
 
 3. **`check-examples`** — replace the chain of `check-examples-native check-examples-embedded check-examples-qemu` with a single auto-discovery recipe. Build mode (debug vs release) is determined by platform:
    - `native/` → `cargo clippy` (debug)
-   - `qemu-arm/`, `qemu-esp32/`, `esp32/`, `stm32f4/` → `cargo clippy --release`
+   - `qemu-arm-baremetal/`, `qemu-esp32-baremetal/`, `esp32/`, `stm32f4/` → `cargo clippy --release`
    - `zephyr/` → separate (built via `west`, not cargo clippy)
    ```bash
    for toml in $(find examples -name Cargo.toml -mindepth 4 -not -path '*/zephyr/*'); do
@@ -277,9 +277,9 @@ find examples -name Cargo.toml -mindepth 4
    done
    ```
 
-6. **`quality` recipe (QEMU examples section, lines 167–180)** — replace the hardcoded `QEMU_EXAMPLES`/`QEMU_ZENOH_EXAMPLES`/`QEMU_REFERENCE_EXAMPLES` loops with auto-discovery of `examples/qemu-arm/`:
+6. **`quality` recipe (QEMU examples section, lines 167–180)** — replace the hardcoded `QEMU_EXAMPLES`/`QEMU_ZENOH_EXAMPLES`/`QEMU_REFERENCE_EXAMPLES` loops with auto-discovery of `examples/qemu-arm-baremetal/`:
    ```bash
-   for toml in $(find examples/qemu-arm -name Cargo.toml -mindepth 3); do
+   for toml in $(find examples/qemu-arm-baremetal -name Cargo.toml -mindepth 3); do
        dir="$(dirname "$toml")"
        (cd "$dir" && cargo +nightly fmt --check && cargo clippy --release -- $CLIPPY_LINTS)
    done
@@ -296,9 +296,9 @@ find examples -name Cargo.toml -mindepth 4
 8. **QEMU test recipes** — update hardcoded `-kernel` paths:
    | Recipe              | Old `-kernel` path                                           | New `-kernel` path                                                     |
    |---------------------|--------------------------------------------------------------|------------------------------------------------------------------------|
-   | `test-qemu-basic`   | `examples/qemu/rs-test/target/.../qemu-rs-test`              | `examples/qemu-arm/rust/core/cdr-test/target/.../qemu-rs-test`         |
-   | `test-qemu-wcet`    | `examples/qemu/rs-wcet-bench/target/.../qemu-rs-wcet-bench`  | `examples/qemu-arm/rust/core/wcet-bench/target/.../qemu-rs-wcet-bench` |
-   | `test-qemu-lan9118` | `packages/reference/qemu-lan9118/target/.../qemu-rs-lan9118` | `examples/qemu-arm/rust/standalone/lan9118/target/.../qemu-rs-lan9118` |
+   | `test-qemu-basic`   | `examples/qemu/rs-test/target/.../qemu-rs-test`              | `examples/qemu-arm-baremetal/rust/core/cdr-test/target/.../qemu-rs-test`         |
+   | `test-qemu-wcet`    | `examples/qemu/rs-wcet-bench/target/.../qemu-rs-wcet-bench`  | `examples/qemu-arm-baremetal/rust/core/wcet-bench/target/.../qemu-rs-wcet-bench` |
+   | `test-qemu-lan9118` | `packages/reference/qemu-lan9118/target/.../qemu-rs-lan9118` | `examples/qemu-arm-baremetal/rust/standalone/lan9118/target/.../qemu-rs-lan9118` |
 
    Note: binary names (after last `/`) stay the same — they come from `[[bin]]` or `name` in each example's `Cargo.toml`.
 
@@ -306,7 +306,7 @@ find examples -name Cargo.toml -mindepth 4
    | Recipe                      | Old pattern                                  | New pattern                                        |
    |-----------------------------|----------------------------------------------|----------------------------------------------------|
    | `build-examples-esp32`      | `examples/esp32/{bsp-talker,bsp-listener}`   | `examples/esp32/rust/zenoh/{talker,listener}`      |
-   | `build-examples-esp32-qemu` | `examples/esp32/{qemu-talker,qemu-listener}` | `examples/qemu-esp32/rust/zenoh/{talker,listener}` |
+   | `build-examples-esp32-qemu` | `examples/esp32/{qemu-talker,qemu-listener}` | `examples/qemu-esp32-baremetal/rust/zenoh/{talker,listener}` |
    | `test-qemu-esp32-basic`     | `build/esp32-qemu/esp32-qemu-talker.bin`     | Same (build output path, not source path)          |
 
 10. **Zephyr recipes** — paths stay as `zephyr-workspace/` managed by `west`. The `examples/zephyr/` source paths change but are referenced through the west manifest, not directly in justfile.

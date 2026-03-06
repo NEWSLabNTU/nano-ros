@@ -318,7 +318,7 @@ are too complex for FFI bindings). Custom BIO callbacks route through SmoltcpBri
 
 Feature wiring through the crate chain:
 
-- `examples/qemu-arm/rust/zenoh/{talker,listener}/Cargo.toml` — added `link-tls` feature
+- `examples/qemu-arm-baremetal/rust/zenoh/{talker,listener}/Cargo.toml` — added `link-tls` feature
 - `packages/boards/nros-mps2-an385/Cargo.toml` — added `link-tls` feature forwarding
 - `packages/zpico/zpico-platform-mps2-an385/Cargo.toml` — added `link-tls` feature
 - `packages/zpico/zpico-platform-mps2-an385/src/memory.rs` — conditional heap:

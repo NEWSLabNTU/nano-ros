@@ -117,7 +117,7 @@ examples/esp32/rust/
 └── standalone/
     └── hello-world/       # Minimal UART print (no nros deps)
 
-examples/qemu-esp32/rust/zenoh/
+examples/qemu-esp32-baremetal/rust/zenoh/
 ├── talker/                # QEMU publisher (nros-esp32-qemu BSP)
 └── listener/              # QEMU subscriber (nros-esp32-qemu BSP)
 ```

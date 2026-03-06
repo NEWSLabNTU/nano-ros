@@ -10,12 +10,12 @@ examples/
 │   ├── rust/zenoh/      # Rust + zenoh transport
 │   ├── rust/xrce/       # Rust + XRCE-DDS transport
 │   └── c/zenoh/         # C + zenoh transport
-├── qemu-arm/            # QEMU bare-metal ARM (MPS2-AN385)
+├── qemu-arm-baremetal/            # QEMU bare-metal ARM (MPS2-AN385)
 │   └── rust/
 │       ├── zenoh/       # Networked examples (talker, listener)
 │       ├── core/        # nros-core only (cdr-test, wcet-bench)
 │       └── standalone/  # No nros deps (lan9118 driver test)
-├── qemu-esp32/          # QEMU ESP32-C3 (RISC-V)
+├── qemu-esp32-baremetal/          # QEMU ESP32-C3 (RISC-V)
 │   └── rust/zenoh/      # Networked examples
 ├── esp32/               # ESP32-C3 hardware
 │   └── rust/
@@ -68,7 +68,7 @@ cd examples/native/rust/zenoh/talker && cargo run
 cd examples/native/rust/zenoh/listener && cargo run
 ```
 
-### QEMU ARM (`qemu-arm/`)
+### QEMU ARM Bare-Metal (`qemu-arm-baremetal/`)
 
 Bare-metal ARM Cortex-M3 examples running on QEMU MPS2-AN385. Uses `nros-mps2-an385` for simplified setup.
 
@@ -129,7 +129,7 @@ west build -b native_sim/native/64 nros/examples/zephyr/c/zenoh/talker
 ## Quick Start
 
 1. **New to nros?** Start with `native/rust/zenoh/talker` and `native/rust/zenoh/listener`
-2. **Targeting QEMU?** Use `qemu-arm/rust/zenoh/talker` and `qemu-arm/rust/zenoh/listener`
+2. **Targeting QEMU?** Use `qemu-arm-baremetal/rust/zenoh/talker` and `qemu-arm-baremetal/rust/zenoh/listener`
 3. **Targeting STM32F4?** Use `stm32f4/rust/zenoh/talker`
 4. **Targeting Zephyr?** Use `zephyr/c/zenoh/talker` (C) or `zephyr/rust/zenoh/talker` (Rust)
 

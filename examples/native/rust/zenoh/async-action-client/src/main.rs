@@ -17,7 +17,7 @@
 //! cargo run -p native-rs-action-server
 //!
 //! # Terminal 3: Run this async client
-//! cargo run -p native-rs-async-action
+//! cargo run -p native-rs-async-action-client
 //! ```
 
 use example_interfaces::action::{Fibonacci, FibonacciGoal};

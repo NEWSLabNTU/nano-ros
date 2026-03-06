@@ -48,7 +48,7 @@ fi
 
 # Determine binary path
 BINARY_NAME="qemu-bsp-${QEMU_ROLE}"
-EXAMPLE_DIR="examples/qemu-arm/rust/zenoh/${QEMU_ROLE}"
+EXAMPLE_DIR="examples/qemu-arm-baremetal/rust/zenoh/${QEMU_ROLE}"
 
 BINARY="/work/${EXAMPLE_DIR}/target/thumbv7m-none-eabi/release/${BINARY_NAME}"
 

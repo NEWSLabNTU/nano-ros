@@ -23,7 +23,7 @@ nano-ros/
 │   ├── verification/   # nros-ghost-types, nros-verification (Verus proofs, excluded from workspace)
 │   ├── reference/      # qemu-smoltcp-bridge
 │   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
-├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm, qemu-arm-freertos, qemu-esp32, esp32, stm32f4, zephyr)
+├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
 ├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps
 ├── scripts/            # zenohd build, Zephyr setup
 ├── docker/             # QEMU dev environment

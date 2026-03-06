@@ -1,5 +1,5 @@
 [package]
-name = "native-rs-async-service"
+name = "native-rs-async-service-client"
 version = "0.1.0"
 edition = "2024"
 description = "Example async service client using nros with tokio background spin"

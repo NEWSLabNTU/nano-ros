@@ -19,7 +19,7 @@
 //! cargo run -p native-rs-service-server
 //!
 //! # Terminal 3: Run this async client
-//! cargo run -p native-rs-async-service
+//! cargo run -p native-rs-async-service-client
 //! ```
 
 use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};

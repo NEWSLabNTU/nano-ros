@@ -40,7 +40,7 @@ examples/
 │           ├── custom-msg/
 │           └── baremetal-demo/
 │
-├── qemu-arm/
+├── qemu-arm-baremetal/
 │   └── rust/
 │       ├── zenoh/
 │       │   ├── talker/
@@ -53,7 +53,7 @@ examples/
 │       └── standalone/
 │           └── lan9118/
 │
-├── qemu-esp32/
+├── qemu-esp32-baremetal/
 │   └── rust/
 │       └── zenoh/
 │           ├── talker/
@@ -102,8 +102,8 @@ The hardware target and toolchain. Determines `.cargo/config.toml`, linker scrip
 | Platform | Target | Machine |
 |----------|--------|---------|
 | `native` | `x86_64-unknown-linux-gnu` | Desktop Linux |
-| `qemu-arm` | `thumbv7m-none-eabi` | QEMU MPS2-AN385 / lm3s6965evb |
-| `qemu-esp32` | `riscv32imc-unknown-none-elf` | QEMU ESP32-C3 |
+| `qemu-arm-baremetal` | `thumbv7m-none-eabi` | QEMU MPS2-AN385 / lm3s6965evb |
+| `qemu-esp32-baremetal` | `riscv32imc-unknown-none-elf` | QEMU ESP32-C3 |
 | `esp32` | `riscv32imc-unknown-none-elf` | Real ESP32-C3 hardware |
 | `stm32f4` | `thumbv7em-none-eabihf` | Real STM32F4 (Nucleo-F429ZI) |
 | `zephyr` | `native_sim/native/64` | Zephyr RTOS (built via west) |
@@ -168,15 +168,15 @@ The leaf directory. Describes what the example demonstrates.
 | `examples/native/c-listener` | `examples/native/c/zenoh/listener` |
 | `examples/native/c-custom-msg` | `examples/native/c/zenoh/custom-msg` |
 | `examples/native/c-baremetal-demo` | `examples/native/c/zenoh/baremetal-demo` |
-| `examples/qemu/bsp-talker` | `examples/qemu-arm/rust/zenoh/talker` |
-| `examples/qemu/bsp-listener` | `examples/qemu-arm/rust/zenoh/listener` |
-| `examples/qemu/rs-test` | `examples/qemu-arm/rust/core/cdr-test` |
-| `examples/qemu/rs-wcet-bench` | `examples/qemu-arm/rust/core/wcet-bench` |
+| `examples/qemu/bsp-talker` | `examples/qemu-arm-baremetal/rust/zenoh/talker` |
+| `examples/qemu/bsp-listener` | `examples/qemu-arm-baremetal/rust/zenoh/listener` |
+| `examples/qemu/rs-test` | `examples/qemu-arm-baremetal/rust/core/cdr-test` |
+| `examples/qemu/rs-wcet-bench` | `examples/qemu-arm-baremetal/rust/core/wcet-bench` |
 | `examples/esp32/bsp-talker` | `examples/esp32/rust/zenoh/talker` |
 | `examples/esp32/bsp-listener` | `examples/esp32/rust/zenoh/listener` |
 | `examples/esp32/hello-world` | `examples/esp32/rust/standalone/hello-world` |
-| `examples/esp32/qemu-talker` | `examples/qemu-esp32/rust/zenoh/talker` |
-| `examples/esp32/qemu-listener` | `examples/qemu-esp32/rust/zenoh/listener` |
+| `examples/esp32/qemu-talker` | `examples/qemu-esp32-baremetal/rust/zenoh/talker` |
+| `examples/esp32/qemu-listener` | `examples/qemu-esp32-baremetal/rust/zenoh/listener` |
 | `examples/stm32f4/bsp-talker` | `examples/stm32f4/rust/zenoh/talker` |
 | `examples/zephyr/rs-talker` | `examples/zephyr/rust/zenoh/talker` |
 | `examples/zephyr/rs-listener` | `examples/zephyr/rust/zenoh/listener` |
@@ -186,7 +186,7 @@ The leaf directory. Describes what the example demonstrates.
 | `examples/zephyr/rs-action-client` | `examples/zephyr/rust/zenoh/action-client` |
 | `examples/zephyr/c-talker` | `examples/zephyr/c/zenoh/talker` |
 | `examples/zephyr/c-listener` | `examples/zephyr/c/zenoh/listener` |
-| `packages/reference/qemu-lan9118` | `examples/qemu-arm/rust/standalone/lan9118` |
+| `packages/reference/qemu-lan9118` | `examples/qemu-arm-baremetal/rust/standalone/lan9118` |
 | `packages/reference/stm32f4-polling` | `examples/stm32f4/rust/zenoh/polling` |
 | `packages/reference/stm32f4-rtic` | `examples/stm32f4/rust/zenoh/rtic` |
 | `packages/reference/stm32f4-embassy` | `examples/stm32f4/rust/core/embassy` |
@@ -216,7 +216,7 @@ After the reorganization, examples are at depth 4 (`platform/language/rmw/use-ca
 find examples -name Cargo.toml -mindepth 4
 
 # Platform-specific discovery
-find examples/qemu-arm -name Cargo.toml -mindepth 3
+find examples/qemu-arm-baremetal -name Cargo.toml -mindepth 3
 find examples/native -name Cargo.toml -mindepth 3
 ```
 
