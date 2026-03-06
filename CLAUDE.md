@@ -222,7 +222,8 @@ See [docs/guides/quick-reference.md](docs/guides/quick-reference.md) for manual 
 docs/
 ├── guides/          # getting-started, creating-examples, message-generation, quick-reference,
 │                    # qemu-bare-metal, zephyr-setup, esp32-setup, verus-verification,
-│                    # freertos-lan9118-debugging, realtime-lint-guide, troubleshooting
+│                    # freertos-lan9118-debugging, realtime-lint-guide, troubleshooting,
+│                    # embedded-tuning
 ├── reference/       # environment-variables, c-api-cmake, rmw_zenoh_interop, api-comparison-rclrs,
 │                    # std-alloc-requirements, micro-ros-comparison, xrce-dds-analysis
 ├── design/          # rmw-layer-design, example-directory-layout, e2e-safety-protocol-integration,
