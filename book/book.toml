@@ -1,0 +1,11 @@
+[book]
+title = "nano-ros Book"
+authors = ["aeon"]
+language = "en"
+src = "src"
+
+[build]
+build-dir = "book"
+
+[output.html]
+git-repository-url = "https://github.com/jerry73204/nano-ros"
