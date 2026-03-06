@@ -214,19 +214,22 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 
 ## Quick Reference
 
-See [docs/guides/quick-reference.md](docs/guides/quick-reference.md) for manual testing, ROS 2 interop, Docker, QEMU, and Zephyr setup commands.
+See `book/src/reference/build-commands.md` for manual testing, ROS 2 interop, Docker, QEMU, and Zephyr setup commands. Build the book with `just book`.
 
 ## Documentation Index
 
 ```
-docs/
-├── guides/          # getting-started, creating-examples, message-generation, quick-reference,
-│                    # qemu-bare-metal, zephyr-setup, esp32-setup, verus-verification,
-│                    # freertos-lan9118-debugging, realtime-lint-guide, troubleshooting,
-│                    # embedded-tuning
-├── reference/       # environment-variables, c-api-cmake, rmw_zenoh_interop, api-comparison-rclrs,
-│                    # std-alloc-requirements, micro-ros-comparison, xrce-dds-analysis
-├── design/          # rmw-layer-design, example-directory-layout, e2e-safety-protocol-integration,
-│                    # zonal-vehicle-architecture
+book/src/            # User-facing documentation (mdbook)
+├── getting-started/ # installation, first-app-rust, first-app-c, ros2-interop
+├── concepts/        # architecture, no-std, rmw-backends, platform-model
+├── guides/          # message-generation, creating-examples, qemu-bare-metal, esp32, troubleshooting
+├── platforms/       # overview, posix, zephyr, freertos, nuttx, threadx
+├── reference/       # rust-api, c-api, environment-variables, embedded-tuning, build-commands, rmw-zenoh-protocol
+└── advanced/        # verification, realtime-analysis, safety, contributing
+
+docs/                # Contributor/internal documentation
+├── reference/       # api-comparison-rclrs, rmw-h-analysis, xrce-dds-analysis, executor-fairness-analysis
+├── design/          # rmw-layer-design, example-directory-layout, zonal-vehicle-architecture
+├── research/        # Internal research
 └── roadmap/         # Active + archived phases
 ```

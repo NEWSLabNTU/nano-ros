@@ -29,16 +29,21 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-nros = { git = "https://github.com/jerry73204/nano-ros",
-         default-features = false,
+nros = { version = "0.1", default-features = false,
          features = ["std", "rmw-zenoh", "platform-posix"] }
 std_msgs = { version = "*", default-features = false }
 log = "0.4"
 env_logger = "0.11"
+
+[patch.crates-io]
+nros = { git = "https://github.com/jerry73204/nano-ros" }
+nros-core = { git = "https://github.com/jerry73204/nano-ros" }
+nros-serdes = { git = "https://github.com/jerry73204/nano-ros" }
 ```
 
-The `git = "..."` dependency tells Cargo to fetch nano-ros directly from
-the repository. No manual clone is needed.
+The `[dependencies]` section specifies the version normally. The
+`[patch.crates-io]` section redirects Cargo to fetch from the git
+repository until the crates are published to crates.io.
 
 ### 3. package.xml
 
@@ -70,11 +75,12 @@ This creates:
 
 - `generated/std_msgs/` — Rust types for `std_msgs::msg::Int32`, `String`, etc.
 - `generated/builtin_interfaces/` — `Time`, `Duration` types
-- `.cargo/config.toml` — `[patch.crates-io]` entries pointing to the
-  generated code and nros git source
+- `.cargo/config.toml` — `[patch.crates-io]` entries for the generated
+  message crates (e.g., `std_msgs`, `builtin_interfaces`)
 
-The `--nano-ros-git` flag generates patches that reference the nano-ros git
-repository, matching the `git = "..."` dependency in your `Cargo.toml`.
+The `--nano-ros-git` flag ensures the generated patches use git references
+matching the `[patch.crates-io]` entries in your `Cargo.toml`. The
+`--config` flag writes the `.cargo/config.toml` file automatically.
 
 ### 5. Write the Publisher
 
@@ -206,10 +212,10 @@ You should see the listener printing received messages:
 
 The examples above show both API styles:
 
-| Style | Use case | Example |
-|-------|----------|---------|
+| Style           | Use case                       | Example                                        |
+|-----------------|--------------------------------|------------------------------------------------|
 | **Manual-poll** | Publisher loops, custom timing | `create_publisher()` + `spin_once()` in a loop |
-| **Callback** | Event-driven subscriptions | `add_subscription()` + `spin_blocking()` |
+| **Callback**    | Event-driven subscriptions     | `add_subscription()` + `spin_blocking()`       |
 
 Both styles can be mixed in the same executor. Services and actions follow
 the same pattern.

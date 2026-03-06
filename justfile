@@ -1727,8 +1727,16 @@ doc-c-check:
         -x c /dev/null
     echo "All C headers are syntactically correct."
 
-# Generate all documentation (Rust + C)
+# Generate all documentation (Rust + C + book)
 doc: doc-rust doc-c
+
+# Build the mdbook user guide
+book:
+    mdbook build book/
+
+# Serve the mdbook with live reload
+book-serve:
+    mdbook serve book/ --open
 
 # Clean all build artifacts created by `just build`
 clean: clean-examples clean-zephyr clean-zenohd

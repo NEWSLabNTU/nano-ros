@@ -38,6 +38,7 @@
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
 - [Environment Variables](./reference/environment-variables.md)
+- [Embedded Tuning](./reference/embedded-tuning.md)
 - [Build Commands](./reference/build-commands.md)
 - [RMW Zenoh Protocol](./reference/rmw-zenoh-protocol.md)
 

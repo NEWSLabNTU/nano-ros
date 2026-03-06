@@ -4,28 +4,24 @@ nano-ros is a lightweight ROS 2 client library for embedded real-time systems.
 It runs on bare-metal microcontrollers, FreeRTOS, NuttX, ThreadX, and Zephyr,
 as well as Linux and macOS. The entire core stack is `no_std` compatible.
 
-## Why nano-ros?
+## Key Features
 
-ROS 2 is the standard middleware for robotics, but its standard client
-libraries (rclcpp, rclpy) require a full operating system and significant
-memory. [micro-ROS](https://micro.ros.org/) addresses microcontrollers but
-depends on a 6+ layer C software stack (rclc, rcl, rmw, XRCE-DDS, Micro-CDR,
-transport) and an external agent process.
-
-nano-ros takes a different approach:
-
-- **3 layers instead of 6+** — application code talks to nano-ros, which
-  talks to the transport. No intermediate rcl/rmw C shim layers.
-- **Agent-less option** — the Zenoh backend communicates directly via
-  zenoh-pico, with only a lightweight router (zenohd) instead of a
-  protocol-translating agent.
+- **Minimal stack** — three software layers (application, nano-ros,
+  transport). Lean dependency tree, fast compile times.
+- **Dual middleware** — choose Zenoh (agent-less, direct peer
+  communication) or XRCE-DDS (agent-based) at compile time. Same
+  application code either way.
 - **Rust-first with C API** — the core is written in Rust for memory safety
   and ergonomics, with a thin C FFI layer following rclc conventions.
 - **True `no_std`** — runs on bare-metal Cortex-M3 with no heap allocator.
   The `alloc` and `std` features are opt-in.
+- **Standalone tooling** — `cargo nano-ros generate` produces message
+  bindings without a ROS 2 installation (bundled interface definitions).
 - **Formally verified** — 160 Kani bounded model checking harnesses and 102
   Verus deductive proofs cover CDR serialization, scheduling, and protocol
   correctness.
+- **ROS 2 compatible** — interoperates with standard ROS 2 nodes via
+  `rmw_zenoh_cpp`. Topics, services, and actions work across the boundary.
 
 ## Supported Platforms
 
@@ -49,19 +45,6 @@ nano-ros supports two middleware backends, selectable at compile time:
 
 Application code is identical regardless of backend — switch with a single
 Cargo feature flag or Zephyr Kconfig option.
-
-## Comparison with micro-ROS
-
-| Aspect              | micro-ROS          | nano-ros                               |
-|---------------------|--------------------|----------------------------------------|
-| Language            | C (rclc)           | Rust + C                               |
-| Software layers     | 6+                 | 3                                      |
-| Middleware          | XRCE-DDS only      | Zenoh + XRCE-DDS                       |
-| Agent required      | Yes (always)       | No (Zenoh) / Yes (XRCE)                |
-| `no_std` bare-metal | Via RTOS           | Native                                 |
-| Message codegen     | Requires ROS 2 env | Standalone (`cargo nano-ros generate`) |
-| Formal verification | None               | Kani + Verus + Miri                    |
-| Memory model        | Static pools       | Const generics + arena allocator       |
 
 ## Project Status
 
