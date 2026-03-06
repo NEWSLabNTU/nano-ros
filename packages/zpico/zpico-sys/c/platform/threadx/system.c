@@ -30,10 +30,17 @@
  */
 extern TX_BYTE_POOL *zpico_threadx_byte_pool;
 
+extern void uart_puts(const char *s);
+
 void *z_malloc(size_t size) {
     void *ptr = NULL;
     UINT r = tx_byte_allocate(zpico_threadx_byte_pool, &ptr, size, TX_WAIT_FOREVER);
     if (r != TX_SUCCESS) {
+        /* Diagnostic: log allocation failures */
+        char buf[80];
+        snprintf(buf, sizeof(buf), "[z_malloc] FAILED size=%lu status=%u\n",
+                 (unsigned long)size, (unsigned)r);
+        uart_puts(buf);
         ptr = NULL;
     }
     return ptr;
@@ -97,12 +104,36 @@ void z_random_fill(void *buf, size_t len) {
 
 #if Z_FEATURE_MULTI_THREAD == 1
 
+/*
+ * ThreadX tx_thread_create takes a ULONG entry_input parameter (4 bytes on
+ * 64-bit platforms where ULONG=unsigned int). Zenoh-pico's task functions
+ * take a void* argument (8 bytes). We cannot fit a 64-bit pointer in ULONG,
+ * so we store the real function+arg in the _z_task_t struct and use a
+ * trampoline that recovers the task pointer via tx_thread_identify().
+ *
+ * The _z_task_t struct has TX_THREAD as its first field, so:
+ *   _z_task_t *task = (_z_task_t *) tx_thread_identify();
+ */
+static void _z_task_trampoline(ULONG input) {
+    (void)input;
+    TX_THREAD *tcb = tx_thread_identify();
+    /* TX_THREAD is the first field of _z_task_t, so the pointers match. */
+    _z_task_t *task = (_z_task_t *)tcb;
+    if (task && task->_fun) {
+        task->_fun(task->_arg);
+    }
+}
+
 z_result_t _z_task_init(_z_task_t *task, z_task_attr_t *attr, void *(*fun)(void *), void *arg) {
     (void)attr;
 
+    /* Store function and arg in the task struct (full pointer width). */
+    task->_fun = fun;
+    task->_arg = arg;
+
     UINT status = tx_thread_create(
         &(task->threadx_thread), "ztask",
-        (VOID (*)(ULONG))fun, (ULONG)arg,
+        _z_task_trampoline, 0,
         task->threadx_stack, Z_TASK_STACK_SIZE,
         Z_TASK_PRIORITY, Z_TASK_PREEMPT_THRESHOLD,
         Z_TASK_TIME_SLICE, TX_AUTO_START);

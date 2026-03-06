@@ -30,7 +30,7 @@ extern "C" {
 #if Z_FEATURE_MULTI_THREAD == 1
 
 #ifndef Z_TASK_STACK_SIZE
-#define Z_TASK_STACK_SIZE 4096
+#define Z_TASK_STACK_SIZE 8192
 #endif
 
 #ifndef Z_TASK_PRIORITY
@@ -48,6 +48,8 @@ extern "C" {
 typedef struct {
     TX_THREAD threadx_thread;
     uint8_t threadx_stack[Z_TASK_STACK_SIZE];
+    void *(*_fun)(void *);   /* Real entry function (full pointer width) */
+    void  *_arg;             /* Real argument (full pointer width) */
 } _z_task_t;
 
 typedef void *z_task_attr_t;  // Not used

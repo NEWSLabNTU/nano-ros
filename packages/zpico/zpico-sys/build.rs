@@ -1617,6 +1617,9 @@ fn build_zenoh_pico_threadx(
         // errno override must be searched BEFORE picolibc headers
         build.include(&errno_dir);
 
+        // picolibc's <machine/endian.h> defines htonl as __bswap32 on LE, which is
+        // compatible with nx_port.h's #ifndef-guarded __builtin_bswap32 definitions.
+
         // Add picolibc sysroot for C standard library headers (stdint.h, etc.)
         // Do NOT use --specs=picolibc.specs (it enables TLS errno)
         if let Some(sysroot) = get_picolibc_sysroot() {

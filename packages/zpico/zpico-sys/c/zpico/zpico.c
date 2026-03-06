@@ -30,6 +30,19 @@ static void _freertos_printk(const char *fmt, ...) {
     __asm__ volatile("bkpt #0xAB" : : "r"(r0), "r"(r1) : "memory");
 }
 #define printk(...) _freertos_printk(__VA_ARGS__)
+#elif defined(ZENOH_THREADX)
+// On ThreadX bare-metal, route printk through UART
+#include <stdio.h>
+extern void uart_puts(const char *s);
+static void _threadx_printk(const char *fmt, ...) {
+    char buf[128];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    uart_puts(buf);
+}
+#define printk(...) _threadx_printk(__VA_ARGS__)
 #else
 #define printk(...)  // No-op on other platforms
 #endif
@@ -499,6 +512,7 @@ int32_t zpico_open(void) {
 #endif
 
     g_session_open = true;
+    printk("zpico: session opened successfully\n");
     return ZPICO_OK;
 }
 
@@ -573,7 +587,10 @@ void zpico_close(void) {
 // ============================================================================
 
 int32_t zpico_declare_publisher(const char *keyexpr) {
+    printk("zpico: declare_pub: session_open=%d max=%d keyexpr=%s\n",
+           (int)g_session_open, ZPICO_MAX_PUBLISHERS, keyexpr ? keyexpr : "(null)");
     if (!g_session_open) {
+        printk("zpico: declare_pub: SESSION NOT OPEN\n");
         return ZPICO_ERR_SESSION;
     }
 
@@ -586,8 +603,13 @@ int32_t zpico_declare_publisher(const char *keyexpr) {
         }
     }
     if (idx < 0) {
+        printk("zpico: declare_pub: ALL %d SLOTS FULL\n", ZPICO_MAX_PUBLISHERS);
+        for (int i = 0; i < ZPICO_MAX_PUBLISHERS; i++) {
+            printk("  slot[%d].active=%d\n", i, (int)g_publishers[i].active);
+        }
         return ZPICO_ERR_FULL;
     }
+    printk("zpico: declare_pub: using slot %d\n", idx);
 
     z_view_keyexpr_t ke;
     int ke_ret = z_view_keyexpr_from_str(&ke, keyexpr);

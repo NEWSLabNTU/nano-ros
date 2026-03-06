@@ -25,34 +25,41 @@
 #include "nx_api.h"
 #include "nxd_bsd.h"
 
+/* htonl/ntohl/htons/ntohs are real byte-swaps on little-endian, defined by
+ * nx_port.h (matching the official Cortex-M7 port) or picolibc's
+ * <machine/endian.h>. The BSD socket layer (nxd_bsd.c) expects standard
+ * network-byte-order values in sockaddr structures and uses htonl/ntohl
+ * to convert to/from NetX's host-byte-order internals. */
+
 #include "zenoh-pico/config.h"
 #include "zenoh-pico/system/platform.h"
 #include "zenoh-pico/utils/logging.h"
 #include "zenoh-pico/utils/result.h"
 
-/* ── Helper: parse "a.b.c.d" → big-endian value for NetX BSD ────────────── */
+/* ── Helper: parse "a.b.c.d" → host-byte-order 32-bit IP ────────────────── */
 
 static uint32_t _z_parse_ipv4(const char *s) {
     unsigned int a, b, c, d;
     if (sscanf(s, "%u.%u.%u.%u", &a, &b, &c, &d) != 4) {
         return 0;
     }
-    /* NetX BSD sin_addr.s_addr uses big-endian VALUE format (htonl is identity).
-     * Construct the value directly: 192.0.3.1 → 0xC0000301. */
+    /* Returns host-byte-order value: 192.0.3.1 → 0xC0000301. */
     return (uint32_t)((a << 24) | (b << 16) | (c << 8) | d);
 }
 
 static uint16_t _z_parse_port(const char *s) {
-    /* NetX BSD sin_port uses host VALUE (htons is identity). */
     return (uint16_t)atoi(s);
 }
 
-/* Convert endpoint to sockaddr_in */
+/* Convert endpoint (host byte order) to sockaddr_in (network byte order).
+ * BSD sockaddr expects network byte order per POSIX convention.
+ * nxd_bsd.c then applies htonl/htons to convert back to host byte order
+ * for NetX internal structures. */
 static void _z_ep_to_sockaddr(const _z_sys_net_endpoint_t *ep, struct nx_bsd_sockaddr_in *addr) {
     memset(addr, 0, sizeof(*addr));
     addr->sin_family = AF_INET;
-    addr->sin_addr.s_addr = ep->_addr;
-    addr->sin_port = ep->_port;
+    addr->sin_addr.s_addr = htonl(ep->_addr);
+    addr->sin_port = htons(ep->_port);
 }
 
 /* ── Socket utilities ────────────────────────────────────────────────────── */
@@ -109,46 +116,23 @@ static void _diag_print_hex32(uint32_t val) {
 }
 
 z_result_t _z_create_endpoint_tcp(_z_sys_net_endpoint_t *ep, const char *s_address, const char *s_port) {
-    /* Test htonl behavior */
+    /* Diagnostic: verify htonl is a real byte-swap (not identity) */
     uint32_t test_val = 0x12345678;
     uart_puts("[diag] htonl(0x12345678)=0x");
     _diag_print_hex32(htonl(test_val));
-    uart_puts("\n");
-
-    /* Test sscanf */
-    unsigned int ta, tb, tc, td;
-    int rc = sscanf(s_address, "%u.%u.%u.%u", &ta, &tb, &tc, &td);
-    uart_puts("[diag] sscanf rc=");
-    _diag_print_hex32((uint32_t)rc);
-    uart_puts(" a=");
-    _diag_print_hex32(ta);
-    uart_puts(" b=");
-    _diag_print_hex32(tb);
-    uart_puts(" c=");
-    _diag_print_hex32(tc);
-    uart_puts(" d=");
-    _diag_print_hex32(td);
-    uart_puts("\n");
-
-    uint32_t raw = ((uint32_t)(ta << 24) | (tb << 16) | (tc << 8) | td);
-    uart_puts("[diag] raw=0x");
-    _diag_print_hex32(raw);
-    uart_puts(" htonl(raw)=0x");
-    _diag_print_hex32(htonl(raw));
-    uart_puts("\n");
+    uart_puts(" (expect 0x78563412)\n");
 
     ep->_addr = _z_parse_ipv4(s_address);
     ep->_port = _z_parse_port(s_port);
 
     uart_puts("[zpico] parsed addr=0x");
     _diag_print_hex32(ep->_addr);
-    uart_puts(" port=0x");
+    uart_puts(" port=");
     _diag_print_hex32((uint32_t)ep->_port);
     uart_puts("\n");
 
     if (ep->_addr == 0) {
         _Z_ERROR("Failed to parse TCP address: %s", s_address);
-        uart_puts("[zpico] FAIL: addr is 0\n");
         return _Z_ERR_GENERIC;
     }
     return _Z_RES_OK;
