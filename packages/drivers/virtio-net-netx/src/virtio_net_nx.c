@@ -40,14 +40,14 @@ static void dbg_hex64(uint64_t v) {
 #define NX_ETHERNET_IPV6        0x86DD
 
 /** VirtIO net header size.
- * Base header: flags(1) + gso_type(1) + hdr_len(2) + gso_size(2) +
- *              csum_start(2) + csum_offset(2) = 10 bytes.
- * Only 12 bytes if VIRTIO_NET_F_MRG_RXBUF is negotiated (adds num_buffers).
- * We do NOT negotiate MRG_RXBUF, so use 10. */
-#define VIRTIO_NET_HDR_SIZE     10
+ * Modern VirtIO (VIRTIO_F_VERSION_1, i.e. MMIO version 2) always includes
+ * the num_buffers field in the header, making it 12 bytes:
+ * flags(1) + gso_type(1) + hdr_len(2) + gso_size(2) +
+ * csum_start(2) + csum_offset(2) + num_buffers(2) = 12 bytes. */
+#define VIRTIO_NET_HDR_SIZE     12
 
 #define NUM_RX_BUFFERS          32
-#define BUFFER_SIZE             2048  /* virtio-net hdr (10) + MTU (1514) + padding */
+#define BUFFER_SIZE             2048  /* virtio-net hdr (12) + MTU (1514) + padding */
 
 /* --------------------------------------------------------------------------
  * Static state
