@@ -1406,9 +1406,15 @@ int32_t zpico_get_start(const char *keyexpr,
         return ZPICO_ERR_SESSION;
     }
 
-    // Find a free slot
+    // Find a free slot, cleaning up zombie slots first.
+    // A zombie slot has in_use=true but ctx.done=true, meaning the reply was
+    // delivered by get_check but the dropper hadn't fired yet at that time.
+    // Now that the dropper has fired (done=true), the slot can be reclaimed.
     int32_t slot = -1;
     for (int32_t i = 0; i < ZPICO_MAX_PENDING_GETS; i++) {
+        if (g_pending_gets[i].in_use && g_pending_gets[i].ctx.done) {
+            g_pending_gets[i].in_use = false;
+        }
         if (!g_pending_gets[i].in_use) {
             slot = i;
             break;
@@ -1465,19 +1471,27 @@ int32_t zpico_get_check(int32_t handle,
     }
 
     if (ps->ctx.received) {
-        // Reply arrived — copy and release slot
+        // Reply arrived — copy data
         if (ps->ctx.len > reply_buf_size) {
-            ps->in_use = false;
+            // Only release slot if dropper has also fired
+            if (ps->ctx.done) {
+                ps->in_use = false;
+            }
             return ZPICO_ERR_FULL;
         }
         memcpy(reply_buf, ps->ctx.buf, ps->ctx.len);
         int32_t len = (int32_t)ps->ctx.len;
-        ps->in_use = false;
+        // Only release slot if dropper has also fired; otherwise the old
+        // z_get's dropper callback still references this slot and would
+        // corrupt it if the slot were reused before the dropper fires.
+        if (ps->ctx.done) {
+            ps->in_use = false;
+        }
         return len;
     }
 
     if (ps->ctx.done) {
-        // Reply channel closed without a reply — timeout
+        // Dropper fired without a reply — timeout
         ps->in_use = false;
         return -9;  // ZPICO_ERR_TIMEOUT
     }
