@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-threadx` as a new platform axis value, enabling nros nodes on Eclipse ThreadX + NetX Duo. Validate with two targets: Linux simulation port (PoC, fastest iteration) and QEMU RISC-V 64-bit virt machine (official ThreadX QEMU port with virtio-net Ethernet). ThreadX's IEC 61508 SIL 4 / ISO 26262 ASIL D certifications combined with nano-ros's Kani/Verus formal verification create a uniquely strong safety argument.
 
-**Status**: In Progress (58.1–58.10 done)
+**Status**: In Progress (58.1–58.11 done)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
