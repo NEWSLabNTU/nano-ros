@@ -387,18 +387,16 @@ fn test_freertos_pubsub_e2e() {
 
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting listener QEMU on tap-qemu1...");
-    let mut listener =
-        QemuProcess::start_mps2_an385_networked(listener_bin, "tap-qemu1", "02:00:00:00:00:01")
-            .expect("Failed to start listener QEMU");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+        .expect("Failed to start listener QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
     std::thread::sleep(Duration::from_secs(10));
 
     // Start talker QEMU
     eprintln!("Starting talker QEMU on tap-qemu0...");
-    let mut talker =
-        QemuProcess::start_mps2_an385_networked(talker_bin, "tap-qemu0", "02:00:00:00:00:00")
-            .expect("Failed to start talker QEMU");
+    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
+        .expect("Failed to start talker QEMU");
 
     // Wait for listener to complete — reads all buffered output (boot + messages).
     // The completion marker "Received 10 messages" triggers early return.
@@ -459,18 +457,16 @@ fn test_freertos_service_e2e() {
 
     // Start server first
     eprintln!("Starting service server QEMU on tap-qemu0...");
-    let mut server =
-        QemuProcess::start_mps2_an385_networked(server_bin, "tap-qemu0", "02:00:00:00:00:00")
-            .expect("Failed to start server QEMU");
+    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
+        .expect("Failed to start server QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
     std::thread::sleep(Duration::from_secs(10));
 
     // Start client
     eprintln!("Starting service client QEMU on tap-qemu1...");
-    let mut client =
-        QemuProcess::start_mps2_an385_networked(client_bin, "tap-qemu1", "02:00:00:00:00:01")
-            .expect("Failed to start client QEMU");
+    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
+        .expect("Failed to start client QEMU");
 
     // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
     // before it can discover the server's service queryable.
@@ -546,18 +542,16 @@ fn test_freertos_action_e2e() {
 
     // Start action server first
     eprintln!("Starting action server QEMU on tap-qemu0...");
-    let mut server =
-        QemuProcess::start_mps2_an385_networked(server_bin, "tap-qemu0", "02:00:00:00:00:00")
-            .expect("Failed to start server QEMU");
+    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
+        .expect("Failed to start server QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
     std::thread::sleep(Duration::from_secs(10));
 
     // Start action client
     eprintln!("Starting action client QEMU on tap-qemu1...");
-    let mut client =
-        QemuProcess::start_mps2_an385_networked(client_bin, "tap-qemu1", "02:00:00:00:00:01")
-            .expect("Failed to start client QEMU");
+    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
+        .expect("Failed to start client QEMU");
 
     // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
     // before it can discover the server's action queryables.

@@ -13,8 +13,15 @@
 #include "plic.h"
 #include <string.h>
 
-/* Debug output — remove once driver is verified */
+/* UART output for init diagnostics.
+ * Define VIRTIO_DEBUG=1 to enable verbose hex dumps during init. */
 extern void uart_puts(const char *s);
+
+#ifndef VIRTIO_DEBUG
+#define VIRTIO_DEBUG 0
+#endif
+
+#if VIRTIO_DEBUG
 static void dbg_hex32(uint32_t v) {
     char buf[11]; buf[0]='0'; buf[1]='x';
     for (int i=7;i>=0;i--) {
@@ -27,6 +34,7 @@ static void dbg_hex64(uint64_t v) {
     dbg_hex32((uint32_t)(v>>32));
     dbg_hex32((uint32_t)v);
 }
+#endif
 
 /* --------------------------------------------------------------------------
  * Constants
@@ -96,8 +104,6 @@ VOID virtio_net_nx_driver(NX_IP_DRIVER *driver_req_ptr)
     /* Default to success */
     driver_req_ptr->nx_ip_driver_status = NX_SUCCESS;
 
-    uart_puts("[drv] cmd="); dbg_hex32(driver_req_ptr->nx_ip_driver_command); uart_puts("\n");
-
     switch (driver_req_ptr->nx_ip_driver_command) {
 
     case NX_LINK_INTERFACE_ATTACH:
@@ -155,18 +161,19 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
 
     /* 1. Probe VirtIO MMIO device.
      * Scan all 8 QEMU virt MMIO slots to find the net device. */
-    uart_puts("[virtio] scanning MMIO slots...\n");
     {
         int found = 0;
         for (uint64_t scan = 0x10001000; scan <= 0x10008000; scan += 0x1000) {
             uint32_t magic = virtio_mmio_read32(scan, VIRTIO_MMIO_MAGIC_VALUE);
             uint32_t ver   = virtio_mmio_read32(scan, VIRTIO_MMIO_VERSION);
             uint32_t devid = virtio_mmio_read32(scan, VIRTIO_MMIO_DEVICE_ID);
+#if VIRTIO_DEBUG
             uart_puts("  "); dbg_hex64(scan);
             uart_puts(" magic="); dbg_hex32(magic);
             uart_puts(" ver="); dbg_hex32(ver);
             uart_puts(" devid="); dbg_hex32(devid);
             uart_puts("\n");
+#endif
             if (magic == VIRTIO_MMIO_MAGIC && (ver == 1 || ver == 2) && devid == VIRTIO_DEV_NET && !found) {
                 base = scan;
                 driver_config.mmio_base = base;
@@ -182,9 +189,6 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
             driver_req->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
             return;
         }
-        uart_puts("[virtio] using base="); dbg_hex64(base);
-        uart_puts(" irq="); dbg_hex32(driver_config.irq_num);
-        uart_puts("\n");
     }
 
     /* 2. Reset and set ACKNOWLEDGE + DRIVER */
@@ -193,10 +197,8 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
     virtio_mmio_set_status(base, VIRTIO_STATUS_DRIVER);
 
     /* 3. Negotiate features */
-    uart_puts("[virtio] negotiating features...\n");
     uint32_t features = virtio_mmio_negotiate_features(
         base, VIRTIO_NET_F_MAC | VIRTIO_NET_F_STATUS);
-    uart_puts("[virtio] features="); dbg_hex32(features); uart_puts("\n");
     if (features == 0) {
         virtio_mmio_set_status(base, VIRTIO_STATUS_FAILED);
         driver_req->nx_ip_driver_status = NX_NOT_SUCCESSFUL;
@@ -216,9 +218,7 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
     }
 
     /* 5. DRIVER_OK -- device is live */
-    uart_puts("[virtio] virtqueues initialized, setting DRIVER_OK\n");
     virtio_mmio_set_status(base, VIRTIO_STATUS_DRIVER_OK);
-    uart_puts("[virtio] status="); dbg_hex32(virtio_mmio_get_status(base)); uart_puts("\n");
 
     /* 6. Read MAC address from device config space (offset 0x100) */
     if (features & VIRTIO_NET_F_MAC) {
@@ -253,12 +253,7 @@ static void driver_initialize(NX_IP_DRIVER *driver_req)
     driver_ip_ptr = ip_ptr;
     rx_pending = 0;
 
-    uart_puts("[virtio] init complete, MAC=");
-    for (int i = 0; i < 6; i++) {
-        if (i > 0) uart_puts(":");
-        dbg_hex32(device_mac[i]);
-    }
-    uart_puts("\n");
+    uart_puts("[virtio] init complete\n");
 }
 
 /* --------------------------------------------------------------------------
@@ -270,15 +265,10 @@ static void driver_enable(NX_IP_DRIVER *driver_req)
     NX_INTERFACE *iface = driver_req->nx_ip_driver_interface;
 
     /* Pre-fill RX virtqueue with buffers (device-writable) */
-    uart_puts("[virtio] enable: filling RX buffers...\n");
     rx_fill_initial();
-    uart_puts("[virtio] enable: kicking RX queue (num_free=");
-    dbg_hex32(rxq.num_free); uart_puts(")\n");
     virtqueue_kick(&rxq);
 
     /* Register PLIC interrupt */
-    uart_puts("[virtio] enable: registering IRQ ");
-    dbg_hex32(driver_config.irq_num); uart_puts("\n");
     plic_register_callback(driver_config.irq_num, virtio_net_isr);
     plic_prio_set(driver_config.irq_num, 1);
     plic_irq_enable(driver_config.irq_num);
@@ -308,22 +298,11 @@ static void driver_disable(NX_IP_DRIVER *driver_req)
  * NX_LINK_PACKET_SEND (+ BROADCAST, ARP_SEND, ARP_RESPONSE_SEND, RARP_SEND)
  * ----------------------------------------------------------------------- */
 
-extern void uart_puts(const char *s);
-
 static void driver_packet_send(NX_IP_DRIVER *driver_req)
 {
     NX_PACKET    *packet_ptr = driver_req->nx_ip_driver_packet;
     NX_INTERFACE *iface      = driver_req->nx_ip_driver_interface;
     uint32_t      offset     = 0;
-
-    /* Diagnostic: trace TX commands */
-    switch (driver_req->nx_ip_driver_command) {
-    case NX_LINK_ARP_SEND:         uart_puts("[TX] ARP request\n"); break;
-    case NX_LINK_ARP_RESPONSE_SEND: uart_puts("[TX] ARP response\n"); break;
-    case NX_LINK_PACKET_SEND:      uart_puts("[TX] IP packet\n"); break;
-    case NX_LINK_PACKET_BROADCAST: uart_puts("[TX] broadcast\n"); break;
-    default:                       uart_puts("[TX] other\n"); break;
-    }
 
     /* 1. Build virtio-net header (all zeros for simple TX) */
     memset(tx_buffer, 0, virtio_net_hdr_size);
@@ -387,16 +366,6 @@ static void driver_packet_send(NX_IP_DRIVER *driver_req)
     }
 
     /* 4. Enqueue TX buffer (device-readable) */
-    uart_puts("[TX] len="); dbg_hex32(offset);
-    uart_puts(" hdr:");
-    for (uint32_t d = 0; d < 12 && d < offset; d++) {
-        uart_puts(" "); dbg_hex32(tx_buffer[d]);
-    }
-    uart_puts("\n[TX] eth:");
-    for (uint32_t d = 12; d < 26 && d < offset; d++) {
-        uart_puts(" "); dbg_hex32(tx_buffer[d]);
-    }
-    uart_puts("\n");
     int desc_idx = virtqueue_add_buf(&txq, (uint64_t)(uintptr_t)tx_buffer,
                                      offset, 0);
     if (desc_idx < 0) {
@@ -442,24 +411,10 @@ static void driver_deferred_processing(NX_IP_DRIVER *driver_req)
 
     rx_pending = 0;
 
-    uart_puts("[RX] deferred processing\n");
-
     /* Process all completed RX buffers */
-    int rx_count = 0;
     while ((desc_idx = virtqueue_get_used(&rxq, &len)) >= 0) {
-        rx_count++;
-        uart_puts("[RX] frame len="); dbg_hex32(len); uart_puts("\n");
         /* Read buffer address from descriptor before freeing it */
         uint8_t *buf = (uint8_t *)(uintptr_t)rxq.desc[desc_idx].addr;
-
-        /* Dump first 40 bytes of raw buffer (virtio hdr + ethernet + start of payload) */
-        uart_puts("[RX] raw:");
-        for (uint32_t d = 0; d < 40 && d < len; d++) {
-            if (d == 12) uart_puts(" |");  /* virtio-net header boundary */
-            if (d == 26) uart_puts(" |");  /* ethernet header boundary (12+14) */
-            uart_puts(" "); dbg_hex32(buf[d]);
-        }
-        uart_puts("\n");
 
         /* Free descriptor back to the free list */
         virtqueue_free_desc(&rxq, (uint16_t)desc_idx);
@@ -504,8 +459,6 @@ static void driver_deferred_processing(NX_IP_DRIVER *driver_req)
 
         /* Extract EtherType from Ethernet header (bytes 12-13) */
         uint16_t etype = ((uint16_t)frame[12] << 8) | (uint16_t)frame[13];
-        uart_puts("[RX] etype="); dbg_hex32(etype);
-        uart_puts(" plen="); dbg_hex32(frame_len); uart_puts("\n");
 
         /* Tag packet with the receiving interface (required by NetX handlers).
          * Must use nx_packet_address.nx_packet_interface_ptr — this is what
@@ -519,16 +472,12 @@ static void driver_deferred_processing(NX_IP_DRIVER *driver_req)
 
         /* Route to appropriate NetX handler */
         if (etype == NX_ETHERNET_IP || etype == NX_ETHERNET_IPV6) {
-            uart_puts("[RX] -> IP\n");
             _nx_ip_packet_deferred_receive(driver_ip_ptr, packet_ptr);
         } else if (etype == NX_ETHERNET_ARP) {
-            uart_puts("[RX] -> ARP\n");
             _nx_arp_packet_deferred_receive(driver_ip_ptr, packet_ptr);
         } else if (etype == NX_ETHERNET_RARP) {
-            uart_puts("[RX] -> RARP\n");
             _nx_rarp_packet_deferred_receive(driver_ip_ptr, packet_ptr);
         } else {
-            uart_puts("[RX] -> DROP\n");
             nx_packet_release(packet_ptr);
         }
 
@@ -558,8 +507,6 @@ static void driver_get_status(NX_IP_DRIVER *driver_req)
  * PLIC ISR
  * ----------------------------------------------------------------------- */
 
-static volatile int isr_count = 0;
-
 static int virtio_net_isr(int irqno)
 {
     uint64_t base = driver_config.mmio_base;
@@ -570,7 +517,6 @@ static int virtio_net_isr(int irqno)
     virtio_mmio_write32(base, VIRTIO_MMIO_INTERRUPT_ACK, isr_status);
 
     (void)irqno;
-    isr_count++;
 
     if (isr_status & VIRTIO_MMIO_INT_VRING) {
         if (!rx_pending) {
@@ -581,70 +527,6 @@ static int virtio_net_isr(int irqno)
     }
 
     return 0;
-}
-
-/* --------------------------------------------------------------------------
- * Debug: poll RX state (call from app thread for diagnostics)
- * ----------------------------------------------------------------------- */
-
-void virtio_net_nx_debug_poll(void)
-{
-    uart_puts("[virtio-dbg] isr_count="); dbg_hex32(isr_count);
-    uart_puts(" rx_pending="); dbg_hex32(rx_pending);
-    uart_puts("\n");
-
-    /* Check RX used ring directly */
-    uart_puts("[virtio-dbg] rxq: last_used_idx=");
-    dbg_hex32(rxq.last_used_idx);
-    uart_puts(" used->idx=");
-    dbg_hex32(rxq.used->idx);
-    uart_puts(" num_free=");
-    dbg_hex32(rxq.num_free);
-    uart_puts("\n");
-
-    /* Check TX used ring */
-    uart_puts("[virtio-dbg] txq: last_used_idx=");
-    dbg_hex32(txq.last_used_idx);
-    uart_puts(" used->idx=");
-    dbg_hex32(txq.used->idx);
-    uart_puts(" num_free=");
-    dbg_hex32(txq.num_free);
-    uart_puts("\n");
-
-    /* Check MMIO interrupt status */
-    uint64_t base = driver_config.mmio_base;
-    uint32_t isr_status = virtio_mmio_read32(base, VIRTIO_MMIO_INTERRUPT_STATUS);
-    uint32_t dev_status = virtio_mmio_read32(base, VIRTIO_MMIO_STATUS);
-    uart_puts("[virtio-dbg] MMIO isr_status="); dbg_hex32(isr_status);
-    uart_puts(" dev_status="); dbg_hex32(dev_status);
-    uart_puts("\n");
-
-    /* Check PLIC state in detail */
-    int irq = driver_config.irq_num;
-    uart_puts("[virtio-dbg] PLIC prio=");
-    dbg_hex32(plic_prio_get(irq));
-    uart_puts("\n");
-
-    /* Read PLIC pending register (0x0C001000) */
-    uint32_t plic_pending = *(volatile uint32_t *)(0x0C001000UL);
-    uart_puts("[virtio-dbg] PLIC pending="); dbg_hex32(plic_pending); uart_puts("\n");
-
-    /* Read PLIC M-mode enable register for hart 0 (0x0C002000) */
-    int hart = 0;
-    uint32_t plic_enable = *(volatile uint32_t *)(0x0C002000UL + hart * 0x100);
-    uart_puts("[virtio-dbg] PLIC M-enable="); dbg_hex32(plic_enable); uart_puts("\n");
-
-    /* Read PLIC M-mode threshold for hart 0 (0x0C200000) */
-    uint32_t plic_thresh = *(volatile uint32_t *)(0x0C200000UL + hart * 0x2000);
-    uart_puts("[virtio-dbg] PLIC M-threshold="); dbg_hex32(plic_thresh); uart_puts("\n");
-
-    /* Read mie and mstatus CSRs */
-    uint64_t mie_val, mstatus_val;
-    __asm__ volatile("csrr %0, mie" : "=r"(mie_val));
-    __asm__ volatile("csrr %0, mstatus" : "=r"(mstatus_val));
-    uart_puts("[virtio-dbg] mie="); dbg_hex64(mie_val);
-    uart_puts(" mstatus="); dbg_hex64(mstatus_val);
-    uart_puts("\n");
 }
 
 /* --------------------------------------------------------------------------

@@ -113,18 +113,14 @@ impl QemuProcess {
     /// Uses the MPS2-AN385 machine with a LAN9118 Ethernet controller connected
     /// to a TAP device on the host, enabling network communication via the qemu-br bridge.
     ///
-    /// # Arguments
-    /// * `binary` - Path to the ARM ELF binary to run
-    /// * `tap_device` - TAP interface name (e.g., "tap-qemu0")
-    /// * `mac_address` - MAC address for the NIC (e.g., "02:00:00:00:00:00")
+    /// The `peer_index` selects the TAP device and MAC address:
+    /// - 0: tap-qemu0, MAC 02:00:00:00:00:00 (talker/server)
+    /// - 1: tap-qemu1, MAC 02:00:00:00:00:01 (listener/client)
     ///
-    /// # Returns
-    /// A managed QEMU process
-    pub fn start_mps2_an385_networked(
-        binary: &Path,
-        tap_device: &str,
-        mac_address: &str,
-    ) -> TestResult<Self> {
+    /// MAC addresses use the locally-administered range (02:xx) with the last
+    /// byte derived from the peer index. These must match the firmware's network
+    /// config in `nros-mps2-an385-freertos`.
+    pub fn start_mps2_an385_networked(binary: &Path, peer_index: u8) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
                 "Binary not found: {}",
@@ -132,6 +128,8 @@ impl QemuProcess {
             )));
         }
 
+        let tap_device = format!("tap-qemu{}", peer_index);
+        let mac_address = format!("02:00:00:00:00:{:02x}", peer_index);
         let nic_arg = format!(
             "tap,ifname={},script=no,downscript=no,model=lan9118,mac={}",
             tap_device, mac_address
@@ -305,19 +303,24 @@ impl QemuProcess {
     /// MMIO interface connected to a TAP device on the host, enabling network
     /// communication via the qemu-br bridge.
     ///
-    /// # Arguments
-    /// * `binary` - Path to the RISC-V ELF binary to run
-    /// * `tap_iface` - TAP interface name (e.g., "tap-qemu0")
+    /// The `peer_index` selects the TAP device and MAC address:
+    /// - 0: tap-qemu0, MAC 52:54:00:12:34:56 (talker/server)
+    /// - 1: tap-qemu1, MAC 52:54:00:12:34:57 (listener/client)
     ///
-    /// # Returns
-    /// A managed QEMU process
-    pub fn start_riscv64_virt(binary: &Path, tap_iface: &str) -> TestResult<Self> {
+    /// MAC addresses use the QEMU OUI range (52:54:00) with the last byte
+    /// derived from the peer index (0x56 + index). These must match the
+    /// firmware's `Config::default()` / `Config::listener()` presets in
+    /// `nros-threadx-qemu-riscv64`.
+    pub fn start_riscv64_virt(binary: &Path, peer_index: u8) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
                 "Binary not found: {}",
                 binary.display()
             )));
         }
+
+        let tap_iface = format!("tap-qemu{}", peer_index);
+        let mac = format!("52:54:00:12:34:{:02x}", 0x56u8 + peer_index);
 
         let mut cmd = Command::new("qemu-system-riscv64");
         cmd.args([
@@ -328,8 +331,6 @@ impl QemuProcess {
             "-bios",
             "none",
             "-nographic",
-            "-bios",
-            "none",
             "-global",
             "virtio-mmio.force-legacy=false",
             "-kernel",
@@ -338,10 +339,11 @@ impl QemuProcess {
 
         let netdev_arg = format!("tap,id=net0,ifname={},script=no,downscript=no", tap_iface);
         cmd.args(["-netdev", &netdev_arg]);
-        cmd.args([
-            "-device",
-            "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0",
-        ]);
+        let device_arg = format!(
+            "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac={}",
+            mac
+        );
+        cmd.args(["-device", &device_arg]);
 
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
         #[cfg(unix)]
