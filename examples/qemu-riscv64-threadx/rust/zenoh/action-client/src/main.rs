@@ -50,7 +50,7 @@ extern "C" fn main() -> ! {
         // Poll for result
         println!("Requesting result...");
         let mut result_promise = client.get_result(&goal_id)?;
-        for _ in 0..10000 {
+        for _ in 0..10000u32 {
             executor.spin_once(10);
             if let Some((status, result)) = result_promise.try_recv()? {
                 println!("Result status: {:?}", status);
