@@ -112,7 +112,7 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 - Use Write/Edit tools (avoid cat + heredoc)
 
 ### `.gitignore` Practices
-- Per-example `.gitignore` for build artifacts (`/target/`, `/generated/`)
+- **Every workspace-excluded crate** (examples, board crates in `exclude`, standalone packages) must have a per-directory `.gitignore` with at least `/target/`. Add `/generated/` if the crate uses `cargo nano-ros generate`.
 - Root `.gitignore` only for repo-wide patterns
 - Always use leading `/` (e.g., `/target/` not `target/`)
 - When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`
