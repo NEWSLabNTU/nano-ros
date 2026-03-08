@@ -19,6 +19,8 @@ members = [
     "packages/testing/nros-tests",
     # C API for embedded systems
     "packages/core/nros-c",
+    # C++ FFI bindings (typed, for nros-cpp header-only library)
+    "packages/core/nros-cpp-ffi",
     # LAN9118 Ethernet driver for smoltcp
     "packages/drivers/lan9118-smoltcp",
     # Generated ROS 2 interface types (rcl_interfaces, builtin_interfaces).

@@ -2,7 +2,7 @@
 
 **Goal**: Provide a freestanding C++ API that mirrors rclcpp naming conventions, wrapping Rust `nros-node` directly via typed `extern "C"` FFI. Includes CMake-based message codegen for embedded C++ targets.
 
-**Status**: Not Started
+**Status**: In Progress (66.1–66.2 done)
 **Priority**: Medium
 **Depends on**: Phase 49 (nros-c thin wrapper migration — complete), Phase 51 (Board crate `run()` API)
 
@@ -28,8 +28,8 @@ See [docs/design/cpp-api-design.md](../design/cpp-api-design.md) for the full de
 
 ## Work Items
 
-- [ ] 66.1 — `nros-cpp-ffi` Rust crate (core FFI exports)
-- [ ] 66.2 — C++ header-only library (core types)
+- [x] 66.1 — `nros-cpp-ffi` Rust crate (core FFI exports)
+- [x] 66.2 — C++ header-only library (core types)
 - [ ] 66.3 — Publisher and Subscription
 - [ ] 66.4 — C++ message codegen (`generate-cpp`)
 - [ ] 66.5 — CMake integration (`LANGUAGE CPP`)

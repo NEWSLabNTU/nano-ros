@@ -22,6 +22,7 @@ FetchContent_MakeAvailable(Corrosion)
 # Sub-projects
 # ---------------------------------------------------------------------------
 add_subdirectory(packages/core/nros-c)
+add_subdirectory(packages/core/nros-cpp)
 
 if(NANO_ROS_BUILD_CODEGEN)
     add_subdirectory(packages/codegen/packages/nros-codegen-c)

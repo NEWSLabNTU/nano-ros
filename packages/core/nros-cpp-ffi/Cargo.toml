@@ -1,0 +1,50 @@
+[package]
+name = "nros-cpp-ffi"
+version = "0.1.0"
+edition = "2024"
+description = "Typed C++ FFI bindings for nros — direct Rust wrapper for strong type safety"
+license = "Apache-2.0"
+keywords = ["ros", "ros2", "embedded", "cpp", "ffi"]
+categories = ["embedded", "robotics", "api-bindings"]
+
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+default = ["std"]
+std = ["alloc", "nros/std", "nros-node/std", "nros-rmw/std"]
+alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
+
+# RMW backend (select one) — passed through to nros
+rmw-zenoh = ["nros/rmw-zenoh"]
+rmw-xrce = ["nros/rmw-xrce"]
+rmw-cffi = ["nros/rmw-cffi"]
+
+# XRCE transport refinements (require rmw-xrce)
+xrce-udp = ["nros/xrce-udp"]
+xrce-serial = ["nros/xrce-serial"]
+
+# Platform backends (select one — orthogonal to RMW and ROS version)
+platform-posix = ["nros/platform-posix"]
+platform-zephyr = ["nros/platform-zephyr"]
+platform-freertos = ["nros/platform-freertos"]
+platform-nuttx = ["nros/platform-nuttx"]
+platform-threadx = ["nros/platform-threadx"]
+
+# ROS edition (orthogonal to RMW and platform)
+ros-humble = ["nros/ros-humble"]
+ros-iron = ["nros/ros-iron"]
+
+[dependencies]
+nros = { path = "../nros", default-features = false }
+nros-node = { path = "../nros-node", default-features = false }
+nros-rmw = { path = "../nros-rmw", default-features = false }
+
+[build-dependencies]
+cbindgen = "0.29"
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(cbindgen)'] }
+
+[package.metadata.docs.rs]
+all-features = true

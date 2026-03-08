@@ -505,6 +505,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-cpp-ffi"
+version = "0.1.0"
+dependencies = [
+ "cbindgen",
+ "nros",
+ "nros-node",
+ "nros-rmw",
+]
+
+[[package]]
 name = "nros-ghost-types"
 version = "0.1.0"
 
