@@ -1,0 +1,44 @@
+[package]
+name = "qemu-rtic-listener"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "RTIC listener example for nros on QEMU MPS2-AN385"
+
+[[bin]]
+name = "qemu-rtic-listener"
+test = false
+bench = false
+
+[dependencies]
+# Board crate for hardware + network init
+nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385" }
+
+# MPS2-AN385 PAC (interrupt bindings for RTIC dispatchers)
+mps2-an385-pac = { path = "../../../../../packages/boards/mps2-an385-pac" }
+
+# nros Executor API
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "link-tcp", "link-udp-unicast", "ros-humble"] }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
+# RTIC v2
+rtic = { version = "2.1", features = ["thumbv7-backend"] }
+rtic-monotonics = { version = "2.0", features = ["cortex-m-systick"] }
+
+# Cortex-M runtime
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+
+# Panic handler (required for no_std)
+panic-semihosting = { version = "0.6", features = ["exit"] }
+
+[profile.release]
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = "fat"
+opt-level = "s"
+overflow-checks = false

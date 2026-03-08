@@ -12,9 +12,10 @@
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nros_tests::fixtures::{
-    QemuProcess, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
-    build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, parse_test_results,
-    qemu_binary, require_zenoh_pico_arm,
+    QemuProcess, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
+    build_qemu_rtic_listener, build_qemu_rtic_talker, build_qemu_wcet_bench,
+    is_arm_toolchain_available, is_qemu_available, parse_test_results, qemu_binary,
+    require_tap_bridge, require_zenoh_pico_arm,
 };
 use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
 use rstest::rstest;
@@ -554,4 +555,91 @@ fn test_qemu_bsp_both_build() {
         (Err(e), _) => panic!("BSP talker build failed: {:?}", e),
         (_, Err(e)) => panic!("BSP listener build failed: {:?}", e),
     }
+}
+
+// =============================================================================
+// RTIC QEMU Build Tests (MPS2-AN385)
+// =============================================================================
+
+#[test]
+fn test_qemu_rtic_talker_builds() {
+    require_arm_toolchain();
+
+    let binary = build_qemu_rtic_talker().expect("Failed to build qemu-rtic-talker");
+    println!("SUCCESS: qemu-rtic-talker builds at {}", binary.display());
+}
+
+#[test]
+fn test_qemu_rtic_listener_builds() {
+    require_arm_toolchain();
+
+    let binary = build_qemu_rtic_listener().expect("Failed to build qemu-rtic-listener");
+    println!("SUCCESS: qemu-rtic-listener builds at {}", binary.display());
+}
+
+// =============================================================================
+// RTIC QEMU Networked Tests (MPS2-AN385 + LAN9118 + zenohd)
+// =============================================================================
+
+#[test]
+fn test_qemu_rtic_pubsub_e2e() {
+    require_arm_toolchain();
+    if !require_tap_bridge() {
+        return;
+    }
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    // Build both binaries
+    let talker_bin = build_qemu_rtic_talker().expect("Failed to build rtic-talker");
+    let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
+
+    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+
+    // Start listener QEMU first (subscriber before publisher)
+    eprintln!("Starting RTIC listener QEMU on tap-qemu1...");
+    let mut listener =
+        QemuProcess::start_mps2_an385_networked(listener_bin, "tap-qemu1", "02:00:00:00:00:01")
+            .expect("Failed to start listener QEMU");
+
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Start talker QEMU
+    eprintln!("Starting RTIC talker QEMU on tap-qemu0...");
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin, "tap-qemu0", "02:00:00:00:00:00")
+            .expect("Failed to start talker QEMU");
+
+    // Wait for listener to complete
+    let listener_output = listener
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    // Wait for talker to finish publishing
+    let talker_output = talker
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+
+    talker.kill();
+    listener.kill();
+
+    eprintln!("Listener output:\n{}", listener_output);
+    eprintln!("Talker output:\n{}", talker_output);
+
+    // Verify communication
+    let received = count_pattern(&listener_output, "Received [");
+    eprintln!("RTIC QEMU pubsub: received={} messages", received);
+
+    assert!(
+        listener_output.contains("Received 10 messages"),
+        "RTIC QEMU listener did not receive 10 messages (got {})",
+        received
+    );
+    assert!(
+        talker_output.contains("Done publishing"),
+        "RTIC QEMU talker did not finish publishing"
+    );
 }

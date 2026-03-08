@@ -1651,6 +1651,44 @@ pub fn build_esp32_qemu_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// RTIC QEMU Example Builders (MPS2-AN385, Cortex-M3)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cached path to the qemu-rtic-talker binary
+static QEMU_RTIC_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-rtic-listener binary
+static QEMU_RTIC_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build qemu-rtic-talker (cached)
+pub fn build_qemu_rtic_talker() -> TestResult<&'static Path> {
+    QEMU_RTIC_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-talker",
+                "qemu-rtic-talker",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build qemu-rtic-listener (cached)
+pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
+    QEMU_RTIC_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-listener",
+                "qemu-rtic-listener",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -3,7 +3,7 @@
 **Goal**: Enable nano-ros on RTIC (Real-Time Interrupt-driven Concurrency) by documenting the
 usage pattern and completing the board-crate API changes needed to support RTIC's `#[init]` model.
 
-**Status**: In Progress (63.1–63.4 done)
+**Status**: In Progress (63.1–63.7 done)
 
 **Priority**: Medium
 
@@ -558,7 +558,9 @@ mod app {
 - [x] 63.2 — RTIC talker/listener example (`examples/stm32f4/rust/zenoh/rtic-{talker,listener}/`)
 - [x] 63.3 — RTIC service example (`rtic-service-{server,client}/`)
 - [x] 63.4 — RTIC action example (`rtic-action-{server,client}/`)
-- [ ] 63.5 — RTIC integration test (lm3s6965evb QEMU + lm3s6965 PAC)
+- [x] 63.5 — MPS2-AN385 PAC crate (`packages/boards/mps2-an385-pac/`)
+- [x] 63.6 — RTIC QEMU examples (`examples/qemu-arm-baremetal/rust/zenoh/rtic-{talker,listener}/`)
+- [x] 63.7 — RTIC QEMU integration test (`test-rtic` justfile recipe)
 
 ### 63.1 — Factor `board::init_hardware()` out of `board::run()`
 
@@ -672,42 +674,150 @@ uses `try_recv()` loops for goal acceptance and `try_recv_feedback()` filtered b
 - `examples/native/rust/zenoh/rtic-action-server/` (new, test equivalent)
 - `examples/native/rust/zenoh/rtic-action-client/` (new, test equivalent)
 
-### 63.5 — RTIC Integration Test
+### 63.5 — MPS2-AN385 PAC Crate
 
-Use the same QEMU test strategy as the RTIC project itself: `lm3s6965evb` machine
-with the [`lm3s6965`](https://crates.io/crates/lm3s6965) PAC crate (v0.2, MIT/Apache-2.0).
-This PAC provides only interrupt bindings (`Interrupt` enum with 44 variants) — no
-register APIs, no HAL. nano-ros already has `lm3s6965evb` QEMU infrastructure
-(`QemuProcess::start_cortex_m3()` in `nros-tests`).
+Create a minimal in-tree PAC for the ARM CMSDK Cortex-M3 (MPS2-AN385 FPGA image).
+RTIC needs a PAC with an `Interrupt` enum and vector table — no register APIs required.
 
-**Two-tier test plan**:
+**Why MPS2-AN385**: nano-ros already has full networking infrastructure for this QEMU
+machine — `lan9118-smoltcp` driver, `nros-mps2-an385` board crate, TAP bridge networking
+(192.0.3.x), and `QemuProcess::start_mps2_an385_networked()` test helpers. A single
+platform covers both RTIC task dispatch validation AND networked zenoh communication,
+eliminating the need for a separate non-networked tier.
 
-| Tier | QEMU Machine     | PAC         | Networking | What it validates                                   |
-|------|------------------|-------------|------------|-----------------------------------------------------|
-| 1    | `lm3s6965evb`    | `lm3s6965`  | None       | RTIC task dispatch, `spin_once(0)`, `try_recv()`    |
-| 2    | `mps2-an385`     | Minimal stub| LAN9118    | RTIC + zenoh talker/listener over network           |
+**Why not lm3s6965**: The `lm3s6965` PAC exists on crates.io and RTIC's own CI uses it,
+but `lm3s6965evb` QEMU has no LAN9118 Ethernet — only Stellaris MAC (no smoltcp driver).
+A non-networked test validates RTIC dispatch but not the full nano-ros + zenoh stack,
+which is what matters for integration testing.
 
-**Tier 1** (non-networked): Validates RTIC + nano-ros handle lifecycle, init pattern,
-and cooperative scheduling. Uses semihosting for output and `cortex_m_semihosting::
-debug::exit(EXIT_SUCCESS)` for pass/fail. QEMU runner in `.cargo/config.toml`:
+**PAC structure** (follows the [`lm3s6965`](https://crates.io/crates/lm3s6965) pattern):
 
-```toml
-[target.thumbv7m-none-eabi]
-runner = "qemu-system-arm -cpu cortex-m3 -machine lm3s6965evb -nographic -semihosting-config enable=on,target=native -kernel"
+```
+packages/boards/mps2-an385-pac/
+├── Cargo.toml          # cortex-m 0.7 + cortex-m-rt 0.7 (device feature)
+└── src/
+    └── lib.rs          # ~150 lines: Interrupt enum, Nr impl, __INTERRUPTS, Peripherals
 ```
 
-**Tier 2** (networked): Requires a minimal MPS2-AN385 PAC with CMSDK interrupt
-definitions (AN385 has 45 IRQs). This can be a small in-tree crate (~100 lines)
-following the `lm3s6965` pattern. RTIC dispatchers only need unused NVIC slots —
-the interrupt names just need valid vector numbers not used by LAN9118 or timers.
+**CMSDK interrupt map** (from ARM CMSDK_CM3.h, confirmed against QEMU `mps2.c`):
 
-**Status**: Not Started
+QEMU configures 32 external NVIC interrupts for the AN385 variant.
+
+| IRQ | Name          | Hardware                  | RTIC use      |
+|-----|---------------|---------------------------|---------------|
+| 0   | `UARTRX0`    | CMSDK UART0 RX            | **Dispatcher** |
+| 1   | `UARTTX0`    | CMSDK UART0 TX            | **Dispatcher** |
+| 2   | `UARTRX1`    | CMSDK UART1 RX            | **Dispatcher** |
+| 3   | `UARTTX1`    | CMSDK UART1 TX            | Available      |
+| 4   | `UARTRX2`    | CMSDK UART2 RX            | Available      |
+| 5   | `UARTTX2`    | CMSDK UART2 TX            | Available      |
+| 6   | `PORT0_ALL`  | GPIO Port 0 combined      | Available      |
+| 7   | `PORT1_ALL`  | GPIO Port 1 combined      | Available      |
+| 8   | `TIMER0`     | CMSDK Timer 0             | Available      |
+| 9   | `TIMER1`     | CMSDK Timer 1             | Available      |
+| 10  | `DUALTIMER`  | CMSDK Dual Timer          | Available      |
+| 11  | `SPI`        | SPI                       | Available      |
+| 12  | `UARTOVF`    | UART 0/1/2 overflow (OR'd)| Available      |
+| 13  | `ETHERNET`   | LAN9118 (wired in QEMU)   | **Reserved**   |
+| 14  | `I2S`        | Audio I2S                 | Available      |
+| 15  | `TSC`        | Touch Screen Controller   | Available      |
+| 16  | `PORT2_ALL`  | GPIO Port 2 combined      | Available      |
+| 17  | `PORT3_ALL`  | GPIO Port 3 combined      | Available      |
+| 18  | `UARTRX3`    | CMSDK UART3 RX            | Available      |
+| 19  | `UARTTX3`    | CMSDK UART3 TX            | Available      |
+| 20  | `UARTRX4`    | CMSDK UART4 RX            | Available      |
+| 21  | `UARTTX4`    | CMSDK UART4 TX            | Available      |
+| 22  | `ADCSPI`     | ADC SPI                   | Available      |
+| 23  | `SHIELDSPI`  | Shield SPI                | Available      |
+| 24–31 | `PORT0_0`–`PORT0_7` | GPIO Port 0 per-pin | Available    |
+
+nano-ros uses **zero** NVIC interrupts on MPS2-AN385 (all I/O is polled). IRQ 13
+(`ETHERNET`) is wired to LAN9118 in QEMU but no handler is bound — reserved to avoid
+future conflicts if interrupt-driven Ethernet is added.
+
+Dispatchers: `UARTRX0` (IRQ 0), `UARTTX0` (IRQ 1), `UARTRX1` (IRQ 2) — matching the
+UART convention from STM32F4 examples. Three slots support up to 3 RTIC priority levels.
+
+**Implementation requirements**:
+
+1. `Interrupt` enum with 32 variants (one per NVIC slot)
+2. `unsafe impl cortex_m::interrupt::Nr` — maps each variant to its IRQ number.
+   cortex-m 0.7 has a blanket impl `InterruptNumber for T: Nr`, so RTIC v2 works
+3. `extern "C"` function declarations for each interrupt (linker symbols)
+4. `__INTERRUPTS: [Vector; 32]` in `.vector_table.interrupts` section
+5. `Peripherals` struct with `unsafe fn steal()` (can be empty — RTIC requires it)
+6. `NVIC_PRIO_BITS: u8 = 3` constant (Cortex-M3 default)
+7. Edition 2024: `unsafe extern "C"` blocks, `#[unsafe(no_mangle)]` on statics
+
+**Status**: Complete
+
+**Implementation**: Created minimal PAC with `Interrupt` enum (32 variants matching
+CMSDK CM3 interrupt map), `Nr` trait impl, `__INTERRUPTS` vector table, `Peripherals`
+struct, and `device.x` linker script. Edition 2024 conventions: `unsafe extern "C"`,
+`#[unsafe(no_mangle)]`, `#[unsafe(link_section)]`. Verified compilation for
+`thumbv7m-none-eabi`.
 
 **Files**:
-- `tests/test-rtic.sh` (new)
-- `justfile` — add `test-rtic` recipe
-- `packages/testing/nros-tests/` — `lm3s6965` PAC dependency for tier 1
-- Tier 2: minimal MPS2-AN385 PAC crate (future, if networked RTIC tests needed)
+- `packages/boards/mps2-an385-pac/Cargo.toml` (new)
+- `packages/boards/mps2-an385-pac/src/lib.rs` (new)
+- `packages/boards/mps2-an385-pac/device.x` (new)
+- `packages/boards/mps2-an385-pac/build.rs` (new)
+
+### 63.6 — RTIC QEMU Examples
+
+Create RTIC talker and listener examples targeting `mps2-an385` QEMU with LAN9118
+networking. These use the MPS2-AN385 PAC from 63.5 and the `nros-mps2-an385` board
+crate.
+
+The examples follow the same directory convention as existing QEMU bare-metal examples
+(`examples/qemu-arm-baremetal/rust/zenoh/`) with the `rtic-` prefix.
+
+Key differences from STM32F4 RTIC examples:
+- PAC: `mps2_an385_pac` instead of `stm32f4xx_hal::pac`
+- Board crate: `nros-mps2-an385` instead of `nros-stm32f4`
+- Target: `thumbv7m-none-eabi` (Cortex-M3) instead of `thumbv7em-none-eabihf` (Cortex-M4F)
+- Networking: LAN9118 over TAP bridge (QEMU emulated) instead of STM32 Ethernet
+- Output: semihosting (`cortex_m_semihosting`) instead of defmt-rtt
+
+**Status**: Complete
+
+**Implementation**: Both examples use RTIC v2 async tasks with `rtic-monotonics` SysTick
+monotonic (25 MHz QEMU clock). `init_hardware(config, cx.core)` receives core peripherals
+from RTIC context. Dispatchers: `UARTRX0`, `UARTTX0` (unused CMSDK UARTs). Talker
+publishes 10 Int32 messages on `/chatter` and exits via semihosting. Listener subscribes
+to `/chatter`, counts 10 messages, exits — or times out after 30s with `exit_failure()`.
+Output via `cortex_m_semihosting::hprintln!` (not defmt).
+
+**Files**:
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-talker/` (new)
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-listener/` (new)
+
+### 63.7 — RTIC QEMU Integration Test
+
+Add networked RTIC integration tests using `QemuProcess::start_mps2_an385_networked()`
+from `nros-tests`. Tests run the RTIC talker and listener as separate QEMU processes
+on different TAP devices, communicating via zenohd on the bridge IP.
+
+**Test strategy**:
+- Uses existing TAP bridge infrastructure (talker on `tap-qemu0`, listener on `tap-qemu1`)
+- Listener starts first, then talker (zenoh doesn't buffer for unknown subscribers)
+- 5s stabilization delay between subscriber connection and publisher start
+- Validates message delivery (10/10 messages) via semihosting output parsing
+- Build helpers in `fixtures/binaries.rs`, test in `emulator.rs`
+
+**Status**: Complete (build tests pass; networked E2E test skipped — requires `just build-zenoh-pico-arm`)
+
+**Implementation**: Added `build_qemu_rtic_talker()` and `build_qemu_rtic_listener()`
+helpers in `fixtures/binaries.rs`. Build tests (`test_qemu_rtic_talker_builds`,
+`test_qemu_rtic_listener_builds`) verify cross-compilation. Networked E2E test
+(`test_qemu_rtic_pubsub_e2e`) launches listener on `tap-qemu1`, talker on `tap-qemu0`,
+with zenohd on port 7447 and 5s stabilization delay. Validates "Received 10 messages"
+and "Done publishing" in semihosting output. Test is gated by `require_tap_bridge()` +
+`require_zenoh_pico_arm()` guards.
+
+**Files**:
+- `packages/testing/nros-tests/src/fixtures/binaries.rs` — build helpers
+- `packages/testing/nros-tests/tests/emulator.rs` — build + networked tests
 
 ## Acceptance Criteria
 
@@ -718,52 +828,59 @@ the interrupt names just need valid vector numbers not used by LAN9118 or timers
       `publish()`, `handle_request()`, `try_handle_get_result()`, `.await`) — no new methods
 - [x] `Promise::wait()` limitation is documented; examples use `.await` or `try_recv()` loops
 - [x] All tasks run at priority 1 (documented as safety requirement)
-- [ ] `just quality` passes
+- [x] MPS2-AN385 PAC crate compiles for `thumbv7m-none-eabi`
+- [ ] RTIC QEMU talker/listener communicate over LAN9118 via zenohd (requires `just build-zenoh-pico-arm`)
+- [x] `just quality` passes
 
 ## Testing
 
-### Current: Compile Tests
+### Current: Compile Tests + Native Interop
 
 STM32F4 RTIC examples are verified by compile testing (`cargo build --release`). These
 target real hardware (Nucleo-F429ZI) and cannot run in QEMU because the MPS2-AN385
-machine has a different SoC and board crate. The workspace build (`cargo build`) covers
-them automatically since they are workspace members.
+machine has a different SoC and board crate.
 
-### Future: QEMU Runtime Tests (63.5)
+Native x86 equivalents (in `examples/native/rust/zenoh/rtic-*/`) exercise the identical
+RTIC API patterns (`Executor<_, 0, 0>`, `spin_once(0)`, `try_recv()`) and are tested as
+separate processes against zenohd. Integration tests in `nano2nano.rs` validate:
+- `test_rtic_pattern_communication` — pub/sub (10/10 messages)
+- `test_rtic_pattern_service` — service (4/4 calls)
+- `test_rtic_pattern_action` — action (goal accepted, 6 feedback messages)
 
-Runtime testing requires QEMU with an RTIC-compatible PAC. Two tiers are planned:
+### Implemented: QEMU Runtime Tests (63.6–63.7)
 
-| Tier | QEMU Machine     | PAC         | Networking | What it validates                                   |
-|------|------------------|-------------|------------|-----------------------------------------------------|
-| 1    | `lm3s6965evb`    | `lm3s6965`  | None       | RTIC task dispatch, `spin_once(0)`, `try_recv()`    |
-| 2    | `mps2-an385`     | Minimal stub| LAN9118    | RTIC + zenoh talker/listener over network           |
+QEMU runtime tests validate RTIC on real Cortex-M3 hardware emulation with networked
+zenoh communication. Uses the MPS2-AN385 QEMU machine with LAN9118 Ethernet and
+the in-tree PAC from 63.5.
 
-**Tier 1** uses the `lm3s6965` PAC crate (interrupt-only, MIT/Apache-2.0) with
-`QemuProcess::start_cortex_m3()` from `nros-tests`. Non-networked — validates RTIC
-task lifecycle and nano-ros handle creation without needing zenohd.
+| QEMU Machine | PAC               | Networking | What it validates                                |
+|--------------|-------------------|------------|--------------------------------------------------|
+| `mps2-an385` | `mps2-an385-pac`  | LAN9118    | RTIC task dispatch + zenoh pub/sub over network  |
 
-**Tier 2** requires a minimal MPS2-AN385 PAC crate (~100 lines) with CMSDK interrupt
-definitions for RTIC dispatchers. Uses `QemuProcess::start_mps2_an385_networked()` with
-the existing TAP bridge infrastructure.
+Uses `QemuProcess::start_mps2_an385_networked()` with the existing TAP bridge
+infrastructure. Two QEMU processes (talker + listener) communicate via zenohd on
+the bridge IP (192.0.3.1:7447).
 
 ## Notes
 
-- **QEMU test platform**: RTIC's own CI uses `lm3s6965evb` QEMU + `lm3s6965` PAC
-  (interrupt-only, ~44 IRQ variants, no register APIs). nano-ros already has
-  `lm3s6965evb` QEMU support via `QemuProcess::start_cortex_m3()`. Non-networked
-  RTIC tests (tier 1) use this directly. Networked RTIC tests (tier 2) need
-  MPS2-AN385 with a minimal in-tree PAC stub for CMSDK interrupts
 - **RTIC v2 async**: All examples use RTIC v2 `async fn` software tasks. Hardware tasks
   (`#[task(binds = TIM2)]`) could be used for periodic net_poll but add complexity
   without clear benefit for the initial integration
 - **Target board**: STM32F4 (Nucleo-F429ZI) is the primary target for real-hardware
   examples — `nros-stm32f4` board crate exists, `stm32f4xx-hal` PAC provides RTIC
-  dispatcher interrupts, and RTIC has strong STM32F4 community support. nRF52840 is
-  a secondary option. For CI testing, `lm3s6965evb` QEMU (see above)
+  dispatcher interrupts, and RTIC has strong STM32F4 community support
+- **QEMU test platform**: MPS2-AN385 is chosen over lm3s6965evb because it has LAN9118
+  Ethernet (with existing nano-ros driver and test infrastructure), enabling full
+  networked RTIC + zenoh integration tests. The lm3s6965evb machine has only Stellaris
+  MAC (no smoltcp driver) and would be limited to non-networked testing
+- **PAC design**: The `mps2-an385-pac` follows the `lm3s6965` pattern — interrupt
+  bindings only, no register APIs, ~150 lines. cortex-m 0.7's blanket impl
+  `InterruptNumber for T: Nr` makes it compatible with both RTIC v1 and v2.
+  CMSDK interrupt map sourced from ARM's `CMSDK_CM3.h` header and verified against
+  QEMU's `mps2.c` (32 external IRQs, Ethernet at IRQ 13)
 - **Example naming**: `rtic-` prefix on use-case (e.g., `rtic-talker`) follows the
   existing `async-` prefix convention. RTIC is an execution model variant, not a
-  platform or RMW choice, so it stays within the 4-level hierarchy:
-  `examples/stm32f4/rust/zenoh/rtic-{use-case}/`
+  platform or RMW choice, so it stays within the 4-level hierarchy
 - **`sync-critical-section`**: Already exists in `nros`. RTIC users should enable this
   feature for RTIC-compatible mutex implementations
 - **No `drive_io()` method**: A dedicated `drive_io()` on Executor was considered and
@@ -771,12 +888,9 @@ the existing TAP bridge infrastructure.
   of rclcpp's `spin_some()` — "process available work, don't block"
 - **Prerequisites**: FFI reentrancy guards (Phase 61) and event-driven async waking
   (Phase 62) are completed before this phase, so RTIC examples ship with mixed-priority
-  support and proper `.await` from day one. All three prerequisites (51, 61, 62) are
-  now complete — this phase is unblocked.
+  support and proper `.await` from day one
 - **Reference implementation**: A partial RTIC reference exists at
   `packages/reference/stm32f4-porting/rtic/src/main.rs` (STM32F4, stm32_eth + smoltcp +
-  zpico_smoltcp). It demonstrates hardware init (clocks, GPIO, Ethernet, smoltcp interface)
-  and async tasks (`poll_network`, `zenoh_poll`, `publisher_task`) but uses `#[shared]`
-  resources (Phase 63 prescribes `#[local]`) and has zenoh operations stubbed/commented out.
-  This is a porting reference, not a production example — it should inform but not directly
-  become the Phase 63 examples.
+  zpico_smoltcp). It demonstrates hardware init and async tasks but uses `#[shared]`
+  resources (Phase 63 prescribes `#[local]`). This is a porting reference, not a
+  production example
