@@ -163,41 +163,43 @@ test-report:
 # =============================================================================
 
 # Build workspace (no_std, native)
-# nros-c excluded from no_std build: staticlib/cdylib requires panic handler (needs std)
+# nros-c/nros-cpp-ffi excluded from no_std build: staticlib/cdylib requires panic handler (needs std)
 build-workspace:
-    cargo build --workspace --no-default-features --exclude nros-c
+    cargo build --workspace --no-default-features --exclude nros-c --exclude nros-cpp-ffi
     cargo nextest run --workspace --no-run
 
 # Build workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
 # Excludes nros-tests: requires std (test framework dependencies)
-# Excludes nros-c: staticlib/cdylib requires panic handler (needs std)
+# Excludes nros-c/nros-cpp-ffi: staticlib/cdylib requires panic handler (needs std)
 build-workspace-embedded:
     cargo build --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
         --exclude nros-tests \
-        --exclude nros-c
+        --exclude nros-c \
+        --exclude nros-cpp-ffi
 
 # Format workspace code
 format-workspace:
     cargo +nightly fmt
 
 # Check workspace: formatting and clippy (no_std, native)
-# nros-c excluded from no_std check: staticlib/cdylib requires panic handler (needs std)
+# nros-c/nros-cpp-ffi excluded from no_std check: staticlib/cdylib requires panic handler (needs std)
 check-workspace:
     cargo +nightly fmt --check
-    cargo clippy --workspace --no-default-features --exclude nros-c -- {{CLIPPY_LINTS}}
+    cargo clippy --workspace --no-default-features --exclude nros-c --exclude nros-cpp-ffi -- {{CLIPPY_LINTS}}
 
 # Check workspace for embedded target (Cortex-M4F)
 # Excludes zpico-sys: requires native system headers for CMake build
 # Excludes nros-tests: requires std (test framework dependencies)
-# Excludes nros-c: staticlib/cdylib requires panic handler (needs std)
+# Excludes nros-c/nros-cpp-ffi: staticlib/cdylib requires panic handler (needs std)
 check-workspace-embedded:
     @echo "Checking workspace for embedded target..."
     cargo clippy --workspace --no-default-features --target thumbv7em-none-eabihf \
         --exclude zpico-sys \
         --exclude nros-tests \
-        --exclude nros-c -- {{CLIPPY_LINTS}}
+        --exclude nros-c \
+        --exclude nros-cpp-ffi -- {{CLIPPY_LINTS}}
 
 # Check workspace with various feature combinations
 check-workspace-features:
