@@ -1,0 +1,13 @@
+[package]
+name = "mps2-an385-pac"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Minimal PAC for ARM CMSDK Cortex-M3 (MPS2-AN385 FPGA image) — interrupt bindings only"
+
+[lib]
+name = "mps2_an385_pac"
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = { version = "0.7", features = ["device"] }

@@ -123,6 +123,7 @@ exclude = [
     "packages/zpico/zpico-platform-esp32-qemu",
     "packages/zpico/zpico-platform-stm32f4",
     # Board crates (embedded-only, require cross-compilation)
+    "packages/boards/mps2-an385-pac",
     "packages/boards/nros-mps2-an385",
     "packages/boards/nros-esp32",
     "packages/boards/nros-esp32-qemu",
