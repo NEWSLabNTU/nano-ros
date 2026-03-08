@@ -11,6 +11,7 @@
 
 #if defined(ZENOH_THREADX)
 
+#include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -30,17 +31,27 @@
  */
 extern TX_BYTE_POOL *zpico_threadx_byte_pool;
 
+#if defined(__linux__)
+#include <stdio.h>
+#define _tx_diag(...) fprintf(stderr, __VA_ARGS__)
+#else
 extern void uart_puts(const char *s);
+static void _tx_diag(const char *fmt, ...) {
+    char buf[80];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+    uart_puts(buf);
+}
+#endif
 
 void *z_malloc(size_t size) {
     void *ptr = NULL;
     UINT r = tx_byte_allocate(zpico_threadx_byte_pool, &ptr, size, TX_WAIT_FOREVER);
     if (r != TX_SUCCESS) {
-        /* Diagnostic: log allocation failures */
-        char buf[80];
-        snprintf(buf, sizeof(buf), "[z_malloc] FAILED size=%lu status=%u\n",
+        _tx_diag("[z_malloc] FAILED size=%lu status=%u\n",
                  (unsigned long)size, (unsigned)r);
-        uart_puts(buf);
         ptr = NULL;
     }
     return ptr;

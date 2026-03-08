@@ -31,8 +31,11 @@ static void _freertos_printk(const char *fmt, ...) {
 }
 #define printk(...) _freertos_printk(__VA_ARGS__)
 #elif defined(ZENOH_THREADX)
-// On ThreadX bare-metal, route printk through UART
+// On ThreadX route printk through printf (Linux sim) or uart_puts (bare-metal)
 #include <stdio.h>
+#if defined(__linux__)
+#define printk(...) printf(__VA_ARGS__)
+#else
 extern void uart_puts(const char *s);
 static void _threadx_printk(const char *fmt, ...) {
     char buf[128];
@@ -43,6 +46,7 @@ static void _threadx_printk(const char *fmt, ...) {
     uart_puts(buf);
 }
 #define printk(...) _threadx_printk(__VA_ARGS__)
+#endif
 #else
 #define printk(...)  // No-op on other platforms
 #endif
