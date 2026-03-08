@@ -3,7 +3,7 @@
 **Goal**: Enable nano-ros on RTIC (Real-Time Interrupt-driven Concurrency) by documenting the
 usage pattern and completing the board-crate API changes needed to support RTIC's `#[init]` model.
 
-**Status**: In Progress (63.1–63.7 done)
+**Status**: In Progress (63.1–63.10 done)
 
 **Priority**: Medium
 
@@ -559,8 +559,11 @@ mod app {
 - [x] 63.3 — RTIC service example (`rtic-service-{server,client}/`)
 - [x] 63.4 — RTIC action example (`rtic-action-{server,client}/`)
 - [x] 63.5 — MPS2-AN385 PAC crate (`packages/boards/mps2-an385-pac/`)
-- [x] 63.6 — RTIC QEMU examples (`examples/qemu-arm-baremetal/rust/zenoh/rtic-{talker,listener}/`)
-- [x] 63.7 — RTIC QEMU integration test (`test-rtic` justfile recipe)
+- [x] 63.6 — RTIC QEMU pub/sub examples (`examples/qemu-arm-baremetal/rust/zenoh/rtic-{talker,listener}/`)
+- [x] 63.7 — RTIC QEMU pub/sub integration test
+- [x] 63.8 — RTIC QEMU service examples (`rtic-service-{server,client}/`)
+- [x] 63.9 — RTIC QEMU action examples (`rtic-action-{server,client}/`)
+- [x] 63.10 — RTIC QEMU service/action integration tests
 
 ### 63.1 — Factor `board::init_hardware()` out of `board::run()`
 
@@ -763,7 +766,7 @@ struct, and `device.x` linker script. Edition 2024 conventions: `unsafe extern "
 - `packages/boards/mps2-an385-pac/device.x` (new)
 - `packages/boards/mps2-an385-pac/build.rs` (new)
 
-### 63.6 — RTIC QEMU Examples
+### 63.6 — RTIC QEMU Pub/Sub Examples
 
 Create RTIC talker and listener examples targeting `mps2-an385` QEMU with LAN9118
 networking. These use the MPS2-AN385 PAC from 63.5 and the `nros-mps2-an385` board
@@ -792,7 +795,7 @@ Output via `cortex_m_semihosting::hprintln!` (not defmt).
 - `examples/qemu-arm-baremetal/rust/zenoh/rtic-talker/` (new)
 - `examples/qemu-arm-baremetal/rust/zenoh/rtic-listener/` (new)
 
-### 63.7 — RTIC QEMU Integration Test
+### 63.7 — RTIC QEMU Pub/Sub Integration Test
 
 Add networked RTIC integration tests using `QemuProcess::start_mps2_an385_networked()`
 from `nros-tests`. Tests run the RTIC talker and listener as separate QEMU processes
@@ -819,6 +822,143 @@ and "Done publishing" in semihosting output. Test is gated by `require_tap_bridg
 - `packages/testing/nros-tests/src/fixtures/binaries.rs` — build helpers
 - `packages/testing/nros-tests/tests/emulator.rs` — build + networked tests
 
+### 63.8 — RTIC QEMU Service Examples
+
+Create RTIC service server and client examples for MPS2-AN385 QEMU. Adapts from
+STM32F4 RTIC service examples (63.3), applying the same QEMU platform changes as
+63.6 (PAC, board crate, target, semihosting output).
+
+**Message type**: `example_interfaces::srv::AddTwoInts` — same as STM32F4 examples.
+The `package.xml` declares `<depend>example_interfaces</depend>`, and
+`cargo nano-ros generate` produces `generated/{example_interfaces,builtin_interfaces,
+action_msgs,unique_identifier_msgs}/` (action_msgs and unique_identifier_msgs are
+transitive deps of example_interfaces).
+
+**Design**:
+
+Server (`rtic-service-server/`):
+- `net_poll` task: `spin_once(0)` + 10ms delay loop
+- `serve` task: `handle_request(|req| AddTwoIntsResponse { sum: req.a + req.b })`
+  poll loop, prints `"Handled: {a} + {b} = {sum}"` via `hprintln!`
+- Runs indefinitely (no exit) — test kills the process after client completes
+- 2s stabilization delay before entering serve loop
+
+Client (`rtic-service-client/`):
+- `call_service` task: sends 4 test cases `[(5, 3), (10, 20), (100, 200), (-5, 10)]`
+- Each call uses `try_recv()` + `Mono::delay(10.millis()).await` loop with 5s timeout
+- Prints `"Reply: {a} + {b} = {sum}"` for each, then `"All service calls completed"`
+- Exits via `exit_success()` after all 4 calls (or `exit_failure()` on timeout)
+- 3s stabilization delay before first call (server + zenoh + smoltcp handshake)
+
+**Build configuration** (differences from rtic-talker):
+- `Cargo.toml`: `example_interfaces = { version = "*", default-features = false }`
+  instead of `std_msgs`
+- `.cargo/config.toml`: patches for `example_interfaces`, `builtin_interfaces`,
+  `action_msgs`, `unique_identifier_msgs` (all in `generated/`)
+
+**Exit strategy for E2E testing**: The server runs indefinitely (real service servers
+don't exit). The test starts server first, then client. After the client exits
+(success or timeout), the test kills both QEMU processes and validates output.
+This matches how the FreeRTOS service E2E test works.
+
+**Status**: Complete
+
+**Implementation**: Both examples adapted from STM32F4 RTIC service examples (63.3),
+with MPS2-AN385 platform changes (PAC, board crate, 25 MHz clock, semihosting output).
+Server uses `handle_request()` poll loop, prints `"Handled: {a} + {b} = {sum}"`.
+Client sends 4 AddTwoInts test cases with `try_recv()` loops, prints `"Reply: ..."`,
+exits via `exit_success()` after all calls or `exit_failure()` on timeout.
+
+**Files**:
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-service-server/` (new)
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-service-client/` (new)
+
+### 63.9 — RTIC QEMU Action Examples
+
+Create RTIC action server and client examples for MPS2-AN385 QEMU. Adapts from
+STM32F4 RTIC action examples (63.4).
+
+**Message type**: `example_interfaces::action::Fibonacci` — same as STM32F4 examples.
+Same `package.xml` and codegen as 63.8 (both use `example_interfaces`).
+
+**Design**:
+
+Server (`rtic-action-server/`):
+- `action_serve` task: `try_accept_goal()` → `set_goal_status(Executing)` →
+  Fibonacci computation with `publish_feedback()` at each step (100ms delay) →
+  `complete_goal(Succeeded, result)` → `try_handle_get_result()` loop (200 iters)
+  → `try_handle_cancel()` poll
+- Uses `heapless::Vec<i32, 64>` for Fibonacci sequence (same as STM32F4)
+- Prints `"Goal accepted"`, `"Goal complete"` via `hprintln!`
+- Runs indefinitely — test kills after client completes
+
+Client (`rtic-action-client/`):
+- `action_call` task: `send_goal(order=5)` → poll acceptance via `try_recv()` →
+  poll feedback via `try_recv_feedback()` filtered by `goal_id.uuid` →
+  prints `"Goal accepted"`, `"Feedback #{n}: len={len}"`, `"Got {n} feedback messages"`
+- Exits via `exit_success()` when feedback sequence length > goal order
+- 3s stabilization delay, 10s acceptance timeout, 300-iter feedback timeout
+
+**Status**: Complete
+
+**Implementation**: Both examples adapted from STM32F4 RTIC action examples (63.4).
+Server computes Fibonacci with `publish_feedback()` at each step, calls
+`try_handle_get_result()` post-completion. Client polls acceptance and feedback via
+`try_recv()` loops filtered by `goal_id.uuid`, exits after feedback sequence
+length exceeds goal order.
+
+**Files**:
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-action-server/` (new)
+- `examples/qemu-arm-baremetal/rust/zenoh/rtic-action-client/` (new)
+
+### 63.10 — RTIC QEMU Service/Action Integration Tests
+
+Add build helpers and E2E tests for the QEMU RTIC service and action examples.
+Follows the same pattern as 63.7.
+
+**Build helpers** (`fixtures/binaries.rs`):
+- `build_qemu_rtic_service_server()` / `build_qemu_rtic_service_client()`
+- `build_qemu_rtic_action_server()` / `build_qemu_rtic_action_client()`
+- All use `build_example()` with `target: "thumbv7m-none-eabi"`
+
+**Build tests** (`emulator.rs`):
+- `test_qemu_rtic_service_server_builds`
+- `test_qemu_rtic_service_client_builds`
+- `test_qemu_rtic_action_server_builds`
+- `test_qemu_rtic_action_client_builds`
+
+**E2E tests** (`emulator.rs`):
+
+`test_qemu_rtic_service_e2e`:
+- Start zenohd on port 7447
+- Start server on `tap-qemu0`, 5s stabilization
+- Start client on `tap-qemu1`
+- Wait for client output (60s timeout), kill both
+- Assert client output contains `"All service calls completed"`
+- Assert server output contains `"Handled:"` (at least one request served)
+
+`test_qemu_rtic_action_e2e`:
+- Start zenohd on port 7447
+- Start server on `tap-qemu0`, 5s stabilization
+- Start client on `tap-qemu1`
+- Wait for client output (60s timeout), kill both
+- Assert client output contains `"Goal accepted"` and `"Got"` + `"feedback messages"`
+- Assert server output contains `"Goal accepted"` (server side)
+
+Both tests gated by `require_arm_toolchain()` + `require_tap_bridge()` +
+`require_zenoh_pico_arm()`.
+
+**Status**: Complete (build tests pass; E2E tests skipped — requires `just build-zenoh-pico-arm`)
+
+**Implementation**: Added 4 build helpers and 4 OnceCell statics in `binaries.rs`.
+Added 4 build tests and 2 E2E tests in `emulator.rs`. Also fixed pre-existing
+`start_mps2_an385_networked()` call signature (changed from 3-arg to 2-arg
+`peer_index: u8` API) in the pub/sub E2E test.
+
+**Files**:
+- `packages/testing/nros-tests/src/fixtures/binaries.rs` — build helpers
+- `packages/testing/nros-tests/tests/emulator.rs` — build + E2E tests
+
 ## Acceptance Criteria
 
 - [x] `board::init_hardware()` is a public function on at least one board crate
@@ -830,6 +970,8 @@ and "Done publishing" in semihosting output. Test is gated by `require_tap_bridg
 - [x] All tasks run at priority 1 (documented as safety requirement)
 - [x] MPS2-AN385 PAC crate compiles for `thumbv7m-none-eabi`
 - [ ] RTIC QEMU talker/listener communicate over LAN9118 via zenohd (requires `just build-zenoh-pico-arm`)
+- [ ] RTIC QEMU service server/client communicate over LAN9118 via zenohd (requires `just build-zenoh-pico-arm`)
+- [ ] RTIC QEMU action server/client communicate over LAN9118 via zenohd (requires `just build-zenoh-pico-arm`)
 - [x] `just quality` passes
 
 ## Testing
@@ -847,19 +989,21 @@ separate processes against zenohd. Integration tests in `nano2nano.rs` validate:
 - `test_rtic_pattern_service` — service (4/4 calls)
 - `test_rtic_pattern_action` — action (goal accepted, 6 feedback messages)
 
-### Implemented: QEMU Runtime Tests (63.6–63.7)
+### QEMU Runtime Tests (63.6–63.10)
 
 QEMU runtime tests validate RTIC on real Cortex-M3 hardware emulation with networked
 zenoh communication. Uses the MPS2-AN385 QEMU machine with LAN9118 Ethernet and
 the in-tree PAC from 63.5.
 
-| QEMU Machine | PAC               | Networking | What it validates                                |
-|--------------|-------------------|------------|--------------------------------------------------|
-| `mps2-an385` | `mps2-an385-pac`  | LAN9118    | RTIC task dispatch + zenoh pub/sub over network  |
+| Test                           | QEMU Processes          | What it validates                     | Status      |
+|--------------------------------|-------------------------|---------------------------------------|-------------|
+| `test_qemu_rtic_pubsub_e2e`   | talker + listener       | RTIC dispatch + zenoh pub/sub         | Implemented |
+| `test_qemu_rtic_service_e2e`  | server + client         | RTIC dispatch + zenoh service calls   | Implemented |
+| `test_qemu_rtic_action_e2e`   | server + client         | RTIC dispatch + zenoh action protocol | Implemented |
 
-Uses `QemuProcess::start_mps2_an385_networked()` with the existing TAP bridge
-infrastructure. Two QEMU processes (talker + listener) communicate via zenohd on
-the bridge IP (192.0.3.1:7447).
+All tests use `QemuProcess::start_mps2_an385_networked()` with the existing TAP bridge
+infrastructure. Two QEMU processes communicate via zenohd on the bridge IP
+(192.0.3.1:7447). Tests are gated by `require_tap_bridge()` + `require_zenoh_pico_arm()`.
 
 ## Notes
 

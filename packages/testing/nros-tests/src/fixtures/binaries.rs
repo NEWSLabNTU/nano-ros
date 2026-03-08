@@ -1689,6 +1689,74 @@ pub fn build_qemu_rtic_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+/// Cached path to the qemu-rtic-service-server binary
+static QEMU_RTIC_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-rtic-service-client binary
+static QEMU_RTIC_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build qemu-rtic-service-server (cached)
+pub fn build_qemu_rtic_service_server() -> TestResult<&'static Path> {
+    QEMU_RTIC_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-service-server",
+                "qemu-rtic-service-server",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build qemu-rtic-service-client (cached)
+pub fn build_qemu_rtic_service_client() -> TestResult<&'static Path> {
+    QEMU_RTIC_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-service-client",
+                "qemu-rtic-service-client",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Cached path to the qemu-rtic-action-server binary
+static QEMU_RTIC_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-rtic-action-client binary
+static QEMU_RTIC_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build qemu-rtic-action-server (cached)
+pub fn build_qemu_rtic_action_server() -> TestResult<&'static Path> {
+    QEMU_RTIC_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-action-server",
+                "qemu-rtic-action-server",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build qemu-rtic-action-client (cached)
+pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
+    QEMU_RTIC_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-action-client",
+                "qemu-rtic-action-client",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -13,9 +13,10 @@
 
 use nros_tests::fixtures::{
     QemuProcess, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
-    build_qemu_rtic_listener, build_qemu_rtic_talker, build_qemu_wcet_bench,
-    is_arm_toolchain_available, is_qemu_available, parse_test_results, qemu_binary,
-    require_tap_bridge, require_zenoh_pico_arm,
+    build_qemu_rtic_action_client, build_qemu_rtic_action_server, build_qemu_rtic_listener,
+    build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
+    build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, parse_test_results,
+    qemu_binary, require_tap_bridge, require_zenoh_pico_arm,
 };
 use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
 use rstest::rstest;
@@ -639,5 +640,181 @@ fn test_qemu_rtic_pubsub_e2e() {
     assert!(
         talker_output.contains("Done publishing"),
         "RTIC QEMU talker did not finish publishing"
+    );
+}
+
+// =============================================================================
+// RTIC QEMU Service/Action Build Tests (MPS2-AN385)
+// =============================================================================
+
+#[test]
+fn test_qemu_rtic_service_server_builds() {
+    require_arm_toolchain();
+
+    let binary =
+        build_qemu_rtic_service_server().expect("Failed to build qemu-rtic-service-server");
+    println!(
+        "SUCCESS: qemu-rtic-service-server builds at {}",
+        binary.display()
+    );
+}
+
+#[test]
+fn test_qemu_rtic_service_client_builds() {
+    require_arm_toolchain();
+
+    let binary =
+        build_qemu_rtic_service_client().expect("Failed to build qemu-rtic-service-client");
+    println!(
+        "SUCCESS: qemu-rtic-service-client builds at {}",
+        binary.display()
+    );
+}
+
+#[test]
+fn test_qemu_rtic_action_server_builds() {
+    require_arm_toolchain();
+
+    let binary = build_qemu_rtic_action_server().expect("Failed to build qemu-rtic-action-server");
+    println!(
+        "SUCCESS: qemu-rtic-action-server builds at {}",
+        binary.display()
+    );
+}
+
+#[test]
+fn test_qemu_rtic_action_client_builds() {
+    require_arm_toolchain();
+
+    let binary = build_qemu_rtic_action_client().expect("Failed to build qemu-rtic-action-client");
+    println!(
+        "SUCCESS: qemu-rtic-action-client builds at {}",
+        binary.display()
+    );
+}
+
+// =============================================================================
+// RTIC QEMU Service/Action Networked Tests (MPS2-AN385 + LAN9118 + zenohd)
+// =============================================================================
+
+#[test]
+fn test_qemu_rtic_service_e2e() {
+    require_arm_toolchain();
+    if !require_tap_bridge() {
+        return;
+    }
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    // Build both binaries
+    let server_bin = build_qemu_rtic_service_server().expect("Failed to build rtic-service-server");
+    let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
+
+    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+
+    // Start server QEMU first
+    eprintln!("Starting RTIC service server QEMU on tap-qemu0...");
+    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
+        .expect("Failed to start server QEMU");
+
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Start client QEMU
+    eprintln!("Starting RTIC service client QEMU on tap-qemu1...");
+    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
+        .expect("Failed to start client QEMU");
+
+    // Wait for client to complete (it exits after 4 service calls)
+    let client_output = client
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    // Collect server output
+    let server_output = server
+        .wait_for_output(Duration::from_secs(5))
+        .unwrap_or_default();
+
+    client.kill();
+    server.kill();
+
+    eprintln!("Server output:\n{}", server_output);
+    eprintln!("Client output:\n{}", client_output);
+
+    // Verify service communication
+    assert!(
+        client_output.contains("All service calls completed"),
+        "RTIC QEMU service client did not complete all calls"
+    );
+
+    let handled = count_pattern(&server_output, "Handled:");
+    eprintln!("RTIC QEMU service: server handled {} requests", handled);
+    assert!(
+        handled >= 1,
+        "RTIC QEMU service server did not handle any requests (got {})",
+        handled
+    );
+}
+
+#[test]
+fn test_qemu_rtic_action_e2e() {
+    require_arm_toolchain();
+    if !require_tap_bridge() {
+        return;
+    }
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    // Build both binaries
+    let server_bin = build_qemu_rtic_action_server().expect("Failed to build rtic-action-server");
+    let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
+
+    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+
+    // Start server QEMU first
+    eprintln!("Starting RTIC action server QEMU on tap-qemu0...");
+    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
+        .expect("Failed to start server QEMU");
+
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Start client QEMU
+    eprintln!("Starting RTIC action client QEMU on tap-qemu1...");
+    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
+        .expect("Failed to start client QEMU");
+
+    // Wait for client to complete (it exits after receiving feedback)
+    let client_output = client
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    // Collect server output
+    let server_output = server
+        .wait_for_output(Duration::from_secs(5))
+        .unwrap_or_default();
+
+    client.kill();
+    server.kill();
+
+    eprintln!("Server output:\n{}", server_output);
+    eprintln!("Client output:\n{}", client_output);
+
+    // Verify action communication
+    assert!(
+        client_output.contains("Goal accepted"),
+        "RTIC QEMU action client: goal was not accepted"
+    );
+    assert!(
+        client_output.contains("Got") && client_output.contains("feedback messages"),
+        "RTIC QEMU action client did not receive feedback messages"
+    );
+    assert!(
+        server_output.contains("Goal accepted"),
+        "RTIC QEMU action server did not accept goal"
     );
 }

@@ -1,0 +1,125 @@
+//! RTIC Service Client Example for nros on QEMU MPS2-AN385
+//!
+//! Calls `AddTwoInts` service using RTIC v2's hardware-scheduled async tasks
+//! with LAN9118 Ethernet networking.
+//!
+//! - `#[init]` calls `board::init_hardware()` and creates nano-ros handles
+//! - `net_poll` task drives transport I/O via `spin_once(0)`
+//! - `call_service` task uses `try_recv()` loop to poll for reply
+//!   (RTIC cannot use `Promise::wait()` since executor is `#[local]` to net_poll)
+//! - All nano-ros handles are `#[local]` — no locks required
+//!
+//! # Running
+//!
+//! ```bash
+//! cargo nano-ros generate
+//! cargo run --release
+//! ```
+
+#![no_std]
+#![no_main]
+
+use panic_semihosting as _;
+
+use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
+use nros::prelude::*;
+use nros_mps2_an385::{Config, println};
+
+use rtic_monotonics::systick::prelude::*;
+
+systick_monotonic!(Mono, 1000);
+
+// Type aliases for RTIC Local struct annotations
+type RmwSrvClient = nros::internals::RmwServiceClient;
+type NrosExecutor = Executor<nros::internals::RmwSession, 0, 0>;
+type NrosServiceClient = nros::EmbeddedServiceClient<AddTwoInts, RmwSrvClient>;
+
+#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]
+mod app {
+    use super::*;
+
+    #[shared]
+    struct Shared {}
+
+    #[local]
+    struct Local {
+        executor: NrosExecutor,
+        client: NrosServiceClient,
+    }
+
+    #[init]
+    fn init(cx: init::Context) -> (Shared, Local) {
+        let config = Config::listener();
+        nros_mps2_an385::init_hardware(&config);
+
+        Mono::start(cx.core.SYST, 25_000_000);
+
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("add_client");
+        let mut executor = Executor::<_, 0, 0>::open(&exec_config).unwrap();
+        let mut node = executor.create_node("add_client").unwrap();
+        let client = node.create_client::<AddTwoInts>("/add_two_ints").unwrap();
+
+        net_poll::spawn().unwrap();
+        call_service::spawn().unwrap();
+
+        (Shared {}, Local { executor, client })
+    }
+
+    /// Drive transport I/O — equivalent to rclcpp spin_some().
+    #[task(local = [executor], priority = 1)]
+    async fn net_poll(cx: net_poll::Context) {
+        loop {
+            cx.local.executor.spin_once(0);
+            Mono::delay(10.millis()).await;
+        }
+    }
+
+    /// Call the service and poll for the reply using try_recv() loop.
+    ///
+    /// Note: `Promise::wait()` is NOT usable here because it requires `&mut Executor`,
+    /// which is `#[local]` to the `net_poll` task. Instead, use a `try_recv()` +
+    /// `Mono::delay().await` loop. The net_poll task drives I/O concurrently.
+    #[task(local = [client], priority = 1)]
+    async fn call_service(cx: call_service::Context) {
+        // Wait for zenoh session and server to be ready
+        Mono::delay(3000.millis()).await;
+
+        let test_cases: [(i64, i64); 4] = [(5, 3), (10, 20), (100, 200), (-5, 10)];
+
+        for (a, b) in test_cases {
+            let request = AddTwoIntsRequest { a, b };
+            println!("Calling: {} + {} = ?", a, b);
+
+            let mut promise = cx.local.client.call(&request).unwrap();
+
+            // Poll for reply with timeout (~5 seconds)
+            let mut timeout = 500u32;
+            let reply = loop {
+                if let Ok(Some(reply)) = promise.try_recv() {
+                    break Some(reply);
+                }
+                if timeout == 0 {
+                    break None;
+                }
+                timeout -= 1;
+                Mono::delay(10.millis()).await;
+            };
+
+            match reply {
+                Some(r) => println!("Reply: {} + {} = {}", a, b, r.sum),
+                None => {
+                    println!("Timeout waiting for reply");
+                    nros_mps2_an385::exit_failure();
+                }
+            }
+
+            Mono::delay(500.millis()).await;
+        }
+
+        println!("");
+        println!("All service calls completed");
+        nros_mps2_an385::exit_success();
+    }
+}
