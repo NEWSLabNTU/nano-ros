@@ -600,18 +600,16 @@ fn test_qemu_rtic_pubsub_e2e() {
 
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting RTIC listener QEMU on tap-qemu1...");
-    let mut listener =
-        QemuProcess::start_mps2_an385_networked(listener_bin, "tap-qemu1", "02:00:00:00:00:01")
-            .expect("Failed to start listener QEMU");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+        .expect("Failed to start listener QEMU");
 
     // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
     std::thread::sleep(Duration::from_secs(5));
 
     // Start talker QEMU
     eprintln!("Starting RTIC talker QEMU on tap-qemu0...");
-    let mut talker =
-        QemuProcess::start_mps2_an385_networked(talker_bin, "tap-qemu0", "02:00:00:00:00:00")
-            .expect("Failed to start talker QEMU");
+    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
+        .expect("Failed to start talker QEMU");
 
     // Wait for listener to complete
     let listener_output = listener
