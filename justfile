@@ -21,8 +21,8 @@ default:
 # Entry Points
 # =============================================================================
 
-# Build everything: refresh bindings, workspace (native + embedded) and all examples
-build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-examples-threadx-linux build-examples-threadx-riscv64
+# Build everything: refresh bindings, workspace (native + embedded), all examples, and test deps
+build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-examples-threadx-linux build-examples-threadx-riscv64 build-zenohd build-zenoh-pico-arm
     @echo "All builds completed!"
 
 # Populate build/install/ with C API artifacts (libraries, headers, CMake, codegen, interfaces).
