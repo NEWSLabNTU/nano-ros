@@ -15,6 +15,9 @@
 #include "nros/client.hpp"
 #include "nros/action_server.hpp"
 #include "nros/action_client.hpp"
+#include "nros/timer.hpp"
+#include "nros/guard_condition.hpp"
+#include "nros/executor.hpp"
 
 // FFI declarations (from nros-cpp-ffi generated header)
 extern "C" {
@@ -311,6 +314,70 @@ class Node {
         return Result(ret);
     }
 
+    /// Create a repeating timer.
+    ///
+    /// The callback fires during `spin_once()` at the specified period.
+    ///
+    /// @param out        Receives the initialized timer.
+    /// @param period_ms  Timer period in milliseconds.
+    /// @param callback   C function pointer invoked on each tick.
+    /// @param context    User context passed to the callback (may be nullptr).
+    Result create_timer(Timer& out, uint64_t period_ms, nros_cpp_timer_callback_t callback,
+                        void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        size_t handle_id = 0;
+        nros_cpp_ret_t ret =
+            nros_cpp_timer_create(executor_handle_, period_ms, callback, context, &handle_id);
+        if (ret == 0) {
+            out.executor_ = executor_handle_;
+            out.handle_id_ = handle_id;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a one-shot timer.
+    ///
+    /// The callback fires once after the specified delay.
+    ///
+    /// @param out       Receives the initialized timer.
+    /// @param delay_ms  Delay in milliseconds before the callback fires.
+    /// @param callback  C function pointer invoked once.
+    /// @param context   User context passed to the callback (may be nullptr).
+    Result create_timer_oneshot(Timer& out, uint64_t delay_ms, nros_cpp_timer_callback_t callback,
+                                void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        size_t handle_id = 0;
+        nros_cpp_ret_t ret = nros_cpp_timer_create_oneshot(executor_handle_, delay_ms, callback,
+                                                           context, &handle_id);
+        if (ret == 0) {
+            out.executor_ = executor_handle_;
+            out.handle_id_ = handle_id;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a guard condition for cross-thread signaling.
+    ///
+    /// The callback fires during `spin_once()` when `guard.trigger()` is called.
+    ///
+    /// @param out       Receives the initialized guard condition.
+    /// @param callback  C function pointer invoked when triggered.
+    /// @param context   User context passed to the callback (may be nullptr).
+    Result create_guard_condition(GuardCondition& out, nros_cpp_guard_callback_t callback,
+                                  void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        void* handle = nullptr;
+        nros_cpp_ret_t ret =
+            nros_cpp_guard_condition_create(executor_handle_, callback, context, &handle);
+        if (ret == 0) {
+            out.handle_ = handle;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
     /// Destructor — releases node resources.
     ~Node() {
         if (initialized_) {
@@ -349,11 +416,13 @@ class Node {
     bool initialized_;
     void* executor_handle_; // Set by nros::init() via friendship
 
+    friend class Executor;
     friend Result init(const char* locator, uint8_t domain_id);
     friend Result shutdown();
     friend bool ok();
     friend Result create_node(Node& out, const char* name, const char* ns);
     friend Result spin_once(int32_t timeout_ms);
+    friend Result spin(uint32_t duration_ms, int32_t poll_ms);
 
     // Store the global executor handle for init/shutdown
     // (In freestanding C++, we use a simple static pointer)
@@ -403,6 +472,14 @@ inline Result create_node(Node& out, const char* name, const char* ns = nullptr)
     if (!out.executor_handle_) {
         return Result(ErrorCode::NotInitialized);
     }
+    return Node::create(out, name, ns);
+}
+
+// -- Executor::create_node implementation (requires full Node definition) --
+
+inline Result Executor::create_node(Node& out, const char* name, const char* ns) {
+    if (!handle_) return Result(ErrorCode::NotInitialized);
+    out.executor_handle_ = handle_;
     return Node::create(out, name, ns);
 }
 

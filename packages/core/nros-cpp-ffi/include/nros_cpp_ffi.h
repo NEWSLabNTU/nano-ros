@@ -83,6 +83,16 @@ typedef struct nros_cpp_qos_t {
 } nros_cpp_qos_t;
 
 /**
+ * C callback type for guard conditions: `void callback(void* context)`.
+ */
+typedef void (*nros_cpp_guard_callback_t)(void *context);
+
+/**
+ * C callback type for timers: `void callback(void* context)`.
+ */
+typedef void (*nros_cpp_timer_callback_t)(void *context);
+
+/**
  * Success.
  */
 #define NROS_CPP_RET_OK 0
@@ -391,6 +401,48 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void *handle,
 nros_cpp_ret_t nros_cpp_action_client_destroy(void *handle);
 
 /**
+ * Create a guard condition and register it with the executor.
+ *
+ * Guard conditions allow signaling the executor from any thread.
+ * The callback (if provided) is invoked during `spin_once()` when triggered.
+ *
+ * # Parameters
+ * * `executor_handle` — Executor handle from `nros_cpp_init()`.
+ * * `callback` — Optional function called when triggered (may be NULL).
+ * * `context` — User context passed to the callback.
+ * * `out_handle` — Receives the opaque guard condition handle (for trigger/destroy).
+ *
+ * # Safety
+ * `executor_handle` and `out_handle` must be valid pointers.
+ */
+nros_cpp_ret_t nros_cpp_guard_condition_create(void *executor_handle,
+                                               nros_cpp_guard_callback_t callback,
+                                               void *context,
+                                               void **out_handle);
+
+/**
+ * Trigger a guard condition (thread-safe).
+ *
+ * This sets the guard condition's atomic flag. The callback will be
+ * invoked on the next `spin_once()` call.
+ *
+ * # Safety
+ * `handle` must be a valid guard condition handle.
+ */
+nros_cpp_ret_t nros_cpp_guard_condition_trigger(void *handle);
+
+/**
+ * Destroy a guard condition and free its handle.
+ *
+ * The guard condition callback entry remains in the executor arena
+ * but will no longer fire (no external trigger possible after this).
+ *
+ * # Safety
+ * `handle` must be a valid guard condition handle, or NULL (no-op).
+ */
+nros_cpp_ret_t nros_cpp_guard_condition_destroy(void *handle);
+
+/**
  * Create a publisher on a node.
  *
  * # Parameters
@@ -631,6 +683,77 @@ nros_cpp_ret_t nros_cpp_subscription_destroy(void *handle);
  * `handle` must be a valid subscription handle, or NULL.
  */
 const char *nros_cpp_subscription_get_topic_name(const void *handle);
+
+/**
+ * Create a repeating timer and register it with the executor.
+ *
+ * The timer fires every `period_ms` milliseconds during `spin_once()`.
+ *
+ * # Parameters
+ * * `executor_handle` — Executor handle from `nros_cpp_init()`.
+ * * `period_ms` — Timer period in milliseconds.
+ * * `callback` — Function called when the timer fires.
+ * * `context` — User context passed to the callback.
+ * * `out_handle_id` — Receives the timer handle ID for cancel/reset.
+ *
+ * # Safety
+ * `executor_handle` and `out_handle_id` must be valid pointers.
+ */
+nros_cpp_ret_t nros_cpp_timer_create(void *executor_handle,
+                                     uint64_t period_ms,
+                                     nros_cpp_timer_callback_t callback,
+                                     void *context,
+                                     size_t *out_handle_id);
+
+/**
+ * Create a one-shot timer and register it with the executor.
+ *
+ * The timer fires once after `delay_ms` milliseconds during `spin_once()`.
+ *
+ * # Parameters
+ * * `executor_handle` — Executor handle from `nros_cpp_init()`.
+ * * `delay_ms` — Delay in milliseconds before the timer fires.
+ * * `callback` — Function called when the timer fires.
+ * * `context` — User context passed to the callback.
+ * * `out_handle_id` — Receives the timer handle ID.
+ *
+ * # Safety
+ * `executor_handle` and `out_handle_id` must be valid pointers.
+ */
+nros_cpp_ret_t nros_cpp_timer_create_oneshot(void *executor_handle,
+                                             uint64_t delay_ms,
+                                             nros_cpp_timer_callback_t callback,
+                                             void *context,
+                                             size_t *out_handle_id);
+
+/**
+ * Cancel a timer.
+ *
+ * A cancelled timer stops firing but remains in the executor arena.
+ * Use `nros_cpp_timer_reset()` to restart it.
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle.
+ */
+nros_cpp_ret_t nros_cpp_timer_cancel(void *executor_handle, size_t handle_id);
+
+/**
+ * Reset a timer (restart from zero elapsed time).
+ *
+ * If the timer was cancelled, this also un-cancels it.
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle.
+ */
+nros_cpp_ret_t nros_cpp_timer_reset(void *executor_handle, size_t handle_id);
+
+/**
+ * Check if a timer is cancelled.
+ *
+ * # Safety
+ * `executor_handle` must be a valid executor handle.
+ */
+bool nros_cpp_timer_is_cancelled(void *executor_handle, size_t handle_id);
 
 #ifdef __cplusplus
 }  // extern "C"

@@ -35,6 +35,11 @@ mod action;
     feature = "alloc",
     any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
 ))]
+mod guard_condition;
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
 mod publisher;
 #[cfg(all(
     feature = "alloc",
@@ -46,6 +51,11 @@ mod service;
     any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
 ))]
 mod subscription;
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
+mod timer;
 
 // ============================================================================
 // Error codes (mirror nros-c for consistency)
