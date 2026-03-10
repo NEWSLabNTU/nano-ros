@@ -1267,6 +1267,31 @@ clean-examples-c:
     rm -rf examples/native/c/xrce/{talker,listener}/build
     @echo "C examples build cleaned"
 
+# Build a single C++ example with CMake.
+# Usage: _build-cpp-example <example-dir> [extra cmake args...]
+[no-exit-message]
+_build-cpp-example dir *CMAKE_ARGS:
+    #!/usr/bin/env bash
+    set -e
+    NROS_DIR="$(pwd)/build/install/lib/cmake/NanoRos"
+    echo "Building {{dir}}..."
+    cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
+    cmake -DNanoRos_DIR="$NROS_DIR" {{CMAKE_ARGS}} ..
+    make
+
+# Build C++ examples only (no tests)
+build-examples-cpp: install-local
+    just _build-cpp-example examples/native/cpp/zenoh/talker
+    just _build-cpp-example examples/native/cpp/zenoh/listener
+    just _build-cpp-example examples/native/cpp/zenoh/service-server
+    just _build-cpp-example examples/native/cpp/zenoh/service-client
+    @echo "C++ examples built!"
+
+# Clean C++ examples build
+clean-examples-cpp:
+    rm -rf examples/native/cpp/zenoh/{talker,listener,service-server,service-client}/build
+    @echo "C++ examples build cleaned"
+
 # =============================================================================
 # Message Bindings
 # =============================================================================

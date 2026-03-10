@@ -37,7 +37,7 @@ See [docs/design/cpp-api-design.md](../design/cpp-api-design.md) for the full de
 - [x] 66.7 — Action Server and Client
 - [x] 66.8 — Timer and GuardCondition
 - [x] 66.9 — Executor and Node-centric pattern
-- [ ] 66.10 — Examples (Linux native)
+- [x] 66.10 — Examples (Linux native)
 - [ ] 66.11 — Examples (embedded targets)
 - [ ] 66.12 — Integration tests
 - [ ] 66.13 — Optional `std` mode conveniences
