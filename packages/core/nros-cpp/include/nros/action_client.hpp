@@ -135,12 +135,15 @@ template <typename A> class ActionClient {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized action client.
+    /// Use `Node::create_action_client()` to initialize.
+    ActionClient() : handle_(nullptr), executor_(nullptr), initialized_(false) {}
+
   private:
     ActionClient(const ActionClient&) = delete;
     ActionClient& operator=(const ActionClient&) = delete;
 
     friend class Node;
-    ActionClient() : handle_(nullptr), executor_(nullptr), initialized_(false) {}
 
     void* handle_;
     void* executor_; // Executor context needed for get_result polling

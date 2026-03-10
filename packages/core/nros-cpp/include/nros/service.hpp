@@ -108,12 +108,15 @@ template <typename S> class Service {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized service server.
+    /// Use `Node::create_service()` to initialize.
+    Service() : handle_(nullptr), initialized_(false) {}
+
   private:
     Service(const Service&) = delete;
     Service& operator=(const Service&) = delete;
 
     friend class Node;
-    Service() : handle_(nullptr), initialized_(false) {}
 
     void* handle_;
     bool initialized_;

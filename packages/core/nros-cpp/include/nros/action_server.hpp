@@ -144,12 +144,15 @@ template <typename A> class ActionServer {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized action server.
+    /// Use `Node::create_action_server()` to initialize.
+    ActionServer() : handle_(nullptr), executor_(nullptr), initialized_(false) {}
+
   private:
     ActionServer(const ActionServer&) = delete;
     ActionServer& operator=(const ActionServer&) = delete;
 
     friend class Node;
-    ActionServer() : handle_(nullptr), executor_(nullptr), initialized_(false) {}
 
     void* handle_;
     void* executor_; // Executor context needed for feedback/result operations

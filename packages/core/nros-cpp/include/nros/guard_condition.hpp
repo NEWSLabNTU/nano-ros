@@ -80,12 +80,15 @@ class GuardCondition {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized guard condition.
+    /// Use `Node::create_guard_condition()` to initialize.
+    GuardCondition() : handle_(nullptr), initialized_(false) {}
+
   private:
     GuardCondition(const GuardCondition&) = delete;
     GuardCondition& operator=(const GuardCondition&) = delete;
 
     friend class Node;
-    GuardCondition() : handle_(nullptr), initialized_(false) {}
 
     void* handle_;
     bool initialized_;

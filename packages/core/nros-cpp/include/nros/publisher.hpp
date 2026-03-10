@@ -82,12 +82,15 @@ template <typename M> class Publisher {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized publisher.
+    /// Use `Node::create_publisher()` to initialize.
+    Publisher() : handle_(nullptr), initialized_(false) {}
+
   private:
     Publisher(const Publisher&) = delete;
     Publisher& operator=(const Publisher&) = delete;
 
     friend class Node;
-    Publisher() : handle_(nullptr), initialized_(false) {}
 
     void* handle_;
     bool initialized_;

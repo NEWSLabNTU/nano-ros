@@ -110,12 +110,15 @@ template <typename M> class Subscription {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized subscription.
+    /// Use `Node::create_subscription()` to initialize.
+    Subscription() : handle_(nullptr), initialized_(false) {}
+
   private:
     Subscription(const Subscription&) = delete;
     Subscription& operator=(const Subscription&) = delete;
 
     friend class Node;
-    Subscription() : handle_(nullptr), initialized_(false) {}
 
     void* handle_;
     bool initialized_;

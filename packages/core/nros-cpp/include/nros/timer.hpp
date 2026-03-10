@@ -96,12 +96,15 @@ class Timer {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized timer.
+    /// Use `Node::create_timer()` to initialize.
+    Timer() : executor_(nullptr), handle_id_(0), initialized_(false) {}
+
   private:
     Timer(const Timer&) = delete;
     Timer& operator=(const Timer&) = delete;
 
     friend class Node;
-    Timer() : executor_(nullptr), handle_id_(0), initialized_(false) {}
 
     void* executor_;
     size_t handle_id_;

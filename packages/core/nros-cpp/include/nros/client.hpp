@@ -100,12 +100,15 @@ template <typename S> class Client {
         return *this;
     }
 
+    /// Default constructor — creates an uninitialized service client.
+    /// Use `Node::create_client()` to initialize.
+    Client() : handle_(nullptr), initialized_(false) {}
+
   private:
     Client(const Client&) = delete;
     Client& operator=(const Client&) = delete;
 
     friend class Node;
-    Client() : handle_(nullptr), initialized_(false) {}
 
     void* handle_;
     bool initialized_;
