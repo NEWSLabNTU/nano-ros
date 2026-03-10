@@ -40,6 +40,22 @@ namespace nros {
 /// ```
 template <typename M> class Subscription {
   public:
+    /// Try to receive a typed message (non-blocking).
+    ///
+    /// Receives raw CDR data into a stack buffer, then deserializes into `msg`
+    /// using the codegen-generated `M::ffi_deserialize()`.
+    ///
+    /// @param msg  Output message struct (filled on success).
+    /// @return true if a message was received and deserialized, false otherwise.
+    bool try_recv(M& msg) {
+        if (!initialized_) return false;
+        uint8_t buf[M::SERIALIZED_SIZE_MAX];
+        size_t len = 0;
+        nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(handle_, buf, sizeof(buf), &len);
+        if (ret != 0 || len == 0) return false;
+        return M::ffi_deserialize(buf, len, &msg) == 0;
+    }
+
     /// Try to receive raw CDR data (non-blocking).
     ///
     /// Returns true if data was received and copied into `buf`.

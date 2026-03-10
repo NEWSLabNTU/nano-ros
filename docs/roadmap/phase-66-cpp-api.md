@@ -2,7 +2,7 @@
 
 **Goal**: Provide a freestanding C++ API that mirrors rclcpp naming conventions, wrapping Rust `nros-node` directly via typed `extern "C"` FFI. Includes CMake-based message codegen for embedded C++ targets.
 
-**Status**: In Progress (66.1–66.3 done)
+**Status**: In Progress (66.1–66.4 done)
 **Priority**: Medium
 **Depends on**: Phase 49 (nros-c thin wrapper migration — complete), Phase 51 (Board crate `run()` API)
 
@@ -31,7 +31,7 @@ See [docs/design/cpp-api-design.md](../design/cpp-api-design.md) for the full de
 - [x] 66.1 — `nros-cpp-ffi` Rust crate (core FFI exports)
 - [x] 66.2 — C++ header-only library (core types)
 - [x] 66.3 — Publisher and Subscription
-- [ ] 66.4 — C++ message codegen (`generate-cpp`)
+- [x] 66.4 — C++ message codegen (`generate-cpp`)
 - [ ] 66.5 — CMake integration (`LANGUAGE CPP`)
 - [ ] 66.6 — Service Server and Client
 - [ ] 66.7 — Action Server and Client
@@ -98,25 +98,69 @@ Add pub/sub support to both the FFI crate and the C++ headers.
 
 ### 66.4 — C++ message codegen (`generate-cpp`)
 
-Extend the codegen tool to generate C++ message bindings.
+Extend the codegen tool to generate C++ message bindings with typed publish/subscribe.
+
+**Architecture**:
+
+```
+.msg file ──→ cargo nano-ros generate-cpp ──→ ┌── message.hpp (C++ header)
+                                               └── message_ffi.rs (Rust FFI glue)
+```
+
+- **C++ header** (`message.hpp`): `#[repr(C)]`-compatible struct in ROS 2 namespace with
+  `TYPE_NAME`, `TYPE_HASH`, `SERIALIZED_SIZE_MAX`, `ffi_publish()`, `ffi_deserialize()`.
+  Uses `FixedString<N>` and `FixedSequence<T,N>` wrapper types for ergonomic access.
+
+- **Rust FFI glue** (`message_ffi.rs`): `#[repr(C)]` struct mirroring C++ layout + thin
+  `extern "C"` functions that use `CdrWriter`/`CdrReader` for serialization. Each field
+  maps to a single `writer.write_<type>()` call.
+
+**Serialization flow**:
+```
+Publish:  C++ struct → void* FFI → Rust #[repr(C)] cast → per-field CdrWriter → raw CDR → nros_cpp_publish_raw()
+Receive:  CDR bytes → CdrReader per-field reads → fill #[repr(C)] struct → void* FFI → C++ struct
+```
+
+**Convenience types** (freestanding C++14, header-only, no STL):
+- `nros::FixedString<N>` — Fixed-capacity null-terminated string (wraps `char[N]`).
+  Provides `operator=(const char*)`, `c_str()`, `length()`, `operator==`. repr(C) identical to `char[N]`.
+- `nros::FixedSequence<T,N>` — Fixed-capacity sequence (wraps `uint32_t size; T data[N]`).
+  Provides `push_back()`, `operator[]`, `begin()`/`end()`. repr(C) identical to `{u32, T[N]}`.
+
+**Type mapping**:
+
+| ROS IDL type | C++ field | Rust `#[repr(C)]` | CDR call |
+|---|---|---|---|
+| `int32` | `int32_t` | `i32` | `write_i32` |
+| `float64` | `double` | `f64` | `write_f64` |
+| `bool` | `bool` | `bool` | `write_bool` |
+| `string` | `nros::FixedString<256>` | `[u8; 256]` | `write_string` |
+| `string<=64` | `nros::FixedString<64>` | `[u8; 64]` | `write_string` |
+| `int32[3]` | `int32_t v[3]` | `[i32; 3]` | loop × `write_i32` |
+| `int32[]` | `nros::FixedSequence<int32_t, 64>` | `_seq_t { size: u32, data: [i32; 64] }` | `write_u32` + loop |
+| `pkg/Msg` | `pkg_msg_Name` | `pkg_msg_name_t` | call helper fn |
 
 **Scope**:
-- `cargo nano-ros generate-cpp` command
-- For each message type, generate:
-  - C++ header (`.hpp`): `#[repr(C)]`-compatible struct in ROS 2 namespace (`std_msgs::msg::Int32`)
-  - Rust FFI glue (`.rs`): Conversion + type-specific `extern "C"` publish/subscribe functions
-- Nested `namespace a { namespace b { } }` syntax (C++14 compatible, not C++17 `a::b`)
+- `cargo nano-ros generate-cpp` command (reuses same JSON args format as `generate-c`)
+- C++14 compatible (`namespace a { namespace b { } }` syntax)
 - `static constexpr` type metadata: `TYPE_NAME`, `TYPE_HASH`, `SERIALIZED_SIZE_MAX`
-- Support for messages, services (Request/Response nested structs), and actions (Goal/Result/Feedback)
-- Fixed-size arrays for sequence fields (no heap)
+- Messages, services (Request/Response nested structs), and actions (Goal/Result/Feedback)
+- Typed `Subscription<M>::try_recv(M& msg)` using `M::ffi_deserialize()`
 
 **Files**:
+- `packages/core/nros-cpp/include/nros/fixed_string.hpp` — `FixedString<N>` template
+- `packages/core/nros-cpp/include/nros/fixed_sequence.hpp` — `FixedSequence<T,N>` template
 - `packages/codegen/packages/rosidl-codegen/templates/message_cpp.hpp.jinja`
 - `packages/codegen/packages/rosidl-codegen/templates/message_cpp_ffi.rs.jinja`
 - `packages/codegen/packages/rosidl-codegen/templates/service_cpp.hpp.jinja`
 - `packages/codegen/packages/rosidl-codegen/templates/action_cpp.hpp.jinja`
-- `packages/codegen/packages/rosidl-codegen/src/generator.rs` (add C++ backend)
-- `packages/codegen/packages/cargo-nano-ros/src/generate.rs` (add `generate-cpp` subcommand)
+- `packages/codegen/packages/rosidl-codegen/src/types.rs` (C++ type mapping)
+- `packages/codegen/packages/rosidl-codegen/src/templates.rs` (CppFfiField, template structs)
+- `packages/codegen/packages/rosidl-codegen/src/generator/common.rs` (build_cpp_ffi_field)
+- `packages/codegen/packages/rosidl-codegen/src/generator/cpp.rs` (C++ generator)
+- `packages/codegen/packages/cargo-nano-ros/src/main.rs` (GenerateCpp subcommand)
+- `packages/codegen/packages/cargo-nano-ros/src/lib.rs` (generate_cpp_from_args_file)
+- `packages/core/nros-cpp/include/nros/subscription.hpp` (typed try_recv)
 
 ### 66.5 — CMake integration (`LANGUAGE CPP`)
 
