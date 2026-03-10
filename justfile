@@ -41,8 +41,8 @@ install-local:
     done
     echo "Installed to $PREFIX"
 
-# Format everything: workspace and all examples (parallel)
-format:
+# Format everything: Rust workspace + examples, C, C++, Python (parallel where possible)
+format: format-c format-cpp format-python
     #!/usr/bin/env bash
     set -e
     {
@@ -57,8 +57,8 @@ format:
         'cd {} && cargo +nightly fmt && echo "  fmt {}"'
     echo "All formatting completed!"
 
-# Check everything: formatting, clippy (native + embedded + features), and all examples
-check: check-workspace check-workspace-embedded check-workspace-features check-examples
+# Check everything: Rust (native + embedded + features + examples), C, C++, Python
+check: check-workspace check-workspace-embedded check-workspace-features check-examples check-c check-cpp check-python
     @echo "All checks passed!"
 
 # Run unit tests only (no external dependencies)
@@ -217,6 +217,73 @@ check-workspace-features:
     @echo "  - zenoh transport (std)"
     cargo clippy -p nros-rmw --features "std" -- {{CLIPPY_LINTS}}
     @echo "All feature checks passed!"
+
+# Format C code (nros-c headers, zpico C, C examples) with clang-format
+format-c:
+    #!/usr/bin/env bash
+    set -e
+    echo "Formatting C code..."
+    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format -i
+    clang-format -i packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h
+    clang-format -i packages/zpico/zpico-smoltcp/c/*.c packages/zpico/zpico-smoltcp/c/*.h
+    find examples/native/c -name '*.c' -not -path '*/build/*' -print0 | xargs -0 clang-format -i
+    echo "C code formatted."
+
+# Format C++ headers (nros-cpp) with clang-format
+format-cpp:
+    @echo "Formatting C++ headers..."
+    clang-format -i packages/core/nros-cpp/include/nros/*.hpp
+    @echo "C++ headers formatted."
+
+# Format Python code (colcon-cargo-ros2) with ruff
+format-python:
+    @echo "Formatting Python code..."
+    ruff format packages/codegen/packages/colcon-cargo-ros2/
+    ruff check --fix packages/codegen/packages/colcon-cargo-ros2/
+    @echo "Python code formatted."
+
+# Check C code: formatting + nros-c umbrella header syntax
+check-c:
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking C code..."
+    echo "  - clang-format (nros-c headers)"
+    find packages/core/nros-c/include -name '*.h' -not -name 'nros_generated.h' -print0 | xargs -0 clang-format --dry-run --Werror
+    echo "  - clang-format (zpico C)"
+    clang-format --dry-run --Werror packages/zpico/zpico-zephyr/src/*.c packages/zpico/zpico-zephyr/include/*.h \
+        packages/zpico/zpico-smoltcp/c/*.c packages/zpico/zpico-smoltcp/c/*.h
+    echo "  - clang-format (C examples)"
+    find examples/native/c -name '*.c' -not -path '*/build/*' -print0 | xargs -0 clang-format --dry-run --Werror
+    echo "  - syntax (nros-c umbrella header)"
+    cc -fsyntax-only \
+        -Ipackages/core/nros-c/include \
+        -include packages/core/nros-c/include/nros/nros.h \
+        -x c /dev/null
+    echo "All C checks passed!"
+
+# Check C++ headers: formatting + freestanding syntax + nros-cpp-ffi clippy
+check-cpp:
+    #!/usr/bin/env bash
+    set -e
+    echo "Checking C++ headers..."
+    echo "  - clang-format"
+    clang-format --dry-run --Werror packages/core/nros-cpp/include/nros/*.hpp
+    echo "  - freestanding syntax (c++14)"
+    for hdr in packages/core/nros-cpp/include/nros/*.hpp; do
+        c++ -fsyntax-only -std=c++14 -ffreestanding -fno-exceptions -fno-rtti \
+            -Ipackages/core/nros-cpp/include \
+            -include "$hdr" -x c++ /dev/null
+    done
+    echo "  - nros-cpp-ffi clippy (zenoh + posix + humble)"
+    cargo clippy -p nros-cpp-ffi --features "rmw-zenoh,platform-posix,ros-humble" -- {{CLIPPY_LINTS}}
+    echo "All C++ checks passed!"
+
+# Check Python code: formatting + linting with ruff
+check-python:
+    @echo "Checking Python code..."
+    ruff format --check packages/codegen/packages/colcon-cargo-ros2/
+    ruff check packages/codegen/packages/colcon-cargo-ros2/
+    @echo "All Python checks passed!"
 
 # Alias for test-unit (backward compatibility)
 test-workspace verbose="": (test-unit verbose)
