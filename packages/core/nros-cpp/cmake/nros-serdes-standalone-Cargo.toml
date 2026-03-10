@@ -1,0 +1,12 @@
+[package]
+name = "nros-serdes"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = []
+std = []
+alloc = []
+
+[dependencies]
+heapless = "0.8"
