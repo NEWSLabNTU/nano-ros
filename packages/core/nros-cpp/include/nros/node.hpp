@@ -11,6 +11,10 @@
 #include "nros/qos.hpp"
 #include "nros/publisher.hpp"
 #include "nros/subscription.hpp"
+#include "nros/service.hpp"
+#include "nros/client.hpp"
+#include "nros/action_server.hpp"
+#include "nros/action_client.hpp"
 
 // FFI declarations (from nros-cpp-ffi generated header)
 extern "C" {
@@ -65,6 +69,22 @@ nros_cpp_ret_t nros_cpp_publisher_create(const nros_cpp_node_t* node, const char
 nros_cpp_ret_t nros_cpp_subscription_create(const nros_cpp_node_t* node, const char* topic,
                                             const char* type_name, const char* type_hash,
                                             nros_cpp_qos_t qos, void** out_handle);
+
+nros_cpp_ret_t nros_cpp_service_server_create(const nros_cpp_node_t* node, const char* service_name,
+                                              const char* type_name, const char* type_hash,
+                                              nros_cpp_qos_t qos, void** out_handle);
+
+nros_cpp_ret_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const char* service_name,
+                                              const char* type_name, const char* type_hash,
+                                              nros_cpp_qos_t qos, void** out_handle);
+
+nros_cpp_ret_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
+                                             const char* type_name, const char* type_hash,
+                                             nros_cpp_qos_t qos, void** out_handle);
+
+nros_cpp_ret_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
+                                             const char* type_name, const char* type_hash,
+                                             nros_cpp_qos_t qos, void** out_handle);
 
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
@@ -182,6 +202,110 @@ class Node {
                                                           M::TYPE_HASH, ffi_qos, &handle);
         if (ret == 0) {
             out.handle_ = handle;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a service server.
+    ///
+    /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
+    /// @param out           Receives the initialized service server.
+    /// @param service_name  Service name (null-terminated).
+    /// @param qos           QoS profile (default: services preset).
+    template <typename S>
+    Result create_service(Service<S>& out, const char* service_name,
+                          const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        void* handle = nullptr;
+        nros_cpp_ret_t ret = nros_cpp_service_server_create(
+            &handle_, service_name, S::Request::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
+        if (ret == 0) {
+            out.handle_ = handle;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a service client.
+    ///
+    /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
+    /// @param out           Receives the initialized service client.
+    /// @param service_name  Service name (null-terminated).
+    /// @param qos           QoS profile (default: services preset).
+    template <typename S>
+    Result create_client(Client<S>& out, const char* service_name,
+                         const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        void* handle = nullptr;
+        nros_cpp_ret_t ret = nros_cpp_service_client_create(
+            &handle_, service_name, S::Request::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
+        if (ret == 0) {
+            out.handle_ = handle;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create an action server.
+    ///
+    /// Goals are auto-accepted during spin_once(). Use try_recv_goal() to poll.
+    ///
+    /// @tparam A  Action type (must define nested Goal, Result, Feedback with TYPE_NAME/TYPE_HASH).
+    /// @param out          Receives the initialized action server.
+    /// @param action_name  Action name (null-terminated).
+    /// @param qos          QoS profile (default: services preset).
+    template <typename A>
+    Result create_action_server(ActionServer<A>& out, const char* action_name,
+                                const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        void* handle = nullptr;
+        nros_cpp_ret_t ret = nros_cpp_action_server_create(
+            &handle_, action_name, A::Goal::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, &handle);
+        if (ret == 0) {
+            out.handle_ = handle;
+            out.executor_ = executor_handle_;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create an action client.
+    ///
+    /// @tparam A  Action type (must define nested Goal, Result, Feedback with TYPE_NAME/TYPE_HASH).
+    /// @param out          Receives the initialized action client.
+    /// @param action_name  Action name (null-terminated).
+    /// @param qos          QoS profile (default: services preset).
+    template <typename A>
+    Result create_action_client(ActionClient<A>& out, const char* action_name,
+                                const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        void* handle = nullptr;
+        nros_cpp_ret_t ret = nros_cpp_action_client_create(
+            &handle_, action_name, A::Goal::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, &handle);
+        if (ret == 0) {
+            out.handle_ = handle;
+            out.executor_ = executor_handle_;
             out.initialized_ = true;
         }
         return Result(ret);

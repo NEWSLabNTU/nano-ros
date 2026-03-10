@@ -30,7 +30,17 @@ use core::ffi::{c_char, c_int, c_void};
     feature = "alloc",
     any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
 ))]
+mod action;
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
 mod publisher;
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
+mod service;
 #[cfg(all(
     feature = "alloc",
     any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")

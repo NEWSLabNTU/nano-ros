@@ -8,16 +8,7 @@
 
 #include "nros/result.hpp"
 #include "nros/qos.hpp"
-#include "nros/node.hpp" // includes publisher.hpp and subscription.hpp
-
-// Future headers (Phase 66.5+):
-// #include "nros/service.hpp"
-// #include "nros/client.hpp"
-// #include "nros/action_server.hpp"
-// #include "nros/action_client.hpp"
-// #include "nros/timer.hpp"
-// #include "nros/executor.hpp"
-// #include "nros/guard_condition.hpp"
+#include "nros/node.hpp" // includes publisher, subscription, service, client, action headers
 
 namespace nros {
 

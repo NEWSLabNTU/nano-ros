@@ -226,6 +226,171 @@ const char *nros_cpp_node_get_namespace(const struct nros_cpp_node_t *node);
 nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 
 /**
+ * Create an action server on a node.
+ *
+ * The server auto-accepts incoming goals and buffers them for polling
+ * via `nros_cpp_action_server_try_recv_goal()`.
+ *
+ * # Safety
+ * All pointer parameters must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_server_create(const struct nros_cpp_node_t *node,
+                                             const char *action_name,
+                                             const char *type_name,
+                                             const char *type_hash,
+                                             struct nros_cpp_qos_t _qos,
+                                             void **out_handle);
+
+/**
+ * Try to receive a pending goal request (non-blocking).
+ *
+ * Goals are auto-accepted during `spin_once()`. This function returns
+ * the next buffered goal request.
+ *
+ * # Parameters
+ * * `handle` — Action server handle.
+ * * `goal_buf` — Buffer to receive CDR-serialized goal data.
+ * * `buf_len` — Size of the goal buffer.
+ * * `goal_len` — Receives the actual goal data length (0 if no pending goal).
+ * * `goal_id_out` — Receives the 16-byte goal UUID.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_server_try_recv_goal(void *handle,
+                                                    uint8_t *goal_buf,
+                                                    size_t buf_len,
+                                                    size_t *goal_len,
+                                                    uint8_t (*goal_id_out)[16]);
+
+/**
+ * Publish feedback for an active goal.
+ *
+ * # Parameters
+ * * `handle` — Action server handle.
+ * * `executor_handle` — Executor handle from `nros_cpp_init()`.
+ * * `goal_id` — 16-byte goal UUID.
+ * * `feedback_buf` — CDR-serialized feedback data.
+ * * `feedback_len` — Length of feedback data.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_server_publish_feedback(void *handle,
+                                                       void *executor_handle,
+                                                       const uint8_t (*goal_id)[16],
+                                                       const uint8_t *feedback_buf,
+                                                       size_t feedback_len);
+
+/**
+ * Complete a goal with a result.
+ *
+ * # Parameters
+ * * `handle` — Action server handle.
+ * * `executor_handle` — Executor handle from `nros_cpp_init()`.
+ * * `goal_id` — 16-byte goal UUID.
+ * * `result_buf` — CDR-serialized result data.
+ * * `result_len` — Length of result data.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_server_complete_goal(void *handle,
+                                                    void *executor_handle,
+                                                    const uint8_t (*goal_id)[16],
+                                                    const uint8_t *result_buf,
+                                                    size_t result_len);
+
+/**
+ * Destroy an action server and free its resources.
+ *
+ * # Safety
+ * `handle` must be a valid action server handle, or NULL (no-op).
+ */
+nros_cpp_ret_t nros_cpp_action_server_destroy(void *handle);
+
+/**
+ * Create an action client on a node.
+ *
+ * # Safety
+ * All pointer parameters must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_create(const struct nros_cpp_node_t *node,
+                                             const char *action_name,
+                                             const char *type_name,
+                                             const char *type_hash,
+                                             struct nros_cpp_qos_t _qos,
+                                             void **out_handle);
+
+/**
+ * Send a goal and receive the generated goal UUID.
+ *
+ * # Parameters
+ * * `handle` — Action client handle.
+ * * `goal_buf` — CDR-serialized goal data.
+ * * `goal_len` — Length of goal data.
+ * * `goal_id_out` — Receives the 16-byte goal UUID.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_send_goal(void *handle,
+                                                const uint8_t *goal_buf,
+                                                size_t goal_len,
+                                                uint8_t (*goal_id_out)[16]);
+
+/**
+ * Get the result for a goal (blocking with timeout).
+ *
+ * Sends a get_result request and polls for the reply.
+ *
+ * # Parameters
+ * * `handle` — Action client handle.
+ * * `executor_handle` — Executor handle for spin_once during polling.
+ * * `goal_id` — 16-byte goal UUID.
+ * * `result_buf` — Buffer for CDR-serialized result data.
+ * * `result_buf_len` — Size of result buffer.
+ * * `result_len` — Receives actual result data length.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_get_result(void *handle,
+                                                 void *executor_handle,
+                                                 const uint8_t (*goal_id)[16],
+                                                 uint8_t *result_buf,
+                                                 size_t result_buf_len,
+                                                 size_t *result_len);
+
+/**
+ * Try to receive feedback (non-blocking).
+ *
+ * # Parameters
+ * * `handle` — Action client handle.
+ * * `feedback_buf` — Buffer for CDR-serialized feedback data.
+ * * `buf_len` — Size of feedback buffer.
+ * * `feedback_len` — Receives actual feedback data length (0 if none available).
+ *
+ * # Returns
+ * `NROS_CPP_RET_OK` on success (check `*feedback_len > 0` for data).
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void *handle,
+                                                        uint8_t *feedback_buf,
+                                                        size_t buf_len,
+                                                        size_t *feedback_len);
+
+/**
+ * Destroy an action client and free its resources.
+ *
+ * # Safety
+ * `handle` must be a valid action client handle, or NULL (no-op).
+ */
+nros_cpp_ret_t nros_cpp_action_client_destroy(void *handle);
+
+/**
  * Create a publisher on a node.
  *
  * # Parameters
@@ -277,6 +442,130 @@ nros_cpp_ret_t nros_cpp_publisher_destroy(void *handle);
  * `handle` must be a valid publisher handle, or NULL.
  */
 const char *nros_cpp_publisher_get_topic_name(const void *handle);
+
+/**
+ * Create a service server on a node.
+ *
+ * # Parameters
+ * * `node` — Node handle from `nros_cpp_node_create()`.
+ * * `service_name` — Service name (null-terminated).
+ * * `type_name` — ROS service type name (null-terminated).
+ * * `type_hash` — ROS type hash string (null-terminated).
+ * * `qos` — QoS settings (currently unused for services, reserved).
+ * * `out_handle` — Receives the opaque service server handle on success.
+ *
+ * # Safety
+ * All pointer parameters must be valid. `out_handle` must point to a `*mut c_void`.
+ */
+nros_cpp_ret_t nros_cpp_service_server_create(const struct nros_cpp_node_t *node,
+                                              const char *service_name,
+                                              const char *type_name,
+                                              const char *type_hash,
+                                              struct nros_cpp_qos_t _qos,
+                                              void **out_handle);
+
+/**
+ * Try to receive a raw service request (non-blocking).
+ *
+ * # Parameters
+ * * `handle` — Service server handle.
+ * * `out_data` — Caller's buffer to receive CDR request data.
+ * * `out_capacity` — Size of the caller's buffer.
+ * * `out_len` — Receives the number of bytes written (0 if no request).
+ * * `out_sequence` — Receives the request sequence number for reply matching.
+ *
+ * # Returns
+ * * `NROS_CPP_RET_OK` — Request received or no request pending (`*out_len == 0`).
+ * * `NROS_CPP_RET_ERROR` — Transport error.
+ *
+ * # Safety
+ * All pointers must be valid. `out_data` must point to `out_capacity` writable bytes.
+ */
+nros_cpp_ret_t nros_cpp_service_server_try_recv_raw(void *handle,
+                                                    uint8_t *out_data,
+                                                    size_t out_capacity,
+                                                    size_t *out_len,
+                                                    int64_t *out_sequence);
+
+/**
+ * Send a raw reply to a service request.
+ *
+ * # Parameters
+ * * `handle` — Service server handle.
+ * * `sequence_number` — Sequence number from the received request.
+ * * `data` — CDR-serialized reply data.
+ * * `len` — Length of reply data.
+ *
+ * # Safety
+ * `handle` must be valid. `data` must point to `len` readable bytes.
+ */
+nros_cpp_ret_t nros_cpp_service_server_send_reply_raw(void *handle,
+                                                      int64_t sequence_number,
+                                                      const uint8_t *data,
+                                                      size_t len);
+
+/**
+ * Destroy a service server and free its resources.
+ *
+ * # Safety
+ * `handle` must be a valid service server handle, or NULL (no-op).
+ */
+nros_cpp_ret_t nros_cpp_service_server_destroy(void *handle);
+
+/**
+ * Create a service client on a node.
+ *
+ * # Parameters
+ * * `node` — Node handle from `nros_cpp_node_create()`.
+ * * `service_name` — Service name (null-terminated).
+ * * `type_name` — ROS service type name (null-terminated).
+ * * `type_hash` — ROS type hash string (null-terminated).
+ * * `qos` — QoS settings (currently unused for services, reserved).
+ * * `out_handle` — Receives the opaque service client handle on success.
+ *
+ * # Safety
+ * All pointer parameters must be valid.
+ */
+nros_cpp_ret_t nros_cpp_service_client_create(const struct nros_cpp_node_t *node,
+                                              const char *service_name,
+                                              const char *type_name,
+                                              const char *type_hash,
+                                              struct nros_cpp_qos_t _qos,
+                                              void **out_handle);
+
+/**
+ * Send a service request and block for reply (raw CDR).
+ *
+ * # Parameters
+ * * `handle` — Service client handle.
+ * * `req_data` — CDR-serialized request.
+ * * `req_len` — Request length.
+ * * `resp_data` — Buffer for CDR-serialized reply.
+ * * `resp_capacity` — Reply buffer capacity.
+ * * `resp_len` — Receives actual reply length.
+ *
+ * # Returns
+ * * `NROS_CPP_RET_OK` on success.
+ * * `NROS_CPP_RET_TIMEOUT` on timeout.
+ * * `NROS_CPP_RET_ERROR` on error.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_service_client_call_raw(void *handle,
+                                                const uint8_t *req_data,
+                                                size_t req_len,
+                                                uint8_t *resp_data,
+                                                size_t resp_capacity,
+                                                size_t *resp_len);
+
+/**
+ * Destroy a service client and free its resources.
+ *
+ * # Safety
+ * `handle` must be a valid service client handle, or NULL (no-op).
+ */
+nros_cpp_ret_t nros_cpp_service_client_destroy(void *handle);
 
 /**
  * Create a subscription on a node.
