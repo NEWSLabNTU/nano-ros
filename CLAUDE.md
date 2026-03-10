@@ -211,7 +211,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 61 | FFI reentrancy guards (zpico + XRCE critical sections) | Complete |
 | 62 | Event-driven async waking (AtomicWaker) | Complete |
 | 63 | RTIC integration (examples + QEMU testing) | In Progress (63.1–63.10 done) |
-| 66 | C++ API (`nros-cpp`) | In Progress (66.1–66.2 done) |
+| 66 | C++ API (`nros-cpp`) | In Progress (66.1–66.3 done) |
 
 ## Quick Reference
 

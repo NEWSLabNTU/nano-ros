@@ -12,13 +12,13 @@ namespace nros {
 ///
 /// Values match the Rust `nros_cpp_ret_t` constants in nros-cpp-ffi.
 enum class ErrorCode : int32_t {
-    Ok              = 0,
-    Error           = -1,
-    Timeout         = -2,
+    Ok = 0,
+    Error = -1,
+    Timeout = -2,
     InvalidArgument = -3,
-    NotInitialized  = -4,
-    Full            = -5,
-    TransportError  = -100,
+    NotInitialized = -4,
+    Full = -5,
+    TransportError = -100,
 };
 
 /// Result type for fallible operations.
@@ -26,7 +26,7 @@ enum class ErrorCode : int32_t {
 /// This replaces exceptions in freestanding C++. Use the NROS_TRY macro
 /// for early return on error.
 class Result {
-public:
+  public:
     constexpr Result() : code_(ErrorCode::Ok) {}
     constexpr Result(ErrorCode code) : code_(code) {}
     constexpr Result(int32_t raw) : code_(static_cast<ErrorCode>(raw)) {}
@@ -46,7 +46,7 @@ public:
     /// Named constructors.
     static constexpr Result success() { return Result(ErrorCode::Ok); }
 
-private:
+  private:
     ErrorCode code_;
 };
 
@@ -60,10 +60,10 @@ private:
 ///     return nros::Result::success();
 /// }
 /// ```
-#define NROS_TRY(expr)                     \
-    do {                                   \
-        ::nros::Result _nros_r = (expr);   \
-        if (!_nros_r.ok()) return _nros_r; \
+#define NROS_TRY(expr)                                                                             \
+    do {                                                                                           \
+        ::nros::Result _nros_r = (expr);                                                           \
+        if (!_nros_r.ok()) return _nros_r;                                                         \
     } while (0)
 
 } // namespace nros

@@ -9,7 +9,7 @@
 // Forward-declare the FFI types so we don't need to include the generated header
 // in user-facing code. The implementation maps these enums to the FFI equivalents.
 extern "C" {
-    struct nros_cpp_qos_t;
+struct nros_cpp_qos_t;
 }
 
 namespace nros {
@@ -19,13 +19,10 @@ namespace nros {
 /// Mirrors rclcpp::QoS with chainable setters and predefined profiles.
 /// All methods are constexpr — profiles can be computed at compile time.
 class QoS {
-public:
+  public:
     /// Default QoS: reliable, volatile, keep-last(10).
     constexpr QoS()
-        : reliability_(Reliable),
-          durability_(Volatile),
-          history_(KeepLast),
-          depth_(10) {}
+        : reliability_(Reliable), durability_(Volatile), history_(KeepLast), depth_(10) {}
 
     // -- Chainable setters (match rclcpp fluent API) --
 
@@ -64,13 +61,9 @@ public:
 
     static constexpr QoS default_profile() { return QoS(); }
 
-    static constexpr QoS sensor_data() {
-        return QoS().best_effort().keep_last(5);
-    }
+    static constexpr QoS sensor_data() { return QoS().best_effort().keep_last(5); }
 
-    static constexpr QoS services() {
-        return QoS().reliable();
-    }
+    static constexpr QoS services() { return QoS().reliable(); }
 
     // -- Accessors --
 
@@ -79,10 +72,10 @@ public:
     constexpr int history_raw() const { return static_cast<int>(history_); }
     constexpr int depth() const { return depth_; }
 
-private:
+  private:
     enum Reliability { Reliable = 0, BestEffort = 1 } reliability_;
-    enum Durability  { Volatile = 0, TransientLocal = 1 } durability_;
-    enum History     { KeepLast = 0, KeepAll = 1 } history_;
+    enum Durability { Volatile = 0, TransientLocal = 1 } durability_;
+    enum History { KeepLast = 0, KeepAll = 1 } history_;
     int depth_;
 };
 

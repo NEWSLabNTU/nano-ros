@@ -26,6 +26,17 @@ extern crate std;
 
 use core::ffi::{c_char, c_int, c_void};
 
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
+mod publisher;
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
+mod subscription;
+
 // ============================================================================
 // Error codes (mirror nros-c for consistency)
 // ============================================================================
@@ -87,7 +98,7 @@ pub struct nros_cpp_qos_t {
 }
 
 impl nros_cpp_qos_t {
-    fn to_qos_settings(self) -> nros_rmw::QosSettings {
+    pub(crate) fn to_qos_settings(self) -> nros_rmw::QosSettings {
         use nros_rmw::{QosDurabilityPolicy, QosHistoryPolicy, QosReliabilityPolicy};
 
         nros_rmw::QosSettings {
@@ -124,7 +135,18 @@ impl nros_cpp_qos_t {
 //
 // These match what `Executor<_>` resolves to in Rust user code.
 #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
-type CppExecutor = nros_node::Executor<nros::internals::RmwSession>;
+pub(crate) type CppExecutor = nros_node::Executor<nros::internals::RmwSession>;
+
+/// Context wrapping the executor and the domain ID.
+///
+/// The executor doesn't store domain_id itself — it's consumed during
+/// session open. We keep it here so publisher/subscription creation
+/// can pass the correct value to `TopicInfo::with_domain()`.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+pub(crate) struct CppContext {
+    pub(crate) executor: CppExecutor,
+    pub(crate) domain_id: u32,
+}
 
 // ============================================================================
 // Init / Fini
@@ -195,7 +217,11 @@ pub unsafe extern "C" fn nros_cpp_init(
 
     match CppExecutor::open(&config) {
         Ok(executor) => {
-            let boxed = alloc::boxed::Box::new(executor);
+            let ctx = CppContext {
+                executor,
+                domain_id: domain_id as u32,
+            };
+            let boxed = alloc::boxed::Box::new(ctx);
             unsafe {
                 *out_handle = alloc::boxed::Box::into_raw(boxed) as *mut c_void;
             }
@@ -222,10 +248,10 @@ pub unsafe extern "C" fn nros_cpp_fini(handle: *mut c_void) -> nros_cpp_ret_t {
     }
 
     unsafe {
-        let mut executor = alloc::boxed::Box::from_raw(handle as *mut CppExecutor);
-        let _ = executor.close();
+        let mut ctx = alloc::boxed::Box::from_raw(handle as *mut CppContext);
+        let _ = ctx.executor.close();
     }
-    // executor dropped here
+    // context dropped here
 
     NROS_CPP_RET_OK
 }
@@ -299,8 +325,8 @@ pub unsafe extern "C" fn nros_cpp_node_create(
     };
 
     // Verify the executor handle is valid by trying to create a node.
-    let executor = unsafe { &mut *(executor_handle as *mut CppExecutor) };
-    match executor.create_node(name_str) {
+    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    match ctx.executor.create_node(name_str) {
         Ok(_node) => {
             // The node is a borrow — we can't store it across FFI.
             // Instead, store the executor pointer + name/namespace so
@@ -365,13 +391,45 @@ pub unsafe extern "C" fn nros_cpp_node_get_namespace(
 }
 
 // ============================================================================
+// Spin
+// ============================================================================
+
+/// Drive transport I/O and dispatch any registered callbacks.
+///
+/// Call this periodically so subscriptions can receive data.
+///
+/// # Parameters
+/// * `handle` — Opaque executor handle from `nros_cpp_init()`.
+/// * `timeout_ms` — Maximum time to block waiting for I/O (milliseconds).
+///
+/// # Safety
+/// `handle` must be a valid handle returned by `nros_cpp_init()`.
+#[cfg(all(
+    feature = "alloc",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_spin_once(
+    handle: *mut c_void,
+    timeout_ms: i32,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let ctx = unsafe { &mut *(handle as *mut CppContext) };
+    let _ = ctx.executor.spin_once(timeout_ms);
+    NROS_CPP_RET_OK
+}
+
+// ============================================================================
 // Helpers
 // ============================================================================
 
 /// Convert a C null-terminated string to a Rust `&str`.
 ///
 /// Returns `None` if the pointer is null or the bytes are not valid UTF-8.
-unsafe fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
+pub(crate) unsafe fn cstr_to_str<'a>(ptr: *const c_char) -> Option<&'a str> {
     if ptr.is_null() {
         return None;
     }
