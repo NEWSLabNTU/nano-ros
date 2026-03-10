@@ -209,9 +209,9 @@ extern const struct nros_qos_t NROS_QOS_SERVICES;
  */
 typedef struct nros_message_type_t {
     /** Type name (e.g., "std_msgs::msg::dds_::Int32"). */
-    const char *type_name;
+    const char* type_name;
     /** Type hash (RIHS format). */
-    const char *type_hash;
+    const char* type_hash;
     /** Maximum serialized size (0 = dynamic/unknown). */
     size_t serialized_size_max;
 } nros_message_type_t;
@@ -230,9 +230,9 @@ typedef struct nros_message_type_t {
  */
 typedef struct nros_service_type_t {
     /** Type name (e.g., "example_interfaces::srv::dds_::AddTwoInts_"). */
-    const char *type_name;
+    const char* type_name;
     /** Type hash (RIHS format). */
-    const char *type_hash;
+    const char* type_hash;
 } nros_service_type_t;
 /** @cond INTERNAL */
 #endif
@@ -252,9 +252,9 @@ typedef struct nros_service_type_t {
  */
 typedef struct nros_action_type_t {
     /** Action type name (e.g., "example_interfaces::action::Fibonacci"). */
-    const char *type_name;
+    const char* type_name;
     /** Action type hash. */
-    const char *type_hash;
+    const char* type_hash;
     /** Maximum serialized size of goal message. */
     size_t goal_serialized_size_max;
     /** Maximum serialized size of result message. */

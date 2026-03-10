@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "native_c_custom_msg.h"  // Umbrella header
+#include "native_c_custom_msg.h" // Umbrella header
 
 int main(void) {
     printf("Testing generated C message bindings...\n\n");
@@ -27,7 +27,8 @@ int main(void) {
     uint8_t buffer[256];
     size_t serialized_size = 0;
 
-    int32_t result = native_c_custom_msg_msg_temperature_serialize(&temp, buffer, sizeof(buffer), &serialized_size);
+    int32_t result = native_c_custom_msg_msg_temperature_serialize(&temp, buffer, sizeof(buffer),
+                                                                   &serialized_size);
     if (result == 0) {
         printf("  Serialized size: %zu bytes\n", serialized_size);
     } else {
@@ -60,13 +61,14 @@ int main(void) {
 
     printf("SensorData message:\n");
     printf("  sensor_id: %d\n", sensor.sensor_id);
-    printf("  acceleration: [%.2f, %.2f, %.2f]\n",
-           sensor.acceleration[0], sensor.acceleration[1], sensor.acceleration[2]);
+    printf("  acceleration: [%.2f, %.2f, %.2f]\n", sensor.acceleration[0], sensor.acceleration[1],
+           sensor.acceleration[2]);
     printf("  is_valid: %s\n", sensor.is_valid ? "true" : "false");
 
     // Test serialization
     serialized_size = 0;
-    result = native_c_custom_msg_msg_sensor_data_serialize(&sensor, buffer, sizeof(buffer), &serialized_size);
+    result = native_c_custom_msg_msg_sensor_data_serialize(&sensor, buffer, sizeof(buffer),
+                                                           &serialized_size);
     if (result == 0) {
         printf("  Serialized size: %zu bytes\n", serialized_size);
     } else {

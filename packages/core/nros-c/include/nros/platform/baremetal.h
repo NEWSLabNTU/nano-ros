@@ -50,7 +50,8 @@ extern "C" {
 
 // No threading on bare-metal
 #ifdef NROS_FEATURE_THREADS
-#error "NROS_FEATURE_THREADS not supported on bare-metal. Use NROS_PLATFORM_CUSTOM for RTOS support."
+#error                                                                                             \
+    "NROS_FEATURE_THREADS not supported on bare-metal. Use NROS_PLATFORM_CUSTOM for RTOS support."
 #endif
 
 // ============================================================================
@@ -92,11 +93,13 @@ extern void nros_platform_sleep_ns(uint64_t ns);
  * Prevents compiler reordering. For Cortex-M, also includes DMB.
  */
 #if defined(__ARM_ARCH)
-    #define NROS_MEMORY_BARRIER() __asm__ volatile ("dmb" ::: "memory")
+#define NROS_MEMORY_BARRIER() __asm__ volatile("dmb" ::: "memory")
 #elif defined(__GNUC__)
-    #define NROS_MEMORY_BARRIER() __asm__ volatile ("" ::: "memory")
+#define NROS_MEMORY_BARRIER() __asm__ volatile("" ::: "memory")
 #else
-    #define NROS_MEMORY_BARRIER() do {} while(0)
+#define NROS_MEMORY_BARRIER()                                                                      \
+    do {                                                                                           \
+    } while (0)
 #endif
 
 /**
@@ -104,7 +107,7 @@ extern void nros_platform_sleep_ns(uint64_t ns);
  *
  * For single-core bare-metal, volatile write with barrier is sufficient.
  */
-static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
     NROS_MEMORY_BARRIER();
     *ptr = value;
     NROS_MEMORY_BARRIER();
@@ -113,7 +116,7 @@ static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool valu
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
+static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
     NROS_MEMORY_BARRIER();
     bool value = *ptr;
     NROS_MEMORY_BARRIER();
@@ -131,14 +134,14 @@ static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
 #if defined(__ARM_ARCH)
 static inline uint32_t nros_platform_disable_irq(void) {
     uint32_t primask;
-    __asm__ volatile ("mrs %0, primask\n\t"
-                      "cpsid i"
-                      : "=r" (primask) :: "memory");
+    __asm__ volatile("mrs %0, primask\n\t"
+                     "cpsid i"
+                     : "=r"(primask)::"memory");
     return primask;
 }
 
 static inline void nros_platform_restore_irq(uint32_t primask) {
-    __asm__ volatile ("msr primask, %0" :: "r" (primask) : "memory");
+    __asm__ volatile("msr primask, %0" ::"r"(primask) : "memory");
 }
 #endif
 

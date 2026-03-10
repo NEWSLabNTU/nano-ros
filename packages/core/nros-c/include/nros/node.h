@@ -49,9 +49,9 @@ typedef struct nros_node_t {
     /** Namespace length. */
     size_t namespace_len;
     /** Pointer to parent support context. */
-    const struct nros_support_t *support;
+    const struct nros_support_t* support;
     /** Opaque pointer to internal Rust node. */
-    void *_internal;
+    void* _internal;
 } nros_node_t;
 
 /* ===================================================================
@@ -81,10 +81,8 @@ NROS_PUBLIC struct nros_node_t nros_node_get_zero_initialized(void);
  * @pre @p name and @p namespace_ must be valid null-terminated strings.
  */
 NROS_PUBLIC
-nros_ret_t nros_node_init(struct nros_node_t *node,
-                          const struct nros_support_t *support,
-                          const char *name,
-                          const char *namespace_);
+nros_ret_t nros_node_init(struct nros_node_t* node, const struct nros_support_t* support,
+                          const char* name, const char* namespace_);
 
 /**
  * @brief Finalise a node.
@@ -97,7 +95,7 @@ nros_ret_t nros_node_init(struct nros_node_t *node,
  *
  * @pre @p node must point to an initialized @ref nros_node_t.
  */
-NROS_PUBLIC nros_ret_t nros_node_fini(struct nros_node_t *node);
+NROS_PUBLIC nros_ret_t nros_node_fini(struct nros_node_t* node);
 
 /**
  * @brief Get the node name.
@@ -105,7 +103,7 @@ NROS_PUBLIC nros_ret_t nros_node_fini(struct nros_node_t *node);
  * @param node  Pointer to an initialized node.
  * @return Null-terminated node name, or NULL if invalid.
  */
-NROS_PUBLIC const char *nros_node_get_name(const struct nros_node_t *node);
+NROS_PUBLIC const char* nros_node_get_name(const struct nros_node_t* node);
 
 /**
  * @brief Get the node namespace.
@@ -113,7 +111,7 @@ NROS_PUBLIC const char *nros_node_get_name(const struct nros_node_t *node);
  * @param node  Pointer to an initialized node.
  * @return Null-terminated node namespace, or NULL if invalid.
  */
-NROS_PUBLIC const char *nros_node_get_namespace(const struct nros_node_t *node);
+NROS_PUBLIC const char* nros_node_get_namespace(const struct nros_node_t* node);
 
 #ifdef __cplusplus
 }

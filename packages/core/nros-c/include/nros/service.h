@@ -51,12 +51,9 @@ typedef enum nros_service_state_t {
  * @return @c true if the request was handled successfully.
  * @return @c false if there was an error handling the request.
  */
-typedef bool (*nros_service_callback_t)(const uint8_t *request_data,
-                                        size_t request_len,
-                                        uint8_t *response_data,
-                                        size_t response_capacity,
-                                        size_t *response_len,
-                                        void *context);
+typedef bool (*nros_service_callback_t)(const uint8_t* request_data, size_t request_len,
+                                        uint8_t* response_data, size_t response_capacity,
+                                        size_t* response_len, void* context);
 
 /** Service server structure. */
 typedef struct nros_service_t {
@@ -77,13 +74,13 @@ typedef struct nros_service_t {
     /** User callback function. */
     nros_service_callback_t callback;
     /** User context pointer passed to @ref callback. */
-    void *context;
+    void* context;
     /** Pointer to parent node. */
-    const struct nros_node_t *node;
+    const struct nros_node_t* node;
     /** Handle ID from executor registration (@c SIZE_MAX = not registered). */
     size_t handle_id;
     /** Opaque pointer to internal Rust service server. */
-    void *_internal;
+    void* _internal;
 } nros_service_t;
 
 /* ===================================================================
@@ -115,12 +112,9 @@ NROS_PUBLIC struct nros_service_t nros_service_get_zero_initialized(void);
  * @pre @p service_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_service_init(struct nros_service_t *service,
-                             const struct nros_node_t *node,
-                             const struct nros_message_type_t *type_info,
-                             const char *service_name,
-                             nros_service_callback_t callback,
-                             void *context);
+nros_ret_t nros_service_init(struct nros_service_t* service, const struct nros_node_t* node,
+                             const struct nros_message_type_t* type_info, const char* service_name,
+                             nros_service_callback_t callback, void* context);
 
 /**
  * @brief Finalise a service server.
@@ -131,7 +125,7 @@ nros_ret_t nros_service_init(struct nros_service_t *service,
  * @retval NROS_RET_INVALID_ARGUMENT  if @p service is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_service_fini(struct nros_service_t *service);
+NROS_PUBLIC nros_ret_t nros_service_fini(struct nros_service_t* service);
 
 /**
  * @brief Take a service request (non-blocking).
@@ -154,11 +148,9 @@ NROS_PUBLIC nros_ret_t nros_service_fini(struct nros_service_t *service);
  * @pre @p request_data must point to at least @p request_capacity bytes.
  */
 NROS_PUBLIC
-nros_ret_t nros_service_take_request(struct nros_service_t *service,
-                                     uint8_t *request_data,
-                                     size_t request_capacity,
-                                     size_t *request_len,
-                                     int64_t *sequence_number);
+nros_ret_t nros_service_take_request(struct nros_service_t* service, uint8_t* request_data,
+                                     size_t request_capacity, size_t* request_len,
+                                     int64_t* sequence_number);
 
 /**
  * @brief Send a service response.
@@ -180,10 +172,8 @@ nros_ret_t nros_service_take_request(struct nros_service_t *service,
  * @pre @p response_data must point to @p response_len valid bytes.
  */
 NROS_PUBLIC
-nros_ret_t nros_service_send_response(struct nros_service_t *service,
-                                      int64_t sequence_number,
-                                      const uint8_t *response_data,
-                                      size_t response_len);
+nros_ret_t nros_service_send_response(struct nros_service_t* service, int64_t sequence_number,
+                                      const uint8_t* response_data, size_t response_len);
 
 /**
  * @brief Get the service name.
@@ -191,7 +181,7 @@ nros_ret_t nros_service_send_response(struct nros_service_t *service,
  * @param service  Pointer to a service.
  * @return Null-terminated service name, or NULL if invalid.
  */
-NROS_PUBLIC const char *nros_service_get_service_name(const struct nros_service_t *service);
+NROS_PUBLIC const char* nros_service_get_service_name(const struct nros_service_t* service);
 
 /**
  * @brief Check if service is valid (initialized).
@@ -199,7 +189,7 @@ NROS_PUBLIC const char *nros_service_get_service_name(const struct nros_service_
  * @param service  Pointer to a service.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_service_is_valid(const struct nros_service_t *service);
+NROS_PUBLIC int nros_service_is_valid(const struct nros_service_t* service);
 
 #ifdef __cplusplus
 }

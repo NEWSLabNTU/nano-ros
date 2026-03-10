@@ -17,7 +17,7 @@
 
 #include <stdint.h>
 #include <stdbool.h>
-#include <time.h>  // For simulation only - not available on bare-metal
+#include <time.h> // For simulation only - not available on bare-metal
 
 // ============================================================================
 // Platform Implementation
@@ -81,10 +81,8 @@ uint64_t nros_platform_time_ns(void) {
  */
 void nros_platform_sleep_ns(uint64_t ns) {
     // Simulation using POSIX nanosleep
-    struct timespec ts = {
-        .tv_sec = (time_t)(ns / 1000000000ULL),
-        .tv_nsec = (long)(ns % 1000000000ULL)
-    };
+    struct timespec ts = {.tv_sec = (time_t)(ns / 1000000000ULL),
+                          .tv_nsec = (long)(ns % 1000000000ULL)};
     nanosleep(&ts, NULL);
 }
 
@@ -106,7 +104,7 @@ void nros_platform_sleep_ns(uint64_t ns) {
  *       *ptr = value;
  *   }
  */
-void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
+void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
     // Simulation using GCC atomic builtin
     __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
 }
@@ -123,7 +121,7 @@ void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
  *       return value;
  *   }
  */
-bool nros_platform_atomic_load_bool(volatile bool *ptr) {
+bool nros_platform_atomic_load_bool(volatile bool* ptr) {
     // Simulation using GCC atomic builtin
     return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
 }

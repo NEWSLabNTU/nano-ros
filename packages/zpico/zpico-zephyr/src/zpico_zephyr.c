@@ -19,9 +19,8 @@
 
 LOG_MODULE_REGISTER(zpico_zephyr, LOG_LEVEL_INF);
 
-int32_t zpico_zephyr_wait_network(int timeout_ms)
-{
-    struct net_if *iface = net_if_get_default();
+int32_t zpico_zephyr_wait_network(int timeout_ms) {
+    struct net_if* iface = net_if_get_default();
     int elapsed = 0;
 
     while (!net_if_is_up(iface) && elapsed < timeout_ms) {
@@ -38,8 +37,7 @@ int32_t zpico_zephyr_wait_network(int timeout_ms)
     return 0;
 }
 
-int32_t zpico_zephyr_init_session(const char *locator)
-{
+int32_t zpico_zephyr_init_session(const char* locator) {
     if (locator == NULL) {
         LOG_ERR("Locator is NULL");
         return -1;
@@ -66,8 +64,7 @@ int32_t zpico_zephyr_init_session(const char *locator)
     return 0;
 }
 
-void zpico_zephyr_shutdown(void)
-{
+void zpico_zephyr_shutdown(void) {
     zpico_close();
     LOG_INF("Zenoh session closed");
 }

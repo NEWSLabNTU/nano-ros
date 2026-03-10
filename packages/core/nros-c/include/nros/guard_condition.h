@@ -39,7 +39,7 @@ typedef enum nros_guard_condition_state_t {
  *
  * @param context User-provided context pointer.
  */
-typedef void (*nros_guard_condition_callback_t)(void *context);
+typedef void (*nros_guard_condition_callback_t)(void* context);
 
 /** Guard condition structure. */
 typedef struct nros_guard_condition_t {
@@ -50,13 +50,13 @@ typedef struct nros_guard_condition_t {
     /** Callback function. */
     nros_guard_condition_callback_t callback;
     /** User context pointer. */
-    void *context;
+    void* context;
     /** Pointer to parent support context. */
-    const struct nros_support_t *_support;
+    const struct nros_support_t* _support;
     /** Handle ID from executor registration (SIZE_MAX = not registered). */
     size_t handle_id;
     /** Guard condition handle for external triggering (set by executor). */
-    void *_guard_handle;
+    void* _guard_handle;
 } nros_guard_condition_t;
 
 /* ===================================================================
@@ -78,8 +78,8 @@ NROS_PUBLIC struct nros_guard_condition_t nros_guard_condition_get_zero_initiali
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_guard_condition_init(struct nros_guard_condition_t *guard,
-                                     const struct nros_support_t *support);
+nros_ret_t nros_guard_condition_init(struct nros_guard_condition_t* guard,
+                                     const struct nros_support_t* support);
 
 /**
  * @brief Set the guard condition callback.
@@ -91,9 +91,9 @@ nros_ret_t nros_guard_condition_init(struct nros_guard_condition_t *guard,
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_guard_condition_set_callback(struct nros_guard_condition_t *guard,
+nros_ret_t nros_guard_condition_set_callback(struct nros_guard_condition_t* guard,
                                              nros_guard_condition_callback_t callback,
-                                             void *context);
+                                             void* context);
 
 /**
  * @brief Trigger a guard condition.
@@ -105,7 +105,7 @@ nros_ret_t nros_guard_condition_set_callback(struct nros_guard_condition_t *guar
  * @param guard  Pointer to an initialized guard condition.
  * @retval NROS_RET_OK on success.
  */
-NROS_PUBLIC nros_ret_t nros_guard_condition_trigger(struct nros_guard_condition_t *guard);
+NROS_PUBLIC nros_ret_t nros_guard_condition_trigger(struct nros_guard_condition_t* guard);
 
 /**
  * @brief Check if the guard condition is triggered.
@@ -113,7 +113,7 @@ NROS_PUBLIC nros_ret_t nros_guard_condition_trigger(struct nros_guard_condition_
  * @param guard  Pointer to a guard condition.
  * @return @c true if triggered, @c false otherwise.
  */
-NROS_PUBLIC bool nros_guard_condition_is_triggered(const struct nros_guard_condition_t *guard);
+NROS_PUBLIC bool nros_guard_condition_is_triggered(const struct nros_guard_condition_t* guard);
 
 /**
  * @brief Clear the triggered flag.
@@ -121,7 +121,7 @@ NROS_PUBLIC bool nros_guard_condition_is_triggered(const struct nros_guard_condi
  * @param guard  Pointer to an initialized guard condition.
  * @retval NROS_RET_OK on success.
  */
-NROS_PUBLIC nros_ret_t nros_guard_condition_clear(struct nros_guard_condition_t *guard);
+NROS_PUBLIC nros_ret_t nros_guard_condition_clear(struct nros_guard_condition_t* guard);
 
 /**
  * @brief Check if guard condition is valid (initialized).
@@ -129,7 +129,7 @@ NROS_PUBLIC nros_ret_t nros_guard_condition_clear(struct nros_guard_condition_t 
  * @param guard  Pointer to a guard condition.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_guard_condition_is_valid(const struct nros_guard_condition_t *guard);
+NROS_PUBLIC int nros_guard_condition_is_valid(const struct nros_guard_condition_t* guard);
 
 /**
  * @brief Finalise a guard condition.
@@ -137,7 +137,7 @@ NROS_PUBLIC int nros_guard_condition_is_valid(const struct nros_guard_condition_
  * @param guard  Pointer to an initialized guard condition.
  * @retval NROS_RET_OK on success.
  */
-NROS_PUBLIC nros_ret_t nros_guard_condition_fini(struct nros_guard_condition_t *guard);
+NROS_PUBLIC nros_ret_t nros_guard_condition_fini(struct nros_guard_condition_t* guard);
 
 #ifdef __cplusplus
 }

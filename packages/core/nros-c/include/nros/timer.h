@@ -41,8 +41,7 @@ typedef enum nros_timer_state_t {
  * @param timer   Pointer to the timer that triggered.
  * @param context User-provided context pointer.
  */
-typedef void (*nros_timer_callback_t)(struct nros_timer_t *timer,
-                                      void *context);
+typedef void (*nros_timer_callback_t)(struct nros_timer_t* timer, void* context);
 
 /** Timer structure. */
 typedef struct nros_timer_t {
@@ -55,13 +54,13 @@ typedef struct nros_timer_t {
     /** User callback function. */
     nros_timer_callback_t callback;
     /** User context pointer. */
-    void *context;
+    void* context;
     /** Pointer to parent support context. */
-    const struct nros_support_t *support;
+    const struct nros_support_t* support;
     /** Handle ID from executor registration (SIZE_MAX = not registered). */
     size_t handle_id;
     /** Opaque pointer to internal executor (set by nros_executor_add_timer). */
-    void *_executor;
+    void* _executor;
 } nros_timer_t;
 
 /* ===================================================================
@@ -92,11 +91,8 @@ NROS_PUBLIC struct nros_timer_t nros_timer_get_zero_initialized(void);
  * @pre @p callback must be a valid function pointer.
  */
 NROS_PUBLIC
-nros_ret_t nros_timer_init(struct nros_timer_t *timer,
-                           const struct nros_support_t *support,
-                           uint64_t period_ns,
-                           nros_timer_callback_t callback,
-                           void *context);
+nros_ret_t nros_timer_init(struct nros_timer_t* timer, const struct nros_support_t* support,
+                           uint64_t period_ns, nros_timer_callback_t callback, void* context);
 
 /**
  * @brief Cancel a timer.
@@ -109,7 +105,7 @@ nros_ret_t nros_timer_init(struct nros_timer_t *timer,
  * @retval NROS_RET_INVALID_ARGUMENT  if @p timer is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_timer_cancel(struct nros_timer_t *timer);
+NROS_PUBLIC nros_ret_t nros_timer_cancel(struct nros_timer_t* timer);
 
 /**
  * @brief Reset a timer.
@@ -123,7 +119,7 @@ NROS_PUBLIC nros_ret_t nros_timer_cancel(struct nros_timer_t *timer);
  * @retval NROS_RET_INVALID_ARGUMENT  if @p timer is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_timer_reset(struct nros_timer_t *timer);
+NROS_PUBLIC nros_ret_t nros_timer_reset(struct nros_timer_t* timer);
 
 /**
  * @brief Finalise a timer.
@@ -134,7 +130,7 @@ NROS_PUBLIC nros_ret_t nros_timer_reset(struct nros_timer_t *timer);
  * @retval NROS_RET_INVALID_ARGUMENT  if @p timer is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_timer_fini(struct nros_timer_t *timer);
+NROS_PUBLIC nros_ret_t nros_timer_fini(struct nros_timer_t* timer);
 
 /**
  * @brief Check if timer is ready to fire.
@@ -143,8 +139,7 @@ NROS_PUBLIC nros_ret_t nros_timer_fini(struct nros_timer_t *timer);
  * @param current_time_ns Current time in nanoseconds.
  * @return Non-zero if timer is ready, 0 otherwise.
  */
-NROS_PUBLIC int nros_timer_is_ready(const struct nros_timer_t *timer,
-                                    uint64_t current_time_ns);
+NROS_PUBLIC int nros_timer_is_ready(const struct nros_timer_t* timer, uint64_t current_time_ns);
 
 /**
  * @brief Call the timer callback and update last call time.
@@ -158,8 +153,7 @@ NROS_PUBLIC int nros_timer_is_ready(const struct nros_timer_t *timer,
  * @retval NROS_RET_INVALID_ARGUMENT  if @p timer is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized or not running.
  */
-NROS_PUBLIC nros_ret_t nros_timer_call(struct nros_timer_t *timer,
-                                       uint64_t current_time_ns);
+NROS_PUBLIC nros_ret_t nros_timer_call(struct nros_timer_t* timer, uint64_t current_time_ns);
 
 /**
  * @brief Check if timer is valid (initialized and not shutdown).
@@ -167,7 +161,7 @@ NROS_PUBLIC nros_ret_t nros_timer_call(struct nros_timer_t *timer,
  * @param timer  Pointer to a timer.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_timer_is_valid(const struct nros_timer_t *timer);
+NROS_PUBLIC int nros_timer_is_valid(const struct nros_timer_t* timer);
 
 /**
  * @brief Get the timer period in nanoseconds.
@@ -175,7 +169,7 @@ NROS_PUBLIC int nros_timer_is_valid(const struct nros_timer_t *timer);
  * @param timer  Pointer to a timer.
  * @return Period in nanoseconds, or 0 if invalid.
  */
-NROS_PUBLIC uint64_t nros_timer_get_period(const struct nros_timer_t *timer);
+NROS_PUBLIC uint64_t nros_timer_get_period(const struct nros_timer_t* timer);
 
 /**
  * @brief Get the time until next timer firing.
@@ -185,7 +179,7 @@ NROS_PUBLIC uint64_t nros_timer_get_period(const struct nros_timer_t *timer);
  * @return Time until next firing in nanoseconds, or 0 if ready now or invalid.
  */
 NROS_PUBLIC
-uint64_t nros_timer_get_time_until_next_call(const struct nros_timer_t *timer,
+uint64_t nros_timer_get_time_until_next_call(const struct nros_timer_t* timer,
                                              uint64_t current_time_ns);
 
 #ifdef __cplusplus

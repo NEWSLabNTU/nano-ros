@@ -41,7 +41,7 @@ int32_t zpico_zephyr_wait_network(int timeout_ms);
  * @param locator Zenoh router locator (e.g., "tcp/192.0.2.2:7447")
  * @return 0 on success, negative error code on failure
  */
-int32_t zpico_zephyr_init_session(const char *locator);
+int32_t zpico_zephyr_init_session(const char* locator);
 
 /**
  * @brief Shut down the zenoh-pico session.

@@ -33,10 +33,7 @@ extern "C" {
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_bool(uint8_t **ptr,
-                            const uint8_t *end,
-                            const uint8_t *origin,
-                            bool value);
+int32_t nros_cdr_write_bool(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, bool value);
 
 /**
  * @brief Write a u8 value to the buffer.
@@ -48,10 +45,7 @@ int32_t nros_cdr_write_bool(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u8(uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          uint8_t value);
+int32_t nros_cdr_write_u8(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, uint8_t value);
 
 /**
  * @brief Write an i8 value to the buffer.
@@ -63,10 +57,7 @@ int32_t nros_cdr_write_u8(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i8(uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          int8_t value);
+int32_t nros_cdr_write_i8(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int8_t value);
 
 /**
  * @brief Write a u16 value to the buffer (with alignment).
@@ -78,9 +69,7 @@ int32_t nros_cdr_write_i8(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u16(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
+int32_t nros_cdr_write_u16(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                            uint16_t value);
 
 /**
@@ -93,10 +82,7 @@ int32_t nros_cdr_write_u16(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i16(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
-                           int16_t value);
+int32_t nros_cdr_write_i16(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int16_t value);
 
 /**
  * @brief Write a u32 value to the buffer (with alignment).
@@ -108,9 +94,7 @@ int32_t nros_cdr_write_i16(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u32(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
+int32_t nros_cdr_write_u32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                            uint32_t value);
 
 /**
@@ -123,10 +107,7 @@ int32_t nros_cdr_write_u32(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i32(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
-                           int32_t value);
+int32_t nros_cdr_write_i32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int32_t value);
 
 /**
  * @brief Write a u64 value to the buffer (with alignment).
@@ -138,9 +119,7 @@ int32_t nros_cdr_write_i32(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_u64(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
+int32_t nros_cdr_write_u64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                            uint64_t value);
 
 /**
@@ -153,10 +132,7 @@ int32_t nros_cdr_write_u64(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_i64(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
-                           int64_t value);
+int32_t nros_cdr_write_i64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, int64_t value);
 
 /**
  * @brief Write a f32 value to the buffer (with alignment).
@@ -168,10 +144,7 @@ int32_t nros_cdr_write_i64(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_f32(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
-                           float value);
+int32_t nros_cdr_write_f32(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, float value);
 
 /**
  * @brief Write a f64 value to the buffer (with alignment).
@@ -183,10 +156,7 @@ int32_t nros_cdr_write_f32(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_f64(uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
-                           double value);
+int32_t nros_cdr_write_f64(uint8_t** ptr, const uint8_t* end, const uint8_t* origin, double value);
 
 /**
  * @brief Write a string to the buffer (length-prefixed).
@@ -201,10 +171,8 @@ int32_t nros_cdr_write_f64(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_write_string(uint8_t **ptr,
-                              const uint8_t *end,
-                              const uint8_t *origin,
-                              const char *value);
+int32_t nros_cdr_write_string(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                              const char* value);
 
 /* ===================================================================
  * Read Functions
@@ -220,10 +188,8 @@ int32_t nros_cdr_write_string(uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_bool(const uint8_t **ptr,
-                           const uint8_t *end,
-                           const uint8_t *origin,
-                           bool *value);
+int32_t nros_cdr_read_bool(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                           bool* value);
 
 /**
  * @brief Read a u8 value from the buffer.
@@ -235,10 +201,8 @@ int32_t nros_cdr_read_bool(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u8(const uint8_t **ptr,
-                         const uint8_t *end,
-                         const uint8_t *origin,
-                         uint8_t *value);
+int32_t nros_cdr_read_u8(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                         uint8_t* value);
 
 /**
  * @brief Read an i8 value from the buffer.
@@ -250,10 +214,8 @@ int32_t nros_cdr_read_u8(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i8(const uint8_t **ptr,
-                         const uint8_t *end,
-                         const uint8_t *origin,
-                         int8_t *value);
+int32_t nros_cdr_read_i8(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                         int8_t* value);
 
 /**
  * @brief Read a u16 value from the buffer (with alignment).
@@ -265,10 +227,8 @@ int32_t nros_cdr_read_i8(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u16(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          uint16_t *value);
+int32_t nros_cdr_read_u16(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          uint16_t* value);
 
 /**
  * @brief Read an i16 value from the buffer.
@@ -280,10 +240,8 @@ int32_t nros_cdr_read_u16(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i16(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          int16_t *value);
+int32_t nros_cdr_read_i16(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          int16_t* value);
 
 /**
  * @brief Read a u32 value from the buffer (with alignment).
@@ -295,10 +253,8 @@ int32_t nros_cdr_read_i16(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u32(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          uint32_t *value);
+int32_t nros_cdr_read_u32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          uint32_t* value);
 
 /**
  * @brief Read an i32 value from the buffer.
@@ -310,10 +266,8 @@ int32_t nros_cdr_read_u32(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i32(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          int32_t *value);
+int32_t nros_cdr_read_i32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          int32_t* value);
 
 /**
  * @brief Read a u64 value from the buffer (with alignment).
@@ -325,10 +279,8 @@ int32_t nros_cdr_read_i32(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_u64(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          uint64_t *value);
+int32_t nros_cdr_read_u64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          uint64_t* value);
 
 /**
  * @brief Read an i64 value from the buffer.
@@ -340,10 +292,8 @@ int32_t nros_cdr_read_u64(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_i64(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          int64_t *value);
+int32_t nros_cdr_read_i64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          int64_t* value);
 
 /**
  * @brief Read a f32 value from the buffer.
@@ -355,10 +305,8 @@ int32_t nros_cdr_read_i64(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_f32(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          float *value);
+int32_t nros_cdr_read_f32(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          float* value);
 
 /**
  * @brief Read a f64 value from the buffer.
@@ -370,10 +318,8 @@ int32_t nros_cdr_read_f32(const uint8_t **ptr,
  * @return 0 on success, negative on overflow.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_f64(const uint8_t **ptr,
-                          const uint8_t *end,
-                          const uint8_t *origin,
-                          double *value);
+int32_t nros_cdr_read_f64(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                          double* value);
 
 /**
  * @brief Read a string from the buffer into a fixed-size buffer.
@@ -389,11 +335,8 @@ int32_t nros_cdr_read_f64(const uint8_t **ptr,
  * @return 0 on success, negative on overflow or truncation.
  */
 NROS_PUBLIC
-int32_t nros_cdr_read_string(const uint8_t **ptr,
-                             const uint8_t *end,
-                             const uint8_t *origin,
-                             char *value,
-                             size_t max_len);
+int32_t nros_cdr_read_string(const uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                             char* value, size_t max_len);
 
 #ifdef __cplusplus
 }

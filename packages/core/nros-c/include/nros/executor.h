@@ -70,9 +70,7 @@ typedef enum nros_executor_semantics_t {
  * @param context User-provided context pointer.
  * @return @c true if the executor should process callbacks.
  */
-typedef bool (*nros_executor_trigger_t)(const bool *ready,
-                                        size_t count,
-                                        void *context);
+typedef bool (*nros_executor_trigger_t)(const bool* ready, size_t count, void* context);
 
 /**
  * Executor structure.
@@ -89,11 +87,11 @@ typedef struct nros_executor_t {
     /** Data communication semantics. */
     enum nros_executor_semantics_t semantics;
     /** Pointer to support context. */
-    const struct nros_support_t *support;
+    const struct nros_support_t* support;
     /** Trigger function (NULL = default "any" trigger). */
     nros_executor_trigger_t trigger;
     /** User context for trigger function. */
-    void *trigger_context;
+    void* trigger_context;
     /** Number of handles registered. */
     size_t handle_count;
     /** Maximum handles (configured at init). */
@@ -107,7 +105,7 @@ typedef struct nros_executor_t {
     /** Next invocation time in nanoseconds for drift-compensated spin_period. */
     uint64_t invocation_time_ns;
     /** Opaque pointer to internal Rust executor. */
-    void *_internal;
+    void* _internal;
 } nros_executor_t;
 
 /* ===================================================================
@@ -136,9 +134,8 @@ NROS_PUBLIC struct nros_executor_t nros_executor_get_zero_initialized(void);
  * @pre All pointers must be valid.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_init(struct nros_executor_t *executor,
-                              const struct nros_support_t *support,
-                              size_t max_handles);
+nros_ret_t nros_executor_init(struct nros_executor_t* executor,
+                              const struct nros_support_t* support, size_t max_handles);
 
 /**
  * @brief Set the executor timeout.
@@ -151,8 +148,7 @@ nros_ret_t nros_executor_init(struct nros_executor_t *executor,
  * @pre @p executor must point to an initialized executor.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_set_timeout(struct nros_executor_t *executor,
-                                     uint64_t timeout_ns);
+nros_ret_t nros_executor_set_timeout(struct nros_executor_t* executor, uint64_t timeout_ns);
 
 /**
  * @brief Set data communication semantics.
@@ -165,7 +161,7 @@ nros_ret_t nros_executor_set_timeout(struct nros_executor_t *executor,
  * @pre @p executor must point to an initialized executor.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_set_semantics(struct nros_executor_t *executor,
+nros_ret_t nros_executor_set_semantics(struct nros_executor_t* executor,
                                        enum nros_executor_semantics_t semantics);
 
 /**
@@ -180,9 +176,8 @@ nros_ret_t nros_executor_set_semantics(struct nros_executor_t *executor,
  * @pre @p executor must point to an initialized executor.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_set_trigger(struct nros_executor_t *executor,
-                                     nros_executor_trigger_t trigger,
-                                     void *context);
+nros_ret_t nros_executor_set_trigger(struct nros_executor_t* executor,
+                                     nros_executor_trigger_t trigger, void* context);
 
 /**
  * @brief Built-in trigger: fire when ANY handle has data ready.
@@ -194,9 +189,7 @@ nros_ret_t nros_executor_set_trigger(struct nros_executor_t *executor,
  *
  * @pre @p ready must point to a valid array of at least @p count booleans.
  */
-NROS_PUBLIC bool nros_executor_trigger_any(const bool *ready,
-                                           size_t count,
-                                           void *context);
+NROS_PUBLIC bool nros_executor_trigger_any(const bool* ready, size_t count, void* context);
 
 /**
  * @brief Built-in trigger: fire when ALL handles have data ready.
@@ -208,9 +201,7 @@ NROS_PUBLIC bool nros_executor_trigger_any(const bool *ready,
  *
  * @pre @p ready must point to a valid array of at least @p count booleans.
  */
-NROS_PUBLIC bool nros_executor_trigger_all(const bool *ready,
-                                           size_t count,
-                                           void *context);
+NROS_PUBLIC bool nros_executor_trigger_all(const bool* ready, size_t count, void* context);
 
 /**
  * @brief Built-in trigger: always fire (unconditionally).
@@ -220,9 +211,7 @@ NROS_PUBLIC bool nros_executor_trigger_all(const bool *ready,
  * @param context User-provided context pointer (unused).
  * @return Always @c true.
  */
-NROS_PUBLIC bool nros_executor_trigger_always(const bool *ready,
-                                              size_t count,
-                                              void *context);
+NROS_PUBLIC bool nros_executor_trigger_always(const bool* ready, size_t count, void* context);
 
 /**
  * @brief Built-in trigger: fire when the handle at a specific index
@@ -239,9 +228,7 @@ NROS_PUBLIC bool nros_executor_trigger_always(const bool *ready,
  * @pre @p ready must point to a valid array of at least @p count booleans.
  * @pre @p context is interpreted as a @c size_t index.
  */
-NROS_PUBLIC bool nros_executor_trigger_one(const bool *ready,
-                                           size_t count,
-                                           void *context);
+NROS_PUBLIC bool nros_executor_trigger_one(const bool* ready, size_t count, void* context);
 
 /**
  * @brief Add a subscription to the executor.
@@ -260,8 +247,8 @@ NROS_PUBLIC bool nros_executor_trigger_one(const bool *ready,
  * @pre All pointers must be valid and point to initialized objects.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_add_subscription(struct nros_executor_t *executor,
-                                          struct nros_subscription_t *subscription,
+nros_ret_t nros_executor_add_subscription(struct nros_executor_t* executor,
+                                          struct nros_subscription_t* subscription,
                                           enum nros_executor_invocation_t invocation);
 
 /**
@@ -276,8 +263,7 @@ nros_ret_t nros_executor_add_subscription(struct nros_executor_t *executor,
  * @pre All pointers must be valid and point to initialized objects.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_add_timer(struct nros_executor_t *executor,
-                                   struct nros_timer_t *timer);
+nros_ret_t nros_executor_add_timer(struct nros_executor_t* executor, struct nros_timer_t* timer);
 
 /**
  * @brief Add a service to the executor.
@@ -291,8 +277,8 @@ nros_ret_t nros_executor_add_timer(struct nros_executor_t *executor,
  * @pre All pointers must be valid and point to initialized objects.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_add_service(struct nros_executor_t *executor,
-                                     struct nros_service_t *service);
+nros_ret_t nros_executor_add_service(struct nros_executor_t* executor,
+                                     struct nros_service_t* service);
 
 /**
  * @brief Add a guard condition to the executor.
@@ -306,8 +292,8 @@ nros_ret_t nros_executor_add_service(struct nros_executor_t *executor,
  * @pre All pointers must be valid and point to initialized objects.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_add_guard_condition(struct nros_executor_t *executor,
-                                             struct nros_guard_condition_t *guard);
+nros_ret_t nros_executor_add_guard_condition(struct nros_executor_t* executor,
+                                             struct nros_guard_condition_t* guard);
 
 /**
  * @brief Add an action server to the executor.
@@ -324,8 +310,8 @@ nros_ret_t nros_executor_add_guard_condition(struct nros_executor_t *executor,
  * @pre All pointers must be valid and point to initialized objects.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_add_action_server(struct nros_executor_t *executor,
-                                           struct nros_action_server_t *server);
+nros_ret_t nros_executor_add_action_server(struct nros_executor_t* executor,
+                                           struct nros_action_server_t* server);
 
 /**
  * @brief Spin the executor once.
@@ -340,8 +326,7 @@ nros_ret_t nros_executor_add_action_server(struct nros_executor_t *executor,
  * @pre @p executor must point to an initialized executor.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_spin_some(struct nros_executor_t *executor,
-                                   uint64_t timeout_ns);
+nros_ret_t nros_executor_spin_some(struct nros_executor_t* executor, uint64_t timeout_ns);
 
 /**
  * @brief Spin the executor forever.
@@ -351,7 +336,7 @@ nros_ret_t nros_executor_spin_some(struct nros_executor_t *executor,
  *
  * @pre @p executor must point to an initialized executor.
  */
-NROS_PUBLIC nros_ret_t nros_executor_spin(struct nros_executor_t *executor);
+NROS_PUBLIC nros_ret_t nros_executor_spin(struct nros_executor_t* executor);
 
 /**
  * @brief Spin the executor with a fixed period.
@@ -364,8 +349,7 @@ NROS_PUBLIC nros_ret_t nros_executor_spin(struct nros_executor_t *executor);
  * @pre @p executor must point to an initialized executor.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_spin_period(struct nros_executor_t *executor,
-                                     uint64_t period_ns);
+nros_ret_t nros_executor_spin_period(struct nros_executor_t* executor, uint64_t period_ns);
 
 /**
  * @brief Spin the executor for one period.
@@ -378,8 +362,7 @@ nros_ret_t nros_executor_spin_period(struct nros_executor_t *executor,
  * @pre @p executor must point to an initialized executor.
  */
 NROS_PUBLIC
-nros_ret_t nros_executor_spin_one_period(struct nros_executor_t *executor,
-                                         uint64_t period_ns);
+nros_ret_t nros_executor_spin_one_period(struct nros_executor_t* executor, uint64_t period_ns);
 
 /**
  * @brief Stop a spinning executor.
@@ -387,7 +370,7 @@ nros_ret_t nros_executor_spin_one_period(struct nros_executor_t *executor,
  * @param executor  Pointer to an initialized executor.
  * @retval NROS_RET_OK on success.
  */
-NROS_PUBLIC nros_ret_t nros_executor_stop(struct nros_executor_t *executor);
+NROS_PUBLIC nros_ret_t nros_executor_stop(struct nros_executor_t* executor);
 
 /**
  * @brief Finalise an executor.
@@ -395,49 +378,49 @@ NROS_PUBLIC nros_ret_t nros_executor_stop(struct nros_executor_t *executor);
  * @param executor  Pointer to an initialized executor.
  * @retval NROS_RET_OK on success.
  */
-NROS_PUBLIC nros_ret_t nros_executor_fini(struct nros_executor_t *executor);
+NROS_PUBLIC nros_ret_t nros_executor_fini(struct nros_executor_t* executor);
 
 /**
  * @brief Get the number of handles in the executor.
  * @param executor  Pointer to an executor.
  * @return Number of registered handles, or 0 if invalid.
  */
-NROS_PUBLIC int nros_executor_get_handle_count(const struct nros_executor_t *executor);
+NROS_PUBLIC int nros_executor_get_handle_count(const struct nros_executor_t* executor);
 
 /**
  * @brief Check if executor is valid (initialized).
  * @param executor  Pointer to an executor.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_executor_is_valid(const struct nros_executor_t *executor);
+NROS_PUBLIC int nros_executor_is_valid(const struct nros_executor_t* executor);
 
 /**
  * @brief Get remaining total handle capacity.
  * @param executor  Pointer to an executor.
  * @return Remaining capacity, or 0 if invalid.
  */
-NROS_PUBLIC int nros_executor_get_remaining_handles(const struct nros_executor_t *executor);
+NROS_PUBLIC int nros_executor_get_remaining_handles(const struct nros_executor_t* executor);
 
 /**
  * @brief Get remaining subscription capacity.
  * @param executor  Pointer to an executor.
  * @return Remaining subscription slots, or 0 if invalid.
  */
-NROS_PUBLIC int nros_executor_get_remaining_subscriptions(const struct nros_executor_t *executor);
+NROS_PUBLIC int nros_executor_get_remaining_subscriptions(const struct nros_executor_t* executor);
 
 /**
  * @brief Get remaining timer capacity.
  * @param executor  Pointer to an executor.
  * @return Remaining timer slots, or 0 if invalid.
  */
-NROS_PUBLIC int nros_executor_get_remaining_timers(const struct nros_executor_t *executor);
+NROS_PUBLIC int nros_executor_get_remaining_timers(const struct nros_executor_t* executor);
 
 /**
  * @brief Get remaining service capacity.
  * @param executor  Pointer to an executor.
  * @return Remaining service slots, or 0 if invalid.
  */
-NROS_PUBLIC int nros_executor_get_remaining_services(const struct nros_executor_t *executor);
+NROS_PUBLIC int nros_executor_get_remaining_services(const struct nros_executor_t* executor);
 
 #ifdef __cplusplus
 }

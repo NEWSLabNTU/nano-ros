@@ -30,17 +30,14 @@ typedef struct std_msgs_Int32 {
 
 // Deserialize from CDR format
 // CDR format for Int32: 4-byte header + 4-byte int32
-static int32_t std_msgs_Int32_deserialize(std_msgs_Int32* msg, const uint8_t* buffer, size_t buffer_size) {
+static int32_t std_msgs_Int32_deserialize(std_msgs_Int32* msg, const uint8_t* buffer,
+                                          size_t buffer_size) {
     if (buffer_size < 8) {
         return -1;
     }
     // Skip CDR header (4 bytes), read little-endian int32
-    msg->data = (int32_t)(
-        buffer[4] |
-        ((uint32_t)buffer[5] << 8) |
-        ((uint32_t)buffer[6] << 16) |
-        ((uint32_t)buffer[7] << 24)
-    );
+    msg->data = (int32_t)(buffer[4] | ((uint32_t)buffer[5] << 8) | ((uint32_t)buffer[6] << 16) |
+                          ((uint32_t)buffer[7] << 24));
     return 0;
 }
 
@@ -154,21 +151,16 @@ int main(int argc, char** argv) {
     };
 
     // Create subscription
-    ret = nros_subscription_init(
-        &app.subscription,
-        &app.node,
-        &std_msgs_Int32_type,
-        "/chatter",
-        subscription_callback,
-        &app.listener_ctx
-    );
+    ret = nros_subscription_init(&app.subscription, &app.node, &std_msgs_Int32_type, "/chatter",
+                                 subscription_callback, &app.listener_ctx);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize subscription: %d\n", ret);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
         return 1;
     }
-    printf("Subscription created for topic: %s\n", nros_subscription_get_topic_name(&app.subscription));
+    printf("Subscription created for topic: %s\n",
+           nros_subscription_get_topic_name(&app.subscription));
 
     // Create executor
     ret = nros_executor_init(&app.executor, &app.support, 4);
@@ -182,7 +174,8 @@ int main(int argc, char** argv) {
     g_executor = &app.executor;
 
     // Add subscription to executor
-    ret = nros_executor_add_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA);
+    ret =
+        nros_executor_add_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add subscription to executor: %d\n", ret);
         nros_executor_fini(&app.executor);

@@ -41,9 +41,7 @@ typedef enum nros_subscription_state_t {
  * @param len     Length of data in bytes.
  * @param context User-provided context pointer.
  */
-typedef void (*nros_subscription_callback_t)(const uint8_t *data,
-                                             size_t len,
-                                             void *context);
+typedef void (*nros_subscription_callback_t)(const uint8_t* data, size_t len, void* context);
 
 /** Subscription structure. */
 typedef struct nros_subscription_t {
@@ -64,15 +62,15 @@ typedef struct nros_subscription_t {
     /** Message callback. */
     nros_subscription_callback_t callback;
     /** User-provided context pointer passed to @ref callback. */
-    void *context;
+    void* context;
     /** Pointer to parent node. */
-    const struct nros_node_t *node;
+    const struct nros_node_t* node;
     /** QoS settings. */
     struct nros_qos_t qos;
     /** Handle ID from executor registration (SIZE_MAX = not registered). */
     size_t handle_id;
     /** Opaque pointer to internal Rust subscription. */
-    void *_internal;
+    void* _internal;
 } nros_subscription_t;
 
 /* ===================================================================
@@ -106,12 +104,11 @@ NROS_PUBLIC struct nros_subscription_t nros_subscription_get_zero_initialized(vo
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_init(struct nros_subscription_t *subscription,
-                                   const struct nros_node_t *node,
-                                   const struct nros_message_type_t *type_info,
-                                   const char *topic_name,
-                                   nros_subscription_callback_t callback,
-                                   void *context);
+nros_ret_t nros_subscription_init(struct nros_subscription_t* subscription,
+                                  const struct nros_node_t* node,
+                                  const struct nros_message_type_t* type_info,
+                                  const char* topic_name, nros_subscription_callback_t callback,
+                                  void* context);
 
 /**
  * @brief Initialise a subscription with default QoS.
@@ -134,12 +131,11 @@ nros_ret_t nros_subscription_init(struct nros_subscription_t *subscription,
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_init_default(struct nros_subscription_t *subscription,
-                                           const struct nros_node_t *node,
-                                           const struct nros_message_type_t *type_info,
-                                           const char *topic_name,
-                                           nros_subscription_callback_t callback,
-                                           void *context);
+nros_ret_t nros_subscription_init_default(struct nros_subscription_t* subscription,
+                                          const struct nros_node_t* node,
+                                          const struct nros_message_type_t* type_info,
+                                          const char* topic_name,
+                                          nros_subscription_callback_t callback, void* context);
 
 /**
  * @brief Initialise a subscription with best-effort QoS.
@@ -163,12 +159,11 @@ nros_ret_t nros_subscription_init_default(struct nros_subscription_t *subscripti
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_init_best_effort(struct nros_subscription_t *subscription,
-                                               const struct nros_node_t *node,
-                                               const struct nros_message_type_t *type_info,
-                                               const char *topic_name,
-                                               nros_subscription_callback_t callback,
-                                               void *context);
+nros_ret_t nros_subscription_init_best_effort(struct nros_subscription_t* subscription,
+                                              const struct nros_node_t* node,
+                                              const struct nros_message_type_t* type_info,
+                                              const char* topic_name,
+                                              nros_subscription_callback_t callback, void* context);
 
 /**
  * @brief Initialise a subscription with custom QoS.
@@ -190,13 +185,12 @@ nros_ret_t nros_subscription_init_best_effort(struct nros_subscription_t *subscr
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t *subscription,
-                                            const struct nros_node_t *node,
-                                            const struct nros_message_type_t *type_info,
-                                            const char *topic_name,
-                                            nros_subscription_callback_t callback,
-                                            void *context,
-                                            const struct nros_qos_t *qos);
+nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t* subscription,
+                                           const struct nros_node_t* node,
+                                           const struct nros_message_type_t* type_info,
+                                           const char* topic_name,
+                                           nros_subscription_callback_t callback, void* context,
+                                           const struct nros_qos_t* qos);
 
 /**
  * @brief Finalise a subscription.
@@ -207,7 +201,7 @@ nros_ret_t nros_subscription_init_with_qos(struct nros_subscription_t *subscript
  * @retval NROS_RET_INVALID_ARGUMENT  if @p subscription is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_subscription_fini(struct nros_subscription_t *subscription);
+NROS_PUBLIC nros_ret_t nros_subscription_fini(struct nros_subscription_t* subscription);
 
 /**
  * @brief Get the topic name of a subscription.
@@ -215,7 +209,8 @@ NROS_PUBLIC nros_ret_t nros_subscription_fini(struct nros_subscription_t *subscr
  * @param subscription Pointer to a subscription.
  * @return Null-terminated topic name, or NULL if invalid.
  */
-NROS_PUBLIC const char *nros_subscription_get_topic_name(const struct nros_subscription_t *subscription);
+NROS_PUBLIC const char*
+nros_subscription_get_topic_name(const struct nros_subscription_t* subscription);
 
 /**
  * @brief Check if subscription is valid (initialized).
@@ -223,7 +218,7 @@ NROS_PUBLIC const char *nros_subscription_get_topic_name(const struct nros_subsc
  * @param subscription Pointer to a subscription.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_subscription_is_valid(const struct nros_subscription_t *subscription);
+NROS_PUBLIC int nros_subscription_is_valid(const struct nros_subscription_t* subscription);
 
 #ifdef __cplusplus
 }

@@ -117,21 +117,17 @@ int main(int argc, char** argv) {
     };
 
     // Create subscription using generated type support
-    ret = nros_subscription_init(
-        &app.subscription,
-        &app.node,
-        std_msgs_msg_int32_get_type_support(),
-        "/chatter",
-        subscription_callback,
-        &app.listener_ctx
-    );
+    ret =
+        nros_subscription_init(&app.subscription, &app.node, std_msgs_msg_int32_get_type_support(),
+                               "/chatter", subscription_callback, &app.listener_ctx);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize subscription: %d\n", ret);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
         return 1;
     }
-    printf("Subscription created for topic: %s\n", nros_subscription_get_topic_name(&app.subscription));
+    printf("Subscription created for topic: %s\n",
+           nros_subscription_get_topic_name(&app.subscription));
 
     // Create executor
     ret = nros_executor_init(&app.executor, &app.support, 4);
@@ -145,7 +141,8 @@ int main(int argc, char** argv) {
     g_executor = &app.executor;
 
     // Add subscription to executor
-    ret = nros_executor_add_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA);
+    ret =
+        nros_executor_add_subscription(&app.executor, &app.subscription, NROS_EXECUTOR_ON_NEW_DATA);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to add subscription to executor: %d\n", ret);
         nros_executor_fini(&app.executor);

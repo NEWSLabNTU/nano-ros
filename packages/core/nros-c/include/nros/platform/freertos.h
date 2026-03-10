@@ -59,7 +59,7 @@ static inline void nros_platform_sleep_ns(uint64_t ns) {
     // ticks = ns / (1e9 / configTICK_RATE_HZ) = ns * configTICK_RATE_HZ / 1e9
     TickType_t ticks = (TickType_t)((ns * configTICK_RATE_HZ) / 1000000000ULL);
     if (ticks == 0 && ns > 0) {
-        ticks = 1;  // Minimum 1 tick delay
+        ticks = 1; // Minimum 1 tick delay
     }
     vTaskDelay(ticks);
 }
@@ -74,7 +74,7 @@ static inline void nros_platform_sleep_ns(uint64_t ns) {
  * Uses compiler barrier and volatile for basic atomicity.
  * For Cortex-M, single-byte writes are atomic.
  */
-static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
+static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
     taskENTER_CRITICAL();
     *ptr = value;
     taskEXIT_CRITICAL();
@@ -83,7 +83,7 @@ static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool valu
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
+static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
     bool value;
     taskENTER_CRITICAL();
     value = *ptr;
@@ -100,14 +100,14 @@ static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
 /**
  * Allocate memory from FreeRTOS heap.
  */
-static inline void *nros_platform_malloc(size_t size) {
+static inline void* nros_platform_malloc(size_t size) {
     return pvPortMalloc(size);
 }
 
 /**
  * Free previously allocated memory.
  */
-static inline void nros_platform_free(void *ptr) {
+static inline void nros_platform_free(void* ptr) {
     vPortFree(ptr);
 }
 
@@ -120,7 +120,7 @@ static inline void nros_platform_free(void *ptr) {
 /**
  * Initialize a mutex.
  */
-static inline int nros_platform_mutex_init(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_init(nros_mutex_t* mutex) {
     *mutex = xSemaphoreCreateMutex();
     return (*mutex != NULL) ? 0 : -1;
 }
@@ -128,21 +128,21 @@ static inline int nros_platform_mutex_init(nros_mutex_t *mutex) {
 /**
  * Lock a mutex (blocking).
  */
-static inline int nros_platform_mutex_lock(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_lock(nros_mutex_t* mutex) {
     return (xSemaphoreTake(*mutex, portMAX_DELAY) == pdTRUE) ? 0 : -1;
 }
 
 /**
  * Unlock a mutex.
  */
-static inline int nros_platform_mutex_unlock(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_unlock(nros_mutex_t* mutex) {
     return (xSemaphoreGive(*mutex) == pdTRUE) ? 0 : -1;
 }
 
 /**
  * Destroy a mutex.
  */
-static inline int nros_platform_mutex_destroy(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_destroy(nros_mutex_t* mutex) {
     if (*mutex != NULL) {
         vSemaphoreDelete(*mutex);
         *mutex = NULL;

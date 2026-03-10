@@ -50,18 +50,16 @@ static void print_sequence(const example_interfaces_action_fibonacci_feedback* f
 
 static int g_feedback_count = 0;
 
-static void feedback_callback(const nros_goal_uuid_t* goal_uuid,
-                              const uint8_t* feedback,
-                              size_t feedback_len,
-                              void* context) {
+static void feedback_callback(const nros_goal_uuid_t* goal_uuid, const uint8_t* feedback,
+                              size_t feedback_len, void* context) {
     (void)goal_uuid;
     (void)context;
 
     g_feedback_count++;
 
     example_interfaces_action_fibonacci_feedback fb;
-    if (example_interfaces_action_fibonacci_feedback_deserialize(
-            &fb, feedback, feedback_len) == 0) {
+    if (example_interfaces_action_fibonacci_feedback_deserialize(&fb, feedback, feedback_len) ==
+        0) {
         printf("Feedback #%d: ", g_feedback_count);
         print_sequence(&fb);
         printf("\n");
@@ -76,11 +74,8 @@ static void feedback_callback(const nros_goal_uuid_t* goal_uuid,
 
 static int g_result_received = 0;
 
-static void result_callback(const nros_goal_uuid_t* goal_uuid,
-                            nros_goal_status_t status,
-                            const uint8_t* result,
-                            size_t result_len,
-                            void* context) {
+static void result_callback(const nros_goal_uuid_t* goal_uuid, nros_goal_status_t status,
+                            const uint8_t* result, size_t result_len, void* context) {
     (void)goal_uuid;
     (void)context;
 
@@ -91,8 +86,8 @@ static void result_callback(const nros_goal_uuid_t* goal_uuid,
     if (result && result_len > 0) {
         // Reuse feedback struct for deserialization — same layout as result
         example_interfaces_action_fibonacci_feedback seq;
-        if (example_interfaces_action_fibonacci_feedback_deserialize(
-                &seq, result, result_len) == 0) {
+        if (example_interfaces_action_fibonacci_feedback_deserialize(&seq, result, result_len) ==
+            0) {
             print_sequence(&seq);
             printf("\n");
         } else {
@@ -159,12 +154,7 @@ int main(int argc, char** argv) {
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create action client
-    ret = nros_action_client_init(
-        &app.action_client,
-        &app.node,
-        "/fibonacci",
-        &fibonacci_type
-    );
+    ret = nros_action_client_init(&app.action_client, &app.node, "/fibonacci", &fibonacci_type);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize action client: %d\n", ret);
         nros_node_fini(&app.node);
@@ -174,14 +164,12 @@ int main(int argc, char** argv) {
     printf("Action client created: /fibonacci\n");
 
     // Set callbacks
-    ret = nros_action_client_set_feedback_callback(
-        &app.action_client, feedback_callback, NULL);
+    ret = nros_action_client_set_feedback_callback(&app.action_client, feedback_callback, NULL);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set feedback callback: %d\n", ret);
     }
 
-    ret = nros_action_client_set_result_callback(
-        &app.action_client, result_callback, NULL);
+    ret = nros_action_client_set_result_callback(&app.action_client, result_callback, NULL);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to set result callback: %d\n", ret);
     }
@@ -192,8 +180,8 @@ int main(int argc, char** argv) {
     goal.order = 10;
 
     uint8_t goal_buf[64];
-    int32_t goal_len = example_interfaces_action_fibonacci_goal_serialize(
-        &goal, goal_buf, sizeof(goal_buf));
+    int32_t goal_len =
+        example_interfaces_action_fibonacci_goal_serialize(&goal, goal_buf, sizeof(goal_buf));
     if (goal_len < 0) {
         fprintf(stderr, "Failed to serialize goal\n");
         goto cleanup;
@@ -202,11 +190,7 @@ int main(int argc, char** argv) {
     printf("\nSending goal: order=%d\n", goal.order);
 
     nros_goal_uuid_t goal_uuid;
-    ret = nros_action_send_goal(
-        &app.action_client,
-        goal_buf, (size_t)goal_len,
-        &goal_uuid
-    );
+    ret = nros_action_send_goal(&app.action_client, goal_buf, (size_t)goal_len, &goal_uuid);
 
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to send goal: %d\n", ret);
@@ -214,8 +198,7 @@ int main(int argc, char** argv) {
         goto cleanup;
     }
 
-    printf("Goal accepted! (uuid=%02x%02x%02x%02x...)\n",
-           goal_uuid.uuid[0], goal_uuid.uuid[1],
+    printf("Goal accepted! (uuid=%02x%02x%02x%02x...)\n", goal_uuid.uuid[0], goal_uuid.uuid[1],
            goal_uuid.uuid[2], goal_uuid.uuid[3]);
 
     // Wait for result with timeout
@@ -228,21 +211,15 @@ int main(int argc, char** argv) {
     nros_goal_status_t final_status;
     uint8_t result_buf[512];
     size_t result_len = 0;
-    ret = nros_action_get_result(
-        &app.action_client,
-        &goal_uuid,
-        &final_status,
-        result_buf, sizeof(result_buf),
-        &result_len
-    );
+    ret = nros_action_get_result(&app.action_client, &goal_uuid, &final_status, result_buf,
+                                 sizeof(result_buf), &result_len);
 
     if (ret == NROS_RET_OK) {
-        printf("Final result (status=%s): ",
-               nros_goal_status_to_string(final_status));
+        printf("Final result (status=%s): ", nros_goal_status_to_string(final_status));
 
         example_interfaces_action_fibonacci_result result;
-        if (example_interfaces_action_fibonacci_result_deserialize(
-                &result, result_buf, result_len) == 0) {
+        if (example_interfaces_action_fibonacci_result_deserialize(&result, result_buf,
+                                                                   result_len) == 0) {
             printf("[");
             for (uint32_t i = 0; i < result.sequence.size; i++) {
                 if (i > 0) printf(", ");

@@ -69,7 +69,8 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
 
     uint8_t buffer[64];
     size_t serialized_size = 0;
-    int32_t ret = std_msgs_msg_int32_serialize(&ctx->message, buffer, sizeof(buffer), &serialized_size);
+    int32_t ret =
+        std_msgs_msg_int32_serialize(&ctx->message, buffer, sizeof(buffer), &serialized_size);
 
     if (ret == 0 && serialized_size > 0) {
         nros_ret_t pub_ret = nros_publish_raw(ctx->publisher, buffer, serialized_size);
@@ -171,8 +172,8 @@ int main(int argc, char** argv) {
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create publisher using generated type support
-    ret = nros_publisher_init(&app.publisher, &app.node,
-        std_msgs_msg_int32_get_type_support(), "/chatter");
+    ret = nros_publisher_init(&app.publisher, &app.node, std_msgs_msg_int32_get_type_support(),
+                              "/chatter");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
         nros_node_fini(&app.node);

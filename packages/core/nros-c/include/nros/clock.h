@@ -72,8 +72,7 @@ NROS_PUBLIC struct nros_clock_t nros_clock_get_zero_initialized(void);
  * @retval NROS_RET_ERROR             on initialisation failure.
  */
 NROS_PUBLIC
-nros_ret_t nros_clock_init(struct nros_clock_t *clock,
-                           enum nros_clock_type_t clock_type);
+nros_ret_t nros_clock_init(struct nros_clock_t* clock, enum nros_clock_type_t clock_type);
 
 /**
  * @brief Get the current time from a clock.
@@ -86,8 +85,7 @@ nros_ret_t nros_clock_init(struct nros_clock_t *clock,
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_clock_get_now(const struct nros_clock_t *clock,
-                              struct nros_time_t *time_out);
+nros_ret_t nros_clock_get_now(const struct nros_clock_t* clock, struct nros_time_t* time_out);
 
 /**
  * @brief Get the current time from a clock as nanoseconds.
@@ -100,8 +98,7 @@ nros_ret_t nros_clock_get_now(const struct nros_clock_t *clock,
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_clock_get_now_ns(const struct nros_clock_t *clock,
-                                 int64_t *nanoseconds);
+nros_ret_t nros_clock_get_now_ns(const struct nros_clock_t* clock, int64_t* nanoseconds);
 
 /**
  * @brief Check if a clock is valid (initialized and not shutdown).
@@ -109,7 +106,7 @@ nros_ret_t nros_clock_get_now_ns(const struct nros_clock_t *clock,
  * @param clock  Pointer to a clock.
  * @return @c true if valid, @c false otherwise.
  */
-NROS_PUBLIC bool nros_clock_is_valid(const struct nros_clock_t *clock);
+NROS_PUBLIC bool nros_clock_is_valid(const struct nros_clock_t* clock);
 
 /**
  * @brief Get the clock type.
@@ -117,7 +114,7 @@ NROS_PUBLIC bool nros_clock_is_valid(const struct nros_clock_t *clock);
  * @param clock  Pointer to an initialized clock.
  * @return Clock type, or @ref NROS_CLOCK_UNINITIALIZED if invalid.
  */
-NROS_PUBLIC enum nros_clock_type_t nros_clock_get_type(const struct nros_clock_t *clock);
+NROS_PUBLIC enum nros_clock_type_t nros_clock_get_type(const struct nros_clock_t* clock);
 
 /**
  * @brief Finalise a clock.
@@ -128,7 +125,7 @@ NROS_PUBLIC enum nros_clock_type_t nros_clock_get_type(const struct nros_clock_t
  * @retval NROS_RET_INVALID_ARGUMENT  if @p clock is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_clock_fini(struct nros_clock_t *clock);
+NROS_PUBLIC nros_ret_t nros_clock_fini(struct nros_clock_t* clock);
 
 /* ===================================================================
  * Time Functions
@@ -148,7 +145,7 @@ NROS_PUBLIC struct nros_time_t nros_time_from_nanoseconds(int64_t nanoseconds);
  * @param time  Pointer to a time value.
  * @return Time as nanoseconds.
  */
-NROS_PUBLIC int64_t nros_time_to_nanoseconds(const struct nros_time_t *time);
+NROS_PUBLIC int64_t nros_time_to_nanoseconds(const struct nros_time_t* time);
 
 /**
  * @brief Add a duration to a time.
@@ -158,8 +155,7 @@ NROS_PUBLIC int64_t nros_time_to_nanoseconds(const struct nros_time_t *time);
  * @return Resulting time.
  */
 NROS_PUBLIC
-struct nros_time_t nros_time_add(struct nros_time_t time,
-                                 struct nros_duration_t duration);
+struct nros_time_t nros_time_add(struct nros_time_t time, struct nros_duration_t duration);
 
 /**
  * @brief Subtract a duration from a time.
@@ -169,8 +165,7 @@ struct nros_time_t nros_time_add(struct nros_time_t time,
  * @return Resulting time.
  */
 NROS_PUBLIC
-struct nros_time_t nros_time_sub(struct nros_time_t time,
-                                 struct nros_duration_t duration);
+struct nros_time_t nros_time_sub(struct nros_time_t time, struct nros_duration_t duration);
 
 /**
  * @brief Compare two times.

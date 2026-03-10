@@ -49,9 +49,9 @@ typedef struct nros_client_t {
     /** Type hash length. */
     size_t type_hash_len;
     /** Pointer to parent node. */
-    const struct nros_node_t *node;
+    const struct nros_node_t* node;
     /** Opaque pointer to internal Rust service client. */
-    void *_internal;
+    void* _internal;
 } nros_client_t;
 
 /* ===================================================================
@@ -78,10 +78,8 @@ NROS_PUBLIC struct nros_client_t nros_client_get_zero_initialized(void);
  * @retval NROS_RET_ERROR             on initialisation failure.
  */
 NROS_PUBLIC
-nros_ret_t nros_client_init(struct nros_client_t *client,
-                            const struct nros_node_t *node,
-                            const struct nros_message_type_t *type_info,
-                            const char *service_name);
+nros_ret_t nros_client_init(struct nros_client_t* client, const struct nros_node_t* node,
+                            const struct nros_message_type_t* type_info, const char* service_name);
 
 /**
  * @brief Finalise a service client.
@@ -92,7 +90,7 @@ nros_ret_t nros_client_init(struct nros_client_t *client,
  * @retval NROS_RET_INVALID_ARGUMENT  if @p client is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_client_fini(struct nros_client_t *client);
+NROS_PUBLIC nros_ret_t nros_client_fini(struct nros_client_t* client);
 
 /**
  * @brief Call a service (blocking).
@@ -114,12 +112,9 @@ NROS_PUBLIC nros_ret_t nros_client_fini(struct nros_client_t *client);
  * @retval NROS_RET_ERROR             on call failure.
  */
 NROS_PUBLIC
-nros_ret_t nros_client_call(struct nros_client_t *client,
-                            const uint8_t *request_data,
-                            size_t request_len,
-                            uint8_t *response_data,
-                            size_t response_capacity,
-                            size_t *response_len);
+nros_ret_t nros_client_call(struct nros_client_t* client, const uint8_t* request_data,
+                            size_t request_len, uint8_t* response_data, size_t response_capacity,
+                            size_t* response_len);
 
 /**
  * @brief Get the service name of a client.
@@ -127,7 +122,7 @@ nros_ret_t nros_client_call(struct nros_client_t *client,
  * @param client  Pointer to a client.
  * @return Null-terminated service name, or NULL if invalid.
  */
-NROS_PUBLIC const char *nros_client_get_service_name(const struct nros_client_t *client);
+NROS_PUBLIC const char* nros_client_get_service_name(const struct nros_client_t* client);
 
 /**
  * @brief Check if client is valid (initialized).
@@ -135,7 +130,7 @@ NROS_PUBLIC const char *nros_client_get_service_name(const struct nros_client_t 
  * @param client  Pointer to a client.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_client_is_valid(const struct nros_client_t *client);
+NROS_PUBLIC int nros_client_is_valid(const struct nros_client_t* client);
 
 #ifdef __cplusplus
 }

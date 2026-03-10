@@ -74,15 +74,15 @@ static inline void nros_platform_sleep_ns(uint64_t ns) {
  *
  * Zephyr's atomic_set provides the necessary memory ordering.
  */
-static inline void nros_platform_atomic_store_bool(volatile bool *ptr, bool value) {
-    atomic_set((atomic_t *)ptr, value ? 1 : 0);
+static inline void nros_platform_atomic_store_bool(volatile bool* ptr, bool value) {
+    atomic_set((atomic_t*)ptr, value ? 1 : 0);
 }
 
 /**
  * Atomically load a boolean value with acquire semantics.
  */
-static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
-    return atomic_get((atomic_t *)ptr) != 0;
+static inline bool nros_platform_atomic_load_bool(volatile bool* ptr) {
+    return atomic_get((atomic_t*)ptr) != 0;
 }
 
 // ============================================================================
@@ -94,14 +94,14 @@ static inline bool nros_platform_atomic_load_bool(volatile bool *ptr) {
 /**
  * Allocate memory from Zephyr heap.
  */
-static inline void *nros_platform_malloc(size_t size) {
+static inline void* nros_platform_malloc(size_t size) {
     return k_malloc(size);
 }
 
 /**
  * Free previously allocated memory.
  */
-static inline void nros_platform_free(void *ptr) {
+static inline void nros_platform_free(void* ptr) {
     k_free(ptr);
 }
 
@@ -116,21 +116,21 @@ static inline void nros_platform_free(void *ptr) {
 /**
  * Initialize a mutex.
  */
-static inline int nros_platform_mutex_init(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_init(nros_mutex_t* mutex) {
     return k_mutex_init(mutex);
 }
 
 /**
  * Lock a mutex (blocking).
  */
-static inline int nros_platform_mutex_lock(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_lock(nros_mutex_t* mutex) {
     return k_mutex_lock(mutex, K_FOREVER);
 }
 
 /**
  * Unlock a mutex.
  */
-static inline int nros_platform_mutex_unlock(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_unlock(nros_mutex_t* mutex) {
     return k_mutex_unlock(mutex);
 }
 
@@ -139,7 +139,7 @@ static inline int nros_platform_mutex_unlock(nros_mutex_t *mutex) {
  *
  * Zephyr mutexes don't require explicit destruction, but we reset the state.
  */
-static inline int nros_platform_mutex_destroy(nros_mutex_t *mutex) {
+static inline int nros_platform_mutex_destroy(nros_mutex_t* mutex) {
     (void)mutex;
     return 0;
 }

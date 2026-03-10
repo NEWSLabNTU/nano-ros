@@ -55,7 +55,7 @@ typedef struct nros_support_t {
     /** Locator string length. */
     size_t locator_len;
     /** Opaque pointer to internal Rust context (middleware session). */
-    void *_internal;
+    void* _internal;
 } nros_support_t;
 
 /* ===================================================================
@@ -91,8 +91,7 @@ NROS_PUBLIC struct nros_support_t nros_support_get_zero_initialized(void);
  * @pre @p locator must be a valid null-terminated string or NULL.
  */
 NROS_PUBLIC
-nros_ret_t nros_support_init(struct nros_support_t *support,
-                             const char *locator,
+nros_ret_t nros_support_init(struct nros_support_t* support, const char* locator,
                              uint8_t domain_id);
 
 /**
@@ -108,7 +107,7 @@ nros_ret_t nros_support_init(struct nros_support_t *support,
  *
  * @pre @p support must point to an initialized @ref nros_support_t.
  */
-NROS_PUBLIC nros_ret_t nros_support_fini(struct nros_support_t *support);
+NROS_PUBLIC nros_ret_t nros_support_fini(struct nros_support_t* support);
 
 /**
  * @brief Check if the support context is valid (initialized).
@@ -116,7 +115,7 @@ NROS_PUBLIC nros_ret_t nros_support_fini(struct nros_support_t *support);
  * @param support  Pointer to a support context.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_support_is_valid(const struct nros_support_t *support);
+NROS_PUBLIC int nros_support_is_valid(const struct nros_support_t* support);
 
 #ifdef __cplusplus
 }

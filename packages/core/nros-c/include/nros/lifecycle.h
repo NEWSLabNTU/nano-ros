@@ -23,13 +23,13 @@ struct nros_node_t;
  * =================================================================== */
 
 /** Lifecycle state: Unconfigured. */
-#define NROS_LIFECYCLE_STATE_UNCONFIGURED    0
+#define NROS_LIFECYCLE_STATE_UNCONFIGURED 0
 /** Lifecycle state: Inactive. */
-#define NROS_LIFECYCLE_STATE_INACTIVE        1
+#define NROS_LIFECYCLE_STATE_INACTIVE 1
 /** Lifecycle state: Active. */
-#define NROS_LIFECYCLE_STATE_ACTIVE          2
+#define NROS_LIFECYCLE_STATE_ACTIVE 2
 /** Lifecycle state: Finalized. */
-#define NROS_LIFECYCLE_STATE_FINALIZED       3
+#define NROS_LIFECYCLE_STATE_FINALIZED 3
 /** Lifecycle state: ErrorProcessing. */
 #define NROS_LIFECYCLE_STATE_ERROR_PROCESSING 4
 
@@ -38,32 +38,32 @@ struct nros_node_t;
  * =================================================================== */
 
 /** Transition: Configure (Unconfigured -> Inactive). */
-#define NROS_LIFECYCLE_TRANSITION_CONFIGURE               0
+#define NROS_LIFECYCLE_TRANSITION_CONFIGURE 0
 /** Transition: Activate (Inactive -> Active). */
-#define NROS_LIFECYCLE_TRANSITION_ACTIVATE                1
+#define NROS_LIFECYCLE_TRANSITION_ACTIVATE 1
 /** Transition: Deactivate (Active -> Inactive). */
-#define NROS_LIFECYCLE_TRANSITION_DEACTIVATE              2
+#define NROS_LIFECYCLE_TRANSITION_DEACTIVATE 2
 /** Transition: Cleanup (Inactive -> Unconfigured). */
-#define NROS_LIFECYCLE_TRANSITION_CLEANUP                 3
+#define NROS_LIFECYCLE_TRANSITION_CLEANUP 3
 /** Transition: Shutdown from Unconfigured. */
-#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED   4
+#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_UNCONFIGURED 4
 /** Transition: Shutdown from Inactive. */
-#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE       5
+#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_INACTIVE 5
 /** Transition: Shutdown from Active. */
-#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE         6
+#define NROS_LIFECYCLE_TRANSITION_SHUTDOWN_ACTIVE 6
 /** Transition: Error recovery (ErrorProcessing -> Unconfigured). */
-#define NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY          7
+#define NROS_LIFECYCLE_TRANSITION_ERROR_RECOVERY 7
 
 /* ===================================================================
  * Transition Result Constants
  * =================================================================== */
 
 /** Callback returned success. */
-#define NROS_LIFECYCLE_RET_OK      0
+#define NROS_LIFECYCLE_RET_OK 0
 /** Callback returned failure (rollback). */
 #define NROS_LIFECYCLE_RET_FAILURE 1
 /** Callback returned error (enter ErrorProcessing). */
-#define NROS_LIFECYCLE_RET_ERROR   2
+#define NROS_LIFECYCLE_RET_ERROR 2
 
 /* ===================================================================
  * Types
@@ -92,7 +92,7 @@ typedef struct nros_lifecycle_state_machine_t {
     /** Error callback: ErrorProcessing -> Unconfigured. */
     uint8_t (*on_error)(void*);
     /** User context pointer passed to callbacks. */
-    void *context;
+    void* context;
     /** Whether the state machine has been initialized. */
     bool initialized;
 } nros_lifecycle_state_machine_t;
@@ -122,8 +122,8 @@ NROS_PUBLIC struct nros_lifecycle_state_machine_t nros_lifecycle_get_zero_initia
  * @retval NROS_RET_BAD_SEQUENCE      if already initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_init(struct nros_lifecycle_state_machine_t *sm,
-                               const struct nros_node_t *node);
+nros_ret_t nros_lifecycle_init(struct nros_lifecycle_state_machine_t* sm,
+                               const struct nros_node_t* node);
 
 /**
  * @brief Finalise a lifecycle state machine.
@@ -134,7 +134,7 @@ nros_ret_t nros_lifecycle_init(struct nros_lifecycle_state_machine_t *sm,
  * @retval NROS_RET_INVALID_ARGUMENT  if @p sm is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_lifecycle_fini(struct nros_lifecycle_state_machine_t *sm);
+NROS_PUBLIC nros_ret_t nros_lifecycle_fini(struct nros_lifecycle_state_machine_t* sm);
 
 /**
  * @brief Trigger a lifecycle state transition.
@@ -155,7 +155,7 @@ NROS_PUBLIC nros_ret_t nros_lifecycle_fini(struct nros_lifecycle_state_machine_t
  * @retval NROS_RET_ERROR             if the callback returned an error.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_change_state(struct nros_lifecycle_state_machine_t *sm,
+nros_ret_t nros_lifecycle_change_state(struct nros_lifecycle_state_machine_t* sm,
                                        uint8_t transition_id);
 
 /**
@@ -165,7 +165,7 @@ nros_ret_t nros_lifecycle_change_state(struct nros_lifecycle_state_machine_t *sm
  * @return Current state as @c uint8_t, or 0 if @p sm is NULL or not
  *         initialized.
  */
-NROS_PUBLIC uint8_t nros_lifecycle_get_state(const struct nros_lifecycle_state_machine_t *sm);
+NROS_PUBLIC uint8_t nros_lifecycle_get_state(const struct nros_lifecycle_state_machine_t* sm);
 
 /**
  * @brief Register a callback for the @e configure transition.
@@ -179,9 +179,8 @@ NROS_PUBLIC uint8_t nros_lifecycle_get_state(const struct nros_lifecycle_state_m
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_register_on_configure(struct nros_lifecycle_state_machine_t *sm,
-                                                uint8_t (*cb)(void*),
-                                                void *context);
+nros_ret_t nros_lifecycle_register_on_configure(struct nros_lifecycle_state_machine_t* sm,
+                                                uint8_t (*cb)(void*), void* context);
 
 /**
  * @brief Register a callback for the @e activate transition.
@@ -195,9 +194,8 @@ nros_ret_t nros_lifecycle_register_on_configure(struct nros_lifecycle_state_mach
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_register_on_activate(struct nros_lifecycle_state_machine_t *sm,
-                                               uint8_t (*cb)(void*),
-                                               void *context);
+nros_ret_t nros_lifecycle_register_on_activate(struct nros_lifecycle_state_machine_t* sm,
+                                               uint8_t (*cb)(void*), void* context);
 
 /**
  * @brief Register a callback for the @e deactivate transition.
@@ -211,9 +209,8 @@ nros_ret_t nros_lifecycle_register_on_activate(struct nros_lifecycle_state_machi
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_register_on_deactivate(struct nros_lifecycle_state_machine_t *sm,
-                                                 uint8_t (*cb)(void*),
-                                                 void *context);
+nros_ret_t nros_lifecycle_register_on_deactivate(struct nros_lifecycle_state_machine_t* sm,
+                                                 uint8_t (*cb)(void*), void* context);
 
 /**
  * @brief Register a callback for the @e cleanup transition.
@@ -227,9 +224,8 @@ nros_ret_t nros_lifecycle_register_on_deactivate(struct nros_lifecycle_state_mac
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_register_on_cleanup(struct nros_lifecycle_state_machine_t *sm,
-                                              uint8_t (*cb)(void*),
-                                              void *context);
+nros_ret_t nros_lifecycle_register_on_cleanup(struct nros_lifecycle_state_machine_t* sm,
+                                              uint8_t (*cb)(void*), void* context);
 
 /**
  * @brief Register a callback for the @e shutdown transition.
@@ -243,9 +239,8 @@ nros_ret_t nros_lifecycle_register_on_cleanup(struct nros_lifecycle_state_machin
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_register_on_shutdown(struct nros_lifecycle_state_machine_t *sm,
-                                               uint8_t (*cb)(void*),
-                                               void *context);
+nros_ret_t nros_lifecycle_register_on_shutdown(struct nros_lifecycle_state_machine_t* sm,
+                                               uint8_t (*cb)(void*), void* context);
 
 /**
  * @brief Register a callback for the @e error transition (error recovery).
@@ -259,9 +254,8 @@ nros_ret_t nros_lifecycle_register_on_shutdown(struct nros_lifecycle_state_machi
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_lifecycle_register_on_error(struct nros_lifecycle_state_machine_t *sm,
-                                            uint8_t (*cb)(void*),
-                                            void *context);
+nros_ret_t nros_lifecycle_register_on_error(struct nros_lifecycle_state_machine_t* sm,
+                                            uint8_t (*cb)(void*), void* context);
 
 /**
  * @brief Convenience: initialise a lifecycle state machine for a node.
@@ -278,8 +272,8 @@ nros_ret_t nros_lifecycle_register_on_error(struct nros_lifecycle_state_machine_
  * @retval NROS_RET_BAD_SEQUENCE      if already initialized.
  */
 NROS_PUBLIC
-nros_ret_t nros_make_node_a_lifecycle_node(struct nros_lifecycle_state_machine_t *sm,
-                                           const struct nros_node_t *node);
+nros_ret_t nros_make_node_a_lifecycle_node(struct nros_lifecycle_state_machine_t* sm,
+                                           const struct nros_node_t* node);
 
 #ifdef __cplusplus
 }

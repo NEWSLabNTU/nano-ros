@@ -51,18 +51,15 @@ static void signal_handler(int signum) {
 // Service callback - handle AddTwoInts request
 // ----------------------------------------------------------------------------
 
-static bool service_callback(const uint8_t* request_data,
-                             size_t request_len,
-                             uint8_t* response_data,
-                             size_t response_capacity,
-                             size_t* response_len,
+static bool service_callback(const uint8_t* request_data, size_t request_len,
+                             uint8_t* response_data, size_t response_capacity, size_t* response_len,
                              void* context) {
     server_context_t* ctx = (server_context_t*)context;
 
     // Deserialize request using generated function
     example_interfaces_srv_add_two_ints_request request;
-    if (example_interfaces_srv_add_two_ints_request_deserialize(
-            &request, request_data, request_len) != 0) {
+    if (example_interfaces_srv_add_two_ints_request_deserialize(&request, request_data,
+                                                                request_len) != 0) {
         fprintf(stderr, "Failed to deserialize request\n");
         return false;
     }
@@ -74,15 +71,12 @@ static bool service_callback(const uint8_t* request_data,
     example_interfaces_srv_add_two_ints_response_init(&response);
     response.sum = request.a + request.b;
 
-    printf("Request [%d]: %lld + %lld = %lld\n",
-           ctx->request_count,
-           (long long)request.a,
-           (long long)request.b,
-           (long long)response.sum);
+    printf("Request [%d]: %lld + %lld = %lld\n", ctx->request_count, (long long)request.a,
+           (long long)request.b, (long long)response.sum);
 
     // Serialize response using generated function
-    int32_t len = example_interfaces_srv_add_two_ints_response_serialize(
-        &response, response_data, response_capacity);
+    int32_t len = example_interfaces_srv_add_two_ints_response_serialize(&response, response_data,
+                                                                         response_capacity);
     if (len < 0) {
         fprintf(stderr, "Failed to serialize response\n");
         return false;
@@ -146,14 +140,8 @@ int main(int argc, char** argv) {
     printf("Node created: %s\n", nros_node_get_name(&app.node));
 
     // Create service server
-    ret = nros_service_init(
-        &app.service,
-        &app.node,
-        &add_two_ints_type,
-        "/add_two_ints",
-        service_callback,
-        &app.ctx
-    );
+    ret = nros_service_init(&app.service, &app.node, &add_two_ints_type, "/add_two_ints",
+                            service_callback, &app.ctx);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize service: %d\n", ret);
         nros_node_fini(&app.node);
@@ -183,8 +171,7 @@ int main(int argc, char** argv) {
         nros_support_fini(&app.support);
         return 1;
     }
-    printf("Executor created with %d handle(s)\n",
-           nros_executor_get_handle_count(&app.executor));
+    printf("Executor created with %d handle(s)\n", nros_executor_get_handle_count(&app.executor));
 
     // Set up signal handler
     signal(SIGINT, signal_handler);

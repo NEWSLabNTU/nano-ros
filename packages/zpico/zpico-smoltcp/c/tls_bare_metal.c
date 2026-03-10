@@ -41,14 +41,14 @@
  * SmoltcpBridge FFI imports (provided by zpico-smoltcp Rust code)
  * ============================================================================ */
 
-extern int32_t smoltcp_socket_recv(int32_t handle, uint8_t *buf, size_t len);
-extern int32_t smoltcp_socket_send(int32_t handle, const uint8_t *buf, size_t len);
+extern int32_t smoltcp_socket_recv(int32_t handle, uint8_t* buf, size_t len);
+extern int32_t smoltcp_socket_send(int32_t handle, const uint8_t* buf, size_t len);
 extern void smoltcp_poll_network(void);
 extern uint64_t smoltcp_clock_ms(void);
 
 /* zenoh-pico memory allocation (provided by platform crates) */
-extern void *z_malloc(size_t size);
-extern void z_free(void *ptr);
+extern void* z_malloc(size_t size);
+extern void z_free(void* ptr);
 
 /* ============================================================================
  * Configuration
@@ -73,13 +73,15 @@ static bool TLS_CONTEXT_ALLOCATED[ZPICO_SMOLTCP_MAX_TLS_SOCKETS];
  * ============================================================================ */
 
 /* strstr — used by mbedTLS PEM/X.509 parsing */
-__attribute__((weak))
-char *strstr(const char *haystack, const char *needle) {
-    if (!needle[0]) return (char *)haystack;
+__attribute__((weak)) char* strstr(const char* haystack, const char* needle) {
+    if (!needle[0]) return (char*)haystack;
     for (; *haystack; haystack++) {
         const char *h = haystack, *n = needle;
-        while (*h && *n && *h == *n) { h++; n++; }
-        if (!*n) return (char *)haystack;
+        while (*h && *n && *h == *n) {
+            h++;
+            n++;
+        }
+        if (!*n) return (char*)haystack;
     }
     return NULL;
 }
@@ -88,16 +90,16 @@ char *strstr(const char *haystack, const char *needle) {
  * Custom allocator for mbedTLS (compile-time macros via mbedtls_config.h)
  * ============================================================================ */
 
-void *z_bare_metal_calloc(size_t n, size_t size) {
+void* z_bare_metal_calloc(size_t n, size_t size) {
     size_t total = n * size;
-    void *p = z_malloc(total);
+    void* p = z_malloc(total);
     if (p) {
         memset(p, 0, total);
     }
     return p;
 }
 
-void z_bare_metal_free(void *ptr) {
+void z_bare_metal_free(void* ptr) {
     z_free(ptr);
 }
 
@@ -105,8 +107,8 @@ void z_bare_metal_free(void *ptr) {
  * BIO callbacks for smoltcp
  * ============================================================================ */
 
-static int _z_tls_bio_send_smoltcp(void *ctx, const unsigned char *buf, size_t len) {
-    int8_t handle = *(int8_t *)ctx;
+static int _z_tls_bio_send_smoltcp(void* ctx, const unsigned char* buf, size_t len) {
+    int8_t handle = *(int8_t*)ctx;
     smoltcp_poll_network();
     int32_t sent = smoltcp_socket_send((int32_t)handle, buf, len);
     if (sent <= 0) {
@@ -115,8 +117,8 @@ static int _z_tls_bio_send_smoltcp(void *ctx, const unsigned char *buf, size_t l
     return (int)sent;
 }
 
-static int _z_tls_bio_recv_smoltcp(void *ctx, unsigned char *buf, size_t len) {
-    int8_t handle = *(int8_t *)ctx;
+static int _z_tls_bio_recv_smoltcp(void* ctx, unsigned char* buf, size_t len) {
+    int8_t handle = *(int8_t*)ctx;
     smoltcp_poll_network();
     int32_t received = smoltcp_socket_recv((int32_t)handle, buf, len);
     if (received <= 0) {
@@ -129,8 +131,8 @@ static int _z_tls_bio_recv_smoltcp(void *ctx, unsigned char *buf, size_t len) {
  * Base64 decoding helpers
  * ============================================================================ */
 
-static z_result_t _z_tls_decode_base64(const char *label, const char *input,
-                                        unsigned char **output, size_t *output_len) {
+static z_result_t _z_tls_decode_base64(const char* label, const char* input, unsigned char** output,
+                                       size_t* output_len) {
     if (input == NULL || label == NULL) {
         return _Z_ERR_GENERIC;
     }
@@ -141,20 +143,19 @@ static z_result_t _z_tls_decode_base64(const char *label, const char *input,
     }
 
     size_t required = 0;
-    int ret = mbedtls_base64_decode(NULL, 0, &required,
-                                    (const unsigned char *)input, input_len);
+    int ret = mbedtls_base64_decode(NULL, 0, &required, (const unsigned char*)input, input_len);
     if (ret != 0 && ret != MBEDTLS_ERR_BASE64_BUFFER_TOO_SMALL) {
         return _Z_ERR_GENERIC;
     }
 
     size_t buffer_len = (required > 0) ? required : 1;
-    unsigned char *buffer = (unsigned char *)z_malloc(buffer_len + 1);
+    unsigned char* buffer = (unsigned char*)z_malloc(buffer_len + 1);
     if (buffer == NULL) {
         return _Z_ERR_SYSTEM_OUT_OF_MEMORY;
     }
 
-    ret = mbedtls_base64_decode(buffer, buffer_len, &required,
-                                (const unsigned char *)input, input_len);
+    ret = mbedtls_base64_decode(buffer, buffer_len, &required, (const unsigned char*)input,
+                                input_len);
     if (ret != 0) {
         z_free(buffer);
         return _Z_ERR_GENERIC;
@@ -168,10 +169,9 @@ static z_result_t _z_tls_decode_base64(const char *label, const char *input,
     return _Z_RES_OK;
 }
 
-static z_result_t _z_tls_parse_cert_from_base64(mbedtls_x509_crt *cert,
-                                                  const char *base64,
-                                                  const char *label) {
-    unsigned char *decoded = NULL;
+static z_result_t _z_tls_parse_cert_from_base64(mbedtls_x509_crt* cert, const char* base64,
+                                                const char* label) {
+    unsigned char* decoded = NULL;
     size_t decoded_len = 0;
     z_result_t res = _z_tls_decode_base64(label, base64, &decoded, &decoded_len);
     if (res != _Z_RES_OK) {
@@ -187,11 +187,9 @@ static z_result_t _z_tls_parse_cert_from_base64(mbedtls_x509_crt *cert,
     return _Z_RES_OK;
 }
 
-static z_result_t _z_tls_parse_key_from_base64(mbedtls_pk_context *key,
-                                                 const char *base64,
-                                                 const char *label,
-                                                 mbedtls_hmac_drbg_context *rng) {
-    unsigned char *decoded = NULL;
+static z_result_t _z_tls_parse_key_from_base64(mbedtls_pk_context* key, const char* base64,
+                                               const char* label, mbedtls_hmac_drbg_context* rng) {
+    unsigned char* decoded = NULL;
     size_t decoded_len = 0;
     z_result_t res = _z_tls_decode_base64(label, base64, &decoded, &decoded_len);
     if (res != _Z_RES_OK) {
@@ -208,7 +206,7 @@ static z_result_t _z_tls_parse_key_from_base64(mbedtls_pk_context *key,
     return _Z_RES_OK;
 }
 
-static bool _z_opt_is_true(const char *val) {
+static bool _z_opt_is_true(const char* val) {
     if (val == NULL || val[0] == '\0') {
         return true;
     }
@@ -220,12 +218,10 @@ static bool _z_opt_is_true(const char *val) {
  * Certificate loading (base64 only — no filesystem on bare-metal)
  * ============================================================================ */
 
-static z_result_t _z_tls_load_ca_certificate(_z_tls_context_t *ctx,
-                                              const _z_str_intmap_t *config) {
-    const char *ca_cert_base64 = _z_str_intmap_get(config,
-                                    TLS_CONFIG_ROOT_CA_CERTIFICATE_BASE64_KEY);
-    const char *ca_cert_file = _z_str_intmap_get(config,
-                                    TLS_CONFIG_ROOT_CA_CERTIFICATE_KEY);
+static z_result_t _z_tls_load_ca_certificate(_z_tls_context_t* ctx, const _z_str_intmap_t* config) {
+    const char* ca_cert_base64 =
+        _z_str_intmap_get(config, TLS_CONFIG_ROOT_CA_CERTIFICATE_BASE64_KEY);
+    const char* ca_cert_file = _z_str_intmap_get(config, TLS_CONFIG_ROOT_CA_CERTIFICATE_KEY);
 
     /* On bare-metal, file paths are not supported */
     if (ca_cert_base64 == NULL && ca_cert_file == NULL) {
@@ -240,8 +236,8 @@ static z_result_t _z_tls_load_ca_certificate(_z_tls_context_t *ctx,
     }
 
     if (ca_cert_base64 != NULL) {
-        z_result_t res = _z_tls_parse_cert_from_base64(&ctx->_ca_cert,
-                            ca_cert_base64, "CA certificate");
+        z_result_t res =
+            _z_tls_parse_cert_from_base64(&ctx->_ca_cert, ca_cert_base64, "CA certificate");
         if (res != _Z_RES_OK) {
             return res;
         }
@@ -250,26 +246,22 @@ static z_result_t _z_tls_load_ca_certificate(_z_tls_context_t *ctx,
     return _Z_RES_OK;
 }
 
-static z_result_t _z_tls_load_client_cert(_z_tls_context_t *ctx,
-                                           const _z_str_intmap_t *config) {
-    const char *key_base64 = _z_str_intmap_get(config,
-                                TLS_CONFIG_CONNECT_PRIVATE_KEY_BASE64_KEY);
-    const char *cert_base64 = _z_str_intmap_get(config,
-                                TLS_CONFIG_CONNECT_CERTIFICATE_BASE64_KEY);
+static z_result_t _z_tls_load_client_cert(_z_tls_context_t* ctx, const _z_str_intmap_t* config) {
+    const char* key_base64 = _z_str_intmap_get(config, TLS_CONFIG_CONNECT_PRIVATE_KEY_BASE64_KEY);
+    const char* cert_base64 = _z_str_intmap_get(config, TLS_CONFIG_CONNECT_CERTIFICATE_BASE64_KEY);
 
     if (key_base64 == NULL || cert_base64 == NULL) {
         _Z_ERROR("mTLS requires both client private key and certificate (base64)");
         return _Z_ERR_GENERIC;
     }
 
-    z_result_t res = _z_tls_parse_key_from_base64(&ctx->_client_key,
-                        key_base64, "client private key", &ctx->_hmac_drbg);
+    z_result_t res = _z_tls_parse_key_from_base64(&ctx->_client_key, key_base64,
+                                                  "client private key", &ctx->_hmac_drbg);
     if (res != _Z_RES_OK) {
         return res;
     }
 
-    res = _z_tls_parse_cert_from_base64(&ctx->_client_cert,
-                        cert_base64, "client certificate");
+    res = _z_tls_parse_cert_from_base64(&ctx->_client_cert, cert_base64, "client certificate");
     return res;
 }
 
@@ -277,7 +269,7 @@ static z_result_t _z_tls_load_client_cert(_z_tls_context_t *ctx,
  * TLS context management (static pool)
  * ============================================================================ */
 
-_z_tls_context_t *_z_tls_context_new(void) {
+_z_tls_context_t* _z_tls_context_new(void) {
     /* Find a free slot in the static pool */
     int slot = -1;
     for (int i = 0; i < ZPICO_SMOLTCP_MAX_TLS_SOCKETS; i++) {
@@ -291,7 +283,7 @@ _z_tls_context_t *_z_tls_context_new(void) {
         return NULL;
     }
 
-    _z_tls_context_t *ctx = &TLS_CONTEXT_POOL[slot];
+    _z_tls_context_t* ctx = &TLS_CONTEXT_POOL[slot];
     TLS_CONTEXT_ALLOCATED[slot] = true;
 
     mbedtls_ssl_init(&ctx->_ssl);
@@ -305,9 +297,8 @@ _z_tls_context_t *_z_tls_context_new(void) {
     mbedtls_x509_crt_init(&ctx->_client_cert);
     ctx->_enable_mtls = false;
 
-    int ret = mbedtls_hmac_drbg_seed(&ctx->_hmac_drbg,
-                mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
-                mbedtls_entropy_func, &ctx->_entropy, NULL, 0);
+    int ret = mbedtls_hmac_drbg_seed(&ctx->_hmac_drbg, mbedtls_md_info_from_type(MBEDTLS_MD_SHA256),
+                                     mbedtls_entropy_func, &ctx->_entropy, NULL, 0);
     if (ret != 0) {
         _Z_ERROR("Failed to seed HMAC_DRBG: -0x%04x", -ret);
         _z_tls_context_free(&ctx);
@@ -317,12 +308,12 @@ _z_tls_context_t *_z_tls_context_new(void) {
     return ctx;
 }
 
-void _z_tls_context_free(_z_tls_context_t **ctx) {
+void _z_tls_context_free(_z_tls_context_t** ctx) {
     if (ctx == NULL || *ctx == NULL) {
         return;
     }
 
-    _z_tls_context_t *c = *ctx;
+    _z_tls_context_t* c = *ctx;
 
     mbedtls_ssl_free(&c->_ssl);
     mbedtls_ssl_config_free(&c->_ssl_config);
@@ -349,9 +340,8 @@ void _z_tls_context_free(_z_tls_context_t **ctx) {
  * TLS socket operations (the 9 platform symbols)
  * ============================================================================ */
 
-z_result_t _z_open_tls(_z_tls_socket_t *sock, const _z_sys_net_endpoint_t *rep,
-                        const char *hostname, const _z_str_intmap_t *config,
-                        bool peer_socket) {
+z_result_t _z_open_tls(_z_tls_socket_t* sock, const _z_sys_net_endpoint_t* rep,
+                       const char* hostname, const _z_str_intmap_t* config, bool peer_socket) {
     if (rep == NULL) {
         return _Z_ERR_GENERIC;
     }
@@ -359,14 +349,13 @@ z_result_t _z_open_tls(_z_tls_socket_t *sock, const _z_sys_net_endpoint_t *rep,
     sock->_is_peer_socket = peer_socket;
 
     bool verify_name = true;
-    const char *verify_opt = _z_str_intmap_get(config,
-                                TLS_CONFIG_VERIFY_NAME_ON_CONNECT_KEY);
+    const char* verify_opt = _z_str_intmap_get(config, TLS_CONFIG_VERIFY_NAME_ON_CONNECT_KEY);
     if (verify_opt != NULL && !_z_opt_is_true(verify_opt)) {
         verify_name = false;
     }
 
     bool enable_mtls = false;
-    const char *mtls_opt = _z_str_intmap_get(config, TLS_CONFIG_ENABLE_MTLS_KEY);
+    const char* mtls_opt = _z_str_intmap_get(config, TLS_CONFIG_ENABLE_MTLS_KEY);
     if (mtls_opt != NULL && _z_opt_is_true(mtls_opt)) {
         enable_mtls = true;
     }
@@ -399,12 +388,12 @@ z_result_t _z_open_tls(_z_tls_socket_t *sock, const _z_sys_net_endpoint_t *rep,
     }
 
     /* Set back-pointer from TCP socket to TLS socket */
-    sock->_sock._tls_sock = (void *)sock;
+    sock->_sock._tls_sock = (void*)sock;
 
     /* Configure mbedTLS */
-    int mbedret = mbedtls_ssl_config_defaults(&sock->_tls_ctx->_ssl_config,
-                    MBEDTLS_SSL_IS_CLIENT, MBEDTLS_SSL_TRANSPORT_STREAM,
-                    MBEDTLS_SSL_PRESET_DEFAULT);
+    int mbedret =
+        mbedtls_ssl_config_defaults(&sock->_tls_ctx->_ssl_config, MBEDTLS_SSL_IS_CLIENT,
+                                    MBEDTLS_SSL_TRANSPORT_STREAM, MBEDTLS_SSL_PRESET_DEFAULT);
     if (mbedret != 0) {
         _z_close_tcp(&sock->_sock);
         _z_tls_context_free(&sock->_tls_ctx);
@@ -412,18 +401,18 @@ z_result_t _z_open_tls(_z_tls_socket_t *sock, const _z_sys_net_endpoint_t *rep,
     }
 
     if (sock->_tls_ctx->_ca_cert.version != 0) {
-        mbedtls_ssl_conf_ca_chain(&sock->_tls_ctx->_ssl_config,
-                                   &sock->_tls_ctx->_ca_cert, NULL);
+        mbedtls_ssl_conf_ca_chain(&sock->_tls_ctx->_ssl_config, &sock->_tls_ctx->_ca_cert, NULL);
     }
-    mbedtls_ssl_conf_authmode(&sock->_tls_ctx->_ssl_config,
-                               verify_name ? MBEDTLS_SSL_VERIFY_REQUIRED
-                                           : MBEDTLS_SSL_VERIFY_OPTIONAL);
-    mbedtls_ssl_conf_rng(&sock->_tls_ctx->_ssl_config,
-                          mbedtls_hmac_drbg_random, &sock->_tls_ctx->_hmac_drbg);
+    mbedtls_ssl_conf_authmode(&sock->_tls_ctx->_ssl_config, verify_name
+                                                                ? MBEDTLS_SSL_VERIFY_REQUIRED
+                                                                : MBEDTLS_SSL_VERIFY_OPTIONAL);
+    mbedtls_ssl_conf_rng(&sock->_tls_ctx->_ssl_config, mbedtls_hmac_drbg_random,
+                         &sock->_tls_ctx->_hmac_drbg);
 
     if (enable_mtls) {
-        int own_ret = mbedtls_ssl_conf_own_cert(&sock->_tls_ctx->_ssl_config,
-                        &sock->_tls_ctx->_client_cert, &sock->_tls_ctx->_client_key);
+        int own_ret =
+            mbedtls_ssl_conf_own_cert(&sock->_tls_ctx->_ssl_config, &sock->_tls_ctx->_client_cert,
+                                      &sock->_tls_ctx->_client_key);
         if (own_ret != 0) {
             _z_close_tcp(&sock->_sock);
             _z_tls_context_free(&sock->_tls_ctx);
@@ -448,16 +437,15 @@ z_result_t _z_open_tls(_z_tls_socket_t *sock, const _z_sys_net_endpoint_t *rep,
     }
 
     /* Set BIO callbacks using the TCP socket handle for smoltcp I/O */
-    mbedtls_ssl_set_bio(&sock->_tls_ctx->_ssl, &sock->_sock._handle,
-                         _z_tls_bio_send_smoltcp, _z_tls_bio_recv_smoltcp, NULL);
+    mbedtls_ssl_set_bio(&sock->_tls_ctx->_ssl, &sock->_sock._handle, _z_tls_bio_send_smoltcp,
+                        _z_tls_bio_recv_smoltcp, NULL);
 
     /* TLS handshake with smoltcp polling.
      * Unlike POSIX where the OS handles TCP I/O in the background,
      * smoltcp is cooperative — we must poll between WANT_READ/WANT_WRITE. */
     uint64_t handshake_start = smoltcp_clock_ms();
     while ((mbedret = mbedtls_ssl_handshake(&sock->_tls_ctx->_ssl)) != 0) {
-        if (mbedret == MBEDTLS_ERR_SSL_WANT_READ ||
-            mbedret == MBEDTLS_ERR_SSL_WANT_WRITE) {
+        if (mbedret == MBEDTLS_ERR_SSL_WANT_READ || mbedret == MBEDTLS_ERR_SSL_WANT_WRITE) {
             smoltcp_poll_network();
             /* Check handshake timeout */
             if (smoltcp_clock_ms() - handshake_start > TLS_HANDSHAKE_TIMEOUT_MS) {
@@ -479,8 +467,7 @@ z_result_t _z_open_tls(_z_tls_socket_t *sock, const _z_sys_net_endpoint_t *rep,
     uint32_t verify_result = mbedtls_ssl_get_verify_result(&sock->_tls_ctx->_ssl);
     if (verify_result != 0) {
         if ((verify_result & ~ignored_flags) != 0u) {
-            _Z_ERROR("TLS certificate verification failed: 0x%08x",
-                     (unsigned)verify_result);
+            _Z_ERROR("TLS certificate verification failed: 0x%08x", (unsigned)verify_result);
             _z_close_tcp(&sock->_sock);
             _z_tls_context_free(&sock->_tls_ctx);
             return _Z_ERR_GENERIC;
@@ -490,8 +477,8 @@ z_result_t _z_open_tls(_z_tls_socket_t *sock, const _z_sys_net_endpoint_t *rep,
     return _Z_RES_OK;
 }
 
-z_result_t _z_listen_tls(_z_tls_socket_t *sock, const char *host, const char *port,
-                          const _z_str_intmap_t *config) {
+z_result_t _z_listen_tls(_z_tls_socket_t* sock, const char* host, const char* port,
+                         const _z_str_intmap_t* config) {
     (void)sock;
     (void)host;
     (void)port;
@@ -500,15 +487,14 @@ z_result_t _z_listen_tls(_z_tls_socket_t *sock, const char *host, const char *po
     return _Z_ERR_GENERIC;
 }
 
-z_result_t _z_tls_accept(_z_sys_net_socket_t *socket,
-                          const _z_sys_net_socket_t *listen_sock) {
+z_result_t _z_tls_accept(_z_sys_net_socket_t* socket, const _z_sys_net_socket_t* listen_sock) {
     (void)socket;
     (void)listen_sock;
     /* Server-side TLS not supported on bare-metal (client-only) */
     return _Z_ERR_GENERIC;
 }
 
-void _z_close_tls(_z_tls_socket_t *sock) {
+void _z_close_tls(_z_tls_socket_t* sock) {
     if (sock->_tls_ctx != NULL) {
         mbedtls_ssl_close_notify(&sock->_tls_ctx->_ssl);
         _z_tls_context_free(&sock->_tls_ctx);
@@ -517,7 +503,7 @@ void _z_close_tls(_z_tls_socket_t *sock) {
     sock->_sock._tls_sock = NULL;
 }
 
-size_t _z_read_tls(const _z_tls_socket_t *sock, uint8_t *ptr, size_t len) {
+size_t _z_read_tls(const _z_tls_socket_t* sock, uint8_t* ptr, size_t len) {
     if (sock->_tls_ctx == NULL) {
         return SIZE_MAX;
     }
@@ -534,15 +520,14 @@ size_t _z_read_tls(const _z_tls_socket_t *sock, uint8_t *ptr, size_t len) {
         return 0;
     }
 
-    if (ret == 0 || ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY ||
-        ret == MBEDTLS_ERR_SSL_CONN_EOF) {
+    if (ret == 0 || ret == MBEDTLS_ERR_SSL_PEER_CLOSE_NOTIFY || ret == MBEDTLS_ERR_SSL_CONN_EOF) {
         return SIZE_MAX;
     }
 
     return SIZE_MAX;
 }
 
-size_t _z_write_tls(const _z_tls_socket_t *sock, const uint8_t *ptr, size_t len) {
+size_t _z_write_tls(const _z_tls_socket_t* sock, const uint8_t* ptr, size_t len) {
     if (sock->_tls_ctx == NULL) {
         return SIZE_MAX;
     }
@@ -562,7 +547,7 @@ size_t _z_write_tls(const _z_tls_socket_t *sock, const uint8_t *ptr, size_t len)
     return SIZE_MAX;
 }
 
-size_t _z_write_all_tls(const _z_tls_socket_t *sock, const uint8_t *ptr, size_t len) {
+size_t _z_write_all_tls(const _z_tls_socket_t* sock, const uint8_t* ptr, size_t len) {
     size_t n = 0;
     do {
         size_t wb = _z_write_tls(sock, &ptr[n], len - n);

@@ -25,10 +25,10 @@
 
 /* Bare-metal allocator functions (implemented in tls_bare_metal.c) */
 #include <stddef.h>
-void *z_bare_metal_calloc(size_t n, size_t size);
-void z_bare_metal_free(void *ptr);
+void* z_bare_metal_calloc(size_t n, size_t size);
+void z_bare_metal_free(void* ptr);
 #define MBEDTLS_PLATFORM_CALLOC_MACRO z_bare_metal_calloc
-#define MBEDTLS_PLATFORM_FREE_MACRO   z_bare_metal_free
+#define MBEDTLS_PLATFORM_FREE_MACRO z_bare_metal_free
 
 /* No system time (bare-metal has no RTC) */
 /* #undef MBEDTLS_HAVE_TIME */
@@ -56,7 +56,7 @@ void z_bare_metal_free(void *ptr);
  * ============================================================================ */
 
 #define MBEDTLS_SSL_CLI_C
-/* #undef MBEDTLS_SSL_SRV_C */       /* client only */
+/* #undef MBEDTLS_SSL_SRV_C */ /* client only */
 /* #undef MBEDTLS_SSL_DTLS_HELLO_VERIFY */
 /* #undef MBEDTLS_SSL_PROTO_DTLS */
 
@@ -89,7 +89,7 @@ void z_bare_metal_free(void *ptr);
 #define MBEDTLS_MD_C
 #define MBEDTLS_SHA256_C
 #define MBEDTLS_SHA224_C
-#define MBEDTLS_SHA512_C      /* needed for some certificate chains */
+#define MBEDTLS_SHA512_C /* needed for some certificate chains */
 
 /* Symmetric ciphers */
 #define MBEDTLS_CIPHER_C
@@ -137,12 +137,12 @@ void z_bare_metal_free(void *ptr);
  * ============================================================================ */
 
 /* Reduce peak memory for MPI operations */
-#define MBEDTLS_MPI_MAX_SIZE    512
+#define MBEDTLS_MPI_MAX_SIZE 512
 #define MBEDTLS_MPI_WINDOW_SIZE 2
 
 /* Reduce SSL buffer sizes — zenoh frames are typically small */
 #define MBEDTLS_SSL_MAX_CONTENT_LEN 4096
-#define MBEDTLS_SSL_IN_CONTENT_LEN  4096
+#define MBEDTLS_SSL_IN_CONTENT_LEN 4096
 #define MBEDTLS_SSL_OUT_CONTENT_LEN 4096
 
 /* ============================================================================

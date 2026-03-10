@@ -31,15 +31,16 @@ typedef struct std_msgs_Int32 {
 
 // Serialize to CDR format
 // CDR format for Int32: 4-byte header (0x00, 0x01, 0x00, 0x00) + 4-byte int32
-static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buffer, size_t buffer_size) {
+static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buffer,
+                                        size_t buffer_size) {
     if (buffer_size < 8) {
         return -1;
     }
     // CDR header (big-endian format flag = 0x00, little-endian = 0x01)
-    buffer[0] = 0x00;  // CDR encapsulation
-    buffer[1] = 0x01;  // Little-endian
-    buffer[2] = 0x00;  // Reserved
-    buffer[3] = 0x00;  // Reserved
+    buffer[0] = 0x00; // CDR encapsulation
+    buffer[1] = 0x01; // Little-endian
+    buffer[2] = 0x00; // Reserved
+    buffer[3] = 0x00; // Reserved
     // Little-endian int32
     buffer[4] = (uint8_t)(msg->data & 0xFF);
     buffer[5] = (uint8_t)((msg->data >> 8) & 0xFF);

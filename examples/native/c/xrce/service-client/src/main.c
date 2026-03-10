@@ -68,12 +68,12 @@ int main(int argc, char** argv) {
         nros_support_fini(&app.support);
         return 1;
     }
-    printf("Client created for service: %s\n",
-           nros_client_get_service_name(&app.client));
+    printf("Client created for service: %s\n", nros_client_get_service_name(&app.client));
 
-    struct { int64_t a; int64_t b; } test_cases[] = {
-        {5, 3}, {10, 20}, {100, 200}, {-5, 10}
-    };
+    struct {
+        int64_t a;
+        int64_t b;
+    } test_cases[] = {{5, 3}, {10, 20}, {100, 200}, {-5, 10}};
     int num_cases = sizeof(test_cases) / sizeof(test_cases[0]);
 
     printf("\nCalling service %d times...\n\n", num_cases);
@@ -87,8 +87,8 @@ int main(int argc, char** argv) {
         request.b = test_cases[i].b;
 
         uint8_t req_buf[256];
-        int32_t req_len = example_interfaces_srv_add_two_ints_request_serialize(
-            &request, req_buf, sizeof(req_buf));
+        int32_t req_len = example_interfaces_srv_add_two_ints_request_serialize(&request, req_buf,
+                                                                                sizeof(req_buf));
         if (req_len < 0) {
             fprintf(stderr, "Failed to serialize request\n");
             continue;
@@ -96,19 +96,15 @@ int main(int argc, char** argv) {
 
         uint8_t resp_buf[256];
         size_t resp_len = 0;
-        ret = nros_client_call(
-            &app.client, req_buf, (size_t)req_len,
-            resp_buf, sizeof(resp_buf), &resp_len);
+        ret = nros_client_call(&app.client, req_buf, (size_t)req_len, resp_buf, sizeof(resp_buf),
+                               &resp_len);
 
         if (ret == NROS_RET_OK) {
             example_interfaces_srv_add_two_ints_response response;
-            if (example_interfaces_srv_add_two_ints_response_deserialize(
-                    &response, resp_buf, resp_len) == 0) {
-                printf("Call [%d]: %lld + %lld = %lld",
-                       i + 1,
-                       (long long)request.a,
-                       (long long)request.b,
-                       (long long)response.sum);
+            if (example_interfaces_srv_add_two_ints_response_deserialize(&response, resp_buf,
+                                                                         resp_len) == 0) {
+                printf("Call [%d]: %lld + %lld = %lld", i + 1, (long long)request.a,
+                       (long long)request.b, (long long)response.sum);
                 if (response.sum == request.a + request.b) {
                     printf(" [OK]\n");
                     success_count++;

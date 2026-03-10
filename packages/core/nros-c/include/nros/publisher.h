@@ -49,9 +49,9 @@ typedef struct nros_publisher_t {
     /** Type hash length. */
     size_t type_hash_len;
     /** Pointer to parent node. */
-    const struct nros_node_t *node;
+    const struct nros_node_t* node;
     /** Opaque pointer to internal Rust publisher. */
-    void *_internal;
+    void* _internal;
 } nros_publisher_t;
 
 /* ===================================================================
@@ -83,10 +83,8 @@ NROS_PUBLIC struct nros_publisher_t nros_publisher_get_zero_initialized(void);
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_publisher_init(struct nros_publisher_t *publisher,
-                               const struct nros_node_t *node,
-                               const struct nros_message_type_t *type_info,
-                               const char *topic_name);
+nros_ret_t nros_publisher_init(struct nros_publisher_t* publisher, const struct nros_node_t* node,
+                               const struct nros_message_type_t* type_info, const char* topic_name);
 
 /**
  * @brief Initialise a publisher with default QoS.
@@ -107,10 +105,10 @@ nros_ret_t nros_publisher_init(struct nros_publisher_t *publisher,
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_publisher_init_default(struct nros_publisher_t *publisher,
-                                       const struct nros_node_t *node,
-                                       const struct nros_message_type_t *type_info,
-                                       const char *topic_name);
+nros_ret_t nros_publisher_init_default(struct nros_publisher_t* publisher,
+                                       const struct nros_node_t* node,
+                                       const struct nros_message_type_t* type_info,
+                                       const char* topic_name);
 
 /**
  * @brief Initialise a publisher with best-effort QoS.
@@ -132,10 +130,10 @@ nros_ret_t nros_publisher_init_default(struct nros_publisher_t *publisher,
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_publisher_init_best_effort(struct nros_publisher_t *publisher,
-                                           const struct nros_node_t *node,
-                                           const struct nros_message_type_t *type_info,
-                                           const char *topic_name);
+nros_ret_t nros_publisher_init_best_effort(struct nros_publisher_t* publisher,
+                                           const struct nros_node_t* node,
+                                           const struct nros_message_type_t* type_info,
+                                           const char* topic_name);
 
 /**
  * @brief Initialise a publisher with custom QoS.
@@ -155,11 +153,10 @@ nros_ret_t nros_publisher_init_best_effort(struct nros_publisher_t *publisher,
  * @pre @p topic_name must be a valid null-terminated string.
  */
 NROS_PUBLIC
-nros_ret_t nros_publisher_init_with_qos(struct nros_publisher_t *publisher,
-                                        const struct nros_node_t *node,
-                                        const struct nros_message_type_t *type_info,
-                                        const char *topic_name,
-                                        const struct nros_qos_t *qos);
+nros_ret_t nros_publisher_init_with_qos(struct nros_publisher_t* publisher,
+                                        const struct nros_node_t* node,
+                                        const struct nros_message_type_t* type_info,
+                                        const char* topic_name, const struct nros_qos_t* qos);
 
 /**
  * @brief Publish raw CDR-serialized data.
@@ -177,8 +174,7 @@ nros_ret_t nros_publisher_init_with_qos(struct nros_publisher_t *publisher,
  * @pre @p data must point to @p len valid bytes.
  */
 NROS_PUBLIC
-nros_ret_t nros_publish_raw(const struct nros_publisher_t *publisher,
-                            const uint8_t *data,
+nros_ret_t nros_publish_raw(const struct nros_publisher_t* publisher, const uint8_t* data,
                             size_t len);
 
 /**
@@ -190,7 +186,7 @@ nros_ret_t nros_publish_raw(const struct nros_publisher_t *publisher,
  * @retval NROS_RET_INVALID_ARGUMENT  if @p publisher is NULL.
  * @retval NROS_RET_NOT_INIT          if not initialized.
  */
-NROS_PUBLIC nros_ret_t nros_publisher_fini(struct nros_publisher_t *publisher);
+NROS_PUBLIC nros_ret_t nros_publisher_fini(struct nros_publisher_t* publisher);
 
 /**
  * @brief Get the topic name of a publisher.
@@ -198,7 +194,7 @@ NROS_PUBLIC nros_ret_t nros_publisher_fini(struct nros_publisher_t *publisher);
  * @param publisher  Pointer to a publisher.
  * @return Null-terminated topic name, or NULL if invalid.
  */
-NROS_PUBLIC const char *nros_publisher_get_topic_name(const struct nros_publisher_t *publisher);
+NROS_PUBLIC const char* nros_publisher_get_topic_name(const struct nros_publisher_t* publisher);
 
 /**
  * @brief Check if publisher is valid (initialized).
@@ -206,7 +202,7 @@ NROS_PUBLIC const char *nros_publisher_get_topic_name(const struct nros_publishe
  * @param publisher  Pointer to a publisher.
  * @return Non-zero if valid, 0 if invalid or NULL.
  */
-NROS_PUBLIC int nros_publisher_is_valid(const struct nros_publisher_t *publisher);
+NROS_PUBLIC int nros_publisher_is_valid(const struct nros_publisher_t* publisher);
 
 #ifdef __cplusplus
 }

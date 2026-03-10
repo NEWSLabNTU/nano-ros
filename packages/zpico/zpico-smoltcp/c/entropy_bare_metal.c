@@ -18,9 +18,9 @@
 #include "mbedtls/entropy.h"
 
 /* DWT (Data Watchpoint and Trace) register addresses for ARM Cortex-M */
-#define DWT_CYCCNT  (*(volatile uint32_t *)0xE0001004)
-#define DWT_CONTROL (*(volatile uint32_t *)0xE0001000)
-#define SCB_DEMCR   (*(volatile uint32_t *)0xE000EDFC)
+#define DWT_CYCCNT (*(volatile uint32_t*)0xE0001004)
+#define DWT_CONTROL (*(volatile uint32_t*)0xE0001000)
+#define SCB_DEMCR (*(volatile uint32_t*)0xE000EDFC)
 
 /**
  * Simple hash-mix function to spread entropy from cycle counter.
@@ -45,14 +45,13 @@ static uint32_t mix32(uint32_t x) {
  * hash mixing. The entropy quality depends on timing jitter in the
  * sampling loop, which is architecture-dependent.
  */
-__attribute__((weak))
-int mbedtls_hardware_poll(void *data, unsigned char *output,
-                          size_t len, size_t *olen) {
+__attribute__((weak)) int mbedtls_hardware_poll(void* data, unsigned char* output, size_t len,
+                                                size_t* olen) {
     (void)data;
 
     /* Ensure DWT cycle counter is enabled */
-    SCB_DEMCR |= (1 << 24);   /* TRCENA */
-    DWT_CONTROL |= 1;          /* CYCCNTENA */
+    SCB_DEMCR |= (1 << 24); /* TRCENA */
+    DWT_CONTROL |= 1;       /* CYCCNTENA */
 
     size_t pos = 0;
     while (pos < len) {

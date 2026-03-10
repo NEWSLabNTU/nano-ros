@@ -61,7 +61,7 @@ typedef enum nros_parameter_type_t {
  */
 typedef struct nros_param_array_t {
     /** Pointer to caller-owned array data. */
-    const void *data;
+    const void* data;
     /** Number of elements. */
     size_t len;
 } nros_param_array_t;
@@ -101,9 +101,8 @@ typedef struct nros_parameter_t {
  * @param context User-provided context pointer.
  * @return @c true to accept the change, @c false to reject it.
  */
-typedef bool (*nros_param_callback_t)(const char *name,
-                                      const struct nros_parameter_t *param,
-                                      void *context);
+typedef bool (*nros_param_callback_t)(const char* name, const struct nros_parameter_t* param,
+                                      void* context);
 
 /** Parameter server structure. */
 typedef struct nros_param_server_t {
@@ -114,11 +113,11 @@ typedef struct nros_param_server_t {
     /** Current number of parameters. */
     size_t count;
     /** Parameter storage (pointer to user-provided array). */
-    struct nros_parameter_t *parameters;
+    struct nros_parameter_t* parameters;
     /** Parameter change callback. */
     nros_param_callback_t callback;
     /** Callback context. */
-    void *callback_context;
+    void* callback_context;
 } nros_param_server_t;
 
 /* ===================================================================
@@ -141,9 +140,8 @@ NROS_PUBLIC struct nros_param_server_t nros_param_server_get_zero_initialized(vo
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_server_init(struct nros_param_server_t *server,
-                                  struct nros_parameter_t *storage,
-                                  size_t capacity);
+nros_ret_t nros_param_server_init(struct nros_param_server_t* server,
+                                  struct nros_parameter_t* storage, size_t capacity);
 
 /**
  * @brief Set a parameter change callback.
@@ -155,9 +153,8 @@ nros_ret_t nros_param_server_init(struct nros_param_server_t *server,
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_server_set_callback(struct nros_param_server_t *server,
-                                          nros_param_callback_t callback,
-                                          void *context);
+nros_ret_t nros_param_server_set_callback(struct nros_param_server_t* server,
+                                          nros_param_callback_t callback, void* context);
 
 /**
  * @brief Declare a boolean parameter.
@@ -169,8 +166,7 @@ nros_ret_t nros_param_server_set_callback(struct nros_param_server_t *server,
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_declare_bool(struct nros_param_server_t *server,
-                                   const char *name,
+nros_ret_t nros_param_declare_bool(struct nros_param_server_t* server, const char* name,
                                    bool default_value);
 
 /**
@@ -183,8 +179,7 @@ nros_ret_t nros_param_declare_bool(struct nros_param_server_t *server,
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_declare_integer(struct nros_param_server_t *server,
-                                      const char *name,
+nros_ret_t nros_param_declare_integer(struct nros_param_server_t* server, const char* name,
                                       int64_t default_value);
 
 /**
@@ -197,8 +192,7 @@ nros_ret_t nros_param_declare_integer(struct nros_param_server_t *server,
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_declare_double(struct nros_param_server_t *server,
-                                     const char *name,
+nros_ret_t nros_param_declare_double(struct nros_param_server_t* server, const char* name,
                                      double default_value);
 
 /**
@@ -211,9 +205,8 @@ nros_ret_t nros_param_declare_double(struct nros_param_server_t *server,
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_declare_string(struct nros_param_server_t *server,
-                                     const char *name,
-                                     const char *default_value);
+nros_ret_t nros_param_declare_string(struct nros_param_server_t* server, const char* name,
+                                     const char* default_value);
 
 /**
  * @brief Get a boolean parameter value.
@@ -226,9 +219,8 @@ nros_ret_t nros_param_declare_string(struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_get_bool(const struct nros_param_server_t *server,
-                               const char *name,
-                               bool *value);
+nros_ret_t nros_param_get_bool(const struct nros_param_server_t* server, const char* name,
+                               bool* value);
 
 /**
  * @brief Get an integer parameter value.
@@ -241,9 +233,8 @@ nros_ret_t nros_param_get_bool(const struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_get_integer(const struct nros_param_server_t *server,
-                                  const char *name,
-                                  int64_t *value);
+nros_ret_t nros_param_get_integer(const struct nros_param_server_t* server, const char* name,
+                                  int64_t* value);
 
 /**
  * @brief Get a double parameter value.
@@ -256,9 +247,8 @@ nros_ret_t nros_param_get_integer(const struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_get_double(const struct nros_param_server_t *server,
-                                 const char *name,
-                                 double *value);
+nros_ret_t nros_param_get_double(const struct nros_param_server_t* server, const char* name,
+                                 double* value);
 
 /**
  * @brief Get a string parameter value.
@@ -272,10 +262,8 @@ nros_ret_t nros_param_get_double(const struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_get_string(const struct nros_param_server_t *server,
-                                 const char *name,
-                                 char *value,
-                                 size_t max_len);
+nros_ret_t nros_param_get_string(const struct nros_param_server_t* server, const char* name,
+                                 char* value, size_t max_len);
 
 /**
  * @brief Set a boolean parameter value.
@@ -288,9 +276,7 @@ nros_ret_t nros_param_get_string(const struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_set_bool(struct nros_param_server_t *server,
-                               const char *name,
-                               bool value);
+nros_ret_t nros_param_set_bool(struct nros_param_server_t* server, const char* name, bool value);
 
 /**
  * @brief Set an integer parameter value.
@@ -303,8 +289,7 @@ nros_ret_t nros_param_set_bool(struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_set_integer(struct nros_param_server_t *server,
-                                  const char *name,
+nros_ret_t nros_param_set_integer(struct nros_param_server_t* server, const char* name,
                                   int64_t value);
 
 /**
@@ -318,8 +303,7 @@ nros_ret_t nros_param_set_integer(struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_set_double(struct nros_param_server_t *server,
-                                 const char *name,
+nros_ret_t nros_param_set_double(struct nros_param_server_t* server, const char* name,
                                  double value);
 
 /**
@@ -333,9 +317,8 @@ nros_ret_t nros_param_set_double(struct nros_param_server_t *server,
  * @retval NROS_RET_NOT_FOUND  if the parameter does not exist.
  */
 NROS_PUBLIC
-nros_ret_t nros_param_set_string(struct nros_param_server_t *server,
-                                 const char *name,
-                                 const char *value);
+nros_ret_t nros_param_set_string(struct nros_param_server_t* server, const char* name,
+                                 const char* value);
 
 /**
  * @brief Check if a parameter exists.
@@ -344,8 +327,7 @@ nros_ret_t nros_param_set_string(struct nros_param_server_t *server,
  * @param name   Parameter name.
  * @return @c true if the parameter exists, @c false otherwise.
  */
-NROS_PUBLIC bool nros_param_has(const struct nros_param_server_t *server,
-                                const char *name);
+NROS_PUBLIC bool nros_param_has(const struct nros_param_server_t* server, const char* name);
 
 /**
  * @brief Get the type of a parameter.
@@ -355,8 +337,8 @@ NROS_PUBLIC bool nros_param_has(const struct nros_param_server_t *server,
  * @return Parameter type, or @ref NROS_PARAMETER_NOT_SET if not found.
  */
 NROS_PUBLIC
-enum nros_parameter_type_t nros_param_get_type(const struct nros_param_server_t *server,
-                                               const char *name);
+enum nros_parameter_type_t nros_param_get_type(const struct nros_param_server_t* server,
+                                               const char* name);
 
 /**
  * @brief Get the number of declared parameters.
@@ -364,7 +346,7 @@ enum nros_parameter_type_t nros_param_get_type(const struct nros_param_server_t 
  * @param server Pointer to an initialized parameter server.
  * @return Number of parameters.
  */
-NROS_PUBLIC size_t nros_param_server_get_count(const struct nros_param_server_t *server);
+NROS_PUBLIC size_t nros_param_server_get_count(const struct nros_param_server_t* server);
 
 /**
  * @brief Finalise a parameter server.
@@ -372,7 +354,7 @@ NROS_PUBLIC size_t nros_param_server_get_count(const struct nros_param_server_t 
  * @param server Pointer to an initialized parameter server.
  * @retval NROS_RET_OK on success.
  */
-NROS_PUBLIC nros_ret_t nros_param_server_fini(struct nros_param_server_t *server);
+NROS_PUBLIC nros_ret_t nros_param_server_fini(struct nros_param_server_t* server);
 
 #ifdef __cplusplus
 }

@@ -38,21 +38,21 @@ extern "C" {
 // ============================================================================
 
 #if defined(NROS_PLATFORM_POSIX)
-    #include "nros/platform/posix.h"
+#include "nros/platform/posix.h"
 #elif defined(NROS_PLATFORM_ZEPHYR)
-    #include "nros/platform/zephyr.h"
+#include "nros/platform/zephyr.h"
 #elif defined(NROS_PLATFORM_FREERTOS)
-    #include "nros/platform/freertos.h"
+#include "nros/platform/freertos.h"
 #elif defined(NROS_PLATFORM_BAREMETAL)
-    #include "nros/platform/baremetal.h"
+#include "nros/platform/baremetal.h"
 #elif defined(NROS_PLATFORM_CUSTOM)
-    // User must implement all platform functions externally
+// User must implement all platform functions externally
 #else
-    // Default to POSIX for backward compatibility
-    #ifndef NROS_PLATFORM_POSIX
-        #define NROS_PLATFORM_POSIX
-    #endif
-    #include "nros/platform/posix.h"
+// Default to POSIX for backward compatibility
+#ifndef NROS_PLATFORM_POSIX
+#define NROS_PLATFORM_POSIX
+#endif
+#include "nros/platform/posix.h"
 #endif
 
 // ============================================================================
@@ -104,7 +104,7 @@ void nros_platform_sleep_ns(uint64_t ns);
  * @param ptr Pointer to the boolean variable
  * @param value Value to store
  */
-void nros_platform_atomic_store_bool(volatile bool *ptr, bool value);
+void nros_platform_atomic_store_bool(volatile bool* ptr, bool value);
 
 /**
  * Atomically load a boolean value with acquire semantics.
@@ -115,7 +115,7 @@ void nros_platform_atomic_store_bool(volatile bool *ptr, bool value);
  * @param ptr Pointer to the boolean variable
  * @return The current value
  */
-bool nros_platform_atomic_load_bool(volatile bool *ptr);
+bool nros_platform_atomic_load_bool(volatile bool* ptr);
 
 #endif // !NROS_PLATFORM_HAS_ATOMICS
 
@@ -135,14 +135,14 @@ bool nros_platform_atomic_load_bool(volatile bool *ptr);
  * @param size Number of bytes to allocate
  * @return Pointer to allocated memory, or NULL on failure
  */
-void *nros_platform_malloc(size_t size);
+void* nros_platform_malloc(size_t size);
 
 /**
  * Free previously allocated memory.
  *
  * @param ptr Pointer to memory to free (may be NULL)
  */
-void nros_platform_free(void *ptr);
+void nros_platform_free(void* ptr);
 
 #endif // !NROS_PLATFORM_HAS_MALLOC
 
@@ -164,7 +164,7 @@ void nros_platform_free(void *ptr);
  * @param mutex Pointer to mutex to initialize
  * @return 0 on success, non-zero on failure
  */
-int nros_platform_mutex_init(nros_mutex_t *mutex);
+int nros_platform_mutex_init(nros_mutex_t* mutex);
 
 /**
  * Lock a mutex.
@@ -174,7 +174,7 @@ int nros_platform_mutex_init(nros_mutex_t *mutex);
  * @param mutex Pointer to mutex to lock
  * @return 0 on success, non-zero on failure
  */
-int nros_platform_mutex_lock(nros_mutex_t *mutex);
+int nros_platform_mutex_lock(nros_mutex_t* mutex);
 
 /**
  * Unlock a mutex.
@@ -182,7 +182,7 @@ int nros_platform_mutex_lock(nros_mutex_t *mutex);
  * @param mutex Pointer to mutex to unlock
  * @return 0 on success, non-zero on failure
  */
-int nros_platform_mutex_unlock(nros_mutex_t *mutex);
+int nros_platform_mutex_unlock(nros_mutex_t* mutex);
 
 /**
  * Destroy a mutex.
@@ -190,7 +190,7 @@ int nros_platform_mutex_unlock(nros_mutex_t *mutex);
  * @param mutex Pointer to mutex to destroy
  * @return 0 on success, non-zero on failure
  */
-int nros_platform_mutex_destroy(nros_mutex_t *mutex);
+int nros_platform_mutex_destroy(nros_mutex_t* mutex);
 
 #endif // !NROS_PLATFORM_HAS_MUTEX
 

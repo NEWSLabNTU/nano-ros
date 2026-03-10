@@ -46,9 +46,13 @@ static const nros_message_type_t std_msgs_Int32_type = {
 };
 
 // Serialize message (all buffers statically sized)
-static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buffer, size_t buffer_size) {
+static int32_t std_msgs_Int32_serialize(const std_msgs_Int32* msg, uint8_t* buffer,
+                                        size_t buffer_size) {
     if (buffer_size < 8) return -1;
-    buffer[0] = 0x00; buffer[1] = 0x01; buffer[2] = 0x00; buffer[3] = 0x00;
+    buffer[0] = 0x00;
+    buffer[1] = 0x01;
+    buffer[2] = 0x00;
+    buffer[3] = 0x00;
     buffer[4] = (uint8_t)(msg->data & 0xFF);
     buffer[5] = (uint8_t)((msg->data >> 8) & 0xFF);
     buffer[6] = (uint8_t)((msg->data >> 16) & 0xFF);
@@ -98,7 +102,8 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     app.count++;
     app.message.data = app.count;
 
-    int32_t len = std_msgs_Int32_serialize(&app.message, g_serialize_buffer, sizeof(g_serialize_buffer));
+    int32_t len =
+        std_msgs_Int32_serialize(&app.message, g_serialize_buffer, sizeof(g_serialize_buffer));
     if (len > 0) {
         nros_ret_t ret = nros_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
         if (ret == NROS_RET_OK) {
@@ -152,7 +157,7 @@ static void demo_platform_time(void) {
     // Sleep for 100ms using platform sleep
     printf("Sleeping for 100ms...\n");
     // Note: On real bare-metal, this would call nros_platform_sleep_ns()
-    struct timespec ts = {0, 100000000};  // 100ms
+    struct timespec ts = {0, 100000000}; // 100ms
     nanosleep(&ts, NULL);
 
     (void)nros_clock_get_now(&clock, &t2);
@@ -187,16 +192,19 @@ static void demo_guard_condition(void) {
     // Check initial state
     printf("Guard condition initialized\n");
     printf("  Is valid: %s\n", nros_guard_condition_is_valid(&app.shutdown_guard) ? "yes" : "no");
-    printf("  Is triggered: %s\n", nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+    printf("  Is triggered: %s\n",
+           nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     // Demonstrate trigger/clear cycle
     printf("Triggering guard condition...\n");
     (void)nros_guard_condition_trigger(&app.shutdown_guard);
-    printf("  Is triggered: %s\n", nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+    printf("  Is triggered: %s\n",
+           nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     printf("Clearing guard condition...\n");
     (void)nros_guard_condition_clear(&app.shutdown_guard);
-    printf("  Is triggered: %s\n", nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
+    printf("  Is triggered: %s\n",
+           nros_guard_condition_is_triggered(&app.shutdown_guard) ? "yes" : "no");
 
     // Add to executor - callback will be invoked when triggered
     ret = nros_executor_add_guard_condition(&app.executor, &app.shutdown_guard);
@@ -262,7 +270,8 @@ int main(int argc, char** argv) {
 
     // Initialize publisher
     app.publisher = nros_publisher_get_zero_initialized();
-    ret = nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type, "/baremetal_demo/counter");
+    ret = nros_publisher_init(&app.publisher, &app.node, &std_msgs_Int32_type,
+                              "/baremetal_demo/counter");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to init publisher: %d\n", ret);
         goto cleanup_node;
@@ -308,7 +317,7 @@ int main(int argc, char** argv) {
     // The executor handles all callbacks including:
     // - Timer callbacks (periodic publishing)
     // - Guard condition callbacks (shutdown signal)
-    ret = nros_executor_spin_period(&app.executor, 50000000ULL);  // 50ms spin period
+    ret = nros_executor_spin_period(&app.executor, 50000000ULL); // 50ms spin period
 
     // Cleanup (in reverse order of initialization)
     printf("\n=== Cleanup ===\n");
