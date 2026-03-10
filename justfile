@@ -48,7 +48,7 @@ format: format-c format-cpp format-python
     {
         echo "."
         find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
-            -not -path '*/generated/*' -not -path '*/zephyr/*' \
+            -not -path '*/generated/*' -not -path '*/build/*' -not -path '*/zephyr/*' \
             -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
             -not -path '*/threadx-linux/*' \
             -not -path '*/qemu-riscv64-threadx/*' \
@@ -302,7 +302,7 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -339,7 +339,7 @@ check-examples:
     #!/usr/bin/env bash
     set -e
     echo "Checking examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
