@@ -1,0 +1,12 @@
+[package]
+name = "zpico-serial"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "Serial (UART) link layer for nros (bare-metal systems)"
+
+[lib]
+name = "zpico_serial"
+
+[dependencies]
+zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-serial"] }

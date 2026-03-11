@@ -108,6 +108,8 @@ exclude = [
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-smoltcp",
+    # Serial (UART) link layer (embedded-only, requires cross-compilation)
+    "packages/zpico/zpico-serial",
     # XRCE-DDS smoltcp UDP transport (embedded-only, requires cross-compilation)
     "packages/xrce/xrce-smoltcp",
     # XRCE-DDS RMW backend (embedded-only, requires xrce-sys linking)
