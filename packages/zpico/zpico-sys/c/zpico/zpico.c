@@ -10,6 +10,8 @@
 
 #include "zpico.h"
 #include <zenoh-pico.h>
+#include <zenoh-pico/session/query.h>
+#include <zenoh-pico/api/olv_macros.h>
 #include <string.h>
 
 #ifdef ZENOH_ZEPHYR
@@ -47,6 +49,8 @@ static void _threadx_printk(const char *fmt, ...) {
 }
 #define printk(...) _threadx_printk(__VA_ARGS__)
 #endif
+#elif defined(ZPICO_SMOLTCP)
+#define printk(...)  // No libc printf on bare-metal smoltcp
 #else
 #define printk(...)  // No-op on other platforms
 #endif
@@ -939,11 +943,17 @@ int32_t zpico_poll(uint32_t timeout_ms) {
     }
 
 #ifdef ZPICO_SMOLTCP
-    // smoltcp: no real sockets, no select(). Loop with clock timeout.
+    // smoltcp: use single_read=true to avoid the _z_zbuf_reset() in the
+    // single_read=false path, which discards remaining data when multiple
+    // zenoh messages arrive in a single TCP read (e.g., keep-alive + reply).
+    // With single_read=true, the zbuf accumulates data across calls and
+    // processes one complete message per call.
+    zp_read_options_t opts;
+    opts.single_read = true;
     uint64_t start = smoltcp_clock_now_ms();
     int ret;
     do {
-        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        ret = zp_read(z_session_loan_mut(&g_session), &opts);
         if (ret == 0) break;  // Data processed
         if (timeout_ms == 0) break;
     } while (smoltcp_clock_now_ms() - start < timeout_ms);
@@ -996,14 +1006,24 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     }
 
 #ifdef ZPICO_SMOLTCP
-    // smoltcp: no real sockets, no select(). Loop with clock timeout.
+    // smoltcp: poll network and read available data. Uses single_read=true
+    // to preserve partial TCP data across calls (non-blocking _z_read_tcp
+    // may return fragments). single_read=false resets the zbuf on each call
+    // which discards partial messages.
+    zp_read_options_t opts;
+    opts.single_read = true;
     uint64_t start = smoltcp_clock_now_ms();
     int ret;
     do {
-        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        ret = zp_read(z_session_loan_mut(&g_session), &opts);
         if (ret == 0) break;  // Data processed
         if (timeout_ms == 0) break;
     } while (smoltcp_clock_now_ms() - start < timeout_ms);
+    // Process query timeouts — in multi-threaded mode the lease task handles
+    // this, but on single-threaded bare-metal (smoltcp) there is no lease task.
+    // Without this call, timed-out queries are never cleaned up and their
+    // dropper callbacks never fire, breaking service/action request flows.
+    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
     return ret;
 

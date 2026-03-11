@@ -176,7 +176,14 @@ pub extern "C" fn _z_close_tcp(sock: *mut ZSysNetSocket) {
 // Socket I/O Functions
 // ============================================================================
 
-/// Read up to `len` bytes. Returns bytes read, or `usize::MAX` on error/timeout.
+/// Read up to `len` bytes. Returns bytes read, 0 if no data available,
+/// or `usize::MAX` on error (connection closed).
+///
+/// This is non-blocking: polls the network once and returns immediately.
+/// zenoh-pico's `_z_unicast_client_read()` handles the "no data" case
+/// by returning `false`, causing `zp_read()` to return `_Z_NO_DATA_PROCESSED`.
+/// The caller (`spin_once`) will retry on the next iteration, allowing
+/// cooperative scheduling to interleave other work (service replies, etc.).
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_read_tcp(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> usize {
     if sock._handle < 0 || ptr.is_null() || len == 0 {
@@ -184,31 +191,26 @@ pub extern "C" fn _z_read_tcp(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> 
     }
 
     let handle = sock._handle as i32;
-    let start = SmoltcpBridge::clock_now_ms();
 
-    loop {
-        // Poll the network stack
-        SmoltcpBridge::poll_network();
+    // Poll the network stack once
+    SmoltcpBridge::poll_network();
 
-        // Try to receive data
-        if SmoltcpBridge::socket_can_recv(handle) {
-            let buf = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
-            let received = SmoltcpBridge::socket_recv(handle, buf);
-            if received > 0 {
-                return received as usize;
-            }
-        }
-
-        // Check for connection closed
-        if !SmoltcpBridge::socket_is_connected(handle) {
-            return usize::MAX;
-        }
-
-        // Check timeout
-        if SmoltcpBridge::clock_now_ms() - start > SOCKET_TIMEOUT_MS {
-            return usize::MAX;
+    // Try to receive data
+    if SmoltcpBridge::socket_can_recv(handle) {
+        let buf = unsafe { core::slice::from_raw_parts_mut(ptr, len) };
+        let received = SmoltcpBridge::socket_recv(handle, buf);
+        if received > 0 {
+            return received as usize;
         }
     }
+
+    // Check for connection closed
+    if !SmoltcpBridge::socket_is_connected(handle) {
+        return usize::MAX;
+    }
+
+    // No data available yet
+    0
 }
 
 /// Read exactly `len` bytes. Returns bytes read, or `usize::MAX` on error/timeout.
@@ -299,6 +301,10 @@ pub extern "C" fn _z_send_tcp(sock: ZSysNetSocket, ptr: *const u8, len: usize) -
             return usize::MAX;
         }
     }
+
+    // Flush: the last socket_send() put data in smoltcp's TX buffer but
+    // the loop exits before another poll_network() can transmit it.
+    SmoltcpBridge::poll_network();
 
     total_sent
 }
