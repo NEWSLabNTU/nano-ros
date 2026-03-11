@@ -185,6 +185,11 @@ for i in $(seq 0 $((NUM_TAPS - 1))); do
     echo "  Creating $tap (QEMU guest IP: $guest_ip)..."
     ip tuntap add dev "$tap" mode tap user "$TAP_USER"
     ip link set "$tap" master "$BRIDGE_NAME"
+    # Use pfifo qdisc instead of default fq_codel. CoDel's active queue
+    # management drops packets when delay exceeds 5ms, but QEMU emulation
+    # is too slow to drain packets that fast. This causes TCP data segments
+    # to be dropped, breaking zenoh session establishment.
+    tc qdisc replace dev "$tap" root pfifo limit 1000
     ip link set "$tap" up
 done
 
