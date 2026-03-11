@@ -23,3 +23,6 @@ examples/**/generated/
 
 # Verus binary (downloaded by: just setup-verus)
 tools/
+
+# Local environment overrides (created from .env.example)
+/.env
