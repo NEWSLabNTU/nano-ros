@@ -227,7 +227,7 @@ class Node {
         ffi_qos.depth = qos.depth();
         void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_service_server_create(
-            &handle_, service_name, S::Request::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
+            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
         if (ret == 0) {
             out.handle_ = handle;
             out.initialized_ = true;
@@ -252,7 +252,7 @@ class Node {
         ffi_qos.depth = qos.depth();
         void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_service_client_create(
-            &handle_, service_name, S::Request::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
+            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
         if (ret == 0) {
             out.handle_ = handle;
             out.initialized_ = true;
@@ -278,8 +278,8 @@ class Node {
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
         void* handle = nullptr;
-        nros_cpp_ret_t ret = nros_cpp_action_server_create(
-            &handle_, action_name, A::Goal::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, &handle);
+        nros_cpp_ret_t ret = nros_cpp_action_server_create(&handle_, action_name, A::TYPE_NAME,
+                                                           A::Goal::TYPE_HASH, ffi_qos, &handle);
         if (ret == 0) {
             out.handle_ = handle;
             out.executor_ = executor_handle_;
@@ -304,8 +304,8 @@ class Node {
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
         void* handle = nullptr;
-        nros_cpp_ret_t ret = nros_cpp_action_client_create(
-            &handle_, action_name, A::Goal::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, &handle);
+        nros_cpp_ret_t ret = nros_cpp_action_client_create(&handle_, action_name, A::TYPE_NAME,
+                                                           A::Goal::TYPE_HASH, ffi_qos, &handle);
         if (ret == 0) {
             out.handle_ = handle;
             out.executor_ = executor_handle_;
