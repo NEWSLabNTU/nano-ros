@@ -20,9 +20,10 @@ store-failure-output = true
 [test-groups.qemu-network]
 max-threads = 1
 
-# ARM QEMU tests: target directory serialization (Docker E2E is network-isolated)
-[test-groups.arm-emulator]
-max-threads = 1
+# ARM QEMU tests: shares TAP bridge + zenohd port 7447 with FreeRTOS/NuttX/ThreadX.
+# Previously a separate group for target directory serialization, but RTIC E2E tests
+# now use the same network infrastructure and must not run concurrently.
+# Merged into qemu-network below.
 
 [test-groups.c_api]
 max-threads = 1
@@ -50,7 +51,7 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(emulator) and not binary(esp32_emulator)"
-test-group = "arm-emulator"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
