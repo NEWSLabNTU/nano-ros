@@ -113,6 +113,7 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 
 ### `.gitignore` Practices
 - **Every workspace-excluded crate** (examples, board crates in `exclude`, standalone packages) must have a per-directory `.gitignore` with at least `/target/`. Add `/generated/` if the crate uses `cargo nano-ros generate`.
+- **Every native C++ example** must have a per-directory `.gitignore` with `/build/` (CMake builds in-tree). Zephyr C++ examples don't need this since they build in the Zephyr workspace.
 - Root `.gitignore` only for repo-wide patterns
 - Always use leading `/` (e.g., `/target/` not `target/`)
 - When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`

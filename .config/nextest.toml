@@ -27,6 +27,9 @@ max-threads = 1
 [test-groups.c_api]
 max-threads = 1
 
+[test-groups.cpp_api]
+max-threads = 1
+
 # XRCE-DDS tests: single Agent instance per test
 [test-groups.xrce]
 max-threads = 1
@@ -58,6 +61,10 @@ test-group = "c_api"
 filter = "binary(xrce)"
 test-group = "xrce"
 slow-timeout = { period = "60s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = "binary(cpp_api)"
+test-group = "cpp_api"
 
 [[profile.default.overrides]]
 filter = "binary(c_xrce_api)"

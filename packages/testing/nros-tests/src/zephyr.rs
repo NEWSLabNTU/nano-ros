@@ -407,6 +407,13 @@ fn build_dir_for_example(example_name: &str) -> &'static str {
         "zephyr-rs-action-client" | "rs-action-client" => "build-action-client",
         "zephyr-rs-service-server" | "rs-service-server" => "build-service-server",
         "zephyr-rs-service-client" | "rs-service-client" => "build-service-client",
+        // C++ examples
+        "zephyr-cpp-talker" | "cpp-talker" => "build-cpp-talker",
+        "zephyr-cpp-listener" | "cpp-listener" => "build-cpp-listener",
+        "zephyr-cpp-service-server" | "cpp-service-server" => "build-cpp-service-server",
+        "zephyr-cpp-service-client" | "cpp-service-client" => "build-cpp-service-client",
+        "zephyr-cpp-action-server" | "cpp-action-server" => "build-cpp-action-server",
+        "zephyr-cpp-action-client" | "cpp-action-client" => "build-cpp-action-client",
         // XRCE examples
         "zephyr-xrce-rs-talker" | "xrce-rs-talker" => "build-xrce-rs-talker",
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => "build-xrce-rs-listener",
@@ -438,6 +445,21 @@ fn example_path_for_name(example_name: &str) -> String {
         }
         "zephyr-c-talker" | "c-talker" => "zephyr/c/zenoh/talker".to_string(),
         "zephyr-c-listener" | "c-listener" => "zephyr/c/zenoh/listener".to_string(),
+        // C++ examples
+        "zephyr-cpp-talker" | "cpp-talker" => "zephyr/cpp/zenoh/talker".to_string(),
+        "zephyr-cpp-listener" | "cpp-listener" => "zephyr/cpp/zenoh/listener".to_string(),
+        "zephyr-cpp-service-server" | "cpp-service-server" => {
+            "zephyr/cpp/zenoh/service-server".to_string()
+        }
+        "zephyr-cpp-service-client" | "cpp-service-client" => {
+            "zephyr/cpp/zenoh/service-client".to_string()
+        }
+        "zephyr-cpp-action-server" | "cpp-action-server" => {
+            "zephyr/cpp/zenoh/action-server".to_string()
+        }
+        "zephyr-cpp-action-client" | "cpp-action-client" => {
+            "zephyr/cpp/zenoh/action-client".to_string()
+        }
         // XRCE examples
         "zephyr-xrce-rs-talker" | "xrce-rs-talker" => "zephyr/rust/xrce/talker".to_string(),
         "zephyr-xrce-rs-listener" | "xrce-rs-listener" => "zephyr/rust/xrce/listener".to_string(),

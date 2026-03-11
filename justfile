@@ -441,6 +441,14 @@ build-zephyr-cpp:
     west build -b native_sim/native/64 -d build-cpp-talker -p auto nros/examples/zephyr/cpp/zenoh/talker
     echo "  Building zephyr/cpp/zenoh/listener -> build-cpp-listener/"
     west build -b native_sim/native/64 -d build-cpp-listener -p auto nros/examples/zephyr/cpp/zenoh/listener
+    echo "  Building zephyr/cpp/zenoh/service-server -> build-cpp-service-server/"
+    west build -b native_sim/native/64 -d build-cpp-service-server -p auto nros/examples/zephyr/cpp/zenoh/service-server
+    echo "  Building zephyr/cpp/zenoh/service-client -> build-cpp-service-client/"
+    west build -b native_sim/native/64 -d build-cpp-service-client -p auto nros/examples/zephyr/cpp/zenoh/service-client
+    echo "  Building zephyr/cpp/zenoh/action-server -> build-cpp-action-server/"
+    west build -b native_sim/native/64 -d build-cpp-action-server -p auto nros/examples/zephyr/cpp/zenoh/action-server
+    echo "  Building zephyr/cpp/zenoh/action-client -> build-cpp-action-client/"
+    west build -b native_sim/native/64 -d build-cpp-action-client -p auto nros/examples/zephyr/cpp/zenoh/action-client
     echo "Zephyr C++ examples built successfully!"
 
 # Build Zephyr XRCE examples (Rust + C for XRCE-DDS backend)
@@ -473,7 +481,7 @@ build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-cpp build-zephyr-xrce
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-cpp-talker" "$WORKSPACE/build-cpp-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-cpp-talker" "$WORKSPACE/build-cpp-listener" "$WORKSPACE/build-cpp-service-server" "$WORKSPACE/build-cpp-service-client" "$WORKSPACE/build-cpp-action-server" "$WORKSPACE/build-cpp-action-client" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -1244,6 +1252,16 @@ test-c verbose="": build-zenohd _init-test-logs
     cargo nextest run "${args[@]}"
     just _test-c-codegen {{verbose}}
 
+# C++ API integration tests (needs cmake + zenohd + install-local)
+test-cpp verbose="": build-zenohd
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --no-fail-fast -E 'binary(cpp_api)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
 test-c-xrce verbose="":
     #!/usr/bin/env bash
@@ -1303,6 +1321,8 @@ build-examples-cpp: install-local
     just _build-cpp-example examples/native/cpp/zenoh/listener
     just _build-cpp-example examples/native/cpp/zenoh/service-server
     just _build-cpp-example examples/native/cpp/zenoh/service-client
+    just _build-cpp-example examples/native/cpp/zenoh/action-server
+    just _build-cpp-example examples/native/cpp/zenoh/action-client
     @echo "C++ examples built!"
 
 # Clean C++ examples build
@@ -1883,6 +1903,7 @@ zephyr-help:
     @echo "  just test-zephyr-xrce       # Run XRCE Zephyr E2E tests"
     @echo "  just test-zephyr-full       # Rebuild and run zenoh Zephyr tests"
     @echo "  just test-zephyr-c          # Run Zephyr C examples test"
+    @echo "  just test-cpp               # Run native C++ API tests"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
     @echo "  west build -b native_sim/native/64 -d build-talker nros/examples/zephyr/rust/zenoh/talker"

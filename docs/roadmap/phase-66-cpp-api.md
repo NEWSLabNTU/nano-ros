@@ -2,7 +2,7 @@
 
 **Goal**: Provide a freestanding C++ API that mirrors rclcpp naming conventions, wrapping Rust `nros-node` directly via typed `extern "C"` FFI. Includes CMake-based message codegen for embedded C++ targets.
 
-**Status**: In Progress (66.1–66.9 done)
+**Status**: In Progress (66.1–66.12 done)
 **Priority**: Medium
 **Depends on**: Phase 49 (nros-c thin wrapper migration — complete), Phase 51 (Board crate `run()` API)
 
@@ -39,7 +39,7 @@ See [docs/design/cpp-api-design.md](../design/cpp-api-design.md) for the full de
 - [x] 66.9 — Executor and Node-centric pattern
 - [x] 66.10 — Examples (Linux native)
 - [x] 66.11 — Examples (embedded targets)
-- [ ] 66.12 — Integration tests
+- [x] 66.12 — Integration tests
 - [ ] 66.13 — Optional `std` mode conveniences
 - [ ] 66.14 — Documentation
 
@@ -270,18 +270,24 @@ automatically via `CONFIG_CPLUSPLUS=y`.
 
 ### 66.12 — Integration tests
 
-Automated tests for C++ API.
+Automated tests for C++ API — build, startup, E2E communication, cross-language interop.
 
 **Scope**:
-- Build tests: verify all C++ examples compile
-- E2E tests: Linux native talker/listener exchange messages via zenohd
-- Add `just test-cpp` recipe
-- Nextest config: `cpp` test group
+- Build tests: verify all 4 native C++ examples compile
+- Startup tests: talker, listener, service server initialize
+- E2E tests: talker/listener exchange messages, service server/client complete RPC
+- Cross-language interop: C++ talker → Rust listener, C++ service server → Rust client
+- Zephyr C++ E2E tests: talker-listener, cross-platform (Zephyr ↔ native Rust)
+- `just test-cpp` recipe, nextest `cpp_api` test group
+- Bug fix: `node.hpp` passed `S::Request::TYPE_NAME` instead of `S::TYPE_NAME` for services/actions
 
 **Files**:
-- `packages/testing/nros-tests/tests/cpp_native.rs`
-- `.config/nextest.toml` (add `cpp` group)
+- `packages/testing/nros-tests/tests/cpp_api.rs`
+- `packages/testing/nros-tests/src/fixtures/binaries.rs` (C++ builders)
+- `packages/testing/nros-tests/src/zephyr.rs` (C++ Zephyr entries + tests)
+- `.config/nextest.toml` (add `cpp_api` group)
 - `justfile` (add `test-cpp` recipe)
+- `packages/core/nros-cpp/include/nros/node.hpp` (fix `S::TYPE_NAME` for services/actions)
 
 ### 66.13 — Optional `std` mode conveniences
 
