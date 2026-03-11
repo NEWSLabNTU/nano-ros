@@ -15,10 +15,14 @@
 pub mod clock;
 mod libc_stubs;
 pub mod memory;
+#[cfg(feature = "ethernet")]
 pub mod network;
 pub mod random;
 mod sleep;
+#[cfg(feature = "ethernet")]
 mod socket;
+#[cfg(not(feature = "ethernet"))]
+mod socket_stubs;
 mod threading;
 mod time;
 pub mod timing;

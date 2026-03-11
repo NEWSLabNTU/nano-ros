@@ -10,7 +10,7 @@ name = "nros_mps2_an385"
 
 [dependencies]
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
-zpico-platform-mps2-an385 = { path = "../../zpico/zpico-platform-mps2-an385" }
+zpico-platform-mps2-an385 = { path = "../../zpico/zpico-platform-mps2-an385", default-features = false }
 
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
@@ -40,7 +40,7 @@ panic-semihosting = "0.6"
 [features]
 default = ["ethernet"]
 # Ethernet transport via LAN9118 + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
+ethernet = ["dep:zpico-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp", "zpico-platform-mps2-an385/ethernet"]
 # Serial transport via CMSDK UART
 serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
 # Docker networking mode (container with NAT, ethernet only)

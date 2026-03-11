@@ -7,6 +7,7 @@
 //! `z_clock_advance_*`) plus `smoltcp_clock_now_ms` for the transport crate.
 
 use core::sync::atomic::{AtomicU32, Ordering};
+#[cfg(feature = "ethernet")]
 use smoltcp::time::Instant;
 
 /// Global millisecond counter (lower 32 bits)
@@ -74,6 +75,7 @@ pub fn advance_clock_ms(ms: u64) {
 }
 
 /// Get the current time as a smoltcp Instant
+#[cfg(feature = "ethernet")]
 #[inline]
 #[allow(dead_code)]
 pub fn now() -> Instant {
@@ -156,6 +158,7 @@ pub extern "C" fn z_clock_advance_s(clock: *mut usize, duration: core::ffi::c_ul
 // ============================================================================
 
 /// Get current time in milliseconds (called by zpico-smoltcp's bridge)
+#[cfg(feature = "ethernet")]
 #[unsafe(no_mangle)]
 pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
     clock_ms()

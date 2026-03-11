@@ -10,7 +10,7 @@ name = "nros_stm32f4"
 
 [dependencies]
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
-zpico-platform-stm32f4 = { path = "../../zpico/zpico-platform-stm32f4" }
+zpico-platform-stm32f4 = { path = "../../zpico/zpico-platform-stm32f4", default-features = false }
 
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
@@ -42,7 +42,7 @@ defmt = "0.3"
 [features]
 default = ["stm32f429", "ethernet"]
 # Ethernet transport via STM32 MAC + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp"]
+ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp", "zpico-platform-stm32f4/ethernet"]
 # Serial transport via USART
 serial = ["dep:zpico-serial"]
 
