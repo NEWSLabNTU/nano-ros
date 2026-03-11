@@ -83,63 +83,71 @@ pub fn now() -> Instant {
 // ============================================================================
 // FFI exports — zenoh-pico clock symbols
 // ============================================================================
+//
+// z_clock_t is `void*` on bare-metal (zenoh-pico's void.h), so it is
+// pointer-sized: 4 bytes on ARM32, 8 bytes on 64-bit targets. All clock
+// functions must use `usize` (not `u64`) for the stored timestamp type
+// to match the C ABI.
 
 /// z_clock_t z_clock_now(void)
 #[unsafe(no_mangle)]
-pub extern "C" fn z_clock_now() -> u64 {
-    clock_ms()
+pub extern "C" fn z_clock_now() -> usize {
+    clock_ms() as usize
 }
 
 /// unsigned long z_clock_elapsed_us(z_clock_t *time)
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn z_clock_elapsed_us(time: *const u64) -> core::ffi::c_ulong {
+pub extern "C" fn z_clock_elapsed_us(time: *const usize) -> core::ffi::c_ulong {
     let start = unsafe { *time };
-    let elapsed_ms = clock_ms().wrapping_sub(start);
+    let now = clock_ms() as usize;
+    let elapsed_ms = now.wrapping_sub(start);
     (elapsed_ms * 1000) as core::ffi::c_ulong
 }
 
 /// unsigned long z_clock_elapsed_ms(z_clock_t *time)
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn z_clock_elapsed_ms(time: *const u64) -> core::ffi::c_ulong {
+pub extern "C" fn z_clock_elapsed_ms(time: *const usize) -> core::ffi::c_ulong {
     let start = unsafe { *time };
-    clock_ms().wrapping_sub(start) as core::ffi::c_ulong
+    let now = clock_ms() as usize;
+    now.wrapping_sub(start) as core::ffi::c_ulong
 }
 
 /// unsigned long z_clock_elapsed_s(z_clock_t *time)
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn z_clock_elapsed_s(time: *const u64) -> core::ffi::c_ulong {
+pub extern "C" fn z_clock_elapsed_s(time: *const usize) -> core::ffi::c_ulong {
     let start = unsafe { *time };
-    let elapsed_ms = clock_ms().wrapping_sub(start);
+    let now = clock_ms() as usize;
+    let elapsed_ms = now.wrapping_sub(start);
     (elapsed_ms / 1000) as core::ffi::c_ulong
 }
 
 /// void z_clock_advance_us(z_clock_t *clock, unsigned long duration)
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn z_clock_advance_us(clock: *mut u64, duration: core::ffi::c_ulong) {
+pub extern "C" fn z_clock_advance_us(clock: *mut usize, duration: core::ffi::c_ulong) {
     unsafe {
-        *clock += (duration as u64).div_ceil(1000);
+        *clock = (*clock).wrapping_add((duration as usize).div_ceil(1000));
     }
 }
 
 /// void z_clock_advance_ms(z_clock_t *clock, unsigned long duration)
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn z_clock_advance_ms(clock: *mut u64, duration: core::ffi::c_ulong) {
+pub extern "C" fn z_clock_advance_ms(clock: *mut usize, duration: core::ffi::c_ulong) {
     unsafe {
-        *clock += duration as u64;
+        *clock = (*clock).wrapping_add(duration as usize);
     }
 }
 
 /// void z_clock_advance_s(z_clock_t *clock, unsigned long duration)
 #[unsafe(no_mangle)]
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-pub extern "C" fn z_clock_advance_s(clock: *mut u64, duration: core::ffi::c_ulong) {
+pub extern "C" fn z_clock_advance_s(clock: *mut usize, duration: core::ffi::c_ulong) {
     unsafe {
-        *clock += duration as u64 * 1000;
+        *clock = (*clock).wrapping_add(duration as usize * 1000);
     }
 }
 
