@@ -13,7 +13,7 @@ Lightweight ROS 2 client for embedded real-time systems (Zephyr, FreeRTOS, NuttX
 ```
 nano-ros/
 ├── packages/
-│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c
+│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp, nros-cpp-ffi
 │   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
 │   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
 │   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-esp32, nros-esp32-qemu, nros-stm32f4
@@ -168,6 +168,17 @@ See [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) for CMake int
 
 **cbindgen header generation:** C headers are auto-generated from Rust `#[repr(C)]` types by cbindgen v0.29 during `cargo build`. The generated `nros_generated.h` is included by thin per-module header stubs. All struct fields on `#[repr(C)]` types must be `pub` for cbindgen to include them. `visibility.h`, `platform.h`, and `types.h` (for `nros_service_type_t`) remain hand-written. Platform FFI imports in `platform.rs` use `/// cbindgen:ignore` to avoid conflicts with `static inline` definitions.
 
+### C++ API
+See [docs/guides/cpp-api.md](docs/guides/cpp-api.md) for the getting started guide.
+
+`nros-cpp` is a freestanding C++14 header-only library wrapping Rust `nros-node` directly via typed `extern "C"` FFI through `nros-cpp-ffi`. Mirrors rclcpp naming (`Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`). Error handling via `nros::Result` + `NROS_TRY` macro.
+
+**Message codegen:** `cargo nano-ros generate-cpp` or CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)`. Generated types use ROS 2 standard namespaces (e.g., `std_msgs::msg::Int32`).
+
+**Optional std mode:** Define `NROS_CPP_STD` for `std::string`, `std::function`, and `std::chrono` convenience overloads. Not required — freestanding mode uses `const char*`, C function pointers, and integer milliseconds.
+
+**Zephyr integration:** `CONFIG_NROS_CPP_API=y` + `nros_generate_interfaces(... LANGUAGE CPP)`.
+
 ### Platform Backends
 Three orthogonal axes (NEVER cross-imply):
 - **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
@@ -212,7 +223,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 61 | FFI reentrancy guards (zpico + XRCE critical sections) | Complete |
 | 62 | Event-driven async waking (AtomicWaker) | Complete |
 | 63 | RTIC integration (examples + QEMU testing) | In Progress (63.1–63.10 done) |
-| 66 | C++ API (`nros-cpp`) | In Progress (66.1–66.10 done) |
+| 66 | C++ API (`nros-cpp`) | Complete |
 
 ## Quick Reference
 
