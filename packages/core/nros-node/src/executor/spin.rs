@@ -1412,10 +1412,20 @@ where
 
         let ns: &str = &self.namespace;
         let nn: &str = &self.node_name;
-        let get_handle =
-            create_param_srv::<GetParameters, S>(&mut self.session, node_fqn, ns, nn, "get_parameters")?;
-        let set_handle =
-            create_param_srv::<SetParameters, S>(&mut self.session, node_fqn, ns, nn, "set_parameters")?;
+        let get_handle = create_param_srv::<GetParameters, S>(
+            &mut self.session,
+            node_fqn,
+            ns,
+            nn,
+            "get_parameters",
+        )?;
+        let set_handle = create_param_srv::<SetParameters, S>(
+            &mut self.session,
+            node_fqn,
+            ns,
+            nn,
+            "set_parameters",
+        )?;
         let set_atomic_handle = create_param_srv::<SetParametersAtomically, S>(
             &mut self.session,
             node_fqn,
@@ -1423,8 +1433,13 @@ where
             nn,
             "set_parameters_atomically",
         )?;
-        let list_handle =
-            create_param_srv::<ListParameters, S>(&mut self.session, node_fqn, ns, nn, "list_parameters")?;
+        let list_handle = create_param_srv::<ListParameters, S>(
+            &mut self.session,
+            node_fqn,
+            ns,
+            nn,
+            "list_parameters",
+        )?;
         let desc_handle = create_param_srv::<DescribeParameters, S>(
             &mut self.session,
             node_fqn,
