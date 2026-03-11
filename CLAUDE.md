@@ -30,7 +30,7 @@ nano-ros/
 ├── tests/              # Shell-based test scripts
 ├── docs/               # Guides, reference, design, roadmap
 ├── zephyr/             # Zephyr module (Kconfig, CMakeLists.txt, cmake/)
-└── CMakeLists.txt      # Top-level CMake (Corrosion, nros-c + codegen)
+└── CMakeLists.txt      # Top-level CMake (Corrosion, nros-c + nros-cpp + codegen)
 ```
 
 ## Build Commands

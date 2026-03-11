@@ -47,4 +47,5 @@
 - [Formal Verification](./advanced/verification.md)
 - [Real-Time Analysis](./advanced/realtime-analysis.md)
 - [Safety](./advanced/safety.md)
+- [Platform Porting Pitfalls](./advanced/platform-porting-pitfalls.md)
 - [Contributing](./advanced/contributing.md)
