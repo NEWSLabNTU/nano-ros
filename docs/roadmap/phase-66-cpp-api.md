@@ -38,7 +38,7 @@ See [docs/design/cpp-api-design.md](../design/cpp-api-design.md) for the full de
 - [x] 66.8 — Timer and GuardCondition
 - [x] 66.9 — Executor and Node-centric pattern
 - [x] 66.10 — Examples (Linux native)
-- [ ] 66.11 — Examples (embedded targets)
+- [x] 66.11 — Examples (embedded targets)
 - [ ] 66.12 — Integration tests
 - [ ] 66.13 — Optional `std` mode conveniences
 - [ ] 66.14 — Documentation
@@ -254,14 +254,19 @@ Create C++ examples that build and run on Linux (native, no RTOS).
 
 ### 66.11 — Examples (embedded targets)
 
-Port C++ examples to at least one embedded target.
+Port C++ examples to Zephyr RTOS (native_sim). Zephyr handles `-fno-exceptions -fno-rtti`
+automatically via `CONFIG_CPLUSPLUS=y`.
 
 **Scope**:
-- Pick one target: QEMU ARM bare-metal or ThreadX Linux simulation
-- Demonstrate freestanding C++ (`-ffreestanding -fno-exceptions -fno-rtti`)
-- Talker + listener examples minimum
+- Target: Zephyr RTOS on native_sim/native/64
+- `CONFIG_NROS_CPP_API=y` Kconfig choice (alongside C and Rust API)
+- `nros_generate_interfaces(... LANGUAGE CPP)` in Zephyr CMake (with auto-discovery)
+- Generalized `nros_cargo_build()` target naming (works for nros-c and nros-cpp-ffi)
+- Talker + listener examples using nros C++ API
 
-**Files**: `examples/<target>/cpp/zenoh/{talker,listener}/`
+**Files**: `examples/zephyr/cpp/zenoh/{talker,listener}/`, `zephyr/Kconfig`,
+`zephyr/CMakeLists.txt`, `zephyr/cmake/nros_cargo_build.cmake`,
+`zephyr/cmake/nros_generate_interfaces.cmake`
 
 ### 66.12 — Integration tests
 

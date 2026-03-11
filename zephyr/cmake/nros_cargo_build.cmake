@@ -95,7 +95,8 @@ endfunction()
 #   PACKAGE  - Cargo package name (e.g., "nros-c")
 #   FEATURES - Comma-separated feature list (e.g., "rmw-zenoh,platform-zephyr")
 #
-# Creates target: nros_c_cargo (imported static library)
+# Creates target: <pkg_stem>_cargo (imported static library)
+#   e.g., nros-c → nros_c_cargo, nros-cpp-ffi → nros_cpp_ffi_cargo
 # =============================================================================
 function(nros_cargo_build)
     cmake_parse_arguments(ARG "" "PACKAGE;FEATURES" "" ${ARGN})
@@ -169,11 +170,15 @@ function(nros_cargo_build)
         VERBATIM
     )
 
-    add_custom_target(nros_c_cargo_build DEPENDS ${LIB_PATH})
+    # Derive target name from package: nros-c → nros_c_cargo
+    string(REPLACE "-" "_" _target_stem ${ARG_PACKAGE})
+    set(_target_name "${_target_stem}_cargo")
 
-    add_library(nros_c_cargo STATIC IMPORTED GLOBAL)
-    set_target_properties(nros_c_cargo PROPERTIES
+    add_custom_target(${_target_name}_build DEPENDS ${LIB_PATH})
+
+    add_library(${_target_name} STATIC IMPORTED GLOBAL)
+    set_target_properties(${_target_name} PROPERTIES
         IMPORTED_LOCATION ${LIB_PATH}
     )
-    add_dependencies(nros_c_cargo nros_c_cargo_build)
+    add_dependencies(${_target_name} ${_target_name}_build)
 endfunction()

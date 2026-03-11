@@ -425,6 +425,24 @@ build-zephyr-c:
     west build -b native_sim/native/64 -d build-c-listener -p auto nros/examples/zephyr/c/zenoh/listener
     echo "Zephyr C examples built successfully!"
 
+# Build Zephyr C++ examples
+build-zephyr-cpp:
+    #!/usr/bin/env bash
+    set -e
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if [ ! -d "$WORKSPACE/zephyr" ]; then
+        echo "Error: Zephyr workspace not found at $WORKSPACE"
+        echo "Run: ./scripts/zephyr/setup.sh"
+        exit 1
+    fi
+    echo "Building Zephyr C++ examples in $WORKSPACE..."
+    cd "$WORKSPACE"
+    echo "  Building zephyr/cpp/zenoh/talker -> build-cpp-talker/"
+    west build -b native_sim/native/64 -d build-cpp-talker -p auto nros/examples/zephyr/cpp/zenoh/talker
+    echo "  Building zephyr/cpp/zenoh/listener -> build-cpp-listener/"
+    west build -b native_sim/native/64 -d build-cpp-listener -p auto nros/examples/zephyr/cpp/zenoh/listener
+    echo "Zephyr C++ examples built successfully!"
+
 # Build Zephyr XRCE examples (Rust + C for XRCE-DDS backend)
 build-zephyr-xrce:
     #!/usr/bin/env bash
@@ -448,14 +466,14 @@ build-zephyr-xrce:
     echo "Zephyr XRCE examples built successfully!"
 
 # Build all Zephyr examples (Rust + C, zenoh + XRCE)
-build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-xrce
+build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-cpp build-zephyr-xrce
     @echo "All Zephyr examples built!"
 
 # Clean Zephyr build directories
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-cpp-talker" "$WORKSPACE/build-cpp-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -1854,6 +1872,7 @@ zephyr-help:
     @echo "Build examples:"
     @echo "  just build-zephyr           # Build Rust zenoh Zephyr examples"
     @echo "  just build-zephyr-c         # Build C zenoh Zephyr examples"
+    @echo "  just build-zephyr-cpp       # Build C++ zenoh Zephyr examples"
     @echo "  just build-zephyr-xrce      # Build XRCE Zephyr examples (Rust + C)"
     @echo "  just build-zephyr-all       # Build all Zephyr examples"
     @echo "  just rebuild-zephyr         # Clean and rebuild"

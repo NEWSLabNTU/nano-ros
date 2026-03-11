@@ -8,7 +8,7 @@
 #define NROS_CPP_FIXED_STRING_HPP
 
 #include <cstddef>
-#include <cstring>
+#include <string.h>
 
 namespace nros {
 
@@ -61,7 +61,7 @@ template <size_t N> struct FixedString {
     /// Compare with a C string.
     bool operator==(const char* s) const {
         if (s == nullptr) return data[0] == '\0';
-        return std::strncmp(data, s, N) == 0;
+        return strncmp(data, s, N) == 0;
     }
 
     bool operator!=(const char* s) const { return !(*this == s); }
