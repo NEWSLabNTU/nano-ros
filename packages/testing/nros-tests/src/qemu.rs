@@ -372,6 +372,40 @@ pub fn parse_test_results(output: &str) -> (usize, usize) {
     (passed, failed)
 }
 
+/// Clean up stale TCP connections from previous QEMU test runs.
+///
+/// When a QEMU process is SIGKILL'd, the host kernel's TCP connections to
+/// the QEMU IPs (192.0.3.10, 192.0.3.11) get stuck in FIN-WAIT-1 because
+/// the FIN can never be ACK'd (the peer is dead). These persist for minutes
+/// and cause 4-tuple collisions when new QEMU instances connect with the
+/// same source port, resulting in `ConnectionFailed`.
+///
+/// This function destroys those stale sockets using `ss -K` (which doesn't
+/// require root). Combined with randomized smoltcp ephemeral ports, this
+/// prevents TCP connection failures between sequential E2E tests.
+///
+/// Note: orphaned QEMU/zenohd processes are already handled by
+/// `PR_SET_PDEATHSIG(SIGKILL)` (kills child when test process dies) and
+/// `ZenohRouter::start()` → `kill_listeners_on_port()`.
+pub fn cleanup_tap_network() {
+    // Kill ALL stale TCP connections to QEMU IPs (192.0.3.10, 192.0.3.11).
+    //
+    // When QEMU is SIGKILL'd, the host-side TCP connections get stuck in
+    // FIN-WAIT-1 (FIN sent but never ACK'd). These persist for minutes and
+    // cause 4-tuple collisions when new QEMU instances connect with the
+    // same source port (smoltcp reuses 49152), resulting in ConnectionFailed.
+    for ip in &["192.0.3.10", "192.0.3.11"] {
+        let _ = std::process::Command::new("ss")
+            .args(["-K", "dst", ip])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+
+    // Wait for kernel to fully destroy the sockets and settle bridge state
+    std::thread::sleep(Duration::from_secs(1));
+}
+
 /// Check if the QEMU TAP bridge network is available
 ///
 /// Verifies that the `qemu-br` bridge and at least `tap-qemu0` + `tap-qemu1`

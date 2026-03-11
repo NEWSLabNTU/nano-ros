@@ -15,8 +15,8 @@ use nros_tests::fixtures::{
     QemuProcess, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
     build_qemu_rtic_action_client, build_qemu_rtic_action_server, build_qemu_rtic_listener,
     build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
-    build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, parse_test_results,
-    qemu_binary, require_tap_bridge, require_zenoh_pico_arm,
+    build_qemu_wcet_bench, cleanup_tap_network, is_arm_toolchain_available, is_qemu_available,
+    parse_test_results, qemu_binary, require_tap_bridge, require_zenoh_pico_arm,
 };
 use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
 use rstest::rstest;
@@ -592,6 +592,9 @@ fn test_qemu_rtic_pubsub_e2e() {
         return;
     }
 
+    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
+    cleanup_tap_network();
+
     // Build both binaries
     let talker_bin = build_qemu_rtic_talker().expect("Failed to build rtic-talker");
     let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
@@ -697,6 +700,9 @@ fn test_qemu_rtic_action_client_builds() {
 // RTIC QEMU Service/Action Networked Tests (MPS2-AN385 + LAN9118 + zenohd)
 // =============================================================================
 
+/// Service E2E test for RTIC on QEMU.
+///
+/// Tests 4 service calls (AddTwoInts) between server and client QEMU instances.
 #[test]
 fn test_qemu_rtic_service_e2e() {
     require_arm_toolchain();
@@ -706,6 +712,9 @@ fn test_qemu_rtic_service_e2e() {
     if !require_zenoh_pico_arm() {
         return;
     }
+
+    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
+    cleanup_tap_network();
 
     // Build both binaries
     let server_bin = build_qemu_rtic_service_server().expect("Failed to build rtic-service-server");
@@ -719,8 +728,9 @@ fn test_qemu_rtic_service_e2e() {
     let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
         .expect("Failed to start server QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(5));
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect + queryable discovery
+    // Services need longer than pub/sub because zenoh queryable discovery takes time
+    std::thread::sleep(Duration::from_secs(8));
 
     // Start client QEMU
     eprintln!("Starting RTIC service client QEMU on tap-qemu1...");
@@ -729,7 +739,7 @@ fn test_qemu_rtic_service_e2e() {
 
     // Wait for client to complete (it exits after 4 service calls)
     let client_output = client
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output(Duration::from_secs(90))
         .unwrap_or_default();
 
     // Collect server output
@@ -758,6 +768,9 @@ fn test_qemu_rtic_service_e2e() {
     );
 }
 
+/// Action E2E test for RTIC on QEMU.
+///
+/// Tests Fibonacci action (goal, feedback, result) between server and client QEMU instances.
 #[test]
 fn test_qemu_rtic_action_e2e() {
     require_arm_toolchain();
@@ -767,6 +780,9 @@ fn test_qemu_rtic_action_e2e() {
     if !require_zenoh_pico_arm() {
         return;
     }
+
+    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
+    cleanup_tap_network();
 
     // Build both binaries
     let server_bin = build_qemu_rtic_action_server().expect("Failed to build rtic-action-server");
