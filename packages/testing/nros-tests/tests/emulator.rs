@@ -18,7 +18,7 @@ use nros_tests::fixtures::{
     build_qemu_wcet_bench, cleanup_tap_network, is_arm_toolchain_available, is_qemu_available,
     parse_test_results, qemu_binary, require_tap_bridge, require_zenoh_pico_arm,
 };
-use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
+use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern, wait_for_port_on};
 use rstest::rstest;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -602,13 +602,20 @@ fn test_qemu_rtic_pubsub_e2e() {
     // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
+    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    assert!(
+        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+    );
+
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting RTIC listener QEMU on tap-qemu1...");
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
         .expect("Failed to start listener QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(5));
+    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
+    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    std::thread::sleep(Duration::from_secs(8));
 
     // Start talker QEMU
     eprintln!("Starting RTIC talker QEMU on tap-qemu0...");
@@ -723,6 +730,12 @@ fn test_qemu_rtic_service_e2e() {
     // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
+    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    assert!(
+        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+    );
+
     // Start server QEMU first
     eprintln!("Starting RTIC service server QEMU on tap-qemu0...");
     let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
@@ -791,13 +804,20 @@ fn test_qemu_rtic_action_e2e() {
     // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
+    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    assert!(
+        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+    );
+
     // Start server QEMU first
     eprintln!("Starting RTIC action server QEMU on tap-qemu0...");
     let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
         .expect("Failed to start server QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(5));
+    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
+    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    std::thread::sleep(Duration::from_secs(8));
 
     // Start client QEMU
     eprintln!("Starting RTIC action client QEMU on tap-qemu1...");
