@@ -52,18 +52,49 @@ pub fn set_new_process_group(command: &mut Command) -> &mut Command {
     }
 }
 
-/// Kill an entire process group given a child handle.
+/// Kill an entire process group immediately with SIGKILL.
 ///
-/// Sends SIGKILL to the process group (negative PID), then waits for
-/// the direct child to be reaped.
+/// Use for processes that don't need graceful shutdown (e.g., QEMU emulators).
+/// For processes with TCP state (zenohd), use [`graceful_kill_process_group`].
 #[cfg(unix)]
 pub fn kill_process_group(handle: &mut Child) {
     let pid = handle.id() as libc::pid_t;
-    // Kill the entire process group
     unsafe {
         libc::kill(-pid, libc::SIGKILL);
     }
-    // Reap the direct child to avoid zombies
+    let _ = handle.wait();
+}
+
+/// Kill a process group gracefully: SIGTERM first, then SIGKILL after timeout.
+///
+/// Sends SIGTERM to allow graceful shutdown (TCP cleanup, etc.),
+/// waits up to 2 seconds, then SIGKILL if still alive. This prevents
+/// stale TCP TIME_WAIT entries from blocking subsequent test connections.
+#[cfg(unix)]
+pub fn graceful_kill_process_group(handle: &mut Child) {
+    let pid = handle.id() as libc::pid_t;
+
+    // Try graceful shutdown first (SIGTERM)
+    unsafe {
+        libc::kill(-pid, libc::SIGTERM);
+    }
+
+    // Wait up to 2s for graceful exit
+    let start = std::time::Instant::now();
+    loop {
+        match handle.try_wait() {
+            Ok(Some(_)) => return, // exited cleanly
+            Ok(None) if start.elapsed() < Duration::from_secs(2) => {
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            _ => break, // timeout or error → force kill
+        }
+    }
+
+    // Force kill if SIGTERM didn't work
+    unsafe {
+        libc::kill(-pid, libc::SIGKILL);
+    }
     let _ = handle.wait();
 }
 
@@ -72,6 +103,12 @@ pub fn kill_process_group(handle: &mut Child) {
 pub fn kill_process_group(handle: &mut Child) {
     let _ = handle.kill();
     let _ = handle.wait();
+}
+
+/// Fallback for non-unix: same as kill_process_group.
+#[cfg(not(unix))]
+pub fn graceful_kill_process_group(handle: &mut Child) {
+    kill_process_group(handle);
 }
 
 /// Managed process with automatic cleanup

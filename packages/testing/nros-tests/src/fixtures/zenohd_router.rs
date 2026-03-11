@@ -2,7 +2,7 @@
 //!
 //! Provides automatic startup and cleanup of the zenoh router daemon.
 
-use crate::process::kill_process_group;
+use crate::process::graceful_kill_process_group;
 use crate::{TestError, TestResult, wait_for_port};
 use std::net::TcpStream;
 use std::process::Child;
@@ -206,7 +206,7 @@ impl ZenohRouter {
 
 impl Drop for ZenohRouter {
     fn drop(&mut self) {
-        kill_process_group(&mut self.handle);
+        graceful_kill_process_group(&mut self.handle);
     }
 }
 
