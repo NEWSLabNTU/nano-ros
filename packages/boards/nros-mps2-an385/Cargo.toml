@@ -12,28 +12,38 @@ name = "nros_mps2_an385"
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
 zpico-platform-mps2-an385 = { path = "../../zpico/zpico-platform-mps2-an385" }
 
-# TCP link layer via smoltcp
-zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
-# LAN9118 Ethernet driver for QEMU MPS2-AN385
-lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp" }
-
-# Embedded dependencies
-cortex-m = "0.7"
-cortex-m-rt = "0.7"
-smoltcp = { version = "0.12", default-features = false, features = [
+# TCP link layer via smoltcp (ethernet only)
+zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
+# LAN9118 Ethernet driver for QEMU MPS2-AN385 (ethernet only)
+lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp", optional = true }
+# smoltcp network stack (ethernet only)
+smoltcp = { version = "0.12", default-features = false, optional = true, features = [
     "medium-ethernet",
     "proto-ipv4",
     "socket-tcp",
     "socket-udp",
 ] }
 
+# Serial link layer (serial only)
+zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
+# CMSDK UART driver (serial only)
+cmsdk-uart = { path = "../../drivers/cmsdk-uart", optional = true }
+
+# Embedded dependencies
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+
 # Semihosting for QEMU output
 cortex-m-semihosting = "0.5"
 panic-semihosting = "0.6"
 
 [features]
-default = []
-# Docker networking mode (container with NAT)
+default = ["ethernet"]
+# Ethernet transport via LAN9118 + smoltcp
+ethernet = ["dep:zpico-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp"]
+# Serial transport via CMSDK UART
+serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
+# Docker networking mode (container with NAT, ethernet only)
 docker = []
-# TLS support (requires mbedTLS, increases heap)
+# TLS support (requires mbedTLS, increases heap, ethernet only)
 link-tls = ["zpico-smoltcp/link-tls", "zpico-platform-mps2-an385/link-tls"]

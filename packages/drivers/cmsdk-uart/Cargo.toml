@@ -1,0 +1,12 @@
+[package]
+name = "cmsdk-uart"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "CMSDK APB UART driver for ARM Cortex-M (MPS2-AN385 and similar)"
+
+[lib]
+name = "cmsdk_uart"
+
+[dependencies]
+zpico-serial = { path = "../../zpico/zpico-serial" }

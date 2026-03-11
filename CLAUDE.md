@@ -226,7 +226,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 62 | Event-driven async waking (AtomicWaker) | Complete |
 | 63 | RTIC integration (examples + QEMU testing) | In Progress (63.1–63.10 done) |
 | 66 | C++ API (`nros-cpp`) | Complete |
-| 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.3 done) |
+| 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.5 done) |
 
 ## Quick Reference
 

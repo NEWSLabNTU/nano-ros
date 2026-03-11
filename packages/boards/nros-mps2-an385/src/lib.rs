@@ -2,15 +2,22 @@
 //!
 //! Board crate for running nros on the MPS2-AN385 (Cortex-M3 + LAN9118).
 //!
-//! Handles hardware and network initialization. Users call `run()` with
+//! Handles hardware and transport initialization. Users call `run()` with
 //! a closure that receives `&Config` and creates an `Executor` for full
 //! API access (publishers, subscriptions, services, actions, timers).
+//!
+//! # Transport Features
+//!
+//! - `ethernet` (default) — LAN9118 + smoltcp TCP/IP stack
+//! - `serial` — CMSDK UART via zpico-serial
+//!
+//! At least one transport must be enabled.
 //!
 //! # Architecture
 //!
 //! This crate depends on `zpico-platform-mps2-an385` for system primitives
-//! (zenoh-pico FFI symbols, clock, memory, RNG) and `zpico-smoltcp` for
-//! TCP/IP socket management.
+//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `zpico-smoltcp`
+//! (Ethernet) or `zpico-serial` (serial) for the link layer.
 
 #![no_std]
 

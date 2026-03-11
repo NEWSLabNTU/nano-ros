@@ -1,41 +1,69 @@
 //! Platform initialization and `run()` entry point for QEMU bare-metal.
 //!
-//! Uses `zpico-smoltcp` for socket management and `lan9118-smoltcp` for Ethernet.
+//! Uses `zpico-smoltcp` for socket management and `lan9118-smoltcp` for
+//! Ethernet when the `ethernet` feature is enabled, or `zpico-serial` +
+//! `cmsdk-uart` for UART serial when the `serial` feature is enabled.
+
+#[cfg(not(any(feature = "ethernet", feature = "serial")))]
+compile_error!("Enable at least one transport: `ethernet` or `serial`");
 
 use core::mem::MaybeUninit;
 
 use cortex_m_semihosting::hprintln;
-use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
-use smoltcp::iface::{Interface, SocketSet};
-use smoltcp::phy::Device;
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-use zpico_smoltcp::SmoltcpBridge;
 
-use zpico_platform_mps2_an385::{clock, network, random};
+use zpico_platform_mps2_an385::random;
+
+#[cfg(feature = "ethernet")]
+use zpico_platform_mps2_an385::{clock, network};
 
 use crate::config::Config;
-use crate::error::{Error, Result};
 use crate::exit_failure;
 
-// Static storage for network objects (initialized by init_hardware, must
-// outlive the function call so set_network_state pointers remain valid).
+#[cfg(feature = "ethernet")]
+use crate::error::{Error, Result};
+
+// ---- Ethernet static storage ----
+
+#[cfg(feature = "ethernet")]
+use lan9118_smoltcp::{Config as EthConfig, Lan9118, MPS2_AN385_BASE};
+#[cfg(feature = "ethernet")]
+use smoltcp::iface::{Interface, SocketSet};
+#[cfg(feature = "ethernet")]
+use smoltcp::phy::Device;
+#[cfg(feature = "ethernet")]
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
+#[cfg(feature = "ethernet")]
+use zpico_smoltcp::SmoltcpBridge;
+
+#[cfg(feature = "ethernet")]
 static mut ETH_DEVICE: MaybeUninit<Lan9118> = MaybeUninit::uninit();
+#[cfg(feature = "ethernet")]
 static mut NET_IFACE: MaybeUninit<Interface> = MaybeUninit::uninit();
+#[cfg(feature = "ethernet")]
 static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 
+// ---- Serial static storage ----
+
+#[cfg(feature = "serial")]
+static mut UART_DEVICE: MaybeUninit<cmsdk_uart::CmsdkUart> = MaybeUninit::uninit();
+
+// ---- Ethernet helpers ----
+
+#[cfg(feature = "ethernet")]
 /// Trait for Ethernet devices that can be used with the platform
 trait EthernetDevice: Device {
     /// Get the MAC address
     fn mac_address(&self) -> [u8; 6];
 }
 
-// Implement EthernetDevice for Lan9118
+#[cfg(feature = "ethernet")]
 impl EthernetDevice for Lan9118 {
     fn mac_address(&self) -> [u8; 6] {
         Lan9118::mac_address(self)
     }
 }
 
+#[cfg(feature = "ethernet")]
 /// Helper to create an smoltcp interface from an Ethernet device
 fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
     let mac = eth.mac_address();
@@ -45,12 +73,14 @@ fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
     Interface::new(iface_config, eth, now)
 }
 
+#[cfg(feature = "ethernet")]
 /// Helper to create a socket set with pre-allocated storage
 unsafe fn create_socket_set() -> SocketSet<'static> {
     let storage = unsafe { zpico_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
 }
 
+#[cfg(feature = "ethernet")]
 /// Create LAN9118 Ethernet driver for QEMU MPS2-AN385
 fn create_ethernet(mac: [u8; 6]) -> Result<Lan9118> {
     let config = EthConfig {
@@ -64,6 +94,7 @@ fn create_ethernet(mac: [u8; 6]) -> Result<Lan9118> {
     Ok(eth)
 }
 
+#[cfg(feature = "ethernet")]
 /// Initialize network stack (IP, gateway, smoltcp bridge, sockets)
 fn init_network<D: EthernetDevice + 'static>(
     eth: &mut D,
@@ -120,32 +151,12 @@ fn init_network<D: EthernetDevice + 'static>(
     Ok(())
 }
 
-/// Initialize all MPS2-AN385 hardware and the network stack.
-///
-/// Sets up the DWT cycle counter, LAN9118 Ethernet, smoltcp interface,
-/// and the zenoh-pico transport bridge. After calling this, you can
-/// create an `Executor` and start using nano-ros.
-///
-/// This is automatically called by [`run()`]. Call it directly only
-/// when using an alternative execution model (e.g., RTIC) that needs
-/// hardware initialized before returning control to the framework.
-///
-/// # Panics
-///
-/// Panics if hardware initialization fails (Ethernet, network stack).
-/// Must be called exactly once before any nros operations.
+// ---- Init functions ----
+
+/// Initialize Ethernet transport.
+#[cfg(feature = "ethernet")]
 #[allow(static_mut_refs)]
-pub fn init_hardware(config: &Config) {
-    // Enable DWT cycle counter for timing measurements
-    zpico_platform_mps2_an385::timing::CycleCounter::enable();
-
-    hprintln!("");
-    hprintln!("========================================");
-    hprintln!("  nros QEMU Platform");
-    hprintln!("========================================");
-    hprintln!("");
-
-    // Initialize Ethernet driver
+fn init_ethernet(config: &Config) {
     hprintln!("Initializing LAN9118 Ethernet...");
     let eth = match create_ethernet(config.mac) {
         Ok(e) => e,
@@ -155,7 +166,7 @@ pub fn init_hardware(config: &Config) {
         }
     };
 
-    // Move into static storage so pointers remain valid after this function returns
+    // Move into static storage so pointers remain valid
     unsafe { ETH_DEVICE.write(eth) };
     let eth = unsafe { ETH_DEVICE.assume_init_mut() };
 
@@ -195,7 +206,62 @@ pub fn init_hardware(config: &Config) {
         exit_failure();
     }
 
-    hprintln!("Network ready.");
+    hprintln!("Ethernet ready.");
+}
+
+/// Initialize serial (UART) transport.
+#[cfg(feature = "serial")]
+#[allow(static_mut_refs)]
+fn init_serial(config: &Config) {
+    hprintln!("Initializing CMSDK UART serial...");
+    hprintln!("  Base: 0x{:08x}", config.uart_base);
+    hprintln!("  Baud: {}", config.baudrate);
+
+    let mut uart = cmsdk_uart::CmsdkUart::new(config.uart_base);
+    uart.enable();
+
+    // Move into static storage
+    unsafe {
+        UART_DEVICE.write(uart);
+        zpico_serial::register_port(0, UART_DEVICE.assume_init_mut());
+    }
+
+    // Seed RNG with uart_base to avoid zenoh ID collisions
+    random::seed(config.uart_base as u32);
+
+    hprintln!("Serial ready.");
+}
+
+/// Initialize all MPS2-AN385 hardware and the transport stack.
+///
+/// Sets up the DWT cycle counter and initializes the selected transport
+/// (Ethernet and/or serial depending on enabled features). After calling
+/// this, you can create an `Executor` and start using nano-ros.
+///
+/// This is automatically called by [`run()`]. Call it directly only
+/// when using an alternative execution model (e.g., RTIC) that needs
+/// hardware initialized before returning control to the framework.
+///
+/// # Panics
+///
+/// Panics if hardware initialization fails (Ethernet, network stack).
+/// Must be called exactly once before any nros operations.
+pub fn init_hardware(config: &Config) {
+    // Enable DWT cycle counter for timing measurements
+    zpico_platform_mps2_an385::timing::CycleCounter::enable();
+
+    hprintln!("");
+    hprintln!("========================================");
+    hprintln!("  nros QEMU Platform");
+    hprintln!("========================================");
+    hprintln!("");
+
+    #[cfg(feature = "ethernet")]
+    init_ethernet(config);
+
+    #[cfg(feature = "serial")]
+    init_serial(config);
+
     hprintln!("");
 }
 

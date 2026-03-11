@@ -4,7 +4,7 @@
 board crates so the communication interface (Ethernet, serial, etc.) is selected via Cargo
 features rather than hardcoded.
 
-**Status**: In Progress (67.1–67.3 done)
+**Status**: In Progress (67.1–67.5 done)
 
 **Priority**: Medium
 
@@ -286,8 +286,8 @@ Then connect zenohd to the PTY device.
 - [x] 67.1 — Create `zpico-serial` crate with `SerialPort` trait and FFI symbols
 - [x] 67.2 — Implement COBS staging buffers and port table in `zpico-serial`
 - [x] 67.3 — Wire `link-serial` feature through zpico-sys build.rs for bare-metal
-- [ ] 67.4 — Add MPS2-AN385 UART driver (CMSDK UART peripheral)
-- [ ] 67.5 — Feature-gate `nros-mps2-an385`: `ethernet` (default) vs `serial`
+- [x] 67.4 — Add MPS2-AN385 UART driver (CMSDK UART peripheral)
+- [x] 67.5 — Feature-gate `nros-mps2-an385`: `ethernet` (default) vs `serial`
 - [ ] 67.6 — Refactor `Config` with `#[cfg(feature)]` transport fields
 - [ ] 67.7 — QEMU serial example (`examples/qemu-arm-baremetal/rust/zenoh/serial-talker/`)
 - [ ] 67.8 — QEMU serial integration test (zenohd serial plugin + QEMU PTY)
