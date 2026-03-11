@@ -1180,6 +1180,15 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                     let _ = unsafe { (meta.try_process)(data_ptr, delta_ms) };
                 }
             }
+
+            // Parameter services live outside the arena and must be processed
+            // regardless of trigger state, otherwise ROS 2 param queries time out.
+            #[cfg(feature = "param-services")]
+            if let Some(params) = &mut self.params {
+                let crate::parameter_services::ParamState { server, services } = &mut **params;
+                let _ = services.process_services(server);
+            }
+
             return SpinOnceResult::new();
         }
 
@@ -1378,6 +1387,8 @@ where
         fn create_param_srv<Svc: RosService, S: Session>(
             session: &mut S,
             node_fqn: &str,
+            namespace: &str,
+            node_name: &str,
             suffix: &str,
         ) -> Result<S::ServiceServerHandle, NodeError>
         where
@@ -1389,31 +1400,43 @@ where
                 .map_err(|_| NodeError::NameTooLong)?;
             name.push_str("/").map_err(|_| NodeError::NameTooLong)?;
             name.push_str(suffix).map_err(|_| NodeError::NameTooLong)?;
-            let info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH);
+            let mut info = ServiceInfo::new(&name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
+                .with_namespace(namespace);
+            if !node_name.is_empty() {
+                info = info.with_node_name(node_name);
+            }
             session
                 .create_service_server(&info)
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
         }
 
+        let ns: &str = &self.namespace;
+        let nn: &str = &self.node_name;
         let get_handle =
-            create_param_srv::<GetParameters, S>(&mut self.session, node_fqn, "get_parameters")?;
+            create_param_srv::<GetParameters, S>(&mut self.session, node_fqn, ns, nn, "get_parameters")?;
         let set_handle =
-            create_param_srv::<SetParameters, S>(&mut self.session, node_fqn, "set_parameters")?;
+            create_param_srv::<SetParameters, S>(&mut self.session, node_fqn, ns, nn, "set_parameters")?;
         let set_atomic_handle = create_param_srv::<SetParametersAtomically, S>(
             &mut self.session,
             node_fqn,
+            ns,
+            nn,
             "set_parameters_atomically",
         )?;
         let list_handle =
-            create_param_srv::<ListParameters, S>(&mut self.session, node_fqn, "list_parameters")?;
+            create_param_srv::<ListParameters, S>(&mut self.session, node_fqn, ns, nn, "list_parameters")?;
         let desc_handle = create_param_srv::<DescribeParameters, S>(
             &mut self.session,
             node_fqn,
+            ns,
+            nn,
             "describe_parameters",
         )?;
         let types_handle = create_param_srv::<GetParameterTypes, S>(
             &mut self.session,
             node_fqn,
+            ns,
+            nn,
             "get_parameter_types",
         )?;
 
