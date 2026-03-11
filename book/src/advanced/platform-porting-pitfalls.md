@@ -205,8 +205,8 @@ All zenoh components must be the **same version**. A version mismatch between
 zenoh-pico and zenohd causes transport-level failures (`-100`,
 `_Z_ERR_TRANSPORT_TX_FAILED`) that look like network issues.
 
-nros pins everything to **1.6.2**: zenohd (built from submodule), zenoh-pico
-(from `zpico-sys/zenoh-pico/`).
+nros pins zenohd and zenoh-pico to the **same version**. zenohd is built from
+the `scripts/zenohd/zenoh/` submodule; zenoh-pico from `zpico-sys/zenoh-pico/`.
 
 ## ESP32-C3 (RISC-V)
 

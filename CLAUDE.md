@@ -40,7 +40,7 @@ just setup              # Install toolchains, cargo tools, download FreeRTOS/Nut
 just setup-freertos     # Download FreeRTOS kernel + lwIP (included in just setup)
 just setup-nuttx        # Download NuttX RTOS + apps (included in just setup)
 just build              # Generate bindings + build workspace + examples
-just build-zenohd       # Build zenohd 1.6.2 from submodule
+just build-zenohd       # Build zenohd from submodule
 just check              # Format check + clippy
 just quality            # Format + check + test
 just doc                # Generate docs
@@ -136,7 +136,7 @@ Phase docs follow a standard structure:
 ## Key Design Patterns
 
 ### Zenoh Version Unification
-All zenoh components pinned to **1.6.2** (compatible with rmw_zenoh_cpp). zenohd built from `scripts/zenohd/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
+All zenoh components pinned to **1.7.2** (compatible with rmw_zenoh_cpp). zenohd built from `scripts/zenohd/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
 
 ### Rust Edition 2024
 - `unsafe extern "C" { ... }` (extern blocks require `unsafe`)

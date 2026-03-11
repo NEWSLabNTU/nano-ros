@@ -6,11 +6,11 @@ This guide walks you through creating your first nros application in Rust and C.
 
 - [Rust](https://rustup.rs/) (nightly toolchain, edition 2024)
 - [ROS 2 Humble](https://docs.ros.org/en/humble/Installation.html) (for message generation)
-- zenohd 1.6.2 router
+- zenohd router
 
 ### Building zenohd
 
-nros includes zenohd 1.6.2 as a git submodule:
+nros includes zenohd as a git submodule:
 
 ```bash
 git clone https://github.com/jerry73204/nano-ros.git
@@ -19,7 +19,7 @@ just build-zenohd
 # Binary at: ./build/zenohd/zenohd
 ```
 
-Or install zenohd 1.6.2 from [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases).
+Or install a matching zenohd from [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases).
 
 ## Rust
 

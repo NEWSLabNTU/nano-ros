@@ -106,7 +106,7 @@ The zenoh protocol may have changed, causing transport-level incompatibilities.
 
 ### Solution
 
-Upgrade zenoh-pico to match zenohd version. All zenoh components in nros are pinned to version 1.6.2 for compatibility.
+Upgrade zenoh-pico to match zenohd version. All zenoh components in nros are pinned to the same version. Use `just build-zenohd` to build the matching router from the submodule.
 
 **Temporary workaround**: Install an older zenohd version:
 ```bash
