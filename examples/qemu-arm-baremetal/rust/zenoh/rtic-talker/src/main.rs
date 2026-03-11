@@ -99,6 +99,9 @@ mod app {
             }
         }
 
+        // Drain delay: allow last message to propagate through zenohd
+        Mono::delay(2000.millis()).await;
+
         println!("");
         println!("Done publishing 10 messages.");
         nros_mps2_an385::exit_success();
