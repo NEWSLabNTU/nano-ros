@@ -1,5 +1,7 @@
 # Phase 51: Board Crate `run()` API
 
+**Status**: Complete
+
 ## Background
 
 Board crates (`nros-mps2-an385`, `nros-stm32f4`, `nros-esp32`, `nros-esp32-qemu`) currently

@@ -3,7 +3,7 @@
 **Goal**: Enable nano-ros on RTIC (Real-Time Interrupt-driven Concurrency) by documenting the
 usage pattern and completing the board-crate API changes needed to support RTIC's `#[init]` model.
 
-**Status**: In Progress (63.1–63.10 done)
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -970,8 +970,8 @@ Added 4 build tests and 2 E2E tests in `emulator.rs`. Also fixed pre-existing
 - [x] All tasks run at priority 1 (documented as safety requirement)
 - [x] MPS2-AN385 PAC crate compiles for `thumbv7m-none-eabi`
 - [x] RTIC QEMU talker/listener communicate over LAN9118 via zenohd
-- [ ] RTIC QEMU service server/client communicate over LAN9118 via zenohd (blocked by `_z_read_tcp` blocking timeout)
-- [ ] RTIC QEMU action server/client communicate over LAN9118 via zenohd (blocked by `_z_read_tcp` blocking timeout)
+- [x] RTIC QEMU service server/client communicate over LAN9118 via zenohd
+- [x] RTIC QEMU action server/client communicate over LAN9118 via zenohd
 - [x] `just quality` passes
 
 ## Testing

@@ -212,21 +212,12 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 |-------|-------|--------|
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
-| 49 | nros-c thin wrapper migration | Complete |
-| 51 | Board crate `run()` API | In Progress |
-| 53 | UDP + TLS transport support | Complete |
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred, 54.12 remaining) |
 | 55 | NuttX platform support | In Progress (55.1–55.10, 55.12 done, 55.11 remaining) |
-| 56 | Verification refresh | Complete |
-| 57 | Code quality improvements | Complete |
-| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.11 done) |
-| 59 | API documentation (rustdoc + Doxygen) | Complete |
-| 60 | std/alloc feature consistency | Complete |
-| 61 | FFI reentrancy guards (zpico + XRCE critical sections) | Complete |
-| 62 | Event-driven async waking (AtomicWaker) | Complete |
-| 63 | RTIC integration (examples + QEMU testing) | In Progress (63.1–63.10 done) |
-| 66 | C++ API (`nros-cpp`) | Complete |
-| 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.9 done) |
+| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.11 done, 58.12–58.13 remaining) |
+| 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
+| 65 | .env.example + environment docs | In Progress (35/36 done) |
+| 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.9 done, 67.10–67.14 remaining) |
 
 ## Quick Reference
 

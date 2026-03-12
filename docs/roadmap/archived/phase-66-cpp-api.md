@@ -318,24 +318,24 @@ Add `#ifdef NROS_CPP_STD` overloads for hosted environments.
 
 ## Acceptance Criteria
 
-- [ ] `nros-cpp-ffi` crate compiles and exports `extern "C"` functions
-- [ ] C++ header-only library compiles with `-ffreestanding -fno-exceptions -fno-rtti`
-- [ ] `nros::Result` + `NROS_TRY` macro works for error propagation
-- [ ] `nros::Publisher<M>::publish()` sends messages via typed FFI (no type erasure)
-- [ ] `nros::Subscription<M>` receives deserialized messages in typed callback
-- [ ] `nros::Service<S>` and `nros::Client<S>` complete request/response cycle
-- [ ] `nros::ActionServer<A>` and `nros::ActionClient<A>` complete goal lifecycle
-- [ ] `nros::Timer` fires periodic callbacks
-- [ ] `nros::Executor::add_node()` + `spin()` processes all registered entities
-- [ ] `cargo nano-ros generate-cpp` produces valid `.hpp` headers in ROS 2 namespaces
-- [ ] `nano_ros_generate_interfaces(... LANGUAGE CPP)` works in CMake
-- [ ] Generated types use `namespace std_msgs { namespace msg { struct Int32 { ... }; } }` (C++14)
-- [ ] Linux native C++ talker/listener exchange messages over zenohd
-- [ ] Linux native C++ service server/client complete RPC cycle
-- [ ] At least one embedded target compiles and runs C++ examples
-- [ ] `just test-cpp` passes
-- [ ] `just quality` passes with C++ crates in workspace
-- [ ] No STL dependency in freestanding mode (verified by `-ffreestanding` build)
+- [x] `nros-cpp-ffi` crate compiles and exports `extern "C"` functions
+- [x] C++ header-only library compiles with `-ffreestanding -fno-exceptions -fno-rtti`
+- [x] `nros::Result` + `NROS_TRY` macro works for error propagation
+- [x] `nros::Publisher<M>::publish()` sends messages via typed FFI (no type erasure)
+- [x] `nros::Subscription<M>` receives deserialized messages in typed callback
+- [x] `nros::Service<S>` and `nros::Client<S>` complete request/response cycle
+- [x] `nros::ActionServer<A>` and `nros::ActionClient<A>` complete goal lifecycle
+- [x] `nros::Timer` fires periodic callbacks
+- [x] `nros::Executor::add_node()` + `spin()` processes all registered entities
+- [x] `cargo nano-ros generate-cpp` produces valid `.hpp` headers in ROS 2 namespaces
+- [x] `nano_ros_generate_interfaces(... LANGUAGE CPP)` works in CMake
+- [x] Generated types use `namespace std_msgs { namespace msg { struct Int32 { ... }; } }` (C++14)
+- [x] Linux native C++ talker/listener exchange messages over zenohd
+- [x] Linux native C++ service server/client complete RPC cycle
+- [x] At least one embedded target compiles and runs C++ examples
+- [x] `just test-cpp` passes
+- [x] `just quality` passes with C++ crates in workspace
+- [x] No STL dependency in freestanding mode (verified by `-ffreestanding` build)
 
 ## Notes
 
