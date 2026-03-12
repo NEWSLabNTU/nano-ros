@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-nuttx` as a new platform axis value, enabling nros nodes on NuttX via both zenoh-pico and XRCE-DDS backends. Validate on QEMU ARM virt machine (Cortex-A7 + virtio-net) before requiring real hardware.
 
-**Status**: In Progress (55.1–55.10, 55.12 done)
+**Status**: Complete
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -193,7 +193,7 @@ Simpler than FreeRTOS (no separate `FREERTOS_PORT`, `LWIP_DIR`, `FREERTOS_CONFIG
 - [x] 55.8 — Rust zenoh examples (pubsub, service, action)
 - [x] 55.9 — C zenoh examples (pubsub, service, action)
 - [x] 55.10 — Integration tests + `just test-nuttx` recipe
-- [ ] 55.11 — Documentation
+- [x] 55.11 — Documentation
 - [x] 55.12 — E2E network tests (pubsub, service, action over QEMU TAP bridge)
 
 ### 55.1 — Feature flag wiring

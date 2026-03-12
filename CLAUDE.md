@@ -16,14 +16,14 @@ nano-ros/
 │   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp, nros-cpp-ffi
 │   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
 │   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
-│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-esp32, nros-esp32-qemu, nros-stm32f4
+│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-nuttx-qemu-arm, nros-esp32, nros-esp32-qemu, nros-stm32f4
 │   ├── drivers/        # lan9118-smoltcp, lan9118-lwip, openeth-smoltcp
 │   ├── interfaces/     # rcl-interfaces (generated/, checked into git)
 │   ├── testing/        # nros-tests (integration test crate)
 │   ├── verification/   # nros-ghost-types, nros-verification (Verus proofs, excluded from workspace)
 │   ├── reference/      # qemu-smoltcp-bridge
 │   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
-├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
+├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-arm-nuttx, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
 ├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps
 ├── scripts/            # zenohd build, Zephyr setup
 ├── docker/             # QEMU dev environment
@@ -78,6 +78,7 @@ FreeRTOS/NuttX build-time variables are **auto-resolved** by justfile recipes (d
 - `LWIP_DIR` — lwIP source (default: `external/lwip`)
 - `FREERTOS_CONFIG_DIR` — `FreeRTOSConfig.h` + `lwipopts.h` (default: board crate's `config/`)
 - `NUTTX_DIR` — NuttX RTOS source (default: `external/nuttx`)
+- `NUTTX_APPS_DIR` — NuttX apps source (default: `external/nuttx-apps`)
 
 Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
 
@@ -213,7 +214,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred, 54.12 remaining) |
-| 55 | NuttX platform support | In Progress (55.1–55.10, 55.12 done, 55.11 remaining) |
+| 55 | NuttX platform support | Complete |
 | 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.11 done, 58.12–58.13 remaining) |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
