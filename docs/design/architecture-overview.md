@@ -286,10 +286,10 @@ graph LR
         GC["GuardCondition"]
     end
 
-    subgraph EXEC ["Executor (S, MAX_CBS, CB_ARENA)"]
+    subgraph EXEC ["Executor"]
         ARENA["Callback Arena\nflat byte storage\nfor handles + closures"]
         ENTRIES["Dispatch Table\noffset + fn pointers\n(type-erased)"]
-        SESSION["S: Session\nnetwork connection"]
+        SESSION["Session\nnetwork connection"]
         TRIGGER["Trigger\nAny | All | One | Predicate"]
     end
 
@@ -311,9 +311,9 @@ graph LR
     ENTRIES --> DISPATCH
 ```
 
-### Const-Generic Zero-Cost Opt-Out
+### Zero-Cost Opt-Out
 
-When `MAX_CBS = 0` and `CB_ARENA = 0`, the arrays are zero-sized. This means manual-polling code (using `create_node()` + `try_recv()` without callbacks) pays zero overhead for the callback infrastructure.
+When `NROS_EXECUTOR_MAX_CBS=0` and `NROS_EXECUTOR_ARENA_SIZE=0`, the arrays are zero-sized. This means manual-polling code (using `create_node()` + `try_recv()` without callbacks) pays zero overhead for the callback infrastructure.
 
 ### Spin Variants
 

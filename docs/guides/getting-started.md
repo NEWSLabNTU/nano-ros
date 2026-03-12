@@ -345,7 +345,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 
 fn main() {
     let config = ExecutorConfig::from_env().node_name("client");
-    let mut executor: Executor<_> = Executor::open(&config).unwrap();
+    let mut executor = Executor::open(&config).unwrap();
     let mut node = executor.create_node("client").unwrap();
     let mut client = node.create_client::<AddTwoInts>("/add_two_ints").unwrap();
 
@@ -378,7 +378,7 @@ use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 #[tokio::main(flavor = "current_thread")]
 async fn main() {
     let config = ExecutorConfig::from_env().node_name("client");
-    let mut executor: Executor<_> = Executor::open(&config).unwrap();
+    let mut executor = Executor::open(&config).unwrap();
 
     // Create client (owned — no lifetime tied to node or executor)
     let mut client = {
@@ -403,7 +403,7 @@ async fn main() {
 *Zephyr with Embassy (`executor-zephyr` — kernel-backed waking):*
 
 ```rust
-type NrosExecutor = nros::Executor<nros::RmwSession, 0, 0>;
+type NrosExecutor = nros::Executor;
 
 #[embassy_executor::task]
 async fn spin_task(mut exec: NrosExecutor) -> ! {
@@ -413,7 +413,7 @@ async fn spin_task(mut exec: NrosExecutor) -> ! {
 #[embassy_executor::task]
 async fn app_main(spawner: embassy_executor::Spawner) {
     let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut nros_exec = nros::Executor::<_, 0, 0>::open(&config).unwrap();
+    let mut nros_exec = nros::Executor::open(&config).unwrap();
     let mut client = {
         let mut node = nros_exec.create_node("client").unwrap();
         node.create_client::<AddTwoInts>("/add_two_ints").unwrap()

@@ -43,7 +43,7 @@ target_compile_features(nros-cpp INTERFACE cxx_std_14)
 # ---- Install ----
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
     DESTINATION include
-    FILES_MATCHING PATTERN "*.hpp"
+    FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
 install(FILES "$<TARGET_FILE:nros_cpp_ffi-static>"
