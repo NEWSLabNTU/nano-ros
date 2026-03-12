@@ -58,6 +58,12 @@ static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-listener binary
 static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the qemu-serial-talker binary
+static QEMU_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-serial-listener binary
+static QEMU_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the esp32-qemu-talker binary (ELF)
 static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -742,6 +748,54 @@ pub fn qemu_bsp_talker_binary() -> PathBuf {
 pub fn qemu_bsp_listener_binary() -> PathBuf {
     build_qemu_bsp_listener()
         .expect("Failed to build qemu-bsp-listener")
+        .to_path_buf()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Serial Example Builders (QEMU bare-metal, cross-compiled)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build qemu-serial-talker (cached)
+pub fn build_qemu_serial_talker() -> TestResult<&'static Path> {
+    QEMU_SERIAL_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/serial-talker",
+                "qemu-serial-talker",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the qemu-serial-talker binary path
+#[rstest::fixture]
+pub fn qemu_serial_talker_binary() -> PathBuf {
+    build_qemu_serial_talker()
+        .expect("Failed to build qemu-serial-talker")
+        .to_path_buf()
+}
+
+/// Build qemu-serial-listener (cached)
+pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
+    QEMU_SERIAL_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/serial-listener",
+                "qemu-serial-listener",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the qemu-serial-listener binary path
+#[rstest::fixture]
+pub fn qemu_serial_listener_binary() -> PathBuf {
+    build_qemu_serial_listener()
+        .expect("Failed to build qemu-serial-listener")
         .to_path_buf()
 }
 

@@ -157,6 +157,50 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
+    /// Start QEMU with MPS2-AN385 machine + external serial device
+    ///
+    /// Connects UART0 to the given serial device path (e.g., a socat PTY).
+    /// Uses `-display none -monitor none` to avoid `-nographic`'s implicit
+    /// `-serial mon:stdio` which would hijack UART0 for the monitor.
+    /// Semihosting output goes to stdout via the ARM semihosting interface.
+    ///
+    /// # Arguments
+    /// * `binary` - Path to the ARM ELF binary to run
+    /// * `serial_path` - Host serial device path (e.g., `/tmp/serial-a`)
+    pub fn start_mps2_an385_with_serial(binary: &Path, serial_path: &str) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let mut cmd = Command::new("qemu-system-arm");
+        cmd.args([
+            "-cpu",
+            "cortex-m3",
+            "-machine",
+            "mps2-an385",
+            "-display",
+            "none",
+            "-monitor",
+            "none",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-serial",
+            serial_path,
+            "-kernel",
+        ])
+        .arg(binary)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
     /// Wait for QEMU to produce output and exit
     ///
     /// # Arguments
@@ -503,6 +547,81 @@ pub fn require_zenoh_pico_arm() -> bool {
         return false;
     }
     true
+}
+
+/// A socat-managed virtual serial pair (two linked PTYs).
+///
+/// Creates a bidirectional PTY pair via `socat`. Data written to one
+/// end appears on the other. Both ends are exposed as symlinks for
+/// stable paths.
+///
+/// Use this to wire QEMU's UART0 to zenohd's serial listener without
+/// timing races: the PTY pair exists before either side starts, so
+/// data is kernel-buffered.
+///
+/// # Example
+///
+/// ```ignore
+/// let pair = SocatPtyPair::create("/tmp/serial-qemu", "/tmp/serial-zenohd")?;
+/// // QEMU connects to /tmp/serial-qemu
+/// // zenohd listens on /tmp/serial-zenohd
+/// // pair is killed on drop
+/// ```
+pub struct SocatPtyPair {
+    handle: Child,
+    /// Path for the QEMU side
+    pub qemu_path: String,
+    /// Path for the zenohd side
+    pub zenohd_path: String,
+}
+
+impl SocatPtyPair {
+    /// Create a new PTY pair with symlinks at the given paths.
+    ///
+    /// Blocks until both symlinks exist (up to 5 seconds).
+    pub fn create(qemu_link: &str, zenohd_link: &str) -> TestResult<Self> {
+        // Remove stale symlinks from previous runs
+        let _ = std::fs::remove_file(qemu_link);
+        let _ = std::fs::remove_file(zenohd_link);
+
+        let pty_a = format!("PTY,raw,echo=0,link={}", qemu_link);
+        let pty_b = format!("PTY,raw,echo=0,link={}", zenohd_link);
+
+        let mut cmd = Command::new("socat");
+        cmd.args([&pty_a, &pty_b])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        // Wait for symlinks to appear
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            if Path::new(qemu_link).exists() && Path::new(zenohd_link).exists() {
+                // Small delay for socat to finish setting up the PTY
+                std::thread::sleep(Duration::from_millis(100));
+                return Ok(Self {
+                    handle,
+                    qemu_path: qemu_link.to_string(),
+                    zenohd_path: zenohd_link.to_string(),
+                });
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        Err(TestError::ProcessFailed(
+            "Timeout waiting for socat PTY symlinks".to_string(),
+        ))
+    }
+}
+
+impl Drop for SocatPtyPair {
+    fn drop(&mut self) {
+        kill_process_group(&mut self.handle);
+        let _ = std::fs::remove_file(&self.qemu_path);
+        let _ = std::fs::remove_file(&self.zenohd_path);
+    }
 }
 
 #[cfg(test)]
