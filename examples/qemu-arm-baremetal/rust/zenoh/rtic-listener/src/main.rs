@@ -73,6 +73,10 @@ mod app {
     }
 
     /// Drive transport I/O — equivalent to rclcpp spin_some().
+    ///
+    /// Each `spin_once(0)` call processes one round of network I/O.
+    /// The 10 ms RTIC yield lets QEMU's I/O loop service the TAP device
+    /// (host → LAN9118 RX FIFO path only runs during WFI).
     #[task(local = [executor], priority = 1)]
     async fn net_poll(cx: net_poll::Context) {
         loop {

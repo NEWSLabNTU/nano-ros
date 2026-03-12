@@ -22,6 +22,9 @@ pub(crate) use crate::config::{CONNECT_TIMEOUT_MS, SOCKET_TIMEOUT_MS};
 /// RFC 6056 ephemeral port range lower bound.
 const EPHEMERAL_PORT_START: u16 = 49152;
 
+/// RFC 6056 ephemeral port range size (49152..65535).
+const EPHEMERAL_PORT_RANGE: u16 = 65535 - EPHEMERAL_PORT_START;
+
 /// Next ephemeral port counter
 static mut NEXT_EPHEMERAL_PORT: u16 = EPHEMERAL_PORT_START;
 
@@ -152,6 +155,21 @@ impl StagingState {
 // ============================================================================
 // Ephemeral Port Allocation
 // ============================================================================
+
+/// Seed the ephemeral port counter to avoid 4-tuple collisions.
+///
+/// On bare-metal, smoltcp always starts from port 49152. If the host kernel
+/// still has a TCP socket in FIN-WAIT or TIME-WAIT for the same 4-tuple
+/// (src IP:port → dst IP:port) from a previous QEMU run, the new SYN is
+/// dropped. Seeding with a value derived from the IP address or clock
+/// randomizes the starting port to avoid this.
+///
+/// Call this after hardware init but before opening any sockets.
+pub fn seed_ephemeral_port(seed: u16) {
+    unsafe {
+        NEXT_EPHEMERAL_PORT = EPHEMERAL_PORT_START + (seed % EPHEMERAL_PORT_RANGE);
+    }
+}
 
 /// Allocate the next ephemeral port (RFC 6056, starting at 49152).
 fn allocate_ephemeral_port() -> u16 {

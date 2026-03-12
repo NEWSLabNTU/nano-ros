@@ -207,8 +207,10 @@ publisher.
 
 ### TAP queue discipline
 
-The default `fq_codel` qdisc drops packets when QEMU emulation is slow (CoDel
-interprets emulation pauses as congestion). This causes spurious test failures.
+The default `fq_codel` qdisc drops packets when QEMU emulation is slow (CoDel's
+default 5ms target interprets emulation pauses as congestion, and per-flow
+scheduling disrupts zenoh-pico's service reply timing). This causes TCP data
+segments to be dropped, breaking zenoh session establishment.
 
 **Fix:** Use `pfifo` instead:
 
@@ -216,6 +218,15 @@ interprets emulation pauses as congestion). This causes spurious test failures.
 sudo tc qdisc replace dev tap-qemu0 root pfifo limit 1000
 sudo tc qdisc replace dev tap-qemu1 root pfifo limit 1000
 ```
+
+`pfifo` queues packets without dropping, which QEMU needs to absorb bursts
+during emulation pauses. Stale packets from killed QEMU processes accumulate
+in the queue but are harmless — the firmware seeds smoltcp's ephemeral port
+from the host's wall clock via ARM semihosting `SYS_TIME`, so each QEMU run
+uses a different source port and stale packets are silently ignored.
+
+See [TAP qdisc analysis](../../docs/reference/tap-qdisc-analysis.md) for why
+`fq_codel` and `noqueue` don't work for QEMU TAP devices.
 
 ## zenoh-pico
 

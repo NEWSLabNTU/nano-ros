@@ -65,11 +65,9 @@ mod app {
 
     /// Drive transport I/O and call service in a single task.
     ///
-    /// Each iteration yields via `Mono::delay().await` so RTIC's idle task
-    /// can execute WFI. This is critical for QEMU: WFI pauses CPU emulation
-    /// and lets QEMU's I/O event loop process the TAP network device.
-    /// Without yielding, the TAP fd is never serviced and all network I/O
-    /// stops after the initial burst.
+    /// Each `spin_once(0)` call processes one round of network I/O.
+    /// The 10 ms RTIC yield lets QEMU's I/O loop service the TAP device
+    /// (host → LAN9118 RX FIFO path only runs during WFI).
     #[task(local = [executor, client], priority = 1)]
     async fn call_service(cx: call_service::Context) {
         // Wait for zenoh session + server queryable discovery.

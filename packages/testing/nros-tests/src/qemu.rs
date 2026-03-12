@@ -428,28 +428,32 @@ pub fn parse_test_results(output: &str) -> (usize, usize) {
     (passed, failed)
 }
 
-/// Clean up stale TCP connections from previous QEMU test runs.
+/// Clean up stale network state from previous QEMU test runs.
 ///
-/// When a QEMU process is SIGKILL'd, the host kernel's TCP connections to
-/// the QEMU IPs (192.0.3.10, 192.0.3.11) get stuck in FIN-WAIT-1 because
-/// the FIN can never be ACK'd (the peer is dead). These persist for minutes
-/// and cause 4-tuple collisions when new QEMU instances connect with the
-/// same source port, resulting in `ConnectionFailed`.
+/// Two sources of stale state cause TCP connection failures when QEMU
+/// instances are restarted between E2E tests:
 ///
-/// This function destroys those stale sockets using `ss -K` (which doesn't
-/// require root). Combined with randomized smoltcp ephemeral ports, this
-/// prevents TCP connection failures between sequential E2E tests.
+/// 1. **Stale TCP sockets** — SIGKILL'd QEMU leaves host-side connections in
+///    FIN-WAIT-1 (FIN can't be ACK'd). These persist for minutes and collide
+///    with new connections on the same 4-tuple. Fixed via `ss -K`.
 ///
-/// Note: orphaned QEMU/zenohd processes are already handled by
-/// `PR_SET_PDEATHSIG(SIGKILL)` (kills child when test process dies) and
-/// `ZenohRouter::start()` → `kill_listeners_on_port()`.
+/// 2. **Stale ARP cache** — The bridge remembers old MAC→IP mappings. New QEMU
+///    instances have the same MAC but the kernel may route to a stale entry.
+///    Fixed via `ip neigh del`.
+///
+/// Stale packets in the TAP `pfifo` qdisc are harmless because the firmware
+/// seeds smoltcp's ephemeral port from the host's wall clock via ARM
+/// semihosting `SYS_TIME`. Each QEMU run uses a different source port, so
+/// stale packets with old port numbers are silently ignored by smoltcp (no
+/// matching socket).
+///
+/// Note: `ss -K` and `ip neigh del` require `CAP_NET_ADMIN`. When running
+/// without privileges, these fail silently. Nextest retries (configured in
+/// `.config/nextest.toml`) handle residual flakiness.
+///
+/// Orphaned processes are handled separately by `PR_SET_PDEATHSIG(SIGKILL)`.
 pub fn cleanup_tap_network() {
-    // Kill ALL stale TCP connections to QEMU IPs (192.0.3.10, 192.0.3.11).
-    //
-    // When QEMU is SIGKILL'd, the host-side TCP connections get stuck in
-    // FIN-WAIT-1 (FIN sent but never ACK'd). These persist for minutes and
-    // cause 4-tuple collisions when new QEMU instances connect with the
-    // same source port (smoltcp reuses 49152), resulting in ConnectionFailed.
+    // Kill stale TCP connections to QEMU IPs (best-effort, needs CAP_NET_ADMIN)
     for ip in &["192.0.3.10", "192.0.3.11"] {
         let _ = std::process::Command::new("ss")
             .args(["-K", "dst", ip])
@@ -458,8 +462,21 @@ pub fn cleanup_tap_network() {
             .status();
     }
 
-    // Wait for kernel to fully destroy the sockets and settle bridge state
-    std::thread::sleep(Duration::from_secs(1));
+    // Flush ARP cache for QEMU IPs (best-effort, needs CAP_NET_ADMIN)
+    for ip in &["192.0.3.10", "192.0.3.11"] {
+        let _ = std::process::Command::new("ip")
+            .args(["neigh", "del", ip, "dev", "qemu-br"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+
+    // Settle time for kernel state cleanup.
+    // Back-to-back QEMU E2E tests need enough time for the kernel to
+    // process FIN-WAIT-1 retransmits and bridge FDB updates. Without
+    // this, zenoh-pico service replies can be lost due to residual
+    // bridge/ARP state from the previous test.
+    std::thread::sleep(Duration::from_secs(2));
 }
 
 /// Check if the QEMU TAP bridge network is available

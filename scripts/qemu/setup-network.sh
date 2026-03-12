@@ -185,10 +185,21 @@ for i in $(seq 0 $((NUM_TAPS - 1))); do
     echo "  Creating $tap (QEMU guest IP: $guest_ip)..."
     ip tuntap add dev "$tap" mode tap user "$TAP_USER"
     ip link set "$tap" master "$BRIDGE_NAME"
-    # Use pfifo qdisc instead of default fq_codel. CoDel's active queue
-    # management drops packets when delay exceeds 5ms, but QEMU emulation
-    # is too slow to drain packets that fast. This causes TCP data segments
-    # to be dropped, breaking zenoh session establishment.
+    # Use pfifo qdisc instead of default fq_codel.
+    #
+    # Why not fq_codel: CoDel's delay-based dropping and per-flow scheduling
+    # cause packet loss and reordering during slow QEMU emulation, breaking
+    # zenoh-pico session establishment and service reply delivery.
+    #
+    # Why not noqueue: drops packets when QEMU can't read fast enough during
+    # processing pauses; zenoh-pico's internal timeouts expire before TCP
+    # retransmit recovers the drop.
+    #
+    # pfifo queues packets without dropping, which QEMU needs to absorb
+    # bursts during emulation pauses. Stale packets from killed QEMU
+    # processes are harmless — the firmware seeds smoltcp's ephemeral port
+    # from the host wall clock (ARM semihosting SYS_TIME), so each run
+    # uses a different source port and stale packets are silently ignored.
     tc qdisc replace dev "$tap" root pfifo limit 1000
     ip link set "$tap" up
 done
