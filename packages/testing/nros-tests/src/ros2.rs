@@ -58,9 +58,16 @@ pub fn ros2_env_setup(distro: &str) -> String {
 }
 
 /// Get ROS 2 environment setup command with custom locator
+///
+/// Stops the ROS 2 daemon first because it maintains its own zenoh session
+/// connected to the default `tcp/localhost:7447`. If the daemon is running,
+/// `ros2 topic list` queries the graph via XML-RPC through the daemon, which
+/// ignores `ZENOH_CONFIG_OVERRIDE`. Stopping the daemon forces the CLI to
+/// create its own zenoh session using our custom locator.
 pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> String {
     format!(
         "source /opt/ros/{distro}/setup.bash && \
+         ros2 daemon stop 2>/dev/null; \
          export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
          export ZENOH_CONFIG_OVERRIDE='mode=\"client\";connect/endpoints=[\"{locator}\"]'"
     )
