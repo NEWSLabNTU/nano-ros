@@ -120,6 +120,11 @@ impl QemuProcess {
     /// MAC addresses use the locally-administered range (02:xx) with the last
     /// byte derived from the peer index. These must match the firmware's network
     /// config in `nros-mps2-an385-freertos`.
+    ///
+    /// Uses `-icount shift=auto` to synchronize QEMU's virtual clock with
+    /// wall-clock time. Without this, hardware timers (CMSDK Timer0) race ahead
+    /// during WFI, causing zenoh-pico timeouts to expire before TAP network I/O
+    /// completes. See `docs/reference/qemu-icount.md`.
     pub fn start_mps2_an385_networked(binary: &Path, peer_index: u8) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
@@ -142,6 +147,13 @@ impl QemuProcess {
             "-machine",
             "mps2-an385",
             "-nographic",
+            // Synchronize virtual clock with wall-clock time. With sleep=on
+            // (default), WFI advances virtual time at wall-clock speed via
+            // QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps
+            // hardware timer-backed clocks (CMSDK Timer0) aligned with TAP
+            // network I/O timing.
+            "-icount",
+            "shift=auto",
             "-semihosting-config",
             "enable=on,target=native",
             "-kernel",

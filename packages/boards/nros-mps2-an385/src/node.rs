@@ -47,6 +47,26 @@ static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 #[cfg(feature = "serial")]
 static mut UART_DEVICE: MaybeUninit<cmsdk_uart::CmsdkUart> = MaybeUninit::uninit();
 
+// ---- Semihosting helpers ----
+
+/// Get host wall-clock time via ARM semihosting SYS_TIME (0x11).
+///
+/// Returns seconds since 1970-01-01. On QEMU, this reflects the host's
+/// real clock, providing entropy that varies between QEMU runs (unlike
+/// the DWT cycle counter which is deterministic in emulation).
+#[cfg(feature = "ethernet")]
+fn semihosting_time() -> u32 {
+    let result: u32;
+    unsafe {
+        core::arch::asm!(
+            "bkpt #0xAB",
+            inout("r0") 0x11_u32 => result,
+            in("r1") 0_u32,
+        );
+    }
+    result
+}
+
 // ---- Ethernet helpers ----
 
 #[cfg(feature = "ethernet")]
@@ -126,6 +146,18 @@ fn init_network<D: EthernetDevice + 'static>(
 
     // Initialize the transport crate's bridge
     SmoltcpBridge::init();
+
+    // Seed ephemeral port counter to avoid TCP 4-tuple collisions.
+    // Without this, smoltcp always starts at port 49152, and a stale
+    // FIN-WAIT-1 socket in the host kernel from a previous QEMU run
+    // blocks the new SYN on the same (src_ip:49152 → dst_ip:7447) tuple.
+    //
+    // QEMU's DWT cycle counter is deterministic (TCG replays the same
+    // instruction count every run), so we use the host's wall clock via
+    // ARM semihosting SYS_TIME for real entropy that varies between runs.
+    let host_time = semihosting_time() as u16;
+    let ip_byte = config.ip[3] as u16;
+    zpico_smoltcp::seed_ephemeral_port(host_time.wrapping_add(ip_byte.wrapping_mul(251)));
 
     // Seed RNG with IP to avoid zenoh ID collisions
     let ip_seed = u32::from_be_bytes(config.ip);
@@ -247,6 +279,13 @@ fn init_serial(config: &Config) {
 /// Panics if hardware initialization fails (Ethernet, network stack).
 /// Must be called exactly once before any nros operations.
 pub fn init_hardware(config: &Config) {
+    // Initialize CMSDK Timer0 as the monotonic clock source.
+    // This must happen before any clock reads (including smoltcp interface
+    // creation which calls clock::now()). On QEMU, pair with
+    // `-icount shift=auto` to keep virtual time aligned with wall-clock
+    // time. See docs/reference/qemu-icount.md.
+    zpico_platform_mps2_an385::clock::init_hardware_timer();
+
     // Enable DWT cycle counter for timing measurements
     zpico_platform_mps2_an385::timing::CycleCounter::enable();
 

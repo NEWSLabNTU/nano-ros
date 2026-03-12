@@ -74,6 +74,61 @@ from an init function.
 **Fix:** Use static storage, `Box::pin()`, or index-based references instead of
 raw pointers. See [Troubleshooting: Subscriber Callback Crashes](../guides/troubleshooting.md#subscriber-callback-crashes).
 
+## Clock Sources
+
+### Use hardware timers, not poll-driven counters
+
+Every platform must provide a monotonic millisecond clock via `smoltcp_clock_now_ms()` (for
+smoltcp timestamping) and `z_clock_now()` / `z_clock_elapsed_*()` (for zenoh-pico timeouts).
+This clock **must** be backed by a hardware timer or OS clock — never by a software counter
+that only advances when `spin()` or `poll()` is called.
+
+A poll-driven clock causes:
+- **Incorrect timeouts:** zenoh-pico uses `z_clock_elapsed_ms()` for session keep-alive,
+  query timeout, and transport timeout. If the clock only advances during poll, idle periods
+  (waiting for network I/O, sleeping between spins) are invisible to the timeout logic.
+- **Timeout storms:** After a long idle period, the next poll advances the clock by a large
+  jump, causing multiple timeouts to fire simultaneously.
+- **Broken RTIC integration:** RTIC tasks yield with `Mono::delay()` between spins. A
+  poll-driven clock doesn't advance during the delay, making all timeouts effectively infinite.
+
+### Platform clock status
+
+| Platform | Clock source | Notes |
+|----------|-------------|-------|
+| MPS2-AN385 (zpico) | CMSDK APB Timer0 | Hardware 25 MHz free-running counter. Wraps at ~171s, extended via `WRAP_COUNT`. |
+| ESP32-C3 | `esp_hal::time::Instant` | Hardware timer, no manual updates needed. |
+| ESP32-C3 (QEMU) | `esp_hal::time::Instant` | Works with QEMU `-icount 3`. |
+| STM32F4 | ARM DWT cycle counter | Hardware-backed. `update_from_dwt()` reads elapsed DWT cycles and advances the software counter. Must be called at least once per ~25.6s (at 168 MHz) to avoid missing DWT wraps. |
+| FreeRTOS | FreeRTOS kernel tick | OS-managed via `xTaskGetTickCount()`. |
+| NuttX | POSIX `clock_gettime()` | OS-managed. |
+| Zephyr | Zephyr kernel tick | OS-managed via `k_uptime_get()`. |
+| POSIX (native) | `std::time::Instant` | OS-managed. |
+| XRCE MPS2-AN385 | CMSDK APB Timer0 | Same hardware timer as zpico MPS2-AN385. Call `init_hardware_timer()` before use. |
+
+### Porting checklist for new platforms
+
+1. **Identify a hardware timer** — SysTick, a general-purpose timer, or DWT cycle counter.
+   On RTOS platforms, use the OS tick API.
+2. **Export `smoltcp_clock_now_ms() -> u64`** — called by `zpico-smoltcp` for TCP/IP
+   timestamping.
+3. **Export zenoh-pico clock symbols** — `z_clock_now()`, `z_clock_elapsed_us/ms/s()`,
+   `z_clock_advance_us/ms/s()`. These read from the same underlying counter.
+4. **Never advance the clock inside `smoltcp_network_poll()`** — the poll callback runs
+   during network I/O and is not a reliable time source. Read the hardware timer directly.
+5. **Handle timer wraps** — 32-bit timers wrap. Track wrap count in an atomic or use a
+   64-bit hardware counter if available.
+
+### QEMU clock synchronization
+
+QEMU's virtual clock races ahead of wall-clock time during WFI, causing hardware
+timer-backed timeouts to fire before TAP network I/O completes. This is solved
+with `-icount shift=auto`, which makes virtual time advance at wall-clock speed
+during CPU sleep states.
+
+See [QEMU icount reference](../../docs/reference/qemu-icount.md) for the full
+explanation, parameter reference, and tradeoffs.
+
 ## Networking
 
 ### Ephemeral port conflicts
