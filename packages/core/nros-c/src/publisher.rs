@@ -5,7 +5,9 @@
 use core::ffi::{c_char, c_int};
 use core::ptr;
 
-use crate::constants::{MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
+use crate::constants::{
+    MAX_TOPIC_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, PUBLISHER_OPAQUE_U64S,
+};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
 use crate::qos::nros_qos_t;
@@ -68,8 +70,9 @@ pub struct nros_publisher_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque pointer to internal Rust publisher
-    pub _internal: *mut core::ffi::c_void,
+    /// Inline opaque storage for the RMW publisher handle.
+    /// Avoids heap allocation — managed by nros_publisher_init/fini.
+    pub _opaque: [u64; PUBLISHER_OPAQUE_U64S],
 }
 
 impl Default for nros_publisher_t {
@@ -83,10 +86,18 @@ impl Default for nros_publisher_t {
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
             node: ptr::null(),
-            _internal: ptr::null_mut(),
+            _opaque: [0u64; PUBLISHER_OPAQUE_U64S],
         }
     }
 }
+
+// Compile-time assertion: inline storage must fit the concrete RMW publisher type.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+const _: () = assert!(
+    core::mem::size_of::<nros::internals::RmwPublisher>()
+        <= PUBLISHER_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "PUBLISHER_OPAQUE_U64S too small for RmwPublisher — increase the constant in constants.rs"
+);
 
 /// Get a zero-initialized publisher.
 #[unsafe(no_mangle)]
@@ -275,7 +286,7 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
     };
 
     // Create the internal publisher
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
         use nros_rmw::{Session, TopicInfo};
 
@@ -310,11 +321,13 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
         // Build TopicInfo
         let topic_info = TopicInfo::new(topic_str, type_str, type_hash_str).with_domain(domain_id);
 
-        // Create publisher
+        // Create publisher — write handle directly into inline opaque storage
         match session.create_publisher(&topic_info, _qos_settings) {
             Ok(pub_handle) => {
-                let pub_box = alloc::boxed::Box::new(pub_handle);
-                publisher._internal = alloc::boxed::Box::into_raw(pub_box) as *mut _;
+                core::ptr::write(
+                    publisher._opaque.as_mut_ptr() as *mut nros::internals::RmwPublisher,
+                    pub_handle,
+                );
             }
             Err(_) => return NROS_RET_ERROR,
         }
@@ -323,9 +336,8 @@ pub unsafe extern "C" fn nros_publisher_init_with_qos(
         NROS_RET_OK
     }
 
-    #[cfg(not(feature = "alloc"))]
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
     {
-        // For no_std, use shim transport (not yet implemented)
         NROS_RET_ERROR
     }
 }
@@ -364,15 +376,11 @@ pub unsafe extern "C" fn nros_publish_raw(
         nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
     );
 
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
         use nros_rmw::Publisher;
 
-        if publisher._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-
-        let pub_handle = &*(publisher._internal as *const nros::internals::RmwPublisher);
+        let pub_handle = &*(publisher._opaque.as_ptr() as *const nros::internals::RmwPublisher);
         let data_slice = core::slice::from_raw_parts(data, len);
 
         match pub_handle.publish_raw(data_slice) {
@@ -381,7 +389,7 @@ pub unsafe extern "C" fn nros_publish_raw(
         }
     }
 
-    #[cfg(not(feature = "alloc"))]
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
     {
         NROS_RET_ERROR
     }
@@ -410,18 +418,15 @@ pub unsafe extern "C" fn nros_publisher_fini(publisher: *mut nros_publisher_t) -
         nros_publisher_state_t::NROS_PUBLISHER_STATE_INITIALIZED
     );
 
-    // Clean up internal resources
-    #[cfg(feature = "alloc")]
+    // Drop the inline RMW publisher handle
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        if !publisher._internal.is_null() {
-            let _pub = alloc::boxed::Box::from_raw(
-                publisher._internal as *mut nros::internals::RmwPublisher,
-            );
-            // Publisher is dropped here
-        }
+        core::ptr::drop_in_place(
+            publisher._opaque.as_mut_ptr() as *mut nros::internals::RmwPublisher
+        );
     }
 
-    publisher._internal = ptr::null_mut();
+    publisher._opaque = [0u64; PUBLISHER_OPAQUE_U64S];
     publisher.node = ptr::null();
     publisher.state = nros_publisher_state_t::NROS_PUBLISHER_STATE_SHUTDOWN;
 
@@ -549,6 +554,6 @@ mod verification {
             nros_publisher_state_t::NROS_PUBLISHER_STATE_UNINITIALIZED,
         );
         assert!(pub_.node.is_null());
-        assert!(pub_._internal.is_null());
+        assert!(pub_._opaque.iter().all(|&v| v == 0));
     }
 }

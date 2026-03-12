@@ -5,15 +5,15 @@ use core::ffi::{c_char, c_void};
 use nros_rmw::{Session, Subscriber as SubscriberTrait, TopicInfo};
 
 use crate::{
-    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
-    NROS_CPP_RET_OK, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t,
-    nros_cpp_ret_t,
+    CPP_SUBSCRIPTION_OPAQUE_U64S, CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL,
+    NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str,
+    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Default receive buffer size (matches nros-node's DEFAULT_RX_BUF_SIZE).
 const RX_BUF_SIZE: usize = 1024;
 
-/// Boxed subscription handle stored behind `void*`.
+/// Subscription wrapper stored in caller-provided inline storage.
 struct CppSubscription {
     handle: nros::internals::RmwSubscriber,
     buffer: [u8; RX_BUF_SIZE],
@@ -21,18 +21,21 @@ struct CppSubscription {
     topic_name_len: usize,
 }
 
+// Compile-time assertion: inline storage must fit CppSubscription.
+const _: () = assert!(
+    core::mem::size_of::<CppSubscription>()
+        <= CPP_SUBSCRIPTION_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "CPP_SUBSCRIPTION_OPAQUE_U64S too small for CppSubscription — increase the constant in lib.rs"
+);
+
 /// Create a subscription on a node.
 ///
-/// # Parameters
-/// * `node` — Node handle from `nros_cpp_node_create()`.
-/// * `topic` — Topic name (null-terminated).
-/// * `type_name` — ROS message type name (null-terminated).
-/// * `type_hash` — ROS type hash string (null-terminated).
-/// * `qos` — QoS settings.
-/// * `out_handle` — Receives the opaque subscription handle on success.
+/// The caller provides `storage` — a pointer to a buffer of at least
+/// `CPP_SUBSCRIPTION_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
 ///
 /// # Safety
-/// All pointer parameters must be valid. `out_handle` must point to a `*mut c_void`.
+/// All pointer parameters must be valid. `storage` must point to an
+/// 8-byte-aligned buffer of at least `CPP_SUBSCRIPTION_OPAQUE_U64S * 8` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_create(
     node: *const nros_cpp_node_t,
@@ -40,13 +43,13 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
     type_name: *const c_char,
     type_hash: *const c_char,
     qos: nros_cpp_qos_t,
-    out_handle: *mut *mut c_void,
+    storage: *mut c_void,
 ) -> nros_cpp_ret_t {
     if node.is_null()
         || topic.is_null()
         || type_name.is_null()
         || type_hash.is_null()
-        || out_handle.is_null()
+        || storage.is_null()
     {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -105,9 +108,9 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
             sub_handle.topic_name[..sub_handle.topic_name_len]
                 .copy_from_slice(&topic_str.as_bytes()[..sub_handle.topic_name_len]);
 
-            let boxed = alloc::boxed::Box::new(sub_handle);
+            // Write directly into caller-provided storage (no heap allocation)
             unsafe {
-                *out_handle = alloc::boxed::Box::into_raw(boxed) as *mut c_void;
+                core::ptr::write(storage as *mut CppSubscription, sub_handle);
             }
             NROS_CPP_RET_OK
         }
@@ -117,34 +120,21 @@ pub unsafe extern "C" fn nros_cpp_subscription_create(
 
 /// Try to receive raw CDR data from a subscription (non-blocking).
 ///
-/// Receives into an internal buffer, then copies to the caller's buffer.
-///
-/// # Parameters
-/// * `handle` — Subscription handle from `nros_cpp_subscription_create()`.
-/// * `out_data` — Caller's buffer to receive CDR data.
-/// * `out_capacity` — Size of the caller's buffer.
-/// * `out_len` — Receives the number of bytes written (0 if no data available).
-///
-/// # Returns
-/// * `NROS_CPP_RET_OK` — Data received and copied, or no data available (`*out_len == 0`).
-/// * `NROS_CPP_RET_FULL` — Data received but caller's buffer too small.
-/// * `NROS_CPP_RET_ERROR` — Transport error.
-///
 /// # Safety
-/// `handle` must be a valid subscription handle. `out_data` must point to `out_capacity`
-/// writable bytes. `out_len` must be a valid pointer.
+/// `storage` must be a valid subscription storage. `out_data` must point to
+/// `out_capacity` writable bytes. `out_len` must be a valid pointer.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
-    handle: *mut c_void,
+    storage: *mut c_void,
     out_data: *mut u8,
     out_capacity: usize,
     out_len: *mut usize,
 ) -> nros_cpp_ret_t {
-    if handle.is_null() || out_data.is_null() || out_len.is_null() {
+    if storage.is_null() || out_data.is_null() || out_len.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let sub = unsafe { &mut *(handle as *mut CppSubscription) };
+    let sub = unsafe { &mut *(storage as *mut CppSubscription) };
 
     match sub.handle.try_recv_raw(&mut sub.buffer) {
         Ok(Some(len)) => {
@@ -171,36 +161,32 @@ pub unsafe extern "C" fn nros_cpp_subscription_try_recv_raw(
     }
 }
 
-/// Destroy a subscription and free its resources.
+/// Destroy a subscription (drop in place, no free).
 ///
 /// # Safety
-/// `handle` must be a valid subscription handle, or NULL (no-op).
+/// `storage` must be a valid initialized subscription storage, or NULL (no-op).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_subscription_destroy(handle: *mut c_void) -> nros_cpp_ret_t {
-    if handle.is_null() {
+pub unsafe extern "C" fn nros_cpp_subscription_destroy(storage: *mut c_void) -> nros_cpp_ret_t {
+    if storage.is_null() {
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        let _sub = alloc::boxed::Box::from_raw(handle as *mut CppSubscription);
+        core::ptr::drop_in_place(storage as *mut CppSubscription);
     }
-    // subscription dropped here
     NROS_CPP_RET_OK
 }
 
 /// Get the topic name of a subscription.
 ///
-/// Returns a pointer to the null-terminated topic name string stored in the
-/// subscription handle. The pointer is valid as long as the subscription is alive.
-///
 /// # Safety
-/// `handle` must be a valid subscription handle, or NULL.
+/// `storage` must be a valid subscription storage, or NULL.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_subscription_get_topic_name(
-    handle: *const c_void,
+    storage: *const c_void,
 ) -> *const c_char {
-    if handle.is_null() {
+    if storage.is_null() {
         return core::ptr::null();
     }
-    let sub = unsafe { &*(handle as *const CppSubscription) };
+    let sub = unsafe { &*(storage as *const CppSubscription) };
     sub.topic_name.as_ptr() as *const c_char
 }

@@ -7,6 +7,7 @@
 use core::ffi::{c_int, c_void};
 use core::ptr;
 
+use crate::constants::GUARD_HANDLE_OPAQUE_U64S;
 use crate::error::*;
 use crate::support::{nros_support_state_t, nros_support_t};
 
@@ -44,9 +45,19 @@ pub struct nros_guard_condition_t {
     pub _support: *const nros_support_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
-    /// Guard condition handle for external triggering (set by executor)
-    pub _guard_handle: *mut core::ffi::c_void,
+    /// Whether the guard handle has been initialized
+    pub _guard_valid: bool,
+    /// Inline opaque storage for the guard condition handle (set by executor).
+    /// Avoids heap allocation — managed by executor registration / guard_condition_fini.
+    pub _guard_opaque: [u64; GUARD_HANDLE_OPAQUE_U64S],
 }
+
+// Compile-time assertion: inline storage must fit GuardConditionHandle.
+const _: () = assert!(
+    core::mem::size_of::<nros_node::GuardConditionHandle>()
+        <= GUARD_HANDLE_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "GUARD_HANDLE_OPAQUE_U64S too small for GuardConditionHandle — increase the constant in constants.rs"
+);
 
 // Safety: The triggered flag is designed for cross-thread access.
 // The callback and context are only accessed from the executor thread.
@@ -62,7 +73,8 @@ impl Default for nros_guard_condition_t {
             context: ptr::null_mut(),
             _support: ptr::null(),
             handle_id: usize::MAX,
-            _guard_handle: ptr::null_mut(),
+            _guard_valid: false,
+            _guard_opaque: [0u64; GUARD_HANDLE_OPAQUE_U64S],
         }
     }
 }
@@ -84,19 +96,24 @@ impl nros_guard_condition_t {
     }
 
     /// Set the guard handle for external triggering.
-    #[cfg(feature = "alloc")]
     pub(crate) fn set_guard_handle(&mut self, handle: nros_node::GuardConditionHandle) {
-        let boxed = alloc::boxed::Box::new(handle);
-        self._guard_handle = alloc::boxed::Box::into_raw(boxed) as *mut _;
+        unsafe {
+            core::ptr::write(
+                self._guard_opaque.as_mut_ptr() as *mut nros_node::GuardConditionHandle,
+                handle,
+            );
+        }
+        self._guard_valid = true;
     }
 
     /// Get the guard handle for triggering.
-    #[cfg(feature = "alloc")]
     pub(crate) fn get_guard_handle(&self) -> Option<&nros_node::GuardConditionHandle> {
-        if self._guard_handle.is_null() {
+        if !self._guard_valid {
             None
         } else {
-            Some(unsafe { &*(self._guard_handle as *const nros_node::GuardConditionHandle) })
+            Some(unsafe {
+                &*(self._guard_opaque.as_ptr() as *const nros_node::GuardConditionHandle)
+            })
         }
     }
 }
@@ -182,7 +199,6 @@ pub unsafe extern "C" fn nros_guard_condition_trigger(
     );
 
     // If registered with an executor, trigger via the executor's guard handle
-    #[cfg(feature = "alloc")]
     if let Some(handle) = guard.get_guard_handle() {
         handle.trigger();
         return NROS_RET_OK;
@@ -260,14 +276,11 @@ pub unsafe extern "C" fn nros_guard_condition_fini(
         nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_INITIALIZED
     );
 
-    // Clean up the guard handle if allocated
-    #[cfg(feature = "alloc")]
-    {
-        if !guard._guard_handle.is_null() {
-            let _handle = alloc::boxed::Box::from_raw(
-                guard._guard_handle as *mut nros_node::GuardConditionHandle,
-            );
-        }
+    // Drop the inline guard handle if initialized
+    if guard._guard_valid {
+        core::ptr::drop_in_place(
+            guard._guard_opaque.as_mut_ptr() as *mut nros_node::GuardConditionHandle
+        );
     }
 
     guard.triggered = false;
@@ -275,7 +288,8 @@ pub unsafe extern "C" fn nros_guard_condition_fini(
     guard.context = ptr::null_mut();
     guard._support = ptr::null();
     guard.handle_id = usize::MAX;
-    guard._guard_handle = ptr::null_mut();
+    guard._guard_valid = false;
+    guard._guard_opaque = [0u64; GUARD_HANDLE_OPAQUE_U64S];
     guard.state = nros_guard_condition_state_t::NROS_GUARD_CONDITION_STATE_SHUTDOWN;
 
     NROS_RET_OK

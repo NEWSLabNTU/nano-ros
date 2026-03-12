@@ -5,33 +5,36 @@ use core::ffi::c_void;
 use nros_node::GuardConditionHandle;
 
 use crate::{
-    CppContext, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, nros_cpp_ret_t,
+    CPP_GUARD_HANDLE_OPAQUE_U64S, CppContext, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
+    NROS_CPP_RET_OK, nros_cpp_ret_t,
 };
+
+// Compile-time assertion: inline storage must fit GuardConditionHandle.
+const _: () = assert!(
+    core::mem::size_of::<GuardConditionHandle>()
+        <= CPP_GUARD_HANDLE_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "CPP_GUARD_HANDLE_OPAQUE_U64S too small for GuardConditionHandle — increase the constant in lib.rs"
+);
 
 /// C callback type for guard conditions: `void callback(void* context)`.
 pub type nros_cpp_guard_callback_t = Option<unsafe extern "C" fn(context: *mut c_void)>;
 
 /// Create a guard condition and register it with the executor.
 ///
-/// Guard conditions allow signaling the executor from any thread.
-/// The callback (if provided) is invoked during `spin_once()` when triggered.
-///
-/// # Parameters
-/// * `executor_handle` — Executor handle from `nros_cpp_init()`.
-/// * `callback` — Optional function called when triggered (may be NULL).
-/// * `context` — User context passed to the callback.
-/// * `out_handle` — Receives the opaque guard condition handle (for trigger/destroy).
+/// The caller provides `storage` — a pointer to a buffer of at least
+/// `CPP_GUARD_HANDLE_OPAQUE_U64S * 8` bytes, aligned to 8 bytes.
+/// The guard condition handle is written directly into this buffer.
 ///
 /// # Safety
-/// `executor_handle` and `out_handle` must be valid pointers.
+/// `executor_handle` and `storage` must be valid pointers.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_guard_condition_create(
     executor_handle: *mut c_void,
     callback: nros_cpp_guard_callback_t,
     context: *mut c_void,
-    out_handle: *mut *mut c_void,
+    storage: *mut c_void,
 ) -> nros_cpp_ret_t {
-    if executor_handle.is_null() || out_handle.is_null() {
+    if executor_handle.is_null() || storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
@@ -49,9 +52,9 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
 
     match ctx.executor.add_guard_condition(wrapper) {
         Ok((_handle_id, guard_handle)) => {
-            let boxed = alloc::boxed::Box::new(guard_handle);
+            // Write directly into caller-provided storage (no heap allocation)
             unsafe {
-                *out_handle = alloc::boxed::Box::into_raw(boxed) as *mut c_void;
+                core::ptr::write(storage as *mut GuardConditionHandle, guard_handle);
             }
             NROS_CPP_RET_OK
         }
@@ -61,36 +64,30 @@ pub unsafe extern "C" fn nros_cpp_guard_condition_create(
 
 /// Trigger a guard condition (thread-safe).
 ///
-/// This sets the guard condition's atomic flag. The callback will be
-/// invoked on the next `spin_once()` call.
-///
 /// # Safety
-/// `handle` must be a valid guard condition handle.
+/// `storage` must be a valid guard condition storage.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_guard_condition_trigger(handle: *mut c_void) -> nros_cpp_ret_t {
-    if handle.is_null() {
+pub unsafe extern "C" fn nros_cpp_guard_condition_trigger(storage: *mut c_void) -> nros_cpp_ret_t {
+    if storage.is_null() {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
 
-    let guard = unsafe { &*(handle as *const GuardConditionHandle) };
+    let guard = unsafe { &*(storage as *const GuardConditionHandle) };
     guard.trigger();
     NROS_CPP_RET_OK
 }
 
-/// Destroy a guard condition and free its handle.
-///
-/// The guard condition callback entry remains in the executor arena
-/// but will no longer fire (no external trigger possible after this).
+/// Destroy a guard condition (drop in place, no free).
 ///
 /// # Safety
-/// `handle` must be a valid guard condition handle, or NULL (no-op).
+/// `storage` must be a valid initialized guard condition storage, or NULL (no-op).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_guard_condition_destroy(handle: *mut c_void) -> nros_cpp_ret_t {
-    if handle.is_null() {
+pub unsafe extern "C" fn nros_cpp_guard_condition_destroy(storage: *mut c_void) -> nros_cpp_ret_t {
+    if storage.is_null() {
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        let _guard = alloc::boxed::Box::from_raw(handle as *mut GuardConditionHandle);
+        core::ptr::drop_in_place(storage as *mut GuardConditionHandle);
     }
     NROS_CPP_RET_OK
 }

@@ -6,7 +6,9 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 
-use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
+use crate::constants::{
+    MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, SERVICE_CLIENT_OPAQUE_U64S,
+};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
 use crate::publisher::nros_message_type_t;
@@ -456,9 +458,18 @@ pub struct nros_client_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque pointer to internal Rust service client
-    pub _internal: *mut c_void,
+    /// Inline opaque storage for the RMW service client handle.
+    /// Avoids heap allocation — managed by nros_client_init/fini.
+    pub _opaque: [u64; SERVICE_CLIENT_OPAQUE_U64S],
 }
+
+// Compile-time assertion: inline storage must fit the concrete RMW service client type.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+const _: () = assert!(
+    core::mem::size_of::<nros::internals::RmwServiceClient>()
+        <= SERVICE_CLIENT_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "SERVICE_CLIENT_OPAQUE_U64S too small for RmwServiceClient — increase the constant in constants.rs"
+);
 
 impl Default for nros_client_t {
     fn default() -> Self {
@@ -471,7 +482,7 @@ impl Default for nros_client_t {
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
             node: ptr::null(),
-            _internal: ptr::null_mut(),
+            _opaque: [0u64; SERVICE_CLIENT_OPAQUE_U64S],
         }
     }
 }
@@ -568,7 +579,7 @@ pub unsafe extern "C" fn nros_client_init(
     client.node = node;
 
     // Create the internal service client
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
         use nros_rmw::{ServiceInfo, Session};
 
@@ -601,11 +612,13 @@ pub unsafe extern "C" fn nros_client_init(
         let svc_info =
             ServiceInfo::new(svc_name_str, type_str, type_hash_str).with_domain(domain_id);
 
-        // Create service client
+        // Create service client — write handle directly into inline opaque storage
         match session.create_service_client(&svc_info) {
             Ok(client_handle) => {
-                let client_box = alloc::boxed::Box::new(client_handle);
-                client._internal = alloc::boxed::Box::into_raw(client_box) as *mut _;
+                core::ptr::write(
+                    client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient,
+                    client_handle,
+                );
             }
             Err(_) => return NROS_RET_ERROR,
         }
@@ -614,9 +627,8 @@ pub unsafe extern "C" fn nros_client_init(
         NROS_RET_OK
     }
 
-    #[cfg(not(feature = "alloc"))]
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
     {
-        // For no_std, not yet implemented
         NROS_RET_ERROR
     }
 }
@@ -638,18 +650,15 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
 
     validate_state!(client, nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED);
 
-    // Clean up internal resources
-    #[cfg(feature = "alloc")]
+    // Drop the inline RMW service client handle
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        if !client._internal.is_null() {
-            let _client_handle = alloc::boxed::Box::from_raw(
-                client._internal as *mut nros::internals::RmwServiceClient,
-            );
-            // Client is dropped here
-        }
+        core::ptr::drop_in_place(
+            client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient
+        );
     }
 
-    client._internal = ptr::null_mut();
+    client._opaque = [0u64; SERVICE_CLIENT_OPAQUE_U64S];
     client.node = ptr::null();
     client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
 
@@ -694,11 +703,8 @@ pub unsafe extern "C" fn nros_client_call(
     {
         use nros_rmw::ServiceClientTrait;
 
-        if client._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-
-        let client_handle = &mut *(client._internal as *mut nros::internals::RmwServiceClient);
+        let client_handle =
+            &mut *(client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient);
         let request = core::slice::from_raw_parts(request_data, request_len);
         let reply_buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
 
@@ -1068,7 +1074,7 @@ mod verification {
             nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
         );
         assert!(client.node.is_null());
-        assert!(client._internal.is_null());
+        assert!(client._opaque.iter().all(|&v| v == 0));
     }
 
     #[kani::proof]

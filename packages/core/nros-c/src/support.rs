@@ -4,9 +4,8 @@
 //! shared resources for nodes, publishers, and subscribers.
 
 use core::ffi::{c_char, c_int};
-use core::ptr;
 
-use crate::constants::MAX_LOCATOR_LEN;
+use crate::constants::{MAX_LOCATOR_LEN, SESSION_OPAQUE_U64S};
 use crate::error::*;
 
 /// Support context state
@@ -35,9 +34,18 @@ pub struct nros_support_t {
     pub locator: [u8; MAX_LOCATOR_LEN],
     /// Locator string length
     pub locator_len: usize,
-    /// Opaque pointer to internal Rust context (middleware session)
-    pub _internal: *mut core::ffi::c_void,
+    /// Inline opaque storage for the RMW session.
+    /// Avoids heap allocation — managed by nros_support_init/fini.
+    pub _opaque: [u64; SESSION_OPAQUE_U64S],
 }
+
+// Compile-time assertion: inline storage must fit the concrete RMW session type.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+const _: () = assert!(
+    core::mem::size_of::<nros::internals::RmwSession>()
+        <= SESSION_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "SESSION_OPAQUE_U64S too small for RmwSession — increase the constant in constants.rs"
+);
 
 impl Default for nros_support_t {
     fn default() -> Self {
@@ -46,7 +54,7 @@ impl Default for nros_support_t {
             domain_id: 0,
             locator: [0u8; MAX_LOCATOR_LEN],
             locator_len: 0,
-            _internal: ptr::null_mut(),
+            _opaque: [0u64; SESSION_OPAQUE_U64S],
         }
     }
 }
@@ -128,7 +136,7 @@ pub unsafe extern "C" fn nros_support_init(
     }
 
     // Initialize the middleware session
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
         use nros_rmw::SessionMode;
 
@@ -138,9 +146,14 @@ pub unsafe extern "C" fn nros_support_init(
         // from the node_name — two processes with the same name would conflict
         // on the same Agent.
         #[cfg(feature = "std")]
-        let session_name = alloc::format!("nros_{}", std::process::id());
+        let session_name = {
+            let mut buf = nros_core::heapless::String::<32>::new();
+            let _ =
+                core::fmt::Write::write_fmt(&mut buf, format_args!("nros_{}", std::process::id()));
+            buf
+        };
         #[cfg(not(feature = "std"))]
-        let session_name = alloc::string::String::from("nros");
+        let session_name = nros_core::heapless::String::<32>::try_from("nros").unwrap();
 
         match nros::internals::open_session(
             locator_str,
@@ -149,8 +162,11 @@ pub unsafe extern "C" fn nros_support_init(
             &session_name,
         ) {
             Ok(session) => {
-                let session_box = alloc::boxed::Box::new(session);
-                support._internal = alloc::boxed::Box::into_raw(session_box) as *mut _;
+                // Write session directly into inline opaque storage
+                core::ptr::write(
+                    support._opaque.as_mut_ptr() as *mut nros::internals::RmwSession,
+                    session,
+                );
                 support.state = nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED;
                 NROS_RET_OK
             }
@@ -158,10 +174,8 @@ pub unsafe extern "C" fn nros_support_init(
         }
     }
 
-    #[cfg(not(feature = "alloc"))]
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
     {
-        // For no_std, we need to use the shim transport
-        // This will be implemented when shim support is added
         NROS_RET_ERROR
     }
 }
@@ -192,17 +206,13 @@ pub unsafe extern "C" fn nros_support_fini(support: *mut nros_support_t) -> nros
         return NROS_RET_NOT_INIT;
     }
 
-    // Clean up the session
-    #[cfg(feature = "alloc")]
+    // Drop the inline RMW session
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        if !support._internal.is_null() {
-            let _session =
-                alloc::boxed::Box::from_raw(support._internal as *mut nros::internals::RmwSession);
-            // Session is dropped here
-        }
+        core::ptr::drop_in_place(support._opaque.as_mut_ptr() as *mut nros::internals::RmwSession);
     }
 
-    support._internal = ptr::null_mut();
+    support._opaque = [0u64; SESSION_OPAQUE_U64S];
     support.state = nros_support_state_t::NROS_SUPPORT_STATE_SHUTDOWN;
 
     NROS_RET_OK
@@ -251,33 +261,31 @@ mod verification {
             nros_support_state_t::NROS_SUPPORT_STATE_UNINITIALIZED
         );
         assert_eq!(support.domain_id, 0);
-        assert!(support._internal.is_null());
+        assert!(support._opaque.iter().all(|&v| v == 0));
     }
 }
 
 impl nros_support_t {
     /// Get the raw session pointer (for executor initialization).
     pub(crate) fn get_session_ptr(&self) -> *mut nros::internals::RmwSession {
-        self._internal as *mut nros::internals::RmwSession
+        self._opaque.as_ptr() as *mut nros::internals::RmwSession
     }
 
-    /// Get the internal session pointer (for internal use)
-    #[cfg(feature = "alloc")]
+    /// Get the internal session reference (for internal use)
     pub(crate) unsafe fn get_session(&self) -> Option<&nros::internals::RmwSession> {
-        if self._internal.is_null() {
+        if self.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             None
         } else {
-            Some(&*(self._internal as *const nros::internals::RmwSession))
+            Some(&*(self._opaque.as_ptr() as *const nros::internals::RmwSession))
         }
     }
 
-    /// Get the internal session pointer mutably (for internal use)
-    #[cfg(feature = "alloc")]
+    /// Get the internal session reference mutably (for internal use)
     pub(crate) unsafe fn get_session_mut(&mut self) -> Option<&mut nros::internals::RmwSession> {
-        if self._internal.is_null() {
+        if self.state != nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED {
             None
         } else {
-            Some(&mut *(self._internal as *mut nros::internals::RmwSession))
+            Some(&mut *(self._opaque.as_mut_ptr() as *mut nros::internals::RmwSession))
         }
     }
 

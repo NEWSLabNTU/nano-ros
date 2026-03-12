@@ -67,19 +67,19 @@ const char* nros_cpp_node_get_namespace(const nros_cpp_node_t* node);
 
 nros_cpp_ret_t nros_cpp_publisher_create(const nros_cpp_node_t* node, const char* topic,
                                          const char* type_name, const char* type_hash,
-                                         nros_cpp_qos_t qos, void** out_handle);
+                                         nros_cpp_qos_t qos, void* storage);
 
 nros_cpp_ret_t nros_cpp_subscription_create(const nros_cpp_node_t* node, const char* topic,
                                             const char* type_name, const char* type_hash,
-                                            nros_cpp_qos_t qos, void** out_handle);
+                                            nros_cpp_qos_t qos, void* storage);
 
 nros_cpp_ret_t nros_cpp_service_server_create(const nros_cpp_node_t* node, const char* service_name,
                                               const char* type_name, const char* type_hash,
-                                              nros_cpp_qos_t qos, void** out_handle);
+                                              nros_cpp_qos_t qos, void* storage);
 
 nros_cpp_ret_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const char* service_name,
                                               const char* type_name, const char* type_hash,
-                                              nros_cpp_qos_t qos, void** out_handle);
+                                              nros_cpp_qos_t qos, void* storage);
 
 nros_cpp_ret_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
                                              const char* type_name, const char* type_hash,
@@ -175,11 +175,9 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
-                                                       ffi_qos, &handle);
+                                                       ffi_qos, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.initialized_ = true;
         }
         return Result(ret);
@@ -200,11 +198,9 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME,
-                                                          M::TYPE_HASH, ffi_qos, &handle);
+                                                          M::TYPE_HASH, ffi_qos, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.initialized_ = true;
         }
         return Result(ret);
@@ -225,11 +221,9 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_service_server_create(
-            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
+            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.initialized_ = true;
         }
         return Result(ret);
@@ -250,11 +244,9 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_service_client_create(
-            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, &handle);
+            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.initialized_ = true;
         }
         return Result(ret);
@@ -368,11 +360,9 @@ class Node {
     Result create_guard_condition(GuardCondition& out, nros_cpp_guard_callback_t callback,
                                   void* context = nullptr) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        void* handle = nullptr;
         nros_cpp_ret_t ret =
-            nros_cpp_guard_condition_create(executor_handle_, callback, context, &handle);
+            nros_cpp_guard_condition_create(executor_handle_, callback, context, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.initialized_ = true;
         }
         return Result(ret);

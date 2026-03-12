@@ -7,17 +7,18 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "nros/config.hpp"
 #include "nros/result.hpp"
 
 // FFI declarations
 extern "C" {
 typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_service_server_try_recv_raw(void* handle, uint8_t* out_data,
+nros_cpp_ret_t nros_cpp_service_server_try_recv_raw(void* storage, uint8_t* out_data,
                                                     size_t out_capacity, size_t* out_len,
                                                     int64_t* out_sequence);
-nros_cpp_ret_t nros_cpp_service_server_send_reply_raw(void* handle, int64_t sequence_number,
+nros_cpp_ret_t nros_cpp_service_server_send_reply_raw(void* storage, int64_t sequence_number,
                                                       const uint8_t* data, size_t len);
-nros_cpp_ret_t nros_cpp_service_server_destroy(void* handle);
+nros_cpp_ret_t nros_cpp_service_server_destroy(void* storage);
 } // extern "C"
 
 namespace nros {
@@ -56,7 +57,7 @@ template <typename S> class Service {
         size_t len = 0;
         int64_t seq = 0;
         nros_cpp_ret_t ret =
-            nros_cpp_service_server_try_recv_raw(handle_, buf, sizeof(buf), &len, &seq);
+            nros_cpp_service_server_try_recv_raw(storage_, buf, sizeof(buf), &len, &seq);
         if (ret != 0 || len == 0) return false;
         if (RequestType::ffi_deserialize(buf, len, &req) != 0) return false;
         seq_id = seq;
@@ -75,7 +76,7 @@ template <typename S> class Service {
         if (ResponseType::ffi_serialize(&resp, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(nros_cpp_service_server_send_reply_raw(handle_, seq_id, buf, len));
+        return Result(nros_cpp_service_server_send_reply_raw(storage_, seq_id, buf, len));
     }
 
     /// Check if the service is initialized and valid.
@@ -84,25 +85,30 @@ template <typename S> class Service {
     /// Destructor — releases service server resources.
     ~Service() {
         if (initialized_) {
-            nros_cpp_service_server_destroy(handle_);
+            nros_cpp_service_server_destroy(storage_);
             initialized_ = false;
         }
     }
 
     // Move semantics (non-copyable)
-    Service(Service&& other) : handle_(other.handle_), initialized_(other.initialized_) {
-        other.handle_ = nullptr;
+    Service(Service&& other) : initialized_(other.initialized_) {
+        for (unsigned i = 0; i < sizeof(storage_); ++i) {
+            storage_[i] = other.storage_[i];
+            other.storage_[i] = 0;
+        }
         other.initialized_ = false;
     }
 
     Service& operator=(Service&& other) {
         if (this != &other) {
             if (initialized_) {
-                nros_cpp_service_server_destroy(handle_);
+                nros_cpp_service_server_destroy(storage_);
             }
-            handle_ = other.handle_;
+            for (unsigned i = 0; i < sizeof(storage_); ++i) {
+                storage_[i] = other.storage_[i];
+                other.storage_[i] = 0;
+            }
             initialized_ = other.initialized_;
-            other.handle_ = nullptr;
             other.initialized_ = false;
         }
         return *this;
@@ -110,7 +116,7 @@ template <typename S> class Service {
 
     /// Default constructor — creates an uninitialized service server.
     /// Use `Node::create_service()` to initialize.
-    Service() : handle_(nullptr), initialized_(false) {}
+    Service() : storage_(), initialized_(false) {}
 
   private:
     Service(const Service&) = delete;
@@ -118,7 +124,7 @@ template <typename S> class Service {
 
     friend class Node;
 
-    void* handle_;
+    alignas(8) uint8_t storage_[NROS_CPP_SERVICE_SERVER_STORAGE_SIZE];
     bool initialized_;
 };
 

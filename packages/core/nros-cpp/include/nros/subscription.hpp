@@ -7,15 +7,16 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "nros/config.hpp"
 #include "nros/result.hpp"
 
 // FFI declarations
 extern "C" {
 typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void* handle, uint8_t* out_data,
+nros_cpp_ret_t nros_cpp_subscription_try_recv_raw(void* storage, uint8_t* out_data,
                                                   size_t out_capacity, size_t* out_len);
-nros_cpp_ret_t nros_cpp_subscription_destroy(void* handle);
-const char* nros_cpp_subscription_get_topic_name(const void* handle);
+nros_cpp_ret_t nros_cpp_subscription_destroy(void* storage);
+const char* nros_cpp_subscription_get_topic_name(const void* storage);
 } // extern "C"
 
 namespace nros {
@@ -51,7 +52,7 @@ template <typename M> class Subscription {
         if (!initialized_) return false;
         uint8_t buf[M::SERIALIZED_SIZE_MAX];
         size_t len = 0;
-        nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(handle_, buf, sizeof(buf), &len);
+        nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(storage_, buf, sizeof(buf), &len);
         if (ret != 0 || len == 0) return false;
         return M::ffi_deserialize(buf, len, &msg) == 0;
     }
@@ -70,14 +71,14 @@ template <typename M> class Subscription {
             out_len = 0;
             return false;
         }
-        nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(handle_, buf, capacity, &out_len);
+        nros_cpp_ret_t ret = nros_cpp_subscription_try_recv_raw(storage_, buf, capacity, &out_len);
         return ret == 0 && out_len > 0;
     }
 
     /// Get the topic name.
     const char* get_topic_name() const {
         if (!initialized_) return "";
-        return nros_cpp_subscription_get_topic_name(handle_);
+        return nros_cpp_subscription_get_topic_name(storage_);
     }
 
     /// Check if the subscription is initialized and valid.
@@ -86,25 +87,30 @@ template <typename M> class Subscription {
     /// Destructor — releases subscription resources.
     ~Subscription() {
         if (initialized_) {
-            nros_cpp_subscription_destroy(handle_);
+            nros_cpp_subscription_destroy(storage_);
             initialized_ = false;
         }
     }
 
     // Move semantics (non-copyable)
-    Subscription(Subscription&& other) : handle_(other.handle_), initialized_(other.initialized_) {
-        other.handle_ = nullptr;
+    Subscription(Subscription&& other) : initialized_(other.initialized_) {
+        for (unsigned i = 0; i < sizeof(storage_); ++i) {
+            storage_[i] = other.storage_[i];
+            other.storage_[i] = 0;
+        }
         other.initialized_ = false;
     }
 
     Subscription& operator=(Subscription&& other) {
         if (this != &other) {
             if (initialized_) {
-                nros_cpp_subscription_destroy(handle_);
+                nros_cpp_subscription_destroy(storage_);
             }
-            handle_ = other.handle_;
+            for (unsigned i = 0; i < sizeof(storage_); ++i) {
+                storage_[i] = other.storage_[i];
+                other.storage_[i] = 0;
+            }
             initialized_ = other.initialized_;
-            other.handle_ = nullptr;
             other.initialized_ = false;
         }
         return *this;
@@ -112,7 +118,7 @@ template <typename M> class Subscription {
 
     /// Default constructor — creates an uninitialized subscription.
     /// Use `Node::create_subscription()` to initialize.
-    Subscription() : handle_(nullptr), initialized_(false) {}
+    Subscription() : storage_(), initialized_(false) {}
 
   private:
     Subscription(const Subscription&) = delete;
@@ -120,7 +126,7 @@ template <typename M> class Subscription {
 
     friend class Node;
 
-    void* handle_;
+    alignas(8) uint8_t storage_[NROS_CPP_SUBSCRIPTION_STORAGE_SIZE];
     bool initialized_;
 };
 

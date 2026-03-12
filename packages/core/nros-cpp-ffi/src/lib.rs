@@ -11,8 +11,11 @@
 //! C++ (nros-cpp headers)  →  extern "C"  →  nros-cpp-ffi  →  nros-node
 //! ```
 //!
-//! The C++ side holds opaque `void*` handles to Rust objects. All
-//! serialization/deserialization happens on the Rust side.
+//! The C++ side provides inline opaque storage for core entity handles
+//! (publisher, subscription, service, guard condition). The executor and
+//! action types still use heap allocation via `alloc`.
+//!
+//! All serialization/deserialization happens on the Rust side.
 
 #![no_std]
 #![allow(non_camel_case_types)]
@@ -26,36 +29,24 @@ extern crate std;
 
 use core::ffi::{c_char, c_int, c_void};
 
+// ── Core entity modules (alloc-free — caller provides inline storage) ──
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+mod guard_condition;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+mod publisher;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+mod service;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+mod subscription;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+mod timer;
+
+// ── Advanced feature modules (require alloc) ──
 #[cfg(all(
     feature = "alloc",
     any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
 ))]
 mod action;
-#[cfg(all(
-    feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
-))]
-mod guard_condition;
-#[cfg(all(
-    feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
-))]
-mod publisher;
-#[cfg(all(
-    feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
-))]
-mod service;
-#[cfg(all(
-    feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
-))]
-mod subscription;
-#[cfg(all(
-    feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
-))]
-mod timer;
 
 // ============================================================================
 // Error codes (mirror nros-c for consistency)
@@ -78,6 +69,30 @@ pub const NROS_CPP_RET_NOT_INIT: nros_cpp_ret_t = -4;
 pub const NROS_CPP_RET_FULL: nros_cpp_ret_t = -5;
 /// Transport / connection error.
 pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
+
+// ============================================================================
+// Inline opaque storage sizes (in u64 units)
+// ============================================================================
+//
+// These constants define the inline storage for internal C++ FFI wrapper
+// structs (CppPublisher, CppSubscription, etc.). The C++ side allocates
+// buffers of this size; the Rust side writes directly into them.
+// Compile-time assertions in each module verify the storage is large enough.
+
+/// Inline storage for `CppPublisher` (in u64 units).
+pub const CPP_PUBLISHER_OPAQUE_U64S: usize = 96;
+
+/// Inline storage for `CppSubscription` (in u64 units).
+pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = 224;
+
+/// Inline storage for `CppServiceServer` (in u64 units).
+pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = 224;
+
+/// Inline storage for `CppServiceClient` (in u64 units).
+pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = 224;
+
+/// Inline storage for `GuardConditionHandle` (in u64 units).
+pub const CPP_GUARD_HANDLE_OPAQUE_U64S: usize = 4;
 
 // ============================================================================
 // QoS types (passed from C++ to Rust by value)
@@ -144,7 +159,7 @@ impl nros_cpp_qos_t {
 }
 
 // ============================================================================
-// Executor handle (opaque, boxed on Rust heap)
+// Executor handle (heap-allocated via Box — requires alloc)
 // ============================================================================
 
 // The concrete executor type used by the C++ FFI.
@@ -311,10 +326,7 @@ pub struct nros_cpp_node_t {
 ///
 /// # Returns
 /// `NROS_CPP_RET_OK` on success, error code otherwise.
-#[cfg(all(
-    feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
-))]
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_node_create(
     executor_handle: *mut c_void,
@@ -424,10 +436,7 @@ pub unsafe extern "C" fn nros_cpp_node_get_namespace(
 ///
 /// # Safety
 /// `handle` must be a valid handle returned by `nros_cpp_init()`.
-#[cfg(all(
-    feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
-))]
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_spin_once(
     handle: *mut c_void,

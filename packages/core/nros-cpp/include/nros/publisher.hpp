@@ -7,14 +7,15 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "nros/config.hpp"
 #include "nros/result.hpp"
 
 // FFI declarations
 extern "C" {
 typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_publish_raw(void* handle, const uint8_t* data, size_t len);
-nros_cpp_ret_t nros_cpp_publisher_destroy(void* handle);
-const char* nros_cpp_publisher_get_topic_name(const void* handle);
+nros_cpp_ret_t nros_cpp_publish_raw(void* storage, const uint8_t* data, size_t len);
+nros_cpp_ret_t nros_cpp_publisher_destroy(void* storage);
+const char* nros_cpp_publisher_get_topic_name(const void* storage);
 } // extern "C"
 
 namespace nros {
@@ -38,18 +39,18 @@ template <typename M> class Publisher {
     ///
     /// Calls the codegen-generated `M::ffi_publish()` which serializes to CDR
     /// on the Rust side and publishes. Available after 66.4 codegen.
-    Result publish(const M& msg) { return Result(M::ffi_publish(handle_, &msg)); }
+    Result publish(const M& msg) { return Result(M::ffi_publish(storage_, &msg)); }
 
     /// Publish raw CDR bytes.
     Result publish_raw(const uint8_t* data, size_t len) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_publish_raw(handle_, data, len));
+        return Result(nros_cpp_publish_raw(storage_, data, len));
     }
 
     /// Get the topic name.
     const char* get_topic_name() const {
         if (!initialized_) return "";
-        return nros_cpp_publisher_get_topic_name(handle_);
+        return nros_cpp_publisher_get_topic_name(storage_);
     }
 
     /// Check if the publisher is initialized and valid.
@@ -58,25 +59,30 @@ template <typename M> class Publisher {
     /// Destructor — releases publisher resources.
     ~Publisher() {
         if (initialized_) {
-            nros_cpp_publisher_destroy(handle_);
+            nros_cpp_publisher_destroy(storage_);
             initialized_ = false;
         }
     }
 
     // Move semantics (non-copyable)
-    Publisher(Publisher&& other) : handle_(other.handle_), initialized_(other.initialized_) {
-        other.handle_ = nullptr;
+    Publisher(Publisher&& other) : initialized_(other.initialized_) {
+        for (unsigned i = 0; i < sizeof(storage_); ++i) {
+            storage_[i] = other.storage_[i];
+            other.storage_[i] = 0;
+        }
         other.initialized_ = false;
     }
 
     Publisher& operator=(Publisher&& other) {
         if (this != &other) {
             if (initialized_) {
-                nros_cpp_publisher_destroy(handle_);
+                nros_cpp_publisher_destroy(storage_);
             }
-            handle_ = other.handle_;
+            for (unsigned i = 0; i < sizeof(storage_); ++i) {
+                storage_[i] = other.storage_[i];
+                other.storage_[i] = 0;
+            }
             initialized_ = other.initialized_;
-            other.handle_ = nullptr;
             other.initialized_ = false;
         }
         return *this;
@@ -84,7 +90,7 @@ template <typename M> class Publisher {
 
     /// Default constructor — creates an uninitialized publisher.
     /// Use `Node::create_publisher()` to initialize.
-    Publisher() : handle_(nullptr), initialized_(false) {}
+    Publisher() : storage_(), initialized_(false) {}
 
   private:
     Publisher(const Publisher&) = delete;
@@ -92,7 +98,7 @@ template <typename M> class Publisher {
 
     friend class Node;
 
-    void* handle_;
+    alignas(8) uint8_t storage_[NROS_CPP_PUBLISHER_STORAGE_SIZE];
     bool initialized_;
 };
 

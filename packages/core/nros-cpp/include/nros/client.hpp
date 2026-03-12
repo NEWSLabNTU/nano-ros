@@ -7,15 +7,16 @@
 #include <cstdint>
 #include <cstddef>
 
+#include "nros/config.hpp"
 #include "nros/result.hpp"
 
 // FFI declarations
 extern "C" {
 typedef int nros_cpp_ret_t;
-nros_cpp_ret_t nros_cpp_service_client_call_raw(void* handle, const uint8_t* req_data,
+nros_cpp_ret_t nros_cpp_service_client_call_raw(void* storage, const uint8_t* req_data,
                                                 size_t req_len, uint8_t* resp_data,
                                                 size_t resp_capacity, size_t* resp_len);
-nros_cpp_ret_t nros_cpp_service_client_destroy(void* handle);
+nros_cpp_ret_t nros_cpp_service_client_destroy(void* storage);
 } // extern "C"
 
 namespace nros {
@@ -59,7 +60,7 @@ template <typename S> class Client {
         // Call and receive reply
         uint8_t resp_buf[ResponseType::SERIALIZED_SIZE_MAX];
         size_t resp_len = 0;
-        nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(handle_, req_buf, req_len, resp_buf,
+        nros_cpp_ret_t ret = nros_cpp_service_client_call_raw(storage_, req_buf, req_len, resp_buf,
                                                               sizeof(resp_buf), &resp_len);
         if (ret != 0) return Result(ret);
 
@@ -76,25 +77,30 @@ template <typename S> class Client {
     /// Destructor — releases service client resources.
     ~Client() {
         if (initialized_) {
-            nros_cpp_service_client_destroy(handle_);
+            nros_cpp_service_client_destroy(storage_);
             initialized_ = false;
         }
     }
 
     // Move semantics (non-copyable)
-    Client(Client&& other) : handle_(other.handle_), initialized_(other.initialized_) {
-        other.handle_ = nullptr;
+    Client(Client&& other) : initialized_(other.initialized_) {
+        for (unsigned i = 0; i < sizeof(storage_); ++i) {
+            storage_[i] = other.storage_[i];
+            other.storage_[i] = 0;
+        }
         other.initialized_ = false;
     }
 
     Client& operator=(Client&& other) {
         if (this != &other) {
             if (initialized_) {
-                nros_cpp_service_client_destroy(handle_);
+                nros_cpp_service_client_destroy(storage_);
             }
-            handle_ = other.handle_;
+            for (unsigned i = 0; i < sizeof(storage_); ++i) {
+                storage_[i] = other.storage_[i];
+                other.storage_[i] = 0;
+            }
             initialized_ = other.initialized_;
-            other.handle_ = nullptr;
             other.initialized_ = false;
         }
         return *this;
@@ -102,7 +108,7 @@ template <typename S> class Client {
 
     /// Default constructor — creates an uninitialized service client.
     /// Use `Node::create_client()` to initialize.
-    Client() : handle_(nullptr), initialized_(false) {}
+    Client() : storage_(), initialized_(false) {}
 
   private:
     Client(const Client&) = delete;
@@ -110,7 +116,7 @@ template <typename S> class Client {
 
     friend class Node;
 
-    void* handle_;
+    alignas(8) uint8_t storage_[NROS_CPP_SERVICE_CLIENT_STORAGE_SIZE];
     bool initialized_;
 };
 
