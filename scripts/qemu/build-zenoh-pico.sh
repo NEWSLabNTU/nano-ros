@@ -172,7 +172,7 @@ CFLAGS="-mcpu=cortex-m3 -mthumb"
 CFLAGS="$CFLAGS -Os -g"
 CFLAGS="$CFLAGS -ffunction-sections -fdata-sections"
 CFLAGS="$CFLAGS -fno-common -fno-exceptions"
-CFLAGS="$CFLAGS -Wall -Wextra"
+CFLAGS="$CFLAGS -Wall -Wextra -Wno-unused-but-set-variable"
 
 # Include paths (order matters — generated config takes precedence)
 INCLUDES="-I$BUILD_DIR/zenoh-config"
