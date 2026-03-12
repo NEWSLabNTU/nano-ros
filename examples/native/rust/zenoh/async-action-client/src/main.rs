@@ -34,7 +34,7 @@ async fn main() {
 
     // Create executor
     let config = ExecutorConfig::from_env().node_name("async_fibonacci_client");
-    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
 
     // Create action client — owned type, no lifetime tied to node or executor.
     // The node is dropped at the end of this block, freeing the executor.

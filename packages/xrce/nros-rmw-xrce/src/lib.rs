@@ -621,9 +621,7 @@ impl XrceSession {
         // loop of non-blocking guarded calls to keep critical sections short.
         #[cfg(feature = "ffi-sync")]
         {
-            let ok = ffi_guard(|| unsafe {
-                xrce_sys::uxr_run_session_time(&raw mut SESSION, 0)
-            });
+            let ok = ffi_guard(|| unsafe { xrce_sys::uxr_run_session_time(&raw mut SESSION, 0) });
             if !ok || timeout_ms == 0 {
                 return ok;
             }
@@ -632,9 +630,8 @@ impl XrceSession {
             // Each uxr_run_session_time(0) call takes ~1ms of I/O processing.
             let iterations = timeout_ms.max(0) as u32;
             for _ in 0..iterations {
-                let ok = ffi_guard(|| unsafe {
-                    xrce_sys::uxr_run_session_time(&raw mut SESSION, 0)
-                });
+                let ok =
+                    ffi_guard(|| unsafe { xrce_sys::uxr_run_session_time(&raw mut SESSION, 0) });
                 if !ok {
                     return false;
                 }

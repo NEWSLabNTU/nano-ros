@@ -3,7 +3,9 @@
 use core::marker::PhantomData;
 
 use nros_core::{RosAction, RosMessage, RosService};
-use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo, TransportError};
+use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session as _, TopicInfo, TransportError};
+
+use crate::session;
 
 use super::handles::{
     ActionClient, ActionServer, EmbeddedPublisher, EmbeddedServiceClient, EmbeddedServiceServer,
@@ -12,23 +14,23 @@ use super::handles::{
 use super::types::NodeError;
 
 // ============================================================================
-// Node<S>
+// Node
 // ============================================================================
 
 /// Backend-agnostic node — borrows the session to create typed entities.
-pub struct Node<'a, S: Session> {
+pub struct Node<'a> {
     name: heapless::String<64>,
     namespace: heapless::String<64>,
-    session: &'a mut S,
+    session: &'a mut session::ConcreteSession,
     domain_id: u32,
 }
 
-impl<'a, S: Session> Node<'a, S> {
+impl<'a> Node<'a> {
     /// Create a new node (called by Executor::create_node).
     pub(crate) fn new(
         name: heapless::String<64>,
         namespace: heapless::String<64>,
-        session: &'a mut S,
+        session: &'a mut session::ConcreteSession,
         domain_id: u32,
     ) -> Self {
         Self {
@@ -55,7 +57,7 @@ impl<'a, S: Session> Node<'a, S> {
     }
 
     /// Get a mutable reference to the underlying session.
-    pub fn session_mut(&mut self) -> &mut S {
+    pub fn session_mut(&mut self) -> &mut session::ConcreteSession {
         self.session
     }
 
@@ -65,7 +67,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_publisher<M: RosMessage>(
         &mut self,
         topic_name: &str,
-    ) -> Result<EmbeddedPublisher<M, S::PublisherHandle>, NodeError> {
+    ) -> Result<EmbeddedPublisher<M>, NodeError> {
         self.create_publisher_with_qos::<M>(topic_name, QosSettings::default())
     }
 
@@ -74,7 +76,7 @@ impl<'a, S: Session> Node<'a, S> {
         &mut self,
         topic_name: &str,
         qos: QosSettings,
-    ) -> Result<EmbeddedPublisher<M, S::PublisherHandle>, NodeError> {
+    ) -> Result<EmbeddedPublisher<M>, NodeError> {
         let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH)
             .with_domain(self.domain_id)
             .with_node_name(&self.name)
@@ -95,7 +97,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_subscription<M: RosMessage>(
         &mut self,
         topic_name: &str,
-    ) -> Result<Subscription<M, S::SubscriberHandle>, NodeError> {
+    ) -> Result<Subscription<M>, NodeError> {
         self.create_subscription_sized::<M, { crate::config::DEFAULT_RX_BUF_SIZE }>(topic_name)
     }
 
@@ -103,7 +105,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_subscription_sized<M: RosMessage, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
-    ) -> Result<Subscription<M, S::SubscriberHandle, RX_BUF>, NodeError> {
+    ) -> Result<Subscription<M, RX_BUF>, NodeError> {
         self.create_subscription_with_qos::<M, RX_BUF>(topic_name, QosSettings::default())
     }
 
@@ -112,7 +114,7 @@ impl<'a, S: Session> Node<'a, S> {
         &mut self,
         topic_name: &str,
         qos: QosSettings,
-    ) -> Result<Subscription<M, S::SubscriberHandle, RX_BUF>, NodeError> {
+    ) -> Result<Subscription<M, RX_BUF>, NodeError> {
         let topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH)
             .with_domain(self.domain_id)
             .with_node_name(&self.name)
@@ -134,7 +136,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_service<Svc: RosService>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceServer<Svc, S::ServiceServerHandle>, NodeError> {
+    ) -> Result<EmbeddedServiceServer<Svc>, NodeError> {
         self.create_service_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name)
     }
 
@@ -142,8 +144,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_service_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceServer<Svc, S::ServiceServerHandle, REQ_BUF, REPLY_BUF>, NodeError>
-    {
+    ) -> Result<EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
         let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
             .with_domain(self.domain_id)
             .with_node_name(&self.name)
@@ -164,7 +165,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_client<Svc: RosService>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceClient<Svc, S::ServiceClientHandle>, NodeError> {
+    ) -> Result<EmbeddedServiceClient<Svc>, NodeError> {
         self.create_client_sized::<Svc, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name)
     }
 
@@ -172,8 +173,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_client_sized<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>(
         &mut self,
         service_name: &str,
-    ) -> Result<EmbeddedServiceClient<Svc, S::ServiceClientHandle, REQ_BUF, REPLY_BUF>, NodeError>
-    {
+    ) -> Result<EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>, NodeError> {
         let info = ServiceInfo::new(service_name, Svc::SERVICE_NAME, Svc::SERVICE_HASH)
             .with_domain(self.domain_id)
             .with_node_name(&self.name)
@@ -196,7 +196,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_action_server<A: RosAction>(
         &mut self,
         action_name: &str,
-    ) -> Result<ActionServer<A, S::ServiceServerHandle, S::PublisherHandle>, NodeError> {
+    ) -> Result<ActionServer<A>, NodeError> {
         self.create_action_server_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(action_name)
     }
 
@@ -210,18 +210,7 @@ impl<'a, S: Session> Node<'a, S> {
     >(
         &mut self,
         action_name: &str,
-    ) -> Result<
-        ActionServer<
-            A,
-            S::ServiceServerHandle,
-            S::PublisherHandle,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-            MAX_GOALS,
-        >,
-        NodeError,
-    > {
+    ) -> Result<ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>, NodeError> {
         let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
             .with_domain(self.domain_id);
 
@@ -297,7 +286,7 @@ impl<'a, S: Session> Node<'a, S> {
     pub fn create_action_client<A: RosAction>(
         &mut self,
         action_name: &str,
-    ) -> Result<ActionClient<A, S::ServiceClientHandle, S::SubscriberHandle>, NodeError> {
+    ) -> Result<ActionClient<A>, NodeError> {
         self.create_action_client_sized::<A, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(action_name)
     }
 
@@ -310,17 +299,7 @@ impl<'a, S: Session> Node<'a, S> {
     >(
         &mut self,
         action_name: &str,
-    ) -> Result<
-        ActionClient<
-            A,
-            S::ServiceClientHandle,
-            S::SubscriberHandle,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-        >,
-        NodeError,
-    > {
+    ) -> Result<ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>, NodeError> {
         let action_info = ActionInfo::new(action_name, A::ACTION_NAME, A::ACTION_HASH)
             .with_domain(self.domain_id);
 

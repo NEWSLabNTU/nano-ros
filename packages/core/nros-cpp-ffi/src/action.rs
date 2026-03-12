@@ -325,13 +325,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_destroy(handle: *mut c_void) -> 
 
 /// Internal state for the action client.
 struct CppActionClient {
-    core: nros_node::ActionClientCore<
-        nros::internals::RmwServiceClient,
-        nros::internals::RmwSubscriber,
-        ACTION_BUF_SIZE,
-        ACTION_BUF_SIZE,
-        ACTION_BUF_SIZE,
-    >,
+    core: nros_node::ActionClientCore<ACTION_BUF_SIZE, ACTION_BUF_SIZE, ACTION_BUF_SIZE>,
     action_name: [u8; 256],
     _action_name_len: usize,
 }

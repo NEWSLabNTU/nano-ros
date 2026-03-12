@@ -79,8 +79,6 @@ typedef struct nros_service_t {
     const struct nros_node_t* node;
     /** Handle ID from executor registration (@c SIZE_MAX = not registered). */
     size_t handle_id;
-    /** Opaque pointer to internal Rust service server. */
-    void* _internal;
 } nros_service_t;
 
 /* ===================================================================

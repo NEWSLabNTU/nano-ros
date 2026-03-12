@@ -19,7 +19,7 @@
 //! use std_msgs::msg::Int32;
 //!
 //! let config = ExecutorConfig::from_env().node_name("my_node");
-//! let mut executor: Executor<_> = Executor::open(&config)?;
+//! let mut executor = Executor::open(&config)?;
 //!
 //! let mut node = executor.create_node("my_node")?;
 //! let publisher = node.create_publisher::<Int32>("/my_topic")?;
@@ -32,34 +32,29 @@
 //! executor.spin_blocking(SpinOptions::default());
 //! ```
 //!
-//! ## Executor Const Generics
+//! ## Executor Sizing
 //!
-//! [`Executor`]`<S, MAX_CBS, CB_ARENA>` has two const parameters that
-//! control its static memory layout:
+//! The executor's static memory layout is controlled via environment variables
+//! at build time:
 //!
-//! - **`MAX_CBS`** — maximum number of registered callbacks (subscriptions +
-//!   timers + services + guard conditions).  Size this to the total number of
-//!   handles your node will register.
-//! - **`CB_ARENA`** — byte budget for storing callback closures inline.
-//!   4096 bytes is generous for most use cases; reduce on memory-constrained
-//!   targets.  Each closure occupies its captured-variable size (often 0–32
-//!   bytes).
+//! - **`NROS_EXECUTOR_MAX_CBS`** (default 4) — maximum number of registered
+//!   callbacks (subscriptions + timers + services + guard conditions).
+//! - **`NROS_EXECUTOR_ARENA_SIZE`** (default 4096) — byte budget for storing
+//!   callback closures inline.
 //!
-//! For messages larger than the default 1024-byte transmit buffer, use the
+//! For messages larger than the default 1024-byte receive buffer, use the
 //! `_sized` method variants (e.g., `add_subscription_sized`) to specify a
 //! custom buffer size.
 //!
 //! ## Transport Backends
 //!
-//! Many types are generic over `S: Session`, where `S` is the transport
-//! backend.  You do **not** need to name `S` explicitly — the compiler
-//! infers it from your enabled feature flag:
+//! The transport backend is selected at compile time via feature flags:
 //!
-//! - `rmw-zenoh` → `ZenohSession`
-//! - `rmw-xrce` → `XrceSession`
+//! - `rmw-zenoh` → zenoh-pico transport
+//! - `rmw-xrce` → XRCE-DDS transport
 //!
-//! Advanced users who need the concrete session type can access it via
-//! `nros::internals::RmwSession`.
+//! The concrete session type is resolved automatically. Advanced users
+//! who need it can access it via `nros::internals::RmwSession`.
 //!
 //! ## Crate Features
 //!
@@ -355,16 +350,26 @@ pub mod internals {
     }
 }
 
-// Re-export embedded node types (always available, no feature gate)
+// Re-export types that don't depend on RMW (always available)
+pub use nros_node::{
+    ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
+    NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback, RawSubscriptionCallback,
+    ReadinessSnapshot, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+};
+
+// Re-export RMW-dependent types (require an active transport backend)
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, Executor, ExecutorConfig, FeedbackStream, GoalFeedbackStream, Node,
-    NodeError, Promise, RawActiveGoal, RawCancelCallback, RawGoalCallback, SpinOnceResult,
-    SpinOptions, SpinPeriodPollingResult, Subscription,
+    EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream, Node, Promise,
+    RawActiveGoal, Subscription,
 };
 
-#[cfg(feature = "std")]
+#[cfg(all(
+    feature = "std",
+    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+))]
 pub use nros_node::SpinPeriodResult;
 
 // Re-export service types
@@ -405,16 +410,24 @@ pub mod prelude {
         LifecycleTransition, TransitionResult,
     };
 
-    // Re-export generic embedded node types (new names + backward compat)
+    // Re-export executor config types (always available)
     pub use crate::{
-        EmbeddedPublisher, Executor, ExecutorConfig, Node, NodeError, SessionMode, SpinOnceResult,
-        SpinOptions, SpinPeriodPollingResult, Subscription,
+        ExecutorConfig, NodeError, SessionMode, SpinOnceResult, SpinOptions,
+        SpinPeriodPollingResult,
     };
+
+    // Re-export RMW-dependent executor types
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+    pub use crate::{EmbeddedPublisher, Executor, Node, Subscription};
+
     // Standalone node options (no-transport simulation mode)
     #[cfg(not(feature = "rmw-zenoh"))]
     pub use crate::{PublisherOptions, SubscriberOptions};
 
-    #[cfg(feature = "std")]
+    #[cfg(all(
+        feature = "std",
+        any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+    ))]
     pub use crate::SpinPeriodResult;
 
     // Re-export parameter types

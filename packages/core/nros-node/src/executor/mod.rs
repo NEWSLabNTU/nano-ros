@@ -1,7 +1,7 @@
-//! Embedded executor — backend-agnostic via `Session` trait.
+//! Embedded executor with build-time configured arena.
 //!
-//! Provides [`Executor<S>`] and [`Node<S>`] that work with any
-//! [`Session`](nros_rmw::Session) implementation (zenoh, XRCE-DDS, or third-party backends).
+//! Provides [`Executor`] and [`Node`] that work with the compile-time
+//! selected RMW backend (zenoh, XRCE-DDS, or C FFI).
 //!
 //! # Example
 //!
@@ -9,9 +9,8 @@
 //! use nros_node::executor::*;
 //! use std_msgs::msg::Int32;
 //!
-//! // Any Session implementation works:
-//! let session = MyBackend::open(&config)?;
-//! let mut executor = Executor::from_session(session);
+//! let config = ExecutorConfig::from_env().node_name("my_node");
+//! let mut executor = Executor::open(&config)?;
 //! let mut node = executor.create_node("my_node")?;
 //!
 //! let publisher = node.create_publisher::<Int32>("/chatter")?;
@@ -22,22 +21,33 @@
 //! }
 //! ```
 
+#[cfg(any(has_rmw, test))]
 pub mod action_core;
+#[cfg(any(has_rmw, test))]
 mod arena;
+#[cfg(any(has_rmw, test))]
 mod handles;
+#[cfg(any(has_rmw, test))]
 mod node;
+#[cfg(any(has_rmw, test))]
 mod spin;
 mod types;
 
+#[cfg(any(has_rmw, test))]
 pub mod action;
 
 #[cfg(test)]
 mod tests;
 
 // Flat re-exports so users write `executor::Executor` etc.
+#[cfg(any(has_rmw, test))]
 pub use action::{ActionServerHandle, ActionServerRawHandle};
+#[cfg(any(has_rmw, test))]
 pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
+#[cfg(any(has_rmw, test))]
 pub use handles::*;
+#[cfg(any(has_rmw, test))]
 pub use node::Node;
+#[cfg(any(has_rmw, test))]
 pub use spin::Executor;
 pub use types::*;

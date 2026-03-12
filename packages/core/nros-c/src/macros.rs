@@ -12,6 +12,7 @@
 /// ```ignore
 /// validate_not_null!(publisher, node, type_info, topic_name);
 /// ```
+#[allow(unused_macros)] // Used in RMW-gated modules; appears unused in no-feature builds
 macro_rules! validate_not_null {
     ($($ptr:expr),+ $(,)?) => {
         if $($ptr.is_null())||+ {
@@ -31,6 +32,7 @@ macro_rules! validate_not_null {
 /// ```ignore
 /// validate_state!(service, nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED, NROS_RET_BAD_SEQUENCE);
 /// ```
+#[allow(unused_macros)] // Used in RMW-gated modules; appears unused in no-feature builds
 macro_rules! validate_state {
     ($obj:expr, $expected:expr) => {
         if $obj.state != $expected {

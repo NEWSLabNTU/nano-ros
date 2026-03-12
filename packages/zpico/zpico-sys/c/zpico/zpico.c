@@ -1589,11 +1589,11 @@ int32_t zpico_query_reply(int32_t queryable_handle,
 // struct { uint64_t tv_sec; uint64_t tv_nsec; } (16 bytes) on ThreadX/POSIX.
 _Static_assert(sizeof(z_clock_t) <= 16, "z_clock_t must fit in 16 bytes");
 
-void zpico_clock_start(uint8_t clock_buf[16]) {
+void zpico_clock_start(uint8_t *clock_buf) {
     z_clock_t now = z_clock_now();
     memcpy(clock_buf, &now, sizeof(z_clock_t));
 }
 
-unsigned long zpico_clock_elapsed_ms_since(uint8_t clock_buf[16]) {
+unsigned long zpico_clock_elapsed_ms_since(uint8_t *clock_buf) {
     return z_clock_elapsed_ms((z_clock_t *)clock_buf);
 }

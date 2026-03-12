@@ -159,20 +159,21 @@ extern "C" {
 /**
  * Initialize an nros executor session.
  *
- * Opens a middleware connection and returns an opaque executor handle.
- * The handle must be destroyed with `nros_cpp_fini()`.
+ * Opens a middleware connection and writes the executor context directly
+ * into caller-provided storage (no heap allocation).
  *
  * # Parameters
  * * `locator` — Middleware locator (e.g., `"tcp/127.0.0.1:7447"`), or NULL for default.
  * * `domain_id` — ROS domain ID (0–232).
  * * `node_name` — Node name (null-terminated string). Must not be NULL.
  * * `namespace` — Node namespace (null-terminated string), or NULL for `"/"`.
- * * `out_handle` — Receives the opaque executor handle on success.
+ * * `storage` — Pointer to caller-provided storage (at least `CPP_EXECUTOR_OPAQUE_U64S * 8` bytes,
+ *   aligned to 8 bytes). The executor is written directly into this buffer.
  *
  * # Safety
  * * `node_name` must be a valid null-terminated string.
  * * `locator` and `namespace` must be valid null-terminated strings or NULL.
- * * `out_handle` must be a valid pointer to a `*mut c_void`.
+ * * `storage` must be a valid pointer to appropriately sized and aligned storage.
  *
  * # Returns
  * `NROS_CPP_RET_OK` on success, error code otherwise.
@@ -181,17 +182,17 @@ nros_cpp_ret_t nros_cpp_init(const char *locator,
                              uint8_t domain_id,
                              const char *node_name,
                              const char *namespace_,
-                             void **out_handle);
+                             void *storage);
 
 /**
  * Shut down an nros executor session.
  *
- * Closes the middleware connection and frees the executor handle.
+ * Drops the executor in-place within the caller's storage.
  *
  * # Safety
- * `handle` must be a valid handle returned by `nros_cpp_init()`, or NULL (no-op).
+ * `storage` must point to a live `CppContext` written by `nros_cpp_init()`, or NULL (no-op).
  */
-nros_cpp_ret_t nros_cpp_fini(void *handle);
+nros_cpp_ret_t nros_cpp_fini(void *storage);
 
 /**
  * Create a node on an executor.

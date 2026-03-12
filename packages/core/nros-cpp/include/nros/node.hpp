@@ -8,6 +8,7 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
+#include "nros/nros_cpp_config_generated.h"
 #include "nros/qos.hpp"
 #include "nros/publisher.hpp"
 #include "nros/subscription.hpp"
@@ -53,9 +54,9 @@ struct nros_cpp_node_t {
 };
 
 nros_cpp_ret_t nros_cpp_init(const char* locator, uint8_t domain_id, const char* node_name,
-                             const char* ns, void** out_handle);
+                             const char* ns, void* storage);
 
-nros_cpp_ret_t nros_cpp_fini(void* handle);
+nros_cpp_ret_t nros_cpp_fini(void* storage);
 
 nros_cpp_ret_t nros_cpp_node_create(void* executor_handle, const char* name, const char* ns,
                                     nros_cpp_node_t* out_node);
@@ -414,40 +415,40 @@ class Node {
     friend Result spin_once(int32_t timeout_ms);
     friend Result spin(uint32_t duration_ms, int32_t poll_ms);
 
-    // Store the global executor handle for init/shutdown
-    // (In freestanding C++, we use a simple static pointer)
-    static void*& global_executor() {
-        static void* handle = nullptr;
-        return handle;
+    // Global executor inline storage for init/shutdown free functions.
+    static uint8_t* global_storage() {
+        alignas(8) static uint8_t storage[NROS_CPP_EXECUTOR_STORAGE_SIZE] = {};
+        return storage;
+    }
+    static bool& global_initialized() {
+        static bool init = false;
+        return init;
     }
 };
 
 // -- Free function implementations --
 
 inline Result init(const char* locator, uint8_t domain_id) {
-    // Default node name for the session
-    void* handle = nullptr;
-    nros_cpp_ret_t ret = nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, &handle);
-
+    nros_cpp_ret_t ret =
+        nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, Node::global_storage());
     if (ret == 0) {
-        Node::global_executor() = handle;
+        Node::global_initialized() = true;
     }
     return Result(ret);
 }
 
 inline Result shutdown() {
-    void*& handle = Node::global_executor();
-    if (!handle) {
+    if (!Node::global_initialized()) {
         return Result::success();
     }
-    nros_cpp_ret_t ret = nros_cpp_fini(handle);
-    handle = nullptr;
+    nros_cpp_ret_t ret = nros_cpp_fini(Node::global_storage());
+    Node::global_initialized() = false;
     return Result(ret);
 }
 
 /// Check if the nros session is initialized.
 inline bool ok() {
-    return Node::global_executor() != nullptr;
+    return Node::global_initialized();
 }
 
 /// Create a node (convenience — uses the global executor).
@@ -458,18 +459,18 @@ inline bool ok() {
 /// @param name  Node name.
 /// @param ns    Node namespace, or nullptr for "/".
 inline Result create_node(Node& out, const char* name, const char* ns = nullptr) {
-    out.executor_handle_ = Node::global_executor();
-    if (!out.executor_handle_) {
+    if (!Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
+    out.executor_handle_ = Node::global_storage();
     return Node::create(out, name, ns);
 }
 
 // -- Executor::create_node implementation (requires full Node definition) --
 
 inline Result Executor::create_node(Node& out, const char* name, const char* ns) {
-    if (!handle_) return Result(ErrorCode::NotInitialized);
-    out.executor_handle_ = handle_;
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    out.executor_handle_ = storage_;
     return Node::create(out, name, ns);
 }
 

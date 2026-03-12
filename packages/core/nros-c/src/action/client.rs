@@ -20,8 +20,6 @@ use crate::node::{nros_node_state_t, nros_node_t};
 #[cfg(feature = "alloc")]
 struct ActionClientInternal {
     core: nros_node::ActionClientCore<
-        nros::internals::RmwServiceClient,
-        nros::internals::RmwSubscriber,
         { crate::executor::MESSAGE_BUFFER_SIZE },
         { crate::executor::MESSAGE_BUFFER_SIZE },
         { crate::executor::MESSAGE_BUFFER_SIZE },

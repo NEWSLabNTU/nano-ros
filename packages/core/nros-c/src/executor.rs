@@ -25,30 +25,40 @@ use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 // Internal Rust executor type
 // ============================================================================
 
-/// Arena size computed from build-time constants.
-///
-/// Each subscription raw entry is ~MESSAGE_BUFFER_SIZE bytes (receive buffer),
-/// each service raw entry is ~2*MESSAGE_BUFFER_SIZE (request + reply buffers),
-/// timers and guard conditions are small. We over-provision to handle the
-/// worst case where all handles are services with double buffers.
-const CB_ARENA_SIZE: usize = NROS_EXECUTOR_MAX_HANDLES * MESSAGE_BUFFER_SIZE * 2 + 4096;
-
 /// The concrete nros-node executor type used by the C API.
 ///
-/// - `S = nros::internals::RmwSession` — the active backend session
-/// - `MAX_CBS = NROS_EXECUTOR_MAX_HANDLES` — max callback entries
-/// - `CB_ARENA = CB_ARENA_SIZE` — arena byte budget
-#[cfg(feature = "alloc")]
-pub(crate) type CExecutor =
-    nros_node::Executor<nros::internals::RmwSession, NROS_EXECUTOR_MAX_HANDLES, CB_ARENA_SIZE>;
+/// Sizes are configured via `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`
+/// environment variables at build time (matching nros-node's build.rs).
+pub(crate) type CExecutor = nros_node::Executor;
 
-/// Get a mutable reference to the internal executor.
+// Compile-time assertion: inline opaque storage must fit the concrete Executor.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+const _: () = assert!(
+    core::mem::size_of::<CExecutor>() <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "EXECUTOR_OPAQUE_U64S too small for Executor — increase NROS_EXECUTOR_ARENA_SIZE \
+     or NROS_EXECUTOR_MAX_CBS, or adjust the overhead in build.rs"
+);
+
+/// Get a mutable reference to the internal executor from opaque storage.
 ///
 /// # Safety
-/// The `_internal` pointer must be valid and point to a live `CExecutor`.
-#[cfg(feature = "alloc")]
-pub(crate) unsafe fn get_executor(internal: *mut core::ffi::c_void) -> &'static mut CExecutor {
-    &mut *(internal as *mut CExecutor)
+/// The opaque storage must contain a live, initialized `CExecutor`.
+#[inline]
+pub(crate) unsafe fn get_executor(opaque: &mut [u64; EXECUTOR_OPAQUE_U64S]) -> &mut CExecutor {
+    &mut *(opaque.as_mut_ptr() as *mut CExecutor)
+}
+
+/// Get a mutable reference to the internal executor from a raw pointer.
+///
+/// Used by the action server module which stores a raw pointer to the
+/// executor's opaque storage.
+///
+/// # Safety
+/// `ptr` must point to the `_opaque` field of a live, initialized
+/// `nros_executor_t`.
+#[inline]
+pub(crate) unsafe fn get_executor_from_ptr(ptr: *mut core::ffi::c_void) -> &'static mut CExecutor {
+    &mut *(ptr as *mut CExecutor)
 }
 
 // ============================================================================
@@ -119,6 +129,10 @@ pub enum nros_executor_state_t {
 /// The executor delegates all dispatch logic to an internal
 /// executor. The C struct retains state, timeout, and
 /// per-type counters for API compatibility.
+///
+/// The internal Rust executor is stored inline in `_opaque` — no heap
+/// allocation is needed. The storage size is computed at build time
+/// from `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`.
 #[repr(C)]
 pub struct nros_executor_t {
     /// Current state
@@ -145,8 +159,9 @@ pub struct nros_executor_t {
     pub service_count: usize,
     /// Next invocation time in nanoseconds for drift-compensated spin_period
     pub invocation_time_ns: u64,
-    /// Opaque pointer to internal Rust executor
-    pub _internal: *mut core::ffi::c_void,
+    /// Inline opaque storage for the Rust executor.
+    /// Managed by nros_executor_init/fini — no heap allocation needed.
+    pub _opaque: [u64; EXECUTOR_OPAQUE_U64S],
 }
 
 impl Default for nros_executor_t {
@@ -164,7 +179,8 @@ impl Default for nros_executor_t {
             timer_count: 0,
             service_count: 0,
             invocation_time_ns: 0,
-            _internal: ptr::null_mut(),
+            #[allow(clippy::large_stack_arrays)] // Intentional: inline opaque storage avoids heap
+            _opaque: [0u64; EXECUTOR_OPAQUE_U64S],
         }
     }
 }
@@ -214,17 +230,15 @@ pub unsafe extern "C" fn nros_executor_init(
         nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
     );
 
-    // Create the internal nros-node executor using a borrowed session pointer
-    #[cfg(feature = "alloc")]
-    {
-        let session_ptr = support_ref.get_session_ptr();
-        if session_ptr.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-
-        let rust_exec = alloc::boxed::Box::new(CExecutor::from_session_ptr(session_ptr));
-        executor._internal = alloc::boxed::Box::into_raw(rust_exec) as *mut _;
+    // Create the internal nros-node executor using a borrowed session pointer.
+    // Written directly into inline opaque storage — no heap allocation.
+    let session_ptr = support_ref.get_session_ptr();
+    if session_ptr.is_null() {
+        return NROS_RET_NOT_INIT;
     }
+
+    let rust_exec = CExecutor::from_session_ptr(session_ptr);
+    ptr::write(executor._opaque.as_mut_ptr() as *mut CExecutor, rust_exec);
 
     executor.max_handles = max_handles.min(NROS_EXECUTOR_MAX_HANDLES);
     executor.handle_count = 0;
@@ -280,9 +294,10 @@ pub unsafe extern "C" fn nros_executor_set_semantics(
     executor.semantics = semantics;
 
     // Forward to the internal executor
-    #[cfg(feature = "alloc")]
-    if !executor._internal.is_null() {
-        let rust_exec = get_executor(executor._internal);
+    if executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+        || executor.state == nros_executor_state_t::NROS_EXECUTOR_STATE_SPINNING
+    {
+        let rust_exec = get_executor(&mut executor._opaque);
         rust_exec.set_semantics(match semantics {
             nros_executor_semantics_t::NROS_SEMANTICS_RCLCPP_EXECUTOR => {
                 nros_node::ExecutorSemantics::RclcppExecutor
@@ -320,19 +335,16 @@ pub unsafe extern "C" fn nros_executor_set_trigger(
     executor.trigger_context = context;
 
     // Forward to the internal executor
-    #[cfg(feature = "alloc")]
-    if !executor._internal.is_null() {
-        let rust_exec = get_executor(executor._internal);
-        match trigger {
-            Some(cb) => {
-                rust_exec.set_trigger(nros_node::Trigger::RawPredicate {
-                    callback: cb,
-                    context,
-                });
-            }
-            None => {
-                rust_exec.set_trigger(nros_node::Trigger::Any);
-            }
+    let rust_exec = get_executor(&mut executor._opaque);
+    match trigger {
+        Some(cb) => {
+            rust_exec.set_trigger(nros_node::Trigger::RawPredicate {
+                callback: cb,
+                context,
+            });
+        }
+        None => {
+            rust_exec.set_trigger(nros_node::Trigger::Any);
         }
     }
 
@@ -459,12 +471,8 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         return NROS_RET_FULL;
     }
 
-    #[cfg(feature = "alloc")]
     {
-        if executor._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let rust_exec = get_executor(executor._internal);
+        let rust_exec = get_executor(&mut executor._opaque);
 
         // Extract metadata from subscription struct
         let topic_str = core::str::from_utf8_unchecked(
@@ -515,11 +523,6 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
             Err(_) => NROS_RET_ERROR,
         }
     }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
 }
 
 /// Add a timer to the executor.
@@ -553,12 +556,8 @@ pub unsafe extern "C" fn nros_executor_add_timer(
         return NROS_RET_FULL;
     }
 
-    #[cfg(feature = "alloc")]
     {
-        if executor._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let rust_exec = get_executor(executor._internal);
+        let rust_exec = get_executor(&mut executor._opaque);
 
         // Get the C callback and context from the timer
         let c_callback = match timer_ref.get_callback() {
@@ -588,7 +587,7 @@ pub unsafe extern "C" fn nros_executor_add_timer(
                 // Store handle ID and executor pointer for cancel/reset operations
                 let timer_mut = &mut *timer;
                 timer_mut.set_handle_id(handle_id);
-                timer_mut.set_executor_ptr(executor._internal);
+                timer_mut.set_executor_ptr(executor._opaque.as_mut_ptr() as *mut core::ffi::c_void);
 
                 executor.handle_count += 1;
                 executor.timer_count += 1;
@@ -596,11 +595,6 @@ pub unsafe extern "C" fn nros_executor_add_timer(
             }
             Err(_) => NROS_RET_ERROR,
         }
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
     }
 }
 
@@ -638,12 +632,8 @@ pub unsafe extern "C" fn nros_executor_add_service(
         return NROS_RET_FULL;
     }
 
-    #[cfg(feature = "alloc")]
     {
-        if executor._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let rust_exec = get_executor(executor._internal);
+        let rust_exec = get_executor(&mut executor._opaque);
 
         // Extract metadata from service struct
         let service_name = core::str::from_utf8_unchecked(
@@ -682,11 +672,6 @@ pub unsafe extern "C" fn nros_executor_add_service(
             Err(_) => NROS_RET_ERROR,
         }
     }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
 }
 
 /// Add a guard condition to the executor.
@@ -717,12 +702,8 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
         return NROS_RET_FULL;
     }
 
-    #[cfg(feature = "alloc")]
     {
-        if executor._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let rust_exec = get_executor(executor._internal);
+        let rust_exec = get_executor(&mut executor._opaque);
 
         // Get the C callback and context from the guard condition
         let c_callback = guard_ref.get_callback();
@@ -748,11 +729,6 @@ pub unsafe extern "C" fn nros_executor_add_guard_condition(
             }
             Err(_) => NROS_RET_ERROR,
         }
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
     }
 }
 
@@ -787,12 +763,10 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         return NROS_RET_FULL;
     }
 
-    #[cfg(feature = "alloc")]
     {
-        if executor._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let rust_exec = get_executor(executor._internal);
+        // Grab the opaque pointer before borrowing for get_executor to avoid double borrow.
+        let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+        let rust_exec = get_executor_from_ptr(opaque_ptr);
 
         // Extract metadata from action server struct
         let action_name =
@@ -808,57 +782,69 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
             None => return NROS_RET_INVALID_ARGUMENT,
         };
 
-        // Create the internal struct (handle filled after registration)
-        let internal = alloc::boxed::Box::new(ActionServerInternal {
-            handle: None,
-            executor_ptr: executor._internal,
-            c_goal_callback,
-            c_cancel_callback: server_ref.cancel_callback,
-            c_accepted_callback: server_ref.accepted_callback,
-            c_context: server_ref.context,
-            server_ptr: server,
-        });
+        // Create the internal struct (handle filled after registration).
+        // Action server internal state still uses Box (alloc) because its
+        // lifetime is tied to the action server, not the executor.
+        #[cfg(feature = "alloc")]
+        {
+            let internal = alloc::boxed::Box::new(ActionServerInternal {
+                handle: None,
+                executor_ptr: opaque_ptr,
+                c_goal_callback,
+                c_cancel_callback: server_ref.cancel_callback,
+                c_accepted_callback: server_ref.accepted_callback,
+                c_context: server_ref.context,
+                server_ptr: server,
+            });
 
-        // Leak the Box to get a stable pointer for the callback context.
-        // Ownership transfers to the action server's `_internal` field.
-        let internal_ptr = alloc::boxed::Box::into_raw(internal);
-        let context = internal_ptr as *mut core::ffi::c_void;
+            // Leak the Box to get a stable pointer for the callback context.
+            // Ownership transfers to the action server's `_internal` field.
+            let internal_ptr = alloc::boxed::Box::into_raw(internal);
+            let context = internal_ptr as *mut core::ffi::c_void;
 
-        // Register with the nros-node executor using trampolines
-        let result = rust_exec
-            .add_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
+            // Register with the nros-node executor using trampolines
+            let result = rust_exec
+                .add_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
+                    action_name,
+                    type_str,
+                    type_hash_str,
+                    goal_callback_trampoline,
+                    cancel_callback_trampoline,
+                    context,
+                );
+
+            match result {
+                Ok(handle) => {
+                    // Fill in the handle now that registration succeeded
+                    let internal_ref = &mut *internal_ptr;
+                    internal_ref.handle = Some(handle);
+
+                    // Store the internal pointer in the server struct
+                    let server_mut = &mut *server;
+                    server_mut._internal = context;
+
+                    executor.handle_count += 1;
+                    NROS_RET_OK
+                }
+                Err(_) => {
+                    // Registration failed — reclaim the Box to free memory
+                    let _internal = alloc::boxed::Box::from_raw(internal_ptr);
+                    NROS_RET_ERROR
+                }
+            }
+        }
+
+        #[cfg(not(feature = "alloc"))]
+        {
+            let _ = (
+                rust_exec,
                 action_name,
                 type_str,
                 type_hash_str,
-                goal_callback_trampoline,
-                cancel_callback_trampoline,
-                context,
+                c_goal_callback,
             );
-
-        match result {
-            Ok(handle) => {
-                // Fill in the handle now that registration succeeded
-                let internal_ref = &mut *internal_ptr;
-                internal_ref.handle = Some(handle);
-
-                // Store the internal pointer in the server struct
-                let server_mut = &mut *server;
-                server_mut._internal = context;
-
-                executor.handle_count += 1;
-                NROS_RET_OK
-            }
-            Err(_) => {
-                // Registration failed — reclaim the Box to free memory
-                let _internal = alloc::boxed::Box::from_raw(internal_ptr);
-                NROS_RET_ERROR
-            }
+            NROS_RET_ERROR
         }
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
     }
 }
 
@@ -888,12 +874,8 @@ pub unsafe extern "C" fn nros_executor_spin_some(
         return NROS_RET_NOT_INIT;
     }
 
-    #[cfg(feature = "alloc")]
     {
-        if executor._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let rust_exec = get_executor(executor._internal);
+        let rust_exec = get_executor(&mut executor._opaque);
 
         // Convert timeout from nanoseconds to milliseconds (i32) for nros-node
         let timeout_ms: i32 = if timeout_ns > 0 {
@@ -912,9 +894,6 @@ pub unsafe extern "C" fn nros_executor_spin_some(
             NROS_RET_TIMEOUT
         }
     }
-
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
 }
 
 /// Spin the executor forever.
@@ -1053,16 +1032,12 @@ pub unsafe extern "C" fn nros_executor_fini(executor: *mut nros_executor_t) -> n
         return NROS_RET_NOT_INIT;
     }
 
-    // Drop the internal executor
-    #[cfg(feature = "alloc")]
+    // Drop the internal executor in-place — arena entries are cleaned up
+    core::ptr::drop_in_place(executor._opaque.as_mut_ptr() as *mut CExecutor);
+    #[allow(clippy::large_stack_arrays)] // Intentional: zero-fill inline opaque storage
     {
-        if !executor._internal.is_null() {
-            let _exec = alloc::boxed::Box::from_raw(executor._internal as *mut CExecutor);
-            // CExecutor is dropped here — arena entries are cleaned up
-        }
+        executor._opaque = [0u64; EXECUTOR_OPAQUE_U64S];
     }
-
-    executor._internal = ptr::null_mut();
     executor.handle_count = 0;
     executor.subscription_count = 0;
     executor.timer_count = 0;

@@ -27,7 +27,7 @@
 //!         let exec_config = ExecutorConfig::new(config.zenoh_locator)
 //!             .domain_id(config.domain_id)
 //!             .node_name("talker");
-//!         let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+//!         let mut executor = Executor::open(&exec_config)?;
 //!         let mut node = executor.create_node("talker")?;
 //!         // ... create publishers, subscriptions, services, actions
 //!         Ok(())

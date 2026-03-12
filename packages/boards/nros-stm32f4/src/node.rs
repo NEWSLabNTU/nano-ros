@@ -134,7 +134,7 @@ pub fn init_hardware(
 /// run(Config::nucleo_f429zi(), |config| {
 ///     let exec_config = ExecutorConfig::new(config.zenoh_locator)
 ///         .domain_id(config.domain_id);
-///     let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+///     let mut executor = Executor::open(&exec_config)?;
 ///     let mut node = executor.create_node("my_node")?;
 ///     // Full Executor API: publishers, subscriptions, services, actions...
 ///     Ok(())

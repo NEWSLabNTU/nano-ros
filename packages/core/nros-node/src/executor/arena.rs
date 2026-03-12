@@ -4,7 +4,7 @@ use core::marker::PhantomData;
 
 use nros_core::MessageInfo;
 use nros_core::{CdrReader, RosAction, RosMessage, RosService};
-use nros_rmw::{Publisher, ServiceServerTrait, Subscriber, TransportError};
+use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 
 use super::action_core::ActionServerCore;
 use super::handles::{ActionServer, ActiveGoal};
@@ -12,6 +12,7 @@ use super::types::{
     InvocationMode, NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback,
     RawSubscriptionCallback,
 };
+use crate::session;
 
 // ============================================================================
 // Callback metadata
@@ -58,8 +59,8 @@ pub(crate) struct CallbackMeta {
 
 /// Concrete subscription entry stored in the arena.
 #[repr(C)]
-pub(crate) struct SubEntry<M, Sub, F, const RX_BUF: usize> {
-    pub(crate) handle: Sub,
+pub(crate) struct SubEntry<M, F, const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],
     /// Length of pre-sampled LET data (0 = not sampled).
     pub(crate) sampled_len: usize,
@@ -69,8 +70,8 @@ pub(crate) struct SubEntry<M, Sub, F, const RX_BUF: usize> {
 
 /// Concrete subscription entry stored in the arena (with MessageInfo).
 #[repr(C)]
-pub(crate) struct SubInfoEntry<M, Sub, F, const RX_BUF: usize> {
-    pub(crate) handle: Sub,
+pub(crate) struct SubInfoEntry<M, F, const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],
     /// Length of pre-sampled LET data (0 = not sampled).
     pub(crate) sampled_len: usize,
@@ -81,8 +82,8 @@ pub(crate) struct SubInfoEntry<M, Sub, F, const RX_BUF: usize> {
 /// Concrete subscription entry stored in the arena (with safety validation).
 #[cfg(feature = "safety-e2e")]
 #[repr(C)]
-pub(crate) struct SubSafetyEntry<M, Sub, F, const RX_BUF: usize> {
-    pub(crate) handle: Sub,
+pub(crate) struct SubSafetyEntry<M, F, const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],
     /// Length of pre-sampled LET data (0 = not sampled).
     pub(crate) sampled_len: usize,
@@ -92,8 +93,8 @@ pub(crate) struct SubSafetyEntry<M, Sub, F, const RX_BUF: usize> {
 
 /// Concrete service entry stored in the arena.
 #[repr(C)]
-pub(crate) struct SrvEntry<Svc: RosService, Srv, F, const REQ_BUF: usize, const REPLY_BUF: usize> {
-    pub(crate) handle: Srv,
+pub(crate) struct SrvEntry<Svc: RosService, F, const REQ_BUF: usize, const REPLY_BUF: usize> {
+    pub(crate) handle: session::RmwServiceServer,
     pub(crate) req_buffer: [u8; REQ_BUF],
     pub(crate) reply_buffer: [u8; REPLY_BUF],
     pub(crate) callback: F,
@@ -132,8 +133,6 @@ pub(crate) struct TimerHeader {
 #[repr(C)]
 pub(crate) struct ActionServerArenaEntry<
     A: RosAction,
-    Srv,
-    Pub,
     GoalF,
     CancelF,
     const GOAL_BUF: usize,
@@ -141,7 +140,7 @@ pub(crate) struct ActionServerArenaEntry<
     const FEEDBACK_BUF: usize,
     const MAX_GOALS: usize,
 > {
-    pub(crate) server: ActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+    pub(crate) server: ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
     pub(crate) goal_callback: GoalF,
     pub(crate) cancel_callback: CancelF,
 }
@@ -151,14 +150,12 @@ pub(crate) struct ActionServerArenaEntry<
 /// Uses [`ActionServerCore`] directly (no typed `ActionServer<A>` wrapper).
 #[repr(C)]
 pub(crate) struct ActionServerRawArenaEntry<
-    Srv,
-    Pub,
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
     const FEEDBACK_BUF: usize,
     const MAX_GOALS: usize,
 > {
-    pub(crate) core: ActionServerCore<Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
+    pub(crate) core: ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
     pub(crate) goal_callback: RawGoalCallback,
     pub(crate) cancel_callback: RawCancelCallback,
     pub(crate) context: *mut core::ffi::c_void,
@@ -166,8 +163,8 @@ pub(crate) struct ActionServerRawArenaEntry<
 
 /// Concrete subscription entry for raw (untyped) callbacks.
 #[repr(C)]
-pub(crate) struct SubRawEntry<Sub, const RX_BUF: usize> {
-    pub(crate) handle: Sub,
+pub(crate) struct SubRawEntry<const RX_BUF: usize> {
+    pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],
     /// Length of pre-sampled LET data (0 = not sampled).
     pub(crate) sampled_len: usize,
@@ -177,8 +174,8 @@ pub(crate) struct SubRawEntry<Sub, const RX_BUF: usize> {
 
 /// Concrete service entry for raw (untyped) callbacks.
 #[repr(C)]
-pub(crate) struct SrvRawEntry<Srv, const REQ_BUF: usize, const REPLY_BUF: usize> {
-    pub(crate) handle: Srv,
+pub(crate) struct SrvRawEntry<const REQ_BUF: usize, const REPLY_BUF: usize> {
+    pub(crate) handle: session::RmwServiceServer,
     pub(crate) req_buffer: [u8; REQ_BUF],
     pub(crate) reply_buffer: [u8; REPLY_BUF],
     pub(crate) callback: RawServiceCallback,
@@ -199,17 +196,16 @@ pub(crate) struct GuardConditionEntry<F> {
 /// Monomorphized subscription dispatch function.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubEntry<M, Sub, F, RX_BUF>`.
-pub(crate) unsafe fn sub_try_process<M, Sub, F, const RX_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SubEntry<M, F, RX_BUF>`.
+pub(crate) unsafe fn sub_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
-    Sub: Subscriber,
     F: FnMut(&M),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubEntry<M, Sub, F, RX_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SubEntry<M, F, RX_BUF>) };
 
     // LET mode: use pre-sampled data if available
     let recv_len = if entry.sampled_len > 0 {
@@ -239,17 +235,16 @@ where
 /// Monomorphized subscription dispatch function (with MessageInfo).
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubInfoEntry<M, Sub, F, RX_BUF>`.
-pub(crate) unsafe fn sub_info_try_process<M, Sub, F, const RX_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SubInfoEntry<M, F, RX_BUF>`.
+pub(crate) unsafe fn sub_info_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
-    Sub: Subscriber,
     F: FnMut(&M, Option<&MessageInfo>),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, Sub, F, RX_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F, RX_BUF>) };
 
     // LET mode: use pre-sampled data if available (no MessageInfo in snapshot)
     if entry.sampled_len > 0 {
@@ -279,18 +274,17 @@ where
 /// Monomorphized subscription dispatch function (with safety validation).
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, Sub, F, RX_BUF>`.
+/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, F, RX_BUF>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_safety_try_process<M, Sub, F, const RX_BUF: usize>(
+pub(crate) unsafe fn sub_safety_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
     M: RosMessage,
-    Sub: Subscriber,
     F: FnMut(&M, &nros_rmw::IntegrityStatus),
 {
-    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, Sub, F, RX_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };
 
     // LET mode: use pre-sampled data (no IntegrityStatus in snapshot)
     if entry.sampled_len > 0 {
@@ -327,18 +321,16 @@ where
 /// Monomorphized service dispatch function.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SrvEntry<Svc, Srv, F, REQ_BUF, REPLY_BUF>`.
-pub(crate) unsafe fn srv_try_process<Svc, Srv, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SrvEntry<Svc, F, REQ_BUF, REPLY_BUF>`.
+pub(crate) unsafe fn srv_try_process<Svc, F, const REQ_BUF: usize, const REPLY_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
     Svc: RosService,
-    Srv: ServiceServerTrait,
     F: FnMut(&Svc::Request) -> Svc::Reply,
-    Srv::Error: From<TransportError>,
 {
-    let entry = unsafe { &mut *(ptr as *mut SrvEntry<Svc, Srv, F, REQ_BUF, REPLY_BUF>) };
+    let entry = unsafe { &mut *(ptr as *mut SrvEntry<Svc, F, REQ_BUF, REPLY_BUF>) };
     // Split borrow: destructure entry to avoid aliasing issues
     let SrvEntry {
         handle,
@@ -401,8 +393,6 @@ where
 /// `ptr` must point to a valid, aligned `ActionServerArenaEntry<...>`.
 pub(crate) unsafe fn action_server_try_process<
     A,
-    Srv,
-    Pub,
     GoalF,
     CancelF,
     const GOAL_BUF: usize,
@@ -417,16 +407,12 @@ where
     A: RosAction,
     A::Goal: Clone,
     A::Result: Clone + Default,
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
     GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse,
     CancelF: FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse,
 {
     let entry = unsafe {
         &mut *(ptr as *mut ActionServerArenaEntry<
             A,
-            Srv,
-            Pub,
             GoalF,
             CancelF,
             GOAL_BUF,
@@ -474,8 +460,6 @@ where
 /// # Safety
 /// `ptr` must point to a valid, aligned `ActionServerRawArenaEntry<...>`.
 pub(crate) unsafe fn action_server_raw_try_process<
-    Srv,
-    Pub,
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
     const FEEDBACK_BUF: usize,
@@ -483,20 +467,9 @@ pub(crate) unsafe fn action_server_raw_try_process<
 >(
     ptr: *mut u8,
     _delta_ms: u64,
-) -> Result<bool, TransportError>
-where
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
-{
+) -> Result<bool, TransportError> {
     let entry = unsafe {
-        &mut *(ptr as *mut ActionServerRawArenaEntry<
-            Srv,
-            Pub,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-            MAX_GOALS,
-        >)
+        &mut *(ptr as *mut ActionServerRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>)
     };
     let ActionServerRawArenaEntry {
         core,
@@ -545,15 +518,12 @@ where
 /// Monomorphized raw subscription dispatch function.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubRawEntry<Sub, RX_BUF>`.
-pub(crate) unsafe fn sub_raw_try_process<Sub, const RX_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SubRawEntry<RX_BUF>`.
+pub(crate) unsafe fn sub_raw_try_process<const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
-) -> Result<bool, TransportError>
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &mut *(ptr as *mut SubRawEntry<Sub, RX_BUF>) };
+) -> Result<bool, TransportError> {
+    let entry = unsafe { &mut *(ptr as *mut SubRawEntry<RX_BUF>) };
 
     // LET mode: use pre-sampled data if available
     let recv_len = if entry.sampled_len > 0 {
@@ -581,16 +551,12 @@ where
 /// Monomorphized raw service dispatch function.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>`.
-pub(crate) unsafe fn srv_raw_try_process<Srv, const REQ_BUF: usize, const REPLY_BUF: usize>(
+/// `ptr` must point to a valid, aligned `SrvRawEntry<REQ_BUF, REPLY_BUF>`.
+pub(crate) unsafe fn srv_raw_try_process<const REQ_BUF: usize, const REPLY_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
-) -> Result<bool, TransportError>
-where
-    Srv: ServiceServerTrait,
-    Srv::Error: From<TransportError>,
-{
-    let entry = unsafe { &mut *(ptr as *mut SrvRawEntry<Srv, REQ_BUF, REPLY_BUF>) };
+) -> Result<bool, TransportError> {
+    let entry = unsafe { &mut *(ptr as *mut SrvRawEntry<REQ_BUF, REPLY_BUF>) };
     let SrvRawEntry {
         handle,
         req_buffer,
@@ -654,75 +620,57 @@ where
 /// Subscription readiness: check `has_data()` on the subscriber handle.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubEntry<M, Sub, F, RX_BUF>`.
-pub(crate) unsafe fn sub_has_data<M, Sub, F, const RX_BUF: usize>(ptr: *const u8) -> bool
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &*(ptr as *const SubEntry<M, Sub, F, RX_BUF>) };
+/// `ptr` must point to a valid `SubEntry<M, F, RX_BUF>`.
+pub(crate) unsafe fn sub_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubEntry<M, F, RX_BUF>) };
     entry.handle.has_data()
 }
 
 /// SubInfoEntry readiness.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubInfoEntry<M, Sub, F, RX_BUF>`.
-pub(crate) unsafe fn sub_info_has_data<M, Sub, F, const RX_BUF: usize>(ptr: *const u8) -> bool
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &*(ptr as *const SubInfoEntry<M, Sub, F, RX_BUF>) };
+/// `ptr` must point to a valid `SubInfoEntry<M, F, RX_BUF>`.
+pub(crate) unsafe fn sub_info_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubInfoEntry<M, F, RX_BUF>) };
     entry.handle.has_data()
 }
 
 /// SubSafetyEntry readiness.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubSafetyEntry<M, Sub, F, RX_BUF>`.
+/// `ptr` must point to a valid `SubSafetyEntry<M, F, RX_BUF>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_safety_has_data<M, Sub, F, const RX_BUF: usize>(ptr: *const u8) -> bool
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &*(ptr as *const SubSafetyEntry<M, Sub, F, RX_BUF>) };
+pub(crate) unsafe fn sub_safety_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubSafetyEntry<M, F, RX_BUF>) };
     entry.handle.has_data()
 }
 
 /// Raw subscription readiness.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SubRawEntry<Sub, RX_BUF>`.
-pub(crate) unsafe fn sub_raw_has_data<Sub, const RX_BUF: usize>(ptr: *const u8) -> bool
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &*(ptr as *const SubRawEntry<Sub, RX_BUF>) };
+/// `ptr` must point to a valid `SubRawEntry<RX_BUF>`.
+pub(crate) unsafe fn sub_raw_has_data<const RX_BUF: usize>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubRawEntry<RX_BUF>) };
     entry.handle.has_data()
 }
 
 /// Service readiness: check `has_request()` on the service handle.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SrvEntry<Svc, Srv, F, RQ, RP>`.
-pub(crate) unsafe fn srv_has_data<Svc: RosService, Srv, F, const RQ: usize, const RP: usize>(
+/// `ptr` must point to a valid `SrvEntry<Svc, F, RQ, RP>`.
+pub(crate) unsafe fn srv_has_data<Svc: RosService, F, const RQ: usize, const RP: usize>(
     ptr: *const u8,
-) -> bool
-where
-    Srv: ServiceServerTrait,
-{
-    let entry = unsafe { &*(ptr as *const SrvEntry<Svc, Srv, F, RQ, RP>) };
+) -> bool {
+    let entry = unsafe { &*(ptr as *const SrvEntry<Svc, F, RQ, RP>) };
     entry.handle.has_request()
 }
 
 /// Raw service readiness.
 ///
 /// # Safety
-/// `ptr` must point to a valid `SrvRawEntry<Srv, RQ, RP>`.
-pub(crate) unsafe fn srv_raw_has_data<Srv, const RQ: usize, const RP: usize>(ptr: *const u8) -> bool
-where
-    Srv: ServiceServerTrait,
-{
-    let entry = unsafe { &*(ptr as *const SrvRawEntry<Srv, RQ, RP>) };
+/// `ptr` must point to a valid `SrvRawEntry<RQ, RP>`.
+pub(crate) unsafe fn srv_raw_has_data<const RQ: usize, const RP: usize>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SrvRawEntry<RQ, RP>) };
     entry.handle.has_request()
 }
 
@@ -750,12 +698,9 @@ pub(crate) unsafe fn always_ready(_ptr: *const u8) -> bool {
 /// length in `sampled_len`. The callback is NOT invoked.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubEntry<M, Sub, F, RX_BUF>`.
-pub(crate) unsafe fn sub_pre_sample<M, Sub, F, const RX_BUF: usize>(ptr: *mut u8)
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &mut *(ptr as *mut SubEntry<M, Sub, F, RX_BUF>) };
+/// `ptr` must point to a valid, aligned `SubEntry<M, F, RX_BUF>`.
+pub(crate) unsafe fn sub_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
+    let entry = unsafe { &mut *(ptr as *mut SubEntry<M, F, RX_BUF>) };
     entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
         Ok(Some(len)) => len,
         _ => 0,
@@ -765,12 +710,9 @@ where
 /// Pre-sample a typed subscription with MessageInfo for LET mode.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubInfoEntry<M, Sub, F, RX_BUF>`.
-pub(crate) unsafe fn sub_info_pre_sample<M, Sub, F, const RX_BUF: usize>(ptr: *mut u8)
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, Sub, F, RX_BUF>) };
+/// `ptr` must point to a valid, aligned `SubInfoEntry<M, F, RX_BUF>`.
+pub(crate) unsafe fn sub_info_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
+    let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F, RX_BUF>) };
     // For LET, we sample only the data (MessageInfo is not preserved in the snapshot)
     entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
         Ok(Some(len)) => len,
@@ -781,13 +723,10 @@ where
 /// Pre-sample a safety subscription for LET mode.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, Sub, F, RX_BUF>`.
+/// `ptr` must point to a valid, aligned `SubSafetyEntry<M, F, RX_BUF>`.
 #[cfg(feature = "safety-e2e")]
-pub(crate) unsafe fn sub_safety_pre_sample<M, Sub, F, const RX_BUF: usize>(ptr: *mut u8)
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, Sub, F, RX_BUF>) };
+pub(crate) unsafe fn sub_safety_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
+    let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };
     entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
         Ok(Some(len)) => len,
         _ => 0,
@@ -797,12 +736,9 @@ where
 /// Pre-sample a raw subscription for LET mode.
 ///
 /// # Safety
-/// `ptr` must point to a valid, aligned `SubRawEntry<Sub, RX_BUF>`.
-pub(crate) unsafe fn sub_raw_pre_sample<Sub, const RX_BUF: usize>(ptr: *mut u8)
-where
-    Sub: Subscriber,
-{
-    let entry = unsafe { &mut *(ptr as *mut SubRawEntry<Sub, RX_BUF>) };
+/// `ptr` must point to a valid, aligned `SubRawEntry<RX_BUF>`.
+pub(crate) unsafe fn sub_raw_pre_sample<const RX_BUF: usize>(ptr: *mut u8) {
+    let entry = unsafe { &mut *(ptr as *mut SubRawEntry<RX_BUF>) };
     entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
         Ok(Some(len)) => len,
         _ => 0,
@@ -822,8 +758,6 @@ pub(crate) unsafe fn no_pre_sample(_ptr: *mut u8) {}
 /// `ptr` must point to a valid `ActionServerArenaEntry`.
 pub(crate) unsafe fn as_publish_feedback<
     A,
-    Srv,
-    Pub,
     GoalF,
     CancelF,
     const GB: usize,
@@ -837,12 +771,9 @@ pub(crate) unsafe fn as_publish_feedback<
 ) -> Result<(), NodeError>
 where
     A: RosAction,
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
 {
-    let entry = unsafe {
-        &mut *(ptr as *mut ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
-    };
+    let entry =
+        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
     entry.server.publish_feedback(goal_id, feedback)
 }
 
@@ -852,8 +783,6 @@ where
 /// `ptr` must point to a valid `ActionServerArenaEntry`.
 pub(crate) unsafe fn as_complete_goal<
     A,
-    Srv,
-    Pub,
     GoalF,
     CancelF,
     const GB: usize,
@@ -867,12 +796,9 @@ pub(crate) unsafe fn as_complete_goal<
     result: A::Result,
 ) where
     A: RosAction,
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
 {
-    let entry = unsafe {
-        &mut *(ptr as *mut ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
-    };
+    let entry =
+        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
     entry.server.complete_goal(goal_id, status, result);
 }
 
@@ -882,8 +808,6 @@ pub(crate) unsafe fn as_complete_goal<
 /// `ptr` must point to a valid `ActionServerArenaEntry`.
 pub(crate) unsafe fn as_set_goal_status<
     A,
-    Srv,
-    Pub,
     GoalF,
     CancelF,
     const GB: usize,
@@ -896,12 +820,9 @@ pub(crate) unsafe fn as_set_goal_status<
     status: nros_core::GoalStatus,
 ) where
     A: RosAction,
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
 {
-    let entry = unsafe {
-        &mut *(ptr as *mut ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
-    };
+    let entry =
+        unsafe { &mut *(ptr as *mut ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
     entry.server.set_goal_status(goal_id, status);
 }
 
@@ -911,8 +832,6 @@ pub(crate) unsafe fn as_set_goal_status<
 /// `ptr` must point to a valid `ActionServerArenaEntry`.
 pub(crate) unsafe fn as_active_goal_count<
     A,
-    Srv,
-    Pub,
     GoalF,
     CancelF,
     const GB: usize,
@@ -924,12 +843,9 @@ pub(crate) unsafe fn as_active_goal_count<
 ) -> usize
 where
     A: RosAction,
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
 {
-    let entry = unsafe {
-        &*(ptr as *const ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
-    };
+    let entry =
+        unsafe { &*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
     entry.server.active_goal_count()
 }
 
@@ -938,8 +854,6 @@ where
 /// # Safety
 /// `ptr` must point to a valid `ActionServerRawArenaEntry`.
 pub(crate) unsafe fn as_raw_publish_feedback<
-    Srv,
-    Pub,
     const GB: usize,
     const RB: usize,
     const FB: usize,
@@ -949,12 +863,8 @@ pub(crate) unsafe fn as_raw_publish_feedback<
     goal_id: &nros_core::GoalId,
     feedback_data: *const u8,
     feedback_len: usize,
-) -> Result<(), NodeError>
-where
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
-{
-    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+) -> Result<(), NodeError> {
+    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     let feedback_cdr = unsafe { core::slice::from_raw_parts(feedback_data, feedback_len) };
     entry.core.publish_feedback_raw(goal_id, feedback_cdr)
 }
@@ -964,8 +874,6 @@ where
 /// # Safety
 /// `ptr` must point to a valid `ActionServerRawArenaEntry`.
 pub(crate) unsafe fn as_raw_complete_goal<
-    Srv,
-    Pub,
     const GB: usize,
     const RB: usize,
     const FB: usize,
@@ -976,11 +884,8 @@ pub(crate) unsafe fn as_raw_complete_goal<
     status: nros_core::GoalStatus,
     result_data: *const u8,
     result_len: usize,
-) where
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
-{
-    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+) {
+    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     let result_cdr = unsafe { core::slice::from_raw_parts(result_data, result_len) };
     entry.core.complete_goal_raw(goal_id, status, result_cdr);
 }
@@ -990,8 +895,6 @@ pub(crate) unsafe fn as_raw_complete_goal<
 /// # Safety
 /// `ptr` must point to a valid `ActionServerRawArenaEntry`.
 pub(crate) unsafe fn as_raw_set_goal_status<
-    Srv,
-    Pub,
     const GB: usize,
     const RB: usize,
     const FB: usize,
@@ -1000,11 +903,8 @@ pub(crate) unsafe fn as_raw_set_goal_status<
     ptr: *mut u8,
     goal_id: &nros_core::GoalId,
     status: nros_core::GoalStatus,
-) where
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
-{
-    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+) {
+    let entry = unsafe { &mut *(ptr as *mut ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     entry.core.set_goal_status(goal_id, status);
 }
 
@@ -1013,20 +913,14 @@ pub(crate) unsafe fn as_raw_set_goal_status<
 /// # Safety
 /// `ptr` must point to a valid `ActionServerRawArenaEntry`.
 pub(crate) unsafe fn as_raw_active_goal_count<
-    Srv,
-    Pub,
     const GB: usize,
     const RB: usize,
     const FB: usize,
     const MG: usize,
 >(
     ptr: *const u8,
-) -> usize
-where
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
-{
-    let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+) -> usize {
+    let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     entry.core.active_goal_count()
 }
 
@@ -1035,8 +929,6 @@ where
 /// # Safety
 /// `ptr` must point to a valid `ActionServerRawArenaEntry`.
 pub(crate) unsafe fn as_raw_for_each_active_goal<
-    Srv,
-    Pub,
     const GB: usize,
     const RB: usize,
     const FB: usize,
@@ -1044,11 +936,8 @@ pub(crate) unsafe fn as_raw_for_each_active_goal<
 >(
     ptr: *const u8,
     f: &mut dyn FnMut(&super::action_core::RawActiveGoal),
-) where
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
-{
-    let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>) };
+) {
+    let entry = unsafe { &*(ptr as *const ActionServerRawArenaEntry<GB, RB, FB, MG>) };
     for goal in entry.core.active_goals() {
         f(goal);
     }
@@ -1063,8 +952,6 @@ pub(crate) unsafe fn as_raw_for_each_active_goal<
 /// `ptr` must point to a valid `ActionServerArenaEntry`.
 pub(crate) unsafe fn as_for_each_active_goal<
     A,
-    Srv,
-    Pub,
     GoalF,
     CancelF,
     const GB: usize,
@@ -1077,12 +964,9 @@ pub(crate) unsafe fn as_for_each_active_goal<
 ) where
     A: RosAction + 'static,
     A::Goal: Clone,
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
 {
-    let entry = unsafe {
-        &*(ptr as *const ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>)
-    };
+    let entry =
+        unsafe { &*(ptr as *const ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>) };
     for (i, raw_goal) in entry.server.core.active_goals().iter().enumerate() {
         let active = ActiveGoal {
             goal_id: raw_goal.goal_id,

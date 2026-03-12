@@ -8,6 +8,7 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
+#include "nros/nros_cpp_config_generated.h"
 
 // FFI declarations
 extern "C" {
@@ -16,8 +17,8 @@ typedef int nros_cpp_ret_t;
 struct nros_cpp_node_t;
 
 nros_cpp_ret_t nros_cpp_init(const char* locator, uint8_t domain_id, const char* node_name,
-                             const char* ns, void** out_handle);
-nros_cpp_ret_t nros_cpp_fini(void* handle);
+                             const char* ns, void* storage);
+nros_cpp_ret_t nros_cpp_fini(void* storage);
 nros_cpp_ret_t nros_cpp_node_create(void* executor_handle, const char* name, const char* ns,
                                     nros_cpp_node_t* out_node);
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
@@ -33,6 +34,8 @@ class Node;
 /// Mirrors `rclcpp::executors::SingleThreadedExecutor`. Provides an
 /// explicit alternative to the global `nros::init()`/`nros::spin_once()`
 /// free functions.
+///
+/// The executor uses inline opaque storage — no heap allocation required.
 ///
 /// Usage:
 /// ```cpp
@@ -52,7 +55,7 @@ class Node;
 class Executor {
   public:
     /// Default constructor — creates an uninitialized executor.
-    Executor() : handle_(nullptr) {}
+    Executor() : storage_(), initialized_(false) {}
 
     /// Create and initialize an executor.
     ///
@@ -64,10 +67,9 @@ class Executor {
     /// @param domain_id  ROS domain ID (0-232).
     /// @return Result indicating success or failure.
     static Result create(Executor& out, const char* locator = nullptr, uint8_t domain_id = 0) {
-        void* handle = nullptr;
-        nros_cpp_ret_t ret = nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, &handle);
+        nros_cpp_ret_t ret = nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
+            out.initialized_ = true;
         }
         return Result(ret);
     }
@@ -88,8 +90,8 @@ class Executor {
     /// @param timeout_ms  Maximum time to block waiting for I/O.
     /// @return Result indicating success or failure.
     Result spin_once(int32_t timeout_ms = 10) {
-        if (!handle_) return Result(ErrorCode::NotInitialized);
-        return Result(nros_cpp_spin_once(handle_, timeout_ms));
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_spin_once(storage_, timeout_ms));
     }
 
     /// Spin for a duration (blocking).
@@ -100,13 +102,13 @@ class Executor {
     /// @param poll_ms      Individual spin_once timeout (default: 10ms).
     /// @return Result from the last spin_once call.
     Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
-        if (!handle_) return Result(ErrorCode::NotInitialized);
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
         uint32_t elapsed = 0;
         Result last = Result::success();
         while (elapsed < duration_ms) {
             int32_t remaining = static_cast<int32_t>(duration_ms - elapsed);
             int32_t timeout = remaining < poll_ms ? remaining : poll_ms;
-            last = Result(nros_cpp_spin_once(handle_, timeout));
+            last = Result(nros_cpp_spin_once(storage_, timeout));
             if (!last.ok()) return last;
             elapsed += static_cast<uint32_t>(timeout);
         }
@@ -114,37 +116,47 @@ class Executor {
     }
 
     /// Check if the executor is initialized.
-    bool ok() const { return handle_ != nullptr; }
+    bool ok() const { return initialized_; }
 
-    /// Get the raw executor handle (for advanced use).
-    void* handle() const { return handle_; }
+    /// Get the raw executor storage (for advanced use).
+    void* handle() const { return const_cast<uint8_t*>(storage_); }
 
     /// Shut down the executor and close the middleware connection.
     Result shutdown() {
-        if (!handle_) return Result::success();
-        nros_cpp_ret_t ret = nros_cpp_fini(handle_);
-        handle_ = nullptr;
+        if (!initialized_) return Result::success();
+        nros_cpp_ret_t ret = nros_cpp_fini(storage_);
+        initialized_ = false;
         return Result(ret);
     }
 
     /// Destructor — shuts down if still active.
     ~Executor() {
-        if (handle_) {
-            nros_cpp_fini(handle_);
-            handle_ = nullptr;
+        if (initialized_) {
+            nros_cpp_fini(storage_);
+            initialized_ = false;
         }
     }
 
     // Move semantics (non-copyable)
-    Executor(Executor&& other) : handle_(other.handle_) { other.handle_ = nullptr; }
+    Executor(Executor&& other) : initialized_(other.initialized_) {
+        for (unsigned i = 0; i < sizeof(storage_); ++i) {
+            storage_[i] = other.storage_[i];
+            other.storage_[i] = 0;
+        }
+        other.initialized_ = false;
+    }
 
     Executor& operator=(Executor&& other) {
         if (this != &other) {
-            if (handle_) {
-                nros_cpp_fini(handle_);
+            if (initialized_) {
+                nros_cpp_fini(storage_);
             }
-            handle_ = other.handle_;
-            other.handle_ = nullptr;
+            for (unsigned i = 0; i < sizeof(storage_); ++i) {
+                storage_[i] = other.storage_[i];
+                other.storage_[i] = 0;
+            }
+            initialized_ = other.initialized_;
+            other.initialized_ = false;
         }
         return *this;
     }
@@ -153,7 +165,8 @@ class Executor {
     Executor(const Executor&) = delete;
     Executor& operator=(const Executor&) = delete;
 
-    void* handle_;
+    alignas(8) uint8_t storage_[NROS_CPP_EXECUTOR_STORAGE_SIZE];
+    bool initialized_;
 };
 
 } // namespace nros

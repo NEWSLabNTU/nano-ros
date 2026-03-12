@@ -4,10 +4,9 @@ use core::marker::PhantomData;
 use core::mem::MaybeUninit;
 
 use nros_core::{RosMessage, RosService};
-use nros_rmw::{
-    QosSettings, ServiceInfo, ServiceServerTrait, Session, Subscriber, TopicInfo, TransportError,
-};
+use nros_rmw::{QosSettings, ServiceInfo, Session, TopicInfo, TransportError};
 
+use crate::session;
 use crate::timer::TimerDuration;
 
 use super::arena::{
@@ -34,19 +33,14 @@ use super::types::{
 };
 
 // ============================================================================
-// Executor::open() factory methods
+// Executor::open() factory method
 // ============================================================================
 
-#[cfg(any(feature = "rmw-xrce", feature = "rmw-cffi"))]
-use nros_rmw::Rmw;
-
-#[cfg(feature = "rmw-zenoh")]
-impl<const MAX_CBS: usize, const CB_ARENA: usize>
-    Executor<nros_rmw_zenoh::ZenohSession, MAX_CBS, CB_ARENA>
-{
-    /// Open a new executor session using the zenoh-pico backend.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+impl Executor {
+    /// Open a new executor session using the active RMW backend.
     ///
-    /// Connects to the zenoh router at the locator specified in `config`.
+    /// Connects to the middleware at the locator specified in `config`.
     ///
     /// # Example
     ///
@@ -55,75 +49,67 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
     /// let mut executor = Executor::open(&config)?;
     /// ```
     pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
-        let tc = nros_rmw::TransportConfig {
-            locator: Some(config.locator),
-            mode: config.mode,
-            properties: &[],
-        };
-        let session = nros_rmw_zenoh::ZenohSession::new(&tc)
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        let mut executor = Self::from_session(session);
-        executor.set_node_identity(config.node_name, config.namespace);
-        Ok(executor)
-    }
-}
-
-#[cfg(feature = "rmw-xrce")]
-impl<const MAX_CBS: usize, const CB_ARENA: usize>
-    Executor<nros_rmw_xrce::XrceSession, MAX_CBS, CB_ARENA>
-{
-    /// Open a new executor session using the XRCE-DDS backend.
-    ///
-    /// Automatically initializes the active POSIX transport (`posix-udp` or
-    /// `posix-serial`) before connecting to the XRCE agent.
-    pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
-        // Auto-init transport based on active feature
-        #[cfg(feature = "posix-udp")]
-        unsafe {
-            nros_rmw_xrce::posix_udp::init_posix_udp_transport(config.locator);
+        #[cfg(feature = "rmw-zenoh")]
+        {
+            let tc = nros_rmw::TransportConfig {
+                locator: Some(config.locator),
+                mode: config.mode,
+                properties: &[],
+            };
+            let session = nros_rmw_zenoh::ZenohSession::new(&tc)
+                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+            let mut executor = Self::from_session(session);
+            executor.set_node_identity(config.node_name, config.namespace);
+            Ok(executor)
         }
-        #[cfg(feature = "posix-serial")]
-        unsafe {
-            nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
-        }
-        #[cfg(feature = "platform-zephyr")]
-        unsafe {
-            nros_rmw_xrce::zephyr::init_zephyr_transport(config.locator);
-        }
+        #[cfg(feature = "rmw-xrce")]
+        {
+            use nros_rmw::Rmw;
 
-        let rmw_config = nros_rmw::RmwConfig {
-            locator: config.locator,
-            mode: config.mode,
-            domain_id: config.domain_id,
-            node_name: config.node_name,
-            namespace: config.namespace,
-        };
-        let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        let mut executor = Self::from_session(session);
-        executor.set_node_identity(config.node_name, config.namespace);
-        Ok(executor)
-    }
-}
+            // Auto-init transport based on active feature
+            #[cfg(feature = "posix-udp")]
+            unsafe {
+                nros_rmw_xrce::posix_udp::init_posix_udp_transport(config.locator);
+            }
+            #[cfg(feature = "posix-serial")]
+            unsafe {
+                nros_rmw_xrce::posix_serial::init_posix_serial_transport(config.locator);
+            }
+            #[cfg(feature = "platform-zephyr")]
+            unsafe {
+                nros_rmw_xrce::zephyr::init_zephyr_transport(config.locator);
+            }
 
-#[cfg(feature = "rmw-cffi")]
-impl<const MAX_CBS: usize, const CB_ARENA: usize>
-    Executor<nros_rmw_cffi::CffiSession, MAX_CBS, CB_ARENA>
-{
-    /// Open a new executor session using the C FFI backend.
-    pub fn open(config: &ExecutorConfig<'_>) -> Result<Self, NodeError> {
-        let rmw_config = nros_rmw::RmwConfig {
-            locator: config.locator,
-            mode: config.mode,
-            domain_id: config.domain_id,
-            node_name: config.node_name,
-            namespace: config.namespace,
-        };
-        let session = nros_rmw_cffi::CffiRmw::open(&rmw_config)
-            .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
-        let mut executor = Self::from_session(session);
-        executor.set_node_identity(config.node_name, config.namespace);
-        Ok(executor)
+            let rmw_config = nros_rmw::RmwConfig {
+                locator: config.locator,
+                mode: config.mode,
+                domain_id: config.domain_id,
+                node_name: config.node_name,
+                namespace: config.namespace,
+            };
+            let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
+                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+            let mut executor = Self::from_session(session);
+            executor.set_node_identity(config.node_name, config.namespace);
+            Ok(executor)
+        }
+        #[cfg(feature = "rmw-cffi")]
+        {
+            use nros_rmw::Rmw;
+
+            let rmw_config = nros_rmw::RmwConfig {
+                locator: config.locator,
+                mode: config.mode,
+                domain_id: config.domain_id,
+                node_name: config.node_name,
+                namespace: config.namespace,
+            };
+            let session = nros_rmw_cffi::CffiRmw::open(&rmw_config)
+                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+            let mut executor = Self::from_session(session);
+            executor.set_node_identity(config.node_name, config.namespace);
+            Ok(executor)
+        }
     }
 }
 
@@ -135,14 +121,14 @@ impl<const MAX_CBS: usize, const CB_ARENA: usize>
 ///
 /// The C API creates a session in `nros_support_init()` before the
 /// executor. `Borrowed` lets the executor use that session without owning it.
-pub(crate) enum SessionStore<S> {
-    Owned(S),
-    Borrowed(*mut S),
+pub(crate) enum SessionStore {
+    Owned(session::ConcreteSession),
+    Borrowed(*mut session::ConcreteSession),
 }
 
-impl<S> core::ops::Deref for SessionStore<S> {
-    type Target = S;
-    fn deref(&self) -> &S {
+impl core::ops::Deref for SessionStore {
+    type Target = session::ConcreteSession;
+    fn deref(&self) -> &session::ConcreteSession {
         match self {
             SessionStore::Owned(s) => s,
             SessionStore::Borrowed(ptr) => unsafe { &**ptr },
@@ -150,8 +136,8 @@ impl<S> core::ops::Deref for SessionStore<S> {
     }
 }
 
-impl<S> core::ops::DerefMut for SessionStore<S> {
-    fn deref_mut(&mut self) -> &mut S {
+impl core::ops::DerefMut for SessionStore {
+    fn deref_mut(&mut self) -> &mut session::ConcreteSession {
         match self {
             SessionStore::Owned(s) => s,
             SessionStore::Borrowed(ptr) => unsafe { &mut **ptr },
@@ -160,32 +146,27 @@ impl<S> core::ops::DerefMut for SessionStore<S> {
 }
 
 // ============================================================================
-// Executor<S>
+// Executor
 // ============================================================================
 
-/// Backend-agnostic executor that owns a [`Session`].
+/// Backend-agnostic executor that owns a session.
 ///
 /// Provides `create_node()` for entity creation and `drive_io()` for polling.
 ///
 /// # Callback Mode
 ///
-/// When `MAX_CBS > 0` and `CB_ARENA > 0`, the executor supports arena-based
-/// callback registration via [`add_subscription()`](Self::add_subscription)
-/// and [`add_service()`](Self::add_service), with dispatch via
+/// The executor supports arena-based callback registration via
+/// [`add_subscription()`](Self::add_subscription) and
+/// [`add_service()`](Self::add_service), with dispatch via
 /// [`spin_once()`](Self::spin_once). No heap allocation is needed.
 ///
-/// The defaults are set via `NROS_EXECUTOR_MAX_CBS` (default 4) and
+/// The sizes are set via `NROS_EXECUTOR_MAX_CBS` (default 4) and
 /// `NROS_EXECUTOR_ARENA_SIZE` (default 4096) environment variables at build time.
-/// Set both to `0` for zero overhead in manual-polling code.
-pub struct Executor<
-    S,
-    const MAX_CBS: usize = { crate::config::DEFAULT_MAX_CBS },
-    const CB_ARENA: usize = { crate::config::DEFAULT_ARENA_SIZE },
-> {
-    pub(crate) session: SessionStore<S>,
-    pub(crate) arena: [MaybeUninit<u8>; CB_ARENA],
+pub struct Executor {
+    pub(crate) session: SessionStore,
+    pub(crate) arena: [MaybeUninit<u8>; crate::config::ARENA_SIZE],
     pub(crate) arena_used: usize,
-    pub(crate) entries: [Option<CallbackMeta>; MAX_CBS],
+    pub(crate) entries: [Option<CallbackMeta>; crate::config::MAX_CBS],
     pub(crate) trigger: Trigger,
     pub(crate) semantics: ExecutorSemantics,
     /// Node name for entities created via `add_subscription`/`add_service`.
@@ -199,17 +180,17 @@ pub struct Executor<
     pub(crate) params: Option<alloc::boxed::Box<crate::parameter_services::ParamState>>,
 }
 
-impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA> {
+impl Executor {
     /// Create an executor from an already-opened session.
-    pub fn from_session(session: S) -> Self {
+    pub fn from_session(session: session::ConcreteSession) -> Self {
         // SAFETY: MaybeUninit::uninit() is always safe; these bytes are only
         // accessed through properly-typed ptr::write / ptr::read via the
         // dispatch function pointers stored in `entries`.
         Self {
             session: SessionStore::Owned(session),
-            arena: [MaybeUninit::uninit(); CB_ARENA],
+            arena: [MaybeUninit::uninit(); crate::config::ARENA_SIZE],
             arena_used: 0,
-            entries: [None; MAX_CBS],
+            entries: [None; crate::config::MAX_CBS],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -228,15 +209,15 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     /// Create an executor from a borrowed session pointer.
     ///
     /// # Safety
-    /// - `session_ptr` must point to a valid, initialized `S` that lives at
+    /// - `session_ptr` must point to a valid, initialized session that lives at
     ///   least as long as this executor.
     /// - The caller must not move or drop the session while the executor exists.
-    pub unsafe fn from_session_ptr(session_ptr: *mut S) -> Self {
+    pub unsafe fn from_session_ptr(session_ptr: *mut session::ConcreteSession) -> Self {
         Self {
             session: SessionStore::Borrowed(session_ptr),
-            arena: [MaybeUninit::uninit(); CB_ARENA],
+            arena: [MaybeUninit::uninit(); crate::config::ARENA_SIZE],
             arena_used: 0,
-            entries: [None; MAX_CBS],
+            entries: [None; crate::config::MAX_CBS],
             trigger: Trigger::Any,
             semantics: ExecutorSemantics::RclcppExecutor,
             node_name: heapless::String::new(),
@@ -267,7 +248,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 
     /// Create a node on this executor.
-    pub fn create_node(&mut self, name: &str) -> Result<Node<'_, S>, NodeError> {
+    pub fn create_node(&mut self, name: &str) -> Result<Node<'_>, NodeError> {
         if name.len() > 64 {
             return Err(NodeError::NameTooLong);
         }
@@ -280,7 +261,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         Ok(Node::new(
             node_name,
             self.namespace.clone(),
-            &mut *self.session,
+            &mut self.session,
             0,
         ))
     }
@@ -301,12 +282,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 
     /// Get a reference to the underlying session.
-    pub fn session(&self) -> &S {
+    pub fn session(&self) -> &session::ConcreteSession {
         &self.session
     }
 
     /// Get a mutable reference to the underlying session.
-    pub fn session_mut(&mut self) -> &mut S {
+    pub fn session_mut(&mut self) -> &mut session::ConcreteSession {
         &mut self.session
     }
 
@@ -347,7 +328,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         let size = core::mem::size_of::<T>();
         let aligned_offset = (self.arena_used + align - 1) & !(align - 1);
         let new_used = aligned_offset + size;
-        if new_used > CB_ARENA {
+        if new_used > crate::config::ARENA_SIZE {
             return Err(NodeError::BufferTooSmall);
         }
         self.arena_used = new_used;
@@ -385,7 +366,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         M: RosMessage + 'static,
         F: FnMut(&M) + 'static,
-        S::SubscriberHandle: Subscriber,
     {
         self.add_subscription_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, callback,
@@ -401,9 +381,8 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         M: RosMessage + 'static,
         F: FnMut(&M) + 'static,
-        S::SubscriberHandle: Subscriber,
     {
-        type Entry<M, Sub, F, const N: usize> = SubEntry<M, Sub, F, N>;
+        type Entry<M, F, const N: usize> = SubEntry<M, F, N>;
 
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
@@ -417,13 +396,13 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .create_subscriber(&topic, QosSettings::default())
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
 
-        let offset = self.arena_alloc::<Entry<M, S::SubscriberHandle, F, RX_BUF>>()?;
+        let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
 
         // SAFETY: `arena_alloc` guarantees the offset is within bounds and
         // properly aligned for `Entry`. We write a fully-initialized value.
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, S::SubscriberHandle, F, RX_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F, RX_BUF>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
@@ -439,11 +418,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
-            try_process: sub_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
-            has_data: sub_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
-            pre_sample: sub_pre_sample::<M, S::SubscriberHandle, F, RX_BUF>,
+            try_process: sub_try_process::<M, F, RX_BUF>,
+            has_data: sub_has_data::<M, F, RX_BUF>,
+            pre_sample: sub_pre_sample::<M, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
+            drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
         });
         Ok(HandleId(slot))
     }
@@ -470,7 +449,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
-        S::SubscriberHandle: Subscriber,
     {
         self.add_subscription_with_info_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, callback,
@@ -486,9 +464,8 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         M: RosMessage + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
-        S::SubscriberHandle: Subscriber,
     {
-        type Entry<M, Sub, F, const N: usize> = SubInfoEntry<M, Sub, F, N>;
+        type Entry<M, F, const N: usize> = SubInfoEntry<M, F, N>;
 
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
@@ -502,11 +479,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .create_subscriber(&topic, QosSettings::default())
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
 
-        let offset = self.arena_alloc::<Entry<M, S::SubscriberHandle, F, RX_BUF>>()?;
+        let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, S::SubscriberHandle, F, RX_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F, RX_BUF>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
@@ -522,11 +499,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
-            try_process: sub_info_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
-            has_data: sub_info_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
-            pre_sample: sub_info_pre_sample::<M, S::SubscriberHandle, F, RX_BUF>,
+            try_process: sub_info_try_process::<M, F, RX_BUF>,
+            has_data: sub_info_has_data::<M, F, RX_BUF>,
+            pre_sample: sub_info_pre_sample::<M, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
+            drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
         });
         Ok(HandleId(slot))
     }
@@ -557,7 +534,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         M: RosMessage + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
-        S::SubscriberHandle: Subscriber,
     {
         self.add_subscription_with_safety_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, callback,
@@ -574,9 +550,8 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         M: RosMessage + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
-        S::SubscriberHandle: Subscriber,
     {
-        type Entry<M, Sub, F, const N: usize> = SubSafetyEntry<M, Sub, F, N>;
+        type Entry<M, F, const N: usize> = SubSafetyEntry<M, F, N>;
 
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
@@ -590,11 +565,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .create_subscriber(&topic, QosSettings::default())
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
 
-        let offset = self.arena_alloc::<Entry<M, S::SubscriberHandle, F, RX_BUF>>()?;
+        let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, S::SubscriberHandle, F, RX_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F, RX_BUF>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
@@ -610,11 +585,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
-            try_process: sub_safety_try_process::<M, S::SubscriberHandle, F, RX_BUF>,
-            has_data: sub_safety_has_data::<M, S::SubscriberHandle, F, RX_BUF>,
-            pre_sample: sub_safety_pre_sample::<M, S::SubscriberHandle, F, RX_BUF>,
+            try_process: sub_safety_try_process::<M, F, RX_BUF>,
+            has_data: sub_safety_has_data::<M, F, RX_BUF>,
+            pre_sample: sub_safety_pre_sample::<M, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<M, S::SubscriberHandle, F, RX_BUF>>,
+            drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
         });
         Ok(HandleId(slot))
     }
@@ -630,8 +605,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         Svc: RosService + 'static,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
-        S::ServiceServerHandle: ServiceServerTrait,
-        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
     {
         self.add_service_sized::<Svc, F, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(service_name, callback)
     }
@@ -645,10 +618,8 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     where
         Svc: RosService + 'static,
         F: FnMut(&Svc::Request) -> Svc::Reply + 'static,
-        S::ServiceServerHandle: ServiceServerTrait,
-        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
     {
-        type Entry<Svc, Srv, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, Srv, F, RQ, RP>;
+        type Entry<Svc, F, const RQ: usize, const RP: usize> = SrvEntry<Svc, F, RQ, RP>;
 
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
@@ -663,14 +634,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .create_service_server(&info)
             .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
 
-        let offset =
-            self.arena_alloc::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>()?;
+        let offset = self.arena_alloc::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>()?;
 
         // SAFETY: same guarantees as add_subscription_sized.
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset)
-                as *mut Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<Svc, F, REQ_BUF, REPLY_BUF>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
@@ -686,11 +655,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::Service,
-            try_process: srv_try_process::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
-            has_data: srv_has_data::<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>,
+            try_process: srv_try_process::<Svc, F, REQ_BUF, REPLY_BUF>,
+            has_data: srv_has_data::<Svc, F, REQ_BUF, REPLY_BUF>,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<Svc, S::ServiceServerHandle, F, REQ_BUF, REPLY_BUF>>,
+            drop_fn: drop_entry::<Entry<Svc, F, REQ_BUF, REPLY_BUF>>,
         });
         Ok(HandleId(slot))
     }
@@ -799,10 +768,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         type_hash: &str,
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError>
-    where
-        S::SubscriberHandle: Subscriber,
-    {
+    ) -> Result<HandleId, NodeError> {
         self.add_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name,
             type_name,
@@ -821,10 +787,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         type_hash: &str,
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError>
-    where
-        S::SubscriberHandle: Subscriber,
-    {
+    ) -> Result<HandleId, NodeError> {
         self.add_subscription_raw_with_qos_sized::<RX_BUF>(
             topic_name,
             type_name,
@@ -846,10 +809,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         qos: QosSettings,
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError>
-    where
-        S::SubscriberHandle: Subscriber,
-    {
+    ) -> Result<HandleId, NodeError> {
         self.add_subscription_raw_with_qos_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }>(
             topic_name, type_name, type_hash, qos, callback, context,
         )
@@ -864,10 +824,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         qos: QosSettings,
         callback: RawSubscriptionCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError>
-    where
-        S::SubscriberHandle: Subscriber,
-    {
+    ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
         let ns: heapless::String<64> = self.namespace.clone();
@@ -880,11 +837,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .create_subscriber(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
 
-        let offset = self.arena_alloc::<SubRawEntry<S::SubscriberHandle, RX_BUF>>()?;
+        let offset = self.arena_alloc::<SubRawEntry<RX_BUF>>()?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut SubRawEntry<S::SubscriberHandle, RX_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut SubRawEntry<RX_BUF>;
             core::ptr::write(
                 entry_ptr,
                 SubRawEntry {
@@ -900,11 +857,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::Subscription,
-            try_process: sub_raw_try_process::<S::SubscriberHandle, RX_BUF>,
-            has_data: sub_raw_has_data::<S::SubscriberHandle, RX_BUF>,
-            pre_sample: sub_raw_pre_sample::<S::SubscriberHandle, RX_BUF>,
+            try_process: sub_raw_try_process::<RX_BUF>,
+            has_data: sub_raw_has_data::<RX_BUF>,
+            pre_sample: sub_raw_pre_sample::<RX_BUF>,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<SubRawEntry<S::SubscriberHandle, RX_BUF>>,
+            drop_fn: drop_entry::<SubRawEntry<RX_BUF>>,
         });
         Ok(HandleId(slot))
     }
@@ -922,11 +879,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         service_hash: &str,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError>
-    where
-        S::ServiceServerHandle: ServiceServerTrait,
-        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
-    {
+    ) -> Result<HandleId, NodeError> {
         self.add_service_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }>(
             service_name,
             service_type,
@@ -948,11 +901,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         service_hash: &str,
         callback: RawServiceCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<HandleId, NodeError>
-    where
-        S::ServiceServerHandle: ServiceServerTrait,
-        <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
-    {
+    ) -> Result<HandleId, NodeError> {
         let slot = self.next_entry_slot()?;
         let node_name: heapless::String<64> = self.node_name.clone();
         let ns: heapless::String<64> = self.namespace.clone();
@@ -966,13 +915,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             .create_service_server(&info)
             .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))?;
 
-        let offset =
-            self.arena_alloc::<SrvRawEntry<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>>()?;
+        let offset = self.arena_alloc::<SrvRawEntry<REQ_BUF, REPLY_BUF>>()?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset)
-                as *mut SrvRawEntry<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut SrvRawEntry<REQ_BUF, REPLY_BUF>;
             core::ptr::write(
                 entry_ptr,
                 SrvRawEntry {
@@ -988,11 +935,11 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         self.entries[slot] = Some(CallbackMeta {
             offset,
             kind: EntryKind::Service,
-            try_process: srv_raw_try_process::<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>,
-            has_data: srv_raw_has_data::<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>,
+            try_process: srv_raw_try_process::<REQ_BUF, REPLY_BUF>,
+            has_data: srv_raw_has_data::<REQ_BUF, REPLY_BUF>,
             pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<SrvRawEntry<S::ServiceServerHandle, REQ_BUF, REPLY_BUF>>,
+            drop_fn: drop_entry::<SrvRawEntry<REQ_BUF, REPLY_BUF>>,
         });
         Ok(HandleId(slot))
     }
@@ -1110,7 +1057,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 
     // ========================================================================
-    // spin_once (three-phase: readiness → trigger → dispatch)
+    // spin_once (three-phase: readiness -> trigger -> dispatch)
     // ========================================================================
 
     /// Drive I/O and dispatch registered callbacks once.
@@ -1268,7 +1215,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     /// This is the primary run loop for embedded applications:
     ///
     /// ```ignore
-    /// let mut executor: Executor<_> = Executor::open(&config)?;
+    /// let mut executor = Executor::open(&config)?;
     /// executor.add_subscription::<Int32, _>("/topic", |msg| { /* ... */ })?;
     /// executor.spin(10); // never returns
     /// ```
@@ -1347,11 +1294,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
 // ============================================================================
 
 #[cfg(feature = "param-services")]
-impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA>
-where
-    S::ServiceServerHandle: ServiceServerTrait + 'static,
-    <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
-{
+impl Executor {
     /// Register the 6 ROS 2 parameter services for this node.
     ///
     /// Creates service servers for `get_parameters`, `set_parameters`,
@@ -1359,7 +1302,7 @@ where
     /// and `get_parameter_types` under the given node fully-qualified name.
     ///
     /// Parameter services are stored outside the arena and don't consume
-    /// `MAX_CBS` slots.
+    /// callback slots.
     ///
     /// # Example
     ///
@@ -1376,25 +1319,20 @@ where
         };
         use nros_core::RosService;
 
-        type PSrv<Svc, Srv> = super::handles::EmbeddedServiceServer<
+        type PSrv<Svc> = super::handles::EmbeddedServiceServer<
             Svc,
-            Srv,
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >;
 
         /// Build a service name like `{node_fqn}/{suffix}` and create the server handle.
-        fn create_param_srv<Svc: RosService, S: Session>(
-            session: &mut S,
+        fn create_param_srv<Svc: RosService>(
+            session: &mut session::ConcreteSession,
             node_fqn: &str,
             namespace: &str,
             node_name: &str,
             suffix: &str,
-        ) -> Result<S::ServiceServerHandle, NodeError>
-        where
-            S::ServiceServerHandle: ServiceServerTrait,
-            <S::ServiceServerHandle as ServiceServerTrait>::Error: From<TransportError>,
-        {
+        ) -> Result<session::RmwServiceServer, NodeError> {
             let mut name = heapless::String::<256>::new();
             name.push_str(node_fqn)
                 .map_err(|_| NodeError::NameTooLong)?;
@@ -1412,42 +1350,42 @@ where
 
         let ns: &str = &self.namespace;
         let nn: &str = &self.node_name;
-        let get_handle = create_param_srv::<GetParameters, S>(
+        let get_handle = create_param_srv::<GetParameters>(
             &mut self.session,
             node_fqn,
             ns,
             nn,
             "get_parameters",
         )?;
-        let set_handle = create_param_srv::<SetParameters, S>(
+        let set_handle = create_param_srv::<SetParameters>(
             &mut self.session,
             node_fqn,
             ns,
             nn,
             "set_parameters",
         )?;
-        let set_atomic_handle = create_param_srv::<SetParametersAtomically, S>(
+        let set_atomic_handle = create_param_srv::<SetParametersAtomically>(
             &mut self.session,
             node_fqn,
             ns,
             nn,
             "set_parameters_atomically",
         )?;
-        let list_handle = create_param_srv::<ListParameters, S>(
+        let list_handle = create_param_srv::<ListParameters>(
             &mut self.session,
             node_fqn,
             ns,
             nn,
             "list_parameters",
         )?;
-        let desc_handle = create_param_srv::<DescribeParameters, S>(
+        let desc_handle = create_param_srv::<DescribeParameters>(
             &mut self.session,
             node_fqn,
             ns,
             nn,
             "describe_parameters",
         )?;
-        let types_handle = create_param_srv::<GetParameterTypes, S>(
+        let types_handle = create_param_srv::<GetParameterTypes>(
             &mut self.session,
             node_fqn,
             ns,
@@ -1456,37 +1394,37 @@ where
         )?;
 
         let servers = ParameterServiceServers::new(
-            PSrv::<GetParameters, _> {
+            PSrv::<GetParameters> {
                 handle: get_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 _phantom: core::marker::PhantomData,
             },
-            PSrv::<SetParameters, _> {
+            PSrv::<SetParameters> {
                 handle: set_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 _phantom: core::marker::PhantomData,
             },
-            PSrv::<SetParametersAtomically, _> {
+            PSrv::<SetParametersAtomically> {
                 handle: set_atomic_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 _phantom: core::marker::PhantomData,
             },
-            PSrv::<ListParameters, _> {
+            PSrv::<ListParameters> {
                 handle: list_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 _phantom: core::marker::PhantomData,
             },
-            PSrv::<DescribeParameters, _> {
+            PSrv::<DescribeParameters> {
                 handle: desc_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 _phantom: core::marker::PhantomData,
             },
-            PSrv::<GetParameterTypes, _> {
+            PSrv::<GetParameterTypes> {
                 handle: types_handle,
                 req_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
                 reply_buffer: [0u8; PARAM_SERVICE_BUFFER_SIZE],
@@ -1588,7 +1526,7 @@ where
 // ============================================================================
 
 #[cfg(feature = "std")]
-impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA> {
+impl Executor {
     /// Blocking spin loop with configurable exit conditions.
     ///
     /// Runs until one of:
@@ -1747,7 +1685,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
     }
 }
 
-impl<S, const MAX_CBS: usize, const CB_ARENA: usize> Drop for Executor<S, MAX_CBS, CB_ARENA> {
+impl Drop for Executor {
     fn drop(&mut self) {
         let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
         for meta in self.entries.iter().flatten() {

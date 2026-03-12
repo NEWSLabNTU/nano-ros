@@ -29,7 +29,7 @@ fn main() {
 
     // Create executor from environment
     let config = ExecutorConfig::from_env().node_name("fibonacci_action_client");
-    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
 
     // Create node and action client
     let mut node = executor

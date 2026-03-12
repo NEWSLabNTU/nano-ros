@@ -12,7 +12,7 @@
 //! use example_interfaces::srv::{AddTwoInts, AddTwoIntsRequest};
 //!
 //! let config = ExecutorConfig::from_env().node_name("client");
-//! let mut executor: Executor<_> = Executor::open(&config)?;
+//! let mut executor: Executor = Executor::open(&config)?;
 //! let mut node = executor.create_node("client")?;
 //! let mut client = node.create_client::<AddTwoInts>("/add_two_ints")?;
 //!
@@ -38,7 +38,7 @@
 //! #[tokio::main(flavor = "current_thread")]
 //! async fn main() {
 //!     let config = ExecutorConfig::from_env().node_name("client");
-//!     let mut executor: Executor<_> = Executor::open(&config).unwrap();
+//!     let mut executor: Executor = Executor::open(&config).unwrap();
 //!     let mut client = {
 //!         let mut node = executor.create_node("client").unwrap();
 //!         node.create_client::<AddTwoInts>("/add_two_ints").unwrap()

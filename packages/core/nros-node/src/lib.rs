@@ -15,7 +15,7 @@
 //! use std_msgs::msg::Int32;
 //!
 //! let config = ExecutorConfig::from_env().node_name("my_node");
-//! let mut executor: Executor<_> = Executor::open(&config)?;
+//! let mut executor: Executor = Executor::open(&config)?;
 //!
 //! // Register subscription callback
 //! executor.add_subscription::<Int32, _>("/topic", |msg: &Int32| {
@@ -33,7 +33,7 @@
 //! use std_msgs::msg::Int32;
 //!
 //! let config = ExecutorConfig { locator: "tcp/192.168.1.1:7447", ..Default::default() };
-//! let mut executor: Executor<_> = Executor::open(&config)?;
+//! let mut executor: Executor = Executor::open(&config)?;
 //!
 //! // Register subscription callback
 //! executor.add_subscription::<Int32, _>("/cmd", |msg: &Int32| {
@@ -65,8 +65,13 @@ pub mod executor;
 pub mod lifecycle;
 mod node;
 mod publisher;
+#[cfg(any(has_rmw, test))]
+pub mod session;
 mod subscriber;
 pub mod timer;
+
+#[cfg(test)]
+pub(crate) mod mock;
 
 #[cfg(feature = "param-services")]
 pub mod parameter_services;
@@ -106,16 +111,21 @@ pub use timer::{
 // Re-export lifecycle types
 pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
 
-// Re-export generic embedded node types (always available, no feature gate)
+// Re-export types that don't depend on RMW (always available)
+pub use executor::{
+    ExecutorConfig, ExecutorSemantics, GuardConditionHandle, HandleId, HandleSet, InvocationMode,
+    NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback, RawSubscriptionCallback,
+    ReadinessSnapshot, SpinOnceResult, SpinOptions, SpinPeriodPollingResult, Trigger,
+};
+
+// Re-export RMW-dependent executor types
+#[cfg(any(has_rmw, test))]
 pub use executor::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
-    EmbeddedServiceServer, Executor, ExecutorConfig, ExecutorSemantics, FeedbackStream,
-    GoalFeedbackStream, GuardConditionHandle, HandleId, HandleSet, InvocationMode, Node, NodeError,
-    Promise, RawActiveGoal, RawCancelCallback, RawGoalCallback, RawServiceCallback,
-    RawSubscriptionCallback, ReadinessSnapshot, SpinOnceResult, SpinOptions,
-    SpinPeriodPollingResult, Subscription, Trigger,
+    EmbeddedServiceServer, Executor, FeedbackStream, GoalFeedbackStream, Node, Promise,
+    RawActiveGoal, Subscription,
 };
 
-#[cfg(feature = "std")]
+#[cfg(all(feature = "std", any(has_rmw, test)))]
 pub use executor::SpinPeriodResult;

@@ -33,7 +33,7 @@ fn main() {
     let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_service_server");
-    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open XRCE session");
+    let mut executor: Executor = Executor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Register service callback

@@ -12,7 +12,7 @@ fn main() {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_client");
-        let mut executor: Executor<_> = Executor::open(&exec_config)?;
+        let mut executor: Executor = Executor::open(&exec_config)?;
         let mut node = executor.create_node("add_two_ints_client")?;
 
         println!("Creating service client: /add_two_ints (AddTwoInts)");

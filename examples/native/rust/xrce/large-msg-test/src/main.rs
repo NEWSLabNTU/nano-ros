@@ -28,7 +28,7 @@ fn main() {
     let config = ExecutorConfig::new(&agent_addr)
         .domain_id(domain_id)
         .node_name("xrce_large_msg");
-    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::open(&config).expect("Failed to open XRCE session");
     eprintln!("Session created");
 
     // Create publisher (Int32 type — we'll publish raw bytes)

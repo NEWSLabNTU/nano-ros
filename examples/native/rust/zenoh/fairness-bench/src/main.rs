@@ -97,7 +97,7 @@ fn spawn_publisher(scenario: &str) -> Child {
 /// Publish /bench1/fast at 100Hz and /bench1/slow at 10Hz for 20s.
 fn publish_scenario_1() {
     let config = ExecutorConfig::from_env().node_name("pub1");
-    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
+    let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("pub1").expect("Node");
 
     let fast_pub = node
@@ -136,7 +136,7 @@ fn publish_scenario_1() {
 /// Send 100 service requests to /bench2/add using Promise pattern.
 fn client_scenario_2() {
     let config = ExecutorConfig::from_env().node_name("client2");
-    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
+    let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("client2").expect("Node");
 
     let mut client = node
@@ -170,7 +170,7 @@ fn client_scenario_2() {
 /// Publish 2 topics at 50Hz + service requests at 10Hz for 20s.
 fn publish_scenario_3() {
     let config = ExecutorConfig::from_env().node_name("pub3");
-    let mut executor: Executor<_> = Executor::open(&config).expect("Failed to open session");
+    let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
     let mut node = executor.create_node("pub3").expect("Node");
 
     let pub_a = node
@@ -259,7 +259,7 @@ fn scenario_1_asymmetric_subscriptions() {
     let sl_cb = slow_last.clone();
 
     let config = ExecutorConfig::from_env().node_name("sub1");
-    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
         .add_subscription::<Int32, _>("/bench1/fast", move |_msg: &Int32| {
@@ -344,7 +344,7 @@ fn scenario_2_service_burst() {
     let handled_cb = handled.clone();
 
     let config = ExecutorConfig::from_env().node_name("server2");
-    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
         .add_service::<AddTwoInts, _>("/bench2/add", move |req: &AddTwoIntsRequest| {
@@ -404,7 +404,7 @@ fn scenario_3_mixed_load() {
     let svc_cb = svc_handled.clone();
 
     let config = ExecutorConfig::from_env().node_name("bench3");
-    let mut executor = Executor::<_, 8, 8192>::open(&config).expect("Failed to open session");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
 
     executor
         .add_subscription::<Int32, _>("/bench3/topic_a", move |_msg: &Int32| {

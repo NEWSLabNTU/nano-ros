@@ -210,12 +210,12 @@ srand(seed);
 
 **Problem**: Service server or action server crashes with `lwIP ASSERT: Invalid mbox` during network init or shortly after `z_open()`. Simpler examples (pub/sub) work fine.
 
-**Cause**: The `Executor<S, MAX_CBS, CB_ARENA>` struct has an inline `arena: [MaybeUninit<u8>; CB_ARENA]` array that lives on the FreeRTOS task stack. Service examples use `CB_ARENA=4096` (4 KB) and action examples use `CB_ARENA=8192` (8 KB). Combined with zenoh-pico's internal stack buffers (transport TX/RX, peer structures) and Rust function frames, the total stack usage exceeds a small task stack.
+**Cause**: The `Executor` struct has an inline `arena: [MaybeUninit<u8>; ARENA_SIZE]` array that lives on the FreeRTOS task stack. Service examples use `NROS_EXECUTOR_ARENA_SIZE=4096` (4 KB) and action examples use `NROS_EXECUTOR_ARENA_SIZE=8192` (8 KB). Combined with zenoh-pico's internal stack buffers (transport TX/RX, peer structures) and Rust function frames, the total stack usage exceeds a small task stack.
 
 When the stack overflows, it corrupts adjacent memory including lwIP's global `tcpip_mbox` variable (declared in `tcpip.c`). Any subsequent call to `tcpip_input()`, `tcpip_callback()`, or `sys_mbox_trypost()` triggers the "Invalid mbox" assertion, which enters an infinite `for(;;){}` loop.
 
 **Diagnosis**: If pub/sub examples work but service/action examples crash with "Invalid mbox":
-- Compare the `CB_ARENA` sizes: talker uses `Executor::<_, 0, 0>` (no arena), service server uses defaults (4 slots, 4096 arena), action server uses `Executor::<_, 8, 8192>`
+- Compare the arena sizes: talker sets `NROS_EXECUTOR_MAX_CBS=0` (no callbacks), service server uses defaults (4 slots, 4096 arena), action server sets `NROS_EXECUTOR_MAX_CBS=8` and `NROS_EXECUTOR_ARENA_SIZE=8192`
 - Larger arena = more stack needed = more likely to overflow
 
 **Fix**: Set `APP_TASK_STACK` large enough for the largest example. 64 KB (16384 words) provides adequate headroom for all example types:

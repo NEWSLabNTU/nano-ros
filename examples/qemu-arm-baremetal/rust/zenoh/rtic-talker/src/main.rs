@@ -29,9 +29,8 @@ use rtic_monotonics::systick::prelude::*;
 systick_monotonic!(Mono, 1000);
 
 // Type aliases for RTIC Local struct annotations
-type RmwPub = nros::internals::RmwPublisher;
-type NrosExecutor = Executor<nros::internals::RmwSession, 0, 0>;
-type NrosPublisher = EmbeddedPublisher<Int32, RmwPub>;
+type NrosExecutor = Executor;
+type NrosPublisher = EmbeddedPublisher<Int32>;
 
 #[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]
 mod app {
@@ -56,7 +55,7 @@ mod app {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("talker");
-        let mut executor = Executor::<_, 0, 0>::open(&exec_config).unwrap();
+        let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("talker").unwrap();
         let publisher = node.create_publisher::<Int32>("/chatter").unwrap();
 

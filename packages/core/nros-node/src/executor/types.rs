@@ -169,7 +169,7 @@ impl SpinOptions {
 /// let config = ExecutorConfig::new("tcp/127.0.0.1:7447")
 ///     .node_name("talker")
 ///     .domain_id(0);
-/// let mut executor: Executor<_> = Executor::open(&config)?;
+/// let mut executor: Executor = Executor::open(&config)?;
 /// ```
 pub struct ExecutorConfig<'a> {
     /// Middleware-specific connection string.
@@ -288,6 +288,7 @@ impl From<TransportError> for NodeError {
 }
 
 /// Default transmit buffer size (bytes).
+#[cfg(any(has_rmw, test))]
 pub(crate) const DEFAULT_TX_BUF: usize = crate::config::DEFAULT_RX_BUF_SIZE;
 
 // ============================================================================
@@ -574,6 +575,7 @@ impl GuardConditionHandle {
     /// The pointed-to `AtomicBool` must outlive this handle. This is guaranteed
     /// when the `AtomicBool` lives in the executor arena (which is never moved
     /// or deallocated while handles exist).
+    #[cfg(any(has_rmw, test))]
     pub(crate) unsafe fn new(flag: *const portable_atomic::AtomicBool) -> Self {
         // SAFETY: Caller guarantees the AtomicBool outlives this handle.
         Self {

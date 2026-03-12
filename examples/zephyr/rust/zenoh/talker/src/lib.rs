@@ -26,7 +26,7 @@ extern "C" fn rust_main() {
 
 fn run() -> Result<(), NodeError> {
     let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut executor: Executor<_> = Executor::open(&config)?;
+    let mut executor: Executor = Executor::open(&config)?;
 
     let mut node = executor.create_node("talker")?;
     let publisher = node.create_publisher::<Int32>("/chatter")?;

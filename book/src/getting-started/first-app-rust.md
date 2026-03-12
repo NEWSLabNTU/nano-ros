@@ -95,7 +95,7 @@ fn main() {
     env_logger::init();
 
     let config = ExecutorConfig::from_env().node_name("talker");
-    let mut executor: Executor<_> =
+    let mut executor =
         Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor.create_node("talker").expect("Failed to create node");
@@ -123,8 +123,8 @@ Key API elements:
 
 - `ExecutorConfig::from_env()` reads `ZENOH_LOCATOR`, `ROS_DOMAIN_ID`, and
   `ZENOH_MODE` from the environment.
-- `Executor<_>` uses env-var-configurable defaults (4 callback slots, 4 KB
-  arena). Override with `NROS_EXECUTOR_MAX_CBS` and `NROS_EXECUTOR_ARENA_SIZE`.
+- `Executor` sizing is configured via `NROS_EXECUTOR_MAX_CBS` (default 4) and
+  `NROS_EXECUTOR_ARENA_SIZE` (default 4096) environment variables.
 - `create_node()` borrows the session from the executor.
 - `create_publisher::<Int32>()` creates a typed publisher. The topic name
   follows ROS 2 conventions.
@@ -165,7 +165,7 @@ fn main() {
     env_logger::init();
 
     let config = ExecutorConfig::from_env().node_name("listener");
-    let mut executor: Executor<_> =
+    let mut executor =
         Executor::open(&config).expect("Failed to open session");
 
     let mut count: u64 = 0;

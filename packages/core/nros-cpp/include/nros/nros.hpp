@@ -20,11 +20,10 @@ namespace nros {
 /// @param timeout_ms  Maximum time to block waiting for I/O (default: 10ms).
 /// @return Result indicating success or failure.
 inline Result spin_once(int32_t timeout_ms = 10) {
-    void* handle = Node::global_executor();
-    if (!handle) {
+    if (!Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
-    return Result(nros_cpp_spin_once(handle, timeout_ms));
+    return Result(nros_cpp_spin_once(Node::global_storage(), timeout_ms));
 }
 
 /// Spin for a duration (blocking).
@@ -36,8 +35,7 @@ inline Result spin_once(int32_t timeout_ms = 10) {
 /// @param poll_ms      Individual spin_once timeout (default: 10ms).
 /// @return Result from the last spin_once call.
 inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
-    void* handle = Node::global_executor();
-    if (!handle) {
+    if (!Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
     uint32_t elapsed = 0;
@@ -45,7 +43,7 @@ inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
     while (elapsed < duration_ms) {
         int32_t remaining = static_cast<int32_t>(duration_ms - elapsed);
         int32_t timeout = remaining < poll_ms ? remaining : poll_ms;
-        last = Result(nros_cpp_spin_once(handle, timeout));
+        last = Result(nros_cpp_spin_once(Node::global_storage(), timeout));
         if (!last.ok()) return last;
         elapsed += static_cast<uint32_t>(timeout);
     }

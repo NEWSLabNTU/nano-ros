@@ -29,7 +29,7 @@ fn test_guard_condition_with_zenoh(zenohd_unique: ZenohRouter) {
         .node_name("guard_test")
         .domain_id(97);
 
-    let mut executor = Executor::<_, 8, 16384>::open(&config).expect("Failed to open session");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
 
     static GUARD_FIRED: AtomicUsize = AtomicUsize::new(0);
     GUARD_FIRED.store(0, Ordering::SeqCst);

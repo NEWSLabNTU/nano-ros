@@ -3,9 +3,7 @@
 use core::marker::PhantomData;
 
 use nros_core::RosAction;
-use nros_rmw::{
-    ActionInfo, Publisher, QosSettings, ServiceInfo, ServiceServerTrait, Session, TopicInfo,
-};
+use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
 
 use super::action_core::{ActionServerCore, RawActiveGoal};
 use super::arena::{
@@ -26,7 +24,7 @@ use super::types::{RawCancelCallback, RawGoalCallback};
 // Action server registration
 // ============================================================================
 
-impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA> {
+impl Executor {
     /// Register an action server with goal/cancel callbacks.
     ///
     /// The executor automatically dispatches:
@@ -50,8 +48,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse + 'static,
         CancelF:
             FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
-        S::ServiceServerHandle: ServiceServerTrait,
-        S::PublisherHandle: Publisher,
     {
         self.add_action_server_sized::<A, GoalF, CancelF, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
             action_name,
@@ -82,20 +78,16 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         GoalF: FnMut(&nros_core::GoalId, &A::Goal) -> nros_core::GoalResponse + 'static,
         CancelF:
             FnMut(&nros_core::GoalId, nros_core::GoalStatus) -> nros_core::CancelResponse + 'static,
-        S::ServiceServerHandle: ServiceServerTrait,
-        S::PublisherHandle: Publisher,
     {
         type Entry<
             A,
-            Srv,
-            Pub,
             GoalF,
             CancelF,
             const GB: usize,
             const RB: usize,
             const FB: usize,
             const MG: usize,
-        > = ActionServerArenaEntry<A, Srv, Pub, GoalF, CancelF, GB, RB, FB, MG>;
+        > = ActionServerArenaEntry<A, GoalF, CancelF, GB, RB, FB, MG>;
 
         let slot = self.next_entry_slot()?;
 
@@ -169,32 +161,14 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             completed_goals: heapless::Vec::new(),
         };
 
-        let offset = self.arena_alloc::<Entry<
-            A,
-            S::ServiceServerHandle,
-            S::PublisherHandle,
-            GoalF,
-            CancelF,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-            MAX_GOALS,
-        >>()?;
+        let offset = self
+            .arena_alloc::<Entry<A, GoalF, CancelF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>>(
+            )?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
             let entry_ptr = arena_ptr.add(offset)
-                as *mut Entry<
-                    A,
-                    S::ServiceServerHandle,
-                    S::PublisherHandle,
-                    GoalF,
-                    CancelF,
-                    GOAL_BUF,
-                    RESULT_BUF,
-                    FEEDBACK_BUF,
-                    MAX_GOALS,
-                >;
+                as *mut Entry<A, GoalF, CancelF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
@@ -213,8 +187,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             invocation: InvocationMode::Always,
             try_process: action_server_try_process::<
                 A,
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GoalF,
                 CancelF,
                 GOAL_BUF,
@@ -223,17 +195,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
                 MAX_GOALS,
             >,
             drop_fn: drop_entry::<
-                Entry<
-                    A,
-                    S::ServiceServerHandle,
-                    S::PublisherHandle,
-                    GoalF,
-                    CancelF,
-                    GOAL_BUF,
-                    RESULT_BUF,
-                    FEEDBACK_BUF,
-                    MAX_GOALS,
-                >,
+                Entry<A, GoalF, CancelF, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
             >,
         });
 
@@ -241,8 +203,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             entry_index: slot,
             publish_feedback_fn: as_publish_feedback::<
                 A,
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GoalF,
                 CancelF,
                 GOAL_BUF,
@@ -252,8 +212,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             >,
             complete_goal_fn: as_complete_goal::<
                 A,
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GoalF,
                 CancelF,
                 GOAL_BUF,
@@ -263,8 +221,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             >,
             set_goal_status_fn: as_set_goal_status::<
                 A,
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GoalF,
                 CancelF,
                 GOAL_BUF,
@@ -274,8 +230,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             >,
             active_goal_count_fn: as_active_goal_count::<
                 A,
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GoalF,
                 CancelF,
                 GOAL_BUF,
@@ -285,8 +239,6 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             >,
             for_each_active_goal_fn: as_for_each_active_goal::<
                 A,
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GoalF,
                 CancelF,
                 GOAL_BUF,
@@ -342,9 +294,9 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// Serialises the feedback message and sends it to all clients
     /// monitoring this goal. Returns an error if the handle slot has
     /// been removed from the executor.
-    pub fn publish_feedback<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+    pub fn publish_feedback(
         &self,
-        executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
+        executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         feedback: &A::Feedback,
     ) -> Result<(), NodeError> {
@@ -363,9 +315,9 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// The goal is moved from the active set to the completed-results
     /// slab. Clients waiting on a result will receive the response.
     /// `status` should be one of `Succeeded`, `Aborted`, or `Canceled`.
-    pub fn complete_goal<S, const MAX_CBS: usize, const CB_ARENA: usize>(
+    pub fn complete_goal(
         &self,
-        executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
+        executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         status: nros_core::GoalStatus,
         result: A::Result,
@@ -383,9 +335,9 @@ impl<A: RosAction> ActionServerHandle<A> {
     ///
     /// Use this to transition a goal to `Executing` or `Canceling`
     /// while it is still active. To finish a goal, use [`complete_goal`](Self::complete_goal).
-    pub fn set_goal_status<S, const MAX_CBS: usize, const CB_ARENA: usize>(
+    pub fn set_goal_status(
         &self,
-        executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
+        executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         status: nros_core::GoalStatus,
     ) {
@@ -401,10 +353,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     /// Get the number of currently active goals.
     ///
     /// Returns 0 if the action server handle has been removed from the executor.
-    pub fn active_goal_count<S, const MAX_CBS: usize, const CB_ARENA: usize>(
-        &self,
-        executor: &Executor<S, MAX_CBS, CB_ARENA>,
-    ) -> usize {
+    pub fn active_goal_count(&self, executor: &Executor) -> usize {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
                 let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -421,11 +370,7 @@ impl<A: RosAction> ActionServerHandle<A> {
     ///
     /// Calls `f` for each goal that has been accepted but not yet
     /// completed. Useful for monitoring progress or canceling stale goals.
-    pub fn for_each_active_goal<S, const MAX_CBS: usize, const CB_ARENA: usize>(
-        &self,
-        executor: &Executor<S, MAX_CBS, CB_ARENA>,
-        mut f: impl FnMut(&ActiveGoal<A>),
-    ) {
+    pub fn for_each_active_goal(&self, executor: &Executor, mut f: impl FnMut(&ActiveGoal<A>)) {
         if let Some(meta) = executor.entries[self.entry_index].as_ref() {
             let arena_ptr = executor.arena.as_ptr() as *const u8;
             unsafe {
@@ -440,7 +385,7 @@ impl<A: RosAction> ActionServerHandle<A> {
 // Raw (untyped) action server registration
 // ============================================================================
 
-impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CBS, CB_ARENA> {
+impl Executor {
     /// Register a raw action server with raw-bytes callbacks.
     ///
     /// Unlike [`add_action_server()`](Executor::add_action_server), this does
@@ -457,11 +402,7 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         goal_callback: RawGoalCallback,
         cancel_callback: RawCancelCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<ActionServerRawHandle, NodeError>
-    where
-        S::ServiceServerHandle: ServiceServerTrait,
-        S::PublisherHandle: Publisher,
-    {
+    ) -> Result<ActionServerRawHandle, NodeError> {
         self.add_action_server_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
             action_name,
             type_name,
@@ -486,13 +427,9 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
         goal_callback: RawGoalCallback,
         cancel_callback: RawCancelCallback,
         context: *mut core::ffi::c_void,
-    ) -> Result<ActionServerRawHandle, NodeError>
-    where
-        S::ServiceServerHandle: ServiceServerTrait,
-        S::PublisherHandle: Publisher,
-    {
-        type Entry<Srv, Pub, const GB: usize, const RB: usize, const FB: usize, const MG: usize> =
-            ActionServerRawArenaEntry<Srv, Pub, GB, RB, FB, MG>;
+    ) -> Result<ActionServerRawHandle, NodeError> {
+        type Entry<const GB: usize, const RB: usize, const FB: usize, const MG: usize> =
+            ActionServerRawArenaEntry<GB, RB, FB, MG>;
 
         let slot = self.next_entry_slot()?;
 
@@ -560,26 +497,12 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             cancel_buffer: [0u8; 256],
         };
 
-        let offset = self.arena_alloc::<Entry<
-            S::ServiceServerHandle,
-            S::PublisherHandle,
-            GOAL_BUF,
-            RESULT_BUF,
-            FEEDBACK_BUF,
-            MAX_GOALS,
-        >>()?;
+        let offset = self.arena_alloc::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>>()?;
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset)
-                as *mut Entry<
-                    S::ServiceServerHandle,
-                    S::PublisherHandle,
-                    GOAL_BUF,
-                    RESULT_BUF,
-                    FEEDBACK_BUF,
-                    MAX_GOALS,
-                >;
+            let entry_ptr =
+                arena_ptr.add(offset) as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
@@ -598,62 +521,36 @@ impl<S: Session, const MAX_CBS: usize, const CB_ARENA: usize> Executor<S, MAX_CB
             pre_sample: no_pre_sample,
             invocation: InvocationMode::Always,
             try_process: action_server_raw_try_process::<
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GOAL_BUF,
                 RESULT_BUF,
                 FEEDBACK_BUF,
                 MAX_GOALS,
             >,
-            drop_fn: drop_entry::<
-                Entry<
-                    S::ServiceServerHandle,
-                    S::PublisherHandle,
-                    GOAL_BUF,
-                    RESULT_BUF,
-                    FEEDBACK_BUF,
-                    MAX_GOALS,
-                >,
-            >,
+            drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>>,
         });
 
         Ok(ActionServerRawHandle {
             entry_index: slot,
             publish_feedback_fn: as_raw_publish_feedback::<
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GOAL_BUF,
                 RESULT_BUF,
                 FEEDBACK_BUF,
                 MAX_GOALS,
             >,
-            complete_goal_fn: as_raw_complete_goal::<
-                S::ServiceServerHandle,
-                S::PublisherHandle,
-                GOAL_BUF,
-                RESULT_BUF,
-                FEEDBACK_BUF,
-                MAX_GOALS,
-            >,
+            complete_goal_fn: as_raw_complete_goal::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
             set_goal_status_fn: as_raw_set_goal_status::<
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GOAL_BUF,
                 RESULT_BUF,
                 FEEDBACK_BUF,
                 MAX_GOALS,
             >,
             active_goal_count_fn: as_raw_active_goal_count::<
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GOAL_BUF,
                 RESULT_BUF,
                 FEEDBACK_BUF,
                 MAX_GOALS,
             >,
             for_each_active_goal_fn: as_raw_for_each_active_goal::<
-                S::ServiceServerHandle,
-                S::PublisherHandle,
                 GOAL_BUF,
                 RESULT_BUF,
                 FEEDBACK_BUF,
@@ -700,9 +597,9 @@ impl ActionServerRawHandle {
     /// Publish feedback with raw CDR bytes (untyped variant).
     ///
     /// Used by the C API when feedback is already serialised.
-    pub fn publish_feedback_raw<S: Session, const MAX_CBS: usize, const CB_ARENA: usize>(
+    pub fn publish_feedback_raw(
         &self,
-        executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
+        executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         feedback_data: &[u8],
     ) -> Result<(), NodeError> {
@@ -724,9 +621,9 @@ impl ActionServerRawHandle {
     /// Complete a goal with raw CDR result bytes (untyped variant).
     ///
     /// Moves the goal from the active set to the completed-results slab.
-    pub fn complete_goal_raw<S, const MAX_CBS: usize, const CB_ARENA: usize>(
+    pub fn complete_goal_raw(
         &self,
-        executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
+        executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         status: nros_core::GoalStatus,
         result_data: &[u8],
@@ -750,9 +647,9 @@ impl ActionServerRawHandle {
     ///
     /// Use this to transition a goal to `Executing` or `Canceling`
     /// while it is still active. To finish a goal, use [`complete_goal_raw`](Self::complete_goal_raw).
-    pub fn set_goal_status<S, const MAX_CBS: usize, const CB_ARENA: usize>(
+    pub fn set_goal_status(
         &self,
-        executor: &mut Executor<S, MAX_CBS, CB_ARENA>,
+        executor: &mut Executor,
         goal_id: &nros_core::GoalId,
         status: nros_core::GoalStatus,
     ) {
@@ -768,10 +665,7 @@ impl ActionServerRawHandle {
     /// Get the number of currently active goals.
     ///
     /// Returns 0 if the action server handle has been removed from the executor.
-    pub fn active_goal_count<S, const MAX_CBS: usize, const CB_ARENA: usize>(
-        &self,
-        executor: &Executor<S, MAX_CBS, CB_ARENA>,
-    ) -> usize {
+    pub fn active_goal_count(&self, executor: &Executor) -> usize {
         match executor.entries[self.entry_index].as_ref() {
             Some(meta) => {
                 let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -787,11 +681,7 @@ impl ActionServerRawHandle {
     /// Iterate over all currently active goals (raw/untyped variant).
     ///
     /// Calls `f` for each goal that has been accepted but not yet completed.
-    pub fn for_each_active_goal<S, const MAX_CBS: usize, const CB_ARENA: usize>(
-        &self,
-        executor: &Executor<S, MAX_CBS, CB_ARENA>,
-        mut f: impl FnMut(&RawActiveGoal),
-    ) {
+    pub fn for_each_active_goal(&self, executor: &Executor, mut f: impl FnMut(&RawActiveGoal)) {
         if let Some(meta) = executor.entries[self.entry_index].as_ref() {
             let arena_ptr = executor.arena.as_ptr() as *const u8;
             unsafe {

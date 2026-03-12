@@ -218,6 +218,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
 | 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.9 done, 67.10–67.14 remaining) |
+| 68 | Alloc-free C/C++ bindings + executor simplification | In Progress (68.1–68.7 done, 68.8–68.10 remaining) |
 
 ## Quick Reference
 

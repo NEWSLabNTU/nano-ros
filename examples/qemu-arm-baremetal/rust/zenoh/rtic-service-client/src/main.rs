@@ -27,9 +27,8 @@ use rtic_monotonics::systick::prelude::*;
 systick_monotonic!(Mono, 1000);
 
 // Type aliases for RTIC Local struct annotations
-type RmwSrvClient = nros::internals::RmwServiceClient;
-type NrosExecutor = Executor<nros::internals::RmwSession, 0, 0>;
-type NrosServiceClient = nros::EmbeddedServiceClient<AddTwoInts, RmwSrvClient>;
+type NrosExecutor = Executor;
+type NrosServiceClient = nros::EmbeddedServiceClient<AddTwoInts>;
 
 #[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0])]
 mod app {
@@ -54,7 +53,7 @@ mod app {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_client");
-        let mut executor = Executor::<_, 0, 0>::open(&exec_config).unwrap();
+        let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("add_client").unwrap();
         let client = node.create_client::<AddTwoInts>("/add_two_ints").unwrap();
 

@@ -11,7 +11,7 @@ fn main() {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("fibonacci_action_client");
-        let mut executor = Executor::<_, 8, 8192>::open(&exec_config)?;
+        let mut executor = Executor::open(&exec_config)?;
         let mut node = executor.create_node("fibonacci_action_client")?;
 
         let mut client = node.create_action_client::<Fibonacci>("/fibonacci")?;

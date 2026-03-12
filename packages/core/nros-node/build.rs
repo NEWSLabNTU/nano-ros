@@ -9,18 +9,29 @@ use std::path::Path;
 fn main() {
     let out_dir = env::var("OUT_DIR").unwrap();
 
+    println!("cargo:rustc-check-cfg=cfg(has_rmw)");
+
+    // Emit `has_rmw` cfg when any RMW backend feature is active, or
+    // when compiling for tests (unit tests use MockSession).
+    let has_rmw = env::var("CARGO_FEATURE_RMW_ZENOH").is_ok()
+        || env::var("CARGO_FEATURE_RMW_XRCE").is_ok()
+        || env::var("CARGO_FEATURE_RMW_CFFI").is_ok();
+    if has_rmw {
+        println!("cargo:rustc-cfg=has_rmw");
+    }
+
     let max_cbs = env_usize("NROS_EXECUTOR_MAX_CBS", 4);
     let arena_size = env_usize("NROS_EXECUTOR_ARENA_SIZE", 4096);
     let rx_buf_size = env_usize("NROS_SUBSCRIPTION_BUFFER_SIZE", 1024);
 
     let contents = format!(
-        "/// Default maximum number of executor callback slots \
+        "/// Maximum number of executor callback slots \
          (set via NROS_EXECUTOR_MAX_CBS, default 4).\n\
-         pub const DEFAULT_MAX_CBS: usize = {max_cbs};\n\
+         pub const MAX_CBS: usize = {max_cbs};\n\
          \n\
-         /// Default executor arena size in bytes \
+         /// Executor arena size in bytes \
          (set via NROS_EXECUTOR_ARENA_SIZE, default 4096).\n\
-         pub const DEFAULT_ARENA_SIZE: usize = {arena_size};\n\
+         pub const ARENA_SIZE: usize = {arena_size};\n\
          \n\
          /// Default subscription receive buffer size in bytes \
          (set via NROS_SUBSCRIPTION_BUFFER_SIZE, default 1024).\n\
