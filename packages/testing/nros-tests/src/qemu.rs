@@ -197,6 +197,12 @@ impl QemuProcess {
             "none",
             "-monitor",
             "none",
+            // Synchronize virtual clock with wall-clock time. The firmware
+            // uses CMSDK Timer0 (hardware timer) for zenoh-pico timeouts.
+            // Without icount, WFI advances virtual time instantly, causing
+            // timeouts to fire before serial I/O through zenohd completes.
+            "-icount",
+            "shift=auto",
             "-semihosting-config",
             "enable=on,target=native",
             "-serial",

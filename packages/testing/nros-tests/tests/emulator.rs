@@ -706,9 +706,8 @@ fn test_qemu_serial_pubsub_e2e() {
 
     // Start talker QEMU
     eprintln!("Starting serial talker QEMU...");
-    let mut talker =
-        QemuProcess::start_mps2_an385_with_serial(&talker_bin, &talker_pair.qemu_path)
-            .expect("Failed to start talker QEMU");
+    let mut talker = QemuProcess::start_mps2_an385_with_serial(&talker_bin, &talker_pair.qemu_path)
+        .expect("Failed to start talker QEMU");
 
     // Wait for listener to complete (receives 10 messages or times out)
     let listener_output = listener
