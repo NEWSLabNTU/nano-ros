@@ -568,6 +568,7 @@ dependencies = [
  "defmt 0.3.100",
  "smoltcp",
  "stm32-eth",
+ "stm32f4-usart",
  "stm32f4xx-hal",
  "zpico-platform-stm32f4",
  "zpico-serial",
@@ -806,6 +807,13 @@ dependencies = [
  "cortex-m",
  "cortex-m-rt",
  "vcell",
+]
+
+[[package]]
+name = "stm32f4-usart"
+version = "0.1.0"
+dependencies = [
+ "zpico-serial",
 ]
 
 [[package]]

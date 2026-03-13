@@ -12,10 +12,17 @@ name = "nros_esp32_qemu"
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
 zpico-platform-esp32-qemu = { path = "../../zpico/zpico-platform-esp32-qemu" }
 
-# TCP link layer via smoltcp
-zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
-# OpenCores Ethernet MAC driver (for QEMU open_eth NIC)
-openeth-smoltcp = { path = "../../drivers/openeth-smoltcp" }
+# TCP link layer via smoltcp (ethernet only)
+zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
+# OpenCores Ethernet MAC driver (for QEMU open_eth NIC, ethernet only)
+openeth-smoltcp = { path = "../../drivers/openeth-smoltcp", optional = true }
+# Network stack (ethernet only)
+smoltcp = { version = "0.12", default-features = false, optional = true, features = [
+    "medium-ethernet",
+    "proto-ipv4",
+    "socket-tcp",
+    "socket-udp",
+] }
 
 # ESP32-C3 HAL and support crates
 esp-hal = { version = "~1.0.0", features = ["esp32c3", "unstable"] }
@@ -24,16 +31,12 @@ esp-bootloader-esp-idf = { version = "~0.4.0", features = ["esp32c3"] }
 esp-println = { version = "~0.16.0", features = ["esp32c3"] }
 esp-alloc = { version = "~0.9.0" }
 
-# Network stack
-smoltcp = { version = "0.12", default-features = false, features = [
-    "medium-ethernet",
-    "proto-ipv4",
-    "socket-tcp",
-    "socket-udp",
-] }
-
 # Atomics for riscv32imc (no hardware atomic support)
 portable-atomic = { version = "1", default-features = false, features = ["unsafe-assume-single-core"] }
 
 [features]
-default = []
+default = ["ethernet"]
+# Ethernet transport via OpenETH + smoltcp
+ethernet = ["dep:zpico-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
+# Serial transport via zenoh-pico built-in serial (no additional deps)
+serial = []

@@ -1,10 +1,17 @@
 //! # nros-esp32
 //!
-//! Board crate for running nros on ESP32-C3 with WiFi.
+//! Board crate for running nros on ESP32-C3.
 //!
-//! Provides a `run()` entry point that initializes WiFi, network stack,
-//! and hardware, then calls user code with the configuration. Users
-//! create their own `nros` executor and node inside the callback.
+//! Provides a `run()` entry point that initializes hardware and the selected
+//! transport (WiFi or serial), then calls user code with the configuration.
+//! Users create their own `nros` executor and node inside the callback.
+//!
+//! # Transport Features
+//!
+//! - `wifi` (default) — WiFi via esp-radio + smoltcp TCP/IP stack
+//! - `serial` — UART via zenoh-pico built-in ESP-IDF serial
+//!
+//! At least one transport must be enabled.
 //!
 //! # Architecture
 //!
@@ -33,7 +40,9 @@ pub use esp_bootloader_esp_idf;
 pub use zpico_platform_esp32;
 
 // Re-export main types
-pub use config::{IpMode, NodeConfig, WifiConfig};
+pub use config::NodeConfig;
+#[cfg(feature = "wifi")]
+pub use config::{IpMode, WifiConfig};
 pub use node::{init_hardware, run};
 pub use zpico_platform_esp32::timing::CycleCounter;
 
@@ -48,7 +57,9 @@ pub use critical_section;
 ///
 /// Use with: `use nros_esp32::prelude::*;`
 pub mod prelude {
-    pub use crate::config::{IpMode, NodeConfig, WifiConfig};
+    pub use crate::config::NodeConfig;
+    #[cfg(feature = "wifi")]
+    pub use crate::config::{IpMode, WifiConfig};
     pub use crate::node::{init_hardware, run};
     pub use esp_hal::main as entry;
     pub use zpico_platform_esp32::timing::CycleCounter;

@@ -103,10 +103,23 @@ pub fn init_hardware(
         defmt::info!("Serial transport configured.");
         defmt::info!("  USART{}, {} baud", config.usart_index, config.baudrate);
 
-        // Note: The actual USART peripheral setup and zpico_serial::register_port()
-        // call must be done by the application or a board-specific USART driver,
-        // since STM32F4 USART initialization requires GPIO pin configuration that
-        // varies by board layout.
+        // Initialize the USART peripheral (clock, GPIO pins, baud rate)
+        // and register it with zpico-serial for zenoh-pico to use.
+        //
+        // Safety: called once during init, no concurrent RCC/GPIO access.
+        let usart = unsafe {
+            stm32f4_usart::init_usart(config.usart_index, config.baudrate)
+        };
+
+        // Store in static so the reference lives forever
+        static mut SERIAL_PORT: Option<stm32f4_usart::Stm32f4Usart> = None;
+        #[allow(static_mut_refs)]
+        unsafe {
+            SERIAL_PORT = Some(usart);
+            zpico_serial::register_port(0, SERIAL_PORT.as_mut().unwrap());
+        }
+
+        defmt::info!("USART{} registered as serial port 0", config.usart_index);
 
         #[cfg(not(feature = "ethernet"))]
         random::seed(config.usart_index as u32);

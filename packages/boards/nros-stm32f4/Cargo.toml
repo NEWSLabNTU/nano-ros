@@ -36,6 +36,9 @@ smoltcp = { version = "0.12", default-features = false, optional = true, feature
 # Serial link layer (serial only)
 zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
 
+# STM32F4 USART driver (serial only)
+stm32f4-usart = { path = "../../drivers/stm32f4-usart", optional = true }
+
 # Logging
 defmt = "0.3"
 
@@ -44,7 +47,7 @@ default = ["stm32f429", "ethernet"]
 # Ethernet transport via STM32 MAC + smoltcp
 ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp", "zpico-platform-stm32f4/ethernet"]
 # Serial transport via USART
-serial = ["dep:zpico-serial"]
+serial = ["dep:zpico-serial", "dep:stm32f4-usart"]
 
 # STM32F4 chip variants (forwarded to HAL and zpico-platform)
 # stm32-eth features are only needed when ethernet is enabled, but Cargo

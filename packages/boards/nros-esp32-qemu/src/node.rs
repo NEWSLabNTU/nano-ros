@@ -1,16 +1,15 @@
 //! Platform initialization and `run()` entry point for ESP32-C3 QEMU.
 //!
-//! Uses `zpico-smoltcp` for socket management and `openeth-smoltcp` for Ethernet.
+//! Uses `zpico-smoltcp` for socket management and `openeth-smoltcp` for
+//! Ethernet when the `ethernet` feature is enabled, or zenoh-pico's
+//! built-in serial when the `serial` feature is enabled.
 
-use core::mem::MaybeUninit;
+#[cfg(not(any(feature = "ethernet", feature = "serial")))]
+compile_error!("Enable at least one transport: `ethernet` or `serial`");
 
 use esp_hal::rng::Rng;
-use openeth_smoltcp::OpenEth;
-use smoltcp::iface::{Interface, SocketSet};
-use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
-use zpico_smoltcp::SmoltcpBridge;
 
-use zpico_platform_esp32_qemu::{clock, random};
+use zpico_platform_esp32_qemu::random;
 
 use crate::config::Config;
 
@@ -19,53 +18,45 @@ use crate::config::Config;
 // `Result<(), core::fmt::Error>`. A `type Result<T>` alias here would shadow
 // `core::result::Result` and cause "expected 1 generic argument but 2 supplied" errors.
 
+// ---- Ethernet imports and static storage ----
+
+#[cfg(feature = "ethernet")]
+use core::mem::MaybeUninit;
+
+#[cfg(feature = "ethernet")]
+use openeth_smoltcp::OpenEth;
+#[cfg(feature = "ethernet")]
+use smoltcp::iface::{Interface, SocketSet};
+#[cfg(feature = "ethernet")]
+use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
+#[cfg(feature = "ethernet")]
+use zpico_platform_esp32_qemu::clock;
+#[cfg(feature = "ethernet")]
+use zpico_smoltcp::SmoltcpBridge;
+
 // Static storage for network objects (initialized by init_hardware, must
 // outlive the function call so set_network_state pointers remain valid).
+#[cfg(feature = "ethernet")]
 static mut ETH_DEVICE: MaybeUninit<OpenEth> = MaybeUninit::uninit();
+#[cfg(feature = "ethernet")]
 static mut NET_IFACE: MaybeUninit<Interface> = MaybeUninit::uninit();
+#[cfg(feature = "ethernet")]
 static mut NET_SOCKETS: MaybeUninit<SocketSet<'static>> = MaybeUninit::uninit();
 
 /// Helper to create a socket set with pre-allocated storage
+#[cfg(feature = "ethernet")]
 unsafe fn create_socket_set() -> SocketSet<'static> {
     let storage = unsafe { zpico_smoltcp::get_socket_storage() };
     SocketSet::new(&mut storage[..])
 }
 
-/// Initialize all ESP32-C3 QEMU hardware and the network stack.
-///
-/// Sets up ESP32 peripherals, heap allocator, RNG, OpenETH Ethernet,
-/// smoltcp interface, and the zenoh-pico transport bridge. After calling
-/// this, you can create an `Executor` and start using nano-ros.
-///
-/// This is automatically called by [`run()`]. Call it directly only when
-/// using an alternative execution model (e.g., RTIC) that needs hardware
-/// initialized before returning control to the framework.
-///
-/// # Panics
-///
-/// Panics if hardware initialization fails. Must be called exactly once
-/// before any nros operations.
+// ---- Ethernet init ----
+
+/// Initialize Ethernet transport via OpenETH + smoltcp.
+#[cfg(feature = "ethernet")]
 #[allow(static_mut_refs)]
-pub fn init_hardware(config: &Config) {
-    esp_println::println!("");
-    esp_println::println!("========================================");
-    esp_println::println!("  nros ESP32-C3 QEMU Platform");
-    esp_println::println!("========================================");
-    esp_println::println!("");
-
-    // Step 1: Initialize ESP32 peripherals
-    esp_println::println!("Initializing ESP32-C3...");
-    let _peripherals = esp_hal::init(esp_hal::Config::default());
-
-    // Step 2: Set up heap allocator (smaller than WiFi BSP - no WiFi overhead)
-    esp_alloc::heap_allocator!(size: 64 * 1024);
-
-    // Step 3: Initialize hardware RNG (for zenoh-pico session ID)
-    let rng = Rng::new();
-    let rng_seed = rng.random();
-    random::seed(rng_seed);
-
-    // Step 4: Initialize OpenETH driver (replaces WiFi stack)
+fn init_ethernet(config: &Config) {
+    // Initialize OpenETH driver
     esp_println::println!("Initializing OpenETH...");
     let openeth_config = openeth_smoltcp::Config {
         base_addr: openeth_smoltcp::ESP32C3_BASE,
@@ -84,7 +75,7 @@ pub fn init_hardware(config: &Config) {
     unsafe { ETH_DEVICE.write(eth) };
     let eth = unsafe { ETH_DEVICE.assume_init_mut() };
 
-    // Step 5: Create smoltcp interface
+    // Create smoltcp interface
     esp_println::println!("");
     esp_println::println!("Creating network interface...");
 
@@ -95,7 +86,7 @@ pub fn init_hardware(config: &Config) {
     let sockets = unsafe { create_socket_set() };
     unsafe { NET_SOCKETS.write(sockets) };
 
-    // Step 6: Configure static IP (no DHCP in QEMU)
+    // Configure static IP (no DHCP in QEMU)
     let iface = unsafe { NET_IFACE.assume_init_mut() };
     let ip_addr = Ipv4Address::new(config.ip[0], config.ip[1], config.ip[2], config.ip[3]);
     iface.update_ip_addrs(|addrs| {
@@ -121,7 +112,7 @@ pub fn init_hardware(config: &Config) {
         config.gateway[0], config.gateway[1], config.gateway[2], config.gateway[3]
     );
 
-    // Step 7: Initialize transport bridge
+    // Initialize transport bridge
     SmoltcpBridge::init();
 
     // Create and register TCP + UDP sockets via transport crate
@@ -143,7 +134,66 @@ pub fn init_hardware(config: &Config) {
         zpico_smoltcp::set_poll_callback(zpico_platform_esp32_qemu::network::smoltcp_network_poll);
     }
 
-    esp_println::println!("Network ready.");
+    esp_println::println!("Ethernet ready.");
+}
+
+// ---- Serial init ----
+
+/// Initialize serial transport.
+///
+/// ESP32-C3 QEMU uses zenoh-pico's built-in serial support — no additional
+/// driver crates are needed. The zenoh locator string (e.g.,
+/// `serial/UART_0#baudrate=115200`) tells zenoh-pico which UART to use.
+#[cfg(feature = "serial")]
+fn init_serial(config: &Config) {
+    esp_println::println!("Initializing serial transport...");
+    esp_println::println!("  Baud: {}", config.baudrate);
+    esp_println::println!("  Locator: {}", config.zenoh_locator);
+    esp_println::println!("Serial ready.");
+}
+
+// ---- Main init + run ----
+
+/// Initialize all ESP32-C3 QEMU hardware and the transport stack.
+///
+/// Sets up ESP32 peripherals, heap allocator, RNG, and the selected
+/// transport (Ethernet and/or serial depending on enabled features).
+/// After calling this, you can create an `Executor` and start using nano-ros.
+///
+/// This is automatically called by [`run()`]. Call it directly only when
+/// using an alternative execution model (e.g., RTIC) that needs hardware
+/// initialized before returning control to the framework.
+///
+/// # Panics
+///
+/// Panics if hardware initialization fails. Must be called exactly once
+/// before any nros operations.
+pub fn init_hardware(config: &Config) {
+    esp_println::println!("");
+    esp_println::println!("========================================");
+    esp_println::println!("  nros ESP32-C3 QEMU Platform");
+    esp_println::println!("========================================");
+    esp_println::println!("");
+
+    // Step 1: Initialize ESP32 peripherals
+    esp_println::println!("Initializing ESP32-C3...");
+    let _peripherals = esp_hal::init(esp_hal::Config::default());
+
+    // Step 2: Set up heap allocator (smaller than WiFi BSP - no WiFi overhead)
+    esp_alloc::heap_allocator!(size: 64 * 1024);
+
+    // Step 3: Initialize hardware RNG (for zenoh-pico session ID)
+    let rng = Rng::new();
+    let rng_seed = rng.random();
+    random::seed(rng_seed);
+
+    // Step 4: Initialize selected transport(s)
+    #[cfg(feature = "ethernet")]
+    init_ethernet(config);
+
+    #[cfg(feature = "serial")]
+    init_serial(config);
+
     esp_println::println!("");
 }
 

@@ -3,15 +3,18 @@
 //! Board crate for running nros on ESP32-C3 in QEMU
 //! (OpenCores Ethernet MAC instead of WiFi).
 //!
-//! Handles hardware and network initialization. Users call `run()` with
-//! a closure that receives `&Config` and creates an `Executor` for full
-//! API access (publishers, subscriptions, services, actions, timers).
+//! # Transport Features
+//!
+//! - `ethernet` (default) — OpenETH + smoltcp TCP/IP stack
+//! - `serial` — zenoh-pico built-in serial (no additional deps)
+//!
+//! At least one transport must be enabled.
 //!
 //! # Architecture
 //!
 //! This crate depends on `zpico-platform-esp32-qemu` for system primitives
-//! (zenoh-pico FFI symbols, clock, memory, RNG) and `zpico-smoltcp` for
-//! TCP/IP socket management.
+//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `zpico-smoltcp`
+//! (Ethernet) or zenoh-pico's built-in serial for the link layer.
 
 #![no_std]
 

@@ -1,4 +1,9 @@
-//! Configuration for ESP32 WiFi nodes
+//! Configuration for ESP32 nodes
+//!
+//! # Transport Features
+//!
+//! - `wifi` (default) — WiFi via esp-radio + smoltcp
+//! - `serial` — UART via zenoh-pico built-in ESP-IDF serial
 //!
 //! # WiFi Configuration
 //!
@@ -6,7 +11,7 @@
 //! These can be provided at compile time via environment variables
 //! or hardcoded in source.
 //!
-//! # IP Configuration Modes
+//! # IP Configuration Modes (WiFi only)
 //!
 //! Two IP modes are supported:
 //!
@@ -14,6 +19,7 @@
 //! 2. **Static IP** - Use a manually configured IP address
 
 /// WiFi credentials
+#[cfg(feature = "wifi")]
 #[derive(Clone)]
 pub struct WifiConfig {
     /// WiFi network name (SSID)
@@ -22,6 +28,7 @@ pub struct WifiConfig {
     pub password: &'static str,
 }
 
+#[cfg(feature = "wifi")]
 impl WifiConfig {
     /// Create a new WiFi configuration
     pub fn new(ssid: &'static str, password: &'static str) -> Self {
@@ -30,6 +37,7 @@ impl WifiConfig {
 }
 
 /// IP address assignment mode
+#[cfg(feature = "wifi")]
 #[derive(Clone)]
 pub enum IpMode {
     /// Acquire IP via DHCP (default)
@@ -47,26 +55,38 @@ pub enum IpMode {
 
 /// Node and network configuration
 ///
-/// Combines WiFi credentials with network settings.
+/// Combines transport settings with zenoh connection parameters.
 ///
-/// # Default Configuration
-///
-/// - IP mode: DHCP
-/// - Zenoh locator: tcp/192.168.1.1:7447 (typical home router gateway)
-///
-/// # Example
+/// # WiFi Example
 ///
 /// ```ignore
 /// let config = NodeConfig::new(WifiConfig::new("MyNetwork", "password123"))
 ///     .with_zenoh_locator("tcp/10.0.0.1:7447")
 ///     .with_static_ip([10, 0, 0, 100], 24, [10, 0, 0, 1]);
 /// ```
+///
+/// # Serial Example
+///
+/// ```ignore
+/// let config = NodeConfig::serial_default()
+///     .with_baudrate(921600);
+/// ```
 #[derive(Clone)]
 pub struct NodeConfig {
+    // -- WiFi-specific fields --
     /// WiFi credentials
+    #[cfg(feature = "wifi")]
     pub wifi: WifiConfig,
     /// IP address mode
+    #[cfg(feature = "wifi")]
     pub ip_mode: IpMode,
+
+    // -- Serial-specific fields --
+    /// Baud rate (default: 115200)
+    #[cfg(feature = "serial")]
+    pub baudrate: u32,
+
+    // -- Common fields --
     /// Zenoh router locator (Rust string, null termination handled internally)
     pub zenoh_locator: &'static str,
     /// ROS 2 domain ID (used in keyexpr formatting)
@@ -74,12 +94,31 @@ pub struct NodeConfig {
 }
 
 impl NodeConfig {
-    /// Create a new node configuration with DHCP and default zenoh locator
+    /// Create a new node configuration with WiFi, DHCP, and default zenoh locator
+    #[cfg(feature = "wifi")]
     pub fn new(wifi: WifiConfig) -> Self {
         Self {
             wifi,
             ip_mode: IpMode::Dhcp,
+            #[cfg(feature = "serial")]
+            baudrate: 115200,
             zenoh_locator: "tcp/192.168.1.1:7447",
+            domain_id: 0,
+        }
+    }
+
+    /// Configuration preset for serial transport with default settings.
+    ///
+    /// Uses 115200 baud with a serial zenoh locator.
+    #[cfg(feature = "serial")]
+    pub fn serial_default() -> Self {
+        Self {
+            #[cfg(feature = "wifi")]
+            wifi: WifiConfig::new("", ""),
+            #[cfg(feature = "wifi")]
+            ip_mode: IpMode::Dhcp,
+            baudrate: 115200,
+            zenoh_locator: "serial/UART_0#baudrate=115200",
             domain_id: 0,
         }
     }
@@ -91,6 +130,7 @@ impl NodeConfig {
     }
 
     /// Builder: use static IP instead of DHCP
+    #[cfg(feature = "wifi")]
     pub fn with_static_ip(mut self, ip: [u8; 4], prefix: u8, gateway: [u8; 4]) -> Self {
         self.ip_mode = IpMode::Static {
             ip,
@@ -104,5 +144,26 @@ impl NodeConfig {
     pub fn with_domain_id(mut self, domain_id: u32) -> Self {
         self.domain_id = domain_id;
         self
+    }
+
+    /// Builder: set baud rate
+    #[cfg(feature = "serial")]
+    pub fn with_baudrate(mut self, baudrate: u32) -> Self {
+        self.baudrate = baudrate;
+        self
+    }
+}
+
+#[cfg(feature = "wifi")]
+impl Default for NodeConfig {
+    fn default() -> Self {
+        Self::new(WifiConfig::new("", ""))
+    }
+}
+
+#[cfg(all(feature = "serial", not(feature = "wifi")))]
+impl Default for NodeConfig {
+    fn default() -> Self {
+        Self::serial_default()
     }
 }
