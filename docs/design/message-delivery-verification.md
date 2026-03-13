@@ -427,45 +427,75 @@ If the check passes, we have a machine-checked guarantee that the deadline is ac
 
 ## 5. Relating to Existing Research
 
-### 5.1 Verified SPSC ring buffers
+### 5.1 Verified SPSC ring buffers — Verus tokenized state machines
 
-The SPSC ring buffer proof follows the same structure as **Lamport's 1977 concurrent read/write** and the VSync/Verus verified concurrent library approaches. The key insight is that an SPSC queue with one producer and one consumer needs no locks — the head/tail indices provide natural synchronization. This has been verified in:
+The Verus project provides a verified SPSC producer-consumer queue example using `tokenized_state_machine!` (SOSP 2024 tutorial). The state machine defines `backing_cells` (a `Seq<CellId>` for ring buffer slots), tracks ownership via ghost state, and uses atomic loads of head/tail with `produce_start`/`produce_end` transitions. This is directly applicable to our `RingBufferGhost`.
 
-- **seL4 notification buffers**: The seL4 microkernel uses formally verified shared-memory buffers between protection domains, proven in Isabelle/HOL.
-- **Verus concurrent data structures**: The Verus project has examples of verified lock-free stacks and queues using linear ghost permissions (`tracked` ghost state).
-- **CBMC/Kani for ring buffers**: Bounded model checking of ring buffer implementations is standard practice (AWS uses Kani for similar data structures in s2n-tls).
+Key references:
+- **Verus SPSC queue** ([verus-lang.github.io](https://verus-lang.github.io/verus/state_machines/examples/src-producer-consumer-queue.html)): tokenized state machine with `produce_start`, `produce_end`, `consume_start`, `consume_end` transitions. Each slot has a ghost `CellId` tracked through ownership transfer.
+- **Travis Hance's PhD thesis** (CMU, 2024): verified concurrent systems code in Verus, including SplinterCache (concurrent page cache with fine-grained locking) and NR (node replication with linearizability proof). The NR port required far fewer lines of proof than IronSync/Dafny and improved verification time by two orders of magnitude.
+- **Converos** (ATC 2025): practical model checker for concurrent Rust OS code, verified 12 concurrency modules including a lock-free ring buffer in the Asterinas OS.
 
-Our approach differs in that the producer runs in ISR/callback context (potentially preempting the consumer). The proof must account for the possibility that a push occurs between the consumer's read of `head` and its read of the data. The single-writer property (only ISR writes head, only executor writes tail) makes this tractable.
+Our approach differs from the Verus tutorial example in that the producer runs in ISR/callback context (potentially preempting the consumer). The single-writer property (only ISR writes head, only executor writes tail) keeps this tractable. We may use `tokenized_state_machine!` for the strongest guarantee (ghost ownership transfer per slot) or stay with the simpler ghost-model approach for consistency with existing proofs.
 
-### 5.2 TLA+ for message delivery
+### 5.2 Fragmentation verification — CAN bus and WiFi precedents
 
-Lamport's TLA+ has been used to specify message delivery guarantees in distributed systems (Amazon's use of TLA+ for DynamoDB, S3). The relevant patterns:
+Formal verification of fragmentation protocols has precedent:
+- **CAN bus protocol stack** (Glabbeek, Hoefner, Mars, 2017): modeled fragmentation, reassembly, and multiplexing. Proved that any received message was actually sent (no mis-reassembly) and that any sent message is received (assuming a perfect channel). Also proved absence of deadlocks.
+- **WiFi 802.11 fragmentation** (2023): used Tamarin prover to formally analyze fragmentation vulnerabilities, verifying integrity checks that prevent reassembly attacks.
+- **IPv6 fragmentation in PVS**: machine-readable specification eliminating ambiguity in the RFC.
+- **TLS 1.3 in F-star**: full verified implementation including record layer fragmentation.
 
-- **Eventual delivery**: `□(message_sent → ◇message_delivered)` — our MS1 proof is the finite-state analog (bounded by ring_depth spins).
-- **No duplication**: `□(delivered(m) → ¬◇delivered(m))` — our sequence number monotonicity proof (e2e.rs, proof 4) provides this at the publisher side; the safety-e2e `SafetyValidatorGhost` detects duplicates at the subscriber side.
-- **Ordering**: `□(sent(m1) < sent(m2) → delivered(m1) < delivered(m2))` — our FIFO ring buffer proof (RB2) guarantees this for a single publisher→subscriber pair.
+For nano-ros, the CAN bus approach maps well: define a ghost state machine tracking fragment sequences and prove no-mis-reassembly and no-deadlock. Since we treat zenoh-pico as opaque, we model only the observable behavior (complete delivery or timeout) rather than the internal reassembly logic.
 
-We use Verus instead of TLA+ because:
+### 5.3 Deadline bounds as safety properties — Performal
+
+**Performal** (PLDI 2023) proves rigorous latency upper bounds for distributed systems with a crucial insight: formulate deadline guarantees as **safety properties** ("if the action happens, it completes within time T") rather than liveness properties. Safety properties are dramatically easier to prove via inductive invariants — no fairness assumptions or well-founded orderings needed.
+
+Applied to nano-ros:
+- Instead of proving "the message is *eventually* consumed" (liveness, hard), prove "if spin_once has been called K times since enqueue, then the message has been consumed or explicitly dropped" (safety, inductive invariant on spin count).
+- The deadline bound `K ≤ ring_depth` is an arithmetic invariant that Verus/Z3 can discharge automatically.
+
+This insight changes our `MultiSpinGhost` proofs from temporal logic (which Verus doesn't natively support) to plain inductive invariants (which Verus excels at).
+
+Additional references:
+- **VeriRT** (POPL 2025): framework for verifying real-time distributed systems using refinement proofs, with bounded clock skew proofs.
+- **Kairos** (OSDI 2024): embeds temporal property monitors with freshness annotations for deadline specifications.
+
+### 5.4 TLA+ for design validation
+
+TLA+ is useful for design-level exploration before committing to Verus proofs:
+- **Hillel Wayne's message queue models**: represent pub/sub (each reader has its own queue, writer appends to all), at-least-once delivery, and SQS-style semantics.
+- **Reusable TLA+ communication primitives**: modular specs for perfect, fair-loss, and stubborn links with fault injection.
+
+We could write a TLA+ spec of our delivery model, model-check it with TLC for small configurations, then use the validated design as the sequential spec that Verus proofs refine against. This two-tier approach (TLA+ for design, Verus for implementation) is practical and separates concerns. However, it adds a maintenance burden — the TLA+ spec must stay synchronized with the Verus ghost models.
+
+We use Verus rather than TLA+ for implementation proofs because:
 1. Verus proofs are directly linked to Rust production code via ghost types.
 2. TLA+ would require a separate model with no automated correspondence to the implementation.
 3. Verus leverages Z3 for automated proof discharge — most of our properties are decidable fragments (linear arithmetic + arrays).
 
-### 5.3 IronFleet and Verdi — verified distributed systems
+### 5.5 IronFleet/Grove and verified distributed systems
 
-IronFleet (Microsoft Research, Dafny) and Verdi (UW, Coq) verify distributed protocols by:
-1. Specifying protocol behavior as a state machine.
-2. Proving refinement: the implementation refines the specification.
-3. Using verified compilers to eliminate the specification-implementation gap.
+- **IronFleet** (SOSP 2015): first to prove safety and liveness of practical distributed systems (Paxos RSM + sharded KV store) in Dafny. **IronKV has been ported to Verus**, proving that Verus subsumes IronFleet's methodology.
+- **Verdi** (PLDI 2015): verified Raft in Coq using verified system transformers for network semantics.
+- **Grove** (SOSP 2023): concurrent separation logic library (Iris/Perennial in Coq) for RPCs, time-based leases, and crash recovery. Proof overhead: 12x lines of proof vs. lines of code. This ratio gives a realistic effort estimate for our verification.
 
-Our situation is different — we can't verify zenoh-pico (unmanaged C code). Instead, we use the **"verified shim" pattern** from IronFleet: verify the Rust wrapper code around the unverified C library, assuming the C library meets its documented interface contract. This is weaker than full-stack verification but pragmatic for embedded systems integrating third-party middleware.
+Our situation differs — we can't verify zenoh-pico (unmanaged C code). We use the **"verified shim" pattern** from IronFleet: verify the Rust wrapper around the unverified C library, assuming the C library meets its documented interface contract. This is weaker than full-stack verification but pragmatic for embedded systems integrating third-party middleware.
 
-### 5.4 Verified RTOS scheduling
+### 5.6 Verified RTOS components and ROS 2 verification
 
-**eChronos** (NICTA/Data61) formally verifies RTOS scheduling invariants in Isabelle/HOL. Their priority-inversion-freedom proofs are relevant to our deadline guarantee:
+- **seL4**: functional correctness proof in Isabelle/HOL, ~12k lines of C. Demonstrates scope control: minimize the verified TCB.
+- **CertiKOS/RT-CertiKOS**: integrates with Prosa schedulability analyzer for end-to-end real-time guarantees.
+- **eChronos**: verified RTOS for microcontrollers using Owicki-Gries and Rely-Guarantee for concurrency.
+- **Taiji project**: formally verified core modules of Zephyr RTOS and VxWorks 653 for aerospace certification — directly relevant to our Zephyr platform backend.
 
-- Our deadline bound assumes the spin task runs at its configured period. On an RTOS with priority-based scheduling, this holds if no higher-priority task blocks for longer than the slack.
-- We do *not* attempt to verify the RTOS scheduler itself. The platform layer is a trust boundary.
-- We could add a `platform_schedule_bound` axiom: "the platform guarantees the spin task runs within `spin_period_ms + jitter_ms` of its deadline." This axiom is validated by RTOS configuration review, not by proof.
+For ROS 2 specifically:
+- **UPPAAL timed automata models** (2024/2025): model ROS 2 executors and callback scheduling, prove execution-trace equivalence.
+- **AS2FM** (2025): translates ROS 2 system models to JANI for statistical model checking.
+- No project has done deductive proofs of ROS 2 middleware implementation code — nano-ros with Verus+Kani is ahead of the state of the art.
+
+Our deadline bound assumes the spin task runs at its configured period. We do *not* verify the RTOS scheduler itself — the platform layer is a trust boundary. We could add a `platform_schedule_bound` axiom: "the platform guarantees the spin task runs within `spin_period_ms + jitter_ms` of its deadline." This axiom is validated by RTOS configuration review, not by proof.
 
 ## 6. Kani Harnesses to Add
 
@@ -649,12 +679,16 @@ The FFI axioms (F1–F3) cannot be formally proven within our Rust-side verifica
 
 ## 10. Open Questions
 
-1. **Verus `tracked` ghost state for concurrency** — Verus supports `tracked` variables for reasoning about concurrent ownership. Should we use this for the ring buffer's head/tail? It would provide stronger guarantees (ownership transfer between producer and consumer) but significantly increases proof complexity.
+1. **Tokenized state machine vs. ghost model** — Verus's `tokenized_state_machine!` (used in the SPSC queue example) provides the strongest concurrency guarantee via ghost ownership transfer per slot. However, the existing nano-ros verification uses the simpler ghost-model approach (manual mirrors validated by production tests). Should we adopt tokenized state machines for the ring buffer? This would be the first use of `tracked` ghost state in the project and would require updating the verification guide. The upside is machine-checked linearizability; the downside is significantly more complex proofs (~3x lines) and a steep learning curve.
 
-2. **Composing with safety-e2e** — The `SafetyValidatorGhost` already tracks sequence numbers. Should the `DeliveryChainGhost` subsume it, or should they remain independent and compose via a separate lemma?
+2. **TLA+ design spec as a pre-step** — Should we write a TLA+ model of the message delivery semantics and model-check it with TLC before committing to Verus proofs? This separates design validation (fast iteration in TLA+) from implementation verification (Verus). The risk is maintaining two models. The alternative is to use Verus spec functions as the design spec directly (the current approach).
 
-3. **Modeling network partition** — A network partition causes all messages to be lost for some duration. Should we model this as "all fragments timed out for N consecutive messages" and prove that the system recovers when the partition heals? This would strengthen the liveness guarantee.
+3. **Composing with safety-e2e** — The `SafetyValidatorGhost` already tracks sequence numbers. Should the `DeliveryChainGhost` subsume it, or should they remain independent and compose via a separate lemma?
 
-4. **Platform jitter modeling** — The deadline bound proof assumes `spin_period_ms` is exact. On real RTOS, there is scheduling jitter. We could add a `jitter_ms` term: `worst_case = ring_depth × (spin_period_ms + jitter_ms)`. The jitter bound comes from RTOS WCET analysis — do we want to model this?
+4. **Latency as safety vs. liveness** — Per Performal (PLDI 2023), we should formulate deadline guarantees as safety properties: "if K spins have occurred, the message has been consumed" rather than "the message is eventually consumed." This makes proofs tractable with Verus's inductive invariant style. Are there scenarios where true liveness (not bounded by spin count) is needed?
 
-5. **Multiple publishers to one subscriber** — The current ring buffer model assumes SPSC (one producer, one consumer). If two publishers write to the same topic, the subscriber callback is MPSC. The ring buffer proof needs to handle multiple producers. This may require a lock or a more complex CAS-based proof.
+5. **Platform jitter modeling** — The deadline bound assumes `spin_period_ms` is exact. On real RTOS, there is scheduling jitter. We could add a `jitter_ms` term: `worst_case = ring_depth × (spin_period_ms + jitter_ms)`. The jitter bound comes from RTOS WCET analysis (similar to Prosa/RT-CertiKOS integration). Should the platform layer provide this bound as an axiom?
+
+6. **Multiple publishers to one subscriber (MPSC)** — The ring buffer model assumes SPSC (one producer, one consumer). If two publishers write to the same topic, the subscriber callback is MPSC. The ring buffer proof needs to handle multiple producers. Options: (a) CAS-based MPSC ring (significantly harder proof), (b) per-publisher ring buffer merged by executor (simpler proof but more memory), (c) interrupt-disable on enqueue (simplest but limits concurrency on multicore). The Verus NR (node replication) approach — flat combining + sequential spec — could work for (a).
+
+7. **Modeling network partition** — A network partition causes all messages to be lost for some duration. Should we model this as "all fragments timed out for N consecutive messages" and prove that the system recovers when the partition heals?
