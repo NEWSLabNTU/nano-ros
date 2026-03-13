@@ -19,6 +19,29 @@ use zpico_platform_mps2_an385::{clock, network};
 use crate::config::Config;
 use crate::exit_failure;
 
+/// Debug helper: print a label + i32 value via semihosting.
+/// Called from zpico.c to trace z_open return values.
+#[unsafe(no_mangle)]
+pub extern "C" fn zpico_debug_i32(label: *const u8, value: i32) {
+    // Read C string (up to 32 chars)
+    let mut buf = [0u8; 32];
+    let mut len = 0;
+    if !label.is_null() {
+        unsafe {
+            while len < buf.len() - 1 {
+                let c = *label.add(len);
+                if c == 0 {
+                    break;
+                }
+                buf[len] = c;
+                len += 1;
+            }
+        }
+    }
+    let label_str = core::str::from_utf8(&buf[..len]).unwrap_or("?");
+    hprintln!("[zpico] {} = {}", label_str, value);
+}
+
 #[cfg(feature = "ethernet")]
 use crate::error::{Error, Result};
 
@@ -258,8 +281,11 @@ fn init_serial(config: &Config) {
         zpico_serial::register_port(0, UART_DEVICE.assume_init_mut());
     }
 
-    // Seed RNG with uart_base to avoid zenoh ID collisions
-    random::seed(config.uart_base as u32);
+    // Seed RNG with hardware timer value to generate unique zenoh IDs.
+    // With -icount shift=auto, QEMU syncs virtual time with wall-clock time,
+    // so instances started at different times get different timer values here.
+    let timer_ms = zpico_platform_mps2_an385::clock::clock_ms() as u32;
+    random::seed(timer_ms ^ config.uart_base as u32);
 
     hprintln!("Serial ready.");
 }
