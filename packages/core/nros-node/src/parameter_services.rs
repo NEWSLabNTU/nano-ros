@@ -471,7 +471,6 @@ pub fn handle_get_parameter_types(
 // ═══════════════════════════════════════════════════════════════════════════
 
 use crate::executor::{EmbeddedServiceServer, NodeError};
-use nros_rmw::{ServiceServerTrait, TransportError};
 
 /// Buffer size for parameter service request/reply serialization.
 ///
@@ -480,8 +479,8 @@ use nros_rmw::{ServiceServerTrait, TransportError};
 pub const PARAM_SERVICE_BUFFER_SIZE: usize = 4096;
 
 /// Type alias for a parameter service server with standard buffer sizes.
-type ParamServer<Svc, Srv> =
-    EmbeddedServiceServer<Svc, Srv, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>;
+type ParamServer<Svc> =
+    EmbeddedServiceServer<Svc, PARAM_SERVICE_BUFFER_SIZE, PARAM_SERVICE_BUFFER_SIZE>;
 
 /// Holds the 6 ROS 2 parameter service servers for a node.
 ///
@@ -489,31 +488,26 @@ type ParamServer<Svc, Srv> =
 /// - `get_parameters` / `set_parameters` / `set_parameters_atomically`
 /// - `list_parameters` / `describe_parameters` / `get_parameter_types`
 ///
-/// Generic over the service server handle type `Srv` (e.g., `ZenohServiceServer`).
-///
 /// Boxed when stored in executor to avoid 48KB+ on the stack
 /// (6 servers × 8KB buffers each).
-pub struct ParameterServiceServers<Srv> {
-    get_parameters: ParamServer<GetParameters, Srv>,
-    set_parameters: ParamServer<SetParameters, Srv>,
-    set_parameters_atomically: ParamServer<SetParametersAtomically, Srv>,
-    list_parameters: ParamServer<ListParameters, Srv>,
-    describe_parameters: ParamServer<DescribeParameters, Srv>,
-    get_parameter_types: ParamServer<GetParameterTypes, Srv>,
+pub struct ParameterServiceServers {
+    get_parameters: ParamServer<GetParameters>,
+    set_parameters: ParamServer<SetParameters>,
+    set_parameters_atomically: ParamServer<SetParametersAtomically>,
+    list_parameters: ParamServer<ListParameters>,
+    describe_parameters: ParamServer<DescribeParameters>,
+    get_parameter_types: ParamServer<GetParameterTypes>,
 }
 
-impl<Srv: ServiceServerTrait> ParameterServiceServers<Srv>
-where
-    Srv::Error: From<TransportError>,
-{
+impl ParameterServiceServers {
     /// Create a new set of parameter service servers
     pub(crate) fn new(
-        get_parameters: ParamServer<GetParameters, Srv>,
-        set_parameters: ParamServer<SetParameters, Srv>,
-        set_parameters_atomically: ParamServer<SetParametersAtomically, Srv>,
-        list_parameters: ParamServer<ListParameters, Srv>,
-        describe_parameters: ParamServer<DescribeParameters, Srv>,
-        get_parameter_types: ParamServer<GetParameterTypes, Srv>,
+        get_parameters: ParamServer<GetParameters>,
+        set_parameters: ParamServer<SetParameters>,
+        set_parameters_atomically: ParamServer<SetParametersAtomically>,
+        list_parameters: ParamServer<ListParameters>,
+        describe_parameters: ParamServer<DescribeParameters>,
+        get_parameter_types: ParamServer<GetParameterTypes>,
     ) -> Self {
         Self {
             get_parameters,
@@ -586,18 +580,14 @@ where
 
 /// Type-erased trait for processing parameter services inside `spin_once()`.
 ///
-/// The concrete `ParameterServiceServers<Srv>` holds generic service handles,
-/// but `Executor::spin_once()` is `impl<S: Session>` without `ServiceServerTrait`
-/// bounds. This trait erases those bounds so the executor can call `process()`
-/// through a `Box<dyn ParamServiceProcessor>`.
+/// The concrete `ParameterServiceServers` is stored behind a
+/// `Box<dyn ParamServiceProcessor>` so the executor can call `process()`
+/// without coupling to the parameter service implementation.
 pub(crate) trait ParamServiceProcessor {
     fn process_services(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError>;
 }
 
-impl<Srv: ServiceServerTrait> ParamServiceProcessor for ParameterServiceServers<Srv>
-where
-    Srv::Error: From<TransportError>,
-{
+impl ParamServiceProcessor for ParameterServiceServers {
     fn process_services(&mut self, server: &mut ParameterServer) -> Result<usize, NodeError> {
         self.process(server)
     }
