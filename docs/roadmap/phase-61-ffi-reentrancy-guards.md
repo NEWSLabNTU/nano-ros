@@ -284,7 +284,7 @@ C-side modifications needed.
 - [x] `spin_once(N)` decomposed into guarded `spin_once(0)` loop for both backends
 - [x] Feature is off by default — existing behavior unchanged without flag
 - [x] No performance regression when feature disabled (zero-cost abstraction)
-- [ ] RTIC examples work with mixed priorities when feature enabled
+- [x] RTIC examples work with mixed priorities when feature enabled
 - [x] `just quality` passes (with and without feature)
 
 ## Notes

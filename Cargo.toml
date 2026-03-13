@@ -68,6 +68,8 @@ exclude = [
     "examples/qemu-arm-baremetal/rust/zenoh/rtic-service-client",
     "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-server",
     "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-client",
+    "examples/qemu-arm-baremetal/rust/zenoh/rtic-mixed-talker",
+    "examples/qemu-arm-baremetal/rust/zenoh/rtic-mixed-listener",
     "examples/qemu-arm-baremetal/rust/zenoh/serial-talker",
     "examples/qemu-arm-baremetal/rust/zenoh/serial-listener",
     # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)

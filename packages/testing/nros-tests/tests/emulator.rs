@@ -14,11 +14,11 @@
 use nros_tests::fixtures::{
     QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker,
     build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
-    build_qemu_rtic_listener, build_qemu_rtic_service_client, build_qemu_rtic_service_server,
-    build_qemu_rtic_talker, build_qemu_serial_listener, build_qemu_serial_talker,
-    build_qemu_wcet_bench, cleanup_tap_network, is_arm_toolchain_available, is_qemu_available,
-    is_socat_available, parse_test_results, qemu_binary, require_tap_bridge,
-    require_zenoh_pico_arm,
+    build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
+    build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
+    build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_wcet_bench,
+    cleanup_tap_network, is_arm_toolchain_available, is_qemu_available, is_socat_available,
+    parse_test_results, qemu_binary, require_tap_bridge, require_zenoh_pico_arm,
 };
 use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern, wait_for_port_on};
 use rstest::rstest;
@@ -1034,5 +1034,116 @@ fn test_qemu_rtic_action_e2e() {
     assert!(
         server_output.contains("Goal accepted"),
         "RTIC QEMU action server did not accept goal"
+    );
+}
+
+// =============================================================================
+// RTIC Mixed-Priority QEMU Build Tests (MPS2-AN385, ffi-sync)
+// =============================================================================
+
+#[test]
+fn test_qemu_rtic_mixed_talker_builds() {
+    require_arm_toolchain();
+
+    let binary = build_qemu_rtic_mixed_talker().expect("Failed to build qemu-rtic-mixed-talker");
+    println!(
+        "SUCCESS: qemu-rtic-mixed-talker builds at {}",
+        binary.display()
+    );
+}
+
+#[test]
+fn test_qemu_rtic_mixed_listener_builds() {
+    require_arm_toolchain();
+
+    let binary =
+        build_qemu_rtic_mixed_listener().expect("Failed to build qemu-rtic-mixed-listener");
+    println!(
+        "SUCCESS: qemu-rtic-mixed-listener builds at {}",
+        binary.display()
+    );
+}
+
+// =============================================================================
+// RTIC Mixed-Priority QEMU Networked Test (MPS2-AN385 + LAN9118 + zenohd)
+// =============================================================================
+
+/// Mixed-priority pubsub E2E test for RTIC on QEMU.
+///
+/// Same as `test_qemu_rtic_pubsub_e2e` but with `publish`/`listen` at priority 2
+/// and `net_poll` at priority 1. The `ffi-sync` feature prevents FFI state
+/// corruption when the higher-priority task preempts `spin_once(0)`.
+#[test]
+fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
+    require_arm_toolchain();
+    if !require_tap_bridge() {
+        return;
+    }
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
+    cleanup_tap_network();
+
+    // Build both binaries
+    let talker_bin = build_qemu_rtic_mixed_talker().expect("Failed to build rtic-mixed-talker");
+    let listener_bin =
+        build_qemu_rtic_mixed_listener().expect("Failed to build rtic-mixed-listener");
+
+    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+
+    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    assert!(
+        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+    );
+
+    // Start listener QEMU first (subscriber before publisher)
+    eprintln!("Starting RTIC mixed-priority listener QEMU on tap-qemu1...");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+        .expect("Failed to start listener QEMU");
+
+    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
+    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    std::thread::sleep(Duration::from_secs(8));
+
+    // Start talker QEMU
+    eprintln!("Starting RTIC mixed-priority talker QEMU on tap-qemu0...");
+    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
+        .expect("Failed to start talker QEMU");
+
+    // Wait for listener to complete
+    let listener_output = listener
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    // Wait for talker to finish publishing
+    let talker_output = talker
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+
+    talker.kill();
+    listener.kill();
+
+    eprintln!("Listener output:\n{}", listener_output);
+    eprintln!("Talker output:\n{}", talker_output);
+
+    // Verify communication
+    let received = count_pattern(&listener_output, "Received [");
+    eprintln!(
+        "RTIC mixed-priority QEMU pubsub: received={} messages",
+        received
+    );
+
+    assert!(
+        listener_output.contains("Received 10 messages"),
+        "RTIC mixed-priority QEMU listener did not receive 10 messages (got {})",
+        received
+    );
+    assert!(
+        talker_output.contains("Done publishing"),
+        "RTIC mixed-priority QEMU talker did not finish publishing"
     );
 }

@@ -2009,6 +2009,44 @@ pub fn build_qemu_rtic_action_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// QEMU RTIC Mixed-Priority Example Builders (ffi-sync)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cached path to the qemu-rtic-mixed-talker binary
+static QEMU_RTIC_MIXED_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-rtic-mixed-listener binary
+static QEMU_RTIC_MIXED_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build qemu-rtic-mixed-talker (cached)
+pub fn build_qemu_rtic_mixed_talker() -> TestResult<&'static Path> {
+    QEMU_RTIC_MIXED_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-mixed-talker",
+                "qemu-rtic-mixed-talker",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build qemu-rtic-mixed-listener (cached)
+pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
+    QEMU_RTIC_MIXED_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/rtic-mixed-listener",
+                "qemu-rtic-mixed-listener",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
