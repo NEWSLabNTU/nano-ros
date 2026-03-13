@@ -269,7 +269,7 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 - [x] 58.9 — QEMU RISC-V board crate (`nros-threadx-qemu-riscv64`)
 - [x] 58.10 — Rust zenoh examples — QEMU RISC-V (pubsub, service, action)
 - [x] 58.11 — QEMU RISC-V integration tests + `just test-threadx` recipe
-- [ ] 58.12 — xrce-sys build.rs ThreadX compilation branch
+- [x] 58.12 — xrce-sys build.rs ThreadX compilation branch
 - [ ] 58.13 — Documentation
 
 ### 58.1 — Feature flag wiring

@@ -112,7 +112,7 @@ fn main() {
     // Platform-conditional: time.c
     // - POSIX/NuttX: compile time.c (uses clock_gettime)
     // - Zephyr: skip time.c (uxr_millis/uxr_nanos provided by xrce_zephyr.c)
-    // - Bare-metal: skip time.c (uxr_millis/uxr_nanos provided by platform crate)
+    // - FreeRTOS/ThreadX/bare-metal: skip time.c (uxr_millis/uxr_nanos provided by platform crate)
     if posix_compat {
         build.file(uxr_src.join("util/time.c"));
     }
@@ -128,6 +128,10 @@ fn main() {
     // Re-run if config changes
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=NUTTX_DIR");
+    println!("cargo:rerun-if-env-changed=THREADX_DIR");
+    println!("cargo:rerun-if-env-changed=THREADX_CONFIG_DIR");
+    println!("cargo:rerun-if-env-changed=NETX_DIR");
+    println!("cargo:rerun-if-env-changed=NETX_CONFIG_DIR");
 }
 
 fn generate_ucdr_config(out_dir: &Path) {
@@ -161,10 +165,14 @@ fn generate_uxr_config(out_dir: &Path, posix_compat: bool, mtu: usize) {
     let dir = out_dir.join("include/uxr/client");
     fs::create_dir_all(&dir).unwrap();
 
+    let threadx = env::var("CARGO_FEATURE_THREADX").is_ok();
+
     let platform_define = if posix_compat {
         "#define UCLIENT_PLATFORM_POSIX"
     } else if freertos {
         "#define UCLIENT_PLATFORM_FREERTOS"
+    } else if threadx {
+        "/* no platform define — ThreadX uses custom transport */"
     } else {
         "/* no platform define for bare-metal */"
     };
