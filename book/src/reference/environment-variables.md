@@ -40,18 +40,22 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `SSID`           | WiFi network name for ESP32 examples                                                               | Required for `build-examples-esp32` |
 | `PASSWORD`       | WiFi password for ESP32 examples                                                                   | Required for `build-examples-esp32` |
 
-### FreeRTOS / NuttX SDK Paths
+### FreeRTOS / NuttX / ThreadX SDK Paths
 
-These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx`). Override via env vars if sources are elsewhere.
+These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx` / `just setup-threadx`). Override via env vars if sources are elsewhere.
 
-| Variable              | Default                      | Description                     |
-|-----------------------|------------------------------|---------------------------------|
-| `FREERTOS_DIR`        | `external/freertos-kernel`   | FreeRTOS kernel source          |
-| `FREERTOS_PORT`       | `GCC/ARM_CM3`                | FreeRTOS portable layer         |
-| `LWIP_DIR`            | `external/lwip`              | lwIP source                     |
+| Variable              | Default                      | Description                        |
+|-----------------------|------------------------------|------------------------------------|
+| `FREERTOS_DIR`        | `external/freertos-kernel`   | FreeRTOS kernel source             |
+| `FREERTOS_PORT`       | `GCC/ARM_CM3`                | FreeRTOS portable layer            |
+| `LWIP_DIR`            | `external/lwip`              | lwIP source                        |
 | `FREERTOS_CONFIG_DIR` | Board crate's `config/`      | `FreeRTOSConfig.h` + `lwipopts.h` |
-| `NUTTX_DIR`           | `external/nuttx`             | NuttX RTOS source               |
-| `NUTTX_APPS_DIR`      | `external/nuttx-apps`        | NuttX apps source               |
+| `NUTTX_DIR`           | `external/nuttx`             | NuttX RTOS source                  |
+| `NUTTX_APPS_DIR`      | `external/nuttx-apps`        | NuttX apps source                  |
+| `THREADX_DIR`         | `external/threadx`           | ThreadX kernel source              |
+| `THREADX_CONFIG_DIR`  | Board crate's `config/`      | ThreadX config (`tx_user.h`)       |
+| `NETX_DIR`            | `external/netxduo`           | NetX Duo source                    |
+| `NETX_CONFIG_DIR`     | Board crate's `config/`      | NetX Duo config (`nx_user.h`)      |
 
 ## Buffer Tuning
 

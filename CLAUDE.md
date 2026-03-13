@@ -1,6 +1,6 @@
 # nano-ros
 
-Lightweight ROS 2 client for embedded real-time systems (Zephyr, FreeRTOS, NuttX). `no_std` compatible.
+Lightweight ROS 2 client for embedded real-time systems (Zephyr, FreeRTOS, NuttX, ThreadX). `no_std` compatible.
 
 ### Naming Convention
 
@@ -16,15 +16,15 @@ nano-ros/
 │   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp, nros-cpp-ffi
 │   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
 │   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
-│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-nuttx-qemu-arm, nros-esp32, nros-esp32-qemu, nros-stm32f4
-│   ├── drivers/        # lan9118-smoltcp, lan9118-lwip, openeth-smoltcp
+│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-nuttx-qemu-arm, nros-threadx-linux, nros-threadx-qemu-riscv64, nros-esp32, nros-esp32-qemu, nros-stm32f4
+│   ├── drivers/        # lan9118-smoltcp, lan9118-lwip, openeth-smoltcp, virtio-net-netx
 │   ├── interfaces/     # rcl-interfaces (generated/, checked into git)
 │   ├── testing/        # nros-tests (integration test crate)
 │   ├── verification/   # nros-ghost-types, nros-verification (Verus proofs, excluded from workspace)
 │   ├── reference/      # qemu-smoltcp-bridge
 │   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
-├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-arm-nuttx, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
-├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps
+├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-arm-nuttx, qemu-riscv64-threadx, threadx-linux, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
+├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps, threadx, netxduo, threadx-learn-samples
 ├── scripts/            # zenohd build, Zephyr setup
 ├── docker/             # QEMU dev environment
 ├── tests/              # Shell-based test scripts
@@ -36,9 +36,10 @@ nano-ros/
 ## Build Commands
 
 ```bash
-just setup              # Install toolchains, cargo tools, download FreeRTOS/NuttX SDKs
+just setup              # Install toolchains, cargo tools, download FreeRTOS/NuttX/ThreadX SDKs
 just setup-freertos     # Download FreeRTOS kernel + lwIP (included in just setup)
 just setup-nuttx        # Download NuttX RTOS + apps (included in just setup)
+just setup-threadx      # Download ThreadX kernel + NetX Duo (included in just setup)
 just build              # Generate bindings + build workspace + examples
 just build-zenohd       # Build zenohd from submodule
 just check              # Format check + clippy
@@ -61,10 +62,12 @@ just test-ros2          # ROS 2 interop (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
 just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + arm-none-eabi-gcc)
 just test-nuttx         # NuttX QEMU E2E (needs nightly + qemu-system-arm)
-just test-all           # Everything (includes NuttX + FreeRTOS in one nextest run)
+just test-threadx       # ThreadX E2E — Linux sim + QEMU RISC-V (needs ThreadX/NetX + qemu-system-riscv64)
+just test-threadx-linux # ThreadX Linux simulation E2E (needs ThreadX/NetX + CAP_NET_RAW)
+just test-all           # Everything (includes NuttX + FreeRTOS + ThreadX in one nextest run)
 ```
 
-First-time: `just setup` installs everything (toolchains, cargo tools, system deps, FreeRTOS/NuttX SDKs).
+First-time: `just setup` installs everything (toolchains, cargo tools, system deps, FreeRTOS/NuttX/ThreadX SDKs).
 
 ## Environment Variables
 
@@ -72,13 +75,17 @@ Configuration via `.env` file: copy `.env.example` to `.env` (gitignored) and un
 
 Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
-FreeRTOS/NuttX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx`). Override via env vars if sources are elsewhere:
+FreeRTOS/NuttX/ThreadX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx` / `just setup-threadx`). Override via env vars if sources are elsewhere:
 - `FREERTOS_DIR` — FreeRTOS kernel source (default: `external/freertos-kernel`)
 - `FREERTOS_PORT` — portable layer (default: `GCC/ARM_CM3`)
 - `LWIP_DIR` — lwIP source (default: `external/lwip`)
 - `FREERTOS_CONFIG_DIR` — `FreeRTOSConfig.h` + `lwipopts.h` (default: board crate's `config/`)
 - `NUTTX_DIR` — NuttX RTOS source (default: `external/nuttx`)
 - `NUTTX_APPS_DIR` — NuttX apps source (default: `external/nuttx-apps`)
+- `THREADX_DIR` — ThreadX kernel source (default: `external/threadx`)
+- `THREADX_CONFIG_DIR` — ThreadX config directory (default: board crate's `config/`)
+- `NETX_DIR` — NetX Duo source (default: `external/netxduo`)
+- `NETX_CONFIG_DIR` — NetX Duo config directory (default: board crate's `config/`)
 
 Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
 
@@ -185,7 +192,7 @@ See [docs/guides/cpp-api.md](docs/guides/cpp-api.md) for the getting started gui
 ### Platform Backends
 Three orthogonal axes (NEVER cross-imply):
 - **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
-- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`, `platform-freertos`, `platform-nuttx`
+- **Platform** (one): `platform-posix`, `platform-zephyr`, `platform-bare-metal`, `platform-freertos`, `platform-nuttx`, `platform-threadx`
 - **ROS edition** (one): `ros-humble`, `ros-iron`
 
 Mutual exclusivity enforced at compile-time. Zero features on an axis is valid (reduced functionality).
@@ -215,7 +222,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 41 | Iron type hash support | Not Started |
 | 54 | FreeRTOS platform support (lwIP) | Complete (54.10 deferred to Phase 69) |
 | 55 | NuttX platform support | Complete |
-| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.11 done, 58.12–58.13 remaining) |
+| 58 | ThreadX platform support (NetX Duo) | Complete |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
 | 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.9 done, 67.10–67.14 remaining) |

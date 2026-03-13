@@ -1,70 +1,167 @@
 # ThreadX
 
-nano-ros runs on ThreadX (Azure RTOS) with NetX Duo networking. The primary
-targets are a RISC-V 64-bit QEMU machine and a Linux simulation environment.
+nano-ros runs on Eclipse ThreadX with NetX Duo networking. Two targets are
+supported: a Linux simulation environment and a RISC-V 64-bit QEMU machine.
 
 ## Overview
 
 The ThreadX platform uses:
 
-- **ThreadX** (Azure RTOS) -- pre-emptive RTOS kernel with deterministic scheduling
-- **NetX Duo** -- TCP/IP network stack with BSD socket compatibility layer
-- **zenoh-pico** -- Zenoh transport over NetX Duo BSD sockets
+- **ThreadX** (Eclipse ThreadX) — pre-emptive RTOS kernel with deterministic scheduling
+- **NetX Duo** — TCP/IP network stack with BSD socket compatibility layer
+- **zenoh-pico** — Zenoh transport over NetX Duo BSD sockets
 
-Board crate: `nros-threadx-qemu-riscv64` (in `packages/boards/`). A Linux
-simulation board crate (`nros-threadx-linux`) is also available for
-host-side development.
+Board crates:
+- `nros-threadx-qemu-riscv64` — QEMU RISC-V 64-bit virt machine
+- `nros-threadx-linux` — Linux simulation (ThreadX Linux port)
 
 ## Safety Certifications
 
 ThreadX holds the highest level of safety certifications across multiple
 standards:
 
-- **IEC 61508 SIL 4** -- functional safety for industrial systems
-- **IEC 62304 Class C** -- medical device software
-- **ISO 26262 ASIL D** -- automotive functional safety
+- **IEC 61508 SIL 4** — functional safety for industrial systems
+- **IEC 62304 Class C** — medical device software
+- **ISO 26262 ASIL D** — automotive functional safety
 
-These certifications make the ThreadX platform suitable for safety-critical
-nano-ros deployments where regulatory compliance is required.
+NetX Duo is certified to the same IEC 61508 SIL 4 standard. Combined with
+nano-ros's Kani/Verus formal verification, this creates a uniquely strong
+safety argument for safety-critical deployments.
 
-## TSN Support
+## Prerequisites
 
-NetX Duo provides Time-Sensitive Networking (TSN) capabilities, enabling
-deterministic, low-latency communication for industrial and automotive use
-cases. nano-ros can leverage TSN-aware scheduling when running on ThreadX with
-NetX Duo on TSN-capable hardware.
+### Linux Simulation
+
+- Linux host with `CAP_NET_RAW` capability
+- Rust nightly toolchain
+
+### QEMU RISC-V 64-bit
+
+| Tool | Purpose |
+|------|---------|
+| `qemu-system-riscv64` | RISC-V system emulation |
+| `riscv64-unknown-elf-gcc` | RISC-V bare-metal cross-compiler |
+| Rust nightly + `riscv64gc-unknown-none-elf` | Rust cross-compilation |
+
+```bash
+sudo apt install qemu-system-misc gcc-riscv64-unknown-elf
+rustup target add riscv64gc-unknown-none-elf
+```
+
+## Environment Variables
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `THREADX_DIR` | `external/threadx` | ThreadX kernel source |
+| `THREADX_CONFIG_DIR` | Board crate's `config/` | ThreadX config (`tx_user.h`) |
+| `NETX_DIR` | `external/netxduo` | NetX Duo source |
+| `NETX_CONFIG_DIR` | Board crate's `config/` | NetX Duo config (`nx_user.h`) |
 
 ## Building
 
 ```bash
-just build-examples-threadx
+# Download ThreadX + NetX Duo
+just setup-threadx
+
+# Build Linux simulation examples
+just build-examples-threadx-linux
+
+# Build QEMU RISC-V examples
+just build-examples-threadx-riscv64
 ```
 
-This builds the ThreadX examples for both the RISC-V 64-bit QEMU target and
-the Linux simulation.
+### Available Examples
+
+All examples are in `examples/threadx-linux/rust/zenoh/` and
+`examples/qemu-riscv64-threadx/rust/zenoh/`:
+
+| Example | Description |
+|---------|-------------|
+| `talker` | Publishes `std_msgs/Int32` on `/chatter` |
+| `listener` | Subscribes to `std_msgs/Int32` on `/chatter` |
+| `service-server` | Serves `AddTwoInts` on `/add_two_ints` |
+| `service-client` | Calls `AddTwoInts` on `/add_two_ints` |
+| `action-server` | Serves `Fibonacci` action on `/fibonacci` |
+| `action-client` | Sends `Fibonacci` goal on `/fibonacci` |
 
 ## Testing
 
 ```bash
-just test-threadx
+just test-threadx          # Both Linux sim + QEMU RISC-V
+just test-threadx-linux    # Linux simulation only
+just test-threadx-riscv64  # QEMU RISC-V only
 ```
 
-Tests run under `qemu-system-riscv64` with TAP networking for the RISC-V
-target. The Linux simulation examples run natively on the host.
+### Network Configuration (QEMU RISC-V)
 
-## Example Targets
+Tests use TAP networking with virtio-net:
 
-ThreadX examples live under two directories:
+| Role | IP Address | TAP Device |
+|------|-----------|------------|
+| zenohd (host) | 192.0.3.1 | br-qemu |
+| Talker/Publisher | 192.0.3.10 | tap-qemu0 |
+| Listener/Sub | 192.0.3.11 | tap-qemu1 |
 
-- `examples/threadx-qemu-riscv64/` -- cross-compiled for RISC-V 64-bit,
-  runs under QEMU
-- `examples/threadx-linux/` -- Linux simulation using ThreadX's POSIX
-  port, useful for development and debugging without QEMU
+### Linux Simulation
 
-Both targets support the same nano-ros API. The Linux simulation is the
-fastest path to iterate on ThreadX-specific code.
+Linux simulation tests use AF_PACKET raw sockets. Binaries need
+`CAP_NET_RAW` capability:
+
+```bash
+just setup-threadx-caps    # Build + apply capabilities (one-time)
+```
+
+## Architecture
+
+### Linux Simulation Board Crate
+
+The `nros-threadx-linux` board crate runs the full ThreadX kernel as
+pthreads on a Linux host. NetX Duo uses an AF_PACKET raw socket driver
+(`nx_linux_network_driver` from `threadx-learn-samples`) for real Ethernet
+I/O. This provides the fastest iteration cycle for ThreadX-specific code.
+
+### QEMU RISC-V Board Crate
+
+The `nros-threadx-qemu-riscv64` board crate runs ThreadX's RISC-V port on
+QEMU virt machine with real preemptive scheduling. NetX Duo uses a
+virtio-net driver (`virtio-net-netx` in `packages/drivers/`) for Ethernet
+I/O over QEMU's virtio MMIO interface.
+
+```
+User Application (Executor + Node + Pub/Sub)
+        │
+nros-node (Executor)
+        │
+nros-rmw-zenoh → zpico-sys (zenoh-pico + C shim)
+        │                       │
+        │          zenoh-pico ThreadX platform
+        │          (tx_thread, tx_mutex, BSD sockets)
+        │
+Board Crate (nros-threadx-qemu-riscv64)
+├── ThreadX kernel (RISC-V port)
+├── NetX Duo (BSD sockets over virtio-net)
+└── virtio-net NetX Duo driver (virtio MMIO)
+```
+
+### Key Design Points
+
+- **Multi-threaded**: ThreadX provides real threads/mutexes. zenoh-pico uses
+  background read/lease tasks.
+- **NetX Duo BSD sockets**: POSIX-compatible `socket()`/`connect()`/`select()`
+  — same code path as zenoh-pico's POSIX platform.
+- **Build via `cc` crate**: ThreadX kernel + NetX Duo compiled in the board
+  crate's `build.rs` (no external CMake needed).
+- **`no_std` target**: `riscv64gc-unknown-none-elf` for QEMU; Linux simulation
+  uses the host toolchain.
+
+## TSN Support
+
+NetX Duo provides Time-Sensitive Networking (TSN) capabilities (CBS, TAS,
+FPE, PTP), enabling deterministic, low-latency communication for industrial
+and automotive use cases. TSN support requires TSN-capable hardware.
 
 ## Status
 
-ThreadX platform support is tracked in Phase 58. Items 58.1 through 58.7 are
-complete, with remaining work in progress.
+ThreadX platform support is tracked in Phase 58. See
+[Phase 58 roadmap](../../docs/roadmap/phase-58-threadx-platform.md) for
+details.

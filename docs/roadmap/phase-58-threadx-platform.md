@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-threadx` as a new platform axis value, enabling nros nodes on Eclipse ThreadX + NetX Duo. Validate with two targets: Linux simulation port (PoC, fastest iteration) and QEMU RISC-V 64-bit virt machine (official ThreadX QEMU port with virtio-net Ethernet). ThreadX's IEC 61508 SIL 4 / ISO 26262 ASIL D certifications combined with nano-ros's Kani/Verus formal verification create a uniquely strong safety argument.
 
-**Status**: In Progress (58.1–58.11 done)
+**Status**: Complete
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -270,7 +270,7 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `threadx` feat
 - [x] 58.10 — Rust zenoh examples — QEMU RISC-V (pubsub, service, action)
 - [x] 58.11 — QEMU RISC-V integration tests + `just test-threadx` recipe
 - [x] 58.12 — xrce-sys build.rs ThreadX compilation branch
-- [ ] 58.13 — Documentation
+- [x] 58.13 — Documentation
 
 ### 58.1 — Feature flag wiring
 

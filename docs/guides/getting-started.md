@@ -452,6 +452,8 @@ nros supports several RTOS platforms. Each has a dedicated setup guide:
   See [FreeRTOS Setup](freertos-setup.md).
 - **NuttX** (QEMU ARM virt): `just setup-nuttx` + `just test-nuttx`.
   Uses Rust `std` (POSIX-compatible).
+- **ThreadX** (Linux sim + QEMU RISC-V): `just setup-threadx` + `just test-threadx`.
+  See [ThreadX Setup](threadx-setup.md).
 - **Zephyr** (native_sim): `scripts/zephyr/setup.sh` + `just test-zephyr`.
   See [Zephyr Setup](zephyr-setup.md).
 - **Bare-metal** (QEMU MPS2-AN385): No external SDK needed.
