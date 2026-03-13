@@ -4,7 +4,7 @@
 board crates so the communication interface (Ethernet, serial, etc.) is selected via Cargo
 features rather than hardcoded.
 
-**Status**: In Progress (67.1–67.12 done)
+**Status**: Complete (67.1–67.14 done)
 
 **Priority**: Medium
 
@@ -295,8 +295,8 @@ Then connect zenohd to the PTY device.
 - [x] 67.10 — STM32F4 USART driver for `zpico-serial`
 - [x] 67.11 — Feature-gate `nros-esp32`: `wifi` (default) vs `serial`
 - [x] 67.12 — Feature-gate `nros-esp32-qemu`: `ethernet` (default) vs `serial`
-- [ ] 67.13 — Documentation: serial transport guide in book
-- [ ] 67.14 — Update CLAUDE.md with transport feature conventions
+- [x] 67.13 — Documentation: serial transport guide in book
+- [x] 67.14 — Update CLAUDE.md with transport feature conventions
 
 ---
 

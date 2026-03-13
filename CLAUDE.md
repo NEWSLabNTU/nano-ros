@@ -200,6 +200,17 @@ Default features: `std` only. Platform features forwarded via Cargo `?` syntax.
 
 **Cross-cutting:** `unstable-zenoh-api` enables zero-copy receive (orthogonal to axes above).
 
+### Board Crate Transport Features
+Board crates use Cargo features to select the communication transport:
+- **`ethernet`** (default for MPS2-AN385, STM32F4, ESP32-QEMU) or **`wifi`** (default for ESP32) — TCP/UDP via `zpico-smoltcp`
+- **`serial`** — UART via `zpico-serial` (bare-metal only) or zenoh-pico built-in serial (ESP32, Zephyr, etc.)
+
+`Config` struct fields are `#[cfg(feature = "...")]`-gated per transport (e.g., MAC/IP under `ethernet`, baudrate under `serial`). At least one transport must be enabled (`compile_error!` enforced). Both can be enabled simultaneously — runtime selection via the zenoh locator string.
+
+ESP32 and ESP32-QEMU use zenoh-pico's built-in serial implementation (no `zpico-serial` dependency). Only bare-metal board crates (`nros-mps2-an385`, `nros-stm32f4`) depend on `zpico-serial`.
+
+Examples select non-default transport with `default-features = false, features = ["serial"]`.
+
 ### Parameter Services
 Enable with `param-services` feature in `nros-node`. Provides `~/get_parameters`, `~/set_parameters`, etc. Uses `nros-rcl-interfaces` types. Handlers return `Box<Response>` (large heapless arrays).
 
@@ -225,7 +236,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 58 | ThreadX platform support (NetX Duo) | Complete |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
-| 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.9 done, 67.10–67.14 remaining) |
+| 67 | Serial transport + board crate transport abstraction | Complete |
 | 68 | Alloc-free C/C++ bindings + executor simplification | Complete |
 | 69 | Cross-platform C/C++ examples + integration tests | Not Started |
 

@@ -22,6 +22,7 @@
 - [Creating Examples](./guides/creating-examples.md)
 - [QEMU Bare-Metal](./guides/qemu-bare-metal.md)
 - [ESP32](./guides/esp32.md)
+- [Serial Transport](./guides/serial-transport.md)
 - [Troubleshooting](./guides/troubleshooting.md)
 
 # Platforms
