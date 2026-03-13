@@ -1006,17 +1006,11 @@ fn build_c_shim(
 
         // Platform defines — link features from Cargo features
         let has_network = link.tcp || link.udp_unicast || link.udp_multicast;
-        println!(
-            "cargo:warning=zpico-sys: has_network={has_network}, link.serial={}, link.tcp={}, link.udp_unicast={}",
-            link.serial, link.tcp, link.udp_unicast
-        );
         if has_network {
             build.define("ZPICO_SMOLTCP", None);
-            println!("cargo:warning=zpico-sys: defining ZPICO_SMOLTCP");
         }
         if link.serial && !has_network {
             build.define("ZPICO_SERIAL", None);
-            println!("cargo:warning=zpico-sys: defining ZPICO_SERIAL");
         }
         build.define("ZENOH_GENERIC", None);
         build.define("Z_FEATURE_MULTI_THREAD", "0");

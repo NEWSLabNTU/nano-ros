@@ -19,29 +19,6 @@ use zpico_platform_mps2_an385::{clock, network};
 use crate::config::Config;
 use crate::exit_failure;
 
-/// Debug helper: print a label + i32 value via semihosting.
-/// Called from zpico.c to trace z_open return values.
-#[unsafe(no_mangle)]
-pub extern "C" fn zpico_debug_i32(label: *const u8, value: i32) {
-    // Read C string (up to 32 chars)
-    let mut buf = [0u8; 32];
-    let mut len = 0;
-    if !label.is_null() {
-        unsafe {
-            while len < buf.len() - 1 {
-                let c = *label.add(len);
-                if c == 0 {
-                    break;
-                }
-                buf[len] = c;
-                len += 1;
-            }
-        }
-    }
-    let label_str = core::str::from_utf8(&buf[..len]).unwrap_or("?");
-    hprintln!("[zpico] {} = {}", label_str, value);
-}
-
 #[cfg(feature = "ethernet")]
 use crate::error::{Error, Result};
 
