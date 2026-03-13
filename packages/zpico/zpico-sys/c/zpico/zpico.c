@@ -495,9 +495,6 @@ int32_t zpico_open(void) {
     }
 
     int open_ret = z_open(&g_session, z_config_move(&g_config), NULL);
-    // Debug: report z_open return value via semihosting (visible on bare-metal)
-    extern void zpico_debug_i32(const char *label, int32_t value);
-    zpico_debug_i32("z_open", open_ret);
     if (open_ret < 0) {
         return ZPICO_ERR_SESSION;
     }

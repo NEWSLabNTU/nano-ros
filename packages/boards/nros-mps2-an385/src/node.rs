@@ -77,7 +77,6 @@ static mut UART_DEVICE: MaybeUninit<cmsdk_uart::CmsdkUart> = MaybeUninit::uninit
 /// Returns seconds since 1970-01-01. On QEMU, this reflects the host's
 /// real clock, providing entropy that varies between QEMU runs (unlike
 /// the DWT cycle counter which is deterministic in emulation).
-#[cfg(feature = "ethernet")]
 fn semihosting_time() -> u32 {
     let result: u32;
     unsafe {
@@ -281,11 +280,13 @@ fn init_serial(config: &Config) {
         zpico_serial::register_port(0, UART_DEVICE.assume_init_mut());
     }
 
-    // Seed RNG with hardware timer value to generate unique zenoh IDs.
-    // With -icount shift=auto, QEMU syncs virtual time with wall-clock time,
-    // so instances started at different times get different timer values here.
-    let timer_ms = zpico_platform_mps2_an385::clock::clock_ms() as u32;
-    random::seed(timer_ms ^ config.uart_base as u32);
+    // Seed RNG with host wall-clock time via semihosting to generate unique
+    // zenoh IDs. QEMU's virtual clock (-icount shift=auto) starts at 0 for
+    // each instance, so hardware timers are deterministic. Semihosting
+    // SYS_TIME returns the host's real UNIX timestamp which varies between
+    // QEMU runs started at different times.
+    let host_time = semihosting_time();
+    random::seed(host_time);
 
     hprintln!("Serial ready.");
 }

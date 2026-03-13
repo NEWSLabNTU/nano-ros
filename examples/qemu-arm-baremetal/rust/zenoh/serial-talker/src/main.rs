@@ -41,7 +41,7 @@ fn main() -> ! {
 
         for i in 0..10i32 {
             // Poll to process serial transport events
-            for _ in 0..100 {
+            for _ in 0..100u32 {
                 executor.spin_once(10);
             }
 
