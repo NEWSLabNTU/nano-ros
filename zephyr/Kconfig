@@ -25,6 +25,14 @@ config NROS_C_API
       Build and link the nros C API library (libnros_c.a).
       Uses nros_* functions from nros/init.h, nros/node.h, etc.
 
+config NROS_CPP_API
+    bool "C++ API (nros-cpp)"
+    select CPP
+    help
+      Build and link the nros C++ API library (libnros_cpp_ffi.a).
+      Uses nros::init(), nros::Node, nros::Publisher<M>, etc.
+      Requires C++ support (automatically selected).
+
 config NROS_RUST_API
     bool "Rust API (nros crate)"
     depends on RUST

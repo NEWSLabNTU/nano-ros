@@ -10,6 +10,8 @@
 
 #include "zpico.h"
 #include <zenoh-pico.h>
+#include <zenoh-pico/session/query.h>
+#include <zenoh-pico/api/olv_macros.h>
 #include <string.h>
 
 #ifdef ZENOH_ZEPHYR
@@ -47,13 +49,15 @@ static void _threadx_printk(const char *fmt, ...) {
 }
 #define printk(...) _threadx_printk(__VA_ARGS__)
 #endif
+#elif defined(ZPICO_SMOLTCP) || defined(ZPICO_SERIAL)
+#define printk(...)  // No libc printf on bare-metal
 #else
 #define printk(...)  // No-op on other platforms
 #endif
 
 // Internal zenoh-pico headers for socket FD access (select()-based timeout).
 // Only needed for single-threaded builds; multi-threaded uses z_sleep_ms().
-#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
+#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
 #include "zenoh-pico/net/session.h"
 #include "zenoh-pico/transport/transport.h"
 #include "zenoh-pico/api/olv_macros.h"
@@ -212,6 +216,7 @@ static inline void _zpico_notify_spin(void) {}
  */
 static void query_handler(z_loaned_query_t *query, void *arg) {
     int idx = (int)(intptr_t)arg;
+    printk("zpico: query_handler called for queryable %d\n", idx);
     if (idx < 0 || idx >= ZPICO_MAX_QUERYABLES) {
         return;
     }
@@ -489,8 +494,24 @@ int32_t zpico_open(void) {
         return ZPICO_ERR_GENERIC;
     }
 
-    if (z_open(&g_session, z_config_move(&g_config), NULL) < 0) {
+    int open_ret = z_open(&g_session, z_config_move(&g_config), NULL);
+    // Debug: report z_open return value via semihosting (visible on bare-metal)
+    extern void zpico_debug_i32(const char *label, int32_t value);
+    zpico_debug_i32("z_open", open_ret);
+    if (open_ret < 0) {
         return ZPICO_ERR_SESSION;
+    }
+
+#ifdef ZPICO_SERIAL
+    // Switch serial reads from blocking (needed for z_open handshake) to
+    // non-blocking so zpico_spin_once doesn't block for 5s on idle iterations.
+    extern void zpico_serial_set_nonblocking(void);
+    zpico_serial_set_nonblocking();
+#endif
+    {
+        z_id_t zid = z_info_zid(z_session_loan(&g_session));
+        printk("zpico: session opened, zid=");
+        (void)zid;  // printk may be no-op on bare-metal
     }
 
     // Start background tasks only in multi-threaded mode
@@ -902,7 +923,7 @@ int32_t zpico_undeclare_subscriber(int32_t handle) {
 // get_session_fd() is only needed for single-threaded select()-based paths.
 // Multi-threaded builds use z_sleep_ms(); FreeRTOS uses vTaskDelay(); smoltcp
 // uses its own clock loop.
-#if !defined(ZPICO_SMOLTCP) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
+#if !defined(ZPICO_SMOLTCP) && !defined(ZPICO_SERIAL) && !defined(ZENOH_FREERTOS_LWIP) && Z_FEATURE_MULTI_THREAD != 1
 /**
  * Extract the socket file descriptor from the zenoh session.
  *
@@ -939,11 +960,17 @@ int32_t zpico_poll(uint32_t timeout_ms) {
     }
 
 #ifdef ZPICO_SMOLTCP
-    // smoltcp: no real sockets, no select(). Loop with clock timeout.
+    // smoltcp: use single_read=true to avoid the _z_zbuf_reset() in the
+    // single_read=false path, which discards remaining data when multiple
+    // zenoh messages arrive in a single TCP read (e.g., keep-alive + reply).
+    // With single_read=true, the zbuf accumulates data across calls and
+    // processes one complete message per call.
+    zp_read_options_t opts;
+    opts.single_read = true;
     uint64_t start = smoltcp_clock_now_ms();
     int ret;
     do {
-        ret = zp_read(z_session_loan_mut(&g_session), NULL);
+        ret = zp_read(z_session_loan_mut(&g_session), &opts);
         if (ret == 0) break;  // Data processed
         if (timeout_ms == 0) break;
     } while (smoltcp_clock_now_ms() - start < timeout_ms);
@@ -996,14 +1023,43 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     }
 
 #ifdef ZPICO_SMOLTCP
-    // smoltcp: no real sockets, no select(). Loop with clock timeout.
+    // smoltcp: poll network and read available data. Uses single_read=true
+    // to preserve partial TCP data across calls (non-blocking _z_read_tcp
+    // may return fragments). single_read=false resets the zbuf on each call
+    // which discards partial messages.
+    zp_read_options_t opts;
+    opts.single_read = true;
     uint64_t start = smoltcp_clock_now_ms();
+    int ret;
+    do {
+        ret = zp_read(z_session_loan_mut(&g_session), &opts);
+        if (ret == 0) break;  // Data processed
+        if (timeout_ms == 0) break;
+    } while (smoltcp_clock_now_ms() - start < timeout_ms);
+    // Process query timeouts — in multi-threaded mode the lease task handles
+    // this, but on single-threaded bare-metal (smoltcp) there is no lease task.
+    // Without this call, timed-out queries are never cleaned up and their
+    // dropper callbacks never fire, breaking service/action request flows.
+    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
+    zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+    return ret;
+
+#elif defined(ZPICO_SERIAL)
+    // Serial-only bare-metal: poll UART and read available data.
+    // Uses single_read=false because the single_read=true path calls
+    // _z_unicast_recv_t_msg which returns _Z_ERR_TRANSPORT_RX_FAILED (-99)
+    // on no data for datagram links. The single_read=false path uses
+    // _z_unicast_client_read which returns _Z_NO_DATA_PROCESSED gracefully.
+    // For serial (datagram), each COBS frame is atomic so there's no
+    // partial data to preserve across calls (unlike TCP stream).
+    z_clock_t start = z_clock_now();
     int ret;
     do {
         ret = zp_read(z_session_loan_mut(&g_session), NULL);
         if (ret == 0) break;  // Data processed
         if (timeout_ms == 0) break;
-    } while (smoltcp_clock_now_ms() - start < timeout_ms);
+    } while (z_clock_elapsed_ms(&start) < timeout_ms);
+    _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
     zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
     return ret;
 
@@ -1201,8 +1257,16 @@ int32_t zpico_declare_queryable(const char *keyexpr,
     z_owned_closure_query_t closure;
     z_closure_query(&closure, query_handler, NULL, (void *)(intptr_t)idx);
 
+    printk("zpico: declaring queryable[%d] keyexpr='%s'\n", idx, keyexpr);
+
+    // Set complete=true so that queries with Z_QUERY_TARGET_ALL_COMPLETE
+    // (used by rmw_zenoh_cpp service clients) match this queryable.
+    z_queryable_options_t opts;
+    z_queryable_options_default(&opts);
+    opts.complete = true;
+
     int q_ret = z_declare_queryable(z_session_loan(&g_session), &g_queryables[idx].queryable,
-                                    z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), NULL);
+                                    z_view_keyexpr_loan(&ke), z_closure_query_move(&closure), &opts);
     if (q_ret < 0) {
         printk("zpico: z_declare_queryable failed: %d for '%s'\n", q_ret, keyexpr);
         g_queryables[idx].callback = NULL;
@@ -1540,11 +1604,34 @@ int32_t zpico_query_reply(int32_t queryable_handle,
 
     z_owned_bytes_t attachment_bytes;
     if (attachment != NULL && attachment_len > 0) {
+        // Use explicitly provided attachment
         if (z_bytes_copy_from_buf(&attachment_bytes, attachment, attachment_len) < 0) {
             z_bytes_drop(z_bytes_move(&payload));
             return ZPICO_ERR_GENERIC;
         }
         options.attachment = z_bytes_move(&attachment_bytes);
+    } else {
+        // Echo back the original query's attachment (required by rmw_zenoh_cpp
+        // which expects sequence_number, source_timestamp, gid in the reply).
+        const z_loaned_bytes_t *query_att = z_query_attachment(
+            z_query_loan(&g_stored_queries[queryable_handle]));
+        printk("zpico: query_reply: query_att=%p\n", (void*)query_att);
+        if (query_att != NULL) {
+            printk("zpico: query_reply: att_len=%zu\n", z_bytes_len(query_att));
+        }
+        if (query_att != NULL && z_bytes_len(query_att) > 0) {
+            z_owned_slice_t att_slice;
+            if (z_bytes_to_slice(query_att, &att_slice) == 0) {
+                printk("zpico: query_reply: echoing attachment %zu bytes\n",
+                        z_slice_len(z_slice_loan(&att_slice)));
+                if (z_bytes_copy_from_buf(&attachment_bytes,
+                        z_slice_data(z_slice_loan(&att_slice)),
+                        z_slice_len(z_slice_loan(&att_slice))) == 0) {
+                    options.attachment = z_bytes_move(&attachment_bytes);
+                }
+                z_slice_drop(z_slice_move(&att_slice));
+            }
+        }
     }
 
     // Reply using the stored (cloned) query for this queryable
@@ -1569,11 +1656,11 @@ int32_t zpico_query_reply(int32_t queryable_handle,
 // struct { uint64_t tv_sec; uint64_t tv_nsec; } (16 bytes) on ThreadX/POSIX.
 _Static_assert(sizeof(z_clock_t) <= 16, "z_clock_t must fit in 16 bytes");
 
-void zpico_clock_start(uint8_t clock_buf[16]) {
+void zpico_clock_start(uint8_t *clock_buf) {
     z_clock_t now = z_clock_now();
     memcpy(clock_buf, &now, sizeof(z_clock_t));
 }
 
-unsigned long zpico_clock_elapsed_ms_since(uint8_t clock_buf[16]) {
+unsigned long zpico_clock_elapsed_ms_since(uint8_t *clock_buf) {
     return z_clock_elapsed_ms((z_clock_t *)clock_buf);
 }

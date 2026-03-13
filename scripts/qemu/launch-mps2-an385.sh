@@ -107,11 +107,18 @@ if ! command -v qemu-system-arm &>/dev/null; then
 fi
 
 # Build QEMU command
+#
+# -icount shift=auto synchronizes QEMU's virtual clock with wall-clock time.
+# Without this, hardware timers (CMSDK Timer0) race ahead during WFI,
+# causing zenoh-pico timeouts to expire before TAP network I/O completes.
+# With sleep=on (default), WFI advances virtual time at wall-clock speed
+# via QEMU_CLOCK_VIRTUAL_RT. See docs/reference/qemu-icount.md.
 QEMU_CMD=(
     qemu-system-arm
     -cpu cortex-m3
     -machine mps2-an385
     -nographic
+    -icount shift=auto
     -semihosting-config "enable=on,target=native"
     -kernel "$BINARY"
 )

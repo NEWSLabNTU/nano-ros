@@ -1,0 +1,23 @@
+[build]
+target = "thumbv7m-none-eabi"
+
+[patch.crates-io.builtin_interfaces]
+path = "generated/builtin_interfaces"
+
+[patch.crates-io.nros-core]
+path = "../../../../../packages/core/nros-core"
+
+[patch.crates-io.nros-serdes]
+path = "../../../../../packages/core/nros-serdes"
+
+[patch.crates-io.std_msgs]
+path = "generated/std_msgs"
+
+[target.thumbv7m-none-eabi]
+# -serial pty: QEMU exposes UART0 as a host PTY (for zenohd serial plugin)
+# No -netdev / -net: serial transport doesn't need Ethernet
+runner = "qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic -semihosting-config enable=on,target=native -serial pty -kernel"
+rustflags = [
+    "-C",
+    "link-arg=-Tlink.x",
+]

@@ -1,22 +1,29 @@
 //! # nros-stm32f4
 //!
-//! Board crate for running nros on STM32F4 family microcontrollers
-//! with Ethernet.
+//! Board crate for running nros on STM32F4 family microcontrollers.
 //!
-//! Handles hardware and network initialization. Users call `run()` with
+//! Handles hardware and transport initialization. Users call `run()` with
 //! a closure that receives `&Config` and creates an `Executor` for full
 //! API access (publishers, subscriptions, services, actions, timers).
+//!
+//! # Transport Features
+//!
+//! - `ethernet` (default) — STM32 MAC + smoltcp TCP/IP stack
+//! - `serial` — USART via zpico-serial
+//!
+//! At least one transport must be enabled.
 //!
 //! # Architecture
 //!
 //! This crate depends on `zpico-platform-stm32f4` for system primitives
-//! (zenoh-pico FFI symbols, clock, memory, RNG) and adds the nros
-//! user-facing API on top.
+//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `zpico-smoltcp`
+//! (Ethernet) or `zpico-serial` (serial) for the link layer.
 
 #![no_std]
 
 // Application modules
 mod config;
+#[allow(dead_code)]
 mod error;
 mod node;
 
@@ -35,6 +42,7 @@ pub use node::{init_hardware, run};
 pub use zpico_platform_stm32f4::timing::CycleCounter;
 
 // Re-export hardware modules from zpico-platform
+#[cfg(feature = "ethernet")]
 pub use zpico_platform_stm32f4::phy;
 pub use zpico_platform_stm32f4::pins;
 
@@ -46,6 +54,7 @@ pub mod prelude {
     pub use crate::node::{init_hardware, run};
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};
+    #[cfg(feature = "ethernet")]
     pub use zpico_platform_stm32f4::phy::PhyType;
     pub use zpico_platform_stm32f4::pins::PinConfig;
     pub use zpico_platform_stm32f4::timing::CycleCounter;

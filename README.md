@@ -34,7 +34,7 @@ The project integrates formal verification (Kani bounded model checking, CBMC fo
 ## Requirements
 
 - Rust nightly (edition 2024)
-- zenohd 1.6.2 router (built from submodule via `just build-zenohd`)
+- zenohd router (built from submodule via `just build-zenohd`)
 - (Optional) ROS 2 Humble with rmw_zenoh_cpp for interop
 - (Optional) cmake for C examples
 
@@ -71,7 +71,7 @@ See [Getting Started](docs/guides/getting-started.md) for a complete walkthrough
 git clone https://github.com/jerry73204/nano-ros.git
 cd nano-ros
 just setup         # Install toolchains + tools
-just build-zenohd  # Build zenohd 1.6.2 from submodule
+just build-zenohd  # Build zenohd from submodule
 ```
 
 Run the demo:

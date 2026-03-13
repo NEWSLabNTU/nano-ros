@@ -5,6 +5,8 @@ use core::marker::PhantomData;
 use nros_core::{CdrReader, CdrWriter, Deserialize, RosAction, RosMessage, RosService, Serialize};
 use nros_rmw::{Publisher, ServiceClientTrait, ServiceServerTrait, Subscriber, TransportError};
 
+use crate::session;
+
 use super::types::{DEFAULT_TX_BUF, NodeError};
 
 /// Default polling interval (ms) for sync wait loops.
@@ -20,12 +22,12 @@ const GOAL_UUID_SIZE: usize = 16;
 // ============================================================================
 
 /// Typed publisher handle.
-pub struct EmbeddedPublisher<M, P> {
-    pub(crate) handle: P,
+pub struct EmbeddedPublisher<M> {
+    pub(crate) handle: session::RmwPublisher,
     pub(crate) _phantom: PhantomData<M>,
 }
 
-impl<M: RosMessage, P: Publisher> EmbeddedPublisher<M, P> {
+impl<M: RosMessage> EmbeddedPublisher<M> {
     /// Publish a message using the default buffer size.
     pub fn publish(&self, msg: &M) -> Result<(), NodeError> {
         self.publish_with_buffer::<DEFAULT_TX_BUF>(msg)
@@ -57,13 +59,13 @@ impl<M: RosMessage, P: Publisher> EmbeddedPublisher<M, P> {
 // ============================================================================
 
 /// Typed subscription handle with internal receive buffer.
-pub struct Subscription<M, Sub, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
-    pub(crate) handle: Sub,
+pub struct Subscription<M, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE }> {
+    pub(crate) handle: session::RmwSubscriber,
     pub(crate) buffer: [u8; RX_BUF],
     pub(crate) _phantom: PhantomData<M>,
 }
 
-impl<M: RosMessage, Sub: Subscriber, const RX_BUF: usize> Subscription<M, Sub, RX_BUF> {
+impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// Try to receive a typed message (non-blocking).
     pub fn try_recv(&mut self) -> Result<Option<M>, NodeError> {
         match self
@@ -126,20 +128,17 @@ impl<M: RosMessage, Sub: Subscriber, const RX_BUF: usize> Subscription<M, Sub, R
 /// Typed service server handle with internal buffers.
 pub struct EmbeddedServiceServer<
     Svc: RosService,
-    Srv,
     const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const REPLY_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    pub(crate) handle: Srv,
+    pub(crate) handle: session::RmwServiceServer,
     pub(crate) req_buffer: [u8; REQ_BUF],
     pub(crate) reply_buffer: [u8; REPLY_BUF],
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
-impl<Svc: RosService, Srv: ServiceServerTrait, const REQ_BUF: usize, const REPLY_BUF: usize>
-    EmbeddedServiceServer<Svc, Srv, REQ_BUF, REPLY_BUF>
-where
-    Srv::Error: From<TransportError>,
+impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
+    EmbeddedServiceServer<Svc, REQ_BUF, REPLY_BUF>
 {
     /// Handle an incoming service request.
     ///
@@ -179,20 +178,17 @@ where
 /// Typed service client handle with internal buffers.
 pub struct EmbeddedServiceClient<
     Svc: RosService,
-    Cli,
     const REQ_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const REPLY_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    pub(crate) handle: Cli,
+    pub(crate) handle: session::RmwServiceClient,
     pub(crate) req_buffer: [u8; REQ_BUF],
     pub(crate) reply_buffer: [u8; REPLY_BUF],
     pub(crate) _phantom: PhantomData<Svc>,
 }
 
-impl<Svc: RosService, Cli: ServiceClientTrait, const REQ_BUF: usize, const REPLY_BUF: usize>
-    EmbeddedServiceClient<Svc, Cli, REQ_BUF, REPLY_BUF>
-where
-    Cli::Error: From<TransportError>,
+impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
+    EmbeddedServiceClient<Svc, REQ_BUF, REPLY_BUF>
 {
     /// Call the service (non-blocking). Returns a [`Promise`] that can be polled.
     ///
@@ -207,10 +203,7 @@ where
     ///     }
     /// }
     /// ```
-    pub fn call(
-        &mut self,
-        request: &Svc::Request,
-    ) -> Result<Promise<'_, Svc::Reply, Cli>, NodeError> {
+    pub fn call(&mut self, request: &Svc::Request) -> Result<Promise<'_, Svc::Reply>, NodeError> {
         // Serialize request into req_buffer
         let mut writer = CdrWriter::new_with_header(&mut self.req_buffer)
             .map_err(|_| NodeError::BufferTooSmall)?;
@@ -240,13 +233,13 @@ where
 ///
 /// Poll with [`try_recv()`](Promise::try_recv) to check for the reply.
 /// Implements [`Future`](core::future::Future) for use with async executors.
-pub struct Promise<'a, T, Cli: ServiceClientTrait> {
-    pub(crate) handle: &'a mut Cli,
+pub struct Promise<'a, T> {
+    pub(crate) handle: &'a mut session::RmwServiceClient,
     pub(crate) reply_buffer: &'a mut [u8],
     pub(crate) parse: fn(&[u8]) -> Result<T, NodeError>,
 }
 
-impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
+impl<T> Promise<'_, T> {
     /// Try to receive the reply (non-blocking).
     ///
     /// Returns `Ok(Some(reply))` if the reply has arrived,
@@ -266,7 +259,7 @@ impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
     }
 }
 
-impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
+impl<T> Promise<'_, T> {
     /// Block until the reply arrives, spinning the executor.
     ///
     /// Internally calls `executor.spin_once()` in a loop until the reply
@@ -280,9 +273,9 @@ impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
     ///
     /// Returns [`NodeError::Timeout`] if the reply does not arrive within
     /// `timeout_ms` milliseconds.
-    pub fn wait<S: nros_rmw::Session, const M: usize, const C: usize>(
+    pub fn wait(
         &mut self,
-        executor: &mut super::Executor<S, M, C>,
+        executor: &mut super::Executor,
         timeout_ms: u64,
     ) -> Result<T, NodeError> {
         let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
@@ -297,7 +290,7 @@ impl<T, Cli: ServiceClientTrait> Promise<'_, T, Cli> {
     }
 }
 
-impl<T, Cli: ServiceClientTrait> core::future::Future for Promise<'_, T, Cli> {
+impl<T> core::future::Future for Promise<'_, T> {
     type Output = Result<T, NodeError>;
 
     fn poll(
@@ -359,21 +352,13 @@ pub struct CompletedGoal<A: RosAction> {
 /// serialization at the boundary.
 pub struct ActionServer<
     A: RosAction,
-    Srv,
-    Pub,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const MAX_GOALS: usize = 4,
 > {
-    pub(crate) core: super::action_core::ActionServerCore<
-        Srv,
-        Pub,
-        GOAL_BUF,
-        RESULT_BUF,
-        FEEDBACK_BUF,
-        MAX_GOALS,
-    >,
+    pub(crate) core:
+        super::action_core::ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
     /// Typed goal data parallel to `core.active_goals`.
     pub(crate) typed_goals: heapless::Vec<A::Goal, MAX_GOALS>,
     /// Completed goals with typed results.
@@ -382,13 +367,11 @@ pub struct ActionServer<
 
 impl<
     A: RosAction,
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
     const FEEDBACK_BUF: usize,
     const MAX_GOALS: usize,
-> ActionServer<A, Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
+> ActionServer<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
 {
     /// Try to accept a new goal.
     ///
@@ -556,25 +539,16 @@ impl<
 /// serialization at the boundary.
 pub struct ActionClient<
     A: RosAction,
-    Cli,
-    Sub,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    pub(crate) core:
-        super::action_core::ActionClientCore<Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    pub(crate) core: super::action_core::ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
     pub(crate) _phantom: PhantomData<A>,
 }
 
-impl<
-    A: RosAction,
-    Cli: ServiceClientTrait,
-    Sub: Subscriber,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
-> ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
+    ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
     /// Send a goal (non-blocking). Returns the goal ID and a [`Promise`] for acceptance.
     ///
@@ -582,7 +556,7 @@ impl<
     pub fn send_goal(
         &mut self,
         goal: &A::Goal,
-    ) -> Result<(nros_core::GoalId, Promise<'_, bool, Cli>), NodeError> {
+    ) -> Result<(nros_core::GoalId, Promise<'_, bool>), NodeError> {
         // Serialize goal into a temp buffer (without CDR header or GoalId)
         let mut tmp = [0u8; GOAL_BUF];
         let mut writer = CdrWriter::new(&mut tmp);
@@ -630,7 +604,7 @@ impl<
     pub fn cancel_goal(
         &mut self,
         goal_id: &nros_core::GoalId,
-    ) -> Result<Promise<'_, nros_core::CancelResponse, Cli>, NodeError> {
+    ) -> Result<Promise<'_, nros_core::CancelResponse>, NodeError> {
         self.core.send_cancel_request(goal_id)?;
 
         Ok(Promise {
@@ -644,7 +618,7 @@ impl<
     pub fn get_result(
         &mut self,
         goal_id: &nros_core::GoalId,
-    ) -> Result<Promise<'_, (nros_core::GoalStatus, A::Result), Cli>, NodeError> {
+    ) -> Result<Promise<'_, (nros_core::GoalStatus, A::Result)>, NodeError> {
         self.core.send_get_result_request(goal_id)?;
 
         Ok(Promise {
@@ -658,9 +632,7 @@ impl<
     ///
     /// The stream borrows `&mut self` exclusively. Drop it before calling
     /// `get_result()` or `cancel_goal()`.
-    pub fn feedback_stream(
-        &mut self,
-    ) -> FeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF> {
+    pub fn feedback_stream(&mut self) -> FeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF> {
         FeedbackStream { client: self }
     }
 
@@ -671,7 +643,7 @@ impl<
     pub fn feedback_stream_for(
         &mut self,
         goal_id: nros_core::GoalId,
-    ) -> GoalFeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF> {
+    ) -> GoalFeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF> {
         GoalFeedbackStream {
             client: self,
             goal_id,
@@ -699,23 +671,15 @@ impl<
 pub struct FeedbackStream<
     'a,
     A: RosAction,
-    Cli,
-    Sub,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    client: &'a mut ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    client: &'a mut ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
 }
 
-impl<
-    A: RosAction,
-    Cli: ServiceClientTrait,
-    Sub: Subscriber,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
-> FeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
+    FeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
     /// Async: wait for the next feedback message (no `futures` dependency needed).
     ///
@@ -754,9 +718,9 @@ impl<
     /// Returns `Ok(Some(feedback))` if a message arrives within `timeout_ms`,
     /// or `Ok(None)` on timeout. Unlike [`Promise::wait()`], timeout is not
     /// an error — the caller typically retries in a loop.
-    pub fn wait_next<S: nros_rmw::Session, const M: usize, const C: usize>(
+    pub fn wait_next(
         &mut self,
-        executor: &mut super::Executor<S, M, C>,
+        executor: &mut super::Executor,
         timeout_ms: u64,
     ) -> Result<Option<(nros_core::GoalId, A::Feedback)>, NodeError> {
         let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
@@ -772,14 +736,8 @@ impl<
 }
 
 #[cfg(feature = "stream")]
-impl<
-    A: RosAction,
-    Cli: ServiceClientTrait + Unpin,
-    Sub: Subscriber + Unpin,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
-> futures_core::Stream for FeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
+    futures_core::Stream for FeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
     type Item = Result<(nros_core::GoalId, A::Feedback), NodeError>;
 
@@ -813,24 +771,16 @@ impl<
 pub struct GoalFeedbackStream<
     'a,
     A: RosAction,
-    Cli,
-    Sub,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    client: &'a mut ActionClient<A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    client: &'a mut ActionClient<A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
     goal_id: nros_core::GoalId,
 }
 
-impl<
-    A: RosAction,
-    Cli: ServiceClientTrait,
-    Sub: Subscriber,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
-> GoalFeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
+    GoalFeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
     /// Async: wait for the next feedback message for this goal (no `futures` dependency needed).
     ///
@@ -862,9 +812,9 @@ impl<
     }
 
     /// Sync: wait for the next feedback message for this goal, spinning the executor.
-    pub fn wait_next<S: nros_rmw::Session, const M: usize, const C: usize>(
+    pub fn wait_next(
         &mut self,
-        executor: &mut super::Executor<S, M, C>,
+        executor: &mut super::Executor,
         timeout_ms: u64,
     ) -> Result<Option<A::Feedback>, NodeError> {
         let spin_interval_ms = DEFAULT_SPIN_INTERVAL_MS;
@@ -882,14 +832,8 @@ impl<
 }
 
 #[cfg(feature = "stream")]
-impl<
-    A: RosAction,
-    Cli: ServiceClientTrait + Unpin,
-    Sub: Subscriber + Unpin,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
-> futures_core::Stream for GoalFeedbackStream<'_, A, Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+impl<A: RosAction, const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
+    futures_core::Stream for GoalFeedbackStream<'_, A, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
     type Item = Result<A::Feedback, NodeError>;
 

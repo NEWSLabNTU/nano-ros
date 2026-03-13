@@ -3,11 +3,8 @@
 //! Calls `AddTwoInts` service using RTIC v2's hardware-scheduled async tasks
 //! with LAN9118 Ethernet networking.
 //!
-//! - `#[init]` calls `board::init_hardware()` and creates nano-ros handles
-//! - `net_poll` task drives transport I/O via `spin_once(0)`
-//! - `call_service` task uses `try_recv()` loop to poll for reply
-//!   (RTIC cannot use `Promise::wait()` since executor is `#[local]` to net_poll)
-//! - All nano-ros handles are `#[local]` — no locks required
+//! Uses a single task that owns both the executor and client, calling
+//! `spin_once()` between `try_recv()` polls for I/O processing.
 //!
 //! # Running
 //!
@@ -30,11 +27,10 @@ use rtic_monotonics::systick::prelude::*;
 systick_monotonic!(Mono, 1000);
 
 // Type aliases for RTIC Local struct annotations
-type RmwSrvClient = nros::internals::RmwServiceClient;
-type NrosExecutor = Executor<nros::internals::RmwSession, 0, 0>;
-type NrosServiceClient = nros::EmbeddedServiceClient<AddTwoInts, RmwSrvClient>;
+type NrosExecutor = Executor;
+type NrosServiceClient = nros::EmbeddedServiceClient<AddTwoInts>;
 
-#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0, UARTTX0])]
+#[rtic::app(device = mps2_an385_pac, dispatchers = [UARTRX0])]
 mod app {
     use super::*;
 
@@ -57,34 +53,29 @@ mod app {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_client");
-        let mut executor = Executor::<_, 0, 0>::open(&exec_config).unwrap();
+        let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("add_client").unwrap();
         let client = node.create_client::<AddTwoInts>("/add_two_ints").unwrap();
 
-        net_poll::spawn().unwrap();
         call_service::spawn().unwrap();
 
         (Shared {}, Local { executor, client })
     }
 
-    /// Drive transport I/O — equivalent to rclcpp spin_some().
-    #[task(local = [executor], priority = 1)]
-    async fn net_poll(cx: net_poll::Context) {
-        loop {
+    /// Drive transport I/O and call service in a single task.
+    ///
+    /// Each `spin_once(0)` call processes one round of network I/O.
+    /// The 10 ms RTIC yield lets QEMU's I/O loop service the TAP device
+    /// (host → LAN9118 RX FIFO path only runs during WFI).
+    #[task(local = [executor, client], priority = 1)]
+    async fn call_service(cx: call_service::Context) {
+        // Wait for zenoh session + server queryable discovery.
+        for _ in 0..500 {
             cx.local.executor.spin_once(0);
             Mono::delay(10.millis()).await;
         }
-    }
 
-    /// Call the service and poll for the reply using try_recv() loop.
-    ///
-    /// Note: `Promise::wait()` is NOT usable here because it requires `&mut Executor`,
-    /// which is `#[local]` to the `net_poll` task. Instead, use a `try_recv()` +
-    /// `Mono::delay().await` loop. The net_poll task drives I/O concurrently.
-    #[task(local = [client], priority = 1)]
-    async fn call_service(cx: call_service::Context) {
-        // Wait for zenoh session and server to be ready
-        Mono::delay(3000.millis()).await;
+        println!("Client ready, starting service calls...");
 
         let test_cases: [(i64, i64); 4] = [(5, 3), (10, 20), (100, 200), (-5, 10)];
 
@@ -94,28 +85,31 @@ mod app {
 
             let mut promise = cx.local.client.call(&request).unwrap();
 
-            // Poll for reply with timeout (~5 seconds)
-            let mut timeout = 500u32;
-            let reply = loop {
-                if let Ok(Some(reply)) = promise.try_recv() {
-                    break Some(reply);
-                }
-                if timeout == 0 {
-                    break None;
-                }
-                timeout -= 1;
+            let mut got_reply = false;
+            for _i in 0..3000u32 {
+                cx.local.executor.spin_once(0);
                 Mono::delay(10.millis()).await;
-            };
 
-            match reply {
-                Some(r) => println!("Reply: {} + {} = {}", a, b, r.sum),
-                None => {
-                    println!("Timeout waiting for reply");
-                    nros_mps2_an385::exit_failure();
+                match promise.try_recv() {
+                    Ok(Some(reply)) => {
+                        println!("Reply: {} + {} = {}", a, b, reply.sum);
+                        got_reply = true;
+                        break;
+                    }
+                    Ok(None) => {}
+                    Err(e) => {
+                        println!("try_recv error: {:?}", e);
+                        nros_mps2_an385::exit_failure();
+                    }
                 }
             }
+            if !got_reply {
+                println!("Service call timed out after 30s");
+                nros_mps2_an385::exit_failure();
+            }
 
-            Mono::delay(500.millis()).await;
+            cx.local.executor.spin_once(0);
+            Mono::delay(10.millis()).await;
         }
 
         println!("");

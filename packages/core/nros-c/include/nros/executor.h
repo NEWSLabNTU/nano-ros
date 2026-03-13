@@ -10,6 +10,7 @@
 #define NROS_EXECUTOR_H
 
 #include "nros/types.h"
+#include "nros/nros_config_generated.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -104,8 +105,10 @@ typedef struct nros_executor_t {
     size_t service_count;
     /** Next invocation time in nanoseconds for drift-compensated spin_period. */
     uint64_t invocation_time_ns;
-    /** Opaque pointer to internal Rust executor. */
-    void* _internal;
+    /** Inline opaque storage for the Rust executor.
+     *  Size is computed at build time from NROS_EXECUTOR_MAX_CBS and
+     *  NROS_EXECUTOR_ARENA_SIZE — no heap allocation needed. */
+    _Alignas(8) uint8_t _opaque[NROS_EXECUTOR_STORAGE_SIZE];
 } nros_executor_t;
 
 /* ===================================================================

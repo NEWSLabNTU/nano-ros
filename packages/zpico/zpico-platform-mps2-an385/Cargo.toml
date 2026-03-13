@@ -9,21 +9,24 @@ description = "Zenoh-pico system primitives for QEMU MPS2-AN385 (no nros depende
 name = "zpico_platform_mps2_an385"
 
 [features]
-default = []
+default = ["ethernet"]
+# Ethernet transport via LAN9118 + smoltcp
+ethernet = ["dep:zpico-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp", "zpico-sys/link-tcp"]
 # TLS support (enables mbedTLS cross-compilation and TLS platform symbols)
 link-tls = ["zpico-smoltcp/link-tls", "zpico-sys/link-tls"]
 
 [dependencies]
-# Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
-zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp"] }
-# TCP link layer via smoltcp
-zpico-smoltcp = { path = "../zpico-smoltcp" }
-# LAN9118 Ethernet driver for QEMU MPS2-AN385
-lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp" }
+# Zenoh FFI bindings — bare-metal only
+zpico-sys = { path = "../zpico-sys", features = ["bare-metal"] }
+# TCP link layer via smoltcp (ethernet only)
+zpico-smoltcp = { path = "../zpico-smoltcp", optional = true }
+# LAN9118 Ethernet driver for QEMU MPS2-AN385 (ethernet only)
+lan9118-smoltcp = { path = "../../drivers/lan9118-smoltcp", optional = true }
 
 # Embedded dependencies
 cortex-m = "0.7"
-smoltcp = { version = "0.12", default-features = false, features = [
+# smoltcp (ethernet only — needed for Interface/SocketSet types in network.rs)
+smoltcp = { version = "0.12", default-features = false, optional = true, features = [
     "medium-ethernet",
     "proto-ipv4",
     "socket-tcp",

@@ -8,16 +8,7 @@
 
 #include "nros/result.hpp"
 #include "nros/qos.hpp"
-#include "nros/node.hpp" // includes publisher.hpp and subscription.hpp
-
-// Future headers (Phase 66.5+):
-// #include "nros/service.hpp"
-// #include "nros/client.hpp"
-// #include "nros/action_server.hpp"
-// #include "nros/action_client.hpp"
-// #include "nros/timer.hpp"
-// #include "nros/executor.hpp"
-// #include "nros/guard_condition.hpp"
+#include "nros/node.hpp" // includes publisher, subscription, service, client, action headers
 
 namespace nros {
 
@@ -29,13 +20,40 @@ namespace nros {
 /// @param timeout_ms  Maximum time to block waiting for I/O (default: 10ms).
 /// @return Result indicating success or failure.
 inline Result spin_once(int32_t timeout_ms = 10) {
-    void* handle = Node::global_executor();
-    if (!handle) {
+    if (!Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
-    return Result(nros_cpp_spin_once(handle, timeout_ms));
+    return Result(nros_cpp_spin_once(Node::global_storage(), timeout_ms));
+}
+
+/// Spin for a duration (blocking).
+///
+/// Repeatedly calls `spin_once()` until `duration_ms` has elapsed.
+/// Convenience wrapper around the global executor.
+///
+/// @param duration_ms  Total time to spin, in milliseconds.
+/// @param poll_ms      Individual spin_once timeout (default: 10ms).
+/// @return Result from the last spin_once call.
+inline Result spin(uint32_t duration_ms, int32_t poll_ms = 10) {
+    if (!Node::global_initialized()) {
+        return Result(ErrorCode::NotInitialized);
+    }
+    uint32_t elapsed = 0;
+    Result last = Result::success();
+    while (elapsed < duration_ms) {
+        int32_t remaining = static_cast<int32_t>(duration_ms - elapsed);
+        int32_t timeout = remaining < poll_ms ? remaining : poll_ms;
+        last = Result(nros_cpp_spin_once(Node::global_storage(), timeout));
+        if (!last.ok()) return last;
+        elapsed += static_cast<uint32_t>(timeout);
+    }
+    return last;
 }
 
 } // namespace nros
+
+#ifdef NROS_CPP_STD
+#include "nros/std_compat.hpp"
+#endif
 
 #endif // NROS_CPP_HPP

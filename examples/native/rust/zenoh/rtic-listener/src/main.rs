@@ -17,7 +17,7 @@ fn main() {
     info!("nros RTIC-pattern Listener (native)");
 
     let config = ExecutorConfig::from_env().node_name("listener");
-    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open session");
+    let mut executor = Executor::open(&config).expect("Failed to open session");
 
     let mut node = executor
         .create_node("listener")

@@ -18,7 +18,7 @@ extern "C" fn _start() -> ! {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("fibonacci_action_server");
-        let mut executor = Executor::<_, 8, 8192>::open(&exec_config)?;
+        let mut executor = Executor::open(&exec_config)?;
         let mut node = executor.create_node("fibonacci_action_server")?;
 
         let mut server = node.create_action_server::<Fibonacci>("/fibonacci")?;

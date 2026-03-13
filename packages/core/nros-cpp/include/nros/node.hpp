@@ -8,9 +8,17 @@
 #include <cstddef>
 
 #include "nros/result.hpp"
+#include "nros/nros_cpp_config_generated.h"
 #include "nros/qos.hpp"
 #include "nros/publisher.hpp"
 #include "nros/subscription.hpp"
+#include "nros/service.hpp"
+#include "nros/client.hpp"
+#include "nros/action_server.hpp"
+#include "nros/action_client.hpp"
+#include "nros/timer.hpp"
+#include "nros/guard_condition.hpp"
+#include "nros/executor.hpp"
 
 // FFI declarations (from nros-cpp-ffi generated header)
 extern "C" {
@@ -46,9 +54,9 @@ struct nros_cpp_node_t {
 };
 
 nros_cpp_ret_t nros_cpp_init(const char* locator, uint8_t domain_id, const char* node_name,
-                             const char* ns, void** out_handle);
+                             const char* ns, void* storage);
 
-nros_cpp_ret_t nros_cpp_fini(void* handle);
+nros_cpp_ret_t nros_cpp_fini(void* storage);
 
 nros_cpp_ret_t nros_cpp_node_create(void* executor_handle, const char* name, const char* ns,
                                     nros_cpp_node_t* out_node);
@@ -60,11 +68,27 @@ const char* nros_cpp_node_get_namespace(const nros_cpp_node_t* node);
 
 nros_cpp_ret_t nros_cpp_publisher_create(const nros_cpp_node_t* node, const char* topic,
                                          const char* type_name, const char* type_hash,
-                                         nros_cpp_qos_t qos, void** out_handle);
+                                         nros_cpp_qos_t qos, void* storage);
 
 nros_cpp_ret_t nros_cpp_subscription_create(const nros_cpp_node_t* node, const char* topic,
                                             const char* type_name, const char* type_hash,
-                                            nros_cpp_qos_t qos, void** out_handle);
+                                            nros_cpp_qos_t qos, void* storage);
+
+nros_cpp_ret_t nros_cpp_service_server_create(const nros_cpp_node_t* node, const char* service_name,
+                                              const char* type_name, const char* type_hash,
+                                              nros_cpp_qos_t qos, void* storage);
+
+nros_cpp_ret_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const char* service_name,
+                                              const char* type_name, const char* type_hash,
+                                              nros_cpp_qos_t qos, void* storage);
+
+nros_cpp_ret_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
+                                             const char* type_name, const char* type_hash,
+                                             nros_cpp_qos_t qos, void** out_handle);
+
+nros_cpp_ret_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
+                                             const char* type_name, const char* type_hash,
+                                             nros_cpp_qos_t qos, void** out_handle);
 
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
@@ -152,11 +176,9 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_publisher_create(&handle_, topic, M::TYPE_NAME, M::TYPE_HASH,
-                                                       ffi_qos, &handle);
+                                                       ffi_qos, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.initialized_ = true;
         }
         return Result(ret);
@@ -177,11 +199,171 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
         nros_cpp_ret_t ret = nros_cpp_subscription_create(&handle_, topic, M::TYPE_NAME,
-                                                          M::TYPE_HASH, ffi_qos, &handle);
+                                                          M::TYPE_HASH, ffi_qos, out.storage_);
+        if (ret == 0) {
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a service server.
+    ///
+    /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
+    /// @param out           Receives the initialized service server.
+    /// @param service_name  Service name (null-terminated).
+    /// @param qos           QoS profile (default: services preset).
+    template <typename S>
+    Result create_service(Service<S>& out, const char* service_name,
+                          const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        nros_cpp_ret_t ret = nros_cpp_service_server_create(
+            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
+        if (ret == 0) {
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a service client.
+    ///
+    /// @tparam S  Service type (must define nested Request and Response with TYPE_NAME/TYPE_HASH).
+    /// @param out           Receives the initialized service client.
+    /// @param service_name  Service name (null-terminated).
+    /// @param qos           QoS profile (default: services preset).
+    template <typename S>
+    Result create_client(Client<S>& out, const char* service_name,
+                         const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        nros_cpp_ret_t ret = nros_cpp_service_client_create(
+            &handle_, service_name, S::TYPE_NAME, S::Request::TYPE_HASH, ffi_qos, out.storage_);
+        if (ret == 0) {
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create an action server.
+    ///
+    /// Goals are auto-accepted during spin_once(). Use try_recv_goal() to poll.
+    ///
+    /// @tparam A  Action type (must define nested Goal, Result, Feedback with TYPE_NAME/TYPE_HASH).
+    /// @param out          Receives the initialized action server.
+    /// @param action_name  Action name (null-terminated).
+    /// @param qos          QoS profile (default: services preset).
+    template <typename A>
+    Result create_action_server(ActionServer<A>& out, const char* action_name,
+                                const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        void* handle = nullptr;
+        nros_cpp_ret_t ret = nros_cpp_action_server_create(&handle_, action_name, A::TYPE_NAME,
+                                                           A::Goal::TYPE_HASH, ffi_qos, &handle);
         if (ret == 0) {
             out.handle_ = handle;
+            out.executor_ = executor_handle_;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create an action client.
+    ///
+    /// @tparam A  Action type (must define nested Goal, Result, Feedback with TYPE_NAME/TYPE_HASH).
+    /// @param out          Receives the initialized action client.
+    /// @param action_name  Action name (null-terminated).
+    /// @param qos          QoS profile (default: services preset).
+    template <typename A>
+    Result create_action_client(ActionClient<A>& out, const char* action_name,
+                                const QoS& qos = QoS::services()) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_qos_t ffi_qos;
+        ffi_qos.reliability = static_cast<nros_cpp_qos_reliability_t>(qos.reliability_raw());
+        ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
+        ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
+        ffi_qos.depth = qos.depth();
+        void* handle = nullptr;
+        nros_cpp_ret_t ret = nros_cpp_action_client_create(&handle_, action_name, A::TYPE_NAME,
+                                                           A::Goal::TYPE_HASH, ffi_qos, &handle);
+        if (ret == 0) {
+            out.handle_ = handle;
+            out.executor_ = executor_handle_;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a repeating timer.
+    ///
+    /// The callback fires during `spin_once()` at the specified period.
+    ///
+    /// @param out        Receives the initialized timer.
+    /// @param period_ms  Timer period in milliseconds.
+    /// @param callback   C function pointer invoked on each tick.
+    /// @param context    User context passed to the callback (may be nullptr).
+    Result create_timer(Timer& out, uint64_t period_ms, nros_cpp_timer_callback_t callback,
+                        void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        size_t handle_id = 0;
+        nros_cpp_ret_t ret =
+            nros_cpp_timer_create(executor_handle_, period_ms, callback, context, &handle_id);
+        if (ret == 0) {
+            out.executor_ = executor_handle_;
+            out.handle_id_ = handle_id;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a one-shot timer.
+    ///
+    /// The callback fires once after the specified delay.
+    ///
+    /// @param out       Receives the initialized timer.
+    /// @param delay_ms  Delay in milliseconds before the callback fires.
+    /// @param callback  C function pointer invoked once.
+    /// @param context   User context passed to the callback (may be nullptr).
+    Result create_timer_oneshot(Timer& out, uint64_t delay_ms, nros_cpp_timer_callback_t callback,
+                                void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        size_t handle_id = 0;
+        nros_cpp_ret_t ret = nros_cpp_timer_create_oneshot(executor_handle_, delay_ms, callback,
+                                                           context, &handle_id);
+        if (ret == 0) {
+            out.executor_ = executor_handle_;
+            out.handle_id_ = handle_id;
+            out.initialized_ = true;
+        }
+        return Result(ret);
+    }
+
+    /// Create a guard condition for cross-thread signaling.
+    ///
+    /// The callback fires during `spin_once()` when `guard.trigger()` is called.
+    ///
+    /// @param out       Receives the initialized guard condition.
+    /// @param callback  C function pointer invoked when triggered.
+    /// @param context   User context passed to the callback (may be nullptr).
+    Result create_guard_condition(GuardCondition& out, nros_cpp_guard_callback_t callback,
+                                  void* context = nullptr) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        nros_cpp_ret_t ret =
+            nros_cpp_guard_condition_create(executor_handle_, callback, context, out.storage_);
+        if (ret == 0) {
             out.initialized_ = true;
         }
         return Result(ret);
@@ -225,46 +407,48 @@ class Node {
     bool initialized_;
     void* executor_handle_; // Set by nros::init() via friendship
 
+    friend class Executor;
     friend Result init(const char* locator, uint8_t domain_id);
     friend Result shutdown();
     friend bool ok();
     friend Result create_node(Node& out, const char* name, const char* ns);
     friend Result spin_once(int32_t timeout_ms);
+    friend Result spin(uint32_t duration_ms, int32_t poll_ms);
 
-    // Store the global executor handle for init/shutdown
-    // (In freestanding C++, we use a simple static pointer)
-    static void*& global_executor() {
-        static void* handle = nullptr;
-        return handle;
+    // Global executor inline storage for init/shutdown free functions.
+    static uint8_t* global_storage() {
+        alignas(8) static uint8_t storage[NROS_CPP_EXECUTOR_STORAGE_SIZE] = {};
+        return storage;
+    }
+    static bool& global_initialized() {
+        static bool init = false;
+        return init;
     }
 };
 
 // -- Free function implementations --
 
 inline Result init(const char* locator, uint8_t domain_id) {
-    // Default node name for the session
-    void* handle = nullptr;
-    nros_cpp_ret_t ret = nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, &handle);
-
+    nros_cpp_ret_t ret =
+        nros_cpp_init(locator, domain_id, "nros_cpp", nullptr, Node::global_storage());
     if (ret == 0) {
-        Node::global_executor() = handle;
+        Node::global_initialized() = true;
     }
     return Result(ret);
 }
 
 inline Result shutdown() {
-    void*& handle = Node::global_executor();
-    if (!handle) {
+    if (!Node::global_initialized()) {
         return Result::success();
     }
-    nros_cpp_ret_t ret = nros_cpp_fini(handle);
-    handle = nullptr;
+    nros_cpp_ret_t ret = nros_cpp_fini(Node::global_storage());
+    Node::global_initialized() = false;
     return Result(ret);
 }
 
 /// Check if the nros session is initialized.
 inline bool ok() {
-    return Node::global_executor() != nullptr;
+    return Node::global_initialized();
 }
 
 /// Create a node (convenience — uses the global executor).
@@ -275,10 +459,18 @@ inline bool ok() {
 /// @param name  Node name.
 /// @param ns    Node namespace, or nullptr for "/".
 inline Result create_node(Node& out, const char* name, const char* ns = nullptr) {
-    out.executor_handle_ = Node::global_executor();
-    if (!out.executor_handle_) {
+    if (!Node::global_initialized()) {
         return Result(ErrorCode::NotInitialized);
     }
+    out.executor_handle_ = Node::global_storage();
+    return Node::create(out, name, ns);
+}
+
+// -- Executor::create_node implementation (requires full Node definition) --
+
+inline Result Executor::create_node(Node& out, const char* name, const char* ns) {
+    if (!initialized_) return Result(ErrorCode::NotInitialized);
+    out.executor_handle_ = storage_;
     return Node::create(out, name, ns);
 }
 

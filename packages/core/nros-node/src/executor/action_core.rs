@@ -8,9 +8,10 @@
 //! and add serialization/deserialization at the boundary.
 
 use nros_core::{CdrReader, CdrWriter, GoalId, GoalInfo, GoalStatus, GoalStatusStamped, Serialize};
-use nros_rmw::{Publisher, ServiceServerTrait, Subscriber, TransportError};
+use nros_rmw::{Publisher, ServiceClientTrait, ServiceServerTrait, Subscriber, TransportError};
 
 use super::types::NodeError;
+use crate::session;
 
 // ============================================================================
 // Supporting types
@@ -90,18 +91,16 @@ fn write_goal_id(writer: &mut CdrWriter<'_>, goal_id: &GoalId) -> Result<(), Nod
 /// The typed [`ActionServer`](super::handles::ActionServer) wraps this
 /// and adds `A::Goal` / `A::Feedback` / `A::Result` (de)serialization.
 pub struct ActionServerCore<
-    Srv,
-    Pub,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const MAX_GOALS: usize = 4,
 > {
-    pub(crate) send_goal_server: Srv,
-    pub(crate) cancel_goal_server: Srv,
-    pub(crate) get_result_server: Srv,
-    pub(crate) feedback_publisher: Pub,
-    pub(crate) status_publisher: Pub,
+    pub(crate) send_goal_server: session::RmwServiceServer,
+    pub(crate) cancel_goal_server: session::RmwServiceServer,
+    pub(crate) get_result_server: session::RmwServiceServer,
+    pub(crate) feedback_publisher: session::RmwPublisher,
+    pub(crate) status_publisher: session::RmwPublisher,
     pub(crate) active_goals: heapless::Vec<RawActiveGoal, MAX_GOALS>,
     pub(crate) completed_results: heapless::Vec<CompletedResultEntry, MAX_GOALS>,
     /// Slab storage for completed result CDR bytes.
@@ -113,13 +112,11 @@ pub struct ActionServerCore<
 }
 
 impl<
-    Srv: ServiceServerTrait,
-    Pub: Publisher,
     const GOAL_BUF: usize,
     const RESULT_BUF: usize,
     const FEEDBACK_BUF: usize,
     const MAX_GOALS: usize,
-> ActionServerCore<Srv, Pub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
+> ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>
 {
     /// Try to receive a goal request from the send_goal service.
     ///
@@ -469,36 +466,29 @@ impl<
 /// The typed [`ActionClient`](super::handles::ActionClient) wraps this
 /// and adds serialization/deserialization at the boundary.
 pub struct ActionClientCore<
-    Cli,
-    Sub,
     const GOAL_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const RESULT_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
     const FEEDBACK_BUF: usize = { crate::config::DEFAULT_RX_BUF_SIZE },
 > {
-    pub(crate) send_goal_client: Cli,
-    pub(crate) cancel_goal_client: Cli,
-    pub(crate) get_result_client: Cli,
-    pub(crate) feedback_subscriber: Sub,
+    pub(crate) send_goal_client: session::RmwServiceClient,
+    pub(crate) cancel_goal_client: session::RmwServiceClient,
+    pub(crate) get_result_client: session::RmwServiceClient,
+    pub(crate) feedback_subscriber: session::RmwSubscriber,
     pub(crate) goal_buffer: [u8; GOAL_BUF],
     pub(crate) result_buffer: [u8; RESULT_BUF],
     pub(crate) feedback_buffer: [u8; FEEDBACK_BUF],
     pub(crate) goal_counter: u64,
 }
 
-impl<
-    Cli: nros_rmw::ServiceClientTrait,
-    Sub: Subscriber,
-    const GOAL_BUF: usize,
-    const RESULT_BUF: usize,
-    const FEEDBACK_BUF: usize,
-> ActionClientCore<Cli, Sub, GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
+impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
+    ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>
 {
     /// Create a new action client core from the raw transport handles.
     pub fn new(
-        send_goal_client: Cli,
-        cancel_goal_client: Cli,
-        get_result_client: Cli,
-        feedback_subscriber: Sub,
+        send_goal_client: session::RmwServiceClient,
+        cancel_goal_client: session::RmwServiceClient,
+        get_result_client: session::RmwServiceClient,
+        feedback_subscriber: session::RmwSubscriber,
     ) -> Self {
         Self {
             send_goal_client,

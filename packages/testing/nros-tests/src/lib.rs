@@ -104,6 +104,23 @@ pub fn wait_for_port(port: u16, timeout: Duration) -> bool {
     false
 }
 
+/// Wait for a TCP port to become available on a specific address
+///
+/// Like [`wait_for_port`] but checks a specific IP instead of localhost.
+/// Useful for verifying zenohd is reachable on a bridge IP (e.g., 192.0.3.1).
+pub fn wait_for_port_on(addr: &str, port: u16, timeout: Duration) -> bool {
+    let start = Instant::now();
+    let target = format!("{}:{}", addr, port);
+
+    while start.elapsed() < timeout {
+        if TcpStream::connect(&target).is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
+    false
+}
+
 /// Wait for a specific pattern in process output
 ///
 /// # Arguments

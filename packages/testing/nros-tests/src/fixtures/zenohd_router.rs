@@ -2,7 +2,7 @@
 //!
 //! Provides automatic startup and cleanup of the zenoh router daemon.
 
-use crate::process::kill_process_group;
+use crate::process::graceful_kill_process_group;
 use crate::{TestError, TestResult, wait_for_port};
 use std::net::TcpStream;
 use std::process::Child;
@@ -112,6 +112,39 @@ impl ZenohRouter {
         })
     }
 
+    /// Start a zenohd router with serial listeners on the given PTY paths
+    ///
+    /// Each PTY path is added as a `serial/<path>#baudrate=115200` listener.
+    /// No TCP listener is created — the router is only reachable via serial.
+    ///
+    /// # Arguments
+    /// * `pty_paths` - Host PTY device paths (e.g., `/dev/pts/5`)
+    pub fn start_serial(pty_paths: &[&str]) -> TestResult<Self> {
+        let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
+        cmd.arg("--no-multicast-scouting");
+
+        for pty in pty_paths {
+            let locator = format!("serial/{}#baudrate=115200", pty);
+            cmd.args(["--listen", &locator]);
+        }
+
+        cmd.stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped());
+        #[cfg(unix)]
+        crate::process::set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        // Serial listeners don't have a TCP port to probe, so wait a bit
+        // for zenohd to initialize and open the serial devices.
+        std::thread::sleep(Duration::from_secs(2));
+
+        Ok(Self {
+            handle,
+            port: 0,
+            tls: false,
+        })
+    }
+
     /// Start a router with TLS listener on the specified port
     ///
     /// # Arguments
@@ -206,7 +239,7 @@ impl ZenohRouter {
 
 impl Drop for ZenohRouter {
     fn drop(&mut self) {
-        kill_process_group(&mut self.handle);
+        graceful_kill_process_group(&mut self.handle);
     }
 }
 

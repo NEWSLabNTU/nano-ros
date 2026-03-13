@@ -25,7 +25,7 @@ extern "C" fn rust_main() {
 
 fn run() -> Result<(), NodeError> {
     let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut executor: Executor<_> = Executor::open(&config)?;
+    let mut executor: Executor = Executor::open(&config)?;
 
     executor.add_service::<AddTwoInts, _>("/add_two_ints", |req| {
         let sum = req.a + req.b;

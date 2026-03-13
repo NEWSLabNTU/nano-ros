@@ -30,10 +30,8 @@ use rtic_monotonics::systick::prelude::*;
 systick_monotonic!(Mono, 1000);
 
 // Type aliases for RTIC Local struct annotations
-type RmwSrvServer = nros::internals::RmwServiceServer;
-type RmwPub = nros::internals::RmwPublisher;
-type NrosExecutor = Executor<nros::internals::RmwSession, 0, 0>;
-type NrosActionServer = nros::ActionServer<Fibonacci, RmwSrvServer, RmwPub>;
+type NrosExecutor = Executor;
+type NrosActionServer = nros::ActionServer<Fibonacci>;
 
 #[rtic::app(device = stm32f4xx_hal::pac, dispatchers = [USART1, USART2])]
 mod app {
@@ -58,7 +56,7 @@ mod app {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("fibonacci_server");
-        let mut executor = Executor::<_, 0, 0>::open(&exec_config).unwrap();
+        let mut executor = Executor::open(&exec_config).unwrap();
         let mut node = executor.create_node("fibonacci_server").unwrap();
         let server = node
             .create_action_server::<Fibonacci>("/fibonacci")

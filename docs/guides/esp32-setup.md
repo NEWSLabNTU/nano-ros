@@ -213,7 +213,7 @@ Tests include boot verification, ESP32-to-ESP32 pub/sub, and ESP32-to-native int
 
 - Requires `espflash` for flash image creation (`espflash save-image --merge`)
 - Uses `-icount 3` for instruction timing (simulates 125MHz)
-- Must use zenohd 1.6.2 from submodule (`just build-zenohd`) — system zenohd may be incompatible
+- Must use zenohd from submodule (`just build-zenohd`) — system zenohd may be incompatible
 - Each QEMU peer uses a separate TAP device (`tap-qemu0`, `tap-qemu1`)
 
 ## WiFi BSP Examples

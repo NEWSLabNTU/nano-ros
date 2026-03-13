@@ -1,13 +1,10 @@
 use super::*;
-use core::cell::Cell;
 use nros_core::{
     CdrReader, CdrWriter, DeserError, Deserialize, RosAction, RosMessage, SerError, Serialize,
 };
-use nros_rmw::{
-    Publisher, QosSettings, ServiceClientTrait, ServiceInfo, ServiceRequest, ServiceServerTrait,
-    Session, Subscriber, TopicInfo, TransportError,
-};
+use nros_rmw::TransportError;
 
+use crate::mock::{MockSession, MockSubscriber};
 use crate::timer::TimerDuration;
 
 #[test]
@@ -58,180 +55,6 @@ fn encode_test_msg(value: i32) -> ([u8; 256], usize) {
     (buf, len)
 }
 
-/// Mock subscriber that can be loaded with canned CDR data.
-struct MockSubscriber {
-    /// Pre-encoded data to return on the next `try_recv_raw` call.
-    pending: Cell<Option<([u8; 256], usize)>>,
-}
-
-impl MockSubscriber {
-    fn new() -> Self {
-        Self {
-            pending: Cell::new(None),
-        }
-    }
-
-    fn load(&self, data: [u8; 256], len: usize) {
-        self.pending.set(Some((data, len)));
-    }
-}
-
-impl Subscriber for MockSubscriber {
-    type Error = TransportError;
-
-    fn has_data(&self) -> bool {
-        self.pending.get().is_some()
-    }
-
-    fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, TransportError> {
-        match self.pending.get() {
-            Some((data, len)) => {
-                buf[..len].copy_from_slice(&data[..len]);
-                self.pending.set(None);
-                Ok(Some(len))
-            }
-            None => Ok(None),
-        }
-    }
-
-    fn deserialization_error(&self) -> TransportError {
-        TransportError::DeserializationError
-    }
-}
-
-/// Mock service server (not used for service tests yet, but needed for Session).
-struct MockServiceServer;
-
-impl ServiceServerTrait for MockServiceServer {
-    type Error = TransportError;
-
-    fn try_recv_request<'a>(
-        &mut self,
-        _buf: &'a mut [u8],
-    ) -> Result<Option<ServiceRequest<'a>>, TransportError> {
-        Ok(None)
-    }
-
-    fn send_reply(&mut self, _seq: i64, _data: &[u8]) -> Result<(), TransportError> {
-        Ok(())
-    }
-}
-
-/// Dummy publisher (never used in callback tests).
-struct MockPublisher;
-
-impl Publisher for MockPublisher {
-    type Error = TransportError;
-
-    fn publish_raw(&self, _data: &[u8]) -> Result<(), TransportError> {
-        Ok(())
-    }
-
-    fn buffer_error(&self) -> TransportError {
-        TransportError::BufferTooSmall
-    }
-
-    fn serialization_error(&self) -> TransportError {
-        TransportError::SerializationError
-    }
-}
-
-/// Mock service client with controllable async reply behavior.
-struct MockServiceClient {
-    /// Pre-loaded reply data to return on next `try_recv_reply_raw` call.
-    pending_reply: Cell<Option<([u8; 256], usize)>>,
-}
-
-impl MockServiceClient {
-    fn new() -> Self {
-        Self {
-            pending_reply: Cell::new(None),
-        }
-    }
-
-    /// Load a reply that will be returned by the next `try_recv_reply_raw` call.
-    fn load_reply(&self, data: [u8; 256], len: usize) {
-        self.pending_reply.set(Some((data, len)));
-    }
-}
-
-impl ServiceClientTrait for MockServiceClient {
-    type Error = TransportError;
-
-    fn call_raw(&mut self, _req: &[u8], _reply_buf: &mut [u8]) -> Result<usize, TransportError> {
-        Err(TransportError::Timeout)
-    }
-
-    fn send_request_raw(&mut self, _request: &[u8]) -> Result<(), TransportError> {
-        Ok(())
-    }
-
-    fn try_recv_reply_raw(
-        &mut self,
-        reply_buf: &mut [u8],
-    ) -> Result<Option<usize>, TransportError> {
-        match self.pending_reply.get() {
-            Some((data, len)) => {
-                reply_buf[..len].copy_from_slice(&data[..len]);
-                self.pending_reply.set(None);
-                Ok(Some(len))
-            }
-            None => Ok(None),
-        }
-    }
-}
-
-/// Mock session that produces mock handles.
-struct MockSession;
-
-impl MockSession {
-    fn new() -> Self {
-        Self
-    }
-}
-
-impl Session for MockSession {
-    type Error = TransportError;
-    type PublisherHandle = MockPublisher;
-    type SubscriberHandle = MockSubscriber;
-    type ServiceServerHandle = MockServiceServer;
-    type ServiceClientHandle = MockServiceClient;
-
-    fn create_publisher(
-        &mut self,
-        _topic: &TopicInfo,
-        _qos: QosSettings,
-    ) -> Result<MockPublisher, TransportError> {
-        Ok(MockPublisher)
-    }
-
-    fn create_subscriber(
-        &mut self,
-        _topic: &TopicInfo,
-        _qos: QosSettings,
-    ) -> Result<MockSubscriber, TransportError> {
-        Ok(MockSubscriber::new())
-    }
-
-    fn create_service_server(
-        &mut self,
-        _service: &ServiceInfo,
-    ) -> Result<MockServiceServer, TransportError> {
-        Ok(MockServiceServer)
-    }
-
-    fn create_service_client(
-        &mut self,
-        _service: &ServiceInfo,
-    ) -> Result<MockServiceClient, TransportError> {
-        Ok(MockServiceClient::new())
-    }
-
-    fn close(&mut self) -> Result<(), TransportError> {
-        Ok(())
-    }
-}
-
 // ====================================================================
 // Arena callback tests
 // ====================================================================
@@ -239,7 +62,7 @@ impl Session for MockSession {
 #[test]
 fn test_add_subscription_and_spin_once_no_data() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // Register a subscription — callback should never fire
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -259,7 +82,7 @@ fn test_add_subscription_and_spin_once_no_data() {
 #[test]
 fn test_add_subscription_and_spin_once_with_data() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let received = std::sync::Arc::new(std::sync::Mutex::new(None));
     let received2 = received.clone();
@@ -289,7 +112,7 @@ fn test_add_subscription_and_spin_once_with_data() {
 #[test]
 fn test_multiple_subscriptions() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count1 = count.clone();
@@ -324,24 +147,45 @@ fn test_multiple_subscriptions() {
 #[test]
 fn test_arena_overflow() {
     let session = MockSession::new();
-    // Tiny arena — one SubEntry<TestMsg, MockSubscriber, fn, 1024> is ~1040+ bytes
-    let mut executor: Executor<MockSession, 4, 128> = Executor::from_session(session);
+    // Arena is 4096 bytes. Each SubEntry<TestMsg, fn, 1024> is ~1300 bytes.
+    // Registering enough subscriptions to exceed the arena should fail.
+    let mut executor = Executor::from_session(session);
 
-    let result = executor.add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {});
+    // Fill the arena — each subscription uses ~1300 bytes of the 4096-byte arena.
+    // After 3 subscriptions (~3900 bytes), the 4th should fail.
+    for i in 0..3 {
+        let topic = heapless::String::<32>::try_from(if i == 0 {
+            "/a"
+        } else if i == 1 {
+            "/b"
+        } else {
+            "/c"
+        })
+        .unwrap();
+        executor
+            .add_subscription::<TestMsg, _>(&topic, |_msg: &TestMsg| {})
+            .unwrap();
+    }
+
+    let result = executor.add_subscription::<TestMsg, _>("/overflow", |_msg: &TestMsg| {});
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 
 #[test]
 fn test_entry_slots_exhausted() {
     let session = MockSession::new();
-    // 1 entry slot but plenty of arena space
-    let mut executor: Executor<MockSession, 1, 8192> = Executor::from_session(session);
+    // MAX_CBS=4 slots. Use small buffers to avoid arena overflow before
+    // exhausting slots.
+    let mut executor = Executor::from_session(session);
 
-    executor
-        .add_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
-        .unwrap();
+    for topic in &["/a", "/b", "/c", "/d"] {
+        executor
+            .add_subscription_sized::<TestMsg, _, 64>(topic, |_msg: &TestMsg| {})
+            .unwrap();
+    }
 
-    let result = executor.add_subscription::<TestMsg, _>("/b", |_msg: &TestMsg| {});
+    // 5th registration should fail — all 4 slots are taken.
+    let result = executor.add_subscription_sized::<TestMsg, _, 64>("/e", |_msg: &TestMsg| {});
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 
@@ -368,7 +212,7 @@ fn test_spin_once_result_counts() {
 #[test]
 fn test_drop_runs_without_panic() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     executor
         .add_subscription::<TestMsg, _>("/test", |_msg: &TestMsg| {})
@@ -378,12 +222,11 @@ fn test_drop_runs_without_panic() {
 }
 
 #[test]
-fn test_zero_sized_executor_spin_once() {
-    // Default const generics: MAX_CBS=0, CB_ARENA=0
+fn test_executor_spin_once_no_entries() {
+    // Executor with no registered callbacks — spin_once just calls drive_io.
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 0, 0> = Executor::from_session(session);
+    let mut executor = Executor::from_session(session);
 
-    // spin_once with no entries just calls drive_io
     let result = executor.spin_once(0);
     assert!(!result.any_work());
 }
@@ -391,7 +234,7 @@ fn test_zero_sized_executor_spin_once() {
 #[test]
 fn test_arena_alignment() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // Add a subscription, then check the offset is properly aligned
     executor
@@ -399,8 +242,7 @@ fn test_arena_alignment() {
         .unwrap();
 
     let meta = executor.entries[0].as_ref().unwrap();
-    let entry_align =
-        core::mem::align_of::<arena::SubEntry<TestMsg, MockSubscriber, fn(&TestMsg), 1024>>();
+    let entry_align = core::mem::align_of::<arena::SubEntry<TestMsg, fn(&TestMsg), 1024>>();
     assert_eq!(meta.offset % entry_align, 0);
 }
 
@@ -411,7 +253,7 @@ fn test_arena_alignment() {
 #[test]
 fn test_add_timer_and_fire() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -435,7 +277,7 @@ fn test_add_timer_and_fire() {
 #[test]
 fn test_timer_repeats() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -455,7 +297,7 @@ fn test_timer_repeats() {
 #[test]
 fn test_timer_oneshot_fires_once() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -479,7 +321,7 @@ fn test_timer_oneshot_fires_once() {
 #[test]
 fn test_timer_does_not_fire_at_zero_delta() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -497,7 +339,7 @@ fn test_timer_does_not_fire_at_zero_delta() {
 #[test]
 fn test_timer_with_subscriptions() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let timer_count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let timer_count2 = timer_count.clone();
@@ -621,11 +463,11 @@ impl RosAction for TestAction {
 #[test]
 fn test_add_action_server_registers() {
     let session = MockSession::new();
-    // Action server arena entry is large — give plenty of space
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+    // Use small buffers to fit within the 4096-byte arena.
+    let mut executor = Executor::from_session(session);
 
     let handle = executor
-        .add_action_server::<TestAction, _, _>(
+        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -640,10 +482,10 @@ fn test_add_action_server_registers() {
 #[test]
 fn test_action_server_spin_once_no_requests() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+    let mut executor = Executor::from_session(session);
 
     let _handle = executor
-        .add_action_server::<TestAction, _, _>(
+        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -659,10 +501,10 @@ fn test_action_server_spin_once_no_requests() {
 #[test]
 fn test_action_server_registers_and_spins() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 8, 65536> = Executor::from_session(session);
+    let mut executor = Executor::from_session(session);
 
     let _server_handle = executor
-        .add_action_server::<TestAction, _, _>(
+        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/test_action",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -679,17 +521,17 @@ fn test_action_server_registers_and_spins() {
 #[test]
 fn test_drop_with_mixed_entries() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 8, 65536> = Executor::from_session(session);
+    let mut executor = Executor::from_session(session);
 
-    // Register one of each kind
+    // Register one of each kind — use small buffers to fit in 4096-byte arena.
     executor
-        .add_subscription::<TestMsg, _>("/sub", |_msg: &TestMsg| {})
+        .add_subscription_sized::<TestMsg, _, 64>("/sub", |_msg: &TestMsg| {})
         .unwrap();
     executor
         .add_timer(TimerDuration::from_millis(100), || {})
         .unwrap();
     let _server = executor
-        .add_action_server::<TestAction, _, _>(
+        .add_action_server_sized::<TestAction, _, _, 64, 64, 64, 1>(
             "/act",
             |_goal_id, _goal: &TestGoal| nros_core::GoalResponse::AcceptAndExecute,
             |_id: &nros_core::GoalId, _status: nros_core::GoalStatus| nros_core::CancelResponse::Ok,
@@ -706,7 +548,7 @@ fn test_drop_with_mixed_entries() {
 #[test]
 fn test_spin_one_period_remaining_time() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // elapsed < period → remaining = period - elapsed
     let r = executor.spin_one_period(100, 30);
@@ -717,7 +559,7 @@ fn test_spin_one_period_remaining_time() {
 #[test]
 fn test_spin_one_period_overrun() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // elapsed > period → remaining saturates to 0
     let r = executor.spin_one_period(10, 50);
@@ -727,7 +569,7 @@ fn test_spin_one_period_overrun() {
 #[test]
 fn test_spin_one_period_exact() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // elapsed == period → remaining = 0
     let r = executor.spin_one_period(42, 42);
@@ -760,7 +602,7 @@ fn test_spin_options_builders() {
 #[test]
 fn test_spin_blocking_only_next() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // only_next exits after single iteration
     let result = executor.spin_blocking(SpinOptions::spin_once());
@@ -770,7 +612,7 @@ fn test_spin_blocking_only_next() {
 #[test]
 fn test_spin_blocking_halt() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // Pre-set halt flag → exits immediately
     executor.halt();
@@ -789,7 +631,7 @@ fn test_spin_blocking_halt() {
 #[test]
 fn test_spin_blocking_timeout() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let start = std::time::Instant::now();
     let result = executor.spin_blocking(SpinOptions::new().timeout_ms(50));
@@ -801,7 +643,7 @@ fn test_spin_blocking_timeout() {
 #[test]
 fn test_spin_one_period_timed_no_overrun() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let period = std::time::Duration::from_millis(50);
     let result = executor.spin_one_period_timed(period);
@@ -813,7 +655,7 @@ fn test_spin_one_period_timed_no_overrun() {
 #[test]
 fn test_halt_flag_clone() {
     let session = MockSession::new();
-    let executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let executor: Executor = Executor::from_session(session);
 
     let flag = executor.halt_flag();
     assert!(!executor.is_halted());
@@ -825,7 +667,7 @@ fn test_halt_flag_clone() {
 #[test]
 fn test_spin_period_halts() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let halt = executor.halt_flag();
     std::thread::spawn(move || {
@@ -844,7 +686,7 @@ fn test_spin_period_halts() {
 #[test]
 fn test_handle_id_from_add_subscription() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let id = executor
         .add_subscription::<TestMsg, _>("/a", |_msg: &TestMsg| {})
@@ -917,7 +759,7 @@ fn test_readiness_snapshot() {
 #[test]
 fn test_trigger_any_fires_on_data() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
     executor.set_trigger(Trigger::Any);
 
     executor
@@ -937,7 +779,7 @@ fn test_trigger_any_fires_on_data() {
 #[test]
 fn test_trigger_any_no_data_no_dispatch() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
     executor.set_trigger(Trigger::Any);
 
     executor
@@ -952,7 +794,7 @@ fn test_trigger_any_no_data_no_dispatch() {
 #[test]
 fn test_trigger_always_fires_without_data() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
     executor.set_trigger(Trigger::Always);
 
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
@@ -977,7 +819,7 @@ fn test_trigger_always_fires_without_data() {
 #[test]
 fn test_trigger_one_fires_on_specific_handle() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let _id0 = executor
         .add_subscription::<TestMsg, _>("/topic0", |_: &TestMsg| {})
@@ -1010,7 +852,7 @@ fn test_trigger_one_fires_on_specific_handle() {
 #[test]
 fn test_trigger_predicate() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     executor
         .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
@@ -1033,7 +875,7 @@ fn test_trigger_predicate() {
 #[test]
 fn test_guard_condition_trigger_fires_callback() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let called = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
     let called2 = called.clone();
@@ -1058,7 +900,7 @@ fn test_guard_condition_trigger_fires_callback() {
 #[test]
 fn test_guard_condition_clears_after_trigger() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -1091,7 +933,7 @@ fn test_guard_condition_clears_after_trigger() {
 #[test]
 fn test_raw_subscription_callback() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     static RAW_CALLED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
     static RAW_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -1135,8 +977,7 @@ fn test_raw_subscription_callback() {
 #[test]
 fn test_from_session_ptr() {
     let mut session = MockSession::new();
-    let executor: Executor<MockSession, 4, 4096> =
-        unsafe { Executor::from_session_ptr(&mut session) };
+    let executor: Executor = unsafe { Executor::from_session_ptr(&mut session) };
 
     // Session should be accessible
     let _session_ref = executor.session();
@@ -1145,8 +986,7 @@ fn test_from_session_ptr() {
 #[test]
 fn test_from_session_ptr_create_node() {
     let mut session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> =
-        unsafe { Executor::from_session_ptr(&mut session) };
+    let mut executor: Executor = unsafe { Executor::from_session_ptr(&mut session) };
 
     let node = executor.create_node("test_node");
     assert!(node.is_ok());
@@ -1159,7 +999,7 @@ fn test_from_session_ptr_create_node() {
 #[test]
 fn test_set_invocation_mode() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let id = executor
         .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
@@ -1186,7 +1026,7 @@ fn test_set_invocation_mode() {
 #[test]
 fn test_set_semantics() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // Default is RclcppExecutor
     assert_eq!(executor.semantics, ExecutorSemantics::RclcppExecutor);
@@ -1206,7 +1046,7 @@ fn test_let_semantics_pre_samples_data() {
     // even though the mock subscriber's pending data is consumed during
     // the pre-sample phase (not during try_process).
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
     executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
 
     let received = std::sync::Arc::new(std::sync::Mutex::new(None));
@@ -1232,7 +1072,7 @@ fn test_let_semantics_pre_samples_data() {
 fn test_let_semantics_raw_subscription() {
     // Verify LET pre-sampling works for raw subscriptions too.
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 4096> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
     executor.set_semantics(ExecutorSemantics::LogicalExecutionTime);
 
     static RAW_LET_LEN: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
@@ -1273,7 +1113,7 @@ fn test_let_semantics_raw_subscription() {
 #[test]
 fn test_trigger_all_with_mixed_handles() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     // Add a timer and a subscription
     executor
@@ -1308,7 +1148,7 @@ fn test_trigger_all_with_mixed_handles() {
 #[test]
 fn test_trigger_allof_fires_when_both_ready() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let id_a = executor
         .add_subscription::<TestMsg, _>("/sensor_a", |_: &TestMsg| {})
@@ -1350,7 +1190,7 @@ fn test_trigger_allof_fires_when_both_ready() {
 #[test]
 fn test_trigger_allof_empty_set_always_fires() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     executor
         .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
@@ -1372,7 +1212,7 @@ fn test_trigger_allof_empty_set_always_fires() {
 #[test]
 fn test_trigger_anyof_fires_when_one_ready() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let id_a = executor
         .add_subscription::<TestMsg, _>("/topic_a", |_: &TestMsg| {})
@@ -1407,7 +1247,7 @@ fn test_trigger_anyof_fires_when_one_ready() {
 #[test]
 fn test_trigger_anyof_empty_set_never_fires() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     executor
         .add_subscription::<TestMsg, _>("/test", |_: &TestMsg| {})
@@ -1436,7 +1276,7 @@ fn test_trigger_anyof_empty_set_never_fires() {
 #[test]
 fn test_timer_delta_accumulates_when_trigger_fails() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 16384> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let count = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let count2 = count.clone();
@@ -1534,7 +1374,7 @@ impl nros_core::RosService for TestService {
 #[test]
 fn test_promise_try_recv_returns_none_then_some() {
     let session = MockSession::new();
-    let mut executor: Executor<MockSession, 4, 8192> = Executor::from_session(session);
+    let mut executor: Executor = Executor::from_session(session);
 
     let mut node = executor.create_node("test").unwrap();
     let mut client = node.create_client::<TestService>("/test_svc").unwrap();

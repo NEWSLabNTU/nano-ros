@@ -6,7 +6,9 @@
 use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 
-use crate::constants::{MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
+use crate::constants::{
+    MAX_SERVICE_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN, SERVICE_CLIENT_OPAQUE_U64S,
+};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
 use crate::publisher::nros_message_type_t;
@@ -77,8 +79,6 @@ pub struct nros_service_t {
     pub node: *const nros_node_t,
     /// Handle ID from executor registration (SIZE_MAX = not registered)
     pub handle_id: usize,
-    /// Opaque pointer to internal Rust service server
-    pub _internal: *mut c_void,
 }
 
 impl Default for nros_service_t {
@@ -95,7 +95,6 @@ impl Default for nros_service_t {
             context: ptr::null_mut(),
             node: ptr::null(),
             handle_id: usize::MAX,
-            _internal: ptr::null_mut(),
         }
     }
 }
@@ -114,11 +113,6 @@ impl nros_service_t {
     /// Set the handle ID from executor registration
     pub(crate) fn set_handle_id(&mut self, id: nros_node::HandleId) {
         self.handle_id = id.0;
-    }
-
-    /// Get the internal handle pointer
-    pub(crate) fn get_internal(&self) -> *mut c_void {
-        self._internal
     }
 }
 
@@ -225,7 +219,6 @@ pub unsafe extern "C" fn nros_service_init(
 
     // Service server creation is deferred to nros_executor_add_service(),
     // which calls nros_node::Executor::add_service_raw_sized().
-    service._internal = ptr::null_mut();
     service.handle_id = usize::MAX;
     service.state = nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED;
 
@@ -254,7 +247,6 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 
     // The service server lives in the executor arena (if registered),
     // so we don't drop anything here — just reset metadata.
-    service._internal = ptr::null_mut();
     service.handle_id = usize::MAX;
     service.callback = None;
     service.context = ptr::null_mut();
@@ -266,115 +258,44 @@ pub unsafe extern "C" fn nros_service_fini(service: *mut nros_service_t) -> nros
 
 /// Take a service request (non-blocking).
 ///
-/// # Parameters
-/// * `service` - Pointer to an initialized service
-/// * `request_data` - Buffer to receive CDR-serialized request data
-/// * `request_capacity` - Capacity of request buffer
-/// * `request_len` - Output: actual length of request data
-/// * `sequence_number` - Output: sequence number for response matching
+/// Currently not supported — service servers are callback-only through
+/// the executor. Use `nros_executor_add_service()` with a callback instead.
 ///
 /// # Returns
-/// * `NROS_RET_OK` if a request was received
-/// * `NROS_RET_TIMEOUT` if no request is available
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
+/// * `NROS_RET_NOT_INIT` always (manual poll not supported)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_service_take_request(
     service: *mut nros_service_t,
-    request_data: *mut u8,
-    request_capacity: usize,
-    request_len: *mut usize,
-    sequence_number: *mut i64,
+    _request_data: *mut u8,
+    _request_capacity: usize,
+    _request_len: *mut usize,
+    _sequence_number: *mut i64,
 ) -> nros_ret_t {
-    validate_not_null!(service, request_data, request_len, sequence_number);
-
-    let service = &mut *service;
-
-    validate_state!(
-        service,
-        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
-    );
-
-    #[cfg(feature = "alloc")]
-    {
-        use nros_rmw::ServiceServerTrait;
-
-        if service._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-
-        let server = &mut *(service._internal as *mut nros::internals::RmwServiceServer);
-
-        // Create a temporary buffer using the provided buffer
-        let buf = core::slice::from_raw_parts_mut(request_data, request_capacity);
-
-        match server.try_recv_request(buf) {
-            Ok(Some(req)) => {
-                *request_len = req.data.len();
-                *sequence_number = req.sequence_number;
-                NROS_RET_OK
-            }
-            Ok(None) => NROS_RET_TIMEOUT,
-            Err(_) => NROS_RET_ERROR,
-        }
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    validate_not_null!(service);
+    // Service server handles live in the executor arena — manual poll
+    // is not supported. Use executor callbacks instead.
+    NROS_RET_NOT_INIT
 }
 
 /// Send a service response.
 ///
-/// # Parameters
-/// * `service` - Pointer to an initialized service
-/// * `sequence_number` - Sequence number from the request
-/// * `response_data` - CDR-serialized response data
-/// * `response_len` - Length of response data
+/// Currently not supported — service servers are callback-only through
+/// the executor. The callback's return value and response buffer are used
+/// to send the response automatically.
 ///
 /// # Returns
-/// * `NROS_RET_OK` on success
-/// * `NROS_RET_INVALID_ARGUMENT` if any pointer is NULL
-/// * `NROS_RET_NOT_INIT` if not initialized
-/// * `NROS_RET_ERROR` on send failure
+/// * `NROS_RET_NOT_INIT` always (manual poll not supported)
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_service_send_response(
     service: *mut nros_service_t,
-    sequence_number: i64,
-    response_data: *const u8,
-    response_len: usize,
+    _sequence_number: i64,
+    _response_data: *const u8,
+    _response_len: usize,
 ) -> nros_ret_t {
-    validate_not_null!(service, response_data);
-
-    let service = &mut *service;
-
-    validate_state!(
-        service,
-        nros_service_state_t::NROS_SERVICE_STATE_INITIALIZED
-    );
-
-    #[cfg(feature = "alloc")]
-    {
-        use nros_rmw::ServiceServerTrait;
-
-        if service._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-
-        let server = &mut *(service._internal as *mut nros::internals::RmwServiceServer);
-        let data = core::slice::from_raw_parts(response_data, response_len);
-
-        match server.send_reply(sequence_number, data) {
-            Ok(()) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
-        }
-    }
-
-    #[cfg(not(feature = "alloc"))]
-    {
-        NROS_RET_ERROR
-    }
+    validate_not_null!(service);
+    // Service server handles live in the executor arena — manual send
+    // is not supported. Use executor callbacks instead.
+    NROS_RET_NOT_INIT
 }
 
 /// Get the service name.
@@ -456,9 +377,18 @@ pub struct nros_client_t {
     pub type_hash_len: usize,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque pointer to internal Rust service client
-    pub _internal: *mut c_void,
+    /// Inline opaque storage for the RMW service client handle.
+    /// Avoids heap allocation — managed by nros_client_init/fini.
+    pub _opaque: [u64; SERVICE_CLIENT_OPAQUE_U64S],
 }
+
+// Compile-time assertion: inline storage must fit the concrete RMW service client type.
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+const _: () = assert!(
+    core::mem::size_of::<nros::internals::RmwServiceClient>()
+        <= SERVICE_CLIENT_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "SERVICE_CLIENT_OPAQUE_U64S too small for RmwServiceClient — increase the constant in constants.rs"
+);
 
 impl Default for nros_client_t {
     fn default() -> Self {
@@ -471,7 +401,7 @@ impl Default for nros_client_t {
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
             node: ptr::null(),
-            _internal: ptr::null_mut(),
+            _opaque: [0u64; SERVICE_CLIENT_OPAQUE_U64S],
         }
     }
 }
@@ -568,7 +498,7 @@ pub unsafe extern "C" fn nros_client_init(
     client.node = node;
 
     // Create the internal service client
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
         use nros_rmw::{ServiceInfo, Session};
 
@@ -601,11 +531,13 @@ pub unsafe extern "C" fn nros_client_init(
         let svc_info =
             ServiceInfo::new(svc_name_str, type_str, type_hash_str).with_domain(domain_id);
 
-        // Create service client
+        // Create service client — write handle directly into inline opaque storage
         match session.create_service_client(&svc_info) {
             Ok(client_handle) => {
-                let client_box = alloc::boxed::Box::new(client_handle);
-                client._internal = alloc::boxed::Box::into_raw(client_box) as *mut _;
+                core::ptr::write(
+                    client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient,
+                    client_handle,
+                );
             }
             Err(_) => return NROS_RET_ERROR,
         }
@@ -614,9 +546,8 @@ pub unsafe extern "C" fn nros_client_init(
         NROS_RET_OK
     }
 
-    #[cfg(not(feature = "alloc"))]
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
     {
-        // For no_std, not yet implemented
         NROS_RET_ERROR
     }
 }
@@ -638,18 +569,15 @@ pub unsafe extern "C" fn nros_client_fini(client: *mut nros_client_t) -> nros_re
 
     validate_state!(client, nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED);
 
-    // Clean up internal resources
-    #[cfg(feature = "alloc")]
+    // Drop the inline RMW service client handle
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
-        if !client._internal.is_null() {
-            let _client_handle = alloc::boxed::Box::from_raw(
-                client._internal as *mut nros::internals::RmwServiceClient,
-            );
-            // Client is dropped here
-        }
+        core::ptr::drop_in_place(
+            client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient
+        );
     }
 
-    client._internal = ptr::null_mut();
+    client._opaque = [0u64; SERVICE_CLIENT_OPAQUE_U64S];
     client.node = ptr::null();
     client.state = nros_client_state_t::NROS_CLIENT_STATE_SHUTDOWN;
 
@@ -690,15 +618,12 @@ pub unsafe extern "C" fn nros_client_call(
 
     validate_state!(client, nros_client_state_t::NROS_CLIENT_STATE_INITIALIZED);
 
-    #[cfg(feature = "alloc")]
+    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
     {
         use nros_rmw::ServiceClientTrait;
 
-        if client._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-
-        let client_handle = &mut *(client._internal as *mut nros::internals::RmwServiceClient);
+        let client_handle =
+            &mut *(client._opaque.as_mut_ptr() as *mut nros::internals::RmwServiceClient);
         let request = core::slice::from_raw_parts(request_data, request_len);
         let reply_buf = core::slice::from_raw_parts_mut(response_data, response_capacity);
 
@@ -712,7 +637,7 @@ pub unsafe extern "C" fn nros_client_call(
         }
     }
 
-    #[cfg(not(feature = "alloc"))]
+    #[cfg(not(any(feature = "rmw-zenoh", feature = "rmw-xrce")))]
     {
         NROS_RET_ERROR
     }
@@ -924,7 +849,6 @@ mod verification {
             nros_service_state_t::NROS_SERVICE_STATE_UNINITIALIZED,
         );
         assert!(svc.node.is_null());
-        assert!(svc._internal.is_null());
     }
 
     #[kani::proof]
@@ -1068,7 +992,7 @@ mod verification {
             nros_client_state_t::NROS_CLIENT_STATE_UNINITIALIZED,
         );
         assert!(client.node.is_null());
-        assert!(client._internal.is_null());
+        assert!(client._opaque.iter().all(|&v| v == 0));
     }
 
     #[kani::proof]

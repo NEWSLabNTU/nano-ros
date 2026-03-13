@@ -26,7 +26,7 @@ ros2 topic echo /chatter std_msgs/msg/Int32 --qos-reliability best_effort
   `--qos-reliability best_effort` on the ROS 2 subscriber, or configure
   both sides to use RELIABLE.
 - **zenohd version**: both zenoh-pico (used by nros) and zenohd must be
-  the same version (1.6.2). Version mismatches cause transport failures.
+  the same version. Version mismatches cause transport failures.
 
 ## Common Issues
 

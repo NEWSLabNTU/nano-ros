@@ -1,3 +1,5 @@
+set dotenv-load
+
 # Common clippy lints for real-time safety
 CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable_condition -D clippy::never_loop -D clippy::empty_loop -D clippy::unconditional_recursion -W clippy::large_stack_arrays -W clippy::large_types_passed_by_value"
 
@@ -48,7 +50,7 @@ format: format-c format-cpp format-python
     {
         echo "."
         find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' \
-            -not -path '*/generated/*' -not -path '*/zephyr/*' \
+            -not -path '*/generated/*' -not -path '*/build/*' -not -path '*/zephyr/*' \
             -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' \
             -not -path '*/threadx-linux/*' \
             -not -path '*/qemu-riscv64-threadx/*' \
@@ -302,7 +304,7 @@ build-examples:
     #!/usr/bin/env bash
     set -e
     echo "Building examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -339,7 +341,7 @@ check-examples:
     #!/usr/bin/env bash
     set -e
     echo "Checking examples..."
-    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
+    for toml in $(find examples -mindepth 4 -name Cargo.toml -not -path '*/target/*' -not -path '*/generated/*' -not -path '*/build/*' -not -path '*/zephyr/*' -not -path '*/qemu-arm-freertos/*' -not -path '*/qemu-arm-nuttx/*' -not -path '*/threadx-linux/*' -not -path '*/qemu-riscv64-threadx/*' | sort); do
         dir="$(dirname "$toml")"
         platform="$(echo "$dir" | cut -d/ -f2)"
         flags=""
@@ -425,6 +427,32 @@ build-zephyr-c:
     west build -b native_sim/native/64 -d build-c-listener -p auto nros/examples/zephyr/c/zenoh/listener
     echo "Zephyr C examples built successfully!"
 
+# Build Zephyr C++ examples
+build-zephyr-cpp:
+    #!/usr/bin/env bash
+    set -e
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if [ ! -d "$WORKSPACE/zephyr" ]; then
+        echo "Error: Zephyr workspace not found at $WORKSPACE"
+        echo "Run: ./scripts/zephyr/setup.sh"
+        exit 1
+    fi
+    echo "Building Zephyr C++ examples in $WORKSPACE..."
+    cd "$WORKSPACE"
+    echo "  Building zephyr/cpp/zenoh/talker -> build-cpp-talker/"
+    west build -b native_sim/native/64 -d build-cpp-talker -p auto nros/examples/zephyr/cpp/zenoh/talker
+    echo "  Building zephyr/cpp/zenoh/listener -> build-cpp-listener/"
+    west build -b native_sim/native/64 -d build-cpp-listener -p auto nros/examples/zephyr/cpp/zenoh/listener
+    echo "  Building zephyr/cpp/zenoh/service-server -> build-cpp-service-server/"
+    west build -b native_sim/native/64 -d build-cpp-service-server -p auto nros/examples/zephyr/cpp/zenoh/service-server
+    echo "  Building zephyr/cpp/zenoh/service-client -> build-cpp-service-client/"
+    west build -b native_sim/native/64 -d build-cpp-service-client -p auto nros/examples/zephyr/cpp/zenoh/service-client
+    echo "  Building zephyr/cpp/zenoh/action-server -> build-cpp-action-server/"
+    west build -b native_sim/native/64 -d build-cpp-action-server -p auto nros/examples/zephyr/cpp/zenoh/action-server
+    echo "  Building zephyr/cpp/zenoh/action-client -> build-cpp-action-client/"
+    west build -b native_sim/native/64 -d build-cpp-action-client -p auto nros/examples/zephyr/cpp/zenoh/action-client
+    echo "Zephyr C++ examples built successfully!"
+
 # Build Zephyr XRCE examples (Rust + C for XRCE-DDS backend)
 build-zephyr-xrce:
     #!/usr/bin/env bash
@@ -448,14 +476,14 @@ build-zephyr-xrce:
     echo "Zephyr XRCE examples built successfully!"
 
 # Build all Zephyr examples (Rust + C, zenoh + XRCE)
-build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-xrce
+build-zephyr-all: build-zephyr build-zephyr-c build-zephyr-cpp build-zephyr-xrce
     @echo "All Zephyr examples built!"
 
 # Clean Zephyr build directories
 clean-zephyr:
     #!/usr/bin/env bash
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
-    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
+    rm -rf "$WORKSPACE/build-talker" "$WORKSPACE/build-listener" "$WORKSPACE/build-service-server" "$WORKSPACE/build-service-client" "$WORKSPACE/build-action-server" "$WORKSPACE/build-action-client" "$WORKSPACE/build-async-service-client" "$WORKSPACE/build-c-talker" "$WORKSPACE/build-c-listener" "$WORKSPACE/build-cpp-talker" "$WORKSPACE/build-cpp-listener" "$WORKSPACE/build-cpp-service-server" "$WORKSPACE/build-cpp-service-client" "$WORKSPACE/build-cpp-action-server" "$WORKSPACE/build-cpp-action-client" "$WORKSPACE/build-xrce-rs-talker" "$WORKSPACE/build-xrce-rs-listener" "$WORKSPACE/build-xrce-c-talker" "$WORKSPACE/build-xrce-c-listener"
     echo "Zephyr build directories cleaned"
 
 # Force rebuild Zephyr examples
@@ -1226,6 +1254,16 @@ test-c verbose="": build-zenohd _init-test-logs
     cargo nextest run "${args[@]}"
     just _test-c-codegen {{verbose}}
 
+# C++ API integration tests (needs cmake + zenohd + install-local)
+test-cpp verbose="": build-zenohd
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --no-fail-fast -E 'binary(cpp_api)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # C XRCE-DDS API integration tests (needs cmake + XRCE Agent)
 test-c-xrce verbose="":
     #!/usr/bin/env bash
@@ -1266,6 +1304,33 @@ clean-examples-c:
     rm -rf examples/native/c/zenoh/{talker,listener,custom-msg}/build
     rm -rf examples/native/c/xrce/{talker,listener}/build
     @echo "C examples build cleaned"
+
+# Build a single C++ example with CMake.
+# Usage: _build-cpp-example <example-dir> [extra cmake args...]
+[no-exit-message]
+_build-cpp-example dir *CMAKE_ARGS:
+    #!/usr/bin/env bash
+    set -e
+    NROS_DIR="$(pwd)/build/install/lib/cmake/NanoRos"
+    echo "Building {{dir}}..."
+    cd "{{dir}}" && rm -rf build && mkdir -p build && cd build
+    cmake -DNanoRos_DIR="$NROS_DIR" {{CMAKE_ARGS}} ..
+    make
+
+# Build C++ examples only (no tests)
+build-examples-cpp: install-local
+    just _build-cpp-example examples/native/cpp/zenoh/talker
+    just _build-cpp-example examples/native/cpp/zenoh/listener
+    just _build-cpp-example examples/native/cpp/zenoh/service-server
+    just _build-cpp-example examples/native/cpp/zenoh/service-client
+    just _build-cpp-example examples/native/cpp/zenoh/action-server
+    just _build-cpp-example examples/native/cpp/zenoh/action-client
+    @echo "C++ examples built!"
+
+# Clean C++ examples build
+clean-examples-cpp:
+    rm -rf examples/native/cpp/zenoh/{talker,listener,service-server,service-client}/build
+    @echo "C++ examples build cleaned"
 
 # =============================================================================
 # Message Bindings
@@ -1829,6 +1894,7 @@ zephyr-help:
     @echo "Build examples:"
     @echo "  just build-zephyr           # Build Rust zenoh Zephyr examples"
     @echo "  just build-zephyr-c         # Build C zenoh Zephyr examples"
+    @echo "  just build-zephyr-cpp       # Build C++ zenoh Zephyr examples"
     @echo "  just build-zephyr-xrce      # Build XRCE Zephyr examples (Rust + C)"
     @echo "  just build-zephyr-all       # Build all Zephyr examples"
     @echo "  just rebuild-zephyr         # Clean and rebuild"
@@ -1839,6 +1905,7 @@ zephyr-help:
     @echo "  just test-zephyr-xrce       # Run XRCE Zephyr E2E tests"
     @echo "  just test-zephyr-full       # Rebuild and run zenoh Zephyr tests"
     @echo "  just test-zephyr-c          # Run Zephyr C examples test"
+    @echo "  just test-cpp               # Run native C++ API tests"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
     @echo "  west build -b native_sim/native/64 -d build-talker nros/examples/zephyr/rust/zenoh/talker"

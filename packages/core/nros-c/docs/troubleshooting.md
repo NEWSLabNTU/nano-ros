@@ -28,7 +28,7 @@ rm CMakeCache.txt           # CMake-based build
 
 ## zenoh Version Mismatch
 
-zenoh-pico and zenohd must be the same version (1.6.2). Symptoms:
+zenoh-pico and zenohd must be the same version. Symptoms:
 `z_publisher_put failed: -100` (`_Z_ERR_TRANSPORT_TX_FAILED`) followed
 by `-73` (`_Z_ERR_SESSION_CLOSED`).
 

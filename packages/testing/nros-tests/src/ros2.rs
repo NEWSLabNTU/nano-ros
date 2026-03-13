@@ -53,31 +53,87 @@ pub fn is_rmw_zenoh_available() -> bool {
 }
 
 /// Get ROS 2 environment setup command with default locator
-pub fn ros2_env_setup(distro: &str) -> String {
+pub fn ros2_env_setup(distro: &str) -> (String, tempfile::TempDir) {
     ros2_env_setup_with_locator(distro, "tcp/127.0.0.1:7447")
 }
 
-/// Get ROS 2 environment setup command with custom locator
-pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> String {
-    format!(
+/// Write a zenoh session config file for rmw_zenoh_cpp and return a
+/// [`tempfile::TempDir`] that keeps the file alive. The config is written to
+/// `<tmpdir>/session_config.json5`.
+///
+/// The caller must hold the returned `TempDir` for the lifetime of the process
+/// that reads the config — dropping it deletes the directory and file.
+fn write_zenoh_session_config(locator: &str) -> tempfile::TempDir {
+    let dir = tempfile::tempdir().expect("failed to create temp dir for zenoh session config");
+    let config_path = dir.path().join("session_config.json5");
+
+    let config = format!(
+        r#"{{
+  mode: "client",
+  connect: {{
+    endpoints: ["{locator}"],
+    exit_on_failure: {{ client: true }},
+    timeout_ms: {{ client: 0 }},
+  }},
+  scouting: {{
+    multicast: {{
+      enabled: false,
+    }},
+  }},
+}}"#
+    );
+
+    std::fs::write(&config_path, config).expect("failed to write zenoh session config");
+    dir
+}
+
+/// Get ROS 2 environment setup command with custom locator.
+///
+/// Returns `(shell_snippet, _config_guard)`. The caller **must** hold the
+/// returned [`tempfile::TempDir`] for the lifetime of the process that reads
+/// the config — dropping it deletes the config file.
+///
+/// Stops the ROS 2 daemon first because it maintains its own zenoh session
+/// connected to the default `tcp/localhost:7447`. If the daemon is running,
+/// `ros2 topic list` queries the graph via XML-RPC through the daemon, which
+/// ignores per-process zenoh config. Stopping the daemon forces the CLI to
+/// create its own zenoh session using our custom locator.
+///
+/// Uses `ZENOH_SESSION_CONFIG_URI` to point rmw_zenoh_cpp at a JSON5 config
+/// file with `mode: "client"` and the specified locator as the connect endpoint.
+pub fn ros2_env_setup_with_locator(distro: &str, locator: &str) -> (String, tempfile::TempDir) {
+    let config_dir = write_zenoh_session_config(locator);
+    let config_path = config_dir.path().join("session_config.json5");
+    let cmd = format!(
         "source /opt/ros/{distro}/setup.bash && \
+         ros2 daemon stop 2>/dev/null; \
          export RMW_IMPLEMENTATION=rmw_zenoh_cpp && \
-         export ZENOH_CONFIG_OVERRIDE='mode=\"client\";connect/endpoints=[\"{locator}\"]'"
-    )
+         export ZENOH_SESSION_CONFIG_URI={config_path}",
+        config_path = config_path.display()
+    );
+    (cmd, config_dir)
 }
 
 /// Managed ROS 2 process
 ///
 /// Wraps a ROS 2 command with proper environment setup.
 /// Automatically kills the process on drop.
+///
+/// Holds a [`tempfile::TempDir`] to keep the zenoh session config file alive
+/// for the lifetime of the process.
 pub struct Ros2Process {
     handle: Child,
     name: String,
+    _config_dir: Option<tempfile::TempDir>,
 }
 
 impl Ros2Process {
     /// Spawn a bash command in its own process group.
-    fn spawn_bash(cmd: &str, name: impl Into<String>) -> TestResult<Self> {
+    fn spawn_bash(
+        cmd: &str,
+        name: impl Into<String>,
+        config_dir: Option<tempfile::TempDir>,
+    ) -> TestResult<Self> {
         let name = name.into();
         let mut command = Command::new("bash");
         command
@@ -89,7 +145,11 @@ impl Ros2Process {
         let handle = command
             .spawn()
             .map_err(|e| TestError::ProcessFailed(format!("Failed to start {name}: {e}")))?;
-        Ok(Self { handle, name })
+        Ok(Self {
+            handle,
+            name,
+            _config_dir: config_dir,
+        })
     }
 
     /// Start a ROS 2 topic echo subscriber
@@ -105,12 +165,12 @@ impl Ros2Process {
         locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability best_effort"
         );
 
-        Self::spawn_bash(&cmd, format!("ros2 topic echo {topic}"))
+        Self::spawn_bash(&cmd, format!("ros2 topic echo {topic}"), Some(config_dir))
     }
 
     /// Start a ROS 2 action send_goal command
@@ -128,12 +188,16 @@ impl Ros2Process {
         locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 15 ros2 action send_goal --feedback {action_name} {action_type} \"{goal}\""
         );
 
-        Self::spawn_bash(&cmd, format!("ros2 action send_goal {action_name}"))
+        Self::spawn_bash(
+            &cmd,
+            format!("ros2 action send_goal {action_name}"),
+            Some(config_dir),
+        )
     }
 
     /// Start a ROS 2 Fibonacci action server
@@ -145,7 +209,7 @@ impl Ros2Process {
     /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn action_server_fibonacci(locator: &str, distro: &str) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         // Use ros2 run to start the action server from example_interfaces
         // Note: The standard action server example is in rclpy_action_server or similar
         // For testing, we use a simple Python one-liner that creates a Fibonacci server
@@ -153,7 +217,7 @@ impl Ros2Process {
             "{env_setup} && timeout 60 ros2 run action_tutorials_py fibonacci_action_server"
         );
 
-        Self::spawn_bash(&cmd, "ros2 fibonacci_action_server")
+        Self::spawn_bash(&cmd, "ros2 fibonacci_action_server", Some(config_dir))
     }
 
     /// Start a ROS 2 topic pub publisher
@@ -173,12 +237,12 @@ impl Ros2Process {
         locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability best_effort"
         );
 
-        Self::spawn_bash(&cmd, format!("ros2 topic pub {topic}"))
+        Self::spawn_bash(&cmd, format!("ros2 topic pub {topic}"), Some(config_dir))
     }
 
     /// Wait for output and return it
@@ -296,7 +360,7 @@ pub fn collect_ros2_output(process: &mut Ros2Process, timeout: Duration) -> Stri
 
 /// Run `ros2 node list` and return the output
 pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 node list 2>&1");
 
     let output = Command::new("bash")
@@ -309,7 +373,7 @@ pub fn ros2_node_list(locator: &str, distro: &str) -> TestResult<String> {
 
 /// Run `ros2 topic list` and return the output
 pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 topic list 2>&1");
 
     let output = Command::new("bash")
@@ -322,7 +386,7 @@ pub fn ros2_topic_list(locator: &str, distro: &str) -> TestResult<String> {
 
 /// Run `ros2 service list` and return the output
 pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 service list 2>&1");
 
     let output = Command::new("bash")
@@ -335,7 +399,7 @@ pub fn ros2_service_list(locator: &str, distro: &str) -> TestResult<String> {
 
 /// Run `ros2 node info` for a specific node
 pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 node info {node_name} 2>&1");
 
     let output = Command::new("bash")
@@ -348,7 +412,7 @@ pub fn ros2_node_info(node_name: &str, locator: &str, distro: &str) -> TestResul
 
 /// Run `ros2 param list` for a specific node
 pub fn ros2_param_list(node_name: &str, locator: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 15 ros2 param list {node_name} 2>&1");
 
     let output = Command::new("bash")
@@ -366,7 +430,7 @@ pub fn ros2_param_get(
     locator: &str,
     distro: &str,
 ) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 15 ros2 param get {node_name} {param_name} 2>&1");
 
     let output = Command::new("bash")
@@ -385,7 +449,7 @@ pub fn ros2_param_set(
     locator: &str,
     distro: &str,
 ) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd =
         format!("{env_setup} && timeout 15 ros2 param set {node_name} {param_name} {value} 2>&1");
 
@@ -404,7 +468,7 @@ pub fn ros2_param_describe(
     locator: &str,
     distro: &str,
 ) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd =
         format!("{env_setup} && timeout 15 ros2 param describe {node_name} {param_name} 2>&1");
 
@@ -418,7 +482,7 @@ pub fn ros2_param_describe(
 
 /// Run `ros2 topic info` for a specific topic
 pub fn ros2_topic_info(topic: &str, locator: &str, distro: &str) -> TestResult<String> {
-    let env_setup = ros2_env_setup_with_locator(distro, locator);
+    let (env_setup, _config_dir) = ros2_env_setup_with_locator(distro, locator);
     let cmd = format!("{env_setup} && timeout 10 ros2 topic info {topic} 2>&1");
 
     let output = Command::new("bash")
@@ -449,12 +513,16 @@ impl Ros2Process {
         locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 service call {service_name} {service_type} \"{request}\""
         );
 
-        Self::spawn_bash(&cmd, format!("ros2 service call {service_name}"))
+        Self::spawn_bash(
+            &cmd,
+            format!("ros2 service call {service_name}"),
+            Some(config_dir),
+        )
     }
 
     /// Start a ROS 2 service server (example_interfaces AddTwoInts)
@@ -466,7 +534,7 @@ impl Ros2Process {
     /// * `locator` - Zenoh locator (e.g., "tcp/127.0.0.1:7447")
     /// * `distro` - ROS distro (e.g., "humble")
     pub fn add_two_ints_server(locator: &str, distro: &str) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         // Use a Python one-liner to create a simple service server
         let python_script = r#"
 import rclpy
@@ -493,7 +561,7 @@ rclpy.spin(node)
             python_script.replace('\n', "\\n").replace('\'', "\\'")
         );
 
-        Self::spawn_bash(&cmd, "ros2 add_two_ints_server")
+        Self::spawn_bash(&cmd, "ros2 add_two_ints_server", Some(config_dir))
     }
 
     /// Start a ROS 2 topic echo subscriber with custom QoS
@@ -511,12 +579,16 @@ rclpy.spin(node)
         locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 topic echo {topic} {msg_type} --qos-reliability {reliability}"
         );
 
-        Self::spawn_bash(&cmd, format!("ros2 topic echo {topic} ({reliability})"))
+        Self::spawn_bash(
+            &cmd,
+            format!("ros2 topic echo {topic} ({reliability})"),
+            Some(config_dir),
+        )
     }
 
     /// Start a ROS 2 topic pub publisher with custom QoS
@@ -538,12 +610,16 @@ rclpy.spin(node)
         locator: &str,
         distro: &str,
     ) -> TestResult<Self> {
-        let env_setup = ros2_env_setup_with_locator(distro, locator);
+        let (env_setup, config_dir) = ros2_env_setup_with_locator(distro, locator);
         let cmd = format!(
             "{env_setup} && timeout 10 ros2 topic pub -r {rate} {topic} {msg_type} \"{data}\" --qos-reliability {reliability}"
         );
 
-        Self::spawn_bash(&cmd, format!("ros2 topic pub {topic} ({reliability})"))
+        Self::spawn_bash(
+            &cmd,
+            format!("ros2 topic pub {topic} ({reliability})"),
+            Some(config_dir),
+        )
     }
 }
 
@@ -784,9 +860,10 @@ mod tests {
 
     #[test]
     fn test_ros2_env_setup() {
-        let setup = ros2_env_setup("humble");
+        let (setup, _config_dir) = ros2_env_setup("humble");
         assert!(setup.contains("/opt/ros/humble"));
         assert!(setup.contains("rmw_zenoh_cpp"));
+        assert!(setup.contains("ZENOH_SESSION_CONFIG_URI"));
     }
 
     #[test]

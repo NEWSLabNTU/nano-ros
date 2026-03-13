@@ -443,7 +443,6 @@ impl Lan9118 {
         if self.rx_packets_pending() == 0 {
             return false;
         }
-
         // Read RX status
         let rx_stat = self.read_reg(regs::offset::RX_STAT_PORT);
         let pkt_len =

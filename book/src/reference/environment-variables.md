@@ -1,5 +1,18 @@
 # Environment Variables Reference
 
+## Configuration File
+
+All environment variables can be set in a `.env` file at the project root:
+
+    cp .env.example .env
+    # Edit .env — uncomment and adjust values as needed
+
+- **justfile** — `.env` is auto-loaded. Missing file silently ignored.
+- **direnv** — `.envrc` sources `.env` if present.
+- **Manual** — `set -a; source .env; set +a` before `cargo build`.
+
+Variables in `.env` take precedence over justfile defaults but are overridden by explicit shell exports.
+
 ## Runtime Configuration
 
 Examples use `ExecutorConfig::from_env()` for configuration:
@@ -27,6 +40,19 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 | `SSID`           | WiFi network name for ESP32 examples                                                               | Required for `build-examples-esp32` |
 | `PASSWORD`       | WiFi password for ESP32 examples                                                                   | Required for `build-examples-esp32` |
 
+### FreeRTOS / NuttX SDK Paths
+
+These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx`). Override via env vars if sources are elsewhere.
+
+| Variable              | Default                      | Description                     |
+|-----------------------|------------------------------|---------------------------------|
+| `FREERTOS_DIR`        | `external/freertos-kernel`   | FreeRTOS kernel source          |
+| `FREERTOS_PORT`       | `GCC/ARM_CM3`                | FreeRTOS portable layer         |
+| `LWIP_DIR`            | `external/lwip`              | lwIP source                     |
+| `FREERTOS_CONFIG_DIR` | Board crate's `config/`      | `FreeRTOSConfig.h` + `lwipopts.h` |
+| `NUTTX_DIR`           | `external/nuttx`             | NuttX RTOS source               |
+| `NUTTX_APPS_DIR`      | `external/nuttx-apps`        | NuttX apps source               |
+
 ## Buffer Tuning
 
 All optional -- platform-appropriate defaults apply if unset.
@@ -42,6 +68,7 @@ All optional -- platform-appropriate defaults apply if unset.
 | `ZPICO_MAX_SUBSCRIBERS`            | Max concurrent subscribers in zenoh shim               | `8`              | zpico-sys      |
 | `ZPICO_MAX_QUERYABLES`             | Max concurrent queryables in zenoh shim                | `8`              | zpico-sys      |
 | `ZPICO_MAX_LIVELINESS`             | Max concurrent liveliness tokens in zenoh shim         | `16`             | zpico-sys      |
+| `ZPICO_MAX_PENDING_GETS`          | Max concurrent in-flight service calls                 | `4`              | zpico-sys      |
 | `ZPICO_SUBSCRIBER_BUFFER_SIZE`     | Per-subscriber static buffer in zenoh shim             | `1024`           | nros-rmw-zenoh |
 | `ZPICO_SERVICE_BUFFER_SIZE`        | Per-service-server static buffer in zenoh shim         | `1024`           | nros-rmw-zenoh |
 | `ZPICO_GET_REPLY_BUF_SIZE`         | Stack buffer for service client replies                | `4096`           | zpico-sys      |
@@ -72,17 +99,20 @@ All optional -- platform-appropriate defaults apply if unset.
 
 ### Core (`NROS_*`)
 
-| Variable                    | Description                                   | Default | Crate       |
-|-----------------------------|-----------------------------------------------|---------|-------------|
-| `NROS_EXECUTOR_MAX_HANDLES` | Max handles in a C API executor               | `16`    | nros-c      |
-| `NROS_MAX_SUBSCRIPTIONS`    | Max subscriptions in a C API executor         | `8`     | nros-c      |
-| `NROS_MAX_TIMERS`           | Max timers in a C API executor                | `8`     | nros-c      |
-| `NROS_MAX_SERVICES`         | Max services in a C API executor              | `4`     | nros-c      |
-| `NROS_LET_BUFFER_SIZE`      | Buffer size for LET semantics per handle      | `512`   | nros-c      |
-| `NROS_MESSAGE_BUFFER_SIZE`  | Max buffer size for subscription/service data | `4096`  | nros-c      |
-| `NROS_MAX_CONCURRENT_GOALS` | Max concurrent goals per action server        | `4`     | nros-c      |
-| `NROS_MAX_PARAMETERS`       | Max parameters in parameter server            | `32`    | nros-params |
-| `NROS_MAX_PARAM_NAME_LEN`   | Max parameter name length                     | `64`    | nros-params |
-| `NROS_MAX_STRING_VALUE_LEN` | Max string parameter value length             | `256`   | nros-params |
-| `NROS_MAX_ARRAY_LEN`        | Max parameter array length                    | `32`    | nros-params |
-| `NROS_MAX_BYTE_ARRAY_LEN`   | Max byte array parameter length               | `256`   | nros-params |
+| Variable                        | Description                                                                              | Default | Crate       |
+|---------------------------------|------------------------------------------------------------------------------------------|---------|-------------|
+| `NROS_EXECUTOR_MAX_CBS`         | Max executor callback slots (compile-time fixed array size)                              | `4`     | nros-node   |
+| `NROS_EXECUTOR_ARENA_SIZE`      | Executor arena size in bytes (compile-time fixed array size)                             | `4096`  | nros-node   |
+| `NROS_SUBSCRIPTION_BUFFER_SIZE` | Default subscription/service buffer size (bytes)                                         | `1024`  | nros-node   |
+| `NROS_EXECUTOR_MAX_HANDLES`     | Max handles in a C API executor                                                          | `16`    | nros-c      |
+| `NROS_MAX_SUBSCRIPTIONS`        | Max subscriptions in a C API executor                                                    | `8`     | nros-c      |
+| `NROS_MAX_TIMERS`               | Max timers in a C API executor                                                           | `8`     | nros-c      |
+| `NROS_MAX_SERVICES`             | Max services in a C API executor                                                         | `4`     | nros-c      |
+| `NROS_LET_BUFFER_SIZE`          | Buffer size for LET semantics per handle                                                 | `512`   | nros-c      |
+| `NROS_MESSAGE_BUFFER_SIZE`      | Max buffer size for subscription/service data                                            | `4096`  | nros-c      |
+| `NROS_MAX_CONCURRENT_GOALS`     | Max concurrent goals per action server (compile-time constant, not env-var configurable) | `4`     | nros-c      |
+| `NROS_MAX_PARAMETERS`           | Max parameters in parameter server                                                       | `32`    | nros-params |
+| `NROS_MAX_PARAM_NAME_LEN`       | Max parameter name length                                                                | `64`    | nros-params |
+| `NROS_MAX_STRING_VALUE_LEN`     | Max string parameter value length                                                        | `256`   | nros-params |
+| `NROS_MAX_ARRAY_LEN`            | Max parameter array length                                                               | `32`    | nros-params |
+| `NROS_MAX_BYTE_ARRAY_LEN`       | Max byte array parameter length                                                          | `256`   | nros-params |

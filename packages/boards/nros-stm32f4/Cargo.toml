@@ -10,10 +10,10 @@ name = "nros_stm32f4"
 
 [dependencies]
 # Platform primitives (zenoh-pico FFI symbols, network poll callback)
-zpico-platform-stm32f4 = { path = "../../zpico/zpico-platform-stm32f4" }
+zpico-platform-stm32f4 = { path = "../../zpico/zpico-platform-stm32f4", default-features = false }
 
-# TCP link layer via smoltcp
-zpico-smoltcp = { path = "../../zpico/zpico-smoltcp" }
+# TCP link layer via smoltcp (ethernet only)
+zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
 
 # Cortex-M runtime
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
@@ -22,29 +22,38 @@ cortex-m-rt = "0.7"
 # STM32F4 HAL (feature-gated for different chips)
 stm32f4xx-hal = { version = "0.21" }
 
-# STM32 Ethernet
-stm32-eth = { version = "0.8", features = ["smoltcp-phy"] }
+# STM32 Ethernet (ethernet only)
+stm32-eth = { version = "0.8", features = ["smoltcp-phy"], optional = true }
 
-# TCP/IP stack
-smoltcp = { version = "0.12", default-features = false, features = [
+# TCP/IP stack (ethernet only)
+smoltcp = { version = "0.12", default-features = false, optional = true, features = [
     "medium-ethernet",
     "proto-ipv4",
     "socket-tcp",
     "socket-udp",
 ] }
 
+# Serial link layer (serial only)
+zpico-serial = { path = "../../zpico/zpico-serial", optional = true }
+
 # Logging
 defmt = "0.3"
 
 [features]
-default = ["stm32f429"]
+default = ["stm32f429", "ethernet"]
+# Ethernet transport via STM32 MAC + smoltcp
+ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp", "zpico-platform-stm32f4/ethernet"]
+# Serial transport via USART
+serial = ["dep:zpico-serial"]
 
 # STM32F4 chip variants (forwarded to HAL and zpico-platform)
-stm32f407 = ["stm32f4xx-hal/stm32f407", "stm32-eth/stm32f407", "zpico-platform-stm32f4/stm32f407"]
-stm32f417 = ["stm32f4xx-hal/stm32f417", "stm32-eth/stm32f417", "zpico-platform-stm32f4/stm32f417"]
-stm32f427 = ["stm32f4xx-hal/stm32f427", "stm32-eth/stm32f427", "zpico-platform-stm32f4/stm32f427"]
-stm32f429 = ["stm32f4xx-hal/stm32f429", "stm32-eth/stm32f429", "zpico-platform-stm32f4/stm32f429"]
-stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32-eth/stm32f437", "zpico-platform-stm32f4/stm32f437"]
-stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32-eth/stm32f439", "zpico-platform-stm32f4/stm32f439"]
-stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32-eth/stm32f469", "zpico-platform-stm32f4/stm32f469"]
-stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32-eth/stm32f479", "zpico-platform-stm32f4/stm32f479"]
+# stm32-eth features are only needed when ethernet is enabled, but Cargo
+# ignores unknown features on optional deps, so this is safe.
+stm32f407 = ["stm32f4xx-hal/stm32f407", "stm32-eth?/stm32f407", "zpico-platform-stm32f4/stm32f407"]
+stm32f417 = ["stm32f4xx-hal/stm32f417", "stm32-eth?/stm32f417", "zpico-platform-stm32f4/stm32f417"]
+stm32f427 = ["stm32f4xx-hal/stm32f427", "stm32-eth?/stm32f427", "zpico-platform-stm32f4/stm32f427"]
+stm32f429 = ["stm32f4xx-hal/stm32f429", "stm32-eth?/stm32f429", "zpico-platform-stm32f4/stm32f429"]
+stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32-eth?/stm32f437", "zpico-platform-stm32f4/stm32f437"]
+stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32-eth?/stm32f439", "zpico-platform-stm32f4/stm32f439"]
+stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32-eth?/stm32f469", "zpico-platform-stm32f4/stm32f469"]
+stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32-eth?/stm32f479", "zpico-platform-stm32f4/stm32f479"]

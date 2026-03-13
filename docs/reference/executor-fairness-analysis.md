@@ -96,7 +96,7 @@ LET mode gives **snapshot consistency** — all callbacks see data from the same
 
 ## Benchmark Results
 
-**Setup:** Native Linux, zenohd 1.7.2, release build, separate publisher/subscriber processes.
+**Setup:** Native Linux, zenohd, release build, separate publisher/subscriber processes.
 Requires `zenohd --listen tcp/127.0.0.1:7447` running.
 
 Run with: `just bench-fairness`

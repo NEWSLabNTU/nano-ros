@@ -18,7 +18,7 @@ use static_cell::StaticCell;
 
 /// Concrete nros executor type for Embassy task signatures.
 /// Embassy `#[task]` doesn't support generics, so we name the type explicitly.
-type NrosExecutor = nros::Executor<nros::RmwSession, 0, 0>;
+type NrosExecutor = nros::Executor;
 
 /// Static storage for the Embassy executor (lives for the program lifetime).
 static EMBASSY: StaticCell<zephyr::embassy::Executor> = StaticCell::new();
@@ -56,7 +56,7 @@ async fn app_main(spawner: embassy_executor::Spawner) {
 
 async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeError> {
     let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7447");
-    let mut nros_exec = nros::Executor::<_, 0, 0>::open(&config)?;
+    let mut nros_exec = nros::Executor::open(&config)?;
 
     // Create client — it's an owned type (no lifetime tied to node or executor).
     // After this block, the node is dropped and the executor is free to move.

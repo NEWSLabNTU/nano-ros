@@ -68,6 +68,8 @@ exclude = [
     "examples/qemu-arm-baremetal/rust/zenoh/rtic-service-client",
     "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-server",
     "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-client",
+    "examples/qemu-arm-baremetal/rust/zenoh/serial-talker",
+    "examples/qemu-arm-baremetal/rust/zenoh/serial-listener",
     # QEMU ARM FreeRTOS examples (Cortex-M3 + FreeRTOS + lwIP)
     "examples/qemu-arm-freertos/rust/zenoh/talker",
     "examples/qemu-arm-freertos/rust/zenoh/listener",
@@ -108,6 +110,10 @@ exclude = [
     "packages/reference/qemu-smoltcp-bridge",
     # smoltcp link layer (embedded-only, requires cross-compilation)
     "packages/zpico/zpico-smoltcp",
+    # Serial (UART) link layer (embedded-only, requires cross-compilation)
+    "packages/zpico/zpico-serial",
+    # CMSDK UART driver (embedded-only, Cortex-M)
+    "packages/drivers/cmsdk-uart",
     # XRCE-DDS smoltcp UDP transport (embedded-only, requires cross-compilation)
     "packages/xrce/xrce-smoltcp",
     # XRCE-DDS RMW backend (embedded-only, requires xrce-sys linking)

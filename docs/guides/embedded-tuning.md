@@ -153,8 +153,8 @@ creation timeouts because slots cannot be recycled between separate
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `NROS_EXECUTOR_MAX_CBS` | 4 | Default max executor callback slots (Rust API) |
-| `NROS_EXECUTOR_ARENA_SIZE` | 4096 | Default executor arena size in bytes (Rust API) |
+| `NROS_EXECUTOR_MAX_CBS` | 4 | Max executor callback slots (compile-time fixed array) |
+| `NROS_EXECUTOR_ARENA_SIZE` | 4096 | Executor arena size in bytes (compile-time fixed array) |
 | `NROS_SUBSCRIPTION_BUFFER_SIZE` | 1024 | Default subscription/service buffer size in bytes (Rust API) |
 | `NROS_MAX_PARAMETERS` | 32 | Max parameters in parameter server |
 | `NROS_MAX_PARAM_NAME_LEN` | 64 | Max parameter name length (bytes) |

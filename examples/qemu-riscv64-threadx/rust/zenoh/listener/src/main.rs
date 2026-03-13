@@ -15,7 +15,7 @@ extern "C" fn main() -> ! {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("listener");
-        let mut executor = Executor::<_, 0, 0>::open(&exec_config)?;
+        let mut executor = Executor::open(&exec_config)?;
         let mut node = executor.create_node("listener")?;
 
         println!("Subscribing to /chatter (std_msgs/Int32)");

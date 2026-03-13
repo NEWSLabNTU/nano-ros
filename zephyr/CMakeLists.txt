@@ -136,6 +136,22 @@ elseif(CONFIG_NROS_RMW_XRCE)
 endif() # RMW backend
 
 # =============================================================================
+# Native linker workaround for Rust staticlibs (C and C++ API)
+#
+# Rust staticlibs built with std for x86_64-unknown-linux-gnu reference
+# malloc/free, pulling picolibc's nano-malloc into the link. This conflicts
+# with Zephyr's COMMON_LIBC_MALLOC. Fix:
+#   --allow-multiple-definition: Zephyr's malloc wins (linked first)
+#   heap_stub_native.c: provides __heap_start/__heap_end for picolibc's sbrk
+# =============================================================================
+
+if((CONFIG_NROS_C_API OR CONFIG_NROS_CPP_API) AND
+   (CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX))
+    zephyr_ld_options(-Wl,--allow-multiple-definition)
+    zephyr_library_sources(${CMAKE_CURRENT_LIST_DIR}/heap_stub_native.c)
+endif()
+
+# =============================================================================
 # C API path: build nros-c via Cargo and link it
 # =============================================================================
 
@@ -169,6 +185,39 @@ if(CONFIG_NROS_C_API)
 
     # Link the built library
     zephyr_library_link_libraries(nros_c_cargo)
+endif()
+
+# =============================================================================
+# C++ API path: build nros-cpp-ffi via Cargo and link it
+# =============================================================================
+
+if(CONFIG_NROS_CPP_API)
+    # Add nros-cpp include directories for user code
+    zephyr_include_directories(${NROS_REPO_DIR}/packages/core/nros-cpp/include)
+
+    # Make nros_generate_interfaces() available for C++ examples
+    include(${CMAKE_CURRENT_LIST_DIR}/cmake/nros_generate_interfaces.cmake)
+
+    # Select Cargo features based on RMW backend
+    if(CONFIG_NROS_RMW_ZENOH)
+        set(_nros_cpp_features "rmw-zenoh,platform-zephyr,ros-humble")
+    elseif(CONFIG_NROS_RMW_XRCE)
+        set(_nros_cpp_features "rmw-xrce,platform-zephyr,ros-humble")
+    endif()
+
+    # native_sim targets run on Linux and support std (needed for panic handler)
+    if(CONFIG_BOARD_NATIVE_SIM OR CONFIG_BOARD_NATIVE_POSIX)
+        string(APPEND _nros_cpp_features ",std")
+    endif()
+
+    # Build nros-cpp-ffi static library via Cargo
+    nros_cargo_build(
+        PACKAGE nros-cpp-ffi
+        FEATURES "${_nros_cpp_features}"
+    )
+
+    # Link the built library
+    zephyr_library_link_libraries(nros_cpp_ffi_cargo)
 endif()
 
 # =============================================================================

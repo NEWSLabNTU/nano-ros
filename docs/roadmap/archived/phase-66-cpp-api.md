@@ -2,7 +2,7 @@
 
 **Goal**: Provide a freestanding C++ API that mirrors rclcpp naming conventions, wrapping Rust `nros-node` directly via typed `extern "C"` FFI. Includes CMake-based message codegen for embedded C++ targets.
 
-**Status**: In Progress (66.1–66.4 done)
+**Status**: Complete
 **Priority**: Medium
 **Depends on**: Phase 49 (nros-c thin wrapper migration — complete), Phase 51 (Board crate `run()` API)
 
@@ -32,16 +32,16 @@ See [docs/design/cpp-api-design.md](../design/cpp-api-design.md) for the full de
 - [x] 66.2 — C++ header-only library (core types)
 - [x] 66.3 — Publisher and Subscription
 - [x] 66.4 — C++ message codegen (`generate-cpp`)
-- [ ] 66.5 — CMake integration (`LANGUAGE CPP`)
-- [ ] 66.6 — Service Server and Client
-- [ ] 66.7 — Action Server and Client
-- [ ] 66.8 — Timer and GuardCondition
-- [ ] 66.9 — Executor and Node-centric pattern
-- [ ] 66.10 — Examples (Linux native)
-- [ ] 66.11 — Examples (embedded targets)
-- [ ] 66.12 — Integration tests
-- [ ] 66.13 — Optional `std` mode conveniences
-- [ ] 66.14 — Documentation
+- [x] 66.5 — CMake integration (`LANGUAGE CPP`)
+- [x] 66.6 — Service Server and Client
+- [x] 66.7 — Action Server and Client
+- [x] 66.8 — Timer and GuardCondition
+- [x] 66.9 — Executor and Node-centric pattern
+- [x] 66.10 — Examples (Linux native)
+- [x] 66.11 — Examples (embedded targets)
+- [x] 66.12 — Integration tests
+- [x] 66.13 — Optional `std` mode conveniences
+- [x] 66.14 — Documentation
 
 ### 66.1 — `nros-cpp-ffi` Rust crate (core FFI exports)
 
@@ -254,29 +254,40 @@ Create C++ examples that build and run on Linux (native, no RTOS).
 
 ### 66.11 — Examples (embedded targets)
 
-Port C++ examples to at least one embedded target.
+Port C++ examples to Zephyr RTOS (native_sim). Zephyr handles `-fno-exceptions -fno-rtti`
+automatically via `CONFIG_CPLUSPLUS=y`.
 
 **Scope**:
-- Pick one target: QEMU ARM bare-metal or ThreadX Linux simulation
-- Demonstrate freestanding C++ (`-ffreestanding -fno-exceptions -fno-rtti`)
-- Talker + listener examples minimum
+- Target: Zephyr RTOS on native_sim/native/64
+- `CONFIG_NROS_CPP_API=y` Kconfig choice (alongside C and Rust API)
+- `nros_generate_interfaces(... LANGUAGE CPP)` in Zephyr CMake (with auto-discovery)
+- Generalized `nros_cargo_build()` target naming (works for nros-c and nros-cpp-ffi)
+- Talker + listener examples using nros C++ API
 
-**Files**: `examples/<target>/cpp/zenoh/{talker,listener}/`
+**Files**: `examples/zephyr/cpp/zenoh/{talker,listener}/`, `zephyr/Kconfig`,
+`zephyr/CMakeLists.txt`, `zephyr/cmake/nros_cargo_build.cmake`,
+`zephyr/cmake/nros_generate_interfaces.cmake`
 
 ### 66.12 — Integration tests
 
-Automated tests for C++ API.
+Automated tests for C++ API — build, startup, E2E communication, cross-language interop.
 
 **Scope**:
-- Build tests: verify all C++ examples compile
-- E2E tests: Linux native talker/listener exchange messages via zenohd
-- Add `just test-cpp` recipe
-- Nextest config: `cpp` test group
+- Build tests: verify all 4 native C++ examples compile
+- Startup tests: talker, listener, service server initialize
+- E2E tests: talker/listener exchange messages, service server/client complete RPC
+- Cross-language interop: C++ talker → Rust listener, C++ service server → Rust client
+- Zephyr C++ E2E tests: talker-listener, cross-platform (Zephyr ↔ native Rust)
+- `just test-cpp` recipe, nextest `cpp_api` test group
+- Bug fix: `node.hpp` passed `S::Request::TYPE_NAME` instead of `S::TYPE_NAME` for services/actions
 
 **Files**:
-- `packages/testing/nros-tests/tests/cpp_native.rs`
-- `.config/nextest.toml` (add `cpp` group)
+- `packages/testing/nros-tests/tests/cpp_api.rs`
+- `packages/testing/nros-tests/src/fixtures/binaries.rs` (C++ builders)
+- `packages/testing/nros-tests/src/zephyr.rs` (C++ Zephyr entries + tests)
+- `.config/nextest.toml` (add `cpp_api` group)
 - `justfile` (add `test-cpp` recipe)
+- `packages/core/nros-cpp/include/nros/node.hpp` (fix `S::TYPE_NAME` for services/actions)
 
 ### 66.13 — Optional `std` mode conveniences
 
@@ -307,24 +318,24 @@ Add `#ifdef NROS_CPP_STD` overloads for hosted environments.
 
 ## Acceptance Criteria
 
-- [ ] `nros-cpp-ffi` crate compiles and exports `extern "C"` functions
-- [ ] C++ header-only library compiles with `-ffreestanding -fno-exceptions -fno-rtti`
-- [ ] `nros::Result` + `NROS_TRY` macro works for error propagation
-- [ ] `nros::Publisher<M>::publish()` sends messages via typed FFI (no type erasure)
-- [ ] `nros::Subscription<M>` receives deserialized messages in typed callback
-- [ ] `nros::Service<S>` and `nros::Client<S>` complete request/response cycle
-- [ ] `nros::ActionServer<A>` and `nros::ActionClient<A>` complete goal lifecycle
-- [ ] `nros::Timer` fires periodic callbacks
-- [ ] `nros::Executor::add_node()` + `spin()` processes all registered entities
-- [ ] `cargo nano-ros generate-cpp` produces valid `.hpp` headers in ROS 2 namespaces
-- [ ] `nano_ros_generate_interfaces(... LANGUAGE CPP)` works in CMake
-- [ ] Generated types use `namespace std_msgs { namespace msg { struct Int32 { ... }; } }` (C++14)
-- [ ] Linux native C++ talker/listener exchange messages over zenohd
-- [ ] Linux native C++ service server/client complete RPC cycle
-- [ ] At least one embedded target compiles and runs C++ examples
-- [ ] `just test-cpp` passes
-- [ ] `just quality` passes with C++ crates in workspace
-- [ ] No STL dependency in freestanding mode (verified by `-ffreestanding` build)
+- [x] `nros-cpp-ffi` crate compiles and exports `extern "C"` functions
+- [x] C++ header-only library compiles with `-ffreestanding -fno-exceptions -fno-rtti`
+- [x] `nros::Result` + `NROS_TRY` macro works for error propagation
+- [x] `nros::Publisher<M>::publish()` sends messages via typed FFI (no type erasure)
+- [x] `nros::Subscription<M>` receives deserialized messages in typed callback
+- [x] `nros::Service<S>` and `nros::Client<S>` complete request/response cycle
+- [x] `nros::ActionServer<A>` and `nros::ActionClient<A>` complete goal lifecycle
+- [x] `nros::Timer` fires periodic callbacks
+- [x] `nros::Executor::add_node()` + `spin()` processes all registered entities
+- [x] `cargo nano-ros generate-cpp` produces valid `.hpp` headers in ROS 2 namespaces
+- [x] `nano_ros_generate_interfaces(... LANGUAGE CPP)` works in CMake
+- [x] Generated types use `namespace std_msgs { namespace msg { struct Int32 { ... }; } }` (C++14)
+- [x] Linux native C++ talker/listener exchange messages over zenohd
+- [x] Linux native C++ service server/client complete RPC cycle
+- [x] At least one embedded target compiles and runs C++ examples
+- [x] `just test-cpp` passes
+- [x] `just quality` passes with C++ crates in workspace
+- [x] No STL dependency in freestanding mode (verified by `-ffreestanding` build)
 
 ## Notes
 

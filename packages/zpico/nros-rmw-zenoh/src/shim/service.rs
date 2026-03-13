@@ -382,8 +382,12 @@ pub(super) fn register_reply_waker() {
 // Service Client
 // ============================================================================
 
-/// Default timeout for service calls in milliseconds
-const SERVICE_DEFAULT_TIMEOUT_MS: u32 = 5000;
+/// Default timeout for service calls in milliseconds.
+///
+/// Matches zenoh-pico's `Z_GET_TIMEOUT_DEFAULT` (10 seconds). The previous
+/// 5-second value caused flaky failures on QEMU emulation where the round
+/// trip through two TAP devices + bridge takes several seconds of real time.
+const SERVICE_DEFAULT_TIMEOUT_MS: u32 = 10_000;
 
 /// Zenoh service client using z_get queries
 ///

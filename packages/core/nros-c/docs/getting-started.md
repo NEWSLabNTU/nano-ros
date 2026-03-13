@@ -5,8 +5,8 @@
 - A C11 compiler (GCC, Clang, or arm-none-eabi-gcc)
 - [CMake](https://cmake.org/) >= 3.15
 - [Rust](https://rustup.rs/) nightly toolchain (needed to build `libnros_c.a`)
-- zenohd 1.6.2 router (build from submodule with `just build-zenohd`,
-  or install from [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases))
+- zenohd router (build from submodule with `just build-zenohd`,
+  or install a matching version from [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases))
 
 ## 1. Build the nros C Library
 

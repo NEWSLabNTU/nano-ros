@@ -23,7 +23,7 @@ mod tcp;
 mod udp;
 mod util;
 
-pub use bridge::{SmoltcpBridge, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE};
+pub use bridge::{SmoltcpBridge, MAX_SOCKETS, MAX_UDP_SOCKETS, SOCKET_BUFFER_SIZE, seed_ephemeral_port};
 
 // Re-export smoltcp types needed by platform crates
 pub use smoltcp::iface::{Interface, SocketSet, SocketStorage};

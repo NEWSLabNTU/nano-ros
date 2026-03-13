@@ -3,7 +3,7 @@
 **Goal**: Document zpico transport tuning for embedded deployments and benchmark
 memory usage per entity. Motivated by lessons from ARM's actuation_porting project.
 
-**Status**: Not Started
+**Status**: In Progress (64.1 complete, 64.2 remaining)
 
 **Priority**: Medium
 

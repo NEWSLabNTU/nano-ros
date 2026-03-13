@@ -1,0 +1,28 @@
+[package]
+name = "qemu-serial-talker"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+publish = false
+description = "Serial (UART) talker example using nros-mps2-an385"
+
+[[bin]]
+name = "qemu-serial-talker"
+test = false
+bench = false
+
+[features]
+default = []
+
+[dependencies]
+# Board crate with serial transport (no ethernet)
+nros-mps2-an385 = { path = "../../../../../packages/boards/nros-mps2-an385", default-features = false, features = ["serial"] }
+
+# nros Executor API (no link-tcp/link-udp — serial link comes from zpico-serial)
+nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["rmw-zenoh", "platform-bare-metal", "ros-humble"] }
+
+# Generated message types (from package.xml via cargo nano-ros generate)
+std_msgs = { version = "*", default-features = false }
+
+# Panic handler (required for no_std)
+panic-semihosting = { version = "0.6", features = ["exit"] }

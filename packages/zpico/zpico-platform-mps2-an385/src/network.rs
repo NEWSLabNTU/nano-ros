@@ -46,6 +46,13 @@ pub unsafe fn clear_network_state() {
 }
 
 /// Network poll callback called by the transport crate's smoltcp_poll()
+///
+/// NOTE: The clock is now hardware-backed (CMSDK Timer0) and does NOT need
+/// manual advancing here. The old `advance_clock_ms(1)` was a workaround
+/// for QEMU's virtual clock racing ahead of wall-clock time during WFI.
+/// This is now solved at the QEMU launch level with `-icount shift=auto`,
+/// which makes virtual time track wall-clock time during sleep.
+/// See `docs/reference/qemu-icount.md`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn smoltcp_network_poll() {
     unsafe {
@@ -58,6 +65,5 @@ pub unsafe extern "C" fn smoltcp_network_poll() {
         let sockets = &mut *GLOBAL_SOCKETS;
 
         SmoltcpBridge::poll(iface, eth, sockets);
-        crate::clock::advance_clock_ms(1);
     }
 }

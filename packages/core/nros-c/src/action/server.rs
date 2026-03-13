@@ -386,7 +386,7 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
             None => return NROS_RET_NOT_INIT,
         };
 
-        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
         let goal_id = nros_core::GoalId {
             uuid: goal.uuid.uuid,
         };
@@ -436,7 +436,7 @@ pub unsafe extern "C" fn nros_action_succeed(
             None => return NROS_RET_NOT_INIT,
         };
 
-        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
         let goal_id = nros_core::GoalId {
             uuid: goal.uuid.uuid,
         };
@@ -505,7 +505,7 @@ pub unsafe extern "C" fn nros_action_abort(
             None => return NROS_RET_NOT_INIT,
         };
 
-        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
         let goal_id = nros_core::GoalId {
             uuid: goal.uuid.uuid,
         };
@@ -570,7 +570,7 @@ pub unsafe extern "C" fn nros_action_canceled(
             None => return NROS_RET_NOT_INIT,
         };
 
-        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
         let goal_id = nros_core::GoalId {
             uuid: goal.uuid.uuid,
         };
@@ -623,7 +623,7 @@ pub unsafe extern "C" fn nros_action_execute(goal: *mut nros_goal_handle_t) -> n
         && let Some(internal) = get_internal(goal.server)
         && let Some(handle) = internal.handle
     {
-        let executor = crate::executor::get_executor(internal.executor_ptr);
+        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
         let goal_id = nros_core::GoalId {
             uuid: goal.uuid.uuid,
         };

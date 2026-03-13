@@ -170,7 +170,6 @@ pub unsafe extern "C" fn nros_timer_cancel(timer: *mut nros_timer_t) -> nros_ret
     match timer.state {
         nros_timer_state_t::NROS_TIMER_STATE_RUNNING => {
             // Forward to executor if registered
-            #[cfg(feature = "alloc")]
             if !timer._executor.is_null() && timer.handle_id != usize::MAX {
                 let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
                 let _ = exec.cancel_timer(nros_node::HandleId(timer.handle_id));
@@ -210,7 +209,6 @@ pub unsafe extern "C" fn nros_timer_reset(timer: *mut nros_timer_t) -> nros_ret_
         nros_timer_state_t::NROS_TIMER_STATE_RUNNING
         | nros_timer_state_t::NROS_TIMER_STATE_CANCELED => {
             // Forward to executor if registered
-            #[cfg(feature = "alloc")]
             if !timer._executor.is_null() && timer.handle_id != usize::MAX {
                 let exec = &mut *(timer._executor as *mut crate::executor::CExecutor);
                 let _ = exec.reset_timer(nros_node::HandleId(timer.handle_id));

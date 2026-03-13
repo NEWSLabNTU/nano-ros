@@ -58,6 +58,12 @@ static QEMU_BSP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 /// Cached path to the qemu-bsp-listener binary
 static QEMU_BSP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
+/// Cached path to the qemu-serial-talker binary
+static QEMU_SERIAL_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the qemu-serial-listener binary
+static QEMU_SERIAL_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
 /// Cached path to the esp32-qemu-talker binary (ELF)
 static ESP32_QEMU_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
@@ -742,6 +748,54 @@ pub fn qemu_bsp_talker_binary() -> PathBuf {
 pub fn qemu_bsp_listener_binary() -> PathBuf {
     build_qemu_bsp_listener()
         .expect("Failed to build qemu-bsp-listener")
+        .to_path_buf()
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Serial Example Builders (QEMU bare-metal, cross-compiled)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Build qemu-serial-talker (cached)
+pub fn build_qemu_serial_talker() -> TestResult<&'static Path> {
+    QEMU_SERIAL_TALKER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/serial-talker",
+                "qemu-serial-talker",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the qemu-serial-talker binary path
+#[rstest::fixture]
+pub fn qemu_serial_talker_binary() -> PathBuf {
+    build_qemu_serial_talker()
+        .expect("Failed to build qemu-serial-talker")
+        .to_path_buf()
+}
+
+/// Build qemu-serial-listener (cached)
+pub fn build_qemu_serial_listener() -> TestResult<&'static Path> {
+    QEMU_SERIAL_LISTENER_BINARY
+        .get_or_try_init(|| {
+            build_example(
+                "qemu-arm-baremetal/rust/zenoh/serial-listener",
+                "qemu-serial-listener",
+                None,
+                Some("thumbv7m-none-eabi"),
+            )
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the qemu-serial-listener binary path
+#[rstest::fixture]
+pub fn qemu_serial_listener_binary() -> PathBuf {
+    build_qemu_serial_listener()
+        .expect("Failed to build qemu-serial-listener")
         .to_path_buf()
 }
 
@@ -1721,6 +1775,204 @@ pub fn build_qemu_rtic_service_client() -> TestResult<&'static Path> {
             )
         })
         .map(|p| p.as_path())
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// C++ Example Builders (CMake-based)
+// ═══════════════════════════════════════════════════════════════════════════
+
+/// Cached path to the cpp-talker binary
+static CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the cpp-listener binary
+static CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the cpp-service-server binary
+static CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the cpp-service-client binary
+static CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the cpp-action-server binary
+static CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the cpp-action-client binary
+static CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build a CMake-based C++ example.
+///
+/// Reuses the same `build/install` layout as C examples. The NanoRos CMake
+/// package includes C++ support (NanoRosCpp target + codegen).
+///
+/// # Arguments
+/// * `example_dir` - Path relative to `examples/` (e.g., "native/cpp/zenoh/talker")
+/// * `binary_name` - Name of the output binary (e.g., "cpp_talker")
+pub fn build_cpp_example(example_dir: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let src_dir = root.join(format!("examples/{}", example_dir));
+
+    if !src_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "C++ example directory not found: {}",
+            src_dir.display()
+        )));
+    }
+
+    let build_dir = src_dir.join("build");
+
+    eprintln!("Building C++ example {}...", example_dir);
+
+    // Clean and create build directory
+    if build_dir.exists() {
+        std::fs::remove_dir_all(&build_dir)
+            .map_err(|e| TestError::BuildFailed(format!("Failed to clean build dir: {}", e)))?;
+    }
+    std::fs::create_dir_all(&build_dir)
+        .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
+
+    // Run cmake configure — pass NanoRos_DIR to the pseudo-install layout
+    let nano_ros_dir = format!(
+        "-DNanoRos_DIR={}",
+        root.join("build/install/lib/cmake/NanoRos").display()
+    );
+    let output = cmd!("cmake", &nano_ros_dir, "..")
+        .dir(&build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake configure failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    // Run cmake build
+    let output = cmd!("cmake", "--build", ".")
+        .dir(&build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(e.to_string()))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake build failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let binary_path = build_dir.join(binary_name);
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+/// Build cpp-talker example (cached)
+pub fn build_cpp_talker() -> TestResult<&'static Path> {
+    CPP_TALKER_BINARY
+        .get_or_try_init(|| build_cpp_example("native/cpp/zenoh/talker", "cpp_talker"))
+        .map(|p| p.as_path())
+}
+
+/// Build cpp-listener example (cached)
+pub fn build_cpp_listener() -> TestResult<&'static Path> {
+    CPP_LISTENER_BINARY
+        .get_or_try_init(|| build_cpp_example("native/cpp/zenoh/listener", "cpp_listener"))
+        .map(|p| p.as_path())
+}
+
+/// Build cpp-service-server example (cached)
+pub fn build_cpp_service_server() -> TestResult<&'static Path> {
+    CPP_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_cpp_example("native/cpp/zenoh/service-server", "cpp_service_server")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build cpp-service-client example (cached)
+pub fn build_cpp_service_client() -> TestResult<&'static Path> {
+    CPP_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_cpp_example("native/cpp/zenoh/service-client", "cpp_service_client")
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the cpp-talker binary path
+#[rstest::fixture]
+pub fn cpp_talker_binary() -> PathBuf {
+    build_cpp_talker()
+        .expect("Failed to build cpp-talker")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the cpp-listener binary path
+#[rstest::fixture]
+pub fn cpp_listener_binary() -> PathBuf {
+    build_cpp_listener()
+        .expect("Failed to build cpp-listener")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the cpp-service-server binary path
+#[rstest::fixture]
+pub fn cpp_service_server_binary() -> PathBuf {
+    build_cpp_service_server()
+        .expect("Failed to build cpp-service-server")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the cpp-service-client binary path
+#[rstest::fixture]
+pub fn cpp_service_client_binary() -> PathBuf {
+    build_cpp_service_client()
+        .expect("Failed to build cpp-service-client")
+        .to_path_buf()
+}
+
+/// Build cpp-action-server example (cached)
+pub fn build_cpp_action_server() -> TestResult<&'static Path> {
+    CPP_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_cpp_example("native/cpp/zenoh/action-server", "cpp_action_server")
+        })
+        .map(|p| p.as_path())
+}
+
+/// Build cpp-action-client example (cached)
+pub fn build_cpp_action_client() -> TestResult<&'static Path> {
+    CPP_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_cpp_example("native/cpp/zenoh/action-client", "cpp_action_client")
+        })
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the cpp-action-server binary path
+#[rstest::fixture]
+pub fn cpp_action_server_binary() -> PathBuf {
+    build_cpp_action_server()
+        .expect("Failed to build cpp-action-server")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the cpp-action-client binary path
+#[rstest::fixture]
+pub fn cpp_action_client_binary() -> PathBuf {
+    build_cpp_action_client()
+        .expect("Failed to build cpp-action-client")
+        .to_path_buf()
 }
 
 /// Cached path to the qemu-rtic-action-server binary

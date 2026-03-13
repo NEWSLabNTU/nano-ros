@@ -12,13 +12,15 @@
 //! - `just test-qemu-bsp` - Run BSP build and startup tests
 
 use nros_tests::fixtures::{
-    QemuProcess, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker, build_qemu_lan9118,
-    build_qemu_rtic_action_client, build_qemu_rtic_action_server, build_qemu_rtic_listener,
-    build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
-    build_qemu_wcet_bench, is_arm_toolchain_available, is_qemu_available, parse_test_results,
-    qemu_binary, require_tap_bridge, require_zenoh_pico_arm,
+    QemuProcess, SocatPtyPair, ZenohRouter, build_qemu_bsp_listener, build_qemu_bsp_talker,
+    build_qemu_lan9118, build_qemu_rtic_action_client, build_qemu_rtic_action_server,
+    build_qemu_rtic_listener, build_qemu_rtic_service_client, build_qemu_rtic_service_server,
+    build_qemu_rtic_talker, build_qemu_serial_listener, build_qemu_serial_talker,
+    build_qemu_wcet_bench, cleanup_tap_network, is_arm_toolchain_available, is_qemu_available,
+    is_socat_available, parse_test_results, qemu_binary, require_tap_bridge,
+    require_zenoh_pico_arm,
 };
-use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern};
+use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern, wait_for_port_on};
 use rstest::rstest;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -559,6 +561,186 @@ fn test_qemu_bsp_both_build() {
 }
 
 // =============================================================================
+// Serial QEMU Build Tests (MPS2-AN385 + CMSDK UART)
+// =============================================================================
+
+/// Test that qemu-serial-talker builds successfully
+#[test]
+fn test_qemu_serial_talker_builds() {
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let result = build_qemu_serial_talker();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!("SUCCESS: qemu-serial-talker builds at {}", binary.display());
+        }
+        Err(e) => {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("Permission denied") {
+                eprintln!("Build failed due to permission issues (likely from Docker build)");
+                eprintln!(
+                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/serial-talker/target"
+                );
+                eprintln!("Skipping test...");
+            } else {
+                panic!("qemu-serial-talker build failed: {:?}", e);
+            }
+        }
+    }
+}
+
+/// Test that qemu-serial-listener builds successfully
+#[test]
+fn test_qemu_serial_listener_builds() {
+    require_arm_toolchain();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+
+    let result = build_qemu_serial_listener();
+    match result {
+        Ok(binary) => {
+            assert!(
+                binary.exists(),
+                "Binary should exist at {}",
+                binary.display()
+            );
+            println!(
+                "SUCCESS: qemu-serial-listener builds at {}",
+                binary.display()
+            );
+        }
+        Err(e) => {
+            let err_str = format!("{:?}", e);
+            if err_str.contains("Permission denied") {
+                eprintln!("Build failed due to permission issues (likely from Docker build)");
+                eprintln!(
+                    "Fix with: sudo rm -rf examples/qemu-arm-baremetal/rust/zenoh/serial-listener/target"
+                );
+                eprintln!("Skipping test...");
+            } else {
+                panic!("qemu-serial-listener build failed: {:?}", e);
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Serial QEMU E2E Tests (MPS2-AN385 + CMSDK UART + zenohd serial)
+// =============================================================================
+
+/// Test serial pub/sub between two QEMU instances via zenohd serial bridge.
+///
+/// Architecture:
+///   socat pair A:  QEMU listener UART0 ↔ zenohd serial listener
+///   socat pair B:  QEMU talker  UART0 ↔ zenohd serial listener
+///
+/// Using socat PTY pairs ensures both ends exist before either side starts,
+/// avoiding the race where firmware sends InitSyn before zenohd is ready.
+/// `-display none -monitor none` avoids `-nographic`'s implicit `-serial
+/// mon:stdio` which hijacks UART0 for the QEMU monitor.
+#[test]
+fn test_qemu_serial_pubsub_e2e() {
+    require_arm_toolchain();
+    require_qemu();
+    if !require_zenoh_pico_arm() {
+        return;
+    }
+    if !is_socat_available() {
+        eprintln!("Skipping test: socat not found");
+        return;
+    }
+
+    // Build both binaries
+    let talker_bin = build_qemu_serial_talker().expect("Failed to build serial-talker");
+    let listener_bin = build_qemu_serial_listener().expect("Failed to build serial-listener");
+
+    // Create socat PTY pairs: one for listener, one for talker.
+    // Each pair links QEMU's UART0 to zenohd's serial listener.
+    let tmp_dir = nros_tests::project_root().join("tmp");
+    std::fs::create_dir_all(&tmp_dir).expect("Failed to create tmp dir");
+
+    let listener_pair = SocatPtyPair::create(
+        tmp_dir.join("serial-listener-qemu").to_str().unwrap(),
+        tmp_dir.join("serial-listener-zenohd").to_str().unwrap(),
+    )
+    .expect("Failed to create listener socat PTY pair");
+    eprintln!(
+        "Listener PTY pair: {} ↔ {}",
+        listener_pair.qemu_path, listener_pair.zenohd_path
+    );
+
+    let talker_pair = SocatPtyPair::create(
+        tmp_dir.join("serial-talker-qemu").to_str().unwrap(),
+        tmp_dir.join("serial-talker-zenohd").to_str().unwrap(),
+    )
+    .expect("Failed to create talker socat PTY pair");
+    eprintln!(
+        "Talker PTY pair: {} ↔ {}",
+        talker_pair.qemu_path, talker_pair.zenohd_path
+    );
+
+    // Start zenohd with serial listeners on the zenohd side of each pair.
+    // zenohd must be ready before QEMU starts, so the InitSyn handshake succeeds.
+    eprintln!("Starting zenohd with serial listeners...");
+    let _zenohd =
+        ZenohRouter::start_serial(&[&listener_pair.zenohd_path, &talker_pair.zenohd_path])
+            .expect("Failed to start zenohd with serial listeners");
+
+    // Start listener QEMU first (subscriber before publisher)
+    eprintln!("Starting serial listener QEMU...");
+    let mut listener =
+        QemuProcess::start_mps2_an385_with_serial(&listener_bin, &listener_pair.qemu_path)
+            .expect("Failed to start listener QEMU");
+
+    // Brief delay for listener to subscribe before talker starts publishing
+    std::thread::sleep(Duration::from_secs(5));
+
+    // Start talker QEMU
+    eprintln!("Starting serial talker QEMU...");
+    let mut talker = QemuProcess::start_mps2_an385_with_serial(&talker_bin, &talker_pair.qemu_path)
+        .expect("Failed to start talker QEMU");
+
+    // Wait for listener to complete (receives 10 messages or times out)
+    let listener_output = listener
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    // Wait for talker to finish publishing
+    let talker_output = talker
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+
+    talker.kill();
+    listener.kill();
+
+    eprintln!("Listener output:\n{}", listener_output);
+    eprintln!("Talker output:\n{}", talker_output);
+
+    // Verify communication
+    let received = count_pattern(&listener_output, "Received [");
+    eprintln!("Serial QEMU pubsub: received={} messages", received);
+
+    assert!(
+        listener_output.contains("Received 10 messages"),
+        "Serial listener did not receive 10 messages (got {})",
+        received
+    );
+    assert!(
+        talker_output.contains("Done publishing"),
+        "Serial talker did not finish publishing"
+    );
+}
+
+// =============================================================================
 // RTIC QEMU Build Tests (MPS2-AN385)
 // =============================================================================
 
@@ -592,6 +774,9 @@ fn test_qemu_rtic_pubsub_e2e() {
         return;
     }
 
+    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
+    cleanup_tap_network();
+
     // Build both binaries
     let talker_bin = build_qemu_rtic_talker().expect("Failed to build rtic-talker");
     let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
@@ -599,13 +784,20 @@ fn test_qemu_rtic_pubsub_e2e() {
     // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
+    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    assert!(
+        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+    );
+
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting RTIC listener QEMU on tap-qemu1...");
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
         .expect("Failed to start listener QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(5));
+    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
+    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    std::thread::sleep(Duration::from_secs(8));
 
     // Start talker QEMU
     eprintln!("Starting RTIC talker QEMU on tap-qemu0...");
@@ -697,6 +889,9 @@ fn test_qemu_rtic_action_client_builds() {
 // RTIC QEMU Service/Action Networked Tests (MPS2-AN385 + LAN9118 + zenohd)
 // =============================================================================
 
+/// Service E2E test for RTIC on QEMU.
+///
+/// Tests 4 service calls (AddTwoInts) between server and client QEMU instances.
 #[test]
 fn test_qemu_rtic_service_e2e() {
     require_arm_toolchain();
@@ -707,6 +902,9 @@ fn test_qemu_rtic_service_e2e() {
         return;
     }
 
+    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
+    cleanup_tap_network();
+
     // Build both binaries
     let server_bin = build_qemu_rtic_service_server().expect("Failed to build rtic-service-server");
     let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
@@ -714,13 +912,20 @@ fn test_qemu_rtic_service_e2e() {
     // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
+    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    assert!(
+        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+    );
+
     // Start server QEMU first
     eprintln!("Starting RTIC service server QEMU on tap-qemu0...");
     let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
         .expect("Failed to start server QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(5));
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect + queryable discovery
+    // Services need longer than pub/sub because zenoh queryable discovery takes time
+    std::thread::sleep(Duration::from_secs(8));
 
     // Start client QEMU
     eprintln!("Starting RTIC service client QEMU on tap-qemu1...");
@@ -729,7 +934,7 @@ fn test_qemu_rtic_service_e2e() {
 
     // Wait for client to complete (it exits after 4 service calls)
     let client_output = client
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output(Duration::from_secs(90))
         .unwrap_or_default();
 
     // Collect server output
@@ -758,6 +963,9 @@ fn test_qemu_rtic_service_e2e() {
     );
 }
 
+/// Action E2E test for RTIC on QEMU.
+///
+/// Tests Fibonacci action (goal, feedback, result) between server and client QEMU instances.
 #[test]
 fn test_qemu_rtic_action_e2e() {
     require_arm_toolchain();
@@ -768,6 +976,9 @@ fn test_qemu_rtic_action_e2e() {
         return;
     }
 
+    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
+    cleanup_tap_network();
+
     // Build both binaries
     let server_bin = build_qemu_rtic_action_server().expect("Failed to build rtic-action-server");
     let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
@@ -775,13 +986,20 @@ fn test_qemu_rtic_action_e2e() {
     // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
+    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    assert!(
+        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
+        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+    );
+
     // Start server QEMU first
     eprintln!("Starting RTIC action server QEMU on tap-qemu0...");
     let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
         .expect("Failed to start server QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
-    std::thread::sleep(Duration::from_secs(5));
+    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
+    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    std::thread::sleep(Duration::from_secs(8));
 
     // Start client QEMU
     eprintln!("Starting RTIC action client QEMU on tap-qemu1...");

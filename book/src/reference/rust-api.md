@@ -14,16 +14,17 @@ use nros::prelude::*;
 
 ## Executor
 
-The executor owns the transport session and manages all callbacks. Its const
-generics control static memory layout:
+The executor owns the transport session and manages all callbacks. Its static
+memory layout is controlled via environment variables at build time:
 
-- **`MAX_CBS`** -- maximum registered callbacks (subscriptions + timers + services)
-- **`CB_ARENA`** -- byte budget for storing callback closures inline (4096 is
-  generous for most use cases)
+- **`NROS_EXECUTOR_MAX_CBS`** (default 4) -- maximum registered callbacks
+  (subscriptions + timers + services)
+- **`NROS_EXECUTOR_ARENA_SIZE`** (default 4096) -- byte budget for storing
+  callback closures inline
 
 ```rust
 let config = ExecutorConfig::from_env().node_name("my_node");
-let mut executor: Executor<_> = Executor::open(&config)?;
+let mut executor = Executor::open(&config)?;
 ```
 
 ### Spin Methods
@@ -161,11 +162,10 @@ operations. Transport-level errors use `TransportError`.
 
 ## Transport Backends
 
-Types are generic over `S: Session`. You do not need to name `S` explicitly --
-the compiler infers it from your enabled feature flag:
+The transport backend is selected at compile time via feature flags:
 
-- `rmw-zenoh` --> `ZenohSession`
-- `rmw-xrce` --> `XrceSession`
+- `rmw-zenoh` --> zenoh-pico transport
+- `rmw-xrce` --> XRCE-DDS transport
 
-Advanced users can access the concrete session type via
-`nros::internals::RmwSession`.
+The concrete session type is resolved automatically. Advanced users can access
+it via `nros::internals::RmwSession`.

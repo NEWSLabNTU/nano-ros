@@ -142,14 +142,14 @@ reported via `TransportError::MessageTooLarge`.
 | **Strategy**         | Static pools, compile-time sized                | Arena-based callbacks, static buffers            |
 | **Pool system**      | Linked-list free/allocated pools                | Arena allocator (`MaybeUninit` byte array)       |
 | **Dynamic fallback** | Optional (`ALLOW_DYNAMIC_ALLOCATIONS`)          | Via `alloc` feature flag                         |
-| **Limits**           | CMake-time: `MAX_NODES`, `MAX_PUBLISHERS`, etc. | Const generics: `Executor<S, MAX_CBS, CB_ARENA>` |
+| **Limits**           | CMake-time: `MAX_NODES`, `MAX_PUBLISHERS`, etc. | Env vars: `NROS_EXECUTOR_MAX_CBS`, `NROS_EXECUTOR_ARENA_SIZE` |
 | **History buffers**  | `RMW_UXRCE_MAX_HISTORY` input buffer slots      | Per-subscriber configurable buffer               |
-| **Configurability**  | colcon.meta / CMake / Kconfig                   | Const generics, env vars, Kconfig (Zephyr)       |
+| **Configurability**  | colcon.meta / CMake / Kconfig                   | Env vars, Kconfig (Zephyr)                       |
 
-Both enforce compile-time entity limits. nano-ros uses Rust const generics
-(`MAX_CBS`, `CB_ARENA`) for the executor and env vars (`ZPICO_MAX_PUBLISHERS`,
-`XRCE_MAX_SUBSCRIBERS`, etc.) for transport-level limits. The Zephyr module
-exposes these via Kconfig menus.
+Both enforce compile-time entity limits. nano-ros uses environment variables
+(`NROS_EXECUTOR_MAX_CBS`, `NROS_EXECUTOR_ARENA_SIZE`) for executor sizing
+and env vars (`ZPICO_MAX_PUBLISHERS`, `XRCE_MAX_SUBSCRIBERS`, etc.) for
+transport-level limits. The Zephyr module exposes these via Kconfig menus.
 
 ### 4. Executor Model
 
@@ -157,8 +157,8 @@ exposes these via Kconfig menus.
 |-------------------|--------------------------------------------|----------------------------------------------|
 | **Language**      | C                                          | Rust (with C API)                            |
 | **Handle types**  | Sub, Timer, Service, Client, Action, Guard | Sub, Timer, Service, Client, Action          |
-| **Max handles**   | User-specified at init                     | Const generic `MAX_CBS` (default 4)          |
-| **Callback arena**| N/A (function pointers only)               | `CB_ARENA` bytes for closures (default 4096) |
+| **Max handles**   | User-specified at init                     | `NROS_EXECUTOR_MAX_CBS` env var (default 4)  |
+| **Callback arena**| N/A (function pointers only)               | `NROS_EXECUTOR_ARENA_SIZE` bytes (default 4096) |
 | **Trigger modes** | any, all, always, one, custom              | any (implicit)                               |
 | **Semantics**     | RCLCPP + LET (Logical Execution Time)      | RCLCPP + LET                                 |
 | **Spin methods**  | `spin_period()`, `spin_one_period()`       | `spin_once()`, `spin_blocking()`, `spin_period()`, `spin_one_period()` |
@@ -382,5 +382,5 @@ Items where micro-ROS still leads and nano-ros could improve:
    support introspection.
 4. **rclc-compatible C API**: Enables migration from micro-ROS without major
    rewrites.
-5. **`Executor<S, MAX_CBS, CB_ARENA>`**: Const-generic arena sizing eliminates
+5. **`Executor` with env-var sizing**: Environment-variable arena sizing eliminates
    runtime allocation while remaining configurable.

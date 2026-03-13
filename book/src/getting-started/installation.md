@@ -10,15 +10,14 @@ Both paths need a zenohd router for the Zenoh backend.
 
 ## zenohd Router
 
-Download a prebuilt zenohd 1.6.2 binary from the
-[zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases/tag/1.6.2)
-page. Extract it and place it somewhere on your `PATH`.
+Build zenohd from the submodule (recommended) or download a prebuilt binary
+from [zenoh releases](https://github.com/eclipse-zenoh/zenoh/releases).
+The version must match the zenoh-pico version vendored in the repo.
 
 Verify it works:
 
 ```bash
 zenohd --version
-# zenohd 1.6.2
 ```
 
 ## Rust
@@ -135,7 +134,7 @@ just test          # Unit + Miri + QEMU
 
 ### Building zenohd from Source
 
-The repository includes zenohd 1.6.2 as a git submodule. To build it
+The repository includes zenohd as a git submodule. To build it
 instead of using a prebuilt binary:
 
 ```bash

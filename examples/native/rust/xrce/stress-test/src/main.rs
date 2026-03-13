@@ -81,7 +81,7 @@ fn run_talker() {
     );
 
     let config = ExecutorConfig::new(&agent_addr).node_name("xrce_stress_talker");
-    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::open(&config).expect("Failed to open XRCE session");
 
     let mut node = executor
         .create_node("xrce_stress_talker")
@@ -148,7 +148,7 @@ fn run_listener() {
     );
 
     let config = ExecutorConfig::new(&agent_addr).node_name("xrce_stress_listener");
-    let mut executor = Executor::<_, 0, 0>::open(&config).expect("Failed to open XRCE session");
+    let mut executor = Executor::open(&config).expect("Failed to open XRCE session");
 
     let mut node = executor
         .create_node("xrce_stress_listener")

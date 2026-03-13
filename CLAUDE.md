@@ -13,24 +13,24 @@ Lightweight ROS 2 client for embedded real-time systems (Zephyr, FreeRTOS, NuttX
 ```
 nano-ros/
 ├── packages/
-│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c
+│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp, nros-cpp-ffi
 │   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
 │   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
-│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-esp32, nros-esp32-qemu, nros-stm32f4
+│   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-nuttx-qemu-arm, nros-esp32, nros-esp32-qemu, nros-stm32f4
 │   ├── drivers/        # lan9118-smoltcp, lan9118-lwip, openeth-smoltcp
 │   ├── interfaces/     # rcl-interfaces (generated/, checked into git)
 │   ├── testing/        # nros-tests (integration test crate)
 │   ├── verification/   # nros-ghost-types, nros-verification (Verus proofs, excluded from workspace)
 │   ├── reference/      # qemu-smoltcp-bridge
 │   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
-├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
+├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-arm-nuttx, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
 ├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps
 ├── scripts/            # zenohd build, Zephyr setup
 ├── docker/             # QEMU dev environment
 ├── tests/              # Shell-based test scripts
 ├── docs/               # Guides, reference, design, roadmap
 ├── zephyr/             # Zephyr module (Kconfig, CMakeLists.txt, cmake/)
-└── CMakeLists.txt      # Top-level CMake (Corrosion, nros-c + codegen)
+└── CMakeLists.txt      # Top-level CMake (Corrosion, nros-c + nros-cpp + codegen)
 ```
 
 ## Build Commands
@@ -40,7 +40,7 @@ just setup              # Install toolchains, cargo tools, download FreeRTOS/Nut
 just setup-freertos     # Download FreeRTOS kernel + lwIP (included in just setup)
 just setup-nuttx        # Download NuttX RTOS + apps (included in just setup)
 just build              # Generate bindings + build workspace + examples
-just build-zenohd       # Build zenohd 1.6.2 from submodule
+just build-zenohd       # Build zenohd from submodule
 just check              # Format check + clippy
 just quality            # Format + check + test
 just doc                # Generate docs
@@ -68,6 +68,8 @@ First-time: `just setup` installs everything (toolchains, cargo tools, system de
 
 ## Environment Variables
 
+Configuration via `.env` file: copy `.env.example` to `.env` (gitignored) and uncomment values. Loaded automatically by justfile and direnv.
+
 Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
 FreeRTOS/NuttX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx`). Override via env vars if sources are elsewhere:
@@ -76,6 +78,7 @@ FreeRTOS/NuttX build-time variables are **auto-resolved** by justfile recipes (d
 - `LWIP_DIR` — lwIP source (default: `external/lwip`)
 - `FREERTOS_CONFIG_DIR` — `FreeRTOSConfig.h` + `lwipopts.h` (default: board crate's `config/`)
 - `NUTTX_DIR` — NuttX RTOS source (default: `external/nuttx`)
+- `NUTTX_APPS_DIR` — NuttX apps source (default: `external/nuttx-apps`)
 
 Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).
 
@@ -113,6 +116,7 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 
 ### `.gitignore` Practices
 - **Every workspace-excluded crate** (examples, board crates in `exclude`, standalone packages) must have a per-directory `.gitignore` with at least `/target/`. Add `/generated/` if the crate uses `cargo nano-ros generate`.
+- **Every native C++ example** must have a per-directory `.gitignore` with `/build/` (CMake builds in-tree). Zephyr C++ examples don't need this since they build in the Zephyr workspace.
 - Root `.gitignore` only for repo-wide patterns
 - Always use leading `/` (e.g., `/target/` not `target/`)
 - When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`
@@ -133,7 +137,7 @@ Phase docs follow a standard structure:
 ## Key Design Patterns
 
 ### Zenoh Version Unification
-All zenoh components pinned to **1.6.2** (compatible with rmw_zenoh_cpp). zenohd built from `scripts/zenohd/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
+All zenoh components pinned to **1.7.2** (compatible with rmw_zenoh_cpp). zenohd built from `scripts/zenohd/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
 
 ### Rust Edition 2024
 - `unsafe extern "C" { ... }` (extern blocks require `unsafe`)
@@ -167,6 +171,17 @@ See [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) for CMake int
 
 **cbindgen header generation:** C headers are auto-generated from Rust `#[repr(C)]` types by cbindgen v0.29 during `cargo build`. The generated `nros_generated.h` is included by thin per-module header stubs. All struct fields on `#[repr(C)]` types must be `pub` for cbindgen to include them. `visibility.h`, `platform.h`, and `types.h` (for `nros_service_type_t`) remain hand-written. Platform FFI imports in `platform.rs` use `/// cbindgen:ignore` to avoid conflicts with `static inline` definitions.
 
+### C++ API
+See [docs/guides/cpp-api.md](docs/guides/cpp-api.md) for the getting started guide.
+
+`nros-cpp` is a freestanding C++14 header-only library wrapping Rust `nros-node` directly via typed `extern "C"` FFI through `nros-cpp-ffi`. Mirrors rclcpp naming (`Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`). Error handling via `nros::Result` + `NROS_TRY` macro.
+
+**Message codegen:** `cargo nano-ros generate-cpp` or CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)`. Generated types use ROS 2 standard namespaces (e.g., `std_msgs::msg::Int32`).
+
+**Optional std mode:** Define `NROS_CPP_STD` for `std::string`, `std::function`, and `std::chrono` convenience overloads. Not required — freestanding mode uses `const char*`, C function pointers, and integer milliseconds.
+
+**Zephyr integration:** `CONFIG_NROS_CPP_API=y` + `nros_generate_interfaces(... LANGUAGE CPP)`.
+
 ### Platform Backends
 Three orthogonal axes (NEVER cross-imply):
 - **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
@@ -198,20 +213,13 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 |-------|-------|--------|
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
-| 49 | nros-c thin wrapper migration | Complete |
-| 51 | Board crate `run()` API | In Progress |
-| 53 | UDP + TLS transport support | Complete |
 | 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred, 54.12 remaining) |
-| 55 | NuttX platform support | In Progress (55.1–55.10, 55.12 done, 55.11 remaining) |
-| 56 | Verification refresh | Complete |
-| 57 | Code quality improvements | Complete |
-| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.11 done) |
-| 59 | API documentation (rustdoc + Doxygen) | Complete |
-| 60 | std/alloc feature consistency | Complete |
-| 61 | FFI reentrancy guards (zpico + XRCE critical sections) | Complete |
-| 62 | Event-driven async waking (AtomicWaker) | Complete |
-| 63 | RTIC integration (examples + QEMU testing) | In Progress (63.1–63.10 done) |
-| 66 | C++ API (`nros-cpp`) | In Progress (66.1–66.4 done) |
+| 55 | NuttX platform support | Complete |
+| 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.11 done, 58.12–58.13 remaining) |
+| 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
+| 65 | .env.example + environment docs | In Progress (35/36 done) |
+| 67 | Serial transport + board crate transport abstraction | In Progress (67.1–67.9 done, 67.10–67.14 remaining) |
+| 68 | Alloc-free C/C++ bindings + executor simplification | Complete |
 
 ## Quick Reference
 

@@ -120,6 +120,11 @@ impl QemuProcess {
     /// MAC addresses use the locally-administered range (02:xx) with the last
     /// byte derived from the peer index. These must match the firmware's network
     /// config in `nros-mps2-an385-freertos`.
+    ///
+    /// Uses `-icount shift=auto` to synchronize QEMU's virtual clock with
+    /// wall-clock time. Without this, hardware timers (CMSDK Timer0) race ahead
+    /// during WFI, causing zenoh-pico timeouts to expire before TAP network I/O
+    /// completes. See `docs/reference/qemu-icount.md`.
     pub fn start_mps2_an385_networked(binary: &Path, peer_index: u8) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
@@ -142,12 +147,70 @@ impl QemuProcess {
             "-machine",
             "mps2-an385",
             "-nographic",
+            // Synchronize virtual clock with wall-clock time. With sleep=on
+            // (default), WFI advances virtual time at wall-clock speed via
+            // QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps
+            // hardware timer-backed clocks (CMSDK Timer0) aligned with TAP
+            // network I/O timing.
+            "-icount",
+            "shift=auto",
             "-semihosting-config",
             "enable=on,target=native",
             "-kernel",
         ])
         .arg(binary)
         .args(["-nic", &nic_arg])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        Ok(Self { handle })
+    }
+
+    /// Start QEMU with MPS2-AN385 machine + external serial device
+    ///
+    /// Connects UART0 to the given serial device path (e.g., a socat PTY).
+    /// Uses `-display none -monitor none` to avoid `-nographic`'s implicit
+    /// `-serial mon:stdio` which would hijack UART0 for the monitor.
+    /// Semihosting output goes to stdout via the ARM semihosting interface.
+    ///
+    /// # Arguments
+    /// * `binary` - Path to the ARM ELF binary to run
+    /// * `serial_path` - Host serial device path (e.g., `/tmp/serial-a`)
+    pub fn start_mps2_an385_with_serial(binary: &Path, serial_path: &str) -> TestResult<Self> {
+        if !binary.exists() {
+            return Err(TestError::BuildFailed(format!(
+                "Binary not found: {}",
+                binary.display()
+            )));
+        }
+
+        let chardev_arg = format!("serial,id=ser0,path={}", serial_path);
+        let mut cmd = Command::new("qemu-system-arm");
+        cmd.args([
+            "-cpu",
+            "cortex-m3",
+            "-machine",
+            "mps2-an385",
+            "-display",
+            "none",
+            "-monitor",
+            "none",
+            // Synchronize virtual clock with wall-clock time. The firmware
+            // uses CMSDK Timer0 (hardware timer) for zenoh-pico timeouts.
+            // Without icount, WFI advances virtual time instantly, causing
+            // timeouts to fire before serial I/O through zenohd completes.
+            "-icount",
+            "shift=auto",
+            "-semihosting-config",
+            "enable=on,target=native",
+            "-chardev",
+        ])
+        .arg(&chardev_arg)
+        .args(["-serial", "chardev:ser0", "-kernel"])
+        .arg(binary)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
         #[cfg(unix)]
@@ -372,6 +435,57 @@ pub fn parse_test_results(output: &str) -> (usize, usize) {
     (passed, failed)
 }
 
+/// Clean up stale network state from previous QEMU test runs.
+///
+/// Two sources of stale state cause TCP connection failures when QEMU
+/// instances are restarted between E2E tests:
+///
+/// 1. **Stale TCP sockets** — SIGKILL'd QEMU leaves host-side connections in
+///    FIN-WAIT-1 (FIN can't be ACK'd). These persist for minutes and collide
+///    with new connections on the same 4-tuple. Fixed via `ss -K`.
+///
+/// 2. **Stale ARP cache** — The bridge remembers old MAC→IP mappings. New QEMU
+///    instances have the same MAC but the kernel may route to a stale entry.
+///    Fixed via `ip neigh del`.
+///
+/// Stale packets in the TAP `pfifo` qdisc are harmless because the firmware
+/// seeds smoltcp's ephemeral port from the host's wall clock via ARM
+/// semihosting `SYS_TIME`. Each QEMU run uses a different source port, so
+/// stale packets with old port numbers are silently ignored by smoltcp (no
+/// matching socket).
+///
+/// Note: `ss -K` and `ip neigh del` require `CAP_NET_ADMIN`. When running
+/// without privileges, these fail silently. Nextest retries (configured in
+/// `.config/nextest.toml`) handle residual flakiness.
+///
+/// Orphaned processes are handled separately by `PR_SET_PDEATHSIG(SIGKILL)`.
+pub fn cleanup_tap_network() {
+    // Kill stale TCP connections to QEMU IPs (best-effort, needs CAP_NET_ADMIN)
+    for ip in &["192.0.3.10", "192.0.3.11"] {
+        let _ = std::process::Command::new("ss")
+            .args(["-K", "dst", ip])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+
+    // Flush ARP cache for QEMU IPs (best-effort, needs CAP_NET_ADMIN)
+    for ip in &["192.0.3.10", "192.0.3.11"] {
+        let _ = std::process::Command::new("ip")
+            .args(["neigh", "del", ip, "dev", "qemu-br"])
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null())
+            .status();
+    }
+
+    // Settle time for kernel state cleanup.
+    // Back-to-back QEMU E2E tests need enough time for the kernel to
+    // process FIN-WAIT-1 retransmits and bridge FDB updates. Without
+    // this, zenoh-pico service replies can be lost due to residual
+    // bridge/ARP state from the previous test.
+    std::thread::sleep(Duration::from_secs(2));
+}
+
 /// Check if the QEMU TAP bridge network is available
 ///
 /// Verifies that the `qemu-br` bridge and at least `tap-qemu0` + `tap-qemu1`
@@ -469,6 +583,81 @@ pub fn require_zenoh_pico_arm() -> bool {
         return false;
     }
     true
+}
+
+/// A socat-managed virtual serial pair (two linked PTYs).
+///
+/// Creates a bidirectional PTY pair via `socat`. Data written to one
+/// end appears on the other. Both ends are exposed as symlinks for
+/// stable paths.
+///
+/// Use this to wire QEMU's UART0 to zenohd's serial listener without
+/// timing races: the PTY pair exists before either side starts, so
+/// data is kernel-buffered.
+///
+/// # Example
+///
+/// ```ignore
+/// let pair = SocatPtyPair::create("/tmp/serial-qemu", "/tmp/serial-zenohd")?;
+/// // QEMU connects to /tmp/serial-qemu
+/// // zenohd listens on /tmp/serial-zenohd
+/// // pair is killed on drop
+/// ```
+pub struct SocatPtyPair {
+    handle: Child,
+    /// Path for the QEMU side
+    pub qemu_path: String,
+    /// Path for the zenohd side
+    pub zenohd_path: String,
+}
+
+impl SocatPtyPair {
+    /// Create a new PTY pair with symlinks at the given paths.
+    ///
+    /// Blocks until both symlinks exist (up to 5 seconds).
+    pub fn create(qemu_link: &str, zenohd_link: &str) -> TestResult<Self> {
+        // Remove stale symlinks from previous runs
+        let _ = std::fs::remove_file(qemu_link);
+        let _ = std::fs::remove_file(zenohd_link);
+
+        let pty_a = format!("PTY,raw,echo=0,link={}", qemu_link);
+        let pty_b = format!("PTY,raw,echo=0,link={}", zenohd_link);
+
+        let mut cmd = Command::new("socat");
+        cmd.args([&pty_a, &pty_b])
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        #[cfg(unix)]
+        set_new_process_group(&mut cmd);
+        let handle = cmd.spawn()?;
+
+        // Wait for symlinks to appear
+        let start = Instant::now();
+        while start.elapsed() < Duration::from_secs(5) {
+            if Path::new(qemu_link).exists() && Path::new(zenohd_link).exists() {
+                // Small delay for socat to finish setting up the PTY
+                std::thread::sleep(Duration::from_millis(100));
+                return Ok(Self {
+                    handle,
+                    qemu_path: qemu_link.to_string(),
+                    zenohd_path: zenohd_link.to_string(),
+                });
+            }
+            std::thread::sleep(Duration::from_millis(50));
+        }
+
+        Err(TestError::ProcessFailed(
+            "Timeout waiting for socat PTY symlinks".to_string(),
+        ))
+    }
+}
+
+impl Drop for SocatPtyPair {
+    fn drop(&mut self) {
+        kill_process_group(&mut self.handle);
+        let _ = std::fs::remove_file(&self.qemu_path);
+        let _ = std::fs::remove_file(&self.zenohd_path);
+    }
 }
 
 #[cfg(test)]

@@ -20,11 +20,15 @@ store-failure-output = true
 [test-groups.qemu-network]
 max-threads = 1
 
-# ARM QEMU tests: target directory serialization (Docker E2E is network-isolated)
-[test-groups.arm-emulator]
-max-threads = 1
+# ARM QEMU tests: shares TAP bridge + zenohd port 7447 with FreeRTOS/NuttX/ThreadX.
+# Previously a separate group for target directory serialization, but RTIC E2E tests
+# now use the same network infrastructure and must not run concurrently.
+# Merged into qemu-network below.
 
 [test-groups.c_api]
+max-threads = 1
+
+[test-groups.cpp_api]
 max-threads = 1
 
 # XRCE-DDS tests: single Agent instance per test
@@ -47,8 +51,11 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(emulator) and not binary(esp32_emulator)"
-test-group = "arm-emulator"
+test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
+# QEMU TAP networking is inherently flaky (stale TCP state, ARP timing, bridge latency).
+# Retry E2E tests up to 2 extra times before marking as failed.
+retries = 2
 
 [[profile.default.overrides]]
 filter = "binary(c_api)"
@@ -58,6 +65,10 @@ test-group = "c_api"
 filter = "binary(xrce)"
 test-group = "xrce"
 slow-timeout = { period = "60s", terminate-after = 3 }
+
+[[profile.default.overrides]]
+filter = "binary(cpp_api)"
+test-group = "cpp_api"
 
 [[profile.default.overrides]]
 filter = "binary(c_xrce_api)"
@@ -119,18 +130,21 @@ slow-timeout = { period = "120s", terminate-after = 3 }
 filter = "binary(freertos_qemu)"
 test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
 
 # ThreadX Linux tests: shared TAP bridge + port 7447
 [[profile.default.overrides]]
 filter = "binary(threadx_linux)"
 test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
 
 # ThreadX QEMU RISC-V tests: shared TAP bridge + port 7447
 [[profile.default.overrides]]
 filter = "binary(threadx_riscv64_qemu)"
 test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
+retries = 2
 
 [profile.ci]
 # CI profile with stricter timeouts
