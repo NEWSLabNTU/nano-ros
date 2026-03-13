@@ -1,0 +1,12 @@
+[package]
+name = "stm32f4-usart"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "STM32F4 USART driver implementing zpico-serial SerialPort trait"
+
+[lib]
+name = "stm32f4_usart"
+
+[dependencies]
+zpico-serial = { path = "../../zpico/zpico-serial" }

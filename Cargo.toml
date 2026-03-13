@@ -116,6 +116,8 @@ exclude = [
     "packages/zpico/zpico-serial",
     # CMSDK UART driver (embedded-only, Cortex-M)
     "packages/drivers/cmsdk-uart",
+    # STM32F4 USART driver (embedded-only, Cortex-M)
+    "packages/drivers/stm32f4-usart",
     # XRCE-DDS smoltcp UDP transport (embedded-only, requires cross-compilation)
     "packages/xrce/xrce-smoltcp",
     # XRCE-DDS RMW backend (embedded-only, requires xrce-sys linking)
