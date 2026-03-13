@@ -154,10 +154,16 @@ struct ZenohBufferConfig {
 impl ZenohBufferConfig {
     /// Read buffer config from environment variables with platform-appropriate defaults.
     fn from_env(posix: bool) -> Self {
+        let link = LinkFeatures::from_env();
         let (default_frag, default_batch_uni, default_batch_multi) = if posix {
             // Posix: large defaults for desktop/server workloads
             // Note: batch sizes must fit in u16 (zenoh protocol limit = 65535)
             (65535, 65535, 8192)
+        } else if link.serial {
+            // Serial transport: batch size must be >= z_serial MAX_MTU (1500).
+            // zenohd's z-serial crate requires the receive buffer to be at least
+            // 1500 bytes; the buffer is sized from the negotiated batch_size.
+            (2048, 1500, 1024)
         } else {
             // Embedded: small defaults for memory-constrained targets
             (2048, 1024, 1024)
@@ -763,7 +769,7 @@ fn build_zenoh_pico_native(
         .define("Z_FEATURE_LOCAL_SUBSCRIBER", "0")
         .define("Z_FEATURE_INTEREST", "1")
         .define("Z_FEATURE_MATCHING", "1")
-        .define("Z_FEATURE_LINK_SERIAL", "1")
+        .define("Z_FEATURE_LINK_SERIAL", "0")
         .define(
             "Z_FEATURE_UNSTABLE_API",
             if env::var("CARGO_FEATURE_UNSTABLE_ZENOH_API").is_ok() {
@@ -999,7 +1005,16 @@ fn build_c_shim(
         build.include(&platform_dir);
 
         // Platform defines — link features from Cargo features
-        build.define("ZPICO_SMOLTCP", None);
+        let has_network = link.tcp || link.udp_unicast || link.udp_multicast;
+        println!("cargo:warning=zpico-sys: has_network={has_network}, link.serial={}, link.tcp={}, link.udp_unicast={}", link.serial, link.tcp, link.udp_unicast);
+        if has_network {
+            build.define("ZPICO_SMOLTCP", None);
+            println!("cargo:warning=zpico-sys: defining ZPICO_SMOLTCP");
+        }
+        if link.serial && !has_network {
+            build.define("ZPICO_SERIAL", None);
+            println!("cargo:warning=zpico-sys: defining ZPICO_SERIAL");
+        }
         build.define("ZENOH_GENERIC", None);
         build.define("Z_FEATURE_MULTI_THREAD", "0");
         build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
@@ -1139,7 +1154,12 @@ fn build_zenoh_pico_embedded(
 
     // Platform defines
     build.define("ZENOH_GENERIC", None);
-    build.define("ZPICO_SMOLTCP", None);
+    let has_network = link.tcp || link.udp_unicast || link.udp_multicast;
+    if has_network {
+        build.define("ZPICO_SMOLTCP", None);
+    } else if link.serial {
+        build.define("ZPICO_SERIAL", None);
+    }
     build.define("ZENOH_DEBUG", "0");
     // Link features are set in the generated zenoh_generic_config.h,
     // but also pass them as -D flags for consistency with any code that
