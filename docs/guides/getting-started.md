@@ -444,6 +444,19 @@ embassy-futures = "0.1"  # no_std, no_alloc, runtime-agnostic
 See `examples/native/rust/zenoh/async-service-client/` (tokio) and
 `examples/zephyr/rust/zenoh/async-service-client/` (Embassy) for complete working examples.
 
+## RTOS Targets
+
+nros supports several RTOS platforms. Each has a dedicated setup guide:
+
+- **FreeRTOS** (QEMU MPS2-AN385): `just setup-freertos` + `just test-freertos`.
+  See [FreeRTOS Setup](freertos-setup.md).
+- **NuttX** (QEMU ARM virt): `just setup-nuttx` + `just test-nuttx`.
+  Uses Rust `std` (POSIX-compatible).
+- **Zephyr** (native_sim): `scripts/zephyr/setup.sh` + `just test-zephyr`.
+  See [Zephyr Setup](zephyr-setup.md).
+- **Bare-metal** (QEMU MPS2-AN385): No external SDK needed.
+  See [QEMU Bare-Metal](qemu-bare-metal.md).
+
 ## Next Steps
 
 - Browse the [examples/](../examples/) directory for more patterns (services, actions, subscribers)

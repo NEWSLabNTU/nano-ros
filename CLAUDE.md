@@ -213,7 +213,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 |-------|-------|--------|
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
-| 54 | FreeRTOS platform support (lwIP) | In Progress (54.1–54.11 done, 54.10 deferred, 54.12 remaining) |
+| 54 | FreeRTOS platform support (lwIP) | Complete (54.10 deferred to Phase 69) |
 | 55 | NuttX platform support | Complete |
 | 58 | ThreadX platform support (NetX Duo) | In Progress (58.1–58.11 done, 58.12–58.13 remaining) |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |

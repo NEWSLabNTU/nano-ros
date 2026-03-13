@@ -1,19 +1,26 @@
 # FreeRTOS
 
-nano-ros runs on FreeRTOS with lwIP networking and zenoh-pico transport. The
-primary target is the QEMU MPS2-AN385 board (ARM Cortex-M3) with a LAN9118
-Ethernet controller.
+nano-ros runs on FreeRTOS with lwIP networking, targeting QEMU MPS2-AN385
+(Cortex-M3 + LAN9118 Ethernet). FreeRTOS + lwIP is the most widely deployed
+RTOS + TCP/IP combination in the embedded industry (STM32, NXP, Renesas, TI).
 
 ## Overview
 
 The FreeRTOS platform uses:
 
 - **FreeRTOS kernel** -- task scheduling, mutexes, semaphores
-- **lwIP** -- TCP/IP stack in threaded mode (`NO_SYS=0`)
+- **lwIP** -- TCP/IP stack in threaded mode (`NO_SYS=0`, BSD sockets)
 - **zenoh-pico** -- Zenoh transport over lwIP BSD sockets
-- **LAN9118** -- Ethernet controller (MMIO on QEMU MPS2-AN385)
+- **LAN9118** -- MMIO Ethernet controller (QEMU MPS2-AN385)
 
 Board crate: `nros-mps2-an385-freertos` (in `packages/boards/`).
+
+### Why lwIP (Not FreeRTOS+TCP)
+
+lwIP was chosen over FreeRTOS+TCP because zenoh-pico's FreeRTOS+TCP variant
+lacks UDP multicast (needed for zenoh scouting) and TCP_NODELAY (needed for
+low-latency ROS 2 messaging). lwIP has near-universal vendor adoption
+(ESP32, STM32, NXP, TI, Xilinx) and a smaller flash footprint (10--40 KB).
 
 ## Setup
 
@@ -24,8 +31,20 @@ just setup-freertos
 ```
 
 This places the sources in `external/freertos-kernel/` and `external/lwip/`.
-Override the paths with `FREERTOS_DIR` and `LWIP_DIR` environment variables if
-your sources are elsewhere.
+Override the paths with environment variables if your sources are elsewhere:
+
+| Variable              | Default                    | Description                        |
+|-----------------------|----------------------------|------------------------------------|
+| `FREERTOS_DIR`        | `external/freertos-kernel` | FreeRTOS kernel source             |
+| `FREERTOS_PORT`       | `GCC/ARM_CM3`              | FreeRTOS portable layer            |
+| `LWIP_DIR`            | `external/lwip`            | lwIP source                        |
+| `FREERTOS_CONFIG_DIR` | Board crate's `config/`    | `FreeRTOSConfig.h` + `lwipopts.h` |
+
+### Prerequisites
+
+- `qemu-system-arm` (for running tests)
+- `arm-none-eabi-gcc` (for compiling FreeRTOS + lwIP C code)
+- Rust nightly toolchain (`thumbv7m-none-eabi` target)
 
 ## Building
 
@@ -33,8 +52,22 @@ your sources are elsewhere.
 just build-examples-freertos
 ```
 
-This cross-compiles all FreeRTOS examples for `thumbv7m-none-eabi` using the
-LAN9118 lwIP driver and zenoh-pico.
+This cross-compiles all FreeRTOS examples for `thumbv7m-none-eabi` using
+`cargo build --release`. The board crate's `build.rs` compiles FreeRTOS
+kernel, lwIP, and the LAN9118 lwIP netif driver via the `cc` crate.
+
+### Available Examples
+
+All examples are in `examples/qemu-arm-freertos/rust/zenoh/`:
+
+| Example          | Description                                      |
+|------------------|--------------------------------------------------|
+| `talker`         | Publishes `std_msgs/Int32` on `/chatter`         |
+| `listener`       | Subscribes to `std_msgs/Int32` on `/chatter`     |
+| `service-server` | Serves `AddTwoInts` on `/add_two_ints`           |
+| `service-client` | Calls `AddTwoInts` on `/add_two_ints`            |
+| `action-server`  | Serves `Fibonacci` action on `/fibonacci`        |
+| `action-client`  | Sends `Fibonacci` goal on `/fibonacci`           |
 
 ## Testing
 
@@ -42,9 +75,95 @@ LAN9118 lwIP driver and zenoh-pico.
 just test-freertos
 ```
 
-Tests run under QEMU with TAP networking. Each QEMU peer uses a separate TAP
-device (talker on `tap-qemu0`, listener on `tap-qemu1`). The subscriber starts
-first, followed by a 5-second stabilization delay before the publisher begins.
+Tests run under `qemu-system-arm -M mps2-an385` with TAP networking. Each
+QEMU instance connects to the host bridge (`br-qemu`) via TAP devices for
+zenohd communication. The test infrastructure builds a FreeRTOS firmware
+image with the example app, boots it in QEMU, and verifies message exchange.
+
+### Network Configuration
+
+FreeRTOS QEMU instances use the same IP scheme as other QEMU board crates:
+
+| Role             | IP Address  | TAP Device |
+|------------------|-------------|------------|
+| Talker/Publisher  | 192.0.3.10  | tap-qemu0  |
+| Listener/Sub     | 192.0.3.11  | tap-qemu1  |
+| Service Server   | 192.0.3.12  | tap-qemu0  |
+| Service Client   | 192.0.3.13  | tap-qemu1  |
+| zenohd (host)    | 192.0.3.1   | br-qemu    |
+
+## Architecture
+
+### Board Crate
+
+The `nros-mps2-an385-freertos` board crate provides:
+
+- **`Config`** -- network and node configuration with presets (`default()` for
+  talker, `listener()`, `server()`, `client()`)
+- **`run(config, closure)`** -- entry point that initializes FreeRTOS, lwIP,
+  LAN9118, starts the scheduler, and runs the user closure as a FreeRTOS task
+- **`println!`** -- output via ARM semihosting (`SYS_WRITE0`)
+
+Unlike NuttX, FreeRTOS is `no_std` -- examples use `#![no_std]` / `#![no_main]`
+entry points with semihosting for output.
+
+### Example Structure
+
+```rust
+#![no_std]
+#![no_main]
+
+use nros::prelude::*;
+use nros_mps2_an385_freertos::{Config, println, run};
+use panic_semihosting as _;
+use std_msgs::msg::Int32;
+
+#[unsafe(no_mangle)]
+extern "C" fn _start() -> ! {
+    run(Config::default(), |config| {
+        let exec_config = ExecutorConfig::new(config.zenoh_locator)
+            .domain_id(config.domain_id)
+            .node_name("talker");
+        let mut executor = Executor::open(&exec_config)?;
+        let mut node = executor.create_node("talker")?;
+        let publisher = node.create_publisher::<Int32>("/chatter")?;
+
+        for i in 0..10i32 {
+            for _ in 0..100 { executor.spin_once(10); }
+            publisher.publish(&Int32 { data: i })?;
+        }
+        Ok::<(), NodeError>(())
+    })
+}
+```
+
+### FreeRTOS Configuration
+
+The board configuration in `packages/boards/nros-mps2-an385-freertos/config/`:
+
+- `FreeRTOSConfig.h` -- 25 MHz CPU clock, 256 KB heap, recursive mutexes,
+  semihosting-compatible `configASSERT()`
+- `lwipopts.h` -- threaded mode (`NO_SYS=0`), BSD sockets, `TCP_NODELAY`,
+  16 KB lwIP heap
+- `mps2_an385.ld` -- 4 MB SSRAM at 0x21000000
+
+### Task Model
+
+FreeRTOS runs multiple tasks for networking and application logic:
+
+| Priority | Task             | Role                                    |
+|----------|------------------|-----------------------------------------|
+| 4        | tcpip_thread     | lwIP TCP/IP processing                  |
+| 4        | poll task        | LAN9118 RX FIFO → lwIP                  |
+| 4        | zenoh read/lease | zenoh-pico background I/O               |
+| 3        | app task         | nros Executor + Node                    |
+| 0        | idle             | WFI (mandatory for QEMU networking)     |
+
+## Status
+
+FreeRTOS platform support (Phase 54) is complete. All work items (54.1--54.12)
+are done, including feature flags, build integration, six Rust examples,
+E2E network tests, and documentation. C examples are deferred to Phase 69.
 
 ## LAN9118 Networking Debugging Guide
 

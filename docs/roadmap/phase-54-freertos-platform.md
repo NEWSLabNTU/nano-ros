@@ -2,7 +2,7 @@
 
 **Goal**: Add `platform-freertos` as a new platform axis value, enabling nros nodes on FreeRTOS + lwIP boards (STM32, NXP, Renesas, etc.) via both zenoh-pico and XRCE-DDS backends. Validate on QEMU MPS2-AN385 (Cortex-M3 + LAN9118 Ethernet) before requiring real hardware.
 
-**Status**: In Progress (54.1–54.11 done, 54.10 deferred, 54.12 remaining)
+**Status**: Complete (54.10 deferred to Phase 69)
 **Priority**: Medium
 **Depends on**: Phase 42 (Extensible RMW), Phase 43 (RMW-agnostic embedded API), Phase 51 (Board crate `run()` API)
 
@@ -205,7 +205,7 @@ These are only needed by zpico-sys and xrce-sys build.rs when the `freertos` fea
 - [x] 54.9 — Rust zenoh examples (pubsub, service, action)
 - [ ] 54.10 — C zenoh examples (pubsub, service, action) — **Deferred** (nros-c Phase 49 migration in progress)
 - [x] 54.11 — Integration tests + `just test-freertos` recipe
-- [ ] 54.12 — Documentation
+- [x] 54.12 — Documentation
 
 ### 54.1 — Feature flag wiring
 
