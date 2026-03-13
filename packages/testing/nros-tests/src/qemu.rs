@@ -187,6 +187,7 @@ impl QemuProcess {
             )));
         }
 
+        let chardev_arg = format!("serial,id=ser0,path={}", serial_path);
         let mut cmd = Command::new("qemu-system-arm");
         cmd.args([
             "-cpu",
@@ -205,10 +206,10 @@ impl QemuProcess {
             "shift=auto",
             "-semihosting-config",
             "enable=on,target=native",
-            "-serial",
-            serial_path,
-            "-kernel",
+            "-chardev",
         ])
+        .arg(&chardev_arg)
+        .args(["-serial", "chardev:ser0", "-kernel"])
         .arg(binary)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
