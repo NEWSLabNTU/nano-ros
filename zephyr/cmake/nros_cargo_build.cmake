@@ -82,6 +82,12 @@ function(nros_set_cargo_env_from_kconfig)
         set(ENV{NROS_MAX_TIMERS} "${CONFIG_NROS_C_MAX_TIMERS}")
         set(ENV{NROS_MAX_SERVICES} "${CONFIG_NROS_C_MAX_SERVICES}")
     endif()
+
+    # Rust executor limits (nros-node build.rs)
+    if(CONFIG_NROS_RUST_API)
+        set(ENV{NROS_EXECUTOR_MAX_CBS} "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
+        set(ENV{NROS_EXECUTOR_ARENA_SIZE} "${CONFIG_NROS_EXECUTOR_ARENA_SIZE}")
+    endif()
 endfunction()
 
 # =============================================================================

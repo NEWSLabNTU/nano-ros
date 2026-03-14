@@ -364,6 +364,28 @@ config NROS_C_MAX_SERVICES
 endif # NROS_C_API
 
 # =============================================================================
+# Rust Executor Limits (visible only when Rust API selected)
+# =============================================================================
+
+if NROS_RUST_API
+
+config NROS_EXECUTOR_MAX_CBS
+    int "Maximum executor callback slots"
+    default 16
+    help
+      Maximum number of callback slots in the Rust executor
+      (subscriptions + timers + services). Maps to NROS_EXECUTOR_MAX_CBS.
+
+config NROS_EXECUTOR_ARENA_SIZE
+    int "Executor arena size (bytes)"
+    default 16384
+    help
+      Size of the executor's callback arena in bytes.
+      Maps to NROS_EXECUTOR_ARENA_SIZE.
+
+endif # NROS_RUST_API
+
+# =============================================================================
 # Common Platform Configuration
 # =============================================================================
 
