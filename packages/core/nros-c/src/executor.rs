@@ -463,11 +463,8 @@ pub unsafe extern "C" fn nros_executor_add_subscription(
         nros_subscription_state_t::NROS_SUBSCRIPTION_STATE_INITIALIZED
     );
 
-    // Check capacity (overall and per-type)
+    // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
-    }
-    if executor.subscription_count >= NROS_MAX_SUBSCRIPTIONS {
         return NROS_RET_FULL;
     }
 
@@ -552,9 +549,6 @@ pub unsafe extern "C" fn nros_executor_add_timer(
     if executor.handle_count >= executor.max_handles {
         return NROS_RET_FULL;
     }
-    if executor.timer_count >= NROS_MAX_TIMERS {
-        return NROS_RET_FULL;
-    }
 
     {
         let rust_exec = get_executor(&mut executor._opaque);
@@ -626,9 +620,6 @@ pub unsafe extern "C" fn nros_executor_add_service(
 
     // Check capacity
     if executor.handle_count >= executor.max_handles {
-        return NROS_RET_FULL;
-    }
-    if executor.service_count >= NROS_MAX_SERVICES {
         return NROS_RET_FULL;
     }
 
@@ -1091,45 +1082,6 @@ pub unsafe extern "C" fn nros_executor_get_remaining_handles(
     (executor.max_handles - executor.handle_count) as c_int
 }
 
-/// Get remaining subscription capacity.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_remaining_subscriptions(
-    executor: *const nros_executor_t,
-) -> c_int {
-    if executor.is_null() {
-        return -1;
-    }
-
-    let executor = &*executor;
-    (NROS_MAX_SUBSCRIPTIONS - executor.subscription_count) as c_int
-}
-
-/// Get remaining timer capacity.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_remaining_timers(
-    executor: *const nros_executor_t,
-) -> c_int {
-    if executor.is_null() {
-        return -1;
-    }
-
-    let executor = &*executor;
-    (NROS_MAX_TIMERS - executor.timer_count) as c_int
-}
-
-/// Get remaining service capacity.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_executor_get_remaining_services(
-    executor: *const nros_executor_t,
-) -> c_int {
-    if executor.is_null() {
-        return -1;
-    }
-
-    let executor = &*executor;
-    (NROS_MAX_SERVICES - executor.service_count) as c_int
-}
-
 // ============================================================================
 // Kani verification
 // ============================================================================
@@ -1434,16 +1386,12 @@ mod tests {
     fn test_remaining_handles_null() {
         unsafe {
             assert_eq!(nros_executor_get_remaining_handles(ptr::null()), -1);
-            assert_eq!(nros_executor_get_remaining_subscriptions(ptr::null()), -1);
-            assert_eq!(nros_executor_get_remaining_timers(ptr::null()), -1);
-            assert_eq!(nros_executor_get_remaining_services(ptr::null()), -1);
         }
     }
 
     #[test]
     fn test_remaining_capacity_initial() {
         unsafe {
-            // Manually initialize (no real session needed for capacity test)
             let mut executor = nros_executor_get_zero_initialized();
             executor.state = nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED;
             executor.max_handles = NROS_EXECUTOR_MAX_HANDLES;
@@ -1452,26 +1400,11 @@ mod tests {
                 nros_executor_get_remaining_handles(&executor),
                 NROS_EXECUTOR_MAX_HANDLES as c_int
             );
-            assert_eq!(
-                nros_executor_get_remaining_subscriptions(&executor),
-                NROS_MAX_SUBSCRIPTIONS as c_int
-            );
-            assert_eq!(
-                nros_executor_get_remaining_timers(&executor),
-                NROS_MAX_TIMERS as c_int
-            );
-            assert_eq!(
-                nros_executor_get_remaining_services(&executor),
-                NROS_MAX_SERVICES as c_int
-            );
         }
     }
 
     #[test]
-    fn test_per_type_limit_constants() {
-        assert_eq!(NROS_MAX_SUBSCRIPTIONS, 8);
-        assert_eq!(NROS_MAX_TIMERS, 8);
-        assert_eq!(NROS_MAX_SERVICES, 4);
-        assert_eq!(NROS_EXECUTOR_MAX_HANDLES, 16);
+    fn test_max_handles_equals_max_cbs() {
+        assert_eq!(NROS_EXECUTOR_MAX_HANDLES, nros_node::config::MAX_CBS);
     }
 }

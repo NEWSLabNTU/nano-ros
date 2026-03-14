@@ -75,19 +75,9 @@ function(nros_set_cargo_env_from_kconfig)
         set(ENV{XRCE_STREAM_HISTORY} "${CONFIG_NROS_XRCE_STREAM_HISTORY}")
     endif()
 
-    # C API limits (nros-c build.rs) — only set if C API enabled
-    if(CONFIG_NROS_C_API)
-        set(ENV{NROS_EXECUTOR_MAX_HANDLES} "${CONFIG_NROS_C_MAX_HANDLES}")
-        set(ENV{NROS_MAX_SUBSCRIPTIONS} "${CONFIG_NROS_C_MAX_SUBSCRIPTIONS}")
-        set(ENV{NROS_MAX_TIMERS} "${CONFIG_NROS_C_MAX_TIMERS}")
-        set(ENV{NROS_MAX_SERVICES} "${CONFIG_NROS_C_MAX_SERVICES}")
-    endif()
-
-    # Rust executor limits (nros-node build.rs)
-    # Arena size is derived automatically from MAX_CBS and SUBSCRIPTION_BUFFER_SIZE.
-    if(CONFIG_NROS_RUST_API)
-        set(ENV{NROS_EXECUTOR_MAX_CBS} "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
-    endif()
+    # Executor limits (nros-node build.rs, shared by both Rust and C APIs)
+    # C API limits are derived from MAX_CBS via Cargo `links` metadata.
+    set(ENV{NROS_EXECUTOR_MAX_CBS} "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
 endfunction()
 
 # =============================================================================

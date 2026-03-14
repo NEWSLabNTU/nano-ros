@@ -27,19 +27,17 @@ fn main() {
 
 /// Generate `nros_c_config.rs` with build-time configurable constants.
 fn generate_config(out_dir: &str, manifest_dir: &Path) {
-    // --- C API knobs (nros-c only, not shared with nros-node) ---
-    let executor_max_handles = env_usize("NROS_EXECUTOR_MAX_HANDLES", 16);
-    let max_subscriptions = env_usize("NROS_MAX_SUBSCRIPTIONS", 8);
-    let max_timers = env_usize("NROS_MAX_TIMERS", 8);
-    let max_services = env_usize("NROS_MAX_SERVICES", 4);
-    let let_buffer_size = env_usize("NROS_LET_BUFFER_SIZE", 512);
-    let message_buffer_size = env_usize("NROS_MESSAGE_BUFFER_SIZE", 1024);
-
     // --- Executor layout from nros-node (via Cargo `links` metadata) ---
-    // These are NOT user-settable from nros-c. nros-node is the single source
-    // of truth for MAX_CBS and ARENA_SIZE.
+    // nros-node is the single source of truth for these values.
+    // MESSAGE_BUFFER_SIZE must equal nrs-node's RX_BUF_SIZE because the
+    // C API places entries (SubRawEntry<MESSAGE_BUFFER_SIZE>) into the
+    // nros-node arena, which is sized for RX_BUF_SIZE entries.
     let max_cbs = dep_usize("DEP_NROS_NODE_MAX_CBS");
     let arena_size = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
+    let message_buffer_size = dep_usize("DEP_NROS_NODE_RX_BUF_SIZE");
+
+    // --- C API knobs (nros-c only, not shared with nros-node) ---
+    let let_buffer_size = env_usize("NROS_LET_BUFFER_SIZE", 512);
 
     // --- Opaque storage upper bound ---
     // This MUST be >= size_of::<Executor>(). We use a generous estimate;
@@ -55,27 +53,15 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
 
     let contents = format!(
         "/// Maximum number of handles in an executor \
-         (set via NROS_EXECUTOR_MAX_HANDLES, default 16).\n\
-         pub const NROS_EXECUTOR_MAX_HANDLES: usize = {executor_max_handles};\n\
-         \n\
-         /// Maximum number of subscriptions in an executor \
-         (set via NROS_MAX_SUBSCRIPTIONS, default 8).\n\
-         pub const NROS_MAX_SUBSCRIPTIONS: usize = {max_subscriptions};\n\
-         \n\
-         /// Maximum number of timers in an executor \
-         (set via NROS_MAX_TIMERS, default 8).\n\
-         pub const NROS_MAX_TIMERS: usize = {max_timers};\n\
-         \n\
-         /// Maximum number of services in an executor \
-         (set via NROS_MAX_SERVICES, default 4).\n\
-         pub const NROS_MAX_SERVICES: usize = {max_services};\n\
+         (derived from NROS_EXECUTOR_MAX_CBS via nros-node).\n\
+         pub const NROS_EXECUTOR_MAX_HANDLES: usize = {max_cbs};\n\
          \n\
          /// Buffer size for LET semantics per handle \
          (set via NROS_LET_BUFFER_SIZE, default 512).\n\
          pub const LET_BUFFER_SIZE: usize = {let_buffer_size};\n\
          \n\
          /// Maximum buffer size for subscription/service data \
-         (set via NROS_MESSAGE_BUFFER_SIZE, default 1024).\n\
+         (derived from NROS_SUBSCRIPTION_BUFFER_SIZE via nros-node).\n\
          pub const MESSAGE_BUFFER_SIZE: usize = {message_buffer_size};\n\
          \n\
          /// Inline opaque storage for `Executor` inside `nros_executor_t` (in u64 units).\n\

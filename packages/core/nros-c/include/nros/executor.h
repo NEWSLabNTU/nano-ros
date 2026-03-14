@@ -126,8 +126,8 @@ NROS_PUBLIC struct nros_executor_t nros_executor_get_zero_initialized(void);
  *
  * @param executor    Pointer to a zero-initialized executor.
  * @param support     Pointer to an initialized support context.
- * @param max_handles Maximum number of handles (capped at
- *                    NROS_EXECUTOR_MAX_HANDLES).
+ * @param max_handles Maximum number of handles (capped at the
+ *                    compile-time NROS_EXECUTOR_MAX_CBS limit).
  *
  * @retval NROS_RET_OK               on success.
  * @retval NROS_RET_INVALID_ARGUMENT  if any pointer is NULL or
@@ -403,27 +403,6 @@ NROS_PUBLIC int nros_executor_is_valid(const struct nros_executor_t* executor);
  * @return Remaining capacity, or 0 if invalid.
  */
 NROS_PUBLIC int nros_executor_get_remaining_handles(const struct nros_executor_t* executor);
-
-/**
- * @brief Get remaining subscription capacity.
- * @param executor  Pointer to an executor.
- * @return Remaining subscription slots, or 0 if invalid.
- */
-NROS_PUBLIC int nros_executor_get_remaining_subscriptions(const struct nros_executor_t* executor);
-
-/**
- * @brief Get remaining timer capacity.
- * @param executor  Pointer to an executor.
- * @return Remaining timer slots, or 0 if invalid.
- */
-NROS_PUBLIC int nros_executor_get_remaining_timers(const struct nros_executor_t* executor);
-
-/**
- * @brief Get remaining service capacity.
- * @param executor  Pointer to an executor.
- * @return Remaining service slots, or 0 if invalid.
- */
-NROS_PUBLIC int nros_executor_get_remaining_services(const struct nros_executor_t* executor);
 
 #ifdef __cplusplus
 }

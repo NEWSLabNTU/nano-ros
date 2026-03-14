@@ -327,58 +327,21 @@ config NROS_XRCE_AGENT_PORT
 
 endif # NROS_RMW_XRCE
 
-# =============================================================================
-# C API Limits (visible only when C API selected)
-# =============================================================================
-
-if NROS_C_API
-
-config NROS_C_MAX_HANDLES
-    int "Maximum executor handles"
-    default 16
-    help
-      Maximum number of handles in a C API executor.
-      Maps to NROS_EXECUTOR_MAX_HANDLES.
-
-config NROS_C_MAX_SUBSCRIPTIONS
-    int "Maximum subscriptions per executor"
-    default 8
-    help
-      Maximum number of subscriptions in a C API executor.
-      Maps to NROS_MAX_SUBSCRIPTIONS.
-
-config NROS_C_MAX_TIMERS
-    int "Maximum timers per executor"
-    default 8
-    help
-      Maximum number of timers in a C API executor.
-      Maps to NROS_MAX_TIMERS.
-
-config NROS_C_MAX_SERVICES
-    int "Maximum services per executor"
-    default 4
-    help
-      Maximum number of services in a C API executor.
-      Maps to NROS_MAX_SERVICES.
-
-endif # NROS_C_API
+# C API executor limits are derived from the Rust executor limits below.
+# NROS_EXECUTOR_MAX_CBS controls the total handle count for both APIs.
 
 # =============================================================================
-# Rust Executor Limits (visible only when Rust API selected)
+# Executor Limits
 # =============================================================================
-
-if NROS_RUST_API
 
 config NROS_EXECUTOR_MAX_CBS
     int "Maximum executor callback slots"
     default 16
     help
-      Maximum number of callback slots in the Rust executor
-      (subscriptions + timers + services). Maps to NROS_EXECUTOR_MAX_CBS.
+      Maximum number of callback slots in the executor
+      (subscriptions + timers + services). Controls both Rust and C APIs.
       Arena size is derived automatically from this value and the
       subscription buffer size.
-
-endif # NROS_RUST_API
 
 # =============================================================================
 # Common Platform Configuration

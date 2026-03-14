@@ -20,12 +20,9 @@ take effect.
 
 | Variable | Description | Default |
 |----------|-------------|---------|
-| `NROS_EXECUTOR_MAX_HANDLES` | Max handles in a C API executor | `16` |
-| `NROS_MAX_SUBSCRIPTIONS` | Max subscriptions | `8` |
-| `NROS_MAX_TIMERS` | Max timers | `8` |
-| `NROS_MAX_SERVICES` | Max services | `4` |
+| `NROS_EXECUTOR_MAX_CBS` | Max executor callback slots (shared with Rust API) | `4` |
+| `NROS_SUBSCRIPTION_BUFFER_SIZE` | Per-entity receive buffer size (shared with Rust API) | `1024` |
 | `NROS_LET_BUFFER_SIZE` | Buffer size for LET semantics per handle | `512` |
-| `NROS_MESSAGE_BUFFER_SIZE` | Max buffer for subscription/service data | `4096` |
 | `NROS_MAX_CONCURRENT_GOALS` | Max concurrent goals per action server | `4` |
 | `NROS_MAX_PARAMETERS` | Max parameters in parameter server | `32` |
 | `NROS_MAX_PARAM_NAME_LEN` | Max parameter name length | `64` |
