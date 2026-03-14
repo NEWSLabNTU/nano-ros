@@ -652,13 +652,19 @@ fn build_freertos_cpp_example(name: &str, binary_name: &str) -> TestResult<PathB
     std::fs::create_dir_all(&build_dir).ok();
 
     // cmake configure
-    let output = duct::cmd!("cmake", "-S", &example_dir, "-B", &build_dir,
-                            "-DCMAKE_BUILD_TYPE=Release")
-        .stderr_to_stdout()
-        .stdout_capture()
-        .unchecked()
-        .run()
-        .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
+    let output = duct::cmd!(
+        "cmake",
+        "-S",
+        &example_dir,
+        "-B",
+        &build_dir,
+        "-DCMAKE_BUILD_TYPE=Release"
+    )
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run()
+    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
 
     if !output.status.success() {
         return Err(TestError::BuildFailed(format!(
@@ -796,10 +802,13 @@ fn test_freertos_cpp_service_server_builds() {
     if !require_freertos_cpp() {
         return;
     }
-    let binary = build_freertos_cpp_service_server()
-        .expect("Failed to build freertos_cpp_service_server");
+    let binary =
+        build_freertos_cpp_service_server().expect("Failed to build freertos_cpp_service_server");
     assert!(binary.exists());
-    eprintln!("SUCCESS: freertos_cpp_service_server at {}", binary.display());
+    eprintln!(
+        "SUCCESS: freertos_cpp_service_server at {}",
+        binary.display()
+    );
 }
 
 #[test]
@@ -807,10 +816,13 @@ fn test_freertos_cpp_service_client_builds() {
     if !require_freertos_cpp() {
         return;
     }
-    let binary = build_freertos_cpp_service_client()
-        .expect("Failed to build freertos_cpp_service_client");
+    let binary =
+        build_freertos_cpp_service_client().expect("Failed to build freertos_cpp_service_client");
     assert!(binary.exists());
-    eprintln!("SUCCESS: freertos_cpp_service_client at {}", binary.display());
+    eprintln!(
+        "SUCCESS: freertos_cpp_service_client at {}",
+        binary.display()
+    );
 }
 
 #[test]
@@ -818,10 +830,13 @@ fn test_freertos_cpp_action_server_builds() {
     if !require_freertos_cpp() {
         return;
     }
-    let binary = build_freertos_cpp_action_server()
-        .expect("Failed to build freertos_cpp_action_server");
+    let binary =
+        build_freertos_cpp_action_server().expect("Failed to build freertos_cpp_action_server");
     assert!(binary.exists());
-    eprintln!("SUCCESS: freertos_cpp_action_server at {}", binary.display());
+    eprintln!(
+        "SUCCESS: freertos_cpp_action_server at {}",
+        binary.display()
+    );
 }
 
 #[test]
@@ -829,10 +844,13 @@ fn test_freertos_cpp_action_client_builds() {
     if !require_freertos_cpp() {
         return;
     }
-    let binary = build_freertos_cpp_action_client()
-        .expect("Failed to build freertos_cpp_action_client");
+    let binary =
+        build_freertos_cpp_action_client().expect("Failed to build freertos_cpp_action_client");
     assert!(binary.exists());
-    eprintln!("SUCCESS: freertos_cpp_action_client at {}", binary.display());
+    eprintln!(
+        "SUCCESS: freertos_cpp_action_client at {}",
+        binary.display()
+    );
 }
 
 // =============================================================================
@@ -942,10 +960,8 @@ fn test_freertos_cpp_action_e2e() {
         return;
     }
 
-    let server_bin =
-        build_freertos_cpp_action_server().expect("Failed to build C++ action server");
-    let client_bin =
-        build_freertos_cpp_action_client().expect("Failed to build C++ action client");
+    let server_bin = build_freertos_cpp_action_server().expect("Failed to build C++ action server");
+    let client_bin = build_freertos_cpp_action_client().expect("Failed to build C++ action client");
 
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 

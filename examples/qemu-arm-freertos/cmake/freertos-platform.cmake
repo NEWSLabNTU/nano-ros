@@ -176,7 +176,7 @@ get_filename_component(_LIBGCC_DIR "${_LIBGCC_PATH}" DIRECTORY)
 target_link_directories(freertos_platform INTERFACE "${_LIBC_DIR}" "${_LIBGCC_DIR}")
 
 # ============================================================================
-# Corrosion — build nros-cpp-ffi for ARM
+# Corrosion — build nros Rust crates for ARM
 # ============================================================================
 include(FetchContent)
 FetchContent_Declare(Corrosion
@@ -186,21 +186,34 @@ FetchContent_Declare(Corrosion
 FetchContent_MakeAvailable(Corrosion)
 
 corrosion_import_crate(
-    MANIFEST_PATH "${_NROS_ROOT}/Cargo.toml"
-    CRATES        nros-cpp-ffi
+    MANIFEST_PATH "${_FREERTOS_CMAKE_DIR}/nros-freertos-ffi/Cargo.toml"
+    CRATES        nros-freertos-ffi
     CRATE_TYPES   staticlib
-    NO_DEFAULT_FEATURES
-    FEATURES      alloc rmw-zenoh platform-freertos ros-humble
-    LOCKED
 )
 
-# ---- NanoRos::NanoRosCpp target (cross-compiled) ----
+# Pass FreeRTOS/lwIP paths to Cargo build (zpico-sys build.rs needs them)
+corrosion_set_env_vars(nros_freertos_ffi-static
+    "FREERTOS_DIR=${FREERTOS_DIR}"
+    "LWIP_DIR=${LWIP_DIR}"
+    "FREERTOS_PORT=${FREERTOS_PORT}"
+    "FREERTOS_CONFIG_DIR=${_BOARD_CONFIG_DIR}"
+)
+
+# ---- NanoRos::NanoRos target (C API, cross-compiled) ----
+add_library(NanoRosC INTERFACE)
+add_library(NanoRos::NanoRos ALIAS NanoRosC)
+target_include_directories(NanoRosC INTERFACE
+    "${_NROS_ROOT}/packages/core/nros-c/include"
+)
+target_link_libraries(NanoRosC INTERFACE nros_freertos_ffi-static)
+
+# ---- NanoRos::NanoRosCpp target (C++ API, cross-compiled) ----
 add_library(NanoRosCpp INTERFACE)
 add_library(NanoRos::NanoRosCpp ALIAS NanoRosCpp)
 target_include_directories(NanoRosCpp INTERFACE
     "${_NROS_ROOT}/packages/core/nros-cpp/include"
 )
-target_link_libraries(NanoRosCpp INTERFACE nros_cpp_ffi-static)
+target_link_libraries(NanoRosCpp INTERFACE nros_freertos_ffi-static)
 target_compile_features(NanoRosCpp INTERFACE cxx_std_14)
 
 # ============================================================================
@@ -208,44 +221,51 @@ target_compile_features(NanoRosCpp INTERFACE cxx_std_14)
 # ============================================================================
 
 # Find or build nros-codegen (HOST tool)
+set(_CODEGEN_CRATE "${_NROS_ROOT}/packages/codegen/packages/nros-codegen-c")
+set(_CODEGEN_TARGET_DIR "${_NROS_ROOT}/packages/codegen/packages/target")
 find_program(_NANO_ROS_CODEGEN_TOOL nros-codegen
-    PATHS "${_NROS_ROOT}/target/release" "${_NROS_ROOT}/target/debug"
+    PATHS "${_CODEGEN_TARGET_DIR}/release" "${_CODEGEN_TARGET_DIR}/debug"
+          "${_NROS_ROOT}/target/release" "${_NROS_ROOT}/target/debug"
     NO_DEFAULT_PATH
 )
 if(NOT _NANO_ROS_CODEGEN_TOOL)
     message(STATUS "nros-codegen not found, building...")
     execute_process(
-        COMMAND cargo build -p nros-codegen-c --release
+        COMMAND cargo build --manifest-path "${_CODEGEN_CRATE}/Cargo.toml" --release
         WORKING_DIRECTORY "${_NROS_ROOT}"
         RESULT_VARIABLE _codegen_result
     )
     if(NOT _codegen_result EQUAL 0)
         message(FATAL_ERROR "Failed to build nros-codegen")
     endif()
-    set(_NANO_ROS_CODEGEN_TOOL "${_NROS_ROOT}/target/release/nros-codegen")
+    set(_NANO_ROS_CODEGEN_TOOL "${_CODEGEN_TARGET_DIR}/release/nros-codegen")
 endif()
 set(_NANO_ROS_CODEGEN_TOOL "${_NANO_ROS_CODEGEN_TOOL}" CACHE INTERNAL "Path to nros codegen tool")
 message(STATUS "Found nros codegen tool: ${_NANO_ROS_CODEGEN_TOOL}")
 
-# nros-serdes source (needed by generated FFI crates)
+# Set up paths so NanoRosGenerateInterfaces.cmake finds nros-serdes and
+# bundled interfaces from the source tree (not an install prefix).
+# The codegen cmake derives _NANO_ROS_PREFIX from its own file location,
+# so we override it before including.
+set(_NANO_ROS_CMAKE_DIR "${_NROS_ROOT}/packages/codegen/packages/nros-codegen-c/cmake")
+
+# Pre-set _NANO_ROS_PREFIX so the codegen cmake uses the project root
 set(_NANO_ROS_PREFIX "${_NROS_ROOT}" CACHE INTERNAL "")
 
-# Import the codegen function — it uses _NANO_ROS_CODEGEN_TOOL and _NANO_ROS_PREFIX
-# We need to set up the serdes path to match what the cmake function expects
+# Create symlinks from share/ layout expected by codegen to source tree
 if(NOT EXISTS "${_NROS_ROOT}/share/nano-ros/rust/nros-serdes/src")
-    # Not installed — use source tree directly. Create a symlink or override.
     set(_serdes_src "${_NROS_ROOT}/packages/core/nros-serdes")
     file(MAKE_DIRECTORY "${_NROS_ROOT}/share/nano-ros/rust")
     if(NOT EXISTS "${_NROS_ROOT}/share/nano-ros/rust/nros-serdes")
         file(CREATE_LINK "${_serdes_src}" "${_NROS_ROOT}/share/nano-ros/rust/nros-serdes" SYMBOLIC)
     endif()
 endif()
-
-# Bundled interface files
 if(NOT EXISTS "${_NROS_ROOT}/share/nano-ros/interfaces")
     file(CREATE_LINK "${_NROS_ROOT}/packages/codegen/interfaces"
          "${_NROS_ROOT}/share/nano-ros/interfaces" SYMBOLIC)
 endif()
 
-set(_NANO_ROS_CMAKE_DIR "${_NROS_ROOT}/packages/codegen/packages/nros-codegen-c/cmake")
+# Override _NANO_ROS_PREFIX in the codegen cmake (it auto-derives from its own path)
+# We include it, then force the prefix to our root
 include("${_NANO_ROS_CMAKE_DIR}/NanoRosGenerateInterfaces.cmake")
+set(_NANO_ROS_PREFIX "${_NROS_ROOT}" CACHE INTERNAL "")

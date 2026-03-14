@@ -1,9 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
-set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/arm-none-eabi-toolchain.cmake"
+set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/arm-none-eabi-toolchain.cmake"
     CACHE FILEPATH "")
 project(freertos_cpp_service_server LANGUAGES C CXX ASM)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../cmake/freertos-platform.cmake")
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-platform.cmake")
 
 nano_ros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE CPP SKIP_INSTALL)
 
