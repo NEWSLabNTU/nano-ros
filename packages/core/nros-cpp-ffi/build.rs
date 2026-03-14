@@ -1,7 +1,11 @@
 //! Build script for nros-cpp-ffi
 //!
-//! Runs cbindgen to generate `include/nros_cpp_ffi.h` from Rust
-//! `#[repr(C)]` types and `extern "C"` function declarations.
+//! 1. Reads `DEP_NROS_NODE_*` metadata (from nros-node's `links = "nros_node"`)
+//!    to compute opaque storage for CppContext.
+//! 2. Runs cbindgen to generate `include/nros_cpp_ffi.h`.
+//!
+//! The opaque storage size is an upper bound. A compile-time assertion in
+//! lib.rs validates that `size_of::<CppContext>()` fits within this bound.
 
 use std::env;
 use std::path::PathBuf;
@@ -19,11 +23,12 @@ fn main() {
 
 /// Generate `nros_cpp_ffi_config.rs` with build-time constants for executor storage.
 fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
-    // Read the same env vars as nros-node to compute executor storage size.
-    let max_cbs = env_usize("NROS_EXECUTOR_MAX_CBS", 4);
-    let arena_size = env_usize("NROS_EXECUTOR_ARENA_SIZE", 4096);
+    // Read executor layout from nros-node via Cargo `links` metadata.
+    // nros-node is the single source of truth.
+    let max_cbs = dep_usize("DEP_NROS_NODE_MAX_CBS");
+    let arena_size = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
 
-    // Conservative upper bound for CppContext size (in bytes):
+    // Upper bound for CppContext size (in bytes):
     //   CppContext = Executor + domain_id (u32) + padding
     //   Executor ≈ SessionStore + arena + entries + trigger + misc
     let session_upper = 512;
@@ -35,7 +40,8 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
 
     let contents = format!(
         "/// Inline opaque storage for `CppContext` (in u64 units).\n\
-         /// Computed from NROS_EXECUTOR_MAX_CBS and NROS_EXECUTOR_ARENA_SIZE.\n\
+         /// Upper bound derived from nros-node's MAX_CBS and ARENA_SIZE.\n\
+         /// Validated at compile time by `size_of::<CppContext>()` assertion.\n\
          pub const CPP_EXECUTOR_OPAQUE_U64S: usize = {opaque_u64s};\n"
     );
 
@@ -61,13 +67,17 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
     std::fs::write(include_dir.join("nros_cpp_config_generated.h"), cpp_header).unwrap();
 }
 
-/// Read a usize from an environment variable, falling back to a default.
-fn env_usize(name: &str, default: usize) -> usize {
-    println!("cargo:rerun-if-env-changed={name}");
+/// Read a usize from a `DEP_*` environment variable (Cargo `links` metadata).
+///
+/// Panics if the variable is missing — this means nros-node's `links` export
+/// is broken, which is a build system bug that should fail loudly.
+fn dep_usize(name: &str) -> usize {
     env::var(name)
-        .ok()
-        .and_then(|v| v.parse().ok())
-        .unwrap_or(default)
+        .unwrap_or_else(|_| {
+            panic!("{name} not set — is nros-node's `links = \"nros_node\"` configured?")
+        })
+        .parse()
+        .unwrap_or_else(|_| panic!("{name} is not a valid usize"))
 }
 
 /// Generate `include/nros_cpp_ffi.h` using cbindgen.

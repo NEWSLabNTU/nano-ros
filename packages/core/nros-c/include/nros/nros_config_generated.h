@@ -3,6 +3,6 @@
 #define NROS_CONFIG_GENERATED_H
 
 /** Inline opaque storage size (bytes) for nros_executor_t. */
-#define NROS_EXECUTOR_STORAGE_SIZE 137472
+#define NROS_EXECUTOR_STORAGE_SIZE 11584
 
 #endif /* NROS_CONFIG_GENERATED_H */

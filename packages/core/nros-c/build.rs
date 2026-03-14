@@ -1,11 +1,14 @@
 //! Build script for nros-c
 //!
-//! 1. Reads NROS_* environment variables and generates `nros_c_config.rs`
-//!    with compile-time configurable constants for the executor.
-//! 2. Runs cbindgen to generate `include/nros/nros_generated.h` from
-//!    Rust `#[repr(C)]` types.  This file is used for compile-time
-//!    drift detection (via `-DNROS_DRIFT_CHECK`) against the
-//!    hand-written per-module headers.
+//! 1. Reads nros-c-specific env vars and `DEP_NROS_NODE_*` metadata (from
+//!    nros-node's `links = "nros_node"`) to generate `nros_c_config.rs`.
+//! 2. Generates a C config header with the opaque executor storage size.
+//! 3. Runs cbindgen to generate `include/nros/nros_generated.h`.
+//!
+//! The opaque storage size is an upper bound computed from the executor's
+//! arena, entries, and overhead. A compile-time assertion in executor.rs
+//! validates that `size_of::<Executor>()` fits within this bound — if the
+//! estimate drifts, the build fails instead of silently corrupting memory.
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -24,29 +27,28 @@ fn main() {
 
 /// Generate `nros_c_config.rs` with build-time configurable constants.
 fn generate_config(out_dir: &str, manifest_dir: &Path) {
+    // --- C API knobs (nros-c only, not shared with nros-node) ---
     let executor_max_handles = env_usize("NROS_EXECUTOR_MAX_HANDLES", 16);
     let max_subscriptions = env_usize("NROS_MAX_SUBSCRIPTIONS", 8);
     let max_timers = env_usize("NROS_MAX_TIMERS", 8);
     let max_services = env_usize("NROS_MAX_SERVICES", 4);
     let let_buffer_size = env_usize("NROS_LET_BUFFER_SIZE", 512);
-    let message_buffer_size = env_usize("NROS_MESSAGE_BUFFER_SIZE", 4096);
+    let message_buffer_size = env_usize("NROS_MESSAGE_BUFFER_SIZE", 1024);
 
-    // Read the same env vars as nros-node to compute executor opaque storage size.
-    // These must match the values nros-node uses at compile time.
-    let max_cbs = env_usize("NROS_EXECUTOR_MAX_CBS", executor_max_handles);
-    let arena_size = env_usize(
-        "NROS_EXECUTOR_ARENA_SIZE",
-        executor_max_handles * message_buffer_size * 2 + 4096,
-    );
+    // --- Executor layout from nros-node (via Cargo `links` metadata) ---
+    // These are NOT user-settable from nros-c. nros-node is the single source
+    // of truth for MAX_CBS and ARENA_SIZE.
+    let max_cbs = dep_usize("DEP_NROS_NODE_MAX_CBS");
+    let arena_size = dep_usize("DEP_NROS_NODE_ARENA_SIZE");
 
-    // Conservative upper bound for Executor size (in bytes):
-    //   SessionStore: up to 512 bytes (SESSION_OPAQUE_U64S * 8 for owned variant)
-    //   arena: arena_size
-    //   entries: max_cbs * 80 (Option<CallbackMeta> ~72 bytes, rounded up)
-    //   Trigger + semantics + node_name + namespace + halt_flag + misc: 512 bytes
-    let session_upper = 512;
-    let entries_upper = max_cbs * 80;
-    let overhead = 512;
+    // --- Opaque storage upper bound ---
+    // This MUST be >= size_of::<Executor>(). We use a generous estimate;
+    // the compile-time assertion in executor.rs catches any undercount.
+    //
+    // Layout: SessionStore + arena + entries + trigger + misc fields
+    let session_upper = 512; // SessionStore enum (Owned or Borrowed)
+    let entries_upper = max_cbs * 80; // Option<CallbackMeta> ~72 bytes, rounded up
+    let overhead = 512; // Trigger + semantics + node_name + namespace + halt_flag + padding
     let executor_bytes = session_upper + arena_size + entries_upper + overhead;
     let executor_opaque_u64s = executor_bytes.div_ceil(8);
     let executor_storage_bytes = executor_opaque_u64s * 8;
@@ -73,11 +75,12 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
          pub const LET_BUFFER_SIZE: usize = {let_buffer_size};\n\
          \n\
          /// Maximum buffer size for subscription/service data \
-         (set via NROS_MESSAGE_BUFFER_SIZE, default 4096).\n\
+         (set via NROS_MESSAGE_BUFFER_SIZE, default 1024).\n\
          pub const MESSAGE_BUFFER_SIZE: usize = {message_buffer_size};\n\
          \n\
          /// Inline opaque storage for `Executor` inside `nros_executor_t` (in u64 units).\n\
-         /// Computed from NROS_EXECUTOR_MAX_CBS and NROS_EXECUTOR_ARENA_SIZE.\n\
+         /// Upper bound derived from nros-node's MAX_CBS and ARENA_SIZE.\n\
+         /// Validated at compile time by `size_of::<Executor>()` assertion.\n\
          pub const EXECUTOR_OPAQUE_U64S: usize = {executor_opaque_u64s};\n"
     );
 
@@ -142,4 +145,17 @@ fn env_usize(name: &str, default: usize) -> usize {
         .ok()
         .and_then(|v| v.parse().ok())
         .unwrap_or(default)
+}
+
+/// Read a usize from a `DEP_*` environment variable (Cargo `links` metadata).
+///
+/// Panics if the variable is missing — this means nros-node's `links` export
+/// is broken, which is a build system bug that should fail loudly.
+fn dep_usize(name: &str) -> usize {
+    env::var(name)
+        .unwrap_or_else(|_| {
+            panic!("{name} not set — is nros-node's `links = \"nros_node\"` configured?")
+        })
+        .parse()
+        .unwrap_or_else(|_| panic!("{name} is not a valid usize"))
 }

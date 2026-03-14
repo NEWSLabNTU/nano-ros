@@ -84,9 +84,9 @@ function(nros_set_cargo_env_from_kconfig)
     endif()
 
     # Rust executor limits (nros-node build.rs)
+    # Arena size is derived automatically from MAX_CBS and SUBSCRIPTION_BUFFER_SIZE.
     if(CONFIG_NROS_RUST_API)
         set(ENV{NROS_EXECUTOR_MAX_CBS} "${CONFIG_NROS_EXECUTOR_MAX_CBS}")
-        set(ENV{NROS_EXECUTOR_ARENA_SIZE} "${CONFIG_NROS_EXECUTOR_ARENA_SIZE}")
     endif()
 endfunction()
 

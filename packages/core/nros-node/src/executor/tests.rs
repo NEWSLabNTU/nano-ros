@@ -147,27 +147,32 @@ fn test_multiple_subscriptions() {
 #[test]
 fn test_arena_overflow() {
     let session = MockSession::new();
-    // Arena is 4096 bytes. Each SubEntry<TestMsg, fn, 1024> is ~1300 bytes.
-    // Registering enough subscriptions to exceed the arena should fail.
+    // Arena is ARENA_SIZE bytes (default ~10KB). Use large subscription buffers
+    // (4096 each) so we exhaust the arena before running out of entry slots.
+    // Each SubEntry<TestMsg, fn, 4096> is ~4400 bytes. Two fit, the third should fail.
     let mut executor = Executor::from_session(session);
 
-    // Fill the arena — each subscription uses ~1300 bytes of the 4096-byte arena.
-    // After 3 subscriptions (~3900 bytes), the 4th should fail.
-    for i in 0..3 {
-        let topic = heapless::String::<32>::try_from(if i == 0 {
-            "/a"
-        } else if i == 1 {
-            "/b"
-        } else {
-            "/c"
-        })
-        .unwrap();
-        executor
-            .add_subscription::<TestMsg, _>(&topic, |_msg: &TestMsg| {})
-            .unwrap();
+    let topics = ["/a", "/b", "/c", "/d"];
+    let mut filled = 0;
+    for topic in &topics {
+        let result =
+            executor.add_subscription_sized::<TestMsg, _, 4096>(topic, |_msg: &TestMsg| {});
+        if result.is_err() {
+            break;
+        }
+        filled += 1;
     }
 
-    let result = executor.add_subscription::<TestMsg, _>("/overflow", |_msg: &TestMsg| {});
+    // We should have been able to add at least 1 but not all 4 (arena too small).
+    assert!(filled >= 1, "Should fit at least 1 large subscription");
+    assert!(
+        filled < 4,
+        "Arena should overflow before 4 large subscriptions"
+    );
+
+    // Verify the next add fails with BufferTooSmall.
+    let result =
+        executor.add_subscription_sized::<TestMsg, _, 4096>("/overflow", |_msg: &TestMsg| {});
     assert_eq!(result, Err(NodeError::BufferTooSmall));
 }
 

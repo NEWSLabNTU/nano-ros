@@ -375,13 +375,8 @@ config NROS_EXECUTOR_MAX_CBS
     help
       Maximum number of callback slots in the Rust executor
       (subscriptions + timers + services). Maps to NROS_EXECUTOR_MAX_CBS.
-
-config NROS_EXECUTOR_ARENA_SIZE
-    int "Executor arena size (bytes)"
-    default 16384
-    help
-      Size of the executor's callback arena in bytes.
-      Maps to NROS_EXECUTOR_ARENA_SIZE.
+      Arena size is derived automatically from this value and the
+      subscription buffer size.
 
 endif # NROS_RUST_API
 
