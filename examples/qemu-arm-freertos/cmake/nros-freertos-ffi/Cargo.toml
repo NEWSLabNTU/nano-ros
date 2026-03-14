@@ -5,18 +5,12 @@ name = "nros-freertos-ffi"
 version = "0.1.0"
 edition = "2024"
 publish = false
-description = "Thin FFI bundle for FreeRTOS C/C++ examples (provides panic handler + re-exports nros-c and nros-cpp-ffi)"
+description = "Panic handler + global symbols for FreeRTOS C/C++ examples (no_std)"
 
 [lib]
 crate-type = ["staticlib"]
 
 [dependencies]
-nros-c = { path = "../../../../packages/core/nros-c", default-features = false, features = [
-    "rmw-zenoh", "platform-freertos", "ros-humble"
-] }
-nros-cpp-ffi = { path = "../../../../packages/core/nros-cpp-ffi", default-features = false, features = [
-    "alloc", "rmw-zenoh", "platform-freertos", "ros-humble"
-] }
 panic-halt = "1"
 
 [profile.release]

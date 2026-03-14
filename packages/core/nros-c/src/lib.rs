@@ -31,6 +31,9 @@
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "panic-halt")]
+use panic_halt as _;
+
 #[cfg(feature = "alloc")]
 extern crate alloc;
 

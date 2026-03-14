@@ -27,6 +27,9 @@ extern crate alloc;
 #[cfg(feature = "std")]
 extern crate std;
 
+#[cfg(feature = "panic-halt")]
+use panic_halt as _;
+
 use core::ffi::{c_char, c_int, c_void};
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──

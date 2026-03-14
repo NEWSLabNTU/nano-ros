@@ -7,10 +7,9 @@
 use core::ffi::c_int;
 use core::ptr;
 
-use crate::action::{
-    ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline,
-    nros_action_server_state_t, nros_action_server_t,
-};
+use crate::action::{nros_action_server_state_t, nros_action_server_t};
+#[cfg(feature = "alloc")]
+use crate::action::{ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline};
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
 use crate::service::{nros_service_state_t, nros_service_t};

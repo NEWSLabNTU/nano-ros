@@ -157,9 +157,7 @@ target_link_libraries(freertos_platform INTERFACE
 set(FREERTOS_LINKER_SCRIPT "${_BOARD_CONFIG_DIR}/mps2_an385.ld" CACHE INTERNAL "")
 target_link_options(freertos_platform INTERFACE
     "-T${FREERTOS_LINKER_SCRIPT}"
-    "--specs=nosys.specs"
     "-Wl,--gc-sections"
-    "-Wl,--no-warn-rwx-segments"
 )
 
 # Newlib library search paths (multilib-correct)
@@ -185,19 +183,30 @@ FetchContent_Declare(Corrosion
 )
 FetchContent_MakeAvailable(Corrosion)
 
+# Build nros-c and nros-cpp-ffi from the main workspace.
+# These are built as staticlibs directly — NOT as dependencies of the
+# panic-handler crate, because bare-metal staticlibs each require their
+# own panic handler during compilation.
 corrosion_import_crate(
-    MANIFEST_PATH "${_FREERTOS_CMAKE_DIR}/nros-freertos-ffi/Cargo.toml"
-    CRATES        nros-freertos-ffi
+    MANIFEST_PATH "${_NROS_ROOT}/Cargo.toml"
+    CRATES        nros-c nros-cpp-ffi
     CRATE_TYPES   staticlib
+    NO_DEFAULT_FEATURES
+    FEATURES      rmw-zenoh platform-freertos ros-humble panic-halt
+    LOCKED
 )
 
-# Pass FreeRTOS/lwIP paths to Cargo build (zpico-sys build.rs needs them)
-corrosion_set_env_vars(nros_freertos_ffi-static
-    "FREERTOS_DIR=${FREERTOS_DIR}"
-    "LWIP_DIR=${LWIP_DIR}"
-    "FREERTOS_PORT=${FREERTOS_PORT}"
-    "FREERTOS_CONFIG_DIR=${_BOARD_CONFIG_DIR}"
-)
+# Pass FreeRTOS/lwIP paths and executor sizing to Cargo build
+foreach(_tgt nros_c-static nros_cpp_ffi-static)
+    corrosion_set_env_vars(${_tgt}
+        "FREERTOS_DIR=${FREERTOS_DIR}"
+        "LWIP_DIR=${LWIP_DIR}"
+        "FREERTOS_PORT=${FREERTOS_PORT}"
+        "FREERTOS_CONFIG_DIR=${_BOARD_CONFIG_DIR}"
+        "NROS_EXECUTOR_MAX_CBS=4"
+        "NROS_EXECUTOR_ARENA_SIZE=4096"
+    )
+endforeach()
 
 # ---- NanoRos::NanoRos target (C API, cross-compiled) ----
 add_library(NanoRosC INTERFACE)
@@ -205,7 +214,7 @@ add_library(NanoRos::NanoRos ALIAS NanoRosC)
 target_include_directories(NanoRosC INTERFACE
     "${_NROS_ROOT}/packages/core/nros-c/include"
 )
-target_link_libraries(NanoRosC INTERFACE nros_freertos_ffi-static)
+target_link_libraries(NanoRosC INTERFACE nros_c-static)
 
 # ---- NanoRos::NanoRosCpp target (C++ API, cross-compiled) ----
 add_library(NanoRosCpp INTERFACE)
@@ -213,7 +222,7 @@ add_library(NanoRos::NanoRosCpp ALIAS NanoRosCpp)
 target_include_directories(NanoRosCpp INTERFACE
     "${_NROS_ROOT}/packages/core/nros-cpp/include"
 )
-target_link_libraries(NanoRosCpp INTERFACE nros_freertos_ffi-static)
+target_link_libraries(NanoRosCpp INTERFACE nros_cpp_ffi-static)
 target_compile_features(NanoRosCpp INTERFACE cxx_std_14)
 
 # ============================================================================
@@ -250,7 +259,7 @@ message(STATUS "Found nros codegen tool: ${_NANO_ROS_CODEGEN_TOOL}")
 set(_NANO_ROS_CMAKE_DIR "${_NROS_ROOT}/packages/codegen/packages/nros-codegen-c/cmake")
 
 # Pre-set _NANO_ROS_PREFIX so the codegen cmake uses the project root
-set(_NANO_ROS_PREFIX "${_NROS_ROOT}" CACHE INTERNAL "")
+set(_NANO_ROS_PREFIX "${_NROS_ROOT}")
 
 # Create symlinks from share/ layout expected by codegen to source tree
 if(NOT EXISTS "${_NROS_ROOT}/share/nano-ros/rust/nros-serdes/src")
@@ -265,7 +274,4 @@ if(NOT EXISTS "${_NROS_ROOT}/share/nano-ros/interfaces")
          "${_NROS_ROOT}/share/nano-ros/interfaces" SYMBOLIC)
 endif()
 
-# Override _NANO_ROS_PREFIX in the codegen cmake (it auto-derives from its own path)
-# We include it, then force the prefix to our root
 include("${_NANO_ROS_CMAKE_DIR}/NanoRosGenerateInterfaces.cmake")
-set(_NANO_ROS_PREFIX "${_NROS_ROOT}" CACHE INTERNAL "")

@@ -8,7 +8,7 @@ keywords = ["ros", "ros2", "embedded", "cpp", "ffi"]
 categories = ["embedded", "robotics", "api-bindings"]
 
 [lib]
-crate-type = ["staticlib"]
+crate-type = ["staticlib", "lib"]
 
 [features]
 default = ["std"]
@@ -35,10 +35,14 @@ platform-threadx = ["nros/platform-threadx"]
 ros-humble = ["nros/ros-humble"]
 ros-iron = ["nros/ros-iron"]
 
+# Bare-metal panic handler (enables building staticlib without std)
+panic-halt = ["dep:panic-halt"]
+
 [dependencies]
 nros = { path = "../nros", default-features = false }
 nros-node = { path = "../nros-node", default-features = false }
 nros-rmw = { path = "../nros-rmw", default-features = false }
+panic-halt = { version = "1", optional = true }
 
 [build-dependencies]
 cbindgen = "0.29"

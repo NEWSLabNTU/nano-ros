@@ -1,13 +1,9 @@
-//! FFI bundle for FreeRTOS C/C++ examples.
+//! Panic handler for FreeRTOS C/C++ examples (no_std bare-metal).
 //!
-//! This thin crate re-exports nros-c and nros-cpp-ffi symbols and provides
-//! the panic handler + global allocator needed for a no_std staticlib.
+//! This is a minimal staticlib that provides the `#[panic_handler]` required
+//! by Rust on bare-metal targets. It is linked alongside the nros-c and
+//! nros-cpp-ffi staticlibs (which are built separately via Corrosion).
 
 #![no_std]
 
-// Panic handler for bare-metal
 use panic_halt as _;
-
-// Force-link so all FFI symbols are available to the C/C++ linker
-extern crate nros_c;
-extern crate nros_cpp_ffi;

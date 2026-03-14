@@ -492,6 +492,7 @@ dependencies = [
  "nros-core",
  "nros-node",
  "nros-rmw",
+ "panic-halt",
  "paste",
 ]
 
@@ -512,6 +513,7 @@ dependencies = [
  "nros",
  "nros-node",
  "nros-rmw",
+ "panic-halt",
 ]
 
 [[package]]
@@ -668,6 +670,12 @@ dependencies = [
  "libc",
  "windows-sys 0.61.2",
 ]
+
+[[package]]
+name = "panic-halt"
+version = "1.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a513e167849a384b7f9b746e517604398518590a9142f4846a32e3c2a4de7b11"
 
 [[package]]
 name = "parking_lot"

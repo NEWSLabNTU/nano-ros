@@ -15,7 +15,7 @@ set(CMAKE_SIZE arm-none-eabi-size)
 set(CMAKE_C_FLAGS_INIT "-mcpu=cortex-m3 -mthumb -ffunction-sections -fdata-sections")
 set(CMAKE_CXX_FLAGS_INIT "-mcpu=cortex-m3 -mthumb -ffunction-sections -fdata-sections -fno-exceptions -fno-rtti -std=c++14 -ffreestanding")
 set(CMAKE_ASM_FLAGS_INIT "-mcpu=cortex-m3 -mthumb")
-set(CMAKE_EXE_LINKER_FLAGS_INIT "-mcpu=cortex-m3 -mthumb --specs=nosys.specs -Wl,--gc-sections")
+set(CMAKE_EXE_LINKER_FLAGS_INIT "-mcpu=cortex-m3 -mthumb --specs=nosys.specs -nostartfiles -Wl,--gc-sections")
 
 # Rust target triple — used by Corrosion and NanoRosGenerateInterfaces for cross-compilation
 set(Rust_CARGO_TARGET "thumbv7m-none-eabi")

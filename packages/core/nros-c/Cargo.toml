@@ -35,12 +35,16 @@ platform-threadx = ["nros/platform-threadx"]
 ros-humble = ["nros/ros-humble"]
 ros-iron = ["nros/ros-iron"]
 
+# Bare-metal panic handler (enables building staticlib without std)
+panic-halt = ["dep:panic-halt"]
+
 [dependencies]
 nros = { path = "../nros", default-features = false }
 nros-node = { path = "../nros-node", default-features = false }
 nros-rmw = { path = "../nros-rmw", default-features = false }
 nros-core = { path = "../nros-core", default-features = false }
 paste = "1"
+panic-halt = { version = "1", optional = true }
 
 [build-dependencies]
 cbindgen = "0.29"
