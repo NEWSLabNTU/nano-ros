@@ -239,6 +239,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 67 | Serial transport + board crate transport abstraction | Complete |
 | 68 | Alloc-free C/C++ bindings + executor simplification | Complete |
 | 69 | Cross-platform C/C++ examples + integration tests | Not Started |
+| 70 | DDS RMW backend (dust-dds) | Not Started |
 
 ## Quick Reference
 
