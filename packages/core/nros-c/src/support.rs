@@ -39,13 +39,8 @@ pub struct nros_support_t {
     pub _opaque: [u64; SESSION_OPAQUE_U64S],
 }
 
-// Compile-time assertion: inline storage must fit the concrete RMW session type.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-const _: () = assert!(
-    core::mem::size_of::<nros::internals::RmwSession>()
-        <= SESSION_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "SESSION_OPAQUE_U64S too small for RmwSession — increase the constant in constants.rs"
-);
+// SESSION_OPAQUE_U64S is computed from size_of::<RmwSession>() in opaque_sizes.rs —
+// always large enough by construction.
 
 impl Default for nros_support_t {
     fn default() -> Self {

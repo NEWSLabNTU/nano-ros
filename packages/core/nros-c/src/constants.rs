@@ -36,20 +36,9 @@ pub const NROS_MAX_CONCURRENT_GOALS: usize = 4;
 
 // ── Inline opaque storage sizes ─────────────────────────────────────────
 //
-// These constants define the inline storage (in `u64` units) for RMW handles
-// embedded directly in nros C API structs, avoiding heap allocation.
-// Compile-time assertions verify that each constant is large enough for
-// the active RMW backend.  If you add a new backend whose handles are
-// larger, increase the relevant constant.
-
-/// Inline storage for `RmwSession` inside `nros_support_t` (in u64 units).
-pub const SESSION_OPAQUE_U64S: usize = 64;
-
-/// Inline storage for `RmwPublisher` inside `nros_publisher_t` (in u64 units).
-pub const PUBLISHER_OPAQUE_U64S: usize = 48;
-
-/// Inline storage for `RmwServiceClient` inside `nros_client_t` (in u64 units).
-pub const SERVICE_CLIENT_OPAQUE_U64S: usize = 48;
-
-/// Inline storage for `GuardConditionHandle` inside `nros_guard_condition_t` (in u64 units).
-pub const GUARD_HANDLE_OPAQUE_U64S: usize = 4;
+// Computed from `core::mem::size_of` at compile time — always matches the
+// actual Rust type layout. See `opaque_sizes.rs`.
+pub use crate::opaque_sizes::{
+    GUARD_HANDLE_OPAQUE_U64S, PUBLISHER_OPAQUE_U64S, SERVICE_CLIENT_OPAQUE_U64S,
+    SESSION_OPAQUE_U64S,
+};

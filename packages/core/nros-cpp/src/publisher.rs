@@ -11,17 +11,13 @@ use crate::{
 };
 
 /// Publisher wrapper stored in caller-provided inline storage.
-struct CppPublisher {
+pub(crate) struct CppPublisher {
     handle: nros::internals::RmwPublisher,
     topic_name: [u8; 256],
     topic_name_len: usize,
 }
 
-// Compile-time assertion: inline storage must fit CppPublisher.
-const _: () = assert!(
-    core::mem::size_of::<CppPublisher>() <= CPP_PUBLISHER_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_PUBLISHER_OPAQUE_U64S too small for CppPublisher — increase the constant in lib.rs"
-);
+// CPP_PUBLISHER_OPAQUE_U64S is computed from size_of::<CppPublisher>() — always exact.
 
 /// Create a publisher on a node.
 ///

@@ -112,33 +112,41 @@ pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 // buffers of this size; the Rust side writes directly into them.
 // Compile-time assertions in each module verify the storage is large enough.
 
+// Opaque storage sizes computed from size_of at compile time — always exact.
+// Requires exactly one RMW backend feature to be enabled.
+
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+)))]
+compile_error!(
+    "nros-cpp requires exactly one RMW backend feature: rmw-zenoh, rmw-xrce, rmw-dds, or rmw-cffi"
+);
+
+const fn u64s_for<T>() -> usize {
+    (core::mem::size_of::<T>() + 7) / 8
+}
+
 /// Inline storage for `CppPublisher` (in u64 units).
-/// DDS types are larger due to Arc-based handles from dust-dds.
-#[cfg(not(feature = "rmw-dds"))]
-pub const CPP_PUBLISHER_OPAQUE_U64S: usize = 96;
-#[cfg(feature = "rmw-dds")]
-pub const CPP_PUBLISHER_OPAQUE_U64S: usize = 256;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+pub const CPP_PUBLISHER_OPAQUE_U64S: usize = u64s_for::<publisher::CppPublisher>();
 
 /// Inline storage for `CppSubscription` (in u64 units).
-#[cfg(not(feature = "rmw-dds"))]
-pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = 224;
-#[cfg(feature = "rmw-dds")]
-pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = 384;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = u64s_for::<subscription::CppSubscription>();
 
 /// Inline storage for `CppServiceServer` (in u64 units).
-#[cfg(not(feature = "rmw-dds"))]
-pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = 224;
-#[cfg(feature = "rmw-dds")]
-pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = 768;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = u64s_for::<service::CppServiceServer>();
 
 /// Inline storage for `CppServiceClient` (in u64 units).
-#[cfg(not(feature = "rmw-dds"))]
-pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = 224;
-#[cfg(feature = "rmw-dds")]
-pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = 768;
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
+pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<service::CppServiceClient>();
 
 /// Inline storage for `GuardConditionHandle` (in u64 units).
-pub const CPP_GUARD_HANDLE_OPAQUE_U64S: usize = 4;
+pub const CPP_GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardConditionHandle>();
 
 // ============================================================================
 // QoS types (passed from C++ to Rust by value)

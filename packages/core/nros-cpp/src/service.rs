@@ -18,19 +18,14 @@ const SERVICE_BUF_SIZE: usize = 1024;
 // ============================================================================
 
 /// Service server wrapper stored in caller-provided inline storage.
-struct CppServiceServer {
+pub(crate) struct CppServiceServer {
     handle: nros::internals::RmwServiceServer,
     buffer: [u8; SERVICE_BUF_SIZE],
     service_name: [u8; 256],
     _service_name_len: usize,
 }
 
-// Compile-time assertion: inline storage must fit CppServiceServer.
-const _: () = assert!(
-    core::mem::size_of::<CppServiceServer>()
-        <= CPP_SERVICE_SERVER_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_SERVICE_SERVER_OPAQUE_U64S too small for CppServiceServer — increase the constant in lib.rs"
-);
+// CPP_SERVICE_SERVER_OPAQUE_U64S is computed from size_of::<CppServiceServer>() — always exact.
 
 /// Create a service server on a node.
 ///
@@ -209,19 +204,14 @@ pub unsafe extern "C" fn nros_cpp_service_server_destroy(storage: *mut c_void) -
 // ============================================================================
 
 /// Service client wrapper stored in caller-provided inline storage.
-struct CppServiceClient {
+pub(crate) struct CppServiceClient {
     handle: nros::internals::RmwServiceClient,
     buffer: [u8; SERVICE_BUF_SIZE],
     service_name: [u8; 256],
     _service_name_len: usize,
 }
 
-// Compile-time assertion: inline storage must fit CppServiceClient.
-const _: () = assert!(
-    core::mem::size_of::<CppServiceClient>()
-        <= CPP_SERVICE_CLIENT_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_SERVICE_CLIENT_OPAQUE_U64S too small for CppServiceClient — increase the constant in lib.rs"
-);
+// CPP_SERVICE_CLIENT_OPAQUE_U64S is computed from size_of::<CppServiceClient>() — always exact.
 
 /// Create a service client on a node.
 ///

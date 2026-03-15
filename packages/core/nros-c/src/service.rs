@@ -382,13 +382,8 @@ pub struct nros_client_t {
     pub _opaque: [u64; SERVICE_CLIENT_OPAQUE_U64S],
 }
 
-// Compile-time assertion: inline storage must fit the concrete RMW service client type.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-const _: () = assert!(
-    core::mem::size_of::<nros::internals::RmwServiceClient>()
-        <= SERVICE_CLIENT_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "SERVICE_CLIENT_OPAQUE_U64S too small for RmwServiceClient — increase the constant in constants.rs"
-);
+// SERVICE_CLIENT_OPAQUE_U64S is computed from size_of::<RmwServiceClient>() in
+// opaque_sizes.rs — always large enough by construction.
 
 impl Default for nros_client_t {
     fn default() -> Self {

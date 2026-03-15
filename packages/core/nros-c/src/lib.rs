@@ -52,6 +52,7 @@ mod cdr;
 mod clock;
 mod constants;
 mod error;
+mod opaque_sizes;
 mod parameter;
 mod platform;
 mod qos;

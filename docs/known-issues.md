@@ -81,16 +81,16 @@ automatically.
 The following constants were hardcoded but are now configurable via environment variables
 (set in `.env` or exported before building):
 
-| Env var | Default | Constant | Crate |
-|---------|---------|----------|-------|
-| `NROS_SERVICE_TIMEOUT_MS` | 10,000 ms | `SERVICE_DEFAULT_TIMEOUT_MS` | nros-rmw-zenoh |
-| `NROS_PARAM_SERVICE_BUFFER_SIZE` | 4,096 bytes | `PARAM_SERVICE_BUFFER_SIZE` | nros-node |
-| `NROS_KEYEXPR_STRING_SIZE` | 256 | `KEYEXPR_STRING_SIZE` | nros-rmw-zenoh |
+| Env var                          | Default     | Constant                     | Crate          |
+|----------------------------------|-------------|------------------------------|----------------|
+| `NROS_SERVICE_TIMEOUT_MS`        | 10,000 ms   | `SERVICE_DEFAULT_TIMEOUT_MS` | nros-rmw-zenoh |
+| `NROS_PARAM_SERVICE_BUFFER_SIZE` | 4,096 bytes | `PARAM_SERVICE_BUFFER_SIZE`  | nros-node      |
+| `NROS_KEYEXPR_STRING_SIZE`       | 256         | `KEYEXPR_STRING_SIZE`        | nros-rmw-zenoh |
 
 ### Removed (dead code)
 
-| Constant | Reason |
-|----------|--------|
+| Constant             | Reason                                                  |
+|----------------------|---------------------------------------------------------|
 | `DEFAULT_MAX_TIMERS` | Was never enforced; timer count is bounded by `MAX_CBS` |
 
 ### Internal constants (intentionally not user-configurable)
@@ -98,73 +98,33 @@ The following constants were hardcoded but are now configurable via environment 
 These have safe defaults and are unlikely to need tuning. Changing them risks
 protocol incompatibility or buffer overflows with no user benefit:
 
-| Constant                 | Value | Why internal |
-|--------------------------|-------|-------------|
-| `MAX_PARAMS_PER_REQUEST` | 64    | Matches ROS 2 rclcpp default |
-| `LOCATOR_BUFFER_SIZE`    | 128   | Locator strings are always short |
-| `CONFIG_PROPERTY_SIZE`   | 256   | Session properties are simple key=value |
-| `MAX_SESSION_PROPERTIES` | 8     | Zenoh session rarely needs >8 properties |
-| `MANGLED_NAME_SIZE`      | 64    | Only the type suffix, not full topic name |
+| Constant                 | Value | Why internal                               |
+|--------------------------|-------|--------------------------------------------|
+| `MAX_PARAMS_PER_REQUEST` | 64    | Matches ROS 2 rclcpp default               |
+| `LOCATOR_BUFFER_SIZE`    | 128   | Locator strings are always short           |
+| `CONFIG_PROPERTY_SIZE`   | 256   | Session properties are simple key=value    |
+| `MAX_SESSION_PROPERTIES` | 8     | Zenoh session rarely needs >8 properties   |
+| `MANGLED_NAME_SIZE`      | 64    | Only the type suffix, not full topic name  |
 | `QOS_STRING_SIZE`        | 32    | QoS strings are fixed format, always short |
 
-## 5. Hardcoded opaque type sizes in nros-c and nros-cpp
+## 5. ~~Hardcoded opaque type sizes in nros-c and nros-cpp~~ (Fixed)
 
-The C and C++ APIs use inline opaque storage (`alignas(8) uint8_t storage_[N]`) to hold
-Rust types without heap allocation. The storage sizes are hardcoded constants that must
-be >= the actual Rust struct size. Compile-time `const _: () = assert!(...)` checks catch
-undersized constants, but the values themselves are manually chosen upper bounds — they
-must be bumped by hand whenever the underlying Rust types grow.
+Opaque storage sizes for RMW handles are now computed from
+`core::mem::size_of` at compile time — they always match the actual Rust
+type layout and auto-adjust when types change. No manual maintenance needed.
 
-### nros-c — hardcoded in `packages/core/nros-c/src/constants.rs`
+- **nros-c**: `opaque_sizes.rs` computes `SESSION_OPAQUE_U64S`,
+  `PUBLISHER_OPAQUE_U64S`, `SERVICE_CLIENT_OPAQUE_U64S`, and
+  `GUARD_HANDLE_OPAQUE_U64S` from `size_of::<RmwSession>()` etc.
+- **nros-cpp**: `lib.rs` computes `CPP_PUBLISHER_OPAQUE_U64S` etc. from
+  `size_of::<CppPublisher>()` etc.
 
-| Constant | Size (u64s) | Bytes | Rust type |
-|----------|-------------|-------|-----------|
-| `SESSION_OPAQUE_U64S` | 64 | 512 | `RmwSession` |
-| `PUBLISHER_OPAQUE_U64S` | 48 | 384 | `RmwPublisher` |
-| `SERVICE_CLIENT_OPAQUE_U64S` | 48 | 384 | `RmwServiceClient` |
-| `GUARD_HANDLE_OPAQUE_U64S` | 4 | 32 | `GuardConditionHandle` |
+When no RMW backend is enabled, fallback values are used (sufficient for
+any backend).
 
-Static assertions in `support.rs`, `publisher.rs`, `service.rs`, `guard_condition.rs`.
+### Remaining issue
 
-### nros-cpp — hardcoded in `packages/core/nros-cpp/src/lib.rs` (Rust) and `include/nros/config.hpp` (C++)
-
-| Constant | Default (u64s) | DDS (u64s) | Rust type |
-|----------|---------------|------------|-----------|
-| `CPP_PUBLISHER_OPAQUE_U64S` | 96 | 256 | `CppPublisher` |
-| `CPP_SUBSCRIPTION_OPAQUE_U64S` | 224 | 384 | `CppSubscription` |
-| `CPP_SERVICE_SERVER_OPAQUE_U64S` | 224 | 768 | `CppServiceServer` |
-| `CPP_SERVICE_CLIENT_OPAQUE_U64S` | 224 | 768 | `CppServiceClient` |
-| `CPP_GUARD_HANDLE_OPAQUE_U64S` | 4 | 4 | `GuardConditionHandle` |
-
-Static assertions in `publisher.rs`, `subscription.rs`, `service.rs`, `guard_condition.rs`.
-
-The C++ header `config.hpp` duplicates the non-DDS values as `#define` macros
-(e.g., `NROS_CPP_PUBLISHER_STORAGE_SIZE (96 * 8)`). These are **not feature-gated**
-for DDS — a DDS build with unchanged `config.hpp` will silently use undersized
-C++ storage, causing UB even though the Rust-side assertion catches it.
-
-### What already works
-
-The **executor** storage is computed at build time in both crates' `build.rs` from
-nros-node's `DEP_NROS_NODE_*` link metadata and written to a generated header
-(`nros_config_generated.h` / `nros_cpp_config_generated.h`). This is the right pattern.
-
-### Problems
-
-1. **Manual maintenance** — adding fields to Rust types requires finding and bumping
-   the hardcoded constant, then rebuilding to see if the assertion passes.
-2. **DDS size divergence** — DDS types are much larger; `config.hpp` doesn't
-   account for this, so C++ users on DDS get a build failure or UB.
-3. **Duplicated values** — Rust constants and C/C++ `#define`s must be kept in sync
-   manually. The executor already solved this with generated headers.
-
-### Possible fix
-
-Extend the `build.rs` approach used for executor storage to all opaque types:
-
-1. Compute `size_of::<RmwPublisher>()` etc. at build time (these are known after
-   dependent crates compile — use `DEP_*` link metadata or measure directly).
-2. Write the sizes to the generated config headers alongside executor storage.
-3. Remove the hardcoded constants from `constants.rs`, `lib.rs`, and `config.hpp`.
-4. The C/C++ headers then always match the actual Rust layout, regardless of
-   feature flags (DDS, XRCE, etc.).
+The C++ header `config.hpp` duplicates values as `#define` macros. These
+are not auto-generated — C++ users must update them to match the Rust
+computed values, or the Rust-side assertion (in build.rs) catches the
+mismatch at build time.

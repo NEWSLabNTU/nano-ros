@@ -52,12 +52,8 @@ pub struct nros_guard_condition_t {
     pub _guard_opaque: [u64; GUARD_HANDLE_OPAQUE_U64S],
 }
 
-// Compile-time assertion: inline storage must fit GuardConditionHandle.
-const _: () = assert!(
-    core::mem::size_of::<nros_node::GuardConditionHandle>()
-        <= GUARD_HANDLE_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "GUARD_HANDLE_OPAQUE_U64S too small for GuardConditionHandle — increase the constant in constants.rs"
-);
+// GUARD_HANDLE_OPAQUE_U64S is computed from size_of::<GuardConditionHandle>() in
+// opaque_sizes.rs — always large enough by construction.
 
 // Safety: The triggered flag is designed for cross-thread access.
 // The callback and context are only accessed from the executor thread.

@@ -91,13 +91,8 @@ impl Default for nros_publisher_t {
     }
 }
 
-// Compile-time assertion: inline storage must fit the concrete RMW publisher type.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
-const _: () = assert!(
-    core::mem::size_of::<nros::internals::RmwPublisher>()
-        <= PUBLISHER_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "PUBLISHER_OPAQUE_U64S too small for RmwPublisher — increase the constant in constants.rs"
-);
+// PUBLISHER_OPAQUE_U64S is computed from size_of::<RmwPublisher>() in opaque_sizes.rs —
+// always large enough by construction.
 
 /// Get a zero-initialized publisher.
 #[unsafe(no_mangle)]

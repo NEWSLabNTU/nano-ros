@@ -14,19 +14,14 @@ use crate::{
 const RX_BUF_SIZE: usize = 1024;
 
 /// Subscription wrapper stored in caller-provided inline storage.
-struct CppSubscription {
+pub(crate) struct CppSubscription {
     handle: nros::internals::RmwSubscriber,
     buffer: [u8; RX_BUF_SIZE],
     topic_name: [u8; 256],
     topic_name_len: usize,
 }
 
-// Compile-time assertion: inline storage must fit CppSubscription.
-const _: () = assert!(
-    core::mem::size_of::<CppSubscription>()
-        <= CPP_SUBSCRIPTION_OPAQUE_U64S * core::mem::size_of::<u64>(),
-    "CPP_SUBSCRIPTION_OPAQUE_U64S too small for CppSubscription — increase the constant in lib.rs"
-);
+// CPP_SUBSCRIPTION_OPAQUE_U64S is computed from size_of::<CppSubscription>() — always exact.
 
 /// Create a subscription on a node.
 ///
