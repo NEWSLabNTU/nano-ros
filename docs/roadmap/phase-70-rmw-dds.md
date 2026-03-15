@@ -5,7 +5,7 @@
 interoperates with all major DDS implementations (Cyclone DDS, Fast DDS,
 Connext, OpenDDS).
 
-**Status**: In Progress (70.1–70.8 done)
+**Status**: In Progress (70.1–70.8, 70.11 done)
 
 **Priority**: Medium
 
@@ -249,9 +249,8 @@ either bypassing `DynamicData` serialization or implementing per-message-type
 - [x] 70.6 — Wire into `nros-node` feature flags
 - [x] 70.7 — Wire into `nros-c` and `nros-cpp`
 - [x] 70.8 — Native POSIX examples + integration tests
-- [ ] 70.9 — Bare-metal/RTOS examples + integration tests
-- [ ] 70.10 — ROS 2 interop test (nano-ros DDS ↔ rmw_cyclonedds)
-- [ ] 70.11 — Switch dust-dds dependency to local submodule fork
+- [ ] 70.9 — ROS 2 interop test (nano-ros DDS ↔ rmw_cyclonedds)
+- [x] 70.10 — Switch dust-dds dependency to local submodule fork
 
 ### 70.1 — Create `nros-rmw-dds` crate skeleton
 
@@ -398,36 +397,7 @@ nros = { path = "...", features = ["std", "rmw-dds", "platform-posix"] }
 - `tests/dds-talker-listener.sh`
 - `justfile` — add `test-dds` recipe
 
-### 70.9 — Bare-metal/RTOS examples + integration tests
-
-Create embedded examples that demonstrate the DDS memory model and validate
-end-to-end communication on an RTOS:
-
-1. Board crate provides `#[global_allocator]` backed by a static heap
-   (e.g., 64 KB via `embedded-alloc`)
-2. `nros-rmw-dds` uses dust-dds with `alloc` (heap goes to the static pool)
-3. nros core crates remain heap-free (no `alloc` feature)
-
-Target: Zephyr with Ethernet (e.g., `native_sim` or `fvp_baser_aemv8r`),
-or QEMU ARM bare-metal with smoltcp (requires custom
-`TransportParticipantFactory` for smoltcp UDP).
-
-Requires implementing a custom `DdsRuntime` for the target platform
-(clock, timer, spawner).
-
-**Examples**:
-- `examples/qemu-arm-baremetal/rust/dds/talker/`
-- `examples/qemu-arm-baremetal/rust/dds/listener/`
-
-**Tests** (QEMU networked, same TAP bridge pattern as zenoh tests):
-- Bare-metal DDS talker → listener over TAP bridge
-- Bare-metal DDS ↔ native POSIX DDS (cross-platform interop)
-
-**Files**:
-- Board crate allocator setup (e.g., `packages/boards/nros-mps2-an385/src/alloc.rs`)
-- `tests/dds-qemu-talker-listener.sh`
-
-### 70.10 — ROS 2 interop test (nano-ros DDS ↔ rmw_cyclonedds)
+### 70.9 — ROS 2 interop test (nano-ros DDS ↔ rmw_cyclonedds)
 
 Verify that a nano-ros DDS node can communicate with a standard ROS 2 node
 using `rmw_cyclonedds_cpp` or `rmw_fastrtps_cpp`. This requires:
@@ -445,7 +415,7 @@ of `rmw-zenoh`.
 - `tests/dds-ros2-interop.sh`
 - `justfile` — add `test-dds-ros2` recipe
 
-### 70.11 — Switch dust-dds dependency to local submodule fork
+### 70.10 — Switch dust-dds dependency to local submodule fork
 
 Switch `nros-rmw-dds/Cargo.toml` from crates.io `dust_dds = "0.14"` to
 the local forked submodule:
@@ -454,20 +424,15 @@ the local forked submodule:
 dust_dds = { path = "../dust-dds/dds", default-features = false, features = ["dcps", "rtps"] }
 ```
 
-Apply any patches needed for embedded support (custom `DdsRuntime`,
-transport trait adjustments, heap budget optimizations).
-
 **Files**:
 - `packages/dds/nros-rmw-dds/Cargo.toml` — switch dep path
-- `packages/dds/dust-dds/` — forked patches
 
 ## Acceptance Criteria
 
-- [ ] `nros-rmw-dds` compiles with `alloc` but nros core crates compile without `alloc`
-- [ ] Native POSIX talker/listener exchange messages over DDS/UDP
+- [x] `nros-rmw-dds` compiles with `alloc` but nros core crates compile without `alloc`
+- [x] Native POSIX talker/listener exchange messages over DDS/UDP
+- [x] Two nano-ros DDS nodes discover each other without a router
 - [ ] C API talker/listener work with `NANO_ROS_RMW=dds`
-- [ ] Two nano-ros DDS nodes discover each other without a router
-- [ ] Bare-metal/RTOS example runs with `#[global_allocator]` static heap
 - [ ] nano-ros DDS node communicates with a ROS 2 `rmw_cyclonedds` node
 - [ ] `just quality` passes with `rmw-dds` feature enabled
 

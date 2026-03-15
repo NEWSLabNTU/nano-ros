@@ -9,17 +9,14 @@ use crate::subscriber::DdsSubscriber;
 /// DDS session backed by a dust-dds `DomainParticipant`.
 pub struct DdsSession {
     #[cfg(feature = "std")]
-    participant:
-        dust_dds::domain::domain_participant::DomainParticipant<dust_dds::std_runtime::StdRuntime>,
+    participant: dust_dds::domain::domain_participant::DomainParticipant,
     _domain_id: u32,
 }
 
 impl DdsSession {
     #[cfg(feature = "std")]
     pub(crate) fn new(
-        participant: dust_dds::domain::domain_participant::DomainParticipant<
-            dust_dds::std_runtime::StdRuntime,
-        >,
+        participant: dust_dds::domain::domain_participant::DomainParticipant,
         domain_id: u32,
     ) -> Self {
         Self {
@@ -141,7 +138,6 @@ impl Session for DdsSession {
             use dust_dds::infrastructure::status::NO_STATUS;
             use dust_dds::infrastructure::type_support::TypeSupport;
 
-            // Request topic: rq/<service>Request
             let req_topic_name =
                 alloc::format!("rq{}Request", service.name.trim_start_matches('/'));
             let req_topic = self
@@ -155,7 +151,6 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
-            // Reply topic: rr/<service>Reply
             let reply_topic_name =
                 alloc::format!("rr{}Reply", service.name.trim_start_matches('/'));
             let reply_topic = self
@@ -169,7 +164,6 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceServerCreationFailed)?;
 
-            // Server reads requests, writes replies
             let subscriber = self
                 .participant
                 .create_subscriber(QosKind::Default, None::<()>, NO_STATUS)
@@ -220,7 +214,6 @@ impl Session for DdsSession {
             use dust_dds::infrastructure::status::NO_STATUS;
             use dust_dds::infrastructure::type_support::TypeSupport;
 
-            // Request topic: rq/<service>Request
             let req_topic_name =
                 alloc::format!("rq{}Request", service.name.trim_start_matches('/'));
             let req_topic = self
@@ -234,7 +227,6 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
-            // Reply topic: rr/<service>Reply
             let reply_topic_name =
                 alloc::format!("rr{}Reply", service.name.trim_start_matches('/'));
             let reply_topic = self
@@ -248,7 +240,6 @@ impl Session for DdsSession {
                 )
                 .map_err(|_| TransportError::ServiceClientCreationFailed)?;
 
-            // Client writes requests, reads replies
             let publisher = self
                 .participant
                 .create_publisher(QosKind::Default, None::<()>, NO_STATUS)
@@ -289,14 +280,10 @@ impl Session for DdsSession {
     }
 
     fn close(&mut self) -> Result<(), Self::Error> {
-        // DomainParticipant is cleaned up on drop.
         Ok(())
     }
 
     fn drive_io(&mut self, _timeout_ms: i32) -> Result<(), Self::Error> {
-        // dust-dds uses background tasks spawned by StdRuntime.
-        // No explicit I/O driving needed for the std runtime —
-        // the executor runs in its own thread.
         Ok(())
     }
 }

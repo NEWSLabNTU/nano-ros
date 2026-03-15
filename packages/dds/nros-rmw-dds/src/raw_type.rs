@@ -12,7 +12,7 @@
 //!
 //! - **nano-ros ↔ nano-ros DDS**: Works (both sides use the same wrapper)
 //! - **nano-ros ↔ ROS 2 DDS**: Not yet compatible (requires typed TypeSupport
-//!   matching the actual message layout, planned for 70.11)
+//!   matching the actual message layout, planned for 70.10)
 
 use alloc::{string::String, vec::Vec};
 use dust_dds::infrastructure::type_support::TypeSupport;
@@ -66,7 +66,10 @@ impl TypeSupport for RawCdrPayload {
     }
 
     fn create_sample(src: DynamicData) -> Self {
-        let data = src.get_uint8_values(0).unwrap_or_default();
+        let data = src
+            .get_uint8_values(0)
+            .map(|s| s.to_vec())
+            .unwrap_or_default();
         Self { data }
     }
 

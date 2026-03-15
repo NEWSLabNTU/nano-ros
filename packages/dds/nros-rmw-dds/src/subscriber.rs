@@ -5,19 +5,13 @@ use nros_rmw::{Subscriber, TransportError};
 /// DDS subscriber backed by a dust-dds `DataReader`.
 pub struct DdsSubscriber {
     #[cfg(feature = "std")]
-    reader: dust_dds::subscription::data_reader::DataReader<
-        dust_dds::std_runtime::StdRuntime,
-        crate::raw_type::RawCdrPayload,
-    >,
+    reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
 }
 
 impl DdsSubscriber {
     #[cfg(feature = "std")]
     pub(crate) fn new(
-        reader: dust_dds::subscription::data_reader::DataReader<
-            dust_dds::std_runtime::StdRuntime,
-            crate::raw_type::RawCdrPayload,
-        >,
+        reader: dust_dds::subscription::data_reader::DataReader<crate::raw_type::RawCdrPayload>,
     ) -> Self {
         Self { reader }
     }
@@ -62,8 +56,6 @@ impl Subscriber for DdsSubscriber {
     }
 
     fn has_data(&self) -> bool {
-        // Conservative: always return true. The executor will call try_recv_raw
-        // which handles the NoData case gracefully.
         true
     }
 

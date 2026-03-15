@@ -1,8 +1,6 @@
 //! DDS RMW factory — implements `nros_rmw::Rmw`.
 
 #[cfg(feature = "std")]
-use dust_dds::dds_async::domain_participant_factory::DomainParticipantFactoryAsync;
-#[cfg(feature = "std")]
 use dust_dds::domain::domain_participant_factory::DomainParticipantFactory;
 #[cfg(feature = "std")]
 use dust_dds::infrastructure::qos::QosKind;
@@ -26,8 +24,7 @@ impl Rmw for DdsRmw {
     fn open(config: &RmwConfig) -> Result<Self::Session, Self::Error> {
         #[cfg(feature = "std")]
         {
-            let factory =
-                DomainParticipantFactory::new(DomainParticipantFactoryAsync::get_instance());
+            let factory = DomainParticipantFactory::get_instance();
             let participant = factory
                 .create_participant(
                     config.domain_id as i32,

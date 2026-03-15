@@ -36,8 +36,10 @@ members = [
     "packages/verification/nros-ghost-types",
 ]
 
-# Excluded from workspace — standalone packages
+# Excluded from workspace — standalone packages and third-party forks
 exclude = [
+    # dust-dds fork (has its own workspace root)
+    "packages/dds/dust-dds",
     # Examples are standalone packages that generate their own bindings
     # Native Rust examples (desktop/Linux)
     "examples/native/rust/zenoh/talker",

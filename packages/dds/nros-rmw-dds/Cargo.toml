@@ -26,5 +26,5 @@ safety-e2e = ["nros-rmw/safety-e2e"]
 [dependencies]
 nros-rmw = { path = "../../core/nros-rmw", default-features = false }
 nros-core = { workspace = true, default-features = false }
-dust_dds = { version = "0.14", default-features = false, features = ["dcps", "rtps"] }
+dust_dds = { path = "../dust-dds/dds", default-features = false, features = ["dcps", "rtps"] }
 heapless = { workspace = true }
