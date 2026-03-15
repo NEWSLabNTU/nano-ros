@@ -3,6 +3,13 @@
 This chapter walks through creating a C publisher and subscriber using the
 nano-ros C API, which follows rclc naming conventions.
 
+> **Cross-platform**: The C API works on all supported platforms. This guide
+> shows native (POSIX) examples. For embedded platforms, see the platform-specific
+> examples under `examples/qemu-arm-freertos/c/zenoh/` (FreeRTOS) and
+> `examples/qemu-arm-nuttx/c/zenoh/` (NuttX). C++ examples are also available
+> under `examples/qemu-arm-freertos/cpp/zenoh/` using the `nros-cpp` freestanding
+> API.
+
 ## Prerequisites
 
 - nano-ros C library installed to a prefix (see [Installation](installation.md))

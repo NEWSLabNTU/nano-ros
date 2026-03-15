@@ -58,7 +58,7 @@ kernel, lwIP, and the LAN9118 lwIP netif driver via the `cc` crate.
 
 ### Available Examples
 
-All examples are in `examples/qemu-arm-freertos/rust/zenoh/`:
+**Rust** examples are in `examples/qemu-arm-freertos/rust/zenoh/`:
 
 | Example          | Description                                      |
 |------------------|--------------------------------------------------|
@@ -68,6 +68,39 @@ All examples are in `examples/qemu-arm-freertos/rust/zenoh/`:
 | `service-client` | Calls `AddTwoInts` on `/add_two_ints`            |
 | `action-server`  | Serves `Fibonacci` action on `/fibonacci`        |
 | `action-client`  | Sends `Fibonacci` goal on `/fibonacci`           |
+
+**C** examples are in `examples/qemu-arm-freertos/c/zenoh/` (same 6 use cases).
+
+**C++** examples are in `examples/qemu-arm-freertos/cpp/zenoh/`:
+
+| Example          | Description                                      |
+|------------------|--------------------------------------------------|
+| `talker`         | Publishes `std_msgs/Int32` on `/chatter`         |
+| `listener`       | Subscribes to `std_msgs/Int32` on `/chatter`     |
+| `service-server` | Serves `AddTwoInts` on `/add_two_ints`           |
+| `service-client` | Calls `AddTwoInts` on `/add_two_ints`            |
+
+C++ examples use `nros-cpp` freestanding mode (C++14, no `std`). Action examples
+are deferred pending alloc-free action module support.
+
+#### C/C++ Build System
+
+C and C++ examples use CMake with cross-compilation. Shared CMake modules under
+`examples/qemu-arm-freertos/cmake/` provide:
+
+- `arm-none-eabi-toolchain.cmake` -- ARM Cortex-M3 toolchain + `Rust_CARGO_TARGET`
+- `freertos-platform.cmake` -- compiles FreeRTOS + lwIP + startup, builds nros
+  FFI via Corrosion, provides `nano_ros_generate_interfaces()` for message codegen
+
+Build a C++ example:
+
+```bash
+cmake -S examples/qemu-arm-freertos/cpp/zenoh/talker \
+      -B examples/qemu-arm-freertos/cpp/zenoh/talker/build
+cmake --build examples/qemu-arm-freertos/cpp/zenoh/talker/build
+```
+
+Requires `FREERTOS_DIR` and `LWIP_DIR` environment variables (set by `just setup-freertos`).
 
 ## Testing
 
@@ -161,9 +194,9 @@ FreeRTOS runs multiple tasks for networking and application logic:
 
 ## Status
 
-FreeRTOS platform support (Phase 54) is complete. All work items (54.1--54.12)
-are done, including feature flags, build integration, six Rust examples,
-E2E network tests, and documentation. C examples are deferred to Phase 69.
+FreeRTOS platform support (Phase 54) is complete. Phase 69 added C and C++
+examples with CMake cross-compilation, integration tests, and shared CMake
+platform modules. C++ action examples are pending alloc-free action module support.
 
 ## LAN9118 Networking Debugging Guide
 

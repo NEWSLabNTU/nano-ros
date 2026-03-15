@@ -2,7 +2,7 @@
 
 **Goal**: Bring C and C++ example and integration test coverage to parity with Rust across all platforms. Currently, C/C++ examples only exist on native (POSIX), Zephyr, and NuttX (C only). Multiple platforms lack C/C++ examples entirely, and no embedded platform has C/C++ integration tests.
 
-**Status**: Not Started
+**Status**: In Progress
 **Priority**: Medium
 **Depends on**: Phase 68 (Alloc-free C/C++ bindings), Phase 54.10 (FreeRTOS C examples, deferred)
 
@@ -12,18 +12,18 @@
 
 The project has 130 examples across 10 platforms. Rust has broad coverage (86 examples) but C (32) and C++ (12) are concentrated on just a few platforms:
 
-| Platform              | Rust (zenoh) | C (zenoh) | C++ (zenoh) | C (xrce) | Integration Tests |
-|-----------------------|:---:|:---:|:---:|:---:|:---:|
-| native (POSIX)        | 17  | 8   | 6   | 6   | C + C++ + XRCE |
-| qemu-arm-baremetal    | 14  | --  | --  | --  | Rust only |
-| qemu-arm-freertos     | 6   | --  | --  | --  | Rust only |
-| qemu-arm-nuttx        | 6   | 6   | --  | --  | Rust only |
-| qemu-esp32-baremetal  | 2   | --  | --  | --  | Rust only |
-| qemu-riscv64-threadx  | 6   | --  | --  | --  | Rust only |
-| esp32                 | 3   | --  | --  | --  | (none) |
-| stm32f4               | 9   | --  | --  | --  | (none) |
-| threadx-linux         | 6   | --  | --  | --  | Rust only |
-| zephyr                | 7   | 6   | 6   | 6   | C + C++ + XRCE |
+| Platform             | Rust (zenoh) | C (zenoh) | C++ (zenoh) | C (xrce) | Integration Tests |
+|----------------------|:------------:|:---------:|:-----------:|:--------:|:-----------------:|
+| native (POSIX)       |      17      |     8     |      6      |    6     |  C + C++ + XRCE   |
+| qemu-arm-baremetal   |      14      |    --     |     --      |    --    |     Rust only     |
+| qemu-arm-freertos    |      6       |     6     |      4      |    --    |  Rust + C + C++   |
+| qemu-arm-nuttx       |      6       |     6     |     --      |    --    |     Rust only     |
+| qemu-esp32-baremetal |      2       |    --     |     --      |    --    |     Rust only     |
+| qemu-riscv64-threadx |      6       |    --     |     --      |    --    |     Rust only     |
+| esp32                |      3       |    --     |     --      |    --    |      (none)       |
+| stm32f4              |      9       |    --     |     --      |    --    |      (none)       |
+| threadx-linux        |      6       |    --     |     --      |    --    |     Rust only     |
+| zephyr               |      7       |     6     |      6      |    6     |  C + C++ + XRCE   |
 
 ### Gap Analysis
 
@@ -87,7 +87,7 @@ For host-native RTOS targets (ThreadX Linux), the standard host compiler is used
 ## Work Items
 
 C examples:
-- [ ] 69.1 -- FreeRTOS C examples + integration tests
+- [x] 69.1 -- FreeRTOS C examples + integration tests
 - [ ] 69.2 -- ThreadX Linux C examples + integration tests
 - [ ] 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
 - [ ] 69.4 -- NuttX C integration tests (examples already exist)
@@ -99,7 +99,7 @@ C++ examples:
 - [ ] 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
 
 Documentation:
-- [ ] 69.9 -- Documentation
+- [x] 69.9 -- Documentation
 
 ### 69.1 -- FreeRTOS C examples + integration tests
 
