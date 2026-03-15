@@ -183,13 +183,13 @@ FetchContent_Declare(Corrosion
 )
 FetchContent_MakeAvailable(Corrosion)
 
-# Build nros-c and nros-cpp-ffi from the main workspace.
+# Build nros-c and nros-cpp from the main workspace.
 # These are built as staticlibs directly — NOT as dependencies of the
 # panic-handler crate, because bare-metal staticlibs each require their
 # own panic handler during compilation.
 corrosion_import_crate(
     MANIFEST_PATH "${_NROS_ROOT}/Cargo.toml"
-    CRATES        nros-c nros-cpp-ffi
+    CRATES        nros-c nros-cpp
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
     FEATURES      rmw-zenoh platform-freertos ros-humble panic-halt
@@ -197,7 +197,7 @@ corrosion_import_crate(
 )
 
 # Pass FreeRTOS/lwIP paths and executor sizing to Cargo build
-foreach(_tgt nros_c-static nros_cpp_ffi-static)
+foreach(_tgt nros_c-static nros_cpp-static)
     corrosion_set_env_vars(${_tgt}
         "FREERTOS_DIR=${FREERTOS_DIR}"
         "LWIP_DIR=${LWIP_DIR}"
@@ -222,7 +222,7 @@ add_library(NanoRos::NanoRosCpp ALIAS NanoRosCpp)
 target_include_directories(NanoRosCpp INTERFACE
     "${_NROS_ROOT}/packages/core/nros-cpp/include"
 )
-target_link_libraries(NanoRosCpp INTERFACE nros_cpp_ffi-static)
+target_link_libraries(NanoRosCpp INTERFACE nros_cpp-static)
 target_compile_features(NanoRosCpp INTERFACE cxx_std_14)
 
 # ============================================================================
