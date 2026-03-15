@@ -22,7 +22,12 @@ use super::arena::{
     SubSafetyEntry, sub_safety_has_data, sub_safety_pre_sample, sub_safety_try_process,
 };
 use super::node::Node;
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 use super::types::ExecutorConfig;
 #[cfg(feature = "std")]
 use super::types::SpinOptions;
@@ -36,7 +41,12 @@ use super::types::{
 // Executor::open() factory method
 // ============================================================================
 
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 impl Executor {
     /// Open a new executor session using the active RMW backend.
     ///
@@ -88,6 +98,23 @@ impl Executor {
                 namespace: config.namespace,
             };
             let session = nros_rmw_xrce::XrceRmw::open(&rmw_config)
+                .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
+            let mut executor = Self::from_session(session);
+            executor.set_node_identity(config.node_name, config.namespace);
+            Ok(executor)
+        }
+        #[cfg(feature = "rmw-dds")]
+        {
+            use nros_rmw::Rmw;
+
+            let rmw_config = nros_rmw::RmwConfig {
+                locator: config.locator,
+                mode: config.mode,
+                domain_id: config.domain_id,
+                node_name: config.node_name,
+                namespace: config.namespace,
+            };
+            let session = nros_rmw_dds::DdsRmw::open(&rmw_config)
                 .map_err(|_| NodeError::Transport(TransportError::ConnectionFailed))?;
             let mut executor = Self::from_session(session);
             executor.set_node_identity(config.node_name, config.namespace);

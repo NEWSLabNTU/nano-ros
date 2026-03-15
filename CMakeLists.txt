@@ -5,8 +5,8 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C)
 # Options
 # ---------------------------------------------------------------------------
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
-set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh or xrce")
-set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce)
+set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or dds")
+set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds)
 
 # ---------------------------------------------------------------------------
 # Corrosion — integrates Rust/Cargo into CMake

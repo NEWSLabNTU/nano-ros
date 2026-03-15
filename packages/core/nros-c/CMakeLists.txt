@@ -4,15 +4,17 @@
 # Installs library (RMW-suffixed), headers, and CMake config package.
 #
 # This file is included from the top-level CMakeLists.txt via add_subdirectory().
-# The NANO_ROS_RMW variable (zenoh or xrce) selects features.
+# The NANO_ROS_RMW variable (zenoh, xrce, or dds) selects features.
 
 # ---- Map RMW name to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
     set(_features std rmw-zenoh platform-posix ros-humble)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
     set(_features std rmw-xrce xrce-udp platform-posix ros-humble)
+elseif(NANO_ROS_RMW STREQUAL "dds")
+    set(_features std rmw-dds platform-posix)
 else()
-    message(FATAL_ERROR "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} (expected: zenoh or xrce)")
+    message(FATAL_ERROR "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} (expected: zenoh, xrce, or dds)")
 endif()
 
 # ---- Build nros-c via Corrosion ----

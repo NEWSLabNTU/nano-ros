@@ -24,7 +24,6 @@ alloc = [
     "nros-node/alloc",
     "nros-rmw/alloc",
     "nros-rmw-xrce?/alloc",
-    "nros-rmw-dds?/alloc",
     "nros-params/alloc",
 ]
 

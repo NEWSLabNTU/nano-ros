@@ -7,9 +7,9 @@
 use core::ffi::c_int;
 use core::ptr;
 
-use crate::action::{nros_action_server_state_t, nros_action_server_t};
 #[cfg(feature = "alloc")]
 use crate::action::{ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline};
+use crate::action::{nros_action_server_state_t, nros_action_server_t};
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
 use crate::service::{nros_service_state_t, nros_service_t};
@@ -31,7 +31,7 @@ use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 pub(crate) type CExecutor = nros_node::Executor;
 
 // Compile-time assertion: inline opaque storage must fit the concrete Executor.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce"))]
+#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds"))]
 const _: () = assert!(
     core::mem::size_of::<CExecutor>() <= EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
     "EXECUTOR_OPAQUE_U64S too small for Executor — increase NROS_EXECUTOR_ARENA_SIZE \

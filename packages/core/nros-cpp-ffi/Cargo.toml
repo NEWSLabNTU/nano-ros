@@ -18,6 +18,7 @@ alloc = ["nros/alloc", "nros-node/alloc", "nros-rmw/alloc"]
 # RMW backend (select one) — passed through to nros
 rmw-zenoh = ["nros/rmw-zenoh"]
 rmw-xrce = ["nros/rmw-xrce"]
+rmw-dds = ["nros/rmw-dds"]
 rmw-cffi = ["nros/rmw-cffi"]
 
 # XRCE transport refinements (require rmw-xrce)

@@ -33,21 +33,51 @@ use panic_halt as _;
 use core::ffi::{c_char, c_int, c_void};
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 mod guard_condition;
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 mod publisher;
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 mod service;
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 mod subscription;
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 mod timer;
 
 // ── Advanced feature modules (require alloc) ──
 #[cfg(all(
     feature = "alloc",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+    any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )
 ))]
 mod action;
 
@@ -83,16 +113,29 @@ pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 // Compile-time assertions in each module verify the storage is large enough.
 
 /// Inline storage for `CppPublisher` (in u64 units).
+/// DDS types are larger due to Arc-based handles from dust-dds.
+#[cfg(not(feature = "rmw-dds"))]
 pub const CPP_PUBLISHER_OPAQUE_U64S: usize = 96;
+#[cfg(feature = "rmw-dds")]
+pub const CPP_PUBLISHER_OPAQUE_U64S: usize = 256;
 
 /// Inline storage for `CppSubscription` (in u64 units).
+#[cfg(not(feature = "rmw-dds"))]
 pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = 224;
+#[cfg(feature = "rmw-dds")]
+pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = 384;
 
 /// Inline storage for `CppServiceServer` (in u64 units).
+#[cfg(not(feature = "rmw-dds"))]
 pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = 224;
+#[cfg(feature = "rmw-dds")]
+pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = 768;
 
 /// Inline storage for `CppServiceClient` (in u64 units).
+#[cfg(not(feature = "rmw-dds"))]
 pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = 224;
+#[cfg(feature = "rmw-dds")]
+pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = 768;
 
 /// Inline storage for `GuardConditionHandle` (in u64 units).
 pub const CPP_GUARD_HANDLE_OPAQUE_U64S: usize = 4;
@@ -175,7 +218,12 @@ pub use executor_config::CPP_EXECUTOR_OPAQUE_U64S;
 // ============================================================================
 
 /// The concrete nros-node executor type used by the C++ FFI.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 pub(crate) type CppExecutor = nros_node::Executor;
 
 /// Context wrapping the executor and the domain ID.
@@ -183,14 +231,24 @@ pub(crate) type CppExecutor = nros_node::Executor;
 /// The executor doesn't store domain_id itself — it's consumed during
 /// session open. We keep it here so publisher/subscription creation
 /// can pass the correct value to `TopicInfo::with_domain()`.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 pub(crate) struct CppContext {
     pub(crate) executor: CppExecutor,
     pub(crate) domain_id: u32,
 }
 
 // Compile-time assertion: inline storage must fit CppContext.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 const _: () = assert!(
     core::mem::size_of::<CppContext>() <= CPP_EXECUTOR_OPAQUE_U64S * core::mem::size_of::<u64>(),
     "CPP_EXECUTOR_OPAQUE_U64S too small for CppContext — increase NROS_EXECUTOR_ARENA_SIZE \
@@ -221,7 +279,12 @@ const _: () = assert!(
 ///
 /// # Returns
 /// `NROS_CPP_RET_OK` on success, error code otherwise.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_init(
     locator: *const c_char,
@@ -282,7 +345,12 @@ pub unsafe extern "C" fn nros_cpp_init(
 ///
 /// # Safety
 /// `storage` must point to a live `CppContext` written by `nros_cpp_init()`, or NULL (no-op).
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_fini(storage: *mut c_void) -> nros_cpp_ret_t {
     if storage.is_null() {
@@ -333,7 +401,12 @@ pub struct nros_cpp_node_t {
 ///
 /// # Returns
 /// `NROS_CPP_RET_OK` on success, error code otherwise.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_node_create(
     executor_handle: *mut c_void,
@@ -443,7 +516,12 @@ pub unsafe extern "C" fn nros_cpp_node_get_namespace(
 ///
 /// # Safety
 /// `handle` must be a valid handle returned by `nros_cpp_init()`.
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_spin_once(
     handle: *mut c_void,

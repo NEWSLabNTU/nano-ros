@@ -23,23 +23,32 @@
 
 /**
  * Inline storage for `CppPublisher` (in u64 units).
+ * DDS types are larger due to Arc-based handles from dust-dds.
  */
 #define CPP_PUBLISHER_OPAQUE_U64S 96
+
+#define CPP_PUBLISHER_OPAQUE_U64S 256
 
 /**
  * Inline storage for `CppSubscription` (in u64 units).
  */
 #define CPP_SUBSCRIPTION_OPAQUE_U64S 224
 
+#define CPP_SUBSCRIPTION_OPAQUE_U64S 384
+
 /**
  * Inline storage for `CppServiceServer` (in u64 units).
  */
 #define CPP_SERVICE_SERVER_OPAQUE_U64S 224
 
+#define CPP_SERVICE_SERVER_OPAQUE_U64S 768
+
 /**
  * Inline storage for `CppServiceClient` (in u64 units).
  */
 #define CPP_SERVICE_CLIENT_OPAQUE_U64S 224
+
+#define CPP_SERVICE_CLIENT_OPAQUE_U64S 768
 
 /**
  * Inline storage for `GuardConditionHandle` (in u64 units).

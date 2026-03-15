@@ -1,0 +1,30 @@
+[package]
+name = "nros-rmw-dds"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "DDS/RTPS RMW backend for nros (via dust-dds)"
+
+[features]
+default = []
+std = ["nros-rmw/std", "dust_dds/std", "dust_dds/rtps_udp_transport"]
+
+# Platform selection (forwarded to dust-dds runtime)
+platform-posix = ["std"]
+platform-zephyr = []
+platform-freertos = []
+platform-nuttx = []
+platform-threadx = []
+
+# ROS edition (controls topic name/type hash format)
+ros-humble = []
+ros-iron = []
+
+# E2E safety protocol
+safety-e2e = ["nros-rmw/safety-e2e"]
+
+[dependencies]
+nros-rmw = { path = "../../core/nros-rmw", default-features = false }
+nros-core = { workspace = true, default-features = false }
+dust_dds = { version = "0.14", default-features = false, features = ["dcps", "rtps"] }
+heapless = { workspace = true }

@@ -257,6 +257,17 @@ pub mod internals {
     #[cfg(feature = "rmw-cffi")]
     pub type RmwServiceClient = nros_rmw_cffi::CffiServiceClient;
 
+    #[cfg(feature = "rmw-dds")]
+    pub type RmwSession = nros_rmw_dds::DdsSession;
+    #[cfg(feature = "rmw-dds")]
+    pub type RmwPublisher = nros_rmw_dds::DdsPublisher;
+    #[cfg(feature = "rmw-dds")]
+    pub type RmwSubscriber = nros_rmw_dds::DdsSubscriber;
+    #[cfg(feature = "rmw-dds")]
+    pub type RmwServiceServer = nros_rmw_dds::DdsServiceServer;
+    #[cfg(feature = "rmw-dds")]
+    pub type RmwServiceClient = nros_rmw_dds::DdsServiceClient;
+
     /// Open a new middleware session.
     ///
     /// Wraps the backend-specific session constructor behind a common signature.
@@ -265,7 +276,12 @@ pub mod internals {
     /// - **Zenoh**: `domain_id` and `node_name` are ignored (zenoh uses `locator` and `mode`).
     /// - **XRCE-DDS**: `locator` is the agent address (e.g., `"127.0.0.1:2019"`).
     ///   Transport must match the active transport feature (`xrce-udp` or `xrce-serial`).
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     pub fn open_session(
         locator: &str,
         mode: nros_rmw::SessionMode,
@@ -317,9 +333,29 @@ pub mod internals {
         }
 
         #[cfg(all(
+            feature = "rmw-dds",
+            not(feature = "rmw-zenoh"),
+            not(feature = "rmw-xrce"),
+        ))]
+        {
+            use nros_rmw::Rmw;
+
+            let config = nros_rmw::RmwConfig {
+                locator,
+                mode,
+                domain_id,
+                node_name,
+                namespace: "",
+            };
+            nros_rmw_dds::DdsRmw::open(&config)
+                .map_err(|_| nros_rmw::TransportError::ConnectionFailed)
+        }
+
+        #[cfg(all(
             feature = "rmw-cffi",
             not(feature = "rmw-zenoh"),
             not(feature = "rmw-xrce"),
+            not(feature = "rmw-dds"),
         ))]
         {
             use nros_rmw::Rmw;
@@ -343,7 +379,12 @@ pub mod internals {
     /// poll for pull-based).
     ///
     /// Used by the C API executor before polling handles.
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     pub fn drive_session_io(session: &mut RmwSession, timeout_ms: i32) {
         use nros_rmw::Session;
         let _ = session.drive_io(timeout_ms);
@@ -358,7 +399,12 @@ pub use nros_node::{
 };
 
 // Re-export RMW-dependent types (require an active transport backend)
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
 pub use nros_node::{
     ActionClient, ActionClientCore, ActionServer, ActionServerCore, ActionServerHandle,
     ActionServerRawHandle, ActiveGoal, CompletedGoal, EmbeddedPublisher, EmbeddedServiceClient,
@@ -368,7 +414,12 @@ pub use nros_node::{
 
 #[cfg(all(
     feature = "std",
-    any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+    any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    )
 ))]
 pub use nros_node::SpinPeriodResult;
 
@@ -417,7 +468,12 @@ pub mod prelude {
     };
 
     // Re-export RMW-dependent executor types
-    #[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))]
+    #[cfg(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))]
     pub use crate::{EmbeddedPublisher, Executor, Node, Subscription};
 
     // Standalone node options (no-transport simulation mode)
@@ -426,7 +482,12 @@ pub mod prelude {
 
     #[cfg(all(
         feature = "std",
-        any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi")
+        any(
+            feature = "rmw-zenoh",
+            feature = "rmw-xrce",
+            feature = "rmw-dds",
+            feature = "rmw-cffi"
+        )
     ))]
     pub use crate::SpinPeriodResult;
 

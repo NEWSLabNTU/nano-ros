@@ -1,11 +1,11 @@
 # Phase 70 — DDS RMW Backend (dust-dds)
 
-**Goal**: Add a DDS/RTPS-based RMW backend (`nros-rmw-dds`) using the pure-Rust
+**Goal**: Add a DDS/RTPS-based RMW backend (`nros-rmw-dds`) using a forked
 `dust-dds` library, giving nano-ros brokerless peer-to-peer communication that
 interoperates with all major DDS implementations (Cyclone DDS, Fast DDS,
 Connext, OpenDDS).
 
-**Status**: Not Started
+**Status**: In Progress (70.1–70.7 done)
 
 **Priority**: Medium
 
@@ -26,10 +26,9 @@ standard RTPS multicast — no router or agent needed.
 
 ### Why dust-dds
 
-[dust-dds](https://github.com/s2e-systems/dust-dds) (v0.15.0) is a pure-Rust
-DDS implementation. Key properties:
+[dust-dds](https://github.com/s2e-systems/dust-dds) is a pure-Rust DDS
+implementation. Key properties:
 
-- **`no_std + alloc`** — feature-gated; core DDS logic runs without `std`
 - **Pure Rust** — no C build system, no `unsafe`, no bindgen
 - **OMG interop certified** — passes all 47 tests in the official
   [OMG DDS-RTPS interoperability suite](https://github.com/omg-dds/dds-rtps)
@@ -40,6 +39,13 @@ DDS implementation. Key properties:
   spawning (no dependency on tokio/embassy)
 - **CDR/XCDR serialization** — wire-compatible with ROS 2 CDR encoding
 - **Apache-2.0 licensed**
+
+### Forked dust-dds Submodule
+
+dust-dds upstream requires `alloc` (`Vec`, `Arc`, `BTreeMap` in 846 sites).
+We maintain a fork at `packages/dds/dust-dds/` (git submodule) to keep nros
+core crates heap-free while confining allocations to dust-dds itself. See
+[Memory Model](#memory-model) for the design.
 
 ### Position in Architecture
 
@@ -56,18 +62,84 @@ rmw-dds  <-- NEW          platform-bare-metal
                           platform-threadx
 ```
 
-### Comparison with Zenoh
+### Comparison with Zenoh and XRCE
 
-| Aspect           | rmw-zenoh               | rmw-dds                                     |
-|------------------|-------------------------|---------------------------------------------|
-| Discovery        | Router or peer          | Peer-to-peer multicast (brokerless)         |
-| Transport        | TCP, UDP, serial        | UDP multicast + unicast                     |
-| Implementation   | zenoh-pico (C FFI)      | dust-dds (pure Rust)                        |
-| `no_std`         | Yes (via zpico-sys)     | Yes (`no_std + alloc`)                      |
-| Wire interop     | rmw_zenoh_cpp           | rmw_cyclonedds, rmw_fastrtps, any DDS       |
-| Binary size      | ~60 KB (zenoh-pico)     | TBD (estimate ~100-200 KB)                  |
-| Heap usage       | ~16 KB                  | Moderate (history buffers, discovery state) |
-| Serial transport | Built-in (COBS framing) | Not built-in (could implement custom)       |
+| Aspect           | rmw-zenoh               | rmw-xrce                     | rmw-dds                          |
+|------------------|-------------------------|------------------------------|----------------------------------|
+| Discovery        | Router or peer          | Agent (client-server)        | Peer-to-peer multicast           |
+| Transport        | TCP, UDP, serial        | UDP                          | UDP multicast + unicast          |
+| Implementation   | zenoh-pico (C FFI)      | Micro-XRCE-DDS (C FFI)      | dust-dds (pure Rust)             |
+| Wire interop     | rmw_zenoh_cpp           | FastDDS Agent                | Any DDS (Cyclone, Fast, Connext) |
+| nros Rust alloc  | No                      | No                           | No                               |
+| Library alloc    | Yes (C `z_malloc`)      | No (fully static)            | Yes (Rust `alloc`)               |
+| Allocator source | Platform crate provides `z_malloc`/`z_free` over static heap | N/A | Board crate provides `#[global_allocator]` over static heap |
+
+## Memory Model
+
+**Design principle**: nros core crates remain heap-free. dust-dds owns all
+dynamic allocation through Rust's `alloc` crate. The board crate provides
+the backing memory.
+
+```
+┌─────────────────────────────────────────────────────┐
+│ Board crate (e.g., nros-mps2-an385)                 │
+│   #[global_allocator]                               │
+│   static HEAP: LlffHeap = ...;   // 64-128 KB      │
+│   static mut HEAP_MEM: [u8; N];  // backing storage │
+├─────────────────────────────────────────────────────┤
+│ nros-rmw-dds          (alloc feature enabled)       │
+│   Uses Vec<u8> for RawCdrPayload wrapper            │
+├─────────────────────────────────────────────────────┤
+│ dust-dds              (uses extern crate alloc)     │
+│   Vec, Arc, BTreeMap for DynamicData, channels,     │
+│   discovery state, history buffers                  │
+├─────────────────────────────────────────────────────┤
+│ nros core crates      (NO alloc feature)            │
+│   nros, nros-node, nros-core, nros-rmw              │
+│   All heap-free — only stack + static buffers       │
+└─────────────────────────────────────────────────────┘
+```
+
+This mirrors the zenoh-pico pattern where the C library uses its own
+`z_malloc()`/`z_free()` backed by a static memory pool, while the nros
+Rust layer stays heap-free.
+
+**Key difference**: zenoh-pico uses a C-level allocator (invisible to Rust),
+while dust-dds uses Rust `alloc` (requires `#[global_allocator]`). Both
+consume a static memory pool — the mechanism differs but the memory model
+is the same.
+
+### Feature Chain
+
+```
+nros (no alloc)
+  └─ nros-node (no alloc)
+       └─ nros-rmw-dds (alloc enabled)
+            └─ dust_dds (extern crate alloc — uses Vec, Arc, BTreeMap)
+
+Board crate provides #[global_allocator] backed by static [u8; N]
+```
+
+The `alloc` feature on `nros-rmw-dds` does NOT propagate to `nros-node`
+or `nros`. The nros-node `alloc` forwarding uses `?` syntax
+(`nros-rmw-dds?/alloc`), so it only activates when the consumer
+explicitly requests it.
+
+### Heap Budget
+
+Estimated dust-dds heap usage for a minimal pub/sub deployment:
+
+| Component                 | Allocation                            | Size estimate |
+|---------------------------|---------------------------------------|---------------|
+| DomainParticipant         | Discovery state, endpoint tables      | ~8 KB         |
+| Per DataWriter            | History buffer (QoS depth × msg size) | ~2 KB         |
+| Per DataReader            | History buffer + sample cache         | ~2 KB         |
+| SPDP/SEDP                 | Participant/endpoint announcements    | ~4 KB         |
+| Channels                  | Internal async message passing        | ~2 KB         |
+| **Total (1 pub + 1 sub)** |                                       | **~18 KB**    |
+
+Cap with QoS `KEEP_LAST` depth=1 and small message types. Board crates
+should provision 32-64 KB heap for DDS.
 
 ## Architecture
 
@@ -75,18 +147,18 @@ rmw-dds  <-- NEW          platform-bare-metal
 
 ```
 packages/dds/
+├── dust-dds/               # Forked git submodule
+│   └── dds/                # dust_dds crate source
 ├── nros-rmw-dds/
 │   ├── Cargo.toml
 │   └── src/
 │       ├── lib.rs          # Re-exports, feature gates
+│       ├── raw_type.rs     # RawCdrPayload TypeSupport wrapper
 │       ├── session.rs      # DdsSession: impl Session trait
 │       ├── publisher.rs    # DdsPublisher: impl Publisher trait
 │       ├── subscriber.rs   # DdsSubscriber: impl Subscriber trait
 │       ├── service.rs      # DdsServiceServer, DdsServiceClient
-│       ├── transport.rs    # DdsRmw: impl Rmw trait (factory)
-│       ├── runtime.rs      # NrosRuntime: impl DdsRuntime for nano-ros
-│       ├── config.rs       # DDS domain config, QoS mapping
-│       └── keyexpr.rs      # ROS 2 topic name ↔ DDS topic mapping
+│       └── transport.rs    # DdsRmw: impl Rmw trait (factory)
 ```
 
 ### dust-dds Integration
@@ -109,9 +181,9 @@ Executor::open()
   └─ DdsRmw::open(config)
        ├─ Create DdsRuntime (clock + timer + spawner)
        ├─ Create TransportParticipantFactory (UDP or custom)
-       └─ DomainParticipantFactoryAsync::create_participant()
+       └─ DomainParticipantFactory::create_participant()
             ├─ SPDP discovery starts (multicast)
-            └─ Returns DdsSession (owns participant + runtime)
+            └─ Returns DdsSession (owns participant)
 
 DdsSession::create_publisher(topic)
   └─ participant.create_publisher().create_datawriter()
@@ -124,8 +196,8 @@ DdsSession::create_subscriber(topic)
        └─ Returns DdsSubscriber (wraps DataReader)
 
 DdsSession::drive_io(timeout_ms)
-  └─ Poll dust-dds async runtime (process incoming RTPS messages,
-     run discovery, dispatch to reader buffers)
+  └─ No-op for StdRuntime (background executor thread).
+     For embedded runtimes: poll the DDS async runtime.
 ```
 
 ### Topic Name Mapping
@@ -153,33 +225,45 @@ Type names follow the DDS convention: `std_msgs::msg::dds_::Int32_`.
 | `Durability::TransientLocal` | `TRANSIENT_LOCAL`   |
 | `History::KeepLast(n)`       | `KEEP_LAST` depth=n |
 
+### Raw CDR Serialization Bridge
+
+dust-dds's public API is typed (`DataWriter<Foo>::write(data: Foo)`), while
+nros-rmw uses raw CDR bytes (`publish_raw(&[u8])`). A `RawCdrPayload`
+wrapper type implements dust-dds's `TypeSupport` trait to carry pre-encoded
+CDR bytes through the DDS pipeline.
+
+**Current limitation**: `RawCdrPayload` registers as `SEQUENCE<UINT8>` in
+the DDS type system, which adds a length prefix around the payload. This
+means nano-ros DDS nodes can communicate with each other but not yet with
+standard ROS 2 DDS nodes (wire format mismatch). Fixing this requires
+either bypassing `DynamicData` serialization or implementing per-message-type
+`TypeSupport` — addressed in 70.11.
+
 ## Work Items
 
-- [ ] 70.1 — Create `nros-rmw-dds` crate skeleton
-- [ ] 70.2 — Implement `DdsRuntime` for std targets
-- [ ] 70.3 — Implement `Session` trait (`DdsSession`)
-- [ ] 70.4 — Implement `Publisher` / `Subscriber` traits
-- [ ] 70.5 — Implement service request/reply
-- [ ] 70.6 — Wire into `nros-node` feature flags
-- [ ] 70.7 — Wire into `nros-c` and `nros-cpp-ffi`
+- [x] 70.1 — Create `nros-rmw-dds` crate skeleton
+- [x] 70.2 — Implement `DdsRuntime` for std targets
+- [x] 70.3 — Implement `Session` trait (`DdsSession`)
+- [x] 70.4 — Implement `Publisher` / `Subscriber` traits
+- [x] 70.5 — Implement service request/reply
+- [x] 70.6 — Wire into `nros-node` feature flags
+- [x] 70.7 — Wire into `nros-c` and `nros-cpp-ffi`
 - [ ] 70.8 — Create native POSIX examples (talker/listener)
-- [ ] 70.9 — Create Zephyr example (talker/listener)
+- [ ] 70.9 — Create bare-metal/RTOS example with `#[global_allocator]`
 - [ ] 70.10 — Integration tests (Rust ↔ Rust, C ↔ Rust)
 - [ ] 70.11 — ROS 2 interop test (nano-ros DDS ↔ rmw_cyclonedds)
+- [ ] 70.12 — Switch dust-dds dependency to local submodule fork
 
 ### 70.1 — Create `nros-rmw-dds` crate skeleton
 
-Set up the crate with feature-gated dust-dds dependency. The crate follows
-the same feature pattern as `nros-rmw-zenoh`:
+Set up the crate with feature-gated dust-dds dependency. The `alloc` feature
+is enabled on `nros-rmw-dds` but does NOT propagate to nros core crates.
 
 ```toml
 [features]
 default = []
-std = ["dust_dds/std"]
-platform-posix = ["std"]
-platform-zephyr = []
-ros-humble = []
-ros-iron = []
+std = ["alloc", "dust_dds/std", "dust_dds/rtps_udp_transport"]
+alloc = ["nros-rmw/alloc"]
 ```
 
 Implement stub types that satisfy the `nros-rmw` traits with `todo!()` bodies
@@ -196,51 +280,41 @@ to verify compilation through the full stack.
 
 ### 70.2 — Implement `DdsRuntime` for std targets
 
-Implement the `dust_dds::runtime::DdsRuntime` trait for POSIX/std
-environments. dust-dds ships `StdRuntime` which we can use directly for
-initial bringup, then replace with a custom implementation if needed.
+Use dust-dds's built-in `StdRuntime` directly — it provides executor,
+timer, clock, and channels. No custom runtime needed for POSIX targets.
 
-For `no_std` targets, implement `NrosRuntime` backed by platform-specific
-clock/timer/spawner primitives. This is deferred until Zephyr integration
-(70.9).
+For embedded targets (70.9), implement a custom `DdsRuntime` backed by
+platform-specific primitives.
 
 **Files**:
-- `packages/dds/nros-rmw-dds/src/runtime.rs`
+- `packages/dds/nros-rmw-dds/src/transport.rs` (uses `StdRuntime` via
+  `DomainParticipantFactoryAsync::get_instance()`)
 
 ### 70.3 — Implement `Session` trait (`DdsSession`)
 
-Map `nros-rmw::Session` to dust-dds `DomainParticipantAsync`:
+Map `nros-rmw::Session` to dust-dds `DomainParticipant`:
 
 - `create_publisher()` → `participant.create_publisher().create_datawriter()`
 - `create_subscriber()` → `participant.create_subscriber().create_datareader()`
 - `create_service_server()` → pair of reader (request) + writer (reply)
-- `close()` → `participant.delete_contained_entities()` + drop
-- `drive_io()` → poll the dust-dds async runtime
-
-Key design decision: dust-dds is async-first but nano-ros executors are
-synchronous (polling). `drive_io()` must run the dust-dds event loop for
-`timeout_ms` and return. Use a block-on executor or poll-once approach.
+- `close()` → drop (DomainParticipant cleanup)
+- `drive_io()` → no-op for `StdRuntime` (background executor thread)
 
 **Files**:
 - `packages/dds/nros-rmw-dds/src/session.rs`
-- `packages/dds/nros-rmw-dds/src/config.rs`
 
 ### 70.4 — Implement `Publisher` / `Subscriber` traits
 
-`DdsPublisher` wraps a dust-dds `DataWriterAsync`. Serialization uses
-nano-ros's existing CDR encoder (`nros-serdes`) — publish raw CDR bytes
-via `write()`.
+`DdsPublisher` wraps a dust-dds `DataWriter<RawCdrPayload>`. `publish_raw()`
+wraps CDR bytes in `RawCdrPayload` and calls `DataWriter::write()`.
 
-`DdsSubscriber` wraps a `DataReaderAsync`. `has_data()` checks the reader
-status; `try_recv_raw()` calls `take()` to consume one sample.
-
-Topic naming: apply `rt/` prefix and DDS type name mangling
-(`pkg::msg::dds_::Type_`).
+`DdsSubscriber` wraps a `DataReader<RawCdrPayload>`. `try_recv_raw()` calls
+`DataReader::take()` and extracts the byte payload.
 
 **Files**:
 - `packages/dds/nros-rmw-dds/src/publisher.rs`
 - `packages/dds/nros-rmw-dds/src/subscriber.rs`
-- `packages/dds/nros-rmw-dds/src/keyexpr.rs`
+- `packages/dds/nros-rmw-dds/src/raw_type.rs`
 
 ### 70.5 — Implement service request/reply
 
@@ -266,12 +340,15 @@ pub(crate) type ConcreteSession = nros_rmw_dds::DdsSession;
 ```
 
 Forward platform and ROS edition features through to `nros-rmw-dds`.
+The `alloc` feature on `nros-rmw-dds` does NOT propagate upward — nros
+core crates remain heap-free.
 
 **Files**:
 - `packages/core/nros-node/Cargo.toml` — add `rmw-dds` feature + dependency
 - `packages/core/nros-node/src/session.rs` — add `ConcreteSession` alias
+- `packages/core/nros-node/build.rs` — add `rmw-dds` to `has_rmw` cfg
 - `packages/core/nros/Cargo.toml` — forward `rmw-dds`
-- `Cargo.toml` (workspace) — add `nros-rmw-dds` member
+- `Cargo.toml` (workspace) — add `nros-rmw-dds` member + dep alias
 
 ### 70.7 — Wire into `nros-c` and `nros-cpp-ffi`
 
@@ -312,18 +389,26 @@ Also create C talker/listener examples using CMake + `NANO_ROS_RMW=dds`.
 - `examples/native/c/dds/talker/`
 - `examples/native/c/dds/listener/`
 
-### 70.9 — Create Zephyr example (talker/listener)
+### 70.9 — Create bare-metal/RTOS example with `#[global_allocator]`
 
-Create a Zephyr DDS example targeting a board with Ethernet (e.g.,
-`fvp_baser_aemv8r` or `native_sim`). Requires implementing `NrosRuntime`
-for Zephyr (clock from `k_uptime_get()`, timer from `k_timer`, spawner
-from `k_thread_create`).
+Create an embedded example that demonstrates the DDS memory model:
 
-This validates `no_std + alloc` DDS operation on an RTOS.
+1. Board crate provides `#[global_allocator]` backed by a static heap
+   (e.g., 64 KB via `embedded-alloc`)
+2. `nros-rmw-dds` uses dust-dds with `alloc` (heap goes to the static pool)
+3. nros core crates remain heap-free (no `alloc` feature)
+
+Target: Zephyr with Ethernet (e.g., `native_sim` or `fvp_baser_aemv8r`),
+or QEMU ARM bare-metal with smoltcp (requires custom
+`TransportParticipantFactory` for smoltcp UDP).
+
+Requires implementing a custom `DdsRuntime` for the target platform
+(clock, timer, spawner).
 
 **Files**:
-- `examples/zephyr/rust/dds/talker/`
-- `examples/zephyr/rust/dds/listener/`
+- Board crate allocator setup (e.g., `packages/boards/nros-mps2-an385/src/alloc.rs`)
+- `examples/qemu-arm-baremetal/rust/dds/talker/`
+- `examples/qemu-arm-baremetal/rust/dds/listener/`
 
 ### 70.10 — Integration tests (Rust ↔ Rust, C ↔ Rust)
 
@@ -333,7 +418,7 @@ Add tests to `nros-tests` exercising the DDS backend:
 - C talker → C listener (two processes)
 - Cross-language: Rust talker → C listener
 
-These use loopback UDP (127.0.0.1 multicast) — no external processes needed.
+These use loopback UDP multicast — no external processes needed.
 
 **Files**:
 - `packages/testing/nros-tests/tests/dds_api.rs`
@@ -346,7 +431,8 @@ using `rmw_cyclonedds_cpp` or `rmw_fastrtps_cpp`. This requires:
 
 - Matching DDS domain ID
 - Correct `rt/` topic prefix and type name mangling
-- CDR-compatible serialization
+- CDR-compatible serialization (bypass `RawCdrPayload` wrapper — use
+  per-message-type `TypeSupport` or direct CDR injection)
 - SPDP/SEDP discovery on the same multicast group
 
 Similar to the existing `just test-ros2` recipe but using `rmw-dds` instead
@@ -356,25 +442,41 @@ of `rmw-zenoh`.
 - `tests/dds-ros2-interop.sh`
 - `justfile` — add `test-dds-ros2` recipe
 
+### 70.12 — Switch dust-dds dependency to local submodule fork
+
+Switch `nros-rmw-dds/Cargo.toml` from crates.io `dust_dds = "0.14"` to
+the local forked submodule:
+
+```toml
+dust_dds = { path = "../dust-dds/dds", default-features = false, features = ["dcps", "rtps"] }
+```
+
+Apply any patches needed for embedded support (custom `DdsRuntime`,
+transport trait adjustments, heap budget optimizations).
+
+**Files**:
+- `packages/dds/nros-rmw-dds/Cargo.toml` — switch dep path
+- `packages/dds/dust-dds/` — forked patches
+
 ## Acceptance Criteria
 
-- [ ] `nros-rmw-dds` crate compiles with `no_std + alloc` (no `std` feature)
+- [ ] `nros-rmw-dds` compiles with `alloc` but nros core crates compile without `alloc`
 - [ ] Native POSIX talker/listener exchange messages over DDS/UDP
 - [ ] C API talker/listener work with `NANO_ROS_RMW=dds`
 - [ ] Two nano-ros DDS nodes discover each other without a router
+- [ ] Bare-metal/RTOS example runs with `#[global_allocator]` static heap
 - [ ] nano-ros DDS node communicates with a ROS 2 `rmw_cyclonedds` node
 - [ ] `just quality` passes with `rmw-dds` feature enabled
-- [ ] Zephyr example compiles and runs on a supported board
 
 ## Notes
 
-- **Async bridging**: dust-dds is async-first. The `drive_io()` method must
-  bridge async/sync. For `std`, a minimal block-on executor can poll futures.
-  For `no_std`, the platform's event loop drives the DDS runtime.
+- **Async bridging**: dust-dds is async-first. The sync API uses
+  `R::block_on()` to bridge. For `std`, `StdRuntime` provides a built-in
+  executor. For embedded, the custom `DdsRuntime` must implement `block_on`.
 
-- **Memory budget**: dust-dds uses `alloc` extensively (Vec, Arc, Box).
-  History buffer sizes should be capped via QoS `KEEP_LAST` with small depth
-  to bound memory usage on embedded targets. Document heap requirements.
+- **Memory budget**: dust-dds uses `alloc` extensively. Cap heap usage via
+  QoS `KEEP_LAST` depth=1 and small message types. Board crates should
+  provision 32-64 KB heap for DDS. Document per-deployment heap requirements.
 
 - **Discovery overhead**: SPDP/SEDP multicast uses ~1-2 KB per announcement
   at configurable intervals (default 5s). On constrained networks, increase
@@ -384,12 +486,14 @@ of `rmw-zenoh`.
   Serial transport would require encapsulating RTPS frames over a serial link
   with custom framing — possible but non-standard.
 
-- **dust-dds `todo!()` stubs**: ~30 async API methods are unimplemented in
-  dust-dds v0.15. Verify that the methods needed by nano-ros (create
-  participant, create writer/reader, write, take) are all functional before
-  starting integration.
+- **CDR compatibility**: nano-ros serializes messages to CDR via `nros-serdes`.
+  dust-dds has its own CDR codec via `DdsType` derive. The current
+  `RawCdrPayload` wrapper adds a byte-sequence envelope that breaks ROS 2
+  interop. Fixing this (70.11) requires either bypassing `DynamicData`
+  serialization in the dust-dds fork or implementing per-message-type
+  `TypeSupport` via codegen.
 
-- **CDR compatibility**: nano-ros already serializes messages to CDR via
-  `nros-serdes`. dust-dds has its own CDR codec via `DdsType` derive. For
-  raw pub/sub (`publish_raw` / `try_recv_raw`), bypass dust-dds serialization
-  and pass pre-encoded CDR bytes directly.
+- **Heap isolation**: nros core crates (`nros`, `nros-node`, `nros-core`,
+  `nros-rmw`) MUST NOT enable `alloc`. Only `nros-rmw-dds` and `dust_dds`
+  use the heap. The `#[global_allocator]` is provided by the board crate,
+  not by nros.
