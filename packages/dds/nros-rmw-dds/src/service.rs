@@ -5,8 +5,6 @@
 //! (`rq/<service>Request` and `rr/<service>Reply`). Sequence numbers correlate
 //! requests to replies.
 
-use core::sync::atomic::{AtomicI64, Ordering};
-
 use nros_rmw::{
     Publisher, ServiceClientTrait, ServiceRequest, ServiceServerTrait, Subscriber, TransportError,
 };
@@ -87,7 +85,7 @@ impl ServiceServerTrait for DdsServiceServer {
 pub struct DdsServiceClient {
     request_writer: DdsPublisher,
     reply_reader: DdsSubscriber,
-    next_sequence: AtomicI64,
+    next_sequence: i64,
     pending_sequence: i64,
 }
 
@@ -97,7 +95,7 @@ impl DdsServiceClient {
         Self {
             request_writer,
             reply_reader,
-            next_sequence: AtomicI64::new(1),
+            next_sequence: 1,
             pending_sequence: 0,
         }
     }
@@ -135,7 +133,8 @@ impl ServiceClientTrait for DdsServiceClient {
     fn send_request_raw(&mut self, request: &[u8]) -> Result<(), Self::Error> {
         use nros_rmw::Publisher;
 
-        let seq = self.next_sequence.fetch_add(1, Ordering::Relaxed);
+        let seq = self.next_sequence;
+        self.next_sequence += 1;
         self.pending_sequence = seq;
 
         // Prepend sequence number to request payload.
