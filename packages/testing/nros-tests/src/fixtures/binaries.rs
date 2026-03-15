@@ -2047,6 +2047,46 @@ pub fn build_qemu_rtic_mixed_listener() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+// ============================================================================
+// DDS example binaries
+// ============================================================================
+
+/// Cached path to the native-dds-talker binary
+static DDS_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Cached path to the native-dds-listener binary
+static DDS_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Build native-dds-talker (cached)
+pub fn build_dds_talker() -> TestResult<&'static Path> {
+    DDS_TALKER_BINARY
+        .get_or_try_init(|| build_example("native/rust/dds/talker", "talker", None, None))
+        .map(|p| p.as_path())
+}
+
+/// Build native-dds-listener (cached)
+pub fn build_dds_listener() -> TestResult<&'static Path> {
+    DDS_LISTENER_BINARY
+        .get_or_try_init(|| build_example("native/rust/dds/listener", "listener", None, None))
+        .map(|p| p.as_path())
+}
+
+/// rstest fixture that provides the native-dds-talker binary path
+#[rstest::fixture]
+pub fn dds_talker_binary() -> PathBuf {
+    build_dds_talker()
+        .expect("Failed to build native-dds-talker")
+        .to_path_buf()
+}
+
+/// rstest fixture that provides the native-dds-listener binary path
+#[rstest::fixture]
+pub fn dds_listener_binary() -> PathBuf {
+    build_dds_listener()
+        .expect("Failed to build native-dds-listener")
+        .to_path_buf()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

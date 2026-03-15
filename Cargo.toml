@@ -57,6 +57,9 @@ exclude = [
     "examples/native/rust/zenoh/rtic-service-client",
     "examples/native/rust/zenoh/rtic-action-server",
     "examples/native/rust/zenoh/rtic-action-client",
+    # Native DDS examples
+    "examples/native/rust/dds/talker",
+    "examples/native/rust/dds/listener",
     # QEMU ARM examples (bare-metal Cortex-M3)
     "examples/qemu-arm-baremetal/rust/zenoh/talker",
     "examples/qemu-arm-baremetal/rust/zenoh/listener",
