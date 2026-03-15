@@ -132,24 +132,21 @@ target_include_directories(lan9118_lwip PUBLIC
 target_compile_options(lan9118_lwip PRIVATE -O2 -w)
 
 # ============================================================================
-# Startup + platform entry (vector table, Reset_Handler, network init, etc.)
-# ============================================================================
-add_library(freertos_startup STATIC
-    "${_FREERTOS_CMAKE_DIR}/startup.c"
-)
-target_include_directories(freertos_startup PUBLIC
-    ${_FREERTOS_INCLUDES}
-    ${_LWIP_INCLUDES}
-    "${_LAN9118_DIR}/include"
-)
-target_compile_options(freertos_startup PRIVATE -O2 -w)
-
-# ============================================================================
 # Combined platform target
 # ============================================================================
+#
+# Startup code (startup.c) is NOT compiled as a shared library because it
+# uses preprocessor defines (APP_IP, APP_MAC, etc.) that differ per example.
+# Instead, FREERTOS_STARTUP_SOURCE is exported so each example compiles it
+# as part of its own executable (inheriting the example's compile definitions).
+set(FREERTOS_STARTUP_SOURCE "${_FREERTOS_CMAKE_DIR}/startup.c" CACHE INTERNAL "")
+set(FREERTOS_STARTUP_INCLUDES
+    ${_FREERTOS_INCLUDES} ${_LWIP_INCLUDES} "${_LAN9118_DIR}/include"
+    CACHE INTERNAL "")
+
 add_library(freertos_platform INTERFACE)
 target_link_libraries(freertos_platform INTERFACE
-    freertos_startup lan9118_lwip lwip freertos_kernel
+    lan9118_lwip lwip freertos_kernel
     c nosys gcc
 )
 
@@ -192,7 +189,7 @@ corrosion_import_crate(
     CRATES        nros-c nros-cpp
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
-    FEATURES      rmw-zenoh platform-freertos ros-humble panic-halt
+    FEATURES      rmw-zenoh platform-freertos link-tcp link-udp-unicast ros-humble panic-halt
     LOCKED
 )
 

@@ -1,4 +1,5 @@
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include <errno.h>
 
@@ -477,20 +478,58 @@ int nros_freertos_get_netif_state(void) {
     return flags;
 }
 
-/* ---- Newlib _write() via semihosting ---- */
-/* Provides printf() output on QEMU via ARM semihosting SYS_WRITEC.
- * This overrides the stub in libnosys (which returns -1). The linker
- * picks this definition because freertos_startup is linked before nosys. */
+/* ---- Semihosting stdio ---- */
+/* Newlib's printf calls _write(fd, buf, len). With -nostartfiles, the
+ * semihosting file handles for stdin/stdout/stderr aren't opened by crt0.
+ * We open them via SYS_OPEN at startup and map fd 0/1/2 to the returned
+ * semihosting handles. */
+static int sh_stdout_handle = -1;
+
+static int semihosting_open(const char *path, int mode) {
+    uint32_t args[3] = { (uint32_t)path, (uint32_t)mode, (uint32_t)__builtin_strlen(path) };
+    int result;
+    __asm__ volatile("mov r0, #0x01\n"  /* SYS_OPEN */
+                     "mov r1, %1\n"
+                     "bkpt #0xAB\n"
+                     "mov %0, r0\n"
+                     : "=r"(result) : "r"(args) : "r0", "r1", "memory");
+    return result;
+}
+
+/* Called from app_task_entry before app_main to initialise semihosting I/O. */
+static void semihosting_stdio_init(void) {
+    /* Open ":tt" in write mode (mode=4) for stdout */
+    sh_stdout_handle = semihosting_open(":tt", 4);
+}
+
+/* Provides printf() output on QEMU via ARM semihosting SYS_WRITE (0x05).
+ * This overrides the stub in libnosys (which returns -1). */
 int _write(int fd, const char *buf, int count) {
-    (void)fd;
-    for (int i = 0; i < count; i++) {
-        const char c = buf[i];
-        __asm__ volatile("mov r0, #0x03\n"   /* SYS_WRITEC */
-                         "mov r1, %0\n"
-                         "bkpt #0xAB\n"
-                         : : "r"(&c) : "r0", "r1", "memory");
+    int sh_fd = sh_stdout_handle;
+    if (sh_fd < 0) {
+        /* Fallback before init: use SYS_WRITE0 (goes to stderr/debug) */
+        char tmp[256];
+        int rem = count;
+        const char *p = buf;
+        while (rem > 0) {
+            int chunk = rem < (int)(sizeof(tmp) - 1) ? rem : (int)(sizeof(tmp) - 1);
+            for (int i = 0; i < chunk; i++) tmp[i] = p[i];
+            tmp[chunk] = '\0';
+            semihosting_write0(tmp);
+            p += chunk;
+            rem -= chunk;
+        }
+        return count;
     }
-    return count;
+    (void)fd;
+    uint32_t args[3] = { (uint32_t)sh_fd, (uint32_t)buf, (uint32_t)count };
+    uint32_t result;
+    __asm__ volatile("mov r0, #0x05\n"
+                     "mov r1, %1\n"
+                     "bkpt #0xAB\n"
+                     "mov %0, r0\n"
+                     : "=r"(result) : "r"(args) : "r0", "r1", "memory");
+    return count - (int)result;
 }
 
 /* ---- C/C++ application entry point ---- */
@@ -546,6 +585,12 @@ static void app_task_entry(void *arg) {
 
     /* Create poll task */
     nros_freertos_create_task(poll_task_entry, "poll", POLL_TASK_STACK, 0, POLL_TASK_PRIORITY);
+
+    /* Initialise semihosting stdio so printf() routes to QEMU stdout.
+     * Disable buffering so output is visible immediately (important for
+     * test harnesses that capture stdout from QEMU processes). */
+    semihosting_stdio_init();
+    setvbuf(stdout, NULL, _IONBF, 0);
 
     /* Run user application */
     app_main();

@@ -7,6 +7,7 @@ include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-platform.cmake")
 
 nano_ros_generate_interfaces(example_interfaces LANGUAGE CPP SKIP_INSTALL)
 
-add_executable(freertos_cpp_service_server src/main.cpp)
+add_executable(freertos_cpp_service_server src/main.cpp ${FREERTOS_STARTUP_SOURCE})
+target_include_directories(freertos_cpp_service_server PRIVATE ${FREERTOS_STARTUP_INCLUDES})
 target_link_libraries(freertos_cpp_service_server PRIVATE
     example_interfaces__nano_ros_cpp NanoRos::NanoRosCpp freertos_platform)
