@@ -17,11 +17,7 @@ find_package(NanoRos REQUIRED CONFIG)
 # Generate C message bindings
 # ============================================================================
 
-nano_ros_generate_interfaces(${PROJECT_NAME}
-    "msg/Temperature.msg"
-    "msg/SensorData.msg"
-    SKIP_INSTALL  # Don't install for this example
-)
+nano_ros_generate_interfaces(${PROJECT_NAME} SKIP_INSTALL)
 
 # ============================================================================
 # Test executable that uses generated messages

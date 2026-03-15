@@ -54,21 +54,25 @@ RTOS platforms already use native allocators:
 
 **Possible fix**: For platforms that run under an RTOS, delegate to the RTOS allocator. For true bare-metal, the free-list is fine but could be deduplicated into a shared crate. The DDS backend (Phase 70/71) uses `#[global_allocator]` which is a cleaner Rust-native approach.
 
-## 3. `nano_ros_generate_interfaces()` requires explicit file listing
+## 3. ~~`nano_ros_generate_interfaces()` requires explicit file listing~~ (Fixed)
 
-The native CMake function requires every `.msg`/`.srv`/`.action` file to be listed explicitly:
+Both the native and Zephyr versions of `nano_ros_generate_interfaces()`
+now support auto-discovery when no files are specified. The C codegen also
+correctly handles intra-package nested type dependencies.
 
 ```cmake
-nano_ros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE CPP SKIP_INSTALL)
+# Auto-discover all types + generate builtin_interfaces dependency
+nano_ros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
+nano_ros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
+
+# Explicit listing still works for fine-grained control
+nano_ros_generate_interfaces(std_msgs "msg/Int32.msg" SKIP_INSTALL)
 ```
 
-The **Zephyr wrapper** (`zephyr/cmake/nros_generate_interfaces.cmake`) already supports auto-discovery — omitting files causes it to glob `msg/*.msg`, `srv/*.srv`, `action/*.action` from local directories and fall back to ament index. But the **native CMake function** (`packages/codegen/packages/nros-codegen-c/cmake/NanoRosGenerateInterfaces.cmake`) does not.
-
-Standard ROS 2 `rosidl_generate_interfaces()` also requires explicit listing, but users commonly expect auto-discovery.
-
-**Impact**: Boilerplate in every CMakeLists.txt; easy to forget files.
-
-**Possible fix**: Port the Zephyr auto-discovery logic to the native function. Add a glob path for bundled interfaces too (currently only Zephyr searches them automatically). Keep explicit listing as an option for fine-grained control.
+Cross-package dependencies (e.g., `std_msgs` → `builtin_interfaces`) must be
+declared with `DEPENDENCIES` and generated separately. Intra-package dependencies
+(e.g., `ByteMultiArray` → `MultiArrayLayout` within `std_msgs`) are resolved
+automatically.
 
 ## 4. Non-configurable compile-time constants
 
@@ -102,3 +106,65 @@ protocol incompatibility or buffer overflows with no user benefit:
 | `MAX_SESSION_PROPERTIES` | 8     | Zenoh session rarely needs >8 properties |
 | `MANGLED_NAME_SIZE`      | 64    | Only the type suffix, not full topic name |
 | `QOS_STRING_SIZE`        | 32    | QoS strings are fixed format, always short |
+
+## 5. Hardcoded opaque type sizes in nros-c and nros-cpp
+
+The C and C++ APIs use inline opaque storage (`alignas(8) uint8_t storage_[N]`) to hold
+Rust types without heap allocation. The storage sizes are hardcoded constants that must
+be >= the actual Rust struct size. Compile-time `const _: () = assert!(...)` checks catch
+undersized constants, but the values themselves are manually chosen upper bounds — they
+must be bumped by hand whenever the underlying Rust types grow.
+
+### nros-c — hardcoded in `packages/core/nros-c/src/constants.rs`
+
+| Constant | Size (u64s) | Bytes | Rust type |
+|----------|-------------|-------|-----------|
+| `SESSION_OPAQUE_U64S` | 64 | 512 | `RmwSession` |
+| `PUBLISHER_OPAQUE_U64S` | 48 | 384 | `RmwPublisher` |
+| `SERVICE_CLIENT_OPAQUE_U64S` | 48 | 384 | `RmwServiceClient` |
+| `GUARD_HANDLE_OPAQUE_U64S` | 4 | 32 | `GuardConditionHandle` |
+
+Static assertions in `support.rs`, `publisher.rs`, `service.rs`, `guard_condition.rs`.
+
+### nros-cpp — hardcoded in `packages/core/nros-cpp/src/lib.rs` (Rust) and `include/nros/config.hpp` (C++)
+
+| Constant | Default (u64s) | DDS (u64s) | Rust type |
+|----------|---------------|------------|-----------|
+| `CPP_PUBLISHER_OPAQUE_U64S` | 96 | 256 | `CppPublisher` |
+| `CPP_SUBSCRIPTION_OPAQUE_U64S` | 224 | 384 | `CppSubscription` |
+| `CPP_SERVICE_SERVER_OPAQUE_U64S` | 224 | 768 | `CppServiceServer` |
+| `CPP_SERVICE_CLIENT_OPAQUE_U64S` | 224 | 768 | `CppServiceClient` |
+| `CPP_GUARD_HANDLE_OPAQUE_U64S` | 4 | 4 | `GuardConditionHandle` |
+
+Static assertions in `publisher.rs`, `subscription.rs`, `service.rs`, `guard_condition.rs`.
+
+The C++ header `config.hpp` duplicates the non-DDS values as `#define` macros
+(e.g., `NROS_CPP_PUBLISHER_STORAGE_SIZE (96 * 8)`). These are **not feature-gated**
+for DDS — a DDS build with unchanged `config.hpp` will silently use undersized
+C++ storage, causing UB even though the Rust-side assertion catches it.
+
+### What already works
+
+The **executor** storage is computed at build time in both crates' `build.rs` from
+nros-node's `DEP_NROS_NODE_*` link metadata and written to a generated header
+(`nros_config_generated.h` / `nros_cpp_config_generated.h`). This is the right pattern.
+
+### Problems
+
+1. **Manual maintenance** — adding fields to Rust types requires finding and bumping
+   the hardcoded constant, then rebuilding to see if the assertion passes.
+2. **DDS size divergence** — DDS types are much larger; `config.hpp` doesn't
+   account for this, so C++ users on DDS get a build failure or UB.
+3. **Duplicated values** — Rust constants and C/C++ `#define`s must be kept in sync
+   manually. The executor already solved this with generated headers.
+
+### Possible fix
+
+Extend the `build.rs` approach used for executor storage to all opaque types:
+
+1. Compute `size_of::<RmwPublisher>()` etc. at build time (these are known after
+   dependent crates compile — use `DEP_*` link metadata or measure directly).
+2. Write the sizes to the generated config headers alongside executor storage.
+3. Remove the hardcoded constants from `constants.rs`, `lib.rs`, and `config.hpp`.
+4. The C/C++ headers then always match the actual Rust layout, regardless of
+   feature flags (DDS, XRCE, etc.).

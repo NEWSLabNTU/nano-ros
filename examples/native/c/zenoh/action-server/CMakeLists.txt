@@ -17,10 +17,7 @@ find_package(NanoRos REQUIRED CONFIG)
 # Generate C bindings for Fibonacci action
 # ============================================================================
 
-nano_ros_generate_interfaces(example_interfaces
-    "action/Fibonacci.action"
-    SKIP_INSTALL
-)
+nano_ros_generate_interfaces(example_interfaces SKIP_INSTALL)
 
 # ============================================================================
 # Executable

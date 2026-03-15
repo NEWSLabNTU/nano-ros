@@ -5,7 +5,8 @@ project(freertos_cpp_listener LANGUAGES C CXX ASM)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-platform.cmake")
 
-nano_ros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE CPP SKIP_INSTALL)
+nano_ros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
+nano_ros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
 
 add_executable(freertos_cpp_listener src/main.cpp)
 target_compile_definitions(freertos_cpp_listener PRIVATE
