@@ -22,6 +22,7 @@ use dust_dds::xtypes::dynamic_type::{
 };
 
 /// Opaque CDR payload carrier for the DDS typed API.
+#[cfg_attr(not(feature = "std"), allow(dead_code))]
 pub(crate) struct RawCdrPayload {
     pub data: Vec<u8>,
 }

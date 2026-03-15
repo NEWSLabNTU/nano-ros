@@ -27,6 +27,7 @@ fn main() {
     // --- Primary user-facing knobs ---
     let max_cbs = env_usize("NROS_EXECUTOR_MAX_CBS", 4);
     let rx_buf_size = env_usize("NROS_SUBSCRIPTION_BUFFER_SIZE", 1024);
+    let param_svc_buf = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", 4096);
 
     // --- Derived arena size ---
     // Arena must hold MAX_CBS entries, each with rx+reply buffers + per-entry overhead.
@@ -43,7 +44,11 @@ fn main() {
          \n\
          /// Default subscription receive buffer size in bytes \
          (set via NROS_SUBSCRIPTION_BUFFER_SIZE, default 1024).\n\
-         pub const DEFAULT_RX_BUF_SIZE: usize = {rx_buf_size};\n"
+         pub const DEFAULT_RX_BUF_SIZE: usize = {rx_buf_size};\n\
+         \n\
+         /// Parameter service request/reply buffer size in bytes \
+         (set via NROS_PARAM_SERVICE_BUFFER_SIZE, default 4096).\n\
+         pub const PARAM_SERVICE_BUFFER_SIZE: usize = {param_svc_buf};\n"
     );
 
     std::fs::write(Path::new(&out_dir).join("nros_node_config.rs"), contents).unwrap();

@@ -373,9 +373,6 @@ impl<C> TimerHandle<C> {
     }
 }
 
-/// Default maximum number of timers per node
-pub const DEFAULT_MAX_TIMERS: usize = 8;
-
 #[cfg(test)]
 mod tests {
     use super::*;

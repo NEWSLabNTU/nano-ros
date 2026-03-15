@@ -72,21 +72,33 @@ Standard ROS 2 `rosidl_generate_interfaces()` also requires explicit listing, bu
 
 ## 4. Non-configurable compile-time constants
 
-Several library constants are hardcoded without environment variable or Kconfig overrides:
+### Now configurable via env vars
 
-| Constant | Value | File |
-|----------|-------|------|
-| `SERVICE_DEFAULT_TIMEOUT_MS` | 10,000 ms | `packages/zpico/nros-rmw-zenoh/src/shim/service.rs` |
-| `MAX_PARAMS_PER_REQUEST` | 64 | `packages/core/nros-node/src/parameter_services.rs` |
-| `PARAM_SERVICE_BUFFER_SIZE` | 4,096 bytes | `packages/core/nros-node/src/parameter_services.rs` |
-| `DEFAULT_MAX_TIMERS` | 8 | `packages/core/nros-node/src/timer.rs` |
-| `KEYEXPR_STRING_SIZE` | 256 | `packages/zpico/nros-rmw-zenoh/src/shim/mod.rs` |
-| `LOCATOR_BUFFER_SIZE` | 128 | `packages/zpico/nros-rmw-zenoh/src/shim/mod.rs` |
-| `CONFIG_PROPERTY_SIZE` | 256 | `packages/zpico/nros-rmw-zenoh/src/shim/mod.rs` |
-| `MAX_SESSION_PROPERTIES` | 8 | `packages/zpico/nros-rmw-zenoh/src/shim/mod.rs` |
-| `MANGLED_NAME_SIZE` | 64 | `packages/zpico/nros-rmw-zenoh/src/shim/mod.rs` |
-| `QOS_STRING_SIZE` | 32 | `packages/zpico/nros-rmw-zenoh/src/shim/mod.rs` |
+The following constants were hardcoded but are now configurable via environment variables
+(set in `.env` or exported before building):
 
-These are reasonable defaults but can't be tuned for constrained (smaller) or heavy (larger) workloads.
+| Env var | Default | Constant | Crate |
+|---------|---------|----------|-------|
+| `NROS_SERVICE_TIMEOUT_MS` | 10,000 ms | `SERVICE_DEFAULT_TIMEOUT_MS` | nros-rmw-zenoh |
+| `NROS_PARAM_SERVICE_BUFFER_SIZE` | 4,096 bytes | `PARAM_SERVICE_BUFFER_SIZE` | nros-node |
+| `NROS_KEYEXPR_STRING_SIZE` | 256 | `KEYEXPR_STRING_SIZE` | nros-rmw-zenoh |
 
-**Possible fix**: Follow the `NROS_EXECUTOR_MAX_CBS` pattern — read env var in `build.rs`, generate a config.rs constant, export via `links` metadata. Zephyr gets Kconfig integration via the existing bridging mechanism.
+### Removed (dead code)
+
+| Constant | Reason |
+|----------|--------|
+| `DEFAULT_MAX_TIMERS` | Was never enforced; timer count is bounded by `MAX_CBS` |
+
+### Internal constants (intentionally not user-configurable)
+
+These have safe defaults and are unlikely to need tuning. Changing them risks
+protocol incompatibility or buffer overflows with no user benefit:
+
+| Constant                 | Value | Why internal |
+|--------------------------|-------|-------------|
+| `MAX_PARAMS_PER_REQUEST` | 64    | Matches ROS 2 rclcpp default |
+| `LOCATOR_BUFFER_SIZE`    | 128   | Locator strings are always short |
+| `CONFIG_PROPERTY_SIZE`   | 256   | Session properties are simple key=value |
+| `MAX_SESSION_PROPERTIES` | 8     | Zenoh session rarely needs >8 properties |
+| `MANGLED_NAME_SIZE`      | 64    | Only the type suffix, not full topic name |
+| `QOS_STRING_SIZE`        | 32    | QoS strings are fixed format, always short |

@@ -154,9 +154,7 @@ pub use nros_node::{NodeConfig, PublisherHandle, StandaloneNode, SubscriberHandl
 pub use nros_node::{PublisherOptions, SubscriberOptions};
 
 // Re-export timer types
-pub use nros_node::{
-    DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
-};
+pub use nros_node::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState};
 
 // Re-export transport types (middleware-agnostic)
 pub use nros_rmw::{

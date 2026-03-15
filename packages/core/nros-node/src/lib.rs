@@ -104,9 +104,7 @@ pub use node::{PublisherOptions, SubscriberOptions};
 pub use nros_rmw::SessionMode;
 
 // Re-export timer types
-pub use timer::{
-    DEFAULT_MAX_TIMERS, TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState,
-};
+pub use timer::{TimerCallbackFn, TimerDuration, TimerHandle, TimerMode, TimerState};
 
 // Re-export lifecycle types
 pub use lifecycle::{LifecycleCallbackFn, LifecycleError, LifecyclePollingNode};
