@@ -16,3 +16,6 @@
 [submodule "packages/zpico/zpico-sys/mbedtls"]
 	path = packages/zpico/zpico-sys/mbedtls
 	url = https://github.com/Mbed-TLS/mbedtls.git
+[submodule "packages/dds/dust-dds"]
+	path = packages/dds/dust-dds
+	url = https://github.com/jerry73204/dust-dds.git
