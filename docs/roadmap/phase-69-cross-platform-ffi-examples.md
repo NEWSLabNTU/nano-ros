@@ -164,7 +164,7 @@ Add C example tests to `nuttx_qemu.rs`: build tests for all 6 + E2E tests (`test
 Add 6 C++ examples under `examples/qemu-arm-freertos/cpp/zenoh/`:
 - `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
 
-Each example is a CMake project that cross-compiles for `thumbv7m-none-eabi`. Uses `nros-cpp` freestanding mode (C++14, no `std`). Reuses the shared ARM toolchain and FreeRTOS support modules from `examples/qemu-arm-freertos/cmake/` (created in 69.1). Uses Corrosion to build `nros-cpp-ffi` with `--features "rmw-zenoh,platform-freertos,ros-humble"`. Message bindings via `nano_ros_generate_interfaces(... LANGUAGE CPP)`.
+Each example is a CMake project that cross-compiles for `thumbv7m-none-eabi`. Uses `nros-cpp` freestanding mode (C++14, no `std`). Reuses the shared ARM toolchain and FreeRTOS support modules from `examples/qemu-arm-freertos/cmake/` (created in 69.1). Uses Corrosion to build `nros-cpp` with `--features "rmw-zenoh,platform-freertos,ros-humble"`. Message bindings via `nano_ros_generate_interfaces(... LANGUAGE CPP)`.
 
 Integration tests in `freertos_qemu.rs`: build tests for all 6 + E2E tests (`test_freertos_cpp_pubsub_e2e`, `test_freertos_cpp_service_e2e`, `test_freertos_cpp_action_e2e`).
 
@@ -179,7 +179,7 @@ Integration tests in `freertos_qemu.rs`: build tests for all 6 + E2E tests (`tes
 Add 6 C++ examples under `examples/qemu-arm-nuttx/cpp/zenoh/`:
 - `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
 
-NuttX supports `std` so C++ examples can optionally use `NROS_CPP_STD` mode. Uses `nros-cpp` header-only library with `nros-cpp-ffi`. Cross-compiles for `armv7a-nuttx-eabi`. CMake project with NuttX toolchain. Message bindings via `nano_ros_generate_interfaces(... LANGUAGE CPP)`.
+NuttX supports `std` so C++ examples can optionally use `NROS_CPP_STD` mode. Uses `nros-cpp` (headers + Rust FFI staticlib). Cross-compiles for `armv7a-nuttx-eabi`. CMake project with NuttX toolchain. Message bindings via `nano_ros_generate_interfaces(... LANGUAGE CPP)`.
 
 Integration tests in `nuttx_qemu.rs`.
 

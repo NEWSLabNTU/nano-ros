@@ -7,7 +7,7 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(nros_zephyr_service_client_cpp LANGUAGES CXX)
 
 # nros module (CONFIG_NROS=y, CONFIG_NROS_CPP_API=y) provides zenoh shim,
-# platform support, and the nros-cpp-ffi library automatically.
+# platform support, and the nros-cpp library automatically.
 
 nros_generate_interfaces(example_interfaces
     "srv/AddTwoInts.srv"

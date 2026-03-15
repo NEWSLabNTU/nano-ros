@@ -1,4 +1,4 @@
-# cbindgen configuration for nros-cpp-ffi
+# cbindgen configuration for nros-cpp
 # Generates include/nros_cpp_ffi.h from Rust #[repr(C)] types
 
 language = "C"

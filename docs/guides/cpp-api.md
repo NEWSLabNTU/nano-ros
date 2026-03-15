@@ -5,7 +5,7 @@ The nros C++ API (`nros-cpp`) provides a freestanding C++14 interface for embedd
 ## Overview
 
 - **Freestanding C++14** — no STL dependency in default mode
-- **Direct Rust FFI** — wraps `nros-node` through `nros-cpp-ffi` (not the C API), preserving type safety per message type
+- **Direct Rust FFI** — wraps `nros-node` directly via typed `extern "C"` FFI (not the C API), preserving type safety per message type
 - **rclcpp naming** — `Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`
 - **Result-based error handling** — `nros::Result` + `NROS_TRY` macro (no exceptions)
 - **Generated message types** — `std_msgs::msg::Int32`, `example_interfaces::srv::AddTwoInts`, etc.

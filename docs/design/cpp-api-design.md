@@ -18,7 +18,7 @@ embedded systems with no heap allocation. The C++ layer wraps the Rust
 │  Thin wrappers: type safety, RAII, templates                │
 │  Generated message types: std_msgs::msg::Int32, etc.        │
 ├─────────────────────────────────────────────────────────────┤
-│  nros-cpp-ffi  (Rust crate, extern "C" exports)             │
+│  nros-cpp FFI  (Rust staticlib, extern "C" exports)          │
 │  Typed FFI surface for C++ — not the C API                  │
 ├─────────────────────────────────────────────────────────────┤
 │  nros-node (Rust core)                                      │
@@ -35,7 +35,7 @@ a `Publisher<Int32>` and a `Publisher<String>` both hold the same
 `nros_publisher_t` handle, and nothing prevents mixing them at the FFI
 level.
 
-By creating a dedicated `nros-cpp-ffi` Rust crate, we can:
+By having a dedicated Rust FFI layer in `nros-cpp`, we can:
 
 1. **Carry type info through FFI**: The Rust side knows the concrete
    message type at compile time and can generate type-specific FFI
@@ -46,9 +46,9 @@ By creating a dedicated `nros-cpp-ffi` Rust crate, we can:
 3. **Validate at the FFI boundary**: Rust can validate buffer sizes,
    message invariants, and session state before touching the transport.
 
-### nros-cpp-ffi Crate
+### nros-cpp FFI Layer
 
-A new Rust crate at `packages/core/nros-cpp-ffi/` that:
+The Rust FFI staticlib in `packages/core/nros-cpp/` that:
 
 - Depends on `nros-node` and message crates (e.g., `nros-std-msgs`)
 - Exports `extern "C"` functions for each message/service/action type
@@ -58,7 +58,7 @@ A new Rust crate at `packages/core/nros-cpp-ffi/` that:
 Example FFI surface:
 
 ```rust
-// packages/core/nros-cpp-ffi/src/lib.rs (generated per message type)
+// packages/core/nros-cpp/src/lib.rs (generated per message type)
 
 #[repr(C)]
 pub struct StdMsgsInt32 {
@@ -875,14 +875,13 @@ work items, acceptance criteria, and implementation schedule.
 ## Files
 
 ```
-packages/core/nros-cpp-ffi/
-├── Cargo.toml              # Depends on nros-node + message crates
+packages/core/nros-cpp/
+├── Cargo.toml              # Rust staticlib (depends on nros-node + message crates)
 ├── src/
 │   ├── lib.rs              # Core FFI exports (init, node, executor)
 │   └── generated/          # Per-message FFI glue (from codegen)
-└── build.rs                # cbindgen → nros_cpp_ffi.h
-
-packages/core/nros-cpp/
+├── build.rs                # cbindgen → nros_cpp_ffi.h + config header
+├── cbindgen.toml           # cbindgen configuration
 ├── include/nros/
 │   ├── nros.hpp              # Umbrella header
 │   ├── result.hpp            # Result type + NROS_TRY macro

@@ -1,8 +1,8 @@
 [package]
-name = "nros-cpp-ffi"
+name = "nros-cpp"
 version = "0.1.0"
 edition = "2024"
-description = "Typed C++ FFI bindings for nros — direct Rust wrapper for strong type safety"
+description = "nros C++ API — header-only C++14 library + Rust FFI staticlib"
 license = "Apache-2.0"
 keywords = ["ros", "ros2", "embedded", "cpp", "ffi"]
 categories = ["embedded", "robotics", "api-bindings"]

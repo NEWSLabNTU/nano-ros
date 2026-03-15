@@ -92,7 +92,7 @@ endfunction()
 #   FEATURES - Comma-separated feature list (e.g., "rmw-zenoh,platform-zephyr")
 #
 # Creates target: <pkg_stem>_cargo (imported static library)
-#   e.g., nros-c → nros_c_cargo, nros-cpp-ffi → nros_cpp_ffi_cargo
+#   e.g., nros-c → nros_c_cargo, nros-cpp → nros_cpp_cargo
 # =============================================================================
 function(nros_cargo_build)
     cmake_parse_arguments(ARG "" "PACKAGE;FEATURES" "" ${ARGN})

@@ -247,7 +247,7 @@ either bypassing `DynamicData` serialization or implementing per-message-type
 - [x] 70.4 — Implement `Publisher` / `Subscriber` traits
 - [x] 70.5 — Implement service request/reply
 - [x] 70.6 — Wire into `nros-node` feature flags
-- [x] 70.7 — Wire into `nros-c` and `nros-cpp-ffi`
+- [x] 70.7 — Wire into `nros-c` and `nros-cpp`
 - [x] 70.8 — Native POSIX examples + integration tests
 - [ ] 70.9 — Bare-metal/RTOS examples + integration tests
 - [ ] 70.10 — ROS 2 interop test (nano-ros DDS ↔ rmw_cyclonedds)
@@ -349,7 +349,7 @@ core crates remain heap-free.
 - `packages/core/nros/Cargo.toml` — forward `rmw-dds`
 - `Cargo.toml` (workspace) — add `nros-rmw-dds` member + dep alias
 
-### 70.7 — Wire into `nros-c` and `nros-cpp-ffi`
+### 70.7 — Wire into `nros-c` and `nros-cpp`
 
 Add `rmw-dds` feature to the C and C++ FFI crates, forwarding to `nros`:
 
@@ -364,8 +364,8 @@ and `xrce`. Update the compile-time assertion cfg gate to include `rmw-dds`.
 **Files**:
 - `packages/core/nros-c/Cargo.toml`
 - `packages/core/nros-c/src/executor.rs` — add `rmw-dds` to cfg gate
-- `packages/core/nros-cpp-ffi/Cargo.toml`
-- `packages/core/nros-cpp-ffi/src/lib.rs` — add `rmw-dds` to cfg gate
+- `packages/core/nros-cpp/Cargo.toml`
+- `packages/core/nros-cpp/src/lib.rs` — add `rmw-dds` to cfg gate
 - `CMakeLists.txt` — add `dds` option
 - `packages/core/nros-c/CMakeLists.txt` — map `dds` to feature
 

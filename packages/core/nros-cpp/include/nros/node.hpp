@@ -20,7 +20,7 @@
 #include "nros/guard_condition.hpp"
 #include "nros/executor.hpp"
 
-// FFI declarations (from nros-cpp-ffi generated header)
+// FFI declarations (from nros-cpp generated header)
 extern "C" {
 
 typedef int nros_cpp_ret_t;

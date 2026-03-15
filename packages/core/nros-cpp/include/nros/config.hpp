@@ -2,7 +2,7 @@
 // Freestanding C++ — no exceptions, no STL required
 //
 // These constants define the inline opaque storage sizes for core entity
-// types. They must match the Rust-side compile-time assertions in nros-cpp-ffi.
+// types. They must match the Rust-side compile-time assertions in nros-cpp.
 // Values are in bytes (Rust constants are in u64 units, multiply by 8).
 
 #ifndef NROS_CPP_CONFIG_HPP

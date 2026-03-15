@@ -1,14 +1,14 @@
-//! Typed C++ FFI bindings for nros.
+//! nros C++ API — header-only C++14 library + Rust FFI staticlib.
 //!
 //! This crate provides `extern "C"` functions designed for the nros-cpp
-//! header-only C++ library. Unlike `nros-c` (which erases types into opaque
-//! handles), `nros-cpp-ffi` preserves type information through the FFI
-//! boundary — each message/service/action type gets its own FFI function.
+//! C++ headers. Unlike `nros-c` (which erases types into opaque handles),
+//! `nros-cpp` preserves type information through the FFI boundary — each
+//! message/service/action type gets its own FFI function.
 //!
 //! # Architecture
 //!
 //! ```text
-//! C++ (nros-cpp headers)  →  extern "C"  →  nros-cpp-ffi  →  nros-node
+//! C++ (nros-cpp headers)  →  extern "C"  →  nros-cpp (Rust)  →  nros-node
 //! ```
 //!
 //! The C++ side provides inline opaque storage for core entity handles

@@ -13,7 +13,7 @@ Lightweight ROS 2 client for embedded real-time systems (Zephyr, FreeRTOS, NuttX
 ```
 nano-ros/
 ├── packages/
-│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp, nros-cpp-ffi
+│   ├── core/           # nros, nros-core, nros-serdes, nros-macros, nros-params, nros-rmw, nros-node, nros-c, nros-cpp
 │   ├── zpico/          # Zenoh-pico backend: nros-rmw-zenoh, zpico-sys, zpico-smoltcp, zpico-zephyr, platform-*
 │   ├── xrce/           # XRCE-DDS backend: nros-rmw-xrce, xrce-sys, xrce-smoltcp, xrce-zephyr, platform-*
 │   ├── boards/         # Board support: nros-mps2-an385, nros-mps2-an385-freertos, nros-nuttx-qemu-arm, nros-threadx-linux, nros-threadx-qemu-riscv64, nros-esp32, nros-esp32-qemu, nros-stm32f4
@@ -181,7 +181,7 @@ See [docs/reference/c-api-cmake.md](docs/reference/c-api-cmake.md) for CMake int
 ### C++ API
 See [docs/guides/cpp-api.md](docs/guides/cpp-api.md) for the getting started guide.
 
-`nros-cpp` is a freestanding C++14 header-only library wrapping Rust `nros-node` directly via typed `extern "C"` FFI through `nros-cpp-ffi`. Mirrors rclcpp naming (`Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`). Error handling via `nros::Result` + `NROS_TRY` macro.
+`nros-cpp` is a freestanding C++14 library (header-only C++ + Rust FFI staticlib) wrapping `nros-node` directly via typed `extern "C"` FFI. Mirrors rclcpp naming (`Node`, `Publisher<M>`, `Subscription<M>`, `Service<S>`, `Client<S>`, `ActionServer<A>`, `ActionClient<A>`, `Timer`, `GuardCondition`, `Executor`). Error handling via `nros::Result` + `NROS_TRY` macro.
 
 **Message codegen:** `cargo nano-ros generate-cpp` or CMake `nano_ros_generate_interfaces(... LANGUAGE CPP)`. Generated types use ROS 2 standard namespaces (e.g., `std_msgs::msg::Int32`).
 

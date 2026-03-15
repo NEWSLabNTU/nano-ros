@@ -188,7 +188,7 @@ if(CONFIG_NROS_C_API)
 endif()
 
 # =============================================================================
-# C++ API path: build nros-cpp-ffi via Cargo and link it
+# C++ API path: build nros-cpp via Cargo and link it
 # =============================================================================
 
 if(CONFIG_NROS_CPP_API)
@@ -210,14 +210,14 @@ if(CONFIG_NROS_CPP_API)
         string(APPEND _nros_cpp_features ",std")
     endif()
 
-    # Build nros-cpp-ffi static library via Cargo
+    # Build nros-cpp static library via Cargo
     nros_cargo_build(
-        PACKAGE nros-cpp-ffi
+        PACKAGE nros-cpp
         FEATURES "${_nros_cpp_features}"
     )
 
     # Link the built library
-    zephyr_library_link_libraries(nros_cpp_ffi_cargo)
+    zephyr_library_link_libraries(nros_cpp_cargo)
 endif()
 
 # =============================================================================

@@ -10,7 +10,7 @@ namespace nros {
 
 /// Error codes returned by nros-cpp functions.
 ///
-/// Values match the Rust `nros_cpp_ret_t` constants in nros-cpp-ffi.
+/// Values match the Rust `nros_cpp_ret_t` constants in nros-cpp.
 enum class ErrorCode : int32_t {
     Ok = 0,
     Error = -1,

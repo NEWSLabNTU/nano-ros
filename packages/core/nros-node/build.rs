@@ -3,7 +3,7 @@
 //! Reads NROS_* environment variables and generates `nros_node_config.rs`
 //! with compile-time configurable constants for executor and subscription sizing.
 //!
-//! Exports values via `links = "nros_node"` so dependents (nros-c, nros-cpp-ffi)
+//! Exports values via `links = "nros_node"` so dependents (nros-c, nros-cpp)
 //! can read them as `DEP_NROS_NODE_*` environment variables.
 
 use std::env;
@@ -48,7 +48,7 @@ fn main() {
 
     std::fs::write(Path::new(&out_dir).join("nros_node_config.rs"), contents).unwrap();
 
-    // Export via `links = "nros_node"` so dependents (nros-c, nros-cpp-ffi)
+    // Export via `links = "nros_node"` so dependents (nros-c, nros-cpp)
     // can read these as DEP_NROS_NODE_MAX_CBS, DEP_NROS_NODE_ARENA_SIZE, etc.
     println!("cargo:max_cbs={max_cbs}");
     println!("cargo:arena_size={arena_size}");

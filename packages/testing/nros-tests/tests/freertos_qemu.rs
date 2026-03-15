@@ -113,7 +113,7 @@ static FREERTOS_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-// Action examples deferred — nros-c/nros-cpp-ffi action module requires alloc-free rework
+// Action examples deferred — nros-c/nros-cpp action module requires alloc-free rework
 
 // C binary caches
 static FREERTOS_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
