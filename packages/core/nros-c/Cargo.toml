@@ -21,6 +21,10 @@ rmw-xrce = ["nros/rmw-xrce"]
 rmw-dds = ["nros/rmw-dds"]
 rmw-cffi = ["nros/rmw-cffi"]
 
+# Zenoh transport refinements (require rmw-zenoh)
+link-tcp = ["nros/link-tcp"]
+link-udp-unicast = ["nros/link-udp-unicast"]
+
 # XRCE transport refinements (require rmw-xrce)
 xrce-udp = ["nros/xrce-udp"]
 xrce-serial = ["nros/xrce-serial"]
