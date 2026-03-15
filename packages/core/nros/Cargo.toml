@@ -16,6 +16,7 @@ std = [
     "nros-rmw/std",
     "nros-rmw-zenoh?/std",
     "nros-rmw-xrce?/std",
+    "nros-rmw-dds?/std",
     "nros-params/std",
 ]
 alloc = [
@@ -23,12 +24,14 @@ alloc = [
     "nros-node/alloc",
     "nros-rmw/alloc",
     "nros-rmw-xrce?/alloc",
+    "nros-rmw-dds?/alloc",
     "nros-params/alloc",
 ]
 
 # RMW backend (select one)
 rmw-zenoh = ["dep:nros-rmw-zenoh", "nros-node/rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce", "nros-node/rmw-xrce"]
+rmw-dds = ["dep:nros-rmw-dds", "nros-node/rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 
 # Platform (select one; forwarded to active backend via ? syntax)
@@ -36,8 +39,14 @@ platform-posix = [
     "nros-node/platform-posix",
     "nros-rmw-zenoh?/platform-posix",
     "nros-rmw-xrce?/platform-posix",
+    "nros-rmw-dds?/platform-posix",
 ]
-platform-zephyr = ["nros-node/platform-zephyr", "nros-rmw-zenoh?/platform-zephyr", "nros-rmw-xrce?/platform-zephyr"]
+platform-zephyr = [
+    "nros-node/platform-zephyr",
+    "nros-rmw-zenoh?/platform-zephyr",
+    "nros-rmw-xrce?/platform-zephyr",
+    "nros-rmw-dds?/platform-zephyr",
+]
 platform-bare-metal = [
     "nros-node/platform-bare-metal",
     "nros-rmw-zenoh?/platform-bare-metal",
@@ -47,16 +56,19 @@ platform-freertos = [
     "nros-node/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
     "nros-rmw-xrce?/platform-freertos",
+    "nros-rmw-dds?/platform-freertos",
 ]
 platform-nuttx = [
     "nros-node/platform-nuttx",
     "nros-rmw-zenoh?/platform-nuttx",
     "nros-rmw-xrce?/platform-nuttx",
+    "nros-rmw-dds?/platform-nuttx",
 ]
 platform-threadx = [
     "nros-node/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
     "nros-rmw-xrce?/platform-threadx",
+    "nros-rmw-dds?/platform-threadx",
 ]
 
 # Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
@@ -99,6 +111,7 @@ nros-node = { path = "../nros-node", default-features = false }
 nros-rmw = { path = "../nros-rmw", default-features = false }
 nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
 nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
+nros-rmw-dds = { path = "../../dds/nros-rmw-dds", default-features = false, optional = true }
 nros-rmw-cffi = { path = "../nros-rmw-cffi", default-features = false, optional = true }
 nros-params = { path = "../nros-params", default-features = false }
 

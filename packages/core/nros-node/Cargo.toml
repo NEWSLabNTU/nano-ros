@@ -11,10 +11,11 @@ unexpected_cfgs = { level = "warn", check-cfg = ['cfg(kani)'] }
 
 [features]
 default = ["std"]
-std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "log"]
-alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc"]
+std = ["alloc", "nros-core/std", "nros-rmw/std", "nros-rmw-zenoh?/std", "nros-rmw-xrce?/std", "nros-rmw-dds?/std", "log"]
+alloc = ["nros-core/alloc", "nros-rmw/alloc", "nros-rmw-xrce?/alloc", "nros-rmw-dds?/alloc"]
 rmw-zenoh = ["dep:nros-rmw-zenoh"]
 rmw-xrce = ["dep:nros-rmw-xrce"]
+rmw-dds = ["dep:nros-rmw-dds"]
 rmw-cffi = ["dep:nros-rmw-cffi"]
 
 # XRCE transport refinements (posix-only, forwarded to nros-rmw-xrce)
@@ -27,12 +28,12 @@ ros-iron = ["nros-rmw-zenoh?/ros-iron"]                # ROS_AUTOMATIC_DISCOVERY
 log = ["dep:log"]
 
 # Platform backend (select one; forwarded to active RMW backend)
-platform-posix = ["nros-rmw-zenoh?/platform-posix", "nros-rmw-xrce?/platform-posix"]
-platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr", "nros-rmw-xrce?/platform-zephyr"]
+platform-posix = ["nros-rmw-zenoh?/platform-posix", "nros-rmw-xrce?/platform-posix", "nros-rmw-dds?/platform-posix"]
+platform-zephyr = ["nros-rmw-zenoh?/platform-zephyr", "nros-rmw-xrce?/platform-zephyr", "nros-rmw-dds?/platform-zephyr"]
 platform-bare-metal = ["nros-rmw-zenoh?/platform-bare-metal", "nros-rmw-xrce?/platform-bare-metal"]
-platform-freertos = ["nros-rmw-zenoh?/platform-freertos", "nros-rmw-xrce?/platform-freertos"]
-platform-nuttx = ["nros-rmw-zenoh?/platform-nuttx", "nros-rmw-xrce?/platform-nuttx"]
-platform-threadx = ["nros-rmw-zenoh?/platform-threadx", "nros-rmw-xrce?/platform-threadx"]
+platform-freertos = ["nros-rmw-zenoh?/platform-freertos", "nros-rmw-xrce?/platform-freertos", "nros-rmw-dds?/platform-freertos"]
+platform-nuttx = ["nros-rmw-zenoh?/platform-nuttx", "nros-rmw-xrce?/platform-nuttx", "nros-rmw-dds?/platform-nuttx"]
+platform-threadx = ["nros-rmw-zenoh?/platform-threadx", "nros-rmw-xrce?/platform-threadx", "nros-rmw-dds?/platform-threadx"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
@@ -54,6 +55,7 @@ nros-core = { workspace = true, default-features = false }
 nros-rmw = { workspace = true, default-features = false }
 nros-rmw-zenoh = { workspace = true, default-features = false, optional = true }
 nros-rmw-xrce = { workspace = true, default-features = false, optional = true }
+nros-rmw-dds = { workspace = true, default-features = false, optional = true }
 nros-rmw-cffi = { workspace = true, default-features = false, optional = true }
 nros-params = { workspace = true, default-features = false }
 heapless = { workspace = true }

@@ -15,6 +15,8 @@ members = [
     "packages/xrce/xrce-sys",
     # Zenoh RMW backend (shim + zpico wrapper)
     "packages/zpico/nros-rmw-zenoh",
+    # DDS RMW backend (pure Rust, dust-dds)
+    "packages/dds/nros-rmw-dds",
     # Integration tests
     "packages/testing/nros-tests",
     # C API for embedded systems
@@ -34,9 +36,9 @@ members = [
     "packages/verification/nros-ghost-types",
 ]
 
-# Examples are excluded from workspace - they are standalone packages
-# that generate their own bindings via `cargo nano-ros generate`
+# Excluded from workspace — standalone packages
 exclude = [
+    # Examples are standalone packages that generate their own bindings
     # Native Rust examples (desktop/Linux)
     "examples/native/rust/zenoh/talker",
     "examples/native/rust/zenoh/listener",
@@ -192,6 +194,7 @@ nros-params = { path = "packages/core/nros-params", default-features = false }
 nros-rmw = { path = "packages/core/nros-rmw", default-features = false }
 nros-rmw-zenoh = { path = "packages/zpico/nros-rmw-zenoh", default-features = false }
 nros-rmw-xrce = { path = "packages/xrce/nros-rmw-xrce", default-features = false }
+nros-rmw-dds = { path = "packages/dds/nros-rmw-dds", default-features = false }
 nros-rmw-cffi = { path = "packages/core/nros-rmw-cffi", default-features = false }
 nros-node = { path = "packages/core/nros-node", default-features = false }
 

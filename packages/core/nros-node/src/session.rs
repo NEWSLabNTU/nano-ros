@@ -11,11 +11,18 @@ use nros_rmw::Session;
 pub(crate) type ConcreteSession = nros_rmw_zenoh::ZenohSession;
 #[cfg(feature = "rmw-xrce")]
 pub(crate) type ConcreteSession = nros_rmw_xrce::XrceSession;
+#[cfg(feature = "rmw-dds")]
+pub(crate) type ConcreteSession = nros_rmw_dds::DdsSession;
 #[cfg(feature = "rmw-cffi")]
 pub(crate) type ConcreteSession = nros_rmw_cffi::CffiSession;
 #[cfg(all(
     test,
-    not(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-cffi"))
+    not(any(
+        feature = "rmw-zenoh",
+        feature = "rmw-xrce",
+        feature = "rmw-dds",
+        feature = "rmw-cffi"
+    ))
 ))]
 pub(crate) type ConcreteSession = crate::mock::MockSession;
 
