@@ -8,6 +8,8 @@ use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 
 use super::action_core::ActionServerCore;
 use super::handles::{ActionServer, ActiveGoal};
+use super::spsc_ring::SpscRing;
+use super::triple_buffer::TripleBuffer;
 use super::types::{
     InvocationMode, NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback,
     RawSubscriptionCallback,
@@ -187,6 +189,122 @@ pub(crate) struct SrvRawEntry<const REQ_BUF: usize, const REPLY_BUF: usize> {
 pub(crate) struct GuardConditionEntry<F> {
     pub(crate) flag: portable_atomic::AtomicBool,
     pub(crate) callback: F,
+}
+
+// ============================================================================
+// QoS-driven buffered subscription entries (Phase 73)
+// ============================================================================
+
+/// Buffer strategy selected by QoS depth at subscription registration time.
+///
+/// The buffer data lives in a trailing region immediately after the
+/// `SubBufferedEntry` struct in the arena.
+pub(crate) enum BufferStrategy {
+    /// `KEEP_LAST(1)`: 3 slots, latest-value semantics, writer never blocks.
+    Triple(TripleBuffer),
+    /// `KEEP_LAST(N)` where N > 1: N+1 slots, FIFO ordering, bounded drops.
+    Ring(SpscRing),
+}
+
+impl BufferStrategy {
+    /// Check if new data is available.
+    pub(crate) fn has_data(&self) -> bool {
+        match self {
+            BufferStrategy::Triple(tb) => tb.has_data(),
+            BufferStrategy::Ring(ring) => ring.has_data(),
+        }
+    }
+}
+
+/// Compute the number of buffer slots and trailing region size for a given
+/// QoS depth and per-slot buffer size.
+///
+/// Returns `(slot_count, trailing_bytes)`.
+pub(crate) fn buffered_region_size(depth: u32, slot_size: usize) -> (usize, usize) {
+    if depth <= 1 {
+        // Triple buffer: 3 fixed slots
+        (
+            TripleBuffer::SLOT_COUNT,
+            TripleBuffer::SLOT_COUNT * slot_size,
+        )
+    } else {
+        let d = depth as usize;
+        (SpscRing::slot_count(d), SpscRing::region_size(d, slot_size))
+    }
+}
+
+/// Subscription entry with QoS-driven buffer strategy (Phase 73).
+///
+/// Unlike [`SubEntry`] which embeds a fixed `[u8; RX_BUF]`, this entry
+/// stores a [`BufferStrategy`] that manages a trailing buffer region
+/// allocated from the arena at registration time.
+///
+/// # Arena layout
+///
+/// ```text
+/// [SubBufferedEntry<M, F> struct][trailing: slot_count × slot_size bytes]
+///  ↑ offset                      ↑ buffer managed by BufferStrategy
+/// ```
+#[repr(C)]
+pub(crate) struct SubBufferedEntry<M, F> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: BufferStrategy,
+    pub(crate) callback: F,
+    pub(crate) _phantom: PhantomData<M>,
+}
+
+/// Monomorphized dispatch for triple-buffered subscriptions.
+///
+/// Acquires the latest message from the triple buffer's read slot and
+/// deserializes borrowed (zero-copy for the payload data).
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedEntry<M, F>`.
+pub(crate) unsafe fn sub_buffered_try_process<M, F>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    M: RosMessage,
+    F: FnMut(&M),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedEntry<M, F>) };
+
+    match &entry.buffer {
+        BufferStrategy::Triple(tb) => match tb.reader_acquire() {
+            Some((data, len)) => {
+                let mut reader = CdrReader::new_with_header(&data[..len])
+                    .map_err(|_| TransportError::DeserializationError)?;
+                let msg = M::deserialize(&mut reader)
+                    .map_err(|_| TransportError::DeserializationError)?;
+                (entry.callback)(&msg);
+                Ok(true)
+            }
+            None => Ok(false),
+        },
+        BufferStrategy::Ring(ring) => {
+            let mut did_work = false;
+            while let Some((data, len)) = ring.try_pop() {
+                let mut reader = CdrReader::new_with_header(&data[..len])
+                    .map_err(|_| TransportError::DeserializationError)?;
+                let msg = M::deserialize(&mut reader)
+                    .map_err(|_| TransportError::DeserializationError)?;
+                (entry.callback)(&msg);
+                ring.commit_pop();
+                did_work = true;
+            }
+            Ok(did_work)
+        }
+    }
+}
+
+/// Readiness check for buffered subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedEntry<M, F>`.
+pub(crate) unsafe fn sub_buffered_has_data<M, F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedEntry<M, F>) };
+    entry.buffer.has_data()
 }
 
 // ============================================================================

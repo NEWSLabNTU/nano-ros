@@ -31,6 +31,10 @@ mod handles;
 mod node;
 #[cfg(any(has_rmw, test))]
 mod spin;
+#[cfg(any(has_rmw, test))]
+pub(crate) mod spsc_ring;
+#[cfg(any(has_rmw, test))]
+pub(crate) mod triple_buffer;
 mod types;
 
 #[cfg(any(has_rmw, test))]

@@ -10,13 +10,18 @@ use crate::session;
 use crate::timer::TimerDuration;
 
 use super::arena::{
-    CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry, SubEntry, SubInfoEntry,
-    SubRawEntry, TimerEntry, TimerHeader, always_ready, drop_entry, guard_has_data,
-    guard_try_process, no_pre_sample, srv_has_data, srv_raw_has_data, srv_raw_try_process,
-    srv_try_process, sub_has_data, sub_info_has_data, sub_info_pre_sample, sub_info_try_process,
-    sub_pre_sample, sub_raw_has_data, sub_raw_pre_sample, sub_raw_try_process, sub_try_process,
-    timer_try_process,
+    BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry,
+    SubBufferedEntry, SubEntry, SubInfoEntry, SubRawEntry, TimerEntry, TimerHeader, always_ready,
+    buffered_region_size, drop_entry, guard_has_data, guard_try_process, no_pre_sample,
+    srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
+    sub_buffered_try_process, sub_has_data, sub_info_has_data, sub_info_pre_sample,
+    sub_info_try_process, sub_pre_sample, sub_raw_has_data, sub_raw_pre_sample,
+    sub_raw_try_process, sub_try_process, timer_try_process,
 };
+use super::spsc_ring::SpscRing;
+use super::triple_buffer::TripleBuffer;
+// BufferStrategy, SubBufferedEntry, buffered_region_size, sub_buffered_*,
+// SpscRing, TripleBuffer are used in add_subscription_buffered (has_rmw gated).
 #[cfg(feature = "safety-e2e")]
 use super::arena::{
     SubSafetyEntry, sub_safety_has_data, sub_safety_pre_sample, sub_safety_try_process,
@@ -362,6 +367,27 @@ impl Executor {
         Ok(aligned_offset)
     }
 
+    /// Bump-allocate space for `T` plus `trailing_bytes` extra bytes.
+    ///
+    /// Returns `(entry_offset, trailing_offset)`. The trailing region starts
+    /// immediately after `T` (aligned to 8 bytes).
+    pub(crate) fn arena_alloc_with_trailing<T>(
+        &mut self,
+        trailing_bytes: usize,
+    ) -> Result<(usize, usize), NodeError> {
+        let align = core::mem::align_of::<T>();
+        let entry_size = core::mem::size_of::<T>();
+        let entry_offset = (self.arena_used + align - 1) & !(align - 1);
+        // Trailing region is 8-byte aligned after the entry struct
+        let trailing_offset = (entry_offset + entry_size + 7) & !7;
+        let new_used = trailing_offset + trailing_bytes;
+        if new_used > crate::config::ARENA_SIZE {
+            return Err(NodeError::BufferTooSmall);
+        }
+        self.arena_used = new_used;
+        Ok((entry_offset, trailing_offset))
+    }
+
     /// Find the next free entry slot index.
     pub(crate) fn next_entry_slot(&self) -> Result<usize, NodeError> {
         self.entries
@@ -450,6 +476,77 @@ impl Executor {
             pre_sample: sub_pre_sample::<M, F, RX_BUF>,
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
+        });
+        Ok(HandleId(slot))
+    }
+
+    /// Register a subscription with QoS-driven buffering (Phase 73).
+    ///
+    /// The buffer strategy is selected by the QoS depth:
+    /// - `KEEP_LAST(1)` → triple buffer (3 slots, latest-value, no message loss)
+    /// - `KEEP_LAST(N)` where N > 1 → SPSC ring (N+1 slots, FIFO, bounded drops)
+    ///
+    /// Buffer slots are allocated as a trailing region in the arena (no
+    /// separate static buffer array). `RX_BUF` sets the per-slot byte size.
+    pub fn add_subscription_buffered<M, F, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        M: RosMessage + 'static,
+        F: FnMut(&M) + 'static,
+    {
+        type Entry<M, F> = SubBufferedEntry<M, F>;
+
+        let slot = self.next_entry_slot()?;
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = self
+            .session
+            .create_subscriber(&topic, qos)
+            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+
+        let (entry_offset, trailing_offset) =
+            self.arena_alloc_with_trailing::<Entry<M, F>>(trailing_bytes)?;
+
+        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
+
+        let buffer = if qos.depth <= 1 {
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
+        } else {
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
+        };
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(entry_offset) as *mut Entry<M, F>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer,
+                    callback,
+                    _phantom: PhantomData,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset: entry_offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_try_process::<M, F>,
+            has_data: sub_buffered_has_data::<M, F>,
+            pre_sample: no_pre_sample, // LET pre-sample not yet supported for buffered
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<M, F>>,
         });
         Ok(HandleId(slot))
     }

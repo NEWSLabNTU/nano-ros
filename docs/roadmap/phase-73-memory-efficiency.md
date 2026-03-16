@@ -343,9 +343,9 @@ deterministic O(1) without any zenoh-pico patches.
 - [x] 73.1 — Fix FreeRTOS `z_realloc` (returns NULL)
 - [x] 73.2 — Fix ThreadX missing Rust `GlobalAlloc`
 - [x] 73.3 — Slab fast-path in `zpico-alloc`
-- [ ] 73.4 — Triple buffer primitive
-- [ ] 73.5 — SPSC ring buffer primitive
-- [ ] 73.6 — Arena-based buffer allocation for subscriptions
+- [x] 73.4 — Triple buffer primitive
+- [x] 73.5 — SPSC ring buffer primitive
+- [x] 73.6 — Arena-based buffer allocation for subscriptions
 - [ ] 73.7 — Zenoh shim direct-write into triple buffer
 - [ ] 73.8 — Borrowed message codegen (Rust)
 - [ ] 73.9 — Borrowed message codegen (C/C++) and `nros::Span` header
