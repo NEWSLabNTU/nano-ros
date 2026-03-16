@@ -1,7 +1,7 @@
 //! NuttX QEMU ARM virt integration tests
 //!
 //! Tests that verify NuttX examples build and run on QEMU ARM virt (Cortex-A7).
-//! NuttX examples use `armv7a-nuttx-eabi` target with `std` support.
+//! NuttX examples use `armv7a-nuttx-eabihf` target with `std` support.
 //!
 //! ## Test tiers
 //!
@@ -16,7 +16,7 @@
 //! ## Prerequisites
 //!
 //! - `NUTTX_DIR` env var pointing to NuttX source (e.g., `external/nuttx`)
-//! - Nightly Rust toolchain with `armv7a-nuttx-eabi` target
+//! - Nightly Rust toolchain with `armv7a-nuttx-eabihf` target
 //! - `qemu-system-arm` with virt machine support
 //! - TAP bridge: `sudo ./scripts/qemu/setup-network.sh`
 //! - zenohd: `just build-zenohd`
@@ -68,7 +68,7 @@ fn is_arm_gcc_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Check if nightly toolchain supports armv7a-nuttx-eabi target
+/// Check if nightly toolchain supports armv7a-nuttx-eabihf target
 ///
 /// NuttX targets are Tier 3 in Rust — they cannot be installed via `rustup target add`.
 /// Instead, they are compiled from source via `-Z build-std`. We check that the nightly
@@ -79,7 +79,7 @@ fn is_nuttx_toolchain_available() -> bool {
     let target_known = Command::new("rustc")
         .args(["+nightly", "--print", "target-list"])
         .output()
-        .map(|o| String::from_utf8_lossy(&o.stdout).contains("armv7a-nuttx-eabi"))
+        .map(|o| String::from_utf8_lossy(&o.stdout).contains("armv7a-nuttx-eabihf"))
         .unwrap_or(false);
 
     // Check that rust-src component is installed (needed for -Z build-std)
@@ -123,7 +123,7 @@ fn require_nuttx() -> bool {
         return false;
     }
     if !is_nuttx_toolchain_available() {
-        eprintln!("Skipping test: nightly toolchain missing rust-src for armv7a-nuttx-eabi");
+        eprintln!("Skipping test: nightly toolchain missing rust-src for armv7a-nuttx-eabihf");
         eprintln!(
             "Run: rustup toolchain install nightly && rustup component add rust-src --toolchain nightly"
         );
@@ -188,7 +188,7 @@ fn build_nuttx_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
 
     eprintln!("Building qemu-arm-nuttx/rust/zenoh/{}...", name);
 
-    // The cc-rs crate doesn't recognize armv7a-nuttx-eabi (Tier 3 target) and falls
+    // The cc-rs crate doesn't recognize armv7a-nuttx-eabihf (Tier 3 target) and falls
     // back to the host `cc` (x86 GCC), which fails on ARM flags like -march=armv7-a.
     // Set the target-specific CC env var so cc-rs uses the ARM cross-compiler.
     let output = duct::cmd!("cargo", "+nightly", "build", "--release")
@@ -206,7 +206,10 @@ fn build_nuttx_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
         ));
     }
 
-    let binary_path = example_dir.join(format!("target/armv7a-nuttx-eabi/release/{}", binary_name));
+    let binary_path = example_dir.join(format!(
+        "target/armv7a-nuttx-eabihf/release/{}",
+        binary_name
+    ));
 
     if !binary_path.exists() {
         return Err(TestError::BuildFailed(format!(
@@ -737,4 +740,253 @@ fn test_nuttx_action_e2e() {
             goal_accepted, feedback_count, completed
         );
     }
+}
+
+// =============================================================================
+// C++ binary builders (CMake-based)
+// =============================================================================
+
+/// Build a NuttX C++ QEMU example via CMake
+fn build_nuttx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/qemu-arm-nuttx/cpp/zenoh/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "NuttX C++ example not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    eprintln!("Building qemu-arm-nuttx/cpp/zenoh/{} (CMake)...", name);
+
+    let build_dir = example_dir.join("build");
+    std::fs::create_dir_all(&build_dir).ok();
+
+    let output = duct::cmd!("cmake", "-S", &example_dir, "-B", &build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake configure failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let output = duct::cmd!("cmake", "--build", &build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake build failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let binary_path = build_dir.join(binary_name);
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+static NUTTX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {
+    NUTTX_CPP_TALKER_BINARY
+        .get_or_try_init(|| build_nuttx_cpp_example("talker", "nuttx_cpp_talker"))
+        .map(|p| p.as_path())
+}
+
+fn build_nuttx_cpp_listener() -> TestResult<&'static Path> {
+    NUTTX_CPP_LISTENER_BINARY
+        .get_or_try_init(|| build_nuttx_cpp_example("listener", "nuttx_cpp_listener"))
+        .map(|p| p.as_path())
+}
+
+fn build_nuttx_cpp_service_server() -> TestResult<&'static Path> {
+    NUTTX_CPP_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| build_nuttx_cpp_example("service-server", "nuttx_cpp_service_server"))
+        .map(|p| p.as_path())
+}
+
+fn build_nuttx_cpp_service_client() -> TestResult<&'static Path> {
+    NUTTX_CPP_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| build_nuttx_cpp_example("service-client", "nuttx_cpp_service_client"))
+        .map(|p| p.as_path())
+}
+
+fn require_nuttx_cpp() -> bool {
+    if !require_nuttx() {
+        return false;
+    }
+    if !Command::new("cmake")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+    {
+        eprintln!("Skipping test: cmake not found");
+        return false;
+    }
+    true
+}
+
+// =============================================================================
+// C++ Build tests
+// =============================================================================
+
+#[test]
+fn test_nuttx_cpp_talker_builds() {
+    if !require_nuttx_cpp() {
+        return;
+    }
+    let binary = build_nuttx_cpp_talker().expect("Failed to build nuttx_cpp_talker");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: nuttx_cpp_talker at {}", binary.display());
+}
+
+#[test]
+fn test_nuttx_cpp_listener_builds() {
+    if !require_nuttx_cpp() {
+        return;
+    }
+    let binary = build_nuttx_cpp_listener().expect("Failed to build nuttx_cpp_listener");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: nuttx_cpp_listener at {}", binary.display());
+}
+
+#[test]
+fn test_nuttx_cpp_service_server_builds() {
+    if !require_nuttx_cpp() {
+        return;
+    }
+    let binary =
+        build_nuttx_cpp_service_server().expect("Failed to build nuttx_cpp_service_server");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: nuttx_cpp_service_server at {}", binary.display());
+}
+
+#[test]
+fn test_nuttx_cpp_service_client_builds() {
+    if !require_nuttx_cpp() {
+        return;
+    }
+    let binary =
+        build_nuttx_cpp_service_client().expect("Failed to build nuttx_cpp_service_client");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: nuttx_cpp_service_client at {}", binary.display());
+}
+
+// =============================================================================
+// C++ E2E Network tests
+// =============================================================================
+
+#[test]
+fn test_nuttx_cpp_pubsub_e2e() {
+    if !require_nuttx_cpp() {
+        return;
+    }
+    if !require_nuttx_e2e() {
+        return;
+    }
+
+    let talker_bin = build_nuttx_cpp_talker().expect("Failed to build C++ talker");
+    let listener_bin = build_nuttx_cpp_listener().expect("Failed to build C++ listener");
+
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
+
+    eprintln!("Starting C++ listener QEMU on tap-qemu1...");
+    let mut listener =
+        QemuProcess::start_nuttx_virt(listener_bin, "tap-qemu1").expect("Failed to start listener");
+
+    let listener_ready = listener
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+
+    if !listener_ready.contains("Waiting for messages") {
+        eprintln!("[SKIP] C++ listener did not reach readiness");
+        return;
+    }
+
+    eprintln!("Starting C++ talker QEMU on tap-qemu0...");
+    let mut talker =
+        QemuProcess::start_nuttx_virt(talker_bin, "tap-qemu0").expect("Failed to start talker");
+
+    let _talker_out = talker
+        .wait_for_output(Duration::from_secs(15))
+        .unwrap_or_default();
+    let final_out = listener
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    let full = format!("{}{}", listener_ready, final_out);
+
+    talker.kill();
+    listener.kill();
+
+    let received = count_pattern(&full, "Received");
+    eprintln!("C++ NuttX messages received: {}", received);
+    assert!(received > 0, "NuttX C++ pubsub E2E: 0 messages received");
+    eprintln!("[PASS] NuttX C++ pubsub E2E: {} messages", received);
+}
+
+#[test]
+fn test_nuttx_cpp_service_e2e() {
+    if !require_nuttx_cpp() {
+        return;
+    }
+    if !require_nuttx_e2e() {
+        return;
+    }
+
+    let server_bin = build_nuttx_cpp_service_server().expect("Failed to build C++ service server");
+    let client_bin = build_nuttx_cpp_service_client().expect("Failed to build C++ service client");
+
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
+
+    eprintln!("Starting C++ service server QEMU...");
+    let mut server =
+        QemuProcess::start_nuttx_virt(server_bin, "tap-qemu0").expect("Failed to start server");
+
+    let server_ready = server
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    if !server_ready.contains("Service server ready") {
+        eprintln!("[SKIP] C++ server did not reach readiness");
+        return;
+    }
+
+    eprintln!("Starting C++ service client QEMU...");
+    let mut client =
+        QemuProcess::start_nuttx_virt(client_bin, "tap-qemu1").expect("Failed to start client");
+
+    let client_out = client
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+    server.kill();
+    client.kill();
+
+    let responses = count_pattern(&client_out, "Response:");
+    let completed = client_out.contains("All service calls completed");
+    eprintln!(
+        "C++ NuttX responses: {}, completed: {}",
+        responses, completed
+    );
+    assert!(responses > 0, "NuttX C++ service E2E: 0 responses");
+    eprintln!("[PASS] NuttX C++ service E2E: {} responses", responses);
 }

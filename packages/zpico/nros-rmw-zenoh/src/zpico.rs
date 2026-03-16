@@ -8,6 +8,7 @@
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 use core::ffi::c_void;
@@ -16,6 +17,7 @@ use core::ffi::c_void;
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 use core::marker::PhantomData;
@@ -57,6 +59,7 @@ pub use zpico_sys::{
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 use zpico_sys::{
@@ -103,6 +106,7 @@ pub enum ZpicoError {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx",
     test
 ))]
@@ -220,6 +224,7 @@ impl ZenohId {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub struct LivelinessToken {
@@ -231,6 +236,7 @@ pub struct LivelinessToken {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl LivelinessToken {
@@ -245,6 +251,7 @@ impl LivelinessToken {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl Drop for LivelinessToken {
@@ -271,6 +278,7 @@ impl Drop for LivelinessToken {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub struct Queryable {
@@ -282,6 +290,7 @@ pub struct Queryable {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl Queryable {
@@ -296,6 +305,7 @@ impl Queryable {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl Drop for Queryable {
@@ -324,6 +334,7 @@ impl Drop for Queryable {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub struct Context {
@@ -335,6 +346,7 @@ pub struct Context {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl Context {
@@ -945,6 +957,7 @@ impl Context {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl Drop for Context {
@@ -967,6 +980,7 @@ impl Drop for Context {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub struct Publisher<'a> {
@@ -979,6 +993,7 @@ pub struct Publisher<'a> {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl<'a> Publisher<'a> {
@@ -1034,6 +1049,7 @@ impl<'a> Publisher<'a> {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl<'a> Drop for Publisher<'a> {
@@ -1056,6 +1072,7 @@ impl<'a> Drop for Publisher<'a> {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub struct Subscriber<'a> {
@@ -1068,6 +1085,7 @@ pub struct Subscriber<'a> {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl<'a> Subscriber<'a> {
@@ -1082,6 +1100,7 @@ impl<'a> Subscriber<'a> {
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 impl<'a> Drop for Subscriber<'a> {

@@ -26,6 +26,7 @@ extern crate alloc;
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub(crate) mod config;
@@ -37,6 +38,7 @@ pub mod zpico;
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub mod shim;
@@ -50,6 +52,7 @@ pub use zpico::{ZenohId, ZpicoError};
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub use zpico::{
@@ -62,6 +65,7 @@ pub use zpico::{
     feature = "platform-zephyr",
     feature = "platform-bare-metal",
     feature = "platform-freertos",
+    feature = "platform-nuttx",
     feature = "platform-threadx"
 ))]
 pub use shim::{
