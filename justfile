@@ -1212,6 +1212,16 @@ test-ros2 verbose="": build-zenohd
 test-ros2-shell:
     ./tests/ros2-interop.sh
 
+# Run DDS ROS 2 interop tests (requires ROS 2 + rmw_cyclonedds_cpp, no router needed)
+test-dds-ros2 verbose="":
+    #!/usr/bin/env bash
+    set -e
+    args=(-p nros-tests --test dds_ros2_interop --no-fail-fast)
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # =============================================================================
 # C API Tests (requires cmake + zenohd)
 # =============================================================================
