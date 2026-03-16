@@ -216,7 +216,6 @@ static inline void _zpico_notify_spin(void) {}
  */
 static void query_handler(z_loaned_query_t *query, void *arg) {
     int idx = (int)(intptr_t)arg;
-    printk("zpico: query_handler called for queryable %d\n", idx);
     if (idx < 0 || idx >= ZPICO_MAX_QUERYABLES) {
         return;
     }
@@ -1612,15 +1611,9 @@ int32_t zpico_query_reply(int32_t queryable_handle,
         // which expects sequence_number, source_timestamp, gid in the reply).
         const z_loaned_bytes_t *query_att = z_query_attachment(
             z_query_loan(&g_stored_queries[queryable_handle]));
-        printk("zpico: query_reply: query_att=%p\n", (void*)query_att);
-        if (query_att != NULL) {
-            printk("zpico: query_reply: att_len=%zu\n", z_bytes_len(query_att));
-        }
         if (query_att != NULL && z_bytes_len(query_att) > 0) {
             z_owned_slice_t att_slice;
             if (z_bytes_to_slice(query_att, &att_slice) == 0) {
-                printk("zpico: query_reply: echoing attachment %zu bytes\n",
-                        z_slice_len(z_slice_loan(&att_slice)));
                 if (z_bytes_copy_from_buf(&attachment_bytes,
                         z_slice_data(z_slice_loan(&att_slice)),
                         z_slice_len(z_slice_loan(&att_slice))) == 0) {

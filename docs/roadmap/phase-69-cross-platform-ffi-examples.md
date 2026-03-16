@@ -94,7 +94,7 @@ C examples:
 
 C++ examples:
 - [x] 69.5 -- FreeRTOS C++ examples + integration tests
-- [ ] 69.6 -- NuttX C++ examples + integration tests
+- [x] 69.6 -- NuttX C++ examples + integration tests
 - [ ] 69.7 -- ThreadX Linux C++ examples + integration tests
 - [ ] 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
 
