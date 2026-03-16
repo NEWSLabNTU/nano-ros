@@ -7,7 +7,7 @@
 
 extern "C" void app_main(void) {
     printf("nros C++ Listener (FreeRTOS)\n");
-    nros::Result ret = nros::init("tcp/192.0.3.1:7447", 0);
+    nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
 
     nros::Node node;

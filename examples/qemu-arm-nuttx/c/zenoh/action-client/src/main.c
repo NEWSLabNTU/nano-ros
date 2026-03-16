@@ -10,9 +10,13 @@
 
 #include "example_interfaces.h"
 
-// NuttX embedded config — matches board crate defaults (client = 192.0.3.13)
-#define ZENOH_LOCATOR "tcp/192.0.3.1:7447"
-#define DOMAIN_ID 0
+// NuttX embedded config — matches board crate defaults (client = 192.0.3.11)
+#ifndef APP_ZENOH_LOCATOR
+#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
+#endif
+#ifndef APP_DOMAIN_ID
+#define APP_DOMAIN_ID 0
+#endif
 
 static struct {
     nros_support_t support;
@@ -25,7 +29,7 @@ int main(int argc, char** argv) {
     (void)argv;
 
     printf("nros NuttX C Action Client (Fibonacci)\n");
-    printf("Locator: %s\n", ZENOH_LOCATOR);
+    printf("Locator: %s\n", APP_ZENOH_LOCATOR);
 
     memset(&app, 0, sizeof(app));
 
@@ -37,7 +41,7 @@ int main(int argc, char** argv) {
         .feedback_serialized_size_max = 264,
     };
 
-    nros_ret_t ret = nros_support_init(&app.support, ZENOH_LOCATOR, DOMAIN_ID);
+    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;

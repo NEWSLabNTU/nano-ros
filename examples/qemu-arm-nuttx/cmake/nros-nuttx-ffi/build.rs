@@ -35,9 +35,20 @@ fn main() {
         }
     }
 
+    // Compile definitions from CMake (semicolon-separated, e.g. from config.toml)
+    if let Ok(compile_defs) = env::var("APP_COMPILE_DEFS") {
+        for def in compile_defs.split(';') {
+            if !def.is_empty() {
+                build.define(def.split('=').next().unwrap_or(def),
+                    def.split('=').nth(1));
+            }
+        }
+    }
+
     build.compile("app");
 
     println!("cargo:rerun-if-changed={}", main_cpp);
     println!("cargo:rerun-if-env-changed=APP_MAIN_CPP");
     println!("cargo:rerun-if-env-changed=APP_INCLUDE_DIRS");
+    println!("cargo:rerun-if-env-changed=APP_COMPILE_DEFS");
 }

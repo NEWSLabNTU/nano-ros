@@ -9,5 +9,14 @@ nano_ros_generate_interfaces(example_interfaces LANGUAGE CPP SKIP_INSTALL)
 
 add_executable(freertos_cpp_service_server src/main.cpp ${FREERTOS_STARTUP_SOURCE})
 target_include_directories(freertos_cpp_service_server PRIVATE ${FREERTOS_STARTUP_INCLUDES})
+nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
+target_compile_definitions(freertos_cpp_service_server PRIVATE
+    "APP_IP={${NROS_CONFIG_IP}}"
+    "APP_MAC={${NROS_CONFIG_MAC}}"
+    "APP_GATEWAY={${NROS_CONFIG_GATEWAY}}"
+    "APP_NETMASK={${NROS_CONFIG_NETMASK}}"
+    "APP_ZENOH_LOCATOR=\"${NROS_CONFIG_ZENOH_LOCATOR}\""
+    "APP_DOMAIN_ID=${NROS_CONFIG_DOMAIN_ID}"
+)
 target_link_libraries(freertos_cpp_service_server PRIVATE
     example_interfaces__nano_ros_cpp NanoRos::NanoRosCpp freertos_platform)

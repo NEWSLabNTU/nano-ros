@@ -36,7 +36,7 @@ void app_main(void) {
         .serialized_size_max = 256,
     };
 
-    nros_ret_t ret = nros_support_init(&app.support, "tcp/192.0.3.1:7447", 0);
+    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         printf("Failed to initialize support: %d\n", ret);
         return;

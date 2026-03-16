@@ -12,8 +12,12 @@
 #include "std_msgs.h"
 
 // NuttX embedded config — matches board crate defaults (listener = 192.0.3.11)
-#define ZENOH_LOCATOR "tcp/192.0.3.1:7447"
-#define DOMAIN_ID 0
+#ifndef APP_ZENOH_LOCATOR
+#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
+#endif
+#ifndef APP_DOMAIN_ID
+#define APP_DOMAIN_ID 0
+#endif
 #define MAX_MESSAGES 10
 
 typedef struct {
@@ -52,11 +56,11 @@ int main(int argc, char** argv) {
     (void)argv;
 
     printf("nros NuttX C Listener\n");
-    printf("Locator: %s\n", ZENOH_LOCATOR);
+    printf("Locator: %s\n", APP_ZENOH_LOCATOR);
 
     memset(&app, 0, sizeof(app));
 
-    nros_ret_t ret = nros_support_init(&app.support, ZENOH_LOCATOR, DOMAIN_ID);
+    nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
         return 1;

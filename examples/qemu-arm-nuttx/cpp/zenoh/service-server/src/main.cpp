@@ -5,9 +5,16 @@
 #include <nros/nros.hpp>
 #include "example_interfaces.hpp"
 
+#ifndef APP_ZENOH_LOCATOR
+#define APP_ZENOH_LOCATOR "tcp/192.0.3.1:7447"
+#endif
+#ifndef APP_DOMAIN_ID
+#define APP_DOMAIN_ID 0
+#endif
+
 extern "C" void app_main(void) {
     printf("nros C++ Service Server (NuttX)\n");
-    nros::Result ret = nros::init("tcp/192.0.3.1:7447", 0);
+    nros::Result ret = nros::init(APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (!ret.ok()) { printf("init failed: %d\n", ret.raw()); return; }
 
     nros::Node node;

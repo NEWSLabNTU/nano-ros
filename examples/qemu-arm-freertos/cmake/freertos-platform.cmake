@@ -274,3 +274,4 @@ if(NOT EXISTS "${_NROS_ROOT}/share/nano-ros/interfaces")
 endif()
 
 include("${_NANO_ROS_CMAKE_DIR}/NanoRosGenerateInterfaces.cmake")
+include("${_NROS_ROOT}/cmake/NanoRosConfig.cmake")

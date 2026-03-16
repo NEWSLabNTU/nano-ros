@@ -4,7 +4,7 @@
 examples with per-example `config.toml` files, enabling users to customize
 IP addresses, MAC addresses, and zenoh locators without modifying source code.
 
-**Status**: In Progress (72.1–72.6 done)
+**Status**: In Progress (72.1–72.7 done)
 
 **Priority**: Medium
 
@@ -185,7 +185,7 @@ compatibility but delegate to `from_toml()` internally or are deprecated.
 - [x] 72.4 — Port remaining board crates to config.toml
 - [x] 72.5 — Port RTOS examples (FreeRTOS, NuttX, ThreadX)
 - [x] 72.6 — Port ESP32 examples (WiFi + serial config)
-- [ ] 72.7 — Port C/C++ examples (read config.toml from CMake)
+- [x] 72.7 — Port C/C++ examples (read config.toml from CMake)
 - [ ] 72.8 — Update test infrastructure to use config.toml
 - [ ] 72.9 — Document config.toml format in the book
 

@@ -62,6 +62,7 @@ if(NOT EXISTS "${_NROS_ROOT}/share/nano-ros/interfaces")
 endif()
 
 include("${_NANO_ROS_CMAKE_DIR}/NanoRosGenerateInterfaces.cmake")
+include("${_NROS_ROOT}/cmake/NanoRosConfig.cmake")
 
 # ============================================================================
 # nuttx_build_example() — builds a NuttX kernel ELF with C++ app
@@ -79,7 +80,7 @@ include("${_NANO_ROS_CMAKE_DIR}/NanoRosGenerateInterfaces.cmake")
 #   4. The resulting binary is at nros-nuttx-ffi/target/armv7a-nuttx-eabi/release/nros-nuttx-ffi
 
 function(nuttx_build_example name main_cpp)
-    cmake_parse_arguments(_ARG "" "" "INCLUDE_DIRS" ${ARGN})
+    cmake_parse_arguments(_ARG "" "" "INCLUDE_DIRS;COMPILE_DEFS" ${ARGN})
 
     # Collect include dirs (codegen output + user-specified)
     set(_include_dirs "${_NROS_ROOT}/packages/core/nros-cpp/include")
@@ -88,6 +89,13 @@ function(nuttx_build_example name main_cpp)
     endforeach()
     string(JOIN ";" _include_dirs_str ${_include_dirs})
 
+    # Collect compile definitions (from config.toml via nano_ros_read_config)
+    set(_compile_defs "")
+    foreach(_def ${_ARG_COMPILE_DEFS})
+        list(APPEND _compile_defs "${_def}")
+    endforeach()
+    string(JOIN ";" _compile_defs_str ${_compile_defs})
+
     set(_output_binary "${_FFI_CRATE_DIR}/target/armv7a-nuttx-eabi/release/nros-nuttx-ffi")
 
     add_custom_command(
@@ -95,6 +103,7 @@ function(nuttx_build_example name main_cpp)
         COMMAND ${CMAKE_COMMAND} -E env
             "APP_MAIN_CPP=${main_cpp}"
             "APP_INCLUDE_DIRS=${_include_dirs_str}"
+            "APP_COMPILE_DEFS=${_compile_defs_str}"
             "NUTTX_DIR=${NUTTX_DIR}"
             "NUTTX_APPS_DIR=${NUTTX_DIR}/../nuttx-apps"
             cargo +nightly build --release
