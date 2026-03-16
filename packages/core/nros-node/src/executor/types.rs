@@ -223,7 +223,7 @@ impl<'a> ExecutorConfig<'a> {
     }
 }
 
-#[cfg(all(feature = "std", feature = "alloc"))]
+#[cfg(feature = "std")]
 impl ExecutorConfig<'static> {
     /// Create a configuration from environment variables.
     ///
@@ -233,9 +233,10 @@ impl ExecutorConfig<'static> {
     /// - `ZENOH_MODE` — Session mode: `"client"` or `"peer"` (default: `"client"`)
     ///
     /// String values are heap-allocated and leaked into `'static` references.
+    /// This is fine on hosted platforms where std provides a global allocator.
     pub fn from_env() -> Self {
         let locator: &'static str = match std::env::var("ZENOH_LOCATOR") {
-            Ok(s) => alloc::boxed::Box::leak(s.into_boxed_str()),
+            Ok(s) => std::boxed::Box::leak(s.into_boxed_str()),
             Err(_) => "tcp/127.0.0.1:7447",
         };
         let domain_id: u32 = std::env::var("ROS_DOMAIN_ID")

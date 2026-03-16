@@ -154,8 +154,9 @@ impl<Svc: RosService, const REQ_BUF: usize, const REPLY_BUF: usize>
 
     /// Handle a request with a heap-allocated reply (for large response types).
     ///
+    /// Only used by parameter services (large response structs that overflow the stack).
     /// Returns `Ok(true)` if a request was handled, `Ok(false)` if none available.
-    #[cfg(feature = "alloc")]
+    #[cfg(feature = "param-services")]
     pub fn handle_request_boxed(
         &mut self,
         handler: impl FnOnce(&Svc::Request) -> alloc::boxed::Box<Svc::Reply>,

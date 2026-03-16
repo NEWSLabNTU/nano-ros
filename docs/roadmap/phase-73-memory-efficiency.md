@@ -350,13 +350,18 @@ deterministic O(1) without any zenoh-pico patches.
 - [x] 73.8 — Borrowed message codegen (Rust)
 - [x] 73.9 — Borrowed message codegen (C/C++) and `nros::Span` header
 - [x] 73.10 — Executor zero-copy dispatch path
-- [ ] 73.11 — DDS and XRCE-DDS shim integration
-- [ ] 73.12 — Remove `SUBSCRIBER_BUFFERS` static array
-- [ ] 73.13 — Remove `alloc` from zero-copy subscriber
-- [ ] 73.14 — Remove `alloc` from timer callbacks
-- [ ] 73.15 — Remove `alloc` from large service replies
-- [ ] 73.16 — Remove `alloc` from zenoh ID formatting and executor config
-- [ ] 73.17 — Document sizing and migration
+- [x] 73.11 — DDS and XRCE-DDS shim integration
+- [ ] 73.12 — Remove `SUBSCRIBER_BUFFERS` static array (deferred — see below)
+- [x] 73.13 — Remove `alloc` from zero-copy subscriber
+- [x] 73.14 — Remove `alloc` from timer callbacks
+- [x] 73.15 — Remove `alloc` from large service replies
+- [x] 73.16 — Remove `alloc` from zenoh ID formatting and executor config
+- [ ] 73.17 — Deprecate owned-type subscription API
+- [ ] 73.18 — C/C++ borrowed subscription API
+- [ ] 73.19 — Migrate Rust examples to borrowed types
+- [ ] 73.20 — Migrate C/C++ examples to borrowed types
+- [ ] 73.21 — Remove `SUBSCRIBER_BUFFERS` and old subscription API
+- [ ] 73.22 — Document sizing and migration
 
 ### 73.1 — Fix FreeRTOS `z_realloc` (returns NULL)
 
@@ -738,17 +743,12 @@ redirected similarly.
 
 ### 73.12 — Remove `SUBSCRIBER_BUFFERS` static array
 
-Once all subscription paths use arena-based buffers (73.6–73.11), the
-static `SUBSCRIBER_BUFFERS` array in the zenoh shim can be removed.
-This eliminates the dominant source of static memory waste
-(128 × 1064 B = 133 KB with default config).
+**Status: Deferred** — superseded by 73.17–73.21 migration plan.
 
-The `ZPICO_MAX_SUBSCRIBERS` build-time constant is no longer needed
-for buffer pre-allocation — subscriber count is bounded only by the
-executor's `MAX_CBS` and arena size.
-
-**Files**:
-- `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs`
+Removing `SUBSCRIBER_BUFFERS` requires first migrating all subscription
+paths to use buffered entries (73.17), updating all examples (73.19–73.20),
+and only then performing the final removal (73.21). See 73.21 for the
+concrete steps.
 
 ### 73.13 — Remove `alloc` from zero-copy subscriber
 
@@ -830,15 +830,104 @@ Two minor `alloc` usages:
 - `packages/zpico/nros-rmw-zenoh/src/zpico.rs`
 - `packages/core/nros-node/src/executor/types.rs`
 
-### 73.17 — Document sizing and migration
+### 73.17 — Deprecate owned-type subscription API
+
+The current `add_subscription<M>` (owned types) and its variants are
+the default subscription path. After Phase 73, borrowed types are the
+preferred receive path. Deprecate the owned variants and make the
+buffered path the default:
+
+1. Make `add_subscription<M>` internally use `add_subscription_buffered`
+   (triple buffer by default, QoS depth = 1). Users see no API change.
+2. `add_subscription_raw` internally uses `add_subscription_buffered_raw`.
+3. Mark `SubEntry` (with inline `[u8; RX_BUF]`) as deprecated — arena
+   entries now use `SubBufferedEntry` or `SubBufferedRawEntry`.
+4. Retain the owned message types for user convenience — users can copy
+   borrowed fields into owned storage to hold data beyond the callback
+   scope. The owned type serves as a user-side copy buffer.
+
+**Files**:
+- `packages/core/nros-node/src/executor/spin.rs`
+- `packages/core/nros-node/src/executor/arena.rs`
+
+### 73.18 — C/C++ borrowed subscription API
+
+Expose the borrowed subscription path through the C and C++ APIs.
+
+**C API**: The existing raw subscription callback already receives
+`(const uint8_t* data, size_t len, void* ctx)` — a borrowed slice.
+Add a C deserializer that populates the borrowed C message struct
+(pointer+length fields) from CDR data without copying payloads.
+
+**C++ API**: Add a `Subscription<M>::try_recv_borrowed()` method that
+returns a `const M&` where `M` uses `nros::Span<T>` /
+`nros::StringView` fields pointing into the receive buffer.
+
+**Files**:
+- `packages/core/nros-c/src/subscription.rs`
+- `packages/core/nros-cpp/include/nros/subscription.hpp`
+- `packages/codegen/packages/rosidl-codegen/templates/message_c.c.jinja`
+- `packages/codegen/packages/rosidl-codegen/templates/message_cpp.hpp.jinja`
+
+### 73.19 — Migrate Rust examples to borrowed types
+
+Update all Rust examples to use borrowed message types where
+applicable. For messages with unbounded fields (e.g., any message
+using `std_msgs/Header` which contains unbounded `string frame_id`),
+the subscription callback receives `&Msg<'_>` with borrowed fields.
+
+Examples that need to store messages beyond the callback scope can
+copy fields explicitly.
+
+Regenerate all example bindings with `just generate-bindings`.
+
+**Files**:
+- `examples/*/rust/zenoh/*/src/main.rs` (all listener/subscriber examples)
+
+### 73.20 — Migrate C/C++ examples to borrowed types
+
+Update all C and C++ examples to use the borrowed subscription API
+from 73.18. Regenerate bindings.
+
+**Files**:
+- `examples/native/c/zenoh/*/`
+- `examples/native/cpp/zenoh/*/`
+- `examples/zephyr/*/`
+
+### 73.21 — Remove `SUBSCRIBER_BUFFERS` and old subscription API
+
+After all examples are migrated (73.19–73.20) and the owned-type
+subscription API is deprecated (73.17):
+
+1. Remove `SubEntry`, `SubInfoEntry`, `SubSafetyEntry`, `SubRawEntry`
+   and their dispatch/readiness/presample functions from arena.rs
+2. Remove `add_subscription_sized`, `add_subscription_with_info_sized`,
+   `add_subscription_raw_sized` from spin.rs
+3. Remove `SUBSCRIBER_BUFFERS`, `SubscriberBuffer`, `SubscriberBufferRef`,
+   `NEXT_BUFFER_INDEX`, and `subscriber_notify_callback` from the zenoh
+   shim
+4. Remove `ZPICO_MAX_SUBSCRIBERS` as a buffer pre-allocation constant
+5. Modify zenoh shim to write directly into the triple buffer's write
+   slot (via callback ctx pointing to the `TripleBuffer` in the arena)
+
+This is the final cleanup that eliminates the 133 KB static memory
+waste and completes the migration to arena-based buffering.
+
+**Files**:
+- `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs`
+- `packages/core/nros-node/src/executor/spin.rs`
+- `packages/core/nros-node/src/executor/arena.rs`
+
+### 73.22 — Document sizing and migration
 
 Update the embedded tuning guide with the new memory model:
 
 - Arena sizing formula: `sum over subscriptions of
   (entry_overhead + slot_count × buf_size)`
 - Default configuration memory footprint comparison (before/after)
-- Migration guide from static `SUBSCRIBER_BUFFERS` to arena buffers
+- Migration guide for Rust, C, and C++ users
 - QoS depth recommendations per use case
+- How to copy borrowed fields into owned storage when needed
 
 **Files**:
 - `docs/reference/environment-variables.md`
@@ -861,8 +950,12 @@ Update the embedded tuning guide with the new memory model:
 - [ ] Borrowed message types generated for Rust, C, and C++
 - [ ] `nros::Span` and `nros::StringView` work on C++14 freestanding
       (GCC 5+, Clang 3.5+, no STL required)
+- [ ] Owned-type subscription API deprecated; all subscriptions use
+      buffered entries (triple buffer / SPSC ring) internally
+- [ ] All Rust examples migrated to borrowed message types
+- [ ] All C/C++ examples migrated to borrowed subscription API
 - [ ] `SUBSCRIBER_BUFFERS` static array removed; memory usage reduced
-- [ ] All existing tests pass (no regressions in copy-based path)
+- [ ] All existing tests pass (no regressions)
 - [ ] `alloc` feature only required by `param-services`; all other
       nros functionality works without `alloc`
 - [ ] `unstable-zenoh-api` zero-copy works without `alloc`
