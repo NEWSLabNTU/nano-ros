@@ -3,31 +3,14 @@
 Documented bugs, hardcoded values, and improvement opportunities.
 Items here are candidates for future roadmap phases.
 
-## 1. Hardcoded network configuration in board crates and examples
+## ~~1. Hardcoded network configuration in board crates and examples~~ (Fixed)
 
-Board crate `Config` preset methods (`default()`, `listener()`, `server()`, etc.) have hardcoded IP addresses, MAC addresses, gateways, and zenoh locators tied to specific test/development networks.
+Resolved by Phase 72: all examples now use `Config::from_toml(include_str!("../config.toml"))`
+with per-example configuration files. Users change `config.toml` and rebuild —
+no source code edits needed.
 
-**Affected files** (all `src/config.rs`):
-- `packages/boards/nros-mps2-an385/` — 192.0.3.x (TAP), 192.168.100.x (Docker), 172.20.0.2 (Docker zenoh)
-- `packages/boards/nros-mps2-an385-freertos/` — 192.0.3.x
-- `packages/boards/nros-esp32-qemu/` — 192.0.3.x
-- `packages/boards/nros-nuttx-qemu-arm/` — 192.0.3.x
-- `packages/boards/nros-threadx-qemu-riscv64/` — 192.0.3.x, MAC 52:54:00:12:34:56
-- `packages/boards/nros-threadx-linux/` — 192.0.3.x, hardcoded veth names (`veth-tx0`, `veth-tx1`)
-- `packages/boards/nros-stm32f4/` — 192.168.1.x
-- `packages/boards/nros-esp32/` — 192.168.1.x (wifi)
-
-**Also hardcoded**:
-- STM32F4 HSE oscillator frequency (8 MHz) — varies by board variant
-- UART indices (UART0, USART2, USART3) — varies by board
-- Baud rates (115200 everywhere)
-- Serial zenoh locators (`serial/UART_0#baudrate=115200`)
-
-Builder methods (`.with_ip()`, `.with_zenoh_locator()`, `.with_baudrate()`) exist for runtime override, but the defaults are QEMU/dev-board-specific. Users porting to real hardware must override everything.
-
-**Impact**: Users cannot reuse examples without modifying source code for their network setup.
-
-**Possible fix**: Environment-variable-driven defaults (read at build time via `build.rs`, similar to `NROS_EXECUTOR_MAX_CBS`), or a runtime config file/struct that users populate before calling `init()`.
+Board crate `Config::default()` / `Config::listener()` presets remain for
+backwards compatibility but are no longer used by examples.
 
 ## 2. Zenoh-pico free list allocator on bare-metal
 
@@ -54,32 +37,9 @@ RTOS platforms already use native allocators:
 
 **Possible fix**: For platforms that run under an RTOS, delegate to the RTOS allocator. For true bare-metal, the free-list is fine but could be deduplicated into a shared crate. The DDS backend (Phase 70/71) uses `#[global_allocator]` which is a cleaner Rust-native approach.
 
-## 3. ~~`nano_ros_generate_interfaces()` requires explicit file listing~~ (Fixed)
+## ~~3. Non-configurable compile-time constants~~ (Fixed)
 
-Both the native and Zephyr versions of `nano_ros_generate_interfaces()`
-now support auto-discovery when no files are specified. The C codegen also
-correctly handles intra-package nested type dependencies.
-
-```cmake
-# Auto-discover all types + generate builtin_interfaces dependency
-nano_ros_generate_interfaces(builtin_interfaces SKIP_INSTALL)
-nano_ros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces SKIP_INSTALL)
-
-# Explicit listing still works for fine-grained control
-nano_ros_generate_interfaces(std_msgs "msg/Int32.msg" SKIP_INSTALL)
-```
-
-Cross-package dependencies (e.g., `std_msgs` → `builtin_interfaces`) must be
-declared with `DEPENDENCIES` and generated separately. Intra-package dependencies
-(e.g., `ByteMultiArray` → `MultiArrayLayout` within `std_msgs`) are resolved
-automatically.
-
-## 4. Non-configurable compile-time constants
-
-### Now configurable via env vars
-
-The following constants were hardcoded but are now configurable via environment variables
-(set in `.env` or exported before building):
+Three user-facing constants are now configurable via environment variables:
 
 | Env var                          | Default     | Constant                     | Crate          |
 |----------------------------------|-------------|------------------------------|----------------|
@@ -87,90 +47,26 @@ The following constants were hardcoded but are now configurable via environment 
 | `NROS_PARAM_SERVICE_BUFFER_SIZE` | 4,096 bytes | `PARAM_SERVICE_BUFFER_SIZE`  | nros-node      |
 | `NROS_KEYEXPR_STRING_SIZE`       | 256         | `KEYEXPR_STRING_SIZE`        | nros-rmw-zenoh |
 
-### Removed (dead code)
+`DEFAULT_MAX_TIMERS` was removed (dead code — timer count bounded by `MAX_CBS`).
 
-| Constant             | Reason                                                  |
-|----------------------|---------------------------------------------------------|
-| `DEFAULT_MAX_TIMERS` | Was never enforced; timer count is bounded by `MAX_CBS` |
+Six internal constants remain intentionally non-configurable (safe defaults,
+protocol-tied values).
 
-### Internal constants (intentionally not user-configurable)
+## ~~4. `nano_ros_generate_interfaces()` requires explicit file listing~~ (Fixed)
 
-These have safe defaults and are unlikely to need tuning. Changing them risks
-protocol incompatibility or buffer overflows with no user benefit:
+Both the native and Zephyr CMake functions now support auto-discovery when
+no files are specified. The C codegen also handles intra-package nested type
+dependencies correctly (fully qualified type names, per-type `#include`
+directives).
 
-| Constant                 | Value | Why internal                               |
-|--------------------------|-------|--------------------------------------------|
-| `MAX_PARAMS_PER_REQUEST` | 64    | Matches ROS 2 rclcpp default               |
-| `LOCATOR_BUFFER_SIZE`    | 128   | Locator strings are always short           |
-| `CONFIG_PROPERTY_SIZE`   | 256   | Session properties are simple key=value    |
-| `MAX_SESSION_PROPERTIES` | 8     | Zenoh session rarely needs >8 properties   |
-| `MANGLED_NAME_SIZE`      | 64    | Only the type suffix, not full topic name  |
-| `QOS_STRING_SIZE`        | 32    | QoS strings are fixed format, always short |
+Cross-package dependencies must be declared with `DEPENDENCIES` and generated
+separately.
 
-## 5. ~~Hardcoded opaque type sizes in nros-c and nros-cpp~~ (Fixed)
+## ~~5. Hardcoded opaque type sizes in nros-c and nros-cpp~~ (Fixed)
 
 Opaque storage sizes for RMW handles are now computed from
 `core::mem::size_of` at compile time — they always match the actual Rust
 type layout and auto-adjust when types change. No manual maintenance needed.
 
-- **nros-c**: `opaque_sizes.rs` computes `SESSION_OPAQUE_U64S`,
-  `PUBLISHER_OPAQUE_U64S`, `SERVICE_CLIENT_OPAQUE_U64S`, and
-  `GUARD_HANDLE_OPAQUE_U64S` from `size_of::<RmwSession>()` etc.
-- **nros-cpp**: `lib.rs` computes `CPP_PUBLISHER_OPAQUE_U64S` etc. from
-  `size_of::<CppPublisher>()` etc.
-
-When no RMW backend is enabled, fallback values are used (sufficient for
-any backend).
-
-### Remaining issue
-
-The C++ header `config.hpp` duplicates values as `#define` macros. These
-are not auto-generated — C++ users must update them to match the Rust
-computed values, or the Rust-side assertion (in build.rs) catches the
-mismatch at build time.
-
-## 6. Action server/client in C and C++ APIs require heap allocation
-
-The action server and client implementations in `nros-c` and `nros-cpp` use
-`Box::new()` + `Box::into_raw()` to heap-allocate internal state, while all
-other entity types (publisher, subscription, service, timer, guard condition)
-use inline opaque storage (`[u64; N]`) and are fully alloc-free.
-
-**Root cause**: The internal state struct (`ActionServerInternal`,
-`ActionClientInternal`, `CppActionServer`, `CppActionClient`) is created
-during registration and its address is passed as the callback trampoline
-context. `Box::into_raw` was used to get a stable pointer.
-
-**Affected files**:
-
-nros-c:
-- `packages/core/nros-c/src/action/server.rs` — `nros_action_server_t._internal: *mut c_void` (line 61), `Box::new(ActionServerInternal)` in `executor.rs:780`
-- `packages/core/nros-c/src/action/client.rs` — `nros_action_client_t._internal: *mut c_void` (line 71), `Box::into_raw` at line 259
-
-nros-cpp:
-- `packages/core/nros-cpp/src/action.rs` — `Box::new(CppActionServer)` (line 142), `Box::new(client)` (line 444)
-
-**What is alloc-free**: The underlying nros-node executor (`add_action_server_raw`,
-`ActionClientCore`) is fully alloc-free — it uses arena allocation and inline
-buffers. The heap dependency is only in the C/C++ FFI layer.
-
-**Impact**: Actions require the `alloc` feature in nros-c and nros-cpp. On
-bare-metal targets without a global allocator, action support is unavailable
-through the C/C++ APIs (the Rust API works fine). All action FFI functions
-are gated with `#[cfg(feature = "alloc")]` and return `NROS_RET_ERROR` when
-alloc is disabled.
-
-**Possible fix**: Replace `_internal: *mut c_void` with inline opaque storage
-`_internal: [u64; N]`, matching the pattern used by publishers and subscriptions:
-
-1. Write `ActionServerInternal` into the inline storage via `ptr::write`,
-   with `handle: None` initially.
-2. Pass `&mut _internal` as the trampoline context (the C struct itself
-   provides the stable address — no Box needed).
-3. After registration, fill `handle = Some(h)` in-place.
-4. Compute `N` at compile time via `u64s_for::<ActionServerInternal>()`.
-
-The `ActionClientInternal` wraps `ActionClientCore<BUF, BUF, BUF>` which
-contains 3 RMW handles + 3 message buffers — large but fixed-size. The
-`CppActionServer` contains `[PendingGoal; 4]` with `[u8; 1024]` per goal —
-also large but fixed-size. Both are suitable for inline storage.
+- **nros-c**: `opaque_sizes.rs` computes sizes from `size_of::<RmwSession>()` etc.
+- **nros-cpp**: `lib.rs` computes sizes from `size_of::<CppPublisher>()` etc.
