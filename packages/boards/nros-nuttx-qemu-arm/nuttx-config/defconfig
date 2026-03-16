@@ -36,6 +36,12 @@ CONFIG_UART1_BASE=0x9000000
 CONFIG_UART1_IRQ=33
 CONFIG_UART1_SERIAL_CONSOLE=y
 
+# --- Toolchain ---
+CONFIG_ARM_TOOLCHAIN_GNU_EABI=y
+
+# --- Apps directory (relative to NUTTX_DIR, matches just setup-nuttx layout) ---
+CONFIG_APPS_DIR="../nuttx-apps"
+
 # --- Build options ---
 CONFIG_DEBUG_ASSERTIONS=y
 CONFIG_DEBUG_FEATURES=y
@@ -71,6 +77,9 @@ CONFIG_NETDEV_LATEINIT=y
 # --- Virtio drivers (virtio-net for QEMU networking) ---
 CONFIG_DRIVERS_VIRTIO=y
 CONFIG_DRIVERS_VIRTIO_MMIO=y
+CONFIG_DRIVERS_VIRTIO_NET=y
+CONFIG_DEV_SIMPLE_ADDRENV=y
+CONFIG_NET_LL_GUARDSIZE=28
 
 # --- Device tree (virtio device discovery) ---
 CONFIG_DEVICE_TREE=y

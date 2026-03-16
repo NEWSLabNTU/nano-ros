@@ -11,6 +11,7 @@ export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
 export LWIP_DIR := env("LWIP_DIR", justfile_directory() / "external/lwip")
 export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-mps2-an385-freertos/config")
 export NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "external/nuttx")
+export NUTTX_APPS_DIR := env("NUTTX_APPS_DIR", justfile_directory() / "external/nuttx-apps")
 export THREADX_DIR := env("THREADX_DIR", justfile_directory() / "external/threadx")
 export THREADX_CONFIG_DIR := env("THREADX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-threadx-linux/config")
 export NETX_DIR := env("NETX_DIR", justfile_directory() / "external/netxduo")
@@ -24,7 +25,7 @@ default:
 # =============================================================================
 
 # Build everything: refresh bindings, workspace (native + embedded), all examples, and test deps
-build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-examples-threadx-linux build-examples-threadx-riscv64 build-zenohd build-zenoh-pico-arm
+build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-nuttx build-examples-nuttx build-examples-threadx-linux build-examples-threadx-riscv64 build-zenohd build-zenoh-pico-arm
     @echo "All builds completed!"
 
 # Populate build/install/ with C API artifacts (libraries, headers, CMake, codegen, interfaces).
@@ -612,15 +613,16 @@ test-qemu-esp32 verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-# Build NuttX QEMU ARM virt examples (requires nuttx in external/)
+# Build NuttX QEMU ARM virt examples (requires nuttx in external/).
+# Skips gracefully if NuttX SDK is not available.
 build-examples-nuttx:
     #!/usr/bin/env bash
     set -e
-    echo "Building NuttX QEMU ARM virt examples..."
     if [ ! -d "$NUTTX_DIR/include" ]; then
-        echo "ERROR: NuttX not found at $NUTTX_DIR. Run: just setup-nuttx"
-        exit 1
+        echo "Skipping NuttX QEMU examples (NuttX not found). Run: just setup-nuttx"
+        exit 0
     fi
+    echo "Building NuttX QEMU ARM virt examples..."
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
         (cd examples/qemu-arm-nuttx/rust/zenoh/$example && cargo +nightly build --release)
@@ -1493,6 +1495,22 @@ setup-nuttx:
     fi
     echo ""
 
+    # --- Configure and build NuttX kernel ---
+    BOARD_DIR="$(pwd)/packages/boards/nros-nuttx-qemu-arm"
+    HAS_CROSS=false; command -v arm-none-eabi-gcc &>/dev/null && HAS_CROSS=true
+    HAS_KCONFIG=false; (command -v kconfig-conf &>/dev/null || command -v olddefconfig &>/dev/null) && HAS_KCONFIG=true
+    if $HAS_CROSS && $HAS_KCONFIG; then
+        echo "Configuring and building NuttX kernel..."
+        NUTTX_DIR="$NUTTX_DIR" NUTTX_APPS_DIR="$NUTTX_APPS_DIR" \
+            "$BOARD_DIR/scripts/build-nuttx.sh"
+    else
+        echo "WARNING: Skipping NuttX kernel build (missing dependencies)."
+        $HAS_CROSS   || echo "  - arm-none-eabi-gcc not found (sudo apt install gcc-arm-none-eabi)"
+        $HAS_KCONFIG || echo "  - kconfig tools not found (pip install kconfiglib)"
+        echo "  Install and run: just build-nuttx"
+    fi
+    echo ""
+
     echo "=== Environment Variables ==="
     echo ""
     echo "Add these to your shell or .cargo/config.toml [env] section:"
@@ -1501,6 +1519,27 @@ setup-nuttx:
     echo "  export NUTTX_APPS_DIR=$NUTTX_APPS_DIR"
     echo ""
     echo "Setup complete!"
+
+# Build NuttX kernel without re-cloning sources.
+# Requires arm-none-eabi-gcc + kconfig tools. Sources must exist (run just setup-nuttx first).
+# Skips gracefully if NuttX SDK or build tools are not available.
+build-nuttx:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "{{NUTTX_DIR}}/include" ]; then
+        echo "Skipping NuttX kernel build (NuttX not found). Run: just setup-nuttx"
+        exit 0
+    fi
+    if ! command -v arm-none-eabi-gcc &>/dev/null; then
+        echo "Skipping NuttX kernel build (arm-none-eabi-gcc not found)"
+        exit 0
+    fi
+    if ! command -v kconfig-conf &>/dev/null && ! command -v olddefconfig &>/dev/null; then
+        echo "Skipping NuttX kernel build (kconfig tools not found)"
+        exit 0
+    fi
+    NUTTX_DIR={{NUTTX_DIR}} NUTTX_APPS_DIR={{NUTTX_APPS_DIR}} \
+        packages/boards/nros-nuttx-qemu-arm/scripts/build-nuttx.sh
 
 # Download ThreadX kernel, NetX Duo, and learn-samples for ThreadX platform development.
 # Sources are placed in external/ and pointed to by environment variables.
@@ -1672,12 +1711,13 @@ setup:
     echo "       - riscv32imc-unknown-none-elf  (ESP32-C3 RISC-V)"
     echo "       - riscv64gc-unknown-none-elf   (QEMU RISC-V 64-bit)"
     echo "       - armv7a-nuttx-eabi            (NuttX ARM, Tier 3 via build-std)"
-    echo "  5. Install cargo tools + verification toolchains:"
+    echo "  5. Install cargo tools, pip packages + verification toolchains:"
     echo "       - cargo-nextest          (test runner)"
     echo "       - espflash               (ESP32 flash tool)"
     echo "       - cargo-nano-ros         (message binding generator)"
     echo "       - kani-verifier          (bounded model checking)"
     echo "       - verus                  (deductive verification)"
+    echo "       - kconfiglib (pip)       (NuttX Kconfig tools)"
     echo "  6. Build Espressif QEMU from source → ~/.local/bin/qemu-system-riscv32"
     echo "     (ESP32-C3 emulator — requires git, ninja, python3, pkg-config,"
     echo "      libglib2.0-dev, libpixman-1-dev, libgcrypt20-dev, libslirp-dev)"
@@ -1778,6 +1818,12 @@ setup:
     fi
     just setup-verus || echo "WARNING: Verus setup failed (non-fatal)"
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
+    # kconfiglib: Python Kconfig tools required by NuttX build (olddefconfig, menuconfig)
+    if command -v olddefconfig &>/dev/null || command -v kconfig-conf &>/dev/null; then
+        echo "kconfig tools already installed"
+    else
+        pip install kconfiglib || echo "WARNING: kconfiglib install failed (non-fatal, needed for just build-nuttx)"
+    fi
     echo ""
 
     echo "=== [6/10] Building Espressif QEMU (qemu-system-riscv32) ==="

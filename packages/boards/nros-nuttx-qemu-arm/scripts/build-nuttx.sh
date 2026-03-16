@@ -8,10 +8,13 @@
 #   3. Outputs a bootable ELF at $NUTTX_DIR/nuttx
 #
 # Prerequisites:
-#   - NUTTX_DIR set to NuttX source (e.g., external/nuttx)
-#   - NUTTX_APPS_DIR set to NuttX apps source (e.g., external/nuttx-apps)
 #   - ARM cross-compiler: arm-none-eabi-gcc
+#   - kconfig-frontends (kconfig-conf) or Python kconfiglib (pip install kconfiglib)
 #   - Run `just setup-nuttx` to download sources
+#
+# Environment (auto-resolved from project root if not set):
+#   - NUTTX_DIR — NuttX source (default: external/nuttx)
+#   - NUTTX_APPS_DIR — NuttX apps source (default: external/nuttx-apps)
 #
 # Usage:
 #   ./build-nuttx.sh                    # Build with default defconfig
@@ -22,14 +25,19 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 BOARD_DIR="$(dirname "$SCRIPT_DIR")"
+PROJECT_ROOT="$(cd "$BOARD_DIR/../../../.." && pwd)"
 DEFCONFIG="$BOARD_DIR/nuttx-config/defconfig"
+
+# --- Auto-resolve paths from project root if not set ---
+
+NUTTX_DIR="${NUTTX_DIR:-$PROJECT_ROOT/external/nuttx}"
+NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$PROJECT_ROOT/external/nuttx-apps}"
 
 # --- Validate environment ---
 
-if [ -z "${NUTTX_DIR:-}" ]; then
-    echo "ERROR: NUTTX_DIR not set."
+if [ ! -d "$NUTTX_DIR" ]; then
+    echo "ERROR: NuttX not found at $NUTTX_DIR."
     echo "Run: just setup-nuttx"
-    echo "Then: export NUTTX_DIR=\$PWD/external/nuttx"
     exit 1
 fi
 
@@ -39,7 +47,6 @@ if [ ! -d "$NUTTX_DIR/include" ]; then
     exit 1
 fi
 
-NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$(dirname "$NUTTX_DIR")/nuttx-apps}"
 if [ ! -d "$NUTTX_APPS_DIR" ]; then
     echo "ERROR: NuttX apps not found at $NUTTX_APPS_DIR"
     echo "Run: just setup-nuttx"
@@ -49,6 +56,14 @@ fi
 if ! command -v arm-none-eabi-gcc &>/dev/null; then
     echo "ERROR: arm-none-eabi-gcc not found."
     echo "Install: sudo apt install gcc-arm-none-eabi"
+    exit 1
+fi
+
+if ! command -v kconfig-conf &>/dev/null && ! command -v olddefconfig &>/dev/null; then
+    echo "ERROR: kconfig tools not found (kconfig-conf or kconfiglib)."
+    echo "Install one of:"
+    echo "  pip install kconfiglib    # Python implementation (recommended)"
+    echo "  sudo apt install kconfig-frontends  # Native C implementation"
     exit 1
 fi
 
@@ -88,9 +103,14 @@ cd "$NUTTX_DIR"
 # Set apps directory for NuttX build system
 export APPDIR="$NUTTX_APPS_DIR"
 
-# Copy defconfig and resolve defaults
-if [ ! -f .config ] || [ "$DEFCONFIG" -nt .config ]; then
+# Configure NuttX: symlink Make.defs from the board, copy our defconfig, resolve.
+# This replicates what tools/configure.sh does without requiring the full script
+# (which has additional dependencies like kconfig-tweak for host detection).
+BOARD_MAKEDEFS="$NUTTX_DIR/boards/arm/qemu/qemu-armv7a/scripts/Make.defs"
+if [ ! -f .config ] || [ ! -f Make.defs ] || [ "$DEFCONFIG" -nt .config ]; then
     echo "Configuring NuttX..."
+    rm -f .config Make.defs
+    ln -sf "$BOARD_MAKEDEFS" Make.defs
     cp "$DEFCONFIG" .config
     make olddefconfig
 fi
