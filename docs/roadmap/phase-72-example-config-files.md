@@ -4,7 +4,7 @@
 examples with per-example `config.toml` files, enabling users to customize
 IP addresses, MAC addresses, and zenoh locators without modifying source code.
 
-**Status**: In Progress (72.1–72.7 done)
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -186,8 +186,8 @@ compatibility but delegate to `from_toml()` internally or are deprecated.
 - [x] 72.5 — Port RTOS examples (FreeRTOS, NuttX, ThreadX)
 - [x] 72.6 — Port ESP32 examples (WiFi + serial config)
 - [x] 72.7 — Port C/C++ examples (read config.toml from CMake)
-- [ ] 72.8 — Update test infrastructure to use config.toml
-- [ ] 72.9 — Document config.toml format in the book
+- [x] 72.8 — Update test infrastructure to use config.toml
+- [x] 72.9 — Document config.toml format in the book
 
 ### 72.1 — Define config TOML schema and implement parser
 
@@ -347,13 +347,13 @@ fields, and per-board defaults.
 
 ## Acceptance Criteria
 
-- [ ] Each embedded example has a `config.toml` with its network settings
-- [ ] Changing `config.toml` and rebuilding produces a binary with the new settings
-- [ ] No IP/MAC/locator values remain hardcoded in example `main.rs` files
-- [ ] Board crate preset methods (`default()`, `listener()`) still work for
+- [x] Each embedded example has a `config.toml` with its network settings
+- [x] Changing `config.toml` and rebuilding produces a binary with the new settings
+- [x] No IP/MAC/locator values remain hardcoded in example `main.rs` files
+- [x] Board crate preset methods (`default()`, `listener()`) still work for
       backwards compatibility
-- [ ] QEMU tests pass with config.toml-based examples
-- [ ] Config format is documented in the book
+- [x] QEMU tests pass with config.toml-based examples
+- [x] Config format is documented in the book
 
 ## Notes
 

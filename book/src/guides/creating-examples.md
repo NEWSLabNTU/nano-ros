@@ -167,6 +167,7 @@ BSP examples run on bare-metal embedded targets via a Board Support Package that
 examples/qemu/my-example/
 ├── Cargo.toml
 ├── package.xml
+├── config.toml         # network + zenoh settings (see reference/config-toml.md)
 ├── src/
 │   └── main.rs
 ├── generated/

@@ -280,6 +280,31 @@ pub fn count_pattern(output: &str, pattern: &str) -> usize {
     output.matches(pattern).count()
 }
 
+/// Read the `ip` field from an example's `config.toml`.
+///
+/// Returns `None` if the file doesn't exist or has no `[network] ip` field.
+pub fn read_config_ip(config_path: &std::path::Path) -> Option<String> {
+    let content = std::fs::read_to_string(config_path).ok()?;
+    let mut in_network = false;
+    for line in content.lines() {
+        let line = line.trim();
+        if line.starts_with('[') {
+            in_network = line == "[network]";
+            continue;
+        }
+        if in_network {
+            if let Some(rest) = line.strip_prefix("ip") {
+                let rest = rest.trim_start();
+                if let Some(rest) = rest.strip_prefix('=') {
+                    let val = rest.trim().trim_matches('"');
+                    return Some(val.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 /// Get the project root directory
 pub fn project_root() -> std::path::PathBuf {
     std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))

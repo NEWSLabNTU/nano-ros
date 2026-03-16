@@ -460,19 +460,32 @@ pub fn parse_test_results(output: &str) -> (usize, usize) {
 ///
 /// Orphaned processes are handled separately by `PR_SET_PDEATHSIG(SIGKILL)`.
 pub fn cleanup_tap_network() {
+    // Read QEMU peer IPs from example config.toml files (fallback to defaults).
+    let root = crate::project_root();
+    let peer_ips: Vec<String> = ["talker", "listener"]
+        .iter()
+        .enumerate()
+        .map(|(i, name)| {
+            let config = root.join(format!(
+                "examples/qemu-arm-baremetal/rust/zenoh/{name}/config.toml"
+            ));
+            crate::read_config_ip(&config).unwrap_or_else(|| format!("192.0.3.{}", 10 + i))
+        })
+        .collect();
+
     // Kill stale TCP connections to QEMU IPs (best-effort, needs CAP_NET_ADMIN)
-    for ip in &["192.0.3.10", "192.0.3.11"] {
+    for ip in &peer_ips {
         let _ = std::process::Command::new("ss")
-            .args(["-K", "dst", ip])
+            .args(["-K", "dst", ip.as_str()])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
     }
 
     // Flush ARP cache for QEMU IPs (best-effort, needs CAP_NET_ADMIN)
-    for ip in &["192.0.3.10", "192.0.3.11"] {
+    for ip in &peer_ips {
         let _ = std::process::Command::new("ip")
-            .args(["neigh", "del", ip, "dev", "qemu-br"])
+            .args(["neigh", "del", ip.as_str(), "dev", "qemu-br"])
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .status();
