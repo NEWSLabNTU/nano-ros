@@ -167,3 +167,204 @@ impl Default for NodeConfig {
         Self::serial_default()
     }
 }
+
+impl NodeConfig {
+    /// Parse configuration from a TOML string.
+    ///
+    /// Missing fields use board-specific defaults. This is designed to work
+    /// with `include_str!("../config.toml")` for compile-time embedding.
+    ///
+    /// Note: WiFi credentials (SSID/password) should not be stored in
+    /// config.toml (they may contain secrets). Use builder methods or
+    /// environment variables for WiFi credentials.
+    ///
+    /// # Supported fields
+    ///
+    /// ```toml
+    /// [wifi]
+    /// ssid = "MyNetwork"
+    /// password = "secret"
+    ///
+    /// [network]
+    /// ip = "10.0.0.100"
+    /// gateway = "10.0.0.1"
+    /// prefix = 24
+    ///
+    /// [serial]
+    /// baudrate = 115200
+    ///
+    /// [zenoh]
+    /// locator = "tcp/10.0.0.1:7447"
+    /// domain_id = 0
+    /// ```
+    pub fn from_toml(toml: &'static str) -> Self {
+        let mut config = Self::default();
+        let mut section = "";
+
+        for line in toml.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with('[') {
+                if let Some(end) = line.find(']') {
+                    section = line[1..end].trim();
+                }
+                continue;
+            }
+            if let Some(eq_pos) = line.find('=') {
+                let key = line[..eq_pos].trim();
+                let value = line[eq_pos + 1..].trim();
+                let value = if (value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\''))
+                {
+                    &value[1..value.len() - 1]
+                } else {
+                    value
+                };
+
+                match (section, key) {
+                    #[cfg(feature = "wifi")]
+                    ("wifi", "ssid") => {
+                        config.wifi.ssid = value;
+                    }
+                    #[cfg(feature = "wifi")]
+                    ("wifi", "password") => {
+                        config.wifi.password = value;
+                    }
+                    #[cfg(feature = "wifi")]
+                    ("network", "ip") => {
+                        if let Some(ip) = parse_ipv4(value) {
+                            // Parse prefix from existing static config or default to 24
+                            let (existing_prefix, existing_gateway) = match &config.ip_mode {
+                                IpMode::Static {
+                                    prefix, gateway, ..
+                                } => (*prefix, *gateway),
+                                IpMode::Dhcp => (24, [0, 0, 0, 0]),
+                            };
+                            config.ip_mode = IpMode::Static {
+                                ip,
+                                prefix: existing_prefix,
+                                gateway: existing_gateway,
+                            };
+                        }
+                    }
+                    #[cfg(feature = "wifi")]
+                    ("network", "gateway") => {
+                        if let Some(gw) = parse_ipv4(value) {
+                            match &config.ip_mode {
+                                IpMode::Static { ip, prefix, .. } => {
+                                    config.ip_mode = IpMode::Static {
+                                        ip: *ip,
+                                        prefix: *prefix,
+                                        gateway: gw,
+                                    };
+                                }
+                                IpMode::Dhcp => {
+                                    config.ip_mode = IpMode::Static {
+                                        ip: [0, 0, 0, 0],
+                                        prefix: 24,
+                                        gateway: gw,
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    #[cfg(feature = "wifi")]
+                    ("network", "prefix") => {
+                        if let Some(p) = parse_u32(value) {
+                            match &config.ip_mode {
+                                IpMode::Static { ip, gateway, .. } => {
+                                    config.ip_mode = IpMode::Static {
+                                        ip: *ip,
+                                        prefix: p as u8,
+                                        gateway: *gateway,
+                                    };
+                                }
+                                IpMode::Dhcp => {
+                                    config.ip_mode = IpMode::Static {
+                                        ip: [0, 0, 0, 0],
+                                        prefix: p as u8,
+                                        gateway: [0, 0, 0, 0],
+                                    };
+                                }
+                            }
+                        }
+                    }
+                    #[cfg(feature = "serial")]
+                    ("serial", "baudrate") => {
+                        if let Some(b) = parse_u32(value) {
+                            config.baudrate = b;
+                        }
+                    }
+                    ("zenoh", "locator") => {
+                        config.zenoh_locator = value;
+                    }
+                    ("zenoh", "domain_id") => {
+                        if let Some(d) = parse_u32(value) {
+                            config.domain_id = d;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        config
+    }
+}
+
+// ── Minimal no_std parsers ──────────────────────────────────────────────
+
+/// Parse an IPv4 address string ("192.0.3.10") into [u8; 4].
+fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
+    let mut result = [0u8; 4];
+    let mut octet_idx = 0;
+    let mut current: u16 = 0;
+    let mut has_digit = false;
+
+    for b in s.as_bytes() {
+        match b {
+            b'0'..=b'9' => {
+                current = current * 10 + (*b - b'0') as u16;
+                if current > 255 {
+                    return None;
+                }
+                has_digit = true;
+            }
+            b'.' => {
+                if !has_digit || octet_idx >= 3 {
+                    return None;
+                }
+                result[octet_idx] = current as u8;
+                octet_idx += 1;
+                current = 0;
+                has_digit = false;
+            }
+            _ => return None,
+        }
+    }
+
+    if has_digit && octet_idx == 3 {
+        result[3] = current as u8;
+        Some(result)
+    } else {
+        None
+    }
+}
+
+/// Parse a decimal integer string.
+fn parse_u32(s: &str) -> Option<u32> {
+    let mut result: u32 = 0;
+    let mut has_digit = false;
+    for b in s.as_bytes() {
+        match b {
+            b'0'..=b'9' => {
+                result = result.checked_mul(10)?.checked_add((*b - b'0') as u32)?;
+                has_digit = true;
+            }
+            _ => return None,
+        }
+    }
+    if has_digit { Some(result) } else { None }
+}

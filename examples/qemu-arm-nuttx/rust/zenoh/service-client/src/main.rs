@@ -8,7 +8,7 @@ use nros::prelude::*;
 use nros_nuttx_qemu_arm::{Config, run};
 
 fn main() {
-    run(Config::client(), |config| {
+    run(Config::from_toml(include_str!("../config.toml")), |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_client");

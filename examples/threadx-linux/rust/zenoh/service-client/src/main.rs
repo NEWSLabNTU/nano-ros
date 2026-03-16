@@ -7,7 +7,7 @@ use nros::prelude::*;
 use nros_threadx_linux::{Config, run};
 
 fn main() {
-    run(Config::listener(), |config| {
+    run(Config::from_toml(include_str!("../config.toml")), |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("add_two_ints_client");

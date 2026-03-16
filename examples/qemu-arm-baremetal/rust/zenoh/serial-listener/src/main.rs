@@ -23,47 +23,50 @@ use std_msgs::msg::Int32;
 
 #[nros_mps2_an385::entry]
 fn main() -> ! {
-    run(Config::serial_default(), |config| {
-        println!("Zenoh locator: {}", config.zenoh_locator);
+    run(
+        Config::from_toml(include_str!("../config.toml")),
+        |config| {
+            println!("Zenoh locator: {}", config.zenoh_locator);
 
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("serial_listener");
-        let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("serial_listener")?;
+            let exec_config = ExecutorConfig::new(config.zenoh_locator)
+                .domain_id(config.domain_id)
+                .node_name("serial_listener");
+            let mut executor = Executor::open(&exec_config)?;
+            let mut node = executor.create_node("serial_listener")?;
 
-        println!("Subscribing to /chatter (std_msgs/Int32)");
-        let mut subscription = node.create_subscription::<Int32>("/chatter")?;
-        println!("Subscriber declared");
+            println!("Subscribing to /chatter (std_msgs/Int32)");
+            let mut subscription = node.create_subscription::<Int32>("/chatter")?;
+            println!("Subscriber declared");
 
-        println!("");
-        println!("Waiting for messages over serial...");
+            println!("");
+            println!("Waiting for messages over serial...");
 
-        let mut msg_count = 0u32;
-        let mut poll_count = 0u32;
+            let mut msg_count = 0u32;
+            let mut poll_count = 0u32;
 
-        loop {
-            executor.spin_once(10);
+            loop {
+                executor.spin_once(10);
 
-            if let Some(msg) = subscription.try_recv()? {
-                msg_count += 1;
-                println!("Received [{}]: {}", msg_count, msg.data);
+                if let Some(msg) = subscription.try_recv()? {
+                    msg_count += 1;
+                    println!("Received [{}]: {}", msg_count, msg.data);
 
-                if msg_count >= 10 {
+                    if msg_count >= 10 {
+                        println!("");
+                        println!("Received 10 messages.");
+                        break;
+                    }
+                }
+
+                poll_count += 1;
+                if poll_count > 100000 {
                     println!("");
-                    println!("Received 10 messages.");
+                    println!("Timeout waiting for messages.");
                     break;
                 }
             }
 
-            poll_count += 1;
-            if poll_count > 100000 {
-                println!("");
-                println!("Timeout waiting for messages.");
-                break;
-            }
-        }
-
-        Ok::<(), NodeError>(())
-    })
+            Ok::<(), NodeError>(())
+        },
+    )
 }

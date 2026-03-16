@@ -1,0 +1,11 @@
+# NuttX QEMU ARM talker — network configuration
+# Used by nros-nuttx-qemu-arm board crate (Config::from_toml)
+
+[network]
+ip = "192.0.3.10"
+gateway = "192.0.3.1"
+prefix = 24
+
+[zenoh]
+locator = "tcp/192.0.3.1:7447"
+domain_id = 0

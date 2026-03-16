@@ -1,0 +1,12 @@
+# QEMU ARM FreeRTOS service client — network configuration
+# Used by nros-mps2-an385-freertos board crate (Config::from_toml)
+
+[network]
+ip = "192.0.3.11"
+mac = "02:00:00:00:00:01"
+gateway = "192.0.3.1"
+netmask = "255.255.255.0"
+
+[zenoh]
+locator = "tcp/192.0.3.1:7447"
+domain_id = 0

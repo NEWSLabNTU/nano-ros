@@ -8,7 +8,7 @@ use nros_nuttx_qemu_arm::{Config, run};
 use std_msgs::msg::Int32;
 
 fn main() {
-    run(Config::listener(), |config| {
+    run(Config::from_toml(include_str!("../config.toml")), |config| {
         let exec_config = ExecutorConfig::new(config.zenoh_locator)
             .domain_id(config.domain_id)
             .node_name("listener");

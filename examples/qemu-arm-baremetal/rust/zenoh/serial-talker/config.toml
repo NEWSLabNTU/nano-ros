@@ -1,0 +1,9 @@
+# QEMU ARM bare-metal serial talker — transport configuration
+# Used by nros-mps2-an385 board crate (Config::from_toml)
+
+[serial]
+baudrate = 115200
+
+[zenoh]
+locator = "serial/UART_0#baudrate=115200"
+domain_id = 0

@@ -101,4 +101,134 @@ impl Config {
         self.domain_id = domain_id;
         self
     }
+
+    /// Parse configuration from a TOML string.
+    ///
+    /// Missing fields use board-specific defaults. This is designed to work
+    /// with `include_str!("../config.toml")` for compile-time embedding.
+    ///
+    /// # Supported fields
+    ///
+    /// ```toml
+    /// [network]
+    /// ip = "192.0.3.10"
+    /// gateway = "192.0.3.1"
+    /// prefix = 24
+    ///
+    /// [zenoh]
+    /// locator = "tcp/192.0.3.1:7447"
+    /// domain_id = 0
+    /// ```
+    pub fn from_toml(toml: &'static str) -> Self {
+        let mut config = Self::default();
+        let mut section = "";
+
+        for line in toml.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            if line.starts_with('[') {
+                if let Some(end) = line.find(']') {
+                    section = line[1..end].trim();
+                }
+                continue;
+            }
+            if let Some(eq_pos) = line.find('=') {
+                let key = line[..eq_pos].trim();
+                let value = line[eq_pos + 1..].trim();
+                let value = if (value.starts_with('"') && value.ends_with('"'))
+                    || (value.starts_with('\'') && value.ends_with('\''))
+                {
+                    &value[1..value.len() - 1]
+                } else {
+                    value
+                };
+
+                match (section, key) {
+                    ("network", "ip") => {
+                        if let Some(ip) = parse_ipv4(value) {
+                            config.ip = ip;
+                        }
+                    }
+                    ("network", "gateway") => {
+                        if let Some(gw) = parse_ipv4(value) {
+                            config.gateway = gw;
+                        }
+                    }
+                    ("network", "prefix") => {
+                        if let Some(p) = parse_u32(value) {
+                            config.prefix = p as u8;
+                        }
+                    }
+                    ("zenoh", "locator") => {
+                        config.zenoh_locator = value;
+                    }
+                    ("zenoh", "domain_id") => {
+                        if let Some(d) = parse_u32(value) {
+                            config.domain_id = d;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+
+        config
+    }
+}
+
+// ── Minimal no_std parsers ──────────────────────────────────────────────
+
+/// Parse an IPv4 address string ("192.0.3.10") into [u8; 4].
+fn parse_ipv4(s: &str) -> Option<[u8; 4]> {
+    let mut result = [0u8; 4];
+    let mut octet_idx = 0;
+    let mut current: u16 = 0;
+    let mut has_digit = false;
+
+    for b in s.as_bytes() {
+        match b {
+            b'0'..=b'9' => {
+                current = current * 10 + (*b - b'0') as u16;
+                if current > 255 {
+                    return None;
+                }
+                has_digit = true;
+            }
+            b'.' => {
+                if !has_digit || octet_idx >= 3 {
+                    return None;
+                }
+                result[octet_idx] = current as u8;
+                octet_idx += 1;
+                current = 0;
+                has_digit = false;
+            }
+            _ => return None,
+        }
+    }
+
+    if has_digit && octet_idx == 3 {
+        result[3] = current as u8;
+        Some(result)
+    } else {
+        None
+    }
+}
+
+/// Parse a decimal integer string.
+fn parse_u32(s: &str) -> Option<u32> {
+    let mut result: u32 = 0;
+    let mut has_digit = false;
+    for b in s.as_bytes() {
+        match b {
+            b'0'..=b'9' => {
+                result = result.checked_mul(10)?.checked_add((*b - b'0') as u32)?;
+                has_digit = true;
+            }
+            _ => return None,
+        }
+    }
+    if has_digit { Some(result) } else { None }
 }

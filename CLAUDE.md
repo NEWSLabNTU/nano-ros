@@ -241,6 +241,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 69 | Cross-platform C/C++ examples + integration tests | Not Started |
 | 70 | DDS RMW backend (dust-dds) — POSIX | In Progress |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
+| 72 | Per-example config.toml files | Not Started |
 
 ## Quick Reference
 

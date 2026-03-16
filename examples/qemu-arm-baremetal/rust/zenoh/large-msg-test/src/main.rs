@@ -38,53 +38,56 @@ fn build_payload(buf: &mut [u8], seq: u32, size: usize) {
 
 #[nros_mps2_an385::entry]
 fn main() -> ! {
-    run(Config::default(), |config| {
-        let exec_config = ExecutorConfig::new(config.zenoh_locator)
-            .domain_id(config.domain_id)
-            .node_name("large_msg_test");
-        let mut executor = Executor::open(&exec_config)?;
-        let mut node = executor.create_node("large_msg_test")?;
+    run(
+        Config::from_toml(include_str!("../config.toml")),
+        |config| {
+            let exec_config = ExecutorConfig::new(config.zenoh_locator)
+                .domain_id(config.domain_id)
+                .node_name("large_msg_test");
+            let mut executor = Executor::open(&exec_config)?;
+            let mut node = executor.create_node("large_msg_test")?;
 
-        println!("Large message publish test");
-        println!("=========================");
+            println!("Large message publish test");
+            println!("=========================");
 
-        let publisher = node.create_publisher::<std_msgs::msg::Int32>("/large_msg_test")?;
+            let publisher = node.create_publisher::<std_msgs::msg::Int32>("/large_msg_test")?;
 
-        // Poll to establish connection
-        for _ in 0..50 {
-            executor.spin_once(10);
-        }
-
-        let test_sizes: &[usize] = &[64, 128, 256, 512, 768, 1024];
-        let mut buf = [0u8; 1024];
-        let mut passed = 0u32;
-        let mut failed = 0u32;
-
-        for (seq, &size) in test_sizes.iter().enumerate() {
-            build_payload(&mut buf, seq as u32, size);
-            match publisher.publish_raw(&buf[..size]) {
-                Ok(()) => {
-                    println!("[PASS] publish size={}", size);
-                    passed += 1;
-                }
-                Err(e) => {
-                    println!("[FAIL] publish size={}: {:?}", size, e);
-                    failed += 1;
-                }
-            }
-            // Allow network processing between publishes
-            for _ in 0..10 {
+            // Poll to establish connection
+            for _ in 0..50 {
                 executor.spin_once(10);
             }
-        }
 
-        println!("");
-        if failed == 0 {
-            println!("All tests passed ({} sizes)", passed);
-        } else {
-            println!("FAILED: {} passed, {} failed", passed, failed);
-        }
+            let test_sizes: &[usize] = &[64, 128, 256, 512, 768, 1024];
+            let mut buf = [0u8; 1024];
+            let mut passed = 0u32;
+            let mut failed = 0u32;
 
-        Ok::<(), NodeError>(())
-    })
+            for (seq, &size) in test_sizes.iter().enumerate() {
+                build_payload(&mut buf, seq as u32, size);
+                match publisher.publish_raw(&buf[..size]) {
+                    Ok(()) => {
+                        println!("[PASS] publish size={}", size);
+                        passed += 1;
+                    }
+                    Err(e) => {
+                        println!("[FAIL] publish size={}: {:?}", size, e);
+                        failed += 1;
+                    }
+                }
+                // Allow network processing between publishes
+                for _ in 0..10 {
+                    executor.spin_once(10);
+                }
+            }
+
+            println!("");
+            if failed == 0 {
+                println!("All tests passed ({} sizes)", passed);
+            } else {
+                println!("FAILED: {} passed, {} failed", passed, failed);
+            }
+
+            Ok::<(), NodeError>(())
+        },
+    )
 }

@@ -1,0 +1,12 @@
+# QEMU ARM bare-metal RTIC service server — network configuration
+# Used by nros-mps2-an385 board crate (Config::from_toml)
+
+[network]
+ip = "192.0.3.10"
+mac = "02:00:00:00:00:00"
+gateway = "192.0.3.1"
+prefix = 24
+
+[zenoh]
+locator = "tcp/192.0.3.1:7447"
+domain_id = 0
