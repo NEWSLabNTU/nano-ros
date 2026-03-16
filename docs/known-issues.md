@@ -84,10 +84,8 @@ allocators** that cannot share memory or statistics:
 
 **Concerns**:
 
-1. **FreeRTOS `z_realloc` returns NULL** — zenoh-pico's FreeRTOS `system.c`
-   does not implement `z_realloc` (returns NULL). If zenoh-pico ever calls
-   `z_realloc` on a FreeRTOS target, the allocation silently fails.
-   Current usage does not hit this path, but it's fragile.
+1. ~~**FreeRTOS `z_realloc` returns NULL**~~ (Fixed) — implemented as
+   alloc-copy-free in `system/freertos/system.c`, matching ThreadX.
 
 2. **ThreadX has no Rust global allocator** — if a future nros feature
    requires `alloc` on ThreadX, there's no allocator bridge. FreeRTOS has
