@@ -357,7 +357,7 @@ deterministic O(1) without any zenoh-pico patches.
 - [x] 73.15 — Remove `alloc` from large service replies
 - [x] 73.16 — Remove `alloc` from zenoh ID formatting and executor config
 - [x] 73.17 — Deprecate owned-type subscription API
-- [ ] 73.18 — C/C++ borrowed subscription API
+- [x] 73.18 — C/C++ borrowed subscription API
 - [ ] 73.19 — Migrate Rust examples to borrowed types
 - [ ] 73.20 — Migrate C/C++ examples to borrowed types
 - [ ] 73.21 — Remove `SUBSCRIBER_BUFFERS` and old subscription API
