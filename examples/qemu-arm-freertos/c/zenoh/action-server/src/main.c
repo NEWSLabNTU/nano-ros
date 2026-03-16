@@ -174,6 +174,16 @@ void app_main(void) {
         return;
     }
 
+    ret = nros_executor_add_action_server(&app.executor, &app.action_server);
+    if (ret != NROS_RET_OK) {
+        printf("Failed to add action server to executor: %d\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_action_server_fini(&app.action_server);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+
     printf("Action server ready on /fibonacci\n");
     printf("Waiting for goals...\n");
 
