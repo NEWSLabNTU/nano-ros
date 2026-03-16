@@ -7,11 +7,11 @@
 use core::ffi::c_int;
 use core::ptr;
 
-#[cfg(feature = "alloc")]
 use crate::action::{ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline};
 use crate::action::{nros_action_server_state_t, nros_action_server_t};
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
+use crate::opaque_sizes::ACTION_SERVER_INTERNAL_OPAQUE_U64S;
 use crate::service::{nros_service_state_t, nros_service_t};
 use crate::subscription::{nros_subscription_state_t, nros_subscription_t};
 use crate::support::{nros_support_state_t, nros_support_t};
@@ -773,67 +773,53 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         };
 
         // Create the internal struct (handle filled after registration).
-        // Action server internal state still uses Box (alloc) because its
-        // lifetime is tied to the action server, not the executor.
-        #[cfg(feature = "alloc")]
-        {
-            let internal = alloc::boxed::Box::new(ActionServerInternal {
-                handle: None,
-                executor_ptr: opaque_ptr,
-                c_goal_callback,
-                c_cancel_callback: server_ref.cancel_callback,
-                c_accepted_callback: server_ref.accepted_callback,
-                c_context: server_ref.context,
-                server_ptr: server,
-            });
+        // Written directly into the server's inline `_internal` storage — no heap allocation.
+        let internal = ActionServerInternal {
+            handle: None,
+            executor_ptr: opaque_ptr,
+            c_goal_callback,
+            c_cancel_callback: server_ref.cancel_callback,
+            c_accepted_callback: server_ref.accepted_callback,
+            c_context: server_ref.context,
+            server_ptr: server,
+        };
 
-            // Leak the Box to get a stable pointer for the callback context.
-            // Ownership transfers to the action server's `_internal` field.
-            let internal_ptr = alloc::boxed::Box::into_raw(internal);
-            let context = internal_ptr as *mut core::ffi::c_void;
+        let server_mut = &mut *server;
+        core::ptr::write(
+            server_mut._internal.as_mut_ptr() as *mut ActionServerInternal,
+            internal,
+        );
+        let context = server_mut._internal.as_mut_ptr() as *mut core::ffi::c_void;
 
-            // Register with the nros-node executor using trampolines
-            let result = rust_exec
-                .add_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
-                    action_name,
-                    type_str,
-                    type_hash_str,
-                    goal_callback_trampoline,
-                    cancel_callback_trampoline,
-                    context,
-                );
-
-            match result {
-                Ok(handle) => {
-                    // Fill in the handle now that registration succeeded
-                    let internal_ref = &mut *internal_ptr;
-                    internal_ref.handle = Some(handle);
-
-                    // Store the internal pointer in the server struct
-                    let server_mut = &mut *server;
-                    server_mut._internal = context;
-
-                    executor.handle_count += 1;
-                    NROS_RET_OK
-                }
-                Err(_) => {
-                    // Registration failed — reclaim the Box to free memory
-                    let _internal = alloc::boxed::Box::from_raw(internal_ptr);
-                    NROS_RET_ERROR
-                }
-            }
-        }
-
-        #[cfg(not(feature = "alloc"))]
-        {
-            let _ = (
-                rust_exec,
+        // Register with the nros-node executor using trampolines
+        let result = rust_exec
+            .add_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
                 action_name,
                 type_str,
                 type_hash_str,
-                c_goal_callback,
+                goal_callback_trampoline,
+                cancel_callback_trampoline,
+                context,
             );
-            NROS_RET_ERROR
+
+        match result {
+            Ok(handle) => {
+                // Fill in the handle now that registration succeeded
+                let internal_ref =
+                    &mut *(server_mut._internal.as_mut_ptr() as *mut ActionServerInternal);
+                internal_ref.handle = Some(handle);
+
+                executor.handle_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => {
+                // Registration failed — drop the internal and zero the storage
+                core::ptr::drop_in_place(
+                    server_mut._internal.as_mut_ptr() as *mut ActionServerInternal
+                );
+                server_mut._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
+                NROS_RET_ERROR
+            }
         }
     }
 }

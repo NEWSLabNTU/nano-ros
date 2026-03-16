@@ -6,10 +6,12 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 
+#include "nros/config.hpp"
 #include "nros/result.hpp"
 
-// FFI declarations
+// FFI declarations (create is declared in node.hpp with full type info)
 extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_action_client_send_goal(void* handle, const uint8_t* goal_buf,
@@ -19,7 +21,7 @@ nros_cpp_ret_t nros_cpp_action_client_get_result(void* handle, void* executor_ha
                                                  size_t result_buf_len, size_t* result_len);
 nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void* handle, uint8_t* feedback_buf,
                                                         size_t buf_len, size_t* feedback_len);
-nros_cpp_ret_t nros_cpp_action_client_destroy(void* handle);
+nros_cpp_ret_t nros_cpp_action_client_destroy(void* storage);
 } // extern "C"
 
 namespace nros {
@@ -60,7 +62,7 @@ template <typename A> class ActionClient {
         if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(nros_cpp_action_client_send_goal(handle_, buf, len, goal_id));
+        return Result(nros_cpp_action_client_send_goal(storage_, buf, len, goal_id));
     }
 
     /// Get the result for a goal (blocking with timeout).
@@ -76,7 +78,7 @@ template <typename A> class ActionClient {
         uint8_t buf[ResultType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         nros_cpp_ret_t ret =
-            nros_cpp_action_client_get_result(handle_, executor_, goal_id, buf, sizeof(buf), &len);
+            nros_cpp_action_client_get_result(storage_, executor_, goal_id, buf, sizeof(buf), &len);
         if (ret != 0) return Result(ret);
 
         if (ResultType::ffi_deserialize(buf, len, &result) != 0) {
@@ -95,7 +97,7 @@ template <typename A> class ActionClient {
         uint8_t buf[FeedbackType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         nros_cpp_ret_t ret =
-            nros_cpp_action_client_try_recv_feedback(handle_, buf, sizeof(buf), &len);
+            nros_cpp_action_client_try_recv_feedback(storage_, buf, sizeof(buf), &len);
         if (ret != 0 || len == 0) return false;
         if (FeedbackType::ffi_deserialize(buf, len, &feedback) != 0) return false;
         return true;
@@ -107,37 +109,38 @@ template <typename A> class ActionClient {
     /// Destructor — releases action client resources.
     ~ActionClient() {
         if (initialized_) {
-            nros_cpp_action_client_destroy(handle_);
+            nros_cpp_action_client_destroy(storage_);
             initialized_ = false;
         }
     }
 
     // Move semantics (non-copyable)
     ActionClient(ActionClient&& other)
-        : handle_(other.handle_), executor_(other.executor_), initialized_(other.initialized_) {
-        other.handle_ = nullptr;
-        other.executor_ = nullptr;
-        other.initialized_ = false;
+        : executor_(other.executor_), initialized_(other.initialized_) {
+        if (other.initialized_) {
+            memcpy(storage_, other.storage_, sizeof(storage_));
+            other.initialized_ = false;
+        }
     }
 
     ActionClient& operator=(ActionClient&& other) {
         if (this != &other) {
             if (initialized_) {
-                nros_cpp_action_client_destroy(handle_);
+                nros_cpp_action_client_destroy(storage_);
             }
-            handle_ = other.handle_;
             executor_ = other.executor_;
             initialized_ = other.initialized_;
-            other.handle_ = nullptr;
-            other.executor_ = nullptr;
-            other.initialized_ = false;
+            if (other.initialized_) {
+                memcpy(storage_, other.storage_, sizeof(storage_));
+                other.initialized_ = false;
+            }
         }
         return *this;
     }
 
     /// Default constructor — creates an uninitialized action client.
     /// Use `Node::create_action_client()` to initialize.
-    ActionClient() : handle_(nullptr), executor_(nullptr), initialized_(false) {}
+    ActionClient() : executor_(nullptr), initialized_(false) {}
 
   private:
     ActionClient(const ActionClient&) = delete;
@@ -145,7 +148,7 @@ template <typename A> class ActionClient {
 
     friend class Node;
 
-    void* handle_;
+    alignas(8) uint8_t storage_[NROS_CPP_ACTION_CLIENT_STORAGE_SIZE];
     void* executor_; // Executor context needed for get_result polling
     bool initialized_;
 };

@@ -5,9 +5,9 @@ use core::ffi::{c_char, c_void};
 use nros_rmw::{Session, Subscriber as SubscriberTrait, TopicInfo};
 
 use crate::{
-    CPP_SUBSCRIPTION_OPAQUE_U64S, CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL,
-    NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str,
-    nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_FULL, NROS_CPP_RET_INVALID_ARGUMENT,
+    NROS_CPP_RET_OK, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t,
+    nros_cpp_ret_t,
 };
 
 /// Default receive buffer size (matches nros-node's DEFAULT_RX_BUF_SIZE).

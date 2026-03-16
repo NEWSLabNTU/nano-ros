@@ -1,4 +1,6 @@
 //! Action server and client FFI functions for the C++ API.
+//!
+//! Alloc-free: all internal state is written into caller-provided inline storage.
 
 use core::ffi::{c_char, c_void};
 
@@ -9,6 +11,8 @@ use crate::{
     NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t,
     nros_cpp_qos_t, nros_cpp_ret_t,
 };
+
+use crate::{CPP_ACTION_CLIENT_OPAQUE_U64S, CPP_ACTION_SERVER_OPAQUE_U64S};
 
 /// Buffer size for action messages.
 const ACTION_BUF_SIZE: usize = 1024;
@@ -43,12 +47,19 @@ impl Default for PendingGoal {
 ///
 /// The `pending` array is filled by the goal callback trampoline during `spin_once()`,
 /// and drained by `try_recv_goal()`.
-struct CppActionServer {
+pub(crate) struct CppActionServer {
     handle: Option<nros_node::ActionServerRawHandle>,
     pending: [PendingGoal; MAX_PENDING_GOALS],
     action_name: [u8; 256],
     _action_name_len: usize,
 }
+
+// Compile-time assertion: inline storage must fit CppActionServer.
+const _: () = assert!(
+    core::mem::size_of::<CppActionServer>()
+        <= CPP_ACTION_SERVER_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "CPP_ACTION_SERVER_OPAQUE_U64S too small for CppActionServer"
+);
 
 /// Goal callback trampoline — auto-accepts goals and buffers them for polling.
 ///
@@ -99,7 +110,8 @@ unsafe extern "C" fn cancel_callback_trampoline(
 /// via `nros_cpp_action_server_try_recv_goal()`.
 ///
 /// # Safety
-/// All pointer parameters must be valid.
+/// All pointer parameters must be valid. `storage` must point to an
+/// 8-byte-aligned buffer of at least `CPP_ACTION_SERVER_OPAQUE_U64S * 8` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_server_create(
     node: *const nros_cpp_node_t,
@@ -107,13 +119,13 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
     type_name: *const c_char,
     type_hash: *const c_char,
     _qos: nros_cpp_qos_t,
-    out_handle: *mut *mut c_void,
+    storage: *mut c_void,
 ) -> nros_cpp_ret_t {
     if node.is_null()
         || action_name.is_null()
         || type_name.is_null()
         || type_hash.is_null()
-        || out_handle.is_null()
+        || storage.is_null()
     {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -138,17 +150,20 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
 
     let ctx = unsafe { &mut *(node_ref.executor as *mut CppContext) };
 
-    // Allocate the server struct first so we can pass its address as context
-    let mut server = alloc::boxed::Box::new(CppActionServer {
+    // Build the server struct into caller-provided storage
+    let name_len = act_str.len().min(255);
+    let mut server = CppActionServer {
         handle: None,
         pending: Default::default(),
         action_name: [0u8; 256],
-        _action_name_len: act_str.len().min(255),
-    });
-    server.action_name[..server._action_name_len]
-        .copy_from_slice(&act_str.as_bytes()[..server._action_name_len]);
+        _action_name_len: name_len,
+    };
+    server.action_name[..name_len].copy_from_slice(&act_str.as_bytes()[..name_len]);
 
-    let server_ptr = &mut *server as *mut CppActionServer as *mut c_void;
+    // Write into caller storage first so we have a stable address for the callback context
+    unsafe {
+        core::ptr::write(storage as *mut CppActionServer, server);
+    }
 
     match ctx.executor.add_action_server_raw(
         act_str,
@@ -156,16 +171,20 @@ pub unsafe extern "C" fn nros_cpp_action_server_create(
         hash_str,
         goal_callback_trampoline,
         cancel_callback_trampoline,
-        server_ptr,
+        storage,
     ) {
         Ok(handle) => {
-            server.handle = Some(handle);
-            unsafe {
-                *out_handle = alloc::boxed::Box::into_raw(server) as *mut c_void;
-            }
+            let server_ref = unsafe { &mut *(storage as *mut CppActionServer) };
+            server_ref.handle = Some(handle);
             NROS_CPP_RET_OK
         }
-        Err(_) => NROS_CPP_RET_TRANSPORT_ERROR,
+        Err(_) => {
+            // Registration failed — drop in place and zero storage
+            unsafe {
+                core::ptr::drop_in_place(storage as *mut CppActionServer);
+            }
+            NROS_CPP_RET_TRANSPORT_ERROR
+        }
     }
 }
 
@@ -304,17 +323,17 @@ pub unsafe extern "C" fn nros_cpp_action_server_complete_goal(
     NROS_CPP_RET_OK
 }
 
-/// Destroy an action server and free its resources.
+/// Destroy an action server (drop in place, no free).
 ///
 /// # Safety
-/// `handle` must be a valid action server handle, or NULL (no-op).
+/// `storage` must be a valid initialized action server storage, or NULL (no-op).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_action_server_destroy(handle: *mut c_void) -> nros_cpp_ret_t {
-    if handle.is_null() {
+pub unsafe extern "C" fn nros_cpp_action_server_destroy(storage: *mut c_void) -> nros_cpp_ret_t {
+    if storage.is_null() {
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        let _server = alloc::boxed::Box::from_raw(handle as *mut CppActionServer);
+        core::ptr::drop_in_place(storage as *mut CppActionServer);
     }
     NROS_CPP_RET_OK
 }
@@ -324,16 +343,24 @@ pub unsafe extern "C" fn nros_cpp_action_server_destroy(handle: *mut c_void) -> 
 // ============================================================================
 
 /// Internal state for the action client.
-struct CppActionClient {
+pub(crate) struct CppActionClient {
     core: nros_node::ActionClientCore<ACTION_BUF_SIZE, ACTION_BUF_SIZE, ACTION_BUF_SIZE>,
     action_name: [u8; 256],
     _action_name_len: usize,
 }
 
+// Compile-time assertion: inline storage must fit CppActionClient.
+const _: () = assert!(
+    core::mem::size_of::<CppActionClient>()
+        <= CPP_ACTION_CLIENT_OPAQUE_U64S * core::mem::size_of::<u64>(),
+    "CPP_ACTION_CLIENT_OPAQUE_U64S too small for CppActionClient"
+);
+
 /// Create an action client on a node.
 ///
 /// # Safety
-/// All pointer parameters must be valid.
+/// All pointer parameters must be valid. `storage` must point to an
+/// 8-byte-aligned buffer of at least `CPP_ACTION_CLIENT_OPAQUE_U64S * 8` bytes.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_cpp_action_client_create(
     node: *const nros_cpp_node_t,
@@ -341,13 +368,13 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
     type_name: *const c_char,
     type_hash: *const c_char,
     _qos: nros_cpp_qos_t,
-    out_handle: *mut *mut c_void,
+    storage: *mut c_void,
 ) -> nros_cpp_ret_t {
     if node.is_null()
         || action_name.is_null()
         || type_name.is_null()
         || type_hash.is_null()
-        || out_handle.is_null()
+        || storage.is_null()
     {
         return NROS_CPP_RET_INVALID_ARGUMENT;
     }
@@ -433,17 +460,17 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
         feedback_sub,
     );
 
+    let name_len = act_str.len().min(255);
     let mut client = CppActionClient {
         core,
         action_name: [0u8; 256],
-        _action_name_len: act_str.len().min(255),
+        _action_name_len: name_len,
     };
-    client.action_name[..client._action_name_len]
-        .copy_from_slice(&act_str.as_bytes()[..client._action_name_len]);
+    client.action_name[..name_len].copy_from_slice(&act_str.as_bytes()[..name_len]);
 
-    let boxed = alloc::boxed::Box::new(client);
+    // Write directly into caller-provided storage — no heap allocation.
     unsafe {
-        *out_handle = alloc::boxed::Box::into_raw(boxed) as *mut c_void;
+        core::ptr::write(storage as *mut CppActionClient, client);
     }
     NROS_CPP_RET_OK
 }
@@ -613,17 +640,17 @@ pub unsafe extern "C" fn nros_cpp_action_client_try_recv_feedback(
     }
 }
 
-/// Destroy an action client and free its resources.
+/// Destroy an action client (drop in place, no free).
 ///
 /// # Safety
-/// `handle` must be a valid action client handle, or NULL (no-op).
+/// `storage` must be a valid initialized action client storage, or NULL (no-op).
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_cpp_action_client_destroy(handle: *mut c_void) -> nros_cpp_ret_t {
-    if handle.is_null() {
+pub unsafe extern "C" fn nros_cpp_action_client_destroy(storage: *mut c_void) -> nros_cpp_ret_t {
+    if storage.is_null() {
         return NROS_CPP_RET_OK;
     }
     unsafe {
-        let _client = alloc::boxed::Box::from_raw(handle as *mut CppActionClient);
+        core::ptr::drop_in_place(storage as *mut CppActionClient);
     }
     NROS_CPP_RET_OK
 }

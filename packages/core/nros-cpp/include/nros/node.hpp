@@ -84,11 +84,11 @@ nros_cpp_ret_t nros_cpp_service_client_create(const nros_cpp_node_t* node, const
 
 nros_cpp_ret_t nros_cpp_action_server_create(const nros_cpp_node_t* node, const char* action_name,
                                              const char* type_name, const char* type_hash,
-                                             nros_cpp_qos_t qos, void** out_handle);
+                                             nros_cpp_qos_t qos, void* storage);
 
 nros_cpp_ret_t nros_cpp_action_client_create(const nros_cpp_node_t* node, const char* action_name,
                                              const char* type_name, const char* type_hash,
-                                             nros_cpp_qos_t qos, void** out_handle);
+                                             nros_cpp_qos_t qos, void* storage);
 
 nros_cpp_ret_t nros_cpp_spin_once(void* handle, int32_t timeout_ms);
 
@@ -270,11 +270,9 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
-        nros_cpp_ret_t ret = nros_cpp_action_server_create(&handle_, action_name, A::TYPE_NAME,
-                                                           A::Goal::TYPE_HASH, ffi_qos, &handle);
+        nros_cpp_ret_t ret = nros_cpp_action_server_create(
+            &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.executor_ = executor_handle_;
             out.initialized_ = true;
         }
@@ -296,11 +294,9 @@ class Node {
         ffi_qos.durability = static_cast<nros_cpp_qos_durability_t>(qos.durability_raw());
         ffi_qos.history = static_cast<nros_cpp_qos_history_t>(qos.history_raw());
         ffi_qos.depth = qos.depth();
-        void* handle = nullptr;
-        nros_cpp_ret_t ret = nros_cpp_action_client_create(&handle_, action_name, A::TYPE_NAME,
-                                                           A::Goal::TYPE_HASH, ffi_qos, &handle);
+        nros_cpp_ret_t ret = nros_cpp_action_client_create(
+            &handle_, action_name, A::TYPE_NAME, A::Goal::TYPE_HASH, ffi_qos, out.storage_);
         if (ret == 0) {
-            out.handle_ = handle;
             out.executor_ = executor_handle_;
             out.initialized_ = true;
         }

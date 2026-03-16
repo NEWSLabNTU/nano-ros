@@ -7,6 +7,7 @@ use super::common::*;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
+use crate::opaque_sizes::ACTION_SERVER_INTERNAL_OPAQUE_U64S;
 
 use crate::constants::NROS_MAX_CONCURRENT_GOALS;
 
@@ -57,8 +58,8 @@ pub struct nros_action_server_t {
     pub active_goal_count: usize,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque pointer to internal implementation
-    pub _internal: *mut c_void,
+    /// Opaque inline storage for internal implementation
+    pub _internal: [u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S],
 }
 
 impl Default for nros_action_server_t {
@@ -83,7 +84,7 @@ impl Default for nros_action_server_t {
             ],
             active_goal_count: 0,
             node: ptr::null(),
-            _internal: ptr::null_mut(),
+            _internal: [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S],
         }
     }
 }
@@ -96,7 +97,6 @@ impl Default for nros_action_server_t {
 ///
 /// Holds the action server handle and C callback pointers needed by
 /// the goal/cancel trampolines.
-#[cfg(feature = "alloc")]
 pub(crate) struct ActionServerInternal {
     /// Handle returned by executor registration.
     /// `None` until registration completes (set immediately after).
@@ -124,7 +124,6 @@ pub(crate) struct ActionServerInternal {
 ///
 /// Wraps the C `nros_goal_callback_t` as a `RawGoalCallback`. On acceptance,
 /// fills a C-side goal slot and calls the C accepted callback.
-#[cfg(feature = "alloc")]
 pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     goal_id: *const nros_core::GoalId,
     goal_data: *const u8,
@@ -201,7 +200,6 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
 /// while the C `nros_cancel_callback_t` receives `(goal_handle, context)`.
 /// This trampoline finds the matching C-side goal slot, updates its status
 /// to CANCELING, and calls the C cancel callback.
-#[cfg(feature = "alloc")]
 pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
     goal_id: *const nros_core::GoalId,
     _status: nros_core::GoalStatus,
@@ -247,17 +245,13 @@ pub(crate) unsafe extern "C" fn cancel_callback_trampoline(
     }
 }
 
-/// Get the `ActionServerInternal` from a server's `_internal` pointer.
-#[cfg(feature = "alloc")]
-unsafe fn get_internal(
-    server: *const nros_action_server_t,
-) -> Option<&'static ActionServerInternal> {
-    let ptr = (*server)._internal;
-    if ptr.is_null() {
-        None
-    } else {
-        Some(&*(ptr as *const ActionServerInternal))
-    }
+/// Get the `ActionServerInternal` from a server's inline `_internal` storage.
+///
+/// # Safety
+/// The server must have been registered with the executor (state = INITIALIZED
+/// and `_internal` written via `ptr::write`).
+unsafe fn get_internal(server: *const nros_action_server_t) -> &'static ActionServerInternal {
+    &*((*server)._internal.as_ptr() as *const ActionServerInternal)
 }
 
 // ============================================================================
@@ -367,7 +361,7 @@ pub unsafe extern "C" fn nros_action_server_init(
     }
 
     // RMW entity creation is deferred to nros_executor_add_action_server()
-    server._internal = ptr::null_mut();
+    server._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
     server.state = nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED;
 
     NROS_RET_OK
@@ -393,38 +387,29 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
         return NROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "alloc")]
-    {
-        if goal.server.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let internal = match get_internal(goal.server) {
-            Some(i) => i,
-            None => return NROS_RET_NOT_INIT,
-        };
-        let handle = match internal.handle {
-            Some(h) => h,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-        let goal_id = nros_core::GoalId {
-            uuid: goal.uuid.uuid,
-        };
-        let data = core::slice::from_raw_parts(feedback, feedback_len);
-
-        // C serialize produces [CDR_HEADER(4)][fields], but publish_feedback_raw
-        // expects raw fields only (it adds its own CDR header + GoalId framing).
-        let fields = if data.len() > 4 { &data[4..] } else { data };
-
-        match handle.publish_feedback_raw(executor, &goal_id, fields) {
-            Ok(()) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
-        }
+    if goal.server.is_null() {
+        return NROS_RET_NOT_INIT;
     }
+    let internal = get_internal(goal.server);
+    let handle = match internal.handle {
+        Some(h) => h,
+        None => return NROS_RET_NOT_INIT,
+    };
 
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
+    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let goal_id = nros_core::GoalId {
+        uuid: goal.uuid.uuid,
+    };
+    let data = core::slice::from_raw_parts(feedback, feedback_len);
+
+    // C serialize produces [CDR_HEADER(4)][fields], but publish_feedback_raw
+    // expects raw fields only (it adds its own CDR header + GoalId framing).
+    let fields = if data.len() > 4 { &data[4..] } else { data };
+
+    match handle.publish_feedback_raw(executor, &goal_id, fields) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Mark a goal as succeeded with a result.
@@ -447,60 +432,51 @@ pub unsafe extern "C" fn nros_action_succeed(
         return NROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "alloc")]
-    {
-        if goal.server.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let internal = match get_internal(goal.server) {
-            Some(i) => i,
-            None => return NROS_RET_NOT_INIT,
-        };
-        let handle = match internal.handle {
-            Some(h) => h,
-            None => return NROS_RET_NOT_INIT,
-        };
+    if goal.server.is_null() {
+        return NROS_RET_NOT_INIT;
+    }
+    let internal = get_internal(goal.server);
+    let handle = match internal.handle {
+        Some(h) => h,
+        None => return NROS_RET_NOT_INIT,
+    };
 
-        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-        let goal_id = nros_core::GoalId {
-            uuid: goal.uuid.uuid,
-        };
-        let result_data = if !result.is_null() {
-            core::slice::from_raw_parts(result, result_len)
-        } else {
-            &[]
-        };
+    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let goal_id = nros_core::GoalId {
+        uuid: goal.uuid.uuid,
+    };
+    let result_data = if !result.is_null() {
+        core::slice::from_raw_parts(result, result_len)
+    } else {
+        &[]
+    };
 
-        // C serialize produces [CDR_HEADER(4)][fields], but complete_goal_raw
-        // expects raw fields only (it stores them in the slab and adds its own
-        // CDR header when replying to get_result requests).
-        let result_fields = if result_data.len() > 4 {
-            &result_data[4..]
-        } else {
-            result_data
-        };
+    // C serialize produces [CDR_HEADER(4)][fields], but complete_goal_raw
+    // expects raw fields only (it stores them in the slab and adds its own
+    // CDR header when replying to get_result requests).
+    let result_fields = if result_data.len() > 4 {
+        &result_data[4..]
+    } else {
+        result_data
+    };
 
-        // Delegate to nros-node executor
-        handle.complete_goal_raw(
-            executor,
-            &goal_id,
-            nros_core::GoalStatus::Succeeded,
-            result_fields,
-        );
+    // Delegate to nros-node executor
+    handle.complete_goal_raw(
+        executor,
+        &goal_id,
+        nros_core::GoalStatus::Succeeded,
+        result_fields,
+    );
 
-        // Update C-side goal state
-        goal.status = nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED;
-        goal.active = false;
-        let server = &mut *goal.server;
-        if server.active_goal_count > 0 {
-            server.active_goal_count -= 1;
-        }
-
-        NROS_RET_OK
+    // Update C-side goal state
+    goal.status = nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED;
+    goal.active = false;
+    let server = &mut *goal.server;
+    if server.active_goal_count > 0 {
+        server.active_goal_count -= 1;
     }
 
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
+    NROS_RET_OK
 }
 
 /// Mark a goal as aborted with an optional result.
@@ -525,56 +501,47 @@ pub unsafe extern "C" fn nros_action_abort(
         return NROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "alloc")]
-    {
-        if goal.server.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let internal = match get_internal(goal.server) {
-            Some(i) => i,
-            None => return NROS_RET_NOT_INIT,
-        };
-        let handle = match internal.handle {
-            Some(h) => h,
-            None => return NROS_RET_NOT_INIT,
-        };
+    if goal.server.is_null() {
+        return NROS_RET_NOT_INIT;
+    }
+    let internal = get_internal(goal.server);
+    let handle = match internal.handle {
+        Some(h) => h,
+        None => return NROS_RET_NOT_INIT,
+    };
 
-        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-        let goal_id = nros_core::GoalId {
-            uuid: goal.uuid.uuid,
-        };
-        let result_data = if !result.is_null() {
-            core::slice::from_raw_parts(result, result_len)
-        } else {
-            &[]
-        };
+    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let goal_id = nros_core::GoalId {
+        uuid: goal.uuid.uuid,
+    };
+    let result_data = if !result.is_null() {
+        core::slice::from_raw_parts(result, result_len)
+    } else {
+        &[]
+    };
 
-        // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
-        let result_fields = if result_data.len() > 4 {
-            &result_data[4..]
-        } else {
-            result_data
-        };
+    // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
+    let result_fields = if result_data.len() > 4 {
+        &result_data[4..]
+    } else {
+        result_data
+    };
 
-        handle.complete_goal_raw(
-            executor,
-            &goal_id,
-            nros_core::GoalStatus::Aborted,
-            result_fields,
-        );
+    handle.complete_goal_raw(
+        executor,
+        &goal_id,
+        nros_core::GoalStatus::Aborted,
+        result_fields,
+    );
 
-        goal.status = nros_goal_status_t::NROS_GOAL_STATUS_ABORTED;
-        goal.active = false;
-        let server = &mut *goal.server;
-        if server.active_goal_count > 0 {
-            server.active_goal_count -= 1;
-        }
-
-        NROS_RET_OK
+    goal.status = nros_goal_status_t::NROS_GOAL_STATUS_ABORTED;
+    goal.active = false;
+    let server = &mut *goal.server;
+    if server.active_goal_count > 0 {
+        server.active_goal_count -= 1;
     }
 
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
+    NROS_RET_OK
 }
 
 /// Mark a goal as canceled with an optional result.
@@ -597,56 +564,47 @@ pub unsafe extern "C" fn nros_action_canceled(
         return NROS_RET_NOT_ALLOWED;
     }
 
-    #[cfg(feature = "alloc")]
-    {
-        if goal.server.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
-        let internal = match get_internal(goal.server) {
-            Some(i) => i,
-            None => return NROS_RET_NOT_INIT,
-        };
-        let handle = match internal.handle {
-            Some(h) => h,
-            None => return NROS_RET_NOT_INIT,
-        };
+    if goal.server.is_null() {
+        return NROS_RET_NOT_INIT;
+    }
+    let internal = get_internal(goal.server);
+    let handle = match internal.handle {
+        Some(h) => h,
+        None => return NROS_RET_NOT_INIT,
+    };
 
-        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-        let goal_id = nros_core::GoalId {
-            uuid: goal.uuid.uuid,
-        };
-        let result_data = if !result.is_null() {
-            core::slice::from_raw_parts(result, result_len)
-        } else {
-            &[]
-        };
+    let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+    let goal_id = nros_core::GoalId {
+        uuid: goal.uuid.uuid,
+    };
+    let result_data = if !result.is_null() {
+        core::slice::from_raw_parts(result, result_len)
+    } else {
+        &[]
+    };
 
-        // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
-        let result_fields = if result_data.len() > 4 {
-            &result_data[4..]
-        } else {
-            result_data
-        };
+    // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
+    let result_fields = if result_data.len() > 4 {
+        &result_data[4..]
+    } else {
+        result_data
+    };
 
-        handle.complete_goal_raw(
-            executor,
-            &goal_id,
-            nros_core::GoalStatus::Canceled,
-            result_fields,
-        );
+    handle.complete_goal_raw(
+        executor,
+        &goal_id,
+        nros_core::GoalStatus::Canceled,
+        result_fields,
+    );
 
-        goal.status = nros_goal_status_t::NROS_GOAL_STATUS_CANCELED;
-        goal.active = false;
-        let server = &mut *goal.server;
-        if server.active_goal_count > 0 {
-            server.active_goal_count -= 1;
-        }
-
-        NROS_RET_OK
+    goal.status = nros_goal_status_t::NROS_GOAL_STATUS_CANCELED;
+    goal.active = false;
+    let server = &mut *goal.server;
+    if server.active_goal_count > 0 {
+        server.active_goal_count -= 1;
     }
 
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
+    NROS_RET_OK
 }
 
 /// Execute a goal (transition from accepted to executing).
@@ -666,16 +624,15 @@ pub unsafe extern "C" fn nros_action_execute(goal: *mut nros_goal_handle_t) -> n
     }
 
     // Update nros-node side if registered with executor
-    #[cfg(feature = "alloc")]
-    if !goal.server.is_null()
-        && let Some(internal) = get_internal(goal.server)
-        && let Some(handle) = internal.handle
-    {
-        let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
-        let goal_id = nros_core::GoalId {
-            uuid: goal.uuid.uuid,
-        };
-        handle.set_goal_status(executor, &goal_id, nros_core::GoalStatus::Executing);
+    if !goal.server.is_null() {
+        let internal = get_internal(goal.server);
+        if let Some(handle) = internal.handle {
+            let executor = crate::executor::get_executor_from_ptr(internal.executor_ptr);
+            let goal_id = nros_core::GoalId {
+                uuid: goal.uuid.uuid,
+            };
+            handle.set_goal_status(executor, &goal_id, nros_core::GoalStatus::Executing);
+        }
     }
 
     goal.status = nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING;
@@ -707,17 +664,9 @@ pub unsafe extern "C" fn nros_action_server_fini(server: *mut nros_action_server
         nros_action_server_state_t::NROS_ACTION_SERVER_STATE_INITIALIZED
     );
 
-    // Drop the internal implementation
-    #[cfg(feature = "alloc")]
-    {
-        if !server._internal.is_null() {
-            let _internal =
-                alloc::boxed::Box::from_raw(server._internal as *mut ActionServerInternal);
-            // ActionServerInternal is dropped here
-        }
-    }
-
-    server._internal = ptr::null_mut();
+    // Drop the internal implementation in place
+    core::ptr::drop_in_place(server._internal.as_mut_ptr() as *mut ActionServerInternal);
+    server._internal = [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S];
 
     // Reset all goal handles
     for goal in server.goals.iter_mut() {
@@ -905,7 +854,7 @@ mod verification {
             srv.state,
             nros_action_server_state_t::NROS_ACTION_SERVER_STATE_UNINITIALIZED,
         );
-        assert!(srv._internal.is_null());
+        assert_eq!(srv._internal, [0u64; ACTION_SERVER_INTERNAL_OPAQUE_U64S]);
         assert!(srv.node.is_null());
         assert_eq!(srv.active_goal_count, 0);
         assert!(srv.goal_callback.is_none());

@@ -5,9 +5,9 @@ use core::ffi::{c_char, c_void};
 use nros_rmw::{ServiceClientTrait, ServiceInfo, ServiceServerTrait, Session};
 
 use crate::{
-    CPP_SERVICE_CLIENT_OPAQUE_U64S, CPP_SERVICE_SERVER_OPAQUE_U64S, CppContext, NROS_CPP_RET_ERROR,
-    NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK, NROS_CPP_RET_TIMEOUT,
-    NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t, nros_cpp_qos_t, nros_cpp_ret_t,
+    CppContext, NROS_CPP_RET_ERROR, NROS_CPP_RET_INVALID_ARGUMENT, NROS_CPP_RET_OK,
+    NROS_CPP_RET_TIMEOUT, NROS_CPP_RET_TRANSPORT_ERROR, cstr_to_str, nros_cpp_node_t,
+    nros_cpp_qos_t, nros_cpp_ret_t,
 };
 
 /// Default receive buffer size for service requests/replies.

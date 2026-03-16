@@ -128,3 +128,49 @@ The C++ header `config.hpp` duplicates values as `#define` macros. These
 are not auto-generated — C++ users must update them to match the Rust
 computed values, or the Rust-side assertion (in build.rs) catches the
 mismatch at build time.
+
+## 6. Action server/client in C and C++ APIs require heap allocation
+
+The action server and client implementations in `nros-c` and `nros-cpp` use
+`Box::new()` + `Box::into_raw()` to heap-allocate internal state, while all
+other entity types (publisher, subscription, service, timer, guard condition)
+use inline opaque storage (`[u64; N]`) and are fully alloc-free.
+
+**Root cause**: The internal state struct (`ActionServerInternal`,
+`ActionClientInternal`, `CppActionServer`, `CppActionClient`) is created
+during registration and its address is passed as the callback trampoline
+context. `Box::into_raw` was used to get a stable pointer.
+
+**Affected files**:
+
+nros-c:
+- `packages/core/nros-c/src/action/server.rs` — `nros_action_server_t._internal: *mut c_void` (line 61), `Box::new(ActionServerInternal)` in `executor.rs:780`
+- `packages/core/nros-c/src/action/client.rs` — `nros_action_client_t._internal: *mut c_void` (line 71), `Box::into_raw` at line 259
+
+nros-cpp:
+- `packages/core/nros-cpp/src/action.rs` — `Box::new(CppActionServer)` (line 142), `Box::new(client)` (line 444)
+
+**What is alloc-free**: The underlying nros-node executor (`add_action_server_raw`,
+`ActionClientCore`) is fully alloc-free — it uses arena allocation and inline
+buffers. The heap dependency is only in the C/C++ FFI layer.
+
+**Impact**: Actions require the `alloc` feature in nros-c and nros-cpp. On
+bare-metal targets without a global allocator, action support is unavailable
+through the C/C++ APIs (the Rust API works fine). All action FFI functions
+are gated with `#[cfg(feature = "alloc")]` and return `NROS_RET_ERROR` when
+alloc is disabled.
+
+**Possible fix**: Replace `_internal: *mut c_void` with inline opaque storage
+`_internal: [u64; N]`, matching the pattern used by publishers and subscriptions:
+
+1. Write `ActionServerInternal` into the inline storage via `ptr::write`,
+   with `handle: None` initially.
+2. Pass `&mut _internal` as the trampoline context (the C struct itself
+   provides the stable address — no Box needed).
+3. After registration, fill `handle = Some(h)` in-place.
+4. Compute `N` at compile time via `u64s_for::<ActionServerInternal>()`.
+
+The `ActionClientInternal` wraps `ActionClientCore<BUF, BUF, BUF>` which
+contains 3 RMW handles + 3 message buffers — large but fixed-size. The
+`CppActionServer` contains `[PendingGoal; 4]` with `[u8; 1024]` per goal —
+also large but fixed-size. Both are suitable for inline storage.

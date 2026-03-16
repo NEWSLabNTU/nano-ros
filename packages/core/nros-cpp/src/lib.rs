@@ -11,18 +11,15 @@
 //! C++ (nros-cpp headers)  →  extern "C"  →  nros-cpp (Rust)  →  nros-node
 //! ```
 //!
-//! The C++ side provides inline opaque storage for core entity handles
-//! (publisher, subscription, service, guard condition, executor).
-//! Only action types still use heap allocation via `alloc`.
+//! The C++ side provides inline opaque storage for all entity handles
+//! (publisher, subscription, service, guard condition, executor, action).
+//! No heap allocation required — fully alloc-free.
 //!
 //! All serialization/deserialization happens on the Rust side.
 
 #![no_std]
 #![allow(non_camel_case_types)]
 #![allow(dead_code)]
-
-#[cfg(feature = "alloc")]
-extern crate alloc;
 
 #[cfg(feature = "std")]
 extern crate std;
@@ -96,15 +93,12 @@ mod subscription;
 ))]
 mod timer;
 
-// ── Advanced feature modules (require alloc) ──
-#[cfg(all(
-    feature = "alloc",
-    any(
-        feature = "rmw-zenoh",
-        feature = "rmw-xrce",
-        feature = "rmw-dds",
-        feature = "rmw-cffi"
-    )
+// ── Action module (alloc-free — caller provides inline storage) ──
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
 ))]
 mod action;
 
@@ -140,37 +134,100 @@ pub const NROS_CPP_RET_TRANSPORT_ERROR: nros_cpp_ret_t = -100;
 // Compile-time assertions in each module verify the storage is large enough.
 
 // Opaque storage sizes computed from size_of at compile time — always exact.
-// Requires exactly one RMW backend feature to be enabled.
+// When no RMW backend is enabled (workspace-level check), placeholder values
+// are used. The placeholders are never used at runtime.
 
+const fn u64s_for<T>() -> usize {
+    core::mem::size_of::<T>().div_ceil(8)
+}
+
+// With RMW backend: exact sizes from actual types.
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+pub const CPP_PUBLISHER_OPAQUE_U64S: usize = u64s_for::<publisher::CppPublisher>();
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = u64s_for::<subscription::CppSubscription>();
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = u64s_for::<service::CppServiceServer>();
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<service::CppServiceClient>();
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = u64s_for::<action::CppActionServer>();
+#[cfg(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+))]
+pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = u64s_for::<action::CppActionClient>();
+
+// Without RMW backend: placeholders for workspace-level check.
 #[cfg(not(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
     feature = "rmw-dds",
     feature = "rmw-cffi"
 )))]
-compile_error!(
-    "nros-cpp requires exactly one RMW backend feature: rmw-zenoh, rmw-xrce, rmw-dds, or rmw-cffi"
-);
-
-const fn u64s_for<T>() -> usize {
-    (core::mem::size_of::<T>() + 7) / 8
-}
-
-/// Inline storage for `CppPublisher` (in u64 units).
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
-pub const CPP_PUBLISHER_OPAQUE_U64S: usize = u64s_for::<publisher::CppPublisher>();
-
-/// Inline storage for `CppSubscription` (in u64 units).
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
-pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = u64s_for::<subscription::CppSubscription>();
-
-/// Inline storage for `CppServiceServer` (in u64 units).
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
-pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = u64s_for::<service::CppServiceServer>();
-
-/// Inline storage for `CppServiceClient` (in u64 units).
-#[cfg(any(feature = "rmw-zenoh", feature = "rmw-xrce", feature = "rmw-dds", feature = "rmw-cffi"))]
-pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = u64s_for::<service::CppServiceClient>();
+pub const CPP_PUBLISHER_OPAQUE_U64S: usize = 1;
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+)))]
+pub const CPP_SUBSCRIPTION_OPAQUE_U64S: usize = 1;
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+)))]
+pub const CPP_SERVICE_SERVER_OPAQUE_U64S: usize = 1;
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+)))]
+pub const CPP_SERVICE_CLIENT_OPAQUE_U64S: usize = 1;
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+)))]
+pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = 1;
+#[cfg(not(any(
+    feature = "rmw-zenoh",
+    feature = "rmw-xrce",
+    feature = "rmw-dds",
+    feature = "rmw-cffi"
+)))]
+pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = 1;
 
 /// Inline storage for `GuardConditionHandle` (in u64 units).
 pub const CPP_GUARD_HANDLE_OPAQUE_U64S: usize = u64s_for::<nros_node::GuardConditionHandle>();

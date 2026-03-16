@@ -6,10 +6,12 @@
 
 #include <cstdint>
 #include <cstddef>
+#include <cstring>
 
+#include "nros/config.hpp"
 #include "nros/result.hpp"
 
-// FFI declarations
+// FFI declarations (create is declared in node.hpp with full type info)
 extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_action_server_try_recv_goal(void* handle, uint8_t* goal_buf, size_t buf_len,
@@ -21,7 +23,7 @@ nros_cpp_ret_t nros_cpp_action_server_publish_feedback(void* handle, void* execu
 nros_cpp_ret_t nros_cpp_action_server_complete_goal(void* handle, void* executor_handle,
                                                     const uint8_t goal_id[16],
                                                     const uint8_t* result_buf, size_t result_len);
-nros_cpp_ret_t nros_cpp_action_server_destroy(void* handle);
+nros_cpp_ret_t nros_cpp_action_server_destroy(void* storage);
 } // extern "C"
 
 namespace nros {
@@ -71,7 +73,7 @@ template <typename A> class ActionServer {
         uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
         size_t len = 0;
         nros_cpp_ret_t ret =
-            nros_cpp_action_server_try_recv_goal(handle_, buf, sizeof(buf), &len, goal_id);
+            nros_cpp_action_server_try_recv_goal(storage_, buf, sizeof(buf), &len, goal_id);
         if (ret != 0 || len == 0) return false;
         if (GoalType::ffi_deserialize(buf, len, &goal) != 0) return false;
         return true;
@@ -91,7 +93,7 @@ template <typename A> class ActionServer {
             return Result(ErrorCode::Error);
         }
         return Result(
-            nros_cpp_action_server_publish_feedback(handle_, executor_, goal_id, buf, len));
+            nros_cpp_action_server_publish_feedback(storage_, executor_, goal_id, buf, len));
     }
 
     /// Complete a goal with a result.
@@ -107,7 +109,7 @@ template <typename A> class ActionServer {
         if (ResultType::ffi_serialize(&result, buf, sizeof(buf), &len) != 0) {
             return Result(ErrorCode::Error);
         }
-        return Result(nros_cpp_action_server_complete_goal(handle_, executor_, goal_id, buf, len));
+        return Result(nros_cpp_action_server_complete_goal(storage_, executor_, goal_id, buf, len));
     }
 
     /// Check if the action server is initialized and valid.
@@ -116,37 +118,38 @@ template <typename A> class ActionServer {
     /// Destructor — releases action server resources.
     ~ActionServer() {
         if (initialized_) {
-            nros_cpp_action_server_destroy(handle_);
+            nros_cpp_action_server_destroy(storage_);
             initialized_ = false;
         }
     }
 
     // Move semantics (non-copyable)
     ActionServer(ActionServer&& other)
-        : handle_(other.handle_), executor_(other.executor_), initialized_(other.initialized_) {
-        other.handle_ = nullptr;
-        other.executor_ = nullptr;
-        other.initialized_ = false;
+        : executor_(other.executor_), initialized_(other.initialized_) {
+        if (other.initialized_) {
+            memcpy(storage_, other.storage_, sizeof(storage_));
+            other.initialized_ = false;
+        }
     }
 
     ActionServer& operator=(ActionServer&& other) {
         if (this != &other) {
             if (initialized_) {
-                nros_cpp_action_server_destroy(handle_);
+                nros_cpp_action_server_destroy(storage_);
             }
-            handle_ = other.handle_;
             executor_ = other.executor_;
             initialized_ = other.initialized_;
-            other.handle_ = nullptr;
-            other.executor_ = nullptr;
-            other.initialized_ = false;
+            if (other.initialized_) {
+                memcpy(storage_, other.storage_, sizeof(storage_));
+                other.initialized_ = false;
+            }
         }
         return *this;
     }
 
     /// Default constructor — creates an uninitialized action server.
     /// Use `Node::create_action_server()` to initialize.
-    ActionServer() : handle_(nullptr), executor_(nullptr), initialized_(false) {}
+    ActionServer() : executor_(nullptr), initialized_(false) {}
 
   private:
     ActionServer(const ActionServer&) = delete;
@@ -154,7 +157,7 @@ template <typename A> class ActionServer {
 
     friend class Node;
 
-    void* handle_;
+    alignas(8) uint8_t storage_[NROS_CPP_ACTION_SERVER_STORAGE_SIZE];
     void* executor_; // Executor context needed for feedback/result operations
     bool initialized_;
 };

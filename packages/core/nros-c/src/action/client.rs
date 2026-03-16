@@ -7,6 +7,7 @@ use super::common::*;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
+use crate::opaque_sizes::ACTION_CLIENT_INTERNAL_OPAQUE_U64S;
 
 // ============================================================================
 // Internal implementation
@@ -17,8 +18,7 @@ use crate::node::{nros_node_state_t, nros_node_t};
 /// Holds the `ActionClientCore` created during `nros_action_client_init()`.
 /// The core contains 3 service clients (send_goal, cancel_goal, get_result)
 /// and 1 feedback subscriber.
-#[cfg(feature = "alloc")]
-struct ActionClientInternal {
+pub(crate) struct ActionClientInternal {
     core: nros_node::ActionClientCore<
         { crate::executor::MESSAGE_BUFFER_SIZE },
         { crate::executor::MESSAGE_BUFFER_SIZE },
@@ -67,8 +67,8 @@ pub struct nros_action_client_t {
     pub context: *mut c_void,
     /// Pointer to parent node
     pub node: *const nros_node_t,
-    /// Opaque pointer to internal implementation
-    pub _internal: *mut c_void,
+    /// Opaque inline storage for internal implementation
+    pub _internal: [u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S],
 }
 
 impl Default for nros_action_client_t {
@@ -85,7 +85,7 @@ impl Default for nros_action_client_t {
             result_callback: None,
             context: ptr::null_mut(),
             node: ptr::null(),
-            _internal: ptr::null_mut(),
+            _internal: [0u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S],
         }
     }
 }
@@ -175,7 +175,6 @@ pub unsafe extern "C" fn nros_action_client_init(
 
     // Create the ActionClientCore with 3 service clients + 1 feedback subscriber.
     // This follows the service client init pattern (service.rs:590-634).
-    #[cfg(feature = "alloc")]
     {
         use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
 
@@ -255,8 +254,11 @@ pub unsafe extern "C" fn nros_action_client_init(
             feedback_subscriber,
         );
 
-        let internal = alloc::boxed::Box::new(ActionClientInternal { core });
-        client._internal = alloc::boxed::Box::into_raw(internal) as *mut _;
+        let internal = ActionClientInternal { core };
+        core::ptr::write(
+            client._internal.as_mut_ptr() as *mut ActionClientInternal,
+            internal,
+        );
     }
 
     client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
@@ -313,39 +315,29 @@ pub unsafe extern "C" fn nros_action_send_goal(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    #[cfg(feature = "alloc")]
-    {
-        if client._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
+    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let goal_data = core::slice::from_raw_parts(goal, goal_len);
 
-        let internal = &mut *(client._internal as *mut ActionClientInternal);
-        let goal_data = core::slice::from_raw_parts(goal, goal_len);
+    // C serialize produces [CDR_HEADER(4)][fields], but send_goal_blocking
+    // expects raw fields only (it adds its own CDR header + GoalId).
+    // Skip the 4-byte CDR header from the C-serialized data.
+    let goal_fields = if goal_data.len() > 4 {
+        &goal_data[4..]
+    } else {
+        goal_data
+    };
 
-        // C serialize produces [CDR_HEADER(4)][fields], but send_goal_raw
-        // expects raw fields only (it adds its own CDR header + GoalId).
-        // Skip the 4-byte CDR header from the C-serialized data.
-        let goal_fields = if goal_data.len() > 4 {
-            &goal_data[4..]
-        } else {
-            goal_data
-        };
-
-        match internal.core.send_goal_blocking(goal_fields) {
-            Ok((goal_id, accepted)) => {
-                if !accepted {
-                    return NROS_RET_ERROR;
-                }
-                let uuid = &mut *goal_uuid;
-                uuid.uuid = goal_id.uuid;
-                NROS_RET_OK
+    match internal.core.send_goal_blocking(goal_fields) {
+        Ok((goal_id, accepted)) => {
+            if !accepted {
+                return NROS_RET_ERROR;
             }
-            Err(_) => NROS_RET_ERROR,
+            let uuid = &mut *goal_uuid;
+            uuid.uuid = goal_id.uuid;
+            NROS_RET_OK
         }
+        Err(_) => NROS_RET_ERROR,
     }
-
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
 }
 
 /// Request cancellation of a goal.
@@ -363,24 +355,14 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    #[cfg(feature = "alloc")]
-    {
-        if client._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
+    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let uuid = &*goal_uuid;
+    let goal_id = nros_core::GoalId { uuid: uuid.uuid };
 
-        let internal = &mut *(client._internal as *mut ActionClientInternal);
-        let uuid = &*goal_uuid;
-        let goal_id = nros_core::GoalId { uuid: uuid.uuid };
-
-        match internal.core.send_cancel_request(&goal_id) {
-            Ok(()) => NROS_RET_OK,
-            Err(_) => NROS_RET_ERROR,
-        }
+    match internal.core.send_cancel_request(&goal_id) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
     }
-
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
 }
 
 /// Request result of a goal (blocking).
@@ -402,66 +384,56 @@ pub unsafe extern "C" fn nros_action_get_result(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    #[cfg(feature = "alloc")]
-    {
-        if client._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
+    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let uuid = &*goal_uuid;
+    let goal_id = nros_core::GoalId { uuid: uuid.uuid };
 
-        let internal = &mut *(client._internal as *mut ActionClientInternal);
-        let uuid = &*goal_uuid;
-        let goal_id = nros_core::GoalId { uuid: uuid.uuid };
+    let reply_len = match internal.core.get_result_blocking(&goal_id) {
+        Ok(len) => len,
+        Err(nros_node::NodeError::ServiceRequestFailed) => return NROS_RET_TIMEOUT,
+        Err(_) => return NROS_RET_ERROR,
+    };
 
-        let reply_len = match internal.core.get_result_blocking(&goal_id) {
-            Ok(len) => len,
-            Err(nros_node::NodeError::ServiceRequestFailed) => return NROS_RET_TIMEOUT,
-            Err(_) => return NROS_RET_ERROR,
-        };
-
-        // GetResult response CDR: header (4) + status (int8, 1 byte) + result fields
-        if reply_len < 5 {
-            return NROS_RET_ERROR;
-        }
-
-        // Status is the first byte after CDR header
-        let buf = internal.core.result_buffer_ref();
-        let raw_status = buf[4];
-        *status = match raw_status {
-            1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
-            2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
-            3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
-            4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-            5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-            6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-            _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
-        };
-
-        // Result fields start at offset 5 (after CDR header + status byte).
-        // The C deserializer expects [CDR_HEADER][fields], so we prepend
-        // a CDR header in the output buffer.
-        let result_offset = 5usize;
-        let result_fields_len = reply_len.saturating_sub(result_offset);
-        let output_len = 4 + result_fields_len; // CDR header + fields
-
-        if output_len > result_capacity {
-            return NROS_RET_ERROR;
-        }
-
-        let out = core::slice::from_raw_parts_mut(result, result_capacity);
-        // Write CDR header (little-endian)
-        out[0] = 0x00;
-        out[1] = 0x01;
-        out[2] = 0x00;
-        out[3] = 0x00;
-        out[4..4 + result_fields_len]
-            .copy_from_slice(&buf[result_offset..result_offset + result_fields_len]);
-        *result_len = output_len;
-
-        NROS_RET_OK
+    // GetResult response CDR: header (4) + status (int8, 1 byte) + result fields
+    if reply_len < 5 {
+        return NROS_RET_ERROR;
     }
 
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
+    // Status is the first byte after CDR header
+    let buf = internal.core.result_buffer_ref();
+    let raw_status = buf[4];
+    *status = match raw_status {
+        1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
+        2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
+        3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
+        4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+        5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+        6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+        _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+    };
+
+    // Result fields start at offset 5 (after CDR header + status byte).
+    // The C deserializer expects [CDR_HEADER][fields], so we prepend
+    // a CDR header in the output buffer.
+    let result_offset = 5usize;
+    let result_fields_len = reply_len.saturating_sub(result_offset);
+    let output_len = 4 + result_fields_len; // CDR header + fields
+
+    if output_len > result_capacity {
+        return NROS_RET_ERROR;
+    }
+
+    let out = core::slice::from_raw_parts_mut(result, result_capacity);
+    // Write CDR header (little-endian)
+    out[0] = 0x00;
+    out[1] = 0x01;
+    out[2] = 0x00;
+    out[3] = 0x00;
+    out[4..4 + result_fields_len]
+        .copy_from_slice(&buf[result_offset..result_offset + result_fields_len]);
+    *result_len = output_len;
+
+    NROS_RET_OK
 }
 
 /// Try to receive feedback for an active goal (non-blocking).
@@ -482,61 +454,42 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    #[cfg(feature = "alloc")]
-    {
-        if client._internal.is_null() {
-            return NROS_RET_NOT_INIT;
-        }
+    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
 
-        let internal = &mut *(client._internal as *mut ActionClientInternal);
+    match internal.core.try_recv_feedback_raw() {
+        Ok(Some((goal_id, len))) => {
+            if let Some(cb) = client.feedback_callback {
+                let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
 
-        match internal.core.try_recv_feedback_raw() {
-            Ok(Some((goal_id, len))) => {
-                // Feedback CDR contains: CDR header (4) + GoalId (16) + feedback data
-                // The GoalId has already been parsed by try_recv_feedback_raw.
-                // The full raw data (including CDR header + GoalId) is in feedback_buffer.
-                // We need to extract just the feedback payload for the C callback.
-                // After CDR header (4) + GoalId (16 bytes via CDR) = ~24 bytes offset
-                // However, the exact offset depends on CDR encoding. The feedback_buffer
-                // contains the full received message. For the C callback, pass the raw
-                // feedback bytes starting after the GoalId framing.
+                // Feedback CDR layout: header (4) + GoalId seq_len (4) + UUID (16) = 24 bytes
+                // After offset 24: raw feedback fields (no CDR header, since
+                // the server strips it in nros_action_publish_feedback).
+                // The C deserializer expects [CDR_HEADER][fields], so we
+                // prepend a CDR header in a stack buffer.
+                let fb_offset = 24usize;
+                let fb_fields_len = len.saturating_sub(fb_offset);
 
-                if let Some(cb) = client.feedback_callback {
-                    let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
-
-                    // Feedback CDR layout: header (4) + GoalId seq_len (4) + UUID (16) = 24 bytes
-                    // After offset 24: raw feedback fields (no CDR header, since
-                    // the server strips it in nros_action_publish_feedback).
-                    // The C deserializer expects [CDR_HEADER][fields], so we
-                    // prepend a CDR header in a stack buffer.
-                    let fb_offset = 24usize;
-                    let fb_fields_len = len.saturating_sub(fb_offset);
-
-                    if fb_fields_len > 0 {
-                        let mut fb_buf = [0u8; 512];
-                        fb_buf[0] = 0x00;
-                        fb_buf[1] = 0x01;
-                        fb_buf[2] = 0x00;
-                        fb_buf[3] = 0x00;
-                        let copy_len = fb_fields_len.min(fb_buf.len() - 4);
-                        fb_buf[4..4 + copy_len].copy_from_slice(
-                            &internal.core.feedback_buffer_ref()[fb_offset..fb_offset + copy_len],
-                        );
-                        cb(&uuid, fb_buf.as_ptr(), 4 + copy_len, client.context);
-                    } else {
-                        cb(&uuid, ptr::null(), 0, client.context);
-                    }
+                if fb_fields_len > 0 {
+                    let mut fb_buf = [0u8; 512];
+                    fb_buf[0] = 0x00;
+                    fb_buf[1] = 0x01;
+                    fb_buf[2] = 0x00;
+                    fb_buf[3] = 0x00;
+                    let copy_len = fb_fields_len.min(fb_buf.len() - 4);
+                    fb_buf[4..4 + copy_len].copy_from_slice(
+                        &internal.core.feedback_buffer_ref()[fb_offset..fb_offset + copy_len],
+                    );
+                    cb(&uuid, fb_buf.as_ptr(), 4 + copy_len, client.context);
+                } else {
+                    cb(&uuid, ptr::null(), 0, client.context);
                 }
-
-                NROS_RET_OK
             }
-            Ok(None) => NROS_RET_TIMEOUT,
-            Err(_) => NROS_RET_ERROR,
-        }
-    }
 
-    #[cfg(not(feature = "alloc"))]
-    NROS_RET_ERROR
+            NROS_RET_OK
+        }
+        Ok(None) => NROS_RET_TIMEOUT,
+        Err(_) => NROS_RET_ERROR,
+    }
 }
 
 /// Finalize an action client.
@@ -551,17 +504,9 @@ pub unsafe extern "C" fn nros_action_client_fini(client: *mut nros_action_client
         nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
     );
 
-    // Drop the internal ActionClientCore
-    #[cfg(feature = "alloc")]
-    {
-        if !client._internal.is_null() {
-            let _internal =
-                alloc::boxed::Box::from_raw(client._internal as *mut ActionClientInternal);
-            // ActionClientInternal (and its ActionClientCore) is dropped here
-        }
-    }
-
-    client._internal = ptr::null_mut();
+    // Drop the internal ActionClientCore in place
+    core::ptr::drop_in_place(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    client._internal = [0u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S];
     client.feedback_callback = None;
     client.result_callback = None;
     client.context = ptr::null_mut();
@@ -680,7 +625,7 @@ mod verification {
             nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_UNINITIALIZED,
         );
         assert!(cli.node.is_null());
-        assert!(cli._internal.is_null());
+        assert_eq!(cli._internal, [0u64; ACTION_CLIENT_INTERNAL_OPAQUE_U64S]);
         assert!(cli.feedback_callback.is_none());
         assert!(cli.result_callback.is_none());
     }

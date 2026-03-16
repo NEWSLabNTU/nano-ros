@@ -23,4 +23,14 @@
 /// Inline storage for guard condition handle (bytes).
 #define NROS_CPP_GUARD_CONDITION_STORAGE_SIZE (4 * 8)
 
+/// Inline storage for action server handle (bytes).
+/// CppActionServer contains: Option<ActionServerRawHandle> + 4 PendingGoal slots
+/// (each with 1024-byte buffer) + action_name (256 bytes).
+#define NROS_CPP_ACTION_SERVER_STORAGE_SIZE (768 * 8)
+
+/// Inline storage for action client handle (bytes).
+/// CppActionClient contains: ActionClientCore (3 service clients + 1 subscriber
+/// + 3 x 1024-byte buffers) + action_name (256 bytes).
+#define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE (768 * 8)
+
 #endif // NROS_CPP_CONFIG_HPP
