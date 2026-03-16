@@ -11,6 +11,8 @@ members = [
     "packages/core/nros-node",
     # Zenoh-pico FFI bindings
     "packages/zpico/zpico-sys",
+    # Free-list allocator for z_malloc/z_free on bare-metal
+    "packages/zpico/zpico-alloc",
     # XRCE-DDS FFI bindings
     "packages/xrce/xrce-sys",
     # Zenoh RMW backend (shim + zpico wrapper)

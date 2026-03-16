@@ -1410,6 +1410,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
+name = "zpico-alloc"
+version = "0.1.0"
+
+[[package]]
 name = "zpico-platform-stm32f4"
 version = "0.1.0"
 dependencies = [
@@ -1417,6 +1421,7 @@ dependencies = [
  "defmt 0.3.100",
  "smoltcp",
  "stm32-eth",
+ "zpico-alloc",
  "zpico-smoltcp",
  "zpico-sys",
 ]

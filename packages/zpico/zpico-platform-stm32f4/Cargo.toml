@@ -11,6 +11,8 @@ name = "zpico_platform_stm32f4"
 [dependencies]
 # Zenoh FFI bindings — bare-metal only
 zpico-sys = { path = "../zpico-sys", features = ["bare-metal"] }
+# Shared free-list allocator for z_malloc/z_free
+zpico-alloc = { path = "../zpico-alloc" }
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../zpico-smoltcp", optional = true }
 

@@ -12,30 +12,21 @@ no source code edits needed.
 Board crate `Config::default()` / `Config::listener()` presets remain for
 backwards compatibility but are no longer used by examples.
 
-## 2. Zenoh-pico free list allocator on bare-metal
+## ~~2. Zenoh-pico free list allocator on bare-metal~~ (Fixed)
 
-Bare-metal platform crates use a custom first-fit free-list allocator for zenoh-pico's `z_malloc`/`z_free`:
+All four bare-metal platform crates now share a single free-list allocator
+via the `zpico-alloc` crate (`packages/zpico/zpico-alloc/`). This replaced
+the broken bump allocators on ESP32/ESP32-QEMU/STM32F4 (which had no-op
+`z_free` and data-losing `z_realloc`) with the proven MPS2-AN385 first-fit
+free-list with address-ordered coalescing.
 
-**Implementations** (all `src/memory.rs`):
-- `packages/zpico/zpico-platform-mps2-an385/` — 64 KB heap (128 KB with `link-tls`)
-- `packages/zpico/zpico-platform-esp32/` — 32 KB heap
-- `packages/zpico/zpico-platform-esp32-qemu/` — 32 KB heap
-- `packages/zpico/zpico-platform-stm32f4/` — 64 KB heap
+Each platform's `memory.rs` is now a thin wrapper that instantiates
+`FreeListHeap<N>` with its heap size (32-128 KB).
 
-RTOS platforms already use native allocators:
-- FreeRTOS → `pvPortMalloc`/`vPortFree` (in zenoh-pico's `src/system/freertos/system.c`)
-- ThreadX → `tx_byte_allocate`/`tx_byte_release` (in `zpico-sys/c/platform/threadx/system.c`)
-- ESP-IDF → `heap_caps_malloc` (in zenoh-pico's `src/system/espidf/system.c`)
-- NuttX → libc `malloc`/`free` (POSIX-compatible)
-
-**Concerns**:
-- Fixed heap size — can't grow at runtime
-- First-fit fragmentation risk over long-running sessions
-- No `realloc` support on FreeRTOS/ThreadX (zenoh-pico's `z_realloc` returns NULL)
-- Duplicated allocator code across 4 platform crates
-- RTOS allocators would integrate with their memory debugging/stats tools
-
-**Possible fix**: For platforms that run under an RTOS, delegate to the RTOS allocator. For true bare-metal, the free-list is fine but could be deduplicated into a shared crate. The DDS backend (Phase 70/71) uses `#[global_allocator]` which is a cleaner Rust-native approach.
+**Remaining considerations** (not bugs):
+- Fixed heap size — can't grow at runtime (inherent to bare-metal)
+- First-fit fragmentation risk over very long sessions (hours+)
+- `zpico-alloc` has an optional `stats` feature for heap usage tracking
 
 ## ~~3. Non-configurable compile-time constants~~ (Fixed)
 

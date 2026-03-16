@@ -11,6 +11,8 @@ name = "zpico_platform_esp32_qemu"
 [dependencies]
 # Zenoh FFI bindings — bare-metal only, no C shims (Rust provides all symbols)
 zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-tcp"] }
+# Shared free-list allocator for z_malloc/z_free
+zpico-alloc = { path = "../zpico-alloc" }
 # TCP link layer via smoltcp
 zpico-smoltcp = { path = "../zpico-smoltcp" }
 # OpenCores Ethernet MAC driver (for QEMU open_eth NIC)
