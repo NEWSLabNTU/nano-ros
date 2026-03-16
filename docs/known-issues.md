@@ -116,3 +116,171 @@ allocators** that cannot share memory or statistics:
   creating a single unified heap.
 - Add heap usage tracking (`stats` feature on `zpico-alloc`) to RTOS
   platforms as well, so developers can monitor total heap pressure.
+
+## 7. Unbounded message sequences waste memory or cannot hold large payloads
+
+Generated message bindings use `heapless::Vec<T, N>` for unbounded sequences
+(`uint8[] data`, `float32[] ranges`, etc.). The capacity `N` is hardcoded in
+the codegen at **64 elements** (`NROS_DEFAULT_SEQUENCE_CAPACITY` in
+`packages/codegen/packages/rosidl-codegen/src/types.rs`).
+
+This creates a fundamental mismatch for messages with large variable-length
+payloads:
+
+| Message                   | Field              | Typical size          | Generated capacity |
+|---------------------------|--------------------|-----------------------|--------------------|
+| `sensor_msgs/Image`       | `uint8[] data`     | 921,600 (640×480 RGB) | 64 bytes           |
+| `sensor_msgs/PointCloud2` | `uint8[] data`     | 10,000+               | 64 bytes           |
+| `sensor_msgs/LaserScan`   | `float32[] ranges` | 360–1080              | 64 floats          |
+| `nav_msgs/OccupancyGrid`  | `int8[] data`      | 10,000+               | 64 bytes           |
+
+**Problem**: `heapless::Vec<u8, 65536>` would support 64 KB images, but the
+backing `[MaybeUninit<u8>; 65536]` **always occupies 64 KB** on the stack
+regardless of actual content. On MCUs with 64–256 KB total RAM, this is
+unacceptable.
+
+Bounded sequences (`uint8[<=100] data`) use the specified max and do not
+suffer from the default-capacity problem.
+
+**Impact**: Large sensor messages (Image, PointCloud2, LaserScan) are
+effectively unusable on embedded targets with the current codegen.
+Deserialization fails with `DeserError::CapacityExceeded` when the incoming
+data exceeds 64 elements.
+
+**Design direction — borrowed deserialization (zero-copy)**:
+
+Instead of copying sequence data into the message struct, generate a
+borrowed message type where unbounded sequences are `&'a [u8]` slices
+pointing directly into the CDR receive buffer:
+
+```rust
+// Current: copies data into fixed inline buffer (64 bytes max)
+struct Image {
+    height: u32,
+    width: u32,
+    encoding: heapless::String<32>,
+    data: heapless::Vec<u8, 64>,  // 64 bytes on stack, always
+}
+
+// Proposed: borrows data from transport buffer (16 bytes on stack)
+struct Image<'a> {
+    height: u32,
+    width: u32,
+    encoding: heapless::String<32>,
+    data: &'a [u8],  // pointer + length, points into CDR buffer
+}
+```
+
+The deserializer reads the CDR sequence length header, then returns a slice
+into the receive buffer at the correct offset — no copy, no fixed capacity.
+The message struct is small and fixed-size. The payload can be arbitrarily
+large, bounded only by the transport buffer size (`NROS_SUBSCRIPTION_BUFFER_SIZE`).
+
+This works for any sequence field, not just the last one — the CDR
+deserializer knows each field's offset. The lifetime `'a` ties the message
+to the receive buffer scope (valid for the duration of the subscription
+callback).
+
+**Implementation approach**:
+
+1. Add a `borrowed` codegen mode alongside the current `owned` mode.
+   `owned` generates `heapless::Vec<T, N>` (current behavior, for small
+   messages). `borrowed` generates `&'a [T]` for unbounded sequences.
+2. The subscription callback receives `Image<'_>` with data borrowing
+   the CDR buffer. The message is valid only inside the callback.
+3. For non-byte sequences (`float32[] ranges`), alignment must be
+   verified — CDR guarantees alignment, but the slice cast from
+   `&[u8]` to `&[f32]` needs validation on strictly-aligned platforms.
+4. Transport buffer size becomes the effective message size limit,
+   configurable per-subscription via `NROS_SUBSCRIPTION_BUFFER_SIZE`.
+
+**Workarounds available today**:
+
+- Define bounded message types for the application's actual payload
+  size (e.g., `uint8[<=4096] data` in a custom `.msg` file).
+- Use raw CDR APIs (`try_recv_raw`) to access the receive buffer
+  directly, bypassing the generated message types entirely.
+
+## 8. Two-copy receive path and static buffer pre-allocation at scale
+
+Every subscription message traverses two copies before reaching user code:
+
+```
+Network → SUBSCRIBER_BUFFERS[i].data → SubEntry.buffer (arena) → deserialize → callback
+              (zenoh-pico direct write)     (memcpy in try_recv_raw)    (CDR field-by-field)
+```
+
+**Copy chain**:
+
+| Copy | From                         | To                           | Location       | Method                               |
+|------|------------------------------|------------------------------|----------------|--------------------------------------|
+| —    | Network                      | `SUBSCRIBER_BUFFERS[i].data` | Static         | zenoh-pico direct write (no copy)    |
+| #1   | `SUBSCRIBER_BUFFERS[i].data` | `SubEntry.buffer`            | Executor arena | `memcpy` in `try_recv_raw()`         |
+| #2   | `SubEntry.buffer`            | Message struct               | Stack          | CDR deserialization (field-by-field) |
+
+**Static memory pre-allocation** (default config):
+
+| Buffer                 | Per-unit | Count                         | Default total |
+|------------------------|----------|-------------------------------|---------------|
+| `SUBSCRIBER_BUFFERS`   | ~1064 B  | `ZPICO_MAX_SUBSCRIBERS` (128) | **133 KB**    |
+| Executor arena entries | ~2304 B  | `NROS_EXECUTOR_MAX_CBS` (4)   | **~10 KB**    |
+
+The dominant cost is `SUBSCRIBER_BUFFERS`: 128 slots × buffer size, all
+pre-allocated as a static array regardless of how many subscribers exist.
+
+**Scaling problem**: If the buffer size is increased for large messages
+(e.g., `ZPICO_SUBSCRIBER_BUFFER_SIZE=65536` for 64 KB compressed images),
+the static array becomes 128 × 64 KB = **8 MB** — impossible on any MCU.
+Reducing `ZPICO_MAX_SUBSCRIBERS` helps (e.g., 4 slots × 64 KB = 256 KB),
+but then the system supports very few concurrent subscribers.
+
+**CPU cost**: The two memcpy operations are negligible for small messages
+(1 KB at 100 Hz = 200 KB/s). For large messages (64 KB at 30 Hz = 3.8 MB/s),
+the copies are still feasible on Cortex-M4 @ 168 MHz but become a
+meaningful fraction of available bandwidth.
+
+**Design direction — single-copy alloc-free receive**:
+
+The goal is to eliminate copy #1 (arena copy) so the user callback
+deserializes directly from `SUBSCRIBER_BUFFERS`, reducing to one write
+(network → static buffer) plus zero-copy deserialization:
+
+```
+Network → SUBSCRIBER_BUFFERS[i].data → borrowed deserialize → callback(&msg)
+              (zenoh-pico direct write)    (slices into buffer, no copy)
+```
+
+This requires:
+
+1. **Skip the arena buffer**: The executor dispatches directly from
+   `SUBSCRIBER_BUFFERS` instead of copying into `SubEntry.buffer`.
+   The subscriber buffer is locked (already has an atomic lock flag)
+   during callback execution to prevent zenoh-pico from overwriting it.
+
+2. **Borrowed deserialization** (issue 7): The message struct borrows
+   `&'a [u8]` slices from the subscriber buffer for variable-length
+   fields, avoiding the CDR copy into `heapless::Vec`.
+
+3. **Reduce subscriber slot count**: Instead of 128 pre-allocated
+   slots, size `ZPICO_MAX_SUBSCRIBERS` to the actual number of
+   subscribers (e.g., 4–8). This is already configurable but defaults
+   to 128.
+
+Combined with issue 7's borrowed deserialization, this gives a
+zero-copy path from network to user callback for the payload data,
+with only fixed-size header fields deserialized onto the stack.
+
+**Existing zero-copy path** (`unstable-zenoh-api`): Skips
+`SUBSCRIBER_BUFFERS` entirely — the callback receives `&[u8]` pointing
+into zenoh-pico's internal buffer. However, it requires `alloc`
+(boxed callback closure) and bypasses the executor's LET semantics,
+making it unsuitable for alloc-free bare-metal use.
+
+**Workarounds available today**:
+
+- Set `ZPICO_MAX_SUBSCRIBERS` to the actual subscriber count (e.g., 4)
+  to reduce static memory waste.
+- Increase `ZPICO_SUBSCRIBER_BUFFER_SIZE` only when large messages are
+  needed, accepting the memory tradeoff.
+- Use the raw CDR API (`try_recv_raw`) with a caller-provided buffer
+  to bypass the static buffer system entirely.
