@@ -1,0 +1,19 @@
+# ESP32 WiFi Listener configuration
+#
+# WiFi credentials: set SSID/password here or override via environment
+# variables (SSID=... PASSWORD=... cargo build). For security, prefer
+# env vars for real networks — this file is checked into git.
+
+[wifi]
+ssid = "MyNetwork"
+password = "secret"
+
+# Uncomment for static IP instead of DHCP:
+# [network]
+# ip = "10.0.0.101"
+# gateway = "10.0.0.1"
+# prefix = 24
+
+[zenoh]
+locator = "tcp/192.168.1.1:7447"
+domain_id = 0
