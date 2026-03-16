@@ -74,12 +74,13 @@ void app_main(void) {
         request.b = test_cases[i].b;
 
         uint8_t req_buf[256];
-        size_t req_size = 0;
-        if (example_interfaces_srv_add_two_ints_request_serialize(
-                &request, req_buf, sizeof(req_buf), &req_size) != 0) {
+        int32_t req_len = example_interfaces_srv_add_two_ints_request_serialize(
+                &request, req_buf, sizeof(req_buf));
+        if (req_len < 0) {
             printf("Failed to serialize request\n");
             continue;
         }
+        size_t req_size = (size_t)req_len;
 
         uint8_t resp_buf[256];
         size_t resp_len = 0;

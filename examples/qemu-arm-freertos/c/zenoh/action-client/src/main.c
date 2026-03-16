@@ -8,6 +8,7 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/action.h>
+#include <nros/executor.h>
 
 #include "example_interfaces.h"
 
@@ -19,6 +20,7 @@ static struct {
     nros_support_t support;
     nros_node_t node;
     nros_action_client_t action_client;
+    nros_executor_t executor;
 } app;
 
 static int g_feedback_count = 0;
@@ -114,16 +116,30 @@ void app_main(void) {
         printf("Failed to set result callback: %d\n", ret);
     }
 
+    ret = nros_executor_init(&app.executor, &app.support, 4);
+    if (ret != NROS_RET_OK) {
+        printf("Failed to initialize executor: %d\n", ret);
+        nros_action_client_fini(&app.action_client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+
     printf("Action client ready for /fibonacci\n");
+
+    // Warm-up: spin to allow Zenoh to discover the server's queryables
+    for (int i = 0; i < 500; i++) {
+        nros_executor_spin_some(&app.executor, 10000000ULL);
+    }
 
     example_interfaces_action_fibonacci_goal goal;
     example_interfaces_action_fibonacci_goal_init(&goal);
     goal.order = 5;
 
     uint8_t goal_buf[64];
-    size_t goal_size = 0;
-    if (example_interfaces_action_fibonacci_goal_serialize(
-            &goal, goal_buf, sizeof(goal_buf), &goal_size) != 0) {
+    int32_t goal_len = example_interfaces_action_fibonacci_goal_serialize(
+            &goal, goal_buf, sizeof(goal_buf));
+    if (goal_len < 0) {
         printf("Failed to serialize goal\n");
         goto cleanup;
     }
@@ -131,11 +147,21 @@ void app_main(void) {
     printf("Sending goal: order=%d\n", goal.order);
 
     nros_goal_uuid_t goal_uuid;
-    ret = nros_action_send_goal(&app.action_client, goal_buf, goal_size,
-                                &goal_uuid);
+    // Retry send_goal — Zenoh discovery may need time to find the server
+    for (int attempt = 0; attempt < 5; attempt++) {
+        ret = nros_action_send_goal(&app.action_client, goal_buf, (size_t)goal_len,
+                                    &goal_uuid);
+        if (ret == NROS_RET_OK) {
+            break;
+        }
+        printf("Goal attempt %d failed (%d), retrying...\n", attempt + 1, ret);
+        for (int j = 0; j < 500; j++) {
+            nros_executor_spin_some(&app.executor, 10000000ULL);
+        }
+    }
 
     if (ret != NROS_RET_OK) {
-        printf("Failed to send goal: %d\n", ret);
+        printf("Failed to send goal after retries: %d\n", ret);
         goto cleanup;
     }
 
@@ -167,6 +193,7 @@ void app_main(void) {
     }
 
 cleanup:
+    nros_executor_fini(&app.executor);
     nros_action_client_fini(&app.action_client);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);

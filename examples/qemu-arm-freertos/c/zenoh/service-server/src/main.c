@@ -53,14 +53,14 @@ static bool service_callback(const uint8_t *request_data, size_t request_len,
     printf("Request [%d]: %lld + %lld = %lld\n", ctx->request_count,
            (long long)request.a, (long long)request.b, (long long)response.sum);
 
-    size_t ser_len = 0;
-    if (example_interfaces_srv_add_two_ints_response_serialize(
-            &response, response_data, response_capacity, &ser_len) != 0) {
+    int32_t ser_len = example_interfaces_srv_add_two_ints_response_serialize(
+            &response, response_data, response_capacity);
+    if (ser_len < 0) {
         printf("Failed to serialize response\n");
         return false;
     }
 
-    *response_len = ser_len;
+    *response_len = (size_t)ser_len;
     return true;
 }
 

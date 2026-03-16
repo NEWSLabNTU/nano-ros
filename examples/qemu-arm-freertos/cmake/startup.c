@@ -532,6 +532,29 @@ int _write(int fd, const char *buf, int count) {
     return count - (int)result;
 }
 
+/* ---- nros platform functions ---- */
+/* Required by nros-c on no_std platforms. The Rust platform layer provides
+ * these for Rust examples; C/C++ examples must provide them in C. */
+
+uint64_t nros_platform_time_ns(void) {
+    /* TickType_t is 32-bit on this port. Convert ticks to nanoseconds. */
+    return (uint64_t)xTaskGetTickCount() * (1000000000ULL / configTICK_RATE_HZ);
+}
+
+void nros_platform_sleep_ns(uint64_t ns) {
+    uint32_t ms = (uint32_t)(ns / 1000000ULL);
+    if (ms == 0) ms = 1;
+    vTaskDelay(pdMS_TO_TICKS(ms));
+}
+
+void nros_platform_atomic_store_bool(_Bool *ptr, _Bool value) {
+    __atomic_store_n(ptr, value, __ATOMIC_RELEASE);
+}
+
+_Bool nros_platform_atomic_load_bool(const _Bool *ptr) {
+    return __atomic_load_n(ptr, __ATOMIC_ACQUIRE);
+}
+
 /* ---- C/C++ application entry point ---- */
 /* Replaces the Rust _start() → run() flow for pure C/C++ examples. */
 

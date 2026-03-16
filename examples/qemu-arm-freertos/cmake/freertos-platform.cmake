@@ -189,7 +189,7 @@ corrosion_import_crate(
     CRATES        nros-c nros-cpp
     CRATE_TYPES   staticlib
     NO_DEFAULT_FEATURES
-    FEATURES      rmw-zenoh platform-freertos link-tcp link-udp-unicast ros-humble panic-halt
+    FEATURES      rmw-zenoh platform-freertos link-tcp link-udp-unicast ros-humble panic-halt alloc
     LOCKED
 )
 
@@ -210,8 +210,10 @@ add_library(NanoRosC INTERFACE)
 add_library(NanoRos::NanoRos ALIAS NanoRosC)
 target_include_directories(NanoRosC INTERFACE
     "${_NROS_ROOT}/packages/core/nros-c/include"
+    ${_FREERTOS_INCLUDES}
 )
 target_link_libraries(NanoRosC INTERFACE nros_c-static)
+target_compile_definitions(NanoRosC INTERFACE NROS_PLATFORM_FREERTOS)
 
 # ---- NanoRos::NanoRosCpp target (C++ API, cross-compiled) ----
 add_library(NanoRosCpp INTERFACE)
