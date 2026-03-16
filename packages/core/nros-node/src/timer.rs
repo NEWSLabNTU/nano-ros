@@ -136,17 +136,7 @@ pub enum TimerMode {
     Inert,
 }
 
-/// Timer callback type
-///
-/// For `no_std` compatibility, we use a trait object approach with optional
-/// heap allocation via the `alloc` feature. Without `alloc`, use function
-/// pointers via `TimerCallbackFn`.
-#[cfg(feature = "alloc")]
-pub type TimerCallback = alloc::boxed::Box<dyn FnMut() + Send>;
-
 /// Timer callback as a bare function pointer (`no_std`, no heap required).
-///
-/// Use this instead of [`TimerCallback`] when heap allocation is unavailable.
 pub type TimerCallbackFn = fn();
 
 /// Internal timer state
@@ -163,9 +153,6 @@ pub struct TimerState {
     canceled: bool,
     /// Callback function pointer (no heap)
     callback_fn: Option<TimerCallbackFn>,
-    /// Callback trait object (requires alloc)
-    #[cfg(feature = "alloc")]
-    callback_box: Option<TimerCallback>,
 }
 
 impl core::fmt::Debug for TimerState {
@@ -189,21 +176,6 @@ impl TimerState {
             mode,
             canceled: false,
             callback_fn: Some(callback),
-            #[cfg(feature = "alloc")]
-            callback_box: None,
-        }
-    }
-
-    /// Create a new timer state with boxed callback (requires alloc)
-    #[cfg(feature = "alloc")]
-    pub fn new_with_box(period: TimerDuration, mode: TimerMode, callback: TimerCallback) -> Self {
-        Self {
-            period_ms: period.as_millis(),
-            elapsed_ms: 0,
-            mode,
-            canceled: false,
-            callback_fn: None,
-            callback_box: Some(callback),
         }
     }
 
@@ -215,8 +187,6 @@ impl TimerState {
             mode: TimerMode::Inert,
             canceled: false,
             callback_fn: None,
-            #[cfg(feature = "alloc")]
-            callback_box: None,
         }
     }
 
@@ -271,17 +241,6 @@ impl TimerState {
     /// Set callback to function pointer
     pub fn set_callback_fn(&mut self, callback: TimerCallbackFn) {
         self.callback_fn = Some(callback);
-        #[cfg(feature = "alloc")]
-        {
-            self.callback_box = None;
-        }
-    }
-
-    /// Set callback to boxed callback (requires alloc)
-    #[cfg(feature = "alloc")]
-    pub fn set_callback_box(&mut self, callback: TimerCallback) {
-        self.callback_fn = None;
-        self.callback_box = Some(callback);
     }
 
     /// Set timer to repeating mode
@@ -316,10 +275,6 @@ impl TimerState {
     pub(crate) fn fire(&mut self) {
         // Execute callback
         if let Some(ref callback) = self.callback_fn {
-            callback();
-        }
-        #[cfg(feature = "alloc")]
-        if let Some(ref mut callback) = self.callback_box {
             callback();
         }
 
