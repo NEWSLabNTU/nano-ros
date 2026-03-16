@@ -253,10 +253,40 @@ pub(crate) struct SubBufferedEntry<M, F> {
     pub(crate) _phantom: PhantomData<M>,
 }
 
-/// Monomorphized dispatch for triple-buffered subscriptions.
+/// Drain the RMW subscriber handle into the buffer strategy.
 ///
-/// Acquires the latest message from the triple buffer's read slot and
-/// deserializes borrowed (zero-copy for the payload data).
+/// Calls `try_recv_raw()` on the subscriber handle and writes received data
+/// into the triple buffer's write slot or the SPSC ring's next push slot.
+/// This bridges the existing `SUBSCRIBER_BUFFERS`-based RMW path with the
+/// new arena-based buffer strategy.
+///
+/// # Safety
+/// `entry` must be a valid mutable reference to a `SubBufferedEntry`.
+unsafe fn drain_into_buffer<M, F>(entry: &mut SubBufferedEntry<M, F>) {
+    match &entry.buffer {
+        BufferStrategy::Triple(tb) => {
+            let slot = tb.write_slot();
+            if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+                tb.writer_publish(len);
+            }
+        }
+        BufferStrategy::Ring(ring) => {
+            // Drain all pending messages into ring slots
+            while let Some(slot) = ring.try_push() {
+                if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+                    ring.commit_push(len);
+                } else {
+                    break; // no more data
+                }
+            }
+        }
+    }
+}
+
+/// Monomorphized dispatch for buffered subscriptions.
+///
+/// First drains the RMW subscriber into the buffer strategy (triple buffer
+/// or SPSC ring), then dispatches from the buffer to the user callback.
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `SubBufferedEntry<M, F>`.
@@ -270,6 +300,10 @@ where
 {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedEntry<M, F>) };
 
+    // Phase 1: drain RMW subscriber → buffer strategy
+    unsafe { drain_into_buffer(entry) };
+
+    // Phase 2: dispatch from buffer → user callback
     match &entry.buffer {
         BufferStrategy::Triple(tb) => match tb.reader_acquire() {
             Some((data, len)) => {
@@ -300,11 +334,15 @@ where
 
 /// Readiness check for buffered subscriptions.
 ///
+/// Checks the RMW subscriber handle first (data in SUBSCRIBER_BUFFERS),
+/// then the buffer strategy (data already drained into triple buffer/ring).
+///
 /// # Safety
 /// `ptr` must point to a valid `SubBufferedEntry<M, F>`.
 pub(crate) unsafe fn sub_buffered_has_data<M, F>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const SubBufferedEntry<M, F>) };
-    entry.buffer.has_data()
+    // Check RMW handle first (data may be in static buffer, not yet drained)
+    entry.handle.has_data() || entry.buffer.has_data()
 }
 
 // ============================================================================
