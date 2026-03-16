@@ -266,6 +266,10 @@ extern void *pvPortMalloc(uint32_t size);
 
 extern void vPortFree(void *ptr);
 
+extern void *z_malloc(size_t size);
+
+extern void z_free(void *ptr);
+
 /**
  * Create a guard condition and register it with the executor.
  *

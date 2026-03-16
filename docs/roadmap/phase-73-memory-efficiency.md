@@ -341,7 +341,7 @@ deterministic O(1) without any zenoh-pico patches.
 ## Work Items
 
 - [x] 73.1 — Fix FreeRTOS `z_realloc` (returns NULL)
-- [ ] 73.2 — Fix ThreadX missing Rust `GlobalAlloc`
+- [x] 73.2 — Fix ThreadX missing Rust `GlobalAlloc`
 - [ ] 73.3 — Slab fast-path in `zpico-alloc`
 - [ ] 73.4 — Triple buffer primitive
 - [ ] 73.5 — SPSC ring buffer primitive
@@ -352,7 +352,11 @@ deterministic O(1) without any zenoh-pico patches.
 - [ ] 73.10 — Executor zero-copy dispatch path
 - [ ] 73.11 — DDS and XRCE-DDS shim integration
 - [ ] 73.12 — Remove `SUBSCRIBER_BUFFERS` static array
-- [ ] 73.13 — Document sizing and migration
+- [ ] 73.13 — Remove `alloc` from zero-copy subscriber
+- [ ] 73.14 — Remove `alloc` from timer callbacks
+- [ ] 73.15 — Remove `alloc` from large service replies
+- [ ] 73.16 — Remove `alloc` from zenoh ID formatting and executor config
+- [ ] 73.17 — Document sizing and migration
 
 ### 73.1 — Fix FreeRTOS `z_realloc` (returns NULL)
 
@@ -746,7 +750,87 @@ executor's `MAX_CBS` and arena size.
 **Files**:
 - `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs`
 
-### 73.13 — Document sizing and migration
+### 73.13 — Remove `alloc` from zero-copy subscriber
+
+The current `unstable-zenoh-api` zero-copy subscriber uses
+`Box<dyn FnMut(&[u8], Option<MessageInfo>) + Send>` to store the user
+callback as a heap-allocated trait object.
+
+Phase 73's triple buffer + borrowed deserialization (73.4–73.10)
+replaces this entirely. The new zero-copy path uses the same
+executor callback mechanism as regular subscriptions (monomorphized
+function pointer in `CallbackMeta`, concrete closure in arena entry)
+— no `Box<dyn>` needed.
+
+Once 73.10 is complete, remove:
+- `ZeroCopyCallbackBox` type alias
+- `ZenohZeroCopySubscriber` struct and its `alloc`-gated impl
+- The `#[cfg(all(feature = "unstable-zenoh-api", feature = "alloc"))]`
+  gates — the `unstable-zenoh-api` feature should work without `alloc`
+
+**Files**:
+- `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs`
+
+### 73.14 — Remove `alloc` from timer callbacks
+
+`Timer` has dual callback storage: `callback_fn: Option<TimerCallbackFn>`
+(bare function pointer, always available) and `callback_box:
+Option<Box<dyn FnMut()>>` (heap trait object, `alloc`-gated).
+
+The executor arena already stores timer callbacks as monomorphized
+concrete closures (`TimerEntry<F>` where `F: FnMut()`). The `Box<dyn>`
+path in `Timer` is redundant — it exists for a standalone `Timer`
+usage pattern that the arena-based executor doesn't use.
+
+Remove:
+- `TimerCallback` type alias (`Box<dyn FnMut() + Send>`)
+- `callback_box` field from `Timer` struct
+- `new_with_box()` and `set_callback_box()` methods
+- All `#[cfg(feature = "alloc")]` gates in `timer.rs`
+
+Retain `TimerCallbackFn` (bare function pointer) for the C API path.
+
+**Files**:
+- `packages/core/nros-node/src/timer.rs`
+
+### 73.15 — Remove `alloc` from large service replies
+
+`handle_request_boxed()` in `nros-rmw` and `nros-node` returns
+`Box<Reply>` for service responses too large for the stack. This is
+used only by parameter services (which retain `alloc` as a hard
+dependency).
+
+For all other service types, `handle_request()` (stack-based) is
+sufficient — ROS 2 service replies are typically small (< 1 KB).
+
+Remove `handle_request_boxed()` from the public API surface. If
+parameter services need it internally, keep it as a private method
+gated on `param-services` (which already implies `alloc`).
+
+**Files**:
+- `packages/core/nros-rmw/src/traits.rs`
+- `packages/core/nros-node/src/executor/handles.rs`
+
+### 73.16 — Remove `alloc` from zenoh ID formatting and executor config
+
+Two minor `alloc` usages:
+
+1. **Zenoh ID hex string** (`zpico.rs:169`): `to_hex_string()` uses
+   `alloc::format!()`. Replace with a method that writes into a
+   caller-provided `heapless::String<32>` (16 hex bytes = 32 chars).
+
+2. **Executor config string leak** (`types.rs:238`): `Box::leak()` to
+   convert env var `String` to `&'static str`. This is already gated
+   on `std` (env vars only exist on hosted platforms). Move the gate
+   from `alloc + std` to just `std` — on `std` targets, the standard
+   allocator is always available, so the explicit `alloc` gate is
+   redundant.
+
+**Files**:
+- `packages/zpico/nros-rmw-zenoh/src/zpico.rs`
+- `packages/core/nros-node/src/executor/types.rs`
+
+### 73.17 — Document sizing and migration
 
 Update the embedded tuning guide with the new memory model:
 
@@ -779,6 +863,12 @@ Update the embedded tuning guide with the new memory model:
       (GCC 5+, Clang 3.5+, no STL required)
 - [ ] `SUBSCRIBER_BUFFERS` static array removed; memory usage reduced
 - [ ] All existing tests pass (no regressions in copy-based path)
+- [ ] `alloc` feature only required by `param-services`; all other
+      nros functionality works without `alloc`
+- [ ] `unstable-zenoh-api` zero-copy works without `alloc`
+- [ ] `grep -r 'feature.*alloc' packages/core/ packages/zpico/nros-rmw-zenoh/`
+      shows only `param-services`-related gates and `extern crate alloc`
+      declarations
 - [ ] Arena sizing documented with before/after comparison
 
 ## Notes
@@ -817,3 +907,17 @@ Update the embedded tuning guide with the new memory model:
 - `KEEP_ALL` QoS is rejected at registration time on embedded. Users
   who need unbounded queuing must use `alloc` + a heap-backed
   container outside the executor.
+- **`alloc` after Phase 73**: The only feature requiring `alloc` is
+  `param-services` (ROS 2 parameter service responses contain large
+  heapless arrays that overflow the stack — `Box::new(response)` is
+  unavoidable). All other nros functionality — pub/sub, services,
+  actions, timers, zero-copy receive — works without `alloc`.
+  The `alloc` feature flag, `extern crate alloc` declarations, and
+  RTOS global allocators (FreeRTOS, ThreadX) remain for
+  `param-services` and for users who opt into heap-based convenience
+  APIs on hosted platforms.
+- **Serdes `alloc` impls** (`Serialize`/`Deserialize` for
+  `alloc::String` and `alloc::Vec<T>`) are retained — they are
+  harmless (no code generated when `alloc` is disabled) and useful
+  for hosted-platform users who mix `std` collections with nros
+  messaging.

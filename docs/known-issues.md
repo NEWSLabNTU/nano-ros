@@ -87,9 +87,10 @@ allocators** that cannot share memory or statistics:
 1. ~~**FreeRTOS `z_realloc` returns NULL**~~ (Fixed) — implemented as
    alloc-copy-free in `system/freertos/system.c`, matching ThreadX.
 
-2. **ThreadX has no Rust global allocator** — if a future nros feature
-   requires `alloc` on ThreadX, there's no allocator bridge. FreeRTOS has
-   `FreeRtosAllocator` in `nros-c/src/lib.rs`; ThreadX does not.
+2. ~~**ThreadX has no Rust global allocator**~~ (Fixed) — added
+   `ThreadXAllocator` in both `nros-c/src/lib.rs` and `nros-cpp/src/lib.rs`,
+   wrapping `z_malloc`/`z_free` (which delegate to `tx_byte_allocate`/
+   `tx_byte_release`). Gated on `alloc + !std + platform-threadx`.
 
 3. **Heap budgeting is split** — on FreeRTOS, both zenoh-pico (via
    `pvPortMalloc`) and Rust (via `FreeRtosAllocator` → `pvPortMalloc`)

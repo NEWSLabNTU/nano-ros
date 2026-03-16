@@ -54,6 +54,34 @@ mod freertos_alloc {
     static ALLOCATOR: FreeRtosAllocator = FreeRtosAllocator;
 }
 
+// ThreadX global allocator: wraps z_malloc/z_free which delegate to
+// tx_byte_allocate/tx_byte_release via the zpico_threadx_byte_pool
+// defined in zpico-sys/c/platform/threadx/system.c.
+#[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-threadx"))]
+mod threadx_alloc {
+    use core::alloc::{GlobalAlloc, Layout};
+
+    unsafe extern "C" {
+        fn z_malloc(size: usize) -> *mut core::ffi::c_void;
+        fn z_free(ptr: *mut core::ffi::c_void);
+    }
+
+    struct ThreadXAllocator;
+
+    unsafe impl GlobalAlloc for ThreadXAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            unsafe { z_malloc(layout.size()) as *mut u8 }
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+            unsafe { z_free(ptr as *mut core::ffi::c_void) }
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: ThreadXAllocator = ThreadXAllocator;
+}
+
 use core::ffi::{c_char, c_int, c_void};
 
 // ── Core entity modules (alloc-free — caller provides inline storage) ──
