@@ -11,22 +11,21 @@ use crate::timer::TimerDuration;
 
 use super::arena::{
     BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry,
-    SubBufferedEntry, SubEntry, SubInfoEntry, SubRawEntry, TimerEntry, TimerHeader, always_ready,
-    buffered_region_size, drop_entry, guard_has_data, guard_try_process, no_pre_sample,
-    srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process, sub_buffered_has_data,
+    SubBufferedEntry, SubBufferedRawEntry, SubEntry, SubInfoEntry, SubRawEntry, TimerEntry,
+    TimerHeader, always_ready, buffered_region_size, drop_entry, guard_has_data, guard_try_process,
+    no_pre_sample, srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
+    sub_buffered_has_data, sub_buffered_raw_has_data, sub_buffered_raw_try_process,
     sub_buffered_try_process, sub_has_data, sub_info_has_data, sub_info_pre_sample,
     sub_info_try_process, sub_pre_sample, sub_raw_has_data, sub_raw_pre_sample,
     sub_raw_try_process, sub_try_process, timer_try_process,
 };
-use super::spsc_ring::SpscRing;
-use super::triple_buffer::TripleBuffer;
-// BufferStrategy, SubBufferedEntry, buffered_region_size, sub_buffered_*,
-// SpscRing, TripleBuffer are used in add_subscription_buffered (has_rmw gated).
 #[cfg(feature = "safety-e2e")]
 use super::arena::{
     SubSafetyEntry, sub_safety_has_data, sub_safety_pre_sample, sub_safety_try_process,
 };
 use super::node::Node;
+use super::spsc_ring::SpscRing;
+use super::triple_buffer::TripleBuffer;
 #[cfg(any(
     feature = "rmw-zenoh",
     feature = "rmw-xrce",
@@ -547,6 +546,88 @@ impl Executor {
             pre_sample: no_pre_sample, // LET pre-sample not yet supported for buffered
             invocation: InvocationMode::OnNewData,
             drop_fn: drop_entry::<Entry<M, F>>,
+        });
+        Ok(HandleId(slot))
+    }
+
+    /// Register a zero-copy raw subscription with QoS-driven buffering.
+    ///
+    /// The callback receives `&[u8]` — the raw CDR data borrowing directly
+    /// from the triple buffer's read slot or SPSC ring's pop slot. For
+    /// borrowed message types (e.g., `Image<'a>`), call
+    /// `Image::deserialize_borrowed(data)` inside the callback:
+    ///
+    /// ```ignore
+    /// executor.add_subscription_buffered_raw::<1024>(
+    ///     "/camera/image",
+    ///     "sensor_msgs::msg::dds_::Image_",
+    ///     "TypeHashNotSupported",
+    ///     QosSettings::SENSOR_DATA,
+    ///     |data: &[u8]| {
+    ///         let img = Image::deserialize_borrowed(data).unwrap();
+    ///         process_pixels(img.data); // img.data: &[u8] borrowing from `data`
+    ///     },
+    /// );
+    /// ```
+    pub fn add_subscription_buffered_raw<F, const RX_BUF: usize>(
+        &mut self,
+        topic_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        qos: QosSettings,
+        callback: F,
+    ) -> Result<HandleId, NodeError>
+    where
+        F: FnMut(&[u8]) + 'static,
+    {
+        type Entry<F> = SubBufferedRawEntry<F>;
+
+        let slot = self.next_entry_slot()?;
+        let node_name: heapless::String<64> = self.node_name.clone();
+        let ns: heapless::String<64> = self.namespace.clone();
+        let mut topic = TopicInfo::new(topic_name, type_name, type_hash).with_namespace(&ns);
+        if !node_name.is_empty() {
+            topic = topic.with_node_name(&node_name);
+        }
+        let handle = self
+            .session
+            .create_subscriber(&topic, qos)
+            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
+
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+
+        let (entry_offset, trailing_offset) =
+            self.arena_alloc_with_trailing::<Entry<F>>(trailing_bytes)?;
+
+        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
+
+        let buffer = if qos.depth <= 1 {
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
+        } else {
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
+        };
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(entry_offset) as *mut Entry<F>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    handle,
+                    buffer,
+                    callback,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset: entry_offset,
+            kind: EntryKind::Subscription,
+            try_process: sub_buffered_raw_try_process::<F>,
+            has_data: sub_buffered_raw_has_data::<F>,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::OnNewData,
+            drop_fn: drop_entry::<Entry<F>>,
         });
         Ok(HandleId(slot))
     }

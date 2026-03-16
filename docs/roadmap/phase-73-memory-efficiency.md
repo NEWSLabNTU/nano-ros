@@ -349,7 +349,7 @@ deterministic O(1) without any zenoh-pico patches.
 - [x] 73.7 — Zenoh shim direct-write into triple buffer
 - [x] 73.8 — Borrowed message codegen (Rust)
 - [x] 73.9 — Borrowed message codegen (C/C++) and `nros::Span` header
-- [ ] 73.10 — Executor zero-copy dispatch path
+- [x] 73.10 — Executor zero-copy dispatch path
 - [ ] 73.11 — DDS and XRCE-DDS shim integration
 - [ ] 73.12 — Remove `SUBSCRIBER_BUFFERS` static array
 - [ ] 73.13 — Remove `alloc` from zero-copy subscriber

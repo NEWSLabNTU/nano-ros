@@ -346,6 +346,91 @@ pub(crate) unsafe fn sub_buffered_has_data<M, F>(ptr: *const u8) -> bool {
 }
 
 // ============================================================================
+// Zero-copy raw buffered subscription (Phase 73.10)
+// ============================================================================
+
+/// Buffered subscription entry for zero-copy raw callbacks.
+///
+/// The callback receives `&[u8]` (CDR data) borrowing directly from the
+/// triple buffer's read slot or SPSC ring's pop slot. For borrowed message
+/// types (e.g., `Image<'a>`), the callback calls `deserialize_borrowed()`
+/// on the data, giving the message a lifetime tied to the callback scope.
+#[repr(C)]
+pub(crate) struct SubBufferedRawEntry<F> {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: BufferStrategy,
+    pub(crate) callback: F,
+}
+
+/// Drain helper for raw buffered entries.
+unsafe fn drain_into_buffer_raw<F>(entry: &mut SubBufferedRawEntry<F>) {
+    match &entry.buffer {
+        BufferStrategy::Triple(tb) => {
+            let slot = tb.write_slot();
+            if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+                tb.writer_publish(len);
+            }
+        }
+        BufferStrategy::Ring(ring) => {
+            while let Some(slot) = ring.try_push() {
+                if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+                    ring.commit_push(len);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Dispatch for zero-copy raw buffered subscriptions.
+///
+/// Drains the RMW handle into the buffer, then passes the raw CDR slice
+/// to the callback. The callback borrows from the buffer slot — no copy.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedRawEntry<F>`.
+pub(crate) unsafe fn sub_buffered_raw_try_process<F>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError>
+where
+    F: FnMut(&[u8]),
+{
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawEntry<F>) };
+
+    unsafe { drain_into_buffer_raw(entry) };
+
+    match &entry.buffer {
+        BufferStrategy::Triple(tb) => match tb.reader_acquire() {
+            Some((data, len)) => {
+                (entry.callback)(&data[..len]);
+                Ok(true)
+            }
+            None => Ok(false),
+        },
+        BufferStrategy::Ring(ring) => {
+            let mut did_work = false;
+            while let Some((data, len)) = ring.try_pop() {
+                (entry.callback)(&data[..len]);
+                ring.commit_pop();
+                did_work = true;
+            }
+            Ok(did_work)
+        }
+    }
+}
+
+/// Readiness check for raw buffered subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedRawEntry<F>`.
+pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawEntry<F>) };
+    entry.handle.has_data() || entry.buffer.has_data()
+}
+
+// ============================================================================
 // Dispatch functions
 // ============================================================================
 
