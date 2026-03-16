@@ -577,6 +577,10 @@ type ZeroCopyCallbackBox = alloc::boxed::Box<dyn FnMut(&[u8], Option<MessageInfo
 
 /// Zero-copy subscriber that deserializes directly from zenoh-pico's internal buffer.
 ///
+/// **Deprecated**: Use `Executor::add_subscription_buffered_raw()` instead, which
+/// provides zero-copy receive via triple buffers without requiring `alloc`. This type
+/// is retained for backwards compatibility but will be removed in a future release.
+///
 /// Unlike [`ZenohSubscriber`] which uses a poll model (static buffer + `has_data` flag),
 /// this subscriber uses a push model: the C callback invokes a Rust closure that
 /// processes the message inline. No payload copies are made.

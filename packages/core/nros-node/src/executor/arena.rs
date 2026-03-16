@@ -60,6 +60,10 @@ pub(crate) struct CallbackMeta {
 // ============================================================================
 
 /// Concrete subscription entry stored in the arena.
+///
+/// **Deprecated**: Replaced by [`SubBufferedEntry`] which uses triple buffer / SPSC ring.
+/// Retained for `add_subscription_with_info` variants until they are migrated.
+#[allow(dead_code)]
 #[repr(C)]
 pub(crate) struct SubEntry<M, F, const RX_BUF: usize> {
     pub(crate) handle: session::RmwSubscriber,
@@ -164,6 +168,9 @@ pub(crate) struct ActionServerRawArenaEntry<
 }
 
 /// Concrete subscription entry for raw (untyped) callbacks.
+///
+/// **Deprecated**: Replaced by [`SubBufferedRawCEntry`] which uses triple buffer / SPSC ring.
+#[allow(dead_code)]
 #[repr(C)]
 pub(crate) struct SubRawEntry<const RX_BUF: usize> {
     pub(crate) handle: session::RmwSubscriber,
@@ -430,6 +437,80 @@ pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
     entry.handle.has_data() || entry.buffer.has_data()
 }
 
+/// Buffered subscription entry for C-style raw callbacks (function pointer + context).
+///
+/// Same as `SubBufferedRawEntry` but uses `RawSubscriptionCallback` instead of
+/// a Rust closure. Used by the C API and by `add_subscription_raw_*` methods.
+#[repr(C)]
+pub(crate) struct SubBufferedRawCEntry {
+    pub(crate) handle: session::RmwSubscriber,
+    pub(crate) buffer: BufferStrategy,
+    pub(crate) callback: RawSubscriptionCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Drain helper for C-style raw buffered entries.
+unsafe fn drain_into_buffer_raw_c(entry: &mut SubBufferedRawCEntry) {
+    match &entry.buffer {
+        BufferStrategy::Triple(tb) => {
+            let slot = tb.write_slot();
+            if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+                tb.writer_publish(len);
+            }
+        }
+        BufferStrategy::Ring(ring) => {
+            while let Some(slot) = ring.try_push() {
+                if let Ok(Some(len)) = entry.handle.try_recv_raw(slot) {
+                    ring.commit_push(len);
+                } else {
+                    break;
+                }
+            }
+        }
+    }
+}
+
+/// Dispatch for C-style raw buffered subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `SubBufferedRawCEntry`.
+pub(crate) unsafe fn sub_buffered_raw_c_try_process(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError> {
+    let entry = unsafe { &mut *(ptr as *mut SubBufferedRawCEntry) };
+
+    unsafe { drain_into_buffer_raw_c(entry) };
+
+    match &entry.buffer {
+        BufferStrategy::Triple(tb) => match tb.reader_acquire() {
+            Some((data, len)) => {
+                unsafe { (entry.callback)(data.as_ptr(), len, entry.context) };
+                Ok(true)
+            }
+            None => Ok(false),
+        },
+        BufferStrategy::Ring(ring) => {
+            let mut did_work = false;
+            while let Some((data, len)) = ring.try_pop() {
+                unsafe { (entry.callback)(data.as_ptr(), len, entry.context) };
+                ring.commit_pop();
+                did_work = true;
+            }
+            Ok(did_work)
+        }
+    }
+}
+
+/// Readiness check for C-style raw buffered subscriptions.
+///
+/// # Safety
+/// `ptr` must point to a valid `SubBufferedRawCEntry`.
+pub(crate) unsafe fn sub_buffered_raw_c_has_data(ptr: *const u8) -> bool {
+    let entry = unsafe { &*(ptr as *const SubBufferedRawCEntry) };
+    entry.handle.has_data() || entry.buffer.has_data()
+}
+
 // ============================================================================
 // Dispatch functions
 // ============================================================================
@@ -438,6 +519,7 @@ pub(crate) unsafe fn sub_buffered_raw_has_data<F>(ptr: *const u8) -> bool {
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `SubEntry<M, F, RX_BUF>`.
+#[allow(dead_code)] // Deprecated: replaced by sub_buffered_try_process
 pub(crate) unsafe fn sub_try_process<M, F, const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
@@ -760,6 +842,7 @@ pub(crate) unsafe fn action_server_raw_try_process<
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `SubRawEntry<RX_BUF>`.
+#[allow(dead_code)] // Deprecated: replaced by sub_buffered_raw_c_try_process
 pub(crate) unsafe fn sub_raw_try_process<const RX_BUF: usize>(
     ptr: *mut u8,
     _delta_ms: u64,
@@ -862,6 +945,7 @@ where
 ///
 /// # Safety
 /// `ptr` must point to a valid `SubEntry<M, F, RX_BUF>`.
+#[allow(dead_code)]
 pub(crate) unsafe fn sub_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const SubEntry<M, F, RX_BUF>) };
     entry.handle.has_data()
@@ -890,6 +974,7 @@ pub(crate) unsafe fn sub_safety_has_data<M, F, const RX_BUF: usize>(ptr: *const 
 ///
 /// # Safety
 /// `ptr` must point to a valid `SubRawEntry<RX_BUF>`.
+#[allow(dead_code)]
 pub(crate) unsafe fn sub_raw_has_data<const RX_BUF: usize>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const SubRawEntry<RX_BUF>) };
     entry.handle.has_data()
@@ -940,6 +1025,7 @@ pub(crate) unsafe fn always_ready(_ptr: *const u8) -> bool {
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `SubEntry<M, F, RX_BUF>`.
+#[allow(dead_code)]
 pub(crate) unsafe fn sub_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
     let entry = unsafe { &mut *(ptr as *mut SubEntry<M, F, RX_BUF>) };
     entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
@@ -978,6 +1064,7 @@ pub(crate) unsafe fn sub_safety_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut 
 ///
 /// # Safety
 /// `ptr` must point to a valid, aligned `SubRawEntry<RX_BUF>`.
+#[allow(dead_code)]
 pub(crate) unsafe fn sub_raw_pre_sample<const RX_BUF: usize>(ptr: *mut u8) {
     let entry = unsafe { &mut *(ptr as *mut SubRawEntry<RX_BUF>) };
     entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {

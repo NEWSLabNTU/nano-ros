@@ -11,13 +11,12 @@ use crate::timer::TimerDuration;
 
 use super::arena::{
     BufferStrategy, CallbackMeta, EntryKind, GuardConditionEntry, SrvEntry, SrvRawEntry,
-    SubBufferedEntry, SubBufferedRawEntry, SubEntry, SubInfoEntry, SubRawEntry, TimerEntry,
+    SubBufferedEntry, SubBufferedRawCEntry, SubBufferedRawEntry, SubInfoEntry, TimerEntry,
     TimerHeader, always_ready, buffered_region_size, drop_entry, guard_has_data, guard_try_process,
     no_pre_sample, srv_has_data, srv_raw_has_data, srv_raw_try_process, srv_try_process,
-    sub_buffered_has_data, sub_buffered_raw_has_data, sub_buffered_raw_try_process,
-    sub_buffered_try_process, sub_has_data, sub_info_has_data, sub_info_pre_sample,
-    sub_info_try_process, sub_pre_sample, sub_raw_has_data, sub_raw_pre_sample,
-    sub_raw_try_process, sub_try_process, timer_try_process,
+    sub_buffered_has_data, sub_buffered_raw_c_has_data, sub_buffered_raw_c_try_process,
+    sub_buffered_raw_has_data, sub_buffered_raw_try_process, sub_buffered_try_process,
+    sub_info_has_data, sub_info_pre_sample, sub_info_try_process, timer_try_process,
 };
 #[cfg(feature = "safety-e2e")]
 use super::arena::{
@@ -425,6 +424,10 @@ impl Executor {
     }
 
     /// Register a subscription callback with a custom receive buffer size.
+    ///
+    /// Internally uses a triple buffer (3 slots) with `KEEP_LAST(1)` QoS.
+    /// For deeper message queuing, use [`add_subscription_buffered`] with
+    /// an explicit QoS depth.
     pub fn add_subscription_sized<M, F, const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
@@ -434,49 +437,14 @@ impl Executor {
         M: RosMessage + 'static,
         F: FnMut(&M) + 'static,
     {
-        type Entry<M, F, const N: usize> = SubEntry<M, F, N>;
-
-        let slot = self.next_entry_slot()?;
-        let node_name: heapless::String<64> = self.node_name.clone();
-        let ns: heapless::String<64> = self.namespace.clone();
-        let mut topic = TopicInfo::new(topic_name, M::TYPE_NAME, M::TYPE_HASH).with_namespace(&ns);
-        if !node_name.is_empty() {
-            topic = topic.with_node_name(&node_name);
-        }
-        let handle = self
-            .session
-            .create_subscriber(&topic, QosSettings::default())
-            .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
-
-        let offset = self.arena_alloc::<Entry<M, F, RX_BUF>>()?;
-
-        // SAFETY: `arena_alloc` guarantees the offset is within bounds and
-        // properly aligned for `Entry`. We write a fully-initialized value.
-        unsafe {
-            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut Entry<M, F, RX_BUF>;
-            core::ptr::write(
-                entry_ptr,
-                Entry {
-                    handle,
-                    buffer: [0u8; RX_BUF],
-                    sampled_len: 0,
-                    callback,
-                    _phantom: PhantomData,
-                },
-            );
-        }
-
-        self.entries[slot] = Some(CallbackMeta {
-            offset,
-            kind: EntryKind::Subscription,
-            try_process: sub_try_process::<M, F, RX_BUF>,
-            has_data: sub_has_data::<M, F, RX_BUF>,
-            pre_sample: sub_pre_sample::<M, F, RX_BUF>,
-            invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<Entry<M, F, RX_BUF>>,
-        });
-        Ok(HandleId(slot))
+        // Use depth=1 (triple buffer) to match the old single-buffer behavior.
+        // The default QoS depth (10) would create an 11-slot SPSC ring, using
+        // 11× the buffer memory — too expensive as an invisible default.
+        self.add_subscription_buffered::<M, F, RX_BUF>(
+            topic_name,
+            QosSettings::default().keep_last(1),
+            callback,
+        )
     }
 
     /// Register a subscription with QoS-driven buffering (Phase 73).
@@ -978,7 +946,7 @@ impl Executor {
             topic_name,
             type_name,
             type_hash,
-            QosSettings::default(),
+            QosSettings::default().keep_last(1),
             callback,
             context,
         )
@@ -997,7 +965,7 @@ impl Executor {
             topic_name,
             type_name,
             type_hash,
-            QosSettings::default(),
+            QosSettings::default().keep_last(1),
             callback,
             context,
         )
@@ -1021,6 +989,8 @@ impl Executor {
     }
 
     /// Register a raw subscription callback with custom QoS and buffer size.
+    ///
+    /// Internally uses triple buffer (depth ≤ 1) or SPSC ring (depth > 1).
     pub fn add_subscription_raw_with_qos_sized<const RX_BUF: usize>(
         &mut self,
         topic_name: &str,
@@ -1042,17 +1012,27 @@ impl Executor {
             .create_subscriber(&topic, qos)
             .map_err(|_| NodeError::Transport(TransportError::SubscriberCreationFailed))?;
 
-        let offset = self.arena_alloc::<SubRawEntry<RX_BUF>>()?;
+        let (_slot_count, trailing_bytes) = buffered_region_size(qos.depth, RX_BUF);
+
+        let (entry_offset, trailing_offset) =
+            self.arena_alloc_with_trailing::<SubBufferedRawCEntry>(trailing_bytes)?;
+
+        let buf_ptr = unsafe { (self.arena.as_mut_ptr() as *mut u8).add(trailing_offset) };
+
+        let buffer = if qos.depth <= 1 {
+            BufferStrategy::Triple(unsafe { TripleBuffer::init(buf_ptr, RX_BUF) })
+        } else {
+            BufferStrategy::Ring(unsafe { SpscRing::init(buf_ptr, RX_BUF, qos.depth as usize) })
+        };
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr = arena_ptr.add(offset) as *mut SubRawEntry<RX_BUF>;
+            let entry_ptr = arena_ptr.add(entry_offset) as *mut SubBufferedRawCEntry;
             core::ptr::write(
                 entry_ptr,
-                SubRawEntry {
+                SubBufferedRawCEntry {
                     handle,
-                    buffer: [0u8; RX_BUF],
-                    sampled_len: 0,
+                    buffer,
                     callback,
                     context,
                 },
@@ -1060,13 +1040,13 @@ impl Executor {
         }
 
         self.entries[slot] = Some(CallbackMeta {
-            offset,
+            offset: entry_offset,
             kind: EntryKind::Subscription,
-            try_process: sub_raw_try_process::<RX_BUF>,
-            has_data: sub_raw_has_data::<RX_BUF>,
-            pre_sample: sub_raw_pre_sample::<RX_BUF>,
+            try_process: sub_buffered_raw_c_try_process,
+            has_data: sub_buffered_raw_c_has_data,
+            pre_sample: no_pre_sample,
             invocation: InvocationMode::OnNewData,
-            drop_fn: drop_entry::<SubRawEntry<RX_BUF>>,
+            drop_fn: drop_entry::<SubBufferedRawCEntry>,
         });
         Ok(HandleId(slot))
     }

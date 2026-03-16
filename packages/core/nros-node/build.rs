@@ -30,9 +30,13 @@ fn main() {
     let param_svc_buf = env_usize("NROS_PARAM_SERVICE_BUFFER_SIZE", 4096);
 
     // --- Derived arena size ---
-    // Arena must hold MAX_CBS entries, each with rx+reply buffers + per-entry overhead.
-    // This is always computed from MAX_CBS and RX_BUF_SIZE to prevent inconsistency.
-    let arena_size = (max_cbs * (rx_buf_size * 2 + 256) + 1024).max(4096);
+    // Arena must hold MAX_CBS entries. Subscriptions use triple buffers (3 × rx_buf)
+    // plus entry overhead. Services use rx+reply buffers. Worst case: all entries are
+    // triple-buffered subscriptions.
+    // Per subscription: 3 × rx_buf (triple buffer) + 256 (entry struct overhead)
+    // Per service: 2 × rx_buf + 256 (entry struct + req/reply buffers)
+    // Use 3 × rx_buf for the per-entry budget to cover both cases.
+    let arena_size = (max_cbs * (rx_buf_size * 3 + 512) + 2048).max(8192);
 
     let contents = format!(
         "/// Maximum number of executor callback slots \
