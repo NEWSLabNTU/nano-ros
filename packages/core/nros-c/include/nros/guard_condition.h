@@ -55,8 +55,8 @@ typedef struct nros_guard_condition_t {
     const struct nros_support_t* _support;
     /** Handle ID from executor registration (SIZE_MAX = not registered). */
     size_t handle_id;
-    /** Guard condition handle for external triggering (set by executor). */
-    void* _guard_handle;
+    /** Inline opaque storage for the guard condition handle. */
+    uint64_t _guard_opaque[NROS_GUARD_HANDLE_OPAQUE_U64S];
 } nros_guard_condition_t;
 
 /* ===================================================================

@@ -54,8 +54,9 @@ typedef struct nros_support_t {
     uint8_t locator[NROS_MAX_LOCATOR_LEN];
     /** Locator string length. */
     size_t locator_len;
-    /** Opaque pointer to internal Rust context (middleware session). */
-    void* _internal;
+    /** Inline opaque storage for the Rust middleware session.
+     *  Avoids heap allocation — managed by nros_support_init/fini. */
+    uint64_t _opaque[NROS_SESSION_OPAQUE_U64S];
 } nros_support_t;
 
 /* ===================================================================

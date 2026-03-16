@@ -535,6 +535,40 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
         Ok(goal_id)
     }
 
+    /// Send a goal (blocking). Returns the GoalId and whether it was accepted.
+    ///
+    /// Uses the blocking `call_raw` path (like service calls) so the send_goal
+    /// z_get is fully consumed before returning. This avoids leaving a pending
+    /// get slot that could interfere with subsequent blocking calls.
+    pub fn send_goal_blocking(&mut self, goal_cdr: &[u8]) -> Result<(GoalId, bool), NodeError> {
+        self.goal_counter += 1;
+        let mut goal_id = GoalId::default();
+        let counter_bytes = self.goal_counter.to_le_bytes();
+        goal_id.uuid[..8].copy_from_slice(&counter_bytes);
+
+        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+
+        write_goal_id(&mut writer, &goal_id)?;
+
+        let pos = writer.position();
+        if pos + goal_cdr.len() > GOAL_BUF {
+            return Err(NodeError::BufferTooSmall);
+        }
+        self.goal_buffer[pos..pos + goal_cdr.len()].copy_from_slice(goal_cdr);
+        let req_len = pos + goal_cdr.len();
+
+        let len = self
+            .send_goal_client
+            .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+
+        // Reply CDR: header(4) + accepted(u8) + stamp(sec i32 + nanosec u32)
+        let accepted = len >= 5 && self.result_buffer[4] != 0;
+
+        Ok((goal_id, accepted))
+    }
+
     /// Try to receive feedback (non-blocking, raw bytes).
     ///
     /// Returns the GoalId and total data length. The full CDR data
@@ -601,11 +635,45 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     ///
     /// After receiving, use [`result_buffer_ref()`](Self::result_buffer_ref)
     /// to access the raw CDR data. The layout is: CDR header (4) + status
-    /// byte (1) + padding (3) + result data.
+    /// byte (1) + result data.
     pub fn try_recv_get_result_reply(&mut self) -> Result<Option<usize>, NodeError> {
         self.get_result_client
             .try_recv_reply_raw(&mut self.result_buffer)
             .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+    }
+
+    /// Poll for the send_goal acceptance reply (non-blocking, raw bytes).
+    ///
+    /// Returns `Ok(Some(total_len))` if a reply arrived (data in result buffer),
+    /// `Ok(None)` if no reply yet.
+    ///
+    /// The reply CDR contains: header (4) + accepted (u8) + stamp (i32 + u32).
+    pub fn try_recv_send_goal_reply(&mut self) -> Result<Option<usize>, NodeError> {
+        self.send_goal_client
+            .try_recv_reply_raw(&mut self.result_buffer)
+            .map_err(|_| NodeError::Transport(TransportError::DeserializationError))
+    }
+
+    /// Blocking get_result request — sends the request and blocks until
+    /// a reply is received (or timeout).
+    ///
+    /// Returns the total reply length. Data is stored in `result_buffer`.
+    /// This uses the blocking `call_raw` path which is more reliable on
+    /// platforms with separate I/O tasks (e.g. FreeRTOS).
+    pub fn get_result_blocking(&mut self, goal_id: &GoalId) -> Result<usize, NodeError> {
+        let mut writer = CdrWriter::new_with_header(&mut self.goal_buffer)
+            .map_err(|_| NodeError::BufferTooSmall)?;
+
+        write_goal_id(&mut writer, goal_id)?;
+
+        let req_len = writer.position();
+
+        let len = self
+            .get_result_client
+            .call_raw(&self.goal_buffer[..req_len], &mut self.result_buffer)
+            .map_err(|_| NodeError::ServiceRequestFailed)?;
+
+        Ok(len)
     }
 
     /// Read-only access to the result buffer (after polling a reply).

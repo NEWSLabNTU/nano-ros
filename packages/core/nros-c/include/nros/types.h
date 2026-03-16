@@ -65,6 +65,26 @@ extern "C" {
  */
 #define NROS_MAX_CONCURRENT_GOALS 4
 
+/* ===================================================================
+ * Inline Opaque Storage Sizes (in u64 units)
+ *
+ * These must match the constants in packages/core/nros-c/src/constants.rs.
+ * Compile-time assertions in Rust verify the values are large enough
+ * for each active RMW backend.
+ * =================================================================== */
+
+/** Inline storage for RmwSession inside @ref nros_support_t. */
+#define NROS_SESSION_OPAQUE_U64S 64
+
+/** Inline storage for RmwPublisher inside @ref nros_publisher_t. */
+#define NROS_PUBLISHER_OPAQUE_U64S 48
+
+/** Inline storage for RmwServiceClient inside @ref nros_client_t. */
+#define NROS_SERVICE_CLIENT_OPAQUE_U64S 48
+
+/** Inline storage for GuardConditionHandle inside @ref nros_guard_condition_t. */
+#define NROS_GUARD_HANDLE_OPAQUE_U64S 4
+
 /** Maximum length of a parameter name. */
 #define NROS_MAX_PARAM_NAME_LEN 64
 

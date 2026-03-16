@@ -50,8 +50,9 @@ typedef struct nros_publisher_t {
     size_t type_hash_len;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Opaque pointer to internal Rust publisher. */
-    void* _internal;
+    /** Inline opaque storage for the RMW publisher handle.
+     *  Avoids heap allocation — managed by nros_publisher_init/fini. */
+    uint64_t _opaque[NROS_PUBLISHER_OPAQUE_U64S];
 } nros_publisher_t;
 
 /* ===================================================================

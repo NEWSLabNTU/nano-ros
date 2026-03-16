@@ -246,6 +246,10 @@ const char *nros_cpp_node_get_namespace(const struct nros_cpp_node_t *node);
  */
 nros_cpp_ret_t nros_cpp_spin_once(void *handle, int32_t timeout_ms);
 
+extern void *pvPortMalloc(uint32_t size);
+
+extern void vPortFree(void *ptr);
+
 /**
  * Create a guard condition and register it with the executor.
  *

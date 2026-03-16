@@ -322,9 +322,20 @@ pub unsafe extern "C" fn nros_action_send_goal(
         let internal = &mut *(client._internal as *mut ActionClientInternal);
         let goal_data = core::slice::from_raw_parts(goal, goal_len);
 
-        match internal.core.send_goal_raw(goal_data) {
-            Ok(goal_id) => {
-                // Copy the generated GoalId to the output UUID
+        // C serialize produces [CDR_HEADER(4)][fields], but send_goal_raw
+        // expects raw fields only (it adds its own CDR header + GoalId).
+        // Skip the 4-byte CDR header from the C-serialized data.
+        let goal_fields = if goal_data.len() > 4 {
+            &goal_data[4..]
+        } else {
+            goal_data
+        };
+
+        match internal.core.send_goal_blocking(goal_fields) {
+            Ok((goal_id, accepted)) => {
+                if !accepted {
+                    return NROS_RET_ERROR;
+                }
                 let uuid = &mut *goal_uuid;
                 uuid.uuid = goal_id.uuid;
                 NROS_RET_OK
@@ -401,62 +412,52 @@ pub unsafe extern "C" fn nros_action_get_result(
         let uuid = &*goal_uuid;
         let goal_id = nros_core::GoalId { uuid: uuid.uuid };
 
-        // Send the get_result request
-        if internal.core.send_get_result_request(&goal_id).is_err() {
+        let reply_len = match internal.core.get_result_blocking(&goal_id) {
+            Ok(len) => len,
+            Err(nros_node::NodeError::ServiceRequestFailed) => return NROS_RET_TIMEOUT,
+            Err(_) => return NROS_RET_ERROR,
+        };
+
+        // GetResult response CDR: header (4) + status (int8, 1 byte) + result fields
+        if reply_len < 5 {
             return NROS_RET_ERROR;
         }
 
-        // Poll for the reply with timeout (same approach as nros_client_call)
-        let mut attempts = 0u32;
-        loop {
-            match internal.core.try_recv_get_result_reply() {
-                Ok(Some(len)) => {
-                    // GetResult response CDR: header (4) + status (int8=1 + 3 pad) + result
-                    if len < 4 {
-                        return NROS_RET_ERROR;
-                    }
+        // Status is the first byte after CDR header
+        let buf = internal.core.result_buffer_ref();
+        let raw_status = buf[4];
+        *status = match raw_status {
+            1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
+            2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
+            3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
+            4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+            5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+            6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+            _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+        };
 
-                    // Status is the first byte after CDR header
-                    let buf = internal.core.result_buffer_ref();
-                    let raw_status = buf[4];
-                    *status = match raw_status {
-                        1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
-                        2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
-                        3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
-                        4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-                        5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-                        6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-                        _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
-                    };
+        // Result fields start at offset 5 (after CDR header + status byte).
+        // The C deserializer expects [CDR_HEADER][fields], so we prepend
+        // a CDR header in the output buffer.
+        let result_offset = 5usize;
+        let result_fields_len = reply_len.saturating_sub(result_offset);
+        let output_len = 4 + result_fields_len; // CDR header + fields
 
-                    // Result data starts after CDR header (4) + status (1) + padding (3)
-                    let result_offset = 8usize;
-                    let result_data_len = len.saturating_sub(result_offset);
-
-                    if result_data_len > result_capacity {
-                        return NROS_RET_ERROR;
-                    }
-
-                    let out = core::slice::from_raw_parts_mut(result, result_capacity);
-                    out[..result_data_len]
-                        .copy_from_slice(&buf[result_offset..result_offset + result_data_len]);
-                    *result_len = result_data_len;
-
-                    return NROS_RET_OK;
-                }
-                Ok(None) => {
-                    attempts += 1;
-                    if attempts > 3000 {
-                        return NROS_RET_TIMEOUT;
-                    }
-                    #[cfg(feature = "std")]
-                    std::thread::sleep(std::time::Duration::from_millis(1));
-                    #[cfg(not(feature = "std"))]
-                    core::hint::spin_loop();
-                }
-                Err(_) => return NROS_RET_ERROR,
-            }
+        if output_len > result_capacity {
+            return NROS_RET_ERROR;
         }
+
+        let out = core::slice::from_raw_parts_mut(result, result_capacity);
+        // Write CDR header (little-endian)
+        out[0] = 0x00;
+        out[1] = 0x01;
+        out[2] = 0x00;
+        out[3] = 0x00;
+        out[4..4 + result_fields_len]
+            .copy_from_slice(&buf[result_offset..result_offset + result_fields_len]);
+        *result_len = output_len;
+
+        NROS_RET_OK
     }
 
     #[cfg(not(feature = "alloc"))]
@@ -503,16 +504,28 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
                 if let Some(cb) = client.feedback_callback {
                     let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
 
-                    // Feedback CDR layout: header (4) + GoalId UUID (16) = 20 bytes
-                    let fb_offset = 20usize;
-                    let fb_len = len.saturating_sub(fb_offset);
-                    let fb_ptr = if fb_len > 0 {
-                        internal.core.feedback_buffer_ref()[fb_offset..].as_ptr()
-                    } else {
-                        ptr::null()
-                    };
+                    // Feedback CDR layout: header (4) + GoalId seq_len (4) + UUID (16) = 24 bytes
+                    // After offset 24: raw feedback fields (no CDR header, since
+                    // the server strips it in nros_action_publish_feedback).
+                    // The C deserializer expects [CDR_HEADER][fields], so we
+                    // prepend a CDR header in a stack buffer.
+                    let fb_offset = 24usize;
+                    let fb_fields_len = len.saturating_sub(fb_offset);
 
-                    cb(&uuid, fb_ptr, fb_len, client.context);
+                    if fb_fields_len > 0 {
+                        let mut fb_buf = [0u8; 512];
+                        fb_buf[0] = 0x00;
+                        fb_buf[1] = 0x01;
+                        fb_buf[2] = 0x00;
+                        fb_buf[3] = 0x00;
+                        let copy_len = fb_fields_len.min(fb_buf.len() - 4);
+                        fb_buf[4..4 + copy_len].copy_from_slice(
+                            &internal.core.feedback_buffer_ref()[fb_offset..fb_offset + copy_len],
+                        );
+                        cb(&uuid, fb_buf.as_ptr(), 4 + copy_len, client.context);
+                    } else {
+                        cb(&uuid, ptr::null(), 0, client.context);
+                    }
                 }
 
                 NROS_RET_OK

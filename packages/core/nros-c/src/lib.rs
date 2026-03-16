@@ -37,6 +37,33 @@ use panic_halt as _;
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+// FreeRTOS global allocator: wraps pvPortMalloc/vPortFree for alloc on no_std.
+// FreeRTOS heap_4 returns 8-byte aligned pointers, sufficient for all nros types.
+#[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-freertos"))]
+mod freertos_alloc {
+    use core::alloc::{GlobalAlloc, Layout};
+
+    unsafe extern "C" {
+        fn pvPortMalloc(size: u32) -> *mut core::ffi::c_void;
+        fn vPortFree(ptr: *mut core::ffi::c_void);
+    }
+
+    struct FreeRtosAllocator;
+
+    unsafe impl GlobalAlloc for FreeRtosAllocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            unsafe { pvPortMalloc(layout.size() as u32) as *mut u8 }
+        }
+
+        unsafe fn dealloc(&self, ptr: *mut u8, _layout: Layout) {
+            unsafe { vPortFree(ptr as *mut core::ffi::c_void) }
+        }
+    }
+
+    #[global_allocator]
+    static ALLOCATOR: FreeRtosAllocator = FreeRtosAllocator;
+}
+
 // ── Modules ─────────────────────────────────────────────────────────────
 
 // Validation macros (must precede all other modules)

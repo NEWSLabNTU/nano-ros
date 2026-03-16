@@ -137,8 +137,29 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
     // GoalId and nros_goal_uuid_t are layout-compatible (both [u8; 16])
     let uuid_ptr = goal_id as *const nros_goal_uuid_t;
 
-    // Call the C goal callback
-    let c_response = (internal.c_goal_callback)(uuid_ptr, goal_data, goal_len, internal.c_context);
+    // goal_data contains the full CDR request: [CDR_HDR(4)][GoalId(20)][goal_fields].
+    // The C callback expects CDR-encoded goal data: [CDR_HDR(4)][goal_fields].
+    // Extract goal fields (after CDR header + GoalId) and prepend a CDR header.
+    let goal_framing = 24usize; // CDR header (4) + GoalId seq_len (4) + UUID (16)
+    let goal_slice = core::slice::from_raw_parts(goal_data, goal_len);
+
+    // Build [CDR_HEADER][goal_fields] on the stack (must outlive the callback)
+    let mut cb_buf = [0u8; 512];
+    let (cb_ptr, cb_len) = if goal_len > goal_framing {
+        let fields = &goal_slice[goal_framing..];
+        cb_buf[0] = 0x00;
+        cb_buf[1] = 0x01;
+        cb_buf[2] = 0x00;
+        cb_buf[3] = 0x00;
+        let copy_len = fields.len().min(cb_buf.len() - 4);
+        cb_buf[4..4 + copy_len].copy_from_slice(&fields[..copy_len]);
+        (cb_buf.as_ptr(), 4 + copy_len)
+    } else {
+        (goal_data, goal_len)
+    };
+
+    // Call the C goal callback with CDR-encoded goal data
+    let c_response = (internal.c_goal_callback)(uuid_ptr, cb_ptr, cb_len, internal.c_context);
 
     // Map C response to Rust GoalResponse
     let response = match c_response {
@@ -392,7 +413,11 @@ pub unsafe extern "C" fn nros_action_publish_feedback(
         };
         let data = core::slice::from_raw_parts(feedback, feedback_len);
 
-        match handle.publish_feedback_raw(executor, &goal_id, data) {
+        // C serialize produces [CDR_HEADER(4)][fields], but publish_feedback_raw
+        // expects raw fields only (it adds its own CDR header + GoalId framing).
+        let fields = if data.len() > 4 { &data[4..] } else { data };
+
+        match handle.publish_feedback_raw(executor, &goal_id, fields) {
             Ok(()) => NROS_RET_OK,
             Err(_) => NROS_RET_ERROR,
         }
@@ -446,12 +471,21 @@ pub unsafe extern "C" fn nros_action_succeed(
             &[]
         };
 
+        // C serialize produces [CDR_HEADER(4)][fields], but complete_goal_raw
+        // expects raw fields only (it stores them in the slab and adds its own
+        // CDR header when replying to get_result requests).
+        let result_fields = if result_data.len() > 4 {
+            &result_data[4..]
+        } else {
+            result_data
+        };
+
         // Delegate to nros-node executor
         handle.complete_goal_raw(
             executor,
             &goal_id,
             nros_core::GoalStatus::Succeeded,
-            result_data,
+            result_fields,
         );
 
         // Update C-side goal state
@@ -515,11 +549,18 @@ pub unsafe extern "C" fn nros_action_abort(
             &[]
         };
 
+        // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
+        let result_fields = if result_data.len() > 4 {
+            &result_data[4..]
+        } else {
+            result_data
+        };
+
         handle.complete_goal_raw(
             executor,
             &goal_id,
             nros_core::GoalStatus::Aborted,
-            result_data,
+            result_fields,
         );
 
         goal.status = nros_goal_status_t::NROS_GOAL_STATUS_ABORTED;
@@ -580,11 +621,18 @@ pub unsafe extern "C" fn nros_action_canceled(
             &[]
         };
 
+        // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
+        let result_fields = if result_data.len() > 4 {
+            &result_data[4..]
+        } else {
+            result_data
+        };
+
         handle.complete_goal_raw(
             executor,
             &goal_id,
             nros_core::GoalStatus::Canceled,
-            result_data,
+            result_fields,
         );
 
         goal.status = nros_goal_status_t::NROS_GOAL_STATUS_CANCELED;

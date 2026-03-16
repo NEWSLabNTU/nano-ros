@@ -50,8 +50,9 @@ typedef struct nros_client_t {
     size_t type_hash_len;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Opaque pointer to internal Rust service client. */
-    void* _internal;
+    /** Inline opaque storage for the RMW service client handle.
+     *  Avoids heap allocation — managed by nros_client_init/fini. */
+    uint64_t _opaque[NROS_SERVICE_CLIENT_OPAQUE_U64S];
 } nros_client_t;
 
 /* ===================================================================
