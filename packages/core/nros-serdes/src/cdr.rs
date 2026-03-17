@@ -403,6 +403,80 @@ impl<'a> CdrReader<'a> {
     pub fn read_sequence_len(&mut self) -> Result<usize, DeserError> {
         Ok(self.read_u32()? as usize)
     }
+
+    // ── Borrowed slice readers (zero-copy for primitive sequences) ──
+
+    /// Read a `uint8[]` / `byte[]` sequence as a borrowed slice.
+    ///
+    /// Returns `&'a [u8]` pointing directly into the CDR buffer. Zero-copy.
+    /// Reads the 4-byte length prefix, then returns a slice of that length.
+    pub fn read_slice_u8(&mut self) -> Result<&'a [u8], DeserError> {
+        let len = self.read_u32()? as usize;
+        self.read_bytes(len)
+    }
+
+    /// Read an `int8[]` sequence as a borrowed slice.
+    pub fn read_slice_i8(&mut self) -> Result<&'a [u8], DeserError> {
+        // i8 and u8 have identical CDR encoding (1 byte, no alignment)
+        self.read_slice_u8()
+    }
+
+    /// Read a `bool[]` sequence as a borrowed `&[u8]` slice.
+    ///
+    /// CDR encodes booleans as single bytes (0/1). The returned slice
+    /// contains raw bytes; the caller interprets 0 as false, non-zero as true.
+    pub fn read_slice_bool(&mut self) -> Result<&'a [u8], DeserError> {
+        self.read_slice_u8()
+    }
+
+    /// Read a `uint16[]` sequence, returning raw bytes and element count.
+    ///
+    /// Returns `(byte_slice, element_count)`. The caller must handle
+    /// endianness (CDR uses little-endian). For zero-copy on little-endian
+    /// platforms, the bytes can be cast to `&[u16]` if properly aligned.
+    pub fn read_slice_u16_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
+        let len = self.read_u32()? as usize;
+        self.align(2)?;
+        let byte_len = len * 2;
+        let bytes = self.read_bytes(byte_len)?;
+        Ok((bytes, len))
+    }
+
+    /// Read a `uint32[]` sequence, returning raw bytes and element count.
+    pub fn read_slice_u32_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
+        let len = self.read_u32()? as usize;
+        self.align(4)?;
+        let byte_len = len * 4;
+        let bytes = self.read_bytes(byte_len)?;
+        Ok((bytes, len))
+    }
+
+    /// Read a `float32[]` sequence, returning raw bytes and element count.
+    pub fn read_slice_f32_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
+        let len = self.read_u32()? as usize;
+        self.align(4)?;
+        let byte_len = len * 4;
+        let bytes = self.read_bytes(byte_len)?;
+        Ok((bytes, len))
+    }
+
+    /// Read a `float64[]` sequence, returning raw bytes and element count.
+    pub fn read_slice_f64_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
+        let len = self.read_u32()? as usize;
+        self.align(8)?;
+        let byte_len = len * 8;
+        let bytes = self.read_bytes(byte_len)?;
+        Ok((bytes, len))
+    }
+
+    /// Read a `uint64[]` sequence, returning raw bytes and element count.
+    pub fn read_slice_u64_raw(&mut self) -> Result<(&'a [u8], usize), DeserError> {
+        let len = self.read_u32()? as usize;
+        self.align(8)?;
+        let byte_len = len * 8;
+        let bytes = self.read_bytes(byte_len)?;
+        Ok((bytes, len))
+    }
 }
 
 #[cfg(test)]
@@ -519,6 +593,55 @@ mod ghost_checks {
         let ghost = ghost_from_writer(&writer);
         // After header: pos + remaining == buf_len
         assert_eq!(ghost.pos + writer.remaining(), ghost.buf_len);
+    }
+
+    #[test]
+    fn test_read_slice_u8() {
+        let mut buf = [0u8; 64];
+        let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+        // Write a uint8[] sequence: [0x10, 0x20, 0x30]
+        writer.write_u32(3).unwrap(); // length
+        writer.write_u8(0x10).unwrap();
+        writer.write_u8(0x20).unwrap();
+        writer.write_u8(0x30).unwrap();
+        let len = writer.position();
+
+        let mut reader = CdrReader::new_with_header(&buf[..len]).unwrap();
+        let slice = reader.read_slice_u8().unwrap();
+        assert_eq!(slice, &[0x10, 0x20, 0x30]);
+    }
+
+    #[test]
+    fn test_read_slice_u8_empty() {
+        let mut buf = [0u8; 64];
+        let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+        writer.write_u32(0).unwrap(); // length = 0
+        let len = writer.position();
+
+        let mut reader = CdrReader::new_with_header(&buf[..len]).unwrap();
+        let slice = reader.read_slice_u8().unwrap();
+        assert!(slice.is_empty());
+    }
+
+    #[test]
+    fn test_read_slice_f32_raw() {
+        let mut buf = [0u8; 64];
+        let mut writer = CdrWriter::new_with_header(&mut buf).unwrap();
+        // Write a float32[] sequence: [1.0, 2.5]
+        writer.write_u32(2).unwrap(); // length
+        writer.write_f32(1.0).unwrap();
+        writer.write_f32(2.5).unwrap();
+        let len = writer.position();
+
+        let mut reader = CdrReader::new_with_header(&buf[..len]).unwrap();
+        let (bytes, count) = reader.read_slice_f32_raw().unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(bytes.len(), 8); // 2 × 4 bytes
+        // Verify first element (little-endian f32)
+        assert_eq!(
+            f32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]),
+            1.0
+        );
     }
 }
 

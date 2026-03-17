@@ -263,6 +263,47 @@ pub unsafe extern "C" fn nros_cdr_write_string(
     0
 }
 
+/// Write a string from a pointer+length pair (not null-terminated).
+///
+/// CDR encoding: u32 length (data_len + 1 for null) + bytes + null terminator.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cdr_write_string_n(
+    ptr: *mut *mut u8,
+    end: *const u8,
+    origin: *const u8,
+    data: *const c_char,
+    data_len: usize,
+) -> i32 {
+    if ptr.is_null() || unsafe { (*ptr).is_null() } || (data.is_null() && data_len > 0) {
+        return -1;
+    }
+
+    // Write length (including null terminator)
+    let total_len = (data_len + 1) as u32;
+    if unsafe { nros_cdr_write_u32(ptr, end, origin, total_len) } < 0 {
+        return -1;
+    }
+
+    // Check space for string + null
+    let p = unsafe { *ptr };
+    if unsafe { p.add(data_len + 1) } > end as *mut u8 {
+        return -1;
+    }
+
+    // Copy string bytes
+    if data_len > 0 && !data.is_null() {
+        unsafe {
+            core::ptr::copy_nonoverlapping(data as *const u8, p, data_len);
+        }
+    }
+    // Null terminator
+    unsafe {
+        *p.add(data_len) = 0;
+        *ptr = p.add(data_len + 1);
+    }
+    0
+}
+
 // =============================================================================
 // Read functions
 // =============================================================================

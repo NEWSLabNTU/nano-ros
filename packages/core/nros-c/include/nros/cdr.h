@@ -174,6 +174,25 @@ NROS_PUBLIC
 int32_t nros_cdr_write_string(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
                               const char* value);
 
+/**
+ * @brief Write a string from a pointer+length pair (not null-terminated).
+ *
+ * Used by borrowed message types where the string field is a
+ * `struct { const char* data; size_t size; }` rather than a `char[]`.
+ *
+ * CDR encoding: u32 length (size + 1 for null) + bytes + null terminator.
+ *
+ * @param ptr    Pointer to the cursor (advanced on success).
+ * @param end    Pointer past the end of the buffer.
+ * @param origin Buffer origin (for alignment calculations).
+ * @param data   String data (may not be null-terminated).
+ * @param len    String length in bytes (excluding any null terminator).
+ * @return 0 on success, negative on overflow.
+ */
+NROS_PUBLIC
+int32_t nros_cdr_write_string_n(uint8_t** ptr, const uint8_t* end, const uint8_t* origin,
+                                const char* data, size_t len);
+
 /* ===================================================================
  * Read Functions
  * =================================================================== */
