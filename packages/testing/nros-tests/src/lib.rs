@@ -292,13 +292,11 @@ pub fn read_config_ip(config_path: &std::path::Path) -> Option<String> {
             in_network = line == "[network]";
             continue;
         }
-        if in_network {
-            if let Some(rest) = line.strip_prefix("ip") {
-                let rest = rest.trim_start();
-                if let Some(rest) = rest.strip_prefix('=') {
-                    let val = rest.trim().trim_matches('"');
-                    return Some(val.to_string());
-                }
+        if in_network && let Some(rest) = line.strip_prefix("ip") {
+            let rest = rest.trim_start();
+            if let Some(rest) = rest.strip_prefix('=') {
+                let val = rest.trim().trim_matches('"');
+                return Some(val.to_string());
             }
         }
     }
