@@ -711,7 +711,11 @@ pub trait Publisher {
     fn publish_raw(&self, data: &[u8]) -> Result<(), Self::Error>;
 
     /// Publish a typed message (serializes automatically)
-    fn publish<M: RosMessage>(&self, msg: &M, buf: &mut [u8]) -> Result<(), Self::Error> {
+    fn publish<M: RosMessage + nros_core::Serialize>(
+        &self,
+        msg: &M,
+        buf: &mut [u8],
+    ) -> Result<(), Self::Error> {
         use nros_core::CdrWriter;
 
         let mut writer = CdrWriter::new_with_header(buf).map_err(|_| self.buffer_error())?;
@@ -747,7 +751,10 @@ pub trait Subscriber {
     fn try_recv_raw(&mut self, buf: &mut [u8]) -> Result<Option<usize>, Self::Error>;
 
     /// Try to receive a typed message (non-blocking)
-    fn try_recv<M: RosMessage>(&mut self, buf: &mut [u8]) -> Result<Option<M>, Self::Error> {
+    fn try_recv<M: RosMessage + nros_core::Deserialize>(
+        &mut self,
+        buf: &mut [u8],
+    ) -> Result<Option<M>, Self::Error> {
         use nros_core::CdrReader;
 
         match self.try_recv_raw(buf)? {

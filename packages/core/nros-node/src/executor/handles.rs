@@ -27,7 +27,7 @@ pub struct EmbeddedPublisher<M> {
     pub(crate) _phantom: PhantomData<M>,
 }
 
-impl<M: RosMessage> EmbeddedPublisher<M> {
+impl<M: RosMessage + nros_core::Serialize> EmbeddedPublisher<M> {
     /// Publish a message using the default buffer size.
     pub fn publish(&self, msg: &M) -> Result<(), NodeError> {
         self.publish_with_buffer::<DEFAULT_TX_BUF>(msg)
@@ -65,7 +65,7 @@ pub struct Subscription<M, const RX_BUF: usize = { crate::config::DEFAULT_RX_BUF
     pub(crate) _phantom: PhantomData<M>,
 }
 
-impl<M: RosMessage, const RX_BUF: usize> Subscription<M, RX_BUF> {
+impl<M: RosMessage + nros_core::Deserialize, const RX_BUF: usize> Subscription<M, RX_BUF> {
     /// Try to receive a typed message (non-blocking).
     pub fn try_recv(&mut self) -> Result<Option<M>, NodeError> {
         match self

@@ -415,7 +415,7 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: RosMessage + nros_core::Deserialize + 'static,
         F: FnMut(&M) + 'static,
     {
         self.add_subscription_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
@@ -434,7 +434,7 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: RosMessage + nros_core::Deserialize + 'static,
         F: FnMut(&M) + 'static,
     {
         // Use depth=1 (triple buffer) to match the old single-buffer behavior.
@@ -462,7 +462,7 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: RosMessage + nros_core::Deserialize + 'static,
         F: FnMut(&M) + 'static,
     {
         type Entry<M, F> = SubBufferedEntry<M, F>;
@@ -620,7 +620,7 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: RosMessage + nros_core::Deserialize + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
         self.add_subscription_with_info_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
@@ -635,7 +635,7 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: RosMessage + nros_core::Deserialize + 'static,
         F: FnMut(&M, Option<&nros_core::MessageInfo>) + 'static,
     {
         type Entry<M, F, const N: usize> = SubInfoEntry<M, F, N>;
@@ -705,7 +705,7 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: RosMessage + nros_core::Deserialize + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
         self.add_subscription_with_safety_sized::<M, F, { crate::config::DEFAULT_RX_BUF_SIZE }>(
@@ -721,7 +721,7 @@ impl Executor {
         callback: F,
     ) -> Result<HandleId, NodeError>
     where
-        M: RosMessage + 'static,
+        M: RosMessage + nros_core::Deserialize + 'static,
         F: FnMut(&M, &nros_rmw::IntegrityStatus) + 'static,
     {
         type Entry<M, F, const N: usize> = SubSafetyEntry<M, F, N>;
