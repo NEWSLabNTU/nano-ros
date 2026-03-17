@@ -59,21 +59,6 @@ pub(crate) struct CallbackMeta {
 // Concrete entry types
 // ============================================================================
 
-/// Concrete subscription entry stored in the arena.
-///
-/// **Deprecated**: Replaced by [`SubBufferedEntry`] which uses triple buffer / SPSC ring.
-/// Retained for `add_subscription_with_info` variants until they are migrated.
-#[allow(dead_code)]
-#[repr(C)]
-pub(crate) struct SubEntry<M, F, const RX_BUF: usize> {
-    pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
-    /// Length of pre-sampled LET data (0 = not sampled).
-    pub(crate) sampled_len: usize,
-    pub(crate) callback: F,
-    pub(crate) _phantom: PhantomData<M>,
-}
-
 /// Concrete subscription entry stored in the arena (with MessageInfo).
 #[repr(C)]
 pub(crate) struct SubInfoEntry<M, F, const RX_BUF: usize> {
@@ -167,20 +152,6 @@ pub(crate) struct ActionServerRawArenaEntry<
     pub(crate) context: *mut core::ffi::c_void,
 }
 
-/// Concrete subscription entry for raw (untyped) callbacks.
-///
-/// **Deprecated**: Replaced by [`SubBufferedRawCEntry`] which uses triple buffer / SPSC ring.
-#[allow(dead_code)]
-#[repr(C)]
-pub(crate) struct SubRawEntry<const RX_BUF: usize> {
-    pub(crate) handle: session::RmwSubscriber,
-    pub(crate) buffer: [u8; RX_BUF],
-    /// Length of pre-sampled LET data (0 = not sampled).
-    pub(crate) sampled_len: usize,
-    pub(crate) callback: RawSubscriptionCallback,
-    pub(crate) context: *mut core::ffi::c_void,
-}
-
 /// Concrete service entry for raw (untyped) callbacks.
 #[repr(C)]
 pub(crate) struct SrvRawEntry<const REQ_BUF: usize, const REPLY_BUF: usize> {
@@ -242,7 +213,7 @@ pub(crate) fn buffered_region_size(depth: u32, slot_size: usize) -> (usize, usiz
 
 /// Subscription entry with QoS-driven buffer strategy (Phase 73).
 ///
-/// Unlike [`SubEntry`] which embeds a fixed `[u8; RX_BUF]`, this entry
+/// Unlike the legacy single-buffer pattern, this entry
 /// stores a [`BufferStrategy`] that manages a trailing buffer region
 /// allocated from the arena at registration time.
 ///
@@ -264,8 +235,6 @@ pub(crate) struct SubBufferedEntry<M, F> {
 ///
 /// Calls `try_recv_raw()` on the subscriber handle and writes received data
 /// into the triple buffer's write slot or the SPSC ring's next push slot.
-/// This bridges the existing `SUBSCRIBER_BUFFERS`-based RMW path with the
-/// new arena-based buffer strategy.
 ///
 /// # Safety
 /// `entry` must be a valid mutable reference to a `SubBufferedEntry`.
@@ -341,7 +310,7 @@ where
 
 /// Readiness check for buffered subscriptions.
 ///
-/// Checks the RMW subscriber handle first (data in SUBSCRIBER_BUFFERS),
+/// Checks the RMW subscriber handle first (new data available from transport),
 /// then the buffer strategy (data already drained into triple buffer/ring).
 ///
 /// # Safety
@@ -514,46 +483,6 @@ pub(crate) unsafe fn sub_buffered_raw_c_has_data(ptr: *const u8) -> bool {
 // ============================================================================
 // Dispatch functions
 // ============================================================================
-
-/// Monomorphized subscription dispatch function.
-///
-/// # Safety
-/// `ptr` must point to a valid, aligned `SubEntry<M, F, RX_BUF>`.
-#[allow(dead_code)] // Deprecated: replaced by sub_buffered_try_process
-pub(crate) unsafe fn sub_try_process<M, F, const RX_BUF: usize>(
-    ptr: *mut u8,
-    _delta_ms: u64,
-) -> Result<bool, TransportError>
-where
-    M: RosMessage,
-    F: FnMut(&M),
-{
-    let entry = unsafe { &mut *(ptr as *mut SubEntry<M, F, RX_BUF>) };
-
-    // LET mode: use pre-sampled data if available
-    let recv_len = if entry.sampled_len > 0 {
-        let len = entry.sampled_len;
-        entry.sampled_len = 0;
-        Some(len)
-    } else {
-        match entry.handle.try_recv_raw(&mut entry.buffer) {
-            Ok(v) => v,
-            Err(_) => return Err(TransportError::DeserializationError),
-        }
-    };
-
-    match recv_len {
-        Some(len) => {
-            let mut reader = CdrReader::new_with_header(&entry.buffer[..len])
-                .map_err(|_| TransportError::DeserializationError)?;
-            let msg =
-                M::deserialize(&mut reader).map_err(|_| TransportError::DeserializationError)?;
-            (entry.callback)(&msg);
-            Ok(true)
-        }
-        None => Ok(false),
-    }
-}
 
 /// Monomorphized subscription dispatch function (with MessageInfo).
 ///
@@ -838,40 +767,6 @@ pub(crate) unsafe fn action_server_raw_try_process<
     Ok(did_work)
 }
 
-/// Monomorphized raw subscription dispatch function.
-///
-/// # Safety
-/// `ptr` must point to a valid, aligned `SubRawEntry<RX_BUF>`.
-#[allow(dead_code)] // Deprecated: replaced by sub_buffered_raw_c_try_process
-pub(crate) unsafe fn sub_raw_try_process<const RX_BUF: usize>(
-    ptr: *mut u8,
-    _delta_ms: u64,
-) -> Result<bool, TransportError> {
-    let entry = unsafe { &mut *(ptr as *mut SubRawEntry<RX_BUF>) };
-
-    // LET mode: use pre-sampled data if available
-    let recv_len = if entry.sampled_len > 0 {
-        let len = entry.sampled_len;
-        entry.sampled_len = 0;
-        Some(len)
-    } else {
-        match entry.handle.try_recv_raw(&mut entry.buffer) {
-            Ok(v) => v,
-            Err(_) => return Err(TransportError::DeserializationError),
-        }
-    };
-
-    match recv_len {
-        Some(len) => {
-            unsafe {
-                (entry.callback)(entry.buffer.as_ptr(), len, entry.context);
-            }
-            Ok(true)
-        }
-        None => Ok(false),
-    }
-}
-
 /// Monomorphized raw service dispatch function.
 ///
 /// # Safety
@@ -941,16 +836,6 @@ where
 // Readiness check functions
 // ============================================================================
 
-/// Subscription readiness: check `has_data()` on the subscriber handle.
-///
-/// # Safety
-/// `ptr` must point to a valid `SubEntry<M, F, RX_BUF>`.
-#[allow(dead_code)]
-pub(crate) unsafe fn sub_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
-    let entry = unsafe { &*(ptr as *const SubEntry<M, F, RX_BUF>) };
-    entry.handle.has_data()
-}
-
 /// SubInfoEntry readiness.
 ///
 /// # Safety
@@ -967,16 +852,6 @@ pub(crate) unsafe fn sub_info_has_data<M, F, const RX_BUF: usize>(ptr: *const u8
 #[cfg(feature = "safety-e2e")]
 pub(crate) unsafe fn sub_safety_has_data<M, F, const RX_BUF: usize>(ptr: *const u8) -> bool {
     let entry = unsafe { &*(ptr as *const SubSafetyEntry<M, F, RX_BUF>) };
-    entry.handle.has_data()
-}
-
-/// Raw subscription readiness.
-///
-/// # Safety
-/// `ptr` must point to a valid `SubRawEntry<RX_BUF>`.
-#[allow(dead_code)]
-pub(crate) unsafe fn sub_raw_has_data<const RX_BUF: usize>(ptr: *const u8) -> bool {
-    let entry = unsafe { &*(ptr as *const SubRawEntry<RX_BUF>) };
     entry.handle.has_data()
 }
 
@@ -1018,22 +893,6 @@ pub(crate) unsafe fn always_ready(_ptr: *const u8) -> bool {
 // LET pre-sample functions
 // ============================================================================
 
-/// Pre-sample a typed subscription for LET mode.
-///
-/// Reads data from the transport into the entry's buffer and stores the
-/// length in `sampled_len`. The callback is NOT invoked.
-///
-/// # Safety
-/// `ptr` must point to a valid, aligned `SubEntry<M, F, RX_BUF>`.
-#[allow(dead_code)]
-pub(crate) unsafe fn sub_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
-    let entry = unsafe { &mut *(ptr as *mut SubEntry<M, F, RX_BUF>) };
-    entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
-        Ok(Some(len)) => len,
-        _ => 0,
-    };
-}
-
 /// Pre-sample a typed subscription with MessageInfo for LET mode.
 ///
 /// # Safety
@@ -1054,19 +913,6 @@ pub(crate) unsafe fn sub_info_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8
 #[cfg(feature = "safety-e2e")]
 pub(crate) unsafe fn sub_safety_pre_sample<M, F, const RX_BUF: usize>(ptr: *mut u8) {
     let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };
-    entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
-        Ok(Some(len)) => len,
-        _ => 0,
-    };
-}
-
-/// Pre-sample a raw subscription for LET mode.
-///
-/// # Safety
-/// `ptr` must point to a valid, aligned `SubRawEntry<RX_BUF>`.
-#[allow(dead_code)]
-pub(crate) unsafe fn sub_raw_pre_sample<const RX_BUF: usize>(ptr: *mut u8) {
-    let entry = unsafe { &mut *(ptr as *mut SubRawEntry<RX_BUF>) };
     entry.sampled_len = match entry.handle.try_recv_raw(&mut entry.buffer) {
         Ok(Some(len)) => len,
         _ => 0,

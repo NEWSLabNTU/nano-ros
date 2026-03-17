@@ -93,7 +93,7 @@ fn test_add_subscription_and_spin_once_with_data() {
         .unwrap();
 
     // Grab a pointer to the subscriber in the arena so we can load data.
-    // The subscriber is stored inside the SubEntry in the arena.
+    // The subscriber is stored inside the SubBufferedEntry in the arena.
     // We need to reach it through the arena.
     let meta = executor.entries[0].as_ref().unwrap();
     let arena_ptr = executor.arena.as_ptr() as *const u8;
@@ -149,7 +149,8 @@ fn test_arena_overflow() {
     let session = MockSession::new();
     // Arena is ARENA_SIZE bytes (default ~10KB). Use large subscription buffers
     // (4096 each) so we exhaust the arena before running out of entry slots.
-    // Each SubEntry<TestMsg, fn, 4096> is ~4400 bytes. Two fit, the third should fail.
+    // Each SubBufferedEntry with triple buffer (3×4096=12KB) is ~12.1KB. At least one
+    // fits in the arena but not many — arena should exhaust before 4 subscriptions.
     let mut executor = Executor::from_session(session);
 
     let topics = ["/a", "/b", "/c", "/d"];
@@ -247,7 +248,7 @@ fn test_arena_alignment() {
         .unwrap();
 
     let meta = executor.entries[0].as_ref().unwrap();
-    let entry_align = core::mem::align_of::<arena::SubEntry<TestMsg, fn(&TestMsg), 1024>>();
+    let entry_align = core::mem::align_of::<arena::SubBufferedEntry<TestMsg, fn(&TestMsg)>>();
     assert_eq!(meta.offset % entry_align, 0);
 }
 

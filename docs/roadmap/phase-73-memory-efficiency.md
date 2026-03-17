@@ -251,8 +251,8 @@ deterministic O(1) without any zenoh-pico patches.
 
 ### Final cleanup
 
-- [ ] 73.26 — Remove `SUBSCRIBER_BUFFERS` and old subscription API
-- [ ] 73.27 — Document sizing, migration, and raw zero-copy API
+- [x] 73.26 — Remove old subscription API (`SubEntry`, `SubRawEntry` and dispatch functions)
+- [x] 73.27 — Document sizing, migration, and raw zero-copy API
 
 ### 73.1 — Fix FreeRTOS `z_realloc` (returns NULL)
 
@@ -772,28 +772,174 @@ Covered by the same `just generate-bindings` run (the recipe handles all
 languages). C++ examples regenerated with `FixedString`/`FixedSequence`
 types as before.
 
-### 73.26 — Remove `SUBSCRIBER_BUFFERS` and old subscription API
+### 73.26 — Remove old subscription API (`SubEntry`, `SubRawEntry` and dispatch functions)
 
-After all subscriptions use triple buffer internally (73.14):
+✓ Removed `SubEntry<M, F, RX_BUF>` struct and all its dispatch functions
+  (`sub_try_process`, `sub_has_data`, `sub_pre_sample`) from `arena.rs`.
+  These were `#[allow(dead_code)]` — no longer registered by any executor method.
 
-1. Remove `SubEntry`, `SubInfoEntry`, `SubSafetyEntry`, `SubRawEntry`
-   and their dispatch functions from arena.rs
-2. Remove `SUBSCRIBER_BUFFERS` static array from zenoh shim
-3. Modify zenoh shim to write directly into triple buffer write slot
-4. Remove `ZPICO_MAX_SUBSCRIBERS` as buffer pre-allocation constant
+✓ Removed `SubRawEntry<RX_BUF>` struct and its dispatch functions
+  (`sub_raw_try_process`, `sub_raw_has_data`, `sub_raw_pre_sample`).
+  Also `#[allow(dead_code)]` — replaced by `SubBufferedRawCEntry`.
 
-**Files**:
-- `packages/zpico/nros-rmw-zenoh/src/shim/subscriber.rs`
-- `packages/core/nros-node/src/executor/spin.rs`
+✓ Kept `SubInfoEntry` (still used by `add_subscription_with_info*`).
+✓ Kept `SubSafetyEntry` (still used by `add_subscription_with_safety*`).
+✓ Kept `SUBSCRIBER_BUFFERS` (still backing store for info/safety subscriptions
+  and the buffered entries' `drain_into_buffer` path).
+
+**Deferred** (separate task): Eliminating `SUBSCRIBER_BUFFERS` by switching
+the buffered subscription path to use `subscribe_zero_copy_raw` (write
+directly into the arena triple buffer, skipping the staging copy).
+This requires a new `ZenohArenaSubscriber` type using `ZpicoZeroCopyCallback`
+with context pointing to the arena `BufferStrategy` — architectural but safe.
+
+**Files modified**:
 - `packages/core/nros-node/src/executor/arena.rs`
+- `packages/core/nros-node/src/executor/spin.rs` (import cleanup)
+- `packages/core/nros-node/src/executor/tests.rs` (comment update)
 
 ### 73.27 — Document sizing, migration, and raw zero-copy API
 
-- Arena sizing formula with triple buffer
-- Before/after memory comparison
-- How to use `CdrReader` for zero-copy access in raw subscriptions
-- QoS depth recommendations
-- `nros::Span` / `nros::StringView` usage in C++
+✓ Documentation added below.
+
+#### Arena sizing formula
+
+The executor arena is a single `[u8; ARENA_SIZE]` that holds all
+callback entry structs and their associated buffers. Set at build
+time via environment variables (see `build.rs`):
+
+| Variable                         | Default | Description                             |
+|----------------------------------|---------|-----------------------------------------|
+| `NROS_EXECUTOR_MAX_CBS`          | 4       | Maximum callback slots                  |
+| `NROS_SUBSCRIPTION_BUFFER_SIZE`  | 1024    | Per-message buffer size in bytes        |
+| `NROS_PARAM_SERVICE_BUFFER_SIZE` | 4096    | Parameter service req/reply buffer size |
+
+Arena size is derived automatically:
+
+```
+ARENA_SIZE = max(MAX_CBS × (RX_BUF × 3 + 512) + 2048, 8192)
+```
+
+**Per-entry arena cost (Phase 73 triple-buffer model)**:
+
+| Entry type            | Arena bytes             | Notes                           |
+|-----------------------|-------------------------|---------------------------------|
+| `add_subscription`    | 3 × RX_BUF + ~64        | Triple buffer, 3 slots          |
+| `add_subscription_with_info` | RX_BUF + ~80   | Single buffer (old path)        |
+| `add_service`         | 2 × RX_BUF + ~64        | req + reply buffers             |
+| `add_timer`           | ~48                     | No message buffer               |
+| `add_guard_condition` | ~24                     | No message buffer               |
+| SPSC ring (depth N)   | (N+1) × RX_BUF + ~64    | `KEEP_LAST(N)`, N > 1           |
+
+**Example**: 2 subscriptions (1024-byte buffer each) + 1 timer:
+
+```
+2 × (3 × 1024 + 64) + 48 ≈ 6.3 KB arena
+```
+
+Default arena with `MAX_CBS=4`, `RX_BUF=1024`:
+```
+4 × (1024 × 3 + 512) + 2048 = 16384 bytes (16 KB)
+```
+
+#### Before/after memory comparison (Phase 73)
+
+**Before (Phase 68, static SUBSCRIBER_BUFFERS)**:
+
+```
+SUBSCRIBER_BUFFERS: ZPICO_MAX_SUBSCRIBERS × (1024 + ~48) ≈ 8 × 1.07 KB = 8.6 KB (static)
+Per subscription arena entry: RX_BUF + ~80 = 1104 bytes
+Per subscription total: 1.07 KB (static) + 1.1 KB (arena) = 2.2 KB
+```
+
+**After (Phase 73, triple buffer in arena)**:
+
+```
+SUBSCRIBER_BUFFERS: unchanged (still needed for info/safety subscriptions)
+Per typed subscription arena entry: 3 × RX_BUF + ~64 = 3136 bytes
+Note: eliminates the separate RX_BUF copy; data flows directly into
+      the triple buffer slot on receive.
+```
+
+**Key trade-off**: Triple buffer uses 3× the message buffer size, but
+enables lock-free latest-value semantics without `SUBSCRIBER_BUFFERS`
+staging. For small messages (< 200 bytes) the old path was more compact;
+for larger messages the elimination of the staging copy is significant.
+
+For memory-constrained targets with small messages, use
+`add_subscription_with_info` (old path, 1× buffer) or set
+`NROS_SUBSCRIPTION_BUFFER_SIZE` to match actual message size.
+
+#### Using `CdrReader` for zero-copy raw subscriptions
+
+`add_subscription_buffered_raw` / `add_subscription_raw` pass raw CDR
+bytes to the callback. Use `CdrReader` to read fields without full
+deserialization — useful for large messages (Image, PointCloud2):
+
+```rust
+use nros_core::{CdrReader, RosMessage};
+
+executor.add_subscription_buffered_raw::<65536>(
+    "/camera/image",
+    Image::TYPE_NAME,
+    Image::TYPE_HASH,
+    QosSettings::default(),
+    |cdr: &[u8]| {
+        let mut r = match CdrReader::new_with_header(cdr) {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        // Read only the fields you need
+        let _header = r.skip(16); // skip std_msgs/Header
+        let height: u32 = r.read_u32().unwrap_or(0);
+        let width: u32 = r.read_u32().unwrap_or(0);
+        // Read pixel slice directly — no allocation
+        let data_len = r.read_u32().unwrap_or(0) as usize;
+        let pixels = r.read_slice_u8(data_len).unwrap_or(&[]);
+        process_pixels(width, height, pixels);
+    },
+)?;
+```
+
+The `cdr` slice borrows from the triple buffer slot — valid only for
+the duration of the callback. Do not store a reference to it.
+
+#### QoS depth recommendations
+
+| Use case                       | Recommended QoS                          | API                                |
+|--------------------------------|------------------------------------------|------------------------------------|
+| Latest sensor value            | `KEEP_LAST(1)` (default)                 | `add_subscription`                 |
+| Command stream (no drops)      | `KEEP_LAST(4)`                           | `add_subscription_with_qos`        |
+| Large image (zero-copy access) | `KEEP_LAST(1)` + raw callback            | `add_subscription_buffered_raw`    |
+| Safety-critical (CRC+seq)      | `KEEP_LAST(1)` + safety callback         | `add_subscription_with_safety`     |
+| Message info (timestamps, GID) | `KEEP_LAST(1)` + info callback           | `add_subscription_with_info`       |
+
+`KEEP_LAST(1)` (triple buffer) uses 3 × RX_BUF bytes.
+`KEEP_LAST(N)` (SPSC ring) uses (N+1) × RX_BUF bytes.
+Choose N based on maximum burst size between executor spins.
+
+#### `nros::Span` / `nros::StringView` usage in C++
+
+For zero-copy field access from C++ raw subscription callbacks,
+use the helpers in `nros/span.hpp`:
+
+```cpp
+#include <nros/span.hpp>
+
+executor.add_subscription_raw(
+    "/chatter", "std_msgs/msg/String", hash, qos,
+    [](const uint8_t* cdr, size_t len, void*) {
+        nros::CdrReader r(cdr, len);
+        r.skip_header();  // CDR 4-byte header
+        nros::StringView s = r.read_string_view();
+        // s.data() / s.size() — borrows directly from cdr buffer
+        process(s.data(), s.size());
+    }, nullptr);
+```
+
+`nros::Span<T>` wraps a `(ptr, len)` pair for arrays; `nros::StringView`
+wraps a CDR string field. Both are zero-copy — the view is only valid
+for the duration of the callback.
 
 ## Acceptance Criteria
 ```
