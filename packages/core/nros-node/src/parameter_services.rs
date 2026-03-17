@@ -36,7 +36,6 @@ use nros_params::{
     ParameterValue as InternalValue, SetParameterResult,
 };
 
-// Re-export nros-rcl-interfaces types
 pub use nros_rcl_interfaces::msg::{
     FloatingPointRange, IntegerRange, ListParametersResult, Parameter, ParameterDescriptor,
     ParameterValue, SetParametersResult,

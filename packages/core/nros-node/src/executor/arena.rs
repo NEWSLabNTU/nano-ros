@@ -302,7 +302,7 @@ pub(crate) unsafe fn sub_buffered_try_process<M, F>(
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
-    M: RosMessage + nros_core::Deserialize,
+    M: RosMessage,
     F: FnMut(&M),
 {
     let entry = unsafe { &mut *(ptr as *mut SubBufferedEntry<M, F>) };
@@ -525,7 +525,7 @@ pub(crate) unsafe fn sub_try_process<M, F, const RX_BUF: usize>(
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
-    M: RosMessage + nros_core::Deserialize,
+    M: RosMessage,
     F: FnMut(&M),
 {
     let entry = unsafe { &mut *(ptr as *mut SubEntry<M, F, RX_BUF>) };
@@ -564,7 +564,7 @@ pub(crate) unsafe fn sub_info_try_process<M, F, const RX_BUF: usize>(
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
-    M: RosMessage + nros_core::Deserialize,
+    M: RosMessage,
     F: FnMut(&M, Option<&MessageInfo>),
 {
     let entry = unsafe { &mut *(ptr as *mut SubInfoEntry<M, F, RX_BUF>) };
@@ -604,7 +604,7 @@ pub(crate) unsafe fn sub_safety_try_process<M, F, const RX_BUF: usize>(
     _delta_ms: u64,
 ) -> Result<bool, TransportError>
 where
-    M: RosMessage + nros_core::Deserialize,
+    M: RosMessage,
     F: FnMut(&M, &nros_rmw::IntegrityStatus),
 {
     let entry = unsafe { &mut *(ptr as *mut SubSafetyEntry<M, F, RX_BUF>) };

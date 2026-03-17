@@ -296,7 +296,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
     ///
     /// Returns the serialized bytes. The caller is responsible for
     /// sending the bytes via the transport layer.
-    pub fn serialize_message<M: RosMessage + nros_core::Serialize>(
+    pub fn serialize_message<M: RosMessage>(
         &mut self,
         _handle: &PublisherHandle<M>,
         msg: &M,
@@ -315,7 +315,7 @@ impl<const MAX_PUBS: usize, const MAX_SUBS: usize> Node<MAX_PUBS, MAX_SUBS> {
     /// Deserialize a received message
     ///
     /// The caller provides the raw bytes received from the transport layer.
-    pub fn deserialize_message<M: RosMessage + nros_core::Deserialize>(
+    pub fn deserialize_message<M: RosMessage>(
         &self,
         _handle: &SubscriberHandle<M>,
         data: &[u8],

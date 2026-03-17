@@ -7,11 +7,8 @@
 /// Trait for ROS message types
 ///
 /// Identifies a ROS message type by its DDS type name and RIHS hash.
-/// Serialization and deserialization are handled by separate traits:
-/// - `nros_serdes::Serialize` — implemented by all message types
-/// - `nros_serdes::Deserialize` — implemented by owned types
-/// - `deserialize_borrowed()` — inherent method on borrowed types (zero-copy)
-pub trait RosMessage: Sized {
+/// All message types implement `Serialize` and `Deserialize`.
+pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize {
     /// Full ROS type name in DDS format
     ///
     /// Example: `"std_msgs::msg::dds_::String_"`
@@ -28,11 +25,11 @@ pub trait RosMessage: Sized {
 ///
 /// Associates request and reply message types with service metadata.
 pub trait RosService {
-    /// The request message type (services are always owned — needs Serialize + Deserialize)
-    type Request: RosMessage + nros_serdes::Serialize + nros_serdes::Deserialize;
+    /// The request message type
+    type Request: RosMessage;
 
-    /// The reply message type (services are always owned — needs Serialize + Deserialize)
-    type Reply: RosMessage + nros_serdes::Serialize + nros_serdes::Deserialize;
+    /// The reply message type
+    type Reply: RosMessage;
 
     /// Full ROS service type name in DDS format
     ///

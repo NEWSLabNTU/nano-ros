@@ -44,13 +44,13 @@ use nros_serdes::{CdrReader, CdrWriter, DeserError, Deserialize, SerError, Seria
 /// - `Feedback`: Sent by server during execution to report progress
 pub trait RosAction: Sized {
     /// Goal message sent by client to initiate the action
-    type Goal: RosMessage + nros_serdes::Serialize + nros_serdes::Deserialize;
+    type Goal: RosMessage;
 
     /// Result message returned by server upon completion
-    type Result: RosMessage + nros_serdes::Serialize + nros_serdes::Deserialize + Default;
+    type Result: RosMessage + Default;
 
     /// Feedback message sent by server during execution
-    type Feedback: RosMessage + nros_serdes::Serialize + nros_serdes::Deserialize;
+    type Feedback: RosMessage;
 
     /// Action type name (e.g., "example_interfaces::action::dds_::Fibonacci_")
     const ACTION_NAME: &'static str;
