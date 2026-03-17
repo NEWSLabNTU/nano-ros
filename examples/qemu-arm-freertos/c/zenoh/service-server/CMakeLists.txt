@@ -5,7 +5,7 @@ project(freertos_c_service_server LANGUAGES C CXX ASM)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-platform.cmake")
 
-nano_ros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE C SKIP_INSTALL)
+nros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE C SKIP_INSTALL)
 
 add_executable(freertos_c_service_server src/main.c ${FREERTOS_STARTUP_SOURCE})
 target_include_directories(freertos_c_service_server PRIVATE ${FREERTOS_STARTUP_INCLUDES})

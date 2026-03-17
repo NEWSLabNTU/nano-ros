@@ -238,7 +238,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
 | 67 | Serial transport + board crate transport abstraction | Complete |
 | 68 | Alloc-free C/C++ bindings + executor simplification | Complete |
-| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1, 69.5 done) |
+| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1, 69.5, 69.6, 69.9 done) |
 | 70 | DDS RMW backend (dust-dds) — POSIX | Complete |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 72 | Per-example config.toml files | In Progress (72.1–72.5 done) |

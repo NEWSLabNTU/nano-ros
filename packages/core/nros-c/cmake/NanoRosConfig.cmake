@@ -22,7 +22,7 @@ Imported Targets
 Functions
 ^^^^^^^^^
 
-``nano_ros_generate_interfaces(<target> <files>... [LANGUAGE C|CPP] [DEPENDENCIES ...] [SKIP_INSTALL])``
+``nros_generate_interfaces(<target> <files>... [LANGUAGE C|CPP] [DEPENDENCIES ...] [SKIP_INSTALL])``
   Generate C or C++ bindings for ROS 2 .msg / .srv / .action files.
 
 #]=======================================================================]

@@ -17,7 +17,7 @@ find_package(NanoRos REQUIRED CONFIG)
 # Generate C message bindings
 # ============================================================================
 
-nano_ros_generate_interfaces(${PROJECT_NAME} SKIP_INSTALL)
+nros_generate_interfaces(${PROJECT_NAME} SKIP_INSTALL)
 
 # ============================================================================
 # Test executable that uses generated messages

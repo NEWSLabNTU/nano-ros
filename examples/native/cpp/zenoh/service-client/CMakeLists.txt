@@ -17,7 +17,7 @@ find_package(NanoRos REQUIRED CONFIG)
 # Generate C++ bindings for example_interfaces/srv/AddTwoInts
 # ============================================================================
 
-nano_ros_generate_interfaces(example_interfaces LANGUAGE CPP SKIP_INSTALL)
+nros_generate_interfaces(example_interfaces LANGUAGE CPP SKIP_INSTALL)
 
 # ============================================================================
 # Executable

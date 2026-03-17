@@ -4,7 +4,7 @@
 #
 # Unlike FreeRTOS, NuttX doesn't need RTOS kernel compilation — the kernel
 # is built into the Rust binary via `-Z build-std=std`. This module:
-#   1. Generates message bindings via nano_ros_generate_interfaces()
+#   1. Generates message bindings via nros_generate_interfaces()
 #   2. Builds the final NuttX kernel ELF via `cargo +nightly build` on the
 #      nros-nuttx-ffi crate, which compiles app_main() from C++ via build.rs
 #
@@ -18,7 +18,7 @@ get_filename_component(_NROS_ROOT "${_NUTTX_CMAKE_DIR}/../../.." ABSOLUTE)
 set(_FFI_CRATE_DIR "${_NUTTX_CMAKE_DIR}/nros-nuttx-ffi")
 
 # ============================================================================
-# Codegen — nano_ros_generate_interfaces()
+# Codegen — nros_generate_interfaces()
 # ============================================================================
 
 set(_CODEGEN_CRATE "${_NROS_ROOT}/packages/codegen/packages/nros-codegen-c")

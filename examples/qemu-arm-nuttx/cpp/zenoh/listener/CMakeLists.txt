@@ -3,15 +3,15 @@ project(nuttx_cpp_listener LANGUAGES C CXX)
 
 include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/nuttx-platform.cmake")
 
-# Generate C++ message bindings (produces headers in build dir)
-nano_ros_generate_interfaces(std_msgs "msg/Int32.msg" LANGUAGE CPP SKIP_INSTALL)
+# Generate C++ message bindings from package.xml
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 
 nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
 
 # Build NuttX kernel ELF with this C++ source
 nuttx_build_example(nuttx_cpp_listener
     "${CMAKE_CURRENT_SOURCE_DIR}/src/main.cpp"
-    INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp/std_msgs"
+    INCLUDE_DIRS "${std_msgs_INCLUDE_DIRS}"
                  "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_cpp"
     COMPILE_DEFS "APP_ZENOH_LOCATOR=\"${NROS_CONFIG_ZENOH_LOCATOR}\""
                  "APP_DOMAIN_ID=${NROS_CONFIG_DOMAIN_ID}"

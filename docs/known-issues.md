@@ -283,3 +283,17 @@ making it unsuitable for alloc-free bare-metal use.
   needed, accepting the memory tradeoff.
 - Use the raw CDR API (`try_recv_raw`) with a caller-provided buffer
   to bypass the static buffer system entirely.
+
+## 9. C/C++ examples do not use package.xml as single source of truth for message deps
+
+Most C/C++ examples manually call `nros_generate_interfaces()` in CMakeLists.txt
+with hardcoded package names and DEPENDENCIES. The intended pattern is for `package.xml`
+to be the single source of truth, with `nros_find_interfaces()` resolving
+deps via AMENT index.
+
+**Current state**: FreeRTOS C++ and NuttX C++ examples use `package.xml` +
+`nros_find_interfaces()`. All other CMake examples (native C/C++, XRCE,
+FreeRTOS C) still use manual `nros_generate_interfaces()` calls.
+
+**To migrate**: Add `package.xml` to each example declaring `<depend>` on message
+packages, replace manual codegen calls with `nros_find_interfaces()`.

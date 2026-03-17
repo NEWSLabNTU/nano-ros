@@ -10,7 +10,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 # nros-c dependency (use -DNANO_ROS_RMW=xrce when configuring)
 find_package(NanoRos REQUIRED CONFIG)
 
-nano_ros_generate_interfaces(example_interfaces SKIP_INSTALL)
+nros_generate_interfaces(example_interfaces SKIP_INSTALL)
 
 add_executable(c_xrce_service_client src/main.c)
 target_link_libraries(c_xrce_service_client

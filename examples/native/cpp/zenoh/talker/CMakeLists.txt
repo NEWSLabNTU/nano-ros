@@ -17,8 +17,8 @@ find_package(NanoRos REQUIRED CONFIG)
 # Generate C++ bindings for std_msgs/Int32
 # ============================================================================
 
-nano_ros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
-nano_ros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
+nros_generate_interfaces(builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
+nros_generate_interfaces(std_msgs DEPENDENCIES builtin_interfaces LANGUAGE CPP SKIP_INSTALL)
 
 # ============================================================================
 # Executable

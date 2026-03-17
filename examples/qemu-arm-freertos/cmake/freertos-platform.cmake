@@ -5,7 +5,7 @@
 # Provides:
 #   freertos_platform    — static library (FreeRTOS + lwIP + LAN9118 + startup)
 #   NanoRos::NanoRosCpp  — nros C++ API (header-only + FFI static lib)
-#   nano_ros_generate_interfaces()  — codegen function
+#   nros_generate_interfaces()  — codegen function
 #
 # Required variables (set via environment or cmake -D):
 #   FREERTOS_DIR     — FreeRTOS kernel source root
@@ -225,7 +225,7 @@ target_link_libraries(NanoRosCpp INTERFACE nros_cpp-static)
 target_compile_features(NanoRosCpp INTERFACE cxx_std_14)
 
 # ============================================================================
-# Codegen — nano_ros_generate_interfaces()
+# Codegen — nros_generate_interfaces()
 # ============================================================================
 
 # Find or build nros-codegen (HOST tool)
