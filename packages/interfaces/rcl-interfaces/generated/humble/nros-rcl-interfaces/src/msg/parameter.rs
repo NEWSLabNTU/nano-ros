@@ -33,6 +33,6 @@ impl Deserialize for Parameter {
 }
 
 impl RosMessage for Parameter {
-    const TYPE_NAME: &'static str = "rcl_interfaces::msg::dds_::Parameter_";
+    const TYPE_NAME: &'static str = "nros_rcl_interfaces::msg::dds_::Parameter_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }

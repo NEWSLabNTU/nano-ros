@@ -33,6 +33,6 @@ impl Deserialize for IntegerRange {
 }
 
 impl RosMessage for IntegerRange {
-    const TYPE_NAME: &'static str = "rcl_interfaces::msg::dds_::IntegerRange_";
+    const TYPE_NAME: &'static str = "nros_rcl_interfaces::msg::dds_::IntegerRange_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }

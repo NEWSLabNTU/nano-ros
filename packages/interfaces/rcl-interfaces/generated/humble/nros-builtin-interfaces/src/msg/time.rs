@@ -30,6 +30,6 @@ impl Deserialize for Time {
 }
 
 impl RosMessage for Time {
-    const TYPE_NAME: &'static str = "builtin_interfaces::msg::dds_::Time_";
+    const TYPE_NAME: &'static str = "nros_builtin_interfaces::msg::dds_::Time_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }

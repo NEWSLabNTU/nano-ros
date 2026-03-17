@@ -62,6 +62,6 @@ impl Deserialize for Log {
 }
 
 impl RosMessage for Log {
-    const TYPE_NAME: &'static str = "rcl_interfaces::msg::dds_::Log_";
+    const TYPE_NAME: &'static str = "nros_rcl_interfaces::msg::dds_::Log_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }

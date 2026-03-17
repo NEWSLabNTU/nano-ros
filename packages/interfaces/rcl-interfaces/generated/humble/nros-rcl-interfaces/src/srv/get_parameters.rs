@@ -41,7 +41,7 @@ impl Deserialize for GetParametersRequest {
 }
 
 impl RosMessage for GetParametersRequest {
-    const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::GetParameters_Request_";
+    const TYPE_NAME: &'static str = "nros_rcl_interfaces::srv::dds_::GetParameters_Request_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
@@ -78,7 +78,7 @@ impl Deserialize for GetParametersResponse {
 }
 
 impl RosMessage for GetParametersResponse {
-    const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::GetParameters_Response_";
+    const TYPE_NAME: &'static str = "nros_rcl_interfaces::srv::dds_::GetParameters_Response_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
@@ -89,6 +89,6 @@ impl RosService for GetParameters {
     type Request = GetParametersRequest;
     type Reply = GetParametersResponse;
 
-    const SERVICE_NAME: &'static str = "rcl_interfaces::srv::dds_::GetParameters_";
+    const SERVICE_NAME: &'static str = "nros_rcl_interfaces::srv::dds_::GetParameters_";
     const SERVICE_HASH: &'static str = "TypeHashNotSupported";
 }

@@ -38,7 +38,7 @@ impl Deserialize for SetParametersRequest {
 }
 
 impl RosMessage for SetParametersRequest {
-    const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::SetParameters_Request_";
+    const TYPE_NAME: &'static str = "nros_rcl_interfaces::srv::dds_::SetParameters_Request_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
@@ -75,7 +75,7 @@ impl Deserialize for SetParametersResponse {
 }
 
 impl RosMessage for SetParametersResponse {
-    const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::SetParameters_Response_";
+    const TYPE_NAME: &'static str = "nros_rcl_interfaces::srv::dds_::SetParameters_Response_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
@@ -86,6 +86,6 @@ impl RosService for SetParameters {
     type Request = SetParametersRequest;
     type Reply = SetParametersResponse;
 
-    const SERVICE_NAME: &'static str = "rcl_interfaces::srv::dds_::SetParameters_";
+    const SERVICE_NAME: &'static str = "nros_rcl_interfaces::srv::dds_::SetParameters_";
     const SERVICE_HASH: &'static str = "TypeHashNotSupported";
 }
