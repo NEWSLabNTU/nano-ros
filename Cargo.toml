@@ -42,6 +42,8 @@ members = [
 exclude = [
     # dust-dds fork (has its own workspace root)
     "packages/dds/dust-dds",
+    # rcl-interfaces parent package (metadata only, no Rust targets)
+    "packages/interfaces/rcl-interfaces",
     # Examples are standalone packages that generate their own bindings
     # Native Rust examples (desktop/Linux)
     "examples/native/rust/zenoh/talker",

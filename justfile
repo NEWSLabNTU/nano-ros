@@ -1388,6 +1388,21 @@ clean-bindings:
     done
     echo "All generated bindings removed."
 
+# Regenerate rcl-interfaces bindings (workspace member with nros- prefix)
+generate-rcl-interfaces:
+    #!/usr/bin/env bash
+    set -e
+    echo "Building nano-ros codegen tool..."
+    cargo build --manifest-path packages/codegen/packages/Cargo.toml -p cargo-nano-ros --bin nano-ros
+    NANO_ROS="$(pwd)/packages/codegen/packages/target/debug/nano-ros"
+    echo "Regenerating rcl-interfaces bindings..."
+    cd packages/interfaces/rcl-interfaces
+    rm -rf generated/humble/nros-builtin-interfaces generated/humble/nros-rcl-interfaces
+    $NANO_ROS generate-rust --force -o generated/humble \
+        --rename builtin_interfaces=nros-builtin-interfaces \
+        --rename rcl_interfaces=nros-rcl-interfaces
+    echo "✓ rcl-interfaces regenerated"
+
 # Clean and regenerate all bindings from scratch
 regenerate-bindings: clean-bindings generate-bindings
 

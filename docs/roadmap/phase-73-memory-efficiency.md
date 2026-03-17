@@ -76,181 +76,122 @@ advances head; the reader advances tail. Drops only when the ring is
 full (head catches tail), which is bounded and predictable — it
 depends on ring depth, not on callback duration.
 
-### Borrowed message types (single type, not two variants)
+### Dual message types: borrowed + owned
 
-The codegen generates **one type per message**. If all fields are
-fixed-size (e.g., `std_msgs/Int32`), the type has no lifetime and is
-identical to today. If the message contains unbounded strings or
-sequences, the type carries a lifetime parameter with `&'a str` /
-`&'a [T]` for those fields:
+For messages with all fixed-size fields (e.g., `std_msgs/Int32`), a
+single type is generated — no lifetime, identical to today.
+
+For messages with unbounded strings or sequences, the codegen generates
+**two types**:
 
 ```rust
-// Fixed-size only — no lifetime, identical to current codegen
-pub struct Int32 {
-    pub data: i32,
-}
-
-// Has unbounded fields — lifetime parameter, borrowed slices
+/// Borrowed — zero-copy receive, lightweight publishing
 pub struct Image<'a> {
     pub height: u32,
     pub width: u32,
-    pub encoding: &'a str,    // borrows from CDR buffer (or user data)
-    pub data: &'a [u8],       // borrows from CDR buffer (or user data)
+    pub encoding: &'a str,
+    pub data: &'a [u8],
+}
+
+/// Owned — storage, incremental construction, parameter services
+pub struct ImageOwned {
+    pub height: u32,
+    pub width: u32,
+    pub encoding: heapless::String<256>,
+    pub data: heapless::Vec<u8, 64>,
 }
 ```
 
-`Image<'a>` is always small (fixed-size fields + pointer/length pairs).
-The payload data stays in the buffer it borrows from. The lifetime `'a`
-ties the message to that buffer's scope.
-
-The same type works for both **receiving** and **publishing**:
+**Conversions** follow Rust conventions:
 
 ```rust
-// Receiving: borrows from transport buffer (arena triple buffer slot)
-executor.add_subscription::<Image>("/camera/image", qos, |msg: &Image<'_>| {
-    // msg.data borrows from arena read slot, valid for callback duration
-    process_pixels(msg.data);
-});
+// Borrowed → Owned (explicit copy)
+let owned: ImageOwned = msg.to_owned();
 
-// Publishing: borrows from user's local data
-let encoding = "rgb8";
-let pixels: [u8; 1024] = capture_frame();
-publisher.publish(&Image {
-    height: 480,
-    width: 640,
-    encoding,       // &str borrows from local
-    data: &pixels,  // &[u8] borrows from local
-});
+// Owned → Borrowed (free, just borrows)
+let borrowed: Image<'_> = owned.as_ref();
 ```
 
-No separate `ImageRef` / `ImageOwned` split — one type serves both
-directions. The `Serialize` impl on `Image<'a>` reads the borrowed
-slices and writes them into CDR. The `DeserializeBorrowed` impl reads
-CDR fields and returns slices into the source buffer.
+**Both types implement `Serialize` + `RosMessage`**, so either can be
+published. `ImageOwned` also implements `Deserialize` (old copy-into-
+struct path). `Image<'a>` has `deserialize_borrowed()` (zero-copy).
+
+#### Rust API
+
+```rust
+// ── Subscription (borrowed, zero-copy) ──
+executor.add_subscription::<Image>("/camera/image", qos, |msg: &Image<'_>| {
+    process_pixels(msg.data);           // zero-copy from triple buffer
+    let saved: ImageOwned = msg.to_owned(); // explicit copy if needed
+});
+
+// ── Publishing (borrowed — ergonomic, no capacity limits) ──
+let pixels = capture_frame();
+publisher.publish(&Image {
+    height: 480, width: 640,
+    encoding: "rgb8",
+    data: &pixels,
+})?;
+
+// ── Publishing (owned — for pre-built messages) ──
+publisher.publish(&owned_img.as_ref())?;
+
+// ── Service (request borrowed, response owned) ──
+executor.add_service::<GetParameters>("/node/get_parameters",
+    |req: &GetParametersRequest<'_>| -> GetParametersResponseOwned {
+        let mut resp = GetParametersResponseOwned::default();
+        for name in req.names { /* name: &str, borrowed */ }
+        resp
+    },
+);
+```
 
 #### C representation
 
-C message structs use `const pointer + size_t` pairs for borrowed
-fields — the standard C pattern for non-owning views:
-
 ```c
-// Generated C struct
+// Borrowed struct (pointer+length for unbounded fields)
 typedef struct {
     uint32_t height;
     uint32_t width;
-    const char* encoding;           // points into CDR buffer
-    size_t encoding_len;
-    const uint8_t* data;            // points into CDR buffer
-    size_t data_len;
+    struct { const char* data; size_t size; } encoding;
+    struct { const uint8_t* data; size_t size; } data;
 } sensor_msgs_msg_image_t;
 
-// Subscription callback — pointer valid for callback duration
-void on_image(const sensor_msgs_msg_image_t* msg, void* ctx) {
-    process_frame(msg->data, msg->data_len);
+// Subscription callback — pointers valid for callback duration
+void on_image(const uint8_t* cdr_data, size_t len, void* ctx) {
+    sensor_msgs_msg_image_t msg;
+    sensor_msgs_msg_image_deserialize(&msg, cdr_data, len);
+    process_pixels(msg.data.data, msg.data.size); // zero-copy
 }
-```
 
-The C user already understands this pattern (same as `recv()` giving
-a pointer into a buffer). The "lifetime" is the callback scope.
+// Publishing — set pointers to local data
+sensor_msgs_msg_image_t img = {0};
+img.height = 480;
+img.encoding.data = "rgb8";
+img.encoding.size = 4;
+img.data.data = pixels;
+img.data.size = pixel_count;
+// serialize and publish...
+```
 
 #### C++ representation (freestanding C++14)
 
-C++ message structs use `nros::Span<T>` and `nros::StringView` —
-lightweight non-owning view types that provide the same UX as
-`std::span` / `std::string_view` without requiring C++17/C++20.
-
-These are defined in a single header (`nros/span.hpp`), ~20 lines
-total, compatible with GCC 5+ and Clang 3.5+:
-
-```cpp
-// nros/span.hpp — freestanding, no STL required
-namespace nros {
-
-template <typename T>
-struct Span {
-    const T* ptr;
-    size_t len;
-
-    constexpr const T* data() const { return ptr; }
-    constexpr size_t size() const { return len; }
-    constexpr bool empty() const { return len == 0; }
-    constexpr const T& operator[](size_t i) const { return ptr[i]; }
-    constexpr const T* begin() const { return ptr; }
-    constexpr const T* end() const { return ptr + len; }
-};
-
-struct StringView {
-    const char* ptr;
-    size_t len;
-
-    constexpr const char* data() const { return ptr; }
-    constexpr size_t size() const { return len; }
-    constexpr bool empty() const { return len == 0; }
-    constexpr const char* begin() const { return ptr; }
-    constexpr const char* end() const { return ptr + len; }
-};
-
-} // namespace nros
-```
-
-Generated C++ message type:
+Uses `nros::Span<T>` and `nros::StringView` from `nros/span.hpp`:
 
 ```cpp
 namespace sensor_msgs::msg {
-
 struct Image {
     uint32_t height;
     uint32_t width;
-    nros::StringView encoding;    // borrows from CDR buffer
-    nros::Span<uint8_t> data;     // borrows from CDR buffer
+    nros::StringView encoding;
+    nros::Span<uint8_t> data;
 };
-
 } // namespace sensor_msgs::msg
-```
 
-User code:
-
-```cpp
 void on_image(const sensor_msgs::msg::Image& msg) {
-    // Range-based for loop (begin/end defined)
-    for (uint8_t pixel : msg.data) { ... }
-
-    // Direct pointer access
-    process_frame(msg.data.data(), msg.data.size());
-
-    // String comparison
-    if (msg.encoding.size() == 4 &&
-        memcmp(msg.encoding.data(), "rgb8", 4) == 0) { ... }
+    for (uint8_t pixel : msg.data) { ... }  // range-for works
+    if (msg.encoding.equals("rgb8")) { ... }
 }
-```
-
-In `NROS_CPP_STD` mode, convenience conversions to `std::string` and
-`std::vector` are available for users who need owned copies:
-
-```cpp
-std::string enc(msg.encoding.data(), msg.encoding.size());
-```
-
-C++20 users who want `std::span` can convert trivially:
-
-```cpp
-std::span<const uint8_t> s{msg.data.data(), msg.data.size()};
-```
-
-#### Raw message API
-
-The raw (untyped) subscription API is unchanged — the callback
-receives `(const uint8_t* data, size_t len)`, a pointer into the
-arena's read slot. It is already borrowed by nature:
-
-```rust
-// Rust raw API
-executor.add_subscription_raw("/topic", qos, |data: &[u8]| { ... });
-```
-
-```c
-// C raw API
-void callback(const uint8_t* data, size_t len, void* ctx) { ... }
 ```
 
 ### Arena-based buffer allocation
@@ -353,6 +294,7 @@ deterministic O(1) without any zenoh-pico patches.
 - [x] 73.6 — Arena-based buffer allocation for subscriptions
 - [x] 73.7 — Zenoh shim drain into triple buffer
 - [x] 73.8 — Borrowed message codegen (Rust)
+- [x] 73.8a — Dual-type codegen: generate `Msg<'a>` + `MsgOwned` + conversions
 - [x] 73.9 — Borrowed message codegen (C/C++) and `nros::Span` header
 - [x] 73.10 — Executor zero-copy dispatch path
 - [x] 73.11 — DDS and XRCE-DDS shim integration
@@ -369,12 +311,30 @@ deterministic O(1) without any zenoh-pico patches.
 - [x] 73.16 — Deprecate owned-type subscription API
 - [x] 73.17 — C/C++ borrowed subscription API (codegen templates)
 
-### Serialization prerequisites (not started)
+### Serialization prerequisites (done)
 
 - [x] 73.18 — Add `CdrReader::read_slice_*` methods to nros-serdes
 - [x] 73.19 — Add `nros_cdr_write_string_n` to C CDR library
 
-### Example migration (blocked on 73.18–73.19)
+### Codegen improvements (not started)
+
+- [x] 73.19a — Codegen: propagate lifetime to nested type references
+- [x] 73.19b — Codegen: add `--rename` option for package name remapping
+
+### Codegen fixes for rcl-interfaces
+
+- [x] 73.19c — Codegen: re-export `*Owned` types from `msg/mod.rs`
+- [x] 73.19d — Multi-byte primitives: use heapless::Vec (not `&'a [T]`)
+- [x] 73.19e — Codegen: fix `to_owned()` for `&'a [Nested<'a>]` sequences
+- [x] 73.19f — Remove `Serialize + Deserialize` from `RosMessage` trait bound
+
+### rcl-interfaces migration (blocked on 73.19f)
+
+- [ ] 73.20a — Regenerate rcl-interfaces with dual-type codegen
+- [ ] 73.20b — Migrate `parameter_services.rs` to use `*Owned` types
+- [ ] 73.20c — Update workspace Cargo.toml paths for regenerated rcl-interfaces
+
+### Example migration (blocked on 73.20a–73.20c)
 
 - [ ] 73.20 — Regenerate bindings and migrate Rust examples
 - [ ] 73.21 — Regenerate bindings and migrate C/C++ examples
@@ -842,26 +802,207 @@ Implement this function alongside the existing `nros_cdr_write_string`.
 
 **Files**: `packages/core/nros-c/include/nano_ros/cdr.h`
 
+### 73.19a — Codegen: propagate lifetime to nested type references
+
+**Blocking issue discovered during 73.20a attempt.**
+
+When `ParameterValue` has unbounded fields and becomes
+`ParameterValue<'a>`, any message that references it (e.g.,
+`Parameter { value: ParameterValue }`) must also propagate the
+lifetime: `Parameter<'a> { value: ParameterValue<'a> }`.
+
+The current codegen generates each message independently and doesn't
+know whether a referenced nested type has a lifetime parameter. This
+causes compilation errors like:
+```
+error[E0106]: missing lifetime specifier
+  --> parameter.rs:12:28
+   |
+12 |     pub value: crate::msg::ParameterValue,
+   |                            ^^^^^^^^^^^^^^ expected named lifetime parameter
+```
+
+**Fix**: Add a two-pass approach to the codegen:
+1. First pass: identify which message types need lifetimes (have
+   unbounded fields directly or transitively via nested types)
+2. Second pass: generate code with correct lifetime propagation
+
+Alternatively, always generate nested type references with a lifetime
+parameter when the nested type is known to have unbounded fields
+(requires building a dependency graph of message types).
+
+**Files**:
+- `packages/codegen/packages/rosidl-codegen/src/generator/msg.rs`
+- `packages/codegen/packages/rosidl-codegen/src/types.rs`
+
+### 73.19b — Codegen: add `--crate-prefix` option for package name remapping
+
+The codegen generates crate names matching ROS package names
+(`rcl_interfaces`, `builtin_interfaces`). The nano-ros project uses
+`nros-` prefixed names (`nros-rcl-interfaces`, `nros-builtin-interfaces`)
+to avoid conflicts with user-generated bindings.
+
+Add a `--crate-prefix` option to `cargo nano-ros generate` that
+prepends a prefix to generated crate names, dependency references,
+and `use` statements. Example:
+
+```bash
+cargo nano-ros generate --crate-prefix nros -o generated/humble
+```
+
+Generates `nros-rcl-interfaces` (crate name), with dependency
+`nros-builtin-interfaces` (not `builtin_interfaces`), and
+`use nros_builtin_interfaces::msg::Time` (not `builtin_interfaces`).
+
+Also add `--nros-path` to override the dependency paths for
+`nros-core` and `nros-serdes` (currently hardcoded to `version = "*"`
+or relative path).
+
+**Files**:
+- `packages/codegen/packages/cargo-nano-ros/src/main.rs`
+- `packages/codegen/packages/rosidl-codegen/src/generator/msg.rs`
+
+### 73.19c — Codegen: re-export `*Owned` types from `msg/mod.rs`
+
+The generated `msg/mod.rs` only re-exports the borrowed type (e.g.,
+`pub use parameter::Parameter`). It must also re-export the owned
+variant (`pub use parameter::ParameterOwned`) for cross-module
+references like `crate::msg::ParameterOwned` to resolve.
+
+**Files**: `rosidl-codegen` mod.rs template / generator
+
+### 73.19d — Codegen: add `read_slice_i64`, `read_slice_f64` to CdrReader
+
+The `ParameterValue` type contains `int64[] integer_array_value` and
+`float64[] double_array_value`. The generated `deserialize_borrowed`
+calls `reader.read_slice_i64()` and `reader.read_slice_f64()` which
+don't exist. Currently only `read_slice_u8` and `_raw` variants exist.
+
+Add `read_slice_i64`, `read_slice_f64` (and other primitives) that
+return `&'a [T]` with proper alignment handling. Or change the template
+to use the `_raw` variants and document the endianness constraint.
+
+**Files**: `packages/core/nros-serdes/src/cdr.rs`
+
+### 73.19e — Codegen: fix `to_owned()` for `&'a [Nested<'a>]` sequences
+
+The template generates `self.field.to_owned()` for lifetime-nested
+fields. When the field is `&'a [Parameter<'a>]`, Rust's built-in
+`ToOwned::to_owned` returns `Vec<Parameter<'a>>` — wrong. It should
+call the generated `to_owned()` method on each element and collect
+into a `heapless::Vec<ParameterOwned, N>`.
+
+Fix the template to generate proper per-element conversion for
+sequences of lifetime-nested types.
+
+**Files**: `message_nros.rs.jinja` template
+
+### 73.19f — Lifetime-parameterized `Deserialize<'de>` trait
+
+**Blocking issue discovered during 73.20a attempt.**
+
+The current `Deserialize` trait is:
+```rust
+pub trait Deserialize: Sized {
+    fn deserialize(reader: &mut CdrReader) -> Result<Self, DeserError>;
+}
+```
+
+`RosMessage` requires `Deserialize`, but borrowed types like
+`ParameterValue<'a>` can't implement `Deserialize` — they need to
+borrow from the reader's buffer, which requires a lifetime:
+
+```rust
+// Needed (serde-style lifetime-parameterized deserialization):
+pub trait Deserialize<'de>: Sized {
+    fn deserialize(reader: &mut CdrReader<'de>) -> Result<Self, DeserError>;
+}
+```
+
+With this, `ParameterValue<'a>` implements `Deserialize<'a>` (borrows
+from buffer), and `ParameterValueOwned` implements
+`for<'de> Deserialize<'de>` (copies from buffer, no lifetime).
+
+`RosMessage` becomes:
+```rust
+pub trait RosMessage: Sized + Serialize {
+    const TYPE_NAME: &'static str;
+    const TYPE_HASH: &'static str;
+}
+```
+
+(Removing the `Deserialize` bound — deserialization is handled
+separately through `Deserialize<'de>` or `deserialize_borrowed`.)
+
+**Scope**: Changes `nros-core`, `nros-serdes`, all generated code,
+executor dispatch, C/C++ FFI wrappers. Large refactor.
+
+**Files**:
+- `packages/core/nros-core/src/types.rs` (trait definitions)
+- `packages/core/nros-serdes/src/traits.rs` (`Deserialize` trait)
+- `packages/core/nros-serdes/src/primitives.rs` (primitive impls)
+- `packages/core/nros-node/src/executor/arena.rs` (dispatch)
+- All generated message/service code
+
+### 73.20a — Regenerate rcl-interfaces with dual-type codegen
+
+Depends on 73.19f.
+
+Regenerate the checked-in rcl-interfaces bindings using `cargo nano-ros
+clean && cargo nano-ros generate` in the rcl-interfaces package directory.
+
+The output produces `Parameter<'a>` + `ParameterOwned`,
+`SetParametersResult<'a>` + `SetParametersResultOwned`, etc.
+
+Must update the generated output directory structure to match the
+workspace member paths in the root `Cargo.toml`
+(`generated/humble/nros-rcl-interfaces/`).
+
+**Files**:
+- `packages/interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces/`
+- `packages/interfaces/rcl-interfaces/generated/humble/nros-builtin-interfaces/`
+
+### 73.20b — Migrate `parameter_services.rs` to use `*Owned` types
+
+The parameter services module constructs response structs (`Parameter`,
+`SetParametersResult`, `ListParametersResult`, etc.). With the new
+codegen, these become `Parameter<'a>` which requires a lifetime.
+
+Migrate all response construction to use `*Owned` variants:
+- `Parameter` → `ParameterOwned`
+- `SetParametersResult` → `SetParametersResultOwned`
+- `ParameterDescriptor` → `ParameterDescriptorOwned`
+- `ListParametersResult` → `ListParametersResultOwned`
+- `ParameterValue` → stays as-is (no unbounded fields, no lifetime)
+
+Service handlers return owned responses; the executor serializes
+them via `Serialize` (which delegates to `as_ref().serialize()`).
+
+**Files**:
+- `packages/core/nros-node/src/parameter_services.rs`
+- `packages/core/nros-node/src/params.rs`
+
+### 73.20c — Update workspace Cargo.toml paths for regenerated rcl-interfaces
+
+If the generated directory structure changes (e.g., crate names or
+paths differ from the checked-in version), update the root
+`Cargo.toml` workspace members to match.
+
+**Files**: `Cargo.toml`
+
 ### 73.20 — Regenerate bindings and migrate Rust examples
 
-Depends on 73.18.
+Depends on 73.20a–73.20c.
 
 1. Regenerate all Rust example bindings with `just generate-bindings`
 2. Update subscription callbacks for messages with borrowed fields
-   (`&Msg<'_>` with `&str` / `&[u8]` instead of `heapless::String` /
-   `heapless::Vec`)
-3. Examples that store messages beyond the callback copy fields
-   explicitly
+3. Examples that store messages call `.to_owned()`
 
 **Files**: `examples/*/rust/zenoh/*/src/main.rs`
 
 ### 73.21 — Regenerate bindings and migrate C/C++ examples
 
 Depends on 73.19.
-
-1. Regenerate all C/C++ example bindings
-2. Update C callbacks for borrowed message structs (pointer+length)
-3. Update C++ code for `nros::StringView` / `nros::Span<T>` fields
 
 **Files**:
 - `examples/native/c/zenoh/*/`
@@ -918,7 +1059,9 @@ Update the embedded tuning guide with the new memory model:
       (verified by unit test)
 - [ ] Subscription receive path has zero memcpy for payload data
       when using borrowed message types
-- [ ] Borrowed message types generated for Rust, C, and C++
+- [ ] Dual message types generated: `Image<'a>` + `ImageOwned` for Rust;
+      pointer+length structs for C/C++
+- [ ] `to_owned()` and `as_ref()` conversions generated and tested
 - [ ] `nros::Span` and `nros::StringView` work on C++14 freestanding
       (GCC 5+, Clang 3.5+, no STL required)
 - [x] Owned-type subscription API deprecated; all subscriptions use
@@ -939,25 +1082,20 @@ Update the embedded tuning guide with the new memory model:
 
 ## Notes
 
-- **Single type, not two variants**: Messages with all fixed-size
-  fields (Int32, Vector3, Quaternion) have no lifetime and are
-  unchanged from today. Messages with unbounded strings/sequences
-  gain a lifetime parameter (`Image<'a>`). There is no separate
-  `ImageRef` / `ImageOwned` split — one type works for both
-  publishing (borrows from user data) and receiving (borrows from
-  transport buffer).
-- Messages with lifetime parameters cannot be stored beyond the
-  callback scope. Users who need to keep a received `Image<'a>`
-  must copy the borrowed fields into owned storage manually.
-- The copy-based receive path is **not removed**. Messages without
-  lifetime parameters (all-fixed-size) work exactly as today. The
-  buffer strategy (triple buffer / SPSC ring) is transparent —
-  existing `add_subscription` calls work unchanged with the new
-  arena allocation.
-- **C/C++ message types use pointer+length pairs**, not Rust
-  lifetimes. The "lifetime" is the callback scope — same contract
-  as today's raw API. C++ uses freestanding `nros::Span<T>` and
-  `nros::StringView` (C++14, no STL). No C++17 or C++20 required.
+- **Dual types for unbounded messages**: Messages with unbounded
+  fields generate `Image<'a>` (borrowed) + `ImageOwned` (owned).
+  Messages with all fixed-size fields generate a single type (no
+  lifetime, no Owned variant — identical to today).
+- **Conversions**: `msg.to_owned() -> ImageOwned` (explicit copy),
+  `owned.as_ref() -> Image<'_>` (free borrow). Both types implement
+  `Serialize` + `RosMessage`, so either can be published.
+- **Subscription callbacks** receive `&Image<'_>` (borrowed from
+  triple buffer). Call `.to_owned()` to keep data beyond the callback.
+- **Service handlers** receive borrowed requests, return owned
+  responses. Parameter services use `*Owned` types internally.
+- **C/C++ message types use pointer+length pairs** for borrowed
+  fields. C++ uses `nros::Span<T>` and `nros::StringView` (C++14,
+  no STL). No C++17 or C++20 required.
 - The slab fast-path in `zpico-alloc` is transparent to zenoh-pico.
   No C code changes are needed.
 - `z_realloc` fix (73.1) patches zenoh-pico's vendored C source.
