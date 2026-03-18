@@ -525,8 +525,8 @@ extern "C" fn rust_main() {
 }
 
 fn run() -> Result<(), EmbeddedNodeError> {
-    // Zenoh: "tcp/192.0.2.2:7447"   XRCE: "192.0.2.2:2018"
-    let config = EmbeddedConfig::new("tcp/192.0.2.2:7447");
+    // Zenoh: "tcp/192.0.2.2:7456"   XRCE: "192.0.2.2:2018"
+    let config = EmbeddedConfig::new("tcp/192.0.2.2:7456");
     let mut executor = EmbeddedExecutor::open(&config)?;
     let mut node = executor.create_node("my_node")?;
     let publisher = node.create_publisher::<Int32>("/chatter")?;
@@ -572,7 +572,7 @@ target_sources(app PRIVATE src/main.c)
 CONFIG_NROS=y
 CONFIG_NROS_C_API=y
 # CONFIG_NROS_RMW_ZENOH=y  # default
-CONFIG_NROS_ZENOH_LOCATOR="tcp/192.0.2.2:7447"
+CONFIG_NROS_ZENOH_LOCATOR="tcp/192.0.2.2:7456"
 CONFIG_NROS_DOMAIN_ID=0
 CONFIG_POSIX_API=y
 CONFIG_MAX_PTHREAD_MUTEX_COUNT=32
@@ -710,7 +710,7 @@ CONFIG_STD_CPP14=y
 
 CONFIG_NROS=y
 CONFIG_NROS_CPP_API=y
-CONFIG_NROS_ZENOH_LOCATOR="tcp/192.0.2.2:7447"
+CONFIG_NROS_ZENOH_LOCATOR="tcp/192.0.2.2:7456"
 CONFIG_NROS_DOMAIN_ID=0
 
 CONFIG_POSIX_API=y

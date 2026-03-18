@@ -24,7 +24,7 @@ extern "C" fn rust_main() {
 }
 
 fn run() -> Result<(), NodeError> {
-    let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let config = ExecutorConfig::new("tcp/192.0.2.2:7456");
     let mut executor: Executor = Executor::open(&config)?;
 
     let mut count: u32 = 0;

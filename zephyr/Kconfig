@@ -250,10 +250,10 @@ config NROS_SERVICE_BUFFER_SIZE
 
 config NROS_ZENOH_LOCATOR
     string "Zenoh router locator"
-    default "tcp/192.0.2.2:7447"
+    default "tcp/192.0.2.2:7456"
     help
       Zenoh router address. Supported formats:
-        TCP:    "tcp/IP:PORT"       (e.g. "tcp/192.0.2.2:7447")
+        TCP:    "tcp/IP:PORT"       (e.g. "tcp/192.0.2.2:7456")
         Serial: "serial/DEVICE#baudrate=RATE"
 
 config NROS_TRANSPORT_SERIAL

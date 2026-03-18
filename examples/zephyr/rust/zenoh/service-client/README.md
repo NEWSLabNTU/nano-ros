@@ -55,7 +55,7 @@ Then run the client:
 ```
 
 The service client will:
-1. Connect to the zenoh router at 192.0.2.2:7447
+1. Connect to the zenoh router at 192.0.2.2:7456
 2. Send AddTwoInts requests every 2 seconds
 3. Print the responses
 

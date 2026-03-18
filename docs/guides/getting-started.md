@@ -412,7 +412,7 @@ async fn spin_task(mut exec: NrosExecutor) -> ! {
 
 #[embassy_executor::task]
 async fn app_main(spawner: embassy_executor::Spawner) {
-    let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7456");
     let mut nros_exec = nros::Executor::open(&config).unwrap();
     let mut client = {
         let mut node = nros_exec.create_node("client").unwrap();

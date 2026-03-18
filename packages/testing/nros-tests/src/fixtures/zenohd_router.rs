@@ -75,21 +75,34 @@ pub struct ZenohRouter {
 }
 
 impl ZenohRouter {
-    /// Start a new zenohd router on the specified port
+    /// Start a new zenohd router on the specified port, bound to `127.0.0.1`.
     ///
     /// Kills any orphaned zenohd still listening on the port from a previous
     /// test run (e.g. if nextest SIGKILL'd the test process, preventing Drop).
     ///
+    /// Binding to loopback prevents cross-platform interference and is
+    /// sufficient for QEMU slirp tests (slirp NAT connects via `127.0.0.1`)
+    /// and native/POSIX tests.
+    ///
+    /// For bridge-networked tests (ThreadX Linux, Zephyr) that connect via
+    /// a non-loopback IP, use [`start_on`](Self::start_on) with `"0.0.0.0"`.
+    pub fn start(port: u16) -> TestResult<Self> {
+        Self::start_on("127.0.0.1", port)
+    }
+
+    /// Start a new zenohd router on the specified bind address and port.
+    ///
     /// # Arguments
+    /// * `bind_addr` - IP address to bind to (`"127.0.0.1"` or `"0.0.0.0"`)
     /// * `port` - TCP port to listen on
     ///
     /// # Returns
     /// A managed router instance that will be stopped on drop
-    pub fn start(port: u16) -> TestResult<Self> {
+    pub fn start_on(bind_addr: &str, port: u16) -> TestResult<Self> {
         // Kill any orphaned zenohd from a previous test run
         kill_listeners_on_port(port);
 
-        let locator = format!("tcp/0.0.0.0:{}", port);
+        let locator = format!("tcp/{}:{}", bind_addr, port);
 
         let mut cmd = std::process::Command::new(crate::process::zenohd_binary_path());
         cmd.args(["--listen", &locator, "--no-multicast-scouting"])
@@ -158,7 +171,7 @@ impl ZenohRouter {
     ) -> TestResult<Self> {
         kill_listeners_on_port(port);
 
-        let locator = format!("tls/0.0.0.0:{}", port);
+        let locator = format!("tls/127.0.0.1:{}", port);
         let cert_cfg = format!(
             "transport/link/tls/listen_certificate:\"{}\"",
             cert_path.display()

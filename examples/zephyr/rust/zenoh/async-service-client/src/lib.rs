@@ -55,7 +55,7 @@ async fn app_main(spawner: embassy_executor::Spawner) {
 }
 
 async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeError> {
-    let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7456");
     let mut nros_exec = nros::Executor::open(&config)?;
 
     // Create client — it's an owned type (no lifetime tied to node or executor).

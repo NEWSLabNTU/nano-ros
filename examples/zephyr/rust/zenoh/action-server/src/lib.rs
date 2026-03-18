@@ -28,7 +28,7 @@ extern "C" fn rust_main() {
 }
 
 fn run() -> Result<(), NodeError> {
-    let config = ExecutorConfig::new("tcp/192.0.2.2:7447");
+    let config = ExecutorConfig::new("tcp/192.0.2.2:7456");
     let mut executor = Executor::open(&config)?;
     let mut node = executor.create_node("fibonacci_action_server")?;
     let mut action_server = node.create_action_server::<Fibonacci>("/fibonacci")?;

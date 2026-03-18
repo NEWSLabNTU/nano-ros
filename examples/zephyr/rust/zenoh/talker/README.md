@@ -65,7 +65,7 @@ sudo ./scripts/setup-zephyr-network.sh
 
 Default configuration:
 - Device IP: 192.0.2.1 (QEMU/native_sim) or board-specific
-- Router: tcp/192.0.2.2:7447
+- Router: tcp/192.0.2.2:7456
 
 ## Testing with Native Subscriber
 

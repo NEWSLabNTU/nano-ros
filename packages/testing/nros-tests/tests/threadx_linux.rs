@@ -419,8 +419,8 @@ fn test_threadx_pubsub_e2e() {
     let listener_bin = build_threadx_listener().expect("Failed to build listener");
 
     // Start zenohd (firmware hardcodes tcp/192.0.3.1:<port>)
-    let _zenohd =
-        ZenohRouter::start(platform::THREADX_LINUX.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::THREADX_LINUX.zenohd_port)
+        .expect("Failed to start zenohd");
 
     // Start listener first (subscriber before publisher)
     eprintln!("Starting listener on tap-qemu1...");
@@ -488,8 +488,8 @@ fn test_threadx_service_e2e() {
     let server_bin = build_threadx_service_server().expect("Failed to build service server");
     let client_bin = build_threadx_service_client().expect("Failed to build service client");
 
-    let _zenohd =
-        ZenohRouter::start(platform::THREADX_LINUX.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::THREADX_LINUX.zenohd_port)
+        .expect("Failed to start zenohd");
 
     // Start server first
     eprintln!("Starting service server on tap-qemu0...");
@@ -576,8 +576,8 @@ fn test_threadx_action_e2e() {
     let server_bin = build_threadx_action_server().expect("Failed to build action server");
     let client_bin = build_threadx_action_client().expect("Failed to build action client");
 
-    let _zenohd =
-        ZenohRouter::start(platform::THREADX_LINUX.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::THREADX_LINUX.zenohd_port)
+        .expect("Failed to start zenohd");
 
     // Start action server first
     eprintln!("Starting action server on tap-qemu0...");

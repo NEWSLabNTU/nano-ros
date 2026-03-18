@@ -40,7 +40,7 @@ west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/service-serve
 ```
 
 The service server will:
-1. Connect to the zenoh router at 192.0.2.2:7447
+1. Connect to the zenoh router at 192.0.2.2:7456
 2. Declare service server for `demo/add_two_ints`
 3. Wait for and process service requests
 
