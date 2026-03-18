@@ -1531,7 +1531,7 @@ setup-nuttx:
     else
         echo "WARNING: Skipping NuttX kernel build (missing dependencies)."
         $HAS_CROSS   || echo "  - arm-none-eabi-gcc not found (sudo apt install gcc-arm-none-eabi)"
-        $HAS_KCONFIG || echo "  - kconfig tools not found (pip install kconfiglib)"
+        $HAS_KCONFIG || echo "  - kconfig tools not found (sudo apt install kconfig-frontends-nox)"
         echo "  Install and run: just build-nuttx"
     fi
     echo ""
@@ -1543,6 +1543,37 @@ setup-nuttx:
     echo "  export NUTTX_DIR=$NUTTX_DIR"
     echo "  export NUTTX_APPS_DIR=$NUTTX_APPS_DIR"
     echo ""
+
+    # --- Patched libc for NuttX Rust examples ---
+    # libc 0.2.178 is missing _SC_HOST_NAME_MAX for NuttX (used by Rust std hostname.rs).
+    # Patch it in external/libc so NuttX examples can build with -Z build-std.
+    LIBC_DIR="$(pwd)/external/libc"
+    LIBC_VERSION="0.2.178"
+    NUTTX_MOD=""
+    # Find in Cargo registry cache
+    for candidate in ~/.cargo/registry/src/*/libc-${LIBC_VERSION}; do
+        if [ -f "$candidate/Cargo.toml" ]; then
+            NUTTX_MOD="$candidate/src/unix/nuttx/mod.rs"
+            CACHED_LIBC="$candidate"
+            break
+        fi
+    done
+    if [ -z "$NUTTX_MOD" ]; then
+        echo "WARNING: libc ${LIBC_VERSION} not found in Cargo cache."
+        echo "  Run: cargo fetch (in any workspace directory) to populate the cache."
+        echo "  Then re-run: just setup-nuttx"
+    elif [ -d "$LIBC_DIR" ] && grep -q '_SC_HOST_NAME_MAX' "$LIBC_DIR/src/unix/nuttx/mod.rs" 2>/dev/null; then
+        echo "Patched libc already present at $LIBC_DIR"
+    else
+        echo "Setting up patched libc ${LIBC_VERSION} for NuttX..."
+        rm -rf "$LIBC_DIR"
+        cp -r "$CACHED_LIBC" "$LIBC_DIR"
+        patch -p1 -d "$LIBC_DIR" \
+            < "$(pwd)/packages/boards/nros-nuttx-qemu-arm/patches/libc-nuttx-sc-host-name-max.patch"
+        echo "  -> $LIBC_DIR"
+    fi
+    echo ""
+
     echo "Setup complete!"
 
 # Build NuttX kernel without re-cloning sources.
@@ -1742,7 +1773,7 @@ setup:
     echo "       - cargo-nano-ros         (message binding generator)"
     echo "       - kani-verifier          (bounded model checking)"
     echo "       - verus                  (deductive verification)"
-    echo "       - kconfiglib (pip)       (NuttX Kconfig tools)"
+    echo "       - kconfig-frontends-nox  (NuttX Kconfig tools, apt)"
     echo "  6. Build Espressif QEMU from source → ~/.local/bin/qemu-system-riscv32"
     echo "     (ESP32-C3 emulator — requires git, ninja, python3, pkg-config,"
     echo "      libglib2.0-dev, libpixman-1-dev, libgcrypt20-dev, libslirp-dev)"
@@ -1843,9 +1874,12 @@ setup:
     fi
     just setup-verus || echo "WARNING: Verus setup failed (non-fatal)"
     cargo install --path packages/codegen/packages/cargo-nano-ros --locked
-    # kconfiglib: Python Kconfig tools required by NuttX build (olddefconfig, menuconfig)
-    if command -v olddefconfig &>/dev/null || command -v kconfig-conf &>/dev/null; then
+    # kconfig tools: required by NuttX build (kconfig-conf or olddefconfig)
+    # Prefer apt (kconfig-frontends-nox) over pip (kconfiglib)
+    if command -v kconfig-conf &>/dev/null || command -v olddefconfig &>/dev/null; then
         echo "kconfig tools already installed"
+    elif command -v apt-get &>/dev/null; then
+        sudo apt-get install -y kconfig-frontends-nox || echo "WARNING: kconfig-frontends-nox install failed (non-fatal, needed for just build-nuttx)"
     else
         pip install kconfiglib || echo "WARNING: kconfiglib install failed (non-fatal, needed for just build-nuttx)"
     fi

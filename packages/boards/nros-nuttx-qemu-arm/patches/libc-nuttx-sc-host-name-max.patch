@@ -1,0 +1,18 @@
+Add _SC_HOST_NAME_MAX for NuttX target.
+
+libc 0.2.178 does not define _SC_HOST_NAME_MAX for NuttX, but Rust std's
+hostname implementation (std/src/sys/net/hostname/unix.rs) requires it when
+building with -Z build-std for armv7a-nuttx-eabihf.
+
+Value 0x0026 (38) comes from NuttX include/unistd.h.
+
+--- a/src/unix/nuttx/mod.rs
++++ b/src/unix/nuttx/mod.rs
+@@ -512,6 +512,7 @@
+ pub const _SC_PAGESIZE: i32 = 0x36;
+ pub const _SC_THREAD_STACK_MIN: i32 = 0x58;
+ pub const _SC_GETPW_R_SIZE_MAX: i32 = 0x25;
++pub const _SC_HOST_NAME_MAX: i32 = 0x0026; // from NuttX include/unistd.h
+
+ // signal.h
+ pub const SIGHUP: c_int = 1;
