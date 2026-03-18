@@ -1396,10 +1396,10 @@ pub fn build_c_example(example_dir: &str, binary_name: &str) -> TestResult<PathB
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure — pass NanoRos_DIR to the pseudo-install layout
+    // Run cmake configure — pass CMAKE_PREFIX_PATH to the install layout
     let nano_ros_dir = format!(
-        "-DNanoRos_DIR={}",
-        root.join("build/install/lib/cmake/NanoRos").display()
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
     );
     let output = cmd!("cmake", &nano_ros_dir, "..")
         .dir(&build_dir)
@@ -1566,8 +1566,8 @@ pub fn build_c_xrce_example(example_dir: &str, binary_name: &str) -> TestResult<
 
     // Run cmake configure — select XRCE RMW variant
     let nano_ros_dir = format!(
-        "-DNanoRos_DIR={}",
-        root.join("build/install/lib/cmake/NanoRos").display()
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
     );
     let output = cmd!("cmake", &nano_ros_dir, "-DNANO_ROS_RMW=xrce", "..")
         .dir(&build_dir)
@@ -1830,10 +1830,10 @@ pub fn build_cpp_example(example_dir: &str, binary_name: &str) -> TestResult<Pat
     std::fs::create_dir_all(&build_dir)
         .map_err(|e| TestError::BuildFailed(format!("Failed to create build dir: {}", e)))?;
 
-    // Run cmake configure — pass NanoRos_DIR to the pseudo-install layout
+    // Run cmake configure — pass CMAKE_PREFIX_PATH to the install layout
     let nano_ros_dir = format!(
-        "-DNanoRos_DIR={}",
-        root.join("build/install/lib/cmake/NanoRos").display()
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
     );
     let output = cmd!("cmake", &nano_ros_dir, "..")
         .dir(&build_dir)
