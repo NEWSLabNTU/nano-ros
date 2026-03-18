@@ -344,7 +344,32 @@ network interfaces, TCP ports, build artifacts, and QEMU devices.
 - **Network namespace isolation**: Use `ip netns` to give each test its
   own network stack, eliminating ARP/TCP state leakage entirely.
 
-## 10. C/C++ examples do not use package.xml as single source of truth for message deps
+## 10. CMake install prefix is never cleaned between builds
+
+`just install-local` runs `cmake --install build/cmake-<rmw> --prefix build/install/`
+for each RMW backend. CMake install is **additive** — it writes new files but never
+removes files left over from previous builds.
+
+**Current stale artifacts** in `build/install/lib/`:
+
+| File | Status | Reason |
+|------|--------|--------|
+| `libnros_cpp_ffi_zenoh.a` | Stale (2026-03-14) | Leftover from before `nros_cpp_ffi` was renamed to `nros_cpp` |
+| `libnros_cpp_ffi_xrce.a` | Stale (2026-03-14) | Same |
+
+These are not referenced by any current CMake target or config file. They persist
+only because no clean step exists.
+
+**Possible improvements**:
+
+- Add a `just clean-install` recipe: `rm -rf build/install/ && just install-local`
+- Or add a pre-install step that removes `build/install/lib/libnros_*.a` before
+  reinstalling, so stale RMW variants don't accumulate.
+- For system installs (`--prefix /usr/local`), provide an uninstall target (CMake
+  install manifests in `build/cmake-<rmw>/install_manifest.txt` can be used with
+  `xargs rm` to remove exactly what was installed).
+
+## 11. C/C++ examples do not use package.xml as single source of truth for message deps
 
 Most C/C++ examples manually call `nros_generate_interfaces()` in CMakeLists.txt
 with hardcoded package names and DEPENDENCIES. The intended pattern is for `package.xml`
