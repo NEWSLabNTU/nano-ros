@@ -11,7 +11,7 @@
 //! **E2E network tests** (require NUTTX_DIR + nightly + QEMU + zenohd):
 //!   Verify actual message exchange between two NuttX QEMU instances via zenohd.
 //!   Each test boots two QEMU ARM virt instances with slirp user networking,
-//!   connecting to zenohd on localhost:7447 via the slirp gateway (10.0.2.2:7447).
+//!   connecting to zenohd on the host via the slirp gateway (10.0.2.2:7452).
 //!
 //! ## Prerequisites
 //!
@@ -27,6 +27,7 @@ use nros_tests::count_pattern;
 use nros_tests::fixtures::{
     QemuProcess, ZenohRouter, is_qemu_available, is_zenohd_available, require_zenohd,
 };
+use nros_tests::platform;
 use nros_tests::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};
@@ -471,9 +472,9 @@ fn test_nuttx_kernel_boots() {
 //       -nic user,net=10.0.2.0/24,host=10.0.2.2,hostfwd=...
 //
 // Network topology (slirp — each QEMU has isolated 10.0.2.0/24 network):
-//   QEMU node 0 (slirp, 10.0.2.30) ---> 10.0.2.2:7447 --+
-//                                                          |-- zenohd (localhost:7447)
-//   QEMU node 1 (slirp, 10.0.2.31) ---> 10.0.2.2:7447 --+
+//   QEMU node 0 (slirp, 10.0.2.30) ---> 10.0.2.2:7452 --+
+//                                                          |-- zenohd (localhost:7452)
+//   QEMU node 1 (slirp, 10.0.2.31) ---> 10.0.2.2:7452 --+
 //
 // IP assignments (hardcoded in board crate Config):
 //   10.0.2.30  - Talker / Server
@@ -500,8 +501,9 @@ fn test_nuttx_pubsub_e2e() {
     let talker_bin = build_nuttx_talker().expect("Failed to build talker");
     let listener_bin = build_nuttx_listener().expect("Failed to build listener");
 
-    // Start zenohd on fixed port 7447 (NuttX binaries connect via slirp gateway 10.0.2.2:7447)
-    let mut zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd (NuttX binaries connect via slirp gateway to host)
+    let mut zenohd =
+        ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
     // Start listener QEMU first (subscriber before publisher)
@@ -577,7 +579,8 @@ fn test_nuttx_service_e2e() {
     let server_bin = build_nuttx_service_server().expect("Failed to build service server");
     let client_bin = build_nuttx_service_client().expect("Failed to build service client");
 
-    let mut zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    let mut zenohd =
+        ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
     // Start server first
@@ -658,7 +661,8 @@ fn test_nuttx_action_e2e() {
     let server_bin = build_nuttx_action_server().expect("Failed to build action server");
     let client_bin = build_nuttx_action_client().expect("Failed to build action client");
 
-    let mut zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    let mut zenohd =
+        ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
     // Start action server first
@@ -899,7 +903,7 @@ fn test_nuttx_cpp_pubsub_e2e() {
     let talker_bin = build_nuttx_cpp_talker().expect("Failed to build C++ talker");
     let listener_bin = build_nuttx_cpp_listener().expect("Failed to build C++ listener");
 
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
 
     eprintln!("Starting C++ listener QEMU (slirp, 10.0.2.31)...");
     let mut listener =
@@ -947,7 +951,7 @@ fn test_nuttx_cpp_service_e2e() {
     let server_bin = build_nuttx_cpp_service_server().expect("Failed to build C++ service server");
     let client_bin = build_nuttx_cpp_service_client().expect("Failed to build C++ service client");
 
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
 
     eprintln!("Starting C++ service server QEMU...");
     let mut server =

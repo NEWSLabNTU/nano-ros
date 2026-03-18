@@ -20,6 +20,7 @@ use nros_tests::fixtures::{
     is_arm_toolchain_available, is_qemu_available, is_socat_available, parse_test_results,
     qemu_binary, require_zenoh_pico_arm,
 };
+use nros_tests::platform;
 use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern, wait_for_port};
 use rstest::rstest;
 use std::path::PathBuf;
@@ -480,7 +481,7 @@ fn test_rtic_action_client_builds() {
 // The BSP examples use the MPS2-AN385 machine with LAN9118 Ethernet.
 // QEMU uses slirp (user-mode) networking: each instance gets an isolated
 // 10.0.2.0/24 network. Firmware connects to zenohd via slirp gateway
-// 10.0.2.2:7447, which maps to host 127.0.0.1:7447. No TAP bridge needed.
+// 10.0.2.2:<port>, which maps to host 127.0.0.1:<port>. No TAP bridge needed.
 //
 // To run BSP network tests:
 //   just test-rust-qemu-baremetal-bsp  (uses Docker)
@@ -776,13 +777,14 @@ fn test_qemu_rtic_pubsub_e2e() {
     let talker_bin = build_qemu_rtic_talker().expect("Failed to build rtic-talker");
     let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
 
-    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd (firmware connects via slirp gateway to host)
+    let _zenohd =
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(7447, Duration::from_secs(5)),
-        "zenohd not reachable on localhost:7447"
+        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        "zenohd not reachable on platform port"
     );
 
     // Start listener QEMU first (subscriber before publisher)
@@ -897,13 +899,14 @@ fn test_qemu_rtic_service_e2e() {
     let server_bin = build_qemu_rtic_service_server().expect("Failed to build rtic-service-server");
     let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
 
-    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd (firmware connects via slirp gateway to host)
+    let _zenohd =
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(7447, Duration::from_secs(5)),
-        "zenohd not reachable on localhost:7447"
+        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        "zenohd not reachable on platform port"
     );
 
     // Start server QEMU first
@@ -965,13 +968,14 @@ fn test_qemu_rtic_action_e2e() {
     let server_bin = build_qemu_rtic_action_server().expect("Failed to build rtic-action-server");
     let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
 
-    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd (firmware connects via slirp gateway to host)
+    let _zenohd =
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(7447, Duration::from_secs(5)),
-        "zenohd not reachable on localhost:7447"
+        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        "zenohd not reachable on platform port"
     );
 
     // Start server QEMU first
@@ -1066,13 +1070,14 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     let listener_bin =
         build_qemu_rtic_mixed_listener().expect("Failed to build rtic-mixed-listener");
 
-    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd (firmware connects via slirp gateway to host)
+    let _zenohd =
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
 
     // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port(7447, Duration::from_secs(5)),
-        "zenohd not reachable on localhost:7447"
+        wait_for_port(platform::BAREMETAL.zenohd_port, Duration::from_secs(5)),
+        "zenohd not reachable on platform port"
     );
 
     // Start listener QEMU first (subscriber before publisher)

@@ -15,6 +15,7 @@ use nros_tests::count_pattern;
 use nros_tests::fixtures::{
     ZenohRouter, is_veth_bridge_available, is_zenohd_available, require_veth_bridge, require_zenohd,
 };
+use nros_tests::platform;
 use nros_tests::process::{ManagedProcess, kill_process_group};
 use nros_tests::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
@@ -417,8 +418,9 @@ fn test_threadx_pubsub_e2e() {
     let talker_bin = build_threadx_talker().expect("Failed to build talker");
     let listener_bin = build_threadx_listener().expect("Failed to build listener");
 
-    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd (firmware hardcodes tcp/192.0.3.1:<port>)
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_LINUX.zenohd_port).expect("Failed to start zenohd");
 
     // Start listener first (subscriber before publisher)
     eprintln!("Starting listener on tap-qemu1...");
@@ -486,7 +488,8 @@ fn test_threadx_service_e2e() {
     let server_bin = build_threadx_service_server().expect("Failed to build service server");
     let client_bin = build_threadx_service_client().expect("Failed to build service client");
 
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_LINUX.zenohd_port).expect("Failed to start zenohd");
 
     // Start server first
     eprintln!("Starting service server on tap-qemu0...");
@@ -573,7 +576,8 @@ fn test_threadx_action_e2e() {
     let server_bin = build_threadx_action_server().expect("Failed to build action server");
     let client_bin = build_threadx_action_client().expect("Failed to build action client");
 
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_LINUX.zenohd_port).expect("Failed to start zenohd");
 
     // Start action server first
     eprintln!("Starting action server on tap-qemu0...");

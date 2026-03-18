@@ -19,6 +19,7 @@
 
 pub mod esp32;
 pub mod fixtures;
+pub mod platform;
 pub mod process;
 pub mod qemu;
 pub mod ros2;

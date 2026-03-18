@@ -243,7 +243,10 @@ impl Drop for ZenohRouter {
     }
 }
 
-/// rstest fixture for zenohd on default port
+/// rstest fixture for zenohd on port 7447 (native/POSIX integration tests only).
+///
+/// QEMU platform tests use `ZenohRouter::start(platform::*.zenohd_port)` directly
+/// with per-platform ports (7450–7456) for parallel execution.
 ///
 /// # Example
 ///

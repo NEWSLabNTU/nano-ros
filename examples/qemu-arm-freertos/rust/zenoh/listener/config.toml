@@ -8,5 +8,5 @@ gateway = "10.0.2.2"
 netmask = "255.255.255.0"
 
 [zenoh]
-locator = "tcp/10.0.2.2:7447"
+locator = "tcp/10.0.2.2:7451"
 domain_id = 0

@@ -18,6 +18,7 @@ use nros_tests::count_pattern;
 use nros_tests::fixtures::{
     QemuProcess, ZenohRouter, is_qemu_riscv64_available, is_zenohd_available, require_zenohd,
 };
+use nros_tests::platform;
 use nros_tests::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};
@@ -373,12 +374,12 @@ fn test_threadx_riscv64_all_examples_build() {
 //       -kernel <binary>
 //
 // Network topology:
-//   QEMU node 0 (slirp, 10.0.2.40) ---> 10.0.2.2:7447 --+
-//                                                          |-- zenohd (localhost:7447)
-//   QEMU node 1 (slirp, 10.0.2.41) ---> 10.0.2.2:7447 --+
+//   QEMU node 0 (slirp, 10.0.2.40) ---> 10.0.2.2:7453 --+
+//                                                          |-- zenohd (localhost:7453)
+//   QEMU node 1 (slirp, 10.0.2.41) ---> 10.0.2.2:7453 --+
 //
 // Each QEMU instance has its own isolated 10.0.2.0/24 slirp network.
-// Firmware connects to zenohd via slirp gateway 10.0.2.2:7447 -> host 127.0.0.1:7447.
+// Firmware connects to zenohd via slirp gateway 10.0.2.2:7453 -> host 127.0.0.1:7453.
 //
 // Prerequisites:
 //   1. zenohd: just build-zenohd
@@ -398,8 +399,9 @@ fn test_threadx_riscv64_pubsub_e2e() {
     let talker_bin = build_threadx_rv64_talker().expect("Failed to build talker");
     let listener_bin = build_threadx_rv64_listener().expect("Failed to build listener");
 
-    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447 -> localhost:7447)
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    // Start zenohd (firmware connects via slirp gateway to host)
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_RISCV.zenohd_port).expect("Failed to start zenohd");
 
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting listener QEMU (node 1, slirp 10.0.2.41)...");
@@ -435,8 +437,8 @@ fn test_threadx_riscv64_pubsub_e2e() {
         panic!(
             "ThreadX RISC-V pubsub E2E failed — listener did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - zenohd is running on localhost:7447\n\
-             - QEMU slirp gateway forwards 10.0.2.2:7447 -> host 127.0.0.1:7447\n\
+             - zenohd is running on platform port 7453\n\
+             - QEMU slirp gateway forwards 10.0.2.2:7453 -> host\n\
              - Firmware built: `just build-examples-threadx-riscv64`"
         );
     }
@@ -467,7 +469,8 @@ fn test_threadx_riscv64_service_e2e() {
     let server_bin = build_threadx_rv64_service_server().expect("Failed to build service server");
     let client_bin = build_threadx_rv64_service_client().expect("Failed to build service client");
 
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_RISCV.zenohd_port).expect("Failed to start zenohd");
 
     // Start server first
     eprintln!("Starting service server QEMU (node 0, slirp 10.0.2.40)...");
@@ -524,8 +527,8 @@ fn test_threadx_riscv64_service_e2e() {
         panic!(
             "ThreadX RISC-V service E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - zenohd is running on localhost:7447\n\
-             - QEMU slirp gateway forwards 10.0.2.2:7447 -> host 127.0.0.1:7447\n\
+             - zenohd is running on platform port 7453\n\
+             - QEMU slirp gateway forwards 10.0.2.2:7453 -> host\n\
              - Firmware built: `just build-examples-threadx-riscv64`"
         );
     } else {
@@ -550,7 +553,8 @@ fn test_threadx_riscv64_action_e2e() {
     let server_bin = build_threadx_rv64_action_server().expect("Failed to build action server");
     let client_bin = build_threadx_rv64_action_client().expect("Failed to build action client");
 
-    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_RISCV.zenohd_port).expect("Failed to start zenohd");
 
     // Start action server first
     eprintln!("Starting action server QEMU (node 0, slirp 10.0.2.40)...");
@@ -602,8 +606,8 @@ fn test_threadx_riscv64_action_e2e() {
         panic!(
             "ThreadX RISC-V action E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - zenohd is running on localhost:7447\n\
-             - QEMU slirp gateway forwards 10.0.2.2:7447 -> host 127.0.0.1:7447\n\
+             - zenohd is running on platform port 7453\n\
+             - QEMU slirp gateway forwards 10.0.2.2:7453 -> host\n\
              - Firmware built: `just build-examples-threadx-riscv64`"
         );
     } else {

@@ -12,18 +12,18 @@ path = "junit.xml"
 store-success-output = false
 store-failure-output = true
 
-# All tests using the TAP bridge (qemu-br + tap-qemu0/tap-qemu1) or zenohd
-# on port 7447 must be serialized. Firmware hardcodes the zenohd port, and
-# TAP devices can only be used by one QEMU instance at a time.
-# Includes: zephyr (port 7447), freertos, threadx-linux, threadx-riscv64,
-# nuttx, esp32 (port 7448 but shares TAP devices).
+# All QEMU-based E2E tests must be serialized within this group.
+# Each platform uses a dedicated zenohd port (7450–7456) so platforms
+# *could* run in parallel once split into per-platform groups (see 74.5).
+# For now, all remain in one group for simplicity.
+# Ports: baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453,
+# esp32=7454, threadx-linux=7455, zephyr=7456.
 [test-groups.qemu-network]
 max-threads = 1
 
-# ARM QEMU tests: shares TAP bridge + zenohd port 7447 with FreeRTOS/NuttX/ThreadX.
-# Previously a separate group for target directory serialization, but RTIC E2E tests
-# now use the same network infrastructure and must not run concurrently.
-# Merged into qemu-network below.
+# ARM QEMU tests: uses per-platform zenohd ports (baremetal=7450, freertos=7451, etc.).
+# Previously shared port 7447 with all platforms. Per-platform ports enable future
+# parallel execution (74.5). Currently still merged into qemu-network.
 
 [test-groups.c_api]
 max-threads = 1
@@ -125,21 +125,21 @@ filter = "binary(nuttx_qemu)"
 test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
-# FreeRTOS QEMU tests: shared TAP bridge + port 7447
+# FreeRTOS QEMU tests: zenohd port 7451
 [[profile.default.overrides]]
 filter = "binary(freertos_qemu)"
 test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# ThreadX Linux tests: shared TAP bridge + port 7447
+# ThreadX Linux tests: zenohd port 7455
 [[profile.default.overrides]]
 filter = "binary(threadx_linux)"
 test-group = "qemu-network"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
-# ThreadX QEMU RISC-V tests: shared TAP bridge + port 7447
+# ThreadX QEMU RISC-V tests: zenohd port 7453
 [[profile.default.overrides]]
 filter = "binary(threadx_riscv64_qemu)"
 test-group = "qemu-network"
