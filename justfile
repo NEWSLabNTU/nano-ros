@@ -70,6 +70,27 @@ clean-install:
     rm -rf build/install/
     just install-local
 
+# Create a combined binary distribution archive of the full install prefix.
+# Runs install-local first, then archives build/install/ as a self-contained
+# prefix tree. Extract and pass to cmake via -DCMAKE_PREFIX_PATH=<dir>.
+#
+# Output: nros-<version>-<os>-<arch>.tar.gz  (in the project root)
+package:
+    #!/usr/bin/env bash
+    set -e
+    just clean-install
+    VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
+    OS=$(uname -s | tr '[:upper:]' '[:lower:]')
+    ARCH=$(uname -m)
+    DIRNAME="nros-${VERSION}-${OS}-${ARCH}"
+    ARCHIVE="${DIRNAME}.tar.gz"
+    rm -rf "build/package"
+    mkdir -p "build/package/${DIRNAME}"
+    cp -a build/install/. "build/package/${DIRNAME}/"
+    tar -czf "${ARCHIVE}" -C build/package "${DIRNAME}"
+    echo "Created: ${ARCHIVE}"
+    echo "Usage:   cmake -DCMAKE_PREFIX_PATH=\$(pwd)/${DIRNAME} ..."
+
 # Format everything: Rust workspace + examples, C, C++, Python (parallel where possible)
 format: format-c format-cpp format-python
     #!/usr/bin/env bash

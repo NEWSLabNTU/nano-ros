@@ -14,6 +14,10 @@ __pycache__/
 # Build output (created by: just install-local)
 /build/
 
+# Distribution archives created by: just package
+/nros-*.tar.gz
+/nros-*.zip
+
 # Zephyr workspace symlink (user-specific, created by scripts/zephyr/setup.sh)
 /zephyr-workspace
 
