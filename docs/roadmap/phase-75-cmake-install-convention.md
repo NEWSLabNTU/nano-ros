@@ -5,7 +5,7 @@ location. All platforms use `CMAKE_PREFIX_PATH` pointing to a standard install
 prefix — no relative paths, no symlinks at project root, no Cargo invoked by
 user projects.
 
-**Status**: In Progress (75.1, 75.2, 75.8 done; 75.3 partial)
+**Status**: In Progress (75.1, 75.2, 75.3, 75.8 done)
 
 **Priority**: Medium
 
@@ -119,7 +119,7 @@ only the native variant is required.
 
 - [x] 75.1 — Add `NANO_ROS_PLATFORM` to `NanoRosCTargets.cmake`
 - [x] 75.2 — Add cross-compiled library builds to `just install-local`
-- [ ] 75.3 — Extract toolchain files from platform cmake helpers (FreeRTOS done; NuttX pending)
+- [x] 75.3 — Extract toolchain files from platform cmake helpers
 - [ ] 75.4 — Rewrite `freertos-platform.cmake` → `freertos-support.cmake`
 - [ ] 75.5 — Rewrite `nuttx-platform.cmake` → `nuttx-support.cmake`
 - [ ] 75.6 — Update FreeRTOS and NuttX examples to use `find_package(NanoRos)`
@@ -258,8 +258,8 @@ set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
 ```
 
 **Files**:
-- `cmake/toolchain/arm-freertos-armcm3.cmake` ✓ done
-- `cmake/toolchain/armv7a-nuttx-eabi.cmake` (pending)
+- `cmake/toolchain/arm-freertos-armcm3.cmake` ✓
+- `cmake/toolchain/armv7a-nuttx-eabi.cmake` ✓
 
 ---
 
