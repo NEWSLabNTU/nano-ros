@@ -2,11 +2,11 @@
 # Used by nros-threadx-qemu-riscv64 board crate (Config::from_toml)
 
 [network]
-ip = "192.0.3.11"
+ip = "10.0.2.41"
 mac = "52:54:00:12:34:57"
-gateway = "192.0.3.1"
+gateway = "10.0.2.2"
 netmask = "255.255.255.0"
 
 [zenoh]
-locator = "tcp/192.0.3.1:7447"
+locator = "tcp/10.0.2.2:7447"
 domain_id = 0

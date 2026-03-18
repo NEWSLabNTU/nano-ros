@@ -107,7 +107,8 @@ pub fn wait_for_port(port: u16, timeout: Duration) -> bool {
 /// Wait for a TCP port to become available on a specific address
 ///
 /// Like [`wait_for_port`] but checks a specific IP instead of localhost.
-/// Useful for verifying zenohd is reachable on a bridge IP (e.g., 192.0.3.1).
+/// Useful for verifying zenohd is reachable on a specific address
+/// (e.g., a host-forwarded port or a veth bridge IP).
 pub fn wait_for_port_on(addr: &str, port: u16, timeout: Duration) -> bool {
     let start = Instant::now();
     let target = format!("{}:{}", addr, port);
@@ -278,29 +279,6 @@ pub fn assert_output_excludes(output: &str, patterns: &[&str]) {
 /// Count occurrences of a pattern in output
 pub fn count_pattern(output: &str, pattern: &str) -> usize {
     output.matches(pattern).count()
-}
-
-/// Read the `ip` field from an example's `config.toml`.
-///
-/// Returns `None` if the file doesn't exist or has no `[network] ip` field.
-pub fn read_config_ip(config_path: &std::path::Path) -> Option<String> {
-    let content = std::fs::read_to_string(config_path).ok()?;
-    let mut in_network = false;
-    for line in content.lines() {
-        let line = line.trim();
-        if line.starts_with('[') {
-            in_network = line == "[network]";
-            continue;
-        }
-        if in_network && let Some(rest) = line.strip_prefix("ip") {
-            let rest = rest.trim_start();
-            if let Some(rest) = rest.strip_prefix('=') {
-                let val = rest.trim().trim_matches('"');
-                return Some(val.to_string());
-            }
-        }
-    }
-    None
 }
 
 /// Get the project root directory

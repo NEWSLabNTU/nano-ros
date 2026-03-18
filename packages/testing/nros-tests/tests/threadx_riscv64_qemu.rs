@@ -9,7 +9,6 @@
 //! - `NETX_DIR` env var pointing to NetX Duo source (e.g., `external/netxduo`)
 //! - `riscv64-unknown-elf-gcc` cross-compiler installed
 //! - `qemu-system-riscv64` with virt machine support
-//! - TAP bridge: `sudo ./scripts/qemu/setup-network.sh`
 //! - zenohd: `just build-zenohd`
 //!
 //! Run with: `just test-threadx-riscv64`
@@ -17,8 +16,7 @@
 
 use nros_tests::count_pattern;
 use nros_tests::fixtures::{
-    QemuProcess, ZenohRouter, is_qemu_riscv64_available, is_tap_bridge_available,
-    is_zenohd_available, require_tap_bridge, require_zenohd,
+    QemuProcess, ZenohRouter, is_qemu_riscv64_available, is_zenohd_available, require_zenohd,
 };
 use nros_tests::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
@@ -80,8 +78,7 @@ fn require_threadx_riscv64() -> bool {
 /// E2E tests require:
 /// 1. ThreadX build prerequisites (THREADX_DIR + NETX_DIR + riscv64-unknown-elf-gcc)
 /// 2. QEMU RISC-V 64-bit (qemu-system-riscv64)
-/// 3. TAP bridge network (qemu-br + tap-qemu0 + tap-qemu1)
-/// 4. zenohd router (built from submodule)
+/// 3. zenohd router (built from submodule)
 fn require_threadx_riscv64_e2e() -> bool {
     if !require_threadx_riscv64() {
         return false;
@@ -89,9 +86,6 @@ fn require_threadx_riscv64_e2e() -> bool {
     if !is_qemu_riscv64_available() {
         eprintln!("Skipping test: qemu-system-riscv64 not found");
         eprintln!("Install: sudo apt install qemu-system-riscv64");
-        return false;
-    }
-    if !require_tap_bridge() {
         return false;
     }
     if !require_zenohd() {
@@ -216,13 +210,11 @@ fn test_threadx_riscv64_detection() {
     let netx = is_netx_available();
     let riscv_gcc = is_riscv_gcc_available();
     let qemu_rv64 = is_qemu_riscv64_available();
-    let tap_bridge = is_tap_bridge_available();
     let zenohd = is_zenohd_available();
     eprintln!("ThreadX available: {}", threadx);
     eprintln!("NetX Duo available: {}", netx);
     eprintln!("riscv64-unknown-elf-gcc available: {}", riscv_gcc);
     eprintln!("QEMU RISC-V 64 available: {}", qemu_rv64);
-    eprintln!("TAP bridge available: {}", tap_bridge);
     eprintln!("zenohd available: {}", zenohd);
 }
 
@@ -370,29 +362,31 @@ fn test_threadx_riscv64_all_examples_build() {
 }
 
 // =============================================================================
-// E2E Network tests (require QEMU RISC-V + TAP bridge + zenohd)
+// E2E Network tests (require QEMU RISC-V + zenohd)
 // =============================================================================
 //
-// ThreadX QEMU RISC-V examples use virtio-net Ethernet with TAP networking:
+// ThreadX QEMU RISC-V examples use virtio-net Ethernet with slirp user networking:
 //   qemu-system-riscv64 -M virt -nographic \
 //       -global virtio-mmio.force-legacy=false \
-//       -netdev tap,id=net0,ifname=tap-qemu0,script=no,downscript=no \
+//       -netdev user,id=net0,... \
 //       -device virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0 \
 //       -kernel <binary>
 //
 // Network topology:
-//   QEMU node 0 (tap-qemu0, 192.0.3.10) --+
-//                                           |-- Bridge (qemu-br, 192.0.3.1) -- zenohd
-//   QEMU node 1 (tap-qemu1, 192.0.3.11) --+
+//   QEMU node 0 (slirp, 10.0.2.40) ---> 10.0.2.2:7447 --+
+//                                                          |-- zenohd (localhost:7447)
+//   QEMU node 1 (slirp, 10.0.2.41) ---> 10.0.2.2:7447 --+
+//
+// Each QEMU instance has its own isolated 10.0.2.0/24 slirp network.
+// Firmware connects to zenohd via slirp gateway 10.0.2.2:7447 -> host 127.0.0.1:7447.
 //
 // Prerequisites:
-//   1. TAP bridge: sudo ./scripts/qemu/setup-network.sh
-//   2. zenohd: just build-zenohd
-//   3. Run: just test-threadx-riscv64
+//   1. zenohd: just build-zenohd
+//   2. Run: just test-threadx-riscv64
 
 /// Test pub/sub message exchange between ThreadX QEMU RISC-V instances.
 ///
-/// Launches a listener on tap-qemu1 and a talker on tap-qemu0, verifies
+/// Launches a listener (QEMU node 1) and a talker (QEMU node 0), verifies
 /// that the listener receives Int32 messages published by the talker.
 #[test]
 fn test_threadx_riscv64_pubsub_e2e() {
@@ -404,11 +398,11 @@ fn test_threadx_riscv64_pubsub_e2e() {
     let talker_bin = build_threadx_rv64_talker().expect("Failed to build talker");
     let listener_bin = build_threadx_rv64_listener().expect("Failed to build listener");
 
-    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447 -> localhost:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start listener QEMU first (subscriber before publisher)
-    eprintln!("Starting listener QEMU on tap-qemu1...");
+    eprintln!("Starting listener QEMU (node 1, slirp 10.0.2.41)...");
     let mut listener =
         QemuProcess::start_riscv64_virt(listener_bin, 1).expect("Failed to start listener QEMU");
 
@@ -416,7 +410,7 @@ fn test_threadx_riscv64_pubsub_e2e() {
     std::thread::sleep(Duration::from_secs(10));
 
     // Start talker QEMU
-    eprintln!("Starting talker QEMU on tap-qemu0...");
+    eprintln!("Starting talker QEMU (node 0, slirp 10.0.2.40)...");
     let mut talker =
         QemuProcess::start_riscv64_virt(talker_bin, 0).expect("Failed to start talker QEMU");
 
@@ -441,9 +435,8 @@ fn test_threadx_riscv64_pubsub_e2e() {
         panic!(
             "ThreadX RISC-V pubsub E2E failed — listener did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
-             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - zenohd is running on localhost:7447\n\
+             - QEMU slirp gateway forwards 10.0.2.2:7447 -> host 127.0.0.1:7447\n\
              - Firmware built: `just build-examples-threadx-riscv64`"
         );
     }
@@ -463,7 +456,7 @@ fn test_threadx_riscv64_pubsub_e2e() {
 
 /// Test service request/response between ThreadX QEMU RISC-V instances.
 ///
-/// Launches a service server on tap-qemu0 and a client on tap-qemu1,
+/// Launches a service server (QEMU node 0) and a client (QEMU node 1),
 /// verifies that the client receives correct AddTwoInts responses.
 #[test]
 fn test_threadx_riscv64_service_e2e() {
@@ -477,7 +470,7 @@ fn test_threadx_riscv64_service_e2e() {
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start server first
-    eprintln!("Starting service server QEMU on tap-qemu0...");
+    eprintln!("Starting service server QEMU (node 0, slirp 10.0.2.40)...");
     let mut server =
         QemuProcess::start_riscv64_virt(server_bin, 0).expect("Failed to start server QEMU");
 
@@ -485,7 +478,7 @@ fn test_threadx_riscv64_service_e2e() {
     std::thread::sleep(Duration::from_secs(10));
 
     // Start client
-    eprintln!("Starting service client QEMU on tap-qemu1...");
+    eprintln!("Starting service client QEMU (node 1, slirp 10.0.2.41)...");
     let mut client =
         QemuProcess::start_riscv64_virt(client_bin, 1).expect("Failed to start client QEMU");
 
@@ -531,9 +524,8 @@ fn test_threadx_riscv64_service_e2e() {
         panic!(
             "ThreadX RISC-V service E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
-             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - zenohd is running on localhost:7447\n\
+             - QEMU slirp gateway forwards 10.0.2.2:7447 -> host 127.0.0.1:7447\n\
              - Firmware built: `just build-examples-threadx-riscv64`"
         );
     } else {
@@ -547,7 +539,7 @@ fn test_threadx_riscv64_service_e2e() {
 
 /// Test action goal/feedback/result between ThreadX QEMU RISC-V instances.
 ///
-/// Launches an action server on tap-qemu0 and a client on tap-qemu1,
+/// Launches an action server (QEMU node 0) and a client (QEMU node 1),
 /// verifies that the client receives Fibonacci feedback and final result.
 #[test]
 fn test_threadx_riscv64_action_e2e() {
@@ -561,7 +553,7 @@ fn test_threadx_riscv64_action_e2e() {
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start action server first
-    eprintln!("Starting action server QEMU on tap-qemu0...");
+    eprintln!("Starting action server QEMU (node 0, slirp 10.0.2.40)...");
     let mut server =
         QemuProcess::start_riscv64_virt(server_bin, 0).expect("Failed to start server QEMU");
 
@@ -569,7 +561,7 @@ fn test_threadx_riscv64_action_e2e() {
     std::thread::sleep(Duration::from_secs(10));
 
     // Start action client
-    eprintln!("Starting action client QEMU on tap-qemu1...");
+    eprintln!("Starting action client QEMU (node 1, slirp 10.0.2.41)...");
     let mut client =
         QemuProcess::start_riscv64_virt(client_bin, 1).expect("Failed to start client QEMU");
 
@@ -610,9 +602,8 @@ fn test_threadx_riscv64_action_e2e() {
         panic!(
             "ThreadX RISC-V action E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
-             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - zenohd is running on localhost:7447\n\
+             - QEMU slirp gateway forwards 10.0.2.2:7447 -> host 127.0.0.1:7447\n\
              - Firmware built: `just build-examples-threadx-riscv64`"
         );
     } else {

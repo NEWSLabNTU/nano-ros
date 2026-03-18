@@ -89,32 +89,6 @@ pub fn require_espflash() -> bool {
     true
 }
 
-/// Check if a TAP interface exists
-pub fn is_tap_available(iface: &str) -> bool {
-    Command::new("ip")
-        .args(["link", "show", iface])
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .status()
-        .map(|s| s.success())
-        .unwrap_or(false)
-}
-
-/// Skip test if TAP networking (qemu-br bridge + tap-qemu0/tap-qemu1) is not available
-pub fn require_tap_network() -> bool {
-    if !is_tap_available("qemu-br") {
-        eprintln!("Skipping test: qemu-br bridge not found");
-        eprintln!("Set up with: sudo ./scripts/qemu/setup-network.sh");
-        return false;
-    }
-    if !is_tap_available("tap-qemu0") || !is_tap_available("tap-qemu1") {
-        eprintln!("Skipping test: TAP network not available (need tap-qemu0 and tap-qemu1)");
-        eprintln!("Set up with: sudo ./scripts/qemu/setup-network.sh");
-        return false;
-    }
-    true
-}
-
 // =============================================================================
 // Networking Helpers
 // =============================================================================
@@ -139,8 +113,8 @@ pub fn wait_for_port_free(port: u16, timeout: std::time::Duration) -> bool {
 /// Wait until a specific IP:port is reachable via TCP.
 ///
 /// Unlike `wait_for_port` (which checks 127.0.0.1), this checks an
-/// arbitrary address — e.g. the bridge IP `192.0.3.1:7447` that QEMU
-/// instances connect to.
+/// arbitrary address — e.g. a host-forwarded endpoint or a veth bridge
+/// IP that QEMU instances connect to.
 pub fn wait_for_addr(addr: &str, timeout: std::time::Duration) -> bool {
     let start = std::time::Instant::now();
 
@@ -220,15 +194,13 @@ pub fn create_esp32_flash_image(elf: &Path, output: &Path) -> TestResult<()> {
 
 /// Start an ESP32-C3 QEMU instance
 ///
+/// Uses QEMU's user-mode (slirp) networking when `networking` is true.
+/// Each instance gets its own isolated NAT stack.
+///
 /// # Arguments
 /// * `flash_image` - Path to the flash image (.bin)
-/// * `tap` - Optional TAP interface for networking (e.g., "tap-qemu0")
-/// * `mac` - Optional MAC address (e.g., "02:00:00:00:00:01")
-pub fn start_esp32_qemu(
-    flash_image: &Path,
-    tap: Option<&str>,
-    mac: Option<&str>,
-) -> TestResult<ManagedProcess> {
+/// * `networking` - `true` for slirp networking, `false` for no NIC
+pub fn start_esp32_qemu(flash_image: &Path, networking: bool) -> TestResult<ManagedProcess> {
     if !flash_image.exists() {
         return Err(TestError::BuildFailed(format!(
             "Flash image not found: {}",
@@ -249,13 +221,8 @@ pub fn start_esp32_qemu(
         &drive_arg,
     ]);
 
-    if let Some(tap_iface) = tap {
-        let mac_addr = mac.unwrap_or("02:00:00:00:00:01");
-        let nic_arg = format!(
-            "tap,model=open_eth,ifname={},script=no,downscript=no,mac={}",
-            tap_iface, mac_addr
-        );
-        cmd.args(["-nic", &nic_arg]);
+    if networking {
+        cmd.args(["-nic", "user,model=open_eth"]);
     } else {
         cmd.args(["-nic", "none"]);
     }

@@ -9,13 +9,13 @@
 //!
 //! - **Build tests**: Verify `cargo +nightly build --release` succeeds (no QEMU needed)
 //! - **Boot test**: Verify BSP banner appears on UART (QEMU needed, no networking)
-//! - **Networked E2E**: Talker (tap-qemu0) → listener (tap-qemu1) via zenohd + TAP
+//! - **Networked E2E**: Talker → listener via zenohd + slirp user-mode networking
 //!
 //! ## Prerequisites
 //!
 //! - Build tests: nightly toolchain + riscv32imc target + zenoh-pico RISC-V
 //! - Boot test: + qemu-system-riscv32 (Espressif fork) + espflash
-//! - Networked E2E: + TAP networking (`sudo ./scripts/qemu/setup-network.sh`) + zenohd
+//! - Networked E2E: + zenohd (slirp networking, no TAP/bridge setup needed)
 
 use nros_tests::count_pattern;
 use nros_tests::esp32::*;
@@ -23,6 +23,7 @@ use nros_tests::fixtures::{
     ManagedProcess, ZenohRouter, build_esp32_qemu_listener, build_esp32_qemu_talker,
     build_native_listener, build_native_talker, require_zenohd,
 };
+use nros_tests::wait_for_port;
 use std::process::Command;
 use std::time::Duration;
 
@@ -119,8 +120,7 @@ fn test_esp32_qemu_talker_boots() {
     create_esp32_flash_image(elf, &flash_image).expect("Failed to create flash image");
 
     // Boot without networking
-    let mut qemu =
-        start_esp32_qemu(&flash_image, None, None).expect("Failed to start ESP32-C3 QEMU");
+    let mut qemu = start_esp32_qemu(&flash_image, false).expect("Failed to start ESP32-C3 QEMU");
 
     let output = qemu
         .wait_for_output_pattern("nros ESP32-C3 QEMU BSP", Duration::from_secs(30))
@@ -136,21 +136,23 @@ fn test_esp32_qemu_talker_boots() {
 }
 
 // =============================================================================
-// Networked E2E Tests (QEMU + TAP + zenohd)
+// Networked E2E Tests (QEMU + slirp + zenohd)
 // =============================================================================
 //
 // These tests require:
 // - qemu-system-riscv32, espflash, nightly toolchain
-// - TAP networking (tap-qemu0, tap-qemu1 on qemu-br bridge)
 // - zenohd listening on port 7448
 //
-// The ESP32 firmware hardcodes tcp/192.0.3.1:7448 as the zenoh locator,
-// so zenohd must listen on 0.0.0.0:7448 (fixed port).
+// Each QEMU instance has its own isolated 10.0.2.0/24 slirp network.
+// Firmware connects to zenohd via slirp gateway 10.0.2.2:7448 → host 127.0.0.1:7448.
+// No TAP bridge setup is needed.
 //
-// Ordering follows the Docker-based ARM QEMU pattern:
-//   1. Start zenohd, verify reachable on bridge IP
-//   2. Start listener (tap-qemu1), wait for subscription
-//   3. Start talker (tap-qemu0), wait for publish completion
+// ESP32 examples use IPs 10.0.2.50 (talker) and 10.0.2.51 (listener).
+//
+// Ordering:
+//   1. Start zenohd, verify reachable on localhost:7448
+//   2. Start listener, wait for subscription
+//   3. Start talker, wait for publish completion
 //   4. Verify listener received messages
 
 /// Helper: build and create flash images for talker and listener
@@ -183,22 +185,19 @@ fn require_esp32_networked() -> bool {
     if !require_espflash() {
         return false;
     }
-    if !require_tap_network() {
-        return false;
-    }
     if !require_zenohd() {
         return false;
     }
     true
 }
 
-/// Test ESP32 talker (tap-qemu0) → ESP32 listener (tap-qemu1) end-to-end
+/// Test ESP32 talker → ESP32 listener end-to-end
 ///
-/// Each QEMU instance uses its own TAP device for network isolation:
-/// - Listener: tap-qemu1, MAC 02:00:00:00:00:02, IP 192.0.3.11
-/// - Talker:   tap-qemu0, MAC 02:00:00:00:00:01, IP 192.0.3.10
+/// Each QEMU instance has its own isolated slirp network (10.0.2.0/24):
+/// - Talker:   IP 10.0.2.50
+/// - Listener: IP 10.0.2.51
 ///
-/// Both connect to zenohd at 192.0.3.1:7448 (bridge IP).
+/// Both connect to zenohd via slirp gateway 10.0.2.2:7448 → host localhost:7448.
 #[test]
 fn test_esp32_talker_listener_e2e() {
     if !require_esp32_networked() {
@@ -210,16 +209,15 @@ fn test_esp32_talker_listener_e2e() {
     // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
     let _router = ZenohRouter::start(7448).expect("Failed to start zenohd on port 7448");
 
-    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    // Verify zenohd is reachable on localhost
     assert!(
-        wait_for_addr("192.0.3.1:7448", Duration::from_secs(10)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7448"
+        wait_for_port(7448, Duration::from_secs(10)),
+        "zenohd not reachable on localhost:7448"
     );
 
-    // Step 1: Start listener on tap-qemu1 (different TAP from talker)
+    // Step 1: Start listener
     let mut listener =
-        start_esp32_qemu(&listener_bin, Some("tap-qemu1"), Some("02:00:00:00:00:02"))
-            .expect("Failed to start ESP32 listener");
+        start_esp32_qemu(&listener_bin, true).expect("Failed to start ESP32 listener");
 
     // Wait for listener to connect and subscribe
     let listener_startup = listener
@@ -237,9 +235,8 @@ fn test_esp32_talker_listener_e2e() {
     // subscription with zenohd before talker starts publishing
     std::thread::sleep(Duration::from_secs(5));
 
-    // Step 3: Start talker on tap-qemu0 (different TAP from listener)
-    let mut talker = start_esp32_qemu(&talker_bin, Some("tap-qemu0"), Some("02:00:00:00:00:01"))
-        .expect("Failed to start ESP32 talker");
+    // Step 3: Start talker
+    let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
     // Wait for talker to finish publishing
     let talker_output = talker
@@ -282,7 +279,7 @@ fn test_esp32_talker_listener_e2e() {
 // nros examples via CDR-encoded Int32 on the /chatter ROS 2 topic.
 //
 // Both ESP32 and native processes connect to the same zenohd on port 7448:
-// - ESP32 via TAP bridge at 192.0.3.1:7448
+// - ESP32 via slirp gateway at 10.0.2.2:7448 → host localhost:7448
 // - Native via localhost at 127.0.0.1:7448
 
 /// Helper: build ESP32 talker flash image only
@@ -306,7 +303,7 @@ fn build_esp32_listener_flash() -> std::path::PathBuf {
 
 /// Test ESP32 talker → native listener cross-architecture interop
 ///
-/// ESP32 publishes CDR Int32 on /chatter via TAP bridge,
+/// ESP32 publishes CDR Int32 on /chatter via slirp network,
 /// native listener receives on localhost.
 #[test]
 fn test_esp32_to_native() {
@@ -321,10 +318,10 @@ fn test_esp32_to_native() {
     // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
     let _router = ZenohRouter::start(7448).expect("Failed to start zenohd on port 7448");
 
-    // Verify zenohd is reachable on the bridge IP
+    // Verify zenohd is reachable on localhost
     assert!(
-        wait_for_addr("192.0.3.1:7448", Duration::from_secs(10)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7448"
+        wait_for_port(7448, Duration::from_secs(10)),
+        "zenohd not reachable on localhost:7448"
     );
 
     // Start native listener on localhost (connects to same zenohd)
@@ -341,9 +338,8 @@ fn test_esp32_to_native() {
     // Stabilization delay
     std::thread::sleep(Duration::from_secs(5));
 
-    // Start ESP32 talker on tap-qemu0
-    let mut talker = start_esp32_qemu(&talker_bin, Some("tap-qemu0"), Some("02:00:00:00:00:01"))
-        .expect("Failed to start ESP32 talker");
+    // Start ESP32 talker
+    let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
     // Wait for ESP32 talker to finish publishing
     let talker_output = talker
@@ -380,7 +376,7 @@ fn test_esp32_to_native() {
 /// Test native talker → ESP32 listener cross-architecture interop
 ///
 /// Native publishes CDR Int32 on /chatter via localhost,
-/// ESP32 listener receives on TAP bridge.
+/// ESP32 listener receives via slirp network.
 #[test]
 fn test_native_to_esp32() {
     if !require_esp32_networked() {
@@ -394,16 +390,15 @@ fn test_native_to_esp32() {
     // Start zenohd on fixed port 7448 (kills any orphaned zenohd first)
     let _router = ZenohRouter::start(7448).expect("Failed to start zenohd on port 7448");
 
-    // Verify zenohd is reachable on the bridge IP
+    // Verify zenohd is reachable on localhost
     assert!(
-        wait_for_addr("192.0.3.1:7448", Duration::from_secs(10)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7448"
+        wait_for_port(7448, Duration::from_secs(10)),
+        "zenohd not reachable on localhost:7448"
     );
 
-    // Start ESP32 listener on tap-qemu1
+    // Start ESP32 listener
     let mut esp32_listener =
-        start_esp32_qemu(&listener_bin, Some("tap-qemu1"), Some("02:00:00:00:00:02"))
-            .expect("Failed to start ESP32 listener");
+        start_esp32_qemu(&listener_bin, true).expect("Failed to start ESP32 listener");
 
     // Wait for ESP32 listener to connect and subscribe
     let listener_startup = esp32_listener

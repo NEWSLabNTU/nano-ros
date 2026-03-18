@@ -595,18 +595,21 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
 // =============================================================================
 
 /// Test that the QEMU bare-metal binary can publish at various sizes.
-/// Requires qemu-system-arm + zenoh-pico-arm + TAP networking (bridge 192.0.3.x).
+/// Requires qemu-system-arm + zenoh-pico-arm + QEMU slirp (user-mode) networking.
 #[rstest]
 fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
     use nros_tests::fixtures::ManagedProcess;
     use std::process::Command;
 
-    // This test requires TAP networking (bridge interface qemu-br0 or similar).
-    // Skip if the bridge interface doesn't exist — run via Docker instead.
-    let bridge_exists = std::path::Path::new("/sys/class/net/qemu-br0").exists();
-    if !bridge_exists {
-        eprintln!("Skipping test: TAP bridge 'qemu-br0' not found");
-        eprintln!("Run via Docker: just docker-qemu-test");
+    // This test uses QEMU slirp (user-mode) networking with port forwarding.
+    // No TAP devices, bridge interfaces, or sudo required.
+    // Skip if QEMU is not available.
+    let qemu_available = Command::new("qemu-system-arm")
+        .arg("--version")
+        .output()
+        .is_ok();
+    if !qemu_available {
+        eprintln!("Skipping test: qemu-system-arm not found");
         return;
     }
 

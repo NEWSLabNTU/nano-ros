@@ -17,10 +17,10 @@ use nros_tests::fixtures::{
     build_qemu_rtic_listener, build_qemu_rtic_mixed_listener, build_qemu_rtic_mixed_talker,
     build_qemu_rtic_service_client, build_qemu_rtic_service_server, build_qemu_rtic_talker,
     build_qemu_serial_listener, build_qemu_serial_talker, build_qemu_wcet_bench,
-    cleanup_tap_network, is_arm_toolchain_available, is_qemu_available, is_socat_available,
-    parse_test_results, qemu_binary, require_tap_bridge, require_zenoh_pico_arm,
+    is_arm_toolchain_available, is_qemu_available, is_socat_available, parse_test_results,
+    qemu_binary, require_zenoh_pico_arm,
 };
-use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern, wait_for_port_on};
+use nros_tests::{assert_output_contains, assert_output_excludes, count_pattern, wait_for_port};
 use rstest::rstest;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -474,21 +474,22 @@ fn test_rtic_action_client_builds() {
 }
 
 // =============================================================================
-// BSP Network Tests (Require Docker or TAP)
+// BSP Network Tests (Require Docker or slirp networking)
 // =============================================================================
 //
-// The BSP examples use the MPS2-AN385 machine with LAN9118 Ethernet, which
-// requires network setup. These tests are skipped by default.
+// The BSP examples use the MPS2-AN385 machine with LAN9118 Ethernet.
+// QEMU uses slirp (user-mode) networking: each instance gets an isolated
+// 10.0.2.0/24 network. Firmware connects to zenohd via slirp gateway
+// 10.0.2.2:7447, which maps to host 127.0.0.1:7447. No TAP bridge needed.
 //
 // To run BSP network tests:
 //   just test-rust-qemu-baremetal-bsp  (uses Docker)
 //
-// Or manually with TAP interface:
-//   sudo ./scripts/qemu/setup-network.sh
+// Or manually:
 //   zenohd --listen tcp/0.0.0.0:7447
-//   ./scripts/qemu/launch-mps2-an385.sh --tap tap-qemu0 --binary <path>
+//   ./scripts/qemu/launch-mps2-an385.sh --binary <path>
 
-/// Test that qemu-bsp-talker starts (requires Docker/TAP networking)
+/// Test that qemu-bsp-talker starts (requires Docker or QEMU with slirp networking)
 ///
 /// NOTE: This test is skipped by default as it requires network setup.
 /// Use `just test-rust-qemu-baremetal-bsp` for the full Docker-based test.
@@ -496,12 +497,12 @@ fn test_rtic_action_client_builds() {
 fn test_qemu_bsp_talker_starts() {
     // BSP examples require MPS2-AN385 with networking, which isn't available
     // in the standard test environment. The Docker-based test handles this.
-    eprintln!("Skipping test: BSP start tests require Docker or TAP networking");
+    eprintln!("Skipping test: BSP start tests require Docker or QEMU networking");
     eprintln!("Run with: just test-rust-qemu-baremetal-bsp");
     println!("INFO: BSP network tests skipped (use Docker for full test)");
 }
 
-/// Test that qemu-bsp-listener starts (requires Docker/TAP networking)
+/// Test that qemu-bsp-listener starts (requires Docker or QEMU with slirp networking)
 ///
 /// NOTE: This test is skipped by default as it requires network setup.
 /// Use `just test-rust-qemu-baremetal-bsp` for the full Docker-based test.
@@ -509,7 +510,7 @@ fn test_qemu_bsp_talker_starts() {
 fn test_qemu_bsp_listener_starts() {
     // BSP examples require MPS2-AN385 with networking, which isn't available
     // in the standard test environment. The Docker-based test handles this.
-    eprintln!("Skipping test: BSP start tests require Docker or TAP networking");
+    eprintln!("Skipping test: BSP start tests require Docker or QEMU networking");
     eprintln!("Run with: just test-rust-qemu-baremetal-bsp");
     println!("INFO: BSP network tests skipped (use Docker for full test)");
 }
@@ -767,42 +768,35 @@ fn test_qemu_rtic_listener_builds() {
 #[test]
 fn test_qemu_rtic_pubsub_e2e() {
     require_arm_toolchain();
-    if !require_tap_bridge() {
-        return;
-    }
     if !require_zenoh_pico_arm() {
         return;
     }
-
-    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
-    cleanup_tap_network();
 
     // Build both binaries
     let talker_bin = build_qemu_rtic_talker().expect("Failed to build rtic-talker");
     let listener_bin = build_qemu_rtic_listener().expect("Failed to build rtic-listener");
 
-    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
-    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+        wait_for_port(7447, Duration::from_secs(5)),
+        "zenohd not reachable on localhost:7447"
     );
 
     // Start listener QEMU first (subscriber before publisher)
-    eprintln!("Starting RTIC listener QEMU on tap-qemu1...");
-    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+    eprintln!("Starting RTIC listener QEMU...");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
-    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
     std::thread::sleep(Duration::from_secs(8));
 
     // Start talker QEMU
-    eprintln!("Starting RTIC talker QEMU on tap-qemu0...");
-    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
-        .expect("Failed to start talker QEMU");
+    eprintln!("Starting RTIC talker QEMU...");
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
     // Wait for listener to complete
     let listener_output = listener
@@ -895,42 +889,36 @@ fn test_qemu_rtic_action_client_builds() {
 #[test]
 fn test_qemu_rtic_service_e2e() {
     require_arm_toolchain();
-    if !require_tap_bridge() {
-        return;
-    }
     if !require_zenoh_pico_arm() {
         return;
     }
-
-    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
-    cleanup_tap_network();
 
     // Build both binaries
     let server_bin = build_qemu_rtic_service_server().expect("Failed to build rtic-service-server");
     let client_bin = build_qemu_rtic_service_client().expect("Failed to build rtic-service-client");
 
-    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
-    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+        wait_for_port(7447, Duration::from_secs(5)),
+        "zenohd not reachable on localhost:7447"
     );
 
     // Start server QEMU first
-    eprintln!("Starting RTIC service server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting RTIC service server QEMU...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect + queryable discovery
     // Services need longer than pub/sub because zenoh queryable discovery takes time
     std::thread::sleep(Duration::from_secs(8));
 
     // Start client QEMU
-    eprintln!("Starting RTIC service client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting RTIC service client QEMU...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     // Wait for client to complete (it exits after 4 service calls)
     let client_output = client
@@ -969,42 +957,35 @@ fn test_qemu_rtic_service_e2e() {
 #[test]
 fn test_qemu_rtic_action_e2e() {
     require_arm_toolchain();
-    if !require_tap_bridge() {
-        return;
-    }
     if !require_zenoh_pico_arm() {
         return;
     }
-
-    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
-    cleanup_tap_network();
 
     // Build both binaries
     let server_bin = build_qemu_rtic_action_server().expect("Failed to build rtic-action-server");
     let client_bin = build_qemu_rtic_action_client().expect("Failed to build rtic-action-client");
 
-    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
-    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+        wait_for_port(7447, Duration::from_secs(5)),
+        "zenohd not reachable on localhost:7447"
     );
 
     // Start server QEMU first
-    eprintln!("Starting RTIC action server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting RTIC action server QEMU...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
-    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
     std::thread::sleep(Duration::from_secs(8));
 
     // Start client QEMU
-    eprintln!("Starting RTIC action client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting RTIC action client QEMU...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     // Wait for client to complete (it exits after receiving feedback)
     let client_output = client
@@ -1076,43 +1057,36 @@ fn test_qemu_rtic_mixed_listener_builds() {
 #[test]
 fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     require_arm_toolchain();
-    if !require_tap_bridge() {
-        return;
-    }
     if !require_zenoh_pico_arm() {
         return;
     }
-
-    // Kill orphaned QEMU/zenohd and wait for TAP device cleanup
-    cleanup_tap_network();
 
     // Build both binaries
     let talker_bin = build_qemu_rtic_mixed_talker().expect("Failed to build rtic-mixed-talker");
     let listener_bin =
         build_qemu_rtic_mixed_listener().expect("Failed to build rtic-mixed-listener");
 
-    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
-    // Verify zenohd is reachable on the bridge IP (not just localhost)
+    // Verify zenohd is reachable on localhost (slirp gateway forwards to host)
     assert!(
-        wait_for_port_on("192.0.3.1", 7447, Duration::from_secs(5)),
-        "zenohd not reachable on bridge IP 192.0.3.1:7447"
+        wait_for_port(7447, Duration::from_secs(5)),
+        "zenohd not reachable on localhost:7447"
     );
 
     // Start listener QEMU first (subscriber before publisher)
-    eprintln!("Starting RTIC mixed-priority listener QEMU on tap-qemu1...");
-    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+    eprintln!("Starting RTIC mixed-priority listener QEMU...");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
-    // Stabilization delay: bare-metal boot + smoltcp init + ARP + zenoh connect
-    // 8s accounts for slow TAP bridge initialization under concurrent test load
+    // Stabilization delay: bare-metal boot + smoltcp init + zenoh connect
     std::thread::sleep(Duration::from_secs(8));
 
     // Start talker QEMU
-    eprintln!("Starting RTIC mixed-priority talker QEMU on tap-qemu0...");
-    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
-        .expect("Failed to start talker QEMU");
+    eprintln!("Starting RTIC mixed-priority talker QEMU...");
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
     // Wait for listener to complete
     let listener_output = listener

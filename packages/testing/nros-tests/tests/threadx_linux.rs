@@ -13,8 +13,7 @@
 
 use nros_tests::count_pattern;
 use nros_tests::fixtures::{
-    ZenohRouter, is_tap_bridge_available, is_veth_bridge_available, is_zenohd_available,
-    require_veth_bridge, require_zenohd,
+    ZenohRouter, is_veth_bridge_available, is_zenohd_available, require_veth_bridge, require_zenohd,
 };
 use nros_tests::process::{ManagedProcess, kill_process_group};
 use nros_tests::{TestError, TestResult, project_root};
@@ -238,13 +237,11 @@ fn test_threadx_detection() {
     let threadx = is_threadx_available();
     let netx = is_netx_available();
     let samples = is_threadx_samples_available();
-    let tap_bridge = is_tap_bridge_available();
     let veth_bridge = is_veth_bridge_available();
     let zenohd = is_zenohd_available();
     eprintln!("ThreadX available: {}", threadx);
     eprintln!("NetX Duo available: {}", netx);
     eprintln!("ThreadX learn-samples available: {}", samples);
-    eprintln!("TAP bridge available: {}", tap_bridge);
     eprintln!("veth bridge available: {}", veth_bridge);
     eprintln!("zenohd available: {}", zenohd);
 }

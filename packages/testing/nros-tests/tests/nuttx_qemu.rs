@@ -8,17 +8,16 @@
 //! **Build tests** (require NUTTX_DIR + nightly toolchain):
 //!   Verify that cargo cross-compilation succeeds for all 6 examples.
 //!
-//! **E2E network tests** (require NUTTX_DIR + nightly + QEMU + TAP bridge + zenohd):
+//! **E2E network tests** (require NUTTX_DIR + nightly + QEMU + zenohd):
 //!   Verify actual message exchange between two NuttX QEMU instances via zenohd.
-//!   Each test boots two QEMU ARM virt instances on separate TAP interfaces,
-//!   connected through the qemu-br bridge to a zenohd router on 192.0.3.1:7447.
+//!   Each test boots two QEMU ARM virt instances with slirp user networking,
+//!   connecting to zenohd on localhost:7447 via the slirp gateway (10.0.2.2:7447).
 //!
 //! ## Prerequisites
 //!
 //! - `NUTTX_DIR` env var pointing to NuttX source (e.g., `external/nuttx`)
 //! - Nightly Rust toolchain with `armv7a-nuttx-eabihf` target
 //! - `qemu-system-arm` with virt machine support
-//! - TAP bridge: `sudo ./scripts/qemu/setup-network.sh`
 //! - zenohd: `just build-zenohd`
 //!
 //! Run with: `just test-nuttx`
@@ -26,8 +25,7 @@
 
 use nros_tests::count_pattern;
 use nros_tests::fixtures::{
-    QemuProcess, ZenohRouter, is_qemu_available, is_tap_bridge_available, is_zenohd_available,
-    require_tap_bridge, require_zenohd,
+    QemuProcess, ZenohRouter, is_qemu_available, is_zenohd_available, require_zenohd,
 };
 use nros_tests::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
@@ -138,8 +136,7 @@ fn require_nuttx() -> bool {
 /// 1. NuttX build prerequisites (NUTTX_DIR + nightly toolchain)
 /// 2. Pre-built NuttX kernel image ($NUTTX_DIR/nuttx)
 /// 3. QEMU with ARM virt machine support
-/// 4. TAP bridge network (qemu-br + tap-qemu0 + tap-qemu1)
-/// 5. zenohd router (built from submodule)
+/// 4. zenohd router on localhost (slirp networking, no TAP bridge needed)
 fn require_nuttx_e2e() -> bool {
     if !require_nuttx() {
         return false;
@@ -152,9 +149,6 @@ fn require_nuttx_e2e() -> bool {
     if !is_qemu_available() {
         eprintln!("Skipping test: qemu-system-arm not found");
         eprintln!("Install: sudo apt install qemu-system-arm");
-        return false;
-    }
-    if !require_tap_bridge() {
         return false;
     }
     if !require_zenohd() {
@@ -268,7 +262,6 @@ fn test_nuttx_detection() {
     let arm_gcc = is_arm_gcc_available();
     let toolchain = is_nuttx_toolchain_available();
     let qemu = is_qemu_available();
-    let tap_bridge = is_tap_bridge_available();
     let zenohd = is_zenohd_available();
     let kernel = nuttx_kernel_path();
     eprintln!("NuttX available: {}", available);
@@ -276,7 +269,6 @@ fn test_nuttx_detection() {
     eprintln!("arm-none-eabi-gcc available: {}", arm_gcc);
     eprintln!("NuttX toolchain available: {}", toolchain);
     eprintln!("QEMU available: {}", qemu);
-    eprintln!("TAP bridge available: {}", tap_bridge);
     eprintln!("zenohd available: {}", zenohd);
     eprintln!(
         "NuttX kernel: {}",
@@ -422,7 +414,7 @@ fn test_nuttx_all_examples_build() {
 
 /// Verify that the NuttX kernel boots to NSH prompt in QEMU ARM virt.
 ///
-/// This test does not require TAP networking — it boots NuttX with `-nic none`
+/// This test does not require networking — it boots NuttX with `-nic none`
 /// and checks for the NSH shell prompt, validating the kernel + QEMU setup.
 #[test]
 fn test_nuttx_kernel_boots() {
@@ -445,7 +437,7 @@ fn test_nuttx_kernel_boots() {
     eprintln!("Booting NuttX kernel: {}", kernel.display());
 
     // Boot NuttX without networking (just verify kernel boot)
-    let mut qemu = QemuProcess::start_nuttx_virt(&kernel, "none")
+    let mut qemu = QemuProcess::start_nuttx_virt(&kernel, false)
         .expect("Failed to start QEMU with NuttX kernel");
 
     // NuttX should boot to NSH prompt within 10 seconds
@@ -471,35 +463,33 @@ fn test_nuttx_kernel_boots() {
 }
 
 // =============================================================================
-// E2E Network tests (require QEMU + TAP bridge + zenohd + NuttX kernel)
+// E2E Network tests (require QEMU + zenohd + NuttX kernel)
 // =============================================================================
 //
-// NuttX QEMU ARM virt examples use virtio-net with TAP networking:
+// NuttX QEMU ARM virt examples use virtio-net with slirp user networking:
 //   qemu-system-arm -M virt -cpu cortex-a7 -nographic -kernel <nuttx-image> \
-//       -nic tap,ifname=tap-qemu0,script=no,downscript=no
+//       -nic user,net=10.0.2.0/24,host=10.0.2.2,hostfwd=...
 //
-// Network topology (same as bare-metal/FreeRTOS QEMU tests):
-//   QEMU node 0 (tap-qemu0, 192.0.3.10) --+
-//                                           |-- Bridge (qemu-br, 192.0.3.1) -- zenohd
-//   QEMU node 1 (tap-qemu1, 192.0.3.11) --+
+// Network topology (slirp — each QEMU has isolated 10.0.2.0/24 network):
+//   QEMU node 0 (slirp, 10.0.2.30) ---> 10.0.2.2:7447 --+
+//                                                          |-- zenohd (localhost:7447)
+//   QEMU node 1 (slirp, 10.0.2.31) ---> 10.0.2.2:7447 --+
 //
 // IP assignments (hardcoded in board crate Config):
-//   192.0.3.1   - Host bridge (zenohd on tcp/0.0.0.0:7447)
-//   192.0.3.10  - Talker / Server (tap-qemu0)
-//   192.0.3.11  - Listener (tap-qemu1)
-//   192.0.3.12  - Server (tap-qemu0)
-//   192.0.3.13  - Client (tap-qemu1)
+//   10.0.2.30  - Talker / Server
+//   10.0.2.31  - Listener
+//   10.0.2.32  - Server
+//   10.0.2.33  - Client
 //
 // Prerequisites:
-//   1. TAP bridge: sudo ./scripts/qemu/setup-network.sh
-//   2. zenohd: just build-zenohd
-//   3. NuttX kernel: build-nuttx.sh (with Rust apps integrated)
-//   4. Run: just test-nuttx
+//   1. zenohd: just build-zenohd
+//   2. NuttX kernel: build-nuttx.sh (with Rust apps integrated)
+//   3. Run: just test-nuttx
 
 /// Test pub/sub message exchange between NuttX QEMU instances.
 ///
-/// Launches a listener on tap-qemu1 and a talker on tap-qemu0, verifies
-/// that the listener receives Int32 messages published by the talker.
+/// Launches a listener and a talker on separate QEMU instances (slirp networking),
+/// verifies that the listener receives Int32 messages published by the talker.
 #[test]
 fn test_nuttx_pubsub_e2e() {
     if !require_nuttx_e2e() {
@@ -510,14 +500,14 @@ fn test_nuttx_pubsub_e2e() {
     let talker_bin = build_nuttx_talker().expect("Failed to build talker");
     let listener_bin = build_nuttx_listener().expect("Failed to build listener");
 
-    // Start zenohd on fixed port 7447 (NuttX binaries use tcp/192.0.3.1:7447)
+    // Start zenohd on fixed port 7447 (NuttX binaries connect via slirp gateway 10.0.2.2:7447)
     let mut zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
     assert!(zenohd.is_running(), "zenohd should be running");
 
     // Start listener QEMU first (subscriber before publisher)
-    eprintln!("Starting listener QEMU on tap-qemu1...");
-    let mut listener = QemuProcess::start_nuttx_virt(listener_bin, "tap-qemu1")
-        .expect("Failed to start listener QEMU");
+    eprintln!("Starting listener QEMU (slirp, 10.0.2.31)...");
+    let mut listener =
+        QemuProcess::start_nuttx_virt(listener_bin, true).expect("Failed to start listener QEMU");
 
     // Wait for listener to be ready (NuttX boot + zenoh connect + subscription)
     let listener_ready = listener
@@ -540,9 +530,9 @@ fn test_nuttx_pubsub_e2e() {
     }
 
     // Start talker QEMU
-    eprintln!("Starting talker QEMU on tap-qemu0...");
-    let mut talker = QemuProcess::start_nuttx_virt(talker_bin, "tap-qemu0")
-        .expect("Failed to start talker QEMU");
+    eprintln!("Starting talker QEMU (slirp, 10.0.2.30)...");
+    let mut talker =
+        QemuProcess::start_nuttx_virt(talker_bin, true).expect("Failed to start talker QEMU");
 
     // Wait for talker to start publishing
     let _talker_output = talker
@@ -576,7 +566,7 @@ fn test_nuttx_pubsub_e2e() {
 
 /// Test service request/response between NuttX QEMU instances.
 ///
-/// Launches a service server on tap-qemu0 and a client on tap-qemu1,
+/// Launches a service server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives correct AddTwoInts responses.
 #[test]
 fn test_nuttx_service_e2e() {
@@ -591,9 +581,9 @@ fn test_nuttx_service_e2e() {
     assert!(zenohd.is_running(), "zenohd should be running");
 
     // Start server first
-    eprintln!("Starting service server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_nuttx_virt(server_bin, "tap-qemu0")
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting service server QEMU (slirp, 10.0.2.30)...");
+    let mut server =
+        QemuProcess::start_nuttx_virt(server_bin, true).expect("Failed to start server QEMU");
 
     let server_output = server
         .wait_for_output(Duration::from_secs(30))
@@ -613,9 +603,9 @@ fn test_nuttx_service_e2e() {
     }
 
     // Start client
-    eprintln!("Starting service client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_nuttx_virt(client_bin, "tap-qemu1")
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting service client QEMU (slirp, 10.0.2.31)...");
+    let mut client =
+        QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
 
     // Wait for client to complete all service calls (4 calls: 5+3, 10+20, 100+200, -5+10)
     let client_output = client
@@ -657,7 +647,7 @@ fn test_nuttx_service_e2e() {
 
 /// Test action goal/feedback/result between NuttX QEMU instances.
 ///
-/// Launches an action server on tap-qemu0 and a client on tap-qemu1,
+/// Launches an action server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives Fibonacci feedback and final result.
 #[test]
 fn test_nuttx_action_e2e() {
@@ -672,9 +662,9 @@ fn test_nuttx_action_e2e() {
     assert!(zenohd.is_running(), "zenohd should be running");
 
     // Start action server first
-    eprintln!("Starting action server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_nuttx_virt(server_bin, "tap-qemu0")
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting action server QEMU (slirp, 10.0.2.30)...");
+    let mut server =
+        QemuProcess::start_nuttx_virt(server_bin, true).expect("Failed to start server QEMU");
 
     let server_output = server
         .wait_for_output(Duration::from_secs(30))
@@ -694,9 +684,9 @@ fn test_nuttx_action_e2e() {
     }
 
     // Start action client
-    eprintln!("Starting action client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_nuttx_virt(client_bin, "tap-qemu1")
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting action client QEMU (slirp, 10.0.2.31)...");
+    let mut client =
+        QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
 
     // Fibonacci(10) takes ~5.5s to compute + NuttX boot + zenoh connect
     let client_output = client
@@ -911,9 +901,9 @@ fn test_nuttx_cpp_pubsub_e2e() {
 
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
-    eprintln!("Starting C++ listener QEMU on tap-qemu1...");
+    eprintln!("Starting C++ listener QEMU (slirp, 10.0.2.31)...");
     let mut listener =
-        QemuProcess::start_nuttx_virt(listener_bin, "tap-qemu1").expect("Failed to start listener");
+        QemuProcess::start_nuttx_virt(listener_bin, true).expect("Failed to start listener");
 
     let listener_ready = listener
         .wait_for_output(Duration::from_secs(30))
@@ -924,9 +914,9 @@ fn test_nuttx_cpp_pubsub_e2e() {
         return;
     }
 
-    eprintln!("Starting C++ talker QEMU on tap-qemu0...");
+    eprintln!("Starting C++ talker QEMU (slirp, 10.0.2.30)...");
     let mut talker =
-        QemuProcess::start_nuttx_virt(talker_bin, "tap-qemu0").expect("Failed to start talker");
+        QemuProcess::start_nuttx_virt(talker_bin, true).expect("Failed to start talker");
 
     let _talker_out = talker
         .wait_for_output(Duration::from_secs(15))
@@ -961,7 +951,7 @@ fn test_nuttx_cpp_service_e2e() {
 
     eprintln!("Starting C++ service server QEMU...");
     let mut server =
-        QemuProcess::start_nuttx_virt(server_bin, "tap-qemu0").expect("Failed to start server");
+        QemuProcess::start_nuttx_virt(server_bin, true).expect("Failed to start server");
 
     let server_ready = server
         .wait_for_output(Duration::from_secs(30))
@@ -973,7 +963,7 @@ fn test_nuttx_cpp_service_e2e() {
 
     eprintln!("Starting C++ service client QEMU...");
     let mut client =
-        QemuProcess::start_nuttx_virt(client_bin, "tap-qemu1").expect("Failed to start client");
+        QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client");
 
     let client_out = client
         .wait_for_output(Duration::from_secs(60))

@@ -14,8 +14,7 @@
 
 use nros_tests::count_pattern;
 use nros_tests::fixtures::{
-    QemuProcess, ZenohRouter, is_qemu_available, is_tap_bridge_available, is_zenohd_available,
-    require_tap_bridge, require_zenohd,
+    QemuProcess, ZenohRouter, is_qemu_available, is_zenohd_available, require_zenohd,
 };
 use nros_tests::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
@@ -77,8 +76,7 @@ fn require_freertos() -> bool {
 /// E2E tests require:
 /// 1. FreeRTOS build prerequisites (FREERTOS_DIR + LWIP_DIR + arm-none-eabi-gcc)
 /// 2. QEMU with MPS2-AN385 machine support
-/// 3. TAP bridge network (qemu-br + tap-qemu0 + tap-qemu1)
-/// 4. zenohd router (built from submodule)
+/// 3. zenohd router (built from submodule)
 fn require_freertos_e2e() -> bool {
     if !require_freertos() {
         return false;
@@ -86,9 +84,6 @@ fn require_freertos_e2e() -> bool {
     if !is_qemu_available() {
         eprintln!("Skipping test: qemu-system-arm not found");
         eprintln!("Install: sudo apt install qemu-system-arm");
-        return false;
-    }
-    if !require_tap_bridge() {
         return false;
     }
     if !require_zenohd() {
@@ -214,13 +209,11 @@ fn test_freertos_detection() {
     let lwip = is_lwip_available();
     let arm_gcc = is_arm_gcc_available();
     let qemu = is_qemu_available();
-    let tap_bridge = is_tap_bridge_available();
     let zenohd = is_zenohd_available();
     eprintln!("FreeRTOS available: {}", freertos);
     eprintln!("lwIP available: {}", lwip);
     eprintln!("arm-none-eabi-gcc available: {}", arm_gcc);
     eprintln!("QEMU available: {}", qemu);
-    eprintln!("TAP bridge available: {}", tap_bridge);
     eprintln!("zenohd available: {}", zenohd);
 }
 
@@ -364,29 +357,32 @@ fn test_freertos_all_examples_build() {
 }
 
 // =============================================================================
-// E2E Network tests (require QEMU + TAP bridge + zenohd)
+// E2E Network tests (require QEMU + zenohd)
 // =============================================================================
 //
-// FreeRTOS QEMU MPS2-AN385 examples use LAN9118 Ethernet with TAP networking:
+// FreeRTOS QEMU MPS2-AN385 examples use LAN9118 Ethernet with slirp (user-mode) networking:
 //   qemu-system-arm -machine mps2-an385 -cpu cortex-m3 -nographic \
 //       -semihosting-config enable=on,target=native \
 //       -kernel <binary> \
-//       -nic tap,ifname=tap-qemu0,script=no,downscript=no,model=lan9118,mac=02:00:00:00:00:00
+//       -nic user,model=lan9118,...
 //
-// Network topology:
-//   QEMU node 0 (tap-qemu0, 192.0.3.10) --+
-//                                           |-- Bridge (qemu-br, 192.0.3.1) -- zenohd
-//   QEMU node 1 (tap-qemu1, 192.0.3.11) --+
+// Network topology (slirp user-mode networking):
+//   QEMU node 0 (slirp, 10.0.2.20) ---> 10.0.2.2:7447 --+
+//                                                          |-- zenohd (localhost:7447)
+//   QEMU node 1 (slirp, 10.0.2.21) ---> 10.0.2.2:7447 --+
+//
+// Each QEMU instance has its own isolated 10.0.2.0/24 slirp network.
+// Firmware connects to zenohd via slirp gateway 10.0.2.2:7447 -> host 127.0.0.1:7447.
+// No TAP bridge or root privileges required.
 //
 // Prerequisites:
-//   1. TAP bridge: sudo ./scripts/qemu/setup-network.sh
-//   2. zenohd: just build-zenohd
-//   3. Run: just test-freertos
+//   1. zenohd: just build-zenohd
+//   2. Run: just test-freertos
 
 /// Test pub/sub message exchange between FreeRTOS QEMU instances.
 ///
-/// Launches a listener on tap-qemu1 and a talker on tap-qemu0, verifies
-/// that the listener receives Int32 messages published by the talker.
+/// Launches a listener and a talker on separate QEMU instances (slirp networking),
+/// verifies that the listener receives Int32 messages published by the talker.
 #[test]
 fn test_freertos_pubsub_e2e() {
     if !require_freertos_e2e() {
@@ -397,21 +393,21 @@ fn test_freertos_pubsub_e2e() {
     let talker_bin = build_freertos_talker().expect("Failed to build talker");
     let listener_bin = build_freertos_listener().expect("Failed to build listener");
 
-    // Start zenohd on fixed port 7447 (firmware hardcodes tcp/192.0.3.1:7447)
+    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447 -> localhost)
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start listener QEMU first (subscriber before publisher)
-    eprintln!("Starting listener QEMU on tap-qemu1...");
-    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+    eprintln!("Starting listener QEMU (slirp)...");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
     std::thread::sleep(Duration::from_secs(10));
 
     // Start talker QEMU
-    eprintln!("Starting talker QEMU on tap-qemu0...");
-    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
-        .expect("Failed to start talker QEMU");
+    eprintln!("Starting talker QEMU (slirp)...");
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
     // Wait for listener to complete — reads all buffered output (boot + messages).
     // The completion marker "Received 10 messages" triggers early return.
@@ -435,9 +431,8 @@ fn test_freertos_pubsub_e2e() {
         panic!(
             "FreeRTOS pubsub E2E failed — listener did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
-             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - zenohd reachable on localhost:7447\n\
+             - QEMU slirp networking forwards 10.0.2.2:7447 -> host localhost:7447\n\
              - Firmware built: `just build-examples-freertos`"
         );
     }
@@ -457,7 +452,7 @@ fn test_freertos_pubsub_e2e() {
 
 /// Test service request/response between FreeRTOS QEMU instances.
 ///
-/// Launches a service server on tap-qemu0 and a client on tap-qemu1,
+/// Launches a service server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives correct AddTwoInts responses.
 #[test]
 fn test_freertos_service_e2e() {
@@ -471,17 +466,17 @@ fn test_freertos_service_e2e() {
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start server first
-    eprintln!("Starting service server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting service server QEMU (slirp)...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
     std::thread::sleep(Duration::from_secs(10));
 
     // Start client
-    eprintln!("Starting service client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting service client QEMU (slirp)...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
     // before it can discover the server's service queryable.
@@ -526,9 +521,8 @@ fn test_freertos_service_e2e() {
         panic!(
             "FreeRTOS service E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
-             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - zenohd reachable on localhost:7447\n\
+             - QEMU slirp networking forwards 10.0.2.2:7447 -> host localhost:7447\n\
              - Firmware built: `just build-examples-freertos`"
         );
     } else {
@@ -542,7 +536,7 @@ fn test_freertos_service_e2e() {
 
 /// Test action goal/feedback/result between FreeRTOS QEMU instances.
 ///
-/// Launches an action server on tap-qemu0 and a client on tap-qemu1,
+/// Launches an action server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives Fibonacci feedback and final result.
 #[test]
 fn test_freertos_action_e2e() {
@@ -556,17 +550,17 @@ fn test_freertos_action_e2e() {
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start action server first
-    eprintln!("Starting action server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting action server QEMU (slirp)...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
     std::thread::sleep(Duration::from_secs(10));
 
     // Start action client
-    eprintln!("Starting action client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting action client QEMU (slirp)...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
     // before it can discover the server's action queryables.
@@ -605,9 +599,8 @@ fn test_freertos_action_e2e() {
         panic!(
             "FreeRTOS action E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - TAP bridge: `ip addr show qemu-br` (should have 192.0.3.1/24)\n\
-             - TAP devices: `ip link show tap-qemu0 tap-qemu1` (should be UP, master qemu-br)\n\
-             - zenohd reachable from QEMU: bridge IP 192.0.3.1:7447\n\
+             - zenohd reachable on localhost:7447\n\
+             - QEMU slirp networking forwards 10.0.2.2:7447 -> host localhost:7447\n\
              - Firmware built: `just build-examples-freertos`"
         );
     } else {
@@ -755,9 +748,6 @@ fn require_freertos_cpp_e2e() -> bool {
         eprintln!("Skipping test: qemu-system-arm not found");
         return false;
     }
-    if !require_tap_bridge() {
-        return false;
-    }
     if !require_zenohd() {
         return false;
     }
@@ -831,15 +821,15 @@ fn test_freertos_cpp_pubsub_e2e() {
 
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
-    eprintln!("Starting C++ listener QEMU on tap-qemu1...");
-    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+    eprintln!("Starting C++ listener QEMU (slirp)...");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
     std::thread::sleep(Duration::from_secs(10));
 
-    eprintln!("Starting C++ talker QEMU on tap-qemu0...");
-    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
-        .expect("Failed to start talker QEMU");
+    eprintln!("Starting C++ talker QEMU (slirp)...");
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
     let listener_output = listener
         .wait_for_output(Duration::from_secs(60))
@@ -879,15 +869,15 @@ fn test_freertos_cpp_service_e2e() {
 
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
-    eprintln!("Starting C++ service server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting C++ service server QEMU (slirp)...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     std::thread::sleep(Duration::from_secs(10));
 
-    eprintln!("Starting C++ service client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting C++ service client QEMU (slirp)...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     std::thread::sleep(Duration::from_secs(15));
 
@@ -1053,9 +1043,6 @@ fn require_freertos_c_e2e() -> bool {
         eprintln!("Skipping test: qemu-system-arm not found");
         return false;
     }
-    if !require_tap_bridge() {
-        return false;
-    }
     if !require_zenohd() {
         return false;
     }
@@ -1145,15 +1132,15 @@ fn test_freertos_c_pubsub_e2e() {
 
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
-    eprintln!("Starting C listener QEMU on tap-qemu1...");
-    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin, 1)
+    eprintln!("Starting C listener QEMU (slirp)...");
+    let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
     std::thread::sleep(Duration::from_secs(10));
 
-    eprintln!("Starting C talker QEMU on tap-qemu0...");
-    let mut talker = QemuProcess::start_mps2_an385_networked(talker_bin, 0)
-        .expect("Failed to start talker QEMU");
+    eprintln!("Starting C talker QEMU (slirp)...");
+    let mut talker =
+        QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
     let listener_output = listener
         .wait_for_output(Duration::from_secs(60))
@@ -1188,15 +1175,15 @@ fn test_freertos_c_service_e2e() {
 
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
-    eprintln!("Starting C service server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting C service server QEMU (slirp)...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     std::thread::sleep(Duration::from_secs(10));
 
-    eprintln!("Starting C service client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting C service client QEMU (slirp)...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     std::thread::sleep(Duration::from_secs(15));
 
@@ -1234,15 +1221,15 @@ fn test_freertos_c_action_e2e() {
 
     let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
-    eprintln!("Starting C action server QEMU on tap-qemu0...");
-    let mut server = QemuProcess::start_mps2_an385_networked(server_bin, 0)
-        .expect("Failed to start server QEMU");
+    eprintln!("Starting C action server QEMU (slirp)...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     std::thread::sleep(Duration::from_secs(10));
 
-    eprintln!("Starting C action client QEMU on tap-qemu1...");
-    let mut client = QemuProcess::start_mps2_an385_networked(client_bin, 1)
-        .expect("Failed to start client QEMU");
+    eprintln!("Starting C action client QEMU (slirp)...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
     std::thread::sleep(Duration::from_secs(15));
 

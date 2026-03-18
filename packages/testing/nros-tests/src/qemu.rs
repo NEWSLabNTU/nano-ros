@@ -108,37 +108,27 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
-    /// Start QEMU with MPS2-AN385 machine + LAN9118 TAP networking
+    /// Start QEMU with MPS2-AN385 machine + LAN9118 slirp networking
     ///
-    /// Uses the MPS2-AN385 machine with a LAN9118 Ethernet controller connected
-    /// to a TAP device on the host, enabling network communication via the qemu-br bridge.
+    /// Uses the MPS2-AN385 machine with a LAN9118 Ethernet controller in QEMU's
+    /// user-mode (slirp) networking. Each QEMU instance gets its own fully
+    /// isolated NAT stack — no TAP devices, no bridge, no sudo needed.
     ///
-    /// The `peer_index` selects the TAP device and MAC address:
-    /// - 0: tap-qemu0, MAC 02:00:00:00:00:00 (talker/server)
-    /// - 1: tap-qemu1, MAC 02:00:00:00:00:01 (listener/client)
-    ///
-    /// MAC addresses use the locally-administered range (02:xx) with the last
-    /// byte derived from the peer index. These must match the firmware's network
-    /// config in `nros-mps2-an385-freertos`.
+    /// The firmware connects to the host via slirp gateway `10.0.2.2`. The
+    /// firmware's `config.toml` must use the `10.0.2.0/24` subnet with gateway
+    /// `10.0.2.2` and a unique guest IP per instance.
     ///
     /// Uses `-icount shift=auto` to synchronize QEMU's virtual clock with
     /// wall-clock time. Without this, hardware timers (CMSDK Timer0) race ahead
-    /// during WFI, causing zenoh-pico timeouts to expire before TAP network I/O
+    /// during WFI, causing zenoh-pico timeouts to expire before network I/O
     /// completes. See `docs/reference/qemu-icount.md`.
-    pub fn start_mps2_an385_networked(binary: &Path, peer_index: u8) -> TestResult<Self> {
+    pub fn start_mps2_an385_networked(binary: &Path) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
                 "Binary not found: {}",
                 binary.display()
             )));
         }
-
-        let tap_device = format!("tap-qemu{}", peer_index);
-        let mac_address = format!("02:00:00:00:00:{:02x}", peer_index);
-        let nic_arg = format!(
-            "tap,ifname={},script=no,downscript=no,model=lan9118,mac={}",
-            tap_device, mac_address
-        );
 
         let mut cmd = Command::new("qemu-system-arm");
         cmd.args([
@@ -150,7 +140,7 @@ impl QemuProcess {
             // Synchronize virtual clock with wall-clock time. With sleep=on
             // (default), WFI advances virtual time at wall-clock speed via
             // QEMU_CLOCK_VIRTUAL_RT instead of jumping instantly. This keeps
-            // hardware timer-backed clocks (CMSDK Timer0) aligned with TAP
+            // hardware timer-backed clocks (CMSDK Timer0) aligned with slirp
             // network I/O timing.
             "-icount",
             "shift=auto",
@@ -159,7 +149,7 @@ impl QemuProcess {
             "-kernel",
         ])
         .arg(binary)
-        .args(["-nic", &nic_arg])
+        .args(["-nic", "user,model=lan9118"])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
         #[cfg(unix)]
@@ -320,19 +310,19 @@ impl QemuProcess {
         matches!(self.handle.try_wait(), Ok(None))
     }
 
-    /// Start QEMU with ARM virt machine (Cortex-A7 + virtio-net + TAP networking)
+    /// Start QEMU with ARM virt machine (Cortex-A7 + virtio-net + slirp networking)
     ///
     /// Used for NuttX QEMU tests. The virt machine provides a virtio-net interface
-    /// connected to a TAP device on the host, enabling network communication via
-    /// the qemu-br bridge.
+    /// using QEMU's user-mode (slirp) networking. Each instance gets its own
+    /// isolated NAT stack — no TAP devices, no bridge, no sudo needed.
     ///
     /// # Arguments
     /// * `binary` - Path to the NuttX ELF binary (kernel + app)
-    /// * `tap_iface` - TAP interface name (e.g., "tap-qemu0")
+    /// * `networking` - `true` for slirp networking, `false` for no NIC (boot tests)
     ///
     /// # Returns
     /// A managed QEMU process
-    pub fn start_nuttx_virt(binary: &Path, tap_iface: &str) -> TestResult<Self> {
+    pub fn start_nuttx_virt(binary: &Path, networking: bool) -> TestResult<Self> {
         if !binary.exists() {
             return Err(TestError::BuildFailed(format!(
                 "Binary not found: {}",
@@ -344,12 +334,10 @@ impl QemuProcess {
         cmd.args(["-M", "virt", "-cpu", "cortex-a7", "-nographic", "-kernel"])
             .arg(binary);
 
-        // "none" means no networking (boot test); otherwise use TAP
-        if tap_iface == "none" {
-            cmd.args(["-nic", "none"]);
+        if networking {
+            cmd.args(["-nic", "user"]);
         } else {
-            let nic_arg = format!("tap,ifname={},script=no,downscript=no", tap_iface);
-            cmd.args(["-nic", &nic_arg]);
+            cmd.args(["-nic", "none"]);
         }
 
         cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
@@ -360,15 +348,15 @@ impl QemuProcess {
         Ok(Self { handle })
     }
 
-    /// Start QEMU with RISC-V 64-bit virt machine + virtio-net TAP networking
+    /// Start QEMU with RISC-V 64-bit virt machine + virtio-net slirp networking
     ///
     /// Used for ThreadX QEMU RISC-V tests. The virt machine provides a virtio-net
-    /// MMIO interface connected to a TAP device on the host, enabling network
-    /// communication via the qemu-br bridge.
+    /// MMIO interface using QEMU's user-mode (slirp) networking. Each instance
+    /// gets its own isolated NAT stack — no TAP devices, no bridge, no sudo needed.
     ///
-    /// The `peer_index` selects the TAP device and MAC address:
-    /// - 0: tap-qemu0, MAC 52:54:00:12:34:56 (talker/server)
-    /// - 1: tap-qemu1, MAC 52:54:00:12:34:57 (listener/client)
+    /// The `peer_index` selects the MAC address:
+    /// - 0: MAC 52:54:00:12:34:56 (talker/server)
+    /// - 1: MAC 52:54:00:12:34:57 (listener/client)
     ///
     /// MAC addresses use the QEMU OUI range (52:54:00) with the last byte
     /// derived from the peer index (0x56 + index). These must match the
@@ -382,7 +370,6 @@ impl QemuProcess {
             )));
         }
 
-        let tap_iface = format!("tap-qemu{}", peer_index);
         let mac = format!("52:54:00:12:34:{:02x}", 0x56u8 + peer_index);
 
         let mut cmd = Command::new("qemu-system-riscv64");
@@ -400,8 +387,7 @@ impl QemuProcess {
         ])
         .arg(binary);
 
-        let netdev_arg = format!("tap,id=net0,ifname={},script=no,downscript=no", tap_iface);
-        cmd.args(["-netdev", &netdev_arg]);
+        cmd.args(["-netdev", "user,id=net0"]);
         let device_arg = format!(
             "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac={}",
             mac
@@ -433,92 +419,6 @@ pub fn parse_test_results(output: &str) -> (usize, usize) {
     let passed = output.matches("[PASS]").count();
     let failed = output.matches("[FAIL]").count();
     (passed, failed)
-}
-
-/// Clean up stale network state from previous QEMU test runs.
-///
-/// Two sources of stale state cause TCP connection failures when QEMU
-/// instances are restarted between E2E tests:
-///
-/// 1. **Stale TCP sockets** — SIGKILL'd QEMU leaves host-side connections in
-///    FIN-WAIT-1 (FIN can't be ACK'd). These persist for minutes and collide
-///    with new connections on the same 4-tuple. Fixed via `ss -K`.
-///
-/// 2. **Stale ARP cache** — The bridge remembers old MAC→IP mappings. New QEMU
-///    instances have the same MAC but the kernel may route to a stale entry.
-///    Fixed via `ip neigh del`.
-///
-/// Stale packets in the TAP `pfifo` qdisc are harmless because the firmware
-/// seeds smoltcp's ephemeral port from the host's wall clock via ARM
-/// semihosting `SYS_TIME`. Each QEMU run uses a different source port, so
-/// stale packets with old port numbers are silently ignored by smoltcp (no
-/// matching socket).
-///
-/// Note: `ss -K` and `ip neigh del` require `CAP_NET_ADMIN`. When running
-/// without privileges, these fail silently. Nextest retries (configured in
-/// `.config/nextest.toml`) handle residual flakiness.
-///
-/// Orphaned processes are handled separately by `PR_SET_PDEATHSIG(SIGKILL)`.
-pub fn cleanup_tap_network() {
-    // Read QEMU peer IPs from example config.toml files (fallback to defaults).
-    let root = crate::project_root();
-    let peer_ips: Vec<String> = ["talker", "listener"]
-        .iter()
-        .enumerate()
-        .map(|(i, name)| {
-            let config = root.join(format!(
-                "examples/qemu-arm-baremetal/rust/zenoh/{name}/config.toml"
-            ));
-            crate::read_config_ip(&config).unwrap_or_else(|| format!("192.0.3.{}", 10 + i))
-        })
-        .collect();
-
-    // Kill stale TCP connections to QEMU IPs (best-effort, needs CAP_NET_ADMIN)
-    for ip in &peer_ips {
-        let _ = std::process::Command::new("ss")
-            .args(["-K", "dst", ip.as_str()])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    }
-
-    // Flush ARP cache for QEMU IPs (best-effort, needs CAP_NET_ADMIN)
-    for ip in &peer_ips {
-        let _ = std::process::Command::new("ip")
-            .args(["neigh", "del", ip.as_str(), "dev", "qemu-br"])
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null())
-            .status();
-    }
-
-    // Settle time for kernel state cleanup.
-    // Back-to-back QEMU E2E tests need enough time for the kernel to
-    // process FIN-WAIT-1 retransmits and bridge FDB updates. Without
-    // this, zenoh-pico service replies can be lost due to residual
-    // bridge/ARP state from the previous test.
-    std::thread::sleep(Duration::from_secs(2));
-}
-
-/// Check if the QEMU TAP bridge network is available
-///
-/// Verifies that the `qemu-br` bridge and at least `tap-qemu0` + `tap-qemu1`
-/// interfaces exist. These are created by `sudo ./scripts/qemu/setup-network.sh`.
-pub fn is_tap_bridge_available() -> bool {
-    // Check if qemu-br bridge exists
-    let bridge_exists = std::path::Path::new("/sys/class/net/qemu-br").exists();
-    let tap0_exists = std::path::Path::new("/sys/class/net/tap-qemu0").exists();
-    let tap1_exists = std::path::Path::new("/sys/class/net/tap-qemu1").exists();
-    bridge_exists && tap0_exists && tap1_exists
-}
-
-/// Skip test if TAP bridge is not available
-pub fn require_tap_bridge() -> bool {
-    if !is_tap_bridge_available() {
-        eprintln!("Skipping test: QEMU TAP bridge not available");
-        eprintln!("Setup: sudo ./scripts/qemu/setup-network.sh");
-        return false;
-    }
-    true
 }
 
 /// Check if the veth bridge network is available for ThreadX Linux simulation.
