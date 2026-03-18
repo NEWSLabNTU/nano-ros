@@ -5,7 +5,7 @@ location. All platforms use `CMAKE_PREFIX_PATH` pointing to a standard install
 prefix — no relative paths, no symlinks at project root, no Cargo invoked by
 user projects.
 
-**Status**: In Progress (75.1–75.9 done)
+**Status**: Complete
 
 **Priority**: Medium
 
@@ -126,7 +126,7 @@ only the native variant is required.
 - [x] 75.7 — Fix Zephyr codegen tool discovery
 - [x] 75.8 — Add `just clean-install` recipe
 - [x] 75.9 — Add CPack configuration for binary distribution archives
-- [ ] 75.10 — Update docs and integration tests
+- [x] 75.10 — Update docs and integration tests
 
 ---
 

@@ -44,6 +44,41 @@ The `nano_ros_generate_interfaces()` function:
 3. Compiles the FFI glue into a static library via Corrosion
 4. Creates a `<pkg>__nano_ros_cpp` CMake target with include paths and FFI library linkage
 
+### FreeRTOS (ARM Cortex-M3)
+
+The toolchain file is referenced by the example `CMakeLists.txt` — only `CMAKE_PREFIX_PATH` needs to be provided:
+
+```bash
+cmake -S examples/qemu-arm-freertos/cpp/zenoh/talker -B build/talker \
+    -DCMAKE_PREFIX_PATH=$(pwd)/build/install
+cmake --build build/talker
+```
+
+The example `CMakeLists.txt` follows this pattern:
+
+```cmake
+cmake_minimum_required(VERSION 3.22)
+set(CMAKE_TOOLCHAIN_FILE
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/arm-freertos-armcm3.cmake"
+    CACHE FILEPATH "")
+project(freertos_cpp_talker LANGUAGES C CXX ASM)
+
+find_package(NanoRos CONFIG REQUIRED)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-support.cmake")
+
+nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
+
+add_executable(freertos_cpp_talker src/main.cpp ${FREERTOS_STARTUP_SOURCE})
+target_link_libraries(freertos_cpp_talker PRIVATE
+    std_msgs__nano_ros_cpp NanoRos::NanoRosCpp freertos_platform)
+```
+
+`find_package(NanoRos)` provides `NanoRos::NanoRosCpp` and `nros_generate_interfaces()`.
+`freertos-support.cmake` provides the `freertos_platform` target (FreeRTOS kernel + lwIP + LAN9118).
+`NANO_ROS_PLATFORM` is auto-detected as `freertos_armcm3` from the `Rust_CARGO_TARGET` set by the toolchain file.
+
+Run `just install-local` first to build and install the cross-compiled libraries.
+
 ### Zephyr
 
 ```cmake

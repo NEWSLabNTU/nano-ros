@@ -63,6 +63,42 @@ cmake --build build-xrce
 cmake --install build-xrce --prefix /usr/local
 ```
 
+## FreeRTOS / NuttX Cross-Compilation
+
+Cross-compiled library variants are installed alongside the POSIX variant by `just install-local`. Pass `CMAKE_PREFIX_PATH` and a toolchain file — no source tree location required.
+
+**FreeRTOS (ARM Cortex-M3, MPS2-AN385):**
+
+```bash
+cmake -S examples/qemu-arm-freertos/c/zenoh/talker -B build/talker \
+    -DCMAKE_PREFIX_PATH=$(pwd)/build/install \
+    -DNANO_ROS_PLATFORM=freertos_armcm3 \
+    -DNANO_ROS_RMW=zenoh
+cmake --build build/talker
+```
+
+The toolchain file (`cmake/toolchain/arm-freertos-armcm3.cmake`) is referenced by the example `CMakeLists.txt` and sets the cross-compiler and Rust target automatically.
+
+**NuttX (ARM Cortex-A7):**
+
+```bash
+cmake -S examples/qemu-arm-nuttx/cpp/zenoh/talker -B build/talker \
+    -DCMAKE_PREFIX_PATH=$(pwd)/build/install
+cmake --build build/talker
+```
+
+**Installed library variants** (all under `build/install/lib/`):
+
+| File | Platform | RMW |
+|------|----------|-----|
+| `libnros_c_zenoh.a` | POSIX x86_64 | zenoh |
+| `libnros_c_xrce.a` | POSIX x86_64 | xrce |
+| `libnros_c_zenoh_freertos_armcm3.a` | FreeRTOS ARM Cortex-M3 | zenoh |
+| `libnros_cpp_zenoh.a` | POSIX x86_64 | zenoh |
+| `libnros_cpp_zenoh_freertos_armcm3.a` | FreeRTOS ARM Cortex-M3 | zenoh |
+
+`NANO_ROS_PLATFORM` is auto-detected from `Rust_CARGO_TARGET` (set by the toolchain file) when not explicitly specified.
+
 ## Zephyr Integration
 
 **RMW backend selection** in `prj.conf`:
