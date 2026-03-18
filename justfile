@@ -28,21 +28,47 @@ default:
 build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-nuttx build-examples-nuttx build-examples-threadx-linux build-examples-threadx-riscv64 build-zenohd build-zenoh-pico-arm
     @echo "All builds completed!"
 
-# Populate build/install/ with C API artifacts (libraries, headers, CMake, codegen, interfaces).
-# Builds both zenoh and XRCE RMW variants via CMake + Corrosion.
+# Populate build/install/ with C/C++ artifacts (libraries, headers, CMake module, codegen).
+# Builds posix (zenoh + xrce) variants unconditionally.
+# Builds FreeRTOS ARM Cortex-M3 (zenoh) variant when arm-none-eabi-gcc is available.
 install-local:
     #!/usr/bin/env bash
     set -e
     PREFIX="$(pwd)/build/install"
+
+    # --- POSIX host libraries + codegen tool (always) ---
     for rmw in zenoh xrce; do
-        echo "=== Building RMW=$rmw ==="
+        echo "=== Building posix RMW=$rmw ==="
         cmake -S . -B "build/cmake-$rmw" \
             -DNANO_ROS_RMW="$rmw" \
+            -DNANO_ROS_PLATFORM="posix" \
             -DCMAKE_BUILD_TYPE=Release
         cmake --build "build/cmake-$rmw"
         cmake --install "build/cmake-$rmw" --prefix "$PREFIX"
     done
+
+    # --- FreeRTOS ARM Cortex-M3 libraries (zenoh only, when toolchain available) ---
+    if command -v arm-none-eabi-gcc &>/dev/null; then
+        echo "=== Building freertos_armcm3 RMW=zenoh ==="
+        cmake -S . -B "build/cmake-freertos-armcm3-zenoh" \
+            -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/arm-freertos-armcm3.cmake" \
+            -DNANO_ROS_RMW="zenoh" \
+            -DNANO_ROS_PLATFORM="freertos_armcm3" \
+            -DNANO_ROS_BUILD_CODEGEN=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+        cmake --build "build/cmake-freertos-armcm3-zenoh"
+        cmake --install "build/cmake-freertos-armcm3-zenoh" --prefix "$PREFIX"
+    else
+        echo "arm-none-eabi-gcc not found — skipping FreeRTOS ARM Cortex-M3 libraries"
+    fi
+
     echo "Installed to $PREFIX"
+
+# Remove the install prefix and rebuild from scratch.
+# Use after library renames or CMake structural changes that leave stale files.
+clean-install:
+    rm -rf build/install/
+    just install-local
 
 # Format everything: Rust workspace + examples, C, C++, Python (parallel where possible)
 format: format-c format-cpp format-python

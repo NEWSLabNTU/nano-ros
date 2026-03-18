@@ -4,15 +4,38 @@
 # Provides the NanoRos::NanoRosCpp target.
 #
 # This file is included from the top-level CMakeLists.txt via add_subdirectory().
+# Two variables control the build:
+#   NANO_ROS_RMW      — RMW backend: zenoh, xrce, or dds (default: zenoh)
+#   NANO_ROS_PLATFORM — target platform: posix, freertos_armcm3, nuttx_armv7a
+#                       (default: posix)
 
-# ---- Map RMW name to Cargo features (same as nros-c) ----
+# ---- Platform (default: posix; may already be set by nros-c) ----
+if(NOT DEFINED NANO_ROS_PLATFORM)
+    set(NANO_ROS_PLATFORM "posix")
+endif()
+
+# ---- Map RMW to Cargo features ----
 if(NANO_ROS_RMW STREQUAL "zenoh")
-    set(_cpp_features std rmw-zenoh platform-posix ros-humble)
+    set(_rmw_features rmw-zenoh)
 elseif(NANO_ROS_RMW STREQUAL "xrce")
-    set(_cpp_features std rmw-xrce xrce-udp platform-posix ros-humble)
+    set(_rmw_features rmw-xrce xrce-udp)
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_RMW: ${NANO_ROS_RMW} (expected: zenoh or xrce)")
 endif()
+
+# ---- Map platform to Cargo features ----
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    set(_platform_features std platform-posix)
+elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+    set(_platform_features alloc panic-halt platform-freertos link-tcp link-udp-unicast)
+elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+    set(_platform_features std platform-nuttx)
+else()
+    message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
+            "(expected: posix, freertos_armcm3, or nuttx_armv7a)")
+endif()
+
+set(_cpp_features ros-humble ${_rmw_features} ${_platform_features})
 
 # ---- Build nros-cpp via Corrosion ----
 corrosion_import_crate(
@@ -45,9 +68,16 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
     FILES_MATCHING PATTERN "*.hpp" PATTERN "*.h"
 )
 
+# posix uses the legacy unsuffixed name; all other platforms use a suffixed name.
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    set(_cpp_lib_name "libnros_cpp_${NANO_ROS_RMW}.a")
+else()
+    set(_cpp_lib_name "libnros_cpp_${NANO_ROS_RMW}_${NANO_ROS_PLATFORM}.a")
+endif()
+
 install(FILES "$<TARGET_FILE:nros_cpp-static>"
     DESTINATION lib
-    RENAME "libnros_cpp_${NANO_ROS_RMW}.a"
+    RENAME "${_cpp_lib_name}"
 )
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCppTargets.cmake"

@@ -7,6 +7,9 @@ project(NanoRos VERSION 0.1.0 LANGUAGES C)
 option(NANO_ROS_BUILD_CODEGEN "Build the nros-codegen tool" ON)
 set(NANO_ROS_RMW "zenoh" CACHE STRING "RMW backend: zenoh, xrce, or dds")
 set_property(CACHE NANO_ROS_RMW PROPERTY STRINGS zenoh xrce dds)
+set(NANO_ROS_PLATFORM "posix" CACHE STRING
+    "Target platform: posix, freertos_armcm3, nuttx_armv7a")
+set_property(CACHE NANO_ROS_PLATFORM PROPERTY STRINGS posix freertos_armcm3 nuttx_armv7a)
 
 # ---------------------------------------------------------------------------
 # Corrosion — integrates Rust/Cargo into CMake
@@ -24,18 +27,19 @@ FetchContent_MakeAvailable(Corrosion)
 add_subdirectory(packages/core/nros-c)
 add_subdirectory(packages/core/nros-cpp)
 
-if(NANO_ROS_BUILD_CODEGEN)
-    add_subdirectory(packages/codegen/packages/nros-codegen-c)
-endif()
+# codegen tool and bundled interfaces are host-only artifacts; skip them
+# when cross-compiling for an embedded target.
+if(NANO_ROS_PLATFORM STREQUAL "posix")
+    if(NANO_ROS_BUILD_CODEGEN)
+        add_subdirectory(packages/codegen/packages/nros-codegen-c)
+    endif()
 
-# ---------------------------------------------------------------------------
-# Bundled interfaces (if present — optional, codegen works via ament index)
-# ---------------------------------------------------------------------------
-if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/packages/codegen/interfaces")
-    install(DIRECTORY packages/codegen/interfaces/
-        DESTINATION share/nano-ros/interfaces
-    )
-else()
-    # Ensure the directory structure exists even if empty
-    install(DIRECTORY DESTINATION share/nano-ros/interfaces)
+    # Bundled interfaces (optional — codegen works via ament index when absent)
+    if(IS_DIRECTORY "${PROJECT_SOURCE_DIR}/packages/codegen/interfaces")
+        install(DIRECTORY packages/codegen/interfaces/
+            DESTINATION share/nano-ros/interfaces
+        )
+    else()
+        install(DIRECTORY DESTINATION share/nano-ros/interfaces)
+    endif()
 endif()
