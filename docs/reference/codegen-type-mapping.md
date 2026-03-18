@@ -4,141 +4,153 @@ How `cargo nano-ros generate` maps ROS 2 message fields to Rust, C, and C++ type
 
 ## Overview
 
-For messages with all fixed-size fields (e.g., `std_msgs/Int32`), a single
-type is generated — identical across borrowed and owned contexts.
+Every ROS message generates **a single owned Rust struct** — no lifetime
+parameters, no dual `Msg<'a>` / `MsgOwned` variants. Unbounded fields
+(`string`, `uint8[]`, etc.) use fixed-capacity `heapless` types. All
+generated types implement `Serialize`, `Deserialize`, `RosMessage`,
+`Default`, and `Clone`.
 
-For messages with unbounded fields (`string`, `uint8[]`, etc.), **two Rust
-types** are generated: a borrowed type (`Msg<'a>`) and an owned type
-(`MsgOwned`). C and C++ generate a single struct with pointer+length fields
-for unbounded data.
+For zero-copy access to large payloads (images, point clouds), use the
+**raw subscription API** and read CDR fields directly with `CdrReader`
+instead of fully deserializing into owned structs.
 
 ## Rust type mapping
 
 ### Primitive fields
 
-| ROS type         | Rust type | Notes |
-|------------------|-----------|-------|
-| `bool`           | `bool`    |       |
-| `byte` / `uint8` | `u8`      |       |
-| `char` / `int8`  | `i8`      |       |
-| `int16`          | `i16`     |       |
-| `uint16`         | `u16`     |       |
-| `int32`          | `i32`     |       |
-| `uint32`         | `u32`     |       |
-| `int64`          | `i64`     |       |
-| `uint64`         | `u64`     |       |
-| `float32`        | `f32`     |       |
-| `float64`        | `f64`     |       |
-
-Primitives are identical in borrowed and owned types. No lifetime.
+| ROS type         | Rust type |
+|------------------|-----------|
+| `bool`           | `bool`    |
+| `byte` / `uint8` | `u8`      |
+| `char` / `int8`  | `i8`      |
+| `int16`          | `i16`     |
+| `uint16`         | `u16`     |
+| `int32`          | `i32`     |
+| `uint32`         | `u32`     |
+| `int64`          | `i64`     |
+| `uint64`         | `u64`     |
+| `float32`        | `f32`     |
+| `float64`        | `f64`     |
 
 ### String fields
 
-| ROS type               | Borrowed type         | Owned type              |
-|------------------------|-----------------------|-------------------------|
-| `string` (unbounded)   | `&'a str`             | `heapless::String<256>` |
-| `wstring` (unbounded)  | `&'a str`             | `heapless::String<256>` |
-| `string<=N` (bounded)  | `heapless::String<N>` | same                    |
-| `wstring<=N` (bounded) | `heapless::String<N>` | same                    |
+| ROS type               | Rust type               | Notes                         |
+|------------------------|-------------------------|-------------------------------|
+| `string` (unbounded)   | `heapless::String<256>` | Capacity is the codegen limit |
+| `wstring` (unbounded)  | `heapless::String<256>` | Same                          |
+| `string<=N` (bounded)  | `heapless::String<N>`   | Capacity matches bound        |
+| `wstring<=N` (bounded) | `heapless::String<N>`   | Same                          |
 
-Unbounded strings trigger a lifetime parameter on the struct.
-Bounded strings use fixed-capacity `heapless::String` — no lifetime.
+`heapless::String<N>` is re-exported from `nros_core::heapless` for use
+in generated code and in user code without a direct `heapless` dependency.
 
 ### Sequence fields
 
-| ROS type                       | Borrowed type                              | Owned type                  | Zero-copy? |
-|--------------------------------|--------------------------------------------|-----------------------------|------------|
-| `uint8[]`                      | `&'a [u8]`                                 | `heapless::Vec<u8, 64>`     | Yes        |
-| `int8[]` / `byte[]`            | `&'a [u8]`                                 | `heapless::Vec<u8, 64>`     | Yes        |
-| `bool[]`                       | `heapless::Vec<bool, 64>`                  | same                        | No         |
-| `int32[]` / `float64[]` / etc. | `heapless::Vec<T, 64>`                     | same                        | No         |
-| `string[]`                     | `heapless::Vec<heapless::String<256>, 64>` | same                        | No         |
-| `T[]` (nested message)         | `heapless::Vec<TOwnedOrT, 64>`             | `heapless::Vec<TOwned, 64>` | No         |
-| `T[<=N]` (bounded)             | `heapless::Vec<T, N>`                      | same                        | No         |
+| ROS type                       | Rust type                              | Notes                     |
+|--------------------------------|----------------------------------------|---------------------------|
+| `uint8[]`                      | `heapless::Vec<u8, 64>`                | Capacity is codegen limit |
+| `int8[]` / `byte[]`            | `heapless::Vec<u8, 64>`                |                           |
+| `bool[]`                       | `heapless::Vec<bool, 64>`              |                           |
+| `int32[]` / `float64[]` / etc. | `heapless::Vec<T, 64>`                 |                           |
+| `string[]`                     | `heapless::Vec<heapless::String<256>, 64>` |                       |
+| `T[]` (nested message)         | `heapless::Vec<T, 64>`                 |                           |
+| `T[<=N]` (bounded sequence)    | `heapless::Vec<T, N>`                  | Capacity matches bound    |
 
-Only `uint8[]` and `int8[]`/`byte[]` sequences get true zero-copy (`&'a [u8]`
-pointing into the CDR buffer). All other unbounded sequences use
-`heapless::Vec` because:
-
-- **Multi-byte primitives** (`int32[]`, `float64[]`): CDR data may not be
-  aligned for direct cast to `&[i32]` / `&[f64]`.
-- **Bool sequences** (`bool[]`): `bool` and `u8` are different types in Rust.
-- **String sequences** (`string[]`): CDR interleaves length prefixes between
-  strings — can't return a contiguous `&[&str]`.
-- **Nested type sequences** (`Parameter[]`): Elements use Owned variant
-  (see below). Can't create `&[Parameter<'a>]` from `&[ParameterOwned]`.
-
-### Nested message fields
-
-| Field type                    | Borrowed struct uses        | Owned struct uses           |
-|-------------------------------|-----------------------------|-----------------------------|
-| `T` where `T` has no lifetime | `T`                         | `T`                         |
-| `T` where `T` has lifetime    | `TOwned`                    | `TOwned`                    |
-| `T[]` where `T` has lifetime  | `heapless::Vec<TOwned, 64>` | `heapless::Vec<TOwned, 64>` |
-
-**Nested types with lifetimes always use the Owned variant**, even in the
-borrowed struct. This is because `CdrReader`-based deserialization can't
-produce borrowed nested types — it would need to slice the buffer at
-arbitrary nested field boundaries, which `CdrReader` doesn't support.
-
-The zero-copy benefit comes from top-level fields: `&'a str` for string
-fields and `&'a [u8]` for byte sequences. Nested types are small (a few
-fields each); the large payloads are always top-level byte sequences
-(images, point clouds).
+The default sequence capacity is **64 elements**. For large-payload
+messages where you need more elements at runtime, use the raw
+subscription API with `CdrReader` to read fields without materializing
+the whole vector.
 
 ### Fixed-size arrays
 
-| ROS type | Rust type | Notes                      |
-|----------|-----------|----------------------------|
-| `T[N]`   | `[T; N]`  | Same in borrowed and owned |
+| ROS type | Rust type | Notes                   |
+|----------|-----------|-------------------------|
+| `T[N]`   | `[T; N]`  | Zero-cost, no heap      |
 
-Fixed-size arrays never have lifetimes.
+Arrays with more than 32 elements use a manual `Default` impl instead of
+deriving, since `Default` is only derived for arrays up to `[T; 32]`.
 
-## Conversions
+### Nested message fields
 
-For messages with unbounded fields:
+Nested message types are embedded inline:
+
+| Field type             | Rust type     |
+|------------------------|---------------|
+| `T` (nested message)   | `T`           |
+| `T[]` (sequence of T)  | `heapless::Vec<T, 64>` |
+| `T[N]` (array of T)    | `[T; N]`      |
+
+## Traits
+
+Every generated message type implements:
+
+| Trait         | Notes                                              |
+|---------------|----------------------------------------------------|
+| `Serialize`   | CDR serialization via `CdrWriter`                  |
+| `Deserialize` | CDR deserialization via `CdrReader`                |
+| `RosMessage`  | Provides `TYPE_NAME` and `TYPE_HASH` constants     |
+| `Default`     | All fields zero/empty                              |
+| `Clone`       | Deep copy                                          |
+| `PartialEq`   | Field-wise equality                                |
+| `Debug`       | Formatted output                                   |
+
+`RosMessage` requires `Serialize + Deserialize`:
 
 ```rust
-// Borrowed → Owned (explicit copy)
-let owned: ImageOwned = msg.to_owned();
-
-// Owned → Borrowed (free borrow)
-let borrowed: Image<'_> = owned.as_ref();
+pub trait RosMessage: Sized + nros_serdes::Serialize + nros_serdes::Deserialize {
+    const TYPE_NAME: &'static str;
+    const TYPE_HASH: &'static str;
+}
 ```
 
-For nested lifetime types in `to_owned()` / `as_ref()`:
-- Direct nested: `self.value.to_owned()` / `self.value.as_ref()`
-- Sequence of nested: element-wise iteration with `to_owned()` / `as_ref()`
-- Byte sequences: `extend_from_slice()` / `as_slice()`
-- Strings: `heapless::String::try_from()` / `.as_str()`
+## Zero-copy access via raw subscription API
 
-## Trait implementations
+For large messages, deserializing into an owned struct (e.g.,
+`Image { data: heapless::Vec<u8, 64> }`) truncates at 64 elements.
+Use the raw API and `CdrReader` instead:
 
-| Trait         | Borrowed `Msg<'a>`                | Owned `MsgOwned`                          | Fixed `Msg` |
-|---------------|-----------------------------------|-------------------------------------------|-------------|
-| `Serialize`   | Yes                               | Yes (delegates to `as_ref().serialize()`) | Yes         |
-| `Deserialize` | No (use `deserialize_borrowed()`) | Yes                                       | Yes         |
-| `RosMessage`  | Yes                               | Yes                                       | Yes         |
-| `Default`     | No                                | Yes                                       | Yes         |
-| `Clone`       | No                                | Yes                                       | Yes         |
+```rust
+use nros_core::{CdrReader, RosMessage};
 
-`RosMessage` has no `Serialize` or `Deserialize` bound — it's a pure
-marker trait with `TYPE_NAME` and `TYPE_HASH`.
+// Read only needed fields without full deserialization
+executor.add_subscription_buffered_raw::<65536>(
+    "/camera/image",
+    Image::TYPE_NAME,
+    Image::TYPE_HASH,
+    QosSettings::default(),
+    |cdr: &[u8]| {
+        let mut r = CdrReader::new_with_header(cdr).unwrap();
+        // Skip header fields by reading and discarding them
+        let _stamp_sec: u32 = r.read_u32().unwrap_or(0);
+        let _stamp_nsec: u32 = r.read_u32().unwrap_or(0);
+        let _frame_id_len: u32 = r.read_u32().unwrap_or(0);
+        // ... read only what you need
+        let height: u32 = r.read_u32().unwrap_or(0);
+        let width: u32 = r.read_u32().unwrap_or(0);
+        let pixel_data_len = r.read_u32().unwrap_or(0) as usize;
+        let pixels = r.read_slice_u8(pixel_data_len).unwrap_or(&[]);
+        process_pixels(width, height, pixels);
+    },
+)?;
+```
+
+The `cdr` slice borrows from the triple buffer slot and is only valid
+for the duration of the callback — do not store a reference to it.
 
 ## C type mapping
 
-| ROS type                 | C type                                         |
-|--------------------------|------------------------------------------------|
-| `string` (unbounded)     | `struct { const char* data; size_t size; }`    |
-| `string<=N` (bounded)    | `char name[N]`                                 |
-| `uint8[]` (unbounded)    | `struct { const uint8_t* data; size_t size; }` |
-| `T[]` (unbounded, other) | `struct { const T* data; size_t size; }`       |
-| `T[<=N]` (bounded)       | `struct { uint32_t size; T data[N]; }`         |
-| `T[N]` (fixed)           | `T name[N]`                                    |
+| ROS type                 | C type                                           |
+|--------------------------|--------------------------------------------------|
+| `string` (unbounded)     | `struct { const char* data; size_t size; }`      |
+| `string<=N` (bounded)    | `char name[N]`                                   |
+| `uint8[]` (unbounded)    | `struct { const uint8_t* data; size_t size; }`   |
+| `T[]` (unbounded, other) | `struct { const T* data; size_t size; }`         |
+| `T[<=N]` (bounded)       | `struct { uint32_t size; T data[N]; }`           |
+| `T[N]` (fixed)           | `T name[N]`                                      |
 
-C deserializer sets pointer+length fields to point into the CDR buffer
-(borrowed, valid for callback duration). C serializer reads from
-pointer+length.
+The C deserializer sets pointer+length fields to point into the CDR
+buffer (valid for the callback duration). The C serializer reads from
+the pointer+length fields.
 
 ## C++ type mapping
 
@@ -153,40 +165,48 @@ pointer+length.
 
 `nros::Span<T>` and `nros::StringView` are freestanding C++14 types
 defined in `nros/span.hpp`. They provide `data()`, `size()`, `begin()`,
-`end()`, `operator[]` — same API as `std::span` / `std::string_view`.
+`end()`, and `operator[]` — same API as `std::span` / `std::string_view`.
 
 ## Service types
 
-Service request and response types are **always owned**. They use
-`MsgOwned` variants for fields that reference message types with
-lifetimes.
+Service request and response types are regular message structs that also
+implement `Serialize` and `Deserialize`. Nested message fields in service
+types are embedded inline (same as standalone messages).
 
-| Component                 | Type strategy                  |
-|---------------------------|--------------------------------|
-| Request fields            | Owned (deserialized from CDR)  |
-| Response fields           | Owned (constructed by handler) |
-| Nested message references | `*Owned` variant               |
+| Component      | Type                  |
+|----------------|-----------------------|
+| Request struct | `FooRequest`          |
+| Response struct | `FooResponse`        |
+| Service marker | `Foo` (zero-sized)    |
 
-Service types implement `Serialize + Deserialize` (required by
-`RosService` trait bound).
+`Foo` implements `RosService`:
+
+```rust
+impl RosService for Foo {
+    type Request = FooRequest;
+    type Reply = FooResponse;
+    const SERVICE_NAME: &'static str = "...";
+    const SERVICE_HASH: &'static str = "...";
+}
+```
 
 ## Action types
 
-Action goal, result, and feedback types are **always owned** (same
-as services). They implement `Serialize + Deserialize` (required by
-`RosAction` trait bound).
+Action goal, result, and feedback types are regular message structs.
+The action marker type implements `RosAction`:
 
-## Lifetime propagation
+```rust
+impl RosAction for MyAction {
+    type Goal = MyActionGoal;
+    type Result = MyActionResult;
+    type Feedback = MyActionFeedback;
+    const ACTION_NAME: &'static str = "...";
+    const ACTION_HASH: &'static str = "...";
+}
+```
 
-A message type gets a lifetime parameter (`Msg<'a>`) if it has:
-- An unbounded `string` or `wstring` field (directly)
-- A `uint8[]` or `int8[]`/`byte[]` sequence field (directly)
-- A direct nested field whose type has a lifetime
-
-Lifetime does NOT propagate through:
-- Sequences of nested types (`T[]` where `T<'a>`) — these use `TOwned`
-- Bounded sequences or arrays
-- Multi-byte primitive sequences
+`Goal`, `Result`, and `Feedback` all implement `Serialize + Deserialize`
+(required by the `RosMessage` bound on `RosAction` associated types).
 
 ## Package name remapping
 

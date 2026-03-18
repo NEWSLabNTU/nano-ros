@@ -9,7 +9,7 @@
 #
 # Prerequisites:
 #   - ARM cross-compiler: arm-none-eabi-gcc
-#   - kconfig-frontends (kconfig-conf) or Python kconfiglib (pip install kconfiglib)
+#   - kconfig-frontends-nox (sudo apt install kconfig-frontends-nox) or Python kconfiglib
 #   - Run `just setup-nuttx` to download sources
 #
 # Environment (auto-resolved from project root if not set):
@@ -62,8 +62,8 @@ fi
 if ! command -v kconfig-conf &>/dev/null && ! command -v olddefconfig &>/dev/null; then
     echo "ERROR: kconfig tools not found (kconfig-conf or kconfiglib)."
     echo "Install one of:"
-    echo "  pip install kconfiglib    # Python implementation (recommended)"
-    echo "  sudo apt install kconfig-frontends  # Native C implementation"
+    echo "  sudo apt install kconfig-frontends-nox  # Native C implementation (recommended)"
+    echo "  pip install kconfiglib                  # Python implementation"
     exit 1
 fi
 
