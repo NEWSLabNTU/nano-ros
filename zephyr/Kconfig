@@ -360,4 +360,20 @@ config NROS_INIT_DELAY_MS
       Maximum time to wait for the network interface to come up
       before initializing the RMW transport.
 
+# =============================================================================
+# Install Prefix
+# =============================================================================
+
+config NROS_INSTALL_PREFIX
+    string "nano-ros install prefix"
+    default ""
+    help
+      Path to the nano-ros install prefix produced by `just install-local`
+      (e.g. /home/user/nano-ros/build/install).
+
+      When set, the build system finds nros-codegen at this location.
+      Equivalent to passing -DCMAKE_PREFIX_PATH=<prefix> via west build.
+
+      Either this or CMAKE_PREFIX_PATH must be set; there is no PATH fallback.
+
 endif # NROS

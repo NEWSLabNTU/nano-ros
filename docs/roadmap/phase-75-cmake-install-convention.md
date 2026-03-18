@@ -5,7 +5,7 @@ location. All platforms use `CMAKE_PREFIX_PATH` pointing to a standard install
 prefix — no relative paths, no symlinks at project root, no Cargo invoked by
 user projects.
 
-**Status**: In Progress (75.1–75.6, 75.8 done)
+**Status**: In Progress (75.1–75.8 done)
 
 **Priority**: Medium
 
@@ -123,7 +123,7 @@ only the native variant is required.
 - [x] 75.4 — Rewrite `freertos-platform.cmake` → `freertos-support.cmake`
 - [x] 75.5 — Replace `nuttx-platform.cmake` with `nuttx-support.cmake` (old file deleted)
 - [x] 75.6 — Update FreeRTOS and NuttX examples to use `find_package(NanoRos)`
-- [ ] 75.7 — Fix Zephyr codegen tool discovery
+- [x] 75.7 — Fix Zephyr codegen tool discovery
 - [x] 75.8 — Add `just clean-install` recipe
 - [ ] 75.9 — Add CPack configuration for binary distribution archives
 - [ ] 75.10 — Update docs and integration tests

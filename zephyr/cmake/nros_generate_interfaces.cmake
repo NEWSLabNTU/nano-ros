@@ -36,8 +36,12 @@ Arguments:
     List of interface packages this package depends on.
 
 Prerequisites:
-  ``nros-codegen`` must be on PATH.  For development, run
-  ``just install-local`` (installs to ``build/install/bin/``).
+  ``nros-codegen`` is located in order:
+
+  1. ``CONFIG_NROS_INSTALL_PREFIX/bin/`` — set in ``prj.conf``
+  2. ``CMAKE_PREFIX_PATH/bin/`` — passed via ``west build -- -DCMAKE_PREFIX_PATH=...``
+
+  At least one must be set; there is no PATH fallback.
 
 #]=======================================================================]
 
@@ -46,13 +50,32 @@ Prerequisites:
 # =========================================================================
 
 if(NOT DEFINED CACHE{_NROS_ZEPHYR_CODEGEN_TOOL})
-  find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen)
+  # 1. Kconfig: CONFIG_NROS_INSTALL_PREFIX set in prj.conf
+  if(DEFINED CONFIG_NROS_INSTALL_PREFIX AND NOT CONFIG_NROS_INSTALL_PREFIX STREQUAL "")
+    find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen
+      PATHS "${CONFIG_NROS_INSTALL_PREFIX}/bin"
+      NO_DEFAULT_PATH)
+  endif()
+
+  # 2. CMake: CMAKE_PREFIX_PATH passed via west build -- -DCMAKE_PREFIX_PATH=...
+  # find_program() does not search CMAKE_PREFIX_PATH automatically, so we do it explicitly.
+  if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
+    foreach(_prefix IN LISTS CMAKE_PREFIX_PATH)
+      find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen
+        PATHS "${_prefix}/bin"
+        NO_DEFAULT_PATH)
+      if(_NROS_ZEPHYR_CODEGEN_TOOL)
+        break()
+      endif()
+    endforeach()
+  endif()
 
   if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
     message(FATAL_ERROR
-      "nros-codegen not found on PATH.\n"
-      "Install with: just install-local\n"
-      "  (or: cargo install --path packages/codegen/packages/nros-codegen-c)")
+      "nros-codegen not found. Set the nano-ros install prefix via one of:\n"
+      "  prj.conf:   CONFIG_NROS_INSTALL_PREFIX=\"/path/to/install\"\n"
+      "  west build: west build -b <board> -- -DCMAKE_PREFIX_PATH=/path/to/install\n"
+      "Build the install prefix with: just install-local")
   endif()
 
   set(_NROS_ZEPHYR_CODEGEN_TOOL "${_NROS_ZEPHYR_CODEGEN_TOOL}"
