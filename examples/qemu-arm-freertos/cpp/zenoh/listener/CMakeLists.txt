@@ -1,9 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
-set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/arm-none-eabi-toolchain.cmake"
+set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/arm-freertos-armcm3.cmake"
     CACHE FILEPATH "")
 project(freertos_cpp_listener LANGUAGES C CXX ASM)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-platform.cmake")
+find_package(NanoRos CONFIG REQUIRED)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/freertos-support.cmake")
 
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
 

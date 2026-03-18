@@ -1,7 +1,10 @@
 cmake_minimum_required(VERSION 3.22)
+set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/armv7a-nuttx-eabi.cmake"
+    CACHE FILEPATH "")
 project(nuttx_cpp_listener LANGUAGES C CXX)
 
-include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/nuttx-platform.cmake")
+find_package(NanoRos CONFIG REQUIRED)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/nuttx-support.cmake")
 
 # Generate C++ message bindings from package.xml
 nros_find_interfaces(LANGUAGE CPP SKIP_INSTALL)
