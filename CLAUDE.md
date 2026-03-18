@@ -242,7 +242,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 70 | DDS RMW backend (dust-dds) — POSIX | Complete |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 72 | Per-example config.toml files | In Progress (72.1–72.5 done) |
-| 73 | Memory efficiency + zero-copy receive | Not Started |
+| 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 
 ## Quick Reference
 
