@@ -284,7 +284,67 @@ making it unsuitable for alloc-free bare-metal use.
 - Use the raw CDR API (`try_recv_raw`) with a caller-provided buffer
   to bypass the static buffer system entirely.
 
-## 9. C/C++ examples do not use package.xml as single source of truth for message deps
+## 9. Test groups are fully serialized due to shared resources
+
+All test groups in `.config/nextest.toml` run with `max-threads = 1`,
+preventing parallel execution within each group. The bottleneck is shared
+network interfaces, TCP ports, build artifacts, and QEMU devices.
+
+**Serialized test groups and their shared resources**:
+
+| Group | Tests | Shared resources |
+|-------|-------|------------------|
+| `qemu-network` | bare-metal, FreeRTOS, NuttX, ThreadX, ESP32, Zephyr | TAP devices (`tap-qemu0`/`tap-qemu1`), zenohd port 7447, MAC addresses |
+| `c_api` | C zenoh + C XRCE | `target/release/libnros_c.a`, CMake build dirs |
+| `cpp_api` | C++ zenoh | `target/release/libnros_cpp.a`, CMake build dirs |
+| `xrce` | XRCE pub/sub/service/action | XRCE Agent UDP port 2019 |
+| `large_msg` | stress tests | zenohd port 7447, high CPU/memory |
+| `ros2-interop` | ROS 2 interop, params | ROS 2 discovery, zenohd port 7447 |
+
+**Root causes**:
+
+1. **Two TAP devices for all QEMU platforms** — `setup-network.sh` creates
+   only `tap-qemu0` and `tap-qemu1` on a single bridge (`qemu-br`). Every
+   QEMU-based test (bare-metal, FreeRTOS, NuttX, ThreadX RISC-V, ESP32)
+   contends for the same two devices.
+
+2. **Firmware hardcodes zenohd port 7447** — board crate `config.toml`
+   files use `tcp/192.0.3.1:7447`. Only one zenohd can bind this port,
+   so all QEMU tests must serialize. The `zenohd_unique()` fixture
+   exists for native tests but QEMU firmware can't use ephemeral ports.
+
+3. **C/C++ tests share a single static library** — parallel CMake builds
+   of C and C++ examples write to the same `libnros_c.a` / `libnros_cpp.a`,
+   causing race conditions. Each test rebuilds from scratch because
+   examples share build directories.
+
+4. **Fixed MAC addresses and IP assignments** — QEMU instances use
+   hardcoded MACs (`02:00:00:00:00:00` / `02:00:00:00:00:01`) and IPs.
+   Stale ARP cache entries and TCP TIME-WAIT sockets between tests
+   require cleanup (`ss -K`, `ip neigh del`) with 2-second delays.
+
+**Existing isolation mechanisms**:
+
+- `unique_domain_id()` — PID-based ROS domain ID (prevents discovery collisions)
+- `zenohd_unique()` / `xrce_agent_unique()` — ephemeral port fixtures (for native tests)
+- Process group isolation — `setpgid(0,0)` + `PR_SET_PDEATHSIG(SIGKILL)`
+- ARP/TCP cleanup between QEMU runs
+
+**Possible improvements**:
+
+- **Dynamic TAP pools**: Create N TAP pairs on demand (e.g., `tap-qemu{2N}`/
+  `tap-qemu{2N+1}` per test) so multiple QEMU E2E tests run concurrently.
+  Each pair gets its own bridge with a unique subnet.
+- **Per-example CMake build dirs**: Use `--target-dir` / separate build
+  directories per C/C++ test to eliminate library contention. Already
+  done for some Rust feature-variant tests in `binaries.rs`.
+- **Port parameterization for firmware**: Read the zenohd locator from
+  a QEMU semihosting file or compile-time env var so each QEMU instance
+  connects to its own zenohd on an ephemeral port.
+- **Network namespace isolation**: Use `ip netns` to give each test its
+  own network stack, eliminating ARP/TCP state leakage entirely.
+
+## 10. C/C++ examples do not use package.xml as single source of truth for message deps
 
 Most C/C++ examples manually call `nros_generate_interfaces()` in CMakeLists.txt
 with hardcoded package names and DEPENDENCIES. The intended pattern is for `package.xml`
@@ -297,3 +357,4 @@ FreeRTOS C) still use manual `nros_generate_interfaces()` calls.
 
 **To migrate**: Add `package.xml` to each example declaring `<depend>` on message
 packages, replace manual codegen calls with `nros_find_interfaces()`.
+
