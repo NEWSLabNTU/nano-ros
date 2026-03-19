@@ -12,18 +12,31 @@ path = "junit.xml"
 store-success-output = false
 store-failure-output = true
 
-# All QEMU-based E2E tests must be serialized within this group.
-# Each platform uses a dedicated zenohd port (7450–7456) so platforms
-# *could* run in parallel once split into per-platform groups (see 74.5).
-# For now, all remain in one group for simplicity.
+# Per-platform test groups: each platform has its own zenohd port and
+# isolated slirp/bridge networking, so platforms run in parallel.
+# Within each group, tests are serial (one QEMU pair at a time).
 # Ports: baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453,
 # esp32=7454, threadx-linux=7455, zephyr=7456.
-[test-groups.qemu-network]
+[test-groups.qemu-baremetal]
 max-threads = 1
 
-# ARM QEMU tests: uses per-platform zenohd ports (baremetal=7450, freertos=7451, etc.).
-# Previously shared port 7447 with all platforms. Per-platform ports enable future
-# parallel execution (74.5). Currently still merged into qemu-network.
+[test-groups.qemu-freertos]
+max-threads = 1
+
+[test-groups.qemu-nuttx]
+max-threads = 1
+
+[test-groups.qemu-threadx-riscv]
+max-threads = 1
+
+[test-groups.qemu-esp32]
+max-threads = 1
+
+[test-groups.threadx-linux]
+max-threads = 1
+
+[test-groups.qemu-zephyr]
+max-threads = 1
 
 [test-groups.c_api]
 max-threads = 1
@@ -41,20 +54,18 @@ max-threads = 1
 
 [[profile.default.overrides]]
 filter = "binary(esp32_emulator)"
-test-group = "qemu-network"
+test-group = "qemu-esp32"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(zephyr)"
-test-group = "qemu-network"
+test-group = "qemu-zephyr"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 [[profile.default.overrides]]
 filter = "binary(emulator) and not binary(esp32_emulator)"
-test-group = "qemu-network"
+test-group = "qemu-baremetal"
 slow-timeout = { period = "120s", terminate-after = 3 }
-# QEMU TAP networking is inherently flaky (stale TCP state, ARP timing, bridge latency).
-# Retry E2E tests up to 2 extra times before marking as failed.
 retries = 2
 
 [[profile.default.overrides]]
@@ -119,30 +130,30 @@ slow-timeout = { period = "60s", terminate-after = 3 }
 filter = "binary(zero_copy)"
 slow-timeout = { period = "60s", terminate-after = 2 }
 
-# NuttX QEMU tests: nightly build + QEMU ARM virt
+# NuttX QEMU tests: zenohd port 7452
 [[profile.default.overrides]]
 filter = "binary(nuttx_qemu)"
-test-group = "qemu-network"
+test-group = "qemu-nuttx"
 slow-timeout = { period = "120s", terminate-after = 3 }
 
 # FreeRTOS QEMU tests: zenohd port 7451
 [[profile.default.overrides]]
 filter = "binary(freertos_qemu)"
-test-group = "qemu-network"
+test-group = "qemu-freertos"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 # ThreadX Linux tests: zenohd port 7455
 [[profile.default.overrides]]
 filter = "binary(threadx_linux)"
-test-group = "qemu-network"
+test-group = "threadx-linux"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 
 # ThreadX QEMU RISC-V tests: zenohd port 7453
 [[profile.default.overrides]]
 filter = "binary(threadx_riscv64_qemu)"
-test-group = "qemu-network"
+test-group = "qemu-threadx-riscv"
 slow-timeout = { period = "120s", terminate-after = 3 }
 retries = 2
 

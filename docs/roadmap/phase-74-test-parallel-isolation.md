@@ -4,7 +4,7 @@
 serialized (`max-threads = 1`) by isolating network interfaces, zenohd
 instances, and CMake build directories per test.
 
-**Status**: In Progress (74.1–74.3 complete)
+**Status**: In Progress (74.1–74.5 complete)
 
 **Priority**: Medium
 
@@ -40,8 +40,8 @@ See `docs/known-issues.md` issue 9 for full documentation.
   - [x] 74.1.8 — Launch script: add `--slirp` flag
 - [x] 74.2 — Configurable zenohd port in firmware and tests
 - [x] 74.3 — Per-platform zenohd instances with scouting disabled
-- [ ] 74.4 — Per-example CMake build directories for C/C++ tests
-- [ ] 74.5 — Split `qemu-network` into per-platform test groups
+- [x] 74.4 — ~~Per-example CMake build directories for C/C++ tests~~ (N/A — Phase 75 resolved: build dirs cleaned per invocation, shared libs are read-only)
+- [x] 74.5 — Split `qemu-network` into per-platform test groups
 - [ ] 74.6 — Update documentation
 
 ---
