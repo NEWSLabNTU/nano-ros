@@ -49,7 +49,7 @@ Prerequisites:
 # Locate nros-codegen (once per configure)
 # =========================================================================
 
-if(NOT DEFINED CACHE{_NROS_ZEPHYR_CODEGEN_TOOL})
+if(NOT _NROS_ZEPHYR_CODEGEN_TOOL)
   # 1. Kconfig: CONFIG_NROS_INSTALL_PREFIX set in prj.conf
   if(DEFINED CONFIG_NROS_INSTALL_PREFIX AND NOT CONFIG_NROS_INSTALL_PREFIX STREQUAL "")
     find_program(_NROS_ZEPHYR_CODEGEN_TOOL nros-codegen
@@ -273,7 +273,7 @@ function(nros_generate_interfaces target)
       get_filename_component(_codegen_bindir "${_NROS_ZEPHYR_CODEGEN_TOOL}" DIRECTORY)
       get_filename_component(_install_prefix "${_codegen_bindir}" DIRECTORY)
       set(_serdes_dir "${_install_prefix}/share/nano-ros/rust/nros-serdes")
-      set(_template_dir "${_nros_repo_dir}/packages/codegen/packages/nros-codegen-c/cmake")
+      set(_template_dir "${_install_prefix}/lib/cmake/NanoRos")
 
       if(NOT EXISTS "${_serdes_dir}/Cargo.toml")
         message(FATAL_ERROR
@@ -297,18 +297,43 @@ function(nros_generate_interfaces target)
         set(_ffi_lib "${_ffi_target_dir}/release/libnano_ros_cpp_ffi_${target}.a")
       endif()
 
-      # Generate Cargo.toml and lib.rs from templates
+      # Generate Cargo.toml from template
       set(FFI_TARGET "${target}")
       set(SERDES_DIR "${_serdes_dir}")
-      set(GENERATED_MOD_RS "${_output_dir}/mod.rs")
 
       configure_file(
         "${_template_dir}/cpp_ffi_Cargo.toml.in"
         "${_ffi_crate_dir}/Cargo.toml"
         @ONLY
       )
+
+      # Generate lib.rs with include!() for cross-package FFI references.
+      # Using include!() instead of mod keeps all types in the same scope,
+      # so cross-package type references resolve correctly.
+      set(NROS_CPP_FFI_INCLUDES "")
+
+      # include!() dependency FFI .rs files (so their types are in scope)
+      foreach(_dep ${_ARG_DEPENDENCIES})
+        if(DEFINED ${_dep}_GENERATED_RS_FILES)
+          foreach(_rs_file ${${_dep}_GENERATED_RS_FILES})
+            get_filename_component(_rs_name "${_rs_file}" NAME)
+            if(NOT _rs_name STREQUAL "mod.rs")
+              string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
+            endif()
+          endforeach()
+        endif()
+      endforeach()
+
+      # include!() own FFI .rs files
+      foreach(_rs_file ${_generated_rs_files})
+        get_filename_component(_rs_name "${_rs_file}" NAME)
+        if(NOT _rs_name STREQUAL "mod.rs")
+          string(APPEND NROS_CPP_FFI_INCLUDES "include!(\"${_rs_file}\");\n")
+        endif()
+      endforeach()
+
       configure_file(
-        "${_template_dir}/cpp_ffi_lib.rs.in"
+        "${_template_dir}/ffi_lib_rs.in"
         "${_ffi_crate_src}/lib.rs"
         @ONLY
       )
