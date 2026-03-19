@@ -128,6 +128,16 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 - Always use leading `/` (e.g., `/target/` not `target/`)
 - When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`
 
+### CMake Path Convention for Examples
+Examples must work when copied outside the nano-ros project tree. **Never hard-code project-relative paths in example CMakeLists.txt files.** This means:
+- No `set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/...")` in example cmake files
+- No path expressions that assume a fixed directory depth within the project
+
+Instead, pass absolute paths from build scripts:
+- **Test scripts** (`freertos_qemu.rs`, justfile): pass `-DCMAKE_TOOLCHAIN_FILE=<abs_path>` on the cmake command line
+- **`CMAKE_PREFIX_PATH`**: always passed from the build script pointing to `build/install/`
+- Paths internal to the example directory tree (e.g., `../../../cmake/freertos-support.cmake` relative to the example's own cmake support directory) are fine
+
 ### Parallel Build Isolation
 Nextest runs test files in parallel. When multiple tests build the same example with different features, use `--target-dir` to isolate output directories (e.g., `target-safety/`, `target-zero-copy/`). See `fixtures/binaries.rs` for examples.
 

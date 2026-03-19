@@ -16,7 +16,6 @@ use nros_tests::count_pattern;
 use nros_tests::fixtures::{
     QemuProcess, ZenohRouter, is_qemu_available, is_zenohd_available, require_zenohd,
 };
-use nros_tests::platform;
 use nros_tests::{TestError, TestResult, project_root};
 use once_cell::sync::OnceCell;
 use std::path::{Path, PathBuf};
@@ -368,12 +367,12 @@ fn test_freertos_all_examples_build() {
 //       -nic user,model=lan9118,...
 //
 // Network topology (slirp user-mode networking):
-//   QEMU node 0 (slirp, 10.0.2.20) ---> 10.0.2.2:7451 --+
-//                                                          |-- zenohd (localhost:7451)
-//   QEMU node 1 (slirp, 10.0.2.21) ---> 10.0.2.2:7451 --+
+//   QEMU node 0 (slirp, 10.0.2.20) ---> 10.0.2.2:7447 --+
+//                                                          |-- zenohd (localhost:7447)
+//   QEMU node 1 (slirp, 10.0.2.21) ---> 10.0.2.2:7447 --+
 //
 // Each QEMU instance has its own isolated 10.0.2.0/24 slirp network.
-// Firmware connects to zenohd via slirp gateway 10.0.2.2:7451 -> host 127.0.0.1:7451.
+// Firmware connects to zenohd via slirp gateway 10.0.2.2:7447 -> host 127.0.0.1:7447.
 // No TAP bridge or root privileges required.
 //
 // Prerequisites:
@@ -394,9 +393,8 @@ fn test_freertos_pubsub_e2e() {
     let talker_bin = build_freertos_talker().expect("Failed to build talker");
     let listener_bin = build_freertos_listener().expect("Failed to build listener");
 
-    // Start zenohd (firmware connects via slirp gateway to host)
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    // Start zenohd on fixed port 7447 (firmware connects via slirp gateway 10.0.2.2:7447 -> localhost)
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start listener QEMU first (subscriber before publisher)
     eprintln!("Starting listener QEMU (slirp)...");
@@ -433,8 +431,8 @@ fn test_freertos_pubsub_e2e() {
         panic!(
             "FreeRTOS pubsub E2E failed — listener did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - zenohd reachable on platform port 7451\n\
-             - QEMU slirp networking forwards 10.0.2.2:7451 -> host\n\
+             - zenohd reachable on localhost:7447\n\
+             - QEMU slirp networking forwards 10.0.2.2:7447 -> host localhost:7447\n\
              - Firmware built: `just build-examples-freertos`"
         );
     }
@@ -465,8 +463,7 @@ fn test_freertos_service_e2e() {
     let server_bin = build_freertos_service_server().expect("Failed to build service server");
     let client_bin = build_freertos_service_client().expect("Failed to build service client");
 
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start server first
     eprintln!("Starting service server QEMU (slirp)...");
@@ -524,8 +521,8 @@ fn test_freertos_service_e2e() {
         panic!(
             "FreeRTOS service E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - zenohd reachable on platform port 7451\n\
-             - QEMU slirp networking forwards 10.0.2.2:7451 -> host\n\
+             - zenohd reachable on localhost:7447\n\
+             - QEMU slirp networking forwards 10.0.2.2:7447 -> host localhost:7447\n\
              - Firmware built: `just build-examples-freertos`"
         );
     } else {
@@ -550,8 +547,7 @@ fn test_freertos_action_e2e() {
     let server_bin = build_freertos_action_server().expect("Failed to build action server");
     let client_bin = build_freertos_action_client().expect("Failed to build action client");
 
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd on port 7447");
 
     // Start action server first
     eprintln!("Starting action server QEMU (slirp)...");
@@ -603,8 +599,8 @@ fn test_freertos_action_e2e() {
         panic!(
             "FreeRTOS action E2E failed — client did not reach readiness.\n\
              This is an environment issue. Verify:\n\
-             - zenohd reachable on platform port 7451\n\
-             - QEMU slirp networking forwards 10.0.2.2:7451 -> host\n\
+             - zenohd reachable on localhost:7447\n\
+             - QEMU slirp networking forwards 10.0.2.2:7447 -> host localhost:7447\n\
              - Firmware built: `just build-examples-freertos`"
         );
     } else {
@@ -655,19 +651,26 @@ fn build_freertos_cpp_example(name: &str, binary_name: &str) -> TestResult<PathB
     let build_dir = example_dir.join("build");
     std::fs::create_dir_all(&build_dir).ok();
 
-    // cmake configure — pass CMAKE_PREFIX_PATH to the install layout
     let prefix_path = format!(
         "-DCMAKE_PREFIX_PATH={}",
         root.join("build/install").display()
     );
+    let toolchain_file = format!(
+        "-DCMAKE_TOOLCHAIN_FILE={}",
+        root.join("cmake/toolchain/arm-freertos-armcm3.cmake")
+            .display()
+    );
+
+    // cmake configure — pass CMAKE_PREFIX_PATH and toolchain via build script
     let output = duct::cmd!(
         "cmake",
         "-S",
         &example_dir,
         "-B",
         &build_dir,
-        "-DCMAKE_BUILD_TYPE=Release",
-        &prefix_path
+        &prefix_path,
+        &toolchain_file,
+        "-DCMAKE_BUILD_TYPE=Release"
     )
     .stderr_to_stdout()
     .stdout_capture()
@@ -828,8 +831,7 @@ fn test_freertos_cpp_pubsub_e2e() {
     let talker_bin = build_freertos_cpp_talker().expect("Failed to build C++ talker");
     let listener_bin = build_freertos_cpp_listener().expect("Failed to build C++ listener");
 
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
     eprintln!("Starting C++ listener QEMU (slirp)...");
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
@@ -877,8 +879,7 @@ fn test_freertos_cpp_service_e2e() {
     let client_bin =
         build_freertos_cpp_service_client().expect("Failed to build C++ service client");
 
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
     eprintln!("Starting C++ service server QEMU (slirp)...");
     let mut server =
@@ -949,19 +950,26 @@ fn build_freertos_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf
     let build_dir = example_dir.join("build");
     std::fs::create_dir_all(&build_dir).ok();
 
-    // cmake configure — pass CMAKE_PREFIX_PATH to the install layout
     let prefix_path = format!(
         "-DCMAKE_PREFIX_PATH={}",
         root.join("build/install").display()
     );
+    let toolchain_file = format!(
+        "-DCMAKE_TOOLCHAIN_FILE={}",
+        root.join("cmake/toolchain/arm-freertos-armcm3.cmake")
+            .display()
+    );
+
+    // cmake configure — pass CMAKE_PREFIX_PATH and toolchain via build script
     let output = duct::cmd!(
         "cmake",
         "-S",
         &example_dir,
         "-B",
         &build_dir,
-        "-DCMAKE_BUILD_TYPE=Release",
-        &prefix_path
+        &prefix_path,
+        &toolchain_file,
+        "-DCMAKE_BUILD_TYPE=Release"
     )
     .stderr_to_stdout()
     .stdout_capture()
@@ -1146,8 +1154,7 @@ fn test_freertos_c_pubsub_e2e() {
     let talker_bin = build_freertos_c_talker().expect("Failed to build C talker");
     let listener_bin = build_freertos_c_listener().expect("Failed to build C listener");
 
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
     eprintln!("Starting C listener QEMU (slirp)...");
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
@@ -1190,8 +1197,7 @@ fn test_freertos_c_service_e2e() {
     let server_bin = build_freertos_c_service_server().expect("Failed to build C service server");
     let client_bin = build_freertos_c_service_client().expect("Failed to build C service client");
 
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
     eprintln!("Starting C service server QEMU (slirp)...");
     let mut server =
@@ -1237,8 +1243,7 @@ fn test_freertos_c_action_e2e() {
     let server_bin = build_freertos_c_action_server().expect("Failed to build C action server");
     let client_bin = build_freertos_c_action_client().expect("Failed to build C action client");
 
-    let _zenohd =
-        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+    let _zenohd = ZenohRouter::start(7447).expect("Failed to start zenohd");
 
     eprintln!("Starting C action server QEMU (slirp)...");
     let mut server =

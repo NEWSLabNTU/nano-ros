@@ -1,6 +1,4 @@
 cmake_minimum_required(VERSION 3.22)
-set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/armv7a-nuttx-eabi.cmake"
-    CACHE FILEPATH "")
 project(nuttx_cpp_listener LANGUAGES C CXX)
 
 find_package(NanoRos CONFIG REQUIRED)
