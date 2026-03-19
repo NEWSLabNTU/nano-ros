@@ -111,6 +111,19 @@ if(NOT TARGET NanoRos::NanoRos)
     INTERFACE_INCLUDE_DIRECTORIES "${_nros_c_include}"
   )
 
+  # Propagate the platform compile definition so that generated C code
+  # (and user code) sees the correct NROS_PLATFORM_* macro.
+  if(NANO_ROS_PLATFORM STREQUAL "posix")
+    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_PLATFORM_POSIX)
+  elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
+    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_PLATFORM_FREERTOS)
+  elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
+    set_property(TARGET NanoRos::NanoRos APPEND PROPERTY
+      INTERFACE_COMPILE_DEFINITIONS NROS_PLATFORM_NUTTX)
+  endif()
+
   if(UNIX AND NOT APPLE)
     if(NANO_ROS_PLATFORM STREQUAL "posix")
       set_property(TARGET NanoRos::NanoRos APPEND PROPERTY

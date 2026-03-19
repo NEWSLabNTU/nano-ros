@@ -22,7 +22,6 @@
 #include <stddef.h>
 
 #include "nros/visibility.h"
-#include "nros/platform.h"
 
 #ifdef __cplusplus
 extern "C" {

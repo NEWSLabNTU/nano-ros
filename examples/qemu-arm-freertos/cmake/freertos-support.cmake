@@ -151,7 +151,6 @@ set(FREERTOS_STARTUP_INCLUDES
 add_library(freertos_platform INTERFACE)
 target_link_libraries(freertos_platform INTERFACE
     lan9118_lwip lwip freertos_kernel
-    c nosys gcc
 )
 
 # Linker script
@@ -159,17 +158,9 @@ set(FREERTOS_LINKER_SCRIPT "${_BOARD_CONFIG_DIR}/mps2_an385.ld" CACHE INTERNAL "
 target_link_options(freertos_platform INTERFACE
     "-T${FREERTOS_LINKER_SCRIPT}"
     "-Wl,--gc-sections"
+    "-nostartfiles"
+    # nosys.specs ensures --start-group ordering: -lgcc -lc -lnosys --end-group
+    # This is required for correct symbol resolution when Rust static libs are
+    # present — manual -lc -lnosys ordering does not work reliably in that case.
+    "--specs=nosys.specs"
 )
-
-# Newlib library search paths (multilib-correct)
-execute_process(
-    COMMAND arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb --print-file-name=libc.a
-    OUTPUT_VARIABLE _LIBC_PATH OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-get_filename_component(_LIBC_DIR "${_LIBC_PATH}" DIRECTORY)
-execute_process(
-    COMMAND arm-none-eabi-gcc -mcpu=cortex-m3 -mthumb --print-file-name=libgcc.a
-    OUTPUT_VARIABLE _LIBGCC_PATH OUTPUT_STRIP_TRAILING_WHITESPACE
-)
-get_filename_component(_LIBGCC_DIR "${_LIBGCC_PATH}" DIRECTORY)
-target_link_directories(freertos_platform INTERFACE "${_LIBC_DIR}" "${_LIBGCC_DIR}")
