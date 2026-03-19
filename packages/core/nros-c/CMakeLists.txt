@@ -77,5 +77,6 @@ install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
 install(FILES
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosConfig.cmake"
     "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCTargets.cmake"
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosReadConfig.cmake"
     DESTINATION lib/cmake/NanoRos
 )

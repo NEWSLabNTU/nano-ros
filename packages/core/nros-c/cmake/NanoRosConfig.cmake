@@ -25,6 +25,9 @@ Functions
 ``nros_generate_interfaces(<target> <files>... [LANGUAGE C|CPP] [DEPENDENCIES ...] [SKIP_INSTALL])``
   Generate C or C++ bindings for ROS 2 .msg / .srv / .action files.
 
+``nano_ros_read_config(<config_file>)``
+  Read a network/zenoh ``config.toml`` file and set ``NROS_CONFIG_*`` variables.
+
 #]=======================================================================]
 
 get_filename_component(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../.." ABSOLUTE)
@@ -32,5 +35,6 @@ get_filename_component(_NANO_ROS_PREFIX "${CMAKE_CURRENT_LIST_DIR}/../../.." ABS
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosCppTargets.cmake")
 include("${CMAKE_CURRENT_LIST_DIR}/NanoRosGenerateInterfaces.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/NanoRosReadConfig.cmake")
 
 set(NanoRos_FOUND TRUE)
