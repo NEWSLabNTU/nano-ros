@@ -37,7 +37,7 @@ just test-unit          # Unit tests + Miri (no external deps)
 just test-qemu          # QEMU bare-metal tests (needs qemu-system-arm)
 just test-qemu-esp32    # ESP32-C3 QEMU tests (needs qemu-system-riscv32 + espflash)
 just test-integration   # All Rust integration tests (needs zenohd)
-just test-zephyr        # Zephyr E2E tests (needs west + TAP network)
+just test-zephyr        # Zephyr E2E tests (needs west + Zephyr workspace)
 just test-ros2          # ROS 2 interop tests (needs ROS 2 + rmw_zenoh_cpp)
 just test-c             # C API tests (needs cmake + zenohd)
 just test-docker-qemu   # QEMU networked tests in Docker (needs docker)
@@ -106,11 +106,11 @@ Tests on QEMU Cortex-M3 emulator:
 Tests on QEMU ESP32-C3 emulator (Espressif fork):
 - Build verification (nightly toolchain + zenoh-pico RISC-V)
 - Boot test (BSP banner via UART)
-- Networked E2E (talker → listener via zenohd + TAP)
+- Networked E2E (talker → listener via zenohd + slirp)
 
 **Requirements:** `qemu-system-riscv32` (Espressif fork), `espflash`, nightly toolchain, `riscv32imc-unknown-none-elf` target, zenoh-pico RISC-V library
 
-For networked tests: TAP interfaces (`sudo ./scripts/qemu/setup-network.sh`), zenohd
+For networked tests: zenohd (no TAP/sudo needed — uses slirp user-mode networking)
 
 ```bash
 just test-qemu-esp32    # Run all ESP32 QEMU tests
@@ -243,9 +243,9 @@ just test-c-xrce verbose  # Verbose output
 ### zephyr (shell-based)
 Tests Zephyr native_sim integration:
 - Zephyr talker → native subscriber
-- TAP network communication
+- Networked E2E via zenohd
 
-**Requirements:** West workspace, TAP network interface
+**Requirements:** West workspace, zenohd
 
 ```bash
 # Setup (one time)
@@ -356,67 +356,74 @@ fn test_my_feature(zenohd_unique: ZenohRouter) {
 
 ### QEMU Networked Test Practices
 
-When writing QEMU tests that involve network communication (pub/sub via zenohd + TAP), follow these rules to avoid flaky tests:
+QEMU tests use **slirp (user-mode) networking** — each QEMU instance has its own isolated NAT stack. No TAP devices, bridges, or `sudo` required. Each platform has a dedicated zenohd port so platforms run in parallel.
 
-**1. Each QEMU peer must use a different TAP device.**
-
-Never share a TAP device between two QEMU instances. Each peer gets its own TAP interface on the bridge:
-
+**Network topology (slirp):**
 ```
-Talker:   tap-qemu0, MAC 02:00:00:00:00:01, IP 192.0.3.10
-Listener: tap-qemu1, MAC 02:00:00:00:00:02, IP 192.0.3.11
-Bridge:   qemu-br, IP 192.0.3.1 (zenohd listens here)
+QEMU node 0 (slirp, 10.0.2.x) ---> 10.0.2.2:<port> --+
+                                                        |-- zenohd (127.0.0.1:<port>)
+QEMU node 1 (slirp, 10.0.2.y) ---> 10.0.2.2:<port> --+
 ```
 
-This applies to all QEMU platforms (ARM MPS2-AN385 and ESP32-C3).
+**Per-platform zenohd ports** (defined in `nros_tests::platform`):
+| Platform | Port |
+|----------|------|
+| bare-metal | 7450 |
+| FreeRTOS | 7451 |
+| NuttX | 7452 |
+| ThreadX RISC-V | 7453 |
+| ESP32 | 7454 |
+| ThreadX Linux | 7455 |
+| Zephyr | 7456 |
 
-**2. Start the subscriber first, then the publisher.**
+**1. Start the subscriber first, then the publisher.**
 
 The subscriber must be running and have registered its subscription with zenohd before the publisher starts sending. Otherwise messages are lost because zenoh doesn't buffer for unknown subscribers.
 
-**3. Add stabilization delay between subscription and publish.**
+**2. Add stabilization delay between subscription and publish.**
 
-After the subscriber reports it's connected and subscribed, wait 5 seconds before starting the publisher. This gives zenohd time to propagate the subscription to other sessions.
+After the subscriber reports it's connected and subscribed, wait 5–10 seconds before starting the publisher. This gives zenohd time to propagate the subscription to other sessions.
 
-**4. Verify zenohd is reachable on the bridge IP, not just localhost.**
+**3. Use the platform port constant, not a hardcoded port.**
 
-QEMU instances connect to zenohd via the bridge IP (e.g., `192.0.3.1:7447`), not `127.0.0.1`. Always verify reachability on the bridge IP:
-
-```rust
-assert!(wait_for_addr("192.0.3.1:7447", Duration::from_secs(5)));
-```
-
-**5. Wait for port to be free before starting zenohd on a fixed port.**
-
-If firmware hardcodes a zenoh locator (e.g., `tcp/192.0.3.1:7447`), the port is fixed. Check that no prior zenohd is still holding the port:
+Each platform's zenohd port is defined in `nros_tests::platform`. Use it consistently:
 
 ```rust
-assert!(wait_for_port_free(7447, Duration::from_secs(10)));
+use nros_tests::platform;
+let _zenohd = ZenohRouter::start(platform::FREERTOS.zenohd_port)
+    .expect("Failed to start zenohd");
 ```
 
-**6. Use nextest test groups with `max-threads = 1` for port-sharing tests.**
+**4. Use nextest test groups with `max-threads = 1` per platform.**
 
-Tests that share a fixed port (like 7447) must run sequentially. Configure this in `.config/nextest.toml`:
+Each platform has its own test group in `.config/nextest.toml`. Tests within a platform run serially (one QEMU pair at a time), but different platforms run in parallel:
 
 ```toml
-[test-groups.esp32-emulator]
+[test-groups.qemu-freertos]
 max-threads = 1
 
 [[profile.default.overrides]]
-filter = "binary(esp32_emulator)"
-test-group = "esp32-emulator"
+filter = "binary(freertos_qemu)"
+test-group = "qemu-freertos"
+```
+
+**5. Bridge-networked platforms use `start_on("0.0.0.0", ...)`.**
+
+ThreadX Linux (veth) and Zephyr (TAP) use bridge networking, not slirp. Their zenohd must bind to `0.0.0.0` instead of `127.0.0.1`:
+
+```rust
+let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::ZEPHYR.zenohd_port)
+    .expect("Failed to start zenohd");
 ```
 
 **Example E2E test ordering:**
 
 ```
-1. Verify port 7447 is free
-2. Start zenohd on 0.0.0.0:7447
-3. Verify zenohd reachable on bridge IP 192.0.3.1:7447
-4. Start listener on tap-qemu1, wait for "Waiting for messages..."
-5. Sleep 5s (subscription propagation)
-6. Start talker on tap-qemu0, wait for "Done publishing..."
-7. Verify listener received messages
+1. Start zenohd on platform port (e.g., 127.0.0.1:7451 for FreeRTOS)
+2. Start listener QEMU (slirp), wait for "Waiting for messages..."
+3. Sleep 10s (boot + network init + subscription propagation)
+4. Start talker QEMU (slirp), wait for "Done publishing..."
+5. Verify listener received messages
 ```
 
 ### Test Utilities
@@ -468,11 +475,11 @@ ros2-interop-tests:
 |------------|---------|--------------|
 | Unit tests | `just test-unit` | None |
 | QEMU ARM tests | `just test-qemu` | qemu-system-arm |
-| QEMU ESP32 tests | `just test-qemu-esp32` | qemu-system-riscv32 + espflash + TAP |
+| QEMU ESP32 tests | `just test-qemu-esp32` | qemu-system-riscv32 + espflash + zenohd |
 | Integration tests | `just test-integration` | zenohd |
 | XRCE-DDS tests | `just test-xrce` | XRCE Agent + socat |
 | XRCE ↔ ROS 2 interop | `just test-xrce-ros2` | XRCE Agent + ROS 2 + rmw_fastrtps |
-| Zephyr tests | `just test-zephyr` | west + TAP |
+| Zephyr tests | `just test-zephyr` | west + zenohd |
 | ROS 2 zenoh interop | `just test-ros2` | ROS 2 + rmw_zenoh |
 | C API tests (zenoh) | `just test-c` | cmake + zenohd |
 | C API tests (XRCE) | `just test-c-xrce` | cmake + XRCE Agent |
@@ -505,8 +512,7 @@ Tests that require ROS 2 or XRCE Agent will gracefully skip if prerequisites are
 - Check RISC-V target: `rustup +nightly target list --installed | grep riscv32imc`
 - Check espflash: `espflash --version`
 - Check zenoh-pico RISC-V: `ls build/esp32-zenoh-pico/libzenohpico.a`
-- Check TAP interfaces: `ip link show tap-qemu0 && ip link show tap-qemu1`
-- If port 7447 is busy: `pkill -x zenohd` and wait for TIME_WAIT to expire
+- If ESP32 port (7454) is busy: `pkill -x zenohd` and wait for TIME_WAIT to expire
 
 ## Migration from Shell Scripts
 
