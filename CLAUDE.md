@@ -56,8 +56,8 @@ just test-miri          # Miri UB detection
 just test-qemu          # QEMU bare-metal tests
 just test-integration   # Rust integration tests (builds zenohd automatically)
 just test               # unit + miri + qemu + integration
-just test-zephyr        # Zephyr E2E (needs west + TAP)
-just test-zephyr-xrce   # Zephyr E2E — XRCE (needs west + TAP + Agent)
+just test-zephyr        # Zephyr E2E (needs west + TAP bridge: sudo ./scripts/zephyr/setup-network.sh)
+just test-zephyr-xrce   # Zephyr E2E — XRCE (needs west + TAP bridge + Agent)
 just test-ros2          # ROS 2 interop (needs ROS 2 + rmw_zenoh)
 just test-c             # C API tests (needs cmake)
 just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + arm-none-eabi-gcc)
@@ -111,11 +111,12 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 - See `tests/README.md` for full test infrastructure docs
 
 ### QEMU Networked Test Rules
-- **Each QEMU peer must use a different TAP device** (talker on `tap-qemu0`, listener on `tap-qemu1`)
+- **Slirp networking** — QEMU platforms (bare-metal, FreeRTOS, NuttX, ThreadX RISC-V, ESP32) use slirp user-mode networking. No TAP devices, bridges, or `sudo` needed.
+- **Per-platform zenohd ports** — each platform has a fixed port in `nros_tests::platform` (baremetal=7450, freertos=7451, nuttx=7452, threadx-riscv=7453, esp32=7454, threadx-linux=7455, zephyr=7456). Use `ZenohRouter::start(platform::FREERTOS.zenohd_port)`, not hardcoded ports.
+- **Bridge-networked platforms** — Zephyr (TAP) and ThreadX Linux (veth) use bridge networking and need `ZenohRouter::start_on("0.0.0.0", port)` instead of `start(port)`.
 - **Start subscriber first, then publisher.** Zenoh doesn't buffer for unknown subscribers.
-- **5s stabilization delay** between subscriber connection and publisher start
-- **Verify zenohd on bridge IP** (e.g., `192.0.3.1:7447`), not just localhost
-- **Use `max-threads = 1` nextest test groups** for tests sharing a fixed zenoh port
+- **5–10s stabilization delay** between subscriber connection and publisher start
+- **Per-platform nextest groups** — each platform has its own `max-threads = 1` group (e.g., `qemu-freertos`). Platforms run in parallel; tests within a platform are serial.
 
 ### Temporary Files
 - Create in `$project/tmp/` (git-ignored), not `/tmp`
