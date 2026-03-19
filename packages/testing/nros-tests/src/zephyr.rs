@@ -573,6 +573,11 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
         Err(_) => install_bin.display().to_string(),
     };
 
+    // Pass CMAKE_PREFIX_PATH so nros_generate_interfaces() finds nros-codegen
+    let cmake_prefix = format!(
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
+    );
     let output = Command::new("west")
         .args([
             "build",
@@ -584,6 +589,7 @@ pub fn build_zephyr_example(example_name: &str, platform: ZephyrPlatform) -> Tes
             "auto",
         ])
         .arg(&example_path)
+        .args(["--", &cmake_prefix])
         .current_dir(&workspace)
         .env("ZEPHYR_BASE", workspace.join("zephyr"))
         .env("PATH", &path_env)

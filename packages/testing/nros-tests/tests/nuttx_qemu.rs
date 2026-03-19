@@ -757,7 +757,12 @@ fn build_nuttx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
     let build_dir = example_dir.join("build");
     std::fs::create_dir_all(&build_dir).ok();
 
-    let output = duct::cmd!("cmake", "-S", &example_dir, "-B", &build_dir)
+    // cmake configure — pass CMAKE_PREFIX_PATH to the install layout
+    let prefix_path = format!(
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
+    );
+    let output = duct::cmd!("cmake", "-S", &example_dir, "-B", &build_dir, &prefix_path)
         .stderr_to_stdout()
         .stdout_capture()
         .unchecked()
