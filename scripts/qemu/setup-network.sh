@@ -1,8 +1,14 @@
 #!/bin/bash
-# Setup bridge network for QEMU bare-metal instances
+# Setup bridge network for QEMU instances and Zephyr/ThreadX Linux tests
 #
-# This script creates a Linux bridge with multiple TAP interfaces,
-# allowing multiple QEMU mps2-an385 instances to communicate via zenoh.
+# NOTE: Most QEMU platform tests (bare-metal, FreeRTOS, NuttX, ThreadX RISC-V,
+# ESP32) use slirp (user-mode) networking and do NOT need this script.
+# This bridge setup is still required for:
+#   - Zephyr tests (just test-zephyr) — TAP-based native_sim networking
+#   - ThreadX Linux tests (just test-threadx-linux) — veth pairs for AF_PACKET
+#   - Manual development/debugging with TAP-based QEMU instances
+#
+# This script creates a Linux bridge with TAP interfaces and veth pairs.
 #
 # Network topology:
 #   QEMU talker (192.0.3.10/tap-qemu0) --+
