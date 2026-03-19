@@ -509,6 +509,7 @@ fn main() {
     println!("cargo:rerun-if-changed=zenoh-pico/include/zenoh-pico/system/platform/unix.h");
     println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/system.c");
     println!("cargo:rerun-if-changed=zenoh-pico/src/system/freertos/lwip/network.c");
+    println!("cargo:rerun-if-changed=zenoh-pico/src/net/primitives.c");
     println!("cargo:rerun-if-changed=c/zenoh-pico-version.h.in");
     println!("cargo:rerun-if-changed=zenoh-pico/version.txt");
     println!("cargo:rerun-if-changed=src/ffi.rs");
