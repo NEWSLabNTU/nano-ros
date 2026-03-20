@@ -1,0 +1,22 @@
+cmake_minimum_required(VERSION 3.22)
+project(threadx_c_service_client LANGUAGES C CXX)
+
+find_package(NanoRos CONFIG REQUIRED)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/threadx-support.cmake")
+
+nros_generate_interfaces(example_interfaces "srv/AddTwoInts.srv" LANGUAGE C SKIP_INSTALL)
+
+add_executable(threadx_c_service_client src/main.c ${THREADX_STARTUP_SOURCE})
+target_include_directories(threadx_c_service_client PRIVATE ${THREADX_STARTUP_INCLUDES})
+nano_ros_read_config("${CMAKE_CURRENT_SOURCE_DIR}/config.toml")
+target_compile_definitions(threadx_c_service_client PRIVATE
+    "APP_IP={${NROS_CONFIG_IP}}"
+    "APP_MAC={${NROS_CONFIG_MAC}}"
+    "APP_GATEWAY={${NROS_CONFIG_GATEWAY}}"
+    "APP_NETMASK={${NROS_CONFIG_NETMASK}}"
+    "APP_INTERFACE=\"veth-tx1\""
+    "APP_ZENOH_LOCATOR=\"${NROS_CONFIG_ZENOH_LOCATOR}\""
+    "APP_DOMAIN_ID=${NROS_CONFIG_DOMAIN_ID}"
+)
+target_link_libraries(threadx_c_service_client PRIVATE
+    example_interfaces__nano_ros_c NanoRos::NanoRos threadx_platform)
