@@ -1,15 +1,15 @@
 # nros Docker Compose Configuration
 #
 # Usage:
-#   docker compose -f docker/docker-compose.yml up -d qemu
-#   docker compose -f docker/docker-compose.yml exec qemu bash
+#   just docker-build             # Build the image
+#   just docker-shell             # Interactive dev shell
+#   just docker-test <recipe>     # Run tests with network privileges
 #
-# Or use the just recipes:
-#   just docker-build
-#   just docker-shell
+# The test service runs as root for network setup (veth, bridges, setcap),
+# then drops to the host user (HOST_UID/HOST_GID) for the actual tests.
 
 services:
-  # QEMU ARM development environment
+  # Interactive development shell (no special capabilities)
   qemu:
     build:
       context: ..
@@ -17,33 +17,47 @@ services:
     image: nano-ros-qemu:latest
     container_name: nano-ros-qemu
     hostname: nano-ros-qemu
-
-    # Mount the repository
     volumes:
       - ..:/work
-      # Cache cargo registry for faster rebuilds
       - cargo-registry:/cargo/registry
       - cargo-git:/cargo/git
-
-    # Enable TAP networking (requires --privileged or specific capabilities)
-    # Uncomment for networking tests:
-    # cap_add:
-    #   - NET_ADMIN
-    # devices:
-    #   - /dev/net/tun
-
-    # Keep container running
     stdin_open: true
     tty: true
-
     working_dir: /work
-
-    # Set environment
     environment:
       - TERM=xterm-256color
       - RUST_BACKTRACE=1
 
-  # Zenoh router for testing (optional)
+  # Test runner with network privileges.
+  # Entrypoint: root sets up network → drops to HOST_UID:HOST_GID → runs tests.
+  test:
+    build:
+      context: ..
+      dockerfile: tests/qemu-baremetal/Dockerfile
+    image: nano-ros-qemu:latest
+    hostname: nano-ros-test
+    volumes:
+      - ..:/work
+      - cargo-registry:/cargo/registry
+      - cargo-git:/cargo/git
+    working_dir: /work
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    devices:
+      - /dev/net/tun
+    # ThreadX Linux uses a userspace TCP/IP stack (NetX Duo) over raw AF_PACKET
+    # sockets. Docker's default seccomp profile may restrict some raw socket ops.
+    security_opt:
+      - seccomp:unconfined
+    entrypoint: ["/usr/local/bin/docker-test-entrypoint.sh"]
+    environment:
+      - TERM=xterm-256color
+      - RUST_BACKTRACE=1
+      - HOST_UID
+      - HOST_GID
+
+  # Zenoh router (optional, for manual testing)
   zenohd:
     image: eclipse/zenoh:latest
     container_name: nano-ros-zenohd

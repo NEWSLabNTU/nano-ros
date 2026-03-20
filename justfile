@@ -62,6 +62,20 @@ install-local:
         echo "arm-none-eabi-gcc not found — skipping FreeRTOS ARM Cortex-M3 libraries"
     fi
 
+    # --- ThreadX Linux libraries (zenoh only, when ThreadX SDK available) ---
+    if [ -d "${THREADX_DIR:-external/threadx}/common/inc" ]; then
+        echo "=== Building threadx_linux RMW=zenoh ==="
+        cmake -S . -B "build/cmake-threadx-linux-zenoh" \
+            -DNANO_ROS_RMW="zenoh" \
+            -DNANO_ROS_PLATFORM="threadx_linux" \
+            -DNANO_ROS_BUILD_CODEGEN=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+        cmake --build "build/cmake-threadx-linux-zenoh"
+        cmake --install "build/cmake-threadx-linux-zenoh" --prefix "$PREFIX"
+    else
+        echo "ThreadX SDK not found — skipping ThreadX Linux libraries"
+    fi
+
     echo "Installed to $PREFIX"
 
 # Remove the install prefix and rebuild from scratch.
@@ -2130,6 +2144,19 @@ docker-down:
 docker-exec CMD="bash":
     docker compose -f docker/docker-compose.yml exec qemu {{CMD}}
 
+# Run tests inside a Docker container with network privileges.
+# Root sets up veth pairs, bridges, and binary capabilities.
+# Tests run as the host user (HOST_UID/HOST_GID) — no host setup needed.
+#
+# Examples:
+#   just docker-test test-threadx-linux   # ThreadX Linux E2E (needs CAP_NET_RAW)
+#   just docker-test test-freertos        # FreeRTOS QEMU E2E
+#   just docker-test test                 # All tests
+docker-test RECIPE="test":
+    HOST_UID=$(id -u) HOST_GID=$(id -g) \
+        docker compose -f docker/docker-compose.yml run --rm test \
+        just {{RECIPE}}
+
 # Show Docker help
 docker-help:
     @echo "Docker Development Environment"
@@ -2141,6 +2168,11 @@ docker-help:
     @echo "Interactive shell:"
     @echo "  just docker-shell           # Start container with shell"
     @echo "  just docker-shell-network   # Start with TAP networking support"
+    @echo ""
+    @echo "Run tests in Docker (root network setup, tests as host user):"
+    @echo "  just docker-test                     # Run all tests"
+    @echo "  just docker-test test-threadx-linux   # ThreadX Linux (needs CAP_NET_RAW)"
+    @echo "  just docker-test test-freertos        # FreeRTOS QEMU"
     @echo ""
     @echo "Run commands in Docker:"
     @echo "  just test-docker-qemu       # Run QEMU talker/listener test"

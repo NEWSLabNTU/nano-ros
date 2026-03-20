@@ -53,7 +53,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 # Install gosu for privilege de-escalation (network setup needs root, builds don't)
-RUN apt-get update && apt-get install -y --no-install-recommends gosu && rm -rf /var/lib/apt/lists/*
+# Install sudo + libcap2-bin for capability management inside containers
+RUN apt-get update && apt-get install -y --no-install-recommends gosu sudo libcap2-bin && rm -rf /var/lib/apt/lists/*
 
 # Install Rust in shared paths (not /root, so any user can access the toolchain)
 ENV CARGO_HOME="/cargo"
@@ -70,16 +71,30 @@ RUN rustup target add \
     thumbv8m.main-none-eabi \
     thumbv8m.main-none-eabihf
 
+# Install nightly toolchain (needed for NuttX examples with -Z build-std)
+RUN rustup toolchain install nightly && \
+    rustup component add --toolchain nightly rust-src
+
+# Install RISC-V toolchain (for ThreadX QEMU RISC-V tests)
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    gcc-riscv64-unknown-elf \
+    qemu-system-misc \
+    kconfig-frontends-nox \
+    && rm -rf /var/lib/apt/lists/*
+
 # Install cargo tools
 RUN cargo install cargo-binutils just && \
     rustup component add llvm-tools-preview
+
+# Install cargo-nextest (pre-built binary — much faster than cargo install)
+RUN curl -LsSf https://get.nexte.st/latest/linux | tar zxf - -C /cargo/bin
 
 # Make toolchain readable and writable by all users (must be after all cargo/rustup installs).
 # Writable because rustup may auto-sync channels and install components at runtime.
 RUN chmod -R a+rwX /cargo /rustup
 
-# Install zenohd for networked testing
-RUN curl -L "https://github.com/eclipse-zenoh/zenoh/releases/download/1.2.0/zenoh-1.2.0-x86_64-unknown-linux-gnu-standalone.zip" -o /tmp/zenoh.zip && \
+# Install zenohd for networked testing (must match project-pinned version 1.7.2)
+RUN curl -L "https://github.com/eclipse-zenoh/zenoh/releases/download/1.7.2/zenoh-1.7.2-x86_64-unknown-linux-gnu-standalone.zip" -o /tmp/zenoh.zip && \
     apt-get update && apt-get install -y --no-install-recommends unzip && \
     unzip /tmp/zenoh.zip -d /usr/local/bin && \
     rm /tmp/zenoh.zip && \
@@ -98,7 +113,11 @@ RUN echo "=== QEMU version ===" && qemu-system-arm --version && \
 
 # Default entrypoint drops privileges to HOST_UID:HOST_GID if set.
 # Docker Compose services override this with their own entrypoint.
+# Entrypoints:
+# - docker-user-entrypoint.sh: default (drops to host user, no network setup)
+# - docker-test-entrypoint.sh: for tests (root network setup, then drops to host user)
 COPY tests/qemu-baremetal/docker-user-entrypoint.sh /usr/local/bin/docker-user-entrypoint.sh
-RUN chmod +x /usr/local/bin/docker-user-entrypoint.sh
+COPY docker/test-entrypoint.sh /usr/local/bin/docker-test-entrypoint.sh
+RUN chmod +x /usr/local/bin/docker-user-entrypoint.sh /usr/local/bin/docker-test-entrypoint.sh
 ENTRYPOINT ["/usr/local/bin/docker-user-entrypoint.sh"]
 CMD ["/bin/bash"]
