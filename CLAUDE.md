@@ -130,14 +130,18 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 - When adding `--target-dir` for build isolation, add the dir to the example's `.gitignore`
 
 ### CMake Path Convention for Examples
-Examples must work when copied outside the nano-ros project tree. **Never hard-code project-relative paths in example CMakeLists.txt files.** This means:
+Examples must work when copied outside the nano-ros project tree. **Never hard-code project-relative paths in example CMakeLists.txt or support cmake files.** This means:
 - No `set(CMAKE_TOOLCHAIN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/../../../cmake/toolchain/...")` in example cmake files
 - No path expressions that assume a fixed directory depth within the project
+- No heuristic search for the project root (e.g., `get_filename_component(_ROOT "${CMAKE_CURRENT_LIST_FILE}/../../.." ABSOLUTE)`) in support cmake modules
+- No defaulting SDK paths to `${_ROOT}/external/<sdk>` — all external SDK paths must be passed explicitly
 
 Instead, pass absolute paths from build scripts:
-- **Test scripts** (`freertos_qemu.rs`, justfile): pass `-DCMAKE_TOOLCHAIN_FILE=<abs_path>` on the cmake command line
+- **Test scripts** (`freertos_qemu.rs`, justfile): pass `-DCMAKE_TOOLCHAIN_FILE=<abs_path>`, `-DTHREADX_DIR=<abs_path>`, etc. on the cmake command line
 - **`CMAKE_PREFIX_PATH`**: always passed from the build script pointing to `build/install/`
-- Paths internal to the example directory tree (e.g., `../../../cmake/freertos-support.cmake` relative to the example's own cmake support directory) are fine
+- **SDK paths** (`THREADX_DIR`, `NETX_DIR`, `FREERTOS_DIR`, `LWIP_DIR`, `NUTTX_DIR`): always passed as `-D` variables or env vars from the build script, never defaulted relative to the project tree
+- **Board config dirs** (`THREADX_CONFIG_DIR`, `FREERTOS_CONFIG_DIR`): passed as `-D` from the build script
+- Paths internal to the example directory tree (e.g., `../../../cmake/freertos-support.cmake` relative to the example's own cmake support directory) are fine — these are within the example's portable subtree
 
 ### Parallel Build Isolation
 Nextest runs test files in parallel. When multiple tests build the same example with different features, use `--target-dir` to isolate output directories (e.g., `target-safety/`, `target-zero-copy/`). See `fixtures/binaries.rs` for examples.
@@ -249,7 +253,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
 | 67 | Serial transport + board crate transport abstraction | Complete |
 | 68 | Alloc-free C/C++ bindings + executor simplification | Complete |
-| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1, 69.5, 69.6, 69.9 done) |
+| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1, 69.5, 69.6, 69.7, 69.9 done) |
 | 70 | DDS RMW backend (dust-dds) — POSIX | Complete |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 72 | Per-example config.toml files | In Progress (72.1–72.5 done) |

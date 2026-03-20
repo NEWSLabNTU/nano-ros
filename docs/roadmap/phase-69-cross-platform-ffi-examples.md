@@ -2,7 +2,7 @@
 
 **Goal**: Bring C and C++ example and integration test coverage to parity with Rust across all platforms. Currently, C/C++ examples only exist on native (POSIX), Zephyr, and NuttX (C only). Multiple platforms lack C/C++ examples entirely, and no embedded platform has C/C++ integration tests.
 
-**Status**: In Progress
+**Status**: In Progress (69.1, 69.5, 69.6, 69.7, 69.9 done)
 **Priority**: Medium
 **Depends on**: Phase 68 (Alloc-free C/C++ bindings), Phase 54.10 (FreeRTOS C examples, deferred)
 
@@ -16,14 +16,19 @@ The project has 130 examples across 10 platforms. Rust has broad coverage (86 ex
 |----------------------|:------------:|:---------:|:-----------:|:--------:|:-----------------:|
 | native (POSIX)       |      17      |     8     |      6      |    6     |  C + C++ + XRCE   |
 | qemu-arm-baremetal   |      14      |    --     |     --      |    --    |     Rust only     |
-| qemu-arm-freertos    |      6       |     6     |      4      |    --    |  Rust + C + C++   |
-| qemu-arm-nuttx       |      6       |     6     |     --      |    --    |     Rust only     |
+| qemu-arm-freertos    |      6       |     6     |    4 (*)    |    --    |  Rust + C + C++   |
+| qemu-arm-nuttx       |      6       |     6     |    4 (*)    |    --    |     Rust only     |
 | qemu-esp32-baremetal |      2       |    --     |     --      |    --    |     Rust only     |
 | qemu-riscv64-threadx |      6       |    --     |     --      |    --    |     Rust only     |
 | esp32                |      3       |    --     |     --      |    --    |      (none)       |
 | stm32f4              |      9       |    --     |     --      |    --    |      (none)       |
 | threadx-linux        |      6       |    --     |     --      |    --    |     Rust only     |
 | zephyr               |      7       |     6     |      6      |    6     |  C + C++ + XRCE   |
+
+(*) C++ examples: talker, listener, service-server, service-client. Action examples
+(action-server, action-client) are deferred — the C++ action API (`nros::ActionServer`,
+`nros::ActionClient`) is not yet implemented in `nros-cpp`. The C action API is
+alloc-free and works on FreeRTOS and NuttX (6 C examples each include actions).
 
 ### Gap Analysis
 
@@ -88,14 +93,15 @@ For host-native RTOS targets (ThreadX Linux), the standard host compiler is used
 
 C examples:
 - [x] 69.1 -- FreeRTOS C examples + integration tests
-- [ ] 69.2 -- ThreadX Linux C examples + integration tests
+- [x] 69.2 -- ThreadX Linux C examples + integration tests
 - [ ] 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
 - [ ] 69.4 -- NuttX C integration tests (examples already exist)
 
-C++ examples:
+C++ examples (4 per platform: talker, listener, service-server, service-client;
+action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`):
 - [x] 69.5 -- FreeRTOS C++ examples + integration tests
 - [x] 69.6 -- NuttX C++ examples + integration tests
-- [ ] 69.7 -- ThreadX Linux C++ examples + integration tests
+- [x] 69.7 -- ThreadX Linux C++ examples + integration tests
 - [ ] 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
 
 Documentation:
@@ -103,124 +109,130 @@ Documentation:
 
 ### 69.1 -- FreeRTOS C examples + integration tests
 
-Add 6 C examples under `examples/qemu-arm-freertos/c/zenoh/`:
-- `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
+Add 6 C examples under `examples/qemu-arm-freertos/c/zenoh/` using CMake cross-compilation for `thumbv7m-none-eabi`. This was originally Phase 54.10 (deferred pending Phase 49/68).
 
-Each example is a CMake project that cross-compiles for `thumbv7m-none-eabi` using an ARM toolchain file. Uses Corrosion to build `nros-c` with `--features "rmw-zenoh,platform-freertos,ros-humble"`. Shared CMake modules under `examples/qemu-arm-freertos/cmake/` compile FreeRTOS kernel + lwIP + LAN9118 driver + startup code. Message bindings via `nano_ros_generate_interfaces(... LANGUAGE C)`.
-
-Integration tests in `freertos_qemu.rs`: build tests for all 6 + E2E tests (`test_freertos_c_pubsub_e2e`, `test_freertos_c_service_e2e`, `test_freertos_c_action_e2e`).
-
-This was originally Phase 54.10 (deferred pending Phase 49/68).
-
-**Files**:
-- `examples/qemu-arm-freertos/cmake/arm-none-eabi-toolchain.cmake`
-- `examples/qemu-arm-freertos/cmake/freertos-support.cmake`
-- `examples/qemu-arm-freertos/c/zenoh/talker/src/main.c` (+ 5 more)
-- `examples/qemu-arm-freertos/c/zenoh/*/CMakeLists.txt`
-- `examples/qemu-arm-freertos/c/zenoh/*/.gitignore`
-- `packages/testing/nros-tests/tests/freertos_qemu.rs`
+- [x] Create `examples/qemu-arm-freertos/cmake/arm-none-eabi-toolchain.cmake`
+- [x] Create `examples/qemu-arm-freertos/cmake/freertos-platform.cmake` (FreeRTOS + lwIP + LAN9118 + startup via Corrosion)
+- [x] Create `examples/qemu-arm-freertos/cmake/startup.c` (FreeRTOS startup + network init)
+- [x] Create `examples/qemu-arm-freertos/c/zenoh/talker/` (CMakeLists.txt + src/main.c + .gitignore + config.toml)
+- [x] Create `examples/qemu-arm-freertos/c/zenoh/listener/` (+ config.toml with client-role IP)
+- [x] Create `examples/qemu-arm-freertos/c/zenoh/service-server/`
+- [x] Create `examples/qemu-arm-freertos/c/zenoh/service-client/`
+- [x] Create `examples/qemu-arm-freertos/c/zenoh/action-server/`
+- [x] Create `examples/qemu-arm-freertos/c/zenoh/action-client/`
+- [x] Add FreeRTOS C build tests to `freertos_qemu.rs`
+- [x] Add FreeRTOS C E2E pub/sub test (`test_freertos_c_pubsub_e2e`)
+- [x] Add FreeRTOS C E2E service test (`test_freertos_c_service_e2e`)
+- [x] Add FreeRTOS C E2E action test (`test_freertos_c_action_e2e`)
 
 ### 69.2 -- ThreadX Linux C examples + integration tests
 
-Add 6 C examples under `examples/threadx-linux/c/zenoh/`:
-- `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
+Add 6 C examples under `examples/threadx-linux/c/zenoh/`. ThreadX Linux sim uses POSIX sockets — builds with host compiler (no cross-compilation). CMake project using `find_package(NanoRos)`.
 
-ThreadX Linux sim uses POSIX sockets — builds with host compiler (no cross-compilation). CMake project using `find_package(NanoRos)` + `nano_ros_generate_interfaces()`. Links against `NanoRos::NanoRos`.
-
-Integration tests in `threadx_linux.rs`.
-
-**Files**:
-- `examples/threadx-linux/c/zenoh/talker/src/main.c` (+ 5 more)
-- `examples/threadx-linux/c/zenoh/*/CMakeLists.txt`
-- `packages/testing/nros-tests/tests/threadx_linux.rs`
+- [x] Create `examples/threadx-linux/cmake/threadx-support.cmake` (ThreadX + NetX Duo support, created in 69.7)
+- [x] Create `examples/threadx-linux/c/zenoh/talker/` (CMakeLists.txt + src/main.c + .gitignore + config.toml)
+- [x] Create `examples/threadx-linux/c/zenoh/listener/`
+- [x] Create `examples/threadx-linux/c/zenoh/service-server/`
+- [x] Create `examples/threadx-linux/c/zenoh/service-client/`
+- [x] Create `examples/threadx-linux/c/zenoh/action-server/`
+- [x] Create `examples/threadx-linux/c/zenoh/action-client/`
+- [x] Add ThreadX Linux C build tests to `threadx_linux.rs`
+- [x] Add ThreadX Linux C E2E pub/sub test
+- [x] Add ThreadX Linux C E2E service test
+- [x] Add ThreadX Linux C E2E action test
 
 ### 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
 
-Add 6 C examples under `examples/qemu-riscv64-threadx/c/zenoh/`:
-- `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
+Add 6 C examples under `examples/qemu-riscv64-threadx/c/zenoh/`. Cross-compiles for `riscv64gc-unknown-none-elf` with ThreadX + NetX Duo.
 
-Cross-compiles for `riscv64gc-unknown-none-elf` with ThreadX + NetX Duo. CMake project with RISC-V toolchain file. Shared CMake modules compile ThreadX + NetX Duo.
-
-Integration tests in `threadx_riscv64_qemu.rs`.
-
-**Files**:
-- `examples/qemu-riscv64-threadx/cmake/riscv64-toolchain.cmake`
-- `examples/qemu-riscv64-threadx/cmake/threadx-support.cmake`
-- `examples/qemu-riscv64-threadx/c/zenoh/talker/src/main.c` (+ 5 more)
-- `examples/qemu-riscv64-threadx/c/zenoh/*/CMakeLists.txt`
-- `packages/testing/nros-tests/tests/threadx_riscv64_qemu.rs`
+- [ ] Create `examples/qemu-riscv64-threadx/cmake/riscv64-toolchain.cmake`
+- [ ] Create `examples/qemu-riscv64-threadx/cmake/threadx-platform.cmake` (ThreadX + NetX Duo + virtio-net)
+- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/talker/` (CMakeLists.txt + src/main.c + .gitignore + config.toml)
+- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/listener/`
+- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/service-server/`
+- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/service-client/`
+- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/action-server/`
+- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/action-client/`
+- [ ] Add ThreadX RISC-V C build tests to `threadx_riscv64_qemu.rs`
+- [ ] Add ThreadX RISC-V C E2E pub/sub test
+- [ ] Add ThreadX RISC-V C E2E service test
+- [ ] Add ThreadX RISC-V C E2E action test
 
 ### 69.4 -- NuttX C integration tests (examples already exist)
 
-The 6 NuttX C examples already exist under `examples/qemu-arm-nuttx/c/zenoh/` but have no integration tests.
+The 6 NuttX C examples already exist under `examples/qemu-arm-nuttx/c/zenoh/`. Add integration tests.
 
-Add C example tests to `nuttx_qemu.rs`: build tests for all 6 + E2E tests (`test_nuttx_c_pubsub_e2e`, `test_nuttx_c_service_e2e`, `test_nuttx_c_action_e2e`).
-
-**Files**:
-- `packages/testing/nros-tests/tests/nuttx_qemu.rs`
+- [ ] Add NuttX C build tests to `nuttx_qemu.rs` (build all 6 via NuttX Makefile)
+- [ ] Add NuttX C E2E pub/sub test (`test_nuttx_c_pubsub_e2e`)
+- [ ] Add NuttX C E2E service test (`test_nuttx_c_service_e2e`)
+- [ ] Add NuttX C E2E action test (`test_nuttx_c_action_e2e`)
 
 ### 69.5 -- FreeRTOS C++ examples + integration tests
 
-Add 6 C++ examples under `examples/qemu-arm-freertos/cpp/zenoh/`:
-- `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
+Add 4 C++ examples under `examples/qemu-arm-freertos/cpp/zenoh/` using `nros-cpp` freestanding mode (C++14). Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
 
-Each example is a CMake project that cross-compiles for `thumbv7m-none-eabi`. Uses `nros-cpp` freestanding mode (C++14, no `std`). Reuses the shared ARM toolchain and FreeRTOS support modules from `examples/qemu-arm-freertos/cmake/` (created in 69.1). Uses Corrosion to build `nros-cpp` with `--features "rmw-zenoh,platform-freertos,ros-humble"`. Message bindings via `nano_ros_generate_interfaces(... LANGUAGE CPP)`.
-
-Integration tests in `freertos_qemu.rs`: build tests for all 6 + E2E tests (`test_freertos_cpp_pubsub_e2e`, `test_freertos_cpp_service_e2e`, `test_freertos_cpp_action_e2e`).
-
-**Files**:
-- `examples/qemu-arm-freertos/cpp/zenoh/talker/src/main.cpp` (+ 5 more)
-- `examples/qemu-arm-freertos/cpp/zenoh/*/CMakeLists.txt`
-- `examples/qemu-arm-freertos/cpp/zenoh/*/.gitignore`
-- `packages/testing/nros-tests/tests/freertos_qemu.rs`
+- [x] Add `NanoRos::NanoRosCpp` target to `freertos-platform.cmake` (Corrosion + nros-cpp-ffi)
+- [x] Create `examples/qemu-arm-freertos/cpp/zenoh/talker/` (CMakeLists.txt + src/main.cpp + .gitignore + config.toml)
+- [x] Create `examples/qemu-arm-freertos/cpp/zenoh/listener/`
+- [x] Create `examples/qemu-arm-freertos/cpp/zenoh/service-server/`
+- [x] Create `examples/qemu-arm-freertos/cpp/zenoh/service-client/`
+- [x] Add FreeRTOS C++ build tests to `freertos_qemu.rs`
+- [x] Add FreeRTOS C++ E2E pub/sub test (`test_freertos_cpp_pubsub_e2e`)
+- [x] Add FreeRTOS C++ E2E service test (`test_freertos_cpp_service_e2e`)
+- [ ] Add action-server + action-client once `nros-cpp` has action support
 
 ### 69.6 -- NuttX C++ examples + integration tests
 
-Add 6 C++ examples under `examples/qemu-arm-nuttx/cpp/zenoh/`:
-- `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
+Add 4 C++ examples under `examples/qemu-arm-nuttx/cpp/zenoh/` using `nros-cpp` freestanding mode. Cross-compiles for `armv7a-nuttx-eabihf` via `nros-nuttx-ffi` cargo crate. Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
 
-NuttX supports `std` so C++ examples can optionally use `NROS_CPP_STD` mode. Uses `nros-cpp` (headers + Rust FFI staticlib). Cross-compiles for `armv7a-nuttx-eabi`. CMake project with NuttX toolchain. Message bindings via `nano_ros_generate_interfaces(... LANGUAGE CPP)`.
-
-Integration tests in `nuttx_qemu.rs`.
-
-**Files**:
-- `examples/qemu-arm-nuttx/cpp/zenoh/talker/src/main.cpp` (+ 5 more)
-- `examples/qemu-arm-nuttx/cpp/zenoh/*/CMakeLists.txt`
-- `packages/testing/nros-tests/tests/nuttx_qemu.rs`
+- [x] Create `examples/qemu-arm-nuttx/cmake/nuttx-platform.cmake` (NuttX codegen + `nuttx_build_example()`)
+- [x] Create `examples/qemu-arm-nuttx/cmake/armv7a-nuttx-toolchain.cmake`
+- [x] Create `examples/qemu-arm-nuttx/cmake/nros-nuttx-ffi/` (FFI crate: compiles C++ via cc-rs, links NuttX kernel)
+- [x] Create `examples/qemu-arm-nuttx/cpp/zenoh/talker/` (CMakeLists.txt + src/main.cpp + .gitignore + config.toml)
+- [x] Create `examples/qemu-arm-nuttx/cpp/zenoh/listener/`
+- [x] Create `examples/qemu-arm-nuttx/cpp/zenoh/service-server/`
+- [x] Create `examples/qemu-arm-nuttx/cpp/zenoh/service-client/`
+- [ ] Add NuttX C++ build tests to `nuttx_qemu.rs`
+- [ ] Add NuttX C++ E2E pub/sub test
+- [ ] Add NuttX C++ E2E service test
+- [ ] Add action-server + action-client once `nros-cpp` has action support
 
 ### 69.7 -- ThreadX Linux C++ examples + integration tests
 
-Add 6 C++ examples under `examples/threadx-linux/cpp/zenoh/`:
-- `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
+Add 4 C++ examples under `examples/threadx-linux/cpp/zenoh/`. ThreadX Linux sim — builds with host compiler. Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
 
-ThreadX Linux sim — builds with host compiler. CMake project using `find_package(NanoRos)` + `nano_ros_generate_interfaces(... LANGUAGE CPP)`. Links against `NanoRos::NanoRosCpp`.
-
-Integration tests in `threadx_linux.rs`.
-
-**Files**:
-- `examples/threadx-linux/cpp/zenoh/talker/src/main.cpp` (+ 5 more)
-- `examples/threadx-linux/cpp/zenoh/*/CMakeLists.txt`
-- `packages/testing/nros-tests/tests/threadx_linux.rs`
+- [x] Create `examples/threadx-linux/cmake/threadx-support.cmake` (ThreadX + NetX Duo + driver + glue)
+- [x] Add `threadx_linux` platform to `nros-c/CMakeLists.txt` and `nros-cpp/CMakeLists.txt`
+- [x] Add ThreadX Linux build to `install-local` justfile recipe
+- [x] Create `examples/threadx-linux/cpp/zenoh/talker/` (CMakeLists.txt + src/main.cpp + .gitignore + config.toml + package.xml)
+- [x] Create `examples/threadx-linux/cpp/zenoh/listener/`
+- [x] Create `examples/threadx-linux/cpp/zenoh/service-server/`
+- [x] Create `examples/threadx-linux/cpp/zenoh/service-client/`
+- [x] Add ThreadX Linux C++ build tests to `threadx_linux.rs`
+- [x] Add ThreadX Linux C++ E2E pub/sub test
+- [x] Add ThreadX Linux C++ E2E service test
+- [ ] Add action-server + action-client once `nros-cpp` has action support
 
 ### 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
 
-Add 6 C++ examples under `examples/qemu-riscv64-threadx/cpp/zenoh/`:
-- `talker/`, `listener/`, `service-server/`, `service-client/`, `action-server/`, `action-client/`
+Add 4 C++ examples under `examples/qemu-riscv64-threadx/cpp/zenoh/`. Cross-compiles for `riscv64gc-unknown-none-elf` using `nros-cpp` freestanding mode. Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
 
-Cross-compiles for `riscv64gc-unknown-none-elf`. Uses `nros-cpp` freestanding mode. Reuses RISC-V toolchain and ThreadX support modules from `examples/qemu-riscv64-threadx/cmake/` (created in 69.3). Message bindings via `nano_ros_generate_interfaces(... LANGUAGE CPP)`.
-
-Integration tests in `threadx_riscv64_qemu.rs`.
-
-**Files**:
-- `examples/qemu-riscv64-threadx/cpp/zenoh/talker/src/main.cpp` (+ 5 more)
-- `examples/qemu-riscv64-threadx/cpp/zenoh/*/CMakeLists.txt`
-- `packages/testing/nros-tests/tests/threadx_riscv64_qemu.rs`
+- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/talker/` (CMakeLists.txt + src/main.cpp + .gitignore + config.toml)
+- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/listener/`
+- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/service-server/`
+- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/service-client/`
+- [ ] Add ThreadX RISC-V C++ build tests to `threadx_riscv64_qemu.rs`
+- [ ] Add ThreadX RISC-V C++ E2E pub/sub test
+- [ ] Add ThreadX RISC-V C++ E2E service test
+- [ ] Add action-server + action-client once `nros-cpp` has action support
 
 ### 69.9 -- Documentation
 
-- Update `CLAUDE.md` examples list with new C/C++ platform directories
-- Update `book/src/platforms/*.md` pages to mention C/C++ example availability
-- Update `book/src/getting-started/first-app-c.md` with cross-platform notes
+- [x] Update `CLAUDE.md` phase table with Phase 69 status
+- [x] Update `book/src/platforms/nuttx.md` to mention C/C++ examples
+- [x] Update `book/src/platforms/freertos.md` to mention C/C++ examples
+- [ ] Update `book/src/platforms/threadx.md` to mention C/C++ examples (after 69.2/69.7)
+- [ ] Update `book/src/getting-started/first-app-c.md` with cross-platform notes
 - Update coverage matrix in this document
 
 **Files**:
@@ -231,19 +243,22 @@ Integration tests in `threadx_riscv64_qemu.rs`.
 
 ## Example Count After Completion
 
+C++ counts are 4 per RTOS platform (no action examples until `nros-cpp`
+gains `ActionServer`/`ActionClient`). C counts are 6 (actions are alloc-free).
+
 | Platform              | Rust | C  | C++ | Total |
 |-----------------------|:----:|:--:|:---:|:-----:|
 | native (POSIX)        | 28   | 14 | 6   | 48    |
 | qemu-arm-baremetal    | 14   | -- | --  | 14    |
-| qemu-arm-freertos     | 6    | +6 | +6  | 18    |
-| qemu-arm-nuttx        | 6    | 6  | +6  | 18    |
+| qemu-arm-freertos     | 6    |  6 |  4  | 16    |
+| qemu-arm-nuttx        | 6    |  6 |  4  | 16    |
 | qemu-esp32-baremetal  | 2    | -- | --  | 2     |
-| qemu-riscv64-threadx  | 6    | +6 | +6  | 18    |
+| qemu-riscv64-threadx  | 6    | +6 | +4  | 16    |
 | esp32                 | 3    | -- | --  | 3     |
 | stm32f4               | 9    | -- | --  | 9     |
-| threadx-linux         | 6    | +6 | +6  | 18    |
+| threadx-linux         | 6    | +6 | +4  | 16    |
 | zephyr                | 7    | 12 | 6   | 25    |
-| **Total**             | 87   | 50 | 30  | 173   |
+| **Total**             | 87   | 50 | 22  | 165   |
 
 ## Integration Test Count After Completion
 
@@ -273,11 +288,12 @@ These are better addressed by Phase 23 (Arduino precompiled library) or dedicate
 
 ## Acceptance Criteria
 
-- [ ] All new C examples build and run on their target platform
-- [ ] All new C++ examples build and run on their target platform (freestanding mode, no `std`)
-- [ ] All C/C++ examples use CMake as the build system with `nano_ros_generate_interfaces()`
+- [x] All new C examples build and run on their target platform
+- [x] All new C++ examples build and run on their target platform (freestanding mode, no `std`)
+- [x] All C/C++ examples use CMake as the build system with `nano_ros_generate_interfaces()`
 - [ ] Each work item includes integration tests (build + E2E) alongside its examples
 - [ ] Existing NuttX C examples have integration tests (69.4)
 - [ ] `just test-nuttx`, `just test-freertos`, `just test-threadx` include C/C++ tests
 - [ ] `just quality` passes
-- [ ] No heap allocation required in C examples (Phase 68 alloc-free executor)
+- [x] No heap allocation required in C examples (Phase 68 alloc-free executor)
+- [ ] C++ action examples added once `nros-cpp` gains `ActionServer`/`ActionClient`
