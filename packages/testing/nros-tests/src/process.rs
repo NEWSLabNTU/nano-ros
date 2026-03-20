@@ -517,7 +517,13 @@ impl Drop for ManagedProcess {
 /// Returns `build/zenohd/zenohd` within the project root.
 /// Build it with `just build-zenohd`.
 pub fn zenohd_binary_path() -> std::path::PathBuf {
-    crate::project_root().join("build/zenohd/zenohd")
+    // Prefer the locally-built zenohd from the submodule
+    let local = crate::project_root().join("build/zenohd/zenohd");
+    if local.exists() {
+        return local;
+    }
+    // Fall back to system-installed zenohd (e.g., inside Docker container)
+    std::path::PathBuf::from("zenohd")
 }
 
 /// Check if the locally-built zenohd is available.

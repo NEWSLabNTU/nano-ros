@@ -90,15 +90,14 @@ fn is_raw_socket_available() -> bool {
     let root = project_root();
     let talker_bin =
         root.join("examples/threadx-linux/rust/zenoh/talker/target/release/threadx-linux-talker");
-    if talker_bin.exists() {
-        if let Ok(output) = std::process::Command::new("getcap")
+    if talker_bin.exists()
+        && let Ok(output) = std::process::Command::new("getcap")
             .arg(&talker_bin)
             .output()
-        {
-            let stdout = String::from_utf8_lossy(&output.stdout);
-            if stdout.contains("cap_net_raw") {
-                return true;
-            }
+    {
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        if stdout.contains("cap_net_raw") {
+            return true;
         }
     }
 
@@ -143,6 +142,12 @@ static THREADX_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static THREADX_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+// C++ binary caches
+static THREADX_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 /// Build a ThreadX Linux example
 fn build_threadx_linux_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
@@ -639,6 +644,717 @@ fn test_threadx_action_e2e() {
         }
         panic!(
             "ThreadX action E2E failed: accepted={}, completed={}",
+            goal_accepted, completed
+        );
+    }
+}
+
+// =============================================================================
+// C++ binary builders (CMake-based)
+// =============================================================================
+
+/// Check if cmake is available
+fn is_cmake_available() -> bool {
+    std::process::Command::new("cmake")
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
+}
+
+/// Skip test if C++ ThreadX prerequisites are not available
+fn require_threadx_cpp() -> bool {
+    if !require_threadx() {
+        return false;
+    }
+    if !is_cmake_available() {
+        eprintln!("Skipping test: cmake not found");
+        return false;
+    }
+    true
+}
+
+fn require_threadx_cpp_e2e() -> bool {
+    if !require_threadx_cpp() {
+        return false;
+    }
+    if !require_veth_bridge() {
+        return false;
+    }
+    if !require_zenohd() {
+        return false;
+    }
+    if !is_raw_socket_available() {
+        eprintln!("Skipping test: CAP_NET_RAW required for ThreadX Linux");
+        return false;
+    }
+    true
+}
+
+/// Build a ThreadX Linux C++ example via CMake
+fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/threadx-linux/cpp/zenoh/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "ThreadX C++ example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    eprintln!("Building threadx-linux/cpp/zenoh/{} (CMake)...", name);
+
+    let build_dir = example_dir.join("build");
+    std::fs::create_dir_all(&build_dir).ok();
+
+    let prefix_path = format!(
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
+    );
+
+    // Resolve SDK paths from env (set by justfile) or default to external/
+    let threadx_dir = std::env::var("THREADX_DIR")
+        .unwrap_or_else(|_| root.join("external/threadx").display().to_string());
+    let netx_dir = std::env::var("NETX_DIR")
+        .unwrap_or_else(|_| root.join("external/netxduo").display().to_string());
+    let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
+        root.join("external/threadx-learn-samples")
+            .display()
+            .to_string()
+    });
+    let config_dir = std::env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
+        root.join("packages/boards/nros-threadx-linux/config")
+            .display()
+            .to_string()
+    });
+    let app_define = root
+        .join("packages/boards/nros-threadx-linux/c/app_define.c")
+        .display()
+        .to_string();
+
+    // cmake configure — ThreadX Linux uses host compiler (no toolchain file)
+    let output = duct::cmd!(
+        "cmake",
+        "-S",
+        &example_dir,
+        "-B",
+        &build_dir,
+        &prefix_path,
+        "-DNANO_ROS_PLATFORM=threadx_linux",
+        &format!("-DTHREADX_DIR={threadx_dir}"),
+        &format!("-DNETX_DIR={netx_dir}"),
+        &format!("-DTHREADX_SAMPLES_DIR={samples_dir}"),
+        &format!("-DTHREADX_CONFIG_DIR={config_dir}"),
+        &format!("-DTHREADX_APP_DEFINE={app_define}"),
+        "-DCMAKE_BUILD_TYPE=Release"
+    )
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run()
+    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake configure failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    // cmake build
+    let output = duct::cmd!("cmake", "--build", &build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake build failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let binary_path = build_dir.join(binary_name);
+
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+fn build_threadx_cpp_talker() -> TestResult<&'static Path> {
+    THREADX_CPP_TALKER_BINARY
+        .get_or_try_init(|| build_threadx_cpp_example("talker", "threadx_cpp_talker"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_cpp_listener() -> TestResult<&'static Path> {
+    THREADX_CPP_LISTENER_BINARY
+        .get_or_try_init(|| build_threadx_cpp_example("listener", "threadx_cpp_listener"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_cpp_service_server() -> TestResult<&'static Path> {
+    THREADX_CPP_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_threadx_cpp_example("service-server", "threadx_cpp_service_server")
+        })
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_cpp_service_client() -> TestResult<&'static Path> {
+    THREADX_CPP_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_threadx_cpp_example("service-client", "threadx_cpp_service_client")
+        })
+        .map(|p| p.as_path())
+}
+
+// =============================================================================
+// C++ Build tests
+// =============================================================================
+
+#[test]
+fn test_threadx_cpp_talker_builds() {
+    if !require_threadx_cpp() {
+        return;
+    }
+    let binary = build_threadx_cpp_talker().expect("Failed to build threadx_cpp_talker");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_cpp_talker at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_cpp_listener_builds() {
+    if !require_threadx_cpp() {
+        return;
+    }
+    let binary = build_threadx_cpp_listener().expect("Failed to build threadx_cpp_listener");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_cpp_listener at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_cpp_service_server_builds() {
+    if !require_threadx_cpp() {
+        return;
+    }
+    let binary =
+        build_threadx_cpp_service_server().expect("Failed to build threadx_cpp_service_server");
+    assert!(binary.exists());
+    eprintln!(
+        "SUCCESS: threadx_cpp_service_server at {}",
+        binary.display()
+    );
+}
+
+#[test]
+fn test_threadx_cpp_service_client_builds() {
+    if !require_threadx_cpp() {
+        return;
+    }
+    let binary =
+        build_threadx_cpp_service_client().expect("Failed to build threadx_cpp_service_client");
+    assert!(binary.exists());
+    eprintln!(
+        "SUCCESS: threadx_cpp_service_client at {}",
+        binary.display()
+    );
+}
+
+// =============================================================================
+// C++ E2E Network tests
+// =============================================================================
+
+#[test]
+fn test_threadx_cpp_pubsub_e2e() {
+    if !require_threadx_cpp_e2e() {
+        return;
+    }
+
+    let talker_bin = build_threadx_cpp_talker().expect("Failed to build C++ talker");
+    let listener_bin = build_threadx_cpp_listener().expect("Failed to build C++ listener");
+
+    let _zenohd = ZenohRouter::start(7455).expect("Failed to start zenohd on port 7455");
+
+    eprintln!("Starting C++ listener...");
+    let mut listener = ManagedProcess::spawn(listener_bin, &[], "threadx-cpp-listener")
+        .expect("Failed to start listener");
+
+    std::thread::sleep(Duration::from_secs(5));
+
+    eprintln!("Starting C++ talker...");
+    let mut talker = ManagedProcess::spawn(talker_bin, &[], "threadx-cpp-talker")
+        .expect("Failed to start talker");
+
+    let listener_output = listener
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+    let talker_output = talker
+        .wait_for_output(Duration::from_secs(15))
+        .unwrap_or_default();
+
+    kill_process_group(talker.handle_mut());
+    kill_process_group(listener.handle_mut());
+
+    eprintln!("C++ Listener output:\n{}", listener_output);
+    eprintln!("C++ Talker output:\n{}", talker_output);
+
+    let received_count = count_pattern(&listener_output, "Received");
+    eprintln!("C++ messages received: {}", received_count);
+    assert!(
+        received_count > 0,
+        "ThreadX C++ pubsub E2E failed — listener received 0 messages"
+    );
+    eprintln!("[PASS] ThreadX C++ pubsub E2E: {} messages", received_count);
+}
+
+#[test]
+fn test_threadx_cpp_service_e2e() {
+    if !require_threadx_cpp_e2e() {
+        return;
+    }
+
+    let server_bin =
+        build_threadx_cpp_service_server().expect("Failed to build C++ service server");
+    let client_bin =
+        build_threadx_cpp_service_client().expect("Failed to build C++ service client");
+
+    let _zenohd = ZenohRouter::start(7455).expect("Failed to start zenohd on port 7455");
+
+    eprintln!("Starting C++ service server...");
+    let mut server = ManagedProcess::spawn(server_bin, &[], "threadx-cpp-server")
+        .expect("Failed to start server");
+
+    std::thread::sleep(Duration::from_secs(5));
+
+    eprintln!("Starting C++ service client...");
+    let mut client = ManagedProcess::spawn(client_bin, &[], "threadx-cpp-client")
+        .expect("Failed to start client");
+
+    std::thread::sleep(Duration::from_secs(10));
+
+    let client_output = client
+        .wait_for_output(Duration::from_secs(30))
+        .unwrap_or_default();
+
+    kill_process_group(server.handle_mut());
+    kill_process_group(client.handle_mut());
+
+    eprintln!("C++ Client output:\n{}", client_output);
+
+    let response_count = count_pattern(&client_output, "Response:");
+    let completed = client_output.contains("All service calls completed");
+    eprintln!(
+        "C++ Responses: {}, completed: {}",
+        response_count, completed
+    );
+
+    assert!(
+        response_count > 0,
+        "ThreadX C++ service E2E failed — 0 responses"
+    );
+    eprintln!(
+        "[PASS] ThreadX C++ service E2E: {} responses",
+        response_count
+    );
+}
+
+// =============================================================================
+// C binary builders (CMake-based)
+// =============================================================================
+
+// C binary caches
+static THREADX_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static THREADX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+/// Skip test if C ThreadX prerequisites are not available
+fn require_threadx_c() -> bool {
+    if !require_threadx() {
+        return false;
+    }
+    if !is_cmake_available() {
+        eprintln!("Skipping test: cmake not found");
+        return false;
+    }
+    true
+}
+
+fn require_threadx_c_e2e() -> bool {
+    if !require_threadx_c() {
+        return false;
+    }
+    if !require_veth_bridge() {
+        return false;
+    }
+    if !require_zenohd() {
+        return false;
+    }
+    if !is_raw_socket_available() {
+        eprintln!("Skipping test: CAP_NET_RAW required for ThreadX Linux");
+        return false;
+    }
+    true
+}
+
+/// Build a ThreadX Linux C example via CMake
+fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+    let root = project_root();
+    let example_dir = root.join(format!("examples/threadx-linux/c/zenoh/{}", name));
+
+    if !example_dir.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "ThreadX C example directory not found: {}",
+            example_dir.display()
+        )));
+    }
+
+    eprintln!("Building threadx-linux/c/zenoh/{} (CMake)...", name);
+
+    let build_dir = example_dir.join("build");
+    std::fs::create_dir_all(&build_dir).ok();
+
+    let prefix_path = format!(
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
+    );
+
+    // Resolve SDK paths from env (set by justfile) or default to external/
+    let threadx_dir = std::env::var("THREADX_DIR")
+        .unwrap_or_else(|_| root.join("external/threadx").display().to_string());
+    let netx_dir = std::env::var("NETX_DIR")
+        .unwrap_or_else(|_| root.join("external/netxduo").display().to_string());
+    let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
+        root.join("external/threadx-learn-samples")
+            .display()
+            .to_string()
+    });
+    let config_dir = std::env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
+        root.join("packages/boards/nros-threadx-linux/config")
+            .display()
+            .to_string()
+    });
+    let app_define = root
+        .join("packages/boards/nros-threadx-linux/c/app_define.c")
+        .display()
+        .to_string();
+
+    // cmake configure — ThreadX Linux uses host compiler (no toolchain file)
+    let output = duct::cmd!(
+        "cmake",
+        "-S",
+        &example_dir,
+        "-B",
+        &build_dir,
+        &prefix_path,
+        "-DNANO_ROS_PLATFORM=threadx_linux",
+        &format!("-DTHREADX_DIR={threadx_dir}"),
+        &format!("-DNETX_DIR={netx_dir}"),
+        &format!("-DTHREADX_SAMPLES_DIR={samples_dir}"),
+        &format!("-DTHREADX_CONFIG_DIR={config_dir}"),
+        &format!("-DTHREADX_APP_DEFINE={app_define}"),
+        "-DCMAKE_BUILD_TYPE=Release"
+    )
+    .stderr_to_stdout()
+    .stdout_capture()
+    .unchecked()
+    .run()
+    .map_err(|e| TestError::BuildFailed(format!("cmake configure: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake configure failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    // cmake build
+    let output = duct::cmd!("cmake", "--build", &build_dir)
+        .stderr_to_stdout()
+        .stdout_capture()
+        .unchecked()
+        .run()
+        .map_err(|e| TestError::BuildFailed(format!("cmake build: {}", e)))?;
+
+    if !output.status.success() {
+        return Err(TestError::BuildFailed(format!(
+            "cmake build failed:\n{}",
+            String::from_utf8_lossy(&output.stdout)
+        )));
+    }
+
+    let binary_path = build_dir.join(binary_name);
+
+    if !binary_path.exists() {
+        return Err(TestError::BuildFailed(format!(
+            "Binary not found after build: {}",
+            binary_path.display()
+        )));
+    }
+
+    Ok(binary_path)
+}
+
+fn build_threadx_c_talker() -> TestResult<&'static Path> {
+    THREADX_C_TALKER_BINARY
+        .get_or_try_init(|| build_threadx_c_example("talker", "threadx_c_talker"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_c_listener() -> TestResult<&'static Path> {
+    THREADX_C_LISTENER_BINARY
+        .get_or_try_init(|| build_threadx_c_example("listener", "threadx_c_listener"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_c_service_server() -> TestResult<&'static Path> {
+    THREADX_C_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| build_threadx_c_example("service-server", "threadx_c_service_server"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_c_service_client() -> TestResult<&'static Path> {
+    THREADX_C_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| build_threadx_c_example("service-client", "threadx_c_service_client"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_c_action_server() -> TestResult<&'static Path> {
+    THREADX_C_ACTION_SERVER_BINARY
+        .get_or_try_init(|| build_threadx_c_example("action-server", "threadx_c_action_server"))
+        .map(|p| p.as_path())
+}
+
+fn build_threadx_c_action_client() -> TestResult<&'static Path> {
+    THREADX_C_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| build_threadx_c_example("action-client", "threadx_c_action_client"))
+        .map(|p| p.as_path())
+}
+
+// =============================================================================
+// C Build tests
+// =============================================================================
+
+#[test]
+fn test_threadx_c_talker_builds() {
+    if !require_threadx_c() {
+        return;
+    }
+    let binary = build_threadx_c_talker().expect("Failed to build threadx_c_talker");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_c_talker at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_c_listener_builds() {
+    if !require_threadx_c() {
+        return;
+    }
+    let binary = build_threadx_c_listener().expect("Failed to build threadx_c_listener");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_c_listener at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_c_service_server_builds() {
+    if !require_threadx_c() {
+        return;
+    }
+    let binary =
+        build_threadx_c_service_server().expect("Failed to build threadx_c_service_server");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_c_service_server at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_c_service_client_builds() {
+    if !require_threadx_c() {
+        return;
+    }
+    let binary =
+        build_threadx_c_service_client().expect("Failed to build threadx_c_service_client");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_c_service_client at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_c_action_server_builds() {
+    if !require_threadx_c() {
+        return;
+    }
+    let binary = build_threadx_c_action_server().expect("Failed to build threadx_c_action_server");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_c_action_server at {}", binary.display());
+}
+
+#[test]
+fn test_threadx_c_action_client_builds() {
+    if !require_threadx_c() {
+        return;
+    }
+    let binary = build_threadx_c_action_client().expect("Failed to build threadx_c_action_client");
+    assert!(binary.exists());
+    eprintln!("SUCCESS: threadx_c_action_client at {}", binary.display());
+}
+
+// =============================================================================
+// C E2E Network tests
+// =============================================================================
+
+#[test]
+fn test_threadx_c_pubsub_e2e() {
+    if !require_threadx_c_e2e() {
+        return;
+    }
+
+    let talker_bin = build_threadx_c_talker().expect("Failed to build C talker");
+    let listener_bin = build_threadx_c_listener().expect("Failed to build C listener");
+
+    let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::THREADX_LINUX.zenohd_port)
+        .expect("Failed to start zenohd");
+
+    eprintln!("Starting C listener...");
+    let mut listener = ManagedProcess::spawn(listener_bin, &[], "threadx-c-listener")
+        .expect("Failed to start listener");
+
+    std::thread::sleep(Duration::from_secs(5));
+
+    eprintln!("Starting C talker...");
+    let mut talker =
+        ManagedProcess::spawn(talker_bin, &[], "threadx-c-talker").expect("Failed to start talker");
+
+    let listener_output = listener
+        .wait_for_all_output(Duration::from_secs(60))
+        .unwrap_or_default();
+    let talker_output = talker
+        .wait_for_all_output(Duration::from_secs(15))
+        .unwrap_or_default();
+
+    kill_process_group(talker.handle_mut());
+    kill_process_group(listener.handle_mut());
+
+    eprintln!("C Listener output:\n{}", listener_output);
+    eprintln!("C Talker output:\n{}", talker_output);
+
+    let received_count = count_pattern(&listener_output, "Received");
+    eprintln!("C messages received: {}", received_count);
+    assert!(
+        received_count > 0,
+        "ThreadX C pubsub E2E failed — listener received 0 messages"
+    );
+    eprintln!("[PASS] ThreadX C pubsub E2E: {} messages", received_count);
+}
+
+#[test]
+fn test_threadx_c_service_e2e() {
+    if !require_threadx_c_e2e() {
+        return;
+    }
+
+    let server_bin = build_threadx_c_service_server().expect("Failed to build C service server");
+    let client_bin = build_threadx_c_service_client().expect("Failed to build C service client");
+
+    let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::THREADX_LINUX.zenohd_port)
+        .expect("Failed to start zenohd");
+
+    eprintln!("Starting C service server...");
+    let mut server =
+        ManagedProcess::spawn(server_bin, &[], "threadx-c-server").expect("Failed to start server");
+
+    std::thread::sleep(Duration::from_secs(5));
+
+    eprintln!("Starting C service client...");
+    let mut client =
+        ManagedProcess::spawn(client_bin, &[], "threadx-c-client").expect("Failed to start client");
+
+    std::thread::sleep(Duration::from_secs(10));
+
+    let client_output = client
+        .wait_for_all_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    kill_process_group(server.handle_mut());
+    kill_process_group(client.handle_mut());
+
+    eprintln!("C Client output:\n{}", client_output);
+
+    let response_count = count_pattern(&client_output, "Response:");
+    let completed = client_output.contains("All service calls completed");
+    eprintln!("C Responses: {}, completed: {}", response_count, completed);
+
+    assert!(
+        response_count > 0,
+        "ThreadX C service E2E failed — 0 responses"
+    );
+    eprintln!("[PASS] ThreadX C service E2E: {} responses", response_count);
+}
+
+#[test]
+fn test_threadx_c_action_e2e() {
+    if !require_threadx_c_e2e() {
+        return;
+    }
+
+    let server_bin = build_threadx_c_action_server().expect("Failed to build C action server");
+    let client_bin = build_threadx_c_action_client().expect("Failed to build C action client");
+
+    let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::THREADX_LINUX.zenohd_port)
+        .expect("Failed to start zenohd");
+
+    eprintln!("Starting C action server...");
+    let mut server = ManagedProcess::spawn(server_bin, &[], "threadx-c-action-server")
+        .expect("Failed to start server");
+
+    std::thread::sleep(Duration::from_secs(5));
+
+    eprintln!("Starting C action client...");
+    let mut client = ManagedProcess::spawn(client_bin, &[], "threadx-c-action-client")
+        .expect("Failed to start client");
+
+    std::thread::sleep(Duration::from_secs(5));
+
+    let client_output = client
+        .wait_for_all_output(Duration::from_secs(60))
+        .unwrap_or_default();
+
+    let server_output = server
+        .wait_for_all_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
+    kill_process_group(server.handle_mut());
+    kill_process_group(client.handle_mut());
+
+    eprintln!("C Server output:\n{}", server_output);
+    eprintln!("C Client output:\n{}", client_output);
+
+    let goal_accepted = client_output.contains("Goal accepted");
+    let completed = client_output.contains("Action completed successfully");
+
+    eprintln!("Goal accepted: {}, completed: {}", goal_accepted, completed);
+
+    if goal_accepted && completed {
+        eprintln!("[PASS] ThreadX C action E2E: goal accepted, completed");
+    } else {
+        eprintln!("[FAIL] ThreadX C action E2E:");
+        if !goal_accepted {
+            eprintln!("  - Goal was NOT accepted");
+        }
+        if !completed {
+            eprintln!("  - Action did not complete");
+        }
+        panic!(
+            "ThreadX C action E2E failed: accepted={}, completed={}",
             goal_accepted, completed
         );
     }
