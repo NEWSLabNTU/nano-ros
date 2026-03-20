@@ -52,6 +52,9 @@ static const char *cfg_interface_name = "veth-tx0";
 static void (*rust_app_entry)(void *) = NULL;
 static void *rust_app_arg = NULL;
 
+/* ---- C/C++ entry point (linked from user code) ---- */
+extern void app_main(void) __attribute__((weak));
+
 /* ---- FFI: called from Rust to set config ---- */
 void nros_threadx_set_config(
     const uint8_t *ip,
@@ -74,15 +77,17 @@ void nros_threadx_set_app_callback(void (*entry)(void *), void *arg)
     rust_app_arg = arg;
 }
 
-/* ---- App thread entry: invokes the Rust closure ---- */
+/* ---- App thread entry: invokes Rust callback or C/C++ app_main ---- */
 static void app_thread_entry(ULONG input)
 {
     (void)input;
 
     if (rust_app_entry) {
         rust_app_entry(rust_app_arg);
+    } else if (app_main) {
+        app_main();
     } else {
-        printf("ERROR: no Rust app callback set\n");
+        printf("ERROR: no app entry point (set rust callback or define app_main)\n");
     }
 }
 
