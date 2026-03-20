@@ -35,9 +35,12 @@ elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     # NuttX provides a POSIX-like libc, so std is available.
     set(_platform_features std platform-nuttx)
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
+    # ThreadX Linux sim: host compiler, std available, ThreadX + NetX Duo via system libs.
+    set(_platform_features std platform-threadx link-tcp link-udp-unicast)
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
-            "(expected: posix, freertos_armcm3, or nuttx_armv7a)")
+            "(expected: posix, freertos_armcm3, nuttx_armv7a, or threadx_linux)")
 endif()
 
 set(_features ros-humble ${_rmw_features} ${_platform_features})

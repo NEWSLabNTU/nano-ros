@@ -19,6 +19,7 @@
 #   NROS_CONFIG_PREFIX        - e.g. "24"
 #   NROS_CONFIG_ZENOH_LOCATOR - e.g. "tcp/192.0.3.1:7447"
 #   NROS_CONFIG_DOMAIN_ID     - e.g. "0"
+#   NROS_CONFIG_INTERFACE     - e.g. "veth-tx0" (optional, from [platform] section)
 #
 function(nano_ros_read_config CONFIG_FILE)
     if(NOT EXISTS "${CONFIG_FILE}")
@@ -35,6 +36,7 @@ function(nano_ros_read_config CONFIG_FILE)
     set(_prefix "24")
     set(_locator "tcp/127.0.0.1:7447")
     set(_domain_id "0")
+    set(_interface "")
 
     # Track current section
     set(_section "")
@@ -86,6 +88,11 @@ function(nano_ros_read_config CONFIG_FILE)
                 elseif("${_key}" STREQUAL "domain_id")
                     set(_domain_id "${_val}")
                 endif()
+            # [platform] section
+            elseif("${_section}" STREQUAL "platform")
+                if("${_key}" STREQUAL "interface")
+                    set(_interface "${_val}")
+                endif()
             endif()
         endif()
     endforeach()
@@ -97,6 +104,7 @@ function(nano_ros_read_config CONFIG_FILE)
     set(NROS_CONFIG_PREFIX "${_prefix}" PARENT_SCOPE)
     set(NROS_CONFIG_ZENOH_LOCATOR "${_locator}" PARENT_SCOPE)
     set(NROS_CONFIG_DOMAIN_ID "${_domain_id}" PARENT_SCOPE)
+    set(NROS_CONFIG_INTERFACE "${_interface}" PARENT_SCOPE)
 endfunction()
 
 # Convert "192.0.3.10" -> "192,0,3,10"
