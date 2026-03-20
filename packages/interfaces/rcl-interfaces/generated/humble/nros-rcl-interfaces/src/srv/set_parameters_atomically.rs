@@ -38,8 +38,7 @@ impl Deserialize for SetParametersAtomicallyRequest {
 }
 
 impl RosMessage for SetParametersAtomicallyRequest {
-    const TYPE_NAME: &'static str =
-        "rcl_interfaces::srv::dds_::SetParametersAtomically_Request_";
+    const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::SetParametersAtomically_Request_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
@@ -65,8 +64,7 @@ impl Deserialize for SetParametersAtomicallyResponse {
 }
 
 impl RosMessage for SetParametersAtomicallyResponse {
-    const TYPE_NAME: &'static str =
-        "rcl_interfaces::srv::dds_::SetParametersAtomically_Response_";
+    const TYPE_NAME: &'static str = "rcl_interfaces::srv::dds_::SetParametersAtomically_Response_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
 
