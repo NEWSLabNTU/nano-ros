@@ -36,11 +36,10 @@ use nros_params::{
     ParameterValue as InternalValue, SetParameterResult,
 };
 
-pub use nros_rcl_interfaces::msg::{
-    FloatingPointRange, IntegerRange, ListParametersResult, Parameter, ParameterDescriptor,
-    ParameterValue, SetParametersResult,
+pub(crate) use nros_rcl_interfaces::msg::{
+    FloatingPointRange, IntegerRange, ParameterDescriptor, ParameterValue, SetParametersResult,
 };
-pub use nros_rcl_interfaces::srv::{
+pub(crate) use nros_rcl_interfaces::srv::{
     DescribeParameters, DescribeParametersRequest, DescribeParametersResponse, GetParameterTypes,
     GetParameterTypesRequest, GetParameterTypesResponse, GetParameters, GetParametersRequest,
     GetParametersResponse, ListParameters, ListParametersRequest, ListParametersResponse,
@@ -601,6 +600,7 @@ pub(crate) struct ParamState {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use nros_rcl_interfaces::msg::Parameter;
 
     #[test]
     fn test_value_conversion_bool() {

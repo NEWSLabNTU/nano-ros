@@ -79,6 +79,6 @@ impl Deserialize for ParameterDescriptor {
 }
 
 impl RosMessage for ParameterDescriptor {
-    const TYPE_NAME: &'static str = "nros_rcl_interfaces::msg::dds_::ParameterDescriptor_";
+    const TYPE_NAME: &'static str = "rcl_interfaces::msg::dds_::ParameterDescriptor_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }

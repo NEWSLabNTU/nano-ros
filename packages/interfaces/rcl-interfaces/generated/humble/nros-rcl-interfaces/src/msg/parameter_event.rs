@@ -75,6 +75,6 @@ impl Deserialize for ParameterEvent {
 }
 
 impl RosMessage for ParameterEvent {
-    const TYPE_NAME: &'static str = "nros_rcl_interfaces::msg::dds_::ParameterEvent_";
+    const TYPE_NAME: &'static str = "rcl_interfaces::msg::dds_::ParameterEvent_";
     const TYPE_HASH: &'static str = "TypeHashNotSupported";
 }
