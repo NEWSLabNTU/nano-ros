@@ -1023,15 +1023,29 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // to preserve partial TCP data across calls (non-blocking _z_read_tcp
     // may return fragments). single_read=false resets the zbuf on each call
     // which discards partial messages.
+    //
+    // Drain behaviour (timeout_ms == 0):
+    //   Loop until no data remains. This prevents a race where a keep-alive
+    //   is read first, the loop exits, _z_pending_query_process_timeout fires
+    //   and removes the pending query, and then the reply — still in the
+    //   staging buffer — is read in the next spin but cannot find its matching
+    //   pending query (already removed), causing get_check to return TIMEOUT
+    //   even though the reply arrived in time.
+    //
+    // Polling behaviour (timeout_ms > 0):
+    //   Stop after the first processed message (original behaviour), and
+    //   retry until data arrives or the timeout elapses.
     zp_read_options_t opts;
     opts.single_read = true;
     uint64_t start = smoltcp_clock_now_ms();
     int ret;
     do {
         ret = zp_read(z_session_loan_mut(&g_session), &opts);
-        if (ret == 0) break;  // Data processed
-        if (timeout_ms == 0) break;
-    } while (smoltcp_clock_now_ms() - start < timeout_ms);
+        if (ret == 0 && timeout_ms != 0) break;  // Processed one message (timeout mode)
+        if (ret != 0 && timeout_ms == 0) break;  // No data (drain mode)
+        // timeout_ms == 0 && ret == 0: data processed, loop to drain next message
+        // timeout_ms != 0 && ret != 0: no data yet, keep waiting (while decides)
+    } while (ret == 0 || smoltcp_clock_now_ms() - start < timeout_ms);
     // Process query timeouts — in multi-threaded mode the lease task handles
     // this, but on single-threaded bare-metal (smoltcp) there is no lease task.
     // Without this call, timed-out queries are never cleaned up and their
@@ -1501,6 +1515,11 @@ int32_t zpico_get_start(const char *keyexpr,
     z_get_options_t opts;
     z_get_options_default(&opts);
     opts.timeout_ms = (uint64_t)timeout_ms;
+    // Use NONE consolidation so the reply callback fires immediately on each
+    // partial reply, rather than AUTO (which becomes LATEST and buffers replies
+    // until the ReplyFinal arrives). With LATEST, a race between partial and
+    // final delivery could leave received=false when get_check is polled.
+    opts.consolidation.mode = Z_CONSOLIDATION_MODE_NONE;
 
     // Declare payload_bytes in the same scope as opts and z_get() so it stays
     // alive until z_get() consumes it (z_move takes the address).
