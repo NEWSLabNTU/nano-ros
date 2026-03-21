@@ -38,6 +38,12 @@ set(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE NEVER)
 set(CMAKE_C_COMPILER_WORKS   TRUE CACHE BOOL "Compiler works" FORCE)
 set(CMAKE_CXX_COMPILER_WORKS TRUE CACHE BOOL "Compiler works" FORCE)
 
+# Fix compiler_builtins float ABI: force +d feature so bswapsi2 etc.
+# use hard-float ABI matching lp64d. This applies to ALL Rust builds
+# in this CMake session (including codegen FFI crates).
+# See: https://github.com/rust-lang/rust/issues/83229
+set(ENV{RUSTFLAGS} "-Ctarget-feature=+d")
+
 # Use rust-lld as the linker instead of GNU ld.
 # picolibc's libc.a has TLS errno which GNU ld refuses to link with
 # ThreadX's non-TLS errno. LLD handles this correctly (like Rust does).
@@ -50,15 +56,25 @@ find_program(_RUST_LLD rust-lld
     PATHS "${_RUST_SYSROOT}/lib/rustlib/x86_64-unknown-linux-gnu/bin"
     NO_DEFAULT_PATH)
 if(_RUST_LLD)
-    set(CMAKE_LINKER "${_RUST_LLD}" CACHE FILEPATH "Linker" FORCE)
-    # GCC 10.x's collect2 ignores -B for linker selection on cross targets.
-    # Override the entire link rule to call rust-lld directly.
-    # <CMAKE_LINKER> is rust-lld; <FLAGS> <LINK_FLAGS> come from targets.
-    # Don't include <FLAGS> (C compiler flags like -march, -isystem) in the link rule.
+    # Create symlinks for the wrapper script that strips soft-float
+    # compiler_builtins from .a archives before calling rust-lld.
+    get_filename_component(_lld_dir "${_RUST_LLD}" DIRECTORY)
+    set(_wrapper_dir "${CMAKE_CURRENT_LIST_DIR}")
+    file(CREATE_LINK "${_RUST_LLD}" "${_wrapper_dir}/_real_lld" SYMBOLIC)
+    find_program(_LLVM_AR_TC llvm-ar PATHS "${_lld_dir}" NO_DEFAULT_PATH)
+    if(_LLVM_AR_TC)
+        file(CREATE_LINK "${_LLVM_AR_TC}" "${_wrapper_dir}/_llvm_ar" SYMBOLIC)
+    endif()
+
+    set(_lld_wrapper "${_wrapper_dir}/riscv64-lld-wrapper.sh")
+    set(CMAKE_LINKER "${_lld_wrapper}" CACHE FILEPATH "Linker" FORCE)
+
+    # Override link rules. The wrapper strips soft-float compiler_builtins
+    # from all .a archives, then delegates to rust-lld.
     set(CMAKE_C_LINK_EXECUTABLE
-        "${_RUST_LLD} -flavor gnu <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
+        "bash ${_lld_wrapper} -flavor gnu <CMAKE_C_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
         CACHE STRING "" FORCE)
     set(CMAKE_CXX_LINK_EXECUTABLE
-        "${_RUST_LLD} -flavor gnu <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
+        "bash ${_lld_wrapper} -flavor gnu <CMAKE_CXX_LINK_FLAGS> <LINK_FLAGS> <OBJECTS> -o <TARGET> <LINK_LIBRARIES>"
         CACHE STRING "" FORCE)
 endif()

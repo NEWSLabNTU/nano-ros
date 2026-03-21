@@ -51,6 +51,7 @@ corrosion_import_crate(
     LOCKED
 )
 
+# Fix compiler_builtins float ABI for RISC-V (see nros-c/CMakeLists.txt).
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)
 add_library(NanoRos::NanoRosCpp ALIAS nros-cpp-headers)
@@ -83,6 +84,18 @@ install(FILES "$<TARGET_FILE:nros_cpp-static>"
     DESTINATION lib
     RENAME "${_cpp_lib_name}"
 )
+
+# Strip soft-float compiler_builtins from RISC-V archive after installing.
+if(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
+    execute_process(COMMAND rustc --print sysroot
+        OUTPUT_VARIABLE _RUST_SYSROOT_CPP OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    find_program(_LLVM_AR_CPP llvm-ar
+        PATHS "${_RUST_SYSROOT_CPP}/lib/rustlib/x86_64-unknown-linux-gnu/bin" NO_DEFAULT_PATH)
+    if(_LLVM_AR_CPP)
+        set(_strip_script_cpp "${PROJECT_SOURCE_DIR}/cmake/strip-compiler-builtins.sh")
+        install(CODE "execute_process(COMMAND bash \"${_strip_script_cpp}\" \"${_LLVM_AR_CPP}\" \"\${CMAKE_INSTALL_PREFIX}/lib/${_cpp_lib_name}\")")
+    endif()
+endif()
 
 install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/cmake/NanoRosCppTargets.cmake"
     DESTINATION lib/cmake/NanoRos

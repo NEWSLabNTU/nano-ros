@@ -73,6 +73,19 @@ install(FILES "$<TARGET_FILE:nros_c-static>"
     RENAME "${_lib_name}"
 )
 
+# Strip soft-float compiler_builtins from RISC-V archive after installing.
+# See: https://github.com/rust-lang/rust/issues/83229
+if(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
+    execute_process(COMMAND rustc --print sysroot
+        OUTPUT_VARIABLE _RUST_SYSROOT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    find_program(_LLVM_AR llvm-ar
+        PATHS "${_RUST_SYSROOT}/lib/rustlib/x86_64-unknown-linux-gnu/bin" NO_DEFAULT_PATH)
+    if(_LLVM_AR)
+        set(_strip_script "${PROJECT_SOURCE_DIR}/cmake/strip-compiler-builtins.sh")
+        install(CODE "execute_process(COMMAND bash \"${_strip_script}\" \"${_LLVM_AR}\" \"\${CMAKE_INSTALL_PREFIX}/lib/${_lib_name}\")")
+    endif()
+endif()
+
 # ---- Headers ----
 install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/include/nros"
     DESTINATION include

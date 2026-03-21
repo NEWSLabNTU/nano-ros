@@ -54,10 +54,15 @@ endif()
 if(EXISTS "${_PICOLIBC_SYSROOT}/include")
     message(STATUS "picolibc sysroot: ${_PICOLIBC_SYSROOT}")
     list(APPEND _TX_INCLUDES "${_PICOLIBC_SYSROOT}/include")
-    # Also set globally so codegen-generated C sources can find stdint.h etc.
+    # Also set globally so codegen-generated C/C++ sources can find stdint.h etc.
     # NROS_PLATFORM_BAREMETAL prevents nros headers from pulling in POSIX-only code.
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -isystem ${_PICOLIBC_SYSROOT}/include -DNROS_PLATFORM_BAREMETAL" PARENT_SCOPE)
     set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -isystem ${_PICOLIBC_SYSROOT}/include -DNROS_PLATFORM_BAREMETAL")
+    # C++ compat headers: provide <cstdio>, <cstdint> etc. wrapping picolibc C headers
+    get_filename_component(_CXX_COMPAT_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
+    set(_CXX_COMPAT_DIR "${_CXX_COMPAT_DIR}/cxx-compat")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${_PICOLIBC_SYSROOT}/include -isystem ${_CXX_COMPAT_DIR} -DNROS_PLATFORM_BAREMETAL" PARENT_SCOPE)
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -isystem ${_PICOLIBC_SYSROOT}/include -isystem ${_CXX_COMPAT_DIR} -DNROS_PLATFORM_BAREMETAL")
 else()
     message(WARNING "picolibc sysroot not found — C standard library headers may be missing.\n"
         "Install: sudo apt install picolibc-riscv64-unknown-elf")
@@ -184,3 +189,23 @@ set(THREADX_LINKER_SCRIPT "${THREADX_CONFIG_DIR}/link.lds" CACHE FILEPATH "Threa
 get_filename_component(_TX_CMAKE_DIR "${CMAKE_CURRENT_LIST_FILE}" DIRECTORY)
 set(THREADX_STARTUP_SOURCE "${_TX_CMAKE_DIR}/startup.c")
 set(THREADX_STARTUP_INCLUDES ${_TX_INCLUDES})
+
+# ---- Helper: strip soft-float compiler_builtins from any Rust archive ----
+# Usage: threadx_riscv64_strip_builtins(<archive_path>)
+# Call this on codegen-generated FFI libraries before linking.
+execute_process(COMMAND rustc --print sysroot
+    OUTPUT_VARIABLE _TX_RUST_SYSROOT OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+find_program(_TX_LLVM_AR llvm-ar
+    PATHS "${_TX_RUST_SYSROOT}/lib/rustlib/x86_64-unknown-linux-gnu/bin" NO_DEFAULT_PATH)
+set(_TX_STRIP_SCRIPT "${_TX_CMAKE_DIR}/../../../cmake/strip-compiler-builtins.sh")
+
+function(threadx_riscv64_strip_builtins archive)
+    if(_TX_LLVM_AR AND EXISTS "${_TX_STRIP_SCRIPT}")
+        add_custom_command(OUTPUT "${archive}.stripped"
+            COMMAND bash "${_TX_STRIP_SCRIPT}" "${_TX_LLVM_AR}" "${archive}"
+            COMMAND ${CMAKE_COMMAND} -E touch "${archive}.stripped"
+            DEPENDS "${archive}"
+            COMMENT "Stripping soft-float builtins from ${archive}"
+        )
+    endif()
+endfunction()

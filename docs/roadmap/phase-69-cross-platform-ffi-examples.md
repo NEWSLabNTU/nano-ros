@@ -145,18 +145,19 @@ Add 6 C examples under `examples/threadx-linux/c/zenoh/`. ThreadX Linux sim uses
 
 Add 6 C examples under `examples/qemu-riscv64-threadx/c/zenoh/`. Cross-compiles for `riscv64gc-unknown-none-elf` with ThreadX + NetX Duo.
 
-- [ ] Create `examples/qemu-riscv64-threadx/cmake/riscv64-toolchain.cmake`
-- [ ] Create `examples/qemu-riscv64-threadx/cmake/threadx-platform.cmake` (ThreadX + NetX Duo + virtio-net)
-- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/talker/` (CMakeLists.txt + src/main.c + .gitignore + config.toml)
-- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/listener/`
-- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/service-server/`
-- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/service-client/`
-- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/action-server/`
-- [ ] Create `examples/qemu-riscv64-threadx/c/zenoh/action-client/`
-- [ ] Add ThreadX RISC-V C build tests to `threadx_riscv64_qemu.rs`
-- [ ] Add ThreadX RISC-V C E2E pub/sub test
-- [ ] Add ThreadX RISC-V C E2E service test
-- [ ] Add ThreadX RISC-V C E2E action test
+- [x] Create `cmake/toolchain/riscv64-threadx.cmake` (RISC-V cross-toolchain with rust-lld)
+- [x] Create `examples/qemu-riscv64-threadx/cmake/threadx-riscv64-support.cmake` (ThreadX + NetX Duo + virtio-net + picolibc)
+- [x] Create `examples/qemu-riscv64-threadx/cmake/startup.c` (bare-metal entry → tx_kernel_enter)
+- [x] Add `threadx_riscv64` platform to nros-c/nros-cpp CMakeLists.txt
+- [x] Add ThreadX RISC-V build to `install-local` justfile recipe
+- [x] Create `examples/qemu-riscv64-threadx/c/zenoh/talker/` (+ 5 more C examples)
+- [x] Fix compiler_builtins float ABI: strip soft-float objects at install time, use rust-lld wrapper
+- [x] Add UART output for C examples (picolibc stdout + uart_putc)
+- [x] Add C++ compat headers for picolibc (cstdio, cstdint, etc.)
+- [x] Add ThreadX RISC-V C build tests to `threadx_riscv64_qemu.rs` (6 pass)
+- [x] Add ThreadX RISC-V C++ build tests (talker, listener pass)
+- [ ] Fix ThreadX app thread startup in C examples (app_main not reached — board glue issue)
+- [ ] Add ThreadX RISC-V C/C++ E2E tests (blocked on app thread)
 
 ### 69.4 -- NuttX C integration tests (examples already exist)
 
@@ -217,13 +218,10 @@ Add 4 C++ examples under `examples/threadx-linux/cpp/zenoh/`. ThreadX Linux sim 
 
 Add 4 C++ examples under `examples/qemu-riscv64-threadx/cpp/zenoh/`. Cross-compiles for `riscv64gc-unknown-none-elf` using `nros-cpp` freestanding mode. Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
 
-- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/talker/` (CMakeLists.txt + src/main.cpp + .gitignore + config.toml)
-- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/listener/`
-- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/service-server/`
-- [ ] Create `examples/qemu-riscv64-threadx/cpp/zenoh/service-client/`
-- [ ] Add ThreadX RISC-V C++ build tests to `threadx_riscv64_qemu.rs`
-- [ ] Add ThreadX RISC-V C++ E2E pub/sub test
-- [ ] Add ThreadX RISC-V C++ E2E service test
+- [x] Create `examples/qemu-riscv64-threadx/cpp/zenoh/talker/` (+ 3 more C++ examples)
+- [x] Add ThreadX RISC-V C++ build tests (talker, listener — service blocked by codegen dep bug)
+- [ ] Fix codegen transitive dependency resolution for C++ service examples
+- [ ] Add ThreadX RISC-V C++ E2E tests (blocked on app thread)
 - [ ] Add action-server + action-client once `nros-cpp` has action support
 
 ### 69.9 -- Documentation

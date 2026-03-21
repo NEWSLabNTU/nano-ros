@@ -1,0 +1,5 @@
+// C++ compat for picolibc
+#ifndef _CXX_CSTDDEF
+#define _CXX_CSTDDEF
+#include <stddef.h>
+#endif

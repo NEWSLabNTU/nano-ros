@@ -7,6 +7,7 @@
  */
 
 #include <stdint.h>
+#include <stdio.h>
 #include <string.h>
 #include "tx_api.h"
 
@@ -23,6 +24,25 @@
 #ifndef APP_NETMASK
 #define APP_NETMASK {255, 255, 255, 0}
 #endif
+
+/* ---- UART output for printf ---- */
+extern int uart_putc(int ch);
+
+/* picolibc stdio: provide stdout as a UART stream.
+ * picolibc declares stdout as an undefined extern — we define it here. */
+static int _uart_put(char c, FILE *f) { (void)f; uart_putc((int)c); return 0; }
+static FILE _uart_file = FDEV_SETUP_STREAM(_uart_put, NULL, NULL, _FDEV_SETUP_WRITE);
+/* picolibc declares `extern FILE *const stdout` but leaves it undefined.
+ * We provide the definition. The 'const' qualifier is on the pointer,
+ * not the FILE — so the FILE itself is mutable. */
+FILE *const stdout = &_uart_file;
+
+/* picolibc _write syscall for other output (fprintf to fd, etc.) */
+int _write(int fd, const char *buf, int len) {
+    (void)fd;
+    for (int i = 0; i < len; i++) uart_putc(buf[i]);
+    return len;
+}
 
 /* ---- FFI: set config in app_define.c ---- */
 extern void nros_threadx_set_config(
@@ -42,9 +62,18 @@ extern void nros_threadx_set_config(
  * constructor or by being linked before tx_kernel_enter.
  */
 
+/* UART init — must be called before any printf */
+extern int uart_init(void);
+
 /* entry.s calls main() after BSS init and stack setup.
- * We set network config, then enter the ThreadX kernel. */
+ * We init UART, set network config, then enter the ThreadX kernel. */
 int main(void) {
+    uart_init();
+    /* Direct UART test before tx_kernel_enter */
+    {
+        const char *m = "startup: entering ThreadX\n";
+        for (int i = 0; m[i]; i++) uart_putc(m[i]);
+    }
     uint8_t ip[]      = APP_IP;
     uint8_t netmask[] = APP_NETMASK;
     uint8_t gateway[] = APP_GATEWAY;

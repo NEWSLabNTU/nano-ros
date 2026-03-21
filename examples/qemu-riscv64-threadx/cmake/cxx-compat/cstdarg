@@ -1,0 +1,5 @@
+// C++ compat for picolibc
+#ifndef _CXX_CSTDARG
+#define _CXX_CSTDARG
+#include <stdarg.h>
+#endif
