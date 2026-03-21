@@ -38,6 +38,9 @@ elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     # ThreadX Linux sim: host compiler, std available, ThreadX + NetX Duo via system libs.
     set(_platform_features std platform-threadx link-tcp link-udp-unicast)
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
+    # ThreadX on RISC-V 64 (QEMU virt): no std, alloc for internal collections.
+    set(_platform_features alloc panic-halt platform-threadx link-tcp link-udp-unicast)
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
             "(expected: posix, freertos_armcm3, nuttx_armv7a, or threadx_linux)")

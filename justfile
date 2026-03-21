@@ -76,6 +76,21 @@ install-local:
         echo "ThreadX SDK not found — skipping ThreadX Linux libraries"
     fi
 
+    # --- ThreadX RISC-V 64 libraries (zenoh only, when toolchain available) ---
+    if command -v riscv64-unknown-elf-gcc &>/dev/null && [ -d "${THREADX_DIR:-external/threadx}/common/inc" ]; then
+        echo "=== Building threadx_riscv64 RMW=zenoh ==="
+        cmake -S . -B "build/cmake-threadx-riscv64-zenoh" \
+            -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/riscv64-threadx.cmake" \
+            -DNANO_ROS_RMW="zenoh" \
+            -DNANO_ROS_PLATFORM="threadx_riscv64" \
+            -DNANO_ROS_BUILD_CODEGEN=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+        cmake --build "build/cmake-threadx-riscv64-zenoh"
+        cmake --install "build/cmake-threadx-riscv64-zenoh" --prefix "$PREFIX"
+    else
+        echo "RISC-V toolchain or ThreadX SDK not found — skipping ThreadX RISC-V libraries"
+    fi
+
     echo "Installed to $PREFIX"
 
 # Remove the install prefix and rebuild from scratch.

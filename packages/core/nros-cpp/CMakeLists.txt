@@ -32,6 +32,8 @@ elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     set(_platform_features std platform-nuttx)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     set(_platform_features std platform-threadx link-tcp link-udp-unicast)
+elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
+    set(_platform_features alloc panic-halt platform-threadx link-tcp link-udp-unicast)
 else()
     message(FATAL_ERROR "Unknown NANO_ROS_PLATFORM: ${NANO_ROS_PLATFORM} "
             "(expected: posix, freertos_armcm3, nuttx_armv7a, or threadx_linux)")
