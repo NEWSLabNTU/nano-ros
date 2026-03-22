@@ -824,6 +824,10 @@ test-threadx-riscv64 verbose="":
         echo "ERROR: NetX Duo not found at $NETX_DIR. Run: just setup-threadx"
         exit 1
     fi
+    # RISC-V board crate uses its own config dirs (not the Linux sim defaults)
+    rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+    export THREADX_CONFIG_DIR="$rv_config"
+    export NETX_CONFIG_DIR="$rv_config"
     args=(-p nros-tests --test threadx_riscv64_qemu --no-fail-fast)
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)

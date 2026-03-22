@@ -66,7 +66,8 @@ int _write(int fd, const char *buf, int len) {
     return len;
 }
 
-/* ---- FFI: set config in app_define.c ---- */
+/* ---- FFI: set config and C entry point in app_define.c ---- */
+extern void nros_threadx_set_app_main(void (*entry)(void));
 extern void nros_threadx_set_config(
     const uint8_t *ip,
     const uint8_t *netmask,
@@ -114,6 +115,10 @@ int main(void) {
     uint8_t mac[]     = APP_MAC;
 
     nros_threadx_set_config(ip, netmask, gateway, mac, "");
+
+    /* Register C app_main as the entry point for the ThreadX app thread */
+    extern void app_main(void);
+    nros_threadx_set_app_main(app_main);
 
     /* Enter ThreadX scheduler — never returns.
      * tx_application_define() is called from within tx_kernel_enter(). */

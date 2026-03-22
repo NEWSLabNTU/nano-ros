@@ -82,7 +82,16 @@ void nros_threadx_set_app_callback(void (*entry)(void *), void *arg)
 }
 
 /* ---- C/C++ entry point (linked from user code) ---- */
-extern void app_main(void) __attribute__((weak));
+/* Use a function pointer instead of __attribute__((weak)) to avoid
+ * PC-relative relocation overflow when app_main is undefined (Rust builds).
+ * Weak symbols resolve to address 0 which is >512KB from .text at 0x80000000,
+ * overflowing R_RISCV_PCREL_HI20's ±512KB range. */
+static void (*c_app_main)(void) = (void (*)(void))0;
+
+void nros_threadx_set_app_main(void (*entry)(void))
+{
+    c_app_main = entry;
+}
 
 /* ---- App thread entry: invokes Rust callback or C/C++ app_main ---- */
 static void app_thread_entry(ULONG input)
@@ -95,9 +104,9 @@ static void app_thread_entry(ULONG input)
         uart_puts("[app_thread] Calling Rust entry...\n");
         rust_app_entry(rust_app_arg);
         uart_puts("[app_thread] Rust entry returned\n");
-    } else if (app_main) {
+    } else if (c_app_main) {
         uart_puts("[app_thread] Calling app_main...\n");
-        app_main();
+        c_app_main();
         uart_puts("[app_thread] app_main returned\n");
     } else {
         uart_puts("ERROR: no app entry point (set rust callback or define app_main)\n");
