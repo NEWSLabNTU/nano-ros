@@ -79,12 +79,16 @@ install-local:
     # --- ThreadX RISC-V 64 libraries (zenoh only, when toolchain available) ---
     if command -v riscv64-unknown-elf-gcc &>/dev/null && [ -d "${THREADX_DIR:-external/threadx}/common/inc" ]; then
         echo "=== Building threadx_riscv64 RMW=zenoh ==="
+        # RISC-V board crate uses its own config dirs (not the Linux sim defaults)
+        rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+        THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
         cmake -S . -B "build/cmake-threadx-riscv64-zenoh" \
             -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/riscv64-threadx.cmake" \
             -DNANO_ROS_RMW="zenoh" \
             -DNANO_ROS_PLATFORM="threadx_riscv64" \
             -DNANO_ROS_BUILD_CODEGEN=OFF \
             -DCMAKE_BUILD_TYPE=Release
+        THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" \
         cmake --build "build/cmake-threadx-riscv64-zenoh"
         cmake --install "build/cmake-threadx-riscv64-zenoh" --prefix "$PREFIX"
     else
