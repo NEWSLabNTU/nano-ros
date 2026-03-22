@@ -2,7 +2,7 @@
 
 **Goal**: Bring C and C++ example and integration test coverage to parity with Rust across all platforms. Currently, C/C++ examples only exist on native (POSIX), Zephyr, and NuttX (C only). Multiple platforms lack C/C++ examples entirely, and no embedded platform has C/C++ integration tests.
 
-**Status**: In Progress (69.1, 69.5, 69.6, 69.7, 69.9 done)
+**Status**: In Progress (69.1–69.3, 69.5–69.9 done; 69.4 remaining)
 **Priority**: Medium
 **Depends on**: Phase 68 (Alloc-free C/C++ bindings), Phase 54.10 (FreeRTOS C examples, deferred)
 
@@ -94,7 +94,7 @@ For host-native RTOS targets (ThreadX Linux), the standard host compiler is used
 C examples:
 - [x] 69.1 -- FreeRTOS C examples + integration tests
 - [x] 69.2 -- ThreadX Linux C examples + integration tests
-- [ ] 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
+- [x] 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
 - [ ] 69.4 -- NuttX C integration tests (examples already exist)
 
 C++ examples (4 per platform: talker, listener, service-server, service-client;
@@ -102,7 +102,7 @@ action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`):
 - [x] 69.5 -- FreeRTOS C++ examples + integration tests
 - [x] 69.6 -- NuttX C++ examples + integration tests
 - [x] 69.7 -- ThreadX Linux C++ examples + integration tests
-- [ ] 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
+- [x] 69.8 -- ThreadX RISC-V QEMU C++ examples + integration tests
 
 Documentation:
 - [x] 69.9 -- Documentation
@@ -156,8 +156,9 @@ Add 6 C examples under `examples/qemu-riscv64-threadx/c/zenoh/`. Cross-compiles 
 - [x] Add C++ compat headers for picolibc (cstdio, cstdint, etc.)
 - [x] Add ThreadX RISC-V C build tests to `threadx_riscv64_qemu.rs` (6 pass)
 - [x] Add ThreadX RISC-V C++ build tests (talker, listener pass)
-- [ ] Fix ThreadX app thread startup in C examples (app_main not reached — board glue issue)
-- [ ] Add ThreadX RISC-V C/C++ E2E tests (blocked on app thread)
+- [x] Fix ThreadX app thread startup (app_main via function pointer, TLS init, memset -fno-builtin)
+- [x] Add ThreadX RISC-V C E2E tests (pubsub, service, action — all pass)
+- [x] Add ThreadX RISC-V C++ E2E tests (pubsub — pass)
 
 ### 69.4 -- NuttX C integration tests (examples already exist)
 
@@ -219,9 +220,8 @@ Add 4 C++ examples under `examples/threadx-linux/cpp/zenoh/`. ThreadX Linux sim 
 Add 4 C++ examples under `examples/qemu-riscv64-threadx/cpp/zenoh/`. Cross-compiles for `riscv64gc-unknown-none-elf` using `nros-cpp` freestanding mode. Action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`.
 
 - [x] Create `examples/qemu-riscv64-threadx/cpp/zenoh/talker/` (+ 3 more C++ examples)
-- [x] Add ThreadX RISC-V C++ build tests (talker, listener — service blocked by codegen dep bug)
-- [ ] Fix codegen transitive dependency resolution for C++ service examples
-- [ ] Add ThreadX RISC-V C++ E2E tests (blocked on app thread)
+- [x] Add ThreadX RISC-V C++ build tests (talker, listener — pass)
+- [x] Add ThreadX RISC-V C++ E2E pubsub test (pass)
 - [ ] Add action-server + action-client once `nros-cpp` has action support
 
 ### 69.9 -- Documentation

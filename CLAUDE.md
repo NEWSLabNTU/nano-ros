@@ -247,17 +247,10 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 |-------|-------|--------|
 | 23 | Arduino precompiled library | Not Started |
 | 41 | Iron type hash support | Not Started |
-| 54 | FreeRTOS platform support (lwIP) | Complete (54.10 deferred to Phase 69) |
-| 55 | NuttX platform support | Complete |
-| 58 | ThreadX platform support (NetX Duo) | Complete |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
-| 67 | Serial transport + board crate transport abstraction | Complete |
-| 68 | Alloc-free C/C++ bindings + executor simplification | Complete |
-| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1, 69.5, 69.6, 69.7, 69.9 done) |
-| 70 | DDS RMW backend (dust-dds) — POSIX | Complete |
+| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1–69.3, 69.5–69.9 done; 69.4 remaining) |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
-| 72 | Per-example config.toml files | In Progress (72.1–72.5 done) |
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 | 75 | Relocatable CMake install convention for C/C++ | Complete |
 
