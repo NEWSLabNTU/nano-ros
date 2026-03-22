@@ -81,7 +81,10 @@ void nros_threadx_set_app_callback(void (*entry)(void *), void *arg)
     rust_app_arg = arg;
 }
 
-/* ---- App thread entry: invokes the Rust closure ---- */
+/* ---- C/C++ entry point (linked from user code) ---- */
+extern void app_main(void) __attribute__((weak));
+
+/* ---- App thread entry: invokes Rust callback or C/C++ app_main ---- */
 static void app_thread_entry(ULONG input)
 {
     (void)input;
@@ -92,8 +95,12 @@ static void app_thread_entry(ULONG input)
         uart_puts("[app_thread] Calling Rust entry...\n");
         rust_app_entry(rust_app_arg);
         uart_puts("[app_thread] Rust entry returned\n");
+    } else if (app_main) {
+        uart_puts("[app_thread] Calling app_main...\n");
+        app_main();
+        uart_puts("[app_thread] app_main returned\n");
     } else {
-        uart_puts("ERROR: no Rust app callback set\n");
+        uart_puts("ERROR: no app entry point (set rust callback or define app_main)\n");
     }
 }
 

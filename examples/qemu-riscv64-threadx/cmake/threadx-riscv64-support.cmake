@@ -174,10 +174,12 @@ execute_process(
 find_program(_RUST_LLD rust-lld
     PATHS "${_RUST_SYSROOT}/lib/rustlib/x86_64-unknown-linux-gnu/bin"
     NO_DEFAULT_PATH)
-# Link picolibc + libgcc. The toolchain file (riscv64-threadx.cmake) sets up
-# rust-lld via -B wrapper, which handles the TLS errno mismatch between
-# picolibc (TLS) and ThreadX (non-TLS).
+# Link picolibc + libgcc. --allow-multiple-definition is needed because
+# startup.c overrides memset/memcpy/memmove (Rust compiler_builtins versions
+# are buggy on RISC-V), and because picolibc's errno is TLS while ThreadX's
+# is non-TLS.
 target_link_options(threadx_platform INTERFACE
+    --allow-multiple-definition
     -L${_PICOLIBC_LIB_DIR}
 )
 target_link_libraries(threadx_platform INTERFACE c "${_LIBGCC_PATH}")

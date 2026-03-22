@@ -25,6 +25,28 @@
 #define APP_NETMASK {255, 255, 255, 0}
 #endif
 
+/* ---- Override memset/memcpy from compiler_builtins ---- */
+/* Rust's compiler_builtins provides weak memset/memcpy that can crash on
+ * RISC-V due to TLS issues. Provide simple byte-loop implementations. */
+void *memset(void *s, int c, __SIZE_TYPE__ n) {
+    unsigned char *p = (unsigned char *)s;
+    while (n--) *p++ = (unsigned char)c;
+    return s;
+}
+void *memcpy(void *d, const void *s, __SIZE_TYPE__ n) {
+    unsigned char *dp = (unsigned char *)d;
+    const unsigned char *sp = (const unsigned char *)s;
+    while (n--) *dp++ = *sp++;
+    return d;
+}
+void *memmove(void *d, const void *s, __SIZE_TYPE__ n) {
+    unsigned char *dp = (unsigned char *)d;
+    const unsigned char *sp = (const unsigned char *)s;
+    if (dp < sp) { while (n--) *dp++ = *sp++; }
+    else { dp += n; sp += n; while (n--) *--dp = *--sp; }
+    return d;
+}
+
 /* ---- UART output for printf ---- */
 extern int uart_putc(int ch);
 
@@ -65,9 +87,21 @@ extern void nros_threadx_set_config(
 /* UART init — must be called before any printf */
 extern int uart_init(void);
 
+/* picolibc TLS initialization — must be called before any picolibc function.
+ * picolibc uses TLS (via the tp register) for errno, rand state, etc.
+ * Our entry.s leaves tp=0 (no picolibc crt0), causing null-pointer access
+ * when any TLS variable (errno, etc.) is accessed.
+ * Provide a zero-initialized TLS block and point tp to it. */
+static char tls_block[512] __attribute__((aligned(16)));
+
+static void init_tls(void) {
+    __asm__ volatile("mv tp, %0" : : "r"(tls_block));
+}
+
 /* entry.s calls main() after BSS init and stack setup.
- * We init UART, set network config, then enter the ThreadX kernel. */
+ * We init TLS, UART, set network config, then enter the ThreadX kernel. */
 int main(void) {
+    init_tls();
     uart_init();
     /* Direct UART test before tx_kernel_enter */
     {

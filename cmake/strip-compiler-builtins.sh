@@ -33,3 +33,17 @@ done
 if [ $count -gt 0 ]; then
     echo "Stripped $count soft-float compiler_builtins objects from $(basename "$ARCHIVE")"
 fi
+
+# Localize Rust's weak memset/memcpy/memmove symbols so they don't override
+# picolibc's implementations. Rust's compiler_builtins memset can crash on
+# RISC-V due to recursive implementation + QEMU interaction issues.
+LLVM_OBJCOPY="$(dirname "$LLVM_AR")/llvm-objcopy"
+if [ -x "$LLVM_OBJCOPY" ]; then
+    localized=0
+    for sym in memset memcpy memmove memcmp bcmp strlen; do
+        "$LLVM_OBJCOPY" --localize-symbol="$sym" "$ARCHIVE" 2>/dev/null && localized=$((localized + 1)) || true
+    done
+    if [ $localized -gt 0 ]; then
+        echo "Localized $localized mem symbols in $(basename "$ARCHIVE")"
+    fi
+fi
