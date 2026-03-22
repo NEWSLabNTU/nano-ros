@@ -10,6 +10,7 @@
 #define NROS_ACTION_H
 
 #include "nros/types.h"
+#include "nros/nros_config_generated.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -211,8 +212,8 @@ typedef struct nros_action_client_t {
     void* context;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Opaque pointer to internal implementation. */
-    void* _internal;
+    /** Inline opaque storage for internal implementation. */
+    _Alignas(8) uint8_t _internal[NROS_ACTION_CLIENT_STORAGE_SIZE];
 } nros_action_client_t;
 
 /* --- Server struct --- */
@@ -247,8 +248,8 @@ typedef struct nros_action_server_t {
     size_t active_goal_count;
     /** Pointer to parent node. */
     const struct nros_node_t* node;
-    /** Opaque pointer to internal implementation. */
-    void* _internal;
+    /** Inline opaque storage for internal implementation. */
+    _Alignas(8) uint8_t _internal[NROS_ACTION_SERVER_STORAGE_SIZE];
 } nros_action_server_t;
 
 /* ===================================================================

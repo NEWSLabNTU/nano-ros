@@ -4,10 +4,10 @@ use core::ffi::c_void;
 use core::ptr;
 
 use super::common::*;
+use crate::config::ACTION_CLIENT_INTERNAL_OPAQUE_U64S;
 use crate::constants::{MAX_ACTION_NAME_LEN, MAX_TYPE_HASH_LEN, MAX_TYPE_NAME_LEN};
 use crate::error::*;
 use crate::node::{nros_node_state_t, nros_node_t};
-use crate::opaque_sizes::ACTION_CLIENT_INTERNAL_OPAQUE_U64S;
 
 // ============================================================================
 // Internal implementation

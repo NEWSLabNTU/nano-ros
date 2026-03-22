@@ -11,7 +11,6 @@ use crate::action::{ActionServerInternal, cancel_callback_trampoline, goal_callb
 use crate::action::{nros_action_server_state_t, nros_action_server_t};
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
-use crate::opaque_sizes::ACTION_SERVER_INTERNAL_OPAQUE_U64S;
 use crate::service::{nros_service_state_t, nros_service_t};
 use crate::subscription::{nros_subscription_state_t, nros_subscription_t};
 use crate::support::{nros_support_state_t, nros_support_t};
