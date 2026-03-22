@@ -1380,6 +1380,11 @@ int32_t zpico_get(const char *keyexpr,
     z_get_options_t opts;
     z_get_options_default(&opts);
     opts.timeout_ms = timeout_ms;
+    // Use NONE consolidation so the reply callback fires immediately on each
+    // partial reply, rather than AUTO (which becomes LATEST and buffers replies
+    // until the ReplyFinal arrives). With LATEST, the dropper fires before the
+    // reply callback, leaving received=false when the condvar is signalled.
+    opts.consolidation.mode = Z_CONSOLIDATION_MODE_NONE;
 
     // Set payload if provided
     z_owned_bytes_t payload_bytes;
@@ -1403,33 +1408,50 @@ int32_t zpico_get(const char *keyexpr,
     // For multi-threaded platforms, wait for reply via background threads
     // For single-threaded platforms, poll until reply or timeout
 #if Z_FEATURE_MULTI_THREAD == 0
-    // Single-threaded: poll until reply received or timeout
-    uint32_t elapsed = 0;
-    const uint32_t poll_interval = ZPICO_GET_POLL_INTERVAL_MS;
-
-    while (!ctx.done && elapsed < timeout_ms) {
-        zp_read(z_session_loan_mut(&g_session), NULL);
-        zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
-
-        if (ctx.received) {
-            break;
+    // Single-threaded: poll until reply received or timeout.
+    //
+    // We drive _z_pending_query_process_timeout() on every iteration so that
+    // zenoh-pico's own deadline fires the dropper (setting ctx.done = true)
+    // while ctx is still live on the stack.  Without this, the wall-clock
+    // check below would break out of the loop while a stale pending-query
+    // entry still points at ctx, and the dropper would later fire on a
+    // dangling pointer, silently corrupting the stack of the next caller.
+    //
+    // The wall-clock guard (timeout_ms + 2000 ms) is belt-and-suspenders:
+    // in normal operation _z_pending_query_process_timeout fires the dropper
+    // at opts.timeout_ms (== timeout_ms), so ctx.done becomes true before the
+    // guard triggers.
+    {
+        z_clock_t start = z_clock_now();
+        while (!ctx.done) {
+            zp_read(z_session_loan_mut(&g_session), NULL);
+            zp_send_keep_alive(z_session_loan_mut(&g_session), NULL);
+            // Drive zenoh-pico's query timeout so its dropper fires cleanly
+            // while ctx is still on the stack.
+            _z_pending_query_process_timeout(_Z_RC_IN_VAL(z_session_loan_mut(&g_session)));
+            if (ctx.received) {
+                break;
+            }
+            // Safety wall-clock guard (fires 2 s after the zenoh deadline).
+            if ((uint32_t)z_clock_elapsed_ms(&start) >= timeout_ms + 2000) {
+                break;
+            }
         }
-
-        // Simple delay (platform-specific sleep would be better)
-        // For now, just continue polling - the zenoh timeout handles the actual timing
-        elapsed += poll_interval;
     }
 #else
-    // Multi-threaded: wait for completion via condvar
-    // The dropper callback signals ctx.cond when the reply channel closes
+    // Multi-threaded: wait for completion via condvar.
+    // The dropper callback signals ctx.cond when the reply channel closes.
+    //
+    // IMPORTANT: Do NOT use _z_condvar_wait_until with a deadline here.
+    // Zenoh fires the dropper at opts.timeout_ms — rely on that timeout
+    // instead of a parallel OS deadline. Using a separate deadline creates
+    // a use-after-free race: if the OS deadline expires first, we drop
+    // ctx.mutex/ctx.cond while the background thread's dropper is still
+    // pending, causing the dropper to lock/signal freed memory.
     {
-        z_clock_t deadline = z_clock_now();
-        z_clock_advance_ms(&deadline, timeout_ms);
-
         _z_mutex_lock(&ctx.mutex);
         while (!ctx.done) {
-            z_result_t r = _z_condvar_wait_until(&ctx.cond, &ctx.mutex, &deadline);
-            if (r != 0) break;  // timeout or error
+            _z_condvar_wait(&ctx.cond, &ctx.mutex);
         }
         _z_mutex_unlock(&ctx.mutex);
     }
