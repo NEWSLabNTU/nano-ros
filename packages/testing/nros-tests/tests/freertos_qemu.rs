@@ -1257,7 +1257,8 @@ fn test_freertos_c_action_e2e() {
     let mut server =
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
-    std::thread::sleep(Duration::from_secs(10));
+    // 15s (vs 10s for service) — action server registers 3 queryables, needs more discovery time
+    std::thread::sleep(Duration::from_secs(15));
 
     eprintln!("Starting C action client QEMU (slirp)...");
     let mut client =
@@ -1265,8 +1266,10 @@ fn test_freertos_c_action_e2e() {
 
     std::thread::sleep(Duration::from_secs(15));
 
+    // 90s (vs 60s) — each failed send_goal attempt blocks ~13s waiting for zenoh lease task
+    // to fire the dropper; with 5 retries × (13s + 5s spin) = 90s needed for 5 failures
     let client_output = client
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output(Duration::from_secs(90))
         .unwrap_or_default();
 
     server.kill();
