@@ -36,6 +36,7 @@
 //! ```
 
 mod config;
+mod entry;
 mod node;
 
 pub use config::Config;

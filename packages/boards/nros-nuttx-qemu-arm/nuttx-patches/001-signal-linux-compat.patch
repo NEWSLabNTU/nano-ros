@@ -1,0 +1,76 @@
+diff --git a/arch/arm/src/armv7-a/arm_mmu.c b/arch/arm/src/armv7-a/arm_mmu.c
+index 5413f598..7d0849bf 100644
+--- a/arch/arm/src/armv7-a/arm_mmu.c
++++ b/arch/arm/src/armv7-a/arm_mmu.c
+@@ -354,15 +354,15 @@ void mmu_l2_map_pages(const struct page_mapping_s *mappings,
+ #ifndef CONFIG_ARCH_ROMPGTABLE
+ void mmu_invalidate_region(uint32_t vstart, size_t size)
+ {
+-  uint32_t vaddr = vstart & 0xfffff000;
+-  uint32_t vend  = vstart + size;
++  UNUSED(vstart);
++  UNUSED(size);
+ 
+-  /* Loop, invalidating regions */
++  /* Invalidate entire TLB instead of per-page.  Per-page invalidation via
++   * cp15_invalidate_tlb_bymva() is extremely slow under QEMU emulation
++   * (each MCR is emulated individually).  A single TLBIALL is sufficient
++   * during boot-time page table setup and is orders of magnitude faster.
++   */
+ 
+-  while (vaddr < vend)
+-    {
+-      cp15_invalidate_tlb_bymva(vaddr);
+-      vaddr += 4096;
+-    }
++  cp15_invalidate_tlbs();
+ }
+ #endif
+diff --git a/include/signal.h b/include/signal.h
+index 865819ee..829ed5d4 100644
+--- a/include/signal.h
++++ b/include/signal.h
+@@ -287,15 +287,15 @@
+  */
+ 
+ #define SIG_ERR         ((_sa_handler_t)-1)  /* And error occurred */
+-#define SIG_IGN         ((_sa_handler_t)0)   /* Ignore the signal */
+ 
+-#ifdef CONFIG_SIG_DEFAULT
+-#  define SIG_DFL       ((_sa_handler_t)1)   /* Default signal action */
+-#  define SIG_HOLD      ((_sa_handler_t)2)   /* Used only with sigset() */
+-#else
+-#  define SIG_DFL       ((_sa_handler_t)0)   /* Default is SIG_IGN for all signals */
+-#  define SIG_HOLD      ((_sa_handler_t)1)   /* Used only with sigset() */
+-#endif
++/* Match Linux/POSIX convention: SIG_DFL=0, SIG_IGN=1.
++ * Required for compatibility with Rust's std library (libc crate) which
++ * assumes the Linux convention and cannot be patched via build-std.
++ */
++
++#define SIG_DFL         ((_sa_handler_t)0)   /* Default signal action */
++#define SIG_IGN         ((_sa_handler_t)1)   /* Ignore the signal */
++#define SIG_HOLD        ((_sa_handler_t)2)   /* Used only with sigset() */
+ 
+ #define GOOD_SIGNO(s)     (((unsigned)(s)) <= MAX_SIGNO)
+ #define UNCAUGHT_SIGNO(s) ((s) == SIGKILL || (s) == SIGSTOP)
+diff --git a/libs/libc/signal/sig_signal.c b/libs/libc/signal/sig_signal.c
+index 8ed40cf2..95d3bbaf 100644
+--- a/libs/libc/signal/sig_signal.c
++++ b/libs/libc/signal/sig_signal.c
+@@ -77,13 +77,9 @@ _sa_handler_t signal(int signo, _sa_handler_t func)
+   act.sa_flags   = 0;
+   sigemptyset(&act.sa_mask);
+ 
+-  /* Check for SIG_IGN and SIG_DFL (and someday SIG_HOLD)
+-   *
+-   * REVISIT:  Currently SIG_IGN, SIG_DFL, and SIG_HOLD have the same value
+-   * and cannot be distinguished.
+-   */
++  /* Check for SIG_IGN and SIG_DFL */
+ 
+-  if (func != SIG_DFL /* && func != SIG_IGN */)
++  if (func != SIG_DFL && func != SIG_IGN)
+     {
+       /* Add the signal to the set of signals to be ignored when the signal
+        * handler executes.
