@@ -69,10 +69,10 @@ fn main() {
     #[cfg(feature = "param-services")]
     {
         executor
-            .register_parameter_services("/demo/talker")
+            .register_parameter_services()
             .expect("Failed to register parameter services");
         executor.declare_parameter("start_value", ParameterValue::Integer(0));
-        info!("Parameter services registered for /demo/talker");
+        info!("Parameter services registered for /talker");
     }
 
     // Create publisher

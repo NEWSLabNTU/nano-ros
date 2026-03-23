@@ -1484,7 +1484,11 @@ impl Executor {
     ///
     /// Creates service servers for `get_parameters`, `set_parameters`,
     /// `set_parameters_atomically`, `list_parameters`, `describe_parameters`,
-    /// and `get_parameter_types` under the given node fully-qualified name.
+    /// and `get_parameter_types`.
+    ///
+    /// The service names follow the ROS 2 convention: `/{namespace}/{node_name}/{suffix}`.
+    /// For the default namespace `/`, this becomes `/{node_name}/{suffix}` (e.g.
+    /// `/sentinel/list_parameters`).
     ///
     /// Parameter services are stored outside the arena and don't consume
     /// callback slots.
@@ -1492,11 +1496,12 @@ impl Executor {
     /// # Example
     ///
     /// ```ignore
+    /// let config = ExecutorConfig::from_env().node_name("talker");
     /// let mut executor = Executor::open(&config)?;
-    /// executor.register_parameter_services("/demo/talker")?;
+    /// executor.register_parameter_services()?;
     /// executor.declare_parameter("start_value", ParameterValue::Integer(0));
     /// ```
-    pub fn register_parameter_services(&mut self, node_fqn: &str) -> Result<(), NodeError> {
+    pub fn register_parameter_services(&mut self) -> Result<(), NodeError> {
         use crate::parameter_services::{
             DescribeParameters, GetParameterTypes, GetParameters, ListParameters,
             PARAM_SERVICE_BUFFER_SIZE, ParameterServiceServers, SetParameters,
@@ -1509,6 +1514,23 @@ impl Executor {
             PARAM_SERVICE_BUFFER_SIZE,
             PARAM_SERVICE_BUFFER_SIZE,
         >;
+
+        // Build the node FQN from namespace + node_name, following ROS 2 convention.
+        // Default namespace "/" → "/{node_name}"; otherwise "/{namespace}/{node_name}".
+        let mut node_fqn = heapless::String::<256>::new();
+        let ns: &str = &self.namespace;
+        let nn: &str = &self.node_name;
+        if ns.is_empty() || ns == "/" {
+            node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            node_fqn.push_str(nn).map_err(|_| NodeError::NameTooLong)?;
+        } else {
+            node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            node_fqn
+                .push_str(ns.trim_matches('/'))
+                .map_err(|_| NodeError::NameTooLong)?;
+            node_fqn.push_str("/").map_err(|_| NodeError::NameTooLong)?;
+            node_fqn.push_str(nn).map_err(|_| NodeError::NameTooLong)?;
+        }
 
         /// Build a service name like `{node_fqn}/{suffix}` and create the server handle.
         fn create_param_srv<Svc: RosService>(
@@ -1533,46 +1555,44 @@ impl Executor {
                 .map_err(|_| NodeError::Transport(TransportError::ServiceServerCreationFailed))
         }
 
-        let ns: &str = &self.namespace;
-        let nn: &str = &self.node_name;
         let get_handle = create_param_srv::<GetParameters>(
             &mut self.session,
-            node_fqn,
+            &node_fqn,
             ns,
             nn,
             "get_parameters",
         )?;
         let set_handle = create_param_srv::<SetParameters>(
             &mut self.session,
-            node_fqn,
+            &node_fqn,
             ns,
             nn,
             "set_parameters",
         )?;
         let set_atomic_handle = create_param_srv::<SetParametersAtomically>(
             &mut self.session,
-            node_fqn,
+            &node_fqn,
             ns,
             nn,
             "set_parameters_atomically",
         )?;
         let list_handle = create_param_srv::<ListParameters>(
             &mut self.session,
-            node_fqn,
+            &node_fqn,
             ns,
             nn,
             "list_parameters",
         )?;
         let desc_handle = create_param_srv::<DescribeParameters>(
             &mut self.session,
-            node_fqn,
+            &node_fqn,
             ns,
             nn,
             "describe_parameters",
         )?;
         let types_handle = create_param_srv::<GetParameterTypes>(
             &mut self.session,
-            node_fqn,
+            &node_fqn,
             ns,
             nn,
             "get_parameter_types",
