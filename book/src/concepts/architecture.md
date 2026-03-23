@@ -597,7 +597,7 @@ TSN capabilities are accessed through the platform's native networking stack, no
 | Zephyr   | Native gPTP + drivers | Yes  | Partial   | Partial   | No        | --              |
 | NuttX    | --                    | No   | No        | No        | No        | --              |
 
-ThreadX + NetX Duo provides the most complete TSN support with safety certification. The NetX Duo TSN APIs (`nx_shaper_cbs_*`, `nx_shaper_tas_*`, `nx_shaper_fpe_*`) are available in `external/netxduo/tsn/`.
+ThreadX + NetX Duo provides the most complete TSN support with safety certification. The NetX Duo TSN APIs (`nx_shaper_cbs_*`, `nx_shaper_tas_*`, `nx_shaper_fpe_*`) are available in `third-party/threadx/netxduo/tsn/`.
 
 ### TSN Hardware Platforms
 

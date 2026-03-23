@@ -1,9 +1,5 @@
 set working-directory := '..'
 
-# Pinned versions
-FREERTOS_KERNEL_TAG := "V11.2.0"
-LWIP_TAG := "STABLE-2_2_1_RELEASE"
-
 # Install FreeRTOS ARM Cortex-M3 libraries into build/install/
 install:
     #!/usr/bin/env bash
@@ -60,61 +56,6 @@ test verbose="":
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
-
-# Download FreeRTOS kernel and lwIP sources
-setup:
-    #!/usr/bin/env bash
-    set -e
-    echo "=== FreeRTOS + lwIP Setup ==="
-    echo ""
-    FREERTOS_DIR="$(pwd)/external/freertos-kernel"
-    LWIP_DIR="$(pwd)/external/lwip"
-
-    # --- FreeRTOS Kernel ---
-    if [ -d "$FREERTOS_DIR/include" ]; then
-        tag=$(cd "$FREERTOS_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
-        echo "FreeRTOS kernel already present at $FREERTOS_DIR (tag: $tag)"
-        if [ "$tag" != "{{FREERTOS_KERNEL_TAG}}" ]; then
-            echo "  WARNING: expected {{FREERTOS_KERNEL_TAG}}, found $tag"
-            echo "  To update: rm -rf $FREERTOS_DIR && just freertos setup"
-        fi
-    else
-        echo "Cloning FreeRTOS kernel {{FREERTOS_KERNEL_TAG}}..."
-        git clone --depth 1 --branch "{{FREERTOS_KERNEL_TAG}}" \
-            https://github.com/FreeRTOS/FreeRTOS-Kernel.git "$FREERTOS_DIR"
-        echo "  -> $FREERTOS_DIR"
-    fi
-    echo ""
-
-    # --- lwIP ---
-    if [ -d "$LWIP_DIR/src/include" ]; then
-        tag=$(cd "$LWIP_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
-        echo "lwIP already present at $LWIP_DIR (tag: $tag)"
-        if [ "$tag" != "{{LWIP_TAG}}" ]; then
-            echo "  WARNING: expected {{LWIP_TAG}}, found $tag"
-            echo "  To update: rm -rf $LWIP_DIR && just freertos setup"
-        fi
-    else
-        echo "Cloning lwIP {{LWIP_TAG}}..."
-        git clone --depth 1 --branch "{{LWIP_TAG}}" \
-            https://github.com/lwip-tcpip/lwip.git "$LWIP_DIR"
-        echo "  -> $LWIP_DIR"
-    fi
-    echo ""
-
-    echo "=== Environment Variables ==="
-    echo ""
-    echo "Add these to your shell or .cargo/config.toml [env] section:"
-    echo ""
-    echo "  export FREERTOS_DIR=$FREERTOS_DIR"
-    echo "  export FREERTOS_PORT=GCC/ARM_CM3"
-    echo "  export LWIP_DIR=$LWIP_DIR"
-    echo "  export FREERTOS_CONFIG_DIR=<board-crate>/config"
-    echo ""
-    echo "For QEMU MPS2-AN385 (Cortex-M3), use FREERTOS_PORT=GCC/ARM_CM3."
-    echo "For STM32F7 (Cortex-M7), use FREERTOS_PORT=GCC/ARM_CM7/r0p1."
-    echo ""
-    echo "Setup complete!"
 
 # Clean FreeRTOS build artifacts
 clean:

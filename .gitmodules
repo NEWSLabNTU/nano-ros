@@ -19,3 +19,33 @@
 [submodule "packages/dds/dust-dds"]
 	path = packages/dds/dust-dds
 	url = https://github.com/jerry73204/dust-dds.git
+[submodule "third-party/freertos/kernel"]
+	path = third-party/freertos/kernel
+	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
+[submodule "third-party/freertos/lwip"]
+	path = third-party/freertos/lwip
+	url = https://github.com/lwip-tcpip/lwip.git
+[submodule "third-party/threadx/kernel"]
+	path = third-party/threadx/kernel
+	url = https://github.com/eclipse-threadx/threadx.git
+[submodule "third-party/threadx/netxduo"]
+	path = third-party/threadx/netxduo
+	url = https://github.com/eclipse-threadx/netxduo.git
+[submodule "third-party/threadx/learn-samples"]
+	path = third-party/threadx/learn-samples
+	url = https://github.com/eclipse-threadx/threadx-learn-samples.git
+[submodule "third-party/esp32/qemu"]
+	path = third-party/esp32/qemu
+	url = https://github.com/espressif/qemu.git
+[submodule "third-party/nuttx/libc"]
+	path = third-party/nuttx/libc
+	url = https://github.com/jerry73204/libc.git
+[submodule "third-party/xrce/agent"]
+	path = third-party/xrce/agent
+	url = https://github.com/eProsima/Micro-XRCE-DDS-Agent.git
+[submodule "third-party/nuttx/nuttx"]
+	path = third-party/nuttx/nuttx
+	url = https://github.com/apache/nuttx.git
+[submodule "third-party/nuttx/nuttx-apps"]
+	path = third-party/nuttx/nuttx-apps
+	url = https://github.com/apache/nuttx-apps.git

@@ -52,9 +52,9 @@ rustup target add riscv64gc-unknown-none-elf
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `THREADX_DIR` | `external/threadx` | ThreadX kernel source |
+| `THREADX_DIR` | `third-party/threadx/kernel` | ThreadX kernel source |
 | `THREADX_CONFIG_DIR` | Board crate's `config/` | ThreadX config (`tx_user.h`) |
-| `NETX_DIR` | `external/netxduo` | NetX Duo source |
+| `NETX_DIR` | `third-party/threadx/netxduo` | NetX Duo source |
 | `NETX_CONFIG_DIR` | Board crate's `config/` | NetX Duo config (`nx_user.h`) |
 
 ## Building

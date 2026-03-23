@@ -5,8 +5,8 @@
 //! NetX Duo raw-socket network driver over TAP interfaces.
 //!
 //! Prerequisites:
-//! - `THREADX_DIR` env var pointing to ThreadX source (e.g., `external/threadx`)
-//! - `NETX_DIR` env var pointing to NetX Duo source (e.g., `external/netxduo`)
+//! - `THREADX_DIR` env var pointing to ThreadX source (e.g., `third-party/threadx/kernel`)
+//! - `NETX_DIR` env var pointing to NetX Duo source (e.g., `third-party/threadx/netxduo`)
 //!
 //! Run with: `just test-threadx-linux`
 //! Or: `cargo nextest run -p nros-tests --test threadx_linux`
@@ -45,7 +45,7 @@ fn is_netx_available() -> bool {
 /// Check if the ThreadX learn-samples Linux network driver is available
 fn is_threadx_samples_available() -> bool {
     let root = project_root();
-    root.join("external/threadx-learn-samples/courses/netxduo/Driver/nx_linux_network_driver.c")
+    root.join("third-party/threadx/learn-samples/courses/netxduo/Driver/nx_linux_network_driver.c")
         .exists()
 }
 
@@ -715,11 +715,11 @@ fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBu
 
     // Resolve SDK paths from env (set by justfile) or default to external/
     let threadx_dir = std::env::var("THREADX_DIR")
-        .unwrap_or_else(|_| root.join("external/threadx").display().to_string());
+        .unwrap_or_else(|_| root.join("third-party/threadx/kernel").display().to_string());
     let netx_dir = std::env::var("NETX_DIR")
-        .unwrap_or_else(|_| root.join("external/netxduo").display().to_string());
+        .unwrap_or_else(|_| root.join("third-party/threadx/netxduo").display().to_string());
     let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
-        root.join("external/threadx-learn-samples")
+        root.join("third-party/threadx/learn-samples")
             .display()
             .to_string()
     });
@@ -1032,11 +1032,11 @@ fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
 
     // Resolve SDK paths from env (set by justfile) or default to external/
     let threadx_dir = std::env::var("THREADX_DIR")
-        .unwrap_or_else(|_| root.join("external/threadx").display().to_string());
+        .unwrap_or_else(|_| root.join("third-party/threadx/kernel").display().to_string());
     let netx_dir = std::env::var("NETX_DIR")
-        .unwrap_or_else(|_| root.join("external/netxduo").display().to_string());
+        .unwrap_or_else(|_| root.join("third-party/threadx/netxduo").display().to_string());
     let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
-        root.join("external/threadx-learn-samples")
+        root.join("third-party/threadx/learn-samples")
             .display()
             .to_string()
     });

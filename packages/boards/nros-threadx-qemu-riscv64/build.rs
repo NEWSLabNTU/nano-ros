@@ -5,8 +5,8 @@
 //! into static libraries linked into the final binary.
 //!
 //! Environment variables (auto-set by justfile recipes):
-//!   THREADX_DIR          — ThreadX kernel source root (default: external/threadx)
-//!   NETX_DIR             — NetX Duo source root (default: external/netxduo)
+//!   THREADX_DIR          — ThreadX kernel source root (default: third-party/threadx/kernel)
+//!   NETX_DIR             — NetX Duo source root (default: third-party/threadx/netxduo)
 
 use std::env;
 use std::io::Write;
@@ -24,8 +24,8 @@ fn main() {
         .and_then(|p| p.parent())
         .expect("Could not resolve workspace root");
 
-    let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("external/threadx"));
-    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("external/netxduo"));
+    let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
+    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
     let virtio_driver_dir = workspace_root.join("packages/drivers/virtio-net-netx");
 
     // Validate directories

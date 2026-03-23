@@ -1,9 +1,8 @@
 #!/bin/bash
 # Build Micro-XRCE-DDS Agent from source
 #
-# Clones eProsima/Micro-XRCE-DDS-Agent (v2.4.3) into external/ and
-# builds it with CMake. The Agent is needed for XRCE-DDS integration
-# tests (just test-xrce).
+# Builds Micro-XRCE-DDS-Agent from the submodule at third-party/xrce/agent.
+# The Agent is needed for XRCE-DDS integration tests (just xrce test).
 #
 # Usage:
 #   ./scripts/xrce-agent/build.sh [--clean]
@@ -19,7 +18,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-AGENT_SRC="$REPO_ROOT/external/Micro-XRCE-DDS-Agent"
+AGENT_SRC="$REPO_ROOT/third-party/xrce/agent"
 BUILD_DIR="$REPO_ROOT/build/xrce-agent"
 
 # Parse arguments
@@ -43,11 +42,11 @@ if ! command -v g++ &>/dev/null && ! command -v clang++ &>/dev/null; then
     exit 1
 fi
 
-# Clone the Agent source if not present
-if [ ! -d "$AGENT_SRC" ]; then
-    echo "Cloning Micro-XRCE-DDS-Agent v2.4.3..."
-    git clone --depth 1 --branch v2.4.3 \
-        https://github.com/eProsima/Micro-XRCE-DDS-Agent.git "$AGENT_SRC"
+# Verify submodule is initialized
+if [ ! -f "$AGENT_SRC/CMakeLists.txt" ]; then
+    echo "Error: XRCE Agent submodule not initialized at $AGENT_SRC"
+    echo "Run: git submodule update --init third-party/xrce/agent"
+    exit 1
 fi
 
 echo "Building Micro-XRCE-DDS Agent..."

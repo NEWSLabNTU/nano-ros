@@ -16,4 +16,4 @@ CFLAGS_armv7a_nuttx_eabihf = "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
 nros-core = { path = "../../../../../packages/core/nros-core" }
 nros-serdes = { path = "../../../../../packages/core/nros-serdes" }
 example_interfaces = { path = "generated/example_interfaces" }
-libc = { path = "../../../../../external/libc" }
+libc = { path = "../../../../../third-party/nuttx/libc" }

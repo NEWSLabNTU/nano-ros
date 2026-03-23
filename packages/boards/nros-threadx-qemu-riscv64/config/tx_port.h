@@ -1,7 +1,7 @@
 /*
  * tx_port.h — Fixed ThreadX port header for RISC-V 64-bit bare-metal (QEMU virt)
  *
- * Shadows external/threadx/ports/risc-v64/gnu/inc/tx_port.h to fix the ULONG
+ * Shadows third-party/threadx/kernel/ports/risc-v64/gnu/inc/tx_port.h to fix the ULONG
  * typedef. The upstream port incorrectly defines ULONG as "unsigned long" (8
  * bytes on rv64), which breaks NetX Duo's network protocol parsing — all packet
  * code uses `ULONG *` pointer arithmetic assuming 4-byte words.

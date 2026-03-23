@@ -4,8 +4,8 @@
 //! FreeRTOS examples use `thumbv7m-none-eabi` target with `no_std` + lwIP networking.
 //!
 //! Prerequisites:
-//! - `FREERTOS_DIR` env var pointing to FreeRTOS kernel source (e.g., `external/freertos-kernel`)
-//! - `LWIP_DIR` env var pointing to lwIP source (e.g., `external/lwip`)
+//! - `FREERTOS_DIR` env var pointing to FreeRTOS kernel source (e.g., `third-party/freertos/kernel`)
+//! - `LWIP_DIR` env var pointing to lwIP source (e.g., `third-party/freertos/lwip`)
 //! - `arm-none-eabi-gcc` toolchain installed
 //! - `qemu-system-arm` with MPS2-AN385 machine support
 //!

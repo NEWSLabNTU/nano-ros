@@ -5,9 +5,9 @@
 //! libraries linked into the final binary.
 //!
 //! Environment variables (auto-set by justfile recipes):
-//!   THREADX_DIR          — ThreadX kernel source root (default: external/threadx)
-//!   NETX_DIR             — NetX Duo source root (default: external/netxduo)
-//!   THREADX_SAMPLES_DIR  — ThreadX learn samples (default: external/threadx-learn-samples)
+//!   THREADX_DIR          — ThreadX kernel source root (default: third-party/threadx/kernel)
+//!   NETX_DIR             — NetX Duo source root (default: third-party/threadx/netxduo)
+//!   THREADX_SAMPLES_DIR  — ThreadX learn samples (default: third-party/threadx/learn-samples)
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -23,11 +23,11 @@ fn main() {
         .and_then(|p| p.parent())
         .expect("Could not resolve workspace root");
 
-    let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("external/threadx"));
-    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("external/netxduo"));
+    let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
+    let netx_dir = env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
     let samples_dir = env_path_or(
         "THREADX_SAMPLES_DIR",
-        workspace_root.join("external/threadx-learn-samples"),
+        workspace_root.join("third-party/threadx/learn-samples"),
     );
 
     // Validate directories

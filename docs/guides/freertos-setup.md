@@ -29,16 +29,16 @@ just setup-freertos
 ```
 
 This shallow-clones:
-- FreeRTOS kernel (V11.2.0) → `external/freertos-kernel/`
-- lwIP (STABLE-2_2_1_RELEASE) → `external/lwip/`
+- FreeRTOS kernel (V11.2.0) → `third-party/freertos/kernel/`
+- lwIP (STABLE-2_2_1_RELEASE) → `third-party/freertos/lwip/`
 
 Override paths if sources are elsewhere:
 
 | Variable              | Default                    | Description                          |
 |-----------------------|----------------------------|--------------------------------------|
-| `FREERTOS_DIR`        | `external/freertos-kernel` | FreeRTOS kernel source               |
+| `FREERTOS_DIR`        | `third-party/freertos/kernel` | FreeRTOS kernel source               |
 | `FREERTOS_PORT`       | `GCC/ARM_CM3`              | FreeRTOS portable layer              |
-| `LWIP_DIR`            | `external/lwip`            | lwIP source                          |
+| `LWIP_DIR`            | `third-party/freertos/lwip`            | lwIP source                          |
 | `FREERTOS_CONFIG_DIR` | Board crate's `config/`    | `FreeRTOSConfig.h` + `lwipopts.h`   |
 
 ## Building Examples

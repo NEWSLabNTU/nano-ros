@@ -5,8 +5,8 @@
 //! target with `no_std` + NetX Duo networking over virtio-net.
 //!
 //! Prerequisites:
-//! - `THREADX_DIR` env var pointing to ThreadX source (e.g., `external/threadx`)
-//! - `NETX_DIR` env var pointing to NetX Duo source (e.g., `external/netxduo`)
+//! - `THREADX_DIR` env var pointing to ThreadX source (e.g., `third-party/threadx/kernel`)
+//! - `NETX_DIR` env var pointing to NetX Duo source (e.g., `third-party/threadx/netxduo`)
 //! - `riscv64-unknown-elf-gcc` cross-compiler installed
 //! - `qemu-system-riscv64` with virt machine support
 //! - zenohd: `just build-zenohd`
@@ -695,9 +695,9 @@ fn build_rv64_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestRe
         root.join("cmake/toolchain/riscv64-threadx.cmake").display()
     );
     let threadx_dir = std::env::var("THREADX_DIR")
-        .unwrap_or_else(|_| root.join("external/threadx").display().to_string());
+        .unwrap_or_else(|_| root.join("third-party/threadx/kernel").display().to_string());
     let netx_dir = std::env::var("NETX_DIR")
-        .unwrap_or_else(|_| root.join("external/netxduo").display().to_string());
+        .unwrap_or_else(|_| root.join("third-party/threadx/netxduo").display().to_string());
     // Always use the RISC-V board config (not the Linux one from THREADX_CONFIG_DIR)
     let config_dir = root
         .join("packages/boards/nros-threadx-qemu-riscv64/config")

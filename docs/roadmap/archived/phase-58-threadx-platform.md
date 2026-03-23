@@ -293,9 +293,9 @@ Add `platform-threadx` / `threadx` features to all crates in the chain. Update m
 ### 58.2 — `just setup-threadx` dependency acquisition
 
 Add `just setup-threadx` recipe that:
-1. Shallow-clones `eclipse-threadx/threadx` (`v6.4.5.202504_rel`) to `external/threadx/`
-2. Shallow-clones `eclipse-threadx/netxduo` (`v6.4.5.202504_rel`) to `external/netxduo/`
-3. Shallow-clones `eclipse-threadx/threadx-learn-samples` (main) to `external/threadx-learn-samples/` (contains `nx_linux_network_driver.c`)
+1. Shallow-clones `eclipse-threadx/threadx` (`v6.4.5.202504_rel`) to `third-party/threadx/kernel/`
+2. Shallow-clones `eclipse-threadx/netxduo` (`v6.4.5.202504_rel`) to `third-party/threadx/netxduo/`
+3. Shallow-clones `eclipse-threadx/threadx-learn-samples` (main) to `third-party/threadx/learn-samples/` (contains `nx_linux_network_driver.c`)
 4. Prints environment variable configuration
 5. Idempotent — skips if already present, warns on tag mismatch
 

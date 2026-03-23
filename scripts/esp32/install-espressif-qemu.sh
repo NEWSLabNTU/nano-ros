@@ -5,12 +5,14 @@ set -euo pipefail
 # Supports ESP32-C3 machine with OpenETH networking
 
 PREFIX="${HOME}/.local"
-WORKDIR="${TMPDIR:-/tmp}/espressif-qemu-build"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+SRCDIR="${REPO_ROOT}/third-party/esp32/qemu"
 JOBS="$(nproc)"
 
 echo "=== Espressif QEMU installer ==="
 echo "  prefix:  ${PREFIX}"
-echo "  workdir: ${WORKDIR}"
+echo "  source:  ${SRCDIR}"
 echo "  jobs:    ${JOBS}"
 echo
 
@@ -37,16 +39,13 @@ if [ ${#MISSING[@]} -gt 0 ]; then
     exit 1
 fi
 
-# Clone
-if [ -d "${WORKDIR}" ]; then
-    echo ">>> Reusing existing source at ${WORKDIR}"
-    cd "${WORKDIR}"
-    git fetch --depth=1
-else
-    echo ">>> Cloning espressif/qemu ..."
-    git clone --depth=1 https://github.com/espressif/qemu.git "${WORKDIR}"
-    cd "${WORKDIR}"
+# Verify submodule is initialized
+if [ ! -f "${SRCDIR}/configure" ]; then
+    echo "ERROR: Espressif QEMU submodule not initialized at ${SRCDIR}"
+    echo "Run: git submodule update --init third-party/esp32/qemu"
+    exit 1
 fi
+cd "${SRCDIR}"
 
 # Configure (RISC-V 32-bit only, minimal)
 echo ">>> Configuring ..."

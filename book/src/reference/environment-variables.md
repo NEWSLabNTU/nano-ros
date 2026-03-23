@@ -46,15 +46,15 @@ These are auto-resolved by justfile recipes (defaulting to `external/` paths fro
 
 | Variable              | Default                      | Description                        |
 |-----------------------|------------------------------|------------------------------------|
-| `FREERTOS_DIR`        | `external/freertos-kernel`   | FreeRTOS kernel source             |
+| `FREERTOS_DIR`        | `third-party/freertos/kernel`   | FreeRTOS kernel source             |
 | `FREERTOS_PORT`       | `GCC/ARM_CM3`                | FreeRTOS portable layer            |
-| `LWIP_DIR`            | `external/lwip`              | lwIP source                        |
+| `LWIP_DIR`            | `third-party/freertos/lwip`              | lwIP source                        |
 | `FREERTOS_CONFIG_DIR` | Board crate's `config/`      | `FreeRTOSConfig.h` + `lwipopts.h` |
-| `NUTTX_DIR`           | `external/nuttx`             | NuttX RTOS source                  |
-| `NUTTX_APPS_DIR`      | `external/nuttx-apps`        | NuttX apps source                  |
-| `THREADX_DIR`         | `external/threadx`           | ThreadX kernel source              |
+| `NUTTX_DIR`           | `third-party/nuttx/nuttx`             | NuttX RTOS source                  |
+| `NUTTX_APPS_DIR`      | `third-party/nuttx/nuttx-apps`        | NuttX apps source                  |
+| `THREADX_DIR`         | `third-party/threadx/kernel`           | ThreadX kernel source              |
 | `THREADX_CONFIG_DIR`  | Board crate's `config/`      | ThreadX config (`tx_user.h`)       |
-| `NETX_DIR`            | `external/netxduo`           | NetX Duo source                    |
+| `NETX_DIR`            | `third-party/threadx/netxduo`           | NetX Duo source                    |
 | `NETX_CONFIG_DIR`     | Board crate's `config/`      | NetX Duo config (`nx_user.h`)      |
 
 ## Buffer Tuning

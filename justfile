@@ -6,15 +6,15 @@ CLIPPY_LINTS := "-D warnings -D clippy::infinite_iter -D clippy::while_immutable
 LOG_DIR := "test-logs"
 
 # Default paths for external SDKs — exported so all recipes (build + test) see them
-export FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "external/freertos-kernel")
+export FREERTOS_DIR := env("FREERTOS_DIR", justfile_directory() / "third-party/freertos/kernel")
 export FREERTOS_PORT := env("FREERTOS_PORT", "GCC/ARM_CM3")
-export LWIP_DIR := env("LWIP_DIR", justfile_directory() / "external/lwip")
+export LWIP_DIR := env("LWIP_DIR", justfile_directory() / "third-party/freertos/lwip")
 export FREERTOS_CONFIG_DIR := env("FREERTOS_CONFIG_DIR", justfile_directory() / "packages/boards/nros-mps2-an385-freertos/config")
-export NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "external/nuttx")
-export NUTTX_APPS_DIR := env("NUTTX_APPS_DIR", justfile_directory() / "external/nuttx-apps")
-export THREADX_DIR := env("THREADX_DIR", justfile_directory() / "external/threadx")
+export NUTTX_DIR := env("NUTTX_DIR", justfile_directory() / "third-party/nuttx/nuttx")
+export NUTTX_APPS_DIR := env("NUTTX_APPS_DIR", justfile_directory() / "third-party/nuttx/nuttx-apps")
+export THREADX_DIR := env("THREADX_DIR", justfile_directory() / "third-party/threadx/kernel")
 export THREADX_CONFIG_DIR := env("THREADX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-threadx-linux/config")
-export NETX_DIR := env("NETX_DIR", justfile_directory() / "external/netxduo")
+export NETX_DIR := env("NETX_DIR", justfile_directory() / "third-party/threadx/netxduo")
 export NETX_CONFIG_DIR := env("NETX_CONFIG_DIR", justfile_directory() / "packages/boards/nros-threadx-linux/config")
 
 # =============================================================================

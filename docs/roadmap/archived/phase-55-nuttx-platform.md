@@ -271,8 +271,8 @@ Add a NuttX branch in `packages/xrce/xrce-sys/build.rs`. NuttX's POSIX compatibi
 ### 55.5 — `just setup-nuttx` dependency acquisition
 
 Add `just setup-nuttx` recipe that:
-1. Shallow-clones `apache/nuttx` (`nuttx-12.8.0`) to `external/nuttx/`
-2. Shallow-clones `apache/nuttx-apps` (same tag) to `external/nuttx-apps/`
+1. Shallow-clones `apache/nuttx` (`nuttx-12.8.0`) to `third-party/nuttx/nuttx/`
+2. Shallow-clones `apache/nuttx-apps` (same tag) to `third-party/nuttx/nuttx-apps/`
 3. Prints environment variable configuration (`NUTTX_DIR`, `NUTTX_APPS_DIR`)
 4. Idempotent — skips if already present, warns if tag mismatch
 

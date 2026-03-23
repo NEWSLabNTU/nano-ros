@@ -41,13 +41,13 @@ Download the NuttX source and apps:
 just setup-nuttx
 ```
 
-This places the sources in `external/nuttx/` and `external/nuttx-apps/`.
+This places the sources in `third-party/nuttx/nuttx/` and `third-party/nuttx/nuttx-apps/`.
 Override the paths with environment variables if your sources are elsewhere:
 
 | Variable         | Default              | Description          |
 |------------------|----------------------|----------------------|
-| `NUTTX_DIR`      | `external/nuttx`     | NuttX RTOS source    |
-| `NUTTX_APPS_DIR` | `external/nuttx-apps`| NuttX apps source    |
+| `NUTTX_DIR`      | `third-party/nuttx/nuttx`     | NuttX RTOS source    |
+| `NUTTX_APPS_DIR` | `third-party/nuttx/nuttx-apps`| NuttX apps source    |
 
 ### Prerequisites
 

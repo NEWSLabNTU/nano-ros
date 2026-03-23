@@ -9,7 +9,7 @@ if(NOT DEFINED LWIP_DIR)
         message(FATAL_ERROR
             "LWIP_DIR not set. Point it at the lwIP source directory.\n"
             "Run `just setup-freertos` to download, then:\n"
-            "  cmake -DLWIP_DIR=<repo>/external/lwip ..")
+            "  cmake -DLWIP_DIR=<repo>/third-party/freertos/lwip ..")
     endif()
 endif()
 

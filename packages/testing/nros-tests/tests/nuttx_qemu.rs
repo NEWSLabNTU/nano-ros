@@ -15,7 +15,7 @@
 //!
 //! ## Prerequisites
 //!
-//! - `NUTTX_DIR` env var pointing to NuttX source (e.g., `external/nuttx`)
+//! - `NUTTX_DIR` env var pointing to NuttX source (e.g., `third-party/nuttx/nuttx`)
 //! - Nightly Rust toolchain with `armv7a-nuttx-eabihf` target
 //! - `qemu-system-arm` with virt machine support
 //! - zenohd: `just build-zenohd`
@@ -106,7 +106,7 @@ fn nuttx_kernel_path() -> Option<PathBuf> {
 fn require_nuttx() -> bool {
     if !is_nuttx_available() {
         eprintln!("Skipping test: NUTTX_DIR not set or invalid");
-        eprintln!("Run: just setup-nuttx && export NUTTX_DIR=$(pwd)/external/nuttx");
+        eprintln!("Run: just setup-nuttx && export NUTTX_DIR=$(pwd)/third-party/nuttx/nuttx");
         return false;
     }
     if !is_nuttx_configured() {

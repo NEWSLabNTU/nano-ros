@@ -4,7 +4,7 @@ install:
     #!/usr/bin/env bash
     set -e
     if ! command -v riscv64-unknown-elf-gcc &>/dev/null || \
-       [ ! -d "${THREADX_DIR:-external/threadx}/common/inc" ]; then
+       [ ! -d "${THREADX_DIR:-third-party/threadx/kernel}/common/inc" ]; then
         echo "RISC-V toolchain or ThreadX SDK not found — skipping ThreadX RISC-V libraries"
         exit 0
     fi

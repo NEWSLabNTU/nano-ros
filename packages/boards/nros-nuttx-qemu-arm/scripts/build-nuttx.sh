@@ -13,8 +13,8 @@
 #   - Run `just setup-nuttx` to download sources
 #
 # Environment (auto-resolved from project root if not set):
-#   - NUTTX_DIR — NuttX source (default: external/nuttx)
-#   - NUTTX_APPS_DIR — NuttX apps source (default: external/nuttx-apps)
+#   - NUTTX_DIR — NuttX source (default: third-party/nuttx/nuttx)
+#   - NUTTX_APPS_DIR — NuttX apps source (default: third-party/nuttx/nuttx-apps)
 #
 # Usage:
 #   ./build-nuttx.sh                    # Build with default defconfig
@@ -30,8 +30,8 @@ DEFCONFIG="$BOARD_DIR/nuttx-config/defconfig"
 
 # --- Auto-resolve paths from project root if not set ---
 
-NUTTX_DIR="${NUTTX_DIR:-$PROJECT_ROOT/external/nuttx}"
-NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$PROJECT_ROOT/external/nuttx-apps}"
+NUTTX_DIR="${NUTTX_DIR:-$PROJECT_ROOT/third-party/nuttx/nuttx}"
+NUTTX_APPS_DIR="${NUTTX_APPS_DIR:-$PROJECT_ROOT/third-party/nuttx/nuttx-apps}"
 
 # --- Validate environment ---
 

@@ -6,7 +6,7 @@
  * defines ULONG as "unsigned int" (4 bytes) instead of the default
  * "unsigned long" (8 bytes).  Pointer fields remain 8-byte (LOAD/STORE).
  *
- * Original: external/threadx/ports/risc-v64/gnu/src/tx_thread_context_save.S
+ * Original: third-party/threadx/kernel/ports/risc-v64/gnu/src/tx_thread_context_save.S
  */
 /***************************************************************************
  * Copyright (c) 2024 Microsoft Corporation

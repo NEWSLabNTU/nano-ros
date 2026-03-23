@@ -1257,9 +1257,9 @@ fn build_zenoh_pico_embedded(
 /// `Z_FEATURE_MULTI_THREAD=1` is set (unlike bare-metal).
 ///
 /// Required environment variables:
-/// - `FREERTOS_DIR` — path to FreeRTOS kernel source (e.g., `external/freertos-kernel`)
+/// - `FREERTOS_DIR` — path to FreeRTOS kernel source (e.g., `third-party/freertos/kernel`)
 /// - `FREERTOS_PORT` — portable layer (e.g., `GCC/ARM_CM3`)
-/// - `LWIP_DIR` — path to lwIP source (e.g., `external/lwip`)
+/// - `LWIP_DIR` — path to lwIP source (e.g., `third-party/freertos/lwip`)
 /// - `FREERTOS_CONFIG_DIR` — path to directory with `FreeRTOSConfig.h` + `lwipopts.h`
 #[allow(clippy::too_many_arguments)]
 fn build_zenoh_pico_freertos(
@@ -1276,7 +1276,7 @@ fn build_zenoh_pico_freertos(
         panic!(
             "FREERTOS_DIR not set. Point it at the FreeRTOS kernel source directory.\n\
              Run `just setup-freertos` to download, then set:\n\
-             export FREERTOS_DIR=$PWD/external/freertos-kernel"
+             export FREERTOS_DIR=$PWD/third-party/freertos/kernel"
         );
     }));
     let freertos_port = env::var("FREERTOS_PORT").unwrap_or_else(|_| {
@@ -1289,7 +1289,7 @@ fn build_zenoh_pico_freertos(
         panic!(
             "LWIP_DIR not set. Point it at the lwIP source directory.\n\
              Run `just setup-freertos` to download, then set:\n\
-             export LWIP_DIR=$PWD/external/lwip"
+             export LWIP_DIR=$PWD/third-party/freertos/lwip"
         );
     }));
     let freertos_config_dir = PathBuf::from(env::var("FREERTOS_CONFIG_DIR").unwrap_or_else(|_| {
@@ -1449,7 +1449,7 @@ fn build_zenoh_pico_nuttx(
         panic!(
             "NUTTX_DIR not set. Point it at the NuttX OS source directory.\n\
              Run `just setup-nuttx` to download, then set:\n\
-             export NUTTX_DIR=$PWD/external/nuttx"
+             export NUTTX_DIR=$PWD/third-party/nuttx/nuttx"
         );
     }));
 
@@ -1572,7 +1572,7 @@ fn build_zenoh_pico_threadx(
         panic!(
             "THREADX_DIR not set. Point it at the ThreadX kernel source directory.\n\
              Run `just setup-threadx` to download, then set:\n\
-             export THREADX_DIR=$PWD/external/threadx"
+             export THREADX_DIR=$PWD/third-party/threadx/kernel"
         );
     }));
     let threadx_config_dir = PathBuf::from(env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
@@ -1585,7 +1585,7 @@ fn build_zenoh_pico_threadx(
         panic!(
             "NETX_DIR not set. Point it at the NetX Duo source directory.\n\
              Run `just setup-threadx` to download, then set:\n\
-             export NETX_DIR=$PWD/external/netxduo"
+             export NETX_DIR=$PWD/third-party/threadx/netxduo"
         );
     }));
     let netx_config_dir = PathBuf::from(env::var("NETX_CONFIG_DIR").unwrap_or_else(|_| {

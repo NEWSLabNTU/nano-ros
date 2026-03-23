@@ -1,13 +1,10 @@
 set working-directory := '..'
 
-# Pinned ThreadX version
-THREADX_TAG := "v6.4.5.202504_rel"
-
 # Install ThreadX Linux libraries into build/install/
 install:
     #!/usr/bin/env bash
     set -e
-    if [ ! -d "${THREADX_DIR:-external/threadx}/common/inc" ]; then
+    if [ ! -d "${THREADX_DIR:-third-party/threadx/kernel}/common/inc" ]; then
         echo "ThreadX SDK not found — skipping ThreadX Linux libraries"
         exit 0
     fi
@@ -53,73 +50,6 @@ test verbose="":
         args+=(--success-output never --failure-output never)
     fi
     cargo nextest run "${args[@]}"
-
-# Download ThreadX kernel, NetX Duo, and learn-samples
-setup:
-    #!/usr/bin/env bash
-    set -e
-    echo "=== ThreadX + NetX Duo Setup ==="
-    echo ""
-    THREADX_DIR="$(pwd)/external/threadx"
-    NETX_DIR="$(pwd)/external/netxduo"
-    THREADX_LEARN_DIR="$(pwd)/external/threadx-learn-samples"
-
-    # --- ThreadX Kernel ---
-    if [ -d "$THREADX_DIR/common" ]; then
-        tag=$(cd "$THREADX_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
-        echo "ThreadX already present at $THREADX_DIR (tag: $tag)"
-        if [ "$tag" != "{{THREADX_TAG}}" ]; then
-            echo "  WARNING: expected {{THREADX_TAG}}, found $tag"
-            echo "  To update: rm -rf $THREADX_DIR && just threadx-linux setup"
-        fi
-    else
-        echo "Cloning ThreadX {{THREADX_TAG}}..."
-        git clone --depth 1 --branch "{{THREADX_TAG}}" \
-            https://github.com/eclipse-threadx/threadx.git "$THREADX_DIR"
-        echo "  -> $THREADX_DIR"
-    fi
-    echo ""
-
-    # --- NetX Duo ---
-    if [ -d "$NETX_DIR/common" ]; then
-        tag=$(cd "$NETX_DIR" && git describe --tags --exact-match 2>/dev/null || echo "unknown")
-        echo "NetX Duo already present at $NETX_DIR (tag: $tag)"
-        if [ "$tag" != "{{THREADX_TAG}}" ]; then
-            echo "  WARNING: expected {{THREADX_TAG}}, found $tag"
-            echo "  To update: rm -rf $NETX_DIR && just threadx-linux setup"
-        fi
-    else
-        echo "Cloning NetX Duo {{THREADX_TAG}}..."
-        git clone --depth 1 --branch "{{THREADX_TAG}}" \
-            https://github.com/eclipse-threadx/netxduo.git "$NETX_DIR"
-        echo "  -> $NETX_DIR"
-    fi
-    echo ""
-
-    # --- ThreadX Learn Samples (contains nx_linux_network_driver.c) ---
-    if [ -d "$THREADX_LEARN_DIR/courses" ]; then
-        echo "ThreadX learn-samples already present at $THREADX_LEARN_DIR"
-    else
-        echo "Cloning ThreadX learn-samples (main branch)..."
-        git clone --depth 1 \
-            https://github.com/eclipse-threadx/threadx-learn-samples.git "$THREADX_LEARN_DIR"
-        echo "  -> $THREADX_LEARN_DIR"
-    fi
-    echo ""
-
-    echo "=== Environment Variables ==="
-    echo ""
-    echo "Add these to your shell or .cargo/config.toml [env] section:"
-    echo ""
-    echo "  export THREADX_DIR=$THREADX_DIR"
-    echo "  export THREADX_CONFIG_DIR=<board-crate>/config"
-    echo "  export NETX_DIR=$NETX_DIR"
-    echo "  export NETX_CONFIG_DIR=<board-crate>/config"
-    echo ""
-    echo "The Linux network driver is at:"
-    echo "  $THREADX_LEARN_DIR/courses/netxduo/Driver/nx_linux_network_driver.c"
-    echo ""
-    echo "Setup complete!"
 
 # Apply CAP_NET_RAW to ThreadX Linux binaries (requires sudo)
 setup-caps: build

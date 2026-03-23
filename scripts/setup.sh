@@ -21,13 +21,13 @@ echo "       - cargo-nano-ros         (message binding generator)"
 echo "       - kani-verifier          (bounded model checking)"
 echo "       - verus                  (deductive verification)"
 echo "       - kconfig-frontends-nox  (NuttX Kconfig tools, apt)"
-echo "  6. Build Espressif QEMU from source → ~/.local/bin/qemu-system-riscv32"
-echo "     (ESP32-C3 emulator — requires git, ninja, python3, pkg-config,"
+echo "  6. Build Espressif QEMU from submodule → ~/.local/bin/qemu-system-riscv32"
+echo "     (ESP32-C3 emulator — requires ninja, python3, pkg-config,"
 echo "      libglib2.0-dev, libpixman-1-dev, libgcrypt20-dev, libslirp-dev)"
-echo "  7. Build Micro-XRCE-DDS Agent from source → build/xrce-agent/MicroXRCEAgent"
+echo "  7. Build Micro-XRCE-DDS Agent from submodule → build/xrce-agent/MicroXRCEAgent"
 echo "     (XRCE-DDS integration tests — requires cmake, g++)"
-echo "  8. Download FreeRTOS kernel + lwIP → external/freertos-kernel, external/lwip"
-echo "  9. Download NuttX RTOS + apps → external/nuttx, external/nuttx-apps"
+echo "  8. Verify third-party submodules are initialized"
+echo "  9. Build NuttX kernel"
 echo ""
 read -r -p "Proceed? [Y/n] " answer
 if [[ "$answer" =~ ^[Nn] ]]; then
@@ -36,7 +36,7 @@ if [[ "$answer" =~ ^[Nn] ]]; then
 fi
 echo ""
 
-echo "=== [1/10] System packages (apt) ==="
+echo "=== [1/9] System packages (apt) ==="
 apt_pkgs=()
 check_apt() {
     if command -v "$2" &>/dev/null; then
@@ -81,18 +81,18 @@ else
 fi
 echo ""
 
-echo "=== [2/10] Installing Rust toolchains ==="
+echo "=== [2/9] Installing Rust toolchains ==="
 rustup toolchain install stable
 rustup toolchain install nightly
 echo ""
 
-echo "=== [3/10] Adding rustup components ==="
+echo "=== [3/9] Adding rustup components ==="
 rustup component add rustfmt clippy rust-src
 rustup component add llvm-tools
 rustup component add --toolchain nightly rustfmt miri rust-src llvm-tools
 echo ""
 
-echo "=== [4/10] Adding cross-compilation targets ==="
+echo "=== [4/9] Adding cross-compilation targets ==="
 rustup target add thumbv7em-none-eabihf
 rustup target add thumbv7m-none-eabi
 rustup target add riscv32imc-unknown-none-elf
@@ -107,7 +107,7 @@ else
 fi
 echo ""
 
-echo "=== [5/10] Installing cargo tools + verification toolchains ==="
+echo "=== [5/9] Installing cargo tools + verification toolchains ==="
 cargo install cargo-nextest --locked
 cargo install cargo-llvm-cov --locked
 cargo install espflash --locked || echo "WARNING: espflash install failed (non-fatal)"
@@ -132,7 +132,7 @@ else
 fi
 echo ""
 
-echo "=== [6/10] Building Espressif QEMU (qemu-system-riscv32) ==="
+echo "=== [6/9] Building Espressif QEMU (qemu-system-riscv32) ==="
 if command -v qemu-system-riscv32 &>/dev/null; then
     echo "Already installed: $(qemu-system-riscv32 --version | head -1)"
     echo "Skipping build. To reinstall, run: ./scripts/esp32/install-espressif-qemu.sh"
@@ -141,7 +141,7 @@ else
 fi
 echo ""
 
-echo "=== [7/10] Building Micro-XRCE-DDS Agent ==="
+echo "=== [7/9] Building Micro-XRCE-DDS Agent ==="
 if [ -f "build/xrce-agent/MicroXRCEAgent" ]; then
     echo "Already built: build/xrce-agent/MicroXRCEAgent"
     echo "To rebuild, run: just build-xrce-agent"
@@ -150,16 +150,13 @@ else
 fi
 echo ""
 
-echo "=== [8/10] Downloading FreeRTOS kernel + lwIP ==="
-just freertos setup || echo "WARNING: FreeRTOS setup failed (non-fatal, needed for just freertos test)"
+echo "=== [8/9] Third-party submodules ==="
+echo "Initialize submodules if you haven't already:"
+echo "  git submodule update --init --recursive"
 echo ""
 
-echo "=== [9/10] Downloading NuttX RTOS + apps ==="
+echo "=== [9/9] Building NuttX kernel ==="
 just nuttx setup || echo "WARNING: NuttX setup failed (non-fatal, needed for just nuttx test)"
-echo ""
-
-echo "=== [10/10] Downloading ThreadX + NetX Duo ==="
-just threadx-linux setup || echo "WARNING: ThreadX setup failed (non-fatal, needed for just threadx-linux test)"
 echo ""
 
 echo "Setup complete!"

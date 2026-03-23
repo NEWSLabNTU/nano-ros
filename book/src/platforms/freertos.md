@@ -30,14 +30,14 @@ Download the FreeRTOS kernel and lwIP sources:
 just setup-freertos
 ```
 
-This places the sources in `external/freertos-kernel/` and `external/lwip/`.
+This places the sources in `third-party/freertos/kernel/` and `third-party/freertos/lwip/`.
 Override the paths with environment variables if your sources are elsewhere:
 
 | Variable              | Default                    | Description                        |
 |-----------------------|----------------------------|------------------------------------|
-| `FREERTOS_DIR`        | `external/freertos-kernel` | FreeRTOS kernel source             |
+| `FREERTOS_DIR`        | `third-party/freertos/kernel` | FreeRTOS kernel source             |
 | `FREERTOS_PORT`       | `GCC/ARM_CM3`              | FreeRTOS portable layer            |
-| `LWIP_DIR`            | `external/lwip`            | lwIP source                        |
+| `LWIP_DIR`            | `third-party/freertos/lwip`            | lwIP source                        |
 | `FREERTOS_CONFIG_DIR` | Board crate's `config/`    | `FreeRTOSConfig.h` + `lwipopts.h` |
 
 ### Prerequisites

@@ -36,17 +36,17 @@ just setup-threadx
 ```
 
 This shallow-clones:
-- ThreadX kernel → `external/threadx/`
-- NetX Duo → `external/netxduo/`
-- ThreadX learn samples (Linux network driver) → `external/threadx-learn-samples/`
+- ThreadX kernel → `third-party/threadx/kernel/`
+- NetX Duo → `third-party/threadx/netxduo/`
+- ThreadX learn samples (Linux network driver) → `third-party/threadx/learn-samples/`
 
 Override paths if sources are elsewhere:
 
 | Variable             | Default                       | Description                    |
 |----------------------|-------------------------------|--------------------------------|
-| `THREADX_DIR`        | `external/threadx`            | ThreadX kernel source          |
+| `THREADX_DIR`        | `third-party/threadx/kernel`            | ThreadX kernel source          |
 | `THREADX_CONFIG_DIR` | Board crate's `config/`       | ThreadX config (`tx_user.h`)   |
-| `NETX_DIR`           | `external/netxduo`            | NetX Duo source                |
+| `NETX_DIR`           | `third-party/threadx/netxduo`            | NetX Duo source                |
 | `NETX_CONFIG_DIR`    | Board crate's `config/`       | NetX Duo config (`nx_user.h`)  |
 
 ## Building Examples

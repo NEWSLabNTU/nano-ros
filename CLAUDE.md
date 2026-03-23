@@ -76,15 +76,15 @@ Configuration via `.env` file: copy `.env.example` to `.env` (gitignored) and un
 Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
 FreeRTOS/NuttX/ThreadX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx` / `just setup-threadx`). Override via env vars if sources are elsewhere:
-- `FREERTOS_DIR` — FreeRTOS kernel source (default: `external/freertos-kernel`)
+- `FREERTOS_DIR` — FreeRTOS kernel source (default: `third-party/freertos/kernel`)
 - `FREERTOS_PORT` — portable layer (default: `GCC/ARM_CM3`)
-- `LWIP_DIR` — lwIP source (default: `external/lwip`)
+- `LWIP_DIR` — lwIP source (default: `third-party/freertos/lwip`)
 - `FREERTOS_CONFIG_DIR` — `FreeRTOSConfig.h` + `lwipopts.h` (default: board crate's `config/`)
-- `NUTTX_DIR` — NuttX RTOS source (default: `external/nuttx`)
-- `NUTTX_APPS_DIR` — NuttX apps source (default: `external/nuttx-apps`)
-- `THREADX_DIR` — ThreadX kernel source (default: `external/threadx`)
+- `NUTTX_DIR` — NuttX RTOS source (default: `third-party/nuttx/nuttx`)
+- `NUTTX_APPS_DIR` — NuttX apps source (default: `third-party/nuttx/nuttx-apps`)
+- `THREADX_DIR` — ThreadX kernel source (default: `third-party/threadx/kernel`)
 - `THREADX_CONFIG_DIR` — ThreadX config directory (default: board crate's `config/`)
-- `NETX_DIR` — NetX Duo source (default: `external/netxduo`)
+- `NETX_DIR` — NetX Duo source (default: `third-party/threadx/netxduo`)
 - `NETX_CONFIG_DIR` — NetX Duo config directory (default: board crate's `config/`)
 
 Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/environment-variables.md).

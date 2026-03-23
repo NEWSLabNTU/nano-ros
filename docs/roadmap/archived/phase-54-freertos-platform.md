@@ -260,8 +260,8 @@ Review `zenoh_shim.c` for any `#ifdef ZENOH_ZEPHYR` or `#ifdef ZPICO_SMOLTCP` gu
 **Status**: Done
 
 Added `just setup-freertos` recipe that:
-1. Shallow-clones FreeRTOS kernel (`V11.2.0`) to `external/freertos-kernel/`
-2. Shallow-clones lwIP (`STABLE-2_2_1_RELEASE`) to `external/lwip/`
+1. Shallow-clones FreeRTOS kernel (`V11.2.0`) to `third-party/freertos/kernel/`
+2. Shallow-clones lwIP (`STABLE-2_2_1_RELEASE`) to `third-party/freertos/lwip/`
 3. Prints environment variable configuration for all four required vars
 4. Idempotent — skips if already present, warns if tag mismatch
 
