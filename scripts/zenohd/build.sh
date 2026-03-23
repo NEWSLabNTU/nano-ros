@@ -1,9 +1,9 @@
 #!/bin/bash
 # Build zenohd from the local zenoh submodule
 #
-# This script builds zenohd 1.6.2 from the pinned submodule at
-# scripts/zenohd/zenoh/ to ensure version compatibility with
-# rmw_zenoh_cpp (ros-humble-zenoh-cpp-vendor 0.1.8).
+# This script builds zenohd from the pinned submodule at
+# third-party/zenoh/zenoh/ to ensure version compatibility with
+# rmw_zenoh_cpp.
 #
 # Usage:
 #   ./scripts/zenohd/build.sh [--clean]
@@ -19,7 +19,7 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 BUILD_DIR="$REPO_ROOT/build/zenohd"
-ZENOH_DIR="$SCRIPT_DIR/zenoh"
+ZENOH_DIR="$REPO_ROOT/third-party/zenoh/zenoh"
 
 # Parse arguments
 if [ "$1" = "--clean" ]; then
@@ -40,7 +40,7 @@ fi
 # Check zenoh submodule
 if [ ! -f "$ZENOH_DIR/Cargo.toml" ]; then
     echo "Error: zenoh submodule not found at $ZENOH_DIR"
-    echo "Run: git submodule update --init scripts/zenohd/zenoh"
+    echo "Run: git submodule update --init third-party/zenoh/zenoh"
     exit 1
 fi
 

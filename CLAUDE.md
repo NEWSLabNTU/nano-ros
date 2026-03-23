@@ -160,7 +160,7 @@ Phase docs follow a standard structure:
 ## Key Design Patterns
 
 ### Zenoh Version Unification
-All zenoh components pinned to **1.7.2** (compatible with rmw_zenoh_cpp). zenohd built from `scripts/zenohd/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
+All zenoh components pinned to **1.7.2** (compatible with rmw_zenoh_cpp). zenohd built from `third-party/zenoh/zenoh/` submodule; zenoh-pico from `packages/zpico/zpico-sys/zenoh-pico/`. Test infra auto-uses `build/zenohd/zenohd` when available.
 
 ### Rust Edition 2024
 - `unsafe extern "C" { ... }` (extern blocks require `unsafe`)
