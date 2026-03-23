@@ -676,14 +676,20 @@ fn build_rv64_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestRe
         )));
     }
 
-    eprintln!("Building qemu-riscv64-threadx/{}/zenoh/{} (CMake)...", lang, name);
+    eprintln!(
+        "Building qemu-riscv64-threadx/{}/zenoh/{} (CMake)...",
+        lang, name
+    );
 
     let build_dir = example_dir.join("build");
     // Clean stale build to avoid cmake cache conflicts
     let _ = std::fs::remove_dir_all(&build_dir);
     std::fs::create_dir_all(&build_dir).ok();
 
-    let prefix_path = format!("-DCMAKE_PREFIX_PATH={}", root.join("build/install").display());
+    let prefix_path = format!(
+        "-DCMAKE_PREFIX_PATH={}",
+        root.join("build/install").display()
+    );
     let toolchain = format!(
         "-DCMAKE_TOOLCHAIN_FILE={}",
         root.join("cmake/toolchain/riscv64-threadx.cmake").display()
@@ -707,8 +713,13 @@ fn build_rv64_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestRe
         .to_string();
 
     let output = duct::cmd!(
-        "cmake", "-S", &example_dir, "-B", &build_dir,
-        &prefix_path, &toolchain,
+        "cmake",
+        "-S",
+        &example_dir,
+        "-B",
+        &build_dir,
+        &prefix_path,
+        &toolchain,
         "-DNANO_ROS_PLATFORM=threadx_riscv64",
         &format!("-DTHREADX_DIR={threadx_dir}"),
         &format!("-DNETX_DIR={netx_dir}"),
@@ -762,9 +773,7 @@ fn build_rv64_c_talker() -> TestResult<&'static Path> {
 }
 fn build_rv64_c_listener() -> TestResult<&'static Path> {
     RV64_C_LISTENER_BINARY
-        .get_or_try_init(|| {
-            build_rv64_cmake_example("c", "listener", "riscv64_threadx_c_listener")
-        })
+        .get_or_try_init(|| build_rv64_cmake_example("c", "listener", "riscv64_threadx_c_listener"))
         .map(|p| p.as_path())
 }
 fn build_rv64_c_service_server() -> TestResult<&'static Path> {
@@ -797,9 +806,7 @@ fn build_rv64_c_action_client() -> TestResult<&'static Path> {
 }
 fn build_rv64_cpp_talker() -> TestResult<&'static Path> {
     RV64_CPP_TALKER_BINARY
-        .get_or_try_init(|| {
-            build_rv64_cmake_example("cpp", "talker", "riscv64_threadx_cpp_talker")
-        })
+        .get_or_try_init(|| build_rv64_cmake_example("cpp", "talker", "riscv64_threadx_cpp_talker"))
         .map(|p| p.as_path())
 }
 fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
@@ -816,7 +823,9 @@ fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
 
 #[test]
 fn test_rv64_c_talker_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_c_talker().expect("build failed");
     assert!(b.exists());
     eprintln!("SUCCESS: {}", b.display());
@@ -824,7 +833,9 @@ fn test_rv64_c_talker_builds() {
 
 #[test]
 fn test_rv64_c_listener_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_c_listener().expect("build failed");
     assert!(b.exists());
     eprintln!("SUCCESS: {}", b.display());
@@ -832,28 +843,36 @@ fn test_rv64_c_listener_builds() {
 
 #[test]
 fn test_rv64_c_service_server_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_c_service_server().expect("build failed");
     assert!(b.exists());
 }
 
 #[test]
 fn test_rv64_c_service_client_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_c_service_client().expect("build failed");
     assert!(b.exists());
 }
 
 #[test]
 fn test_rv64_c_action_server_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_c_action_server().expect("build failed");
     assert!(b.exists());
 }
 
 #[test]
 fn test_rv64_c_action_client_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_c_action_client().expect("build failed");
     assert!(b.exists());
 }
@@ -864,7 +883,9 @@ fn test_rv64_c_action_client_builds() {
 
 #[test]
 fn test_rv64_cpp_talker_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_cpp_talker().expect("build failed");
     assert!(b.exists());
     eprintln!("SUCCESS: {}", b.display());
@@ -872,7 +893,9 @@ fn test_rv64_cpp_talker_builds() {
 
 #[test]
 fn test_rv64_cpp_listener_builds() {
-    if !require_threadx_rv64_cmake() { return; }
+    if !require_threadx_rv64_cmake() {
+        return;
+    }
     let b = build_rv64_cpp_listener().expect("build failed");
     assert!(b.exists());
     eprintln!("SUCCESS: {}", b.display());
@@ -891,18 +914,18 @@ fn test_rv64_c_pubsub_e2e() {
     let talker_bin = build_rv64_c_talker().expect("build talker failed");
     let listener_bin = build_rv64_c_listener().expect("build listener failed");
 
-    let _zenohd = ZenohRouter::start(platform::THREADX_RISCV.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_RISCV.zenohd_port).expect("Failed to start zenohd");
 
     eprintln!("Starting C listener QEMU...");
-    let mut listener = QemuProcess::start_riscv64_virt(listener_bin, 1)
-        .expect("Failed to start listener");
+    let mut listener =
+        QemuProcess::start_riscv64_virt(listener_bin, 1).expect("Failed to start listener");
 
     std::thread::sleep(Duration::from_secs(10));
 
     eprintln!("Starting C talker QEMU...");
-    let mut talker = QemuProcess::start_riscv64_virt(talker_bin, 0)
-        .expect("Failed to start talker");
+    let mut talker =
+        QemuProcess::start_riscv64_virt(talker_bin, 0).expect("Failed to start talker");
 
     let listener_output = listener
         .wait_for_output(Duration::from_secs(60))
@@ -932,18 +955,18 @@ fn test_rv64_c_service_e2e() {
     let server_bin = build_rv64_c_service_server().expect("build server failed");
     let client_bin = build_rv64_c_service_client().expect("build client failed");
 
-    let _zenohd = ZenohRouter::start(platform::THREADX_RISCV.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_RISCV.zenohd_port).expect("Failed to start zenohd");
 
     eprintln!("Starting C service server QEMU...");
-    let mut server = QemuProcess::start_riscv64_virt(server_bin, 0)
-        .expect("Failed to start server");
+    let mut server =
+        QemuProcess::start_riscv64_virt(server_bin, 0).expect("Failed to start server");
 
     std::thread::sleep(Duration::from_secs(10));
 
     eprintln!("Starting C service client QEMU...");
-    let mut client = QemuProcess::start_riscv64_virt(client_bin, 1)
-        .expect("Failed to start client");
+    let mut client =
+        QemuProcess::start_riscv64_virt(client_bin, 1).expect("Failed to start client");
 
     std::thread::sleep(Duration::from_secs(15));
 
@@ -958,7 +981,10 @@ fn test_rv64_c_service_e2e() {
 
     let responses = count_pattern(&client_output, "Response:");
     assert!(responses > 0, "C service E2E failed — 0 responses");
-    eprintln!("[PASS] ThreadX RISC-V C service E2E: {} responses", responses);
+    eprintln!(
+        "[PASS] ThreadX RISC-V C service E2E: {} responses",
+        responses
+    );
 }
 
 #[test]
@@ -970,18 +996,18 @@ fn test_rv64_c_action_e2e() {
     let server_bin = build_rv64_c_action_server().expect("build server failed");
     let client_bin = build_rv64_c_action_client().expect("build client failed");
 
-    let _zenohd = ZenohRouter::start(platform::THREADX_RISCV.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_RISCV.zenohd_port).expect("Failed to start zenohd");
 
     eprintln!("Starting C action server QEMU...");
-    let mut server = QemuProcess::start_riscv64_virt(server_bin, 0)
-        .expect("Failed to start server");
+    let mut server =
+        QemuProcess::start_riscv64_virt(server_bin, 0).expect("Failed to start server");
 
     std::thread::sleep(Duration::from_secs(10));
 
     eprintln!("Starting C action client QEMU...");
-    let mut client = QemuProcess::start_riscv64_virt(client_bin, 1)
-        .expect("Failed to start client");
+    let mut client =
+        QemuProcess::start_riscv64_virt(client_bin, 1).expect("Failed to start client");
 
     std::thread::sleep(Duration::from_secs(15));
 
@@ -999,7 +1025,8 @@ fn test_rv64_c_action_e2e() {
     assert!(
         goal_accepted && completed,
         "C action E2E failed: accepted={}, completed={}",
-        goal_accepted, completed
+        goal_accepted,
+        completed
     );
     eprintln!("[PASS] ThreadX RISC-V C action E2E");
 }
@@ -1017,18 +1044,18 @@ fn test_rv64_cpp_pubsub_e2e() {
     let talker_bin = build_rv64_cpp_talker().expect("build talker failed");
     let listener_bin = build_rv64_cpp_listener().expect("build listener failed");
 
-    let _zenohd = ZenohRouter::start(platform::THREADX_RISCV.zenohd_port)
-        .expect("Failed to start zenohd");
+    let _zenohd =
+        ZenohRouter::start(platform::THREADX_RISCV.zenohd_port).expect("Failed to start zenohd");
 
     eprintln!("Starting C++ listener QEMU...");
-    let mut listener = QemuProcess::start_riscv64_virt(listener_bin, 1)
-        .expect("Failed to start listener");
+    let mut listener =
+        QemuProcess::start_riscv64_virt(listener_bin, 1).expect("Failed to start listener");
 
     std::thread::sleep(Duration::from_secs(10));
 
     eprintln!("Starting C++ talker QEMU...");
-    let mut talker = QemuProcess::start_riscv64_virt(talker_bin, 0)
-        .expect("Failed to start talker");
+    let mut talker =
+        QemuProcess::start_riscv64_virt(talker_bin, 0).expect("Failed to start talker");
 
     let listener_output = listener
         .wait_for_output(Duration::from_secs(60))
