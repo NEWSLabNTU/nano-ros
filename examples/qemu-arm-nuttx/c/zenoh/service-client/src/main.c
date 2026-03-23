@@ -24,9 +24,7 @@ static struct {
     nros_client_t client;
 } app;
 
-int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+void app_main(void) {
 
     printf("nros NuttX C Service Client (AddTwoInts)\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -42,14 +40,14 @@ int main(int argc, char** argv) {
     nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
+        return;
     }
 
     ret = nros_node_init(&app.node, &app.support, "nuttx_c_service_client", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     ret = nros_client_init(&app.client, &app.node, &add_two_ints_type, "/add_two_ints");
@@ -57,7 +55,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to initialize client: %d\n", ret);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     struct { int64_t a; int64_t b; } test_cases[] = {

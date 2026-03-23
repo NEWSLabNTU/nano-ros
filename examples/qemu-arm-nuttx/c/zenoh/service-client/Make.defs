@@ -1,3 +1,0 @@
-ifneq ($(CONFIG_NROS_NUTTX_C_SERVICE_CLIENT),)
-CONFIGURED_APPS += $(APPDIR)/examples/nuttx_c_service_client
-endif

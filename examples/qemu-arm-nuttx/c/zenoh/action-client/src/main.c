@@ -24,9 +24,7 @@ static struct {
     nros_action_client_t action_client;
 } app;
 
-int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+void app_main(void) {
 
     printf("nros NuttX C Action Client (Fibonacci)\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -44,14 +42,14 @@ int main(int argc, char** argv) {
     nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
+        return;
     }
 
     ret = nros_node_init(&app.node, &app.support, "nuttx_c_action_client", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     ret = nros_action_client_init(
@@ -60,7 +58,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to initialize action client: %d\n", ret);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     example_interfaces_action_fibonacci_goal goal;

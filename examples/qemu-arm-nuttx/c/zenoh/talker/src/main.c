@@ -63,9 +63,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     }
 }
 
-int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+void app_main(void) {
 
     printf("nros NuttX C Talker\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -75,14 +73,14 @@ int main(int argc, char** argv) {
     nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
+        return;
     }
 
     ret = nros_node_init(&app.node, &app.support, "nuttx_c_talker", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     ret = nros_publisher_init(&app.publisher, &app.node,
@@ -91,7 +89,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to initialize publisher: %d\n", ret);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     app.talker_ctx = (talker_context_t){
@@ -109,7 +107,7 @@ int main(int argc, char** argv) {
         nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     ret = nros_executor_init(&app.executor, &app.support, 4);
@@ -119,7 +117,7 @@ int main(int argc, char** argv) {
         nros_publisher_fini(&app.publisher);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     nros_executor_add_timer(&app.executor, &app.timer);
@@ -132,5 +130,5 @@ int main(int argc, char** argv) {
     nros_publisher_fini(&app.publisher);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
-    return 0;
+
 }

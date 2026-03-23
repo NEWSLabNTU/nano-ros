@@ -51,9 +51,7 @@ static void subscription_callback(const uint8_t* data, size_t len, void* context
     }
 }
 
-int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+void app_main(void) {
 
     printf("nros NuttX C Listener\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -63,14 +61,14 @@ int main(int argc, char** argv) {
     nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
+        return;
     }
 
     ret = nros_node_init(&app.node, &app.support, "nuttx_c_listener", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     app.listener_ctx = (listener_context_t){ .message_count = 0 };
@@ -87,7 +85,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to initialize subscription: %d\n", ret);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     ret = nros_executor_init(&app.executor, &app.support, 4);
@@ -96,7 +94,7 @@ int main(int argc, char** argv) {
         nros_subscription_fini(&app.subscription);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     nros_executor_add_subscription(&app.executor, &app.subscription,
@@ -109,5 +107,5 @@ int main(int argc, char** argv) {
     nros_subscription_fini(&app.subscription);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
-    return 0;
+
 }

@@ -133,9 +133,7 @@ static void accepted_callback(
     }
 }
 
-int main(int argc, char** argv) {
-    (void)argc;
-    (void)argv;
+void app_main(void) {
 
     printf("nros NuttX C Action Server (Fibonacci)\n");
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
@@ -153,14 +151,14 @@ int main(int argc, char** argv) {
     nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize support: %d\n", ret);
-        return 1;
+        return;
     }
 
     ret = nros_node_init(&app.node, &app.support, "nuttx_c_action_server", "/");
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to initialize node: %d\n", ret);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     ret = nros_action_server_init(
@@ -171,7 +169,7 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to initialize action server: %d\n", ret);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     ret = nros_executor_init(&app.executor, &app.support, 8);
@@ -180,7 +178,7 @@ int main(int argc, char** argv) {
         nros_action_server_fini(&app.action_server);
         nros_node_fini(&app.node);
         nros_support_fini(&app.support);
-        return 1;
+        return;
     }
 
     printf("Waiting for goals...\n\n");
@@ -190,5 +188,5 @@ int main(int argc, char** argv) {
     nros_action_server_fini(&app.action_server);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
-    return 0;
+
 }
