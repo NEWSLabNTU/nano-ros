@@ -499,8 +499,17 @@ pub unsafe extern "C" fn nros_cpp_action_client_send_goal(
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
     let goal_data = unsafe { core::slice::from_raw_parts(goal_buf, goal_len) };
 
-    match client.core.send_goal_raw(goal_data) {
-        Ok(goal_id) => {
+    // C++ ffi_serialize produces [CDR_HEADER(4)][fields], but send_goal_blocking
+    // expects raw fields only (it adds its own CDR header + GoalId).
+    // Skip the 4-byte CDR header from the serialized data.
+    let goal_fields = if goal_data.len() > 4 {
+        &goal_data[4..]
+    } else {
+        goal_data
+    };
+
+    match client.core.send_goal_blocking(goal_fields) {
+        Ok((goal_id, _accepted)) => {
             unsafe {
                 *goal_id_out = goal_id.uuid;
             }
@@ -543,45 +552,30 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result(
     }
 
     let client = unsafe { &mut *(handle as *mut CppActionClient) };
-    let ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
+    let _ctx = unsafe { &mut *(executor_handle as *mut CppContext) };
     let id = nros::GoalId {
         uuid: unsafe { *goal_id },
     };
 
-    // Send get_result request
-    if client.core.send_get_result_request(&id).is_err() {
-        return NROS_CPP_RET_ERROR;
-    }
+    // Blocking get_result — uses zpico_get (reliable on all platforms)
+    let total_len = match client.core.get_result_blocking(&id) {
+        Ok(len) => len,
+        Err(_) => return NROS_CPP_RET_TIMEOUT,
+    };
 
-    // Poll for reply with timeout (~3000 iterations * 1ms spin_once)
-    for _ in 0..3000 {
-        let _ = ctx.executor.spin_once(1);
-        match client.core.try_recv_get_result_reply() {
-            Ok(Some(total_len)) => {
-                // Result buffer layout: CDR header (4) + status (1) + padding (3) + result
-                let buf = client.core.result_buffer_ref();
-                if total_len >= 8 {
-                    let result_data = &buf[8..total_len];
-                    if result_data.len() <= result_buf_len {
-                        unsafe {
-                            core::ptr::copy_nonoverlapping(
-                                result_data.as_ptr(),
-                                result_buf,
-                                result_data.len(),
-                            );
-                            *result_len = result_data.len();
-                        }
-                        return NROS_CPP_RET_OK;
-                    }
-                }
-                return NROS_CPP_RET_ERROR;
+    // Result buffer layout: CDR header (4) + status (1) + result data
+    let buf = client.core.result_buffer_ref();
+    if total_len >= 5 {
+        let result_data = &buf[5..total_len];
+        if result_data.len() <= result_buf_len {
+            unsafe {
+                core::ptr::copy_nonoverlapping(result_data.as_ptr(), result_buf, result_data.len());
+                *result_len = result_data.len();
             }
-            Ok(None) => continue,
-            Err(_) => return NROS_CPP_RET_ERROR,
+            return NROS_CPP_RET_OK;
         }
     }
-
-    NROS_CPP_RET_TIMEOUT
+    NROS_CPP_RET_ERROR
 }
 
 /// Try to receive feedback (non-blocking).

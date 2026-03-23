@@ -108,7 +108,8 @@ static FREERTOS_CPP_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_CPP_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_CPP_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
 static FREERTOS_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
-// Action examples deferred — nros-c/nros-cpp action module requires alloc-free rework
+static FREERTOS_CPP_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static FREERTOS_CPP_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 // C binary caches
 static FREERTOS_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
@@ -743,6 +744,22 @@ fn build_freertos_cpp_service_client() -> TestResult<&'static Path> {
         .map(|p| p.as_path())
 }
 
+fn build_freertos_cpp_action_server() -> TestResult<&'static Path> {
+    FREERTOS_CPP_ACTION_SERVER_BINARY
+        .get_or_try_init(|| {
+            build_freertos_cpp_example("action-server", "freertos_cpp_action_server")
+        })
+        .map(|p| p.as_path())
+}
+
+fn build_freertos_cpp_action_client() -> TestResult<&'static Path> {
+    FREERTOS_CPP_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| {
+            build_freertos_cpp_example("action-client", "freertos_cpp_action_client")
+        })
+        .map(|p| p.as_path())
+}
+
 /// Skip test if C++ FreeRTOS prerequisites are not available
 fn require_freertos_cpp() -> bool {
     if !require_freertos() {
@@ -817,6 +834,34 @@ fn test_freertos_cpp_service_client_builds() {
     assert!(binary.exists());
     eprintln!(
         "SUCCESS: freertos_cpp_service_client at {}",
+        binary.display()
+    );
+}
+
+#[test]
+fn test_freertos_cpp_action_server_builds() {
+    if !require_freertos_cpp() {
+        return;
+    }
+    let binary =
+        build_freertos_cpp_action_server().expect("Failed to build freertos_cpp_action_server");
+    assert!(binary.exists());
+    eprintln!(
+        "SUCCESS: freertos_cpp_action_server at {}",
+        binary.display()
+    );
+}
+
+#[test]
+fn test_freertos_cpp_action_client_builds() {
+    if !require_freertos_cpp() {
+        return;
+    }
+    let binary =
+        build_freertos_cpp_action_client().expect("Failed to build freertos_cpp_action_client");
+    assert!(binary.exists());
+    eprintln!(
+        "SUCCESS: freertos_cpp_action_client at {}",
         binary.display()
     );
 }
@@ -930,8 +975,51 @@ fn test_freertos_cpp_action_e2e() {
         return;
     }
 
-    // Deferred — requires alloc-free action module rework
-    eprintln!("Skipping: C++ action E2E deferred (action module requires alloc-free rework)");
+    let server_bin = build_freertos_cpp_action_server().expect("Failed to build C++ action server");
+    let client_bin = build_freertos_cpp_action_client().expect("Failed to build C++ action client");
+
+    let _zenohd =
+        ZenohRouter::start(platform::FREERTOS.zenohd_port).expect("Failed to start zenohd");
+
+    eprintln!("Starting C++ action server QEMU (slirp)...");
+    let mut server =
+        QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
+
+    // 15s — action server registers 3 queryables, needs more discovery time
+    std::thread::sleep(Duration::from_secs(15));
+
+    eprintln!("Starting C++ action client QEMU (slirp)...");
+    let mut client =
+        QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
+
+    std::thread::sleep(Duration::from_secs(15));
+
+    // 90s — each failed send_goal attempt blocks ~13s waiting for zenoh lease task
+    // to fire the dropper; with 5 retries × (13s + 5s spin) = 90s needed for 5 failures
+    let client_output = client
+        .wait_for_output(Duration::from_secs(90))
+        .unwrap_or_default();
+
+    server.kill();
+    client.kill();
+
+    eprintln!("C++ Client output:\n{}", client_output);
+
+    let goal_accepted = client_output.contains("Goal accepted");
+    let completed = client_output.contains("Action completed successfully");
+
+    eprintln!(
+        "C++ Goal accepted: {}, completed: {}",
+        goal_accepted, completed
+    );
+
+    assert!(
+        goal_accepted && completed,
+        "FreeRTOS C++ action E2E failed: accepted={}, completed={}",
+        goal_accepted,
+        completed
+    );
+    eprintln!("[PASS] FreeRTOS C++ action E2E");
 }
 
 // =============================================================================
