@@ -740,33 +740,32 @@ fn test_nuttx_action_e2e() {
 // C++ binary builders (CMake-based)
 // =============================================================================
 
-/// Build a NuttX C++ QEMU example via CMake
-fn build_nuttx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
+/// Build a NuttX C or C++ QEMU example via CMake (nuttx_build_example).
+fn build_nuttx_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestResult<PathBuf> {
     let root = project_root();
-    let example_dir = root.join(format!("examples/qemu-arm-nuttx/cpp/zenoh/{}", name));
+    let example_dir = root.join(format!("examples/qemu-arm-nuttx/{}/zenoh/{}", lang, name));
 
     if !example_dir.exists() {
         return Err(TestError::BuildFailed(format!(
-            "NuttX C++ example not found: {}",
+            "NuttX {lang} example not found: {}",
             example_dir.display()
         )));
     }
 
-    eprintln!("Building qemu-arm-nuttx/cpp/zenoh/{} (CMake)...", name);
+    eprintln!("Building qemu-arm-nuttx/{}/zenoh/{} (CMake)...", lang, name);
 
     let build_dir = example_dir.join("build");
     std::fs::create_dir_all(&build_dir).ok();
 
-    // cmake configure — pass CMAKE_PREFIX_PATH and toolchain via build script
+    // cmake configure — nuttx_build_example() handles cross-compilation via cargo,
+    // so no CMake toolchain file is needed. Pass NUTTX_DIR for the kernel link.
     let prefix_path = format!(
         "-DCMAKE_PREFIX_PATH={}",
         root.join("build/install").display()
     );
-    let toolchain_file = format!(
-        "-DCMAKE_TOOLCHAIN_FILE={}",
-        root.join("cmake/toolchain/armv7a-nuttx-eabi.cmake")
-            .display()
-    );
+    let nuttx_dir = std::env::var("NUTTX_DIR")
+        .unwrap_or_else(|_| root.join("external/nuttx").display().to_string());
+
     let output = duct::cmd!(
         "cmake",
         "-S",
@@ -774,7 +773,8 @@ fn build_nuttx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
         "-B",
         &build_dir,
         &prefix_path,
-        &toolchain_file
+        &format!("-DNUTTX_DIR={nuttx_dir}"),
+        "-DCMAKE_BUILD_TYPE=Release"
     )
     .stderr_to_stdout()
     .stdout_capture()
@@ -821,25 +821,25 @@ static NUTTX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {
     NUTTX_CPP_TALKER_BINARY
-        .get_or_try_init(|| build_nuttx_cpp_example("talker", "nuttx_cpp_talker"))
+        .get_or_try_init(|| build_nuttx_cmake_example("cpp","talker", "nuttx_cpp_talker"))
         .map(|p| p.as_path())
 }
 
 fn build_nuttx_cpp_listener() -> TestResult<&'static Path> {
     NUTTX_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_nuttx_cpp_example("listener", "nuttx_cpp_listener"))
+        .get_or_try_init(|| build_nuttx_cmake_example("cpp","listener", "nuttx_cpp_listener"))
         .map(|p| p.as_path())
 }
 
 fn build_nuttx_cpp_service_server() -> TestResult<&'static Path> {
     NUTTX_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_nuttx_cpp_example("service-server", "nuttx_cpp_service_server"))
+        .get_or_try_init(|| build_nuttx_cmake_example("cpp","service-server", "nuttx_cpp_service_server"))
         .map(|p| p.as_path())
 }
 
 fn build_nuttx_cpp_service_client() -> TestResult<&'static Path> {
     NUTTX_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_nuttx_cpp_example("service-client", "nuttx_cpp_service_client"))
+        .get_or_try_init(|| build_nuttx_cmake_example("cpp","service-client", "nuttx_cpp_service_client"))
         .map(|p| p.as_path())
 }
 
@@ -1001,4 +1001,167 @@ fn test_nuttx_cpp_service_e2e() {
     );
     assert!(responses > 0, "NuttX C++ service E2E: 0 responses");
     eprintln!("[PASS] NuttX C++ service E2E: {} responses", responses);
+}
+
+// =============================================================================
+// C binary builders (uses same nuttx_build_example CMake approach as C++)
+// =============================================================================
+
+static NUTTX_C_TALKER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_C_LISTENER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_C_SERVICE_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_C_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_C_ACTION_SERVER_BINARY: OnceCell<PathBuf> = OnceCell::new();
+static NUTTX_C_ACTION_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
+
+fn build_nuttx_c_talker() -> TestResult<&'static Path> {
+    NUTTX_C_TALKER_BINARY
+        .get_or_try_init(|| build_nuttx_cmake_example("c", "talker", "nuttx_c_talker"))
+        .map(|p| p.as_path())
+}
+fn build_nuttx_c_listener() -> TestResult<&'static Path> {
+    NUTTX_C_LISTENER_BINARY
+        .get_or_try_init(|| build_nuttx_cmake_example("c", "listener", "nuttx_c_listener"))
+        .map(|p| p.as_path())
+}
+fn build_nuttx_c_service_server() -> TestResult<&'static Path> {
+    NUTTX_C_SERVICE_SERVER_BINARY
+        .get_or_try_init(|| build_nuttx_cmake_example("c", "service-server", "nuttx_c_service_server"))
+        .map(|p| p.as_path())
+}
+fn build_nuttx_c_service_client() -> TestResult<&'static Path> {
+    NUTTX_C_SERVICE_CLIENT_BINARY
+        .get_or_try_init(|| build_nuttx_cmake_example("c", "service-client", "nuttx_c_service_client"))
+        .map(|p| p.as_path())
+}
+fn build_nuttx_c_action_server() -> TestResult<&'static Path> {
+    NUTTX_C_ACTION_SERVER_BINARY
+        .get_or_try_init(|| build_nuttx_cmake_example("c", "action-server", "nuttx_c_action_server"))
+        .map(|p| p.as_path())
+}
+fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
+    NUTTX_C_ACTION_CLIENT_BINARY
+        .get_or_try_init(|| build_nuttx_cmake_example("c", "action-client", "nuttx_c_action_client"))
+        .map(|p| p.as_path())
+}
+
+// =============================================================================
+// C Build tests
+// =============================================================================
+
+#[test]
+fn test_nuttx_c_talker_builds() {
+    if !require_nuttx_cpp() { return; }
+    let b = build_nuttx_c_talker().expect("build failed");
+    assert!(b.exists());
+    eprintln!("SUCCESS: {}", b.display());
+}
+
+#[test]
+fn test_nuttx_c_listener_builds() {
+    if !require_nuttx_cpp() { return; }
+    let b = build_nuttx_c_listener().expect("build failed");
+    assert!(b.exists());
+}
+
+#[test]
+fn test_nuttx_c_service_server_builds() {
+    if !require_nuttx_cpp() { return; }
+    let b = build_nuttx_c_service_server().expect("build failed");
+    assert!(b.exists());
+}
+
+#[test]
+fn test_nuttx_c_service_client_builds() {
+    if !require_nuttx_cpp() { return; }
+    let b = build_nuttx_c_service_client().expect("build failed");
+    assert!(b.exists());
+}
+
+#[test]
+fn test_nuttx_c_action_server_builds() {
+    if !require_nuttx_cpp() { return; }
+    let b = build_nuttx_c_action_server().expect("build failed");
+    assert!(b.exists());
+}
+
+#[test]
+fn test_nuttx_c_action_client_builds() {
+    if !require_nuttx_cpp() { return; }
+    let b = build_nuttx_c_action_client().expect("build failed");
+    assert!(b.exists());
+}
+
+// =============================================================================
+// C E2E tests (QEMU ARM virt + slirp networking)
+// =============================================================================
+
+#[test]
+fn test_nuttx_c_pubsub_e2e() {
+    if !require_nuttx_e2e() { return; }
+
+    let talker = build_nuttx_c_talker().expect("build talker");
+    let listener = build_nuttx_c_listener().expect("build listener");
+
+    let _z = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("zenohd");
+
+    let mut l = QemuProcess::start_nuttx_virt(listener, true).expect("listener QEMU");
+    std::thread::sleep(Duration::from_secs(10));
+    let mut t = QemuProcess::start_nuttx_virt(talker, true).expect("talker QEMU");
+
+    let l_out = l.wait_for_output(Duration::from_secs(60)).unwrap_or_default();
+    let t_out = t.wait_for_output(Duration::from_secs(15)).unwrap_or_default();
+    t.kill(); l.kill();
+
+    eprintln!("C Listener:\n{l_out}\nC Talker:\n{t_out}");
+    let received = count_pattern(&l_out, "Received");
+    assert!(received > 0, "NuttX C pubsub: 0 messages");
+    eprintln!("[PASS] NuttX C pubsub E2E: {received} msgs");
+}
+
+#[test]
+fn test_nuttx_c_service_e2e() {
+    if !require_nuttx_e2e() { return; }
+
+    let server = build_nuttx_c_service_server().expect("build server");
+    let client = build_nuttx_c_service_client().expect("build client");
+
+    let _z = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("zenohd");
+
+    let mut s = QemuProcess::start_nuttx_virt(server, true).expect("server QEMU");
+    std::thread::sleep(Duration::from_secs(10));
+    let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
+
+    std::thread::sleep(Duration::from_secs(15));
+    let c_out = c.wait_for_output(Duration::from_secs(60)).unwrap_or_default();
+    s.kill(); c.kill();
+
+    eprintln!("C Client:\n{c_out}");
+    let responses = count_pattern(&c_out, "Response:");
+    assert!(responses > 0, "NuttX C service: 0 responses");
+    eprintln!("[PASS] NuttX C service E2E: {responses} responses");
+}
+
+#[test]
+fn test_nuttx_c_action_e2e() {
+    if !require_nuttx_e2e() { return; }
+
+    let server = build_nuttx_c_action_server().expect("build server");
+    let client = build_nuttx_c_action_client().expect("build client");
+
+    let _z = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("zenohd");
+
+    let mut s = QemuProcess::start_nuttx_virt(server, true).expect("server QEMU");
+    std::thread::sleep(Duration::from_secs(10));
+    let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
+
+    std::thread::sleep(Duration::from_secs(15));
+    let c_out = c.wait_for_output(Duration::from_secs(60)).unwrap_or_default();
+    s.kill(); c.kill();
+
+    eprintln!("C Client:\n{c_out}");
+    let accepted = c_out.contains("Goal accepted");
+    let completed = c_out.contains("Action completed successfully");
+    assert!(accepted && completed, "NuttX C action: accepted={accepted}, completed={completed}");
+    eprintln!("[PASS] NuttX C action E2E");
 }
