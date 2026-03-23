@@ -15,3 +15,7 @@ bench = false
 nros-nuttx-qemu-arm = { path = "../../../../../packages/boards/nros-nuttx-qemu-arm" }
 nros = { path = "../../../../../packages/core/nros", default-features = false, features = ["std", "rmw-zenoh", "platform-nuttx", "link-tcp", "ros-humble"] }
 std_msgs = { version = "*", default-features = false }
+
+[profile.release]
+opt-level = "s"
+lto = true
