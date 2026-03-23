@@ -38,12 +38,12 @@ get_filename_component(_NROS_CPP_INCLUDE_DIR "${NanoRos_DIR}/../../../include" A
 #   1. Runs `cargo +nightly build --release` on nros-nuttx-ffi
 #   2. Sets APP_MAIN_CPP to the C++ source file
 #   3. Sets APP_INCLUDE_DIRS to the codegen include directories
-#   4. The resulting binary is at nros-nuttx-ffi/target/armv7a-nuttx-eabi/release/nros-nuttx-ffi
+#   4. The resulting binary is at nros-nuttx-ffi/target/armv7a-nuttx-eabihf/release/nros-nuttx-ffi
 
 function(nuttx_build_example name main_cpp)
     cmake_parse_arguments(_ARG "" "" "INCLUDE_DIRS;COMPILE_DEFS" ${ARGN})
 
-    # Collect include dirs (nros-cpp install headers + codegen output + user-specified)
+    # Collect include dirs (nros-c/nros-cpp install headers + codegen output + user-specified)
     set(_include_dirs "${_NROS_CPP_INCLUDE_DIR}")
     foreach(_dir ${_ARG_INCLUDE_DIRS})
         list(APPEND _include_dirs "${_dir}")
@@ -57,7 +57,7 @@ function(nuttx_build_example name main_cpp)
     endforeach()
     string(JOIN ";" _compile_defs_str ${_compile_defs})
 
-    set(_output_binary "${_FFI_CRATE_DIR}/target/armv7a-nuttx-eabi/release/nros-nuttx-ffi")
+    set(_output_binary "${_FFI_CRATE_DIR}/target/armv7a-nuttx-eabihf/release/nros-nuttx-ffi")
 
     add_custom_command(
         OUTPUT "${_output_binary}"

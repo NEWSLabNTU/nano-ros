@@ -62,6 +62,22 @@ install-local:
         echo "arm-none-eabi-gcc not found — skipping FreeRTOS ARM Cortex-M3 libraries"
     fi
 
+    # --- NuttX ARM Cortex-A7 libraries (zenoh only, when NuttX is built) ---
+    NUTTX_EXPORT=$(ls -d "external/nuttx/nuttx-export-"* 2>/dev/null | head -1)
+    if command -v arm-none-eabi-gcc &>/dev/null && [ -n "$NUTTX_EXPORT" ]; then
+        echo "=== Building nuttx_armv7a RMW=zenoh ==="
+        cmake -S . -B "build/cmake-nuttx-armv7a-zenoh" \
+            -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/armv7a-nuttx-eabi.cmake" \
+            -DNANO_ROS_RMW="zenoh" \
+            -DNANO_ROS_PLATFORM="nuttx_armv7a" \
+            -DNANO_ROS_BUILD_CODEGEN=OFF \
+            -DCMAKE_BUILD_TYPE=Release
+        cmake --build "build/cmake-nuttx-armv7a-zenoh"
+        cmake --install "build/cmake-nuttx-armv7a-zenoh" --prefix "$PREFIX"
+    else
+        echo "NuttX export not found — skipping NuttX ARM libraries (run: just build-nuttx)"
+    fi
+
     # --- ThreadX Linux libraries (zenoh only, when ThreadX SDK available) ---
     if [ -d "${THREADX_DIR:-external/threadx}/common/inc" ]; then
         echo "=== Building threadx_linux RMW=zenoh ==="

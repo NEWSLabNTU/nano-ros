@@ -121,6 +121,20 @@ echo "Building NuttX..."
 NCPUS=$(nproc 2>/dev/null || echo 4)
 make -j"$NCPUS"
 
+# --- Export NuttX for external C/C++ apps ---
+
+echo "Exporting NuttX..."
+make export
+EXPORT_TAR=$(ls nuttx-export-*.tar.gz 2>/dev/null | head -1)
+if [ -n "$EXPORT_TAR" ]; then
+    EXPORT_DIR="${EXPORT_TAR%.tar.gz}"
+    rm -rf "$EXPORT_DIR"
+    tar xzf "$EXPORT_TAR"
+    echo "  Export: $NUTTX_DIR/$EXPORT_DIR"
+else
+    echo "  WARNING: make export did not produce a tarball"
+fi
+
 echo ""
 echo "=== Build Complete ==="
 echo "  NuttX ELF: $NUTTX_DIR/nuttx"
