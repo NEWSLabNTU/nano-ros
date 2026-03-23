@@ -30,7 +30,9 @@ set(CMAKE_CXX_FLAGS_INIT "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4 -ffu
 set(CMAKE_ASM_FLAGS_INIT "-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4")
 
 # Rust target triple — armv7a-nuttx-eabihf for hard-float ABI.
+# This is a Tier 3 target requiring nightly + build-std.
 set(Rust_CARGO_TARGET "armv7a-nuttx-eabihf" CACHE STRING "Rust target triple" FORCE)
+set(Rust_TOOLCHAIN "nightly" CACHE STRING "Rust toolchain" FORCE)
 
 # Don't search host paths for libraries / headers when cross-compiling.
 # PROGRAM is NEVER so CMake can still find host tools (cmake, ninja, etc.).
