@@ -25,6 +25,7 @@ ZENOH_DIR="$SCRIPT_DIR/zenoh"
 if [ "$1" = "--clean" ]; then
     echo "Cleaning zenohd build..."
     rm -rf "$BUILD_DIR"
+    rm -rf "$ZENOH_DIR/target"
     echo "Done."
     exit 0
 fi
