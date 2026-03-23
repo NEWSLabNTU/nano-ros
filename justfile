@@ -25,7 +25,12 @@ default:
 # =============================================================================
 
 # Build everything: refresh bindings, workspace (native + embedded), all examples, and test deps
-build: install-local generate-bindings build-workspace build-workspace-embedded build-examples build-nuttx build-examples-nuttx build-examples-threadx-linux build-examples-threadx-riscv64 build-zenohd build-zenoh-pico-arm
+build: \
+    install-local generate-bindings \
+    build-workspace build-workspace-embedded \
+    build-examples build-nuttx build-examples-nuttx \
+    build-examples-threadx-linux build-examples-threadx-riscv64 \
+    build-zenohd build-zenoh-pico-arm
     @echo "All builds completed!"
 
 # Populate build/install/ with C/C++ artifacts (libraries, headers, CMake module, codegen).
@@ -157,7 +162,9 @@ format: format-c format-cpp format-python
     echo "All formatting completed!"
 
 # Check everything: Rust (native + embedded + features + examples), C, C++, Python
-check: check-workspace check-workspace-embedded check-workspace-features check-examples check-c check-cpp check-python
+check: \
+    check-workspace check-workspace-embedded check-workspace-features \
+    check-examples check-c check-cpp check-python
     @echo "All checks passed!"
 
 # Run unit tests only (no external dependencies)
