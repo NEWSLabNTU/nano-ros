@@ -6,7 +6,7 @@
 
 #include <cstdint>
 #include <cstddef>
-#include <cstring>
+#include <string.h>
 
 #include "nros/config.hpp"
 #include "nros/result.hpp"

@@ -11,7 +11,7 @@
 #define NROS_CPP_SPAN_HPP
 
 #include <cstddef>
-#include <cstring>
+#include <string.h>
 
 namespace nros {
 
