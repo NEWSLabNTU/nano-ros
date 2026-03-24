@@ -1,0 +1,175 @@
+# Phase 76: RTOS Scheduling Configuration
+
+**Goal**: Enable user-configurable scheduling (task priorities, stack sizes, poll intervals) for all nano-ros runtime tasks via `config.toml`, with a normalized 0–31 priority scale that is portable across RTOS platforms.
+
+**Status**: Not Started
+**Priority**: Medium
+**Depends on**: None (existing board crate and zpico infrastructure is sufficient)
+
+## Overview
+
+A nano-ros application creates up to 5 task types at runtime:
+
+1. **App task** — runs the executor, user callbacks, `spin_*()`
+2. **Net poll task** — drains NIC RX FIFO (FreeRTOS only)
+3. **Zenoh-pico read task** — reads transport socket, decodes messages
+4. **Zenoh-pico lease task** — sends keep-alive, monitors session lease
+5. **Network stack task** — TCP/IP processing (OS-managed, out of scope)
+
+Currently all priorities and stack sizes are hardcoded as constants in board
+crates and zenoh-pico platform shims. Users cannot tune scheduling without
+modifying source code.
+
+This phase adds a `[scheduling]` section to `config.toml` that board crates
+parse and apply to task creation calls. A normalized 0–31 priority scale
+(higher = more important) ensures config files are portable across platforms.
+
+### Design Reference
+
+See [docs/design/rtos-scheduling-features.md](../design/rtos-scheduling-features.md) for:
+- Full RTOS scheduling feature survey (FreeRTOS, ThreadX, NuttX, Zephyr)
+- Runtime task architecture diagram and priority maps
+- Priority mapping tables and functions
+- Zenoh-pico platform shim global approach
+
+## Work Items
+
+zpico task config API:
+- [ ] 76.1 — zpico global task config API (`zpico_set_task_config`)
+- [ ] 76.2 — FreeRTOS board crate scheduling config
+- [ ] 76.3 — FreeRTOS board crate wiring (use config in task creation)
+- [ ] 76.4 — Example and test validation
+- [ ] 76.5 — CMake config parser update for C/C++ examples
+- [ ] 76.6 — Documentation
+
+### 76.1 — zpico global task config API
+
+Add `zpico_set_task_config()` to the zpico C wrapper so board crates can
+configure zenoh-pico read/lease task scheduling before `zpico_open()`.
+
+- [ ] Add `zpico_set_task_config(read_pri, read_stack, lease_pri, lease_stack)` to `packages/zpico/zpico-sys/c/zpico/zpico.c`
+- [ ] Add declaration to `packages/zpico/zpico-sys/c/zpico/zpico.h`
+- [ ] Add static `g_read_task_attr` and `g_lease_task_attr` globals (default to platform defaults)
+- [ ] Change `zpico_open()` to pass `&g_read_task_attr` / `&g_lease_task_attr` to `zp_start_read_task()` / `zp_start_lease_task()` instead of `NULL`
+- [ ] Add Rust FFI binding in zpico-sys for `zpico_set_task_config`
+
+**Files:**
+- `packages/zpico/zpico-sys/c/zpico/zpico.c`
+- `packages/zpico/zpico-sys/c/zpico/zpico.h`
+- `packages/zpico/zpico-sys/src/lib.rs` (or wherever FFI bindings live)
+
+### 76.2 — FreeRTOS board crate scheduling config
+
+Add scheduling fields to the FreeRTOS board crate `Config` struct and parse
+them from the `[scheduling]` section of `config.toml`.
+
+- [ ] Add fields to `Config`: `app_priority: u8`, `app_stack_bytes: u32`, `zenoh_read_priority: u8`, `zenoh_read_stack_bytes: u32`, `zenoh_lease_priority: u8`, `zenoh_lease_stack_bytes: u32`, `poll_priority: u8`, `poll_interval_ms: u32`
+- [ ] Set defaults matching current hardcoded values: app=12, zenoh_read=16, zenoh_lease=16, poll=16, app_stack=65536, zenoh_read_stack=5120, zenoh_lease_stack=5120, poll_interval=5
+- [ ] Add `("scheduling", key)` match arms to `Config::from_toml()`
+- [ ] Add `to_freertos_priority(normalized: u8) -> u32` mapping function (0–31 → 0–7 linear)
+- [ ] Add builder methods: `with_app_priority()`, `with_poll_interval_ms()`, etc.
+
+**Files:**
+- `packages/boards/nros-mps2-an385-freertos/src/config.rs`
+
+### 76.3 — FreeRTOS board crate wiring
+
+Replace hardcoded constants with config values in task creation calls.
+
+- [ ] In `run()`: use `to_freertos_priority(config.app_priority)` and `config.app_stack_bytes / 4` (words) for app task creation
+- [ ] In `app_task_entry()`: use `to_freertos_priority(config.poll_priority)` and config stack for poll task creation
+- [ ] In `app_task_entry()`: use `config.poll_interval_ms` in poll task `vTaskDelay()`
+- [ ] In `app_task_entry()`: call `zpico_set_task_config()` via FFI before running user closure (which calls `Executor::open()`)
+- [ ] Pass poll_interval_ms to poll task via `AppContext` or a static (poll task has no arg currently)
+- [ ] Remove old `APP_TASK_STACK`, `APP_TASK_PRIORITY`, `POLL_TASK_STACK`, `POLL_TASK_PRIORITY`, `POLL_INTERVAL_MS` constants
+
+**Files:**
+- `packages/boards/nros-mps2-an385-freertos/src/node.rs`
+
+### 76.4 — Example and test validation
+
+Verify the new config works end-to-end with existing examples and tests.
+
+- [ ] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/talker/config.toml` (use current defaults — ensures parsing works without behavior change)
+- [ ] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/listener/config.toml`
+- [ ] Verify `just test-freertos` passes with no behavior change (default priorities match old constants)
+- [ ] Test with non-default priorities (e.g., raise app to 20, lower zenoh to 12) and verify session still works
+- [ ] Verify examples without `[scheduling]` section still work (defaults apply)
+
+**Files:**
+- `examples/qemu-arm-freertos/rust/zenoh/talker/config.toml`
+- `examples/qemu-arm-freertos/rust/zenoh/listener/config.toml`
+
+### 76.5 — CMake config parser update
+
+Update `nano_ros_read_config()` to parse `[scheduling]` fields so C/C++
+examples can use them.
+
+- [ ] Add `[scheduling]` section parsing to `cmake/NanoRosConfig.cmake`
+- [ ] Set CMake variables: `NROS_CONFIG_APP_PRIORITY`, `NROS_CONFIG_APP_STACK_BYTES`, `NROS_CONFIG_ZENOH_READ_PRIORITY`, `NROS_CONFIG_ZENOH_READ_STACK_BYTES`, `NROS_CONFIG_ZENOH_LEASE_PRIORITY`, `NROS_CONFIG_ZENOH_LEASE_STACK_BYTES`, `NROS_CONFIG_POLL_PRIORITY`, `NROS_CONFIG_POLL_INTERVAL_MS`
+- [ ] Provide defaults for missing fields (same as Rust defaults)
+- [ ] Add `[scheduling]` to one FreeRTOS C example config.toml and wire the compile definitions
+- [ ] Verify FreeRTOS C example builds and passes E2E test
+
+**Files:**
+- `cmake/NanoRosConfig.cmake`
+- `examples/qemu-arm-freertos/c/zenoh/talker/config.toml`
+- `examples/qemu-arm-freertos/c/zenoh/talker/CMakeLists.txt`
+
+### 76.6 — Documentation
+
+- [ ] Update `docs/design/rtos-scheduling-features.md` with final implementation details
+- [ ] Add `[scheduling]` section reference to `book/src/reference/environment-variables.md` or create a new `book/src/reference/scheduling.md`
+- [ ] Add scheduling config example to `book/src/platforms/freertos.md` (or equivalent)
+- [ ] Document the 0–31 normalized priority scale and per-platform mapping table
+
+**Files:**
+- `docs/design/rtos-scheduling-features.md`
+- `book/src/reference/` (new or existing file)
+- `book/src/platforms/` (platform-specific docs)
+
+## Scheduling Constraints (Invariants)
+
+These must hold regardless of user configuration. Board crates should
+validate or document these but NOT silently clamp (users may have valid
+reasons for unusual configurations):
+
+1. **Net poll ≥ zenoh read priority** (FreeRTOS): poll task must preempt
+   zenoh-pico's blocking `recv()` to feed frames, or the read task
+   starves the RX FIFO.
+
+2. **Zenoh read ≥ app priority**: if the app task preempts the read task,
+   incoming messages are delayed, risking lease timeouts and session drops.
+
+3. **Zenoh lease > idle**: the lease task must run periodically to prevent
+   session expiration. Can be lower than read/app but must not be starved.
+
+4. **App stack ≥ 16 KB**: executor arena (`NROS_EXECUTOR_ARENA_SIZE`, default
+   4 KB) plus zenoh-pico call depth. 64 KB recommended for action servers.
+
+## Future Work (Out of Scope)
+
+These are natural follow-ons but NOT part of this phase:
+
+- **ThreadX board crate**: same pattern — add scheduling fields, `to_threadx_priority()` (inverted scale), wire into `app_define.c`
+- **NuttX board crate**: add POSIX scheduling policy config (`SCHED_FIFO` / `SCHED_RR`), `pthread_attr_setschedparam()`
+- **Zephyr board crate**: add cooperative/preemptive selection, deadline scheduling via `k_thread_deadline_set()`
+- **ThreadX preemption-threshold**: platform-specific field, powerful for mixed-criticality
+- **Runtime priority changes**: `vTaskPrioritySet()` / `tx_thread_priority_change()` for dynamic priority boost during deadline-critical windows
+- **Stack usage introspection**: `uxTaskGetStackHighWaterMark()` / `tx_thread_info_get()` for runtime diagnostics
+- **Priority constraint validation**: warn at startup if configured priorities violate the invariants above
+
+## Acceptance Criteria
+
+- [ ] `zpico_set_task_config()` API exists and is callable from Rust FFI
+- [ ] FreeRTOS board crate `Config` has scheduling fields with sensible defaults
+- [ ] `Config::from_toml()` parses `[scheduling]` section correctly
+- [ ] `run()` and `app_task_entry()` use config values instead of hardcoded constants
+- [ ] Zenoh-pico read/lease tasks start with user-configured priority and stack size
+- [ ] Existing examples without `[scheduling]` section continue to work unchanged
+- [ ] `just test-freertos` passes with default scheduling config
+- [ ] `just test-freertos` passes with non-default scheduling config (e.g., app_priority=20)
+- [ ] CMake `nano_ros_read_config()` parses `[scheduling]` fields
+- [ ] At least one C example uses `[scheduling]` config and builds + passes E2E
+- [ ] Normalized 0–31 priority scale is documented with per-platform mapping table
+- [ ] No scheduling-related code is added to `nros-node` core (stays in board crates + zpico)
