@@ -15,6 +15,7 @@
 - [no_std Support](./concepts/no-std.md)
 - [RMW Backends](./concepts/rmw-backends.md)
 - [Platform Model](./concepts/platform-model.md)
+- [Scheduling Models](./concepts/scheduling-models.md)
 
 # Guides
 
