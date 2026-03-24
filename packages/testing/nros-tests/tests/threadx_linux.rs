@@ -714,10 +714,16 @@ fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBu
     );
 
     // Resolve SDK paths from env (set by justfile) or default to external/
-    let threadx_dir = std::env::var("THREADX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/threadx/kernel").display().to_string());
-    let netx_dir = std::env::var("NETX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/threadx/netxduo").display().to_string());
+    let threadx_dir = std::env::var("THREADX_DIR").unwrap_or_else(|_| {
+        root.join("third-party/threadx/kernel")
+            .display()
+            .to_string()
+    });
+    let netx_dir = std::env::var("NETX_DIR").unwrap_or_else(|_| {
+        root.join("third-party/threadx/netxduo")
+            .display()
+            .to_string()
+    });
     let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
         root.join("third-party/threadx/learn-samples")
             .display()
@@ -1031,10 +1037,16 @@ fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
     );
 
     // Resolve SDK paths from env (set by justfile) or default to external/
-    let threadx_dir = std::env::var("THREADX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/threadx/kernel").display().to_string());
-    let netx_dir = std::env::var("NETX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/threadx/netxduo").display().to_string());
+    let threadx_dir = std::env::var("THREADX_DIR").unwrap_or_else(|_| {
+        root.join("third-party/threadx/kernel")
+            .display()
+            .to_string()
+    });
+    let netx_dir = std::env::var("NETX_DIR").unwrap_or_else(|_| {
+        root.join("third-party/threadx/netxduo")
+            .display()
+            .to_string()
+    });
     let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
         root.join("third-party/threadx/learn-samples")
             .display()

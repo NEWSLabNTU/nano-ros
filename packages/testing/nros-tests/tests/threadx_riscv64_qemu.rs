@@ -694,10 +694,16 @@ fn build_rv64_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestRe
         "-DCMAKE_TOOLCHAIN_FILE={}",
         root.join("cmake/toolchain/riscv64-threadx.cmake").display()
     );
-    let threadx_dir = std::env::var("THREADX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/threadx/kernel").display().to_string());
-    let netx_dir = std::env::var("NETX_DIR")
-        .unwrap_or_else(|_| root.join("third-party/threadx/netxduo").display().to_string());
+    let threadx_dir = std::env::var("THREADX_DIR").unwrap_or_else(|_| {
+        root.join("third-party/threadx/kernel")
+            .display()
+            .to_string()
+    });
+    let netx_dir = std::env::var("NETX_DIR").unwrap_or_else(|_| {
+        root.join("third-party/threadx/netxduo")
+            .display()
+            .to_string()
+    });
     // Always use the RISC-V board config (not the Linux one from THREADX_CONFIG_DIR)
     let config_dir = root
         .join("packages/boards/nros-threadx-qemu-riscv64/config")
