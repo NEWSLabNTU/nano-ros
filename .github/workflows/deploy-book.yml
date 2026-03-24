@@ -1,0 +1,50 @@
+name: Deploy Book
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "book/**"
+
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout nano-ros
+        uses: actions/checkout@v4
+
+      - name: Install mdbook
+        uses: peaceiris/actions-mdbook@v2
+        with:
+          mdbook-version: "latest"
+
+      - name: Build book
+        env:
+          MDBOOK_OUTPUT__HTML__SITE_URL: /nano-ros-book/
+        run: mdbook build book
+
+      - name: Setup deploy key
+        uses: webfactory/ssh-agent@v0.9.1
+        with:
+          ssh-private-key: ${{ secrets.PAGES_DEPLOY_KEY }}
+
+      - name: Deploy to jerry73204.github.io
+        run: |
+          git clone git@github.com:jerry73204/jerry73204.github.io.git _pages
+          rm -rf _pages/nano-ros-book
+          cp -r book/book _pages/nano-ros-book
+          cd _pages
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add nano-ros-book
+          if git diff --cached --quiet; then
+            echo "No changes to deploy"
+          else
+            git commit -m "Update nano-ros book
+
+          Source: https://github.com/jerry73204/nano-ros/tree/main/book
+          Commit: ${{ github.sha }}"
+            git push
+          fi
