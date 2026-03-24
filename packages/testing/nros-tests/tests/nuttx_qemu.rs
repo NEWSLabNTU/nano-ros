@@ -764,7 +764,7 @@ fn build_nuttx_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestR
         root.join("build/install").display()
     );
     let nuttx_dir = std::env::var("NUTTX_DIR")
-        .unwrap_or_else(|_| root.join("external/nuttx").display().to_string());
+        .unwrap_or_else(|_| root.join("third-party/nuttx/nuttx").display().to_string());
 
     let output = duct::cmd!(
         "cmake",

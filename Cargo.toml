@@ -254,7 +254,3 @@ opt-level = 1        # Some optimization even in dev for embedded
 [patch.crates-io]
 nros-core = { path = "packages/core/nros-core" }
 nros-serdes = { path = "packages/core/nros-serdes" }
-# NuttX targets need a patched libc with _SC_HOST_NAME_MAX and
-# Linux-compatible SIG_DFL/SIG_IGN constants. This patch also applies
-# to build-std when cross-compiling for armv7a-nuttx-eabihf.
-libc = { path = "external/libc" }
