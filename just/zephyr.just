@@ -13,10 +13,11 @@ build:
         exit 1
     fi
     echo "Building Zephyr Rust examples in $WORKSPACE..."
+    NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"
     for ex in talker listener service-server service-client action-server action-client async-service-client; do
         echo "  Building zephyr/rust/zenoh/$ex -> build-$ex/"
-        west build -b native_sim/native/64 -d "build-$ex" -p auto "nros/examples/zephyr/rust/zenoh/$ex"
+        west build -b native_sim/native/64 -d "build-$ex" -p auto "$NROS/examples/zephyr/rust/zenoh/$ex"
     done
     echo "Zephyr Rust examples built successfully!"
 
@@ -31,11 +32,12 @@ build-c:
         exit 1
     fi
     echo "Building Zephyr C examples in $WORKSPACE..."
+    NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"
     echo "  Building zephyr/c/zenoh/talker -> build-c-talker/"
-    west build -b native_sim/native/64 -d build-c-talker -p auto nros/examples/zephyr/c/zenoh/talker
+    west build -b native_sim/native/64 -d build-c-talker -p auto $NROS/examples/zephyr/c/zenoh/talker
     echo "  Building zephyr/c/zenoh/listener -> build-c-listener/"
-    west build -b native_sim/native/64 -d build-c-listener -p auto nros/examples/zephyr/c/zenoh/listener
+    west build -b native_sim/native/64 -d build-c-listener -p auto $NROS/examples/zephyr/c/zenoh/listener
     echo "Zephyr C examples built successfully!"
 
 # Build Zephyr C++ examples
@@ -49,10 +51,11 @@ build-cpp:
         exit 1
     fi
     echo "Building Zephyr C++ examples in $WORKSPACE..."
+    NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"
     for ex in talker listener service-server service-client action-server action-client; do
         echo "  Building zephyr/cpp/zenoh/$ex -> build-cpp-$ex/"
-        west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto "nros/examples/zephyr/cpp/zenoh/$ex"
+        west build -b native_sim/native/64 -d "build-cpp-$ex" -p auto "$NROS/examples/zephyr/cpp/zenoh/$ex"
     done
     echo "Zephyr C++ examples built successfully!"
 
@@ -67,15 +70,16 @@ build-xrce:
         exit 1
     fi
     echo "Building Zephyr XRCE examples in $WORKSPACE..."
+    NROS="$(basename "$(pwd)")"
     cd "$WORKSPACE"
     echo "  Building zephyr/rust/xrce/talker -> build-xrce-rs-talker/"
-    west build -b native_sim/native/64 -d build-xrce-rs-talker -p auto nros/examples/zephyr/rust/xrce/talker
+    west build -b native_sim/native/64 -d build-xrce-rs-talker -p auto $NROS/examples/zephyr/rust/xrce/talker
     echo "  Building zephyr/rust/xrce/listener -> build-xrce-rs-listener/"
-    west build -b native_sim/native/64 -d build-xrce-rs-listener -p auto nros/examples/zephyr/rust/xrce/listener
+    west build -b native_sim/native/64 -d build-xrce-rs-listener -p auto $NROS/examples/zephyr/rust/xrce/listener
     echo "  Building zephyr/c/xrce/talker -> build-xrce-c-talker/"
-    west build -b native_sim/native/64 -d build-xrce-c-talker -p auto nros/examples/zephyr/c/xrce/talker
+    west build -b native_sim/native/64 -d build-xrce-c-talker -p auto $NROS/examples/zephyr/c/xrce/talker
     echo "  Building zephyr/c/xrce/listener -> build-xrce-c-listener/"
-    west build -b native_sim/native/64 -d build-xrce-c-listener -p auto nros/examples/zephyr/c/xrce/listener
+    west build -b native_sim/native/64 -d build-xrce-c-listener -p auto $NROS/examples/zephyr/c/xrce/listener
     echo "Zephyr XRCE examples built successfully!"
 
 # Build all Zephyr examples (Rust + C + C++ + XRCE)
@@ -151,5 +155,5 @@ help:
     @echo "  just zephyr test-c         # Run Zephyr C examples test"
     @echo ""
     @echo "Manual build (from Zephyr workspace):"
-    @echo "  west build -b native_sim/native/64 -d build-talker nros/examples/zephyr/rust/zenoh/talker"
-    @echo "  west build -b native_sim/native/64 -d build-listener nros/examples/zephyr/rust/zenoh/listener"
+    @echo "  west build -b native_sim/native/64 -d build-talker <repo>/examples/zephyr/rust/zenoh/talker"
+    @echo "  west build -b native_sim/native/64 -d build-listener <repo>/examples/zephyr/rust/zenoh/listener"
