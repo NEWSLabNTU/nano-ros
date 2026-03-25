@@ -91,3 +91,23 @@ clean: clean-zenoh-pico
     done
     rm -rf build/esp32-qemu
     echo "ESP32 build artifacts cleaned"
+
+# =============================================================================
+# Run examples (build + launch ESP32-C3 QEMU)
+# =============================================================================
+
+# Run ESP32 talker on QEMU
+talker: build-qemu
+    qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+        -drive "file=build/esp32-qemu/esp32-qemu-talker.bin,if=mtd,format=raw" \
+        -nic user,model=open_eth
+
+# Run ESP32 listener on QEMU
+listener: build-qemu
+    qemu-system-riscv32 -M esp32c3 -icount 3 -nographic \
+        -drive "file=build/esp32-qemu/esp32-qemu-listener.bin,if=mtd,format=raw" \
+        -nic user,model=open_eth
+
+# Start zenohd router for ESP32 QEMU examples (port 7454)
+zenohd:
+    build/zenohd/zenohd --listen tcp/127.0.0.1:7454 --no-multicast-scouting

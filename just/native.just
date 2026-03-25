@@ -270,3 +270,35 @@ test-c-xrce verbose="":
 bench-fairness:
     cd examples/native/rust/zenoh/fairness-bench && \
         RUST_LOG=warn cargo run --release
+
+# =============================================================================
+# Run examples
+# =============================================================================
+
+# Run native Rust talker
+talker:
+    cd examples/native/rust/zenoh/talker && cargo run
+
+# Run native Rust listener
+listener:
+    cd examples/native/rust/zenoh/listener && cargo run
+
+# Run native Rust service server
+service-server:
+    cd examples/native/rust/zenoh/service-server && cargo run
+
+# Run native Rust service client
+service-client:
+    cd examples/native/rust/zenoh/service-client && cargo run
+
+# Run native Rust action server
+action-server:
+    cd examples/native/rust/zenoh/action-server && cargo run
+
+# Run native Rust action client
+action-client:
+    cd examples/native/rust/zenoh/action-client && cargo run
+
+# Start zenohd router for native examples (port 7447)
+zenohd:
+    build/zenohd/zenohd --listen tcp/127.0.0.1:7447 --no-multicast-scouting

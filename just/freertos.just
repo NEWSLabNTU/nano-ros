@@ -65,3 +65,77 @@ clean:
         rm -rf "examples/qemu-arm-freertos/rust/zenoh/$example/target"
     done
     echo "FreeRTOS build artifacts cleaned"
+
+# =============================================================================
+# Run examples (build + launch QEMU MPS2-AN385 with slirp networking)
+# =============================================================================
+
+# Run FreeRTOS talker on QEMU
+talker:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/qemu-arm-freertos/rust/zenoh/talker && cargo build --release
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel target/thumbv7m-none-eabi/release/qemu-freertos-talker \
+        -nic user,model=lan9118
+
+# Run FreeRTOS listener on QEMU
+listener:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/qemu-arm-freertos/rust/zenoh/listener && cargo build --release
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel target/thumbv7m-none-eabi/release/qemu-freertos-listener \
+        -nic user,model=lan9118
+
+# Run FreeRTOS service server on QEMU
+service-server:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/qemu-arm-freertos/rust/zenoh/service-server && cargo build --release
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel target/thumbv7m-none-eabi/release/qemu-freertos-service-server \
+        -nic user,model=lan9118
+
+# Run FreeRTOS service client on QEMU
+service-client:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/qemu-arm-freertos/rust/zenoh/service-client && cargo build --release
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel target/thumbv7m-none-eabi/release/qemu-freertos-service-client \
+        -nic user,model=lan9118
+
+# Run FreeRTOS action server on QEMU
+action-server:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/qemu-arm-freertos/rust/zenoh/action-server && cargo build --release
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel target/thumbv7m-none-eabi/release/qemu-freertos-action-server \
+        -nic user,model=lan9118
+
+# Run FreeRTOS action client on QEMU
+action-client:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/qemu-arm-freertos/rust/zenoh/action-client && cargo build --release
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel target/thumbv7m-none-eabi/release/qemu-freertos-action-client \
+        -nic user,model=lan9118
+
+# Start zenohd router for FreeRTOS QEMU examples (port 7451)
+zenohd:
+    build/zenohd/zenohd --listen tcp/127.0.0.1:7451 --no-multicast-scouting

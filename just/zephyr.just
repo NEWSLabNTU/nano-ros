@@ -157,3 +157,81 @@ help:
     @echo "Manual build (from Zephyr workspace):"
     @echo "  west build -b native_sim/native/64 -d build-talker <repo>/examples/zephyr/rust/zenoh/talker"
     @echo "  west build -b native_sim/native/64 -d build-listener <repo>/examples/zephyr/rust/zenoh/listener"
+
+# =============================================================================
+# Run examples (build + launch native_sim binary)
+# =============================================================================
+
+# Run Zephyr talker
+talker:
+    #!/usr/bin/env bash
+    set -e
+    NROS="$(basename "$(pwd)")"
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    cd "$WORKSPACE"
+    west build -b native_sim/native/64 -d build-talker -p auto "$NROS/examples/zephyr/rust/zenoh/talker"
+    ./build-talker/zephyr/zephyr.exe
+
+# Run Zephyr listener
+listener:
+    #!/usr/bin/env bash
+    set -e
+    NROS="$(basename "$(pwd)")"
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    cd "$WORKSPACE"
+    west build -b native_sim/native/64 -d build-listener -p auto "$NROS/examples/zephyr/rust/zenoh/listener"
+    ./build-listener/zephyr/zephyr.exe
+
+# Run Zephyr service server
+service-server:
+    #!/usr/bin/env bash
+    set -e
+    NROS="$(basename "$(pwd)")"
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    cd "$WORKSPACE"
+    west build -b native_sim/native/64 -d build-service-server -p auto "$NROS/examples/zephyr/rust/zenoh/service-server"
+    ./build-service-server/zephyr/zephyr.exe
+
+# Run Zephyr service client
+service-client:
+    #!/usr/bin/env bash
+    set -e
+    NROS="$(basename "$(pwd)")"
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    cd "$WORKSPACE"
+    west build -b native_sim/native/64 -d build-service-client -p auto "$NROS/examples/zephyr/rust/zenoh/service-client"
+    ./build-service-client/zephyr/zephyr.exe
+
+# Run Zephyr action server
+action-server:
+    #!/usr/bin/env bash
+    set -e
+    NROS="$(basename "$(pwd)")"
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    cd "$WORKSPACE"
+    west build -b native_sim/native/64 -d build-action-server -p auto "$NROS/examples/zephyr/rust/zenoh/action-server"
+    ./build-action-server/zephyr/zephyr.exe
+
+# Run Zephyr action client
+action-client:
+    #!/usr/bin/env bash
+    set -e
+    NROS="$(basename "$(pwd)")"
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    cd "$WORKSPACE"
+    west build -b native_sim/native/64 -d build-action-client -p auto "$NROS/examples/zephyr/rust/zenoh/action-client"
+    ./build-action-client/zephyr/zephyr.exe
+
+# Run Zephyr async service client
+async-service-client:
+    #!/usr/bin/env bash
+    set -e
+    NROS="$(basename "$(pwd)")"
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    cd "$WORKSPACE"
+    west build -b native_sim/native/64 -d build-async-service-client -p auto "$NROS/examples/zephyr/rust/zenoh/async-service-client"
+    ./build-async-service-client/zephyr/zephyr.exe
+
+# Start zenohd router for Zephyr examples (port 7456, all interfaces)
+zenohd:
+    build/zenohd/zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting

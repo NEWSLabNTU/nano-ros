@@ -155,3 +155,27 @@ clean: clean-zenoh-pico
     done
     rm -rf packages/reference/qemu-smoltcp-bridge/target
     echo "QEMU bare-metal build artifacts cleaned"
+
+# =============================================================================
+# Run examples (build + launch QEMU MPS2-AN385 with slirp networking)
+# =============================================================================
+
+# Run bare-metal talker on QEMU
+talker: build
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker \
+        -nic user,model=lan9118
+
+# Run bare-metal listener on QEMU
+listener: build
+    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener \
+        -nic user,model=lan9118
+
+# Start zenohd router for bare-metal QEMU examples (port 7450)
+zenohd:
+    build/zenohd/zenohd --listen tcp/127.0.0.1:7450 --no-multicast-scouting
