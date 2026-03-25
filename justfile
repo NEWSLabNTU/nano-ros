@@ -43,7 +43,7 @@ default:
 build: \
     install-local generate-bindings \
     build-workspace build-workspace-embedded \
-    native::build nuttx::build-kernel nuttx::build \
+    native::build \
     freertos::build threadx_linux::build threadx_riscv64::build \
     build-zenohd qemu::build-zenoh-pico
     @echo "All builds completed!"
