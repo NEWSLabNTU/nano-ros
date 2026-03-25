@@ -821,25 +821,29 @@ static NUTTX_CPP_SERVICE_CLIENT_BINARY: OnceCell<PathBuf> = OnceCell::new();
 
 fn build_nuttx_cpp_talker() -> TestResult<&'static Path> {
     NUTTX_CPP_TALKER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("cpp","talker", "nuttx_cpp_talker"))
+        .get_or_try_init(|| build_nuttx_cmake_example("cpp", "talker", "nuttx_cpp_talker"))
         .map(|p| p.as_path())
 }
 
 fn build_nuttx_cpp_listener() -> TestResult<&'static Path> {
     NUTTX_CPP_LISTENER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("cpp","listener", "nuttx_cpp_listener"))
+        .get_or_try_init(|| build_nuttx_cmake_example("cpp", "listener", "nuttx_cpp_listener"))
         .map(|p| p.as_path())
 }
 
 fn build_nuttx_cpp_service_server() -> TestResult<&'static Path> {
     NUTTX_CPP_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("cpp","service-server", "nuttx_cpp_service_server"))
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("cpp", "service-server", "nuttx_cpp_service_server")
+        })
         .map(|p| p.as_path())
 }
 
 fn build_nuttx_cpp_service_client() -> TestResult<&'static Path> {
     NUTTX_CPP_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("cpp","service-client", "nuttx_cpp_service_client"))
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("cpp", "service-client", "nuttx_cpp_service_client")
+        })
         .map(|p| p.as_path())
 }
 
@@ -1026,22 +1030,30 @@ fn build_nuttx_c_listener() -> TestResult<&'static Path> {
 }
 fn build_nuttx_c_service_server() -> TestResult<&'static Path> {
     NUTTX_C_SERVICE_SERVER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("c", "service-server", "nuttx_c_service_server"))
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("c", "service-server", "nuttx_c_service_server")
+        })
         .map(|p| p.as_path())
 }
 fn build_nuttx_c_service_client() -> TestResult<&'static Path> {
     NUTTX_C_SERVICE_CLIENT_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("c", "service-client", "nuttx_c_service_client"))
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("c", "service-client", "nuttx_c_service_client")
+        })
         .map(|p| p.as_path())
 }
 fn build_nuttx_c_action_server() -> TestResult<&'static Path> {
     NUTTX_C_ACTION_SERVER_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("c", "action-server", "nuttx_c_action_server"))
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("c", "action-server", "nuttx_c_action_server")
+        })
         .map(|p| p.as_path())
 }
 fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
     NUTTX_C_ACTION_CLIENT_BINARY
-        .get_or_try_init(|| build_nuttx_cmake_example("c", "action-client", "nuttx_c_action_client"))
+        .get_or_try_init(|| {
+            build_nuttx_cmake_example("c", "action-client", "nuttx_c_action_client")
+        })
         .map(|p| p.as_path())
 }
 
@@ -1051,7 +1063,9 @@ fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
 
 #[test]
 fn test_nuttx_c_talker_builds() {
-    if !require_nuttx_cpp() { return; }
+    if !require_nuttx_cpp() {
+        return;
+    }
     let b = build_nuttx_c_talker().expect("build failed");
     assert!(b.exists());
     eprintln!("SUCCESS: {}", b.display());
@@ -1059,35 +1073,45 @@ fn test_nuttx_c_talker_builds() {
 
 #[test]
 fn test_nuttx_c_listener_builds() {
-    if !require_nuttx_cpp() { return; }
+    if !require_nuttx_cpp() {
+        return;
+    }
     let b = build_nuttx_c_listener().expect("build failed");
     assert!(b.exists());
 }
 
 #[test]
 fn test_nuttx_c_service_server_builds() {
-    if !require_nuttx_cpp() { return; }
+    if !require_nuttx_cpp() {
+        return;
+    }
     let b = build_nuttx_c_service_server().expect("build failed");
     assert!(b.exists());
 }
 
 #[test]
 fn test_nuttx_c_service_client_builds() {
-    if !require_nuttx_cpp() { return; }
+    if !require_nuttx_cpp() {
+        return;
+    }
     let b = build_nuttx_c_service_client().expect("build failed");
     assert!(b.exists());
 }
 
 #[test]
 fn test_nuttx_c_action_server_builds() {
-    if !require_nuttx_cpp() { return; }
+    if !require_nuttx_cpp() {
+        return;
+    }
     let b = build_nuttx_c_action_server().expect("build failed");
     assert!(b.exists());
 }
 
 #[test]
 fn test_nuttx_c_action_client_builds() {
-    if !require_nuttx_cpp() { return; }
+    if !require_nuttx_cpp() {
+        return;
+    }
     let b = build_nuttx_c_action_client().expect("build failed");
     assert!(b.exists());
 }
@@ -1098,7 +1122,9 @@ fn test_nuttx_c_action_client_builds() {
 
 #[test]
 fn test_nuttx_c_pubsub_e2e() {
-    if !require_nuttx_e2e() { return; }
+    if !require_nuttx_e2e() {
+        return;
+    }
 
     let talker = build_nuttx_c_talker().expect("build talker");
     let listener = build_nuttx_c_listener().expect("build listener");
@@ -1109,9 +1135,14 @@ fn test_nuttx_c_pubsub_e2e() {
     std::thread::sleep(Duration::from_secs(10));
     let mut t = QemuProcess::start_nuttx_virt(talker, true).expect("talker QEMU");
 
-    let l_out = l.wait_for_output(Duration::from_secs(60)).unwrap_or_default();
-    let t_out = t.wait_for_output(Duration::from_secs(15)).unwrap_or_default();
-    t.kill(); l.kill();
+    let l_out = l
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+    let t_out = t
+        .wait_for_output(Duration::from_secs(15))
+        .unwrap_or_default();
+    t.kill();
+    l.kill();
 
     eprintln!("C Listener:\n{l_out}\nC Talker:\n{t_out}");
     let received = count_pattern(&l_out, "Received");
@@ -1121,7 +1152,9 @@ fn test_nuttx_c_pubsub_e2e() {
 
 #[test]
 fn test_nuttx_c_service_e2e() {
-    if !require_nuttx_e2e() { return; }
+    if !require_nuttx_e2e() {
+        return;
+    }
 
     let server = build_nuttx_c_service_server().expect("build server");
     let client = build_nuttx_c_service_client().expect("build client");
@@ -1133,8 +1166,11 @@ fn test_nuttx_c_service_e2e() {
     let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
 
     std::thread::sleep(Duration::from_secs(15));
-    let c_out = c.wait_for_output(Duration::from_secs(60)).unwrap_or_default();
-    s.kill(); c.kill();
+    let c_out = c
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+    s.kill();
+    c.kill();
 
     eprintln!("C Client:\n{c_out}");
     let responses = count_pattern(&c_out, "Response:");
@@ -1144,7 +1180,9 @@ fn test_nuttx_c_service_e2e() {
 
 #[test]
 fn test_nuttx_c_action_e2e() {
-    if !require_nuttx_e2e() { return; }
+    if !require_nuttx_e2e() {
+        return;
+    }
 
     let server = build_nuttx_c_action_server().expect("build server");
     let client = build_nuttx_c_action_client().expect("build client");
@@ -1156,12 +1194,18 @@ fn test_nuttx_c_action_e2e() {
     let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
 
     std::thread::sleep(Duration::from_secs(15));
-    let c_out = c.wait_for_output(Duration::from_secs(60)).unwrap_or_default();
-    s.kill(); c.kill();
+    let c_out = c
+        .wait_for_output(Duration::from_secs(60))
+        .unwrap_or_default();
+    s.kill();
+    c.kill();
 
     eprintln!("C Client:\n{c_out}");
     let accepted = c_out.contains("Goal accepted");
     let completed = c_out.contains("Action completed successfully");
-    assert!(accepted && completed, "NuttX C action: accepted={accepted}, completed={completed}");
+    assert!(
+        accepted && completed,
+        "NuttX C action: accepted={accepted}, completed={completed}"
+    );
     eprintln!("[PASS] NuttX C action E2E");
 }
