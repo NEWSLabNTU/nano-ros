@@ -598,7 +598,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
 /// Requires qemu-system-arm + zenoh-pico-arm + QEMU slirp (user-mode) networking.
 #[rstest]
 fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
-    use nros_tests::fixtures::ManagedProcess;
+    use nros_tests::platform;
     use std::process::Command;
 
     // This test uses QEMU slirp (user-mode) networking with port forwarding.
@@ -613,6 +613,9 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
         return;
     }
 
+    let _zenohd =
+        ZenohRouter::start(platform::BAREMETAL.zenohd_port).expect("Failed to start zenohd");
+
     let mut cmd = Command::new("qemu-system-arm");
     cmd.args([
         "-cpu",
@@ -620,11 +623,14 @@ fn test_qemu_zenoh_large_publish(qemu_large_msg_test_binary: PathBuf) {
         "-machine",
         "mps2-an385",
         "-nographic",
+        "-icount",
+        "shift=auto",
         "-semihosting-config",
         "enable=on,target=native",
         "-kernel",
     ]);
     cmd.arg(&qemu_large_msg_test_binary);
+    cmd.args(["-nic", "user,model=lan9118"]);
 
     let mut proc =
         ManagedProcess::spawn_command(cmd, "qemu-large-msg-test").expect("Failed to start QEMU");
