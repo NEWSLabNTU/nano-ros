@@ -38,11 +38,35 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
     let opaque_u64s = total_bytes.div_ceil(8);
     let storage_bytes = opaque_u64s * 8;
 
+    // Action server: CppActionServer = handle + pending goals + action_name
+    //   pending = [PendingGoal; 4], PendingGoal = GoalId(16) + [u8; ACTION_BUF] + usize + bool
+    let action_buf_size = 1024usize; // ACTION_BUF_SIZE in action.rs
+    let max_pending_goals = 4usize; // MAX_PENDING_GOALS in action.rs
+    let pending_goal_size = 16 + action_buf_size + 8 + 8; // GoalId + data + data_len + occupied (aligned)
+    let action_server_bytes = 16 + (pending_goal_size * max_pending_goals) + 256 + 8 + 16; // handle + pending + name + name_len + padding
+    let action_server_opaque_u64s = action_server_bytes.div_ceil(8);
+    let action_server_storage = action_server_opaque_u64s * 8;
+
+    // Action client: CppActionClient = ActionClientCore<1024,1024,1024> + action_name
+    //   ActionClientCore has 3 service clients + 1 subscriber + 3 buffers + counters
+    let service_client_upper = 384usize; // matches nros-c constant
+    let subscriber_upper = 128usize;
+    let action_client_bytes =
+        3 * service_client_upper + subscriber_upper + 3 * action_buf_size + 256 + 64;
+    let action_client_opaque_u64s = action_client_bytes.div_ceil(8);
+    let action_client_storage = action_client_opaque_u64s * 8;
+
     let contents = format!(
         "/// Inline opaque storage for `CppContext` (in u64 units).\n\
          /// Upper bound derived from nros-node's MAX_CBS and ARENA_SIZE.\n\
          /// Validated at compile time by `size_of::<CppContext>()` assertion.\n\
-         pub const CPP_EXECUTOR_OPAQUE_U64S: usize = {opaque_u64s};\n"
+         pub const CPP_EXECUTOR_OPAQUE_U64S: usize = {opaque_u64s};\n\
+         \n\
+         /// Inline opaque storage for `CppActionServer` (in u64 units).\n\
+         pub const CPP_ACTION_SERVER_OPAQUE_U64S: usize = {action_server_opaque_u64s};\n\
+         \n\
+         /// Inline opaque storage for `CppActionClient` (in u64 units).\n\
+         pub const CPP_ACTION_CLIENT_OPAQUE_U64S: usize = {action_client_opaque_u64s};\n"
     );
 
     std::fs::write(
@@ -59,6 +83,12 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
          \n\
          /** Inline opaque storage size (bytes) for nros::Executor. */\n\
          #define NROS_CPP_EXECUTOR_STORAGE_SIZE {storage_bytes}\n\
+         \n\
+         /** Inline opaque storage size (bytes) for nros::ActionServer<A>. */\n\
+         #define NROS_CPP_ACTION_SERVER_STORAGE_SIZE {action_server_storage}\n\
+         \n\
+         /** Inline opaque storage size (bytes) for nros::ActionClient<A>. */\n\
+         #define NROS_CPP_ACTION_CLIENT_STORAGE_SIZE {action_client_storage}\n\
          \n\
          #endif /* NROS_CPP_CONFIG_GENERATED_H */\n"
     );
