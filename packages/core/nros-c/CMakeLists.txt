@@ -34,9 +34,10 @@ elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
     set(_platform_features alloc panic-halt platform-freertos link-tcp link-udp-unicast)
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     # NuttX provides a POSIX-like libc, so std is available.
-    # Tier 3 target: requires nightly + build-std (set in toolchain file).
+    # NOTE: CMake/Corrosion builds for NuttX are disabled — upstream libc
+    # is missing _SC_HOST_NAME_MAX which blocks build-std. Use Rust examples
+    # directly (just nuttx build) until this is upstreamed.
     set(_platform_features std platform-nuttx link-tcp link-udp-unicast)
-    set(_nuttx_build_std TRUE)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     # ThreadX Linux sim: host compiler, std available, ThreadX + NetX Duo via system libs.
     set(_platform_features std platform-threadx link-tcp link-udp-unicast)
@@ -59,18 +60,6 @@ corrosion_import_crate(
     FEATURES      ${_features}
     LOCKED
 )
-
-# ---- NuttX: Tier 3 target needs -Z build-std ----
-if(_nuttx_build_std)
-    corrosion_set_cargo_flags(nros_c
-        -Zbuild-std=std,panic_abort
-        -Zbuild-std-features=compiler-builtins-mem
-    )
-    corrosion_set_env_vars(nros_c
-        "CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc"
-        "CFLAGS_armv7a_nuttx_eabihf=-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
-    )
-endif()
 
 # ---- Install library ----
 # posix uses the legacy unsuffixed name (libnros_c_<rmw>.a) for backwards

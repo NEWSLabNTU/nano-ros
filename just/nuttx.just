@@ -1,24 +1,21 @@
 set working-directory := '..'
 
-# Install NuttX ARM libraries into build/install/
+# Install NuttX ARM C/C++ libraries into build/install/
+#
+# DISABLED: NuttX C/C++ library cross-compilation requires build-std, which
+# resolves libc from the sysroot's Cargo.lock (ignoring workspace [patch.crates-io]).
+# The upstream libc crate (0.2.178) is missing _SC_HOST_NAME_MAX for NuttX,
+# blocking std compilation for armv7a-nuttx-eabihf.
+#
+# Rust NuttX examples work because they use standalone Cargo.toml manifests
+# with their own [patch.crates-io] that build-std does honor for non-workspace
+# packages.
+#
+# To re-enable: either upstream _SC_HOST_NAME_MAX to rust-lang/libc, or wait
+# for a nightly that includes it.
 install:
-    #!/usr/bin/env bash
-    set -e
-    NUTTX_EXPORT=$(ls -d "third-party/nuttx/nuttx/nuttx-export-"* 2>/dev/null | head -1)
-    if ! command -v arm-none-eabi-gcc &>/dev/null || [ -z "$NUTTX_EXPORT" ]; then
-        echo "NuttX export not found — skipping NuttX ARM libraries (run: just nuttx build-kernel)"
-        exit 0
-    fi
-    PREFIX="$(pwd)/build/install"
-    echo "=== Building nuttx_armv7a RMW=zenoh ==="
-    cmake -S . -B "build/cmake-nuttx-armv7a-zenoh" \
-        -DCMAKE_TOOLCHAIN_FILE="cmake/toolchain/armv7a-nuttx-eabi.cmake" \
-        -DNANO_ROS_RMW="zenoh" \
-        -DNANO_ROS_PLATFORM="nuttx_armv7a" \
-        -DNANO_ROS_BUILD_CODEGEN=OFF \
-        -DCMAKE_BUILD_TYPE=Release
-    cmake --build "build/cmake-nuttx-armv7a-zenoh"
-    cmake --install "build/cmake-nuttx-armv7a-zenoh" --prefix "$PREFIX"
+    @echo "NuttX C/C++ libraries: skipped (upstream libc missing _SC_HOST_NAME_MAX)"
+    @echo "Rust NuttX examples are unaffected — use 'just nuttx build' and 'just nuttx test'"
 
 # Build NuttX kernel (requires arm-none-eabi-gcc + kconfig tools)
 build-kernel:

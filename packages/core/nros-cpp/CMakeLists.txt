@@ -30,7 +30,6 @@ elseif(NANO_ROS_PLATFORM STREQUAL "freertos_armcm3")
     set(_platform_features alloc panic-halt platform-freertos link-tcp link-udp-unicast)
 elseif(NANO_ROS_PLATFORM STREQUAL "nuttx_armv7a")
     set(_platform_features std platform-nuttx link-tcp link-udp-unicast)
-    set(_nuttx_build_std_cpp TRUE)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_linux")
     set(_platform_features std platform-threadx link-tcp link-udp-unicast)
 elseif(NANO_ROS_PLATFORM STREQUAL "threadx_riscv64")
@@ -51,18 +50,6 @@ corrosion_import_crate(
     FEATURES      ${_cpp_features}
     LOCKED
 )
-
-# ---- NuttX: Tier 3 target needs -Z build-std ----
-if(_nuttx_build_std_cpp)
-    corrosion_set_cargo_flags(nros_cpp
-        -Zbuild-std=std,panic_abort
-        -Zbuild-std-features=compiler-builtins-mem
-    )
-    corrosion_set_env_vars(nros_cpp
-        "CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc"
-        "CFLAGS_armv7a_nuttx_eabihf=-mcpu=cortex-a7 -mfloat-abi=hard -mfpu=neon-vfpv4"
-    )
-endif()
 
 # ---- Header-only C++ interface library ----
 add_library(nros-cpp-headers INTERFACE)
