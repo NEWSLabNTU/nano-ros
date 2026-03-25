@@ -223,6 +223,19 @@ int32_t zpico_is_open(void);
 void zpico_close(void);
 
 /**
+ * Configure scheduling attributes for zenoh-pico read and lease background tasks.
+ *
+ * Must be called between `zpico_init()` and `zpico_open()`.  If not called,
+ * `zpico_open()` passes NULL to zenoh-pico (platform defaults).
+ *
+ * Priority and stack values are platform-specific (already mapped by the caller).
+ */
+void zpico_set_task_config(uint32_t _read_priority,
+                           uint32_t _read_stack_bytes,
+                           uint32_t _lease_priority,
+                           uint32_t _lease_stack_bytes);
+
+/**
  * Declare a publisher for the given key expression.
  *
  * # Parameters

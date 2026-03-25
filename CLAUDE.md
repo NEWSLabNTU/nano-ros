@@ -253,6 +253,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 | 75 | Relocatable CMake install convention for C/C++ | Complete |
+| 76 | RTOS scheduling configuration via config.toml | Not Started |
 
 ## Quick Reference
 

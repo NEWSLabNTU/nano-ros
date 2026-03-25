@@ -208,6 +208,21 @@ static inline void _zpico_notify_spin(void) {}
 #endif
 
 // ============================================================================
+// Task Configuration (set before zpico_open)
+// ============================================================================
+
+#if Z_FEATURE_MULTI_THREAD == 1
+// Optional task attributes for read/lease tasks.  When non-NULL, passed to
+// zp_start_read_task() / zp_start_lease_task() instead of NULL (platform default).
+static bool g_read_task_configured = false;
+static bool g_lease_task_configured = false;
+static zp_task_read_options_t g_read_task_opts;
+static zp_task_lease_options_t g_lease_task_opts;
+static z_task_attr_t g_read_task_attr;
+static z_task_attr_t g_lease_task_attr;
+#endif
+
+// ============================================================================
 // Internal Helper Functions
 // ============================================================================
 
@@ -488,6 +503,60 @@ int32_t zpico_init_with_config(const char *locator,
     return ZPICO_OK;
 }
 
+void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
+                           uint32_t lease_priority, uint32_t lease_stack_bytes) {
+#if Z_FEATURE_MULTI_THREAD == 1
+    memset(&g_read_task_attr, 0, sizeof(g_read_task_attr));
+    memset(&g_lease_task_attr, 0, sizeof(g_lease_task_attr));
+
+    // Platform-specific field assignment.
+    // z_task_attr_t is typedef'd per platform:
+    //   FreeRTOS: struct { name, priority, stack_depth }
+    //   POSIX/NuttX/Zephyr: pthread_attr_t (set via pthread API)
+    //   ThreadX: struct { name, priority, stack_size }
+#if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
+    g_read_task_attr.name = "zpico_read";
+    g_read_task_attr.priority = (UBaseType_t)read_priority;
+    g_read_task_attr.stack_depth = read_stack_bytes / sizeof(StackType_t);
+    g_lease_task_attr.name = "zpico_lease";
+    g_lease_task_attr.priority = (UBaseType_t)lease_priority;
+    g_lease_task_attr.stack_depth = lease_stack_bytes / sizeof(StackType_t);
+#elif defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__)
+    // POSIX: set stack size via pthread_attr; priority requires SCHED_FIFO
+    // which needs root. For now, only set stack size.
+    pthread_attr_init(&g_read_task_attr);
+    pthread_attr_setstacksize(&g_read_task_attr, (size_t)read_stack_bytes);
+    pthread_attr_init(&g_lease_task_attr);
+    pthread_attr_setstacksize(&g_lease_task_attr, (size_t)lease_stack_bytes);
+    (void)read_priority;
+    (void)lease_priority;
+#elif defined(ZENOH_THREADX)
+    g_read_task_attr.name = "zpico_read";
+    g_read_task_attr.priority = read_priority;
+    g_read_task_attr.stack_size = read_stack_bytes;
+    g_lease_task_attr.name = "zpico_lease";
+    g_lease_task_attr.priority = lease_priority;
+    g_lease_task_attr.stack_size = lease_stack_bytes;
+#else
+    // Unknown platform — ignore config
+    (void)read_priority;
+    (void)read_stack_bytes;
+    (void)lease_priority;
+    (void)lease_stack_bytes;
+#endif
+
+    g_read_task_opts.task_attributes = &g_read_task_attr;
+    g_lease_task_opts.task_attributes = &g_lease_task_attr;
+    g_read_task_configured = true;
+    g_lease_task_configured = true;
+#else
+    (void)read_priority;
+    (void)read_stack_bytes;
+    (void)lease_priority;
+    (void)lease_stack_bytes;
+#endif
+}
+
 int32_t zpico_open(void) {
     if (!g_initialized) {
         return ZPICO_ERR_GENERIC;
@@ -520,12 +589,17 @@ int32_t zpico_open(void) {
     g_spin_cv_initialized = true;
 #endif
 
-    if (zp_start_read_task(z_session_loan_mut(&g_session), NULL) < 0) {
+    const zp_task_read_options_t *read_opts =
+        g_read_task_configured ? &g_read_task_opts : NULL;
+    const zp_task_lease_options_t *lease_opts =
+        g_lease_task_configured ? &g_lease_task_opts : NULL;
+
+    if (zp_start_read_task(z_session_loan_mut(&g_session), read_opts) < 0) {
         z_close(z_session_loan_mut(&g_session), NULL);
         return ZPICO_ERR_TASK;
     }
 
-    if (zp_start_lease_task(z_session_loan_mut(&g_session), NULL) < 0) {
+    if (zp_start_lease_task(z_session_loan_mut(&g_session), lease_opts) < 0) {
         zp_stop_read_task(z_session_loan_mut(&g_session));
         z_close(z_session_loan_mut(&g_session), NULL);
         return ZPICO_ERR_TASK;

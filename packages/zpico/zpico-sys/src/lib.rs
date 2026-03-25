@@ -97,6 +97,14 @@ unsafe extern "C" {
     pub fn zpico_is_open() -> i32;
     pub fn zpico_close();
 
+    // Task scheduling configuration (call between zpico_init and zpico_open)
+    pub fn zpico_set_task_config(
+        read_priority: u32,
+        read_stack_bytes: u32,
+        lease_priority: u32,
+        lease_stack_bytes: u32,
+    );
+
     // ZenohId
     pub fn zpico_get_zid(zid_out: *mut u8) -> i32;
 
