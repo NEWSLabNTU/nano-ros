@@ -59,6 +59,8 @@ pub struct nros_action_client_t {
     pub type_hash: [u8; MAX_TYPE_HASH_LEN],
     /// Type hash length
     pub type_hash_len: usize,
+    /// Goal response callback (for async send_goal)
+    pub goal_response_callback: nros_goal_response_callback_t,
     /// Feedback callback
     pub feedback_callback: nros_feedback_callback_t,
     /// Result callback
@@ -81,6 +83,7 @@ impl Default for nros_action_client_t {
             type_name_len: 0,
             type_hash: [0u8; MAX_TYPE_HASH_LEN],
             type_hash_len: 0,
+            goal_response_callback: None,
             feedback_callback: None,
             result_callback: None,
             context: ptr::null_mut(),
@@ -490,6 +493,117 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
         Ok(None) => NROS_RET_TIMEOUT,
         Err(_) => NROS_RET_ERROR,
     }
+}
+
+// ============================================================================
+// Async (non-blocking) action client functions
+// ============================================================================
+
+/// Send a goal asynchronously (non-blocking).
+///
+/// Sends the goal request and returns immediately. The goal response
+/// (accepted/rejected) arrives via the goal_response_callback registered
+/// with `nros_action_client_set_goal_response_callback`, invoked during
+/// `nros_executor_spin_some`.
+///
+/// The `goal_uuid` output is filled with the generated goal UUID on success.
+///
+/// # Safety
+/// All pointers must be valid. `goal` must point to `goal_len` bytes of
+/// CDR-serialized goal data (with CDR header).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_send_goal_async(
+    client: *mut nros_action_client_t,
+    goal: *const u8,
+    goal_len: usize,
+    goal_uuid: *mut nros_goal_uuid_t,
+) -> nros_ret_t {
+    validate_not_null!(client, goal, goal_uuid);
+
+    let client = &mut *client;
+
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
+
+    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let goal_data = core::slice::from_raw_parts(goal, goal_len);
+
+    // C serialize produces [CDR_HEADER(4)][fields] — strip the header.
+    let goal_fields = if goal_data.len() > 4 {
+        &goal_data[4..]
+    } else {
+        goal_data
+    };
+
+    // Non-blocking: uses zpico_get_start internally (not zpico_get).
+    // The executor polls for the reply via action_client_raw_try_process.
+    match internal.core.send_goal_raw(goal_fields) {
+        Ok(goal_id) => {
+            let uuid = &mut *goal_uuid;
+            uuid.uuid = goal_id.uuid;
+            NROS_RET_OK
+        }
+        Err(_) => NROS_RET_ERROR,
+    }
+}
+
+/// Request a goal result asynchronously (non-blocking).
+///
+/// Sends the get_result request and returns immediately. The result
+/// arrives via the result_callback registered with
+/// `nros_action_client_set_result_callback`, invoked during
+/// `nros_executor_spin_some`.
+///
+/// # Safety
+/// All pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_get_result_async(
+    client: *mut nros_action_client_t,
+    goal_uuid: *const nros_goal_uuid_t,
+) -> nros_ret_t {
+    validate_not_null!(client, goal_uuid);
+
+    let client = &mut *client;
+
+    validate_state!(
+        client,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
+
+    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
+    let uuid = &*goal_uuid;
+    let goal_id = nros_core::GoalId { uuid: uuid.uuid };
+
+    // Non-blocking: uses zpico_get_start internally.
+    match internal.core.send_get_result_request(&goal_id) {
+        Ok(()) => NROS_RET_OK,
+        Err(_) => NROS_RET_ERROR,
+    }
+}
+
+/// Set the goal response callback for async goal sending.
+///
+/// Called during `nros_executor_spin_some` when the server accepts or
+/// rejects a goal sent via `nros_action_send_goal_async`.
+///
+/// # Safety
+/// `client` must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_action_client_set_goal_response_callback(
+    client: *mut nros_action_client_t,
+    callback: nros_goal_response_callback_t,
+    context: *mut c_void,
+) -> nros_ret_t {
+    validate_not_null!(client);
+
+    let client = &mut *client;
+    client.goal_response_callback = callback;
+    if !context.is_null() {
+        client.context = context;
+    }
+    NROS_RET_OK
 }
 
 /// Finalize an action client.

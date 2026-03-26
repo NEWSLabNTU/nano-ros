@@ -256,7 +256,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 | 75 | Relocatable CMake install convention for C/C++ | Complete |
 | 76 | RTOS scheduling configuration via config.toml | Not Started |
-| 77 | Async action client (eliminate blocking zpico_get) | In Progress (77.1 done) |
+| 77 | Async action client (eliminate blocking zpico_get) | In Progress (77.1–77.2 done) |
 
 ## Quick Reference
 

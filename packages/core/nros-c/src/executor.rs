@@ -8,7 +8,10 @@ use core::ffi::c_int;
 use core::ptr;
 
 use crate::action::{ActionServerInternal, cancel_callback_trampoline, goal_callback_trampoline};
-use crate::action::{nros_action_server_state_t, nros_action_server_t};
+use crate::action::{
+    nros_action_client_state_t, nros_action_client_t, nros_action_server_state_t,
+    nros_action_server_t, nros_goal_status_t, nros_goal_uuid_t,
+};
 use crate::error::*;
 use crate::guard_condition::{nros_guard_condition_state_t, nros_guard_condition_t};
 use crate::service::{nros_service_state_t, nros_service_t};
@@ -820,6 +823,153 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
                 NROS_RET_ERROR
             }
         }
+    }
+}
+
+/// Register an action client with the executor for async (non-blocking) operation.
+///
+/// After registration, `nros_executor_spin_some` polls the action client's
+/// pending requests (goal response, feedback, result) and invokes the
+/// registered callbacks.
+///
+/// The action client must already be initialized via `nros_action_client_init`.
+/// Callbacks should be set via `nros_action_client_set_goal_response_callback`,
+/// `nros_action_client_set_feedback_callback`, and `nros_action_client_set_result_callback`
+/// before or after this call.
+///
+/// # Safety
+/// * `executor` and `client` must be valid pointers to initialized structs.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_executor_add_action_client(
+    executor: *mut nros_executor_t,
+    client: *mut nros_action_client_t,
+) -> nros_ret_t {
+    validate_not_null!(executor, client);
+
+    let executor = &mut *executor;
+    let client_ref = &*client;
+
+    validate_state!(
+        executor,
+        nros_executor_state_t::NROS_EXECUTOR_STATE_INITIALIZED
+    );
+    validate_state!(
+        client_ref,
+        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
+    );
+
+    if executor.handle_count >= executor.max_handles {
+        return NROS_RET_FULL;
+    }
+
+    {
+        let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
+        let rust_exec = get_executor_from_ptr(opaque_ptr);
+
+        let action_name =
+            core::str::from_utf8_unchecked(&client_ref.action_name[..client_ref.action_name_len]);
+        let type_str =
+            core::str::from_utf8_unchecked(&client_ref.type_name[..client_ref.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
+
+        // Convert C callback function pointers to the Rust raw callback types.
+        // The trampoline adapts between the nros-node callback signature and the
+        // C API callback signature.
+        let goal_response_cb: Option<nros_node::executor::RawGoalResponseCallback> = client_ref
+            .goal_response_callback
+            .map(|_cb| goal_response_trampoline as nros_node::executor::RawGoalResponseCallback);
+
+        let feedback_cb: Option<nros_node::executor::RawFeedbackCallback> = client_ref
+            .feedback_callback
+            .map(|_cb| feedback_trampoline as nros_node::executor::RawFeedbackCallback);
+
+        let result_cb: Option<nros_node::executor::RawResultCallback> = client_ref
+            .result_callback
+            .map(|_cb| result_trampoline as nros_node::executor::RawResultCallback);
+
+        let client_ctx = client as *mut core::ffi::c_void;
+
+        let result = rust_exec.add_action_client_raw(
+            action_name,
+            type_str,
+            type_hash_str,
+            goal_response_cb,
+            feedback_cb,
+            result_cb,
+            client_ctx,
+        );
+
+        match result {
+            Ok(_handle) => {
+                executor.handle_count += 1;
+                NROS_RET_OK
+            }
+            Err(_) => NROS_RET_ERROR,
+        }
+    }
+}
+
+/// Goal response trampoline — adapts nros-node callback to C API callback.
+///
+/// # Safety
+/// `context` must point to a valid `nros_action_client_t`.
+unsafe extern "C" fn goal_response_trampoline(
+    goal_id: *const nros_core::GoalId,
+    accepted: bool,
+    context: *mut core::ffi::c_void,
+) {
+    let client = &*(context as *const nros_action_client_t);
+    if let Some(cb) = client.goal_response_callback {
+        let uuid = nros_goal_uuid_t {
+            uuid: (*goal_id).uuid,
+        };
+        cb(&uuid, accepted, client.context);
+    }
+}
+
+/// Feedback trampoline — adapts nros-node callback to C API callback.
+///
+/// # Safety
+/// `context` must point to a valid `nros_action_client_t`.
+unsafe extern "C" fn feedback_trampoline(
+    goal_id: *const nros_core::GoalId,
+    feedback_data: *const u8,
+    feedback_len: usize,
+    context: *mut core::ffi::c_void,
+) {
+    let client = &*(context as *const nros_action_client_t);
+    if let Some(cb) = client.feedback_callback {
+        let uuid = nros_goal_uuid_t {
+            uuid: (*goal_id).uuid,
+        };
+        cb(&uuid, feedback_data, feedback_len, client.context);
+    }
+}
+
+/// Result trampoline — adapts nros-node callback to C API callback.
+///
+/// # Safety
+/// `context` must point to a valid `nros_action_client_t`.
+unsafe extern "C" fn result_trampoline(
+    goal_id: *const nros_core::GoalId,
+    status: nros_core::GoalStatus,
+    result_data: *const u8,
+    result_len: usize,
+    context: *mut core::ffi::c_void,
+) {
+    let client = &*(context as *const nros_action_client_t);
+    if let Some(cb) = client.result_callback {
+        let uuid = nros_goal_uuid_t {
+            uuid: (*goal_id).uuid,
+        };
+        let c_status = match status {
+            nros_core::GoalStatus::Succeeded => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+            nros_core::GoalStatus::Canceled => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+            nros_core::GoalStatus::Aborted => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+            _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+        };
+        cb(&uuid, c_status, result_data, result_len, client.context);
     }
 }
 

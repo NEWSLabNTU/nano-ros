@@ -140,6 +140,12 @@ pub type nros_cancel_callback_t = Option<
 pub type nros_accepted_callback_t =
     Option<unsafe extern "C" fn(goal: *mut nros_goal_handle_t, context: *mut c_void)>;
 
+/// Goal response callback type (for async client).
+/// Called when the action server accepts or rejects a goal.
+pub type nros_goal_response_callback_t = Option<
+    unsafe extern "C" fn(goal_uuid: *const nros_goal_uuid_t, accepted: bool, context: *mut c_void),
+>;
+
 /// Feedback callback type (for client).
 pub type nros_feedback_callback_t = Option<
     unsafe extern "C" fn(
