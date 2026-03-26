@@ -9,22 +9,17 @@
 // Application state
 // ----------------------------------------------------------------------------
 
-static volatile bool g_goal_accepted = false;
 static volatile bool g_result_received = false;
-static uint8_t g_goal_id[16];
-
-// Forward declaration — needed to call get_result_async from the goal callback
 static nros::ActionClient<example_interfaces::action::Fibonacci>* g_client_ptr;
 
 // ----------------------------------------------------------------------------
-// Async callbacks (invoked during spin_once)
+// Async callbacks (invoked during client.poll())
 // ----------------------------------------------------------------------------
 
 static void goal_response_cb(bool accepted, const uint8_t goal_id[16], void* ctx) {
     (void)ctx;
     if (accepted) {
         printf("Goal accepted!\n");
-        g_goal_accepted = true;
         // Automatically request the result
         g_client_ptr->get_result_async(goal_id);
     } else {
@@ -87,6 +82,13 @@ extern "C" void app_main(void) {
     if (!ret.ok()) { printf("create_action_client failed: %d\n", ret.raw()); nros::shutdown(); return; }
     g_client_ptr = &client;
 
+    // Register async callbacks
+    nros::ActionClient<example_interfaces::action::Fibonacci>::SendGoalOptions opts;
+    opts.goal_response = goal_response_cb;
+    opts.feedback = feedback_cb;
+    opts.result = result_cb;
+    client.set_callbacks(opts);
+
     printf("Action client ready for /fibonacci\n");
 
     // Warm-up: spin to allow Zenoh to discover the server's queryables
@@ -99,9 +101,8 @@ extern "C" void app_main(void) {
 
     printf("Sending goal: order=%d\n", goal.order);
 
-    // Send goal asynchronously — returns immediately.
-    // Responses arrive via callbacks during spin_once.
-    ret = client.send_goal_async(goal, g_goal_id);
+    uint8_t goal_id[16];
+    ret = client.send_goal_async(goal, goal_id);
     if (!ret.ok()) {
         printf("Failed to send goal: %d\n", ret.raw());
         nros::shutdown();
@@ -111,17 +112,7 @@ extern "C" void app_main(void) {
     // Spin until result received or timeout (30s = 3000 × 10ms)
     for (int i = 0; i < 3000 && !g_result_received; i++) {
         nros::spin_once(10);
-
-        // Poll feedback manually (try_recv_feedback is non-blocking)
-        example_interfaces::action::Fibonacci::Feedback fb;
-        if (client.try_recv_feedback(fb)) {
-            printf("Feedback: [");
-            for (uint32_t j = 0; j < fb.sequence.size; j++) {
-                if (j > 0) printf(", ");
-                printf("%d", fb.sequence.data[j]);
-            }
-            printf("]\n");
-        }
+        client.poll();  // Poll for async replies and invoke callbacks
     }
 
     if (!g_result_received) {

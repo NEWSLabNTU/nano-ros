@@ -23,9 +23,8 @@ static struct {
     nros_executor_t executor;
 } app;
 
-static volatile int g_goal_accepted = -1;  // -1=pending, 0=rejected, 1=accepted
+static volatile int g_goal_accepted = -1;
 static volatile int g_result_received = 0;
-static volatile int g_feedback_count = 0;
 static nros_goal_uuid_t g_goal_uuid;
 
 // ----------------------------------------------------------------------------
@@ -34,15 +33,14 @@ static nros_goal_uuid_t g_goal_uuid;
 
 static void goal_response_callback(const nros_goal_uuid_t *goal_uuid,
                                    bool accepted, void *context) {
-    (void)goal_uuid;
     (void)context;
-    g_goal_accepted = accepted ? 1 : 0;
     if (accepted) {
         printf("Goal accepted!\n");
-        // Automatically request the result
+        g_goal_accepted = 1;
         nros_action_get_result_async(&app.action_client, goal_uuid);
     } else {
         printf("Goal rejected!\n");
+        g_goal_accepted = 0;
     }
 }
 
@@ -52,12 +50,10 @@ static void feedback_callback(const nros_goal_uuid_t *goal_uuid,
     (void)goal_uuid;
     (void)context;
 
-    g_feedback_count++;
-
     example_interfaces_action_fibonacci_feedback fb;
     if (example_interfaces_action_fibonacci_feedback_deserialize(
             &fb, feedback, feedback_len) == 0) {
-        printf("Feedback #%d: [", g_feedback_count);
+        printf("Feedback: [");
         for (uint32_t i = 0; i < fb.sequence.size; i++) {
             if (i > 0) printf(", ");
             printf("%d", fb.sequence.data[i]);
@@ -111,7 +107,6 @@ void app_main(void) {
         printf("Failed to initialize support: %d\n", ret);
         return;
     }
-    printf("Support initialized\n");
 
     ret = nros_node_init(&app.node, &app.support, "c_action_client", "/");
     if (ret != NROS_RET_OK) {
@@ -146,12 +141,8 @@ void app_main(void) {
         return;
     }
 
-    // Register action client with executor for async polling
-    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
-    if (ret != NROS_RET_OK) {
-        printf("Failed to add action client to executor: %d\n", ret);
-        goto cleanup;
-    }
+    // No executor registration needed — we poll the client directly
+    // via nros_action_client_poll() in the spin loop.
 
     printf("Action client ready for /fibonacci\n");
 
@@ -174,18 +165,21 @@ void app_main(void) {
 
     printf("Sending goal: order=%d\n", goal.order);
 
-    // Send goal asynchronously — returns immediately.
-    // Response arrives via goal_response_callback during spin.
+    // Send goal asynchronously (non-blocking)
     ret = nros_action_send_goal_async(&app.action_client, goal_buf, (size_t)goal_len,
                                       &g_goal_uuid);
+    printf("send_goal_async returned: %d\n", ret);
     if (ret != NROS_RET_OK) {
         printf("Failed to send goal: %d\n", ret);
         goto cleanup;
     }
 
-    // Spin until result received or timeout (30s = 3000 × 10ms)
-    for (int i = 0; i < 3000 && !g_result_received; i++) {
+    printf("Entering spin loop...\n");
+
+    // Spin until result received or timeout (10s = 1000 × 10ms)
+    for (int i = 0; i < 1000 && !g_result_received; i++) {
         nros_executor_spin_some(&app.executor, 10000000ULL);
+        nros_action_client_poll(&app.action_client);
     }
 
     if (!g_result_received) {
