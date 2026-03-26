@@ -205,6 +205,8 @@ See [docs/guides/cpp-api.md](docs/guides/cpp-api.md) for the getting started gui
 
 **Zephyr integration:** `CONFIG_NROS_CPP_API=y` + `nros_generate_interfaces(... LANGUAGE CPP)`.
 
+**C++ action client status:** `ActionServer<A>` and `ActionClient<A>` are implemented but use **blocking** `zpico_get` for `send_goal` and `get_result`. This causes hangs on FreeRTOS QEMU where the condvar is never signaled. Phase 77 will add a non-blocking async path using `zpico_get_start`/`zpico_get_check` polled by the executor. The `test_freertos_cpp_action_e2e` test is `#[ignore]`d until Phase 77. The C++ action server also hangs during `create_action_server` on FreeRTOS QEMU (zenoh-pico deadlock when declaring 5 entities) — this may be a separate zenoh-pico issue.
+
 ### Platform Backends
 Three orthogonal axes (NEVER cross-imply):
 - **RMW backend** (one): `rmw-zenoh`, `rmw-xrce`
@@ -254,6 +256,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 | 75 | Relocatable CMake install convention for C/C++ | Complete |
 | 76 | RTOS scheduling configuration via config.toml | Not Started |
+| 77 | Async action client (eliminate blocking zpico_get) | Not Started |
 
 ## Quick Reference
 
