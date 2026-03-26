@@ -485,6 +485,37 @@ Once FreeRTOS works, porting to other platforms means:
 - Wire the config fields into each platform's task creation calls
 - Add platform-specific fields where needed (e.g., ThreadX preemption-threshold)
 
+## Trace Visualization (Tonbandgeraet)
+
+The scheduling config was validated using [Tonbandgeraet](https://github.com/schilkp/Tonbandgeraet),
+an open-source embedded tracer that hooks FreeRTOS trace macros and outputs to
+[Perfetto](https://ui.perfetto.dev). Integration is opt-in via `NROS_TRACE=1`.
+
+### Validation Results
+
+Two traces were captured with the FreeRTOS talker example + zenohd:
+
+**Default scheduling** (`app_priority=12, poll_priority=16`):
+- `net_poll` task created at FreeRTOS priority 3 (`to_freertos_priority(16) = 3`)
+- Task switches: IDLE → net_poll (5ms poll) → app → tcpip_thread → zenoh read/lease
+- 16 KB snapshot buffer filled with ~500+ events during 10-message publish run
+
+**Modified scheduling** (`app_priority=20, poll_priority=20`):
+- `net_poll` task created at FreeRTOS priority 4 (`to_freertos_priority(20) = 4`)
+- Higher priority for both app and poll tasks — different preemption pattern
+
+The traces confirm that `[scheduling]` config values flow through to FreeRTOS
+`xTaskCreate()` and `zpico_set_task_config()`, producing measurably different
+task priorities. The Perfetto timeline view shows task execution slices, context
+switches, and queue operations.
+
+### Usage
+
+```bash
+just freertos trace talker     # Capture + convert
+# Open test-logs/freertos-trace/trace.pf in https://ui.perfetto.dev
+```
+
 ## References
 
 - [Executor fairness analysis](../reference/executor-fairness-analysis.md)

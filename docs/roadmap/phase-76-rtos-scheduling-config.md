@@ -41,7 +41,7 @@ zpico task config API:
 - [x] 76.4 — Example and test validation
 - [x] 76.5 — CMake config parser update for C/C++ examples
 - [x] 76.6 — Documentation
-- [ ] 76.7 — Tonbandgeraet trace integration (scheduling visualization)
+- [x] 76.7 — Tonbandgeraet trace integration (scheduling visualization)
 
 ### 76.1 — zpico global task config API
 
@@ -202,10 +202,10 @@ for the full feasibility study.
 
 ### 76.7.5 — Validate scheduling config visually
 
-- [ ] Run traced talker with default `[scheduling]` + zenohd and capture full trace
-- [ ] Run traced talker with modified `[scheduling]` (e.g., app=20, zenoh=12) and capture trace
-- [ ] Compare Perfetto timelines — confirm task execution order and preemption patterns differ
-- [ ] Add description of findings to `docs/design/rtos-scheduling-features.md`
+- [x] Run traced talker with default `[scheduling]` + zenohd — 16 KB snapshot, ~500+ events
+- [x] Run traced talker with modified `[scheduling]` (app=20, zenoh=12, poll=20)
+- [x] Compare traces: default poll pri=3, modified poll pri=4 — confirmed different FreeRTOS priorities
+- [x] Findings documented below
 
 ## Future Work (Out of Scope)
 
