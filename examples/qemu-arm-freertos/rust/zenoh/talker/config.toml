@@ -10,3 +10,15 @@ netmask = "255.255.255.0"
 [zenoh]
 locator = "tcp/10.0.2.2:7451"
 domain_id = 0
+
+# Scheduling (normalized 0–31 scale, higher = more important).
+# Omit this section entirely to use board defaults.
+[scheduling]
+app_priority = 12
+app_stack_bytes = 65536
+zenoh_read_priority = 16
+zenoh_read_stack_bytes = 5120
+zenoh_lease_priority = 16
+zenoh_lease_stack_bytes = 5120
+poll_priority = 16
+poll_interval_ms = 5

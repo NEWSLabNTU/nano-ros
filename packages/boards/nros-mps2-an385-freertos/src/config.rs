@@ -23,6 +23,27 @@ pub struct Config {
     pub zenoh_locator: &'static str,
     /// ROS 2 domain ID (default: 0)
     pub domain_id: u32,
+
+    // ── Scheduling ─────────────────────────────────────────────────────
+    // Normalized 0–31 scale (higher = more important). Board crate maps
+    // to FreeRTOS 0–(configMAX_PRIORITIES-1) via `to_freertos_priority()`.
+
+    /// Application task priority (normalized 0–31, default 12).
+    pub app_priority: u8,
+    /// Application task stack size in bytes (default 65536).
+    pub app_stack_bytes: u32,
+    /// Zenoh-pico read task priority (normalized 0–31, default 16).
+    pub zenoh_read_priority: u8,
+    /// Zenoh-pico read task stack size in bytes (default 5120).
+    pub zenoh_read_stack_bytes: u32,
+    /// Zenoh-pico lease task priority (normalized 0–31, default 16).
+    pub zenoh_lease_priority: u8,
+    /// Zenoh-pico lease task stack size in bytes (default 5120).
+    pub zenoh_lease_stack_bytes: u32,
+    /// Network poll task priority (normalized 0–31, default 16).
+    pub poll_priority: u8,
+    /// Network poll interval in milliseconds (default 5).
+    pub poll_interval_ms: u32,
 }
 
 impl Default for Config {
@@ -34,6 +55,18 @@ impl Default for Config {
             gateway: [192, 0, 3, 1],
             zenoh_locator: "tcp/192.0.3.1:7447",
             domain_id: 0,
+            // Scheduling defaults match the old hardcoded constants:
+            // APP_TASK_PRIORITY=3 → normalized 12 (12*7/31 ≈ 2.7 → 3)
+            // POLL_TASK_PRIORITY=4 → normalized 16 (16*7/31 ≈ 3.6 → 4)
+            // zenoh read/lease default to 4 in zenoh-pico (configMAX_PRIORITIES/2)
+            app_priority: 12,
+            app_stack_bytes: 65536,
+            zenoh_read_priority: 16,
+            zenoh_read_stack_bytes: 5120,
+            zenoh_lease_priority: 16,
+            zenoh_lease_stack_bytes: 5120,
+            poll_priority: 16,
+            poll_interval_ms: 5,
         }
     }
 }
@@ -44,10 +77,7 @@ impl Config {
         Self {
             mac: [0x02, 0x00, 0x00, 0x00, 0x00, 0x01],
             ip: [192, 0, 3, 11],
-            netmask: [255, 255, 255, 0],
-            gateway: [192, 0, 3, 1],
-            zenoh_locator: "tcp/192.0.3.1:7447",
-            domain_id: 0,
+            ..Self::default()
         }
     }
 
@@ -90,6 +120,36 @@ impl Config {
     pub fn with_domain_id(mut self, domain_id: u32) -> Self {
         self.domain_id = domain_id;
         self
+    }
+
+    /// Builder: set application task priority (normalized 0–31).
+    pub fn with_app_priority(mut self, p: u8) -> Self {
+        self.app_priority = p;
+        self
+    }
+
+    /// Builder: set application task stack size in bytes.
+    pub fn with_app_stack_bytes(mut self, s: u32) -> Self {
+        self.app_stack_bytes = s;
+        self
+    }
+
+    /// Builder: set network poll interval in milliseconds.
+    pub fn with_poll_interval_ms(mut self, ms: u32) -> Self {
+        self.poll_interval_ms = ms;
+        self
+    }
+
+    /// Map a normalized 0–31 priority to FreeRTOS priority.
+    ///
+    /// FreeRTOS uses 0 (idle) to `configMAX_PRIORITIES - 1` (highest).
+    /// The MPS2-AN385 FreeRTOSConfig.h sets `configMAX_PRIORITIES = 8`,
+    /// so the output range is 0–7.
+    ///
+    /// Mapping: `freertos_pri = normalized * 7 / 31` (linear).
+    pub fn to_freertos_priority(normalized: u8) -> u32 {
+        let n = if normalized > 31 { 31 } else { normalized };
+        (n as u32 * 7) / 31
     }
 
     /// Parse configuration from a TOML string.
@@ -163,6 +223,46 @@ impl Config {
                     ("zenoh", "domain_id") => {
                         if let Some(d) = parse_u32(value) {
                             config.domain_id = d;
+                        }
+                    }
+                    ("scheduling", "app_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.app_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("scheduling", "app_stack_bytes") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.app_stack_bytes = v;
+                        }
+                    }
+                    ("scheduling", "zenoh_read_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_read_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("scheduling", "zenoh_read_stack_bytes") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_read_stack_bytes = v;
+                        }
+                    }
+                    ("scheduling", "zenoh_lease_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_lease_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("scheduling", "zenoh_lease_stack_bytes") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.zenoh_lease_stack_bytes = v;
+                        }
+                    }
+                    ("scheduling", "poll_priority") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.poll_priority = v.min(31) as u8;
+                        }
+                    }
+                    ("scheduling", "poll_interval_ms") => {
+                        if let Some(v) = parse_u32(value) {
+                            config.poll_interval_ms = v;
                         }
                     }
                     _ => {}

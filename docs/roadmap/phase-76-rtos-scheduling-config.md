@@ -36,9 +36,9 @@ See [docs/design/rtos-scheduling-features.md](../design/rtos-scheduling-features
 
 zpico task config API:
 - [x] 76.1 — zpico global task config API (`zpico_set_task_config`)
-- [ ] 76.2 — FreeRTOS board crate scheduling config
-- [ ] 76.3 — FreeRTOS board crate wiring (use config in task creation)
-- [ ] 76.4 — Example and test validation
+- [x] 76.2 — FreeRTOS board crate scheduling config
+- [x] 76.3 — FreeRTOS board crate wiring (use config in task creation)
+- [x] 76.4 — Example and test validation
 - [ ] 76.5 — CMake config parser update for C/C++ examples
 - [ ] 76.6 — Documentation
 
@@ -90,11 +90,11 @@ Replace hardcoded constants with config values in task creation calls.
 
 Verify the new config works end-to-end with existing examples and tests.
 
-- [ ] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/talker/config.toml` (use current defaults — ensures parsing works without behavior change)
-- [ ] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/listener/config.toml`
-- [ ] Verify `just test-freertos` passes with no behavior change (default priorities match old constants)
+- [x] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/talker/config.toml` (use current defaults — ensures parsing works without behavior change)
+- [x] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/listener/config.toml`
+- [x] Verify `just test-freertos` passes with no behavior change (default priorities match old constants)
 - [ ] Test with non-default priorities (e.g., raise app to 20, lower zenoh to 12) and verify session still works
-- [ ] Verify examples without `[scheduling]` section still work (defaults apply)
+- [x] Verify examples without `[scheduling]` section still work (defaults apply)
 
 **Files:**
 - `examples/qemu-arm-freertos/rust/zenoh/talker/config.toml`

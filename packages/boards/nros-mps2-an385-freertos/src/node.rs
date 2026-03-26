@@ -37,41 +37,19 @@ unsafe extern "C" {
     fn nros_freertos_get_netif_state() -> i32;
 }
 
-/// Application task stack size in words (64 KB = 16384 words).
-///
-/// Must be large enough for the `Executor<_, MAX_CBS, CB_ARENA>` struct,
-/// which includes an inline `[u8; CB_ARENA]` arena on the stack.
-/// Action examples use CB_ARENA=8192 (8 KB arena alone). Combined with
-/// zenoh-pico's internal stack buffers and function frames, 64 KB provides
-/// adequate headroom for all example types.
-const APP_TASK_STACK: u32 = 16384;
-
 /// Network polling task stack size in words (1 KB = 256 words).
+/// Not configurable — the poll task does minimal work (single function call).
 const POLL_TASK_STACK: u32 = 256;
-
-/// Application task priority (above normal, below tcpip_thread).
-const APP_TASK_PRIORITY: u32 = 3;
-
-/// Network poll task priority.
-///
-/// Must match or exceed the zenoh-pico read/lease task priority
-/// (configMAX_PRIORITIES/2 = 4) so the poll task gets fair CPU time via
-/// round-robin time-slicing. The data pipeline is:
-///   LAN9118 NIC → poll task → tcpip_input() → tcpip_thread → socket → read task
-///
-/// At priority < 4, the zenoh-pico read task's 100ms recv() timeout loop
-/// can prevent the poll task from draining the LAN9118 RX FIFO, causing
-/// TCP keep-alives to be missed and sessions to expire.
-const POLL_TASK_PRIORITY: u32 = 4;
-
-/// Network poll interval in milliseconds.
-const POLL_INTERVAL_MS: u32 = 5;
 
 /// Wrapper passed through the FreeRTOS task `void *` argument.
 struct AppContext<F> {
     config: Config,
     closure: F,
 }
+
+/// Poll interval shared with the poll task via a static.
+/// Set by app_task_entry before creating the poll task.
+static mut POLL_INTERVAL_MS: u32 = 5;
 
 /// FreeRTOS task entry for the application closure.
 ///
@@ -100,16 +78,42 @@ where
     hprintln!("Network ready.");
     hprintln!("");
 
+    // Configure zenoh-pico read/lease task scheduling from config.
+    // Must be called before Executor::open() which calls zpico_open().
+    let read_pri = Config::to_freertos_priority(ctx.config.zenoh_read_priority);
+    let lease_pri = Config::to_freertos_priority(ctx.config.zenoh_lease_priority);
+    let poll_pri = Config::to_freertos_priority(ctx.config.poll_priority);
+    {
+        unsafe extern "C" {
+            fn zpico_set_task_config(
+                read_priority: u32,
+                read_stack_bytes: u32,
+                lease_priority: u32,
+                lease_stack_bytes: u32,
+            );
+        }
+        unsafe {
+            zpico_set_task_config(
+                read_pri,
+                ctx.config.zenoh_read_stack_bytes,
+                lease_pri,
+                ctx.config.zenoh_lease_stack_bytes,
+            );
+        }
+    }
+
     // Start the network poll task AFTER init_network registers the netif.
     // Creating it earlier would poll an uninitialized netif during vTaskDelay
     // inside init_network.
+    // Share poll interval with the poll task via static
+    unsafe { POLL_INTERVAL_MS = ctx.config.poll_interval_ms; }
     let ret = unsafe {
         nros_freertos_create_task(
             poll_task_entry,
             b"net_poll\0".as_ptr(),
             POLL_TASK_STACK,
             core::ptr::null_mut(),
-            POLL_TASK_PRIORITY,
+            poll_pri,
         )
     };
     if ret != 0 {
@@ -163,16 +167,19 @@ where
 
 /// FreeRTOS task that polls the LAN9118 RX FIFO periodically.
 unsafe extern "C" fn poll_task_entry(_arg: *mut c_void) {
-    // Bring in the FreeRTOS vTaskDelay via a raw symbol.  The tick rate is
-    // 1 kHz (configTICK_RATE_HZ = 1000), so ticks ≈ milliseconds.
     unsafe extern "C" {
         fn vTaskDelay(ticks: u32);
     }
 
+    // Read the configured poll interval (set by app_task_entry before
+    // this task is created). Safe: single-writer (app task writes once
+    // before creating this task) then read-only.
+    let interval = unsafe { POLL_INTERVAL_MS };
+
     loop {
         unsafe {
             nros_freertos_poll_network();
-            vTaskDelay(POLL_INTERVAL_MS);
+            vTaskDelay(interval);
         }
     }
 }
@@ -266,6 +273,10 @@ where
         config.ip[3]
     );
 
+    // Save scheduling values before config is moved into the heap context.
+    let app_pri = Config::to_freertos_priority(config.app_priority);
+    let app_stack_words = config.app_stack_bytes / 4;
+
     // Allocate the application context on the FreeRTOS heap.
     //
     // CRITICAL: The pre-scheduler MSP stack is reclaimed by FreeRTOS when
@@ -298,9 +309,9 @@ where
         nros_freertos_create_task(
             app_task_entry::<F, E>,
             b"nros_app\0".as_ptr(),
-            APP_TASK_STACK,
+            app_stack_words,
             ctx_ptr as *mut c_void,
-            APP_TASK_PRIORITY,
+            app_pri,
         )
     };
     if ret != 0 {
