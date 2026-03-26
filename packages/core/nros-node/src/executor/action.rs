@@ -1,24 +1,28 @@
-//! Action server registration on the executor and handle types.
+//! Action server and client registration on the executor and handle types.
 
 use core::marker::PhantomData;
 
 use nros_core::RosAction;
 use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
 
-use super::action_core::{ActionServerCore, RawActiveGoal};
+use super::action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
 use super::arena::{
-    ActionServerArenaEntry, ActionServerRawArenaEntry, CallbackMeta, EntryKind,
-    action_server_raw_try_process, action_server_try_process, always_ready, as_active_goal_count,
-    as_complete_goal, as_for_each_active_goal, as_publish_feedback, as_raw_active_goal_count,
-    as_raw_complete_goal, as_raw_for_each_active_goal, as_raw_publish_feedback,
-    as_raw_set_goal_status, as_set_goal_status, drop_entry, no_pre_sample,
+    ActionClientRawArenaEntry, ActionServerArenaEntry, ActionServerRawArenaEntry, CallbackMeta,
+    EntryKind, action_client_raw_try_process, action_server_raw_try_process,
+    action_server_try_process, always_ready, as_active_goal_count, as_complete_goal,
+    as_for_each_active_goal, as_publish_feedback, as_raw_active_goal_count, as_raw_complete_goal,
+    as_raw_for_each_active_goal, as_raw_publish_feedback, as_raw_set_goal_status,
+    as_set_goal_status, drop_entry, no_pre_sample,
 };
 use super::handles::{ActionServer, ActiveGoal};
 use super::spin::Executor;
 use super::types::HandleId;
 use super::types::InvocationMode;
 use super::types::NodeError;
-use super::types::{RawCancelCallback, RawGoalCallback};
+use super::types::{
+    RawCancelCallback, RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback,
+    RawResultCallback,
+};
 
 // ============================================================================
 // Action server registration
@@ -689,5 +693,163 @@ impl ActionServerRawHandle {
                 (self.for_each_active_goal_fn)(data_ptr, &mut f);
             }
         }
+    }
+}
+
+// ============================================================================
+// Action client registration
+// ============================================================================
+
+impl Executor {
+    /// Register a raw action client with the executor.
+    ///
+    /// Creates service clients for send_goal, cancel_goal, get_result, and a
+    /// feedback subscriber. The executor polls these during `spin_once` and
+    /// invokes the provided callbacks when responses/feedback arrive.
+    ///
+    /// # Arguments
+    /// * `action_name` — action name (e.g., "/fibonacci")
+    /// * `type_name` — action type (e.g., "example_interfaces::action::dds_::Fibonacci_")
+    /// * `type_hash` — type hash (e.g., "TypeHashNotSupported")
+    /// * `goal_response_callback` — called when goal is accepted/rejected
+    /// * `feedback_callback` — called when feedback is received
+    /// * `result_callback` — called when result is received
+    /// * `context` — opaque pointer passed to all callbacks
+    pub fn add_action_client_raw(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        goal_response_callback: Option<RawGoalResponseCallback>,
+        feedback_callback: Option<RawFeedbackCallback>,
+        result_callback: Option<RawResultCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<ActionClientRawHandle, NodeError> {
+        self.add_action_client_raw_sized::<
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+            { crate::config::DEFAULT_RX_BUF_SIZE },
+        >(
+            action_name,
+            type_name,
+            type_hash,
+            goal_response_callback,
+            feedback_callback,
+            result_callback,
+            context,
+        )
+    }
+
+    /// Register a raw action client with explicit buffer sizes.
+    pub fn add_action_client_raw_sized<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        action_name: &str,
+        type_name: &str,
+        type_hash: &str,
+        goal_response_callback: Option<RawGoalResponseCallback>,
+        feedback_callback: Option<RawFeedbackCallback>,
+        result_callback: Option<RawResultCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<ActionClientRawHandle, NodeError> {
+        type Entry<const GB: usize, const RB: usize, const FB: usize> =
+            ActionClientRawArenaEntry<GB, RB, FB>;
+
+        let slot = self.next_entry_slot()?;
+
+        let action_info = ActionInfo::new(action_name, type_name, type_hash);
+
+        // Create send_goal service client
+        let send_goal_keyexpr: heapless::String<256> = action_info.send_goal_key();
+        let send_goal_info =
+            ServiceInfo::new(&send_goal_keyexpr, type_name, type_hash).with_domain(0);
+        let send_goal_client = self
+            .session
+            .create_service_client(&send_goal_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        // Create cancel_goal service client
+        let cancel_goal_keyexpr: heapless::String<256> = action_info.cancel_goal_key();
+        let cancel_goal_info = ServiceInfo::new(
+            &cancel_goal_keyexpr,
+            "action_msgs::srv::dds_::CancelGoal_",
+            type_hash,
+        )
+        .with_domain(0);
+        let cancel_goal_client = self
+            .session
+            .create_service_client(&cancel_goal_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        // Create get_result service client
+        let get_result_keyexpr: heapless::String<256> = action_info.get_result_key();
+        let get_result_info =
+            ServiceInfo::new(&get_result_keyexpr, type_name, type_hash).with_domain(0);
+        let get_result_client = self
+            .session
+            .create_service_client(&get_result_info)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        // Create feedback subscriber
+        let feedback_keyexpr: heapless::String<256> = action_info.feedback_key();
+        let feedback_topic = TopicInfo::new(&feedback_keyexpr, type_name, type_hash).with_domain(0);
+        let feedback_sub = self
+            .session
+            .create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT)
+            .map_err(|_| NodeError::ActionCreationFailed)?;
+
+        let core = ActionClientCore::new(
+            send_goal_client,
+            cancel_goal_client,
+            get_result_client,
+            feedback_sub,
+        );
+
+        let offset = self.arena_alloc::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    core,
+                    goal_response_callback,
+                    feedback_callback,
+                    result_callback,
+                    context,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::ActionClient,
+            has_data: always_ready,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::Always,
+            try_process: action_client_raw_try_process::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+            drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>,
+        });
+
+        Ok(ActionClientRawHandle { entry_index: slot })
+    }
+}
+
+/// Handle returned by [`Executor::add_action_client_raw()`].
+///
+/// Provides methods to send goals, request results, and cancel goals
+/// via the executor's non-blocking path.
+pub struct ActionClientRawHandle {
+    entry_index: usize,
+}
+
+impl ActionClientRawHandle {
+    /// Get the entry index for this action client.
+    pub fn entry_index(&self) -> usize {
+        self.entry_index
     }
 }

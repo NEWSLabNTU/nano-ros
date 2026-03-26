@@ -45,7 +45,7 @@ mod tests;
 
 // Flat re-exports so users write `executor::Executor` etc.
 #[cfg(any(has_rmw, test))]
-pub use action::{ActionServerHandle, ActionServerRawHandle};
+pub use action::{ActionClientRawHandle, ActionServerHandle, ActionServerRawHandle};
 #[cfg(any(has_rmw, test))]
 pub use action_core::{ActionClientCore, ActionServerCore, RawActiveGoal};
 #[cfg(any(has_rmw, test))]

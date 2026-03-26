@@ -1361,7 +1361,7 @@ impl Executor {
                     EntryKind::Subscription => {
                         result.subscriptions_processed += 1;
                     }
-                    EntryKind::Service | EntryKind::ActionServer => {
+                    EntryKind::Service | EntryKind::ActionServer | EntryKind::ActionClient => {
                         result.services_handled += 1;
                     }
                     EntryKind::Timer => result.timers_fired += 1,
@@ -1372,7 +1372,7 @@ impl Executor {
                     EntryKind::Subscription => {
                         result.subscription_errors += 1;
                     }
-                    EntryKind::Service | EntryKind::ActionServer => {
+                    EntryKind::Service | EntryKind::ActionServer | EntryKind::ActionClient => {
                         result.service_errors += 1;
                     }
                     EntryKind::Timer | EntryKind::GuardCondition => {}

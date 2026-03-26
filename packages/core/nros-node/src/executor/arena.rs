@@ -6,13 +6,13 @@ use nros_core::MessageInfo;
 use nros_core::{CdrReader, RosAction, RosMessage, RosService};
 use nros_rmw::{ServiceServerTrait, Subscriber, TransportError};
 
-use super::action_core::ActionServerCore;
+use super::action_core::{ActionClientCore, ActionServerCore};
 use super::handles::{ActionServer, ActiveGoal};
 use super::spsc_ring::SpscRing;
 use super::triple_buffer::TripleBuffer;
 use super::types::{
-    InvocationMode, NodeError, RawCancelCallback, RawGoalCallback, RawServiceCallback,
-    RawSubscriptionCallback,
+    InvocationMode, NodeError, RawCancelCallback, RawFeedbackCallback, RawGoalCallback,
+    RawGoalResponseCallback, RawResultCallback, RawServiceCallback, RawSubscriptionCallback,
 };
 use crate::session;
 
@@ -27,6 +27,7 @@ pub(crate) enum EntryKind {
     Service,
     Timer,
     ActionServer,
+    ActionClient,
     GuardCondition,
 }
 
@@ -149,6 +150,24 @@ pub(crate) struct ActionServerRawArenaEntry<
     pub(crate) core: ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
     pub(crate) goal_callback: RawGoalCallback,
     pub(crate) cancel_callback: RawCancelCallback,
+    pub(crate) context: *mut core::ffi::c_void,
+}
+
+/// Concrete action client entry for raw (untyped) async callbacks.
+///
+/// Contains the `ActionClientCore` plus callback function pointers for
+/// goal response, feedback, and result. The executor polls the core's
+/// non-blocking methods during `spin_once` and invokes the callbacks.
+#[repr(C)]
+pub(crate) struct ActionClientRawArenaEntry<
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+> {
+    pub(crate) core: ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+    pub(crate) goal_response_callback: Option<RawGoalResponseCallback>,
+    pub(crate) feedback_callback: Option<RawFeedbackCallback>,
+    pub(crate) result_callback: Option<RawResultCallback>,
     pub(crate) context: *mut core::ffi::c_void,
 }
 
@@ -761,6 +780,115 @@ pub(crate) unsafe fn action_server_raw_try_process<
 
     // Handle result requests (empty default result for raw API)
     if let Ok(Some(_)) = core.try_handle_get_result_raw(&[]) {
+        did_work = true;
+    }
+
+    Ok(did_work)
+}
+
+/// Monomorphized raw action client dispatch function.
+///
+/// Polls the action client core's non-blocking methods:
+/// 1. Goal acceptance reply (`try_recv_send_goal_reply`)
+/// 2. Feedback (`try_recv_feedback_raw`)
+/// 3. Result reply (`try_recv_get_result_reply`)
+///
+/// Invokes the corresponding callback when data is available.
+///
+/// # Safety
+/// `ptr` must point to a valid, aligned `ActionClientRawArenaEntry<...>`.
+pub(crate) unsafe fn action_client_raw_try_process<
+    const GOAL_BUF: usize,
+    const RESULT_BUF: usize,
+    const FEEDBACK_BUF: usize,
+>(
+    ptr: *mut u8,
+    _delta_ms: u64,
+) -> Result<bool, TransportError> {
+    let entry = unsafe {
+        &mut *(ptr as *mut ActionClientRawArenaEntry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>)
+    };
+    let ActionClientRawArenaEntry {
+        core,
+        goal_response_callback,
+        feedback_callback,
+        result_callback,
+        context,
+    } = entry;
+
+    let mut did_work = false;
+
+    // 1. Poll goal acceptance reply
+    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
+        if let Some(cb) = goal_response_callback {
+            // Reply CDR: header (4) + accepted (u8) + stamp
+            let accepted = total_len >= 5 && core.result_buffer[4] != 0;
+            // Extract GoalId from the last sent goal
+            let goal_id = nros_core::GoalId {
+                uuid: {
+                    let mut uuid = [0u8; 16];
+                    let counter = core.goal_counter.to_le_bytes();
+                    uuid[..8].copy_from_slice(&counter);
+                    uuid
+                },
+            };
+            unsafe { cb(&goal_id, accepted, *context) };
+        }
+        did_work = true;
+    }
+
+    // 2. Poll feedback
+    if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
+        if let Some(cb) = feedback_callback {
+            // Feedback buffer: CDR header (4) + GoalId (16) + feedback fields
+            let offset = 4 + 16;
+            if total_len > offset {
+                unsafe {
+                    cb(
+                        &goal_id,
+                        core.feedback_buffer[offset..total_len].as_ptr(),
+                        total_len - offset,
+                        *context,
+                    );
+                }
+            }
+        }
+        did_work = true;
+    }
+
+    // 3. Poll result reply
+    if let Ok(Some(total_len)) = core.try_recv_get_result_reply() {
+        if let Some(cb) = result_callback {
+            // Result reply CDR: header (4) + status (i8, 1 byte) + result fields
+            if total_len >= 5 {
+                let status_byte = core.result_buffer[4];
+                let status = match status_byte {
+                    4 => nros_core::GoalStatus::Succeeded,
+                    5 => nros_core::GoalStatus::Canceled,
+                    6 => nros_core::GoalStatus::Aborted,
+                    _ => nros_core::GoalStatus::Unknown,
+                };
+                let result_offset = 5;
+                // Extract GoalId from the last sent goal
+                let goal_id = nros_core::GoalId {
+                    uuid: {
+                        let mut uuid = [0u8; 16];
+                        let counter = core.goal_counter.to_le_bytes();
+                        uuid[..8].copy_from_slice(&counter);
+                        uuid
+                    },
+                };
+                unsafe {
+                    cb(
+                        &goal_id,
+                        status,
+                        core.result_buffer[result_offset..total_len].as_ptr(),
+                        total_len - result_offset,
+                        *context,
+                    );
+                }
+            }
+        }
         did_work = true;
     }
 

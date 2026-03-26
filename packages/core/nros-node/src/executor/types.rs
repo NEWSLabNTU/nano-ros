@@ -536,6 +536,49 @@ pub type RawCancelCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 ) -> nros_core::CancelResponse;
 
+/// Raw action client goal-response callback.
+///
+/// Called when the action server accepts or rejects a goal.
+///
+/// # Safety
+/// - `goal_id` is valid for the duration of the call
+///
+/// `accepted` is `true` if the goal was accepted, `false` if rejected.
+pub type RawGoalResponseCallback = unsafe extern "C" fn(
+    goal_id: *const nros_core::GoalId,
+    accepted: bool,
+    context: *mut core::ffi::c_void,
+);
+
+/// Raw action client result callback.
+///
+/// Called when the action result is received.
+///
+/// # Safety
+/// - `goal_id` is valid for the duration of the call
+/// - `result_data` points to `result_len` valid bytes (CDR-encoded result)
+pub type RawResultCallback = unsafe extern "C" fn(
+    goal_id: *const nros_core::GoalId,
+    status: nros_core::GoalStatus,
+    result_data: *const u8,
+    result_len: usize,
+    context: *mut core::ffi::c_void,
+);
+
+/// Raw action client feedback callback.
+///
+/// Called when feedback is received for an active goal.
+///
+/// # Safety
+/// - `goal_id` is valid for the duration of the call
+/// - `feedback_data` points to `feedback_len` valid bytes (CDR-encoded feedback)
+pub type RawFeedbackCallback = unsafe extern "C" fn(
+    goal_id: *const nros_core::GoalId,
+    feedback_data: *const u8,
+    feedback_len: usize,
+    context: *mut core::ffi::c_void,
+);
+
 // ============================================================================
 // ExecutorSemantics
 // ============================================================================
