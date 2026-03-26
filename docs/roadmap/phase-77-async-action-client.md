@@ -194,7 +194,7 @@ The action client async path bypasses `zpico_get` entirely — it uses `zpico_ge
 - [x] 77.3 — Add C++ async action client API (nros-cpp)
 - [x] 77.4 — Update C action examples to use async API
 - [x] 77.5 — Update C++ action examples to use async API
-- [ ] 77.6 — Re-enable `test_freertos_cpp_action_e2e`
+- [ ] 77.6 — Re-enable `test_freertos_cpp_action_e2e` (blocked on FreeRTOS QEMU session mutex scheduling)
 - [ ] 77.7 — Update documentation
 
 ### 77.1 — Add ActionClientCore executor entry (nros-node)
