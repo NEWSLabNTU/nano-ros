@@ -2,7 +2,7 @@
 
 **Goal**: Replace the blocking `zpico_get` (condvar wait) in C/C++ action client calls with a non-blocking, executor-polled pattern aligned with rclc and rclcpp conventions. This fixes FreeRTOS QEMU hangs where the condvar is never signaled.
 
-**Status**: In Progress (77.1–77.4 done)
+**Status**: In Progress (77.1–77.5 done)
 **Priority**: High
 **Depends on**: Phase 68 (Alloc-free C/C++ bindings), Phase 69 (C/C++ action examples)
 
@@ -193,7 +193,7 @@ The action client async path bypasses `zpico_get` entirely — it uses `zpico_ge
 - [x] 77.2 — Add C async action client API (nros-c)
 - [x] 77.3 — Add C++ async action client API (nros-cpp)
 - [x] 77.4 — Update C action examples to use async API
-- [ ] 77.5 — Update C++ action examples to use async API
+- [x] 77.5 — Update C++ action examples to use async API
 - [ ] 77.6 — Re-enable `test_freertos_cpp_action_e2e`
 - [ ] 77.7 — Update documentation
 
