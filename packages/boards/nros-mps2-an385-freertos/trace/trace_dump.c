@@ -76,15 +76,44 @@ void vApplicationTickHook(void) {
 void nros_trace_scheduler_started(void) {
     tband_gather_system_metadata();
     tband_freertos_scheduler_started();
+    /* Start recording events into the snapshot buffer */
+    tband_trigger_snapshot();
+}
+
+/* Simple semihosting print for trace diagnostics */
+static void sh_puts(const char *s) {
+    register unsigned r0 __asm__("r0") = 0x04;  /* SYS_WRITE0 */
+    register const char *r1 __asm__("r1") = s;
+    __asm__ volatile("bkpt #0xAB" : : "r"(r0), "r"(r1) : "memory");
+}
+
+static void sh_print_size(const char *label, size_t val) {
+    char buf[64];
+    char *p = buf;
+    const char *l = label;
+    while (*l) *p++ = *l++;
+    /* simple decimal conversion */
+    char num[12];
+    int i = 0;
+    if (val == 0) { num[i++] = '0'; }
+    else { size_t v = val; while (v > 0) { num[i++] = '0' + (v % 10); v /= 10; } }
+    while (i > 0) *p++ = num[--i];
+    *p++ = '\n'; *p = '\0';
+    sh_puts(buf);
 }
 
 void nros_trace_trigger_and_dump(void) {
-    tband_trigger_snapshot();
+    /* Stop recording */
+    tband_stop_snapshot();
 
     const uint8_t *meta = tband_get_metadata_buf(0);
     size_t meta_len = tband_get_metadata_buf_amnt(0);
     const uint8_t *data = tband_get_core_snapshot_buf(0);
     size_t data_len = tband_get_core_snapshot_buf_amnt(0);
+
+    sh_print_size("trace: meta_len=", meta_len);
+    sh_print_size("trace: data_len=", data_len);
+    sh_print_size("trace: snapshot_full=", nros_trace_snapshot_full ? 1 : 0);
 
     if ((meta == NULL && data == NULL) || (meta_len == 0 && data_len == 0)) return;
 
