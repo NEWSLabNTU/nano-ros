@@ -49,3 +49,6 @@
 [submodule "third-party/zenoh/zenoh"]
 	path = third-party/zenoh/zenoh
 	url = https://github.com/jerry73204/zenoh.git
+[submodule "third-party/tracing/Tonbandgeraet"]
+	path = third-party/tracing/Tonbandgeraet
+	url = https://github.com/schilkp/Tonbandgeraet.git
