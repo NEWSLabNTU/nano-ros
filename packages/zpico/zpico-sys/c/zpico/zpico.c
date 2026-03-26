@@ -510,10 +510,9 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     memset(&g_lease_task_attr, 0, sizeof(g_lease_task_attr));
 
     // Platform-specific field assignment.
-    // z_task_attr_t is typedef'd per platform:
-    //   FreeRTOS: struct { name, priority, stack_depth }
-    //   POSIX/NuttX/Zephyr: pthread_attr_t (set via pthread API)
-    //   ThreadX: struct { name, priority, stack_size }
+    // z_task_attr_t varies by platform — only FreeRTOS and POSIX-like
+    // platforms have meaningful fields. ThreadX and generic use void*
+    // and zenoh-pico ignores the attr entirely on those platforms.
 #if defined(ZENOH_FREERTOS) || defined(ZENOH_FREERTOS_LWIP)
     g_read_task_attr.name = "zpico_read";
     g_read_task_attr.priority = (UBaseType_t)read_priority;
@@ -521,34 +520,32 @@ void zpico_set_task_config(uint32_t read_priority, uint32_t read_stack_bytes,
     g_lease_task_attr.name = "zpico_lease";
     g_lease_task_attr.priority = (UBaseType_t)lease_priority;
     g_lease_task_attr.stack_depth = lease_stack_bytes / sizeof(StackType_t);
-#elif defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__)
-    // POSIX: set stack size via pthread_attr; priority requires SCHED_FIFO
-    // which needs root. For now, only set stack size.
+    g_read_task_opts.task_attributes = &g_read_task_attr;
+    g_lease_task_opts.task_attributes = &g_lease_task_attr;
+    g_read_task_configured = true;
+    g_lease_task_configured = true;
+#elif (defined(ZENOH_LINUX) || defined(ZENOH_MACOS) || defined(__NuttX__) || \
+       defined(ZENOH_ZEPHYR)) && !defined(ZENOH_THREADX)
+    // POSIX: set stack size via pthread_attr. Priority requires SCHED_FIFO
+    // (root privileges); for now only stack size is configurable.
     pthread_attr_init(&g_read_task_attr);
     pthread_attr_setstacksize(&g_read_task_attr, (size_t)read_stack_bytes);
     pthread_attr_init(&g_lease_task_attr);
     pthread_attr_setstacksize(&g_lease_task_attr, (size_t)lease_stack_bytes);
+    g_read_task_opts.task_attributes = &g_read_task_attr;
+    g_lease_task_opts.task_attributes = &g_lease_task_attr;
+    g_read_task_configured = true;
+    g_lease_task_configured = true;
     (void)read_priority;
     (void)lease_priority;
-#elif defined(ZENOH_THREADX)
-    g_read_task_attr.name = "zpico_read";
-    g_read_task_attr.priority = read_priority;
-    g_read_task_attr.stack_size = read_stack_bytes;
-    g_lease_task_attr.name = "zpico_lease";
-    g_lease_task_attr.priority = lease_priority;
-    g_lease_task_attr.stack_size = lease_stack_bytes;
 #else
-    // Unknown platform — ignore config
+    // ThreadX, generic, and other platforms: z_task_attr_t is void* and
+    // zenoh-pico ignores it. Config stored for future platform support.
     (void)read_priority;
     (void)read_stack_bytes;
     (void)lease_priority;
     (void)lease_stack_bytes;
 #endif
-
-    g_read_task_opts.task_attributes = &g_read_task_attr;
-    g_lease_task_opts.task_attributes = &g_lease_task_attr;
-    g_read_task_configured = true;
-    g_lease_task_configured = true;
 #else
     (void)read_priority;
     (void)read_stack_bytes;
