@@ -715,6 +715,7 @@ impl Executor {
     /// * `feedback_callback` — called when feedback is received
     /// * `result_callback` — called when result is received
     /// * `context` — opaque pointer passed to all callbacks
+    #[allow(clippy::too_many_arguments)]
     pub fn add_action_client_raw(
         &mut self,
         action_name: &str,
@@ -741,6 +742,7 @@ impl Executor {
     }
 
     /// Register a raw action client with explicit buffer sizes.
+    #[allow(clippy::too_many_arguments)]
     pub fn add_action_client_raw_sized<
         const GOAL_BUF: usize,
         const RESULT_BUF: usize,
