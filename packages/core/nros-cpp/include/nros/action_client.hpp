@@ -24,6 +24,14 @@ nros_cpp_ret_t nros_cpp_action_client_get_result(void* handle, void* executor_ha
 nros_cpp_ret_t nros_cpp_action_client_get_result_async(void* handle, const uint8_t goal_id[16]);
 nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void* handle, uint8_t* feedback_buf,
                                                         size_t buf_len, size_t* feedback_len);
+nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
+    void* handle,
+    void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx),
+    void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx),
+    void (*result)(const uint8_t goal_id[16], int status, const uint8_t* data, size_t len,
+                   void* ctx),
+    void* context);
+nros_cpp_ret_t nros_cpp_action_client_poll(void* handle);
 nros_cpp_ret_t nros_cpp_action_client_destroy(void* storage);
 } // extern "C"
 
@@ -152,13 +160,33 @@ template <typename A> class ActionClient {
     /// Request the result for a goal asynchronously (non-blocking).
     ///
     /// Returns immediately after sending the get_result request. The result
-    /// arrives via the result callback during spin_once().
+    /// arrives via the result callback during poll().
     ///
     /// @param goal_id  16-byte goal UUID from send_goal_async().
     /// @return Result indicating success or failure.
     Result get_result_async(const uint8_t goal_id[16]) {
         if (!initialized_) return Result(ErrorCode::NotInitialized);
         return Result(nros_cpp_action_client_get_result_async(storage_, goal_id));
+    }
+
+    /// Register async callbacks for goal response, feedback, and result.
+    ///
+    /// @param options  Callback pointers and context.
+    void set_callbacks(const SendGoalOptions& options) {
+        if (!initialized_) return;
+        nros_cpp_action_client_set_callbacks(
+            storage_, options.goal_response, options.feedback,
+            options.result, options.context);
+    }
+
+    /// Poll for pending async replies (non-blocking).
+    ///
+    /// Checks for goal acceptance, feedback, and result replies.
+    /// Invokes the corresponding callbacks registered via set_callbacks().
+    /// Call this in the spin loop after spin_once().
+    void poll() {
+        if (!initialized_) return;
+        nros_cpp_action_client_poll(storage_);
     }
 
     /// Check if the action client is initialized and valid.

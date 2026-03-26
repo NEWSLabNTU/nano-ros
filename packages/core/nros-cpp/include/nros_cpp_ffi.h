@@ -738,6 +738,42 @@ nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void *handle,
  */
 nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8_t (*goal_id)[16]);
 
+/**
+ * Register async callbacks on the action client.
+ *
+ * # Safety
+ * `handle` must be a valid action client storage. Function pointers
+ * may be null (no callback for that event).
+ */
+nros_cpp_ret_t nros_cpp_action_client_set_callbacks(void *handle,
+                                                    void (*goal_response)(bool,
+                                                                          const uint8_t(*)[16],
+                                                                          void*),
+                                                    void (*feedback)(const uint8_t(*)[16],
+                                                                     const uint8_t*,
+                                                                     size_t,
+                                                                     void*),
+                                                    void (*result)(const uint8_t(*)[16],
+                                                                   int32_t,
+                                                                   const uint8_t*,
+                                                                   size_t,
+                                                                   void*),
+                                                    void *context);
+
+/**
+ * Poll action client for pending replies (non-blocking).
+ *
+ * Checks for goal acceptance reply, feedback, and result reply.
+ * Invokes the corresponding callbacks registered via
+ * `nros_cpp_action_client_set_callbacks`.
+ *
+ * Call this in the spin loop after `nros_cpp_spin_once`.
+ *
+ * # Safety
+ * `handle` must be a valid action client storage.
+ */
+nros_cpp_ret_t nros_cpp_action_client_poll(void *handle);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

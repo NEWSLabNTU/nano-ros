@@ -343,8 +343,30 @@ pub unsafe extern "C" fn nros_cpp_action_server_destroy(storage: *mut c_void) ->
 // ============================================================================
 
 /// Internal state for the action client.
+/// C++ action client callback function pointers (freestanding C++14).
+#[repr(C)]
+pub(crate) struct CppActionClientCallbacks {
+    pub goal_response: Option<unsafe extern "C" fn(accepted: bool, goal_id: *const [u8; 16], ctx: *mut c_void)>,
+    pub feedback: Option<unsafe extern "C" fn(goal_id: *const [u8; 16], data: *const u8, len: usize, ctx: *mut c_void)>,
+    pub result: Option<unsafe extern "C" fn(goal_id: *const [u8; 16], status: i32, data: *const u8, len: usize, ctx: *mut c_void)>,
+    pub context: *mut c_void,
+}
+
+impl Default for CppActionClientCallbacks {
+    fn default() -> Self {
+        Self {
+            goal_response: None,
+            feedback: None,
+            result: None,
+            context: core::ptr::null_mut(),
+        }
+    }
+}
+
+/// Internal state for the C++ action client.
 pub(crate) struct CppActionClient {
     core: nros_node::ActionClientCore<ACTION_BUF_SIZE, ACTION_BUF_SIZE, ACTION_BUF_SIZE>,
+    callbacks: CppActionClientCallbacks,
     action_name: [u8; 256],
     _action_name_len: usize,
 }
@@ -463,6 +485,7 @@ pub unsafe extern "C" fn nros_cpp_action_client_create(
     let name_len = act_str.len().min(255);
     let mut client = CppActionClient {
         core,
+        callbacks: CppActionClientCallbacks::default(),
         action_name: [0u8; 256],
         _action_name_len: name_len,
     };
@@ -720,4 +743,98 @@ pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
         Ok(()) => NROS_CPP_RET_OK,
         Err(_) => NROS_CPP_RET_ERROR,
     }
+}
+
+/// Register async callbacks on the action client.
+///
+/// # Safety
+/// `handle` must be a valid action client storage. Function pointers
+/// may be null (no callback for that event).
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_set_callbacks(
+    handle: *mut c_void,
+    goal_response: Option<unsafe extern "C" fn(bool, *const [u8; 16], *mut c_void)>,
+    feedback: Option<unsafe extern "C" fn(*const [u8; 16], *const u8, usize, *mut c_void)>,
+    result: Option<unsafe extern "C" fn(*const [u8; 16], i32, *const u8, usize, *mut c_void)>,
+    context: *mut c_void,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    client.callbacks.goal_response = goal_response;
+    client.callbacks.feedback = feedback;
+    client.callbacks.result = result;
+    client.callbacks.context = context;
+    NROS_CPP_RET_OK
+}
+
+/// Poll action client for pending replies (non-blocking).
+///
+/// Checks for goal acceptance reply, feedback, and result reply.
+/// Invokes the corresponding callbacks registered via
+/// `nros_cpp_action_client_set_callbacks`.
+///
+/// Call this in the spin loop after `nros_cpp_spin_once`.
+///
+/// # Safety
+/// `handle` must be a valid action client storage.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_poll(
+    handle: *mut c_void,
+) -> nros_cpp_ret_t {
+    if handle.is_null() {
+        return NROS_CPP_RET_OK;
+    }
+
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let ctx = client.callbacks.context;
+
+    // Helper: reconstruct goal UUID from counter
+    let make_uuid = |counter: u64| -> [u8; 16] {
+        let mut u = [0u8; 16];
+        u[..8].copy_from_slice(&counter.to_le_bytes());
+        u
+    };
+
+    // Poll goal acceptance reply
+    if let Ok(Some(total_len)) = client.core.try_recv_send_goal_reply() {
+        if let Some(cb) = client.callbacks.goal_response {
+            let buf = client.core.result_buffer_ref();
+            let accepted = total_len >= 5 && buf[4] != 0;
+            let uuid = make_uuid(client.core.goal_counter());
+            unsafe { cb(accepted, &uuid, ctx) };
+        }
+    }
+
+    // Poll feedback
+    if let Ok(Some((goal_id, total_len))) = client.core.try_recv_feedback_raw() {
+        if let Some(cb) = client.callbacks.feedback {
+            // Feedback buffer: CDR header (4) + GoalId (16) + feedback fields
+            let offset = 4 + 16;
+            if total_len > offset {
+                let buf = client.core.feedback_buffer_ref();
+                unsafe {
+                    cb(&goal_id.uuid, buf[offset..total_len].as_ptr(), total_len - offset, ctx);
+                }
+            }
+        }
+    }
+
+    // Poll result reply
+    if let Ok(Some(total_len)) = client.core.try_recv_get_result_reply() {
+        if let Some(cb) = client.callbacks.result {
+            if total_len >= 5 {
+                let buf = client.core.result_buffer_ref();
+                let status = buf[4] as i32;
+                let result_offset = 5;
+                let uuid = make_uuid(client.core.goal_counter());
+                unsafe {
+                    cb(&uuid, status, buf[result_offset..total_len].as_ptr(), total_len - result_offset, ctx);
+                }
+            }
+        }
+    }
+
+    NROS_CPP_RET_OK
 }
