@@ -39,7 +39,7 @@ zpico task config API:
 - [x] 76.2 — FreeRTOS board crate scheduling config
 - [x] 76.3 — FreeRTOS board crate wiring (use config in task creation)
 - [x] 76.4 — Example and test validation
-- [ ] 76.5 — CMake config parser update for C/C++ examples
+- [x] 76.5 — CMake config parser update for C/C++ examples
 - [ ] 76.6 — Documentation
 
 ### 76.1 — zpico global task config API
@@ -105,11 +105,11 @@ Verify the new config works end-to-end with existing examples and tests.
 Update `nano_ros_read_config()` to parse `[scheduling]` fields so C/C++
 examples can use them.
 
-- [ ] Add `[scheduling]` section parsing to `cmake/NanoRosConfig.cmake`
-- [ ] Set CMake variables: `NROS_CONFIG_APP_PRIORITY`, `NROS_CONFIG_APP_STACK_BYTES`, `NROS_CONFIG_ZENOH_READ_PRIORITY`, `NROS_CONFIG_ZENOH_READ_STACK_BYTES`, `NROS_CONFIG_ZENOH_LEASE_PRIORITY`, `NROS_CONFIG_ZENOH_LEASE_STACK_BYTES`, `NROS_CONFIG_POLL_PRIORITY`, `NROS_CONFIG_POLL_INTERVAL_MS`
-- [ ] Provide defaults for missing fields (same as Rust defaults)
-- [ ] Add `[scheduling]` to one FreeRTOS C example config.toml and wire the compile definitions
-- [ ] Verify FreeRTOS C example builds and passes E2E test
+- [x] Add `[scheduling]` section parsing to `NanoRosReadConfig.cmake`
+- [x] Set CMake variables: `NROS_CONFIG_APP_PRIORITY`, `NROS_CONFIG_APP_STACK_BYTES`, `NROS_CONFIG_ZENOH_READ_PRIORITY`, `NROS_CONFIG_ZENOH_READ_STACK_BYTES`, `NROS_CONFIG_ZENOH_LEASE_PRIORITY`, `NROS_CONFIG_ZENOH_LEASE_STACK_BYTES`, `NROS_CONFIG_POLL_PRIORITY`, `NROS_CONFIG_POLL_INTERVAL_MS`
+- [x] Provide defaults for missing fields (same as Rust defaults)
+- [x] Add `[scheduling]` to FreeRTOS C talker config.toml and wire `APP_*` compile definitions
+- [ ] Verify FreeRTOS C example builds and passes E2E test (blocked: C codegen tool issue)
 
 **Files:**
 - `cmake/NanoRosConfig.cmake`
