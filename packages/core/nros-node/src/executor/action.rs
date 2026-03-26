@@ -839,6 +839,60 @@ impl Executor {
     }
 }
 
+impl Executor {
+    /// Register an existing `ActionClientCore` with the executor for async polling.
+    ///
+    /// Unlike `add_action_client_raw` (which creates new transport handles),
+    /// this takes ownership of an existing core. Use this when the core was
+    /// already created by the C/C++ action client init.
+    pub fn add_action_client_core<
+        const GOAL_BUF: usize,
+        const RESULT_BUF: usize,
+        const FEEDBACK_BUF: usize,
+    >(
+        &mut self,
+        core: ActionClientCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+        goal_response_callback: Option<RawGoalResponseCallback>,
+        feedback_callback: Option<RawFeedbackCallback>,
+        result_callback: Option<RawResultCallback>,
+        context: *mut core::ffi::c_void,
+    ) -> Result<ActionClientRawHandle, NodeError> {
+        type Entry<const GB: usize, const RB: usize, const FB: usize> =
+            ActionClientRawArenaEntry<GB, RB, FB>;
+
+        let slot = self.next_entry_slot()?;
+        let offset = self.arena_alloc::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>()?;
+
+        unsafe {
+            let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+            let entry_ptr =
+                arena_ptr.add(offset) as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>;
+            core::ptr::write(
+                entry_ptr,
+                Entry {
+                    core,
+                    goal_response_callback,
+                    feedback_callback,
+                    result_callback,
+                    context,
+                },
+            );
+        }
+
+        self.entries[slot] = Some(CallbackMeta {
+            offset,
+            kind: EntryKind::ActionClient,
+            has_data: always_ready,
+            pre_sample: no_pre_sample,
+            invocation: InvocationMode::Always,
+            try_process: action_client_raw_try_process::<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>,
+            drop_fn: drop_entry::<Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>>,
+        });
+
+        Ok(ActionClientRawHandle { entry_index: slot })
+    }
+}
+
 /// Handle returned by [`Executor::add_action_client_raw()`].
 ///
 /// Provides methods to send goals, request results, and cancel goals

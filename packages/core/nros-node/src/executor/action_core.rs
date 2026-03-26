@@ -685,4 +685,9 @@ impl<const GOAL_BUF: usize, const RESULT_BUF: usize, const FEEDBACK_BUF: usize>
     pub fn feedback_buffer_ref(&self) -> &[u8] {
         &self.feedback_buffer
     }
+
+    /// Get the current goal counter (used to reconstruct the last goal ID).
+    pub fn goal_counter(&self) -> u64 {
+        self.goal_counter
+    }
 }

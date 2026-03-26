@@ -321,6 +321,30 @@ impl Executor {
         &mut self.session
     }
 
+    /// Get a mutable reference to an action client core in the arena by entry index.
+    ///
+    /// # Safety
+    /// The caller must ensure that `entry_index` refers to an `ActionClientRawArenaEntry`.
+    pub unsafe fn action_client_core_mut(
+        &mut self,
+        entry_index: usize,
+    ) -> Option<&mut super::action_core::ActionClientCore> {
+        let meta = self.entries.get(entry_index)?.as_ref()?;
+        if !matches!(meta.kind, EntryKind::ActionClient) {
+            return None;
+        }
+        let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
+        unsafe {
+            let entry_ptr = arena_ptr.add(meta.offset)
+                as *mut super::arena::ActionClientRawArenaEntry<
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                    { crate::config::DEFAULT_RX_BUF_SIZE },
+                >;
+            Some(&mut (*entry_ptr).core)
+        }
+    }
+
     /// Set the executor-level trigger condition.
     ///
     /// Controls which handles must be ready before `spin_once` dispatches
