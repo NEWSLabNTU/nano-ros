@@ -711,6 +711,33 @@ nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void *handle,
  */
 nros_cpp_ret_t nros_cpp_action_client_destroy(void *storage);
 
+/**
+ * Send a goal asynchronously (non-blocking).
+ *
+ * Uses `send_goal_raw` (zpico_get_start) instead of `send_goal_blocking`.
+ * The goal response arrives via the callback registered with
+ * `nros_cpp_action_client_register_async`, invoked during `spin_once`.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void *handle,
+                                                      const uint8_t *goal_buf,
+                                                      size_t goal_len,
+                                                      uint8_t (*goal_id_out)[16]);
+
+/**
+ * Request a goal result asynchronously (non-blocking).
+ *
+ * Uses `send_get_result_request` (zpico_get_start) instead of
+ * `get_result_blocking`. The result arrives via the result callback
+ * registered with `nros_cpp_action_client_register_async`.
+ *
+ * # Safety
+ * All pointers must be valid.
+ */
+nros_cpp_ret_t nros_cpp_action_client_get_result_async(void *handle, const uint8_t (*goal_id)[16]);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -648,3 +648,76 @@ pub unsafe extern "C" fn nros_cpp_action_client_destroy(storage: *mut c_void) ->
     }
     NROS_CPP_RET_OK
 }
+
+// ============================================================================
+// Async (non-blocking) Action Client FFI
+// ============================================================================
+
+/// Send a goal asynchronously (non-blocking).
+///
+/// Uses `send_goal_raw` (zpico_get_start) instead of `send_goal_blocking`.
+/// The goal response arrives via the callback registered with
+/// `nros_cpp_action_client_register_async`, invoked during `spin_once`.
+///
+/// # Safety
+/// All pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_send_goal_async(
+    handle: *mut c_void,
+    goal_buf: *const u8,
+    goal_len: usize,
+    goal_id_out: *mut [u8; 16],
+) -> nros_cpp_ret_t {
+    if handle.is_null() || goal_buf.is_null() || goal_id_out.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let goal_data = unsafe { core::slice::from_raw_parts(goal_buf, goal_len) };
+
+    // Strip CDR header (same as blocking variant)
+    let goal_fields = if goal_data.len() > 4 {
+        &goal_data[4..]
+    } else {
+        goal_data
+    };
+
+    // Non-blocking: uses zpico_get_start internally
+    match client.core.send_goal_raw(goal_fields) {
+        Ok(goal_id) => {
+            unsafe {
+                *goal_id_out = goal_id.uuid;
+            }
+            NROS_CPP_RET_OK
+        }
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}
+
+/// Request a goal result asynchronously (non-blocking).
+///
+/// Uses `send_get_result_request` (zpico_get_start) instead of
+/// `get_result_blocking`. The result arrives via the result callback
+/// registered with `nros_cpp_action_client_register_async`.
+///
+/// # Safety
+/// All pointers must be valid.
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn nros_cpp_action_client_get_result_async(
+    handle: *mut c_void,
+    goal_id: *const [u8; 16],
+) -> nros_cpp_ret_t {
+    if handle.is_null() || goal_id.is_null() {
+        return NROS_CPP_RET_INVALID_ARGUMENT;
+    }
+
+    let client = unsafe { &mut *(handle as *mut CppActionClient) };
+    let id = nros::GoalId {
+        uuid: unsafe { *goal_id },
+    };
+
+    match client.core.send_get_result_request(&id) {
+        Ok(()) => NROS_CPP_RET_OK,
+        Err(_) => NROS_CPP_RET_ERROR,
+    }
+}

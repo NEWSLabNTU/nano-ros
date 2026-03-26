@@ -16,9 +16,12 @@ extern "C" {
 typedef int nros_cpp_ret_t;
 nros_cpp_ret_t nros_cpp_action_client_send_goal(void* handle, const uint8_t* goal_buf,
                                                 size_t goal_len, uint8_t goal_id_out[16]);
+nros_cpp_ret_t nros_cpp_action_client_send_goal_async(void* handle, const uint8_t* goal_buf,
+                                                      size_t goal_len, uint8_t goal_id_out[16]);
 nros_cpp_ret_t nros_cpp_action_client_get_result(void* handle, void* executor_handle,
                                                  const uint8_t goal_id[16], uint8_t* result_buf,
                                                  size_t result_buf_len, size_t* result_len);
+nros_cpp_ret_t nros_cpp_action_client_get_result_async(void* handle, const uint8_t goal_id[16]);
 nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void* handle, uint8_t* feedback_buf,
                                                         size_t buf_len, size_t* feedback_len);
 nros_cpp_ret_t nros_cpp_action_client_destroy(void* storage);
@@ -101,6 +104,61 @@ template <typename A> class ActionClient {
         if (ret != 0 || len == 0) return false;
         if (FeedbackType::ffi_deserialize(buf, len, &feedback) != 0) return false;
         return true;
+    }
+
+    // =================================================================
+    // Async (non-blocking) API — callbacks invoked during spin_once()
+    // =================================================================
+
+    /// Options for async goal sending (mirrors rclcpp SendGoalOptions).
+    ///
+    /// Set callback pointers before calling send_goal_async(). Callbacks are
+    /// invoked during spin_once() when the corresponding response arrives.
+    /// All callbacks receive the context pointer for user state.
+    struct SendGoalOptions {
+        /// Called when the server accepts or rejects the goal.
+        void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx);
+        /// Called when feedback is received for the goal.
+        void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx);
+        /// Called when the result is received.
+        void (*result)(const uint8_t goal_id[16], int status, const uint8_t* data, size_t len,
+                       void* ctx);
+        /// User context pointer passed to all callbacks.
+        void* context;
+
+        SendGoalOptions() : goal_response(0), feedback(0), result(0), context(0) {}
+    };
+
+    /// Send a goal asynchronously (non-blocking).
+    ///
+    /// Returns immediately after sending the goal request. The goal UUID
+    /// is filled on success. Responses arrive via callbacks registered
+    /// with the executor (see SendGoalOptions and Node::create_action_client).
+    ///
+    /// @param goal     Goal to send.
+    /// @param goal_id  Output 16-byte goal UUID (filled on success).
+    /// @return Result indicating success or failure.
+    Result send_goal_async(const GoalType& goal, uint8_t goal_id[16]) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+
+        uint8_t buf[GoalType::SERIALIZED_SIZE_MAX];
+        size_t len = 0;
+        if (GoalType::ffi_serialize(&goal, buf, sizeof(buf), &len) != 0) {
+            return Result(ErrorCode::Error);
+        }
+        return Result(nros_cpp_action_client_send_goal_async(storage_, buf, len, goal_id));
+    }
+
+    /// Request the result for a goal asynchronously (non-blocking).
+    ///
+    /// Returns immediately after sending the get_result request. The result
+    /// arrives via the result callback during spin_once().
+    ///
+    /// @param goal_id  16-byte goal UUID from send_goal_async().
+    /// @return Result indicating success or failure.
+    Result get_result_async(const uint8_t goal_id[16]) {
+        if (!initialized_) return Result(ErrorCode::NotInitialized);
+        return Result(nros_cpp_action_client_get_result_async(storage_, goal_id));
     }
 
     /// Check if the action client is initialized and valid.
