@@ -866,16 +866,7 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
         let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
         let rust_exec = get_executor_from_ptr(opaque_ptr);
 
-        let action_name =
-            core::str::from_utf8_unchecked(&client_ref.action_name[..client_ref.action_name_len]);
-        let type_str =
-            core::str::from_utf8_unchecked(&client_ref.type_name[..client_ref.type_name_len]);
-        let type_hash_str =
-            core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
-
-        // Convert C callback function pointers to the Rust raw callback types.
-        // The trampoline adapts between the nros-node callback signature and the
-        // C API callback signature.
+        // Convert C callbacks to Rust trampoline types.
         let goal_response_cb: Option<nros_node::executor::RawGoalResponseCallback> = client_ref
             .goal_response_callback
             .map(|_cb| goal_response_trampoline as nros_node::executor::RawGoalResponseCallback);
@@ -890,6 +881,17 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 
         let client_ctx = client as *mut core::ffi::c_void;
 
+        let action_name =
+            core::str::from_utf8_unchecked(&client_ref.action_name[..client_ref.action_name_len]);
+        let type_str =
+            core::str::from_utf8_unchecked(&client_ref.type_name[..client_ref.type_name_len]);
+        let type_hash_str =
+            core::str::from_utf8_unchecked(&client_ref.type_hash[..client_ref.type_hash_len]);
+
+        // Create a NEW ActionClientCore in the arena via add_action_client_raw.
+        // The async send functions will use this core (not the client's original).
+        // Both share the same global zenoh session, so the arena core's service
+        // clients can communicate with the server independently.
         let result = rust_exec.add_action_client_raw(
             action_name,
             type_str,
@@ -901,7 +903,13 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
         );
 
         match result {
-            Ok(_handle) => {
+            Ok(handle) => {
+                let client_mut = &mut *(client as *mut nros_action_client_t);
+                let int_ref = &mut *(client_mut._internal.as_mut_ptr()
+                    as *mut crate::action::ActionClientInternal);
+                int_ref.arena_entry_index = handle.entry_index() as i32;
+                int_ref.executor_ptr = opaque_ptr;
+
                 executor.handle_count += 1;
                 NROS_RET_OK
             }
