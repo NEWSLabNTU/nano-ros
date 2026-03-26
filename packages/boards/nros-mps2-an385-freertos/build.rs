@@ -41,10 +41,21 @@ fn main() {
     let port_dir = freertos_dir.join("portable").join(&freertos_port);
     let lan9118_dir = manifest_dir.join("../../drivers/lan9118-lwip");
 
+    // --- Trace opt-in (NROS_TRACE=1) ---
+    let nros_trace = env::var("NROS_TRACE").unwrap_or_default() == "1";
+    println!("cargo:rerun-if-env-changed=NROS_TRACE");
+
     // --- Build FreeRTOS kernel ---
     let mut freertos = cc::Build::new();
     configure_arm_cm3(&mut freertos);
     add_freertos_includes(&mut freertos, &freertos_dir, &port_dir, &freertos_config_dir);
+    if nros_trace {
+        let tband_dir = manifest_dir.join("../../../third-party/tracing/Tonbandgeraet/tband");
+        let trace_config_dir = manifest_dir.join("trace");
+        freertos.include(tband_dir.join("inc"));
+        freertos.include(&trace_config_dir);
+        freertos.define("NROS_TRACE", "1");
+    }
 
     // Kernel core
     for src in &[
@@ -132,12 +143,38 @@ fn main() {
     lan9118.file(lan9118_dir.join("src/lan9118_lwip.c"));
     lan9118.compile("lan9118_lwip");
 
+    // --- Tonbandgeraet trace library (opt-in via NROS_TRACE=1) ---
+    if nros_trace {
+        let tband_dir = manifest_dir.join("../../../third-party/tracing/Tonbandgeraet/tband");
+        let trace_config_dir = manifest_dir.join("trace");
+
+        let mut tband = cc::Build::new();
+        configure_arm_cm3(&mut tband);
+        add_freertos_includes(&mut tband, &freertos_dir, &port_dir, &freertos_config_dir);
+        tband.include(tband_dir.join("inc"));
+        tband.include(&trace_config_dir);
+        tband.define("NROS_TRACE", "1");
+        tband.file(tband_dir.join("src/tband.c"));
+        tband.file(tband_dir.join("src/tband_freertos.c"));
+        tband.file(tband_dir.join("src/tband_backend.c"));
+        tband.compile("tband");
+        println!("cargo:rustc-link-lib=static=tband");
+        println!("cargo:rustc-cfg=nros_trace");
+    }
+
     // --- Build startup/glue C code ---
     let mut glue = cc::Build::new();
     configure_arm_cm3(&mut glue);
     add_freertos_includes(&mut glue, &freertos_dir, &port_dir, &freertos_config_dir);
     add_lwip_includes(&mut glue, &lwip_dir);
     glue.include(lan9118_dir.join("include"));
+    if nros_trace {
+        let tband_dir = manifest_dir.join("../../../third-party/tracing/Tonbandgeraet/tband");
+        let trace_config_dir = manifest_dir.join("trace");
+        glue.include(tband_dir.join("inc"));
+        glue.include(&trace_config_dir);
+        glue.define("NROS_TRACE", "1");
+    }
 
     // Generate startup C file
     let startup_c = out_dir.join("startup.c");
@@ -146,6 +183,10 @@ fn main() {
         .write_all(STARTUP_C.as_bytes())
         .unwrap();
     glue.file(&startup_c);
+
+    // Trace dump (always compiled — stubs when NROS_TRACE not defined)
+    glue.file(manifest_dir.join("trace/trace_dump.c"));
+
     glue.compile("startup");
 
     // --- Link order ---

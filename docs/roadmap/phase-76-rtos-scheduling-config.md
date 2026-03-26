@@ -41,6 +41,7 @@ zpico task config API:
 - [x] 76.4 — Example and test validation
 - [x] 76.5 — CMake config parser update for C/C++ examples
 - [x] 76.6 — Documentation
+- [ ] 76.7 — Tonbandgeraet trace integration (scheduling visualization)
 
 ### 76.1 — zpico global task config API
 
@@ -147,6 +148,65 @@ reasons for unusual configurations):
 4. **App stack ≥ 16 KB**: executor arena (`NROS_EXECUTOR_ARENA_SIZE`, default
    4 KB) plus zenoh-pico call depth. 64 KB recommended for action servers.
 
+## 76.7 — Tonbandgeraet trace integration (scheduling visualization)
+
+Integrate the [Tonbandgeraet](https://github.com/schilkp/Tonbandgeraet) embedded
+tracer to visualize FreeRTOS task scheduling in [Perfetto](https://ui.perfetto.dev).
+This validates that the `[scheduling]` config actually changes task execution patterns.
+
+See [docs/research/tonbandgeraet-evaluation.md](../research/tonbandgeraet-evaluation.md)
+for the full feasibility study.
+
+### 76.7.1 — Port header and config for MPS2-AN385
+
+- [x] Create `tband_port.h` for Cortex-M3 FreeRTOS (critical sections via `taskENTER_CRITICAL`, single-core)
+- [x] Create `tband_config.h` (snapshot backend, 16 KB buffer, FreeRTOS hooks enabled)
+- [x] Implement `tband_portTIMESTAMP()` — SysTick CVR + tick counter for 40 ns resolution (25 MHz)
+- [x] Set `tband_portTIMESTAMP_RESOLUTION_NS` to 40 (25 MHz clock)
+
+**Files:**
+- `packages/boards/nros-mps2-an385-freertos/trace/tband_port.h`
+- `packages/boards/nros-mps2-an385-freertos/trace/tband_config.h`
+
+### 76.7.2 — Build integration (opt-in)
+
+- [x] Add Tonbandgeraet source as git submodule at `third-party/tracing/Tonbandgeraet/`
+- [x] Add `NROS_TRACE` feature flag to the FreeRTOS board crate build.rs — when enabled, compile `tband.c`, `tband_freertos.c`, `tband_backend.c` and add include paths
+- [x] Gate FreeRTOSConfig.h trace hooks behind `#ifdef NROS_TRACE` (`configUSE_TRACE_FACILITY=1`, `configUSE_TICK_HOOK=1`, `#include "tband.h"`)
+- [x] Verify board crate builds with and without `NROS_TRACE`
+
+**Files:**
+- `packages/boards/nros-mps2-an385-freertos/build.rs`
+- `packages/boards/nros-mps2-an385-freertos/config/FreeRTOSConfig.h`
+
+### 76.7.3 — Trace dump via semihosting
+
+- [x] Add `nros_trace_trigger_and_dump()` C function that writes metadata + snapshot buffers via semihosting BKPT
+- [x] Call `nros_trace_scheduler_started()` in `app_task_entry()` after network init
+- [x] Call `nros_trace_trigger_and_dump()` before `exit_success()` / `exit_failure()`
+- [x] Verify semihosting file I/O works on QEMU MPS2-AN385 (end-to-end test — 19 events, 127 bytes)
+
+**Files:**
+- `packages/boards/nros-mps2-an385-freertos/c/trace_dump.c`
+- `packages/boards/nros-mps2-an385-freertos/src/node.rs`
+
+### 76.7.4 — Host-side conversion and visualization
+
+- [x] Build `tband-cli` from submodule on first use (`third-party/tracing/Tonbandgeraet/tools/`)
+- [x] Add `just freertos trace [example]` recipe: builds with `NROS_TRACE=1`, runs in QEMU, converts `trace.bin` → `trace.pf`
+- [x] Document the workflow in `book/src/platforms/freertos.md`
+
+**Files:**
+- `just/freertos.just`
+- `book/src/platforms/freertos.md`
+
+### 76.7.5 — Validate scheduling config visually
+
+- [ ] Run traced talker with default `[scheduling]` + zenohd and capture full trace
+- [ ] Run traced talker with modified `[scheduling]` (e.g., app=20, zenoh=12) and capture trace
+- [ ] Compare Perfetto timelines — confirm task execution order and preemption patterns differ
+- [ ] Add description of findings to `docs/design/rtos-scheduling-features.md`
+
 ## Future Work (Out of Scope)
 
 These are natural follow-ons but NOT part of this phase:
@@ -158,6 +218,7 @@ These are natural follow-ons but NOT part of this phase:
 - **Runtime priority changes**: `vTaskPrioritySet()` / `tx_thread_priority_change()` for dynamic priority boost during deadline-critical windows
 - **Stack usage introspection**: `uxTaskGetStackHighWaterMark()` / `tx_thread_info_get()` for runtime diagnostics
 - **Priority constraint validation**: warn at startup if configured priorities violate the invariants above
+- **Tonbandgeraet on other platforms**: ThreadX, NuttX, Zephyr trace integration
 
 ## Acceptance Criteria
 
@@ -173,3 +234,5 @@ These are natural follow-ons but NOT part of this phase:
 - [ ] At least one C example uses `[scheduling]` config and builds + passes E2E
 - [ ] Normalized 0–31 priority scale is documented with per-platform mapping table
 - [ ] No scheduling-related code is added to `nros-node` core (stays in board crates + zpico)
+- [ ] Tonbandgeraet trace shows task execution timeline in Perfetto
+- [ ] Visual comparison confirms different `[scheduling]` configs produce different execution patterns

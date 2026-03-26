@@ -80,8 +80,18 @@ extern void freertos_assert_failed(const char *file, int line);
 
 /* ---- Hook functions ---- */
 #define configUSE_IDLE_HOOK                     1
+#ifdef NROS_TRACE
+#define configUSE_TICK_HOOK                     1
+#else
 #define configUSE_TICK_HOOK                     0
+#endif
 #define configUSE_MALLOC_FAILED_HOOK            0
 #define configCHECK_FOR_STACK_OVERFLOW          0
+
+/* ---- Tonbandgeraet tracing (opt-in via NROS_TRACE=1) ---- */
+#ifdef NROS_TRACE
+#define configUSE_TRACE_FACILITY                1
+#include "tband.h"
+#endif
 
 #endif /* FREERTOS_CONFIG_H */

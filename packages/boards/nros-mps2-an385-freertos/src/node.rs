@@ -14,8 +14,11 @@ use crate::config::Config;
 use crate::error::{Error, Result};
 use crate::{exit_failure, exit_success};
 
-// FFI bindings to the C startup/glue code compiled by build.rs
+// FFI bindings to the C startup/glue + trace code compiled by build.rs
 unsafe extern "C" {
+    fn nros_trace_scheduler_started();
+    fn nros_trace_trigger_and_dump();
+
     fn nros_freertos_init_network(
         mac: *const u8,
         ip: *const u8,
@@ -102,6 +105,9 @@ where
         }
     }
 
+    // Notify trace library that the scheduler is running (no-op if NROS_TRACE disabled)
+    unsafe { nros_trace_scheduler_started(); }
+
     // Start the network poll task AFTER init_network registers the netif.
     // Creating it earlier would poll an uninitialized netif during vTaskDelay
     // inside init_network.
@@ -149,6 +155,8 @@ where
 
     match closure(&ctx.config) {
         Ok(()) => {
+            // Dump trace snapshot before exiting (no-op if NROS_TRACE disabled)
+            unsafe { nros_trace_trigger_and_dump(); }
             hprintln!("");
             hprintln!("Application completed successfully.");
             hprintln!("");
@@ -158,6 +166,7 @@ where
             exit_success();
         }
         Err(e) => {
+            unsafe { nros_trace_trigger_and_dump(); }
             hprintln!("");
             hprintln!("Application error: {:?}", e);
             exit_failure();

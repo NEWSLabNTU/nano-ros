@@ -67,6 +67,71 @@ clean:
     echo "FreeRTOS build artifacts cleaned"
 
 # =============================================================================
+# Tracing (Tonbandgeraet → Perfetto)
+# =============================================================================
+
+# Build and run a FreeRTOS example with tracing, then convert to Perfetto.
+# Usage: just freertos trace [example]   (default: talker)
+# Output: test-logs/freertos-trace/trace.pf (open with https://ui.perfetto.dev)
+trace example="talker":
+    #!/usr/bin/env bash
+    set -e
+
+    EXAMPLE="{{example}}"
+    EXAMPLE_DIR="examples/qemu-arm-freertos/rust/zenoh/$EXAMPLE"
+    TRACE_DIR="test-logs/freertos-trace"
+    mkdir -p "$TRACE_DIR"
+
+    if [ ! -d "$EXAMPLE_DIR" ]; then
+        echo "ERROR: Example not found: $EXAMPLE_DIR"
+        exit 1
+    fi
+
+    echo "=== Building $EXAMPLE with tracing ==="
+    (cd "$EXAMPLE_DIR" && NROS_TRACE=1 cargo build --release)
+
+    # Find the binary name from Cargo.toml
+    BINARY=$(grep '^name = ' "$EXAMPLE_DIR/Cargo.toml" | head -1 | sed 's/name = "\(.*\)"/\1/')
+    BINARY_PATH="$EXAMPLE_DIR/target/thumbv7m-none-eabi/release/$BINARY"
+    if [ ! -f "$BINARY_PATH" ]; then
+        echo "ERROR: Binary not found: $BINARY_PATH"
+        exit 1
+    fi
+
+    echo "=== Running $EXAMPLE in QEMU (with tracing) ==="
+    echo "    Trace will be dumped via semihosting on exit."
+    # Run QEMU — semihosting creates trace.bin in CWD
+    cd "$TRACE_DIR"
+    timeout 60 qemu-system-arm \
+        -cpu cortex-m3 -machine mps2-an385 -nographic \
+        -icount shift=auto \
+        -semihosting-config enable=on,target=native \
+        -kernel "../../$BINARY_PATH" \
+        -nic user,model=lan9118 || true
+
+    if [ ! -f trace.bin ]; then
+        echo "ERROR: trace.bin not created — semihosting file I/O may not be working"
+        exit 1
+    fi
+
+    echo "=== Converting trace to Perfetto format ==="
+    TBAND_CLI="../../third-party/tracing/Tonbandgeraet/tools/target/release/tband-cli"
+    if [ ! -f "$TBAND_CLI" ]; then
+        echo "Building tband-cli..."
+        (cd "../../third-party/tracing/Tonbandgeraet/tools" && cargo build --release -p tband-cli)
+    fi
+    "$TBAND_CLI" conv --format bin --mode free-rtos --core-count 1 \
+        --output trace.pf trace.bin
+
+    echo ""
+    echo "=== Trace captured ==="
+    echo "  Raw:     $TRACE_DIR/trace.bin ($(wc -c < trace.bin) bytes)"
+    echo "  Perfetto: $TRACE_DIR/trace.pf"
+    echo ""
+    echo "Open in browser: https://ui.perfetto.dev"
+    echo "  → Open trace file → select $TRACE_DIR/trace.pf"
+
+# =============================================================================
 # Run examples (build + launch QEMU MPS2-AN385 with slirp networking)
 # =============================================================================
 

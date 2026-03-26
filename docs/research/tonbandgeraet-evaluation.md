@@ -1,7 +1,7 @@
 # Tonbandgeraet Evaluation for nano-ros FreeRTOS Tracing
 
 **Date**: 2026-03-26
-**Repo**: https://github.com/schilkp/Tonbandgeraet (cloned to `external/Tonbandgeraet/`)
+**Repo**: https://github.com/schilkp/Tonbandgeraet (submodule at `third-party/tracing/Tonbandgeraet/`)
 **License**: MIT (tracer library + docs), GPL3 (host tools)
 **Status**: Early development — binary format subject to change
 

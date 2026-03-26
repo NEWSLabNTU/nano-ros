@@ -219,6 +219,27 @@ The normalized 0–31 scale maps linearly to FreeRTOS priorities 0–7
 - `zenoh_read_priority ≥ app_priority` -- prevents lease timeouts
 - `app_stack_bytes ≥ 16384` -- executor arena + zenoh-pico buffers (64 KB for actions)
 
+## Tracing (Tonbandgeraet)
+
+Task scheduling can be visualized using [Tonbandgeraet](https://github.com/schilkp/Tonbandgeraet),
+an open-source embedded tracer that outputs to [Perfetto](https://ui.perfetto.dev).
+
+Tracing is opt-in via the `NROS_TRACE=1` environment variable. When enabled,
+FreeRTOS trace hooks record task switches, queue operations, and mutex activity
+to a 16 KB RAM ring buffer. After the example completes, the buffer is dumped
+to `trace.bin` via ARM semihosting and converted to Perfetto format.
+
+```bash
+# Capture and convert a trace (builds tband-cli automatically)
+just freertos trace talker
+
+# Open the result in your browser
+# → https://ui.perfetto.dev → Open trace file → test-logs/freertos-trace/trace.pf
+```
+
+Overhead: ~16 KB RAM for the snapshot buffer, ~40 ns timestamp resolution
+(SysTick at 25 MHz). No overhead when `NROS_TRACE` is not set.
+
 ## Status
 
 FreeRTOS platform support (Phase 54) is complete. Phase 69 added C and C++
