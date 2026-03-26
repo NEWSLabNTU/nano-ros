@@ -192,6 +192,33 @@ FreeRTOS runs multiple tasks for networking and application logic:
 | 3        | app task         | nros Executor + Node                    |
 | 0        | idle             | WFI (mandatory for QEMU networking)     |
 
+## Scheduling Configuration
+
+Task priorities and stack sizes are configurable via `config.toml`:
+
+```toml
+[scheduling]
+app_priority = 12              # 0–31 normalized (12 = FreeRTOS pri 3)
+app_stack_bytes = 65536        # 64 KB
+zenoh_read_priority = 16       # 16 = FreeRTOS pri 4
+zenoh_read_stack_bytes = 5120
+zenoh_lease_priority = 16
+zenoh_lease_stack_bytes = 5120
+poll_priority = 16             # Network poll task
+poll_interval_ms = 5           # Poll every 5 ms
+```
+
+Omit `[scheduling]` entirely to use the defaults shown above.
+
+The normalized 0–31 scale maps linearly to FreeRTOS priorities 0–7
+(`configMAX_PRIORITIES = 8`). The mapping function:
+`freertos_pri = normalized * 7 / 31`.
+
+**Constraints** -- keep these for reliable operation:
+- `poll_priority ≥ zenoh_read_priority` -- poll task must feed the RX FIFO
+- `zenoh_read_priority ≥ app_priority` -- prevents lease timeouts
+- `app_stack_bytes ≥ 16384` -- executor arena + zenoh-pico buffers (64 KB for actions)
+
 ## Status
 
 FreeRTOS platform support (Phase 54) is complete. Phase 69 added C and C++

@@ -30,6 +30,49 @@ locator = "tcp/192.0.3.1:7447"  # Router address
 domain_id = 0                     # ROS 2 domain ID (0–232)
 ```
 
+## Scheduling
+
+The `[scheduling]` section configures RTOS task priorities and stack sizes.
+All fields are optional — omit the entire section to use board defaults.
+
+```toml
+[scheduling]
+# Normalized 0–31 priority scale (higher = more important).
+# Board crate maps to platform-native range:
+#   FreeRTOS: 0–7, ThreadX: 31–0 (inverted), NuttX: POSIX nice
+app_priority = 12              # Application task (executor + callbacks)
+zenoh_read_priority = 16       # Zenoh-pico socket read task
+zenoh_lease_priority = 16      # Zenoh-pico session keep-alive task
+poll_priority = 16             # Network poll task (FreeRTOS only)
+
+# Stack sizes in bytes
+app_stack_bytes = 65536        # 64 KB (must fit executor arena)
+zenoh_read_stack_bytes = 5120
+zenoh_lease_stack_bytes = 5120
+
+# Platform-specific
+poll_interval_ms = 5           # Network poll interval (FreeRTOS only)
+```
+
+### Priority Scale
+
+| Normalized | Meaning | FreeRTOS (0–7) | ThreadX (0–31) |
+|------------|---------|----------------|----------------|
+| 0 | Idle | 0 | 31 |
+| 8 | Below normal | 2 | 20 |
+| 12 | **Normal (default app)** | 3 | 16 |
+| 16 | **Above normal (default zenoh)** | 4 | 12 |
+| 24 | Very high | 6 | 4 |
+| 31 | Critical | 7 | 0 |
+
+### Scheduling Constraints
+
+These should hold for correct operation:
+
+1. **poll ≥ zenoh read** (FreeRTOS): poll task must feed the RX FIFO
+2. **zenoh read ≥ app**: prevents lease timeouts from delayed message processing
+3. **app stack ≥ 16 KB**: executor arena + zenoh-pico call depth; 64 KB for actions
+
 All sections and fields are optional — missing values use board-specific
 defaults.
 
@@ -53,6 +96,10 @@ Not all platforms use every field:
 NuttX doesn't need `mac` because the kernel configures networking.
 FreeRTOS uses `netmask` (dotted quad) instead of `prefix` (integer).
 ESP32 uses DHCP by default; `[network]` fields enable static IP mode.
+
+`[scheduling]` fields are parsed on all platforms but only FreeRTOS
+currently uses them to configure task creation. Other platforms ignore
+the values (zenoh-pico read/lease tasks use platform defaults).
 
 ## How It Works
 

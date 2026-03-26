@@ -312,48 +312,48 @@ fn to_threadx_priority(normalized: u8) -> u32 {
 }
 ```
 
-### Board Crate Config Changes (FreeRTOS)
+### Implementation Status
 
-```rust
-#[derive(Clone)]
-pub struct Config {
-    // Existing fields
-    pub mac: [u8; 6],
-    pub ip: [u8; 4],
-    pub netmask: [u8; 4],
-    pub gateway: [u8; 4],
-    pub zenoh_locator: &'static str,
-    pub domain_id: u32,
+| Component | Status | Files |
+|-----------|--------|-------|
+| **zpico C API** (`zpico_set_task_config`) | Done | `zpico-sys/c/zpico/zpico.c`, `zpico.h` |
+| **zpico Rust FFI** | Done | `zpico-sys/src/lib.rs`, `ffi.rs` |
+| **FreeRTOS board crate Config** | Done | `nros-mps2-an385-freertos/src/config.rs` |
+| **FreeRTOS board crate wiring** | Done | `nros-mps2-an385-freertos/src/node.rs` |
+| **CMake config parser** | Done | `nros-c/cmake/NanoRosReadConfig.cmake` |
+| **FreeRTOS Rust examples** | Done | talker + listener have `[scheduling]` |
+| **FreeRTOS C example** | Done (CMake wired) | talker has `[scheduling]` + `APP_*` defs |
+| **E2E validation** | Done | `just freertos test` passes; broken-value test confirms config is applied |
+| **ThreadX board crate** | Not started | Future work |
+| **NuttX board crate** | Not started | Future work |
+| **Zephyr board crate** | Not started | Future work |
 
-    // Scheduling fields (normalized 0–31 priority scale)
-    pub app_priority: u8,
-    pub app_stack_bytes: u32,
-    pub zenoh_read_priority: u8,
-    pub zenoh_read_stack_bytes: u32,
-    pub zenoh_lease_priority: u8,
-    pub zenoh_lease_stack_bytes: u32,
-    pub poll_priority: u8,
-    pub poll_interval_ms: u32,
-}
+### zpico Task Config API
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            // ... existing defaults ...
-            app_priority: 12,            // Normal
-            app_stack_bytes: 65536,      // 64 KB
-            zenoh_read_priority: 16,     // Above normal
-            zenoh_read_stack_bytes: 5120,
-            zenoh_lease_priority: 16,    // Above normal
-            zenoh_lease_stack_bytes: 5120,
-            poll_priority: 16,           // Above normal
-            poll_interval_ms: 5,
-        }
-    }
-}
-```
+`zpico_set_task_config()` stores read/lease task attributes in static globals.
+`zpico_open()` passes them to `zp_start_read_task()` / `zp_start_lease_task()`
+instead of `NULL`. Platform-specific handling:
 
-The `from_toml()` parser adds cases for the `("scheduling", key)` match arm.
+| Platform | `z_task_attr_t` | Fields set |
+|----------|-----------------|------------|
+| FreeRTOS (lwIP) | struct | `.name`, `.priority`, `.stack_depth` |
+| POSIX / NuttX / Zephyr | `pthread_attr_t` | stack size via `pthread_attr_setstacksize` |
+| ThreadX / Generic | `void*` | No-op (zenoh-pico ignores attr on these platforms) |
+
+### Board Crate Config (FreeRTOS — implemented)
+
+The `Config` struct in `nros-mps2-an385-freertos` has 8 scheduling fields
+parsed from `[scheduling]` in config.toml. `Config::to_freertos_priority()`
+maps normalized 0–31 → FreeRTOS 0–7 linearly. `run()` and `app_task_entry()`
+use config values instead of hardcoded constants. `zpico_set_task_config()`
+is called before `Executor::open()`.
+
+### CMake Config Parser
+
+`nano_ros_read_config()` in `NanoRosReadConfig.cmake` parses `[scheduling]`
+fields and exports `NROS_CONFIG_APP_PRIORITY`, `NROS_CONFIG_APP_STACK_BYTES`,
+etc. Defaults match the Rust board crate. C/C++ examples wire these as
+`APP_*` compile definitions.
 
 ### Control Flow: How Config Reaches Each Task
 

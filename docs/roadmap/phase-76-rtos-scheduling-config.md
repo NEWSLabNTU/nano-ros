@@ -2,7 +2,7 @@
 
 **Goal**: Enable user-configurable scheduling (task priorities, stack sizes, poll intervals) for all nano-ros runtime tasks via `config.toml`, with a normalized 0–31 priority scale that is portable across RTOS platforms.
 
-**Status**: Not Started
+**Status**: Complete (FreeRTOS; ThreadX/NuttX/Zephyr deferred to future work)
 **Priority**: Medium
 **Depends on**: None (existing board crate and zpico infrastructure is sufficient)
 
@@ -40,7 +40,7 @@ zpico task config API:
 - [x] 76.3 — FreeRTOS board crate wiring (use config in task creation)
 - [x] 76.4 — Example and test validation
 - [x] 76.5 — CMake config parser update for C/C++ examples
-- [ ] 76.6 — Documentation
+- [x] 76.6 — Documentation
 
 ### 76.1 — zpico global task config API
 
@@ -118,10 +118,10 @@ examples can use them.
 
 ### 76.6 — Documentation
 
-- [ ] Update `docs/design/rtos-scheduling-features.md` with final implementation details
-- [ ] Add `[scheduling]` section reference to `book/src/reference/environment-variables.md` or create a new `book/src/reference/scheduling.md`
-- [ ] Add scheduling config example to `book/src/platforms/freertos.md` (or equivalent)
-- [ ] Document the 0–31 normalized priority scale and per-platform mapping table
+- [x] Update `docs/design/rtos-scheduling-features.md` with implementation status table and API details
+- [x] Add `[scheduling]` section to `book/src/reference/config-toml.md` (priority scale table, constraints)
+- [x] Add scheduling config example to `book/src/platforms/freertos.md`
+- [x] Document the 0–31 normalized priority scale and per-platform mapping table
 
 **Files:**
 - `docs/design/rtos-scheduling-features.md`
