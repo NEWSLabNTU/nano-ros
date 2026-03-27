@@ -78,23 +78,45 @@ executor.spin_some();
 
 Key pattern: `async_send_goal` returns a future, callbacks are optional. Result is retrieved via `async_get_result` or via the `result_callback` in options.
 
-## Design
+## Design Principle: Only `spin*()` Drives the Runtime
+
+The Rust `Promise::wait()` already follows this pattern:
+```rust
+pub fn wait(&mut self, executor: &mut Executor, timeout_ms: u64) -> Result<T, NodeError> {
+    for _ in 0..max_spins {
+        executor.spin_once(spin_interval_ms);  // drives all I/O
+        if let Some(result) = self.try_recv()? { return Ok(result); }
+    }
+    Err(NodeError::Timeout)
+}
+```
+
+It never calls `zpico_get` (blocking condvar). The executor's `spin_once` drives all I/O, and `try_recv` checks if the reply arrived. The C/C++ API must follow the same principle: **no direct zpico_get calls — only spin_once + non-blocking poll**.
+
+### Unified Architecture
+
+A single `ActionClientCore` is owned by the executor's arena entry:
+
+1. `nros_action_client_init()` — stores metadata + callbacks only (no transport handles)
+2. `nros_executor_add_action_client()` — creates `ActionClientCore` in the arena (3 service clients + 1 subscriber)
+3. `nros_action_send_goal_async()` — routes through the arena entry's core → `send_goal_raw()` → `zpico_get_start()`
+4. `nros_executor_spin_some()` → `action_client_raw_try_process()` → polls `try_recv_send_goal_reply()`, `try_recv_feedback_raw()`, `try_recv_get_result_reply()` → invokes callbacks
+5. Blocking convenience wrappers spin the executor internally (like Rust's `Promise::wait`)
+
+No separate `nros_action_client_poll()` needed. No `zpico_get` in any path.
 
 ### C API (nros-c)
 
-Add non-blocking action client functions alongside the existing blocking ones:
-
 ```c
-// --- Non-blocking (new) ---
+// --- Core async API (executor-driven) ---
 
-// Send goal — non-blocking, goal_uuid filled on success
-// Goal acceptance arrives via goal_callback during nros_executor_spin_some()
+// Send goal — non-blocking, response via goal_response_callback during spin
 nros_ret_t nros_action_send_goal_async(
     nros_action_client_t *client,
     const uint8_t *goal_buf, size_t goal_len,
     nros_goal_uuid_t *goal_uuid);
 
-// Get result — non-blocking, result arrives via result_callback
+// Request result — non-blocking, result via result_callback during spin
 nros_ret_t nros_action_get_result_async(
     nros_action_client_t *client,
     const nros_goal_uuid_t *goal_uuid);
@@ -104,180 +126,158 @@ nros_ret_t nros_action_cancel_goal_async(
     nros_action_client_t *client,
     const nros_goal_uuid_t *goal_uuid);
 
-// Register callbacks (called during init or separately)
-nros_ret_t nros_action_client_set_goal_callback(
-    nros_action_client_t *client,
-    nros_action_goal_response_callback_t callback, void *context);
+// --- Blocking convenience (spins executor internally) ---
+// These NEVER call zpico_get — they loop spin_once + check reply.
 
-nros_ret_t nros_action_client_set_result_callback(
+nros_ret_t nros_action_send_goal(
     nros_action_client_t *client,
-    nros_action_result_callback_t callback, void *context);
+    nros_executor_t *executor,          // NEW: executor parameter
+    const uint8_t *goal_buf, size_t goal_len,
+    nros_goal_uuid_t *goal_uuid);
 
-// --- Blocking (existing, kept as convenience) ---
-nros_ret_t nros_action_send_goal(...);     // blocks until accepted/rejected
-nros_ret_t nros_action_get_result(...);    // blocks until result received
+nros_ret_t nros_action_get_result(
+    nros_action_client_t *client,
+    nros_executor_t *executor,          // NEW: executor parameter
+    const nros_goal_uuid_t *goal_uuid,
+    nros_goal_status_t *status,
+    uint8_t *result, size_t capacity, size_t *result_len);
 ```
 
-Callback signatures:
+The blocking wrappers take an `executor` parameter (like Rust's `Promise::wait` takes `&mut Executor`) and spin it internally:
 ```c
-typedef void (*nros_action_goal_response_callback_t)(
-    const nros_goal_uuid_t *goal_uuid,
-    bool accepted,
-    void *context);
-
-typedef void (*nros_action_result_callback_t)(
-    const nros_goal_uuid_t *goal_uuid,
-    nros_goal_status_t status,
-    const uint8_t *result, size_t result_len,
-    void *context);
+nros_ret_t nros_action_send_goal(..., executor, ...) {
+    nros_action_send_goal_async(client, goal, goal_len, goal_uuid);
+    for (int i = 0; i < timeout / 10; i++) {
+        nros_executor_spin_some(executor, 10ms);
+        if (accepted) return NROS_RET_OK;
+        if (rejected) return NROS_RET_ERROR;
+    }
+    return NROS_RET_TIMEOUT;
+}
 ```
 
 ### C++ API (nros-cpp)
-
-Add `SendGoalOptions` with callback pointers (freestanding C++14, no `std::function`):
 
 ```cpp
 template <typename A>
 class ActionClient {
 public:
     struct SendGoalOptions {
-        void (*goal_response)(bool accepted, const uint8_t goal_id[16], void *ctx) = nullptr;
-        void (*feedback)(const uint8_t goal_id[16],
-                         const typename A::Feedback&, void *ctx) = nullptr;
-        void (*result)(const uint8_t goal_id[16], GoalStatus status,
-                       const typename A::Result&, void *ctx) = nullptr;
-        void *context = nullptr;
+        void (*goal_response)(bool accepted, const uint8_t goal_id[16], void *ctx);
+        void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void *ctx);
+        void (*result)(const uint8_t goal_id[16], int status, const uint8_t* data, size_t len, void *ctx);
+        void *context;
     };
 
-    // Non-blocking — callbacks invoked during spin_once()
-    Result send_goal(const typename A::Goal& goal, uint8_t goal_id[16],
-                     const SendGoalOptions& options = {});
+    // Async — callbacks invoked during spin_once()
+    Result send_goal_async(const GoalType& goal, uint8_t goal_id[16]);
+    Result get_result_async(const uint8_t goal_id[16]);
+    void set_callbacks(const SendGoalOptions& options);
 
-    // Existing polling API remains:
-    bool try_recv_feedback(typename A::Feedback& feedback);
-    Result get_result(const uint8_t goal_id[16], typename A::Result& result);  // blocking
+    // Blocking convenience (spins executor internally, like Rust Promise::wait)
+    Result send_goal(const GoalType& goal, uint8_t goal_id[16]);
+    Result get_result(const uint8_t goal_id[16], ResultType& result);
 };
 ```
 
 ### Executor Integration
 
-The executor's `spin_once` already processes action server requests via `action_server_raw_try_process`. For the client side, add:
+The executor's `spin_once` dispatches `action_client_raw_try_process` for each registered action client — same as subscriptions and action servers. The `ActionClientCore` lives in the arena. No user-side polling needed.
 
-1. **Action client entry in executor**: Register the action client's pending `zpico_get_start` handles with the executor
-2. **Poll during spin**: `action_client_try_process` checks `zpico_get_check` for each pending request
-3. **Invoke callbacks**: When a reply arrives, deserialize and invoke the registered callback
+### Waker Integration
 
-This follows the same pattern as the existing subscription and service callbacks — the executor drives all I/O.
+On POSIX/Zephyr, `zpico_spin_once` blocks on `g_spin_cv` condvar — it wakes when `_zpico_notify_spin()` fires (triggered by `pending_get_reply_handler`). On FreeRTOS+lwIP, `zpico_spin_once` uses `vTaskDelay`. Both are efficient — not busy-polling.
 
-### Internal Changes
-
-#### ActionClientCore (nros-node)
-
-Already has the non-blocking primitives:
-- `send_goal_raw()` → uses `send_request_raw` (zpico_get_start)
-- `try_recv_send_goal_reply()` → uses `try_recv_reply_raw` (zpico_get_check)
-- `send_get_result_request()` → uses `send_request_raw`
-- `try_recv_get_result_reply()` → uses `try_recv_reply_raw`
-
-Add executor arena entry for action client that polls these during `spin_once`.
-
-#### zpico_get Blocking Path
-
-Keep `zpico_get` for backward compatibility (used by blocking service calls and the Rust `#[cfg(not(feature = "ffi-sync"))]` path). The blocking path continues to work on POSIX and platforms where the lease task runs reliably.
-
-The action client async path bypasses `zpico_get` entirely — it uses `zpico_get_start`/`zpico_get_check` which never block.
+The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Future`. For C/C++, the executor-level `g_spin_cv` / `vTaskDelay` provides equivalent efficiency — `spin_once` blocks until data arrives, then dispatches.
 
 ## Work Items
 
-- [x] 77.1 — Add `ActionClientCore` executor entry (nros-node)
-- [x] 77.2 — Add C async action client API (nros-c)
-- [x] 77.3 — Add C++ async action client API (nros-cpp)
-- [x] 77.4 — Update C action examples to use async API
-- [x] 77.5 — Update C++ action examples to use async API
-- [ ] 77.6 — Re-enable `test_freertos_cpp_action_e2e` (blocked on FreeRTOS QEMU session mutex scheduling)
-- [ ] 77.7 — Update documentation
+### Done (initial async infrastructure)
 
-### 77.1 — Add ActionClientCore executor entry (nros-node)
+- [x] 77.1 — Executor action client arena entry (nros-node): `EntryKind::ActionClient`, `ActionClientRawArenaEntry`, `action_client_raw_try_process`, callback types, `add_action_client_raw` / `add_action_client_core`, `action_client_core_mut`
+- [x] 77.2 — C async action client FFI (nros-c): `nros_action_send_goal_async`, `nros_action_get_result_async`, `nros_action_client_poll`, `nros_executor_add_action_client`, trampolines
+- [x] 77.3 — C++ async action client FFI (nros-cpp): `nros_cpp_action_client_send_goal_async`, `nros_cpp_action_client_get_result_async`, `nros_cpp_action_client_poll`, `set_callbacks`, `SendGoalOptions`
+- [x] 77.4 — C FreeRTOS action client example uses async API
+- [x] 77.5 — C++ FreeRTOS action client example uses async API
 
-Add `action_client_try_process` function that:
-1. Polls `try_recv_send_goal_reply()` — if reply arrived, invoke goal response callback
-2. Polls `try_recv_get_result_reply()` — if reply arrived, invoke result callback
-3. Polls `try_recv_feedback_raw()` — if feedback arrived, invoke feedback callback
+### Remaining (unified design — single arena-owned core)
 
-Register this as a new `EntryKind::ActionClient` in the executor arena with `has_data: always_ready` and `InvocationMode::Always`.
-
-**Files**:
-- `packages/core/nros-node/src/executor/arena.rs` — add `action_client_try_process`
-- `packages/core/nros-node/src/executor/action.rs` — add `add_action_client_raw`
-- `packages/core/nros-node/src/executor/types.rs` — add `EntryKind::ActionClient`
-
-### 77.2 — Add C async action client API (nros-c)
-
-Implement `nros_action_send_goal_async`, `nros_action_get_result_async`, `nros_action_cancel_goal_async` in nros-c. These use the non-blocking `ActionClientCore` methods and register callbacks that are invoked during `nros_executor_spin_some`.
-
-Add `nros_executor_add_action_client` to register the action client with the executor (similar to `nros_executor_add_action_server`).
-
-**Files**:
-- `packages/core/nros-c/src/action/client.rs` — async FFI functions
-- `packages/core/nros-c/src/executor.rs` — `nros_executor_add_action_client`
-- `packages/core/nros-c/include/nano_ros/action.h` — C header declarations
-
-### 77.3 — Add C++ async action client API (nros-cpp)
-
-Implement `SendGoalOptions` and update `ActionClient::send_goal` to use the non-blocking path. Callbacks are stored in the `CppActionClient` internal struct and invoked during `spin_once`.
-
-**Files**:
-- `packages/core/nros-cpp/src/action.rs` — async FFI functions
-- `packages/core/nros-cpp/include/nros/action_client.hpp` — SendGoalOptions, updated send_goal
-
-### 77.4 — Update C action examples to use async API
-
-Update `examples/qemu-arm-freertos/c/zenoh/action-client/` to use `nros_action_send_goal_async` + callbacks instead of `nros_action_send_goal` (blocking).
-
-**Files**:
-- `examples/qemu-arm-freertos/c/zenoh/action-client/src/main.c`
-- Other platform C action client examples
-
-### 77.5 — Update C++ action examples to use async API
-
-Update `examples/qemu-arm-freertos/cpp/zenoh/action-client/` to use `SendGoalOptions` with callbacks.
-
-**Files**:
-- `examples/qemu-arm-freertos/cpp/zenoh/action-client/src/main.cpp`
-- Other platform C++ action client examples
-
-### 77.6 — Re-enable test_freertos_cpp_action_e2e
-
-Remove the `#[ignore]` from `test_freertos_cpp_action_e2e` once the async path eliminates the blocking issue.
-
-Also investigate and fix the C++ action server's `create_action_server` hang (may be a separate zenoh-pico mutex issue when declaring 5 entities).
-
-**Files**:
-- `packages/testing/nros-tests/tests/freertos_qemu.rs`
-
-### 77.7 — Update documentation
-
-Update C API reference, C++ API guide, and example guides to document the async action client pattern.
-
-**Files**:
-- `docs/reference/c-api-cmake.md`
-- `docs/guides/cpp-api.md`
-- `book/src/reference/c-api.md`
+- [x] 77.6 — Unify C ActionClientCore ownership: single core in arena
+    - `nros_action_client_init` stores metadata only (no transport handles)
+    - `nros_executor_add_action_client` creates the ONLY `ActionClientCore` in the arena
+    - `nros_action_send_goal_async` routes through the arena entry's core
+    - Remove `nros_action_client_poll` — `spin_once` handles everything
+    - **Files**: `nros-c/src/action/client.rs`, `nros-c/src/executor.rs`
+- [x] 77.7 — Rewrite C blocking API to spin executor internally (C++ pending)
+    - `nros_action_send_goal(client, executor, ...)` → `send_goal_async` + `spin_once` loop
+    - `nros_action_get_result(client, executor, ...)` → `get_result_async` + `spin_once` loop
+    - Remove all `zpico_get` / `call_raw` / `send_goal_blocking` calls from C/C++ action client
+    - **Files**: `nros-c/src/action/client.rs`, `nros-cpp/src/action.rs`
+- [x] 77.8 — Unify C++ ActionClient to use arena core
+    - `nros_cpp_action_client_create` stores metadata only
+    - Executor registration creates `ActionClientCore` in arena
+    - `send_goal_async`/`get_result_async` route through arena
+    - Remove `CppActionClient.core` — only arena core exists
+    - Remove `nros_cpp_action_client_poll` — `spin_once` handles everything
+    - **Files**: `nros-cpp/src/action.rs`, `nros-cpp/include/nros/action_client.hpp`
+- [x] 77.9 — Fix C++ action server deferred init (same pattern)
+    - `nros_cpp_action_server_create` stores metadata only
+    - Transport handles created during executor registration
+    - Fixes the FreeRTOS QEMU deadlock (5 entity declarations)
+    - **Files**: `nros-cpp/src/action.rs`
+- [x] 77.10 — Update C header (`action.h`) with new API signatures
+    - Add `executor` parameter to `nros_action_send_goal` and `nros_action_get_result`
+    - Declare `nros_executor_add_action_client`
+    - Declare `nros_action_send_goal_async`, `nros_action_get_result_async`
+    - Declare `nros_action_client_set_goal_response_callback`
+    - Declare `nros_goal_response_callback_t` typedef
+    - Remove `nros_action_client_poll` declaration (if present)
+    - Update `nros_action_client_t` struct: replace `_internal` opaque size (now 16 bytes)
+    - **Files**: `nros-c/include/nros/action.h`, `nros-c/include/nros/executor.h`
+- [x] 77.11 — Update C action client examples for new API
+    - FreeRTOS example uses `nros_executor_add_action_client` + blocking `nros_action_send_goal(client, executor, ...)`
+    - NuttX, ThreadX, Zephyr C action client examples: same pattern
+    - Native POSIX C action client example: same pattern
+    - **Files**: `examples/*/c/zenoh/action-client/src/main.c`
+- [x] 77.12 — Update C++ action client/server examples for new API
+    - FreeRTOS C++ action client: remove `client.poll()`, callbacks fire via `spin_once`
+    - FreeRTOS C++ action server: verify deferred init works
+    - Other platform C++ examples: same pattern
+    - **Files**: `examples/*/cpp/zenoh/action-client/src/main.cpp`, `examples/*/cpp/zenoh/action-server/src/main.cpp`
+- [x] 77.13 — Fix action client/server bugs and re-enable tests
+    - **Root cause 1**: Arena trampoline callbacks only registered when C callbacks were non-None at `nros_executor_add_action_client` time. Blocking wrappers install temporary callbacks AFTER registration, so the arena consumed replies without invoking the trampoline → flag never set → timeout.
+    - **Fix**: Always register trampolines in the arena (they check the C struct's callback at runtime).
+    - **Root cause 2**: Native and NuttX C action server examples missing `nros_executor_add_action_server()` call (deferred init pattern). Server transport handles never created → goals never received.
+    - **Fix**: Add `nros_executor_add_action_server()` to native and NuttX examples.
+    - **Root cause 3**: Native C action client example had no warm-up spin before sending goal → zenoh discovery not completed.
+    - **Fix**: Add 3s warm-up spin loop.
+    - Native POSIX C + C++ action tests pass with strict assertions.
+    - FreeRTOS QEMU tests: `#[ignore]` pending SDK availability for verification.
+    - **Files**: `nros-c/src/executor.rs`, `examples/native/c/zenoh/action-{server,client}/src/main.c`, `examples/qemu-arm-nuttx/c/zenoh/action-server/src/main.c`, `nros-tests/tests/c_api.rs`
+- [ ] 77.14 — Update documentation
+    - C API reference: document new `executor` parameter on blocking functions
+    - C++ API guide: document `SendGoalOptions`, `set_callbacks`, arena-based architecture
+    - **Files**: `docs/reference/c-api-cmake.md`, `docs/guides/cpp-api.md`, `book/src/reference/c-api.md`
+- [ ] 77.15 — Extend unified design to service client (`Client<S>`)
+    - Service client blocking `call()` currently uses `zpico_get` directly
+    - Refactor to `call_async` + executor spin (same pattern as action client)
+    - This eliminates the last `zpico_get` usage in C/C++ client paths
 
 ## Acceptance Criteria
 
-- [ ] C action client examples use non-blocking `send_goal_async` + callbacks
-- [ ] C++ action client examples use `SendGoalOptions` with callbacks
-- [ ] No `zpico_get` (blocking condvar) in the action client path
-- [ ] `test_freertos_c_action_e2e` passes reliably (no flakiness)
-- [ ] `test_freertos_cpp_action_e2e` passes (currently `#[ignore]`)
-- [ ] Blocking variants (`nros_action_send_goal`, `client.get_result`) remain for convenience
+- [ ] Single `ActionClientCore` per action client, owned by the executor arena
+- [ ] No `zpico_get` (blocking condvar) in any C/C++ action client path
+- [ ] Blocking APIs spin the executor internally (like Rust `Promise::wait`)
+- [ ] No user-side `poll()` calls needed — `spin_once` dispatches everything
+- [ ] C header declarations match Rust FFI signatures
+- [ ] `test_freertos_c_action_e2e` passes reliably
+- [ ] `test_freertos_cpp_action_e2e` passes
 - [ ] `just quality` passes
 - [ ] Existing Rust action API unchanged
 
 ## Notes
 
-- The Rust API already uses the non-blocking pattern (Promise-based). This phase brings C/C++ to parity.
-- The blocking `zpico_get` is still used by service client `call_raw` — those calls are shorter-lived and less prone to the FreeRTOS scheduling issue. A future phase could migrate services to the async pattern too.
-- The `zpico_get_start`/`zpico_get_check` pair is already implemented and tested — this phase wires it into the action client FFI and executor.
-- The C++ action server hang (`create_action_server` declaring 5 entities) may be a separate zenoh-pico issue. If it persists after the client-side fix, it should be tracked independently.
+- The Rust API already follows this pattern: `Promise::wait` spins the executor, `Promise::try_recv` is non-blocking poll, `Promise` implements `Future` with `AtomicWaker`.
+- The blocking `zpico_get` should eventually be removed from ALL C/C++ client paths (service + action). 77.15 tracks extending the pattern to service clients.
+- On POSIX/Zephyr, `spin_once` blocks efficiently on `g_spin_cv` condvar — woken by `_zpico_notify_spin`. On FreeRTOS+lwIP, `spin_once` uses `vTaskDelay`. Neither is busy-polling.
+- The C++ action server deferred init (77.9) splits `nros_cpp_action_server_create` (metadata) from `nros_cpp_action_server_register` (transport handles). `Node::create_action_server` calls both sequentially.
