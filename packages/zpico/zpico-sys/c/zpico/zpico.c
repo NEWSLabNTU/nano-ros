@@ -703,6 +703,7 @@ int32_t zpico_declare_publisher(const char *keyexpr) {
     }
     printk("zpico: declare_pub: using slot %d\n", idx);
 
+
     z_view_keyexpr_t ke;
     int ke_ret = z_view_keyexpr_from_str(&ke, keyexpr);
     if (ke_ret < 0) {
