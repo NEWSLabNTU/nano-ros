@@ -866,18 +866,21 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
         let opaque_ptr = executor._opaque.as_mut_ptr() as *mut core::ffi::c_void;
         let rust_exec = get_executor_from_ptr(opaque_ptr);
 
-        // Convert C callbacks to Rust trampoline types.
-        let goal_response_cb: Option<nros_node::executor::RawGoalResponseCallback> = client_ref
-            .goal_response_callback
-            .map(|_cb| goal_response_trampoline as nros_node::executor::RawGoalResponseCallback);
+        // Always register trampolines — they check the C struct's callback
+        // pointer at invocation time, so they handle None gracefully. This is
+        // critical: the blocking wrappers (nros_action_send_goal, etc.) install
+        // temporary callbacks on the C struct AFTER registration. If we only
+        // register trampolines when callbacks are non-None at registration time,
+        // the arena will consume replies without invoking the trampoline,
+        // causing the blocking wrapper's flag to never be set (→ timeout).
+        let goal_response_cb: Option<nros_node::executor::RawGoalResponseCallback> =
+            Some(goal_response_trampoline as nros_node::executor::RawGoalResponseCallback);
 
-        let feedback_cb: Option<nros_node::executor::RawFeedbackCallback> = client_ref
-            .feedback_callback
-            .map(|_cb| feedback_trampoline as nros_node::executor::RawFeedbackCallback);
+        let feedback_cb: Option<nros_node::executor::RawFeedbackCallback> =
+            Some(feedback_trampoline as nros_node::executor::RawFeedbackCallback);
 
-        let result_cb: Option<nros_node::executor::RawResultCallback> = client_ref
-            .result_callback
-            .map(|_cb| result_trampoline as nros_node::executor::RawResultCallback);
+        let result_cb: Option<nros_node::executor::RawResultCallback> =
+            Some(result_trampoline as nros_node::executor::RawResultCallback);
 
         let client_ctx = client as *mut core::ffi::c_void;
 
@@ -904,7 +907,7 @@ pub unsafe extern "C" fn nros_executor_add_action_client(
 
         match result {
             Ok(handle) => {
-                let client_mut = &mut *(client as *mut nros_action_client_t);
+                let client_mut = &mut *client;
                 let int_ref = &mut *(client_mut._internal.as_mut_ptr()
                     as *mut crate::action::ActionClientInternal);
                 int_ref.arena_entry_index = handle.entry_index() as i32;

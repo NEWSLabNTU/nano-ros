@@ -562,6 +562,20 @@ nros_cpp_ret_t nros_cpp_action_server_create(const struct nros_cpp_node_t *node,
                                              void *storage);
 
 /**
+ * Register an action server with the executor (creates transport handles).
+ *
+ * Must be called after `nros_cpp_action_server_create`. Creates the
+ * 3 queryables + 2 publishers in the executor context. Separated from
+ * create to avoid deadlocks on FreeRTOS QEMU where declaring 5 entities
+ * eagerly blocks the session mutex.
+ *
+ * # Safety
+ * `storage` must point to a valid `CppActionServer` from create.
+ * `executor_handle` must point to a valid `CppContext`.
+ */
+nros_cpp_ret_t nros_cpp_action_server_register(void *storage, void *executor_handle);
+
+/**
  * Try to receive a pending goal request (non-blocking).
  *
  * Goals are auto-accepted during `spin_once()`. This function returns

@@ -6,7 +6,7 @@
 #define NROS_EXECUTOR_STORAGE_SIZE 17728
 
 /** Inline opaque storage size (bytes) for nros_action_client_t._internal. */
-#define NROS_ACTION_CLIENT_STORAGE_SIZE 4384
+#define NROS_ACTION_CLIENT_STORAGE_SIZE 16
 
 /** Inline opaque storage size (bytes) for nros_action_server_t._internal. */
 #define NROS_ACTION_SERVER_STORAGE_SIZE 256

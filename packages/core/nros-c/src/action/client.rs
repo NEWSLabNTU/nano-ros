@@ -15,22 +15,31 @@ use crate::node::{nros_node_state_t, nros_node_t};
 
 /// Internal state for the action client.
 ///
-/// Holds the `ActionClientCore` created during `nros_action_client_init()`.
-/// The core contains 3 service clients (send_goal, cancel_goal, get_result)
-/// and 1 feedback subscriber.
+/// Lightweight — stores only the arena entry index and executor pointer.
+/// The `ActionClientCore` (transport handles) lives in the executor's arena,
+/// created by `nros_executor_add_action_client`.
 pub(crate) struct ActionClientInternal {
-    /// Core for action operations. Moved to executor arena after
-    /// `nros_executor_add_action_client`.
-    pub(crate) core: nros_node::ActionClientCore<
-        { crate::executor::MESSAGE_BUFFER_SIZE },
-        { crate::executor::MESSAGE_BUFFER_SIZE },
-        { crate::executor::MESSAGE_BUFFER_SIZE },
-    >,
-    /// Arena entry index for the async path (set by nros_executor_add_action_client).
+    /// Arena entry index (set by nros_executor_add_action_client).
     /// -1 means not registered with executor.
     pub(crate) arena_entry_index: i32,
-    /// Pointer to the executor (set by nros_executor_add_action_client).
+    /// Pointer to the Rust executor (set by nros_executor_add_action_client).
     pub(crate) executor_ptr: *mut core::ffi::c_void,
+}
+
+impl ActionClientInternal {
+    /// Get a mutable reference to the ActionClientCore in the executor arena.
+    ///
+    /// Returns `None` if not yet registered with the executor.
+    ///
+    /// # Safety
+    /// `executor_ptr` must point to a valid `CExecutor`.
+    unsafe fn arena_core_mut(&mut self) -> Option<&mut nros_node::ActionClientCore> {
+        if self.arena_entry_index < 0 || self.executor_ptr.is_null() {
+            return None;
+        }
+        let exec = &mut *(self.executor_ptr as *mut crate::executor::CExecutor);
+        unsafe { exec.action_client_core_mut(self.arena_entry_index as usize) }
+    }
 }
 
 // ============================================================================
@@ -183,97 +192,17 @@ pub unsafe extern "C" fn nros_action_client_init(
     // Store node pointer
     client.node = node;
 
-    // Create the ActionClientCore with 3 service clients + 1 feedback subscriber.
-    // This follows the service client init pattern (service.rs:590-634).
-    {
-        use nros_rmw::{ActionInfo, QosSettings, ServiceInfo, Session, TopicInfo};
-
-        // Get mutable support reference to access the session
-        let support_mut = match node_ref.get_support_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        if support_mut.state != crate::support::nros_support_state_t::NROS_SUPPORT_STATE_INITIALIZED
-        {
-            return NROS_RET_NOT_INIT;
-        }
-
-        let domain_id = support_mut.domain_id as u32;
-
-        let session = match support_mut.get_session_mut() {
-            Some(s) => s,
-            None => return NROS_RET_NOT_INIT,
-        };
-
-        let action_name_str =
-            core::str::from_utf8_unchecked(&client.action_name[..client.action_name_len]);
-        let type_str = core::str::from_utf8_unchecked(&client.type_name[..client.type_name_len]);
-        let type_hash_str =
-            core::str::from_utf8_unchecked(&client.type_hash[..client.type_hash_len]);
-
-        let action_info =
-            ActionInfo::new(action_name_str, type_str, type_hash_str).with_domain(domain_id);
-
-        // Create send_goal service client
-        let send_goal_keyexpr: nros_core::heapless::String<256> = action_info.send_goal_key();
-        let send_goal_info =
-            ServiceInfo::new(&send_goal_keyexpr, type_str, type_hash_str).with_domain(0);
-        let send_goal_client = match session.create_service_client(&send_goal_info) {
-            Ok(c) => c,
-            Err(_) => return NROS_RET_ERROR,
-        };
-
-        // Create cancel_goal service client
-        let cancel_goal_keyexpr: nros_core::heapless::String<256> = action_info.cancel_goal_key();
-        let cancel_goal_info = ServiceInfo::new(
-            &cancel_goal_keyexpr,
-            "action_msgs::srv::dds_::CancelGoal_",
-            type_hash_str,
-        )
-        .with_domain(0);
-        let cancel_goal_client = match session.create_service_client(&cancel_goal_info) {
-            Ok(c) => c,
-            Err(_) => return NROS_RET_ERROR,
-        };
-
-        // Create get_result service client
-        let get_result_keyexpr: nros_core::heapless::String<256> = action_info.get_result_key();
-        let get_result_info =
-            ServiceInfo::new(&get_result_keyexpr, type_str, type_hash_str).with_domain(0);
-        let get_result_client = match session.create_service_client(&get_result_info) {
-            Ok(c) => c,
-            Err(_) => return NROS_RET_ERROR,
-        };
-
-        // Create feedback subscriber (best-effort QoS)
-        let feedback_keyexpr: nros_core::heapless::String<256> = action_info.feedback_key();
-        let feedback_topic =
-            TopicInfo::new(&feedback_keyexpr, type_str, type_hash_str).with_domain(0);
-        let feedback_subscriber =
-            match session.create_subscriber(&feedback_topic, QosSettings::BEST_EFFORT) {
-                Ok(s) => s,
-                Err(_) => return NROS_RET_ERROR,
-            };
-
-        // Construct ActionClientCore
-        let core = nros_node::ActionClientCore::new(
-            send_goal_client,
-            cancel_goal_client,
-            get_result_client,
-            feedback_subscriber,
-        );
-
-        let internal = ActionClientInternal {
-            core,
-            arena_entry_index: -1,
-            executor_ptr: core::ptr::null_mut(),
-        };
-        core::ptr::write(
-            client._internal.as_mut_ptr() as *mut ActionClientInternal,
-            internal,
-        );
-    }
+    // Metadata only — no transport handles created here.
+    // Transport handles are created in nros_executor_add_action_client,
+    // which places the ActionClientCore in the executor's arena.
+    let internal = ActionClientInternal {
+        arena_entry_index: -1,
+        executor_ptr: core::ptr::null_mut(),
+    };
+    core::ptr::write(
+        client._internal.as_mut_ptr() as *mut ActionClientInternal,
+        internal,
+    );
 
     client.state = nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED;
 
@@ -314,44 +243,66 @@ pub unsafe extern "C" fn nros_action_client_set_result_callback(
 
 /// Send a goal request.
 #[unsafe(no_mangle)]
+/// Send a goal (blocking convenience).
+///
+/// Calls `nros_action_send_goal_async` then spins the executor until the
+/// goal is accepted/rejected or timeout. Never calls `zpico_get` directly —
+/// all I/O is driven by the executor's `spin_once`.
+///
+/// Like Rust's `Promise::wait`, this is syntactic sugar over async + spin.
+#[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_action_send_goal(
     client: *mut nros_action_client_t,
+    executor: *mut crate::executor::nros_executor_t,
     goal: *const u8,
     goal_len: usize,
     goal_uuid: *mut nros_goal_uuid_t,
 ) -> nros_ret_t {
-    validate_not_null!(client, goal, goal_uuid);
+    validate_not_null!(client, goal, goal_uuid, executor);
 
-    let client = &mut *client;
-
-    validate_state!(
-        client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
-    );
-
-    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
-    let goal_data = core::slice::from_raw_parts(goal, goal_len);
-
-    // C serialize produces [CDR_HEADER(4)][fields], but send_goal_blocking
-    // expects raw fields only (it adds its own CDR header + GoalId).
-    // Skip the 4-byte CDR header from the C-serialized data.
-    let goal_fields = if goal_data.len() > 4 {
-        &goal_data[4..]
-    } else {
-        goal_data
-    };
-
-    match internal.core.send_goal_blocking(goal_fields) {
-        Ok((goal_id, accepted)) => {
-            if !accepted {
-                return NROS_RET_ERROR;
-            }
-            let uuid = &mut *goal_uuid;
-            uuid.uuid = goal_id.uuid;
-            NROS_RET_OK
-        }
-        Err(_) => NROS_RET_ERROR,
+    // Send async
+    let ret = nros_action_send_goal_async(client, goal, goal_len, goal_uuid);
+    if ret != NROS_RET_OK {
+        return ret;
     }
+
+    // Install a temporary goal_response callback that sets a flag.
+    // The arena's action_client_raw_try_process fires the trampoline
+    // during spin_once, which reads client.goal_response_callback.
+    let client_ref = &mut *client;
+    static mut BLOCKING_ACCEPTED: i32 = -1; // -1=pending, 0=rejected, 1=accepted
+    BLOCKING_ACCEPTED = -1;
+
+    let orig_cb = client_ref.goal_response_callback;
+    let orig_ctx = client_ref.context;
+    unsafe extern "C" fn blocking_goal_cb(
+        _uuid: *const nros_goal_uuid_t,
+        accepted: bool,
+        _ctx: *mut core::ffi::c_void,
+    ) {
+        unsafe {
+            BLOCKING_ACCEPTED = if accepted { 1 } else { 0 };
+        }
+    }
+    client_ref.goal_response_callback = Some(blocking_goal_cb);
+
+    // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
+    for _ in 0..1000 {
+        crate::executor::nros_executor_spin_some(executor, 10_000_000);
+        let flag = BLOCKING_ACCEPTED;
+        if flag >= 0 {
+            client_ref.goal_response_callback = orig_cb;
+            client_ref.context = orig_ctx;
+            return if flag == 1 {
+                NROS_RET_OK
+            } else {
+                NROS_RET_ERROR
+            };
+        }
+    }
+    client_ref.goal_response_callback = orig_cb;
+    client_ref.context = orig_ctx;
+    NROS_RET_TIMEOUT
 }
 
 /// Request cancellation of a goal.
@@ -373,81 +324,101 @@ pub unsafe extern "C" fn nros_action_cancel_goal(
     let uuid = &*goal_uuid;
     let goal_id = nros_core::GoalId { uuid: uuid.uuid };
 
-    match internal.core.send_cancel_request(&goal_id) {
+    let core = match unsafe { internal.arena_core_mut() } {
+        Some(c) => c,
+        None => return NROS_RET_NOT_INIT,
+    };
+    match core.send_cancel_request(&goal_id) {
         Ok(()) => NROS_RET_OK,
         Err(_) => NROS_RET_ERROR,
     }
 }
 
-/// Request result of a goal (blocking).
+/// Request result of a goal (blocking convenience).
+///
+/// Calls `nros_action_get_result_async` then spins the executor until the
+/// result arrives or timeout. Never calls `zpico_get` directly.
 #[unsafe(no_mangle)]
+#[allow(static_mut_refs)]
 pub unsafe extern "C" fn nros_action_get_result(
     client: *mut nros_action_client_t,
+    executor: *mut crate::executor::nros_executor_t,
     goal_uuid: *const nros_goal_uuid_t,
     status: *mut nros_goal_status_t,
     result: *mut u8,
     result_capacity: usize,
     result_len: *mut usize,
 ) -> nros_ret_t {
-    validate_not_null!(client, goal_uuid, status, result, result_len);
+    validate_not_null!(client, executor, goal_uuid, status, result, result_len);
 
-    let client = &mut *client;
-
-    validate_state!(
-        client,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
-    );
-
-    let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
-    let uuid = &*goal_uuid;
-    let goal_id = nros_core::GoalId { uuid: uuid.uuid };
-
-    let reply_len = match internal.core.get_result_blocking(&goal_id) {
-        Ok(len) => len,
-        Err(nros_node::NodeError::ServiceRequestFailed) => return NROS_RET_TIMEOUT,
-        Err(_) => return NROS_RET_ERROR,
-    };
-
-    // GetResult response CDR: header (4) + status (int8, 1 byte) + result fields
-    if reply_len < 5 {
-        return NROS_RET_ERROR;
+    // Send get_result request async
+    let ret = nros_action_get_result_async(client, goal_uuid);
+    if ret != NROS_RET_OK {
+        return ret;
     }
 
-    // Status is the first byte after CDR header
-    let buf = internal.core.result_buffer_ref();
-    let raw_status = buf[4];
-    *status = match raw_status {
-        1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
-        2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
-        3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
-        4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-        5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-        6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-        _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
-    };
+    // Install temporary result callback that captures the result into static buffers.
+    let client_ref = &mut *client;
+    static mut BLK_RESULT_LEN: i32 = -1;
+    static mut BLK_RESULT_STATUS: u8 = 0;
+    static mut BLK_RESULT_BUF: [u8; 1024] = [0u8; 1024];
+    BLK_RESULT_LEN = -1;
 
-    // Result fields start at offset 5 (after CDR header + status byte).
-    // The C deserializer expects [CDR_HEADER][fields], so we prepend
-    // a CDR header in the output buffer.
-    let result_offset = 5usize;
-    let result_fields_len = reply_len.saturating_sub(result_offset);
-    let output_len = 4 + result_fields_len; // CDR header + fields
-
-    if output_len > result_capacity {
-        return NROS_RET_ERROR;
+    let orig_cb = client_ref.result_callback;
+    let orig_ctx = client_ref.context;
+    unsafe extern "C" fn blk_result_cb(
+        _uuid: *const nros_goal_uuid_t,
+        st: nros_goal_status_t,
+        data: *const u8,
+        len: usize,
+        _ctx: *mut core::ffi::c_void,
+    ) {
+        unsafe {
+            BLK_RESULT_STATUS = st as u8;
+            let copy_len = len.min(1024);
+            core::ptr::copy_nonoverlapping(data, BLK_RESULT_BUF.as_mut_ptr(), copy_len);
+            BLK_RESULT_LEN = copy_len as i32;
+        }
     }
+    client_ref.result_callback = Some(blk_result_cb);
 
-    let out = core::slice::from_raw_parts_mut(result, result_capacity);
-    // Write CDR header (little-endian)
-    out[0] = 0x00;
-    out[1] = 0x01;
-    out[2] = 0x00;
-    out[3] = 0x00;
-    out[4..4 + result_fields_len]
-        .copy_from_slice(&buf[result_offset..result_offset + result_fields_len]);
-    *result_len = output_len;
+    // Spin executor until flag set or timeout (~10s = 1000 × 10ms)
+    for _ in 0..1000 {
+        crate::executor::nros_executor_spin_some(executor, 10_000_000);
+        let rlen = BLK_RESULT_LEN;
+        if rlen >= 0 {
+            client_ref.result_callback = orig_cb;
+            client_ref.context = orig_ctx;
+            let data_len = rlen as usize;
 
-    NROS_RET_OK
+            *status = match BLK_RESULT_STATUS {
+                1 => nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED,
+                2 => nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING,
+                3 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELING,
+                4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+                5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+                6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+                _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+            };
+
+            // Prepend CDR header for C deserializer
+            let output_len = 4 + data_len;
+            if output_len > result_capacity {
+                return NROS_RET_ERROR;
+            }
+            let out = core::slice::from_raw_parts_mut(result, result_capacity);
+            out[0] = 0x00;
+            out[1] = 0x01;
+            out[2] = 0x00;
+            out[3] = 0x00;
+            out[4..4 + data_len].copy_from_slice(&BLK_RESULT_BUF[..data_len]);
+            *result_len = output_len;
+            return NROS_RET_OK;
+        }
+    }
+    client_ref.result_callback = orig_cb;
+    client_ref.context = orig_ctx;
+    NROS_RET_TIMEOUT
 }
 
 /// Try to receive feedback for an active goal (non-blocking).
@@ -470,7 +441,12 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
 
     let internal = &mut *(client._internal.as_mut_ptr() as *mut ActionClientInternal);
 
-    match internal.core.try_recv_feedback_raw() {
+    let core = match unsafe { internal.arena_core_mut() } {
+        Some(c) => c,
+        None => return NROS_RET_NOT_INIT,
+    };
+
+    match core.try_recv_feedback_raw() {
         Ok(Some((goal_id, len))) => {
             if let Some(cb) = client.feedback_callback {
                 let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
@@ -491,7 +467,7 @@ pub unsafe extern "C" fn nros_action_try_recv_feedback(
                     fb_buf[3] = 0x00;
                     let copy_len = fb_fields_len.min(fb_buf.len() - 4);
                     fb_buf[4..4 + copy_len].copy_from_slice(
-                        &internal.core.feedback_buffer_ref()[fb_offset..fb_offset + copy_len],
+                        &core.feedback_buffer_ref()[fb_offset..fb_offset + copy_len],
                     );
                     cb(&uuid, fb_buf.as_ptr(), 4 + copy_len, client.context);
                 } else {
@@ -548,8 +524,13 @@ pub unsafe extern "C" fn nros_action_send_goal_async(
         goal_data
     };
 
+    let core = match unsafe { internal.arena_core_mut() } {
+        Some(c) => c,
+        None => return NROS_RET_NOT_INIT,
+    };
+
     // Non-blocking: uses zpico_get_start internally (not zpico_get).
-    match internal.core.send_goal_raw(goal_fields) {
+    match core.send_goal_raw(goal_fields) {
         Ok(goal_id) => {
             let uuid = &mut *goal_uuid;
             uuid.uuid = goal_id.uuid;
@@ -586,8 +567,13 @@ pub unsafe extern "C" fn nros_action_get_result_async(
     let uuid = &*goal_uuid;
     let goal_id = nros_core::GoalId { uuid: uuid.uuid };
 
+    let core = match unsafe { internal.arena_core_mut() } {
+        Some(c) => c,
+        None => return NROS_RET_NOT_INIT,
+    };
+
     // Non-blocking: uses zpico_get_start internally.
-    match internal.core.send_get_result_request(&goal_id) {
+    match core.send_get_result_request(&goal_id) {
         Ok(()) => NROS_RET_OK,
         Err(_) => NROS_RET_ERROR,
     }
@@ -613,87 +599,6 @@ pub unsafe extern "C" fn nros_action_client_set_goal_response_callback(
     if !context.is_null() {
         client.context = context;
     }
-    NROS_RET_OK
-}
-
-/// Poll the action client for pending async replies (non-blocking).
-///
-/// Checks for goal acceptance, feedback, and result. Invokes the
-/// registered callbacks. Call this in the spin loop after
-/// `nros_executor_spin_some`.
-///
-/// # Safety
-/// `client` must be a valid pointer.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn nros_action_client_poll(
-    client: *mut nros_action_client_t,
-) -> nros_ret_t {
-    validate_not_null!(client);
-
-    let client_ref = &mut *client;
-
-    validate_state!(
-        client_ref,
-        nros_action_client_state_t::NROS_ACTION_CLIENT_STATE_INITIALIZED
-    );
-
-    let internal = &mut *(client_ref._internal.as_mut_ptr() as *mut ActionClientInternal);
-    let ctx = client_ref.context;
-
-    // Poll goal acceptance reply
-    if let Ok(Some(total_len)) = internal.core.try_recv_send_goal_reply() {
-        if let Some(cb) = client_ref.goal_response_callback {
-            let buf = internal.core.result_buffer_ref();
-            let accepted = total_len >= 5 && buf[4] != 0;
-            let uuid = nros_goal_uuid_t {
-                uuid: {
-                    let mut u = [0u8; 16];
-                    u[..8].copy_from_slice(&internal.core.goal_counter().to_le_bytes());
-                    u
-                },
-            };
-            cb(&uuid, accepted, ctx);
-        }
-    }
-
-    // Poll feedback
-    if let Ok(Some((goal_id, total_len))) = internal.core.try_recv_feedback_raw() {
-        if let Some(cb) = client_ref.feedback_callback {
-            let buf = internal.core.feedback_buffer_ref();
-            let offset = 4 + 16; // CDR header + GoalId
-            if total_len > offset {
-                let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
-                cb(&uuid, buf[offset..total_len].as_ptr(), total_len - offset, ctx);
-            }
-        }
-    }
-
-    // Poll result reply
-    if let Ok(Some(total_len)) = internal.core.try_recv_get_result_reply() {
-        if let Some(cb) = client_ref.result_callback {
-            let buf = internal.core.result_buffer_ref();
-            if total_len >= 5 {
-                let status_byte = buf[4];
-                let c_status = match status_byte {
-                    4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-                    5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-                    6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-                    _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
-                };
-                let result_offset = 5;
-                let uuid = nros_goal_uuid_t {
-                    uuid: {
-                        let mut u = [0u8; 16];
-                        u[..8].copy_from_slice(&internal.core.goal_counter().to_le_bytes());
-                        u
-                    },
-                };
-                cb(&uuid, c_status, buf[result_offset..total_len].as_ptr(),
-                   total_len - result_offset, ctx);
-            }
-        }
-    }
-
     NROS_RET_OK
 }
 

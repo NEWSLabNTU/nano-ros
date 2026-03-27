@@ -56,14 +56,9 @@ fn generate_config(out_dir: &str, manifest_dir: &Path) {
     // for every supported target architecture.
     // Validated at compile time by assertions in opaque_sizes.rs.
     //
-    // service_client_upper: matches NROS_SERVICE_CLIENT_OPAQUE_U64S * 8 (hardcoded in types.h).
-    // subscriber_upper: ZenohSubscriber is ~16-24 bytes across all architectures.
-    // overhead: ActionClientInternal wrapper + struct padding.
-    let service_client_upper = 384usize; // = 48 u64s, matches types.h hardcoded constant
-    let subscriber_upper = 128usize; // ZenohSubscriber: ~24 bytes on ARM64 + generous margin
-    let overhead = 32usize; // ActionClientInternal wrapper overhead + padding
-    let action_client_bytes =
-        3 * service_client_upper + subscriber_upper + 3 * message_buffer_size + overhead;
+    // ActionClientInternal now stores only arena_entry_index (i32) + executor_ptr (*mut c_void).
+    // The ActionClientCore lives in the executor's arena.
+    let action_client_bytes = 16usize; // i32 + pointer + padding
     let action_client_opaque_u64s = action_client_bytes.div_ceil(8);
     let action_client_storage_bytes = action_client_opaque_u64s * 8;
 

@@ -867,8 +867,7 @@ impl Executor {
 
         unsafe {
             let arena_ptr = self.arena.as_mut_ptr() as *mut u8;
-            let entry_ptr =
-                arena_ptr.add(offset) as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>;
+            let entry_ptr = arena_ptr.add(offset) as *mut Entry<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF>;
             core::ptr::write(
                 entry_ptr,
                 Entry {
