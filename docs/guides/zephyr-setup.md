@@ -116,6 +116,41 @@ west build -b native_sim/native/64 nros/examples/zephyr/rust/zenoh/talker
 ./build/zephyr/zephyr.exe
 ```
 
+## Running Multiple Instances (Talker + Listener)
+
+Zephyr native_sim uses a deterministic entropy source. Without unique seeds,
+multiple instances generate the **same Zenoh session ID**, causing the router
+to reject the second session (`Close(MAX_LINKS)`).
+
+**Using just recipes** (recommended — each invocation gets a random seed via `$RANDOM`):
+
+```bash
+# Terminal 1
+just zephyr zenohd
+
+# Terminal 2
+just zephyr listener
+
+# Terminal 3
+just zephyr talker
+```
+
+**Manual launch** — pass `--seed=<unique>` to each instance:
+
+```bash
+# Terminal 1
+build/zenohd/zenohd --listen tcp/0.0.0.0:7456 --no-multicast-scouting
+
+# Terminal 2
+zephyr-workspace/build-listener/zephyr/zephyr.exe --seed=2000
+
+# Terminal 3
+zephyr-workspace/build-talker/zephyr/zephyr.exe --seed=1000
+```
+
+Without `--seed`, both instances produce the same ZID and the router closes
+the second connection. See [docs/research/zephyr-native-sim-timing.md](../research/zephyr-native-sim-timing.md) for the full investigation.
+
 ## RMW Backend Selection
 
 nros supports two RMW backends on Zephyr, selected via `prj.conf`:
@@ -262,6 +297,8 @@ just build-zephyr-all       # Build everything
 | `Permission denied on zeth` | TAP interface owned by different user, re-run setup script |
 | `XRCE Agent not found` | Install: `just setup` (installs MicroXRCEAgent) |
 | Zenoh mutex exhaustion | Increase `CONFIG_MAX_PTHREAD_MUTEX_COUNT` (default 5 is too low) |
+| `z_declare_publisher failed: -128` with two instances | Duplicate ZID — pass unique `--seed` to each native_sim instance |
+| `ioctl(TUNSETIFF): Device or resource busy` | Stale TAP device — kill all `zephyr.exe` processes, then re-run `setup-network.sh` |
 
 ## Network Architecture
 

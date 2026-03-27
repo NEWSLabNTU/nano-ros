@@ -163,6 +163,12 @@ help:
 
 # =============================================================================
 # Run examples (build + launch native_sim binary)
+#
+# Each recipe passes --seed=$RANDOM so that multiple native_sim instances
+# get different Zenoh session IDs. Without unique seeds, deterministic
+# entropy produces identical ZIDs and the router rejects the second
+# session with Close(MAX_LINKS). On real SoCs this isn't needed — the
+# hardware RNG provides unique entropy.
 # =============================================================================
 
 # Run Zephyr talker
@@ -173,7 +179,7 @@ talker:
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     cd "$WORKSPACE"
     west build -b native_sim/native/64 -d build-talker -p auto "$NROS/examples/zephyr/rust/zenoh/talker"
-    ./build-talker/zephyr/zephyr.exe
+    ./build-talker/zephyr/zephyr.exe --seed=$RANDOM
 
 # Run Zephyr listener
 listener:
@@ -183,7 +189,7 @@ listener:
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     cd "$WORKSPACE"
     west build -b native_sim/native/64 -d build-listener -p auto "$NROS/examples/zephyr/rust/zenoh/listener"
-    ./build-listener/zephyr/zephyr.exe
+    ./build-listener/zephyr/zephyr.exe --seed=$RANDOM
 
 # Run Zephyr service server
 service-server:
@@ -193,7 +199,7 @@ service-server:
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     cd "$WORKSPACE"
     west build -b native_sim/native/64 -d build-service-server -p auto "$NROS/examples/zephyr/rust/zenoh/service-server"
-    ./build-service-server/zephyr/zephyr.exe
+    ./build-service-server/zephyr/zephyr.exe --seed=$RANDOM
 
 # Run Zephyr service client
 service-client:
@@ -203,7 +209,7 @@ service-client:
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     cd "$WORKSPACE"
     west build -b native_sim/native/64 -d build-service-client -p auto "$NROS/examples/zephyr/rust/zenoh/service-client"
-    ./build-service-client/zephyr/zephyr.exe
+    ./build-service-client/zephyr/zephyr.exe --seed=$RANDOM
 
 # Run Zephyr action server
 action-server:
@@ -213,7 +219,7 @@ action-server:
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     cd "$WORKSPACE"
     west build -b native_sim/native/64 -d build-action-server -p auto "$NROS/examples/zephyr/rust/zenoh/action-server"
-    ./build-action-server/zephyr/zephyr.exe
+    ./build-action-server/zephyr/zephyr.exe --seed=$RANDOM
 
 # Run Zephyr action client
 action-client:
@@ -223,7 +229,7 @@ action-client:
     WORKSPACE="{{ZEPHYR_WORKSPACE}}"
     cd "$WORKSPACE"
     west build -b native_sim/native/64 -d build-action-client -p auto "$NROS/examples/zephyr/rust/zenoh/action-client"
-    ./build-action-client/zephyr/zephyr.exe
+    ./build-action-client/zephyr/zephyr.exe --seed=$RANDOM
 
 # Run Zephyr async service client
 async-service-client:
