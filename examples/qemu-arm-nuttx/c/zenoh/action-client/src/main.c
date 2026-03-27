@@ -7,6 +7,7 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/action.h>
+#include <nros/executor.h>
 
 #include "example_interfaces.h"
 
@@ -22,6 +23,7 @@ static struct {
     nros_support_t support;
     nros_node_t node;
     nros_action_client_t action_client;
+    nros_executor_t executor;
 } app;
 
 void app_main(void) {
@@ -61,6 +63,25 @@ void app_main(void) {
         return;
     }
 
+    ret = nros_executor_init(&app.executor, &app.support, 4);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
+        nros_action_client_fini(&app.action_client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+
+    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Failed to add action client to executor: %d\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_action_client_fini(&app.action_client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+
     example_interfaces_action_fibonacci_goal goal;
     example_interfaces_action_fibonacci_goal_init(&goal);
     goal.order = 10;
@@ -77,7 +98,7 @@ void app_main(void) {
 
     nros_goal_uuid_t goal_uuid;
     ret = nros_action_send_goal(
-        &app.action_client, goal_buf, (size_t)goal_len, &goal_uuid);
+        &app.action_client, &app.executor, goal_buf, (size_t)goal_len, &goal_uuid);
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to send goal: %d\n", ret);
         goto cleanup;
@@ -93,7 +114,7 @@ void app_main(void) {
     uint8_t result_buf[512];
     size_t result_len = 0;
     ret = nros_action_get_result(
-        &app.action_client, &goal_uuid, &final_status,
+        &app.action_client, &app.executor, &goal_uuid, &final_status,
         result_buf, sizeof(result_buf), &result_len);
 
     if (ret == NROS_RET_OK) {
@@ -119,6 +140,7 @@ void app_main(void) {
     }
 
 cleanup:
+    nros_executor_fini(&app.executor);
     nros_action_client_fini(&app.action_client);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);

@@ -232,6 +232,17 @@ int main(int argc, char** argv) {
     }
     g_executor = &app.executor;
 
+    // Register action server with executor (creates transport handles in arena)
+    ret = nros_executor_add_action_server(&app.executor, &app.action_server);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Failed to add action server to executor: %d\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_action_server_fini(&app.action_server);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return 1;
+    }
+
     // Set up signal handler
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);

@@ -125,6 +125,16 @@ void app_main(void) {
         return;
     }
 
+    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
+    if (ret != NROS_RET_OK) {
+        printf("Failed to add action client to executor: %d\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_action_client_fini(&app.action_client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return;
+    }
+
     printf("Action client ready for /fibonacci\n");
 
     // Warm-up: spin to allow Zenoh to discover the server's queryables
@@ -149,8 +159,8 @@ void app_main(void) {
     nros_goal_uuid_t goal_uuid;
     // Retry send_goal — Zenoh discovery may need time to find the server
     for (int attempt = 0; attempt < 5; attempt++) {
-        ret = nros_action_send_goal(&app.action_client, goal_buf, (size_t)goal_len,
-                                    &goal_uuid);
+        ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf,
+                                    (size_t)goal_len, &goal_uuid);
         if (ret == NROS_RET_OK) {
             break;
         }
@@ -171,8 +181,9 @@ void app_main(void) {
     nros_goal_status_t final_status;
     uint8_t result_buf[512];
     size_t result_len = 0;
-    ret = nros_action_get_result(&app.action_client, &goal_uuid, &final_status,
-                                 result_buf, sizeof(result_buf), &result_len);
+    ret = nros_action_get_result(&app.action_client, &app.executor, &goal_uuid,
+                                 &final_status, result_buf, sizeof(result_buf),
+                                 &result_len);
 
     if (ret == NROS_RET_OK) {
         example_interfaces_action_fibonacci_result result;

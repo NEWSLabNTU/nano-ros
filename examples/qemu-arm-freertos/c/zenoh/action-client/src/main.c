@@ -1,5 +1,5 @@
 /// @file main.c
-/// @brief FreeRTOS C action client — sends Fibonacci goal to /fibonacci (async API)
+/// @brief FreeRTOS C action client — sends Fibonacci goal to /fibonacci
 
 #include <stdint.h>
 #include <stdio.h>
@@ -23,74 +23,12 @@ static struct {
     nros_executor_t executor;
 } app;
 
-static volatile int g_goal_accepted = -1;
-static volatile int g_result_received = 0;
-static nros_goal_uuid_t g_goal_uuid;
-
-// ----------------------------------------------------------------------------
-// Async callbacks (invoked during nros_executor_spin_some)
-// ----------------------------------------------------------------------------
-
-static void goal_response_callback(const nros_goal_uuid_t *goal_uuid,
-                                   bool accepted, void *context) {
-    (void)context;
-    if (accepted) {
-        printf("Goal accepted!\n");
-        g_goal_accepted = 1;
-        nros_action_get_result_async(&app.action_client, goal_uuid);
-    } else {
-        printf("Goal rejected!\n");
-        g_goal_accepted = 0;
-    }
-}
-
-static void feedback_callback(const nros_goal_uuid_t *goal_uuid,
-                              const uint8_t *feedback, size_t feedback_len,
-                              void *context) {
-    (void)goal_uuid;
-    (void)context;
-
-    example_interfaces_action_fibonacci_feedback fb;
-    if (example_interfaces_action_fibonacci_feedback_deserialize(
-            &fb, feedback, feedback_len) == 0) {
-        printf("Feedback: [");
-        for (uint32_t i = 0; i < fb.sequence.size; i++) {
-            if (i > 0) printf(", ");
-            printf("%d", fb.sequence.data[i]);
-        }
-        printf("]\n");
-    }
-}
-
-static void result_callback(const nros_goal_uuid_t *goal_uuid,
-                            nros_goal_status_t status,
-                            const uint8_t *result, size_t result_len,
-                            void *context) {
-    (void)goal_uuid;
-    (void)context;
-    (void)status;
-
-    example_interfaces_action_fibonacci_result res;
-    if (example_interfaces_action_fibonacci_result_deserialize(
-            &res, result, result_len) == 0) {
-        printf("Result: [");
-        for (uint32_t i = 0; i < res.sequence.size; i++) {
-            if (i > 0) printf(", ");
-            printf("%d", res.sequence.data[i]);
-        }
-        printf("]\n");
-    }
-
-    printf("\nAction completed successfully.\n");
-    g_result_received = 1;
-}
-
 // ----------------------------------------------------------------------------
 // Main
 // ----------------------------------------------------------------------------
 
 void app_main(void) {
-    printf("nros C Action Client (FreeRTOS) [async]\n");
+    printf("nros C Action Client (FreeRTOS)\n");
 
     memset(&app, 0, sizeof(app));
 
@@ -107,6 +45,7 @@ void app_main(void) {
         printf("Failed to initialize support: %d\n", ret);
         return;
     }
+    printf("Support initialized\n");
 
     ret = nros_node_init(&app.node, &app.support, "c_action_client", "/");
     if (ret != NROS_RET_OK) {
@@ -124,14 +63,6 @@ void app_main(void) {
         return;
     }
 
-    // Register async callbacks
-    nros_action_client_set_goal_response_callback(&app.action_client,
-                                                   goal_response_callback, NULL);
-    nros_action_client_set_feedback_callback(&app.action_client,
-                                              feedback_callback, NULL);
-    nros_action_client_set_result_callback(&app.action_client,
-                                            result_callback, NULL);
-
     ret = nros_executor_init(&app.executor, &app.support, 8);
     if (ret != NROS_RET_OK) {
         printf("Failed to initialize executor: %d\n", ret);
@@ -141,8 +72,12 @@ void app_main(void) {
         return;
     }
 
-    // No executor registration needed — we poll the client directly
-    // via nros_action_client_poll() in the spin loop.
+    // Register action client with executor (creates transport handles in arena)
+    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
+    if (ret != NROS_RET_OK) {
+        printf("Failed to add action client to executor: %d\n", ret);
+        goto cleanup;
+    }
 
     printf("Action client ready for /fibonacci\n");
 
@@ -165,25 +100,51 @@ void app_main(void) {
 
     printf("Sending goal: order=%d\n", goal.order);
 
-    // Send goal asynchronously (non-blocking)
-    ret = nros_action_send_goal_async(&app.action_client, goal_buf, (size_t)goal_len,
-                                      &g_goal_uuid);
-    printf("send_goal_async returned: %d\n", ret);
+    // Blocking send_goal — spins the executor internally until
+    // the server accepts/rejects, or timeout. No zpico_get condvar.
+    nros_goal_uuid_t goal_uuid;
+    for (int attempt = 0; attempt < 5; attempt++) {
+        ret = nros_action_send_goal(&app.action_client, &app.executor,
+                                    goal_buf, (size_t)goal_len, &goal_uuid);
+        if (ret == NROS_RET_OK) break;
+        printf("Goal attempt %d failed (%d), retrying...\n", attempt + 1, ret);
+        for (int j = 0; j < 500; j++) {
+            nros_executor_spin_some(&app.executor, 10000000ULL);
+        }
+    }
+
     if (ret != NROS_RET_OK) {
-        printf("Failed to send goal: %d\n", ret);
+        printf("Failed to send goal after retries: %d\n", ret);
         goto cleanup;
     }
 
-    printf("Entering spin loop...\n");
+    printf("Goal accepted!\n");
+    printf("Waiting for result...\n\n");
 
-    // Spin until result received or timeout (10s = 1000 × 10ms)
-    for (int i = 0; i < 1000 && !g_result_received; i++) {
-        nros_executor_spin_some(&app.executor, 10000000ULL);
-        nros_action_client_poll(&app.action_client);
-    }
+    // Blocking get_result — spins the executor internally.
+    nros_goal_status_t final_status;
+    uint8_t result_buf[512];
+    size_t result_len = 0;
+    ret = nros_action_get_result(&app.action_client, &app.executor,
+                                 &goal_uuid, &final_status,
+                                 result_buf, sizeof(result_buf), &result_len);
 
-    if (!g_result_received) {
+    if (ret == NROS_RET_OK) {
+        example_interfaces_action_fibonacci_result result;
+        if (example_interfaces_action_fibonacci_result_deserialize(
+                &result, result_buf, result_len) == 0) {
+            printf("Result: [");
+            for (uint32_t i = 0; i < result.sequence.size; i++) {
+                if (i > 0) printf(", ");
+                printf("%d", result.sequence.data[i]);
+            }
+            printf("]\n");
+        }
+        printf("\nAction completed successfully.\n");
+    } else if (ret == NROS_RET_TIMEOUT) {
         printf("Timeout waiting for result\n");
+    } else {
+        printf("Failed to get result: %d\n", ret);
     }
 
 cleanup:

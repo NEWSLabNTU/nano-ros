@@ -13,6 +13,7 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/action.h>
+#include <nros/executor.h>
 #include <zpico_zephyr.h>
 
 #include "example_interfaces.h"
@@ -57,6 +58,26 @@ int main(void)
         return 1;
     }
 
+    nros_executor_t executor = nros_executor_get_zero_initialized();
+    ret = nros_executor_init(&executor, &support, 4);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Executor init failed: %d", ret);
+        nros_action_client_fini(&client);
+        nros_node_fini(&node);
+        nros_support_fini(&support);
+        return 1;
+    }
+
+    ret = nros_executor_add_action_client(&executor, &client);
+    if (ret != NROS_RET_OK) {
+        LOG_ERR("Failed to add action client to executor: %d", ret);
+        nros_executor_fini(&executor);
+        nros_action_client_fini(&client);
+        nros_node_fini(&node);
+        nros_support_fini(&support);
+        return 1;
+    }
+
     /* Send goal: compute Fibonacci sequence of order 10 */
     example_interfaces_action_fibonacci_goal goal;
     example_interfaces_action_fibonacci_goal_init(&goal);
@@ -73,7 +94,7 @@ int main(void)
     LOG_INF("Sending goal: order=%d", goal.order);
 
     nros_goal_uuid_t goal_uuid;
-    ret = nros_action_send_goal(&client, goal_buf, (size_t)goal_len, &goal_uuid);
+    ret = nros_action_send_goal(&client, &executor, goal_buf, (size_t)goal_len, &goal_uuid);
     if (ret != NROS_RET_OK) {
         LOG_ERR("Send goal failed: %d", ret);
         goto cleanup;
@@ -86,7 +107,7 @@ int main(void)
     nros_goal_status_t final_status;
     uint8_t result_buf[512];
     size_t result_len = 0;
-    ret = nros_action_get_result(&client, &goal_uuid, &final_status,
+    ret = nros_action_get_result(&client, &executor, &goal_uuid, &final_status,
                                  result_buf, sizeof(result_buf), &result_len);
 
     if (ret == NROS_RET_OK) {
@@ -106,6 +127,7 @@ int main(void)
     }
 
 cleanup:
+    nros_executor_fini(&executor);
     nros_action_client_fini(&client);
     nros_node_fini(&node);
     nros_support_fini(&support);

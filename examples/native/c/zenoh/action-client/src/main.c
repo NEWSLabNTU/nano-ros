@@ -10,6 +10,7 @@
 #include <nros/init.h>
 #include <nros/node.h>
 #include <nros/action.h>
+#include <nros/executor.h>
 
 // Generated C bindings for example_interfaces/action/Fibonacci
 #include "example_interfaces.h"
@@ -22,6 +23,7 @@ static struct {
     nros_support_t support;
     nros_node_t node;
     nros_action_client_t action_client;
+    nros_executor_t executor;
 } app;
 
 static volatile sig_atomic_t g_running = 1;
@@ -174,6 +176,31 @@ int main(int argc, char** argv) {
         fprintf(stderr, "Failed to set result callback: %d\n", ret);
     }
 
+    // Initialize executor
+    ret = nros_executor_init(&app.executor, &app.support, 4);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Failed to initialize executor: %d\n", ret);
+        nros_action_client_fini(&app.action_client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return 1;
+    }
+
+    ret = nros_executor_add_action_client(&app.executor, &app.action_client);
+    if (ret != NROS_RET_OK) {
+        fprintf(stderr, "Failed to add action client to executor: %d\n", ret);
+        nros_executor_fini(&app.executor);
+        nros_action_client_fini(&app.action_client);
+        nros_node_fini(&app.node);
+        nros_support_fini(&app.support);
+        return 1;
+    }
+
+    // Warm-up: spin to allow Zenoh to discover the server's queryables
+    for (int i = 0; i < 300; i++) {
+        nros_executor_spin_some(&app.executor, 10000000ULL); // 10ms
+    }
+
     // Send goal: compute Fibonacci sequence of order 10
     example_interfaces_action_fibonacci_goal goal;
     example_interfaces_action_fibonacci_goal_init(&goal);
@@ -190,7 +217,8 @@ int main(int argc, char** argv) {
     printf("\nSending goal: order=%d\n", goal.order);
 
     nros_goal_uuid_t goal_uuid;
-    ret = nros_action_send_goal(&app.action_client, goal_buf, (size_t)goal_len, &goal_uuid);
+    ret = nros_action_send_goal(&app.action_client, &app.executor, goal_buf, (size_t)goal_len,
+                                &goal_uuid);
 
     if (ret != NROS_RET_OK) {
         fprintf(stderr, "Failed to send goal: %d\n", ret);
@@ -211,8 +239,8 @@ int main(int argc, char** argv) {
     nros_goal_status_t final_status;
     uint8_t result_buf[512];
     size_t result_len = 0;
-    ret = nros_action_get_result(&app.action_client, &goal_uuid, &final_status, result_buf,
-                                 sizeof(result_buf), &result_len);
+    ret = nros_action_get_result(&app.action_client, &app.executor, &goal_uuid, &final_status,
+                                 result_buf, sizeof(result_buf), &result_len);
 
     if (ret == NROS_RET_OK) {
         printf("Final result (status=%s): ", nros_goal_status_to_string(final_status));
@@ -238,6 +266,7 @@ int main(int argc, char** argv) {
 cleanup:
     // Cleanup
     printf("\nShutting down...\n");
+    nros_executor_fini(&app.executor);
     nros_action_client_fini(&app.action_client);
     nros_node_fini(&app.node);
     nros_support_fini(&app.support);
