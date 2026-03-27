@@ -74,15 +74,25 @@ clean:
 # =============================================================================
 
 # Build and run a FreeRTOS example with tracing, then convert to Perfetto.
-# Usage: just freertos trace [example]   (default: talker)
-# Output: test-logs/freertos-trace/trace.pf (open with https://ui.perfetto.dev)
+#
+# Each example gets its own subdirectory so multiple instances can run in
+# parallel (e.g., talker + listener with a shared zenohd).
+#
+# Usage:
+#   just freertos trace talker    # single example
+#   # For a pair, start zenohd first, then run in separate terminals:
+#   #   terminal 1: build/zenohd/zenohd -l tcp/127.0.0.1:7451 --no-multicast-scouting
+#   #   terminal 2: just freertos trace talker
+#   #   terminal 3: just freertos trace listener
+#
+# Output: test-logs/freertos-trace/<example>/trace.pf
 trace example="talker":
     #!/usr/bin/env bash
     set -e
 
     EXAMPLE="{{example}}"
     EXAMPLE_DIR="examples/qemu-arm-freertos/rust/zenoh/$EXAMPLE"
-    TRACE_DIR="test-logs/freertos-trace"
+    TRACE_DIR="test-logs/freertos-trace/$EXAMPLE"
     mkdir -p "$TRACE_DIR"
 
     if [ ! -d "$EXAMPLE_DIR" ]; then
@@ -101,16 +111,36 @@ trace example="talker":
         exit 1
     fi
 
+    # Build tband-cli if needed (before cd to trace dir)
+    TBAND_CLI="third-party/tracing/Tonbandgeraet/tools/target/release/tband-cli"
+    if [ ! -f "$TBAND_CLI" ]; then
+        echo "Building tband-cli..."
+        (cd "third-party/tracing/Tonbandgeraet/tools" && cargo build --release -p tband-cli)
+    fi
+
     echo "=== Running $EXAMPLE in QEMU (with tracing) ==="
-    echo "    Trace will be dumped via semihosting on exit."
+    echo "    Trace will be dumped to $TRACE_DIR/trace.bin on exit."
     # Run QEMU — semihosting creates trace.bin in CWD
-    cd "$TRACE_DIR"
+    TRACE_DIR_ABS="$(pwd)/$TRACE_DIR"
+    BINARY_ABS="$(pwd)/$BINARY_PATH"
+    TBAND_CLI_ABS="$(pwd)/$TBAND_CLI"
+    cd "$TRACE_DIR_ABS"
+    rm -f trace.bin trace.pf
+
+    # Run QEMU with a trap so Ctrl-C kills it cleanly.
+    # QEMU with semihosting ignores SIGINT — we must kill explicitly.
+    QEMU_PID=""
+    trap 'if [ -n "$QEMU_PID" ]; then kill $QEMU_PID 2>/dev/null; wait $QEMU_PID 2>/dev/null; fi; exit 130' INT TERM
     timeout 60 qemu-system-arm \
         -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
-        -kernel "../../$BINARY_PATH" \
-        -nic user,model=lan9118 || true
+        -kernel "$BINARY_ABS" \
+        -nic user,model=lan9118 &
+    QEMU_PID=$!
+    wait $QEMU_PID || true
+    QEMU_PID=""
+    trap - INT TERM
 
     if [ ! -f trace.bin ]; then
         echo "ERROR: trace.bin not created — semihosting file I/O may not be working"
@@ -118,17 +148,12 @@ trace example="talker":
     fi
 
     echo "=== Converting trace to Perfetto format ==="
-    TBAND_CLI="../../third-party/tracing/Tonbandgeraet/tools/target/release/tband-cli"
-    if [ ! -f "$TBAND_CLI" ]; then
-        echo "Building tband-cli..."
-        (cd "../../third-party/tracing/Tonbandgeraet/tools" && cargo build --release -p tband-cli)
-    fi
-    "$TBAND_CLI" conv --format bin --mode free-rtos --core-count 1 \
+    "$TBAND_CLI_ABS" conv --format bin --mode free-rtos --core-count 1 \
         --output trace.pf trace.bin
 
     echo ""
     echo "=== Trace captured ==="
-    echo "  Raw:     $TRACE_DIR/trace.bin ($(wc -c < trace.bin) bytes)"
+    echo "  Raw:      $TRACE_DIR/trace.bin ($(wc -c < trace.bin) bytes)"
     echo "  Perfetto: $TRACE_DIR/trace.pf"
     echo ""
     echo "Open in browser: https://ui.perfetto.dev"
