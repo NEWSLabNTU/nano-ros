@@ -13,7 +13,7 @@ static volatile bool g_result_received = false;
 static nros::ActionClient<example_interfaces::action::Fibonacci>* g_client_ptr;
 
 // ----------------------------------------------------------------------------
-// Async callbacks (invoked during client.poll())
+// Async callbacks (invoked during spin_once via executor arena polling)
 // ----------------------------------------------------------------------------
 
 static void goal_response_cb(bool accepted, const uint8_t goal_id[16], void* ctx) {
@@ -109,10 +109,10 @@ extern "C" void app_main(void) {
         return;
     }
 
-    // Spin until result received or timeout (30s = 3000 × 10ms)
-    for (int i = 0; i < 3000 && !g_result_received; i++) {
+    // Spin until result received or timeout (10s = 1000 × 10ms).
+    // Callbacks fire during spin_once via the executor's arena polling.
+    for (int i = 0; i < 1000 && !g_result_received; i++) {
         nros::spin_once(10);
-        client.poll();  // Poll for async replies and invoke callbacks
     }
 
     if (!g_result_received) {
