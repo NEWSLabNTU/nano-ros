@@ -10,6 +10,21 @@
 use std::env;
 use std::path::PathBuf;
 
+/// Get the target pointer size in bytes from `CARGO_CFG_TARGET_POINTER_WIDTH`.
+fn target_pointer_bytes() -> usize {
+    let width: usize = env::var("CARGO_CFG_TARGET_POINTER_WIDTH")
+        .unwrap_or_else(|_| "64".to_string())
+        .parse()
+        .unwrap_or(64);
+    width / 8
+}
+
+/// Round `n` up to the next multiple of `align`.
+#[allow(clippy::manual_div_ceil)]
+const fn align_up(n: usize, align: usize) -> usize {
+    (n + align - 1) / align * align
+}
+
 fn main() {
     let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
     let out_dir = env::var("OUT_DIR").unwrap();
@@ -38,26 +53,48 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
     let opaque_u64s = total_bytes.div_ceil(8);
     let storage_bytes = opaque_u64s * 8;
 
-    // Action server: CppActionServer = handle + pending goals + action_name + type_name + type_hash
-    //   pending = [PendingGoal; 4], PendingGoal = GoalId(16) + [u8; ACTION_BUF] + usize + bool
+    // ── Target-aware struct layout ─────────────────────────────────────
     //
-    // Use generous sizes to handle both 32-bit (ARM) and 64-bit (x86_64) targets.
-    // PendingGoal alignment padding differs between targets. On ARM, the data[1024]
-    // array causes PendingGoal to be 1249 bytes (with padding to 1252), while on
-    // x86_64 it's 1056. Use the maximum across targets plus extra padding.
+    // Compute struct sizes using the TARGET pointer width (not the host's).
+    // build.rs runs on the host, but `CARGO_CFG_TARGET_POINTER_WIDTH` tells
+    // us the cross-compilation target. This avoids the bug where 8-byte
+    // host `usize` underestimates sizes for 4-byte ARM targets.
+    let ptr_bytes = target_pointer_bytes();
+
+    // PendingGoal { goal_id: GoalId(16), data: [u8; 1024], data_len: usize, occupied: bool }
+    // Rust lays out fields in declaration order for non-repr(C) structs,
+    // but may reorder for alignment. Compute a safe upper bound using the
+    // struct's natural alignment (= alignment of its most-aligned field).
     let action_buf_size = 1024usize; // ACTION_BUF_SIZE in action.rs
     let max_pending_goals = 4usize; // MAX_PENDING_GOALS in action.rs
-    let pending_goal_size = 16 + action_buf_size + 8 + 8 + 16; // GoalId + data + data_len + occupied + extra alignment
-    let action_server_bytes = 16 + (pending_goal_size * max_pending_goals) + 3 * (256 + 8) + 64; // handle + pending + 3 name fields + padding
+    let pending_goal_size = align_up(16 + action_buf_size + ptr_bytes + 1, ptr_bytes);
+    // CppActionServer { handle: Option<Handle>, pending: [PendingGoal; 4],
+    //                    action_name: [u8; 256], _len: usize, ×3 for name/type/hash }
+    let handle_size = align_up(ptr_bytes + 4, ptr_bytes); // Option<ActionServerRawHandle> ~ usize + tag
+    let name_field_size = 256 + ptr_bytes; // [u8; 256] + usize len
+    // Add margin for Rust's flexible (non-repr(C)) struct layout — the compiler
+    // may add inter-field padding that differs from our estimate. The compile-time
+    // assertion in action.rs catches any undercount.
+    let layout_padding = 8 * ptr_bytes;
+    let action_server_bytes = align_up(
+        handle_size
+            + (pending_goal_size * max_pending_goals)
+            + 3 * name_field_size
+            + layout_padding,
+        8, // align to u64 for storage
+    );
     let action_server_opaque_u64s = action_server_bytes.div_ceil(8);
     let action_server_storage = action_server_opaque_u64s * 8;
 
-    // Action client: CppActionClient = ActionClientCore<1024,1024,1024> + action_name
-    //   ActionClientCore has 3 service clients + 1 subscriber + 3 buffers + counters
-    let service_client_upper = 384usize; // matches nros-c constant
-    let subscriber_upper = 128usize;
-    let action_client_bytes =
-        3 * service_client_upper + subscriber_upper + 3 * action_buf_size + 256 + 64;
+    // CppActionClient { callbacks: CppActionClientCallbacks, arena_entry_index: i32,
+    //                    executor_ptr: *mut, action_name: [u8; 256], _action_name_len: usize }
+    // CppActionClientCallbacks = 3 Option<fn> + context ptr
+    // Each Option<fn> is 2 × ptr_bytes (function pointer + discriminant, aligned)
+    let action_client_callbacks = 3 * (2 * ptr_bytes) + ptr_bytes;
+    let action_client_bytes = align_up(
+        action_client_callbacks + 4 + ptr_bytes + 256 + ptr_bytes + 8 * ptr_bytes, // fields + layout padding
+        8,
+    );
     let action_client_opaque_u64s = action_client_bytes.div_ceil(8);
     let action_client_storage = action_client_opaque_u64s * 8;
 
