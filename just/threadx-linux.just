@@ -1,5 +1,8 @@
 set working-directory := '..'
 
+default:
+    @just --list --justfile {{source_file()}}
+
 # Install ThreadX Linux libraries into build/install/
 install:
     #!/usr/bin/env bash

@@ -1,4 +1,7 @@
 set working-directory := '..'
+
+default:
+    @just --list --justfile {{source_file()}}
 # Zephyr workspace path (symlink or sibling directory)
 ZEPHYR_WORKSPACE := if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else { "../nano-ros-workspace" }
 

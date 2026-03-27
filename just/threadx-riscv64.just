@@ -1,4 +1,7 @@
 set working-directory := '..'
+
+default:
+    @just --list --justfile {{source_file()}}
 # Install ThreadX RISC-V 64 libraries into build/install/
 install:
     #!/usr/bin/env bash

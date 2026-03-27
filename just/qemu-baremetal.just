@@ -1,4 +1,7 @@
 set working-directory := '..'
+
+default:
+    @just --list --justfile {{source_file()}}
 LOG_DIR := "test-logs"
 
 # Build QEMU ARM bare-metal examples

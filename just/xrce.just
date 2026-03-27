@@ -1,4 +1,7 @@
 set working-directory := '..'
+
+default:
+    @just --list --justfile {{source_file()}}
 # Build Micro-XRCE-DDS Agent from source (for XRCE integration tests)
 build-agent:
     ./scripts/xrce-agent/build.sh

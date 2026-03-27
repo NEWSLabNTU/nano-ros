@@ -1,4 +1,7 @@
 set working-directory := '..'
+
+default:
+    @just --list --justfile {{source_file()}}
 # Build Docker image for QEMU ARM development
 build:
     @echo "Building Docker image..."

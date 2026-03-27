@@ -1,5 +1,8 @@
 set working-directory := '..'
 
+default:
+    @just --list --justfile {{source_file()}}
+
 # Install NuttX ARM C/C++ libraries into build/install/
 #
 # DISABLED: NuttX C/C++ library cross-compilation requires build-std, which

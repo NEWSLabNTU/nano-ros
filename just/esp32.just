@@ -1,4 +1,7 @@
 set working-directory := '..'
+
+default:
+    @just --list --justfile {{source_file()}}
 # Build ESP32 examples (requires nightly)
 build:
     #!/usr/bin/env bash
