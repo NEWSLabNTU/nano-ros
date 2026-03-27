@@ -84,7 +84,7 @@ checksum = "812e12b5285cc515a9c72a5c1d3b6d46a19dac5acfef5265968c166106e31dd3"
 
 [[package]]
 name = "builtin_interfaces"
-version = "1.2.1"
+version = "1.2.2"
 dependencies = [
  "heapless",
  "nros-core",
@@ -720,7 +720,7 @@ checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
 
 [[package]]
 name = "std_msgs"
-version = "4.2.4"
+version = "4.9.1"
 dependencies = [
  "builtin_interfaces",
  "heapless",
