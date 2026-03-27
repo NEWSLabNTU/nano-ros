@@ -374,6 +374,10 @@ impl<
             writer
                 .write_i8(entry.status as i8)
                 .map_err(|_| NodeError::Serialization)?;
+            // Align to 4 bytes after the status byte so that the result CDR
+            // fields (which start with a u32 sequence length) are properly
+            // aligned for the reader's align(4) calls.
+            writer.align(4).map_err(|_| NodeError::Serialization)?;
             let pos = writer.position();
             if pos + result_bytes.len() > GOAL_BUF {
                 return Err(NodeError::BufferTooSmall);
@@ -398,6 +402,7 @@ impl<
             writer
                 .write_i8(status as i8)
                 .map_err(|_| NodeError::Serialization)?;
+            writer.align(4).map_err(|_| NodeError::Serialization)?;
             let pos = writer.position();
             if pos + default_result_cdr.len() > GOAL_BUF {
                 return Err(NodeError::BufferTooSmall);
