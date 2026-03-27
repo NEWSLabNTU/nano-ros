@@ -25,8 +25,7 @@ nros_cpp_ret_t nros_cpp_action_client_get_result_async(void* handle, const uint8
 nros_cpp_ret_t nros_cpp_action_client_try_recv_feedback(void* handle, uint8_t* feedback_buf,
                                                         size_t buf_len, size_t* feedback_len);
 nros_cpp_ret_t nros_cpp_action_client_set_callbacks(
-    void* handle,
-    void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx),
+    void* handle, void (*goal_response)(bool accepted, const uint8_t goal_id[16], void* ctx),
     void (*feedback)(const uint8_t goal_id[16], const uint8_t* data, size_t len, void* ctx),
     void (*result)(const uint8_t goal_id[16], int status, const uint8_t* data, size_t len,
                    void* ctx),
@@ -174,9 +173,8 @@ template <typename A> class ActionClient {
     /// @param options  Callback pointers and context.
     void set_callbacks(const SendGoalOptions& options) {
         if (!initialized_) return;
-        nros_cpp_action_client_set_callbacks(
-            storage_, options.goal_response, options.feedback,
-            options.result, options.context);
+        nros_cpp_action_client_set_callbacks(storage_, options.goal_response, options.feedback,
+                                             options.result, options.context);
     }
 
     /// Poll for pending async replies (non-blocking).

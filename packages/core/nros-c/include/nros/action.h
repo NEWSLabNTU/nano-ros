@@ -128,6 +128,18 @@ typedef void (*nros_result_callback_t)(const struct nros_goal_uuid_t* goal_uuid,
                                        enum nros_goal_status_t status, const uint8_t* result,
                                        size_t result_len, void* context);
 
+/**
+ * Goal response callback type (for async client).
+ *
+ * Called when the action server accepts or rejects a goal.
+ *
+ * @param goal_uuid UUID of the goal.
+ * @param accepted  true if accepted, false if rejected.
+ * @param context   User-provided context pointer.
+ */
+typedef void (*nros_goal_response_callback_t)(const struct nros_goal_uuid_t* goal_uuid,
+                                              bool accepted, void* context);
+
 /* --- Server callbacks --- */
 
 /**
@@ -204,6 +216,8 @@ typedef struct nros_action_client_t {
     uint8_t type_hash[NROS_MAX_TYPE_HASH_LEN];
     /** Type hash length. */
     size_t type_hash_len;
+    /** Goal response callback (for async send_goal). */
+    nros_goal_response_callback_t goal_response_callback;
     /** Feedback callback. */
     nros_feedback_callback_t feedback_callback;
     /** Result callback. */
@@ -305,9 +319,68 @@ nros_ret_t nros_action_client_set_result_callback(struct nros_action_client_t* c
                                                   nros_result_callback_t callback, void* context);
 
 /**
- * @brief Send a goal request.
+ * @brief Set goal response callback (for async send_goal).
  *
- * @param client    Pointer to an initialized action client.
+ * Called during nros_executor_spin_some() when the server accepts or rejects
+ * a goal sent via nros_action_send_goal_async().
+ *
+ * @param client   Pointer to an initialized action client.
+ * @param callback Goal response callback function.
+ * @param context  User context.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_client_set_goal_response_callback(struct nros_action_client_t* client,
+                                                         nros_goal_response_callback_t callback,
+                                                         void* context);
+
+/**
+ * @brief Register an action client with the executor.
+ *
+ * Creates transport handles (service clients + feedback subscriber) in the
+ * executor's arena. Must be called after nros_action_client_init() and before
+ * any send_goal/get_result calls.
+ *
+ * Callbacks registered via set_*_callback are invoked during
+ * nros_executor_spin_some().
+ *
+ * @param executor Pointer to an initialized executor.
+ * @param client   Pointer to an initialized action client.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_executor_add_action_client(struct nros_executor_t* executor,
+                                           struct nros_action_client_t* client);
+
+/**
+ * @brief Send a goal request (blocking convenience).
+ *
+ * Spins the executor internally until the server accepts/rejects or timeout.
+ * Never calls zpico_get directly — all I/O is driven by the executor.
+ *
+ * @param client    Pointer to an initialized action client (registered with executor).
+ * @param executor  Pointer to an initialized executor.
+ * @param goal      CDR-serialized goal data.
+ * @param goal_len  Length of goal data.
+ * @param goal_uuid Output: generated goal UUID.
+ *
+ * @retval NROS_RET_OK      on success (goal accepted).
+ * @retval NROS_RET_TIMEOUT if no response within timeout.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_send_goal(struct nros_action_client_t* client,
+                                 struct nros_executor_t* executor, const uint8_t* goal,
+                                 size_t goal_len, struct nros_goal_uuid_t* goal_uuid);
+
+/**
+ * @brief Send a goal request asynchronously (non-blocking).
+ *
+ * Returns immediately after sending. The goal response arrives via the
+ * goal_response_callback during nros_executor_spin_some().
+ *
+ * @param client    Pointer to an initialized action client (registered with executor).
  * @param goal      CDR-serialized goal data.
  * @param goal_len  Length of goal data.
  * @param goal_uuid Output: generated goal UUID.
@@ -315,8 +388,8 @@ nros_ret_t nros_action_client_set_result_callback(struct nros_action_client_t* c
  * @retval NROS_RET_OK on success.
  */
 NROS_PUBLIC
-nros_ret_t nros_action_send_goal(struct nros_action_client_t* client, const uint8_t* goal,
-                                 size_t goal_len, struct nros_goal_uuid_t* goal_uuid);
+nros_ret_t nros_action_send_goal_async(struct nros_action_client_t* client, const uint8_t* goal,
+                                       size_t goal_len, struct nros_goal_uuid_t* goal_uuid);
 
 /**
  * @brief Request cancellation of a goal.
@@ -331,9 +404,12 @@ nros_ret_t nros_action_cancel_goal(struct nros_action_client_t* client,
                                    const struct nros_goal_uuid_t* goal_uuid);
 
 /**
- * @brief Request result of a goal (blocking).
+ * @brief Request result of a goal (blocking convenience).
  *
- * @param client          Pointer to an initialized action client.
+ * Spins the executor internally until the result arrives or timeout.
+ *
+ * @param client          Pointer to an initialized action client (registered with executor).
+ * @param executor        Pointer to an initialized executor.
  * @param goal_uuid       UUID of the goal.
  * @param status          Output: goal status.
  * @param result          Buffer for CDR-serialized result.
@@ -345,9 +421,25 @@ nros_ret_t nros_action_cancel_goal(struct nros_action_client_t* client,
  */
 NROS_PUBLIC
 nros_ret_t nros_action_get_result(struct nros_action_client_t* client,
+                                  struct nros_executor_t* executor,
                                   const struct nros_goal_uuid_t* goal_uuid,
                                   enum nros_goal_status_t* status, uint8_t* result,
                                   size_t result_capacity, size_t* result_len);
+
+/**
+ * @brief Request result of a goal asynchronously (non-blocking).
+ *
+ * Returns immediately after sending. The result arrives via the
+ * result_callback during nros_executor_spin_some().
+ *
+ * @param client    Pointer to an initialized action client (registered with executor).
+ * @param goal_uuid UUID of the goal.
+ *
+ * @retval NROS_RET_OK on success.
+ */
+NROS_PUBLIC
+nros_ret_t nros_action_get_result_async(struct nros_action_client_t* client,
+                                        const struct nros_goal_uuid_t* goal_uuid);
 
 /**
  * @brief Try to receive feedback for an active goal (non-blocking).
