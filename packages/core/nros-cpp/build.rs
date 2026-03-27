@@ -38,12 +38,17 @@ fn generate_config(out_dir: &str, manifest_dir: &std::path::Path) {
     let opaque_u64s = total_bytes.div_ceil(8);
     let storage_bytes = opaque_u64s * 8;
 
-    // Action server: CppActionServer = handle + pending goals + action_name
+    // Action server: CppActionServer = handle + pending goals + action_name + type_name + type_hash
     //   pending = [PendingGoal; 4], PendingGoal = GoalId(16) + [u8; ACTION_BUF] + usize + bool
+    //
+    // Use generous sizes to handle both 32-bit (ARM) and 64-bit (x86_64) targets.
+    // PendingGoal alignment padding differs between targets. On ARM, the data[1024]
+    // array causes PendingGoal to be 1249 bytes (with padding to 1252), while on
+    // x86_64 it's 1056. Use the maximum across targets plus extra padding.
     let action_buf_size = 1024usize; // ACTION_BUF_SIZE in action.rs
     let max_pending_goals = 4usize; // MAX_PENDING_GOALS in action.rs
-    let pending_goal_size = 16 + action_buf_size + 8 + 8; // GoalId + data + data_len + occupied (aligned)
-    let action_server_bytes = 16 + (pending_goal_size * max_pending_goals) + 256 + 8 + 16; // handle + pending + name + name_len + padding
+    let pending_goal_size = 16 + action_buf_size + 8 + 8 + 16; // GoalId + data + data_len + occupied + extra alignment
+    let action_server_bytes = 16 + (pending_goal_size * max_pending_goals) + 3 * (256 + 8) + 64; // handle + pending + 3 name fields + padding
     let action_server_opaque_u64s = action_server_bytes.div_ceil(8);
     let action_server_storage = action_server_opaque_u64s * 8;
 

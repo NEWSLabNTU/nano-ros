@@ -970,7 +970,7 @@ fn test_freertos_cpp_service_e2e() {
 }
 
 #[test]
-#[ignore = "FreeRTOS QEMU: arena service clients don't receive replies (QEMU scheduling flakiness)"]
+#[ignore = "FreeRTOS QEMU: C++ action server hangs declaring feedback_publisher (zenoh-pico entity declaration timing)"]
 fn test_freertos_cpp_action_e2e() {
     if !require_freertos_cpp_e2e() {
         return;
@@ -1000,9 +1000,14 @@ fn test_freertos_cpp_action_e2e() {
         .wait_for_output(Duration::from_secs(45))
         .unwrap_or_default();
 
+    let server_output = server
+        .wait_for_output(Duration::from_secs(2))
+        .unwrap_or_default();
+
     server.kill();
     client.kill();
 
+    eprintln!("C++ Server output:\n{}", server_output);
     eprintln!("C++ Client output:\n{}", client_output);
 
     let goal_accepted = client_output.contains("Goal accepted");
@@ -1330,7 +1335,6 @@ fn test_freertos_c_service_e2e() {
 }
 
 #[test]
-#[ignore = "FreeRTOS QEMU: arena service clients don't receive replies (QEMU scheduling flakiness)"]
 fn test_freertos_c_action_e2e() {
     if !require_freertos_c_e2e() {
         return;
