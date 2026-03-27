@@ -427,18 +427,19 @@ fn test_c_action_communication(
 
     // Verify the client sent a goal and got accepted
     assert!(
-        client_output.contains("Goal accepted") || client_output.contains("Support initialized"),
-        "C action client failed to initialize or send goal.\nOutput:\n{}",
+        client_output.contains("Goal accepted"),
+        "C action client failed to send goal or get acceptance.\nOutput:\n{}",
         client_output
     );
 
     // Verify the server received and processed the goal
-    let server_accepted =
-        server_output.contains("ACCEPTED") || server_output.contains("Executing goal");
+    assert!(
+        server_output.contains("ACCEPTED") || server_output.contains("Executing goal"),
+        "C action server did not process the goal.\nServer output:\n{}",
+        server_output
+    );
 
-    if server_accepted {
-        eprintln!("[PASS] C action server/client communication works");
-    }
+    eprintln!("[PASS] C action server/client communication works");
 }
 
 // =============================================================================
