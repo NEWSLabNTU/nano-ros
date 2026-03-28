@@ -374,9 +374,35 @@ This is NOT a classical deadlock (two mutexes in opposite order). It is a **live
 
 Changed the lease task's keep-alive send to use `_z_transport_tx_try_send_t_msg` (non-blocking try-lock on `_mutex_tx`). If the TX mutex is held by the app task during declarations, the keep-alive is skipped — declaration sends prove liveness.
 
-**Result**: Eliminates the keep-alive contention. However, the C++ server still hangs on FreeRTOS QEMU with `-icount shift=auto`. The remaining issue is `lwip_send()` blocking in the app task itself due to QEMU slirp TCP latency — the TCP round-trip through slirp takes wall-clock time, and with `-icount`, each `z_declare_publisher` send blocks for 100+ ms. This compounds across 5 entities × 2 messages each.
+**Result**: Eliminates the keep-alive contention but the C++ server still hangs.
 
-This is a QEMU emulation limitation, not a zenoh-pico or nros bug. The Rust binary is less affected because it's slightly faster (different code layout / less template instantiation), completing all declarations before the timing window closes.
+### True Root Cause: Read Task Holds TX Mutex During `lwip_send()`
+
+**Diagnostic output** (10 TCP sends traced):
+```
+send(0, 103 bytes)... → returned 103    ← 9th send (publisher declaration) OK
+send(0, 103 bytes)... → <hangs>         ← 10th send (interest message) never returns
+```
+
+The 10th send hangs inside `_z_transport_tx_mutex_lock(BLOCK)` — the TX mutex is already held.
+
+**Who holds `_mutex_tx`?** The **read task** (priority 4). The read task processes incoming responses from the router. When it receives a request (e.g., interest reply with `_Z_REQUEST_PUT`), `session/rx.c:123` sends a `response_final` via `_z_send_n_msg(BLOCK)`, which acquires `_mutex_tx`. The read task's `lwip_send()` then blocks waiting for TCP completion.
+
+**The complete lock chain:**
+1. Read task holds `_mutex_rx` (held for entire task lifetime, line 330 of `read.c`)
+2. Read task processes incoming router message → sends response_final → acquires `_mutex_tx`
+3. Read task's `lwip_send()` blocks (TCP send through slirp takes wall-clock time with `-icount`)
+4. App task (priority 3) tries to send interest message → `_z_transport_tx_mutex_lock(BLOCK)` → **blocked by read task**
+
+This is NOT a classical deadlock (no circular dependency). It's a **priority inversion with I/O dependency**: the read task (higher priority) holds `_mutex_tx` while blocked in `lwip_send()`, starving the app task. The `lwip_send()` blocks because the tcpip_thread doesn't process the write request in time under `-icount shift=auto`.
+
+**Why the Rust binary works**: the Rust binary completes all declarations before the router has time to send responses that trigger `response_final` sends. The C++ binary is slower (larger code), giving the router enough time to send responses during the declaration sequence.
+
+### Fix
+
+The read task's `_z_send_n_msg` calls in `session/rx.c:123,139` should use `Z_CONGESTION_CONTROL_DROP` instead of `BLOCK`. If the TX mutex is busy (app task sending declarations), the response_final is dropped — the router will retransmit. This prevents the read task from blocking on `_mutex_tx` while holding `_mutex_rx`.
+
+Alternatively, the response_final sends could use the non-blocking `_z_transport_tx_try_send_t_msg` variant.
 
 ## Notes
 
