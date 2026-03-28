@@ -79,6 +79,56 @@ setup-caps: build
     echo "Applied capabilities to $found binaries."
     echo "ThreadX E2E tests should now pass with: just threadx-linux test"
 
+# =============================================================================
+# Run examples (native Linux binaries, requires CAP_NET_RAW via setup-caps)
+# =============================================================================
+
+# Run ThreadX Linux talker
+talker:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/threadx-linux/rust/zenoh/talker && cargo build --release
+    exec target/release/threadx-linux-talker
+
+# Run ThreadX Linux listener
+listener:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/threadx-linux/rust/zenoh/listener && cargo build --release
+    exec target/release/threadx-linux-listener
+
+# Run ThreadX Linux service server
+service-server:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/threadx-linux/rust/zenoh/service-server && cargo build --release
+    exec target/release/threadx-linux-service-server
+
+# Run ThreadX Linux service client
+service-client:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/threadx-linux/rust/zenoh/service-client && cargo build --release
+    exec target/release/threadx-linux-service-client
+
+# Run ThreadX Linux action server
+action-server:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/threadx-linux/rust/zenoh/action-server && cargo build --release
+    exec target/release/threadx-linux-action-server
+
+# Run ThreadX Linux action client
+action-client:
+    #!/usr/bin/env bash
+    set -e
+    cd examples/threadx-linux/rust/zenoh/action-client && cargo build --release
+    exec target/release/threadx-linux-action-client
+
+# Start zenohd router for ThreadX Linux examples (port 7455, bridge-networked)
+zenohd:
+    build/zenohd/zenohd --listen tcp/0.0.0.0:7455 --no-multicast-scouting
+
 # Clean ThreadX Linux build artifacts
 clean:
     #!/usr/bin/env bash

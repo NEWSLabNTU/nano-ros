@@ -163,21 +163,36 @@ clean: clean-zenoh-pico
 # Run examples (build + launch QEMU MPS2-AN385 with slirp networking)
 # =============================================================================
 
-# Run bare-metal talker on QEMU
-talker: build
+# QEMU ignores SIGINT — run in background with trap for Ctrl-C
+[no-exit-message]
+_run-qemu-mps2 binary: build
+    #!/usr/bin/env bash
+    trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
         -icount shift=auto \
         -semihosting-config enable=on,target=native \
-        -kernel examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker \
-        -nic user,model=lan9118
+        -kernel "{{binary}}" \
+        -nic user,model=lan9118 &
+    PID=$!
+    wait $PID
+
+# Run bare-metal talker on QEMU
+talker: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/talker/target/thumbv7m-none-eabi/release/qemu-bsp-talker")
 
 # Run bare-metal listener on QEMU
-listener: build
-    qemu-system-arm -cpu cortex-m3 -machine mps2-an385 -nographic \
-        -icount shift=auto \
-        -semihosting-config enable=on,target=native \
-        -kernel examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener \
-        -nic user,model=lan9118
+listener: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/listener/target/thumbv7m-none-eabi/release/qemu-bsp-listener")
+
+# Run RTIC service server on QEMU
+rtic-service-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-service-server/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-server")
+
+# Run RTIC service client on QEMU
+rtic-service-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-service-client/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-service-client")
+
+# Run RTIC action server on QEMU
+rtic-action-server: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-server/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-server")
+
+# Run RTIC action client on QEMU
+rtic-action-client: (_run-qemu-mps2 "examples/qemu-arm-baremetal/rust/zenoh/rtic-action-client/target/thumbv7m-none-eabi/release/qemu-bsp-rtic-action-client")
 
 # Start zenohd router for bare-metal QEMU examples (port 7450)
 zenohd:

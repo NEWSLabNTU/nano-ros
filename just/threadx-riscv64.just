@@ -67,6 +67,53 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# =============================================================================
+# Run examples (build + launch QEMU RISC-V 64 virt with slirp networking)
+#
+# QEMU ignores SIGINT — each recipe runs QEMU in the background and
+# traps INT/TERM to kill it explicitly (Ctrl-C works).
+# peer_index: 0=talker/server (MAC :56), 1=listener/client (MAC :57)
+# =============================================================================
+
+[no-exit-message]
+_run-qemu example binary peer_index:
+    #!/usr/bin/env bash
+    set -e
+    rv_config="$(pwd)/packages/boards/nros-threadx-qemu-riscv64/config"
+    cd "examples/qemu-riscv64-threadx/rust/zenoh/{{example}}"
+    THREADX_CONFIG_DIR="$rv_config" NETX_CONFIG_DIR="$rv_config" cargo build --release
+    MAC="52:54:00:12:34:$(printf '%02x' $((0x56 + {{peer_index}})))"
+    trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
+    qemu-system-riscv64 -M virt -m 256M -bios none -nographic \
+        -global virtio-mmio.force-legacy=false \
+        -kernel "target/riscv64gc-unknown-none-elf/release/{{binary}}" \
+        -netdev user,id=net0 \
+        -device "virtio-net-device,netdev=net0,bus=virtio-mmio-bus.0,mac=$MAC" &
+    PID=$!
+    wait $PID
+
+# Run ThreadX RISC-V talker on QEMU
+talker: (_run-qemu "talker" "qemu-riscv64-threadx-talker" "0")
+
+# Run ThreadX RISC-V listener on QEMU
+listener: (_run-qemu "listener" "qemu-riscv64-threadx-listener" "1")
+
+# Run ThreadX RISC-V service server on QEMU
+service-server: (_run-qemu "service-server" "qemu-riscv64-threadx-service-server" "0")
+
+# Run ThreadX RISC-V service client on QEMU
+service-client: (_run-qemu "service-client" "qemu-riscv64-threadx-service-client" "1")
+
+# Run ThreadX RISC-V action server on QEMU
+action-server: (_run-qemu "action-server" "qemu-riscv64-threadx-action-server" "0")
+
+# Run ThreadX RISC-V action client on QEMU
+action-client: (_run-qemu "action-client" "qemu-riscv64-threadx-action-client" "1")
+
+# Start zenohd router for ThreadX RISC-V examples (port 7453)
+zenohd:
+    build/zenohd/zenohd --listen tcp/127.0.0.1:7453 --no-multicast-scouting
+
 # Clean ThreadX RISC-V build artifacts
 clean:
     #!/usr/bin/env bash

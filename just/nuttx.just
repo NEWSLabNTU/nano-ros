@@ -72,6 +72,54 @@ test verbose="":
 setup: build-kernel
     @echo "NuttX setup complete!"
 
+# =============================================================================
+# Run examples (build + launch QEMU ARM virt with slirp networking)
+#
+# NOTE: NuttX interactive runs are experimental. The zenoh-pico session may
+# fail to connect on first boot. The automated E2E tests (just nuttx test)
+# handle this with proper timing. For interactive use, start zenohd first
+# and allow a few retries.
+#
+# QEMU ignores SIGINT — each recipe runs QEMU in the background and
+# traps INT/TERM to kill it explicitly (Ctrl-C works).
+# =============================================================================
+
+[no-exit-message]
+_run-qemu example binary:
+    #!/usr/bin/env bash
+    set -e
+    cd "examples/qemu-arm-nuttx/rust/zenoh/{{example}}"
+    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo +nightly build --release
+    trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
+    qemu-system-arm -M virt -cpu cortex-a7 -nographic \
+        -icount shift=auto \
+        -kernel "target/armv7a-nuttx-eabihf/release/{{binary}}" \
+        -nic user &
+    PID=$!
+    wait $PID
+
+# Run NuttX talker on QEMU
+talker: (_run-qemu "talker" "nuttx-rs-talker")
+
+# Run NuttX listener on QEMU
+listener: (_run-qemu "listener" "nuttx-rs-listener")
+
+# Run NuttX service server on QEMU
+service-server: (_run-qemu "service-server" "nuttx-rs-service-server")
+
+# Run NuttX service client on QEMU
+service-client: (_run-qemu "service-client" "nuttx-rs-service-client")
+
+# Run NuttX action server on QEMU
+action-server: (_run-qemu "action-server" "nuttx-rs-action-server")
+
+# Run NuttX action client on QEMU
+action-client: (_run-qemu "action-client" "nuttx-rs-action-client")
+
+# Start zenohd router for NuttX QEMU examples (port 7452)
+zenohd:
+    build/zenohd/zenohd --listen tcp/127.0.0.1:7452 --no-multicast-scouting
+
 # Clean NuttX build artifacts
 clean:
     #!/usr/bin/env bash
