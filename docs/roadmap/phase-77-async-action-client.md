@@ -439,7 +439,9 @@ Enable per-thread semaphores in lwIP so each FreeRTOS task gets its own semaphor
 4. The lwIP FreeRTOS port's `sys_arch_netconn_sem_alloc()` uses `mem_malloc` (lwIP heap) which may fail if the heap is exhausted. Patch to use `pvPortMalloc` (FreeRTOS heap) instead.
 5. `MEM_SIZE` or `configTOTAL_HEAP_SIZE` may need increasing to accommodate the per-thread semaphores.
 
-**Status**: Attempted but blocked on `sem != NULL` assertion — `pvPortMalloc(4)` returns NULL even with 1MB FreeRTOS heap. Likely a task initialization ordering issue where `lwip_socket_thread_init()` is called before the FreeRTOS scheduler starts. Needs further investigation.
+**Status**: Fixed. The `sem != NULL` assertion was from `netifapi_netif_add()` in the network init — called BEFORE any zenoh-pico code, so the per-thread sem wasn't initialized yet. Fix: call `lwip_socket_thread_init()` at the start of `nros_freertos_init_network()`, before `tcpip_init()`. Also patched the lwIP FreeRTOS port to use `pvPortMalloc` instead of `mem_malloc` (lwIP heap was full).
+
+**Verified**: C++ action server declares all 5 entities reliably with `-icount shift=auto` (3/3 trials).
 
 ## Notes
 
