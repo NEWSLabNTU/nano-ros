@@ -416,13 +416,30 @@ tick=5333: next recv (2.4s later)      ← system continues for recv
 
 `sent_tcp` fires when a TCP ACK arrives (freeing send buffer space). The ACK delivery chain: QEMU slirp → LAN9118 NIC → poll task (every 1ms) → `tcpip_input` → tcpip_thread. With `-icount shift=auto`, this chain doesn't complete because QEMU's main loop (which processes slirp I/O) runs during WFI, and the relationship between virtual ticks and main loop I/O is imprecise.
 
-**Why `tcp_write` returns `ERR_MEM` with only 500 bytes sent**: Total data is ~500 bytes, well under `TCP_SND_BUF=5840`. The `ERR_MEM` likely comes from pbuf/segment exhaustion (`MEMP_NUM_TCP_SEG=32`, `PBUF_POOL_SIZE=24`). Each send creates TCP segments with headers. With 9 rapid sends, 9 segments are queued but none ACKed yet — their pbufs remain allocated until ACKs arrive.
+### True Root Cause: Shared `conn->op_completed` Semaphore
 
-### Fix Options
+Further investigation revealed that `tcp_write` actually returns `ERR_OK` (not `ERR_MEM`) and `write_finished=1` on every send. The semaphore IS signaled by `do_writemore`. **The problem is that the semaphore signal is consumed by the WRONG task.**
 
-1. **Investigate pbuf exhaustion** — increase `MEMP_NUM_TCP_SEG` and `PBUF_POOL_SIZE` to prevent `tcp_write` from returning `ERR_MEM` during the declaration batch
-2. **Fix `SO_SNDTIMEO` to work on initial call** — patch `do_writemore` to check timeout BEFORE attempting `tcp_write`, not just on re-invocation
-3. **Ensure `sent_tcp` fires** — investigate why the TCP ACK delivery chain stalls under `-icount shift=auto`
+lwIP's `netconn` uses a single `conn->op_completed` semaphore per connection. When `LWIP_NETCONN_SEM_PER_THREAD=0` (default), ALL tasks sharing the same TCP socket use the SAME semaphore:
+- The read task calls `lwip_recv()` → waits on `conn->op_completed`
+- The app task calls `lwip_send()` → waits on `conn->op_completed`
+
+When the tcpip_thread signals `conn->op_completed` for the app task's write completion, the read task's pending `lwip_recv()` may consume the signal instead (or vice versa). This causes **lost wakeups** — the app task's semaphore signal is stolen by the read task.
+
+Without `-icount shift=auto`, the timing is fast enough that both tasks complete before the race becomes visible. With `-icount`, the wall-clock timing makes the race deterministic.
+
+### Fix: `LWIP_NETCONN_SEM_PER_THREAD=1`
+
+Enable per-thread semaphores in lwIP so each FreeRTOS task gets its own semaphore for netconn operations. This eliminates the shared semaphore race.
+
+**Requirements**:
+1. `lwipopts.h`: `#define LWIP_NETCONN_SEM_PER_THREAD 1`
+2. `FreeRTOSConfig.h`: `#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1`
+3. Each task that uses sockets must call `lwip_socket_thread_init()` before first use
+4. The lwIP FreeRTOS port's `sys_arch_netconn_sem_alloc()` uses `mem_malloc` (lwIP heap) which may fail if the heap is exhausted. Patch to use `pvPortMalloc` (FreeRTOS heap) instead.
+5. `MEM_SIZE` or `configTOTAL_HEAP_SIZE` may need increasing to accommodate the per-thread semaphores.
+
+**Status**: Attempted but blocked on `sem != NULL` assertion — `pvPortMalloc(4)` returns NULL even with 1MB FreeRTOS heap. Likely a task initialization ordering issue where `lwip_socket_thread_init()` is called before the FreeRTOS scheduler starts. Needs further investigation.
 
 ## Notes
 
