@@ -398,11 +398,31 @@ This is NOT a classical deadlock (no circular dependency). It's a **priority inv
 
 **Why the Rust binary works**: the Rust binary completes all declarations before the router has time to send responses that trigger `response_final` sends. The C++ binary is slower (larger code), giving the router enough time to send responses during the declaration sequence.
 
-### Fix
+### Deeper: Why `lwip_send()` Blocks Indefinitely
 
-The read task's `_z_send_n_msg` calls in `session/rx.c:123,139` should use `Z_CONGESTION_CONTROL_DROP` instead of `BLOCK`. If the TX mutex is busy (app task sending declarations), the response_final is dropped — the router will retransmit. This prevents the read task from blocking on `_mutex_tx` while holding `_mutex_rx`.
+**lwIP diagnostic trace** (printf in `tcpip_send_msg_wait_sem` and `tcpip_thread_handle_msg`):
 
-Alternatively, the response_final sends could use the non-blocking `_z_transport_tx_try_send_t_msg` variant.
+```
+tick=2865: mbox_post fn=WRITE          ← 10th send posted to tcpip_mbox
+tick=2869: tcpip API fn=WRITE          ← tcpip_thread picks up the WRITE
+tick=2878: tcpip API done fn=WRITE     ← lwip_netconn_do_write returns
+                                          (NO sem_done — semaphore NOT signaled)
+tick=2892: mbox_post fn=RECV           ← read task posts recv
+tick=2911: sem_wait fn=WRITE           ← write caller blocks forever
+tick=5333: next recv (2.4s later)      ← system continues for recv
+```
+
+**Finding**: `lwip_netconn_do_write` called `do_writemore` → `tcp_write()` returned `ERR_MEM`. Despite `SO_SNDTIMEO=100ms`, the timeout check in `do_writemore` (line 1667) only fires on RE-INVOCATION by `sent_tcp` callback — not on the initial call. The function returns without signaling the semaphore, waiting for `sent_tcp` to retry.
+
+`sent_tcp` fires when a TCP ACK arrives (freeing send buffer space). The ACK delivery chain: QEMU slirp → LAN9118 NIC → poll task (every 1ms) → `tcpip_input` → tcpip_thread. With `-icount shift=auto`, this chain doesn't complete because QEMU's main loop (which processes slirp I/O) runs during WFI, and the relationship between virtual ticks and main loop I/O is imprecise.
+
+**Why `tcp_write` returns `ERR_MEM` with only 500 bytes sent**: Total data is ~500 bytes, well under `TCP_SND_BUF=5840`. The `ERR_MEM` likely comes from pbuf/segment exhaustion (`MEMP_NUM_TCP_SEG=32`, `PBUF_POOL_SIZE=24`). Each send creates TCP segments with headers. With 9 rapid sends, 9 segments are queued but none ACKed yet — their pbufs remain allocated until ACKs arrive.
+
+### Fix Options
+
+1. **Investigate pbuf exhaustion** — increase `MEMP_NUM_TCP_SEG` and `PBUF_POOL_SIZE` to prevent `tcp_write` from returning `ERR_MEM` during the declaration batch
+2. **Fix `SO_SNDTIMEO` to work on initial call** — patch `do_writemore` to check timeout BEFORE attempting `tcp_write`, not just on re-invocation
+3. **Ensure `sent_tcp` fires** — investigate why the TCP ACK delivery chain stalls under `-icount shift=auto`
 
 ## Notes
 
