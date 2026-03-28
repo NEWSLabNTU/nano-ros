@@ -91,10 +91,12 @@ _run-qemu example binary:
     cd "examples/qemu-arm-nuttx/rust/zenoh/{{example}}"
     CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo +nightly build --release
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
+    # NuttX only supports virtio MMIO (not PCI). '-nic user' creates a PCI NIC,
+    # so we must use explicit '-device virtio-net-device' for MMIO transport.
     qemu-system-arm -M virt -cpu cortex-a7 -nographic \
         -icount shift=auto \
         -kernel "target/armv7a-nuttx-eabihf/release/{{binary}}" \
-        -nic user &
+        -netdev user,id=net0 -device virtio-net-device,netdev=net0 &
     PID=$!
     wait $PID
 
@@ -117,8 +119,9 @@ action-server: (_run-qemu "action-server" "nuttx-rs-action-server")
 action-client: (_run-qemu "action-client" "nuttx-rs-action-client")
 
 # Start zenohd router for NuttX QEMU examples (port 7452)
+# Must listen on 0.0.0.0 — QEMU slirp gateway (10.0.2.2) doesn't reach 127.0.0.1
 zenohd:
-    build/zenohd/zenohd --listen tcp/127.0.0.1:7452 --no-multicast-scouting
+    build/zenohd/zenohd --listen tcp/0.0.0.0:7452 --no-multicast-scouting
 
 # Clean NuttX build artifacts
 clean:
