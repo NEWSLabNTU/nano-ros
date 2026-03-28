@@ -395,6 +395,12 @@ void SysTick_Handler(void) {
     }
 }
 
+/* ---- FreeRTOS malloc failed hook ---- */
+void vApplicationMallocFailedHook(void) {
+    /* Loop forever — debugger can inspect xPortGetFreeHeapSize() */
+    for (;;) { __asm__ volatile("wfi"); }
+}
+
 /* ---- FreeRTOS idle hook: WFI for QEMU ---- */
 /* On real hardware, WFI saves power. In QEMU, it yields CPU time back to
  * the main event loop so that the TAP network FD can be serviced. Without

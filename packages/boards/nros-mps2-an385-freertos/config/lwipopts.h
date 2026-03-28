@@ -75,6 +75,7 @@
 #define LWIP_NETIF_API                  1
 
 /* ---- Threading (FreeRTOS) ---- */
+#define LWIP_NETCONN_SEM_PER_THREAD     1
 #define TCPIP_THREAD_STACKSIZE          (4 * 1024)
 #define TCPIP_THREAD_PRIO               4
 #define TCPIP_MBOX_SIZE                 16

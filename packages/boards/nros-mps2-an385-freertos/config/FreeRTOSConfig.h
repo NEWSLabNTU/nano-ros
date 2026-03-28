@@ -85,8 +85,9 @@ extern void freertos_assert_failed(const char *file, int line);
 #else
 #define configUSE_TICK_HOOK                     0
 #endif
-#define configUSE_MALLOC_FAILED_HOOK            0
+#define configUSE_MALLOC_FAILED_HOOK            1
 #define configCHECK_FOR_STACK_OVERFLOW          0
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
 /* ---- Tonbandgeraet tracing (opt-in via NROS_TRACE=1) ---- */
 #ifdef NROS_TRACE
