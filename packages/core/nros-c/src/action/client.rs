@@ -604,9 +604,9 @@ pub unsafe extern "C" fn nros_action_client_set_goal_response_callback(
 
 /// Poll the action client for pending async replies (non-blocking).
 ///
-/// Checks for goal acceptance, feedback, and result. Invokes the
-/// registered callbacks. Call this in the spin loop after
-/// `nros_executor_spin_some`.
+/// **Note**: In the unified design (77.6+), `nros_executor_spin_some` already
+/// dispatches `action_client_raw_try_process` which invokes callbacks. This
+/// function is provided for manual polling outside the executor loop.
 ///
 /// # Safety
 /// `client` must be a valid pointer.
@@ -624,15 +624,20 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
     let internal = &mut *(client_ref._internal.as_mut_ptr() as *mut ActionClientInternal);
     let ctx = client_ref.context;
 
+    let core = match unsafe { internal.arena_core_mut() } {
+        Some(c) => c,
+        None => return NROS_RET_NOT_INIT,
+    };
+
     // Poll goal acceptance reply
-    if let Ok(Some(total_len)) = internal.core.try_recv_send_goal_reply() {
+    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
         if let Some(cb) = client_ref.goal_response_callback {
-            let buf = internal.core.result_buffer_ref();
+            let buf = core.result_buffer_ref();
             let accepted = total_len >= 5 && buf[4] != 0;
             let uuid = nros_goal_uuid_t {
                 uuid: {
                     let mut u = [0u8; 16];
-                    u[..8].copy_from_slice(&internal.core.goal_counter().to_le_bytes());
+                    u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
                     u
                 },
             };
@@ -641,9 +646,9 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
     }
 
     // Poll feedback
-    if let Ok(Some((goal_id, total_len))) = internal.core.try_recv_feedback_raw() {
+    if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
         if let Some(cb) = client_ref.feedback_callback {
-            let buf = internal.core.feedback_buffer_ref();
+            let buf = core.feedback_buffer_ref();
             let offset = 4 + 16; // CDR header + GoalId
             if total_len > offset {
                 let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
@@ -658,9 +663,9 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
     }
 
     // Poll result reply
-    if let Ok(Some(total_len)) = internal.core.try_recv_get_result_reply() {
+    if let Ok(Some(total_len)) = core.try_recv_get_result_reply() {
         if let Some(cb) = client_ref.result_callback {
-            let buf = internal.core.result_buffer_ref();
+            let buf = core.result_buffer_ref();
             if total_len >= 5 {
                 let status_byte = buf[4];
                 let c_status = match status_byte {
@@ -673,7 +678,7 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
                 let uuid = nros_goal_uuid_t {
                     uuid: {
                         let mut u = [0u8; 16];
-                        u[..8].copy_from_slice(&internal.core.goal_counter().to_le_bytes());
+                        u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
                         u
                     },
                 };

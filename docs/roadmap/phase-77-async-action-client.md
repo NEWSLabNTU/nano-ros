@@ -302,11 +302,79 @@ declare_pub status ... <hangs>          ← 5th entity deadlocks
 
 **Key insight**: The `-icount shift=auto` flag is required for correct slirp networking timing in E2E tests. Without it, lwIP timers run too fast and network I/O breaks.
 
-**Possible fixes**:
-1. Add `vTaskDelay(1)` between entity declarations to yield to background tasks
-2. Temporarily stop background tasks during entity declaration, then restart
-3. Defer entity declarations to the first `spin_once()` call (lazy init)
-4. Remove `-icount shift=auto` from the test harness and adjust network timing
+### Detailed Investigation
+
+**Mutex architecture** in zenoh-pico unicast transport:
+
+| Mutex | Scope | Held by |
+|-------|-------|---------|
+| `_mutex_tx` | TX buffer + wire send | App task (entity declarations via `_z_send_n_msg(BLOCK)`), Lease task (keep-alives via `_z_transport_tx_send_t_msg`) |
+| `_mutex_rx` | RX buffer | Read task (held for entire loop: line 330→373 of `read.c`) |
+| `_mutex_inner` | Session resource table | Any task registering resources |
+
+**Each `z_declare_publisher` sends TWO messages** (a declaration + a write filter interest). Each message acquires `_mutex_tx` with `Z_CONGESTION_CONTROL_BLOCK`. So declaring 5 entities = 10 TX mutex acquisitions.
+
+**FreeRTOS mutex implementation**: `xSemaphoreCreateRecursiveMutex()` — includes priority inheritance.
+
+**Task priorities** (CMake C++ binary — the failing one):
+
+| Task | Priority | Notes |
+|------|----------|-------|
+| lwIP tcpip_thread | 4 | Set in `lwipopts.h` |
+| Zenoh read task | 4 | Default: `configMAX_PRIORITIES/2` = 4 (CMake never calls `zpico_set_task_config`) |
+| Zenoh lease task | 4 | Same default |
+| Network poll task | 4 | Set in `startup.c` |
+| **App task** | **3** | **Lower than all background tasks** |
+
+**Priority inheritance has no effect** because the mutex holder (lease task, priority 4) is already higher than the waiter (app task, priority 3).
+
+**Rust binary priorities** (for comparison — different mapping via `to_freertos_priority()`):
+- App: 2, Zenoh read/lease: 3, Poll: 3. Same relative order — app is lower. But the Rust binary works because the entity declarations complete before the first keep-alive timer fires.
+
+**Socket timeout**: `SO_RCVTIMEO = 100ms` on the TCP socket. The read task blocks in `lwip_recv()` for up to 100ms, yielding CPU. Not a busy-wait.
+
+**Network poll**: 1ms interval (`POLL_INTERVAL_MS = 1`), reads from LAN9118 NIC.
+
+**Lease keep-alive interval**: `Z_TRANSPORT_LEASE / Z_TRANSPORT_LEASE_EXPIRE_FACTOR` = `10000 / 3` ≈ 3333ms.
+
+**GDB finding**: at the point of deadlock, the CPU is in `lwip_recv_tcp()` → `netconn_recv_data_tcp()` (read task blocked in recv). Other task states could not be determined from single-core GDB.
+
+**Hypothesized deadlock sequence**:
+1. Session opens, read/lease tasks start (~5s wall time with `-icount`)
+2. App task (priority 3) begins declaring entities
+3. After ~3.3s (keep-alive interval), lease task wakes and acquires `_mutex_tx` for keep-alive
+4. lwIP `send()` blocks waiting for TCP window (posts to tcpip_thread, waits on semaphore)
+5. App task blocks on `_mutex_tx` (waiting for lease task)
+6. **Issue**: the TCP ACK for the keep-alive arrives via LAN9118 → poll task → tcpip_thread → unblocks lease → releases `_mutex_tx`. This chain SHOULD work but may be disrupted by `-icount shift=auto` timing distortion.
+
+**Key unanswered question**: Why does the chain in step 6 fail with `-icount`? Possible causes:
+- The poll task's 1ms delay interacts badly with `-icount`'s instruction-count-based time
+- The tcpip_thread's internal timers (TCP retransmit, delayed ACK) fire at wrong intervals
+- QEMU slirp processes network I/O in its main loop, which with `-icount` may not align with the guest's TCP expectations
+
+### Experiments Performed
+
+1. **Priority fix attempted**: Set zenoh read/lease tasks to priority 2 (below app task at 3) via `zpico_set_task_config`. **Still deadlocks.** Rules out priority inversion — the issue is not which task runs first.
+
+2. **GDB backtrace**: CPU is in `lwip_recv_tcp()` → `netconn_recv_data_tcp()` (read task blocked in recv). This is expected — the read task yields when no data.
+
+3. **Batching analysis**: `Z_FEATURE_BATCHING=1` but `_batch_state` starts as `IDLE` (no one calls `zp_batch_start`). Messages flush immediately via `_z_transport_tx_flush_buffer` → `_z_link_send_wbuf` → `lwip_send()`.
+
+**The actual blocking call**: `lwip_send()` inside `_z_transport_tx_flush_buffer`, while the app task holds `_mutex_tx`. The TCP send blocks waiting for the tcpip_thread to process the segment. This SHOULD complete in ~10ms. The question is why it doesn't.
+
+### Remaining Hypotheses
+
+1. **Lease session expiry**: `Z_TRANSPORT_LEASE = 10000ms`. If entity declarations take >10s wall time (likely with `-icount`), the lease task closes the session via `_zp_unicast_failed()`. This stops the read task and tears down the transport. Subsequent `lwip_send()` on the closed socket may hang (lwIP behavior on closed connection + tcpip_thread shutdown).
+
+2. **lwIP tcpip_thread not processing**: The `lwip_send()` calls `tcpip_apimsg()` which blocks on a semaphore until the tcpip_thread processes it. If the tcpip_thread is stuck or not running, the semaphore never signals. The tcpip_thread (priority 4) runs at the same priority as the poll and read tasks. With `-icount`, the round-robin timing may starve it.
+
+3. **Network poll not running**: TCP ACKs arrive via the poll task (`lan9118_lwip_poll`). If the poll task's 1ms `vTaskDelay` interacts badly with `-icount`, incoming packets are not read from the NIC, and TCP ACKs are delayed beyond the retransmit timeout.
+
+### Next Steps
+
+1. **Test with lease disabled** — temporarily skip `zp_start_lease_task` in zpico.c to eliminate the lease expiry hypothesis
+2. **Add timeout to `lwip_send()`** — set `SO_SNDTIMEO` on the TCP socket to prevent indefinite blocking
+3. **Defer entity declarations to spin_once** — the architecturally correct fix (follows "only spin drives the runtime" principle). Entity declarations would happen lazily during the first `spin_once()` call, after the executor and background tasks are fully initialized
 
 ## Notes
 
