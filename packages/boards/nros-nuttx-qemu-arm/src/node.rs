@@ -52,13 +52,22 @@ where
         config.ip[0], config.ip[1], config.ip[2], config.ip[3], config.zenoh_locator
     );
 
+    // Wait for NuttX networking (virtio-net + DHCP/ARP) to stabilize.
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    // Flush stdout before calling user closure
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
+
     match f(&config) {
         Ok(()) => {
             println!("Application completed successfully.");
+            let _ = std::io::stdout().flush();
             std::process::exit(0);
         }
         Err(e) => {
             eprintln!("Application error: {:?}", e);
+            let _ = std::io::stdout().flush();
             std::process::exit(1);
         }
     }
