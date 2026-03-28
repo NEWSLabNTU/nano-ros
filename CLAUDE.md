@@ -122,6 +122,7 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 - Create in `$project/tmp/` (git-ignored), not `/tmp`
 - Use Write/Edit tools (avoid cat + heredoc)
 - **Build test scripts**: when iterating on cmake/cargo build commands, write them as reusable scripts in `tmp/` (e.g., `tmp/build-riscv64-talker.sh`) instead of running long one-liner commands repeatedly
+- **Debug/test scripts**: when running repeated multi-step commands (QEMU launch, GDB debug sessions, build+run combos), always write them as `tmp/*.sh` scripts first, then run the script. Never repeat long commands inline.
 
 ### `.gitignore` Practices
 - **Every workspace-excluded crate** (examples, board crates in `exclude`, standalone packages) must have a per-directory `.gitignore` with at least `/target/`. Add `/generated/` if the crate uses `cargo nano-ros generate`.
