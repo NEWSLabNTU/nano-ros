@@ -362,19 +362,19 @@ declare_pub status ... <hangs>          ← 5th entity deadlocks
 
 **The actual blocking call**: `lwip_send()` inside `_z_transport_tx_flush_buffer`, while the app task holds `_mutex_tx`. The TCP send blocks waiting for the tcpip_thread to process the segment. This SHOULD complete in ~10ms. The question is why it doesn't.
 
-### Remaining Hypotheses
+### Confirmed Root Cause
 
-1. **Lease session expiry**: `Z_TRANSPORT_LEASE = 10000ms`. If entity declarations take >10s wall time (likely with `-icount`), the lease task closes the session via `_zp_unicast_failed()`. This stops the read task and tears down the transport. Subsequent `lwip_send()` on the closed socket may hang (lwIP behavior on closed connection + tcpip_thread shutdown).
+**Experiment**: disabled `zp_start_lease_task` in zpico.c. Result: all 5 entities declare reliably with `-icount shift=auto`. **The lease task causes the deadlock.**
 
-2. **lwIP tcpip_thread not processing**: The `lwip_send()` calls `tcpip_apimsg()` which blocks on a semaphore until the tcpip_thread processes it. If the tcpip_thread is stuck or not running, the semaphore never signals. The tcpip_thread (priority 4) runs at the same priority as the poll and read tasks. With `-icount`, the round-robin timing may starve it.
+The mechanism: the lease task's keep-alive send (`_zp_unicast_send_keep_alive` → `_z_transport_tx_send_t_msg` → `_z_mutex_lock(&_mutex_tx)`) contends with the entity declaration send on the same `_mutex_tx`. With `-icount shift=auto`, the virtual clock runs at wall-clock speed, making the keep-alive timer fire during the entity declaration sequence. The lease task acquires `_mutex_tx` for its keep-alive, and `lwip_send()` blocks for a wall-clock TCP round-trip. Meanwhile the app task waits for `_mutex_tx`. The combined effect: each entity declaration takes longer, which pushes subsequent declarations past more keep-alive intervals, creating a cascading delay that eventually leads to a complete stall.
 
-3. **Network poll not running**: TCP ACKs arrive via the poll task (`lan9118_lwip_poll`). If the poll task's 1ms `vTaskDelay` interacts badly with `-icount`, incoming packets are not read from the NIC, and TCP ACKs are delayed beyond the retransmit timeout.
+This is NOT a classical deadlock (two mutexes in opposite order). It is a **livelock/starvation** scenario: the lease task periodically holds `_mutex_tx` for wall-clock TCP round-trip durations, and the app task can never complete all 5 declarations between keep-alive intervals.
 
-### Next Steps
+### Fix Options
 
-1. **Test with lease disabled** — temporarily skip `zp_start_lease_task` in zpico.c to eliminate the lease expiry hypothesis
-2. **Add timeout to `lwip_send()`** — set `SO_SNDTIMEO` on the TCP socket to prevent indefinite blocking
-3. **Defer entity declarations to spin_once** — the architecturally correct fix (follows "only spin drives the runtime" principle). Entity declarations would happen lazily during the first `spin_once()` call, after the executor and background tasks are fully initialized
+1. **Suppress keep-alives during entity declaration** — set `_transmitted = true` before the declaration batch. The lease task skips keep-alives when `_transmitted` is true (line 107 in lease.c). After declarations complete, reset it. This is the minimal targeted fix.
+2. **Stop/restart the lease task around declarations** — `zp_stop_lease_task` before, `zp_start_lease_task` after. More disruptive but guaranteed.
+3. **Increase lease timeout for FreeRTOS** — increase `Z_TRANSPORT_LEASE` from 10s to 30s. Gives more headroom but doesn't fix the root cause.
 
 ## Notes
 
