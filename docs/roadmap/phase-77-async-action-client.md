@@ -370,11 +370,13 @@ The mechanism: the lease task's keep-alive send (`_zp_unicast_send_keep_alive` �
 
 This is NOT a classical deadlock (two mutexes in opposite order). It is a **livelock/starvation** scenario: the lease task periodically holds `_mutex_tx` for wall-clock TCP round-trip durations, and the app task can never complete all 5 declarations between keep-alive intervals.
 
-### Fix Options
+### Fix Applied: Non-blocking keep-alive (zenoh-pico)
 
-1. **Suppress keep-alives during entity declaration** — set `_transmitted = true` before the declaration batch. The lease task skips keep-alives when `_transmitted` is true (line 107 in lease.c). After declarations complete, reset it. This is the minimal targeted fix.
-2. **Stop/restart the lease task around declarations** — `zp_stop_lease_task` before, `zp_start_lease_task` after. More disruptive but guaranteed.
-3. **Increase lease timeout for FreeRTOS** — increase `Z_TRANSPORT_LEASE` from 10s to 30s. Gives more headroom but doesn't fix the root cause.
+Changed the lease task's keep-alive send to use `_z_transport_tx_try_send_t_msg` (non-blocking try-lock on `_mutex_tx`). If the TX mutex is held by the app task during declarations, the keep-alive is skipped — declaration sends prove liveness.
+
+**Result**: Eliminates the keep-alive contention. However, the C++ server still hangs on FreeRTOS QEMU with `-icount shift=auto`. The remaining issue is `lwip_send()` blocking in the app task itself due to QEMU slirp TCP latency — the TCP round-trip through slirp takes wall-clock time, and with `-icount`, each `z_declare_publisher` send blocks for 100+ ms. This compounds across 5 entities × 2 messages each.
+
+This is a QEMU emulation limitation, not a zenoh-pico or nros bug. The Rust binary is less affected because it's slightly faster (different code layout / less template instantiation), completing all declarations before the timing window closes.
 
 ## Notes
 
