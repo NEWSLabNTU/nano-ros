@@ -311,14 +311,85 @@ Colcon resolves dependencies between packages (e.g., shared message types) and b
 
 4. **Workspace-level message generation**: Interface bindings are generated once per workspace (under `build/nros_bindings/<interface_pkg>/`), shared by all packages. A `PackageAugmentationExtensionPoint` collects all interface packages declared in `<depend>` across the workspace before the build phase, then generates bindings in a single pass. This avoids redundant codegen when multiple packages depend on the same interfaces (e.g., `std_msgs`).
 
+### Board Configuration
+
+Each platform (FreeRTOS, Zephyr, NuttX, ...) supports multiple boards with extensive customizability. The build type encodes `lang.platform` but NOT the board — board selection and config live in the package's `config.toml`.
+
+#### What users need to customize
+
+| Layer | Examples | Mechanism |
+|---|---|---|
+| **Network topology** | IP, MAC, gateway, netmask per node | `config.toml` `[network]` |
+| **Zenoh transport** | Router address (TCP/serial/USB) | `config.toml` `[zenoh]` |
+| **Task scheduling** | Priority, stack size per task | `config.toml` `[scheduling]` |
+| **ROS domain** | Domain ID for cluster isolation | `config.toml` `[zenoh]` |
+| **Transport choice** | Ethernet vs serial | Cargo features or CMake option |
+| **Buffer tuning** | Message sizes, entity counts | `config.toml` `[tuning]` or env vars |
+| **Board/BSP** | CPU clock, memory layout, peripherals | `config.toml` `[board]` |
+| **RTOS config** | Heap size, tick rate, max priorities | Board config files (FreeRTOSConfig.h, Kconfig) |
+| **SDK paths** | FreeRTOS/NuttX/ThreadX sources | Env vars or `config.toml` `[sdk]` |
+
+#### `config.toml` as the single source of truth
+
+The `config.toml` already handles network, zenoh, and scheduling config. Extend it with board and SDK sections:
+
+```toml
+[board]
+name = "mps2-an385"          # Board Support Package identifier
+# Board-specific overrides (optional — defaults from BSP)
+cpu_clock_hz = 25000000
+heap_size = 262144            # FreeRTOS configTOTAL_HEAP_SIZE
+tick_rate_hz = 1000
+
+[network]
+ip = "10.0.2.20"
+mac = "02:00:00:00:00:00"
+gateway = "10.0.2.2"
+netmask = "255.255.255.0"
+
+[zenoh]
+locator = "tcp/10.0.2.2:7451"
+domain_id = 0
+
+[scheduling]
+app_priority = 12
+app_stack_bytes = 65536
+
+[tuning]
+max_publishers = 8
+max_subscribers = 8
+message_buffer_size = 1024
+
+[sdk]
+freertos_dir = "/opt/freertos-kernel"      # Override SDK path (optional)
+lwip_dir = "/opt/lwip"
+```
+
+The `[board].name` selects the BSP. The build task resolves it to:
+- **Rust**: the board crate (`nros-mps2-an385-freertos`) and its `config/` dir
+- **CMake**: the toolchain file and platform support module
+- **Zephyr**: the `--board` flag for `west build`
+
+All configuration is **compile-time fixed** — no runtime heap allocation for transport. This is critical for predictable memory usage on constrained embedded platforms.
+
+#### Board discovery
+
+The colcon plugin discovers available boards from:
+1. **nano-ros install prefix** (`share/nano-ros/boards/`) — installed board configs
+2. **Workspace-local board crates** — `packages/boards/nros-<board>/` in the workspace
+3. **Environment variables** — `NROS_BOARD` for explicit override
+
+Users can list available boards:
+```bash
+colcon nano-ros list-boards --platform freertos
+# mps2-an385    ARM Cortex-M3 (QEMU)
+# stm32f4       STM32F4 Discovery
+# esp32         ESP32 DevKit
+```
+
 ### Open Questions
 
-1. **Board-specific config within a platform?** FreeRTOS has multiple boards (MPS2-AN385, STM32F4, ESP32). Options:
-   - Encode in build type: `nros.rust.freertos.mps2_an385` (4-level — heavy)
-   - Board in `config.toml` (keeps build type to 3 levels)
-   - Board as a colcon build argument: `colcon build --cmake-args -DNROS_BOARD=mps2-an385`
-
-2. **`cargo nano-ros build` subcommand?** The colcon plugin could invoke a `cargo nano-ros build` subcommand that encapsulates the platform-specific build logic. This keeps the build logic in Rust, avoids duplicating it in Python, and is usable outside of colcon (standalone CLI). The colcon plugin becomes a thin wrapper that calls the subcommand with the right arguments.
+1. **`cargo nano-ros build` subcommand?** The colcon plugin could invoke a `cargo nano-ros build` subcommand that encapsulates the platform-specific build logic. This keeps the build logic in Rust, avoids duplicating it in Python, and is usable outside of colcon (standalone CLI). The colcon plugin becomes a thin wrapper that calls the subcommand with the right arguments.
 
 ## Related Work (Downloaded)
 
