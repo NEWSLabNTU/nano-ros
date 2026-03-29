@@ -45,107 +45,129 @@ colcon build --packages-select-build-type ros.nros.rust.native
 
 ### 78.1 — Project scaffolding
 
-Set up the `colcon-nano-ros` repo with maturin (Rust + Python) build:
+Set up the `colcon-nano-ros` repo with maturin (Rust + Python) build.
 
-- `pyproject.toml` — maturin build config
-- `setup.cfg` — colcon entry points (all `lang × platform` combinations)
-- `Cargo.toml` — Rust library (PyO3)
-- `colcon_nano_ros/__init__.py`
-- `colcon_nano_ros/task/__init__.py`
-- `colcon_nano_ros/task/build.py` — stub `NrosBuildTask`
-- `colcon_nano_ros/task/test.py` — stub `NrosTestTask`
-- Verify `pip install -e .` and colcon discovers the plugin
+- [ ] `pyproject.toml` with maturin build config (Rust + Python wheel)
+- [ ] `Cargo.toml` for the Rust library (PyO3)
+- [ ] `setup.cfg` with colcon entry points for all `lang × platform` combinations
+- [ ] `colcon_nano_ros/__init__.py` with version
+- [ ] `colcon_nano_ros/task/__init__.py`
+- [ ] `colcon_nano_ros/task/build.py` — stub `NrosBuildTask` that parses `pkg.type`
+- [ ] `colcon_nano_ros/task/test.py` — stub `NrosTestTask`
+- [ ] `src/lib.rs` — stub PyO3 module
+- [ ] `pip install -e .` succeeds and `colcon build` discovers the plugin
+- [ ] `colcon build` on a package with `<build_type>nros.rust.native</build_type>` invokes `NrosBuildTask` (even if it does nothing yet)
 - **Files**: `packages/codegen/` (colcon-nano-ros repo)
 
 ### 78.2 — NrosBuildTask: Rust native
 
-Implement the build task for `nros.rust.native`:
+Implement the build task for `nros.rust.native`.
 
-- Parse `pkg.type = "ros.nros.rust.native"` → `lang="rust"`, `platform="native"`
-- Run `cargo build --release` in the package directory
-- Install binary to `install/<pkg>/lib/<pkg>/`
-- Install `package.xml` to `install/<pkg>/share/<pkg>/`
-- Create ament environment hooks (PATH, LD_LIBRARY_PATH)
-- **Test**: single Rust native package builds and installs via `colcon build`
+- [ ] Parse `pkg.type = "ros.nros.rust.native"` → `lang="rust"`, `platform="native"`
+- [ ] Run `cargo build --release` in the package directory
+- [ ] Find binary targets from `cargo metadata --no-deps`
+- [ ] Install binaries to `install/<pkg>/lib/<pkg>/`
+- [ ] Install `package.xml` to `install/<pkg>/share/<pkg>/`
+- [ ] Create ament environment hooks (PATH, LD_LIBRARY_PATH)
+- [ ] Single Rust native package builds and installs via `colcon build`
+- [ ] Installed binary is executable from `install/<pkg>/lib/<pkg>/`
 - **Files**: `colcon_nano_ros/task/build.py`
 
 ### 78.3 — NrosBuildTask: C/C++ native
 
-Implement the build task for `nros.c.native` and `nros.cpp.native`:
+Implement the build task for `nros.c.native` and `nros.cpp.native`.
 
-- Run `cmake -S <pkg> -B <build_base> -DCMAKE_PREFIX_PATH=<install_base>` + `cmake --build`
-- Install binary to `install/<pkg>/lib/<pkg>/`
-- Pass `CMAKE_PREFIX_PATH` so `find_package(NanoRos)` works
-- **Test**: single C native package builds via `colcon build`
+- [ ] Run `cmake -S <pkg> -B <build_base> -DCMAKE_PREFIX_PATH=<install_base>` + `cmake --build`
+- [ ] Pass `CMAKE_PREFIX_PATH` so `find_package(NanoRos)` works
+- [ ] Install binary to `install/<pkg>/lib/<pkg>/`
+- [ ] Install `package.xml` to `install/<pkg>/share/<pkg>/`
+- [ ] Single C native package builds via `colcon build`
+- [ ] Single C++ native package builds via `colcon build`
 - **Files**: `colcon_nano_ros/task/build.py`
 
 ### 78.4 — Workspace-level message generation
 
-Generate interface bindings once per workspace, shared by all packages:
+Generate interface bindings once per workspace, shared by all packages.
 
-- Implement `PackageAugmentationExtensionPoint` to collect all interface dependencies across workspace packages
-- Find `.msg`/`.srv`/`.action` files from `AMENT_PREFIX_PATH` or workspace
-- Run `cargo nano-ros generate-rust` and/or `cargo nano-ros generate-cpp` into `build/nros_bindings/<interface_pkg>/`
-- Set environment variables so Cargo/CMake find the generated bindings
-- **Test**: two packages depending on `std_msgs` share the same generated bindings
+- [ ] Implement `PackageAugmentationExtensionPoint` to collect all `<depend>` entries that are interface packages
+- [ ] Detect interface packages by checking for `.msg`/`.srv`/`.action` files in `AMENT_PREFIX_PATH` or workspace
+- [ ] Run `cargo nano-ros generate-rust` into `build/nros_bindings/<interface_pkg>/` for Rust packages
+- [ ] Run `cargo nano-ros generate-cpp` into `build/nros_bindings/<interface_pkg>/` for C/C++ packages
+- [ ] Set environment variables / CMake variables so Cargo and CMake find the generated bindings
+- [ ] Two Rust packages depending on `std_msgs` share the same generated bindings (no duplicate codegen)
+- [ ] Two C packages depending on `example_interfaces` share the same generated bindings
 - **Files**: `colcon_nano_ros/package_augmentation/__init__.py`, `src/lib.rs`
 
 ### 78.5 — NrosBuildTask: Rust cross-compilation (FreeRTOS, bare-metal)
 
-Add cross-compilation support for embedded Rust targets:
+Add cross-compilation support for embedded Rust targets.
 
-- Platform → target triple mapping:
+- [ ] Platform → target triple mapping table in the Rust library:
   - `freertos` → `thumbv7m-none-eabi`
   - `baremetal` → `thumbv7m-none-eabi`
   - `nuttx` → `thumbv7m-none-eabi`
   - `threadx` → `thumbv7m-none-eabi` or `riscv64gc-unknown-none-elf`
-- Pass `--target <triple>` to `cargo build`
-- The board crate's `.cargo/config.toml` handles linker, runner, build flags
-- Install firmware to `install/<pkg>/lib/<pkg>/`
-- **Test**: FreeRTOS Rust package cross-compiles via `colcon build`
-- **Files**: `colcon_nano_ros/task/build.py`
+- [ ] Pass `--target <triple>` to `cargo build --release`
+- [ ] Respect the package's `.cargo/config.toml` for linker, runner, build flags
+- [ ] Pass `FREERTOS_DIR`, `LWIP_DIR` etc. from environment to the build
+- [ ] Install firmware ELF to `install/<pkg>/lib/<pkg>/`
+- [ ] FreeRTOS Rust talker cross-compiles via `colcon build`
+- [ ] Cross-compiled binary is a valid ARM ELF (`file` reports ARM)
+- **Files**: `colcon_nano_ros/task/build.py`, `src/lib.rs`
 
 ### 78.6 — NrosBuildTask: C/C++ cross-compilation (FreeRTOS)
 
-Add cross-compilation for C/C++ embedded targets:
+Add cross-compilation for C/C++ embedded targets.
 
-- Pass `CMAKE_TOOLCHAIN_FILE` based on platform
-- Pass `FREERTOS_DIR`, `LWIP_DIR`, etc. from environment
-- The user's `CMakeLists.txt` includes the platform support module
-- **Test**: FreeRTOS C action server builds via `colcon build`
+- [ ] Resolve `CMAKE_TOOLCHAIN_FILE` from platform name (e.g., `freertos` → `arm-freertos-armcm3.cmake`)
+- [ ] Pass `FREERTOS_DIR`, `LWIP_DIR`, `FREERTOS_CONFIG_DIR` from environment to CMake
+- [ ] The user's `CMakeLists.txt` includes the platform support module and `find_package(NanoRos)`
+- [ ] FreeRTOS C action server builds via `colcon build`
+- [ ] FreeRTOS C++ action client builds via `colcon build`
 - **Files**: `colcon_nano_ros/task/build.py`
 
 ### 78.7 — NrosBuildTask: Zephyr
 
-Add Zephyr support (`nros.rust.zephyr`, `nros.c.zephyr`):
+Add Zephyr support (`nros.rust.zephyr`, `nros.c.zephyr`).
 
-- Invoke `west build` with `--board <board>` from config
-- Handle Zephyr module registration (Kconfig, CMakeLists.txt)
-- **Test**: Zephyr talker/listener build via `colcon build`
+- [ ] Invoke `west build` with appropriate board and config
+- [ ] Handle Zephyr module registration (extra module path for nano-ros)
+- [ ] Pass `CONFIG_NROS_*` Kconfig options from `config.toml` or environment
+- [ ] Zephyr C talker builds via `colcon build`
+- [ ] Zephyr Rust listener builds via `colcon build`
 - **Files**: `colcon_nano_ros/task/build.py`
 
 ### 78.8 — NrosTestTask
 
-Implement test tasks for each platform:
+Implement test tasks for each platform.
 
-- `native`: run the binary directly, capture output
-- `freertos`/`baremetal`: launch QEMU, capture semihosting output
-- `zephyr`: `west flash` + serial capture, or `native_sim`
-- JUnit XML output for `colcon test-result`
+- [ ] `native`: run the binary, capture stdout/stderr, check exit code
+- [ ] `freertos` / `baremetal`: launch QEMU with `-icount shift=auto`, capture semihosting output, timeout
+- [ ] `zephyr`: `west flash` + serial capture, or `native_sim` build + run
+- [ ] JUnit XML output for `colcon test-result --all`
+- [ ] `colcon test` on a native package runs and reports pass/fail
+- [ ] `colcon test` on a FreeRTOS package launches QEMU and reports pass/fail
 - **Files**: `colcon_nano_ros/task/test.py`
 
 ### 78.9 — `cargo nano-ros new` scaffolding
 
-Add a `new` subcommand to `cargo nano-ros` that creates a nano-ros package:
+Add a `new` subcommand to `cargo nano-ros` that creates a colcon-compatible nano-ros package.
 
-- `cargo nano-ros new my_robot --lang rust --platform freertos`
-- Generates: `Cargo.toml`, `package.xml` (with correct `build_type`), `config.toml`, `src/main.rs`
-- Board crate dependency in `Cargo.toml` based on platform + default board
+- [ ] `cargo nano-ros new my_robot --lang rust --platform freertos` creates a directory with:
+  - `Cargo.toml` (with board crate dependency based on platform + default board)
+  - `package.xml` (with `<build_type>nros.rust.freertos</build_type>` and `<depend>` for common interfaces)
+  - `config.toml` (with platform-appropriate defaults)
+  - `src/main.rs` (minimal hello-world with board crate `run()`)
+- [ ] `cargo nano-ros new my_sensor --lang c --platform native` creates:
+  - `CMakeLists.txt` (with `find_package(NanoRos)`)
+  - `package.xml` (with `<build_type>nros.c.native</build_type>`)
+  - `src/main.c`
+- [ ] Generated package builds successfully with `colcon build`
 - **Files**: `packages/codegen/cargo-nano-ros/src/`
 
 ### 78.10 — Mixed-platform workspace E2E test
 
-End-to-end test with a workspace containing multiple platforms:
+End-to-end test with a workspace containing packages targeting different platforms.
 
 ```
 test_ws/src/
@@ -153,31 +175,42 @@ test_ws/src/
   controller/     nros.c.freertos      (FreeRTOS MCU)
 ```
 
-- `colcon build` builds both
-- `colcon test` runs native test + QEMU test
-- Verify shared message bindings work across languages
-- **Files**: test workspace, CI
+- [ ] `colcon build` builds both packages in correct order
+- [ ] `colcon build --packages-select brain` builds only the native package
+- [ ] `colcon build --packages-select-build-type ros.nros.c.freertos` builds only the FreeRTOS package
+- [ ] Shared message bindings (e.g., `std_msgs`) are generated once and used by both
+- [ ] `colcon test` runs native test + QEMU test
+- [ ] Test workspace checked into CI
+- **Files**: test workspace directory, CI config
 
 ### 78.11 — Documentation and packaging
 
-- User guide: getting started with colcon + nano-ros
-- PyPI publishing (maturin wheel)
-- Integration with nano-ros book (`book/src/guides/colcon.md`)
-- **Files**: `README.md`, book chapter
+- [ ] `README.md` with installation, quick start, and configuration reference
+- [ ] PyPI publishing workflow (maturin wheel via GitHub Actions)
+- [ ] Book chapter: `book/src/guides/colcon.md` — getting started with colcon + nano-ros
+- [ ] Document supported `lang × platform` combinations
+- [ ] Document how board crate dependency selects the target board
+- [ ] Document `config.toml` role (runtime config only, not parsed by colcon)
+- **Files**: `README.md`, `book/src/guides/colcon.md`
 
 ## Acceptance Criteria
 
-- [ ] `pip install colcon-nano-ros` installs the plugin
-- [ ] `colcon build` builds Rust native packages
-- [ ] `colcon build` builds C/C++ native packages
-- [ ] `colcon build` cross-compiles Rust FreeRTOS packages
-- [ ] `colcon build` cross-compiles C/C++ FreeRTOS packages
-- [ ] `colcon build` works with Zephyr packages
-- [ ] Workspace-level message generation (no redundant codegen)
-- [ ] Mixed-platform workspace builds correctly
-- [ ] `colcon test` runs tests (native + QEMU)
-- [ ] `cargo nano-ros new` scaffolds a package with `package.xml`
+- [ ] `pip install colcon-nano-ros` installs the plugin (maturin wheel with bundled Rust library)
+- [ ] `colcon build` builds Rust native packages (`nros.rust.native`)
+- [ ] `colcon build` builds C native packages (`nros.c.native`)
+- [ ] `colcon build` builds C++ native packages (`nros.cpp.native`)
+- [ ] `colcon build` cross-compiles Rust FreeRTOS packages (`nros.rust.freertos`)
+- [ ] `colcon build` cross-compiles C FreeRTOS packages (`nros.c.freertos`)
+- [ ] `colcon build` works with Zephyr packages (`nros.rust.zephyr`, `nros.c.zephyr`)
+- [ ] Workspace-level message generation — no redundant codegen for shared interfaces
+- [ ] Mixed-platform workspace builds correctly (native + embedded in one workspace)
+- [ ] `colcon test` runs tests on native and QEMU targets
+- [ ] `colcon test-result --all` shows JUnit XML results
+- [ ] `cargo nano-ros new` scaffolds a Rust package with `package.xml`
+- [ ] `cargo nano-ros new` scaffolds a C package with `package.xml`
 - [ ] `colcon build --packages-select-build-type ros.nros.rust.freertos` filters correctly
+- [ ] Plugin does NOT parse `config.toml` — board crate / CMake module handles it
+- [ ] No dependency on `colcon-cargo` — self-contained plugin
 
 ## Notes
 
