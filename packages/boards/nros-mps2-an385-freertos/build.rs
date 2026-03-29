@@ -462,6 +462,12 @@ int nros_freertos_init_network(
     lan9118_cfg.base_addr = LAN9118_BASE_DEFAULT;
     memcpy(lan9118_cfg.mac_addr, mac, 6);
 
+    /* Initialize per-thread lwIP semaphore for the app task.
+     * Required when LWIP_NETCONN_SEM_PER_THREAD=1 — each task that calls
+     * lwIP socket/netifapi functions must have its own semaphore.
+     * Must be called before any lwIP API (including netifapi_netif_add). */
+    lwip_socket_thread_init();
+
     /* Start lwIP's tcpip_thread (scheduler must be running) */
     tcpip_init(tcpip_init_done_cb, NULL);
     while (!lwip_init_done) {

@@ -21,7 +21,7 @@
 	url = https://github.com/FreeRTOS/FreeRTOS-Kernel.git
 [submodule "third-party/freertos/lwip"]
 	path = third-party/freertos/lwip
-	url = https://github.com/lwip-tcpip/lwip.git
+	url = https://github.com/jerry73204/lwip.git
 [submodule "third-party/threadx/kernel"]
 	path = third-party/threadx/kernel
 	url = https://github.com/eclipse-threadx/threadx.git

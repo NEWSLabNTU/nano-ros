@@ -970,7 +970,6 @@ fn test_freertos_cpp_service_e2e() {
 }
 
 #[test]
-#[ignore = "FreeRTOS QEMU: C++ action server hangs declaring feedback_publisher (zenoh-pico entity declaration timing)"]
 fn test_freertos_cpp_action_e2e() {
     if !require_freertos_cpp_e2e() {
         return;
