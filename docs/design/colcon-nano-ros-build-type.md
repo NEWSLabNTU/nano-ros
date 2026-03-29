@@ -311,81 +311,71 @@ Colcon resolves dependencies between packages (e.g., shared message types) and b
 
 4. **Workspace-level message generation**: Interface bindings are generated once per workspace (under `build/nros_bindings/<interface_pkg>/`), shared by all packages. A `PackageAugmentationExtensionPoint` collects all interface packages declared in `<depend>` across the workspace before the build phase, then generates bindings in a single pass. This avoids redundant codegen when multiple packages depend on the same interfaces (e.g., `std_msgs`).
 
-### Board Configuration
+### Board Configuration: Handled by the Board Crate, Not Colcon
 
-Each platform (FreeRTOS, Zephyr, NuttX, ...) supports multiple boards with extensive customizability. The build type encodes `lang.platform` but NOT the board — board selection and config live in the package's `config.toml`.
+Board selection and all board-specific configuration is the user's responsibility via their `Cargo.toml` dependency (Rust) or CMake include (C/C++). **colcon-nano-ros does not parse `config.toml` or resolve board settings.**
 
-#### What users need to customize
+#### Rust: Board crate dependency
 
-| Layer | Examples | Mechanism |
-|---|---|---|
-| **Network topology** | IP, MAC, gateway, netmask per node | `config.toml` `[network]` |
-| **Zenoh transport** | Router address (TCP/serial/USB) | `config.toml` `[zenoh]` |
-| **Task scheduling** | Priority, stack size per task | `config.toml` `[scheduling]` |
-| **ROS domain** | Domain ID for cluster isolation | `config.toml` `[zenoh]` |
-| **Transport choice** | Ethernet vs serial | Cargo features or CMake option |
-| **Buffer tuning** | Message sizes, entity counts | `config.toml` `[tuning]` or env vars |
-| **Board/BSP** | CPU clock, memory layout, peripherals | `config.toml` `[board]` |
-| **RTOS config** | Heap size, tick rate, max priorities | Board config files (FreeRTOSConfig.h, Kconfig) |
-| **SDK paths** | FreeRTOS/NuttX/ThreadX sources | Env vars or `config.toml` `[sdk]` |
-
-#### `config.toml` as the single source of truth
-
-The `config.toml` already handles network, zenoh, and scheduling config. Extend it with board and SDK sections:
+The user selects the board by depending on its crate:
 
 ```toml
-[board]
-name = "mps2-an385"          # Board Support Package identifier
-# Board-specific overrides (optional — defaults from BSP)
-cpu_clock_hz = 25000000
-heap_size = 262144            # FreeRTOS configTOTAL_HEAP_SIZE
-tick_rate_hz = 1000
-
-[network]
-ip = "10.0.2.20"
-mac = "02:00:00:00:00:00"
-gateway = "10.0.2.2"
-netmask = "255.255.255.0"
-
-[zenoh]
-locator = "tcp/10.0.2.2:7451"
-domain_id = 0
-
-[scheduling]
-app_priority = 12
-app_stack_bytes = 65536
-
-[tuning]
-max_publishers = 8
-max_subscribers = 8
-message_buffer_size = 1024
-
-[sdk]
-freertos_dir = "/opt/freertos-kernel"      # Override SDK path (optional)
-lwip_dir = "/opt/lwip"
+# Cargo.toml
+[dependencies]
+nros-mps2-an385-freertos = { version = "0.1" }
+# or: nros-esp32 = { version = "0.1", features = ["wifi"] }
+# or: nros-stm32f4 = { version = "0.1", features = ["ethernet"] }
 ```
 
-The `[board].name` selects the BSP. The build task resolves it to:
-- **Rust**: the board crate (`nros-mps2-an385-freertos`) and its `config/` dir
-- **CMake**: the toolchain file and platform support module
-- **Zephyr**: the `--board` flag for `west build`
+The board crate handles:
+- Parsing `config.toml` (network, zenoh, scheduling, board-specific settings)
+- FreeRTOS/lwIP/NuttX initialization and task creation
+- Linker script, memory layout, startup code (via `build.rs`)
+- Toolchain selection (via `.cargo/config.toml`)
 
-All configuration is **compile-time fixed** — no runtime heap allocation for transport. This is critical for predictable memory usage on constrained embedded platforms.
+The user's `main.rs`:
+```rust
+use nros_mps2_an385_freertos::{Config, run};
 
-#### Board discovery
-
-The colcon plugin discovers available boards from:
-1. **nano-ros install prefix** (`share/nano-ros/boards/`) — installed board configs
-2. **Workspace-local board crates** — `packages/boards/nros-<board>/` in the workspace
-3. **Environment variables** — `NROS_BOARD` for explicit override
-
-Users can list available boards:
-```bash
-colcon nano-ros list-boards --platform freertos
-# mps2-an385    ARM Cortex-M3 (QEMU)
-# stm32f4       STM32F4 Discovery
-# esp32         ESP32 DevKit
+#[unsafe(no_mangle)]
+extern "C" fn _start() -> ! {
+    run(Config::from_toml(include_str!("../config.toml")), |config| {
+        let mut executor = Executor::open(&ExecutorConfig::new(config.zenoh_locator))?;
+        // ... application logic
+    })
+}
 ```
+
+#### C/C++: CMake platform support module
+
+The user's `CMakeLists.txt` includes the platform support module and reads `config.toml`:
+
+```cmake
+find_package(NanoRos CONFIG REQUIRED)
+include("${CMAKE_CURRENT_SOURCE_DIR}/../cmake/freertos-support.cmake")
+nano_ros_read_config("config.toml")
+
+add_executable(my_node src/main.c ${FREERTOS_STARTUP_SOURCE})
+target_link_libraries(my_node freertos_platform NanoRos::NanoRos)
+target_compile_definitions(my_node PRIVATE
+    "APP_IP={${NROS_CONFIG_IP}}"
+    "APP_ZENOH_LOCATOR=\"${NROS_CONFIG_ZENOH_LOCATOR}\""
+)
+```
+
+#### What colcon-nano-ros does (and doesn't)
+
+| Responsibility | Who handles it |
+|---|---|
+| Message generation (workspace-level) | **colcon-nano-ros** |
+| Invoke `cargo build` / `cmake` | **colcon-nano-ros** (with correct target triple from build type) |
+| Install artifact to ament prefix | **colcon-nano-ros** |
+| Parse `config.toml` | **Board crate** (Rust) or **CMake module** (C/C++) |
+| FreeRTOS/lwIP/Zephyr setup | **Board crate** or **CMake platform module** |
+| Toolchain / target triple | **`.cargo/config.toml`** (Rust) or **CMake toolchain file** (C/C++) |
+| Board-specific peripherals | **Board crate** or **startup.c** |
+
+This keeps colcon-nano-ros thin: it generates messages, invokes the build tool, and installs artifacts. All board customization flows through the board crate dependency and `config.toml`, exactly as it works today in nano-ros without colcon.
 
 ### Open Questions
 
