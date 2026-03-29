@@ -3,7 +3,7 @@
 	url = https://github.com/jerry73204/zenoh-pico.git
 [submodule "colcon-cargo-ros2"]
 	path = packages/codegen
-	url = https://github.com/jerry73204/colcon-cargo-ros2.git
+	url = https://github.com/jerry73204/colcon-nano-ros.git
 [submodule "packages/xrce/xrce-sys/micro-xrce-dds-client"]
 	path = packages/xrce/xrce-sys/micro-xrce-dds-client
 	url = https://github.com/eProsima/Micro-XRCE-DDS-Client.git
