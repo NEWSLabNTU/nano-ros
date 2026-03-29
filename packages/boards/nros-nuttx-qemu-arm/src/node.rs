@@ -70,8 +70,10 @@ where
         config.ip[0], config.ip[1], config.ip[2], config.ip[3], config.zenoh_locator
     );
 
-    // Wait for NuttX networking (virtio-net + DHCP/ARP) to stabilize.
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // Wait for NuttX networking to become ready.
+    // NuttX's poll()/select() don't work correctly with Rust's connect_timeout,
+    // so we use a fixed delay. With QEMU -icount shift=auto, this is real time.
+    std::thread::sleep(std::time::Duration::from_secs(5));
 
     // Flush stdout before calling user closure
     use std::io::Write as _;

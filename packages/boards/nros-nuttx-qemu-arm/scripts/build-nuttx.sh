@@ -106,7 +106,7 @@ export APPDIR="$NUTTX_APPS_DIR"
 # Configure NuttX: symlink Make.defs from the board, copy our defconfig, resolve.
 # This replicates what tools/configure.sh does without requiring the full script
 # (which has additional dependencies like kconfig-tweak for host detection).
-BOARD_MAKEDEFS="$NUTTX_DIR/boards/arm/qemu/qemu-armv7a/scripts/Make.defs"
+BOARD_MAKEDEFS="$(pwd)/boards/arm/qemu/qemu-armv7a/scripts/Make.defs"
 if [ ! -f .config ] || [ ! -f Make.defs ] || [ "$DEFCONFIG" -nt .config ]; then
     echo "Configuring NuttX..."
     rm -f .config Make.defs
