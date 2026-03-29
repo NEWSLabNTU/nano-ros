@@ -16,15 +16,24 @@ use core::ffi::c_char;
 
 unsafe extern "C" {
     fn main(argc: i32, argv: *const *const c_char) -> i32;
+    fn nsh_initialize() -> i32;
 }
 
 /// Override NuttX's default `nsh_main` to run the Rust application.
 ///
-/// NuttX's scheduler calls this as the init task (PID 1). We redirect to
-/// Rust's `main`, which initializes the Rust runtime and calls `fn main()`.
+/// NuttX's scheduler calls this as the init task (PID 1). We first call
+/// `nsh_initialize()` to run the standard NSH init sequence (board bringup,
+/// network init, filesystem mounts), then redirect to Rust's `main`.
+///
+/// Without `nsh_initialize()`, virtio device discovery (via FDT),
+/// network interface configuration (via netinit), and other board-level
+/// initialization would be skipped.
 #[unsafe(no_mangle)]
 pub extern "C" fn nsh_main(argc: i32, argv: *const *const c_char) -> i32 {
-    unsafe { main(argc, argv) }
+    unsafe {
+        nsh_initialize();
+        main(argc, argv)
+    }
 }
 
 // Prevent linker from garbage-collecting nsh_main when --gc-sections is active.

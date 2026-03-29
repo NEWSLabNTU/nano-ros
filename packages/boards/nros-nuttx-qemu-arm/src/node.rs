@@ -13,24 +13,8 @@ use crate::config::Config;
 /// before `main()` runs. This function is a no-op, provided for API
 /// consistency with other board crates.
 pub fn init_hardware(_config: &Config) {
-    // NuttX board bringup: Rust binaries bypass NSH, so we must explicitly:
-    // 1. boardctl(BOARDIOC_INIT) → qemu_bringup() → register virtio devices from FDT
-    // 2. netinit_bringup() → configure IP address on eth0
-    unsafe {
-        unsafe extern "C" {
-            fn boardctl(cmd: u32, arg: usize) -> i32;
-            fn netinit_bringup() -> i32;
-        }
-        const BOARDIOC_INIT: u32 = 0xff01; // _IOC(0xff00, 0x0001)
-        let ret = boardctl(BOARDIOC_INIT, 0);
-        if ret < 0 {
-            eprintln!("WARNING: boardctl(BOARDIOC_INIT) failed: {}", ret);
-        }
-        let ret = netinit_bringup();
-        if ret < 0 {
-            eprintln!("WARNING: netinit_bringup() failed: {}", ret);
-        }
-    }
+    // Board bringup and network init are handled by nsh_initialize() in entry.rs.
+    // This is called before main() runs, so nothing more is needed here.
 }
 
 /// Run an nros application on NuttX.
