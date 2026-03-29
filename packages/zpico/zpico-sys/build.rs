@@ -1506,6 +1506,10 @@ fn build_zenoh_pico_nuttx(
     // NuttX system headers (provides POSIX types: pthread, sockets, etc.)
     build.include(nuttx_dir.join("include"));
 
+    // NuttX flat build: disable PIC — NuttX doesn't use GOT, and function
+    // pointers loaded through GOT entries resolve to 0 (NULL) at runtime.
+    build.pic(false);
+
     // Platform defines
     // ZENOH_GENERIC: tells zenoh-pico config.h to use our generated config header
     // ZENOH_NUTTX: tells platform.h to use unix.h types, and system.c to use /dev/urandom
