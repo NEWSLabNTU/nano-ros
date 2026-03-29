@@ -94,7 +94,7 @@ Verify the new config works end-to-end with existing examples and tests.
 - [x] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/talker/config.toml` (use current defaults — ensures parsing works without behavior change)
 - [x] Add `[scheduling]` section to `examples/qemu-arm-freertos/rust/zenoh/listener/config.toml`
 - [x] Verify `just test-freertos` passes with no behavior change (default priorities match old constants)
-- [ ] Test with non-default priorities (e.g., raise app to 20, lower zenoh to 12) and verify session still works (deferred — Phase 77 investigation confirmed default priorities work; non-default testing would benefit from Tonbandgeraet traces)
+- [x] Test with non-default priorities (app=20, zenoh_read=12, zenoh_lease=12, poll=16) — 29/29 FreeRTOS tests pass (Rust, C, C++ pubsub + service + action E2E)
 - [x] Verify examples without `[scheduling]` section still work (defaults apply)
 
 **Files:**
@@ -229,7 +229,7 @@ These are natural follow-ons but NOT part of this phase:
 - [x] Zenoh-pico read/lease tasks start with user-configured priority and stack size
 - [x] Existing examples without `[scheduling]` section continue to work unchanged
 - [x] `just test-freertos` passes with default scheduling config
-- [ ] `just test-freertos` passes with non-default scheduling config (e.g., app_priority=20) — deferred
+- [x] `just freertos test` passes with non-default scheduling config (app=20, zenoh=12) — 29/29
 - [x] CMake `nano_ros_read_config()` parses `[scheduling]` fields
 - [x] At least one C example uses `[scheduling]` config and builds + passes E2E
 - [x] Normalized 0–31 priority scale is documented with per-platform mapping table
