@@ -65,21 +65,21 @@ The build type encodes both language and target platform as a dotted name in `pa
 
 **Language axis** (`<lang>`):
 
-| Value | Build tool | Source marker |
-|---|---|---|
-| `rust` | `cargo build` | `Cargo.toml` |
-| `c` | CMake | `CMakeLists.txt` |
-| `cpp` | CMake | `CMakeLists.txt` |
+| Value  | Build tool    | Source marker    |
+|--------|---------------|------------------|
+| `rust` | `cargo build` | `Cargo.toml`     |
+| `c`    | CMake         | `CMakeLists.txt` |
+| `cpp`  | CMake         | `CMakeLists.txt` |
 
 **Platform axis** (`<platform>`):
 
-| Value | Target | Toolchain |
-|---|---|---|
-| `native` | Host (Linux/macOS) | Native GCC/Clang |
-| `freertos` | FreeRTOS QEMU ARM | `arm-none-eabi-gcc` |
-| `zephyr` | Zephyr | `west build` |
-| `nuttx` | NuttX QEMU ARM | `arm-none-eabi-gcc` |
-| `threadx` | ThreadX | Platform-specific |
+| Value       | Target              | Toolchain           |
+|-------------|---------------------|---------------------|
+| `native`    | Host (Linux/macOS)  | Native GCC/Clang    |
+| `freertos`  | FreeRTOS QEMU ARM   | `arm-none-eabi-gcc` |
+| `zephyr`    | Zephyr              | `west build`        |
+| `nuttx`     | NuttX QEMU ARM      | `arm-none-eabi-gcc` |
+| `threadx`   | ThreadX             | Platform-specific   |
 | `baremetal` | Bare-metal QEMU ARM | `arm-none-eabi-gcc` |
 
 ### Entry Points
@@ -228,7 +228,7 @@ The build task:
 | Target                | Native Linux only                | Native Linux only                      | Native + RTOS + bare-metal                     |
 | Platform selection    | N/A                              | N/A                                    | Encoded in build type name                     |
 | Install layout        | ament                            | ament                                  | ament (native) or firmware blob (embedded)     |
-| Dependency resolution | `.cargo/config.toml` patches     | Workspace-level `build/ros2_bindings/` | Per-package `generated/` dir                   |
+| Dependency resolution | `.cargo/config.toml` patches     | Workspace-level `build/ros2_bindings/` | Workspace-level `build/nros_bindings/`         |
 
 ### User Workflow
 
@@ -284,29 +284,41 @@ colcon build --packages-select motor_controller
 
 Colcon resolves dependencies between packages (e.g., shared message types) and builds them in the correct order.
 
-### Open Questions
+### Design Decisions
 
-1. **Board-specific config within a platform?** FreeRTOS has multiple boards (MPS2-AN385, STM32F4, ESP32). Should the build type encode the board (e.g., `nros.rust.freertos.mps2_an385`) or should the board come from `config.toml`? A 3-level hierarchy avoids further combinatorial explosion, keeping board selection as a build argument or config file:
-   ```bash
-   colcon build --cmake-args -DNROS_BOARD=mps2-an385
-   ```
-
-2. **Ament install layout for embedded targets?** Native builds produce ELF binaries that fit the ament `lib/<pkg>/` layout. Embedded builds produce firmware blobs (`.bin`, `.elf`). Proposed layout:
+1. **Install layout**: Follow ament/Unix conventions for all targets:
    ```
    install/<pkg>/
-     share/<pkg>/package.xml
-     firmware/<pkg>/firmware.elf    # Embedded targets
-     lib/<pkg>/node_binary          # Native targets only
+     lib/<pkg>/node_binary          # Native ELF binary
+     lib/<pkg>/firmware.elf         # Embedded firmware
+     share/<pkg>/package.xml        # ROS package manifest
+     share/<pkg>/config.toml        # Runtime config (if present)
    ```
 
-3. **Should the plugin depend on `colcon-cargo`?** For Rust packages, subclassing `CargoBuildTask` (like `colcon-ros-cargo` does) would reuse cargo workspace resolution. But the cross-compilation and embedded concerns are different enough that a standalone implementation may be cleaner.
+2. **Self-contained plugin**: No dependency on `colcon-cargo`. The embedded cross-compilation concerns are different enough from host Cargo builds that reusing `CargoBuildTask` adds complexity without benefit. The plugin bundles its own build library (Rust + PyO3), following the `colcon-cargo-ros2` pattern.
 
-4. **Integration with existing nano-ros `just` recipes?** The colcon build task could:
-   - (a) Invoke `just freertos build` — leverages tested build logic, but adds a `just` dependency
-   - (b) Replicate the build commands directly — more portable, duplicates logic
-   - (c) Call `cargo nano-ros build` — a new cargo subcommand that wraps the platform-specific build. This keeps the logic in Rust and avoids duplication.
+3. **Bundled build library**: The build logic (platform resolution, toolchain selection, message generation orchestration) lives in a Rust library exposed to Python via PyO3, packaged in the same wheel. This mirrors the `colcon-cargo-ros2` architecture:
+   ```
+   colcon-nano-ros/
+     pyproject.toml                 # Maturin-based build (Rust + Python)
+     colcon_nano_ros/               # Python colcon plugin
+       task/build.py                # NrosBuildTask
+       task/test.py                 # NrosTestTask
+     src/                           # Rust library (PyO3)
+       lib.rs                       # Platform config, toolchain resolution, codegen orchestration
+   ```
+   The Rust library handles: reading `config.toml`, resolving toolchain paths, invoking `cargo nano-ros generate` for message codegen, and constructing the correct build commands for each `lang × platform` combination.
 
-5. **Message generation: workspace-level or per-package?** nano-ros currently generates message bindings per-package (`generated/` dir). For colcon workspaces with multiple packages sharing the same interfaces, workspace-level generation (like `colcon-cargo-ros2` does in `build/ros2_bindings/`) would be more efficient.
+4. **Workspace-level message generation**: Interface bindings are generated once per workspace (under `build/nros_bindings/<interface_pkg>/`), shared by all packages. A `PackageAugmentationExtensionPoint` collects all interface packages declared in `<depend>` across the workspace before the build phase, then generates bindings in a single pass. This avoids redundant codegen when multiple packages depend on the same interfaces (e.g., `std_msgs`).
+
+### Open Questions
+
+1. **Board-specific config within a platform?** FreeRTOS has multiple boards (MPS2-AN385, STM32F4, ESP32). Options:
+   - Encode in build type: `nros.rust.freertos.mps2_an385` (4-level — heavy)
+   - Board in `config.toml` (keeps build type to 3 levels)
+   - Board as a colcon build argument: `colcon build --cmake-args -DNROS_BOARD=mps2-an385`
+
+2. **`cargo nano-ros build` subcommand?** The colcon plugin could invoke a `cargo nano-ros build` subcommand that encapsulates the platform-specific build logic. This keeps the build logic in Rust, avoids duplicating it in Python, and is usable outside of colcon (standalone CLI). The colcon plugin becomes a thin wrapper that calls the subcommand with the right arguments.
 
 ## Related Work (Downloaded)
 
