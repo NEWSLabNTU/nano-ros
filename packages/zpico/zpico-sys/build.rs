@@ -233,7 +233,10 @@ fn generate_config_header(out_dir: &Path, link: &LinkFeatures, buf: &ZenohBuffer
         buf.batch_multicast_size
     )
     .unwrap();
-    writeln!(header, "#define Z_CONFIG_SOCKET_TIMEOUT 100").unwrap();
+    // NuttX over QEMU slirp needs a longer timeout for the zenoh handshake.
+    let target = std::env::var("TARGET").unwrap_or_default();
+    let socket_timeout = if target.contains("nuttx") { 5000 } else { 100 };
+    writeln!(header, "#define Z_CONFIG_SOCKET_TIMEOUT {}", socket_timeout).unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE 10000").unwrap();
     writeln!(header, "#define Z_TRANSPORT_LEASE_EXPIRE_FACTOR 3").unwrap();
     writeln!(header, "#define ZP_PERIODIC_SCHEDULER_MAX_TASKS 8").unwrap();
@@ -1516,6 +1519,11 @@ fn build_zenoh_pico_nuttx(
     build.define("ZENOH_GENERIC", None);
     build.define("ZENOH_NUTTX", None);
     build.define("ZENOH_DEBUG", "0");
+
+    // NuttX over QEMU slirp needs longer socket timeout for zenoh handshake.
+    // Default 100ms is too short — the handshake roundtrip through virtio-net
+    // + QEMU slirp can take several hundred milliseconds.
+    build.define("Z_CONFIG_SOCKET_TIMEOUT", "5000");
 
     // NuttX has real POSIX threads
     build.define("Z_FEATURE_MULTI_THREAD", "1");
