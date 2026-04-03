@@ -1807,8 +1807,6 @@ impl Executor {
             if opts.only_next {
                 break;
             }
-
-            std::thread::sleep(Duration::from_millis(POLL_INTERVAL_MS as u64));
         }
 
         Ok(())
