@@ -1528,6 +1528,11 @@ fn build_zenoh_pico_nuttx(
     // NuttX has real POSIX threads
     build.define("Z_FEATURE_MULTI_THREAD", "1");
 
+    // TCP_NODELAY is disabled for NuttX via #ifdef ZENOH_NUTTX guard in
+    // network.c. NuttX defines TCP_NODELAY=16, but cross-compiled zenoh-pico
+    // picks up the host's TCP_NODELAY=1, causing setsockopt(IPPROTO_TCP, 1)
+    // to fail with ENOPROTOOPT.
+
     // Link features (same as embedded — controlled by Cargo link-* features)
     build.define("Z_FEATURE_LINK_TCP", if link.tcp { "1" } else { "0" });
     build.define(
