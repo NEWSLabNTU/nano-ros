@@ -91,21 +91,28 @@ fn main() {
 
     netxduo.compile("netxduo");
 
-    // ---- Build Linux network driver ----
+    // ---- Build TAP network driver ----
     let mut driver = cc::Build::new();
     configure_linux(&mut driver);
     add_threadx_includes(&mut driver, &threadx_dir, &threadx_port_dir, &config_dir);
     add_netx_includes(&mut driver, &netx_dir, &config_dir);
 
-    let driver_src = samples_dir.join("courses/netxduo/Driver/nx_linux_network_driver.c");
+    let tap_netx_dir = project_root.join("packages/drivers/tap-netx");
+    let driver_src = tap_netx_dir.join("src/nx_tap_network_driver.c");
     assert!(
         driver_src.exists(),
-        "Linux network driver not found at {}",
+        "TAP network driver not found at {}",
         driver_src.display()
     );
+    driver.include(tap_netx_dir.join("include"));
     driver.file(&driver_src);
 
     driver.compile("netxdriver");
+
+    println!(
+        "cargo:rerun-if-changed={}",
+        driver_src.display()
+    );
 
     // ---- Build C glue (app_define.c) ----
     let mut glue = cc::Build::new();

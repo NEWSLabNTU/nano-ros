@@ -14,9 +14,8 @@
 #include "nx_api.h"
 #include "nxd_bsd.h"
 
-/* ---- Linux network driver (from threadx-learn-samples) ---- */
-extern VOID _nx_linux_network_driver(NX_IP_DRIVER *driver_req_ptr);
-extern VOID nx_linux_set_interface_name(const CHAR *interface_name);
+/* ---- TAP network driver (packages/drivers/tap-netx) ---- */
+#include "nx_tap_network_driver.h"
 
 /* ---- zpico-sys expects this global for ThreadX memory allocation ---- */
 TX_BYTE_POOL *zpico_threadx_byte_pool;
@@ -124,7 +123,7 @@ void tx_application_define(void *first_unused_memory)
     nx_system_initialize();
 
     /* Set the Linux network interface name before creating IP instance */
-    nx_linux_set_interface_name(cfg_interface_name);
+    nx_tap_set_interface_name(cfg_interface_name);
 
     /* Allocate packet pool memory from byte pool */
     status = tx_byte_allocate(&byte_pool, (VOID **)&pointer,
@@ -150,6 +149,7 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
+    fprintf(stderr, "[APPDEF] creating IP instance...\n");
     /* Create IP instance with Linux network driver */
     ULONG ip_addr = ((ULONG)cfg_ip[0] << 24) | ((ULONG)cfg_ip[1] << 16)
                   | ((ULONG)cfg_ip[2] << 8)  | (ULONG)cfg_ip[3];
@@ -157,8 +157,9 @@ void tx_application_define(void *first_unused_memory)
                   | ((ULONG)cfg_netmask[2] << 8)  | (ULONG)cfg_netmask[3];
 
     status = nx_ip_create(&ip_instance, "nros_ip", ip_addr, netmask,
-                           &packet_pool, _nx_linux_network_driver,
+                           &packet_pool, nx_tap_network_driver,
                            pointer, IP_STACK_SIZE, IP_THREAD_PRIORITY);
+    fprintf(stderr, "[APPDEF] nx_ip_create status=0x%x\n", status);
     if (status != NX_SUCCESS) {
         printf("ERROR: IP create failed (0x%x)\n", status);
         return;

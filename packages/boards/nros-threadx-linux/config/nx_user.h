@@ -78,8 +78,8 @@ extern TX_TIMER_INTERNAL *_tx_timer_expired_timer_ptr;
 #define NX_PHYSICAL_HEADER          16
 #define NX_MAX_PORT                 65535
 
-/* Default interface name for the Linux TAP driver.
- * The actual name is set at runtime via nx_linux_set_interface_name(). */
-#define NX_LINUX_INTERFACE_NAME     "tap-qemu0"
+/* Default interface name for the TAP driver.
+ * The actual name is set at runtime via nx_tap_set_interface_name(). */
+#define NX_LINUX_INTERFACE_NAME     "tap-tx0"
 
 #endif /* NX_USER_H */

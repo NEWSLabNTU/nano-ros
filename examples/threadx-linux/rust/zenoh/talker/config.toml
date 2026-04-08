@@ -8,7 +8,7 @@ gateway = "192.0.3.1"
 netmask = "255.255.255.0"
 
 [platform]
-interface = "veth-tx0"
+interface = "tap-tx0"
 
 [zenoh]
 locator = "tcp/192.0.3.1:7455"

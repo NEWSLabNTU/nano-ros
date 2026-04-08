@@ -95,19 +95,13 @@ setup-caps: build
 # hardlink, applies CAP_NET_RAW, then executes it.
 # =============================================================================
 
-# Helper: build, break Cargo hardlink, setcap, exec.
-# Cargo hardlinks release binaries → setcap is ignored on kernels with
-# fs.protected_regular=2. We copy to break the link before setcap.
+# Helper: build and run. TAP driver doesn't need CAP_NET_RAW.
 _run example:
     #!/usr/bin/env bash
     set -e
     cd "examples/threadx-linux/rust/zenoh/{{example}}"
     cargo build --release
-    bin="target/release/threadx-linux-{{example}}"
-    run="target/release/.run-threadx-linux-{{example}}"
-    cp -f "$bin" "$run"
-    sudo setcap cap_net_raw+ep "$run"
-    exec "$run"
+    exec target/release/threadx-linux-{{example}}
 
 # Run ThreadX Linux talker
 talker: (_run "talker")

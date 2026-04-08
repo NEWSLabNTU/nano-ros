@@ -125,6 +125,15 @@ teardown() {
         fi
     done
 
+    # Remove TAP devices
+    for i in $(seq 0 9); do
+        tap="tap-tx${i}"
+        if ip link show "$tap" &>/dev/null; then
+            ip link delete "$tap" 2>/dev/null || true
+            echo "  Removed $tap"
+        fi
+    done
+
     # Remove veth pairs (deleting one end removes both)
     for i in $(seq 0 9); do
         veth="veth-tx${i}"
@@ -212,19 +221,30 @@ done
 
 # Create veth pairs (for ThreadX Linux simulation)
 #
-# ThreadX Linux uses AF_PACKET/SOCK_RAW on the network interface. AF_PACKET
-# doesn't work correctly on TAP devices with a bridge because traffic routes
-# through the TAP fd (userspace side) instead of the bridge. veth pairs are
-# purely kernel-side and work correctly with bridges and AF_PACKET.
+# ThreadX Linux uses TAP devices for networking. The TAP driver
+# (packages/drivers/tap-netx) opens /dev/net/tun with IFF_TAP,
+# so the TAP device must exist and be bridged before the app runs.
+TAP_PREFIX="tap-tx"
+echo ""
+echo "Creating TAP devices for ThreadX Linux..."
+for i in $(seq 0 $((NUM_TAPS - 1))); do
+    tap="${TAP_PREFIX}${i}"
+    guest_ip="192.0.3.$((10 + i))"
+
+    echo "  Creating $tap (ThreadX node IP: $guest_ip)..."
+    ip tuntap add dev "$tap" mode tap user "$SUDO_USER"
+    ip link set "$tap" master "$BRIDGE_NAME"
+    ip link set "$tap" up
+done
+
+# Keep veth pairs for backward compatibility (used by tests)
 VETH_PREFIX="veth-tx"
 echo ""
-echo "Creating veth pairs for ThreadX Linux..."
+echo "Creating veth pairs (backward compat)..."
 for i in $(seq 0 $((NUM_TAPS - 1))); do
     veth="${VETH_PREFIX}${i}"
     veth_br="${VETH_PREFIX}${i}-br"
-    guest_ip="192.0.3.$((10 + i))"
 
-    echo "  Creating $veth <-> $veth_br (ThreadX node IP: $guest_ip)..."
     ip link add "$veth" type veth peer name "$veth_br"
     ip link set "$veth_br" master "$BRIDGE_NAME"
     ip link set "$veth" up
