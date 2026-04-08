@@ -12,9 +12,23 @@ use crate::config::Config;
 /// On NuttX, the kernel handles all hardware and network initialization
 /// before `main()` runs. This function is a no-op, provided for API
 /// consistency with other board crates.
-pub fn init_hardware(_config: &Config) {
+pub fn init_hardware(config: &Config) {
     // Board bringup and network init are handled by nsh_initialize() in entry.rs.
-    // This is called before main() runs, so nothing more is needed here.
+
+    // Seed /dev/urandom with the IP address to avoid duplicate Zenoh session IDs.
+    // NuttX xorshift128 PRNG starts with a fixed seed → two QEMU instances
+    // generate identical /dev/urandom output → identical ZIDs → zenohd rejects
+    // the second connection (Close with MAX_LINKS reason).
+    // Writing to /dev/urandom re-seeds the xorshift128 state.
+    {
+        use std::io::Write;
+        if let Ok(mut f) = std::fs::OpenOptions::new()
+            .write(true)
+            .open("/dev/urandom")
+        {
+            let _ = f.write_all(&config.ip);
+        }
+    }
 }
 
 /// Run an nros application on NuttX.
