@@ -66,6 +66,14 @@ setup-caps: build
         name=$(basename "$dir")
         binary="$dir/target/release/threadx-linux-$name"
         if [ -f "$binary" ]; then
+            # Break Cargo's hardlink — Linux ignores setcap on hardlinked files
+            # when fs.protected_regular=2 (default on modern kernels).
+            if [ "$(stat -c %h "$binary")" -gt 1 ]; then
+                tmp=$(mktemp)
+                cp "$binary" "$tmp"
+                mv "$tmp" "$binary"
+                chmod 755 "$binary"
+            fi
             echo "  setcap cap_net_raw+ep $binary"
             sudo setcap cap_net_raw+ep "$binary"
             found=$((found + 1))
