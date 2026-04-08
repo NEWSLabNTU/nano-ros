@@ -1,15 +1,18 @@
 /**
  * nx_tap_network_driver.c — TAP-based network driver for NetX Duo on Linux
  *
- * Uses /dev/net/tun with IFF_TAP | IFF_NO_PI to send/receive raw ethernet
- * frames through a Linux TAP device. The TAP device is typically bridged
- * to a host bridge (e.g., qemu-br) for connectivity to zenohd.
+ * Uses /dev/net/tun with IFF_TAP | IFF_NO_PI for clean ethernet frame I/O.
  *
  * Architecture:
  *   - Init: open /dev/net/tun, ioctl(TUNSETIFF) to attach to named TAP
- *   - TX: write() ethernet frames to the TAP fd
- *   - RX: dedicated pthread reads ethernet frames, routes to NetX IP/ARP
- *   - No raw sockets, no CAP_NET_RAW needed
+ *   - TX: write() ethernet frames to the TAP fd (from ThreadX thread context)
+ *   - RX: pthread reads TAP fd → pipe → ThreadX thread processes packets
+ *
+ * The two-thread RX design is needed because:
+ *   - NetX deferred_receive requires ThreadX scheduler context to wake IP thread
+ *   - The ThreadX Linux port uses SIGUSR signals for scheduling
+ *   - A raw pthread calling deferred_receive doesn't reliably wake the IP thread
+ *   - Solution: pthread does blocking I/O on TAP fd, ThreadX thread does NetX calls
  *
  * SPDX-License-Identifier: Apache-2.0
  */
@@ -20,6 +23,7 @@
 #include <fcntl.h>
 #include <net/if.h>
 #include <pthread.h>
+#include <sched.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -34,35 +38,44 @@
 /* ---- Constants ---- */
 
 #define NX_TAP_ETHERNET_SIZE    14
-#define NX_TAP_MTU              1514    /* Ethernet MTU including header */
+#define NX_TAP_MTU              1514
 #define NX_TAP_ETHERNET_IP      0x0800
 #define NX_TAP_ETHERNET_ARP     0x0806
 #define NX_TAP_ETHERNET_RARP    0x8035
 #define NX_TAP_ETHERNET_IPV6    0x86DD
 
-#define NX_TAP_MAC_OFFSET_MSW   0       /* Bytes 0-1 of MAC */
-#define NX_TAP_MAC_OFFSET_LSW   2       /* Bytes 2-5 of MAC */
+#define NX_TAP_RX_STACK_SIZE    4096
+#define NX_TAP_RX_PRIORITY      2
 
 /* ---- Module state ---- */
 
 static int          tap_fd = -1;
 static int          tap_link_enabled = 0;
 static const char  *tap_interface_name = "tap-tx0";
-static ULONG        tap_mac_msw = 0x0002;           /* Default: 02:00:00:00:00:00 */
+static ULONG        tap_mac_msw = 0x0002;
 static ULONG        tap_mac_lsw = 0x00000000;
 static NX_IP       *tap_ip_ptr = NULL;
-static pthread_t    tap_rx_thread;
-static UCHAR        tap_rx_buffer[NX_TAP_MTU + 16];    /* +16 for safety */
+
+/* Pipe for pthread → ThreadX thread communication */
+static int          tap_pipe_fd[2] = {-1, -1};  /* [0]=read, [1]=write */
+
+/* pthread for TAP fd reading */
+static pthread_t    tap_reader_pthread;
+
+/* ThreadX thread for packet processing */
+static TX_THREAD    tap_rx_tx_thread;
+static UCHAR        tap_rx_stack[NX_TAP_RX_STACK_SIZE];
+
+/* Buffers */
+static UCHAR        tap_rx_buffer[NX_TAP_MTU + 16];
 static UCHAR        tap_tx_buffer[NX_TAP_MTU + 16];
 
-/* ---- Public: set interface name ---- */
+/* ---- Public API ---- */
 
 void nx_tap_set_interface_name(const char *name)
 {
     tap_interface_name = name;
 }
-
-/* ---- Public: set MAC address (call before nx_ip_create) ---- */
 
 void nx_tap_set_mac_address(ULONG msw, ULONG lsw)
 {
@@ -84,7 +97,7 @@ static int tap_open(const char *dev_name)
 
     struct ifreq ifr;
     memset(&ifr, 0, sizeof(ifr));
-    ifr.ifr_flags = IFF_TAP | IFF_NO_PI;   /* Ethernet frames, no packet info */
+    ifr.ifr_flags = IFF_TAP | IFF_NO_PI;
     strncpy(ifr.ifr_name, dev_name, IFNAMSIZ - 1);
 
     if (ioctl(fd, TUNSETIFF, &ifr) < 0)
@@ -105,21 +118,16 @@ static UINT tap_send(NX_PACKET *packet_ptr)
     ULONG size = packet_ptr->nx_packet_length;
 
     if (size > NX_TAP_MTU)
-    {
         return NX_NOT_SUCCESSFUL;
-    }
 
     UCHAR *data;
 
 #ifndef NX_DISABLE_PACKET_CHAIN
     if (packet_ptr->nx_packet_next)
     {
-        /* Chained packet — gather into contiguous buffer */
         ULONG copied = 0;
         if (nx_packet_data_retrieve(packet_ptr, tap_tx_buffer, &copied))
-        {
             return NX_NOT_SUCCESSFUL;
-        }
         data = tap_tx_buffer;
         size = copied;
     }
@@ -130,103 +138,135 @@ static UINT tap_send(NX_PACKET *packet_ptr)
     }
 
     ssize_t sent = write(tap_fd, data, size);
-    {
-        static int tx_count = 0;
-        if (tx_count < 10) {
-            fprintf(stderr, "[tap] TX %lu bytes, sent=%zd, errno=%d\n",
-                    size, sent, sent < 0 ? errno : 0);
-            tx_count++;
-        }
-    }
     if (sent != (ssize_t)size)
-    {
         return NX_NOT_SUCCESSFUL;
-    }
 
     return NX_SUCCESS;
 }
 
-/* ---- Internal: receive thread ---- */
+/* ---- pthread: reads TAP fd, writes frames to pipe ---- */
 
-static void *tap_rx_thread_entry(void *arg)
+static void *tap_reader_entry(void *arg)
 {
-    NX_PACKET  *packet_ptr;
-    UINT        status;
-    UINT        packet_type;
-
+    UCHAR buf[NX_TAP_MTU + 16];
     (void)arg;
 
     while (tap_link_enabled)
     {
-        /* Use select() with timeout to avoid blocking indefinitely.
-           ThreadX Linux uses SIGUSR1/2 for scheduling — a perpetually
-           blocked read() can miss signals and stall packet delivery. */
-        fd_set read_fds;
-        FD_ZERO(&read_fds);
-        FD_SET(tap_fd, &read_fds);
-
-        struct timeval tv = { .tv_sec = 0, .tv_usec = 100000 }; /* 100ms */
-        if (select(tap_fd + 1, &read_fds, NULL, NULL, &tv) <= 0)
-        {
-            continue;   /* Timeout or error — retry */
-        }
-
-        ssize_t bytes = read(tap_fd, tap_rx_buffer, sizeof(tap_rx_buffer));
-
-        {
-            static int rx_count = 0;
-            if (rx_count < 10) {
-                fprintf(stderr, "[tap] RX %zd bytes\n", bytes);
-                rx_count++;
-            }
-        }
-
+        ssize_t bytes = read(tap_fd, buf, sizeof(buf));
         if (bytes < NX_TAP_ETHERNET_SIZE)
+            continue;
+
         {
-            continue;   /* Too short or error */
+            static int rdr_count = 0;
+            if (rdr_count < 5) { fprintf(stderr, "[tap-reader] %zd bytes\n", bytes); rdr_count++; }
         }
 
-        _tx_thread_context_save();
+        /* Write length header + frame data to pipe.
+           The ThreadX thread reads this on the other end. */
+        uint16_t len = (uint16_t)bytes;
+        /* Atomic-ish write: length + data in one write if possible */
+        UCHAR msg[2 + NX_TAP_MTU + 16];
+        msg[0] = (UCHAR)(len >> 8);
+        msg[1] = (UCHAR)(len & 0xFF);
+        memcpy(&msg[2], buf, (size_t)bytes);
+        write(tap_pipe_fd[1], msg, 2 + (size_t)bytes);
+    }
 
-        /* Allocate a NetX packet */
+    return NULL;
+}
+
+/* ---- ThreadX thread: reads pipe, processes packets ---- */
+
+static void tap_rx_thread_entry(ULONG input)
+{
+    NX_PACKET  *packet_ptr;
+    UINT        status;
+    UINT        packet_type;
+    UCHAR       frame[NX_TAP_MTU + 16];
+
+    (void)input;
+
+    while (tap_link_enabled)
+    {
+        /* Read length header from pipe */
+        uint8_t hdr[2];
+        ssize_t n = read(tap_pipe_fd[0], hdr, 2);
+        if (n != 2)
+        {
+            tx_thread_sleep(1);
+            continue;
+        }
+
+        uint16_t len = ((uint16_t)hdr[0] << 8) | hdr[1];
+        if (len > sizeof(frame) || len < NX_TAP_ETHERNET_SIZE)
+        {
+            /* Drain bad data */
+            UCHAR drain[64];
+            while (len > 0) {
+                ssize_t r = read(tap_pipe_fd[0], drain,
+                                 len < sizeof(drain) ? len : sizeof(drain));
+                if (r <= 0) break;
+                len -= (uint16_t)r;
+            }
+            continue;
+        }
+
+        /* Read frame data */
+        size_t total = 0;
+        while (total < len)
+        {
+            n = read(tap_pipe_fd[0], frame + total, len - total);
+            if (n <= 0) break;
+            total += (size_t)n;
+        }
+
+        if (total != len)
+            continue;
+
+        /* Allocate NetX packet */
         status = nx_packet_allocate(
             tap_ip_ptr->nx_ip_default_packet_pool,
-            &packet_ptr, NX_RECEIVE_PACKET, NX_NO_WAIT);
+            &packet_ptr, NX_RECEIVE_PACKET, TX_WAIT_FOREVER);
 
         if (status != NX_SUCCESS)
-        {
-            _tx_thread_context_restore();
-            continue;   /* No packet available — drop */
-        }
+            continue;
 
-        /* Copy frame data into the packet */
+        /* Copy frame into packet */
         status = nx_packet_data_append(
-            packet_ptr, tap_rx_buffer, (ULONG)bytes,
-            tap_ip_ptr->nx_ip_default_packet_pool, NX_NO_WAIT);
+            packet_ptr, frame, (ULONG)len,
+            tap_ip_ptr->nx_ip_default_packet_pool, TX_WAIT_FOREVER);
 
         if (status != NX_SUCCESS)
         {
             nx_packet_release(packet_ptr);
-            _tx_thread_context_restore();
             continue;
         }
 
         /* Parse ethernet type */
-        packet_type = (((UINT)tap_rx_buffer[12]) << 8) |
-                       ((UINT)tap_rx_buffer[13]);
+        packet_type = (((UINT)frame[12]) << 8) | ((UINT)frame[13]);
 
         /* Strip ethernet header */
         packet_ptr->nx_packet_prepend_ptr += NX_TAP_ETHERNET_SIZE;
         packet_ptr->nx_packet_length      -= NX_TAP_ETHERNET_SIZE;
 
-        /* Route to appropriate protocol handler */
+        {
+            static int rx_count = 0;
+            if (rx_count < 5) { fprintf(stderr, "[tap-rx] %u bytes type=0x%04x\n", (unsigned)len, packet_type); rx_count++; }
+        }
+
+        /* Route to protocol handler */
         if (packet_type == NX_TAP_ETHERNET_IP ||
             packet_type == NX_TAP_ETHERNET_IPV6)
         {
-            _nx_ip_packet_deferred_receive(tap_ip_ptr, packet_ptr);
+            /* Process directly in this ThreadX thread — avoids the deferred
+               queue which requires the IP helper thread to be scheduled. */
+            _nx_ip_packet_receive(tap_ip_ptr, packet_ptr);
         }
         else if (packet_type == NX_TAP_ETHERNET_ARP)
         {
+            /* ARP deferred works because it's simpler and doesn't need
+               TCP state machine synchronization. */
             _nx_arp_packet_deferred_receive(tap_ip_ptr, packet_ptr);
         }
         else if (packet_type == NX_TAP_ETHERNET_RARP)
@@ -237,17 +277,10 @@ static void *tap_rx_thread_entry(void *arg)
         {
             nx_packet_release(packet_ptr);
         }
-
-        _tx_thread_context_restore();
-
-        /* Yield CPU to let ThreadX IP helper thread process deferred packets */
-        sched_yield();
     }
-
-    return NULL;
 }
 
-/* ---- Internal: driver output (prepends ethernet header, sends) ---- */
+/* ---- Internal: driver output ---- */
 
 static void tap_driver_output(NX_PACKET *packet_ptr)
 {
@@ -256,7 +289,6 @@ static void tap_driver_output(NX_PACKET *packet_ptr)
 
     tap_send(packet_ptr);
 
-    /* Strip ethernet header (mirrors what a real NIC does after TX complete) */
     packet_ptr->nx_packet_prepend_ptr += NX_TAP_ETHERNET_SIZE;
     packet_ptr->nx_packet_length      -= NX_TAP_ETHERNET_SIZE;
     nx_packet_transmit_release(packet_ptr);
@@ -274,21 +306,18 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
     NX_PACKET    *packet_ptr;
     ULONG        *ethernet_frame_ptr;
 
-    fprintf(stderr, "[tap] cmd=%u\n", driver_req_ptr->nx_ip_driver_command);
-
-    /* Default to success */
     driver_req_ptr->nx_ip_driver_status = NX_SUCCESS;
+
+    fprintf(stderr, "[tap] cmd=%u\n", driver_req_ptr->nx_ip_driver_command);
 
     switch (driver_req_ptr->nx_ip_driver_command)
     {
 
     case NX_LINK_INTERFACE_ATTACH:
-        /* Nothing to do — interface is attached automatically */
         break;
 
     case NX_LINK_INITIALIZE:
     {
-        /* Open the TAP device */
         tap_fd = tap_open(tap_interface_name);
         if (tap_fd < 0)
         {
@@ -296,12 +325,20 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
             return;
         }
 
+        /* Create pipe for pthread → ThreadX communication */
+        if (pipe(tap_pipe_fd) < 0)
+        {
+            close(tap_fd);
+            tap_fd = -1;
+            driver_req_ptr->nx_ip_driver_status = NX_NOT_CREATED;
+            return;
+        }
+
         tap_ip_ptr = ip_ptr;
 
-        /* Set interface capabilities */
         interface_ptr->nx_interface_ip_mtu_size = NX_TAP_MTU - NX_TAP_ETHERNET_SIZE;
 
-        /* Set MAC address on the interface (from nx_tap_set_mac_address) */
+        /* Set MAC address */
         nx_ip_interface_physical_address_set(ip_ptr,
             interface_ptr->nx_interface_index,
             tap_mac_msw, tap_mac_lsw, NX_FALSE);
@@ -314,17 +351,15 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
     {
         tap_link_enabled = 1;
 
-        /* Start receive thread */
-        struct sched_param sp;
-        memset(&sp, 0, sizeof(sp));
-        sp.sched_priority = 2;
+        /* Create ThreadX RX processing thread */
+        tx_thread_create(&tap_rx_tx_thread, "tap_rx",
+                         tap_rx_thread_entry, 0,
+                         tap_rx_stack, NX_TAP_RX_STACK_SIZE,
+                         NX_TAP_RX_PRIORITY, NX_TAP_RX_PRIORITY,
+                         TX_NO_TIME_SLICE, TX_AUTO_START);
 
-        pthread_attr_t attr;
-        pthread_attr_init(&attr);
-        pthread_attr_setschedparam(&attr, &sp);
-
-        pthread_create(&tap_rx_thread, &attr, tap_rx_thread_entry, NULL);
-        pthread_attr_destroy(&attr);
+        /* Start pthread for TAP fd reading */
+        pthread_create(&tap_reader_pthread, NULL, tap_reader_entry, NULL);
 
         interface_ptr->nx_interface_link_up = NX_TRUE;
         break;
@@ -341,13 +376,11 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
     case NX_LINK_ARP_RESPONSE_SEND:
     case NX_LINK_RARP_SEND:
     {
-        /* Build ethernet frame header */
         packet_ptr = driver_req_ptr->nx_ip_driver_packet;
 
         packet_ptr->nx_packet_prepend_ptr -= NX_TAP_ETHERNET_SIZE;
         packet_ptr->nx_packet_length      += NX_TAP_ETHERNET_SIZE;
 
-        /* Build the ethernet header (word-aligned at prepend_ptr - 2) */
         ethernet_frame_ptr = (ULONG *)(packet_ptr->nx_packet_prepend_ptr - 2);
 
         /* Destination MAC */
@@ -380,20 +413,17 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
             *(ethernet_frame_ptr + 3) |= NX_TAP_ETHERNET_IPV6;
         }
 
-        /* Endian swap */
         NX_CHANGE_ULONG_ENDIAN(*(ethernet_frame_ptr));
         NX_CHANGE_ULONG_ENDIAN(*(ethernet_frame_ptr + 1));
         NX_CHANGE_ULONG_ENDIAN(*(ethernet_frame_ptr + 2));
         NX_CHANGE_ULONG_ENDIAN(*(ethernet_frame_ptr + 3));
 
-        /* Send the frame */
         tap_driver_output(packet_ptr);
         break;
     }
 
     case NX_LINK_MULTICAST_JOIN:
     case NX_LINK_MULTICAST_LEAVE:
-        /* TAP handles multicast at the host level — nothing to do */
         break;
 
     case NX_LINK_GET_STATUS:
