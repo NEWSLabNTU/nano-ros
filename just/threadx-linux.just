@@ -95,7 +95,9 @@ setup-caps: build
 # hardlink, applies CAP_NET_RAW, then executes it.
 # =============================================================================
 
-# Helper: build, break hardlink, setcap, exec
+# Helper: build, break Cargo hardlink, setcap, exec.
+# Cargo hardlinks release binaries → setcap is ignored on kernels with
+# fs.protected_regular=2. We copy to break the link before setcap.
 _run example:
     #!/usr/bin/env bash
     set -e
@@ -103,7 +105,7 @@ _run example:
     cargo build --release
     bin="target/release/threadx-linux-{{example}}"
     run="target/release/.run-threadx-linux-{{example}}"
-    cp "$bin" "$run"
+    cp -f "$bin" "$run"
     sudo setcap cap_net_raw+ep "$run"
     exec "$run"
 
