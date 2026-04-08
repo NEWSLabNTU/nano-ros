@@ -31,6 +31,13 @@ extern "C" {
 void nx_tap_set_interface_name(const char *name);
 
 /**
+ * Set the MAC address before calling nx_ip_create().
+ * msw = upper 16 bits (bytes 0-1), lsw = lower 32 bits (bytes 2-5).
+ * Example: MAC 02:00:00:00:00:01 → msw=0x0200, lsw=0x00000001
+ */
+void nx_tap_set_mac_address(ULONG msw, ULONG lsw);
+
+/**
  * NetX Duo network driver entry point.
  * Pass this to nx_ip_create() as the driver function.
  */

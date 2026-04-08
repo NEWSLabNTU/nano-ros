@@ -125,6 +125,14 @@ void tx_application_define(void *first_unused_memory)
     /* Set the Linux network interface name before creating IP instance */
     nx_tap_set_interface_name(cfg_interface_name);
 
+    /* Set MAC address on the TAP driver (before nx_ip_create) */
+    {
+        ULONG mac_msw = ((ULONG)cfg_mac[0] << 8) | (ULONG)cfg_mac[1];
+        ULONG mac_lsw = ((ULONG)cfg_mac[2] << 24) | ((ULONG)cfg_mac[3] << 16)
+                       | ((ULONG)cfg_mac[4] << 8)  | (ULONG)cfg_mac[5];
+        nx_tap_set_mac_address(mac_msw, mac_lsw);
+    }
+
     /* Allocate packet pool memory from byte pool */
     status = tx_byte_allocate(&byte_pool, (VOID **)&pointer,
                                PACKET_POOL_SIZE, TX_NO_WAIT);

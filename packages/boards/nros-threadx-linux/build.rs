@@ -8,6 +8,7 @@
 //!   THREADX_DIR          — ThreadX kernel source root (default: third-party/threadx/kernel)
 //!   NETX_DIR             — NetX Duo source root (default: third-party/threadx/netxduo)
 //!   THREADX_SAMPLES_DIR  — ThreadX learn samples (default: third-party/threadx/learn-samples)
+//!   TAP_NETX_DIR         — TAP network driver (default: packages/drivers/tap-netx)
 
 use std::env;
 use std::path::{Path, PathBuf};
@@ -97,7 +98,10 @@ fn main() {
     add_threadx_includes(&mut driver, &threadx_dir, &threadx_port_dir, &config_dir);
     add_netx_includes(&mut driver, &netx_dir, &config_dir);
 
-    let tap_netx_dir = project_root.join("packages/drivers/tap-netx");
+    let tap_netx_dir = env_path_or(
+        "TAP_NETX_DIR",
+        workspace_root.join("packages/drivers/tap-netx"),
+    );
     let driver_src = tap_netx_dir.join("src/nx_tap_network_driver.c");
     assert!(
         driver_src.exists(),
@@ -119,6 +123,7 @@ fn main() {
     configure_linux(&mut glue);
     add_threadx_includes(&mut glue, &threadx_dir, &threadx_port_dir, &config_dir);
     add_netx_includes(&mut glue, &netx_dir, &config_dir);
+    glue.include(tap_netx_dir.join("include"));
     glue.file(manifest_dir.join("c/app_define.c"));
 
     glue.compile("glue");
@@ -138,6 +143,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=THREADX_DIR");
     println!("cargo:rerun-if-env-changed=NETX_DIR");
     println!("cargo:rerun-if-env-changed=THREADX_SAMPLES_DIR");
+    println!("cargo:rerun-if-env-changed=TAP_NETX_DIR");
 }
 
 fn env_path_or(name: &str, default: PathBuf) -> PathBuf {

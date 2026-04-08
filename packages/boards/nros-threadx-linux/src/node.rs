@@ -123,6 +123,26 @@ pub fn run<F, E: std::fmt::Debug>(config: Config, f: F) -> !
 where
     F: FnOnce(&Config) -> Result<(), E>,
 {
+    // Install SIGSEGV handler to print backtrace on crash
+    unsafe {
+        unsafe extern "C" {
+            fn signal(sig: i32, handler: unsafe extern "C" fn(i32)) -> usize;
+            fn backtrace(buffer: *mut *mut std::ffi::c_void, size: i32) -> i32;
+            fn backtrace_symbols_fd(buffer: *const *mut std::ffi::c_void, size: i32, fd: i32);
+            fn _exit(status: i32) -> !;
+        }
+        unsafe extern "C" fn segv_handler(_sig: i32) {
+            let mut buf = [std::ptr::null_mut::<std::ffi::c_void>(); 64];
+            let n = backtrace(buf.as_mut_ptr(), 64);
+            unsafe extern "C" { fn write(fd: i32, buf: *const u8, count: usize) -> isize; }
+            let msg = b"\n=== SIGSEGV backtrace ===\n";
+            write(2, msg.as_ptr(), msg.len());
+            backtrace_symbols_fd(buf.as_ptr(), n, 2);
+            _exit(139);
+        }
+        signal(11, segv_handler); // SIGSEGV = 11
+    }
+
     println!();
     println!("========================================");
     println!("  nros ThreadX Linux Platform");

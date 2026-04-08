@@ -25,6 +25,8 @@
 #include <unistd.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
+#include <sys/select.h>
+#include <sys/time.h>
 
 #include "nx_api.h"
 #include "tx_api.h"
@@ -46,6 +48,8 @@
 static int          tap_fd = -1;
 static int          tap_link_enabled = 0;
 static const char  *tap_interface_name = "tap-tx0";
+static ULONG        tap_mac_msw = 0x0002;           /* Default: 02:00:00:00:00:00 */
+static ULONG        tap_mac_lsw = 0x00000000;
 static NX_IP       *tap_ip_ptr = NULL;
 static pthread_t    tap_rx_thread;
 static UCHAR        tap_rx_buffer[NX_TAP_MTU + 16];    /* +16 for safety */
@@ -56,6 +60,14 @@ static UCHAR        tap_tx_buffer[NX_TAP_MTU + 16];
 void nx_tap_set_interface_name(const char *name)
 {
     tap_interface_name = name;
+}
+
+/* ---- Public: set MAC address (call before nx_ip_create) ---- */
+
+void nx_tap_set_mac_address(ULONG msw, ULONG lsw)
+{
+    tap_mac_msw = msw;
+    tap_mac_lsw = lsw;
 }
 
 /* ---- Internal: open TAP device ---- */
@@ -118,6 +130,14 @@ static UINT tap_send(NX_PACKET *packet_ptr)
     }
 
     ssize_t sent = write(tap_fd, data, size);
+    {
+        static int tx_count = 0;
+        if (tx_count < 10) {
+            fprintf(stderr, "[tap] TX %lu bytes, sent=%zd, errno=%d\n",
+                    size, sent, sent < 0 ? errno : 0);
+            tx_count++;
+        }
+    }
     if (sent != (ssize_t)size)
     {
         return NX_NOT_SUCCESSFUL;
@@ -138,8 +158,28 @@ static void *tap_rx_thread_entry(void *arg)
 
     while (tap_link_enabled)
     {
-        /* Blocking read — returns one ethernet frame */
+        /* Use select() with timeout to avoid blocking indefinitely.
+           ThreadX Linux uses SIGUSR1/2 for scheduling — a perpetually
+           blocked read() can miss signals and stall packet delivery. */
+        fd_set read_fds;
+        FD_ZERO(&read_fds);
+        FD_SET(tap_fd, &read_fds);
+
+        struct timeval tv = { .tv_sec = 0, .tv_usec = 100000 }; /* 100ms */
+        if (select(tap_fd + 1, &read_fds, NULL, NULL, &tv) <= 0)
+        {
+            continue;   /* Timeout or error — retry */
+        }
+
         ssize_t bytes = read(tap_fd, tap_rx_buffer, sizeof(tap_rx_buffer));
+
+        {
+            static int rx_count = 0;
+            if (rx_count < 10) {
+                fprintf(stderr, "[tap] RX %zd bytes\n", bytes);
+                rx_count++;
+            }
+        }
 
         if (bytes < NX_TAP_ETHERNET_SIZE)
         {
@@ -200,8 +240,8 @@ static void *tap_rx_thread_entry(void *arg)
 
         _tx_thread_context_restore();
 
-        /* Yield to let ThreadX IP thread process deferred packets */
-        usleep(100);
+        /* Yield CPU to let ThreadX IP helper thread process deferred packets */
+        sched_yield();
     }
 
     return NULL;
@@ -234,6 +274,8 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
     NX_PACKET    *packet_ptr;
     ULONG        *ethernet_frame_ptr;
 
+    fprintf(stderr, "[tap] cmd=%u\n", driver_req_ptr->nx_ip_driver_command);
+
     /* Default to success */
     driver_req_ptr->nx_ip_driver_status = NX_SUCCESS;
 
@@ -259,11 +301,10 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
         /* Set interface capabilities */
         interface_ptr->nx_interface_ip_mtu_size = NX_TAP_MTU - NX_TAP_ETHERNET_SIZE;
 
-        /* Set MAC address on the interface */
-        interface_ptr->nx_interface_physical_address_msw =
-            (ULONG)((driver_req_ptr->nx_ip_driver_physical_address_msw) & 0xFFFF);
-        interface_ptr->nx_interface_physical_address_lsw =
-            driver_req_ptr->nx_ip_driver_physical_address_lsw;
+        /* Set MAC address on the interface (from nx_tap_set_mac_address) */
+        nx_ip_interface_physical_address_set(ip_ptr,
+            interface_ptr->nx_interface_index,
+            tap_mac_msw, tap_mac_lsw, NX_FALSE);
 
         interface_ptr->nx_interface_address_mapping_needed = NX_TRUE;
         break;
