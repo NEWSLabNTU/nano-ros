@@ -88,50 +88,42 @@ setup-caps: build
     echo "ThreadX E2E tests should now pass with: just threadx-linux test"
 
 # =============================================================================
-# Run examples (native Linux binaries, requires CAP_NET_RAW via setup-caps)
+# Run examples (native Linux binaries, requires CAP_NET_RAW)
+#
+# Cargo hardlinks release binaries, which breaks setcap on kernels with
+# fs.protected_regular=2. Each run recipe copies the binary to break the
+# hardlink, applies CAP_NET_RAW, then executes it.
 # =============================================================================
 
-# Run ThreadX Linux talker
-talker:
+# Helper: build, break hardlink, setcap, exec
+_run example:
     #!/usr/bin/env bash
     set -e
-    cd examples/threadx-linux/rust/zenoh/talker && cargo build --release
-    exec target/release/threadx-linux-talker
+    cd "examples/threadx-linux/rust/zenoh/{{example}}"
+    cargo build --release
+    bin="target/release/threadx-linux-{{example}}"
+    run="target/release/.run-threadx-linux-{{example}}"
+    cp "$bin" "$run"
+    sudo setcap cap_net_raw+ep "$run"
+    exec "$run"
+
+# Run ThreadX Linux talker
+talker: (_run "talker")
 
 # Run ThreadX Linux listener
-listener:
-    #!/usr/bin/env bash
-    set -e
-    cd examples/threadx-linux/rust/zenoh/listener && cargo build --release
-    exec target/release/threadx-linux-listener
+listener: (_run "listener")
 
 # Run ThreadX Linux service server
-service-server:
-    #!/usr/bin/env bash
-    set -e
-    cd examples/threadx-linux/rust/zenoh/service-server && cargo build --release
-    exec target/release/threadx-linux-service-server
+service-server: (_run "service-server")
 
 # Run ThreadX Linux service client
-service-client:
-    #!/usr/bin/env bash
-    set -e
-    cd examples/threadx-linux/rust/zenoh/service-client && cargo build --release
-    exec target/release/threadx-linux-service-client
+service-client: (_run "service-client")
 
 # Run ThreadX Linux action server
-action-server:
-    #!/usr/bin/env bash
-    set -e
-    cd examples/threadx-linux/rust/zenoh/action-server && cargo build --release
-    exec target/release/threadx-linux-action-server
+action-server: (_run "action-server")
 
 # Run ThreadX Linux action client
-action-client:
-    #!/usr/bin/env bash
-    set -e
-    cd examples/threadx-linux/rust/zenoh/action-client && cargo build --release
-    exec target/release/threadx-linux-action-client
+action-client: (_run "action-client")
 
 # Start zenohd router for ThreadX Linux examples (port 7455, bridge-networked)
 zenohd:
