@@ -187,13 +187,20 @@ static void tap_rx_thread_entry(ULONG input)
 
     (void)input;
 
+    /* Make pipe read-end non-blocking so tx_thread_sleep can yield */
+    {
+        int flags = fcntl(tap_pipe_fd[0], F_GETFL, 0);
+        fcntl(tap_pipe_fd[0], F_SETFL, flags | O_NONBLOCK);
+    }
+
     while (tap_link_enabled)
     {
-        /* Read length header from pipe */
+        /* Read length header from pipe (non-blocking) */
         uint8_t hdr[2];
         ssize_t n = read(tap_pipe_fd[0], hdr, 2);
         if (n != 2)
         {
+            /* No data — yield to let IP thread process deferred packets */
             tx_thread_sleep(1);
             continue;
         }
@@ -212,7 +219,12 @@ static void tap_rx_thread_entry(ULONG input)
             continue;
         }
 
-        /* Read frame data */
+        /* Read frame data — switch to blocking for the data portion
+           since we know it's available right after the header */
+        {
+            int flags = fcntl(tap_pipe_fd[0], F_GETFL, 0);
+            fcntl(tap_pipe_fd[0], F_SETFL, flags & ~O_NONBLOCK);
+        }
         size_t total = 0;
         while (total < len)
         {
@@ -220,9 +232,16 @@ static void tap_rx_thread_entry(ULONG input)
             if (n <= 0) break;
             total += (size_t)n;
         }
+        {
+            int flags = fcntl(tap_pipe_fd[0], F_GETFL, 0);
+            fcntl(tap_pipe_fd[0], F_SETFL, flags | O_NONBLOCK);
+        }
 
         if (total != len)
             continue;
+
+        /* Parse ethernet type from the raw frame */
+        packet_type = (((UINT)frame[12]) << 8) | ((UINT)frame[13]);
 
         /* Allocate NetX packet */
         status = nx_packet_allocate(
@@ -232,23 +251,17 @@ static void tap_rx_thread_entry(ULONG input)
         if (status != NX_SUCCESS)
             continue;
 
-        /* Copy frame into packet */
-        status = nx_packet_data_append(
-            packet_ptr, frame, (ULONG)len,
-            tap_ip_ptr->nx_ip_default_packet_pool, TX_WAIT_FOREVER);
-
-        if (status != NX_SUCCESS)
+        /* Copy IP payload directly into the packet buffer (skip ethernet).
+           We avoid nx_packet_data_append which can create chained packets
+           and confuse the BSD recv extraction. */
         {
-            nx_packet_release(packet_ptr);
-            continue;
+            ULONG ip_len = (ULONG)(len - NX_TAP_ETHERNET_SIZE);
+            memcpy(packet_ptr->nx_packet_prepend_ptr,
+                   frame + NX_TAP_ETHERNET_SIZE, ip_len);
+            packet_ptr->nx_packet_append_ptr =
+                packet_ptr->nx_packet_prepend_ptr + ip_len;
+            packet_ptr->nx_packet_length = ip_len;
         }
-
-        /* Parse ethernet type */
-        packet_type = (((UINT)frame[12]) << 8) | ((UINT)frame[13]);
-
-        /* Strip ethernet header */
-        packet_ptr->nx_packet_prepend_ptr += NX_TAP_ETHERNET_SIZE;
-        packet_ptr->nx_packet_length      -= NX_TAP_ETHERNET_SIZE;
 
         {
             static int rx_count = 0;
@@ -259,9 +272,7 @@ static void tap_rx_thread_entry(ULONG input)
         if (packet_type == NX_TAP_ETHERNET_IP ||
             packet_type == NX_TAP_ETHERNET_IPV6)
         {
-            /* Process directly in this ThreadX thread — avoids the deferred
-               queue which requires the IP helper thread to be scheduled. */
-            _nx_ip_packet_receive(tap_ip_ptr, packet_ptr);
+                _nx_ip_packet_deferred_receive(tap_ip_ptr, packet_ptr);
         }
         else if (packet_type == NX_TAP_ETHERNET_ARP)
         {

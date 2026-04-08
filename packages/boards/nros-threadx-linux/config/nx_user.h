@@ -78,13 +78,6 @@ extern TX_TIMER_INTERNAL *_tx_timer_expired_timer_ptr;
 #define NX_PHYSICAL_HEADER          16
 #define NX_MAX_PORT                 65535
 
-/* Disable RX checksum verification — the Linux kernel may not compute
- * correct checksums for packets traversing bridge + TAP devices. */
-#define NX_DISABLE_IP_RX_CHECKSUM
-#define NX_DISABLE_TCP_RX_CHECKSUM
-#define NX_DISABLE_UDP_RX_CHECKSUM
-#define NX_DISABLE_ICMP_RX_CHECKSUM
-
 /* Default interface name for the TAP driver.
  * The actual name is set at runtime via nx_tap_set_interface_name(). */
 #define NX_LINUX_INTERFACE_NAME     "tap-tx0"
