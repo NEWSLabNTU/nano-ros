@@ -24,6 +24,10 @@
 - [QEMU Bare-Metal](./guides/qemu-bare-metal.md)
 - [ESP32](./guides/esp32.md)
 - [Serial Transport](./guides/serial-transport.md)
+- [Configuration](./guides/configuration.md)
+- [Porting to a New Platform](./guides/porting-platform.md)
+- [Adding an RMW Backend](./guides/adding-rmw-backend.md)
+- [Board Crate Implementation](./guides/board-crate.md)
 - [Troubleshooting](./guides/troubleshooting.md)
 
 # Platforms

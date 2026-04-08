@@ -60,6 +60,11 @@ guides/
   creating-examples.md
   qemu-bare-metal.md
   esp32.md
+  serial-transport.md
+  configuration.md
+  porting-platform.md
+  adding-rmw-backend.md
+  board-crate.md
   troubleshooting.md
 
 platforms/
@@ -169,6 +174,11 @@ advanced/
 - [x] 65.34 — Update CLAUDE.md docs index
 - [x] 65.35 — Review, cross-links, and polish
 - [x] 65.36 — Add `just book` recipe
+- [x] 65.37 — Guides: porting to a new platform (write)
+- [x] 65.38 — Guides: adding an RMW backend (write)
+- [x] 65.39 — Guides: configuration (write)
+- [x] 65.40 — Guides: board crate implementation (write)
+- [x] 65.41 — Update SUMMARY.md for new guides
 
 ### 65.1 — mdbook setup and SUMMARY.md
 
@@ -492,6 +502,57 @@ Add `just book` (build) and `just book-serve` (dev server with watch)
 recipes to justfile.
 
 **Files**: `justfile`
+
+### 65.37 — Guides: porting to a new platform
+
+Developer guide for porting nano-ros to a new platform (RTOS or bare-metal).
+Lists all required FFI symbols (clock, memory, sleep, random, threading,
+sockets, libc stubs), the two-crate pattern (zpico-platform + nros-board),
+and a step-by-step porting procedure.
+
+**Action**: Write new chapter.
+
+**Files**: `book/src/guides/porting-platform.md`
+
+### 65.38 — Guides: adding an RMW backend
+
+Developer guide for implementing a new RMW backend. Covers the full trait
+hierarchy (Rmw, Session, Publisher, Subscriber, ServiceServerTrait,
+ServiceClientTrait), message buffering patterns, QoS mapping, feature flag
+wiring, and testing.
+
+**Action**: Write new chapter.
+
+**Files**: `book/src/guides/adding-rmw-backend.md`
+
+### 65.39 — Guides: configuration
+
+Comprehensive configuration reference across all four layers: config.toml,
+build-time environment variables, Cargo features, and runtime environment.
+Includes deployment scenario examples and precedence rules.
+
+**Action**: Write new chapter. Consolidates information from
+`reference/environment-variables.md` and `reference/config-toml.md` into
+a unified guide.
+
+**Files**: `book/src/guides/configuration.md`
+
+### 65.40 — Guides: board crate implementation
+
+Developer guide for creating a new board crate. Covers Config struct with
+feature-gated fields, hardware init sequence, Ethernet/Serial/WiFi/lwIP/NetX
+transport setup, the run() entry point, re-exports, and a checklist.
+
+**Action**: Write new chapter.
+
+**Files**: `book/src/guides/board-crate.md`
+
+### 65.41 — Update SUMMARY.md for new guides
+
+Add entries for the four new guide chapters to SUMMARY.md.
+
+**Files**: `book/src/SUMMARY.md`
+
 
 ## Acceptance Criteria
 
