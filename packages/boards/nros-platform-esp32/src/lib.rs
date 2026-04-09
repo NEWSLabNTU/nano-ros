@@ -9,6 +9,7 @@ pub mod memory;
 pub mod random;
 pub mod sleep;
 pub mod timing;
+pub mod libc_stubs;
 
 /// Zero-sized type implementing all platform methods for ESP32-C3.
 pub struct Esp32Platform;

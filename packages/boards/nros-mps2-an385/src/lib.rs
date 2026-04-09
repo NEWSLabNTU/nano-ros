@@ -21,6 +21,7 @@
 //! or `zpico-serial` (serial).
 
 #![no_std]
+extern crate zpico_platform_shim;
 
 // Application modules
 mod config;

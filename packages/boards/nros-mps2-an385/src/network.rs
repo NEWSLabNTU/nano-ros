@@ -60,3 +60,4 @@ pub unsafe extern "C" fn smoltcp_network_poll() {
         SmoltcpBridge::poll(iface, eth, sockets);
     }
 }
+

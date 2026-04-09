@@ -21,7 +21,7 @@ default = []
 # Zephyr's platform code is compiled by Zephyr's CMake build system.
 posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 zephyr = []
-bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/socket-stubs"]
 freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]

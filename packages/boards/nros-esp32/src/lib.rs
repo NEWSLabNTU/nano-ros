@@ -20,6 +20,7 @@
 //! initialization on top.
 
 #![no_std]
+extern crate zpico_platform_shim;
 
 extern crate alloc;
 

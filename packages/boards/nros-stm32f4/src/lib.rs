@@ -20,6 +20,7 @@
 //! (Ethernet) or `zpico-serial` (serial) for the link layer.
 
 #![no_std]
+extern crate zpico_platform_shim;
 
 // Application modules
 mod config;

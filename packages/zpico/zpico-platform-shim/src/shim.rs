@@ -57,6 +57,12 @@ pub extern "C" fn z_clock_advance_s(clock: *mut usize, duration: c_ulong) {
 
 // ============================================================================
 // Memory
+// smoltcp transport clock (used by zpico-smoltcp for TCP/IP timestamping)
+#[unsafe(no_mangle)]
+pub extern "C" fn smoltcp_clock_now_ms() -> u64 {
+    P::clock_ms()
+}
+
 // ============================================================================
 
 #[unsafe(no_mangle)]
@@ -350,10 +356,10 @@ pub extern "C" fn _z_condvar_wait_until(
 }
 
 // ============================================================================
-// Socket stubs (smoltcp bare-metal only)
+// Socket helpers (bare-metal only — RTOS platforms provide these in C network.c)
 // ============================================================================
 
-#[cfg(feature = "smoltcp")]
+#[cfg(feature = "socket-stubs")]
 mod socket_stubs {
     use core::ffi::c_void;
 
@@ -368,16 +374,9 @@ mod socket_stubs {
         _unused: u8,
     }
 
-    // Link-time imports from zpico-smoltcp (provided by the board crate's
-    // dependency on zpico-smoltcp, not by a Cargo dependency here).
-    unsafe extern "C" {
-        fn _z_close_tcp(sock: *mut ZSysNetSocket);
-        fn smoltcp_poll() -> i32;
-    }
-
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_set_non_blocking(_sock: *const ZSysNetSocket) -> i8 {
-        0 // smoltcp sockets are inherently non-blocking
+        0
     }
 
     #[unsafe(no_mangle)]
@@ -388,9 +387,13 @@ mod socket_stubs {
         -1 // Not supported — client-mode only
     }
 
+    #[cfg(feature = "smoltcp")]
     #[unsafe(no_mangle)]
     #[allow(clippy::not_unsafe_ptr_arg_deref)]
     pub extern "C" fn _z_socket_close(sock: *mut ZSysNetSocket) {
+        unsafe extern "C" {
+            fn _z_close_tcp(sock: *mut ZSysNetSocket);
+        }
         if sock.is_null() {
             return;
         }
@@ -400,10 +403,23 @@ mod socket_stubs {
         }
     }
 
+    #[cfg(not(feature = "smoltcp"))]
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_close(_sock: *mut ZSysNetSocket) {}
+
+    #[cfg(feature = "smoltcp")]
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_wait_event(_peers: *mut c_void, _mutex: *mut ZMutexRecRef) -> i8 {
-        // Poll the network stack during wait
+        unsafe extern "C" {
+            fn smoltcp_poll() -> i32;
+        }
         unsafe { smoltcp_poll() };
+        0
+    }
+
+    #[cfg(not(feature = "smoltcp"))]
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_wait_event(_peers: *mut c_void, _mutex: *mut ZMutexRecRef) -> i8 {
         0
     }
 }

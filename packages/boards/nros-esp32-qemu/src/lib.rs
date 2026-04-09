@@ -17,6 +17,7 @@
 //! (Ethernet) or zenoh-pico's built-in serial for the link layer.
 
 #![no_std]
+extern crate zpico_platform_shim;
 
 extern crate alloc;
 

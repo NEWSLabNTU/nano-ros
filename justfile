@@ -224,7 +224,11 @@ build-workspace-embedded:
         --exclude zpico-sys \
         --exclude nros-tests \
         --exclude nros-c \
-        --exclude nros-cpp
+        --exclude nros-cpp \
+        --exclude nros-platform-posix \
+        --exclude nros-platform-nuttx \
+        --exclude zpico-platform-shim \
+        --exclude xrce-platform-shim
 
 # Format workspace code
 format-workspace:

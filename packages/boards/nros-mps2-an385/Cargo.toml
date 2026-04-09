@@ -12,6 +12,7 @@ name = "nros_mps2_an385"
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-mps2-an385 = { path = "../nros-platform-mps2-an385" }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-mps2-an385"] }
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
 
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }

@@ -20,16 +20,15 @@ extern crate std;
 
 // Force-link the platform shim crate so its extern "C" symbols (z_clock_now,
 // z_malloc, _z_mutex_lock, etc.) are available to the C objects in this crate.
-// Without this, the linker may strip the shim's symbols as unused.
-#[cfg(feature = "posix")]
-extern crate zpico_platform_shim;
-#[cfg(feature = "bare-metal")]
-extern crate zpico_platform_shim;
-#[cfg(feature = "freertos")]
-extern crate zpico_platform_shim;
-#[cfg(feature = "nuttx")]
-extern crate zpico_platform_shim;
-#[cfg(feature = "threadx")]
+// On POSIX/RTOS, `extern crate` suffices. On bare-metal, the board crate must
+// also directly depend on zpico-platform-shim for the embedded linker to
+// include the symbols (see board crate Cargo.toml).
+#[cfg(any(
+    feature = "posix",
+    feature = "freertos",
+    feature = "nuttx",
+    feature = "threadx",
+))]
 extern crate zpico_platform_shim;
 
 // Note: The smoltcp platform uses a custom bump allocator for C FFI (zenoh-pico),
