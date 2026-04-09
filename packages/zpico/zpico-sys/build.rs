@@ -1369,8 +1369,9 @@ fn build_zenoh_pico_freertos(
     // Common system sources (shared across all platforms)
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
-    // FreeRTOS platform sources
-    // system.c skipped — platform symbols provided by zpico-platform-shim.
+    // FreeRTOS platform sources (uses C macros for semaphore API — can't
+    // go through Rust FFI shim, so system.c is kept for FreeRTOS)
+    build.file(src_dir.join("system/freertos/system.c"));
     build.file(src_dir.join("system/freertos/lwip/network.c"));
 
     // Shim (high-level API wrapper)
@@ -1700,9 +1701,10 @@ fn build_zenoh_pico_threadx(
     // Common system sources (shared across all platforms)
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
-    // ThreadX platform sources
-    // system.c skipped — platform symbols provided by zpico-platform-shim.
+    // ThreadX platform sources (uses C macros for mutex/semaphore API —
+    // can't go through Rust FFI shim, so system.c is kept for ThreadX)
     let platform_dir = c_dir.join("platform");
+    build.file(platform_dir.join("threadx/system.c"));
     build.file(platform_dir.join("threadx/network.c"));
 
     // Shim (high-level API wrapper)

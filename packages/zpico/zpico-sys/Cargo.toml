@@ -21,14 +21,14 @@ default = []
 # Zephyr's platform code is compiled by Zephyr's CMake build system.
 posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 zephyr = []
-bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/socket-stubs"]
-freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/socket-stubs", "zpico-platform-shim?/smoltcp"]
+freertos = []
 nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
-threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+threadx = []
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.
-link-tcp = ["zpico-platform-shim?/smoltcp"]
+link-tcp = []
 link-udp-unicast = []
 link-udp-multicast = []
 link-serial = []

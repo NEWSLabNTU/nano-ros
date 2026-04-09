@@ -243,7 +243,7 @@ impl PlatformClock for CffiPlatform {
   - [x] 79.13.3 — Removed `zpico-platform-shim` dependency from all 4 board crates
   - [x] 79.13.4 — Board crates only depend on `nros-platform-<board>` (RMW-agnostic)
 - [x] 79.14 — Use shim for ALL platforms (not just bare-metal)
-  - [x] 79.14.1 — All `-sys` platform features activate shim; system.c/time.c excluded
+  - [x] 79.14.1 — POSIX/NuttX/bare-metal use shim; FreeRTOS/ThreadX keep C system.c (macro APIs)
   - [x] 79.14.2 — `extern crate` in -sys crates forces linker to include shim symbols
   - [x] 79.14.3 — `nros` facade activates `nros-platform/platform-posix` for POSIX builds
   - [x] 79.14.4 — Example builds + 337 unit tests pass
@@ -506,6 +506,32 @@ By routing all platforms through the shim, we get:
 - **nros-platform crates are always the source of truth** — no behavioral divergence between C and Rust implementations
 - **LTO eliminates overhead** — the `extern "C"` → Rust → libc/RTOS chain is inlined at link time in release builds
 - **Testable** — platform implementations can be tested on the host, not just in QEMU/hardware
+
+### Platform symbol providers per platform (79.14)
+
+Each platform needs two categories of symbols: **system** (clock, malloc,
+threading, sleep, random) and **socket** (TCP/UDP open, read, send, close).
+
+| Platform | System symbols | Socket symbols | Why |
+|----------|---------------|---------------|-----|
+| POSIX | Shim → `nros-platform-posix` | C `unix/network.c` | POSIX APIs available via `libc` crate |
+| NuttX | Shim → `nros-platform-nuttx` (= posix) | C `unix/network.c` | POSIX-compatible |
+| Bare-metal | Shim → `nros-platform-<board>` | Shim `socket-stubs` | No C runtime; zpico-smoltcp provides TCP/UDP |
+| FreeRTOS | C `freertos/system.c` | C `freertos/lwip/network.c` | FreeRTOS API uses C macros (`xSemaphoreCreateRecursiveMutex` etc.) — can't call via Rust `extern "C"` |
+| ThreadX | C `threadx/system.c` | C `threadx/network.c` | ThreadX API uses C macros (`tx_mutex_create` etc.) — same limitation |
+| Zephyr | Zephyr CMake module | Zephyr CMake module | Entire platform compiled by Zephyr's build system |
+
+**Why FreeRTOS/ThreadX can't use the shim:** Their RTOS APIs are implemented
+as C preprocessor macros, not real functions. For example,
+`xSemaphoreCreateRecursiveMutex()` expands to `xQueueCreateMutex(...)` at
+the preprocessor level. Rust's `extern "C"` FFI can only call real function
+symbols, not macros. The old C `system.c` compiled as C code and could use
+these macros directly.
+
+**Future path for FreeRTOS/ThreadX:** Create a C wrapper library that provides
+real function symbols calling the macros (e.g., `nros_freertos_mutex_create()`
+→ `xSemaphoreCreateRecursiveMutex()`), then have the Rust platform crate
+call those wrapper functions via `extern "C"`.
 
 ### Cross-archive linking solved via `extern crate` (79.14)
 
