@@ -246,7 +246,11 @@ check-workspace-embedded:
         --exclude zpico-sys \
         --exclude nros-tests \
         --exclude nros-c \
-        --exclude nros-cpp -- {{CLIPPY_LINTS}}
+        --exclude nros-cpp \
+        --exclude nros-platform-posix \
+        --exclude nros-platform-nuttx \
+        --exclude zpico-platform-shim \
+        --exclude xrce-platform-shim -- {{CLIPPY_LINTS}}
 
 # Check workspace with various feature combinations
 check-workspace-features:

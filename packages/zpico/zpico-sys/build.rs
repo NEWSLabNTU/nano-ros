@@ -756,6 +756,16 @@ fn build_zenoh_pico_native(
     // Copy source to build directory to avoid modifying source tree
     copy_source_tree(zenoh_pico_src, &zenoh_pico_build);
 
+    // Remove system.c from the build copy — platform symbols are provided by
+    // zpico-platform-shim via nros-platform instead of zenoh-pico's C code.
+    // network.c (BSD sockets) is kept since networking is outside nros-platform scope.
+    for system_c in &["src/system/unix/system.c", "src/system/freertos/system.c"] {
+        let path = zenoh_pico_build.join(system_c);
+        if path.exists() {
+            std::fs::remove_file(&path).ok();
+        }
+    }
+
     // Generate version header
     generate_version_header(&zenoh_pico_build);
 
@@ -1359,9 +1369,8 @@ fn build_zenoh_pico_freertos(
     // Common system sources (shared across all platforms)
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
-    // FreeRTOS platform sources (threading, clock, memory, random)
-    build.file(src_dir.join("system/freertos/system.c"));
-    // lwIP network layer (TCP/UDP sockets via lwIP's POSIX-compatible API)
+    // FreeRTOS platform sources
+    // system.c skipped — platform symbols provided by zpico-platform-shim.
     build.file(src_dir.join("system/freertos/lwip/network.c"));
 
     // Shim (high-level API wrapper)
@@ -1493,7 +1502,7 @@ fn build_zenoh_pico_nuttx(
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
     // Unix platform sources (NuttX is POSIX-compatible)
-    build.file(src_dir.join("system/unix/system.c"));
+    // system.c skipped — platform symbols provided by zpico-platform-shim.
     build.file(src_dir.join("system/unix/network.c"));
 
     // Shim (high-level API wrapper)
@@ -1691,9 +1700,9 @@ fn build_zenoh_pico_threadx(
     // Common system sources (shared across all platforms)
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
-    // ThreadX platform sources (our custom system + network layer)
+    // ThreadX platform sources
+    // system.c skipped — platform symbols provided by zpico-platform-shim.
     let platform_dir = c_dir.join("platform");
-    build.file(platform_dir.join("threadx/system.c"));
     build.file(platform_dir.join("threadx/network.c"));
 
     // Shim (high-level API wrapper)

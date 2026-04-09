@@ -35,6 +35,9 @@ mod traits;
     feature = "platform-stm32f4",
     feature = "platform-esp32",
     feature = "platform-esp32-qemu",
+    feature = "platform-nuttx",
+    feature = "platform-freertos",
+    feature = "platform-threadx",
 ))]
 pub use resolve::ConcretePlatform;
 pub use traits::*;

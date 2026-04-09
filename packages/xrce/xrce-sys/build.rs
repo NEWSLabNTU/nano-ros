@@ -109,13 +109,9 @@ fn main() {
     // Stream framing protocol (HDLC framing for serial transports)
     build.file(uxr_src.join("profile/transport/stream_framing/stream_framing_protocol.c"));
 
-    // Platform-conditional: time.c
-    // - POSIX/NuttX: compile time.c (uses clock_gettime)
-    // - Zephyr: skip time.c (uxr_millis/uxr_nanos provided by xrce_zephyr.c)
-    // - FreeRTOS/ThreadX/bare-metal: skip time.c (uxr_millis/uxr_nanos provided by platform crate)
-    if posix_compat {
-        build.file(uxr_src.join("util/time.c"));
-    }
+    // time.c is no longer compiled — uxr_millis/uxr_nanos provided by
+    // xrce-platform-shim via nros-platform for all platforms except Zephyr
+    // (which provides its own symbols via xrce_zephyr.c).
 
     // Rust FFI shim (field accessor helpers)
     build.file(manifest_dir.join("src/shim.c"));

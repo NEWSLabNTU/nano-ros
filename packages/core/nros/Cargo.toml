@@ -35,6 +35,7 @@ rmw-cffi = ["dep:nros-rmw-cffi", "nros-node/rmw-cffi"]
 
 # Platform (select one; forwarded to RMW backends which forward to -sys crates)
 platform-posix = [
+    "nros-platform/platform-posix",
     "nros-node/platform-posix",
     "nros-rmw-zenoh?/platform-posix",
     "nros-rmw-xrce?/platform-posix",
@@ -52,24 +53,27 @@ platform-bare-metal = [
     "nros-rmw-xrce?/platform-bare-metal",
 ]
 platform-freertos = [
+    "nros-platform/platform-freertos",
     "nros-node/platform-freertos",
     "nros-rmw-zenoh?/platform-freertos",
     "nros-rmw-xrce?/platform-freertos",
     "nros-rmw-dds?/platform-freertos",
 ]
 platform-nuttx = [
+    "nros-platform/platform-nuttx",
     "nros-node/platform-nuttx",
     "nros-rmw-zenoh?/platform-nuttx",
     "nros-rmw-xrce?/platform-nuttx",
     "nros-rmw-dds?/platform-nuttx",
 ]
 platform-threadx = [
+    "nros-platform/platform-threadx",
     "nros-node/platform-threadx",
     "nros-rmw-zenoh?/platform-threadx",
     "nros-rmw-xrce?/platform-threadx",
     "nros-rmw-dds?/platform-threadx",
 ]
-platform-cffi = []
+platform-cffi = ["nros-platform/platform-cffi"]
 
 # Zenoh link-layer protocol features (bare-metal only — posix uses CMake defaults)
 link-tcp = ["nros-rmw-zenoh?/link-tcp"]
@@ -77,8 +81,8 @@ link-udp-unicast = ["nros-rmw-zenoh?/link-udp-unicast"]
 link-tls = ["nros-rmw-zenoh?/link-tls"]
 
 # XRCE transport refinements (posix-only)
-xrce-udp = ["nros-rmw-xrce?/posix-udp", "nros-node/posix-udp"]
-xrce-serial = ["nros-rmw-xrce?/posix-serial", "nros-node/posix-serial"]
+xrce-udp = ["nros-platform/platform-posix", "nros-rmw-xrce?/posix-udp", "nros-node/posix-udp"]
+xrce-serial = ["nros-platform/platform-posix", "nros-rmw-xrce?/posix-serial", "nros-node/posix-serial"]
 
 # E2E safety protocol (CRC-32 + sequence tracking)
 safety-e2e = ["nros-node/safety-e2e", "nros-rmw/safety-e2e", "nros-rmw-zenoh?/safety-e2e"]
@@ -114,6 +118,7 @@ nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", default-features = false, o
 nros-rmw-dds = { path = "../../dds/nros-rmw-dds", default-features = false, optional = true }
 nros-rmw-cffi = { path = "../nros-rmw-cffi", default-features = false, optional = true }
 nros-params = { path = "../nros-params", default-features = false }
+nros-platform = { path = "../nros-platform", default-features = false }
 
 [dev-dependencies]
 

@@ -7,6 +7,17 @@
 #![no_std]
 #![allow(non_camel_case_types, non_upper_case_globals)]
 
+// Force-link the platform shim crate so its extern "C" symbols (uxr_millis,
+// uxr_nanos) are available to the C objects in this crate.
+#[cfg(any(
+    feature = "posix",
+    feature = "bare-metal",
+    feature = "freertos",
+    feature = "nuttx",
+    feature = "threadx",
+))]
+extern crate xrce_platform_shim;
+
 #[cfg(feature = "std")]
 extern crate std;
 

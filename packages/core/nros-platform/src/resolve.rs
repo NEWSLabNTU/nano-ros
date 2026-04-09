@@ -22,3 +22,12 @@ pub type ConcretePlatform = nros_platform_esp32::Esp32Platform;
 
 #[cfg(feature = "platform-esp32-qemu")]
 pub type ConcretePlatform = nros_platform_esp32_qemu::Esp32QemuPlatform;
+
+#[cfg(feature = "platform-nuttx")]
+pub type ConcretePlatform = nros_platform_nuttx::NuttxPlatform;
+
+#[cfg(feature = "platform-freertos")]
+pub type ConcretePlatform = nros_platform_freertos::FreeRtosPlatform;
+
+#[cfg(feature = "platform-threadx")]
+pub type ConcretePlatform = nros_platform_threadx::ThreadxPlatform;

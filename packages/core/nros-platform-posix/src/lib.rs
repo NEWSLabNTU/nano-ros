@@ -3,6 +3,8 @@
 //! Provides all platform capabilities using standard POSIX APIs:
 //! `clock_gettime`, `malloc`/`free`, `nanosleep`, `pthread_*`, `/dev/urandom`.
 
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use core::ffi::c_void;
 use core::ptr;
 

@@ -1,0 +1,9 @@
+[package]
+name = "nros-platform-threadx"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "nros platform implementation for ThreadX (calls ThreadX C APIs via FFI)"
+
+# No Rust dependencies — all ThreadX APIs are extern "C" resolved at link time
+# from the ThreadX kernel + NetX Duo libraries linked by the board crate.

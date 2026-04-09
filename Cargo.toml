@@ -40,6 +40,9 @@ members = [
     "packages/core/nros-platform",
     "packages/core/nros-platform-cffi",
     "packages/core/nros-platform-posix",
+    "packages/core/nros-platform-nuttx",
+    "packages/core/nros-platform-freertos",
+    "packages/core/nros-platform-threadx",
     # Platform shims for RMW backends
     "packages/zpico/zpico-platform-shim",
     "packages/xrce/xrce-platform-shim",

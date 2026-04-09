@@ -16,6 +16,9 @@ platform-mps2-an385 = ["dep:nros-platform-mps2-an385"]
 platform-stm32f4 = ["dep:nros-platform-stm32f4"]
 platform-esp32 = ["dep:nros-platform-esp32"]
 platform-esp32-qemu = ["dep:nros-platform-esp32-qemu"]
+platform-nuttx = ["dep:nros-platform-nuttx"]
+platform-freertos = ["dep:nros-platform-freertos"]
+platform-threadx = ["dep:nros-platform-threadx"]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []
@@ -28,3 +31,6 @@ nros-platform-mps2-an385 = { path = "../../boards/nros-platform-mps2-an385", opt
 nros-platform-stm32f4 = { path = "../../boards/nros-platform-stm32f4", optional = true }
 nros-platform-esp32 = { path = "../../boards/nros-platform-esp32", optional = true }
 nros-platform-esp32-qemu = { path = "../../boards/nros-platform-esp32-qemu", optional = true }
+nros-platform-nuttx = { path = "../nros-platform-nuttx", optional = true }
+nros-platform-freertos = { path = "../nros-platform-freertos", optional = true }
+nros-platform-threadx = { path = "../nros-platform-threadx", optional = true }

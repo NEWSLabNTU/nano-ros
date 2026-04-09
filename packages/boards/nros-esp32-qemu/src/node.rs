@@ -81,7 +81,7 @@ fn init_ethernet(config: &Config) {
 
     let mac_addr = EthernetAddress::from_bytes(&mac);
     let iface_config = smoltcp::iface::Config::new(mac_addr.into());
-    let iface = Interface::new(iface_config, eth, clock::now());
+    let iface = Interface::new(iface_config, eth, smoltcp::time::Instant::from_millis(nros_platform_esp32_qemu::clock::clock_ms() as i64));
     unsafe { NET_IFACE.write(iface) };
     let sockets = unsafe { create_socket_set() };
     unsafe { NET_SOCKETS.write(sockets) };

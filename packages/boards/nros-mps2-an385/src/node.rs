@@ -89,7 +89,7 @@ impl EthernetDevice for Lan9118 {
 fn create_interface<D: EthernetDevice>(eth: &mut D) -> Interface {
     let mac = eth.mac_address();
     let mac_addr = EthernetAddress::from_bytes(&mac);
-    let now = clock::now();
+    let now = smoltcp::time::Instant::from_millis(nros_platform_mps2_an385::clock::clock_ms() as i64);
     let iface_config = smoltcp::iface::Config::new(mac_addr.into());
     Interface::new(iface_config, eth, now)
 }
@@ -291,7 +291,7 @@ fn init_serial(config: &Config) {
 pub fn init_hardware(config: &Config) {
     // Initialize CMSDK Timer0 as the monotonic clock source.
     // This must happen before any clock reads (including smoltcp interface
-    // creation which calls clock::now()). On QEMU, pair with
+    // creation which reads the clock). On QEMU, pair with
     // `-icount shift=auto` to keep virtual time aligned with wall-clock
     // time. See docs/reference/qemu-icount.md.
     nros_platform_mps2_an385::clock::init_hardware_timer();

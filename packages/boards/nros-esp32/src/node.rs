@@ -186,7 +186,7 @@ pub fn init_hardware(config: &NodeConfig) {
         let mac = wifi_dev.mac_address();
         let mac_addr = EthernetAddress::from_bytes(&mac);
         let iface_config = smoltcp::iface::Config::new(mac_addr.into());
-        let iface = Interface::new(iface_config, wifi_dev, clock::now());
+        let iface = Interface::new(iface_config, wifi_dev, smoltcp::time::Instant::from_millis(nros_platform_esp32::clock::clock_ms() as i64));
         unsafe { NET_IFACE.write(iface) };
         let sockets = unsafe { create_socket_set() };
         unsafe { NET_SOCKETS.write(sockets) };
@@ -215,7 +215,7 @@ pub fn init_hardware(config: &NodeConfig) {
                 let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
 
                 loop {
-                    iface.poll(clock::now(), wifi_dev, sockets);
+                    iface.poll(smoltcp::time::Instant::from_millis(nros_platform_esp32::clock::clock_ms() as i64), wifi_dev, sockets);
 
                     // Check if we got an IP
                     if iface

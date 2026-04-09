@@ -17,6 +17,7 @@
 //! dispatching through the registered vtable.
 
 #![no_std]
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 use core::ffi::c_void;
 use core::sync::atomic::Ordering;
