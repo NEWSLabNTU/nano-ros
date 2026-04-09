@@ -26,6 +26,8 @@ mod config;
 #[allow(dead_code)]
 mod error;
 mod node;
+#[cfg(feature = "ethernet")]
+pub mod network;
 
 // Re-export entry macro
 pub use cortex_m_rt::entry;
@@ -34,17 +36,17 @@ pub use cortex_m_rt::entry;
 pub use defmt;
 
 // Re-export zpico-platform for direct access to system primitives
-pub use zpico_platform_stm32f4;
+pub use nros_platform_stm32f4;
 
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run};
-pub use zpico_platform_stm32f4::timing::CycleCounter;
+pub use nros_platform_stm32f4::timing::CycleCounter;
 
 // Re-export hardware modules from zpico-platform
 #[cfg(feature = "ethernet")]
-pub use zpico_platform_stm32f4::phy;
-pub use zpico_platform_stm32f4::pins;
+pub use nros_platform_stm32f4::phy;
+pub use nros_platform_stm32f4::pins;
 
 /// Convenient prelude module
 ///
@@ -55,7 +57,7 @@ pub mod prelude {
     pub use cortex_m_rt::entry;
     pub use defmt::{debug, error, info, trace, warn};
     #[cfg(feature = "ethernet")]
-    pub use zpico_platform_stm32f4::phy::PhyType;
-    pub use zpico_platform_stm32f4::pins::PinConfig;
-    pub use zpico_platform_stm32f4::timing::CycleCounter;
+    pub use nros_platform_stm32f4::phy::PhyType;
+    pub use nros_platform_stm32f4::pins::PinConfig;
+    pub use nros_platform_stm32f4::timing::CycleCounter;
 }

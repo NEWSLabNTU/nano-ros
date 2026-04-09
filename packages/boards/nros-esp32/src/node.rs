@@ -30,11 +30,11 @@ use smoltcp::socket::dhcpv4;
 #[cfg(feature = "wifi")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use zpico_platform_esp32::clock;
+use nros_platform_esp32::clock;
 use crate::config::NodeConfig;
 #[cfg(feature = "wifi")]
 use crate::config::IpMode;
-use zpico_platform_esp32::random;
+use nros_platform_esp32::random;
 
 // NOTE: We intentionally do NOT define a `type Result<T>` alias in this module.
 // The `esp_println::println!` macro uses `?` internally which expands to
@@ -299,13 +299,13 @@ pub fn init_hardware(config: &NodeConfig) {
         // Store global state for poll callback (via zpico-platform-esp32)
         let wifi_dev = unsafe { WIFI_DEV.assume_init_mut() };
         unsafe {
-            zpico_platform_esp32::network::set_network_state(
+            crate::network::set_network_state(
                 iface as *mut Interface,
                 sockets as *mut SocketSet<'static>,
                 wifi_dev as *mut WifiDevice as *mut (),
             );
 
-            zpico_smoltcp::set_poll_callback(zpico_platform_esp32::network::smoltcp_network_poll);
+            zpico_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
         }
 
         // Prevent wifi_controller and radio_controller from being dropped

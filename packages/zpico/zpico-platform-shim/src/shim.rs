@@ -368,9 +368,16 @@ mod socket_stubs {
         _unused: u8,
     }
 
+    // Link-time imports from zpico-smoltcp (provided by the board crate's
+    // dependency on zpico-smoltcp, not by a Cargo dependency here).
+    unsafe extern "C" {
+        fn _z_close_tcp(sock: *mut ZSysNetSocket);
+        fn smoltcp_poll() -> i32;
+    }
+
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_set_non_blocking(_sock: *const ZSysNetSocket) -> i8 {
-        0
+        0 // smoltcp sockets are inherently non-blocking
     }
 
     #[unsafe(no_mangle)]
@@ -378,14 +385,25 @@ mod socket_stubs {
         _sock_in: *const ZSysNetSocket,
         _sock_out: *mut ZSysNetSocket,
     ) -> i8 {
-        -1 // Not supported on bare-metal
+        -1 // Not supported — client-mode only
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn _z_socket_close(_sock: *mut ZSysNetSocket) {}
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
+    pub extern "C" fn _z_socket_close(sock: *mut ZSysNetSocket) {
+        if sock.is_null() {
+            return;
+        }
+        let handle = unsafe { (*sock)._handle };
+        if handle >= 0 {
+            unsafe { _z_close_tcp(sock) };
+        }
+    }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_wait_event(_peers: *mut c_void, _mutex: *mut ZMutexRecRef) -> i8 {
+        // Poll the network stack during wait
+        unsafe { smoltcp_poll() };
         0
     }
 }

@@ -4,7 +4,7 @@
 //! customization of network settings.
 
 #[cfg(feature = "ethernet")]
-use zpico_platform_stm32f4::pins::PinConfig;
+use nros_platform_stm32f4::pins::PinConfig;
 
 /// Platform configuration
 #[derive(Clone)]

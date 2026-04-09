@@ -14,8 +14,8 @@ use core::mem::MaybeUninit;
 use stm32f4xx_hal::gpio::GpioExt;
 use stm32f4xx_hal::{pac, prelude::*, rcc::RccExt};
 
-use zpico_platform_stm32f4::clock;
-use zpico_platform_stm32f4::random;
+use nros_platform_stm32f4::clock;
+use nros_platform_stm32f4::random;
 
 use crate::config::Config;
 
@@ -31,7 +31,7 @@ use stm32_eth::{
 #[cfg(feature = "ethernet")]
 use zpico_smoltcp::SmoltcpBridge;
 #[cfg(feature = "ethernet")]
-use zpico_platform_stm32f4::phy;
+use nros_platform_stm32f4::phy;
 
 // ============================================================================
 // Static Buffer Allocation (ethernet)
@@ -382,14 +382,14 @@ unsafe fn setup_hardware(
         let iface = unsafe { NET_IFACE.assume_init_mut() };
         let dma = unsafe { ETH_DMA.assume_init_mut() };
         unsafe {
-            zpico_platform_stm32f4::network::set_network_state(
+            crate::network::set_network_state(
                 iface as *mut Interface,
                 sockets as *mut SocketSet<'static>,
                 dma as *mut stm32_eth::dma::EthernetDMA<'static, 'static>,
             );
 
             zpico_smoltcp::set_poll_callback(
-                zpico_platform_stm32f4::network::smoltcp_network_poll,
+                crate::network::smoltcp_network_poll,
             );
         }
 

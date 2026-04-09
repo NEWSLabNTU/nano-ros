@@ -9,7 +9,7 @@ compile_error!("Enable at least one transport: `ethernet` or `serial`");
 
 use esp_hal::rng::Rng;
 
-use zpico_platform_esp32_qemu::random;
+use nros_platform_esp32_qemu::random;
 
 use crate::config::Config;
 
@@ -30,7 +30,7 @@ use smoltcp::iface::{Interface, SocketSet};
 #[cfg(feature = "ethernet")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 #[cfg(feature = "ethernet")]
-use zpico_platform_esp32_qemu::clock;
+use nros_platform_esp32_qemu::clock;
 #[cfg(feature = "ethernet")]
 use zpico_smoltcp::SmoltcpBridge;
 
@@ -125,13 +125,13 @@ fn init_ethernet(config: &Config) {
     // Store global state for poll callback
     let eth = unsafe { ETH_DEVICE.assume_init_mut() };
     unsafe {
-        zpico_platform_esp32_qemu::network::set_network_state(
+        crate::network::set_network_state(
             iface as *mut Interface,
             sockets as *mut SocketSet<'static>,
             eth as *mut OpenEth as *mut (),
         );
 
-        zpico_smoltcp::set_poll_callback(zpico_platform_esp32_qemu::network::smoltcp_network_poll);
+        zpico_smoltcp::set_poll_callback(crate::network::smoltcp_network_poll);
     }
 
     esp_println::println!("Ethernet ready.");

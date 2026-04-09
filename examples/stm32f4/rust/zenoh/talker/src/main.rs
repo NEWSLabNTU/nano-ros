@@ -32,8 +32,8 @@ use panic_probe as _;
 defmt::timestamp!("{=u64:us}", { 0 });
 
 use nros::prelude::*;
+use nros_stm32f4::nros_platform_stm32f4::clock::clock_ms;
 use nros_stm32f4::prelude::*;
-use nros_stm32f4::zpico_platform_stm32f4::clock::clock_ms;
 use std_msgs::msg::Int32;
 
 /// Poll interval in milliseconds

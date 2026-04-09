@@ -1,8 +1,8 @@
-//! Network poll callback and global state for MPS2-AN385
+//! Network poll callback and global state for MPS2-AN385.
 //!
 //! Provides the `smoltcp_network_poll()` FFI callback invoked by
-//! zpico-smoltcp during network operations. The board crate (nros-mps2-an385)
-//! calls `set_network_state()` during init to populate the globals.
+//! zpico-smoltcp during network operations. The board crate calls
+//! `set_network_state()` during init to populate the globals.
 
 use core::ptr;
 
@@ -15,7 +15,7 @@ static mut GLOBAL_IFACE: *mut Interface = ptr::null_mut();
 static mut GLOBAL_SOCKETS: *mut SocketSet<'static> = ptr::null_mut();
 static mut GLOBAL_DEVICE: *mut () = ptr::null_mut();
 
-/// Set the network state pointers (called by nros-mps2-an385 during node init)
+/// Set the network state pointers (called during node init).
 ///
 /// # Safety
 ///
@@ -32,7 +32,7 @@ pub unsafe fn set_network_state(
     }
 }
 
-/// Clear network state (called by nros-mps2-an385 on node drop)
+/// Clear network state (called on node drop).
 ///
 /// # Safety
 ///
@@ -45,14 +45,7 @@ pub unsafe fn clear_network_state() {
     }
 }
 
-/// Network poll callback called by the transport crate's smoltcp_poll()
-///
-/// NOTE: The clock is now hardware-backed (CMSDK Timer0) and does NOT need
-/// manual advancing here. The old `advance_clock_ms(1)` was a workaround
-/// for QEMU's virtual clock racing ahead of wall-clock time during WFI.
-/// This is now solved at the QEMU launch level with `-icount shift=auto`,
-/// which makes virtual time track wall-clock time during sleep.
-/// See `docs/reference/qemu-icount.md`.
+/// Network poll callback called by zpico-smoltcp's `smoltcp_poll()`.
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn smoltcp_network_poll() {
     unsafe {

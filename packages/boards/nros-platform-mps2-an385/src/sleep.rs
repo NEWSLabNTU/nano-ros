@@ -8,7 +8,8 @@ use crate::clock;
 use core::sync::atomic::{AtomicPtr, Ordering};
 
 /// Poll callback type — called during busy-wait sleep.
-type PollFn = unsafe fn();
+/// Uses `extern "C"` to match smoltcp_network_poll and similar callbacks.
+type PollFn = unsafe extern "C" fn();
 
 /// Registered poll callback (set by board crate via `set_poll_callback`).
 static POLL_CALLBACK: AtomicPtr<()> = AtomicPtr::new(core::ptr::null_mut());

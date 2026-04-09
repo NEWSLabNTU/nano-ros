@@ -9,8 +9,10 @@ description = "QEMU MPS2-AN385 board crate for nros (hardware + network init)"
 name = "nros_mps2_an385"
 
 [dependencies]
-# Platform primitives (zenoh-pico FFI symbols, network poll callback)
-zpico-platform-mps2-an385 = { path = "../../zpico/zpico-platform-mps2-an385", default-features = false }
+# Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
+nros-platform-mps2-an385 = { path = "../nros-platform-mps2-an385" }
+# Zenoh-pico FFI symbol forwarders (z_clock_now, z_malloc, etc.)
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["platform-mps2-an385"] }
 
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
@@ -40,10 +42,10 @@ panic-semihosting = "0.6"
 [features]
 default = ["ethernet"]
 # Ethernet transport via LAN9118 + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp", "zpico-platform-mps2-an385/ethernet"]
+ethernet = ["dep:zpico-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
 # Serial transport via CMSDK UART
 serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
 # Docker networking mode (container with NAT, ethernet only)
 docker = []
 # TLS support (requires mbedTLS, increases heap, ethernet only)
-link-tls = ["zpico-smoltcp/link-tls", "zpico-platform-mps2-an385/link-tls"]
+link-tls = ["zpico-smoltcp/link-tls", "nros-platform-mps2-an385/link-tls"]

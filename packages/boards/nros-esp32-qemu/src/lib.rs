@@ -23,6 +23,8 @@ extern crate alloc;
 // Application modules
 mod config;
 mod node;
+#[cfg(feature = "ethernet")]
+pub mod network;
 
 // Re-export entry macro from esp-hal
 pub use esp_hal::main as entry;
@@ -34,12 +36,12 @@ pub use esp_println;
 pub use esp_bootloader_esp_idf;
 
 // Re-export zpico-platform for direct access to system primitives
-pub use zpico_platform_esp32_qemu;
+pub use nros_platform_esp32_qemu;
 
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run};
-pub use zpico_platform_esp32_qemu::timing::CycleCounter;
+pub use nros_platform_esp32_qemu::timing::CycleCounter;
 
 // Re-export portable-atomic for safe atomics on riscv32imc (no hardware atomic support).
 // ESP32-C3 is single-core, so portable-atomic uses compiler fences.
@@ -52,5 +54,5 @@ pub mod prelude {
     pub use crate::config::Config;
     pub use crate::node::{init_hardware, run};
     pub use esp_hal::main as entry;
-    pub use zpico_platform_esp32_qemu::timing::CycleCounter;
+    pub use nros_platform_esp32_qemu::timing::CycleCounter;
 }

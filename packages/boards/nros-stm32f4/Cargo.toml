@@ -9,8 +9,10 @@ description = "STM32F4 board crate for nros (hardware + network init)"
 name = "nros_stm32f4"
 
 [dependencies]
-# Platform primitives (zenoh-pico FFI symbols, network poll callback)
-zpico-platform-stm32f4 = { path = "../../zpico/zpico-platform-stm32f4", default-features = false }
+# Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
+nros-platform-stm32f4 = { path = "../nros-platform-stm32f4" }
+# Zenoh-pico FFI symbol forwarders (z_clock_now, z_malloc, etc.)
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["platform-stm32f4"] }
 
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
@@ -45,18 +47,18 @@ defmt = "0.3"
 [features]
 default = ["stm32f429", "ethernet"]
 # Ethernet transport via STM32 MAC + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp", "zpico-platform-stm32f4/ethernet"]
+ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
 # Serial transport via USART
 serial = ["dep:zpico-serial", "dep:stm32f4-usart"]
 
 # STM32F4 chip variants (forwarded to HAL and zpico-platform)
 # stm32-eth features are only needed when ethernet is enabled, but Cargo
 # ignores unknown features on optional deps, so this is safe.
-stm32f407 = ["stm32f4xx-hal/stm32f407", "stm32-eth?/stm32f407", "zpico-platform-stm32f4/stm32f407"]
-stm32f417 = ["stm32f4xx-hal/stm32f417", "stm32-eth?/stm32f417", "zpico-platform-stm32f4/stm32f417"]
-stm32f427 = ["stm32f4xx-hal/stm32f427", "stm32-eth?/stm32f427", "zpico-platform-stm32f4/stm32f427"]
-stm32f429 = ["stm32f4xx-hal/stm32f429", "stm32-eth?/stm32f429", "zpico-platform-stm32f4/stm32f429"]
-stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32-eth?/stm32f437", "zpico-platform-stm32f4/stm32f437"]
-stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32-eth?/stm32f439", "zpico-platform-stm32f4/stm32f439"]
-stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32-eth?/stm32f469", "zpico-platform-stm32f4/stm32f469"]
-stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32-eth?/stm32f479", "zpico-platform-stm32f4/stm32f479"]
+stm32f407 = ["stm32f4xx-hal/stm32f407", "stm32-eth?/stm32f407"]
+stm32f417 = ["stm32f4xx-hal/stm32f417", "stm32-eth?/stm32f417"]
+stm32f427 = ["stm32f4xx-hal/stm32f427", "stm32-eth?/stm32f427"]
+stm32f429 = ["stm32f4xx-hal/stm32f429", "stm32-eth?/stm32f429"]
+stm32f437 = ["stm32f4xx-hal/stm32f437", "stm32-eth?/stm32f437"]
+stm32f439 = ["stm32f4xx-hal/stm32f439", "stm32-eth?/stm32f439"]
+stm32f469 = ["stm32f4xx-hal/stm32f469", "stm32-eth?/stm32f469"]
+stm32f479 = ["stm32f4xx-hal/stm32f479", "stm32-eth?/stm32f479"]

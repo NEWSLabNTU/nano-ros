@@ -60,6 +60,6 @@ pub unsafe extern "C" fn smoltcp_network_poll() {
         // stm32-eth implements Device for &mut EthernetDMA, not EthernetDMA directly
         let mut dma_ref = dma;
         SmoltcpBridge::poll(iface, &mut dma_ref, sockets);
-        crate::clock::update_from_dwt();
+        nros_platform_stm32f4::clock::update_from_dwt();
     }
 }

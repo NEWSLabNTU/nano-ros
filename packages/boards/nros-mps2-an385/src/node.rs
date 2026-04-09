@@ -11,10 +11,12 @@ use core::mem::MaybeUninit;
 
 use cortex_m_semihosting::hprintln;
 
-use zpico_platform_mps2_an385::random;
+use nros_platform_mps2_an385::random;
 
 #[cfg(feature = "ethernet")]
-use zpico_platform_mps2_an385::{clock, network};
+use nros_platform_mps2_an385::clock;
+#[cfg(feature = "ethernet")]
+use crate::network;
 
 use crate::config::Config;
 use crate::exit_failure;
@@ -177,6 +179,10 @@ fn init_network<D: EthernetDevice + 'static>(
         );
 
         zpico_smoltcp::set_poll_callback(network::smoltcp_network_poll);
+
+        // Register the network poll as the sleep callback so busy-wait
+        // sleep polls the network stack to avoid missing packets.
+        nros_platform_mps2_an385::sleep::set_poll_callback(network::smoltcp_network_poll);
     }
 
     Ok(())
@@ -288,10 +294,10 @@ pub fn init_hardware(config: &Config) {
     // creation which calls clock::now()). On QEMU, pair with
     // `-icount shift=auto` to keep virtual time aligned with wall-clock
     // time. See docs/reference/qemu-icount.md.
-    zpico_platform_mps2_an385::clock::init_hardware_timer();
+    nros_platform_mps2_an385::clock::init_hardware_timer();
 
     // Enable DWT cycle counter for timing measurements
-    zpico_platform_mps2_an385::timing::CycleCounter::enable();
+    nros_platform_mps2_an385::timing::CycleCounter::enable();
 
     hprintln!("");
     hprintln!("========================================");

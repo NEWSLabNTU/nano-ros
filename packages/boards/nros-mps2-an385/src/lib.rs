@@ -15,15 +15,18 @@
 //!
 //! # Architecture
 //!
-//! This crate depends on `zpico-platform-mps2-an385` for system primitives
-//! (zenoh-pico FFI symbols, clock, memory, RNG) and either `zpico-smoltcp`
-//! (Ethernet) or `zpico-serial` (serial) for the link layer.
+//! This crate depends on `nros-platform-mps2-an385` for system primitives
+//! (clock, memory, RNG) and `zpico-platform-shim` for zenoh-pico FFI
+//! symbols. Transport layer is provided by `zpico-smoltcp` (Ethernet)
+//! or `zpico-serial` (serial).
 
 #![no_std]
 
 // Application modules
 mod config;
 mod error;
+#[cfg(feature = "ethernet")]
+pub mod network;
 mod node;
 
 // Re-export entry macro
@@ -32,13 +35,13 @@ pub use cortex_m_rt::entry;
 // Re-export semihosting for println! macro
 pub use cortex_m_semihosting;
 
-// Re-export zpico-platform for direct access to system primitives
-pub use zpico_platform_mps2_an385;
+// Re-export platform crate for direct access to system primitives
+pub use nros_platform_mps2_an385;
 
 // Re-export main types
 pub use config::Config;
 pub use node::{init_hardware, run};
-pub use zpico_platform_mps2_an385::timing::CycleCounter;
+pub use nros_platform_mps2_an385::timing::CycleCounter;
 
 /// Print to QEMU semihosting console
 #[macro_export]
