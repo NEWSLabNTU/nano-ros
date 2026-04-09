@@ -707,6 +707,8 @@ clean: native::clean zephyr::clean clean-zenohd
     cargo clean --manifest-path packages/codegen/packages/Cargo.toml
     # Clean stale per-crate target/ dirs inside workspace members (left by standalone builds)
     find packages -maxdepth 4 -name target -type d -not -path '*/codegen/packages/*' -exec rm -rf {} + 2>/dev/null || true
+    # Clean CMake build dirs inside examples (stale caches break rebuild)
+    find examples -name build -type d -exec rm -rf {} + 2>/dev/null || true
     rm -rf build
     @echo "All build artifacts cleaned"
 
