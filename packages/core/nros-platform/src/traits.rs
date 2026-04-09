@@ -191,10 +191,6 @@ pub trait PlatformThreading {
 pub trait PlatformNetworkPoll {
     /// Poll the network stack to process pending I/O.
     fn network_poll();
-
-    /// Monotonic clock for smoltcp TCP/IP timestamping.
-    /// Typically delegates to `PlatformClock::clock_ms()`.
-    fn smoltcp_clock_now_ms() -> u64;
 }
 
 // ============================================================================
