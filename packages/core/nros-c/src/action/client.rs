@@ -630,10 +630,52 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
     };
 
     // Poll goal acceptance reply
-    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply() {
-        if let Some(cb) = client_ref.goal_response_callback {
-            let buf = core.result_buffer_ref();
-            let accepted = total_len >= 5 && buf[4] != 0;
+    if let Ok(Some(total_len)) = core.try_recv_send_goal_reply()
+        && let Some(cb) = client_ref.goal_response_callback
+    {
+        let buf = core.result_buffer_ref();
+        let accepted = total_len >= 5 && buf[4] != 0;
+        let uuid = nros_goal_uuid_t {
+            uuid: {
+                let mut u = [0u8; 16];
+                u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
+                u
+            },
+        };
+        cb(&uuid, accepted, ctx);
+    }
+
+    // Poll feedback
+    if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw()
+        && let Some(cb) = client_ref.feedback_callback
+    {
+        let buf = core.feedback_buffer_ref();
+        let offset = 4 + 16; // CDR header + GoalId
+        if total_len > offset {
+            let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
+            cb(
+                &uuid,
+                buf[offset..total_len].as_ptr(),
+                total_len - offset,
+                ctx,
+            );
+        }
+    }
+
+    // Poll result reply
+    if let Ok(Some(total_len)) = core.try_recv_get_result_reply()
+        && let Some(cb) = client_ref.result_callback
+    {
+        let buf = core.result_buffer_ref();
+        if total_len >= 5 {
+            let status_byte = buf[4];
+            let c_status = match status_byte {
+                4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
+                5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
+                6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
+                _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
+            };
+            let result_offset = 5;
             let uuid = nros_goal_uuid_t {
                 uuid: {
                     let mut u = [0u8; 16];
@@ -641,55 +683,13 @@ pub unsafe extern "C" fn nros_action_client_poll(client: *mut nros_action_client
                     u
                 },
             };
-            cb(&uuid, accepted, ctx);
-        }
-    }
-
-    // Poll feedback
-    if let Ok(Some((goal_id, total_len))) = core.try_recv_feedback_raw() {
-        if let Some(cb) = client_ref.feedback_callback {
-            let buf = core.feedback_buffer_ref();
-            let offset = 4 + 16; // CDR header + GoalId
-            if total_len > offset {
-                let uuid = nros_goal_uuid_t { uuid: goal_id.uuid };
-                cb(
-                    &uuid,
-                    buf[offset..total_len].as_ptr(),
-                    total_len - offset,
-                    ctx,
-                );
-            }
-        }
-    }
-
-    // Poll result reply
-    if let Ok(Some(total_len)) = core.try_recv_get_result_reply() {
-        if let Some(cb) = client_ref.result_callback {
-            let buf = core.result_buffer_ref();
-            if total_len >= 5 {
-                let status_byte = buf[4];
-                let c_status = match status_byte {
-                    4 => nros_goal_status_t::NROS_GOAL_STATUS_SUCCEEDED,
-                    5 => nros_goal_status_t::NROS_GOAL_STATUS_CANCELED,
-                    6 => nros_goal_status_t::NROS_GOAL_STATUS_ABORTED,
-                    _ => nros_goal_status_t::NROS_GOAL_STATUS_UNKNOWN,
-                };
-                let result_offset = 5;
-                let uuid = nros_goal_uuid_t {
-                    uuid: {
-                        let mut u = [0u8; 16];
-                        u[..8].copy_from_slice(&core.goal_counter().to_le_bytes());
-                        u
-                    },
-                };
-                cb(
-                    &uuid,
-                    c_status,
-                    buf[result_offset..total_len].as_ptr(),
-                    total_len - result_offset,
-                    ctx,
-                );
-            }
+            cb(
+                &uuid,
+                c_status,
+                buf[result_offset..total_len].as_ptr(),
+                total_len - result_offset,
+                ctx,
+            );
         }
     }
 
