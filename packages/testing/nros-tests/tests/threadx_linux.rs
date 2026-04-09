@@ -722,11 +722,8 @@ fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBu
             .display()
             .to_string()
     });
-    let tap_netx_dir = std::env::var("TAP_NETX_DIR").unwrap_or_else(|_| {
-        root.join("packages/drivers/tap-netx")
-            .display()
-            .to_string()
-    });
+    let tap_netx_dir = std::env::var("TAP_NETX_DIR")
+        .unwrap_or_else(|_| root.join("packages/drivers/tap-netx").display().to_string());
     let config_dir = std::env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
         root.join("packages/boards/nros-threadx-linux/config")
             .display()
@@ -1045,11 +1042,8 @@ fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
             .display()
             .to_string()
     });
-    let tap_netx_dir = std::env::var("TAP_NETX_DIR").unwrap_or_else(|_| {
-        root.join("packages/drivers/tap-netx")
-            .display()
-            .to_string()
-    });
+    let tap_netx_dir = std::env::var("TAP_NETX_DIR")
+        .unwrap_or_else(|_| root.join("packages/drivers/tap-netx").display().to_string());
     let config_dir = std::env::var("THREADX_CONFIG_DIR").unwrap_or_else(|_| {
         root.join("packages/boards/nros-threadx-linux/config")
             .display()
