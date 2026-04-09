@@ -13,6 +13,9 @@ std = ["nros-platform/std"]
 platform-posix = ["nros-platform/platform-posix"]
 platform-cffi = ["nros-platform/platform-cffi"]
 platform-mps2-an385 = ["nros-platform/platform-mps2-an385"]
+platform-stm32f4 = ["nros-platform/platform-stm32f4"]
+platform-esp32 = ["nros-platform/platform-esp32"]
+platform-esp32-qemu = ["nros-platform/platform-esp32-qemu"]
 
 # Networking via smoltcp (bare-metal)
 smoltcp = []

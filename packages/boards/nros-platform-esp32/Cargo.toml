@@ -1,0 +1,16 @@
+[package]
+name = "nros-platform-esp32"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "nros platform implementation for ESP32-C3 bare-metal"
+
+[lib]
+name = "nros_platform_esp32"
+
+[features]
+default = []
+
+[dependencies]
+zpico-alloc = { path = "../../zpico/zpico-alloc" }
+esp-hal = { version = "1", features = ["esp32c3", "unstable"] }

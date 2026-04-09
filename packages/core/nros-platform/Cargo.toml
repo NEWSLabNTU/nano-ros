@@ -13,6 +13,9 @@ std = []
 platform-posix = ["dep:nros-platform-posix"]
 platform-cffi = ["dep:nros-platform-cffi"]
 platform-mps2-an385 = ["dep:nros-platform-mps2-an385"]
+platform-stm32f4 = ["dep:nros-platform-stm32f4"]
+platform-esp32 = ["dep:nros-platform-esp32"]
+platform-esp32-qemu = ["dep:nros-platform-esp32-qemu"]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []
@@ -22,3 +25,6 @@ threading = []
 nros-platform-posix = { path = "../nros-platform-posix", optional = true }
 nros-platform-cffi = { path = "../nros-platform-cffi", optional = true }
 nros-platform-mps2-an385 = { path = "../../boards/nros-platform-mps2-an385", optional = true }
+nros-platform-stm32f4 = { path = "../../boards/nros-platform-stm32f4", optional = true }
+nros-platform-esp32 = { path = "../../boards/nros-platform-esp32", optional = true }
+nros-platform-esp32-qemu = { path = "../../boards/nros-platform-esp32-qemu", optional = true }

@@ -15,5 +15,8 @@
     feature = "platform-posix",
     feature = "platform-cffi",
     feature = "platform-mps2-an385",
+    feature = "platform-stm32f4",
+    feature = "platform-esp32",
+    feature = "platform-esp32-qemu",
 ))]
 mod shim;

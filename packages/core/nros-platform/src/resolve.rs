@@ -13,3 +13,12 @@ pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
 
 #[cfg(feature = "platform-mps2-an385")]
 pub type ConcretePlatform = nros_platform_mps2_an385::Mps2An385Platform;
+
+#[cfg(feature = "platform-stm32f4")]
+pub type ConcretePlatform = nros_platform_stm32f4::Stm32f4Platform;
+
+#[cfg(feature = "platform-esp32")]
+pub type ConcretePlatform = nros_platform_esp32::Esp32Platform;
+
+#[cfg(feature = "platform-esp32-qemu")]
+pub type ConcretePlatform = nros_platform_esp32_qemu::Esp32QemuPlatform;

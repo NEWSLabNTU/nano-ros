@@ -140,8 +140,6 @@ exclude = [
     "packages/xrce/xrce-smoltcp",
     # XRCE-DDS RMW backend (embedded-only, requires xrce-sys linking)
     "packages/xrce/nros-rmw-xrce",
-    # XRCE-DDS platform symbols for MPS2-AN385 (embedded-only)
-    "packages/xrce/xrce-platform-mps2-an385",
     # Native XRCE-DDS examples (requires XRCE Agent)
     "examples/native/rust/xrce/talker",
     "examples/native/rust/xrce/listener",
@@ -153,15 +151,13 @@ exclude = [
     "examples/native/rust/xrce/serial-listener",
     "examples/native/rust/xrce/large-msg-test",
     "examples/native/rust/xrce/stress-test",
-    # zpico platform crates (embedded-only, require cross-compilation)
-    "packages/zpico/zpico-platform-mps2-an385",
-    "packages/zpico/zpico-platform-esp32",
-    "packages/zpico/zpico-platform-esp32-qemu",
-    "packages/zpico/zpico-platform-stm32f4",
     # Board crates (embedded-only, require cross-compilation)
     "packages/boards/mps2-an385-pac",
     "packages/boards/nros-mps2-an385",
     "packages/boards/nros-platform-mps2-an385",
+    "packages/boards/nros-platform-stm32f4",
+    "packages/boards/nros-platform-esp32",
+    "packages/boards/nros-platform-esp32-qemu",
     "packages/boards/nros-esp32",
     "packages/boards/nros-esp32-qemu",
     "packages/boards/nros-stm32f4",
