@@ -260,6 +260,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 76 | RTOS scheduling configuration via config.toml | Not Started |
 | 77 | Async action client (eliminate blocking zpico_get) | In Progress (77.1–77.5 done) |
 | 78 | Colcon build type (`nros.<lang>.<platform>`) | Not Started |
+| 79 | Unified platform abstraction layer | Not Started |
 
 ## Quick Reference
 
