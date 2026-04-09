@@ -82,7 +82,7 @@ if(NOT DEFINED THREADX_APP_DEFINE)
 endif()
 
 add_library(threadx_glue STATIC "${THREADX_APP_DEFINE}")
-target_include_directories(threadx_glue PRIVATE ${_TX_INCLUDES})
+target_include_directories(threadx_glue PRIVATE ${_TX_INCLUDES} "${TAP_NETX_DIR}/include")
 target_compile_definitions(threadx_glue PRIVATE
     TX_INCLUDE_USER_DEFINE_FILE NX_INCLUDE_USER_DEFINE_FILE)
 target_compile_options(threadx_glue PRIVATE
