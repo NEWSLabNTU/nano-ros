@@ -12,11 +12,11 @@
 # Required variables (pass via cmake -D or environment):
 #   THREADX_DIR            — ThreadX kernel source root
 #   NETX_DIR               — NetX Duo source root
-#   THREADX_SAMPLES_DIR    — ThreadX learn-samples (for network driver)
+#   TAP_NETX_DIR           — TAP network driver source (packages/drivers/tap-netx)
 #   THREADX_CONFIG_DIR     — Directory containing tx_user.h and nx_user.h
 
 # ---- Validate required variables ----
-foreach(_var THREADX_DIR NETX_DIR THREADX_SAMPLES_DIR THREADX_CONFIG_DIR)
+foreach(_var THREADX_DIR NETX_DIR TAP_NETX_DIR THREADX_CONFIG_DIR)
     if(NOT DEFINED ${_var})
         if(DEFINED ENV{${_var}})
             set(${_var} "$ENV{${_var}}")
@@ -60,10 +60,9 @@ target_compile_options(netxduo PRIVATE
     -Wno-unused-parameter -Wno-sign-compare)
 set_target_properties(netxduo PROPERTIES C_STANDARD 11)
 
-# ---- Linux network driver ----
-set(_driver_src "${THREADX_SAMPLES_DIR}/courses/netxduo/Driver/nx_linux_network_driver.c")
-add_library(netxdriver STATIC "${_driver_src}")
-target_include_directories(netxdriver PRIVATE ${_TX_INCLUDES})
+# ---- TAP network driver ----
+add_library(netxdriver STATIC "${TAP_NETX_DIR}/src/nx_tap_network_driver.c")
+target_include_directories(netxdriver PRIVATE ${_TX_INCLUDES} "${TAP_NETX_DIR}/include")
 target_compile_definitions(netxdriver PRIVATE
     TX_INCLUDE_USER_DEFINE_FILE NX_INCLUDE_USER_DEFINE_FILE)
 target_compile_options(netxdriver PRIVATE

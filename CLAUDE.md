@@ -24,7 +24,7 @@ nano-ros/
 │   ├── reference/      # qemu-smoltcp-bridge
 │   └── codegen/        # cargo-nano-ros, rosidl-*, bundled .msg/.srv files
 ├── examples/           # 4-level: platform/lang/rmw/use-case (native, qemu-arm-baremetal, qemu-arm-freertos, qemu-arm-nuttx, qemu-riscv64-threadx, threadx-linux, qemu-esp32-baremetal, esp32, stm32f4, zephyr)
-├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps, threadx, netxduo, threadx-learn-samples
+├── external/           # Third-party SDK sources (git-ignored): freertos-kernel, lwip, nuttx, nuttx-apps, threadx, netxduo
 ├── scripts/            # zenohd build, Zephyr setup
 ├── docker/             # QEMU dev environment
 ├── tests/              # Shell-based test scripts

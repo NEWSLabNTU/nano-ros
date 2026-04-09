@@ -42,10 +42,10 @@ fn is_netx_available() -> bool {
         .unwrap_or(false)
 }
 
-/// Check if the ThreadX learn-samples Linux network driver is available
-fn is_threadx_samples_available() -> bool {
+/// Check if the TAP network driver is available
+fn is_tap_driver_available() -> bool {
     let root = project_root();
-    root.join("third-party/threadx/learn-samples/courses/netxduo/Driver/nx_linux_network_driver.c")
+    root.join("packages/drivers/tap-netx/src/nx_tap_network_driver.c")
         .exists()
 }
 
@@ -61,9 +61,8 @@ fn require_threadx() -> bool {
         eprintln!("Run: just setup-threadx && source .envrc");
         return false;
     }
-    if !is_threadx_samples_available() {
-        eprintln!("Skipping test: ThreadX learn-samples not found");
-        eprintln!("Run: just setup-threadx");
+    if !is_tap_driver_available() {
+        eprintln!("Skipping test: TAP network driver not found at packages/drivers/tap-netx/");
         return false;
     }
     true
@@ -107,10 +106,9 @@ fn is_raw_socket_available() -> bool {
 /// Skip test if full ThreadX E2E prerequisites are not available
 ///
 /// E2E tests require:
-/// 1. ThreadX build prerequisites (THREADX_DIR + NETX_DIR + learn-samples)
-/// 2. veth bridge network (qemu-br + veth-tx0 + veth-tx1)
+/// 1. ThreadX build prerequisites (THREADX_DIR + NETX_DIR + TAP driver)
+/// 2. TAP bridge network (qemu-br + tap-tx0 + tap-tx1)
 /// 3. zenohd router (built from submodule)
-/// 4. CAP_NET_RAW capability (for AF_PACKET raw socket in the Linux network driver)
 fn require_threadx_e2e() -> bool {
     if !require_threadx() {
         return false;
@@ -242,18 +240,18 @@ fn build_threadx_action_client() -> TestResult<&'static Path> {
 fn test_threadx_detection() {
     let threadx = is_threadx_available();
     let netx = is_netx_available();
-    let samples = is_threadx_samples_available();
+    let tap_driver = is_tap_driver_available();
     let veth_bridge = is_veth_bridge_available();
     let zenohd = is_zenohd_available();
     eprintln!("ThreadX available: {}", threadx);
     eprintln!("NetX Duo available: {}", netx);
-    eprintln!("ThreadX learn-samples available: {}", samples);
+    eprintln!("TAP driver available: {}", tap_driver);
     eprintln!("veth bridge available: {}", veth_bridge);
     eprintln!("zenohd available: {}", zenohd);
 }
 
 // =============================================================================
-// Build tests (require THREADX_DIR + NETX_DIR + learn-samples)
+// Build tests (require THREADX_DIR + NETX_DIR + TAP driver)
 // =============================================================================
 
 #[test]
@@ -724,8 +722,8 @@ fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBu
             .display()
             .to_string()
     });
-    let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
-        root.join("third-party/threadx/learn-samples")
+    let tap_netx_dir = std::env::var("TAP_NETX_DIR").unwrap_or_else(|_| {
+        root.join("packages/drivers/tap-netx")
             .display()
             .to_string()
     });
@@ -750,7 +748,7 @@ fn build_threadx_cpp_example(name: &str, binary_name: &str) -> TestResult<PathBu
         "-DNANO_ROS_PLATFORM=threadx_linux",
         &format!("-DTHREADX_DIR={threadx_dir}"),
         &format!("-DNETX_DIR={netx_dir}"),
-        &format!("-DTHREADX_SAMPLES_DIR={samples_dir}"),
+        &format!("-DTAP_NETX_DIR={tap_netx_dir}"),
         &format!("-DTHREADX_CONFIG_DIR={config_dir}"),
         &format!("-DTHREADX_APP_DEFINE={app_define}"),
         "-DCMAKE_BUILD_TYPE=Release"
@@ -1047,8 +1045,8 @@ fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
             .display()
             .to_string()
     });
-    let samples_dir = std::env::var("THREADX_SAMPLES_DIR").unwrap_or_else(|_| {
-        root.join("third-party/threadx/learn-samples")
+    let tap_netx_dir = std::env::var("TAP_NETX_DIR").unwrap_or_else(|_| {
+        root.join("packages/drivers/tap-netx")
             .display()
             .to_string()
     });
@@ -1073,7 +1071,7 @@ fn build_threadx_c_example(name: &str, binary_name: &str) -> TestResult<PathBuf>
         "-DNANO_ROS_PLATFORM=threadx_linux",
         &format!("-DTHREADX_DIR={threadx_dir}"),
         &format!("-DNETX_DIR={netx_dir}"),
-        &format!("-DTHREADX_SAMPLES_DIR={samples_dir}"),
+        &format!("-DTAP_NETX_DIR={tap_netx_dir}"),
         &format!("-DTHREADX_CONFIG_DIR={config_dir}"),
         &format!("-DTHREADX_APP_DEFINE={app_define}"),
         "-DCMAKE_BUILD_TYPE=Release"

@@ -116,9 +116,9 @@ just setup-threadx-caps    # Build + apply capabilities (one-time)
 ### Linux Simulation Board Crate
 
 The `nros-threadx-linux` board crate runs the full ThreadX kernel as
-pthreads on a Linux host. NetX Duo uses an AF_PACKET raw socket driver
-(`nx_linux_network_driver` from `threadx-learn-samples`) for real Ethernet
-I/O. This provides the fastest iteration cycle for ThreadX-specific code.
+pthreads on a Linux host. NetX Duo uses a TAP network driver
+(`tap-netx` in `packages/drivers/`) for Ethernet I/O via Linux TAP
+devices. This provides the fastest iteration cycle for ThreadX-specific code.
 
 ### QEMU RISC-V Board Crate
 

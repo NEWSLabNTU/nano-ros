@@ -38,7 +38,6 @@ just setup-threadx
 This shallow-clones:
 - ThreadX kernel → `third-party/threadx/kernel/`
 - NetX Duo → `third-party/threadx/netxduo/`
-- ThreadX learn samples (Linux network driver) → `third-party/threadx/learn-samples/`
 
 Override paths if sources are elsewhere:
 
@@ -135,8 +134,8 @@ nros-rmw-zenoh → zpico-sys (zenoh-pico + C shim)
         │
 Board Crate (nros-threadx-linux)
 ├── ThreadX kernel (Linux port — tx_thread via pthreads)
-├── NetX Duo (BSD sockets via AF_PACKET raw socket driver)
-└── nx_linux_network_driver (from threadx-learn-samples)
+├── NetX Duo (BSD sockets)
+└── TAP network driver (packages/drivers/tap-netx)
 ```
 
 ### QEMU RISC-V 64-bit
