@@ -30,9 +30,9 @@ jobs:
         with:
           ssh-private-key: ${{ secrets.PAGES_DEPLOY_KEY }}
 
-      - name: Deploy to jerry73204.github.io
+      - name: Deploy to NEWSLabNTU.github.io
         run: |
-          git clone git@github.com:jerry73204/jerry73204.github.io.git _pages
+          git clone git@github.com:NEWSLabNTU/NEWSLabNTU.github.io.git _pages
           rm -rf _pages/nano-ros-book
           cp -r book/book _pages/nano-ros-book
           cd _pages
@@ -44,7 +44,7 @@ jobs:
           else
             git commit -m "Update nano-ros book
 
-          Source: https://github.com/jerry73204/nano-ros/tree/main/book
+          Source: ${{ github.server_url }}/${{ github.repository }}/tree/main/book
           Commit: ${{ github.sha }}"
             git push
           fi

@@ -8,4 +8,4 @@ src = "src"
 build-dir = "book"
 
 [output.html]
-git-repository-url = "https://github.com/jerry73204/nano-ros"
+git-repository-url = "https://github.com/NEWSLabNTU/nano-ros"
