@@ -1,34 +1,33 @@
-# Porting to a New Platform
+# Porting Zenoh-pico (rmw-zenoh)
 
-This guide explains how to add a new platform to nano-ros. A "platform" means
-an RTOS or bare-metal environment that provides the low-level primitives
-zenoh-pico (or XRCE-DDS) needs at link time: clock, memory, sleep, threading,
-sockets, and random number generation.
+Zenoh-pico requires a comprehensive platform abstraction layer. Your
+`zpico-platform-<name>` crate must provide ~55 `#[unsafe(no_mangle)] extern "C"`
+symbols covering clock, memory, sleep, random, time, threading, and sockets.
 
-## Architecture: Two-Crate Pattern
-
-Every platform is split into two crates:
-
-| Crate | Purpose | Dependencies |
-|-------|---------|--------------|
-| `zpico-platform-<name>` | Provides `#[unsafe(no_mangle)] extern "C"` FFI symbols | **Zero** nros dependencies. Only hardware/RTOS + `zpico-smoltcp` |
-| `nros-<name>` | User-facing board crate with `Config`, `run()`, re-exports | Depends on `zpico-platform-<name>` + `nros-node` |
-
-This split keeps the FFI layer reusable (it can serve XRCE-DDS too) and
-prevents circular dependencies.
+## Crate structure
 
 ```
-Application
-    └── nros-<board>          (Config, run(), convenience API)
-         ├── zpico-platform-<board>  (extern "C" symbols for zenoh-pico)
-         │    └── zpico-smoltcp      (smoltcp TCP bridge, if using ethernet)
-         └── nros-node               (Executor, Node, pub/sub)
+packages/zpico/zpico-platform-<name>/
+├── Cargo.toml
+└── src/
+    ├── lib.rs
+    ├── clock.rs
+    ├── memory.rs
+    ├── sleep.rs
+    ├── random.rs
+    ├── time.rs
+    ├── threading.rs          # no-op stubs or real RTOS impl
+    ├── socket_stubs.rs       # if using smoltcp
+    └── network.rs            # if using smoltcp
 ```
 
-## Required FFI Symbols
+`Cargo.toml` must have **zero** `nros-*` dependencies. It may depend on:
+- Hardware HAL crate (e.g., `stm32f4xx-hal`, `esp-hal`)
+- `zpico-smoltcp` (if using smoltcp networking)
+- `embedded-alloc` (for heap on bare-metal)
+- RTOS bindings crate
 
-zenoh-pico calls these symbols at link time. Your `zpico-platform-*` crate
-must provide all of them via `#[unsafe(no_mangle)] pub unsafe extern "C" fn`.
+## Required FFI symbols
 
 ### Clock (critical)
 
@@ -224,7 +223,7 @@ i8   _z_socket_wait_event(void *peers, ZMutexRecRef *mutex);  // Return 0
 If using OS sockets (POSIX, NuttX, Zephyr), zenoh-pico's built-in socket
 layer handles everything — no socket stubs needed.
 
-### libc Stubs (bare-metal only)
+### libc stubs (bare-metal only)
 
 Bare-metal targets without a C runtime need standard C library functions:
 
@@ -246,7 +245,7 @@ int   *__errno(void);
 RTOS platforms (FreeRTOS, NuttX, ThreadX, Zephyr) ship their own libc —
 you do not need these stubs.
 
-### Network Poll Callback (smoltcp only)
+### Network poll callback (smoltcp only)
 
 If using smoltcp for networking, provide a poll callback that
 `zpico-smoltcp` calls to process network events:
@@ -267,90 +266,19 @@ pub unsafe fn set_network_state(
 pub unsafe fn clear_network_state();
 ```
 
-## Step-by-Step Porting Procedure
+## Step-by-step procedure
 
-### 1. Create the platform crate
+1. **Create the platform crate** with the structure above
+2. **Implement and verify the clock** — this is the #1 cause of porting
+   failures. Print `clock_ms()` in a loop and verify monotonic advance
+3. **Implement remaining symbols** — memory, random, sleep, time,
+   threading, sockets. Each module is independent
+4. **Create the board crate** — see [Board Crate Implementation](../board-crate.md)
+5. **Add the platform feature** to `nros` with mutual exclusivity checks
+6. **Write an example** — see [Creating Examples](../creating-examples.md)
+7. **Add test infrastructure** — `just test-<name>` recipe + nextest group
 
-```
-packages/zpico/zpico-platform-<name>/
-├── Cargo.toml
-└── src/
-    ├── lib.rs
-    ├── clock.rs
-    ├── memory.rs
-    ├── sleep.rs
-    ├── random.rs
-    ├── time.rs
-    ├── threading.rs          # no-op stubs or real RTOS impl
-    ├── socket_stubs.rs       # if using smoltcp
-    └── network.rs            # if using smoltcp
-```
-
-`Cargo.toml` must have **zero** `nros-*` dependencies. It may depend on:
-- Hardware HAL crate (e.g., `stm32f4xx-hal`, `esp-hal`)
-- `zpico-smoltcp` (if using smoltcp networking)
-- `embedded-alloc` (for heap on bare-metal)
-- RTOS bindings crate
-
-### 2. Implement and verify the clock
-
-The clock is the #1 cause of porting failures. Verify it works before
-anything else:
-
-```rust
-pub fn init_hardware_timer() {
-    // Configure your hardware timer here
-}
-
-pub fn clock_ms() -> u64 {
-    // Read hardware timer, convert to milliseconds
-}
-```
-
-Test: print `clock_ms()` in a loop and verify it advances monotonically,
-including across timer wraps.
-
-### 3. Implement remaining FFI symbols
-
-Work through memory → random → sleep → time → threading → sockets.
-Each module is independent — implement and test incrementally.
-
-### 4. Create the board crate
-
-```
-packages/boards/nros-<name>/
-├── Cargo.toml
-└── src/
-    ├── lib.rs
-    ├── config.rs
-    ├── node.rs
-    └── error.rs
-```
-
-See [Board Crate Implementation](./board-crate.md) for details.
-
-### 5. Add the platform feature
-
-Add a `platform-<name>` feature to `nros` (facade crate) and wire it
-through the dependency graph. Add mutual exclusivity enforcement:
-
-```rust
-#[cfg(all(feature = "platform-<name>", feature = "platform-posix"))]
-compile_error!("Only one platform can be enabled");
-```
-
-### 6. Write an example
-
-Create a minimal pub/sub example under `examples/` using the new platform.
-Follow the [Creating Examples](./creating-examples.md) guide.
-
-### 7. Add test infrastructure
-
-Add a test in `packages/testing/nros-tests/tests/` and a `just test-<name>`
-recipe. Follow the [QEMU Networked Test Rules](../advanced/platform-porting-pitfalls.md)
-if the platform runs under QEMU.
-
-## Platform Feature Summary
+## Platform capability summary
 
 | Capability | Bare-metal | RTOS (FreeRTOS/ThreadX) | POSIX-like (NuttX/Zephyr) |
 |------------|-----------|-------------------------|---------------------------|
@@ -363,14 +291,8 @@ if the platform runs under QEMU.
 | libc | Hand-written stubs | RTOS libc | System libc |
 | Network poll | `smoltcp_network_poll` | Stack-specific poll | Not needed |
 
-## Common Pitfalls
+## Common pitfalls
 
-See [Platform Porting Pitfalls](../advanced/platform-porting-pitfalls.md) for
-detailed failure modes including:
-
-- **Poll-driven clocks** — cause timeout storms and infinite waits
-- **DMA buffer placement** — CCM RAM is not DMA-accessible on STM32
-- **QEMU I/O starvation** — must yield (WFI) between spins
-- **Recursive mutexes** — required by zenoh-pico on RTOS platforms
-- **Stack sizing** — 8 KB minimum bare-metal, 2 KB per RTOS task
-- **Heap sizing** — 64 KB minimum for zenoh-pico session
+See [Platform Porting Pitfalls](../../advanced/platform-porting-pitfalls.md) for
+detailed failure modes including poll-driven clocks, DMA buffer placement,
+QEMU I/O starvation, recursive mutexes, stack sizing, and heap sizing.
