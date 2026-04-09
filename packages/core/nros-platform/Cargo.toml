@@ -1,0 +1,22 @@
+[package]
+name = "nros-platform"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Unified platform abstraction traits for nros"
+
+[features]
+default = ["std"]
+std = []
+
+# Platform backends (select one)
+platform-posix = ["dep:nros-platform-posix"]
+platform-cffi = ["dep:nros-platform-cffi"]
+
+# Capability features — enabled by RMW shims to declare requirements
+alloc = []
+threading = []
+
+[dependencies]
+nros-platform-posix = { path = "../nros-platform-posix", optional = true }
+nros-platform-cffi = { path = "../nros-platform-cffi", optional = true }

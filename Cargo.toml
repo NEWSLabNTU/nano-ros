@@ -36,6 +36,13 @@ members = [
     "packages/core/nros-rmw-cffi",
     # Ghost model types for verification (shared between production tests and Verus proofs)
     "packages/verification/nros-ghost-types",
+    # Unified platform abstraction
+    "packages/core/nros-platform",
+    "packages/core/nros-platform-cffi",
+    "packages/core/nros-platform-posix",
+    # Platform shims for RMW backends
+    "packages/zpico/zpico-platform-shim",
+    "packages/xrce/xrce-platform-shim",
 ]
 
 # Excluded from workspace — standalone packages and third-party forks

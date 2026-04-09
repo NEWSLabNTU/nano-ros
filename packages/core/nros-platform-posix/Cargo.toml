@@ -1,0 +1,9 @@
+[package]
+name = "nros-platform-posix"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "POSIX platform implementation for nros"
+
+[dependencies]
+libc = "0.2"

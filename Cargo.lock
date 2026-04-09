@@ -599,6 +599,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-platform"
+version = "0.1.0"
+dependencies = [
+ "nros-platform-cffi",
+ "nros-platform-posix",
+]
+
+[[package]]
+name = "nros-platform-cffi"
+version = "0.1.0"
+dependencies = [
+ "portable-atomic",
+]
+
+[[package]]
+name = "nros-platform-posix"
+version = "0.1.0"
+dependencies = [
+ "libc",
+]
+
+[[package]]
 name = "nros-rcl-interfaces"
 version = "1.2.2"
 dependencies = [
@@ -1616,6 +1638,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3ae8337f8a065cfc972643663ea4279e04e7256de865aa66fe25cec5fb912d3f"
 
 [[package]]
+name = "xrce-platform-shim"
+version = "0.1.0"
+dependencies = [
+ "nros-platform",
+]
+
+[[package]]
 name = "xrce-sys"
 version = "0.1.0"
 dependencies = [
@@ -1631,6 +1660,13 @@ checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 [[package]]
 name = "zpico-alloc"
 version = "0.1.0"
+
+[[package]]
+name = "zpico-platform-shim"
+version = "0.1.0"
+dependencies = [
+ "nros-platform",
+]
 
 [[package]]
 name = "zpico-sys"

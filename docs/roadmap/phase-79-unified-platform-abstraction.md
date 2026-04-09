@@ -2,7 +2,7 @@
 
 **Goal**: Define a single platform interface (`nros-platform`) that all RMW backends consume, eliminating per-RMW platform crates and making the RMW layer fully platform-agnostic.
 
-**Status**: Not Started
+**Status**: In Progress (79.1–79.5 done)
 **Priority**: Medium
 **Depends on**: None (can proceed independently)
 
@@ -213,11 +213,11 @@ impl PlatformClock for CffiPlatform {
 
 ## Work Items
 
-- [ ] 79.1 — Create `nros-platform` trait crate with capability sub-traits
-- [ ] 79.2 — Create `nros-platform-cffi` with C vtable registration
-- [ ] 79.3 — Create `nros-platform-posix` (first native implementation)
-- [ ] 79.4 — Create `zpico-platform-shim` (zenoh-pico forwarder)
-- [ ] 79.5 — Create `xrce-platform-shim` (XRCE-DDS forwarder)
+- [x] 79.1 — Create `nros-platform` trait crate with capability sub-traits
+- [x] 79.2 — Create `nros-platform-cffi` with C vtable registration
+- [x] 79.3 — Create `nros-platform-posix` (first native implementation)
+- [x] 79.4 — Create `zpico-platform-shim` (zenoh-pico forwarder)
+- [x] 79.5 — Create `xrce-platform-shim` (XRCE-DDS forwarder)
 - [ ] 79.6 — Migrate `zpico-platform-mps2-an385` to `nros-platform-bare-metal` + board init
 - [ ] 79.7 — Migrate `xrce-platform-mps2-an385` → verify same `nros-platform-bare-metal` works
 - [ ] 79.8 — Migrate remaining platforms (FreeRTOS, NuttX, ThreadX, Zephyr, ESP32, STM32F4)

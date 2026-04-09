@@ -1,0 +1,13 @@
+[package]
+name = "nros-platform-cffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "C vtable adapter for nros platform abstraction"
+
+[features]
+default = []
+threading = []
+
+[dependencies]
+portable-atomic = { version = "1", default-features = false }

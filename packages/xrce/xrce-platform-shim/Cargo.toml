@@ -1,0 +1,20 @@
+[package]
+name = "xrce-platform-shim"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Thin forwarders from XRCE-DDS C symbols to nros-platform traits"
+
+[features]
+default = ["std"]
+std = ["nros-platform/std"]
+
+# Platform backends (forwarded to nros-platform)
+platform-posix = ["nros-platform/platform-posix"]
+platform-cffi = ["nros-platform/platform-cffi"]
+
+# Networking via smoltcp (bare-metal)
+smoltcp = []
+
+[dependencies]
+nros-platform = { path = "../../core/nros-platform", default-features = false }
