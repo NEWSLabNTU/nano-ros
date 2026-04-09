@@ -12,6 +12,7 @@ nuttx_build_example(nuttx_c_talker
     "${CMAKE_CURRENT_SOURCE_DIR}/src/main.c"
     INCLUDE_DIRS "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c/std_msgs"
                  "${CMAKE_CURRENT_BINARY_DIR}/nano_ros_c"
+    SOURCES      ${std_msgs_GENERATED_SOURCES}
     COMPILE_DEFS "APP_ZENOH_LOCATOR=\"${NROS_CONFIG_ZENOH_LOCATOR}\""
                  "APP_DOMAIN_ID=${NROS_CONFIG_DOMAIN_ID}"
 )

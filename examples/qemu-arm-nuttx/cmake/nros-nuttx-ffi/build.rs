@@ -43,6 +43,15 @@ fn main() {
         }
     }
 
+    // Extra source files from CMake (semicolon-separated, e.g. generated interface .c files)
+    if let Ok(extra_sources) = env::var("APP_EXTRA_SOURCES") {
+        for src in extra_sources.split(';') {
+            if !src.is_empty() {
+                build.file(src);
+            }
+        }
+    }
+
     // Compile definitions from CMake (semicolon-separated, e.g. from config.toml)
     if let Ok(compile_defs) = env::var("APP_COMPILE_DEFS") {
         for def in compile_defs.split(';') {
@@ -117,5 +126,6 @@ fn main() {
     println!("cargo:rerun-if-changed={}", linker_script.display());
     println!("cargo:rerun-if-env-changed=APP_MAIN_CPP");
     println!("cargo:rerun-if-env-changed=APP_INCLUDE_DIRS");
+    println!("cargo:rerun-if-env-changed=APP_EXTRA_SOURCES");
     println!("cargo:rerun-if-env-changed=APP_COMPILE_DEFS");
 }
