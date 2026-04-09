@@ -385,10 +385,7 @@ mod socket_stubs {
     pub extern "C" fn _z_socket_close(_sock: *mut ZSysNetSocket) {}
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn _z_socket_wait_event(
-        _peers: *mut c_void,
-        _mutex: *mut ZMutexRecRef,
-    ) -> i8 {
+    pub extern "C" fn _z_socket_wait_event(_peers: *mut c_void, _mutex: *mut ZMutexRecRef) -> i8 {
         0
     }
 }

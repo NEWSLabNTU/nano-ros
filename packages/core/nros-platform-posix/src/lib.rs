@@ -192,14 +192,18 @@ impl PosixPlatform {
         let start_routine: extern "C" fn(*mut c_void) -> *mut c_void =
             unsafe { core::mem::transmute(entry) };
         let ret = unsafe {
-            libc::pthread_create(task as *mut libc::pthread_t, ptr::null(), start_routine, arg)
+            libc::pthread_create(
+                task as *mut libc::pthread_t,
+                ptr::null(),
+                start_routine,
+                arg,
+            )
         };
         if ret == 0 { 0 } else { -1 }
     }
 
     pub fn task_join(task: *mut c_void) -> i8 {
-        let ret =
-            unsafe { libc::pthread_join(*(task as *const libc::pthread_t), ptr::null_mut()) };
+        let ret = unsafe { libc::pthread_join(*(task as *const libc::pthread_t), ptr::null_mut()) };
         if ret == 0 { 0 } else { -1 }
     }
 

@@ -161,6 +161,7 @@ exclude = [
     # Board crates (embedded-only, require cross-compilation)
     "packages/boards/mps2-an385-pac",
     "packages/boards/nros-mps2-an385",
+    "packages/boards/nros-platform-mps2-an385",
     "packages/boards/nros-esp32",
     "packages/boards/nros-esp32-qemu",
     "packages/boards/nros-stm32f4",

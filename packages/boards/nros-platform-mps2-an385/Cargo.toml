@@ -1,0 +1,20 @@
+[package]
+name = "nros-platform-mps2-an385"
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+description = "nros platform implementation for QEMU MPS2-AN385 bare-metal"
+
+[lib]
+name = "nros_platform_mps2_an385"
+
+[features]
+default = []
+# TLS support (larger heap: 128 KB instead of 64 KB)
+link-tls = []
+
+[dependencies]
+# Free-list allocator for heap
+zpico-alloc = { path = "../../zpico/zpico-alloc" }
+# Cortex-M register access
+cortex-m = "0.7"

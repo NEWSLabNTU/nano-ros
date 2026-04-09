@@ -11,5 +11,9 @@
 
 // All symbols require a platform backend to be selected.
 // Without one, this crate compiles as an empty lib.
-#[cfg(any(feature = "platform-posix", feature = "platform-cffi"))]
+#[cfg(any(
+    feature = "platform-posix",
+    feature = "platform-cffi",
+    feature = "platform-mps2-an385",
+))]
 mod shim;

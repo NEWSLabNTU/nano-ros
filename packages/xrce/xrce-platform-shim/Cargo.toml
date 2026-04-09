@@ -12,6 +12,7 @@ std = ["nros-platform/std"]
 # Platform backends (forwarded to nros-platform)
 platform-posix = ["nros-platform/platform-posix"]
 platform-cffi = ["nros-platform/platform-cffi"]
+platform-mps2-an385 = ["nros-platform/platform-mps2-an385"]
 
 # Networking via smoltcp (bare-metal)
 smoltcp = []

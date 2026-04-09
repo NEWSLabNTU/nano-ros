@@ -10,3 +10,6 @@ pub type ConcretePlatform = nros_platform_posix::PosixPlatform;
 
 #[cfg(feature = "platform-cffi")]
 pub type ConcretePlatform = nros_platform_cffi::CffiPlatform;
+
+#[cfg(feature = "platform-mps2-an385")]
+pub type ConcretePlatform = nros_platform_mps2_an385::Mps2An385Platform;

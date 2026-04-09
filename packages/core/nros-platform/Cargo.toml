@@ -12,6 +12,7 @@ std = []
 # Platform backends (select one)
 platform-posix = ["dep:nros-platform-posix"]
 platform-cffi = ["dep:nros-platform-cffi"]
+platform-mps2-an385 = ["dep:nros-platform-mps2-an385"]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []
@@ -20,3 +21,4 @@ threading = []
 [dependencies]
 nros-platform-posix = { path = "../nros-platform-posix", optional = true }
 nros-platform-cffi = { path = "../nros-platform-cffi", optional = true }
+nros-platform-mps2-an385 = { path = "../../boards/nros-platform-mps2-an385", optional = true }

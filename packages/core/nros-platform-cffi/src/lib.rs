@@ -90,7 +90,8 @@ pub struct NrosPlatformVtable {
     pub condvar_signal: unsafe extern "C" fn(cv: *mut c_void) -> i8,
     pub condvar_signal_all: unsafe extern "C" fn(cv: *mut c_void) -> i8,
     pub condvar_wait: unsafe extern "C" fn(cv: *mut c_void, m: *mut c_void) -> i8,
-    pub condvar_wait_until: unsafe extern "C" fn(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8,
+    pub condvar_wait_until:
+        unsafe extern "C" fn(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8,
 }
 
 // ============================================================================

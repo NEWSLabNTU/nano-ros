@@ -1,0 +1,23 @@
+//! Free-list heap allocator for bare-metal MPS2-AN385.
+//!
+//! Heap size: 64 KB default, 128 KB when `link-tls` is enabled
+//! (mbedTLS needs ~40 KB for TLS context, certificates, and crypto).
+
+use zpico_alloc::FreeListHeap;
+
+#[cfg(feature = "link-tls")]
+static HEAP: FreeListHeap<{ 128 * 1024 }> = FreeListHeap::new();
+#[cfg(not(feature = "link-tls"))]
+static HEAP: FreeListHeap<{ 64 * 1024 }> = FreeListHeap::new();
+
+pub fn alloc(size: usize) -> *mut core::ffi::c_void {
+    HEAP.alloc(size)
+}
+
+pub fn realloc(ptr: *mut core::ffi::c_void, size: usize) -> *mut core::ffi::c_void {
+    HEAP.realloc(ptr, size)
+}
+
+pub fn dealloc(ptr: *mut core::ffi::c_void) {
+    HEAP.free(ptr)
+}

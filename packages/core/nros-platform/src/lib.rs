@@ -28,6 +28,10 @@
 mod resolve;
 mod traits;
 
-#[cfg(any(feature = "platform-posix", feature = "platform-cffi"))]
+#[cfg(any(
+    feature = "platform-posix",
+    feature = "platform-cffi",
+    feature = "platform-mps2-an385",
+))]
 pub use resolve::ConcretePlatform;
 pub use traits::*;

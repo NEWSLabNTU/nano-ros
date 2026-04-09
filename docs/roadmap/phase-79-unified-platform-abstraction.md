@@ -2,7 +2,7 @@
 
 **Goal**: Define a single platform interface (`nros-platform`) that all RMW backends consume, eliminating per-RMW platform crates and making the RMW layer fully platform-agnostic.
 
-**Status**: In Progress (79.1–79.5 done)
+**Status**: In Progress (79.1–79.7 done)
 **Priority**: Medium
 **Depends on**: None (can proceed independently)
 
@@ -32,11 +32,13 @@ Application
        ├── nros-rmw  (RMW traits — already platform-agnostic)
        │    ├── nros-rmw-zenoh → zpico-platform-shim (z_* → nros-platform traits)
        │    └── nros-rmw-xrce  → xrce-platform-shim  (uxr_* → nros-platform traits)
-       └── nros-platform (unified platform traits)
-            ├── nros-platform-posix    (implements traits directly)
-            ├── nros-platform-zephyr   (implements traits directly)
-            ├── nros-platform-freertos (implements traits via cffi)
-            └── nros-platform-cffi     (C vtable adapter)
+       └── nros-platform (unified platform traits + ConcretePlatform alias)
+            ├── nros-platform-posix        (POSIX: clock_gettime, malloc, pthreads)
+            ├── nros-platform-zephyr       (Zephyr: k_uptime_get, k_mutex, ...)
+            ├── nros-platform-freertos     (FreeRTOS: via cffi vtable)
+            ├── nros-platform-mps2-an385   (bare-metal: CMSDK Timer0, zpico-alloc heap)
+            ├── nros-platform-stm32f4      (bare-metal: DWT cycle counter)
+            └── nros-platform-cffi         (C vtable adapter)
 ```
 
 After this change:
@@ -218,11 +220,17 @@ impl PlatformClock for CffiPlatform {
 - [x] 79.3 — Create `nros-platform-posix` (first native implementation)
 - [x] 79.4 — Create `zpico-platform-shim` (zenoh-pico forwarder)
 - [x] 79.5 — Create `xrce-platform-shim` (XRCE-DDS forwarder)
-- [ ] 79.6 — Migrate `zpico-platform-mps2-an385` to `nros-platform-bare-metal` + board init
-- [ ] 79.7 — Migrate `xrce-platform-mps2-an385` → verify same `nros-platform-bare-metal` works
+- [x] 79.6 — Create `nros-platform-mps2-an385` (bare-metal platform crate)
+- [x] 79.7 — Verify `xrce-platform-shim` + `nros-platform-mps2-an385` symbol equivalence
 - [ ] 79.8 — Migrate remaining platforms (FreeRTOS, NuttX, ThreadX, Zephyr, ESP32, STM32F4)
 - [ ] 79.9 — Remove old per-RMW platform crates
 - [ ] 79.10 — Update porting guide (book) to reflect unified interface
+  - [ ] 79.10.1 — Rewrite `porting-platform/README.md` overview to describe unified nros-platform interface
+  - [ ] 79.10.2 — Rewrite `porting-platform/zenoh-pico.md` — focus on zpico-platform-shim, not raw symbols
+  - [ ] 79.10.3 — Rewrite `porting-platform/xrce-dds.md` — focus on xrce-platform-shim, not raw symbols
+  - [ ] 79.10.4 — Add `porting-platform/implementing-a-platform.md` — how to implement nros-platform traits
+  - [ ] 79.10.5 — Update `concepts/platform-model.md` to describe the unified architecture
+  - [ ] 79.10.6 — Update `concepts/architecture.md` diagrams to show nros-platform layer
 - [ ] 79.11 — Add `platform-cffi` feature to `nros` facade crate
 
 ### 79.1 — Create `nros-platform` trait crate
@@ -278,25 +286,37 @@ Thin `extern "C"` forwarders: `uxr_millis` → `ConcretePlatform::clock_ms()`,
 - `packages/xrce/xrce-platform-shim/Cargo.toml`
 - `packages/xrce/xrce-platform-shim/src/lib.rs`
 
-### 79.6 — Migrate MPS2-AN385 bare-metal platform
+### 79.6 — Create `nros-platform-mps2-an385`
 
-Extract shared platform logic from `zpico-platform-mps2-an385` into
-`nros-platform-bare-metal` (or a board-specific `nros-platform-mps2-an385`).
-Board-specific init (timer setup, heap region) stays in the board crate.
+Created a unified platform crate at `packages/boards/nros-platform-mps2-an385/`
+that provides all platform primitives for the MPS2-AN385 bare-metal board.
+Both `zpico-platform-shim` and `xrce-platform-shim` can use it via the
+`platform-mps2-an385` feature on `nros-platform`.
 
-Verify that `zpico-platform-shim` + `nros-platform-bare-metal` produces
-identical behavior to the old `zpico-platform-mps2-an385`.
+Key design: the board crate (`nros-mps2-an385`) owns lifecycle (init, run,
+device management) and delegates to the platform crate for system primitives.
+Sleep uses a registerable poll callback (`set_poll_callback`) so the board
+crate can wire in smoltcp polling without coupling the platform crate to
+any specific transport.
 
 **Files:**
-- `packages/boards/nros-platform-mps2-an385/` (new, or extend existing board crate)
-- Remove `packages/zpico/zpico-platform-mps2-an385/`
-- Remove `packages/xrce/xrce-platform-mps2-an385/`
+- `packages/boards/nros-platform-mps2-an385/Cargo.toml`
+- `packages/boards/nros-platform-mps2-an385/src/lib.rs` (Mps2An385Platform)
+- `packages/boards/nros-platform-mps2-an385/src/clock.rs` (CMSDK Timer0)
+- `packages/boards/nros-platform-mps2-an385/src/memory.rs` (zpico-alloc heap)
+- `packages/boards/nros-platform-mps2-an385/src/random.rs` (xorshift PRNG)
+- `packages/boards/nros-platform-mps2-an385/src/sleep.rs` (busy-wait + poll callback)
+- `packages/boards/nros-platform-mps2-an385/src/libc_stubs.rs` (strlen, memcpy, etc.)
+- `packages/boards/nros-platform-mps2-an385/src/timing.rs` (DWT cycle counter)
 
-### 79.7 — Verify XRCE on migrated MPS2-AN385
+### 79.7 — Verify XRCE symbol equivalence
 
-Run `just test-qemu` with XRCE backend on MPS2-AN385 using the same
-`nros-platform-bare-metal` + `xrce-platform-shim`. This validates the
-"write once, use for all RMW backends" promise.
+Verified that `xrce-platform-shim` + `nros-platform-mps2-an385` produces
+identical FFI symbols (`uxr_millis`, `uxr_nanos`, `smoltcp_clock_now_ms`)
+with identical logic to the old `xrce-platform-mps2-an385`. No XRCE
+bare-metal QEMU tests exist yet (XRCE examples are native POSIX and Zephyr
+only), so runtime verification is deferred to when XRCE bare-metal examples
+are created.
 
 ### 79.8 — Migrate remaining platforms
 
@@ -313,11 +333,24 @@ Apply the same migration to:
 Delete all `zpico-platform-*` and `xrce-platform-*` crates. Update
 dependency graph in all examples and board crates.
 
-### 79.10 — Update porting guide
+### 79.10 — Update documentation
 
-Rewrite `book/src/guides/porting-platform/` to reflect the unified interface.
-The per-RMW subpages become reference appendices (symbol mappings); the main
-guide focuses on implementing `nros-platform` traits.
+Rewrite book documentation to reflect the unified platform interface.
+
+- **79.10.1** — `porting-platform/README.md`: Replace the current per-RMW
+  comparison with a description of the unified `nros-platform` interface.
+  Explain that porting now means implementing one platform crate, not N.
+- **79.10.2** — `porting-platform/zenoh-pico.md`: Reframe as a reference for
+  the zpico-platform-shim symbol mapping, not a porting guide.
+- **79.10.3** — `porting-platform/xrce-dds.md`: Same — reference for
+  xrce-platform-shim symbol mapping.
+- **79.10.4** — New `porting-platform/implementing-a-platform.md`: The main
+  porting guide. How to create an `nros-platform-<name>` crate, implement the
+  required methods, wire it into the feature system.
+- **79.10.5** — `concepts/platform-model.md`: Update the platform model
+  concept page with the unified architecture diagram.
+- **79.10.6** — `concepts/architecture.md`: Update architecture diagrams to
+  show the nros-platform layer between nros-node and RMW backends.
 
 ### 79.11 — Add `platform-cffi` feature
 
@@ -362,23 +395,46 @@ RMW-specific transport crates (`zpico-smoltcp`, `xrce-smoltcp`).
 This mirrors the existing `nros-rmw` (Rust trait) + `nros-rmw-cffi` (C vtable)
 dual interface.
 
-### Board-specific vs. platform-generic
+### RTOS platforms vs. bare-metal boards
 
-Some platform logic is board-specific (which hardware timer, heap region
-address, DMA constraints). The split is:
+For **RTOS platforms** (FreeRTOS, Zephyr, NuttX, ThreadX), the platform crate
+is generic — `vTaskDelay`, `pthread_mutex_init`, `malloc` work the same
+regardless of board. The board crate handles hardware-specific init.
 
-- **`nros-platform-<rtos>`** — generic RTOS logic (e.g., `vTaskDelay`,
-  `xSemaphoreCreateMutex` for FreeRTOS)
-- **Board crate init** — hardware-specific setup (timer peripheral config,
-  heap region, network device) called before platform traits are usable
+For **bare-metal boards**, the platform crate must be per-board because the
+clock reads specific hardware registers (CMSDK Timer0 for MPS2-AN385, DWT
+for STM32F4, `esp_hal::time::Instant` for ESP32). The board crate owns
+lifecycle (init, run, device management) and delegates to the platform crate
+for system primitives.
 
-For RTOS platforms, the platform crate is truly generic. For bare-metal, the
-platform crate may need to be per-board (different timer peripherals).
+```
+RTOS:       nros-platform-freertos (generic) + nros-mps2-an385-freertos (board)
+Bare-metal: nros-platform-mps2-an385 (per-board) + nros-mps2-an385 (board)
+```
+
+Generic building blocks shared across bare-metal boards (xorshift PRNG,
+threading no-op stubs) are reimplemented in each platform crate for now.
+A shared utility crate could extract these later if
+the duplication becomes significant.
+
+### Sleep and transport decoupling
+
+On bare-metal, sleep must poll the network stack to avoid missing packets.
+Rather than coupling the platform crate to a specific transport (smoltcp),
+the sleep module provides a registerable poll callback:
+
+```rust
+// Board crate registers during init:
+nros_platform_mps2_an385::sleep::set_poll_callback(smoltcp_poll_fn);
+```
+
+This keeps the platform crate transport-agnostic while allowing the board
+crate to wire in the correct poll behavior.
 
 ## Acceptance Criteria
 
-- [ ] `just test-qemu` passes with zenoh backend using `zpico-platform-shim` + `nros-platform-bare-metal`
-- [ ] `just test-qemu` passes with XRCE backend using `xrce-platform-shim` + same `nros-platform-bare-metal`
+- [ ] `just test-qemu` passes with zenoh backend using `zpico-platform-shim` + `nros-platform-mps2-an385`
+- [ ] `just test-qemu` passes with XRCE backend using `xrce-platform-shim` + `nros-platform-mps2-an385`
 - [ ] `just test-freertos` passes with unified `nros-platform-freertos`
 - [ ] `just test-integration` passes (POSIX platform)
 - [ ] No per-RMW platform crates remain (`zpico-platform-*`, `xrce-platform-*` deleted)
