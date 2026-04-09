@@ -2,7 +2,7 @@
 
 **Goal**: Define a single platform interface (`nros-platform`) that all RMW backends consume, eliminating per-RMW platform crates and making the RMW layer fully platform-agnostic.
 
-**Status**: In Progress (79.1–79.7 done)
+**Status**: In Progress (79.1–79.11 done, 79.12 abandoned; 79.10 docs remaining)
 **Priority**: Medium
 **Depends on**: None (can proceed independently)
 
@@ -222,16 +222,21 @@ impl PlatformClock for CffiPlatform {
 - [x] 79.5 — Create `xrce-platform-shim` (XRCE-DDS forwarder)
 - [x] 79.6 — Create `nros-platform-mps2-an385` (bare-metal platform crate)
 - [x] 79.7 — Verify `xrce-platform-shim` + `nros-platform-mps2-an385` symbol equivalence
-- [ ] 79.8 — Migrate remaining platforms (FreeRTOS, NuttX, ThreadX, Zephyr, ESP32, STM32F4)
-- [ ] 79.9 — Remove old per-RMW platform crates
-- [ ] 79.10 — Update porting guide (book) to reflect unified interface
-  - [ ] 79.10.1 — Rewrite `porting-platform/README.md` overview to describe unified nros-platform interface
-  - [ ] 79.10.2 — Rewrite `porting-platform/zenoh-pico.md` — focus on zpico-platform-shim, not raw symbols
-  - [ ] 79.10.3 — Rewrite `porting-platform/xrce-dds.md` — focus on xrce-platform-shim, not raw symbols
-  - [ ] 79.10.4 — Add `porting-platform/implementing-a-platform.md` — how to implement nros-platform traits
-  - [ ] 79.10.5 — Update `concepts/platform-model.md` to describe the unified architecture
-  - [ ] 79.10.6 — Update `concepts/architecture.md` diagrams to show nros-platform layer
-- [ ] 79.11 — Add `platform-cffi` feature to `nros` facade crate
+- [x] 79.8 — Create remaining bare-metal platform crates (STM32F4, ESP32, ESP32-QEMU)
+- [x] 79.9 — Migrate board crates and remove old per-RMW platform crates
+- [ ] 79.10 — Update book documentation for unified platform architecture
+  - [ ] 79.10.1 — `concepts/architecture.md` — update Mermaid diagrams (lines 89, 134-143, 399) to show nros-platform layer between board crates and RMW shims; replace `zpico-platform-*` references with unified architecture
+  - [ ] 79.10.2 — `concepts/platform-model.md` — update feature propagation description (line 145); add section on two-layer platform awareness (C compilation vs Rust symbols); describe nros-platform trait interface
+  - [ ] 79.10.3 — `concepts/rmw-backends.md` — add note that the ~55 zpico symbols are now provided by zpico-platform-shim via nros-platform, not per-board platform crates
+  - [ ] 79.10.4 — `guides/porting-platform/README.md` — rewrite overview diagram to show: nros-platform-<board> → zpico-platform-shim/xrce-platform-shim → RMW; update comparison table
+  - [ ] 79.10.5 — `guides/porting-platform/zenoh-pico.md` — reframe as RMW shim reference; update file paths from `zpico-platform-<name>` to `nros-platform-<name>`; note that symbols are now in zpico-platform-shim
+  - [ ] 79.10.6 — `guides/porting-platform/xrce-dds.md` — same: update paths, note xrce-platform-shim; update example from `xrce-platform-mps2-an385` to `nros-platform-mps2-an385`
+  - [ ] 79.10.7 — Add `guides/porting-platform/implementing-a-platform.md` — main porting guide: how to create `nros-platform-<name>` crate, implement methods, wire features, register sleep poll callback
+  - [ ] 79.10.8 — `guides/board-crate.md` — update to reference `nros-platform-<name>` instead of `zpico-platform-*`; describe new dependency pattern (board → nros-platform-<board> + zpico-platform-shim)
+  - [ ] 79.10.9 — `guides/esp32.md` — update crate tree diagram (lines 110-111) to show nros-platform-esp32 instead of zpico-platform-esp32
+  - [ ] 79.10.10 — `platforms/README.md` — update two-crate pattern description (lines 12-15) to three-crate pattern (nros-platform-<board> + shim + board crate)
+- [x] 79.11 — Add `platform-cffi` feature to `nros` facade crate
+- [-] 79.12 — ~~Make RMW crates fully platform-agnostic~~ (abandoned — see design notes)
 
 ### 79.1 — Create `nros-platform` trait crate
 
@@ -318,44 +323,116 @@ bare-metal QEMU tests exist yet (XRCE examples are native POSIX and Zephyr
 only), so runtime verification is deferred to when XRCE bare-metal examples
 are created.
 
-### 79.8 — Migrate remaining platforms
+### 79.8 — Create remaining bare-metal platform crates
 
-Apply the same migration to:
-- FreeRTOS (`zpico-platform-freertos` → `nros-platform-freertos`)
-- NuttX (`zpico-platform-nuttx` → `nros-platform-nuttx`)
-- ThreadX (`zpico-platform-threadx` → `nros-platform-threadx`)
-- Zephyr (currently uses zenoh-pico's built-in Zephyr support — may need shim)
-- ESP32 (`zpico-platform-esp32` → `nros-platform-esp32`)
-- STM32F4 (`zpico-platform-stm32f4` → `nros-platform-stm32f4`)
+Created unified platform crates for all bare-metal boards:
 
-### 79.9 — Remove old per-RMW platform crates
+- `nros-platform-stm32f4` — DWT-based clock, 64 KB heap, PHY detection, pin configs
+- `nros-platform-esp32` — `esp_hal::time::Instant` clock, 32 KB heap
+- `nros-platform-esp32-qemu` — same clock as ESP32, includes libc sprintf/snprintf stubs
 
-Delete all `zpico-platform-*` and `xrce-platform-*` crates. Update
-dependency graph in all examples and board crates.
+RTOS platforms (FreeRTOS, NuttX, ThreadX, Zephyr) do not have dedicated Rust
+platform crates — they use zenoh-pico's built-in C platform layers or POSIX.
+Creating unified RTOS platform crates is deferred to when those backends are
+refactored to use the nros-platform interface.
 
-### 79.10 — Update documentation
+**Files:**
+- `packages/boards/nros-platform-stm32f4/` (clock, memory, random, sleep, phy, pins, timing, libc_stubs)
+- `packages/boards/nros-platform-esp32/` (clock, memory, random, sleep, timing)
+- `packages/boards/nros-platform-esp32-qemu/` (clock, memory, random, sleep, timing, libc_stubs)
 
-Rewrite book documentation to reflect the unified platform interface.
+### 79.9 — Migrate board crates and remove old per-RMW platform crates
 
-- **79.10.1** — `porting-platform/README.md`: Replace the current per-RMW
-  comparison with a description of the unified `nros-platform` interface.
-  Explain that porting now means implementing one platform crate, not N.
-- **79.10.2** — `porting-platform/zenoh-pico.md`: Reframe as a reference for
-  the zpico-platform-shim symbol mapping, not a porting guide.
-- **79.10.3** — `porting-platform/xrce-dds.md`: Same — reference for
-  xrce-platform-shim symbol mapping.
-- **79.10.4** — New `porting-platform/implementing-a-platform.md`: The main
-  porting guide. How to create an `nros-platform-<name>` crate, implement the
-  required methods, wire it into the feature system.
-- **79.10.5** — `concepts/platform-model.md`: Update the platform model
-  concept page with the unified architecture diagram.
-- **79.10.6** — `concepts/architecture.md`: Update architecture diagrams to
-  show the nros-platform layer between nros-node and RMW backends.
+Migrated all board crates to use the unified platform layer:
+
+1. **Updated board crate deps**: replaced `zpico-platform-<name>` with
+   `nros-platform-<name>` + `zpico-platform-shim`
+2. **Moved network modules**: `network.rs` (transport-specific smoltcp poll
+   callback + global state) moved from old platform crates into each board
+   crate, since it depends on board-specific device types
+3. **Fixed zpico-platform-shim socket stubs**: `_z_socket_close` now forwards
+   to `_z_close_tcp` and `_z_socket_wait_event` calls `smoltcp_poll()` via
+   link-time resolved extern imports (no Cargo dependency on zpico-smoltcp)
+4. **Updated all import paths**: `zpico_platform_<name>` → `nros_platform_<name>`
+5. **Registered sleep poll callback**: board crates call
+   `nros_platform_<name>::sleep::set_poll_callback(smoltcp_network_poll)` so
+   busy-wait sleep polls the network stack
+6. **Deleted old crates**: `zpico-platform-mps2-an385`, `zpico-platform-stm32f4`,
+   `zpico-platform-esp32`, `zpico-platform-esp32-qemu`, `xrce-platform-mps2-an385`
+7. **Removed from workspace**: cleaned up `Cargo.toml` exclude list
+
+### 79.10 — Update book documentation
+
+10 files in `book/src/` reference the old per-RMW platform architecture
+(`zpico-platform-*`, `xrce-platform-*`). These need updating to describe the
+unified `nros-platform` layer.
+
+**Concept pages (architecture/model):**
+- **79.10.1** `concepts/architecture.md` — Mermaid diagrams at lines 89,
+  134-143, 399 show old `zpico-platform-*` directly. Add nros-platform layer
+  between board crates and RMW shims. Show the two-layer platform awareness.
+- **79.10.2** `concepts/platform-model.md` — Feature propagation description
+  at line 145 says features activate `zpico-platform-*` crates. Update to
+  describe the unified nros-platform trait interface and the two-layer design
+  (C compilation in -sys via RMW features, Rust symbols via nros-platform
+  traits + shim crates).
+- **79.10.3** `concepts/rmw-backends.md` — Note that the ~55 zenoh-pico
+  symbols are now provided by zpico-platform-shim via the nros-platform
+  interface, not per-board platform crates.
+
+**Porting guides:**
+- **79.10.4** `guides/porting-platform/README.md` — Rewrite overview diagram
+  to show: `nros-platform-<board>` → `zpico-platform-shim`/`xrce-platform-shim`
+  → RMW. Explain that porting now means creating one `nros-platform-<name>`
+  crate that works for all RMW backends.
+- **79.10.5** `guides/porting-platform/zenoh-pico.md` — Reframe as RMW shim
+  reference. Update file paths from `zpico-platform-<name>` to
+  `nros-platform-<name>`. Note symbols are now in zpico-platform-shim.
+- **79.10.6** `guides/porting-platform/xrce-dds.md` — Same: update paths,
+  note xrce-platform-shim, update example from `xrce-platform-mps2-an385`.
+- **79.10.7** New `guides/porting-platform/implementing-a-platform.md` — The
+  main porting guide. How to create `nros-platform-<name>`, implement methods,
+  wire features, register sleep poll callback, handle libc stubs.
+
+**Board/platform-specific pages:**
+- **79.10.8** `guides/board-crate.md` — Update dependency pattern (line 4:
+  wraps `zpico-platform-*` → wraps `nros-platform-*` + shim). Describe the
+  new init flow with sleep poll callback registration.
+- **79.10.9** `guides/esp32.md` — Update crate tree at lines 110-111 from
+  `zpico-platform-esp32` to `nros-platform-esp32`.
+- **79.10.10** `platforms/README.md` — Update two-crate pattern (lines 12-15)
+  to three-crate pattern: nros-platform-<board> (primitives) +
+  zpico-platform-shim (FFI) + board crate (lifecycle).
 
 ### 79.11 — Add `platform-cffi` feature
 
 Add `platform-cffi` to the `nros` facade crate's platform axis, with mutual
 exclusivity enforcement against other platform features.
+
+### 79.12 — ~~Make RMW crates fully platform-agnostic~~ (abandoned)
+
+Investigated and abandoned. The RMW crates are **inherently platform-aware**
+for two reasons:
+
+1. **zpico-sys FFI functions only exist when a platform is compiled.** The
+   `shim` module in `nros-rmw-zenoh` imports `zpico_open`, `zpico_publish`,
+   etc. which are only compiled when zpico-sys has a platform feature.
+   Without the platform feature, the shim module can't compile. The
+   `#[cfg(any(feature = "platform-*"))]` gates are structurally necessary.
+
+2. **XRCE Zephyr transport is platform-specific.** `nros-rmw-xrce` gates
+   `pub mod zephyr;` behind `platform-zephyr` because the module contains
+   `extern "C"` declarations for Zephyr-only transport callbacks compiled
+   by Zephyr's CMake build system.
+
+The platform feature flow remains:
+```
+nros/platform-posix → nros-node → nros-rmw-zenoh/platform-posix → zpico-sys/posix
+```
+
+Phase 79's contribution to platform decoupling is the **Rust symbol layer**
+(nros-platform traits + shim crates), not the C compilation layer. The C
+compilation layer is an upstream zenoh-pico design constraint.
 
 ## Design Decisions
 
@@ -383,6 +460,23 @@ abstraction level differs too much between RMW backends to unify cleanly.
 Instead, `PlatformNetworkPoll` covers the minimal shared concern (smoltcp poll
 callback + clock for bare-metal). Actual socket/transport logic stays in the
 RMW-specific transport crates (`zpico-smoltcp`, `xrce-smoltcp`).
+
+### Two layers of platform awareness
+
+Platform awareness in the RMW stack has two distinct layers:
+
+1. **C compilation layer** (build-time) — the `-sys` crate needs `platform-*`
+   features to select which C source files to compile and which `#define`s to
+   set. This is a C preprocessor concern (struct layouts, `#ifdef` branches).
+   Currently flows: `nros` → RMW crate → `-sys` crate.
+
+2. **Rust symbol layer** (link-time) — the shim crate provides `extern "C"`
+   symbols (`z_clock_now`, `uxr_millis`, etc.) that the compiled C library
+   resolves at link time. This is fully decoupled from the RMW crate.
+
+Phase 79 unified layer 2 (79.1–79.9). Layer 1 remains in the RMW crates
+because the C libraries require platform-specific compilation — this is an
+upstream zenoh-pico design constraint, not something nano-ros can abstract away.
 
 ### Why both Rust traits and C vtable?
 
