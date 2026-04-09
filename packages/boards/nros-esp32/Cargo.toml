@@ -11,8 +11,7 @@ name = "nros_esp32"
 [dependencies]
 # Unified platform primitives (clock, memory, random, sleep)
 nros-platform-esp32 = { path = "../nros-platform-esp32" }
-# Zenoh-pico FFI symbol forwarders (z_clock_now, z_malloc, etc.)
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["platform-esp32"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32"] }
 
 # TCP link layer via smoltcp (wifi only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
@@ -48,6 +47,6 @@ critical-section = "1"
 [features]
 default = ["wifi"]
 # WiFi transport via esp-radio + smoltcp TCP/IP stack
-wifi = ["dep:zpico-smoltcp", "dep:esp-rtos", "dep:esp-radio", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
+wifi = ["dep:zpico-smoltcp", "dep:esp-rtos", "dep:esp-radio", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in ESP-IDF serial (no extra deps)
 serial = []

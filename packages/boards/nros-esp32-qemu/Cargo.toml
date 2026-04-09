@@ -11,8 +11,7 @@ name = "nros_esp32_qemu"
 [dependencies]
 # Unified platform primitives (clock, memory, random, sleep, libc stubs)
 nros-platform-esp32-qemu = { path = "../nros-platform-esp32-qemu" }
-# Zenoh-pico FFI symbol forwarders (z_clock_now, z_malloc, etc.)
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["platform-esp32-qemu"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-esp32-qemu"] }
 
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
@@ -39,6 +38,6 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 [features]
 default = ["ethernet"]
 # Ethernet transport via OpenETH + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
+ethernet = ["dep:zpico-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)
 serial = []

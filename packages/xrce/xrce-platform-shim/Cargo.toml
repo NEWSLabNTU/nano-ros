@@ -6,16 +6,10 @@ license.workspace = true
 description = "Thin forwarders from XRCE-DDS C symbols to nros-platform traits"
 
 [features]
-default = ["std"]
-std = ["nros-platform/std"]
+default = []
 
-# Platform backends (forwarded to nros-platform)
-platform-posix = ["nros-platform/platform-posix"]
-platform-cffi = ["nros-platform/platform-cffi"]
-platform-mps2-an385 = ["nros-platform/platform-mps2-an385"]
-platform-stm32f4 = ["nros-platform/platform-stm32f4"]
-platform-esp32 = ["nros-platform/platform-esp32"]
-platform-esp32-qemu = ["nros-platform/platform-esp32-qemu"]
+# Activates the shim symbols. Set by xrce-sys when a platform is selected.
+active = []
 
 # Networking via smoltcp (bare-metal)
 smoltcp = []

@@ -11,8 +11,7 @@ name = "nros_stm32f4"
 [dependencies]
 # Unified platform primitives (clock, memory, random, sleep, threading, libc stubs)
 nros-platform-stm32f4 = { path = "../nros-platform-stm32f4" }
-# Zenoh-pico FFI symbol forwarders (z_clock_now, z_malloc, etc.)
-zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["platform-stm32f4"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-stm32f4"] }
 
 # TCP link layer via smoltcp (ethernet only)
 zpico-smoltcp = { path = "../../zpico/zpico-smoltcp", optional = true }
@@ -47,7 +46,7 @@ defmt = "0.3"
 [features]
 default = ["stm32f429", "ethernet"]
 # Ethernet transport via STM32 MAC + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
+ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp"]
 # Serial transport via USART
 serial = ["dep:zpico-serial", "dep:stm32f4-usart"]
 

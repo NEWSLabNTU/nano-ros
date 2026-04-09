@@ -10,13 +10,6 @@
 #![no_std]
 
 // All symbols require a platform backend to be selected.
-// Without one, this crate compiles as an empty lib.
-#[cfg(any(
-    feature = "platform-posix",
-    feature = "platform-cffi",
-    feature = "platform-mps2-an385",
-    feature = "platform-stm32f4",
-    feature = "platform-esp32",
-    feature = "platform-esp32-qemu",
-))]
+// The `active` feature is set by xrce-sys when a platform feature is enabled.
+#[cfg(feature = "active")]
 mod shim;

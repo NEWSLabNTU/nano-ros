@@ -7,13 +7,19 @@ links = "xrce_client"
 
 [features]
 default = []
-posix = []
-bare-metal = []
+# Platform backends.
+# All platforms (except Zephyr) activate the shim for uxr_millis/uxr_nanos.
+# Zephyr provides its own symbols via xrce_zephyr.c (compiled by Zephyr CMake).
+posix = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
+bare-metal = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
 zephyr = []
-freertos = []
-nuttx = []
-threadx = []
+freertos = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
+nuttx = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
+threadx = ["dep:xrce-platform-shim", "xrce-platform-shim?/active"]
 std = []
+
+[dependencies]
+xrce-platform-shim = { path = "../xrce-platform-shim", default-features = false, optional = true }
 
 [build-dependencies]
 cc = "1.0"

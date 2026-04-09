@@ -16,16 +16,19 @@ name = "zpico_sys"
 [features]
 default = []
 # Platform backends (mutually exclusive)
-posix = []
+# All platforms (except Zephyr) activate the shim to provide z_* symbols
+# via nros-platform. The C library's system.c is excluded — only network.c is kept.
+# Zephyr's platform code is compiled by Zephyr's CMake build system.
+posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 zephyr = []
-bare-metal = []
-freertos = []
-nuttx = []
-threadx = []
+bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.
-link-tcp = []
+link-tcp = ["zpico-platform-shim?/smoltcp"]
 link-udp-unicast = []
 link-udp-multicast = []
 link-serial = []
@@ -41,7 +44,10 @@ std = []
 unstable-zenoh-api = []
 
 [dependencies]
-# (none - all C code, no Rust deps)
+# Platform symbol forwarders (z_clock_now, z_malloc, etc.)
+# Activated by any platform feature; actual ConcretePlatform resolved by
+# the board crate's nros-platform-<board> dependency via Cargo feature unification.
+zpico-platform-shim = { path = "../zpico-platform-shim", default-features = false, optional = true }
 
 [build-dependencies]
 cbindgen = "0.29"

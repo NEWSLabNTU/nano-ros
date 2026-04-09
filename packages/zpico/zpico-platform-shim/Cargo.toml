@@ -6,16 +6,12 @@ license.workspace = true
 description = "Thin forwarders from zenoh-pico C symbols to nros-platform traits"
 
 [features]
-default = ["std"]
-std = ["nros-platform/std"]
+default = []
 
-# Platform backends (forwarded to nros-platform)
-platform-posix = ["nros-platform/platform-posix"]
-platform-cffi = ["nros-platform/platform-cffi"]
-platform-mps2-an385 = ["nros-platform/platform-mps2-an385"]
-platform-stm32f4 = ["nros-platform/platform-stm32f4"]
-platform-esp32 = ["nros-platform/platform-esp32"]
-platform-esp32-qemu = ["nros-platform/platform-esp32-qemu"]
+# Activates the shim symbols. Set by zpico-sys when a platform is selected.
+# The actual ConcretePlatform resolution is handled by nros-platform's
+# platform-* features, activated by the board crate via Cargo feature unification.
+active = []
 
 # Networking via smoltcp (bare-metal)
 smoltcp = []
