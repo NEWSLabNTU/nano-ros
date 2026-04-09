@@ -24,6 +24,7 @@
 #include <net/if.h>
 #include <pthread.h>
 #include <sched.h>
+#include <signal.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -45,7 +46,7 @@
 #define NX_TAP_ETHERNET_IPV6    0x86DD
 
 #define NX_TAP_RX_STACK_SIZE    4096
-#define NX_TAP_RX_PRIORITY      2
+#define NX_TAP_RX_PRIORITY      6   /* Below app(4) and BSD(5) threads */
 
 /* ---- Module state ---- */
 
@@ -151,16 +152,22 @@ static void *tap_reader_entry(void *arg)
     UCHAR buf[NX_TAP_MTU + 16];
     (void)arg;
 
+    /* Block SIGUSR1/SIGUSR2 in this pthread.  The ThreadX Linux port uses
+       these signals for thread scheduling.  If a raw (non-ThreadX) pthread
+       catches them, the scheduler breaks and tx_thread_sleep() hangs. */
+    {
+        sigset_t set;
+        sigemptyset(&set);
+        sigaddset(&set, SIGUSR1);
+        sigaddset(&set, SIGUSR2);
+        pthread_sigmask(SIG_BLOCK, &set, NULL);
+    }
+
     while (tap_link_enabled)
     {
         ssize_t bytes = read(tap_fd, buf, sizeof(buf));
         if (bytes < NX_TAP_ETHERNET_SIZE)
             continue;
-
-        {
-            static int rdr_count = 0;
-            if (rdr_count < 5) { fprintf(stderr, "[tap-reader] %zd bytes\n", bytes); rdr_count++; }
-        }
 
         /* Write length header + frame data to pipe.
            The ThreadX thread reads this on the other end. */
@@ -263,16 +270,11 @@ static void tap_rx_thread_entry(ULONG input)
             packet_ptr->nx_packet_length = ip_len;
         }
 
-        {
-            static int rx_count = 0;
-            if (rx_count < 5) { fprintf(stderr, "[tap-rx] %u bytes type=0x%04x\n", (unsigned)len, packet_type); rx_count++; }
-        }
-
         /* Route to protocol handler */
         if (packet_type == NX_TAP_ETHERNET_IP ||
             packet_type == NX_TAP_ETHERNET_IPV6)
         {
-                _nx_ip_packet_deferred_receive(tap_ip_ptr, packet_ptr);
+                _nx_ip_packet_receive(tap_ip_ptr, packet_ptr);
         }
         else if (packet_type == NX_TAP_ETHERNET_ARP)
         {
@@ -318,8 +320,6 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
     ULONG        *ethernet_frame_ptr;
 
     driver_req_ptr->nx_ip_driver_status = NX_SUCCESS;
-
-    fprintf(stderr, "[tap] cmd=%u\n", driver_req_ptr->nx_ip_driver_command);
 
     switch (driver_req_ptr->nx_ip_driver_command)
     {
@@ -369,8 +369,19 @@ void nx_tap_network_driver(NX_IP_DRIVER *driver_req_ptr)
                          NX_TAP_RX_PRIORITY, NX_TAP_RX_PRIORITY,
                          TX_NO_TIME_SLICE, TX_AUTO_START);
 
-        /* Start pthread for TAP fd reading */
-        pthread_create(&tap_reader_pthread, NULL, tap_reader_entry, NULL);
+        /* Start pthread for TAP fd reading.
+           Block SIGUSR1/SIGUSR2 before creating the pthread so it inherits
+           the blocked set.  The ThreadX Linux port uses these signals for
+           thread scheduling — a raw pthread catching them breaks the scheduler. */
+        {
+            sigset_t block, prev;
+            sigemptyset(&block);
+            sigaddset(&block, SIGUSR1);
+            sigaddset(&block, SIGUSR2);
+            pthread_sigmask(SIG_BLOCK, &block, &prev);
+            pthread_create(&tap_reader_pthread, NULL, tap_reader_entry, NULL);
+            pthread_sigmask(SIG_SETMASK, &prev, NULL);
+        }
 
         interface_ptr->nx_interface_link_up = NX_TRUE;
         break;

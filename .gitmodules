@@ -28,9 +28,6 @@
 [submodule "third-party/threadx/netxduo"]
 	path = third-party/threadx/netxduo
 	url = https://github.com/eclipse-threadx/netxduo.git
-[submodule "third-party/threadx/learn-samples"]
-	path = third-party/threadx/learn-samples
-	url = https://github.com/eclipse-threadx/threadx-learn-samples.git
 [submodule "third-party/esp32/qemu"]
 	path = third-party/esp32/qemu
 	url = https://github.com/espressif/qemu.git

@@ -21,7 +21,7 @@
 TX_BYTE_POOL *zpico_threadx_byte_pool;
 
 /* ---- Sizing constants ---- */
-#define BYTE_POOL_SIZE          (256 * 1024)    /* 256 KB for all allocations */
+#define BYTE_POOL_SIZE          (512 * 1024)    /* 512 KB: ThreadX infra ~122KB + zenoh-pico ~200KB + headroom */
 #define PACKET_SIZE             1536
 #define PACKET_COUNT            30
 #define PACKET_POOL_SIZE        ((PACKET_SIZE + sizeof(NX_PACKET)) * PACKET_COUNT)
@@ -157,7 +157,6 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
-    fprintf(stderr, "[APPDEF] creating IP instance...\n");
     /* Create IP instance with Linux network driver */
     ULONG ip_addr = ((ULONG)cfg_ip[0] << 24) | ((ULONG)cfg_ip[1] << 16)
                   | ((ULONG)cfg_ip[2] << 8)  | (ULONG)cfg_ip[3];
@@ -167,7 +166,6 @@ void tx_application_define(void *first_unused_memory)
     status = nx_ip_create(&ip_instance, "nros_ip", ip_addr, netmask,
                            &packet_pool, nx_tap_network_driver,
                            pointer, IP_STACK_SIZE, IP_THREAD_PRIORITY);
-    fprintf(stderr, "[APPDEF] nx_ip_create status=0x%x\n", status);
     if (status != NX_SUCCESS) {
         printf("ERROR: IP create failed (0x%x)\n", status);
         return;

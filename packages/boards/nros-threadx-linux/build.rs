@@ -7,7 +7,6 @@
 //! Environment variables (auto-set by justfile recipes):
 //!   THREADX_DIR          — ThreadX kernel source root (default: third-party/threadx/kernel)
 //!   NETX_DIR             — NetX Duo source root (default: third-party/threadx/netxduo)
-//!   THREADX_SAMPLES_DIR  — ThreadX learn samples (default: third-party/threadx/learn-samples)
 //!   TAP_NETX_DIR         — TAP network driver (default: packages/drivers/tap-netx)
 
 use std::env;
@@ -26,11 +25,6 @@ fn main() {
 
     let threadx_dir = env_path_or("THREADX_DIR", workspace_root.join("third-party/threadx/kernel"));
     let netx_dir = env_path_or("NETX_DIR", workspace_root.join("third-party/threadx/netxduo"));
-    let samples_dir = env_path_or(
-        "THREADX_SAMPLES_DIR",
-        workspace_root.join("third-party/threadx/learn-samples"),
-    );
-
     // Validate directories
     assert!(
         threadx_dir.join("common/inc").exists(),
@@ -142,7 +136,6 @@ fn main() {
     println!("cargo:rerun-if-changed=build.rs");
     println!("cargo:rerun-if-env-changed=THREADX_DIR");
     println!("cargo:rerun-if-env-changed=NETX_DIR");
-    println!("cargo:rerun-if-env-changed=THREADX_SAMPLES_DIR");
     println!("cargo:rerun-if-env-changed=TAP_NETX_DIR");
 }
 
