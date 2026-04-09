@@ -1149,6 +1149,7 @@ dependencies = [
  "nros-macros",
  "nros-node",
  "nros-params",
+ "nros-platform",
  "nros-rmw",
  "nros-rmw-cffi",
  "nros-rmw-dds",
@@ -1245,9 +1246,12 @@ dependencies = [
  "nros-platform-cffi",
  "nros-platform-esp32",
  "nros-platform-esp32-qemu",
+ "nros-platform-freertos",
  "nros-platform-mps2-an385",
+ "nros-platform-nuttx",
  "nros-platform-posix",
  "nros-platform-stm32f4",
+ "nros-platform-threadx",
 ]
 
 [[package]]
@@ -1274,11 +1278,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "nros-platform-freertos"
+version = "0.1.0"
+
+[[package]]
 name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
  "zpico-alloc",
+]
+
+[[package]]
+name = "nros-platform-nuttx"
+version = "0.1.0"
+dependencies = [
+ "nros-platform-posix",
 ]
 
 [[package]]
@@ -1296,6 +1311,10 @@ dependencies = [
  "defmt 0.3.100",
  "zpico-alloc",
 ]
+
+[[package]]
+name = "nros-platform-threadx"
+version = "0.1.0"
 
 [[package]]
 name = "nros-rcl-interfaces"
@@ -2567,6 +2586,7 @@ name = "xrce-sys"
 version = "0.1.0"
 dependencies = [
  "cc",
+ "xrce-platform-shim",
 ]
 
 [[package]]
@@ -2624,4 +2644,5 @@ dependencies = [
  "cbindgen",
  "cc",
  "cmake",
+ "zpico-platform-shim",
 ]

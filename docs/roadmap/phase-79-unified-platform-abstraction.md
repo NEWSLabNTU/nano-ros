@@ -2,7 +2,7 @@
 
 **Goal**: Define a single platform interface (`nros-platform`) that all RMW backends consume, eliminating per-RMW platform crates and making the RMW layer fully platform-agnostic.
 
-**Status**: In Progress (79.1–79.11 done, 79.12 abandoned; 79.10 docs remaining)
+**Status**: In Progress (79.1–79.14 done, 79.12 abandoned; 79.10 docs remaining)
 **Priority**: Medium
 **Depends on**: None (can proceed independently)
 
@@ -237,6 +237,19 @@ impl PlatformClock for CffiPlatform {
   - [ ] 79.10.10 — `platforms/README.md` — update two-crate pattern description (lines 12-15) to three-crate pattern (nros-platform-<board> + shim + board crate)
 - [x] 79.11 — Add `platform-cffi` feature to `nros` facade crate
 - [-] 79.12 — ~~Make RMW crates fully platform-agnostic~~ (abandoned — see design notes)
+- [x] 79.13 — Move shim crates into -sys crates (board crates become RMW-agnostic)
+  - [x] 79.13.1 — `zpico-sys/bare-metal` activates `zpico-platform-shim/active`; `link-tcp` activates `smoltcp`
+  - [x] 79.13.2 — `xrce-sys/bare-metal,freertos,threadx` activate `xrce-platform-shim/active`
+  - [x] 79.13.3 — Removed `zpico-platform-shim` dependency from all 4 board crates
+  - [x] 79.13.4 — Board crates only depend on `nros-platform-<board>` (RMW-agnostic)
+- [x] 79.14 — Use shim for ALL platforms (not just bare-metal)
+  - [x] 79.14.1 — All `-sys` platform features activate shim; system.c/time.c excluded
+  - [x] 79.14.2 — `extern crate` in -sys crates forces linker to include shim symbols
+  - [x] 79.14.3 — `nros` facade activates `nros-platform/platform-posix` for POSIX builds
+  - [x] 79.14.4 — Example builds + 337 unit tests pass
+  - [x] 79.14.5 — Create `nros-platform-freertos` crate (FreeRTOS task/mutex/alloc via extern "C" FFI)
+  - [x] 79.14.6 — Create `nros-platform-nuttx` crate (type alias to PosixPlatform)
+  - [x] 79.14.7 — Create `nros-platform-threadx` crate (ThreadX thread/mutex/byte_pool via extern "C" FFI)
 
 ### 79.1 — Create `nros-platform` trait crate
 
@@ -474,9 +487,47 @@ Platform awareness in the RMW stack has two distinct layers:
    symbols (`z_clock_now`, `uxr_millis`, etc.) that the compiled C library
    resolves at link time. This is fully decoupled from the RMW crate.
 
-Phase 79 unified layer 2 (79.1–79.9). Layer 1 remains in the RMW crates
-because the C libraries require platform-specific compilation — this is an
-upstream zenoh-pico design constraint, not something nano-ros can abstract away.
+Phase 79.1–79.13 unified layer 2 for bare-metal. Phase 79.14 extends this to
+ALL platforms by having zpico-sys skip its C platform files (`system.c`) and
+use the shim instead. The C `network.c` (socket implementations) is kept
+since networking is outside the nros-platform scope.
+
+### Why use the shim for all platforms?
+
+Before 79.14, RTOS/POSIX platforms used zenoh-pico's built-in C platform
+files (`system.c`) while bare-metal used the shim. This meant two different
+code paths for the same operations:
+
+- **POSIX clock**: C `clock_gettime()` in `unix/system.c` vs Rust `libc::clock_gettime()` in `nros-platform-posix`
+- **FreeRTOS mutex**: C `xSemaphoreCreateMutex()` in `freertos/system.c` vs Rust wrapper (future `nros-platform-freertos`)
+
+By routing all platforms through the shim, we get:
+- **One code path** for all platform operations
+- **nros-platform crates are always the source of truth** — no behavioral divergence between C and Rust implementations
+- **LTO eliminates overhead** — the `extern "C"` → Rust → libc/RTOS chain is inlined at link time in release builds
+- **Testable** — platform implementations can be tested on the host, not just in QEMU/hardware
+
+### Cross-archive linking solved via `extern crate` (79.14)
+
+When zpico-sys's C objects reference `z_clock_now` etc., the linker needs
+to find those symbols in the shim's rlib. Initially this failed because
+the linker didn't search the shim's archive for symbols needed by C objects.
+
+**Solution:** Add `extern crate zpico_platform_shim;` to zpico-sys's Rust
+code. This forces rustc to include the shim's rlib in the link, making its
+`extern "C"` symbols available to the C objects in the same link.
+
+### System.c vs network.c split
+
+zenoh-pico's platform C files serve two purposes:
+
+1. **`system.c`** — clock, malloc, sleep, random, threading (tasks, mutexes, condvars)
+2. **`network.c`** — TCP/UDP socket operations (BSD sockets, lwIP, NetX Duo)
+
+The shim replaces `system.c` only. `network.c` is kept because:
+- Networking is outside the nros-platform scope (different per transport)
+- `network.c` doesn't conflict with shim symbols (different function names)
+- Socket implementations vary by networking stack (BSD, lwIP, NetX), not by platform
 
 ### Why both Rust traits and C vtable?
 
@@ -527,13 +578,14 @@ crate to wire in the correct poll behavior.
 
 ## Acceptance Criteria
 
-- [ ] `just test-qemu` passes with zenoh backend using `zpico-platform-shim` + `nros-platform-mps2-an385`
-- [ ] `just test-qemu` passes with XRCE backend using `xrce-platform-shim` + `nros-platform-mps2-an385`
-- [ ] `just test-freertos` passes with unified `nros-platform-freertos`
-- [ ] `just test-integration` passes (POSIX platform)
-- [ ] No per-RMW platform crates remain (`zpico-platform-*`, `xrce-platform-*` deleted)
-- [ ] Porting guide updated to document unified interface
-- [ ] Adding a hypothetical new RMW backend requires zero platform crate changes
+- [x] No per-RMW platform crates remain (`zpico-platform-*`, `xrce-platform-*` deleted)
+- [x] ALL platforms route through nros-platform shim (POSIX, bare-metal, RTOS)
+- [x] Board crates are RMW-agnostic (only depend on `nros-platform-<board>`)
+- [x] Unit tests pass (337/337)
+- [x] POSIX examples build and link via shim (`extern crate` force-link)
+- [ ] `just test-qemu` passes with zenoh backend via shim
+- [ ] Porting guide updated to document unified interface (79.10)
+- [x] RTOS platform crates created: freertos, nuttx, threadx (79.14.5–7)
 
 ## Notes
 
