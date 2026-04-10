@@ -55,8 +55,7 @@ mod freertos_alloc {
 }
 
 // ThreadX global allocator: wraps z_malloc/z_free which delegate to
-// tx_byte_allocate/tx_byte_release via the zpico_threadx_byte_pool
-// defined in zpico-sys/c/platform/threadx/system.c.
+// tx_byte_allocate/tx_byte_release via nros-platform-threadx.
 #[cfg(all(feature = "alloc", not(feature = "std"), feature = "platform-threadx"))]
 mod threadx_alloc {
     use core::alloc::{GlobalAlloc, Layout};

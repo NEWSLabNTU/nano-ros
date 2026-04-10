@@ -2,7 +2,7 @@
 
 **Goal**: Define a single platform interface (`nros-platform`) that all RMW backends consume, eliminating per-RMW platform crates and making the RMW layer fully platform-agnostic.
 
-**Status**: In Progress (79.1–79.14 done, 79.12 abandoned; 79.10 docs + 79.15 ThreadX shim remaining)
+**Status**: In Progress (79.1–79.15 done, 79.12 abandoned; 79.10 docs remaining)
 **Priority**: Medium
 **Depends on**: None (can proceed independently)
 
@@ -250,11 +250,11 @@ impl PlatformClock for CffiPlatform {
   - [x] 79.14.5 — Create `nros-platform-freertos` crate (FreeRTOS task/mutex/alloc via extern "C" FFI)
   - [x] 79.14.6 — Create `nros-platform-nuttx` crate (type alias to PosixPlatform)
   - [x] 79.14.7 — Create `nros-platform-threadx` crate (ThreadX thread/mutex/byte_pool via extern "C" FFI)
-- [ ] 79.15 — Migrate ThreadX zenoh-pico from C system.c to Rust shim
-  - [ ] 79.15.1 — Wire `zpico-platform-shim` for ThreadX (activate shim in zpico-sys when `threadx` feature enabled)
-  - [ ] 79.15.2 — Remove `c/platform/threadx/system.c` (z_malloc, z_clock_now, _z_task_init, _z_mutex_init, etc. now provided by shim → nros-platform-threadx)
-  - [ ] 79.15.3 — Verify ThreadX Linux talker/listener E2E still works
-  - [ ] 79.15.4 — Verify ThreadX RISC-V QEMU E2E still works
+- [x] 79.15 — Migrate ThreadX zenoh-pico from C system.c to Rust shim
+  - [x] 79.15.1 — Wire `zpico-platform-shim` for ThreadX (activate shim in zpico-sys when `threadx` feature enabled)
+  - [x] 79.15.2 — Delete `c/platform/threadx/system.c`; task creation kept in C `task.c` (struct layout dependency)
+  - [x] 79.15.3 — Verify ThreadX Linux talker/listener E2E (10/10 messages)
+  - [x] 79.15.4 — Verify ThreadX RISC-V QEMU E2E (23/23 tests pass)
 
 ### 79.1 — Create `nros-platform` trait crate
 
@@ -523,7 +523,7 @@ threading, sleep, random) and **socket** (TCP/UDP open, read, send, close).
 | NuttX      | Shim → `nros-platform-nuttx` (= posix)  | C `unix/network.c`          | POSIX-compatible                                                         |
 | Bare-metal | Shim → `nros-platform-<board>`          | Shim `socket-stubs`         | No C runtime; zpico-smoltcp provides TCP/UDP                             |
 | FreeRTOS   | C `freertos/system.c`                   | C `freertos/lwip/network.c` | Shim tested but hangs — condvar/task semantics need work                 |
-| ThreadX    | C `threadx/system.c`                    | C `threadx/network.c`       | Same macro issue + not yet tested                                        |
+| ThreadX    | Shim → `nros-platform-threadx` + C `task.c` | C `threadx/network.c`  | Task creation in C (struct layout); all else via shim                    |
 | Zephyr     | Zephyr CMake module                     | Zephyr CMake module         | Entire platform compiled by Zephyr's build system                        |
 
 **FreeRTOS macro workaround:** FreeRTOS exposes its API as C macros
@@ -621,7 +621,7 @@ crate to wire in the correct poll behavior.
 - [x] Unit tests pass (337/337)
 - [x] POSIX examples build and link via shim (`extern crate` force-link)
 - [ ] `just test-qemu` passes with zenoh backend via shim
-- [ ] ThreadX uses shim (not C system.c) — 79.15
+- [x] ThreadX uses shim (not C system.c) — 79.15
 - [ ] Porting guide updated to document unified interface (79.10)
 - [x] RTOS platform crates created: freertos, nuttx, threadx (79.14.5–7)
 

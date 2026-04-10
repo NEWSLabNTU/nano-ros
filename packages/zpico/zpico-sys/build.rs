@@ -407,13 +407,11 @@ fn main() {
     // Build zenoh-pico and C shim
     //
     // ThreadX is checked first because it uses its own build path for both
-    // native (Linux simulation) and embedded (RISC-V QEMU) targets. The
-    // ThreadX build compiles zenoh-pico with our custom system.c + network.c
-    // (NetX Duo BSD sockets) rather than the POSIX/CMake path.
+    // native (Linux simulation) and embedded (RISC-V QEMU) targets.
+    // Platform symbols provided by zpico-platform-shim → nros-platform-threadx.
+    // Task creation kept in C (task.c) due to _z_task_t struct layout dependency.
+    // Network I/O provided by C network.c (NetX Duo BSD sockets).
     if use_threadx {
-        // ThreadX: build zenoh-pico + custom ThreadX system/network layer + shim.
-        // Uses our own system.c (ThreadX tasks/mutex/clock) + network.c (NetX Duo BSD sockets).
-        // Works for both native (Linux sim) and embedded (RISC-V QEMU) targets.
         generate_config_header(&out_dir, &link_features, &buf_config);
         build_zenoh_pico_threadx(
             &zenoh_pico_src,
@@ -1806,7 +1804,7 @@ fn build_zenoh_pico_threadx(
     build.compile("zenohpico");
 
     // Rerun triggers for ThreadX-specific files
-    println!("cargo:rerun-if-changed=c/platform/threadx/system.c");
+    println!("cargo:rerun-if-changed=c/platform/threadx/task.c");
     println!("cargo:rerun-if-changed=c/platform/threadx/network.c");
     println!("cargo:rerun-if-changed=c/platform/threadx/platform.h");
     println!("cargo:rerun-if-env-changed=THREADX_DIR");

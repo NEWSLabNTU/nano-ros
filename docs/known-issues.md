@@ -78,7 +78,7 @@ allocators** that cannot share memory or statistics:
 |------------|--------------------------------------------------------------------|---------------------------------------------------------------|----------------------|
 | Bare-metal | `zpico-alloc` (static free-list, 32–128 KB)                        | None                                                          | Disabled             |
 | FreeRTOS   | `pvPortMalloc` (C, in zenoh-pico `system/freertos/system.c`)       | `FreeRtosAllocator` → `pvPortMalloc` (in `nros-c/src/lib.rs`) | Disabled in examples |
-| ThreadX    | `tx_byte_allocate` (C, in `zpico-sys/c/platform/threadx/system.c`) | None available                                                | Disabled             |
+| ThreadX    | `tx_byte_allocate` (Rust, in `nros-platform-threadx`)              | None available                                                | Disabled             |
 | NuttX      | libc `malloc` (C, via POSIX `system/unix/system.c`)                | Standard Rust allocator (libc `malloc`)                       | Enabled (`std`)      |
 | Zephyr     | `k_malloc` (C, in zenoh-pico `system/zephyr/system.c`)             | Zephyr allocator (when configured)                            | Varies               |
 
