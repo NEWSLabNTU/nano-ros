@@ -106,9 +106,9 @@ packages/boards/
 packages/drivers/
 └── openeth-smoltcp/       # OpenCores Ethernet MAC driver for smoltcp
 
-packages/zpico/
-├── zpico-platform-esp32/      # WiFi FFI symbols (z_random, z_clock, etc.)
-└── zpico-platform-esp32-qemu/ # QEMU FFI symbols
+packages/core/
+├── nros-platform-esp32/       # WiFi platform primitives (clock, memory, sleep, random)
+└── nros-platform-esp32-qemu/  # QEMU platform primitives
 
 examples/esp32/rust/
 ├── zenoh/

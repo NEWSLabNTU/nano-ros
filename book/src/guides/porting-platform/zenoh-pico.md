@@ -1,13 +1,19 @@
-# Porting Zenoh-pico (rmw-zenoh)
+# Zenoh-pico Symbol Reference
 
-Zenoh-pico requires a comprehensive platform abstraction layer. Your
-`zpico-platform-<name>` crate must provide ~55 `#[unsafe(no_mangle)] extern "C"`
-symbols covering clock, memory, sleep, random, time, threading, and sockets.
+This page documents the ~55 FFI symbols that zenoh-pico requires at link time.
+These symbols are provided by `zpico-platform-shim` (inside `zpico-sys`), which
+forwards each `z_*` / `_z_*` call to the `ConcretePlatform` type alias from
+`nros-platform`. When porting to a new platform, you implement an
+`nros-platform-<name>` crate (see [Implementing a Platform](./implementing-a-platform.md))
+rather than providing these symbols directly.
 
-## Crate structure
+This page serves as a reference for understanding what the shim layer maps
+and what capabilities your `nros-platform-<name>` crate must provide.
+
+## Platform crate structure
 
 ```
-packages/zpico/zpico-platform-<name>/
+packages/core/nros-platform-<name>/
 ├── Cargo.toml
 └── src/
     ├── lib.rs
@@ -73,9 +79,9 @@ u64 smoltcp_clock_now_ms(void);
 
 | Platform | Clock source | File |
 |----------|-------------|------|
-| MPS2-AN385 | CMSDK APB Timer0 (25 MHz) | `zpico-platform-mps2-an385/src/clock.rs` |
-| STM32F4 | ARM DWT cycle counter | `zpico-platform-stm32f4/src/clock.rs` |
-| ESP32-C3 | `esp_hal::time::Instant` | `zpico-platform-esp32/src/clock.rs` |
+| MPS2-AN385 | CMSDK APB Timer0 (25 MHz) | `nros-platform-mps2-an385/src/clock.rs` |
+| STM32F4 | ARM DWT cycle counter | `nros-platform-stm32f4/src/clock.rs` |
+| ESP32-C3 | `esp_hal::time::Instant` | `nros-platform-esp32/src/clock.rs` |
 | FreeRTOS | `xTaskGetTickCount()` | Use OS tick directly |
 | NuttX | `clock_gettime(CLOCK_MONOTONIC)` | POSIX API |
 
@@ -268,15 +274,17 @@ pub unsafe fn clear_network_state();
 
 ## Step-by-step procedure
 
-1. **Create the platform crate** with the structure above
+1. **Create the platform crate** (`nros-platform-<name>`) -- see
+   [Implementing a Platform](./implementing-a-platform.md) for the full guide
 2. **Implement and verify the clock** — this is the #1 cause of porting
    failures. Print `clock_ms()` in a loop and verify monotonic advance
-3. **Implement remaining symbols** — memory, random, sleep, time,
+3. **Implement remaining primitives** — memory, random, sleep, time,
    threading, sockets. Each module is independent
-4. **Create the board crate** — see [Board Crate Implementation](../board-crate.md)
-5. **Add the platform feature** to `nros` with mutual exclusivity checks
-6. **Write an example** — see [Creating Examples](../creating-examples.md)
-7. **Add test infrastructure** — `just test-<name>` recipe + nextest group
+4. **Wire into `nros-platform`** — add a feature and `ConcretePlatform` alias
+5. **Create the board crate** — see [Board Crate Implementation](../board-crate.md)
+6. **Add the platform feature** to `nros` with mutual exclusivity checks
+7. **Write an example** — see [Creating Examples](../creating-examples.md)
+8. **Add test infrastructure** — `just test-<name>` recipe + nextest group
 
 ## Platform capability summary
 

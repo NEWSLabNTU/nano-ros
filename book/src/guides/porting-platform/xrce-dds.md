@@ -1,16 +1,24 @@
-# Porting XRCE-DDS (rmw-xrce)
+# XRCE-DDS Symbol Reference
 
 XRCE-DDS has a minimal platform abstraction layer. It is single-threaded,
 heap-less, and delegates networking to user-provided transport callbacks.
-A bare-metal port requires only 2-3 FFI symbols plus transport callbacks.
+The 2-3 required FFI symbols are provided by `xrce-platform-shim` (inside
+`xrce-sys`), which forwards `uxr_*` calls to the `ConcretePlatform` type
+alias from `nros-platform`. When porting to a new platform, you implement an
+`nros-platform-<name>` crate (see [Implementing a Platform](./implementing-a-platform.md))
+rather than providing these symbols directly.
 
-## Crate structure
+## Platform crate structure
+
+The XRCE-DDS clock symbols are a subset of what the platform crate provides.
+Your `nros-platform-<name>` crate provides the clock primitives and
+`xrce-platform-shim` maps them to the `uxr_*` symbols XRCE-DDS expects.
 
 ```
-packages/xrce/xrce-platform-<name>/
+packages/core/nros-platform-<name>/
 ├── Cargo.toml
 └── src/
-    └── lib.rs          # clock symbols + optional transport
+    └── lib.rs          # clock + other primitives
 ```
 
 `Cargo.toml` must have **zero** `nros-*` dependencies. It may depend on:
@@ -38,7 +46,7 @@ zenoh-pico clock.
 
 | Platform | Clock source | File |
 |----------|-------------|------|
-| MPS2-AN385 | CMSDK APB Timer0 (25 MHz) | `xrce-platform-mps2-an385/src/lib.rs` |
+| MPS2-AN385 | CMSDK APB Timer0 (25 MHz) | `nros-platform-mps2-an385/src/clock.rs` |
 | Zephyr | `k_uptime_get()` | `xrce-zephyr/src/xrce_zephyr.c` |
 | POSIX | `clock_gettime(CLOCK_MONOTONIC)` | Built-in `time.c` from XRCE library |
 
@@ -108,8 +116,10 @@ the clock symbols.
 
 ## Step-by-step procedure
 
-1. **Create the platform crate** — `xrce-platform-<name>/`
-2. **Implement `uxr_millis()` and `uxr_nanos()`** — verify monotonic advance
+1. **Create the platform crate** — `nros-platform-<name>/` (see
+   [Implementing a Platform](./implementing-a-platform.md))
+2. **Implement the clock primitives** — `clock_ms()` and friends; the
+   `xrce-platform-shim` maps these to `uxr_millis()` and `uxr_nanos()`
 3. **Implement `smoltcp_clock_now_ms()`** if using smoltcp transport
 4. **Add a feature to `xrce-sys`** for the new platform if needed
 5. **Choose or implement a transport crate** — reuse `xrce-smoltcp` for
@@ -121,8 +131,8 @@ the clock symbols.
 
 ## Example: bare-metal MPS2-AN385
 
-The simplest reference is `xrce-platform-mps2-an385`, which provides just
-three symbols:
+The simplest reference is `nros-platform-mps2-an385`, which provides clock
+primitives that `xrce-platform-shim` maps to three symbols:
 
 ```rust
 #[unsafe(no_mangle)]

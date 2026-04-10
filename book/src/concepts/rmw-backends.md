@@ -50,7 +50,7 @@ The XRCE-DDS backend uses [Micro-XRCE-DDS-Client](https://github.com/eProsima/Mi
 | **Entity creation**   | Client creates directly        | Client requests, agent creates  |
 | **Transport options** | TCP, UDP, TLS                  | UDP, serial, CAN FD             |
 | **Heap allocation**   | Required (C-level)             | None                            |
-| **Platform symbols**  | ~55 (clock, malloc, sockets, RNG, ...) | ~1 (`clock_gettime`)    |
+| **Platform symbols**  | ~55 (clock, malloc, sockets, RNG, ...) via `zpico-platform-shim` | ~1 (`clock_gettime`) via `xrce-platform-shim` |
 | **ROS 2 interop**     | Via `rmw_zenoh_cpp` + `zenohd` | Via Agent + any DDS RMW         |
 | **Failure mode**      | Router crash = lose routing    | Agent crash = lose connectivity |
 | **C source files**    | ~100+                          | 28                              |

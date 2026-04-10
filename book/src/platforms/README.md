@@ -7,12 +7,17 @@ random number generation -- while the application code remains the same.
 
 ## Platform Architecture
 
-Every embedded platform follows a two-crate pattern:
+Every embedded platform follows a three-crate pattern:
 
-- **`zpico-platform-*`** -- low-level crate that supplies FFI symbols for
-  clocks, memory, networking, and randomness. Has zero nros dependencies.
-- **`nros-*`** (board crate) -- user-facing crate that re-exports the platform
-  primitives and provides a convenience `run()` API for application startup.
+- **`nros-platform-*`** -- platform primitives crate that provides clock,
+  memory, sleep, random, and threading. Has zero nros dependencies.
+- **`zpico-platform-shim` / `xrce-platform-shim`** -- thin FFI shim layers
+  inside `zpico-sys` / `xrce-sys` that map transport-specific symbols
+  (`z_*`, `uxr_*`) to the unified `ConcretePlatform` type alias from
+  `nros-platform`.
+- **`nros-*`** (board crate) -- user-facing crate that depends on the
+  platform crate, initializes hardware, sets up the network stack, and
+  provides a convenience `run()` API for application startup.
 
 POSIX is the exception: it uses the host OS directly and needs no board crate.
 

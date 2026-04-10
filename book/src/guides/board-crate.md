@@ -1,7 +1,7 @@
 # Board Crate Implementation Guide
 
 A board crate is the user-facing entry point for a specific hardware target.
-It wraps the low-level platform crate (`zpico-platform-*`) with a convenient
+It wraps the low-level platform crate (`nros-platform-*`) with a convenient
 API: a `Config` struct, a `run()` function, and hardware initialization logic
 for networking (Ethernet, WiFi, serial).
 
@@ -149,7 +149,7 @@ fn init_ethernet(config: &Config) {
 
     // 6. Register network poll callback
     unsafe {
-        zpico_platform::network::set_network_state(
+        nros_platform::network::set_network_state(
             &mut iface as *mut _,
             &mut sockets as *mut _,
             &mut eth as *mut _ as *mut (),
@@ -348,14 +348,14 @@ The board crate should re-export commonly needed items:
 pub use cortex_m_rt::entry;           // or esp_hal::entry, etc.
 
 // Platform access (for advanced users)
-pub use zpico_platform_<board>;
+pub use nros_platform_<board>;
 
 // Board API
 pub use config::Config;
 pub use node::{init_hardware, run};
 
 // Cycle counter (for profiling)
-pub use zpico_platform_<board>::timing::CycleCounter;
+pub use nros_platform_<board>::timing::CycleCounter;
 
 // Convenience macros
 #[macro_export]

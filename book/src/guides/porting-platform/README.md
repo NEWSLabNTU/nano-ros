@@ -6,20 +6,23 @@ an RTOS or bare-metal environment that nano-ros runs on.
 ## How nano-ros accesses the system
 
 nano-ros core (`nros-node`, `nros-core`, `nros-serdes`, etc.) is `#![no_std]`
-and **has zero platform calls**. All OS/hardware access is delegated to the
-RMW transport backend:
+and **has zero platform calls**. All OS/hardware access is delegated to a
+unified platform layer:
 
 ```
 Application
   └── nros-node            (pure no_std Rust — Executor, Node, pub/sub, actions)
        └── nros-rmw        (trait layer — abstracts transport)
-            ├── nros-rmw-zenoh   → zpico-platform-*   (clock, memory, threading, sockets, ...)
-            └── nros-rmw-xrce    → xrce-platform-*    (clock, transport callbacks)
+            ├── nros-rmw-zenoh   → zpico-sys → zpico-platform-shim → nros-platform → nros-platform-<name>
+            └── nros-rmw-xrce    → xrce-sys  → xrce-platform-shim  → nros-platform → nros-platform-<name>
 ```
 
-When you "port nano-ros to a new platform", you are really porting the
-**transport middleware's platform layer**. The set of required symbols depends
-entirely on which RMW backend you use.
+When you "port nano-ros to a new platform", you create an
+**`nros-platform-<name>` crate** that implements the platform primitives
+(clock, memory, sleep, random, threading). The RMW transport libraries access
+these primitives through thin shim layers inside `zpico-sys` and `xrce-sys`
+that forward FFI symbols (`z_*`, `uxr_*`) to the `ConcretePlatform` type
+alias from `nros-platform`.
 
 ## Comparison of RMW platform requirements
 
@@ -39,17 +42,20 @@ XRCE-DDS is dramatically simpler to port because it is single-threaded, uses
 no heap, and delegates networking to user-provided transport callbacks rather
 than a BSD socket API.
 
-## Two-crate pattern
+## Three-crate pattern
 
-Both backends use the same crate split:
+Every embedded platform uses a three-layer split:
 
 | Crate | Purpose | Dependencies |
 |-------|---------|--------------|
-| `<rmw>-platform-<name>` | `#[unsafe(no_mangle)] extern "C"` FFI symbols | Zero nros dependencies |
-| `nros-<name>` | User-facing board crate (`Config`, `run()`, re-exports) | Platform crate + `nros-node` |
+| `nros-platform-<name>` | Platform primitives (clock, memory, sleep, random, threading) | Zero nros dependencies |
+| `zpico-platform-shim` / `xrce-platform-shim` | FFI symbol mapping (`z_*` / `uxr_*` to `ConcretePlatform`) | Inside `zpico-sys` / `xrce-sys` |
+| `nros-<name>` | User-facing board crate (`Config`, `run()`, re-exports) | `nros-platform-<name>` + `nros-node` |
 
-This keeps the FFI layer reusable across RMW backends and prevents circular
-dependencies.
+The platform crate is RMW-agnostic -- it knows nothing about zenoh-pico or
+XRCE-DDS. The shim layers inside the RMW sys crates map transport-specific
+FFI symbols to the unified `ConcretePlatform` trait. Board crates depend on
+the platform crate for force-linking the symbols into the final binary.
 
 ## Shared steps (both backends)
 
@@ -64,7 +70,8 @@ the same regardless of backend:
    group; see [Platform Porting Pitfalls](../../advanced/platform-porting-pitfalls.md)
    for QEMU-specific rules
 
-## Backend-specific guides
+## Guides
 
-- [Zenoh-pico (rmw-zenoh)](./zenoh-pico.md) — full platform abstraction layer (~55 symbols)
-- [XRCE-DDS (rmw-xrce)](./xrce-dds.md) — minimal clock + transport callbacks (2-3 symbols)
+- [Implementing a Platform](./implementing-a-platform.md) — how to create an `nros-platform-<name>` crate (start here)
+- [Zenoh-pico Symbol Reference](./zenoh-pico.md) — the ~55 FFI symbols mapped by `zpico-platform-shim`
+- [XRCE-DDS Symbol Reference](./xrce-dds.md) — the 2-3 FFI symbols mapped by `xrce-platform-shim`

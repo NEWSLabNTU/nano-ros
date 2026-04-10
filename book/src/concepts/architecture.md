@@ -86,13 +86,19 @@ graph TD
         RMW_Z["nros-rmw-zenoh<br/><i>ZenohSession, keyexpr, liveliness</i>"]
         ZPICO["zpico-sys<br/><i>C shim + zenoh-pico</i>"]
         ZSMOL["zpico-smoltcp<br/><i>TCP/UDP via smoltcp</i>"]
-        ZPLAT["zpico-platform-*<br/><i>clock, malloc, libc stubs</i>"]
+        ZPSHIM["zpico-platform-shim<br/><i>z_* → ConcretePlatform</i>"]
     end
 
     subgraph "XRCE-DDS Backend"
         RMW_X["nros-rmw-xrce<br/><i>XrceSession, entity mgmt</i>"]
         XSYS["xrce-sys<br/><i>Micro-XRCE-DDS FFI</i>"]
         XSMOL["xrce-smoltcp<br/><i>UDP via smoltcp</i>"]
+        XPSHIM["xrce-platform-shim<br/><i>uxr_* → ConcretePlatform</i>"]
+    end
+
+    subgraph "Platform Layer"
+        NPLAT["nros-platform<br/><i>PlatformOps trait + ConcretePlatform alias</i>"]
+        NPLATIMPL["nros-platform-*<br/><i>clock, memory, sleep, random, threading</i>"]
     end
 
     subgraph "Board Crates"
@@ -131,14 +137,19 @@ graph TD
     RMW_Z --> RMW
     RMW_Z --> ZPICO
     ZPICO --> ZSMOL
-    ZPICO --> ZPLAT
+    ZPICO --> ZPSHIM
+    ZPSHIM --> NPLAT
 
     RMW_X --> RMW
     RMW_X --> XSYS
     XSYS --> XSMOL
+    XSYS --> XPSHIM
+    XPSHIM --> NPLAT
+
+    NPLAT --> NPLATIMPL
 
     BOARD --> NROS
-    BOARD --> ZPLAT
+    BOARD --> NPLATIMPL
     BOARD --> ZSMOL
     BOARD --> DRV
 
@@ -396,7 +407,7 @@ graph TD
         RUN["run(config, |config| { ... })"]
         HW["Hardware Init<br/><i>Ethernet driver, clocks</i>"]
         NET["Network Stack<br/><i>smoltcp / lwIP / NetX / NuttX sockets</i>"]
-        PLAT["Platform Primitives<br/><i>zpico-platform-* symbols</i>"]
+        PLAT["Platform Primitives<br/><i>nros-platform-* (clock, memory, sleep, random, threading)</i>"]
         SEED["RNG Seed<br/><i>IP-based for unique Zenoh session IDs</i>"]
     end
 
