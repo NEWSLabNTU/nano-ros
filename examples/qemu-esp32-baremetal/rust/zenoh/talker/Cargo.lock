@@ -1098,6 +1098,7 @@ dependencies = [
  "openeth-smoltcp",
  "portable-atomic",
  "smoltcp",
+ "zpico-platform-shim",
  "zpico-smoltcp",
 ]
 

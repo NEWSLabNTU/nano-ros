@@ -704,6 +704,7 @@ dependencies = [
  "smoltcp",
  "stm32-eth",
  "stm32f4xx-hal",
+ "zpico-platform-shim",
  "zpico-smoltcp",
 ]
 

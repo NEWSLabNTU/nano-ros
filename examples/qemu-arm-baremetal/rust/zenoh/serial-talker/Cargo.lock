@@ -443,6 +443,7 @@ dependencies = [
  "nros-platform",
  "nros-platform-mps2-an385",
  "panic-semihosting",
+ "zpico-platform-shim",
  "zpico-serial",
 ]
 

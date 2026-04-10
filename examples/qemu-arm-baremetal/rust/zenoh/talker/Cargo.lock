@@ -456,6 +456,7 @@ dependencies = [
  "nros-platform-mps2-an385",
  "panic-semihosting",
  "smoltcp",
+ "zpico-platform-shim",
  "zpico-smoltcp",
 ]
 

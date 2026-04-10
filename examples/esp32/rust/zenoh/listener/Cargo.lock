@@ -1188,6 +1188,7 @@ dependencies = [
  "nros-platform-esp32",
  "portable-atomic",
  "smoltcp",
+ "zpico-platform-shim",
  "zpico-smoltcp",
 ]
 
