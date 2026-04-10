@@ -20,6 +20,11 @@ jobs:
         with:
           mdbook-version: "latest"
 
+      - name: Install mdbook-mermaid
+        run: |
+          curl -sSL https://github.com/badboy/mdbook-mermaid/releases/download/v0.17.0/mdbook-mermaid-v0.17.0-x86_64-unknown-linux-gnu.tar.gz \
+            | tar xz -C /usr/local/bin
+
       - name: Build book
         env:
           MDBOOK_OUTPUT__HTML__SITE_URL: /nano-ros-book/
