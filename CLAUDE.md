@@ -253,14 +253,14 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 41 | Iron type hash support | Not Started |
 | 64 | Embedded transport tuning guide | In Progress (64.1 done, 64.2 remaining) |
 | 65 | .env.example + environment docs | In Progress (35/36 done) |
-| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1–69.3, 69.5–69.9 done; 69.4 remaining) |
+| 69 | Cross-platform C/C++ examples + integration tests | In Progress (69.1–69.3, 69.5–69.9 done; 69.4 builds pass, E2E timeout) |
 | 71 | Refactor dust-dds to platform-agnostic + bare-metal DDS | Not Started |
 | 73 | Memory efficiency + zero-copy receive | Complete (SUBSCRIBER_BUFFERS removal deferred) |
 | 75 | Relocatable CMake install convention for C/C++ | Complete |
 | 76 | RTOS scheduling configuration via config.toml | Not Started |
 | 77 | Async action client (eliminate blocking zpico_get) | In Progress (77.1–77.5 done) |
 | 78 | Colcon build type (`nros.<lang>.<platform>`) | Not Started |
-| 79 | Unified platform abstraction layer | In Progress (79.1–79.14 done; 79.10 docs remaining) |
+| 79 | Unified platform abstraction layer | In Progress (79.1–79.14 done; 79.10 docs + 79.15 ThreadX shim remaining) |
 
 ## Quick Reference
 

@@ -95,7 +95,7 @@ C examples:
 - [x] 69.1 -- FreeRTOS C examples + integration tests
 - [x] 69.2 -- ThreadX Linux C examples + integration tests
 - [x] 69.3 -- ThreadX RISC-V QEMU C examples + integration tests
-- [ ] 69.4 -- NuttX C integration tests (examples already exist)
+- [ ] 69.4 -- NuttX C integration tests (build tests pass; E2E tests timeout — z_open hang)
 
 C++ examples (4 per platform: talker, listener, service-server, service-client;
 action examples deferred until `nros-cpp` gains `ActionServer`/`ActionClient`):
@@ -164,10 +164,11 @@ Add 6 C examples under `examples/qemu-riscv64-threadx/c/zenoh/`. Cross-compiles 
 
 The 6 NuttX C examples already exist under `examples/qemu-arm-nuttx/c/zenoh/`. Add integration tests.
 
-- [ ] Add NuttX C build tests to `nuttx_qemu.rs` (build all 6 via NuttX Makefile)
-- [ ] Add NuttX C E2E pub/sub test (`test_nuttx_c_pubsub_e2e`)
-- [ ] Add NuttX C E2E service test (`test_nuttx_c_service_e2e`)
-- [ ] Add NuttX C E2E action test (`test_nuttx_c_action_e2e`)
+- [x] Add NuttX C build tests to `nuttx_qemu.rs` (all 6 build: talker, listener, service-server/client, action-server/client)
+- [x] Fix `nuttx_build_example()` to pass generated .c sources via `APP_EXTRA_SOURCES` env var to build.rs
+- [ ] Add NuttX C E2E pub/sub test (`test_nuttx_c_pubsub_e2e`) — currently times out (z_open hang on ARM QEMU)
+- [ ] Add NuttX C E2E service test (`test_nuttx_c_service_e2e`) — same z_open hang
+- [ ] Add NuttX C E2E action test (`test_nuttx_c_action_e2e`) — same z_open hang
 
 ### 69.5 -- FreeRTOS C++ examples + integration tests
 
