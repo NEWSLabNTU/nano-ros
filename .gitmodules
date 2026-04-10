@@ -27,7 +27,7 @@
 	url = https://github.com/eclipse-threadx/threadx.git
 [submodule "third-party/threadx/netxduo"]
 	path = third-party/threadx/netxduo
-	url = https://github.com/eclipse-threadx/netxduo.git
+	url = https://github.com/NEWSLabNTU/netxduo.git
 [submodule "third-party/esp32/qemu"]
 	path = third-party/esp32/qemu
 	url = https://github.com/espressif/qemu.git
