@@ -1369,9 +1369,9 @@ fn build_zenoh_pico_freertos(
     // Common system sources (shared across all platforms)
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
-    // FreeRTOS platform sources (uses C macros for semaphore API — can't
-    // go through Rust FFI shim, so system.c is kept for FreeRTOS)
-    build.file(src_dir.join("system/freertos/system.c"));
+    // FreeRTOS platform sources
+    // system.c skipped — platform symbols provided by zpico-platform-shim
+    // via nros-platform-freertos (calls real xQueue* functions, not macros).
     build.file(src_dir.join("system/freertos/lwip/network.c"));
 
     // Shim (high-level API wrapper)

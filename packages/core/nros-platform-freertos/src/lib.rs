@@ -221,7 +221,7 @@ impl FreeRtosPlatform {
     // -- Mutex (recursive) --
 
     pub fn mutex_init(m: *mut c_void) -> i8 {
-        let handle = unsafe { ffi::xSemaphoreCreateRecursiveMutex() };
+        let handle = ffi::create_recursive_mutex();
         if handle.is_null() {
             return -1;
         }
@@ -232,26 +232,26 @@ impl FreeRtosPlatform {
     pub fn mutex_drop(m: *mut c_void) -> i8 {
         let handle = unsafe { *(m as *const *mut c_void) };
         if !handle.is_null() {
-            unsafe { ffi::vSemaphoreDelete(handle) }
+            ffi::semaphore_delete(handle)
         };
         0
     }
 
     pub fn mutex_lock(m: *mut c_void) -> i8 {
         let handle = unsafe { *(m as *const *mut c_void) };
-        let ret = unsafe { ffi::xSemaphoreTakeRecursive(handle, u32::MAX) };
+        let ret = ffi::take_recursive(handle, u32::MAX);
         if ret == 1 { 0 } else { -1 }
     }
 
     pub fn mutex_try_lock(m: *mut c_void) -> i8 {
         let handle = unsafe { *(m as *const *mut c_void) };
-        let ret = unsafe { ffi::xSemaphoreTakeRecursive(handle, 0) };
+        let ret = ffi::take_recursive(handle, 0);
         if ret == 1 { 0 } else { -1 }
     }
 
     pub fn mutex_unlock(m: *mut c_void) -> i8 {
         let handle = unsafe { *(m as *const *mut c_void) };
-        let ret = unsafe { ffi::xSemaphoreGiveRecursive(handle) };
+        let ret = ffi::give_recursive(handle);
         if ret == 1 { 0 } else { -1 }
     }
 
@@ -276,7 +276,7 @@ impl FreeRtosPlatform {
     // -- Condition variables (semaphore-based emulation) --
 
     pub fn condvar_init(cv: *mut c_void) -> i8 {
-        let sem = unsafe { ffi::xSemaphoreCreateCounting(32, 0) };
+        let sem = ffi::create_counting_semaphore(32, 0);
         if sem.is_null() {
             return -1;
         }
@@ -287,14 +287,14 @@ impl FreeRtosPlatform {
     pub fn condvar_drop(cv: *mut c_void) -> i8 {
         let sem = unsafe { *(cv as *const *mut c_void) };
         if !sem.is_null() {
-            unsafe { ffi::vSemaphoreDelete(sem) }
+            ffi::semaphore_delete(sem)
         };
         0
     }
 
     pub fn condvar_signal(cv: *mut c_void) -> i8 {
         let sem = unsafe { *(cv as *const *mut c_void) };
-        unsafe { ffi::xSemaphoreGive(sem) };
+        ffi::semaphore_give(sem);
         0
     }
 
@@ -306,7 +306,7 @@ impl FreeRtosPlatform {
     pub fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8 {
         let sem = unsafe { *(cv as *const *mut c_void) };
         Self::mutex_unlock(m);
-        unsafe { ffi::xSemaphoreTake(sem, u32::MAX) };
+        ffi::semaphore_take(sem, u32::MAX);
         Self::mutex_lock(m);
         0
     }
@@ -316,7 +316,7 @@ impl FreeRtosPlatform {
         let now = Self::clock_ms();
         let timeout = abstime.saturating_sub(now) as u32;
         Self::mutex_unlock(m);
-        let ret = unsafe { ffi::xSemaphoreTake(sem, timeout) };
+        let ret = ffi::semaphore_take(sem, timeout);
         Self::mutex_lock(m);
         if ret == 1 { 0 } else { -1 } // -1 = timeout
     }

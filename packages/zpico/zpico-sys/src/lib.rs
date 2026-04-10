@@ -23,10 +23,10 @@ extern crate std;
 // On POSIX/RTOS, `extern crate` suffices. On bare-metal, the board crate must
 // also directly depend on zpico-platform-shim for the embedded linker to
 // include the symbols (see board crate Cargo.toml).
-// Force-link: POSIX/NuttX use the shim for platform symbols.
-// FreeRTOS/ThreadX keep their own C system.c (use C macros for API).
+// Force-link: POSIX/NuttX/FreeRTOS use the shim for platform symbols.
+// ThreadX keeps its own C system.c (uses C macros for API).
 // Bare-metal board crates have their own extern crate for the embedded linker.
-#[cfg(any(feature = "posix", feature = "nuttx"))]
+#[cfg(any(feature = "posix", feature = "nuttx", feature = "freertos"))]
 extern crate zpico_platform_shim;
 
 // Note: The smoltcp platform uses a custom bump allocator for C FFI (zenoh-pico),

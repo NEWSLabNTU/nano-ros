@@ -48,6 +48,6 @@ critical-section = "1"
 [features]
 default = ["wifi"]
 # WiFi transport via esp-radio + smoltcp TCP/IP stack
-wifi = ["dep:zpico-smoltcp", "dep:esp-rtos", "dep:esp-radio", "dep:smoltcp"]
+wifi = ["dep:zpico-smoltcp", "dep:esp-rtos", "dep:esp-radio", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
 # Serial transport via zenoh-pico built-in ESP-IDF serial (no extra deps)
 serial = []
