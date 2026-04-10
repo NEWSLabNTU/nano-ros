@@ -46,6 +46,7 @@
 
 - [Rust API](./reference/rust-api.md)
 - [C API](./reference/c-api.md)
+- [Platform API](./reference/platform-api.md)
 - [Environment Variables](./reference/environment-variables.md)
 - [Example Configuration (config.toml)](./reference/config-toml.md)
 - [Embedded Tuning](./reference/embedded-tuning.md)
