@@ -17,6 +17,8 @@ active = []
 smoltcp = ["socket-stubs"]
 # Provide _z_socket_* stubs (bare-metal only — RTOS network.c provides these)
 socket-stubs = []
+# Skip _z_task_* symbols (ThreadX provides them in C due to struct layout dependency)
+skip-task-symbols = []
 
 [dependencies]
 nros-platform = { path = "../../core/nros-platform", default-features = false }

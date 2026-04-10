@@ -223,6 +223,10 @@ pub struct ZCondvar {
     _opaque: [u8; 64],
 }
 
+// Task symbols are skipped for ThreadX — provided by C task.c instead,
+// because _z_task_t struct layout (TX_THREAD + embedded stack) is needed
+// for tx_thread_create() and the trampoline.
+#[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_init(
     task: *mut ZTask,
@@ -233,26 +237,31 @@ pub extern "C" fn _z_task_init(
     P::task_init(task as *mut c_void, attr as *mut c_void, fun, arg)
 }
 
+#[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_join(task: *mut ZTask) -> i8 {
     P::task_join(task as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_detach(task: *mut ZTask) -> i8 {
     P::task_detach(task as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_cancel(task: *mut ZTask) -> i8 {
     P::task_cancel(task as *mut c_void)
 }
 
+#[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_exit() {
     P::task_exit()
 }
 
+#[cfg(not(feature = "skip-task-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn _z_task_free(task: *mut *mut ZTask) {
     P::task_free(task as *mut *mut c_void)

@@ -9,7 +9,10 @@ description = "ThreadX Linux simulation board crate for nros (NetX Duo + BSD soc
 name = "nros_threadx_linux"
 
 [dependencies]
-# No dependencies — std provides println!, process::exit()
+# nros-platform-threadx symbols are linked via nros → nros-platform → nros-platform-threadx.
+# Direct dependency ensures the FFI symbols (nros_platform_threadx_set_byte_pool etc.)
+# are available even if the board crate is used without nros.
+nros-platform-threadx = { path = "../../core/nros-platform-threadx" }
 
 [build-dependencies]
 cc = "1"

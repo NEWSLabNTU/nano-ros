@@ -9,7 +9,7 @@ description = "ThreadX QEMU RISC-V 64-bit virt board crate for nros (NetX Duo + 
 name = "nros_threadx_qemu_riscv64"
 
 [dependencies]
-# No dependencies — no_std, output via UART FFI
+nros-platform-threadx = { path = "../../core/nros-platform-threadx" }
 
 [build-dependencies]
 cc = "1"

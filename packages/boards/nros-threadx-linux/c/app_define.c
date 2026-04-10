@@ -17,7 +17,10 @@
 /* ---- TAP network driver (packages/drivers/tap-netx) ---- */
 #include "nx_tap_network_driver.h"
 
-/* ---- zpico-sys expects this global for ThreadX memory allocation ---- */
+/* ---- Platform byte pool + RNG registration ---- */
+extern void nros_platform_threadx_set_byte_pool(TX_BYTE_POOL *pool);
+extern void nros_platform_threadx_seed_rng(uint32_t value);
+/* Legacy: zpico-sys C system.c reads this global (CMake path only) */
 TX_BYTE_POOL *zpico_threadx_byte_pool;
 
 /* ---- Sizing constants ---- */
@@ -106,10 +109,11 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
-    /* Export byte pool for zpico-sys ThreadX memory allocator */
+    /* Register byte pool with both C global and Rust platform */
     zpico_threadx_byte_pool = &byte_pool;
+    nros_platform_threadx_set_byte_pool(&byte_pool);
 
-    /* Seed RNG with IP-based value (same pattern as FreeRTOS board crate) */
+    /* Seed RNG (C srand + Rust platform) */
     {
         uint32_t seed = ((uint32_t)cfg_ip[0] << 24) | ((uint32_t)cfg_ip[1] << 16)
                       | ((uint32_t)cfg_ip[2] << 8)  | (uint32_t)cfg_ip[3];
@@ -117,6 +121,7 @@ void tx_application_define(void *first_unused_memory)
         seed ^= ((uint32_t)cfg_mac[4] << 8) | (uint32_t)cfg_mac[5];
         if (seed == 0) seed = 1;
         srand(seed);
+        nros_platform_threadx_seed_rng(seed);
     }
 
     /* Initialize the NetX system */

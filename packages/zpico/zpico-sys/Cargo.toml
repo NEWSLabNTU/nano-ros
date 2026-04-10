@@ -22,9 +22,9 @@ default = []
 posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 zephyr = []
 bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/socket-stubs"]
-freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+freertos = []
 nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
-threadx = []
+threadx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-task-symbols"]
 # Protocol link features (bare-metal only — controls Z_FEATURE_LINK_* flags)
 # Each feature enables the corresponding protocol code in zenoh-pico at compile time.
 # Transport crates activate the features they implement; Cargo unifies them.

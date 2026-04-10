@@ -24,7 +24,9 @@ extern int board_init(void);
 /* ---- UART output for diagnostics ---- */
 extern void uart_puts(const char *s);
 
-/* ---- zpico-sys expects this global for ThreadX memory allocation ---- */
+/* ---- Platform byte pool + RNG registration ---- */
+extern void nros_platform_threadx_set_byte_pool(TX_BYTE_POOL *pool);
+extern void nros_platform_threadx_seed_rng(uint32_t value);
 TX_BYTE_POOL *zpico_threadx_byte_pool;
 
 /* ---- Sizing constants ---- */
@@ -130,15 +132,11 @@ void tx_application_define(void *first_unused_memory)
         return;
     }
 
-    /* Export byte pool for zpico-sys ThreadX memory allocator */
+    /* Register byte pool with both C global and Rust platform */
     zpico_threadx_byte_pool = &byte_pool;
+    nros_platform_threadx_set_byte_pool(&byte_pool);
 
-    /* Seed the C stdlib RNG with a value unique to this node.
-     * Without this, rand() starts from seed 1 on every boot, causing
-     * all QEMU instances to generate identical zenoh-pico session IDs
-     * (16 bytes from z_random_fill → rand()). zenohd rejects duplicate
-     * session IDs, so the second QEMU's z_open() always fails.
-     */
+    /* Seed RNG (C srand + Rust platform) */
     {
         uint32_t seed = ((uint32_t)cfg_ip[0] << 24) | ((uint32_t)cfg_ip[1] << 16)
                       | ((uint32_t)cfg_ip[2] << 8)  | (uint32_t)cfg_ip[3];
@@ -146,6 +144,7 @@ void tx_application_define(void *first_unused_memory)
         seed ^= ((uint32_t)cfg_mac[4] << 8) | (uint32_t)cfg_mac[5];
         if (seed == 0) seed = 1;
         srand(seed);
+        nros_platform_threadx_seed_rng(seed);
     }
 
     /* Initialize the NetX system */

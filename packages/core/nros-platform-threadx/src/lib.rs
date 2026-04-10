@@ -36,6 +36,12 @@ pub fn set_byte_pool(pool: *mut c_void) {
     BYTE_POOL.store(pool, Ordering::Release);
 }
 
+/// C-callable version for app_define.c to call during ThreadX init.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_platform_threadx_set_byte_pool(pool: *mut c_void) {
+    set_byte_pool(pool);
+}
+
 // ============================================================================
 // Clock — tx_time_get
 // ============================================================================
@@ -67,7 +73,7 @@ impl ThreadxPlatform {
             return core::ptr::null_mut();
         }
         let mut ptr: *mut c_void = core::ptr::null_mut();
-        let ret = unsafe { ffi::tx_byte_allocate(pool, &mut ptr, size as u32, ffi::TX_NO_WAIT) };
+        let ret = unsafe { ffi::tx_byte_allocate(pool, &mut ptr, size as u32, ffi::TX_WAIT_FOREVER) };
         if ret == ffi::TX_SUCCESS {
             ptr
         } else {
@@ -127,6 +133,12 @@ static mut RNG_STATE: u32 = 0x12345678;
 
 pub fn seed(value: u32) {
     unsafe { RNG_STATE = if value == 0 { 0x12345678 } else { value } }
+}
+
+/// C-callable version for app_define.c to seed the platform RNG.
+#[unsafe(no_mangle)]
+pub extern "C" fn nros_platform_threadx_seed_rng(value: u32) {
+    seed(value);
 }
 
 fn next_u32() -> u32 {
