@@ -1368,7 +1368,8 @@ fn build_zenoh_pico_freertos(
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
     // FreeRTOS platform sources
-    build.file(src_dir.join("system/freertos/system.c"));
+    // system.c skipped — platform symbols provided by zpico-platform-shim
+    // via nros-platform-freertos (uses #[repr(C)] types matching C struct layouts).
     build.file(src_dir.join("system/freertos/lwip/network.c"));
 
     // Shim (high-level API wrapper)

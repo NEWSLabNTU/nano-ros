@@ -250,6 +250,13 @@ impl PlatformClock for CffiPlatform {
   - [x] 79.14.5 — Create `nros-platform-freertos` crate (FreeRTOS task/mutex/alloc via extern "C" FFI)
   - [x] 79.14.6 — Create `nros-platform-nuttx` crate (type alias to PosixPlatform)
   - [x] 79.14.7 — Create `nros-platform-threadx` crate (ThreadX thread/mutex/byte_pool via extern "C" FFI)
+- [ ] 79.16 — Fix nros-platform-freertos struct layout mismatch
+  - [ ] 79.16.1 — Add `#[repr(C)]` types matching FreeRTOS `_z_task_t`, `_z_condvar_t` layouts
+  - [ ] 79.16.2 — Add event group FFI (`xEventGroupCreate`, `xEventGroupSetBits`, `xEventGroupWaitBits`)
+  - [ ] 79.16.3 — Implement task wrapper (store fun/arg in struct, signal join_event, self-suspend)
+  - [ ] 79.16.4 — Implement condvar with waiter counting (mutex-protected, matching C semantics)
+  - [ ] 79.16.5 — Activate shim for FreeRTOS in zpico-sys + skip system.c
+  - [ ] 79.16.6 — Verify Rust FreeRTOS E2E tests pass (pubsub, service, action)
 - [x] 79.15 — Migrate ThreadX zenoh-pico from C system.c to Rust shim
   - [x] 79.15.1 — Wire `zpico-platform-shim` for ThreadX (activate shim in zpico-sys when `threadx` feature enabled)
   - [x] 79.15.2 — Delete `c/platform/threadx/system.c`; task creation kept in C `task.c` (struct layout dependency)

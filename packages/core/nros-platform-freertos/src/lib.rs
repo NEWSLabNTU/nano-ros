@@ -18,6 +18,7 @@
 use core::ffi::c_void;
 
 mod ffi;
+mod types;
 
 /// Zero-sized type implementing all platform methods for FreeRTOS.
 pub struct FreeRtosPlatform;
@@ -170,13 +171,37 @@ impl FreeRtosPlatform {
 }
 
 // ============================================================================
-// Threading — FreeRTOS tasks, recursive mutexes, condvar emulation
+// Threading — FreeRTOS tasks, recursive mutexes, condvar
+//
+// Uses #[repr(C)] types from types.rs matching zenoh-pico's FreeRTOS structs.
 // ============================================================================
+
+/// Task wrapper trampoline — matches zenoh-pico's z_task_wrapper behavior.
+/// Reads fun/arg from the _z_task_t struct, runs the function, signals
+/// completion via event group, then suspends (deleted by joiner).
+unsafe extern "C" fn task_wrapper(arg: *mut c_void) {
+    let task = arg as *mut types::ZTask;
+    unsafe {
+        // Run the task function
+        if let Some(fun) = (*task).fun {
+            fun((*task).arg);
+        }
+        // Signal the joiner that the task has finished
+        ffi::event_group_set_bits((*task).join_event, 1);
+        // Suspend self — joiner will delete us (avoids race with vTaskDelete)
+        ffi::task_suspend_current();
+    }
+}
+
+/// Default task attributes (matches zenoh-pico's z_default_task_attr)
+const DEFAULT_TASK_NAME: &core::ffi::CStr = c"nros";
+const DEFAULT_PRIORITY: u32 = 3; // configMAX_PRIORITIES / 2
+const DEFAULT_STACK_DEPTH: u32 = 5120;
 
 impl FreeRtosPlatform {
     pub fn task_init(
         task: *mut c_void,
-        _attr: *mut c_void,
+        attr: *mut c_void,
         entry: Option<unsafe extern "C" fn(*mut c_void) -> *mut c_void>,
         arg: *mut c_void,
     ) -> i8 {
@@ -184,140 +209,237 @@ impl FreeRtosPlatform {
             Some(f) => f,
             None => return -1,
         };
-        // Wrapper: FreeRTOS task function has different signature (no return)
-        // We store the real entry+arg and use a trampoline.
-        // For simplicity, cast directly — the return value is ignored by FreeRTOS.
-        let ret = unsafe {
-            ffi::xTaskCreate(
-                core::mem::transmute::<
-                    unsafe extern "C" fn(*mut c_void) -> *mut c_void,
-                    unsafe extern "C" fn(*mut c_void),
-                >(entry),
-                c"nros".as_ptr(),
-                4096,
-                arg,
-                4, // tskIDLE_PRIORITY + 4
-                task as *mut *mut c_void,
-            )
-        };
-        if ret == 1 { 0 } else { -1 } // pdPASS = 1
+
+        let t = task as *mut types::ZTask;
+        unsafe {
+            // Store fun/arg in the struct (task_wrapper reads them)
+            (*t).fun = Some(entry);
+            (*t).arg = arg;
+
+            // Create join event group
+            (*t).join_event = ffi::event_group_create();
+            if (*t).join_event.is_null() {
+                return -1;
+            }
+
+            // Read attributes (or use defaults)
+            let (name, priority, stack_depth) = if !attr.is_null() {
+                let a = attr as *const types::ZTaskAttr;
+                ((*a).name, (*a).priority, (*a).stack_depth as u32)
+            } else {
+                (DEFAULT_TASK_NAME.as_ptr() as *const u8, DEFAULT_PRIORITY, DEFAULT_STACK_DEPTH)
+            };
+
+            // Create the task — pass the ZTask struct as arg to task_wrapper
+            let ret = ffi::xTaskCreate(
+                task_wrapper,
+                name as *const core::ffi::c_char,
+                stack_depth,
+                task, // task_wrapper receives the ZTask struct
+                priority,
+                &mut (*t).handle,
+            );
+            if ret != 1 {
+                // pdPASS = 1
+                ffi::event_group_delete((*t).join_event);
+                return -1;
+            }
+        }
+        0
     }
 
-    pub fn task_join(_task: *mut c_void) -> i8 {
+    pub fn task_join(task: *mut c_void) -> i8 {
+        let t = task as *mut types::ZTask;
+        unsafe {
+            // Wait for task to signal completion
+            ffi::event_group_wait_bits((*t).join_event, 1, u32::MAX);
+
+            // Delete the suspended task
+            ffi::enter_critical();
+            if !(*t).handle.is_null() {
+                ffi::vTaskDelete((*t).handle);
+                (*t).handle = core::ptr::null_mut();
+            }
+            ffi::exit_critical();
+        }
         0
     }
+
     pub fn task_detach(_task: *mut c_void) -> i8 {
-        0
+        -1 // Not supported on FreeRTOS (same as C system.c)
     }
+
     pub fn task_cancel(task: *mut c_void) -> i8 {
-        unsafe { ffi::vTaskDelete(task) };
+        let t = task as *mut types::ZTask;
+        unsafe {
+            ffi::enter_critical();
+            if !(*t).handle.is_null() {
+                ffi::vTaskDelete((*t).handle);
+                (*t).handle = core::ptr::null_mut();
+            }
+            ffi::exit_critical();
+            // Signal joiners
+            ffi::event_group_set_bits((*t).join_event, 1);
+        }
         0
     }
+
     pub fn task_exit() {
         unsafe { ffi::vTaskDelete(core::ptr::null_mut()) };
     }
-    pub fn task_free(_task: *mut *mut c_void) {}
+
+    pub fn task_free(task: *mut *mut c_void) {
+        unsafe {
+            let t = *task as *mut types::ZTask;
+            if !t.is_null() {
+                ffi::event_group_delete((*t).join_event);
+                Self::dealloc(t as *mut c_void);
+                *task = core::ptr::null_mut();
+            }
+        }
+    }
 
     // -- Mutex (recursive) --
+    // _z_mutex_t = { SemaphoreHandle_t handle } — single field at offset 0
 
     pub fn mutex_init(m: *mut c_void) -> i8 {
+        let mx = m as *mut types::ZMutex;
         let handle = ffi::create_recursive_mutex();
         if handle.is_null() {
             return -1;
         }
-        unsafe { *(m as *mut *mut c_void) = handle };
+        unsafe { (*mx).handle = handle };
         0
     }
 
     pub fn mutex_drop(m: *mut c_void) -> i8 {
-        let handle = unsafe { *(m as *const *mut c_void) };
+        let mx = m as *const types::ZMutex;
+        let handle = unsafe { (*mx).handle };
         if !handle.is_null() {
-            ffi::semaphore_delete(handle)
-        };
+            ffi::semaphore_delete(handle);
+        }
         0
     }
 
     pub fn mutex_lock(m: *mut c_void) -> i8 {
-        let handle = unsafe { *(m as *const *mut c_void) };
-        let ret = ffi::take_recursive(handle, u32::MAX);
+        let mx = m as *const types::ZMutex;
+        let ret = ffi::take_recursive(unsafe { (*mx).handle }, u32::MAX);
         if ret == 1 { 0 } else { -1 }
     }
 
     pub fn mutex_try_lock(m: *mut c_void) -> i8 {
-        let handle = unsafe { *(m as *const *mut c_void) };
-        let ret = ffi::take_recursive(handle, 0);
+        let mx = m as *const types::ZMutex;
+        let ret = ffi::take_recursive(unsafe { (*mx).handle }, 0);
         if ret == 1 { 0 } else { -1 }
     }
 
     pub fn mutex_unlock(m: *mut c_void) -> i8 {
-        let handle = unsafe { *(m as *const *mut c_void) };
-        let ret = ffi::give_recursive(handle);
+        let mx = m as *const types::ZMutex;
+        let ret = ffi::give_recursive(unsafe { (*mx).handle });
         if ret == 1 { 0 } else { -1 }
     }
 
-    // -- Recursive mutex (same as mutex on FreeRTOS) --
+    // -- Recursive mutex (same implementation on FreeRTOS) --
 
-    pub fn mutex_rec_init(m: *mut c_void) -> i8 {
-        Self::mutex_init(m)
-    }
-    pub fn mutex_rec_drop(m: *mut c_void) -> i8 {
-        Self::mutex_drop(m)
-    }
-    pub fn mutex_rec_lock(m: *mut c_void) -> i8 {
-        Self::mutex_lock(m)
-    }
-    pub fn mutex_rec_try_lock(m: *mut c_void) -> i8 {
-        Self::mutex_try_lock(m)
-    }
-    pub fn mutex_rec_unlock(m: *mut c_void) -> i8 {
-        Self::mutex_unlock(m)
-    }
+    pub fn mutex_rec_init(m: *mut c_void) -> i8 { Self::mutex_init(m) }
+    pub fn mutex_rec_drop(m: *mut c_void) -> i8 { Self::mutex_drop(m) }
+    pub fn mutex_rec_lock(m: *mut c_void) -> i8 { Self::mutex_lock(m) }
+    pub fn mutex_rec_try_lock(m: *mut c_void) -> i8 { Self::mutex_try_lock(m) }
+    pub fn mutex_rec_unlock(m: *mut c_void) -> i8 { Self::mutex_unlock(m) }
 
-    // -- Condition variables (semaphore-based emulation) --
+    // -- Condition variables (matching C system.c semantics) --
+    // _z_condvar_t = { SemaphoreHandle_t mutex, SemaphoreHandle_t sem, int waiters }
 
     pub fn condvar_init(cv: *mut c_void) -> i8 {
-        let sem = ffi::create_counting_semaphore(32, 0);
-        if sem.is_null() {
-            return -1;
+        let c = cv as *mut types::ZCondvar;
+        unsafe {
+            let mutex = ffi::create_mutex();
+            let sem = ffi::create_counting_semaphore(u32::MAX, 0);
+            if mutex.is_null() || sem.is_null() {
+                if !mutex.is_null() { ffi::semaphore_delete(mutex); }
+                if !sem.is_null() { ffi::semaphore_delete(sem); }
+                return -1;
+            }
+            (*c).mutex = mutex;
+            (*c).sem = sem;
+            (*c).waiters = 0;
         }
-        unsafe { *(cv as *mut *mut c_void) = sem };
         0
     }
 
     pub fn condvar_drop(cv: *mut c_void) -> i8 {
-        let sem = unsafe { *(cv as *const *mut c_void) };
-        if !sem.is_null() {
-            ffi::semaphore_delete(sem)
-        };
+        let c = cv as *const types::ZCondvar;
+        unsafe {
+            ffi::semaphore_delete((*c).sem);
+            ffi::semaphore_delete((*c).mutex);
+        }
         0
     }
 
     pub fn condvar_signal(cv: *mut c_void) -> i8 {
-        let sem = unsafe { *(cv as *const *mut c_void) };
-        ffi::semaphore_give(sem);
+        let c = cv as *mut types::ZCondvar;
+        unsafe {
+            ffi::semaphore_take((*c).mutex, u32::MAX);
+            if (*c).waiters > 0 {
+                ffi::semaphore_give((*c).sem);
+                (*c).waiters -= 1;
+            }
+            ffi::semaphore_give((*c).mutex);
+        }
         0
     }
 
     pub fn condvar_signal_all(cv: *mut c_void) -> i8 {
-        // Signal multiple waiters (best-effort with counting semaphore)
-        Self::condvar_signal(cv)
+        let c = cv as *mut types::ZCondvar;
+        unsafe {
+            ffi::semaphore_take((*c).mutex, u32::MAX);
+            while (*c).waiters > 0 {
+                ffi::semaphore_give((*c).sem);
+                (*c).waiters -= 1;
+            }
+            ffi::semaphore_give((*c).mutex);
+        }
+        0
     }
 
     pub fn condvar_wait(cv: *mut c_void, m: *mut c_void) -> i8 {
-        let sem = unsafe { *(cv as *const *mut c_void) };
-        Self::mutex_unlock(m);
-        ffi::semaphore_take(sem, u32::MAX);
-        Self::mutex_lock(m);
+        let c = cv as *mut types::ZCondvar;
+        unsafe {
+            // Increment waiter count
+            ffi::semaphore_take((*c).mutex, u32::MAX);
+            (*c).waiters += 1;
+            ffi::semaphore_give((*c).mutex);
+
+            // Release the caller's mutex and wait on the semaphore
+            Self::mutex_unlock(m);
+            ffi::semaphore_take((*c).sem, u32::MAX);
+            Self::mutex_lock(m);
+        }
         0
     }
 
     pub fn condvar_wait_until(cv: *mut c_void, m: *mut c_void, abstime: u64) -> i8 {
-        let sem = unsafe { *(cv as *const *mut c_void) };
+        let c = cv as *mut types::ZCondvar;
         let now = Self::clock_ms();
         let timeout = abstime.saturating_sub(now) as u32;
-        Self::mutex_unlock(m);
-        let ret = ffi::semaphore_take(sem, timeout);
-        Self::mutex_lock(m);
-        if ret == 1 { 0 } else { -1 } // -1 = timeout
+
+        unsafe {
+            ffi::semaphore_take((*c).mutex, u32::MAX);
+            (*c).waiters += 1;
+            ffi::semaphore_give((*c).mutex);
+
+            Self::mutex_unlock(m);
+            let ret = ffi::semaphore_take((*c).sem, timeout);
+            Self::mutex_lock(m);
+
+            if ret != 1 {
+                // Timed out — decrement waiter count
+                ffi::semaphore_take((*c).mutex, u32::MAX);
+                (*c).waiters -= 1;
+                ffi::semaphore_give((*c).mutex);
+                return -1; // Z_ETIMEDOUT
+            }
+        }
+        0
     }
 }

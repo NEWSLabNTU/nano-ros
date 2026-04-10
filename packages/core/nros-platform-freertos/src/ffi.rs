@@ -35,6 +35,25 @@ unsafe extern "C" {
     ) -> i32;
     pub fn vTaskDelete(task_handle: *mut c_void);
 
+    // Event groups (real functions, not macros)
+    pub fn xEventGroupCreate() -> *mut c_void;
+    pub fn xEventGroupSetBits(group: *mut c_void, bits: u32) -> u32;
+    pub fn xEventGroupWaitBits(
+        group: *mut c_void,
+        bits_to_wait: u32,
+        clear_on_exit: i32,
+        wait_all: i32,
+        ticks_to_wait: u32,
+    ) -> u32;
+    pub fn vEventGroupDelete(group: *mut c_void);
+
+    // Critical sections (real functions on Cortex-M)
+    pub fn vPortEnterCritical();
+    pub fn vPortExitCritical();
+
+    // Task suspend (real function)
+    pub fn vTaskSuspend(task: *mut c_void);
+
     // Queue/Semaphore functions (the REAL functions behind the macros)
     //
     // xSemaphoreCreateRecursiveMutex() → xQueueCreateMutex(RECURSIVE_MUTEX)
@@ -66,6 +85,12 @@ unsafe extern "C" {
 #[inline]
 pub fn create_recursive_mutex() -> *mut c_void {
     unsafe { xQueueCreateMutex(QUEUE_TYPE_RECURSIVE_MUTEX) }
+}
+
+/// Wrapper: xSemaphoreCreateMutex() (non-recursive, for condvar)
+#[inline]
+pub fn create_mutex() -> *mut c_void {
+    unsafe { xQueueCreateMutex(QUEUE_TYPE_MUTEX) }
 }
 
 /// Wrapper: xSemaphoreTakeRecursive(h, t)
@@ -103,4 +128,46 @@ pub fn semaphore_give(sem: *mut c_void) -> i32 {
 #[inline]
 pub fn semaphore_delete(sem: *mut c_void) {
     unsafe { vQueueDelete(sem) }
+}
+
+// -- Event group wrappers --
+
+#[inline]
+pub fn event_group_create() -> *mut c_void {
+    unsafe { xEventGroupCreate() }
+}
+
+#[inline]
+pub fn event_group_set_bits(group: *mut c_void, bits: u32) -> u32 {
+    unsafe { xEventGroupSetBits(group, bits) }
+}
+
+/// pdFALSE = 0, portMAX_DELAY = 0xFFFFFFFF
+#[inline]
+pub fn event_group_wait_bits(group: *mut c_void, bits: u32, ticks: u32) -> u32 {
+    unsafe { xEventGroupWaitBits(group, bits, 0, 0, ticks) }
+}
+
+#[inline]
+pub fn event_group_delete(group: *mut c_void) {
+    unsafe { vEventGroupDelete(group) }
+}
+
+// -- Critical section wrappers --
+
+#[inline]
+pub fn enter_critical() {
+    unsafe { vPortEnterCritical() }
+}
+
+#[inline]
+pub fn exit_critical() {
+    unsafe { vPortExitCritical() }
+}
+
+// -- Task wrappers --
+
+#[inline]
+pub fn task_suspend_current() {
+    unsafe { vTaskSuspend(core::ptr::null_mut()) }
 }
