@@ -22,11 +22,9 @@ fn main() {
     let config = ExecutorConfig::from_env().node_name("listener");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open DDS session");
 
-    let mut count: u64 = 0;
     executor
         .add_subscription::<Int32, _>("/chatter", move |msg| {
-            count += 1;
-            info!("[{}] Received: data={}", count, msg.data);
+            info!("Received: {}", msg.data);
         })
         .expect("Failed to add subscription");
     info!("Subscriber created for topic: /chatter");

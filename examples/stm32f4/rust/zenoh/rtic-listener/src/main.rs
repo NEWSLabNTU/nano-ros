@@ -94,11 +94,9 @@ mod app {
     async fn listen(cx: listen::Context) {
         defmt::info!("Waiting for messages on /chatter...");
 
-        let mut count: u32 = 0;
         loop {
             if let Some(msg) = cx.local.subscription.try_recv().unwrap() {
-                count += 1;
-                defmt::info!("Received [{}]: {}", count, msg.data);
+                defmt::info!("Received: {}", msg.data);
             }
             Mono::delay(10.millis()).await;
         }

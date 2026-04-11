@@ -103,11 +103,9 @@ fn main() {
     let config = ExecutorConfig::from_env().node_name("listener");
     let mut executor: Executor = Executor::open(&config).expect("Failed to open session");
 
-    let mut count: u64 = 0;
     executor
         .add_subscription_with_info::<Int32, _>("/chatter", move |msg, info| {
-            count += 1;
-            info!("[{}] Received: data={}", count, msg.data);
+            info!("Received: {}", msg.data);
             if let Some(info) = info {
                 let gid = info.publisher_gid();
                 log::trace!(

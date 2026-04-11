@@ -30,7 +30,6 @@ use smoltcp::socket::dhcpv4;
 #[cfg(feature = "wifi")]
 use smoltcp::wire::{EthernetAddress, IpAddress, IpCidr, Ipv4Address};
 
-use nros_platform_esp32::clock;
 use crate::config::NodeConfig;
 #[cfg(feature = "wifi")]
 use crate::config::IpMode;
