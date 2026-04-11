@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "C API for nros - rclc-compatible interface for embedded systems"
 license = "Apache-2.0"
+repository.workspace = true
 keywords = ["ros", "ros2", "embedded", "c", "ffi"]
 categories = ["embedded", "robotics", "api-bindings"]
 
@@ -44,10 +45,10 @@ ros-iron = ["nros/ros-iron"]
 panic-halt = ["dep:panic-halt"]
 
 [dependencies]
-nros = { path = "../nros", default-features = false }
-nros-node = { path = "../nros-node", default-features = false }
-nros-rmw = { path = "../nros-rmw", default-features = false }
-nros-core = { path = "../nros-core", default-features = false }
+nros = { version = "0.1.0", path = "../nros", default-features = false }
+nros-node.workspace = true
+nros-rmw.workspace = true
+nros-core.workspace = true
 paste = "1"
 panic-halt = { version = "1", optional = true }
 

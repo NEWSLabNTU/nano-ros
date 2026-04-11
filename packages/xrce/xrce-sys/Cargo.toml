@@ -3,6 +3,8 @@ name = "xrce-sys"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
+description = "FFI bindings for Micro-XRCE-DDS-Client"
 links = "xrce_client"
 
 [features]

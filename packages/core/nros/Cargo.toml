@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 description = "Unified ROS 2 client library for embedded systems"
 license = "Apache-2.0"
+repository.workspace = true
 keywords = ["ros", "ros2", "embedded", "no_std"]
 categories = ["embedded", "no-std", "robotics"]
 
@@ -109,16 +110,16 @@ ros-iron = ["nros-node/ros-iron", "nros-rmw-zenoh?/ros-iron"]
 
 [dependencies]
 # Core functionality (default-features = false for no_std support)
-nros-core = { path = "../nros-core", default-features = false }
-nros-macros = { path = "../nros-macros" }
-nros-node = { path = "../nros-node", default-features = false }
-nros-rmw = { path = "../nros-rmw", default-features = false }
-nros-rmw-zenoh = { path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
-nros-rmw-xrce = { path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
-nros-rmw-dds = { path = "../../dds/nros-rmw-dds", default-features = false, optional = true }
-nros-rmw-cffi = { path = "../nros-rmw-cffi", default-features = false, optional = true }
-nros-params = { path = "../nros-params", default-features = false }
-nros-platform = { path = "../nros-platform", default-features = false }
+nros-core = { version = "0.1.0", path = "../nros-core", default-features = false }
+nros-macros = { version = "0.1.0", path = "../nros-macros" }
+nros-node = { version = "0.1.0", path = "../nros-node", default-features = false }
+nros-rmw = { version = "0.1.0", path = "../nros-rmw", default-features = false }
+nros-rmw-zenoh = { version = "0.1.0", path = "../../zpico/nros-rmw-zenoh", default-features = false, optional = true }
+nros-rmw-xrce = { version = "0.1.0", path = "../../xrce/nros-rmw-xrce", default-features = false, optional = true }
+nros-rmw-dds = { version = "0.1.0", path = "../../dds/nros-rmw-dds", default-features = false, optional = true }
+nros-rmw-cffi = { version = "0.1.0", path = "../nros-rmw-cffi", default-features = false, optional = true }
+nros-params = { version = "0.1.0", path = "../nros-params", default-features = false }
+nros-platform = { version = "0.1.0", path = "../nros-platform", default-features = false }
 
 [dev-dependencies]
 

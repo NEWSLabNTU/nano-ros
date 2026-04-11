@@ -3,6 +3,7 @@ name = "nros-rmw-cffi"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "C function table adapter for nros RMW backends"
 
 [lib]

@@ -3,6 +3,7 @@ name = "nros-node"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Node abstraction for nros"
 links = "nros_node"
 
@@ -63,7 +64,7 @@ heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 log = { workspace = true, optional = true }
 futures-core = { version = "0.3", default-features = false, optional = true }
-nros-rcl-interfaces = { path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
+nros-rcl-interfaces = { version = "0.1.0", path = "../../interfaces/rcl-interfaces/generated/humble/nros-rcl-interfaces", default-features = false, optional = true }
 
 [dev-dependencies]
-nros-ghost-types = { path = "../../verification/nros-ghost-types" }
+nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }

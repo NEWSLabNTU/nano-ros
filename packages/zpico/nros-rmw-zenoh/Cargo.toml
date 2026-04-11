@@ -3,6 +3,7 @@ name = "nros-rmw-zenoh"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Zenoh-pico RMW backend for nros"
 
 [features]
@@ -36,9 +37,9 @@ ros-humble = []
 ros-iron = []
 
 [dependencies]
-nros-rmw = { path = "../../core/nros-rmw", default-features = false }
+nros-rmw = { version = "0.1.0", path = "../../core/nros-rmw", default-features = false }
 nros-core = { workspace = true, default-features = false }
-zpico-sys = { path = "../zpico-sys" }
+zpico-sys = { version = "0.1.0", path = "../zpico-sys" }
 heapless = { workspace = true }
 portable-atomic = { version = "1", default-features = false }
 atomic-waker = { version = "1.1", default-features = false, features = ["portable-atomic"] }
@@ -46,4 +47,4 @@ log = { workspace = true, optional = true }
 critical-section = { version = "1.2", optional = true }
 
 [dev-dependencies]
-nros-ghost-types = { path = "../../verification/nros-ghost-types" }
+nros-ghost-types = { version = "0.1.0", path = "../../verification/nros-ghost-types" }

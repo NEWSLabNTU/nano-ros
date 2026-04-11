@@ -3,6 +3,7 @@ name = "nros-core"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Core types, traits, and node abstraction for nros"
 
 [features]

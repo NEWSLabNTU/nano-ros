@@ -3,7 +3,8 @@ name = "nros-platform-nuttx"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "nros platform implementation for NuttX (POSIX-compatible, delegates to nros-platform-posix)"
 
 [dependencies]
-nros-platform-posix = { path = "../nros-platform-posix" }
+nros-platform-posix = { version = "0.1.0", path = "../nros-platform-posix" }

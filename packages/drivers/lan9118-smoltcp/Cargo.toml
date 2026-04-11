@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
 description = "LAN9118/SMSC911x Ethernet driver for smoltcp"
+publish = false
 readme = "README.md"
 keywords = ["embedded", "ethernet", "smoltcp", "no_std", "arm"]
 categories = ["embedded", "no-std", "hardware-support"]

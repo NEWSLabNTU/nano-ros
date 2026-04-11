@@ -9,6 +9,10 @@ description = "QEMU MPS2-AN385 board crate for nros on FreeRTOS + lwIP"
 name = "nros_mps2_an385_freertos"
 
 [dependencies]
+# Platform shim (force-link for embedded linker)
+zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
+nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
+
 # Semihosting for QEMU output
 cortex-m-semihosting = "0.5"
 panic-semihosting = "0.6"

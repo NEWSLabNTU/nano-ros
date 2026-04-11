@@ -3,6 +3,7 @@ name = "nros-params"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "ROS 2 parameter server for nros"
 
 [features]

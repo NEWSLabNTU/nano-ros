@@ -3,6 +3,7 @@ name = "xrce-platform-shim"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "Thin forwarders from XRCE-DDS C symbols to nros-platform traits"
 
 [features]
@@ -15,4 +16,4 @@ active = []
 smoltcp = []
 
 [dependencies]
-nros-platform = { path = "../../core/nros-platform", default-features = false }
+nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }

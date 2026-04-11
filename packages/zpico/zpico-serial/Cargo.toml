@@ -9,4 +9,4 @@ description = "Serial (UART) link layer for nros (bare-metal systems)"
 name = "zpico_serial"
 
 [dependencies]
-zpico-sys = { path = "../zpico-sys", features = ["bare-metal", "link-serial"] }
+zpico-sys = { version = "0.1.0", path = "../zpico-sys", features = ["bare-metal", "link-serial"] }

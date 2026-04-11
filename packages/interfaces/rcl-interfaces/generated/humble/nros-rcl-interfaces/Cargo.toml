@@ -1,15 +1,22 @@
 [package]
 name = "nros-rcl-interfaces"
-version = "1.2.2"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Generated nros types for rcl_interfaces (ROS 2 Humble 1.2.2)"
+
+[package.metadata.ros]
+upstream-package = "rcl_interfaces"
+upstream-version = "1.2.2"
+ros-edition = "humble"
 
 [features]
 default = []
 std = ["nros-core/std", "nros-serdes/std", "nros-builtin-interfaces/std"]
 
 [dependencies]
-# nros crates (patched to local via .cargo/config.toml during development)
-nros-core = { version = "*", default-features = false }
-nros-serdes = { version = "*", default-features = false }
+nros-core.workspace = true
+nros-serdes.workspace = true
 heapless = "0.8"
-nros-builtin-interfaces = { path = "../nros-builtin-interfaces", default-features = false }
+nros-builtin-interfaces = { version = "0.1.0", path = "../nros-builtin-interfaces", default-features = false }

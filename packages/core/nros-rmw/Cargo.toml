@@ -3,6 +3,7 @@ name = "nros-rmw"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "RMW abstraction layer for nros (middleware-agnostic traits)"
 
 [features]

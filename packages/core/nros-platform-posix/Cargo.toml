@@ -3,6 +3,7 @@ name = "nros-platform-posix"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "POSIX platform implementation for nros"
 
 [dependencies]

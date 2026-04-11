@@ -3,6 +3,7 @@ name = "zpico-sys"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+repository.workspace = true
 description = "C shim library for zenoh-pico with FFI bindings"
 links = "zpico"
 
@@ -47,7 +48,7 @@ unstable-zenoh-api = []
 # Platform symbol forwarders (z_clock_now, z_malloc, etc.)
 # Activated by any platform feature; actual ConcretePlatform resolved by
 # the board crate's nros-platform-<board> dependency via Cargo feature unification.
-zpico-platform-shim = { path = "../zpico-platform-shim", default-features = false, optional = true }
+zpico-platform-shim = { version = "0.1.0", path = "../zpico-platform-shim", default-features = false, optional = true }
 
 [build-dependencies]
 cbindgen = "0.29"

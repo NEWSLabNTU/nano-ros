@@ -198,21 +198,32 @@ exclude = [
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/user/nano-ros"
+repository = "https://github.com/NEWSLabNTU/nano-ros"
 rust-version = "1.75"
 
 [workspace.dependencies]
-# Internal crates (default-features = false for no_std flexibility)
-nros-core = { path = "packages/core/nros-core", default-features = false }
-nros-serdes = { path = "packages/core/nros-serdes", default-features = false }
-nros-macros = { path = "packages/core/nros-macros" }
-nros-params = { path = "packages/core/nros-params", default-features = false }
-nros-rmw = { path = "packages/core/nros-rmw", default-features = false }
-nros-rmw-zenoh = { path = "packages/zpico/nros-rmw-zenoh", default-features = false }
-nros-rmw-xrce = { path = "packages/xrce/nros-rmw-xrce", default-features = false }
-nros-rmw-dds = { path = "packages/dds/nros-rmw-dds", default-features = false }
-nros-rmw-cffi = { path = "packages/core/nros-rmw-cffi", default-features = false }
-nros-node = { path = "packages/core/nros-node", default-features = false }
+# Internal crates — version required for crates.io; path used locally.
+nros-core = { version = "0.1.0", path = "packages/core/nros-core", default-features = false }
+nros-serdes = { version = "0.1.0", path = "packages/core/nros-serdes", default-features = false }
+nros-macros = { version = "0.1.0", path = "packages/core/nros-macros" }
+nros-params = { version = "0.1.0", path = "packages/core/nros-params", default-features = false }
+nros-rmw = { version = "0.1.0", path = "packages/core/nros-rmw", default-features = false }
+nros-rmw-zenoh = { version = "0.1.0", path = "packages/zpico/nros-rmw-zenoh", default-features = false }
+nros-rmw-xrce = { version = "0.1.0", path = "packages/xrce/nros-rmw-xrce", default-features = false }
+nros-rmw-dds = { version = "0.1.0", path = "packages/dds/nros-rmw-dds", default-features = false }
+nros-rmw-cffi = { version = "0.1.0", path = "packages/core/nros-rmw-cffi", default-features = false }
+nros-node = { version = "0.1.0", path = "packages/core/nros-node", default-features = false }
+nros-platform = { version = "0.1.0", path = "packages/core/nros-platform", default-features = false }
+nros-platform-cffi = { version = "0.1.0", path = "packages/core/nros-platform-cffi", default-features = false }
+nros-platform-posix = { version = "0.1.0", path = "packages/core/nros-platform-posix", default-features = false }
+nros-platform-freertos = { version = "0.1.0", path = "packages/core/nros-platform-freertos" }
+nros-platform-nuttx = { version = "0.1.0", path = "packages/core/nros-platform-nuttx" }
+nros-platform-threadx = { version = "0.1.0", path = "packages/core/nros-platform-threadx" }
+zpico-platform-shim = { version = "0.1.0", path = "packages/zpico/zpico-platform-shim", default-features = false }
+xrce-platform-shim = { version = "0.1.0", path = "packages/xrce/xrce-platform-shim", default-features = false }
+zpico-sys = { version = "0.1.0", path = "packages/zpico/zpico-sys", default-features = false }
+zpico-alloc = { version = "0.1.0", path = "packages/zpico/zpico-alloc" }
+xrce-sys = { version = "0.1.0", path = "packages/xrce/xrce-sys", default-features = false }
 
 # no_std compatible
 heapless = "0.8"

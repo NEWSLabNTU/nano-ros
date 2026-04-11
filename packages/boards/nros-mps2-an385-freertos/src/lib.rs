@@ -15,6 +15,7 @@
 //! - No `zpico-platform-*` or `zpico-smoltcp` crates needed
 
 #![no_std]
+extern crate zpico_platform_shim;
 
 mod config;
 mod error;

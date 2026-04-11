@@ -1159,7 +1159,7 @@ dependencies = [
 
 [[package]]
 name = "nros-builtin-interfaces"
-version = "1.2.2"
+version = "0.1.0"
 dependencies = [
  "heapless",
  "nros-core",
@@ -1318,7 +1318,7 @@ version = "0.1.0"
 
 [[package]]
 name = "nros-rcl-interfaces"
-version = "1.2.2"
+version = "0.1.0"
 dependencies = [
  "heapless",
  "nros-builtin-interfaces",
