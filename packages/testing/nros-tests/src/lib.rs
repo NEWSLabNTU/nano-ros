@@ -19,11 +19,40 @@
 
 pub mod esp32;
 pub mod fixtures;
+pub mod output;
 pub mod platform;
 pub mod process;
 pub mod qemu;
 pub mod ros2;
 pub mod zephyr;
+
+/// Skip the current test with a reason.
+///
+/// Panics with a `[SKIPPED]` prefix so that CI tooling and test reports
+/// can distinguish skips from real failures. Tests that use this will
+/// show as FAILED rather than silently passing when prerequisites are
+/// missing.
+///
+/// Configure nextest to treat `[SKIPPED]` panics as expected failures
+/// if desired (via `expected` in `.config/nextest.toml`).
+///
+/// # Example
+///
+/// ```ignore
+/// #[test]
+/// fn test_needs_zenohd() {
+///     if !is_zenohd_available() {
+///         nros_tests::skip!("zenohd not found");
+///     }
+///     // ... test code
+/// }
+/// ```
+#[macro_export]
+macro_rules! skip {
+    ($($arg:tt)*) => {
+        panic!("[SKIPPED] {}", format_args!($($arg)*))
+    };
+}
 
 use std::io::{BufRead, BufReader};
 use std::net::TcpStream;

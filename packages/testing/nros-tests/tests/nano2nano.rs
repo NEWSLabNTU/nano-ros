@@ -6,6 +6,7 @@ use nros_tests::fixtures::{
     ManagedProcess, ZenohRouter, is_zenohd_available, listener_binary, listener_tls_binary,
     require_zenohd, talker_binary, talker_tls_binary, tls_certs, zenohd_unique,
 };
+use nros_tests::output;
 use rstest::rstest;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -19,12 +20,11 @@ fn test_native_talker_starts(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
 
-    // Use ZENOH_LOCATOR env var since examples use Context::from_env()
     let mut cmd = Command::new(&talker_binary);
     cmd.env("ZENOH_LOCATOR", &locator);
     let mut talker =
@@ -48,12 +48,11 @@ fn test_native_listener_starts(zenohd_unique: ZenohRouter, listener_binary: Path
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
 
-    // Use ZENOH_LOCATOR env var since examples use Context::from_env()
     let mut cmd = Command::new(&listener_binary);
     cmd.env("ZENOH_LOCATOR", &locator);
     let mut listener =
@@ -78,11 +77,10 @@ fn test_talker_listener_communication(
     talker_binary: PathBuf,
     listener_binary: PathBuf,
 ) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -91,7 +89,7 @@ fn test_talker_listener_communication(
     let mut listener_cmd = Command::new(&listener_binary);
     listener_cmd
         .env("ZENOH_LOCATOR", &locator)
-        .env("RUST_LOG", "info"); // Enable env_logger output
+        .env("RUST_LOG", "info");
     let mut listener = ManagedProcess::spawn_command(listener_cmd, "native-rs-listener")
         .expect("Failed to start listener");
 
@@ -109,20 +107,15 @@ fn test_talker_listener_communication(
         .wait_for_output_pattern("Received:", Duration::from_secs(10))
         .unwrap_or_default();
 
-    // Kill talker
     talker.kill();
 
     eprintln!("Listener output:\n{}", listener_output);
 
-    // Check if listener received messages
-    let received_count = count_pattern(&listener_output, "Received:");
-    eprintln!("Listener received {} messages", received_count);
-
-    if received_count > 0 {
-        eprintln!("[PASS] Router-based communication works");
-    } else {
-        eprintln!("[INFO] No messages received (may be timing issue)");
-    }
+    let result = output::assert_listener(&listener_output, 1);
+    eprintln!(
+        "[PASS] Router-based communication works ({} messages received)",
+        result.received_count
+    );
 }
 
 // =============================================================================
@@ -135,7 +128,6 @@ fn test_talker_listener_communication(
 /// without requiring a central router.
 #[rstest]
 fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     eprintln!("Testing peer mode communication (no router)...");
@@ -183,11 +175,10 @@ fn test_peer_mode_communication(talker_binary: PathBuf, listener_binary: PathBuf
 
     eprintln!("Listener output:\n{}", listener_output);
 
-    // Check if listener received messages
-    let received_count = count_pattern(&listener_output, "Received:");
-    eprintln!("Listener received {} messages", received_count);
+    let result = output::parse_listener(&listener_output);
+    eprintln!("Listener received {} messages", result.received_count);
 
-    if received_count > 0 {
+    if result.received_count > 0 {
         eprintln!("[PASS] Peer mode communication works");
     } else {
         // Peer mode may require specific network configuration (multicast enabled)
@@ -210,7 +201,7 @@ fn test_sequence_number_increment(
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -267,14 +258,7 @@ fn test_sequence_number_increment(
     );
 
     // Verify monotonic increment
-    for window in seq_values.windows(2) {
-        assert!(
-            window[1] > window[0],
-            "Sequence numbers should increment: {} should be > {}",
-            window[1],
-            window[0]
-        );
-    }
+    output::assert_monotonic(&seq_values);
 
     eprintln!(
         "[PASS] Sequence numbers increment monotonically ({} messages)",
@@ -292,7 +276,7 @@ fn test_gid_consistency(
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -381,16 +365,14 @@ fn test_tls_talker_listener_communication(
     talker_tls_binary: PathBuf,
     listener_tls_binary: PathBuf,
 ) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     if !tls_certs::is_openssl_available() {
-        eprintln!("[SKIP] openssl not available — cannot generate TLS certs");
-        return;
+        nros_tests::skip!("openssl not available — cannot generate TLS certs");
     }
 
     // Generate self-signed certificate
@@ -429,19 +411,15 @@ fn test_tls_talker_listener_communication(
         .wait_for_output_pattern("Received:", Duration::from_secs(15))
         .unwrap_or_default();
 
-    // Kill talker
     talker.kill();
 
     eprintln!("TLS Listener output:\n{}", listener_output);
 
-    let received_count = count_pattern(&listener_output, "Received:");
-    eprintln!("TLS Listener received {} messages", received_count);
-
-    assert!(
-        received_count > 0,
-        "TLS listener should receive at least 1 message"
+    let result = output::assert_listener(&listener_output, 1);
+    eprintln!(
+        "[PASS] TLS talker/listener communication works ({} messages)",
+        result.received_count
     );
-    eprintln!("[PASS] TLS talker/listener communication works");
 }
 
 // =============================================================================
@@ -457,11 +435,10 @@ fn test_tls_talker_listener_communication(
 /// - `subscription.try_recv()` (manual polling)
 #[rstest]
 fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let rtic_talker = nros_tests::fixtures::build_native_rtic_talker()
@@ -500,33 +477,21 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
 
     talker.kill();
 
-    let received_count = count_pattern(&listener_output, "Received:");
+    let result = output::assert_listener(&listener_output, 1);
     eprintln!(
-        "RTIC pattern: listener received {} messages",
-        received_count
+        "[PASS] RTIC pattern communication works ({} messages)",
+        result.received_count
     );
-
-    assert!(
-        received_count > 0,
-        "RTIC-pattern listener should receive at least 1 message"
-    );
-    eprintln!("[PASS] RTIC pattern communication works");
 }
 
 /// Test RTIC-pattern service server/client interop via zenoh.
-///
-/// Validates the RTIC service pattern works for end-to-end communication:
-/// - `Executor<_, 0, 0>` (zero callback arena)
-/// - `spin_once(0)` (non-blocking I/O drive)
-/// - `service.handle_request()` (manual polling on server)
-/// - `client.call()` + `promise.try_recv()` loop (on client)
 #[rstest]
 fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
     use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let rtic_server = nros_tests::fixtures::build_native_rtic_service_server()
@@ -574,20 +539,13 @@ fn test_rtic_pattern_service(zenohd_unique: ZenohRouter) {
 }
 
 /// Test RTIC-pattern action server/client interop via zenoh.
-///
-/// Validates the RTIC action pattern works for end-to-end communication:
-/// - `Executor<_, 0, 0>` (zero callback arena)
-/// - `spin_once(0)` (non-blocking I/O drive)
-/// - `server.try_accept_goal()`, `publish_feedback()`, `complete_goal()`,
-///   `try_handle_get_result()` (manual polling on server)
-/// - `client.send_goal()` + `promise.try_recv()`, `try_recv_feedback()` (on client)
 #[rstest]
 fn test_rtic_pattern_action(zenohd_unique: ZenohRouter) {
     use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let rtic_server = nros_tests::fixtures::build_native_rtic_action_server()
