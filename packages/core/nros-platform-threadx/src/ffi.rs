@@ -67,11 +67,8 @@ unsafe extern "C" {
 
     // Mutex
     #[link_name = "_tx_mutex_create"]
-    pub fn tx_mutex_create(
-        mutex: *mut c_void,
-        name: *const core::ffi::c_char,
-        inherit: u32,
-    ) -> u32;
+    pub fn tx_mutex_create(mutex: *mut c_void, name: *const core::ffi::c_char, inherit: u32)
+    -> u32;
     #[link_name = "_tx_mutex_delete"]
     pub fn tx_mutex_delete(mutex: *mut c_void) -> u32;
     #[link_name = "_tx_mutex_get"]

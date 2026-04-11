@@ -73,7 +73,8 @@ impl ThreadxPlatform {
             return core::ptr::null_mut();
         }
         let mut ptr: *mut c_void = core::ptr::null_mut();
-        let ret = unsafe { ffi::tx_byte_allocate(pool, &mut ptr, size as u32, ffi::TX_WAIT_FOREVER) };
+        let ret =
+            unsafe { ffi::tx_byte_allocate(pool, &mut ptr, size as u32, ffi::TX_WAIT_FOREVER) };
         if ret == ffi::TX_SUCCESS {
             ptr
         } else {
