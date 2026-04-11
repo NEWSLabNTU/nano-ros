@@ -11,6 +11,7 @@ name = "nros_mps2_an385_freertos"
 [dependencies]
 # Platform shim (force-link for embedded linker)
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
+zpico-sys = { path = "../../zpico/zpico-sys", default-features = false }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
 
 # Semihosting for QEMU output

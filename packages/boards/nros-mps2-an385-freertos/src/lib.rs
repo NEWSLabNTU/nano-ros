@@ -16,6 +16,7 @@
 
 #![no_std]
 extern crate zpico_platform_shim;
+extern crate zpico_sys;
 
 mod config;
 mod error;
