@@ -273,13 +273,10 @@ impl QemuProcess {
                                 || output.contains("Benchmark complete")
                                 || output.contains("TEST COMPLETE")
                                 || output.contains("QEMU: Terminated")
-                                // FreeRTOS/NuttX E2E completion markers
-                                || output.contains("Done publishing")
-                                || output.contains("Received 10 messages")
+                                // E2E completion markers (finite examples)
                                 || output.contains("All service calls completed")
+                                || output.contains("Action client finished")
                                 || output.contains("Action completed successfully")
-                                || output.contains("Server shutting down")
-                                || output.contains("Timeout waiting for")
                             {
                                 // Give it a moment to finish cleanly
                                 std::thread::sleep(Duration::from_millis(100));
@@ -293,6 +290,70 @@ impl QemuProcess {
                         Err(_) => break,
                     }
                 }
+                Err(_) => break,
+            }
+        }
+
+        Ok(output)
+    }
+
+    /// Wait until the output contains the given pattern, then return all output collected so far.
+    /// Kills the process on timeout.
+    pub fn wait_for_output_pattern(
+        &mut self,
+        pattern: &str,
+        timeout: Duration,
+    ) -> TestResult<String> {
+        let start = Instant::now();
+        let mut output = String::new();
+
+        let mut stdout = self
+            .handle
+            .stdout
+            .take()
+            .ok_or_else(|| TestError::ProcessFailed("No stdout".to_string()))?;
+
+        #[cfg(unix)]
+        {
+            let fd = stdout.as_raw_fd();
+            unsafe {
+                let flags = libc::fcntl(fd, libc::F_GETFL);
+                libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK);
+            }
+        }
+
+        let mut buffer = [0u8; 4096];
+        loop {
+            if start.elapsed() > timeout {
+                kill_process_group(&mut self.handle);
+                if output.is_empty() {
+                    return Err(TestError::Timeout);
+                }
+                break;
+            }
+
+            match self.handle.try_wait() {
+                Ok(Some(_)) => {
+                    let _ = stdout.read_to_string(&mut output);
+                    break;
+                }
+                Ok(None) => match stdout.read(&mut buffer) {
+                    Ok(0) => {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Ok(n) => {
+                        output.push_str(&String::from_utf8_lossy(&buffer[..n]));
+                        if output.contains(pattern) {
+                            std::thread::sleep(Duration::from_millis(100));
+                            kill_process_group(&mut self.handle);
+                            break;
+                        }
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(Duration::from_millis(50));
+                    }
+                    Err(_) => break,
+                },
                 Err(_) => break,
             }
         }

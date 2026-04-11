@@ -411,15 +411,14 @@ fn test_freertos_pubsub_e2e() {
     let mut talker =
         QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
-    // Wait for listener to complete — reads all buffered output (boot + messages).
-    // The completion marker "Received 10 messages" triggers early return.
+    // Wait for listener to receive messages (examples now run forever)
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output_pattern("Received:", Duration::from_secs(60))
         .unwrap_or_default();
 
-    // Wait for talker to finish publishing
+    // Wait for talker to publish messages
     let talker_output = talker
-        .wait_for_output(Duration::from_secs(15))
+        .wait_for_output_pattern("Published:", Duration::from_secs(15))
         .unwrap_or_default();
 
     talker.kill();

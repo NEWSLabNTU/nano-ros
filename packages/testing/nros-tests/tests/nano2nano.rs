@@ -490,8 +490,8 @@ fn test_rtic_pattern_communication(zenohd_unique: ZenohRouter) {
     let mut talker = ManagedProcess::spawn_command(talker_cmd, "rtic-talker")
         .expect("Failed to start rtic-talker");
 
-    // Wait for talker to finish publishing
-    let _ = talker.wait_for_output_pattern("Done publishing", Duration::from_secs(30));
+    // Wait for talker to publish messages
+    let _ = talker.wait_for_output_pattern("Published:", Duration::from_secs(30));
 
     // Wait for listener to receive messages
     let listener_output = listener

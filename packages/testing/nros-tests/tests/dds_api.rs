@@ -54,7 +54,7 @@ fn test_dds_talker_starts(dds_talker_binary: PathBuf) {
         "DDS talker failed to initialize.\nOutput:\n{output}"
     );
     assert!(
-        output.contains("Published: data="),
+        output.contains("Published:"),
         "DDS talker did not publish any messages.\nOutput:\n{output}"
     );
 }

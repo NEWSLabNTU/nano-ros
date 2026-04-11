@@ -239,10 +239,10 @@ fn test_esp32_talker_listener_e2e() {
     // Step 3: Start talker
     let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
-    // Wait for talker to finish publishing
+    // Wait for talker to publish messages (examples now run forever)
     let talker_output = talker
-        .wait_for_output_pattern("Done publishing 5 messages.", Duration::from_secs(60))
-        .expect("ESP32 talker timed out waiting for publish completion");
+        .wait_for_output_pattern("Published:", Duration::from_secs(60))
+        .expect("ESP32 talker timed out waiting for publish");
 
     assert!(
         talker_output.contains("Connected!"),
@@ -255,11 +255,11 @@ fn test_esp32_talker_listener_e2e() {
 
     // Step 4: Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output_pattern("Received [", Duration::from_secs(30))
+        .wait_for_output_pattern("Received:", Duration::from_secs(30))
         .unwrap_or_default();
 
     let all_output = format!("{}{}", listener_startup, listener_output);
-    let received_count = count_pattern(&all_output, "Received [");
+    let received_count = count_pattern(&all_output, "Received:");
     eprintln!("Listener received {} messages", received_count);
 
     assert!(
@@ -342,9 +342,9 @@ fn test_esp32_to_native() {
     // Start ESP32 talker
     let mut talker = start_esp32_qemu(&talker_bin, true).expect("Failed to start ESP32 talker");
 
-    // Wait for ESP32 talker to finish publishing
+    // Wait for ESP32 talker to publish messages
     let talker_output = talker
-        .wait_for_output_pattern("Done publishing 5 messages.", Duration::from_secs(60))
+        .wait_for_output_pattern("Published:", Duration::from_secs(60))
         .expect("ESP32 talker timed out");
 
     assert!(
@@ -428,11 +428,11 @@ fn test_native_to_esp32() {
 
     // Wait for ESP32 listener to receive messages
     let listener_output = esp32_listener
-        .wait_for_output_pattern("Received [", Duration::from_secs(30))
+        .wait_for_output_pattern("Received:", Duration::from_secs(30))
         .unwrap_or_default();
 
     let all_output = format!("{}{}", listener_startup, listener_output);
-    let received_count = count_pattern(&all_output, "Received [");
+    let received_count = count_pattern(&all_output, "Received:");
     eprintln!(
         "ESP32 listener received {} messages from native talker",
         received_count

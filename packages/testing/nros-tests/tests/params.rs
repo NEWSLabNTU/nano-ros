@@ -376,7 +376,7 @@ fn test_param_integer_type(zenohd_unique: ZenohRouter) {
 
     // The counter is used as i32, so it should work with the i64 parameter
     assert!(
-        output.contains("Published: data=0") || output.contains("Published: data=1"),
+        output.contains("Published: 0") || output.contains("Published: 1"),
         "Should publish with integer counter. Output:\n{}",
         output
     );

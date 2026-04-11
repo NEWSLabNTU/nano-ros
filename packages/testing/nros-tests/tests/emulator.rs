@@ -711,14 +711,14 @@ fn test_qemu_serial_pubsub_e2e() {
     let mut talker = QemuProcess::start_mps2_an385_with_serial(&talker_bin, &talker_pair.qemu_path)
         .expect("Failed to start talker QEMU");
 
-    // Wait for listener to complete (receives 10 messages or times out)
+    // Wait for listener to receive messages (examples now run forever)
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output_pattern("Received:", Duration::from_secs(60))
         .unwrap_or_default();
 
-    // Wait for talker to finish publishing
+    // Wait for talker to publish messages
     let talker_output = talker
-        .wait_for_output(Duration::from_secs(30))
+        .wait_for_output_pattern("Published:", Duration::from_secs(30))
         .unwrap_or_default();
 
     talker.kill();
@@ -728,18 +728,15 @@ fn test_qemu_serial_pubsub_e2e() {
     eprintln!("Talker output:\n{}", talker_output);
 
     // Verify communication
-    let received = count_pattern(&listener_output, "Received [");
-    eprintln!("Serial QEMU pubsub: received={} messages", received);
+    let received = count_pattern(&listener_output, "Received:");
+    let published = count_pattern(&talker_output, "Published:");
+    eprintln!(
+        "Serial QEMU pubsub: published={}, received={}",
+        published, received
+    );
 
-    assert!(
-        listener_output.contains("Received 10 messages"),
-        "Serial listener did not receive 10 messages (got {})",
-        received
-    );
-    assert!(
-        talker_output.contains("Done publishing"),
-        "Serial talker did not finish publishing"
-    );
+    assert!(received > 0, "Serial listener received 0 messages");
+    assert!(published > 0, "Serial talker published 0 messages");
 }
 
 // =============================================================================
@@ -800,14 +797,14 @@ fn test_qemu_rtic_pubsub_e2e() {
     let mut talker =
         QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
-    // Wait for listener to complete
+    // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output_pattern("Received:", Duration::from_secs(60))
         .unwrap_or_default();
 
-    // Wait for talker to finish publishing
+    // Wait for talker to publish messages
     let talker_output = talker
-        .wait_for_output(Duration::from_secs(30))
+        .wait_for_output_pattern("Published:", Duration::from_secs(30))
         .unwrap_or_default();
 
     talker.kill();
@@ -817,18 +814,15 @@ fn test_qemu_rtic_pubsub_e2e() {
     eprintln!("Talker output:\n{}", talker_output);
 
     // Verify communication
-    let received = count_pattern(&listener_output, "Received [");
-    eprintln!("RTIC QEMU pubsub: received={} messages", received);
+    let received = count_pattern(&listener_output, "Received:");
+    let published = count_pattern(&talker_output, "Published:");
+    eprintln!(
+        "RTIC QEMU pubsub: published={}, received={}",
+        published, received
+    );
 
-    assert!(
-        listener_output.contains("Received 10 messages"),
-        "RTIC QEMU listener did not receive 10 messages (got {})",
-        received
-    );
-    assert!(
-        talker_output.contains("Done publishing"),
-        "RTIC QEMU talker did not finish publishing"
-    );
+    assert!(received > 0, "RTIC QEMU listener received 0 messages");
+    assert!(published > 0, "RTIC QEMU talker published 0 messages");
 }
 
 // =============================================================================
@@ -1093,14 +1087,14 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     let mut talker =
         QemuProcess::start_mps2_an385_networked(talker_bin).expect("Failed to start talker QEMU");
 
-    // Wait for listener to complete
+    // Wait for listener to receive messages
     let listener_output = listener
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output_pattern("Received:", Duration::from_secs(60))
         .unwrap_or_default();
 
-    // Wait for talker to finish publishing
+    // Wait for talker to publish messages
     let talker_output = talker
-        .wait_for_output(Duration::from_secs(30))
+        .wait_for_output_pattern("Published:", Duration::from_secs(30))
         .unwrap_or_default();
 
     talker.kill();
@@ -1110,19 +1104,19 @@ fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     eprintln!("Talker output:\n{}", talker_output);
 
     // Verify communication
-    let received = count_pattern(&listener_output, "Received [");
+    let received = count_pattern(&listener_output, "Received:");
+    let published = count_pattern(&talker_output, "Published:");
     eprintln!(
-        "RTIC mixed-priority QEMU pubsub: received={} messages",
-        received
+        "RTIC mixed-priority QEMU pubsub: published={}, received={}",
+        published, received
     );
 
     assert!(
-        listener_output.contains("Received 10 messages"),
-        "RTIC mixed-priority QEMU listener did not receive 10 messages (got {})",
-        received
+        received > 0,
+        "RTIC mixed-priority QEMU listener received 0 messages"
     );
     assert!(
-        talker_output.contains("Done publishing"),
-        "RTIC mixed-priority QEMU talker did not finish publishing"
+        published > 0,
+        "RTIC mixed-priority QEMU talker published 0 messages"
     );
 }

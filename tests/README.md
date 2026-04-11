@@ -422,7 +422,7 @@ let _zenohd = ZenohRouter::start_on("0.0.0.0", platform::ZEPHYR.zenohd_port)
 1. Start zenohd on platform port (e.g., 127.0.0.1:7451 for FreeRTOS)
 2. Start listener QEMU (slirp), wait for "Waiting for messages..."
 3. Sleep 10s (boot + network init + subscription propagation)
-4. Start talker QEMU (slirp), wait for "Done publishing..."
+4. Start talker QEMU (slirp), wait for "Published:" output
 5. Verify listener received messages
 ```
 
