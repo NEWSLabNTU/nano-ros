@@ -39,9 +39,9 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
 
     let mut proc = ManagedProcess::spawn_command(cmd, "talker").expect("Failed to start talker");
 
-    // Wait for ~5 messages at 1Hz (event-driven: wait for data=4 which means 5 publishes)
+    // Wait for ~5 messages at 1Hz (event-driven: wait for "Published: 4" which means 5 publishes)
     let output = proc
-        .wait_for_output_pattern("data=4", Duration::from_secs(10))
+        .wait_for_output_pattern("Published: 4", Duration::from_secs(10))
         .unwrap_or_default();
 
     proc.kill();
@@ -82,13 +82,13 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 
     // Wait for at least 2 sequential messages
     let output = proc
-        .wait_for_output_pattern("data=1", Duration::from_secs(10))
+        .wait_for_output_pattern("Published: 1", Duration::from_secs(10))
         .unwrap_or_default();
 
     proc.kill();
 
     // Verify sequential counter values (indicating regular firing)
-    let has_sequential = output.contains("data=0") && output.contains("data=1");
+    let has_sequential = output.contains("Published: 0") && output.contains("Published: 1");
 
     assert!(
         has_sequential,
@@ -150,16 +150,14 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     println!("{}", listener_output);
 
     // Extract received values and verify order
-    // The listener logs "[N] Received: data=X" where X is the value
+    // The listener logs "Received: N" where N is the value
     let mut received_values: Vec<i32> = Vec::new();
     for line in listener_output.lines() {
-        if line.contains("Received:") && line.contains("data=") {
-            // Parse "data=N" pattern
-            if let Some(data_part) = line.split("data=").nth(1) {
-                if let Some(num_str) = data_part.split_whitespace().next() {
-                    if let Ok(num) = num_str.trim().parse() {
-                        received_values.push(num);
-                    }
+        if line.contains("Received:") {
+            // Parse "Received: N" pattern
+            if let Some(data_part) = line.split("Received:").nth(1) {
+                if let Ok(num) = data_part.trim().parse() {
+                    received_values.push(num);
                 }
             }
         }

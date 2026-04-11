@@ -158,12 +158,10 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     // Extract received values
     let mut received_values: Vec<i32> = Vec::new();
     for line in listener_output.lines() {
-        if line.contains("Received:") && line.contains("data=") {
-            if let Some(data_part) = line.split("data=").nth(1) {
-                if let Some(num_str) = data_part.split_whitespace().next() {
-                    if let Ok(num) = num_str.trim().parse() {
-                        received_values.push(num);
-                    }
+        if line.contains("Received:") {
+            if let Some(data_part) = line.split("Received:").nth(1) {
+                if let Ok(num) = data_part.trim().parse() {
+                    received_values.push(num);
                 }
             }
         }
@@ -251,12 +249,10 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     // Extract received values
     let mut received_values: Vec<i32> = Vec::new();
     for line in listener_output.lines() {
-        if line.contains("Received:") && line.contains("data=") {
-            if let Some(data_part) = line.split("data=").nth(1) {
-                if let Some(num_str) = data_part.split_whitespace().next() {
-                    if let Ok(num) = num_str.trim().parse() {
-                        received_values.push(num);
-                    }
+        if line.contains("Received:") {
+            if let Some(data_part) = line.split("Received:").nth(1) {
+                if let Ok(num) = data_part.trim().parse() {
+                    received_values.push(num);
                 }
             }
         }
