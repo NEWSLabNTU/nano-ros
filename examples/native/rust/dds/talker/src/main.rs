@@ -37,7 +37,7 @@ fn main() {
     loop {
         let msg = Int32 { data: count };
         match publisher.publish(&msg) {
-            Ok(()) => info!("[{}] Published: data={}", count, msg.data),
+            Ok(()) => info!("Published: {}", count),
             Err(e) => error!("Publish error: {:?}", e),
         }
         count = count.wrapping_add(1);

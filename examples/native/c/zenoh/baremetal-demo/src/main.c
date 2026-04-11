@@ -107,7 +107,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
     if (len > 0) {
         nros_ret_t ret = nros_publish_raw(&app.publisher, g_serialize_buffer, (size_t)len);
         if (ret == NROS_RET_OK) {
-            printf("[Timer] Published: %d\n", app.message.data);
+            printf("Published: %d\n", app.message.data);
         }
     }
 }

@@ -57,10 +57,7 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
         }
     }
 
-    if (ctx->count >= ctx->max_count) {
-        printf("\nDone publishing %d messages.\n", ctx->max_count);
-        nros_executor_stop(&app.executor);
-    }
+    (void)0; // runs forever via timer
 }
 
 void app_main(void) {

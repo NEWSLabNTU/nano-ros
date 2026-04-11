@@ -28,14 +28,14 @@ extern "C" void app_main(void) {
     if (!ret.ok()) { printf("create_publisher failed: %d\n", ret.raw()); nros::shutdown(); return; }
 
     printf("Publishing messages...\n");
-    for (int i = 0; i < 10; i++) {
+    int count = 0;
+    for (;;) {
         for (int s = 0; s < 100; s++) nros::spin_once(10);
         std_msgs::msg::Int32 msg;
-        msg.data = i;
+        msg.data = count;
         ret = pub.publish(msg);
-        if (ret.ok()) printf("Published: %d\n", i);
+        if (ret.ok()) printf("Published: %d\n", count);
         else printf("Publish failed: %d\n", ret.raw());
+        count++;
     }
-    printf("Done publishing 10 messages.\n");
-    nros::shutdown();
 }

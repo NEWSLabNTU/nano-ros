@@ -25,25 +25,23 @@ fn main() -> ! {
             let publisher = node.create_publisher::<Int32>("/chatter")?;
             println!("Publisher declared");
 
-            println!("");
             println!("Publishing messages...");
 
-            for i in 0..10i32 {
-                // Poll to process network events
+            let mut count: i32 = 0;
+            loop {
+                // Poll to process network events (~1s between publishes)
                 for _ in 0..100 {
                     executor.spin_once(10);
                 }
 
-                if let Err(e) = publisher.publish(&Int32 { data: i }) {
-                    println!("Publish failed: {:?}", e);
-                } else {
-                    println!("Published: {}", i);
+                match publisher.publish(&Int32 { data: count }) {
+                    Ok(()) => println!("Published: {}", count),
+                    Err(e) => println!("Publish failed: {:?}", e),
                 }
+                count = count.wrapping_add(1);
             }
 
-            println!("");
-            println!("Done publishing 10 messages.");
-
+            #[allow(unreachable_code)]
             Ok::<(), NodeError>(())
         },
     )

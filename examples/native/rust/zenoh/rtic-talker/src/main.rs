@@ -34,11 +34,13 @@ fn main() {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
 
-    for i in 0..10i32 {
-        match publisher.publish(&Int32 { data: i }) {
-            Ok(()) => info!("[{}] Published: data={}", i, i),
+    let mut count: i32 = 0;
+    loop {
+        match publisher.publish(&Int32 { data: count }) {
+            Ok(()) => info!("Published: {}", count),
             Err(e) => log::error!("Publish error: {:?}", e),
         }
+        count = count.wrapping_add(1);
 
         // Drive I/O with spin_once(0) — non-blocking, like RTIC net_poll task
         for _ in 0..100 {
@@ -46,6 +48,4 @@ fn main() {
             std::thread::sleep(std::time::Duration::from_millis(10));
         }
     }
-
-    info!("Done publishing 10 messages");
 }

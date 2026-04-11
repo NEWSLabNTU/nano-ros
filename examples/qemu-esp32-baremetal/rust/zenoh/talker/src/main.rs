@@ -42,25 +42,23 @@ fn main() -> ! {
             let publisher = node.create_publisher::<Int32>("/chatter")?;
             esp_println::println!("Publisher declared");
 
-            esp_println::println!("");
             esp_println::println!("Publishing messages...");
 
-            for i in 0..5i32 {
-                // Poll to process network events
-                for _ in 0..3 {
+            let mut count: i32 = 0;
+            loop {
+                // Poll to process network events (~1s between publishes)
+                for _ in 0..100 {
                     executor.spin_once(10);
                 }
 
-                if let Err(e) = publisher.publish(&Int32 { data: i }) {
-                    esp_println::println!("Publish failed: {:?}", e);
-                } else {
-                    esp_println::println!("Published: {}", i);
+                match publisher.publish(&Int32 { data: count }) {
+                    Ok(()) => esp_println::println!("Published: {}", count),
+                    Err(e) => esp_println::println!("Publish failed: {:?}", e),
                 }
+                count = count.wrapping_add(1);
             }
 
-            esp_println::println!("");
-            esp_println::println!("Done publishing 5 messages.");
-
+            #[allow(unreachable_code)]
             Ok::<(), NodeError>(())
         },
     )

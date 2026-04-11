@@ -97,21 +97,17 @@ fn main() {
     #[cfg(not(feature = "param-services"))]
     let counter_start = 0i32;
 
-    // Manual publish loop: publish first, then pump transport, then sleep.
-    // This ensures the first message is sent immediately (important for tests).
+    // Publish loop: publish, pump transport, sleep 1s (like ROS 2 demo_nodes talker).
     let mut count: i32 = counter_start;
     loop {
         let msg = Int32 { data: count };
         match publisher.publish(&msg) {
-            Ok(()) => info!("[{}] Published: data={}", count, msg.data),
+            Ok(()) => info!("Published: {}", count),
             Err(e) => error!("Publish error: {:?}", e),
         }
         count = count.wrapping_add(1);
 
-        // Pump transport I/O
         executor.spin_once(10);
-
-        // Sleep 1 second between messages (like ROS 2 demo)
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
 }

@@ -90,7 +90,7 @@ mod app {
         }
     }
 
-    /// Publish 10 messages at ~1 Hz, then exit.
+    /// Publish at ~1 Hz forever.
     ///
     /// Runs at priority 2 (high) — can preempt `net_poll`. The `ffi-sync`
     /// feature ensures `publish()` waits for any in-progress FFI critical
@@ -102,21 +102,15 @@ mod app {
 
         println!("Publishing messages...");
 
-        for i in 0..10i32 {
-            // Poll between publishes for network events
+        let mut count: i32 = 0;
+        loop {
             Mono::delay(1000.millis()).await;
 
-            match cx.local.publisher.publish(&Int32 { data: i }) {
-                Ok(()) => println!("Published: {}", i),
+            match cx.local.publisher.publish(&Int32 { data: count }) {
+                Ok(()) => println!("Published: {}", count),
                 Err(e) => println!("Publish failed: {:?}", e),
             }
+            count = count.wrapping_add(1);
         }
-
-        // Drain delay: allow last message to propagate through zenohd
-        Mono::delay(2000.millis()).await;
-
-        println!("");
-        println!("Done publishing 10 messages.");
-        nros_mps2_an385::exit_success();
     }
 }

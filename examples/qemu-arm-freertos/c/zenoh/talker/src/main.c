@@ -70,12 +70,13 @@ void app_main(void) {
     std_msgs_msg_int32 message;
     std_msgs_msg_int32_init(&message);
 
-    for (int i = 0; i < 10; i++) {
+    int count = 0;
+    for (;;) {
         for (int j = 0; j < 100; j++) {
             nros_executor_spin_some(&app.executor, 10000000ULL);
         }
 
-        message.data = i;
+        message.data = count;
         uint8_t buffer[64];
         size_t serialized_size = 0;
         int32_t ser_ret = std_msgs_msg_int32_serialize(
@@ -91,12 +92,6 @@ void app_main(void) {
         } else {
             printf("Serialize failed: %d\n", ser_ret);
         }
+        count++;
     }
-
-    printf("\nDone publishing 10 messages.\n");
-
-    nros_executor_fini(&app.executor);
-    nros_publisher_fini(&app.publisher);
-    nros_node_fini(&app.node);
-    nros_support_fini(&app.support);
 }
