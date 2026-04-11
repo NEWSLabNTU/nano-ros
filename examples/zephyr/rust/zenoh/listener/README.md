@@ -80,7 +80,7 @@ extern "C" fn on_message(data: *const u8, len: usize, _ctx: *mut c_void) {
     let slice = unsafe { core::slice::from_raw_parts(data, len) };
     // Deserialize and process Int32 message
     if let Ok(msg) = Int32::deserialize(&slice[4..]) {
-        log::info!("Received: data={}", msg.data);
+        log::info!("Received: {}", msg.data);
     }
 }
 ```

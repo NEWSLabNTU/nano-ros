@@ -84,30 +84,14 @@ mod app {
         }
     }
 
-    /// Poll for incoming messages. Exits after receiving 10 messages.
+    /// Poll for incoming messages forever.
     #[task(local = [subscription], priority = 1)]
     async fn listen(cx: listen::Context) {
         println!("Waiting for messages on /chatter...");
 
-        let mut count: u32 = 0;
-        let mut timeout: u32 = 0;
         loop {
             if let Some(msg) = cx.local.subscription.try_recv().unwrap() {
-                count += 1;
-                println!("Received [{}]: {}", count, msg.data);
-
-                if count >= 10 {
-                    println!("");
-                    println!("Received 10 messages.");
-                    nros_mps2_an385::exit_success();
-                }
-            }
-
-            timeout += 1;
-            if timeout > 100_000 {
-                println!("");
-                println!("Timeout waiting for messages.");
-                nros_mps2_an385::exit_failure();
+                println!("Received: {}", msg.data);
             }
 
             Mono::delay(1.millis()).await;

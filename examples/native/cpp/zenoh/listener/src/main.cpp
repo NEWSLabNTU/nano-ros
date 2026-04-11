@@ -92,7 +92,7 @@ int main(int argc, char** argv) {
         std_msgs::msg::Int32 msg;
         while (sub.try_recv(msg)) {
             message_count++;
-            std::printf("Received [%d]: %d\n", message_count, msg.data);
+            std::printf("Received: %d\n", msg.data);
         }
     }
 

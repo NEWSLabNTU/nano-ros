@@ -26,34 +26,17 @@ fn main() -> ! {
             let mut subscription = node.create_subscription::<Int32>("/chatter")?;
 
             println!("Subscriber declared");
-            println!("");
             println!("Waiting for messages...");
-
-            let mut msg_count = 0u32;
-            let mut poll_count = 0u32;
 
             loop {
                 executor.spin_once(10);
 
                 if let Some(msg) = subscription.try_recv()? {
-                    msg_count += 1;
-                    println!("Received [{}]: {}", msg_count, msg.data);
-
-                    if msg_count >= 10 {
-                        println!("");
-                        println!("Received 10 messages.");
-                        break;
-                    }
-                }
-
-                poll_count += 1;
-                if poll_count > 100000 {
-                    println!("");
-                    println!("Timeout waiting for messages.");
-                    break;
+                    println!("Received: {}", msg.data);
                 }
             }
 
+            #[allow(unreachable_code)]
             Ok::<(), NodeError>(())
         },
     )

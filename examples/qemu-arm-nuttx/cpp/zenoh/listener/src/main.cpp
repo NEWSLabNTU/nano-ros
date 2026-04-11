@@ -27,15 +27,11 @@ extern "C" void app_main(void) {
     if (!ret.ok()) { printf("create_subscription failed\n"); nros::shutdown(); return; }
 
     printf("Waiting for messages...\n");
-    int msg_count = 0;
-    for (int poll = 0; poll < 100000 && msg_count < 10; poll++) {
+    for (;;) {
         nros::spin_once(10);
         std_msgs::msg::Int32 msg;
         while (sub.try_recv(msg)) {
-            msg_count++;
-            printf("Received [%d]: %d\n", msg_count, msg.data);
+            printf("Received: %d\n", msg.data);
         }
     }
-    printf("Received %d messages\n", msg_count);
-    nros::shutdown();
 }

@@ -73,7 +73,7 @@ int main(void)
         std_msgs::msg::Int32 msg;
         while (sub.try_recv(msg)) {
             message_count++;
-            LOG_INF("Received [%d]: %d", message_count, msg.data);
+            LOG_INF("Received: %d", msg.data);
         }
     }
 

@@ -36,7 +36,7 @@ static void on_message(const uint8_t *data, size_t len, void *context)
 
     if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
         message_count++;
-        LOG_INF("Received [%d]: %d", message_count, msg.data);
+        LOG_INF("Received: %d", msg.data);
     } else {
         LOG_ERR("Failed to deserialize message (len=%zu)", len);
     }

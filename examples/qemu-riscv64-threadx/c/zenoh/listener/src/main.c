@@ -40,7 +40,7 @@ static void subscription_callback(const uint8_t *data, size_t len, void *context
 
     if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
         ctx->message_count++;
-        printf("Received [%d]: %d\n", ctx->message_count, msg.data);
+        printf("Received: %d\n", msg.data);
     }
 }
 
@@ -99,17 +99,7 @@ void app_main(void) {
 
     printf("\nWaiting for messages...\n\n");
 
-    for (int i = 0; i < 100000; i++) {
+    for (;;) {
         nros_executor_spin_some(&app.executor, 10000000ULL);
-        if (app.ctx.message_count >= 10) {
-            break;
-        }
     }
-
-    printf("Received %d messages total.\n", app.ctx.message_count);
-
-    nros_executor_fini(&app.executor);
-    nros_subscription_fini(&app.subscription);
-    nros_node_fini(&app.node);
-    nros_support_fini(&app.support);
 }

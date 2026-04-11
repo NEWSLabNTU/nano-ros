@@ -28,16 +28,12 @@ fn main() {
 
     info!("Waiting for Int32 messages on /chatter (RTIC pattern)...");
 
-    let mut count = 0u32;
-    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(30);
-
-    while std::time::Instant::now() < deadline {
+    loop {
         executor.spin_once(0);
 
         match subscription.try_recv() {
             Ok(Some(msg)) => {
-                count += 1;
-                info!("[{}] Received: data={}", count, msg.data);
+                info!("Received: {}", msg.data);
             }
             Ok(None) => {}
             Err(e) => log::error!("Receive error: {:?}", e),
@@ -45,6 +41,4 @@ fn main() {
 
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
-
-    info!("Done. Received {} messages total", count);
 }

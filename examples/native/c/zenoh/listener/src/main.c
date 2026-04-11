@@ -59,7 +59,7 @@ static void subscription_callback(const uint8_t* data, size_t len, void* context
 
     if (std_msgs_msg_int32_deserialize(&msg, data, len) == 0) {
         ctx->message_count++;
-        printf("Received [%d]: %d\n", ctx->message_count, msg.data);
+        printf("Received: %d\n", msg.data);
     } else {
         fprintf(stderr, "Failed to deserialize message (len=%zu)\n", len);
     }
