@@ -358,9 +358,9 @@ pub extern "C" fn _z_condvar_wait(cv: *mut ZCondvar, m: *mut ZMutex) -> i8 {
 pub extern "C" fn _z_condvar_wait_until(
     cv: *mut ZCondvar,
     m: *mut ZMutex,
-    abstime: *const u64,
+    abstime: *const usize, // z_clock_t = TickType_t (u32) on FreeRTOS, void* on bare-metal
 ) -> i8 {
-    let t = unsafe { *abstime };
+    let t = unsafe { *abstime } as u64;
     P::condvar_wait_until(cv as *mut c_void, m as *mut c_void, t)
 }
 
