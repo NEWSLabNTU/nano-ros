@@ -102,7 +102,7 @@ graph TD
     end
 
     subgraph "Board Crates"
-        BOARD["nros-mps2-an385<br/>nros-esp32<br/>nros-stm32f4<br/>nros-threadx-*<br/>nros-nuttx-*"]
+        BOARD["nros-mps2-an385<br/>nros-mps2-an385-freertos<br/>nros-esp32 / nros-esp32-qemu<br/>nros-stm32f4<br/>nros-threadx-* / nros-nuttx-*"]
     end
 
     subgraph "Drivers"
@@ -149,7 +149,9 @@ graph TD
     NPLAT --> NPLATIMPL
 
     BOARD --> NROS
+    BOARD --> NPLAT
     BOARD --> NPLATIMPL
+    BOARD --> ZPSHIM
     BOARD --> ZSMOL
     BOARD --> DRV
 
@@ -432,6 +434,7 @@ graph TD
 | `nros-stm32f4`              | STM32F4        | Bare-metal | smoltcp       | STM32 Ethernet        |
 | `nros-nuttx-qemu-arm`       | QEMU Cortex-A7 | NuttX      | NuttX sockets | virtio-net (built-in) |
 | `nros-threadx-qemu-riscv64` | QEMU RISC-V    | ThreadX    | NetX Duo      | virtio-net-netx       |
+| `nros-threadx-linux`        | Linux (x86_64) | ThreadX    | NetX Duo      | veth (bridge)         |
 
 ### Platform Primitives
 
@@ -691,7 +694,11 @@ block-beta
   end
 
   block:row7:3
-    G1["Board Crates -- HW init, network stack, run() API\nDrivers -- lan9118, openeth, virtio-net"]
+    G1["nros-platform -- PlatformOps traits + ConcretePlatform\nnros-platform-* -- clock, memory, sleep, random, threading"]
+  end
+
+  block:row8:3
+    H1["Board Crates -- HW init, network stack, run() API\nDrivers -- lan9118, openeth, virtio-net"]
   end
 
   row1 --> row2
@@ -700,4 +707,5 @@ block-beta
   row4 --> row5
   row5 --> row6
   row6 --> row7
+  row7 --> row8
 ```

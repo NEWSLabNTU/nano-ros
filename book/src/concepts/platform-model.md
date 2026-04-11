@@ -142,6 +142,11 @@ Features propagate through the crate dependency graph using Cargo's `?` syntax f
 - `nros-rmw-zenoh` -- the Zenoh RMW implementation crate
 - `zpico-sys` -- zenoh-pico C bindings
 
-Platform features propagate similarly, activating the appropriate `nros-platform-*` crate that provides OS-level primitives (clock, memory, sleep, random, threading). The RMW transport libraries access these primitives through thin shim layers -- `zpico-platform-shim` (inside `zpico-sys`) and `xrce-platform-shim` (inside `xrce-sys`) -- which forward `z_*` and `uxr_*` FFI symbols to the unified `ConcretePlatform` type alias from `nros-platform`.
+Platform features propagate through two paths depending on the platform type:
+
+- **RTOS platforms** (POSIX, FreeRTOS, NuttX, ThreadX): the facade activates `nros-platform/platform-*`, which pulls in the corresponding `nros-platform-*` implementation crate (e.g., `nros-platform-posix`, `nros-platform-freertos`). These live in `packages/core/`.
+- **Bare-metal platforms**: the facade only activates `nros-node/platform-bare-metal` and `nros-rmw-zenoh?/platform-bare-metal`. Since "bare-metal" isn't a single platform, the **board crate** activates the specific board platform -- e.g., `nros-mps2-an385` enables `nros-platform/platform-mps2-an385`, which pulls in `nros-platform-mps2-an385` from `packages/boards/`.
+
+The RMW transport libraries access platform primitives through thin shim crates -- `zpico-platform-shim` (consumed by `zpico-sys`) and `xrce-platform-shim` (consumed by `xrce-sys`) -- which forward `z_*` and `uxr_*` FFI symbols to the unified `ConcretePlatform` type alias from `nros-platform`. Board crates depend on the shim crate directly (with the `active` feature) to ensure the symbols are linked.
 
 The default feature set is `std` only. No RMW backend or platform is selected by default -- users must explicitly choose their configuration.
