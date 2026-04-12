@@ -404,7 +404,7 @@ fn test_freertos_pubsub_e2e() {
         .expect("Failed to start listener QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(20));
 
     // Start talker QEMU
     eprintln!("Starting talker QEMU (slirp)...");
@@ -473,7 +473,7 @@ fn test_freertos_service_e2e() {
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(20));
 
     // Start client
     eprintln!("Starting service client QEMU (slirp)...");
@@ -482,7 +482,7 @@ fn test_freertos_service_e2e() {
 
     // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
     // before it can discover the server's service queryable.
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     // Wait for client to complete all service calls (4 calls: 5+3, 10+20, 100+200, -5+10)
     // The completion marker "All service calls completed" triggers early return.
@@ -558,7 +558,7 @@ fn test_freertos_action_e2e() {
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // Stabilization delay: FreeRTOS boot + lwIP init + zenoh connect (~10s)
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(20));
 
     // Start action client
     eprintln!("Starting action client QEMU (slirp)...");
@@ -567,7 +567,7 @@ fn test_freertos_action_e2e() {
 
     // Stabilization delay: client also needs FreeRTOS boot + lwIP init + zenoh connect
     // before it can discover the server's action queryables.
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     // Fibonacci computation + zenoh connect.
     // The completion marker "Action completed successfully" triggers early return.
@@ -885,7 +885,7 @@ fn test_freertos_cpp_pubsub_e2e() {
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(20));
 
     eprintln!("Starting C++ talker QEMU (slirp)...");
     let mut talker =
@@ -934,13 +934,13 @@ fn test_freertos_cpp_service_e2e() {
     let mut server =
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(20));
 
     eprintln!("Starting C++ service client QEMU (slirp)...");
     let mut client =
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     let client_output = client
         .wait_for_output(Duration::from_secs(60))
@@ -985,13 +985,13 @@ fn test_freertos_cpp_action_e2e() {
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // 15s — action server registers 3 queryables, needs more discovery time
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     eprintln!("Starting C++ action client QEMU (slirp)...");
     let mut client =
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     // 45s — async client has 30s spin timeout + margin for QEMU boot
     let client_output = client
@@ -1257,7 +1257,7 @@ fn test_freertos_c_pubsub_e2e() {
     let mut listener = QemuProcess::start_mps2_an385_networked(listener_bin)
         .expect("Failed to start listener QEMU");
 
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(20));
 
     eprintln!("Starting C talker QEMU (slirp)...");
     let mut talker =
@@ -1301,13 +1301,13 @@ fn test_freertos_c_service_e2e() {
     let mut server =
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(20));
 
     eprintln!("Starting C service client QEMU (slirp)...");
     let mut client =
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     let client_output = client
         .wait_for_output(Duration::from_secs(60))
@@ -1349,13 +1349,13 @@ fn test_freertos_c_action_e2e() {
         QemuProcess::start_mps2_an385_networked(server_bin).expect("Failed to start server QEMU");
 
     // 15s (vs 10s for service) — action server registers 3 queryables, needs more discovery time
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     eprintln!("Starting C action client QEMU (slirp)...");
     let mut client =
         QemuProcess::start_mps2_an385_networked(client_bin).expect("Failed to start client QEMU");
 
-    std::thread::sleep(Duration::from_secs(15));
+    std::thread::sleep(Duration::from_secs(20));
 
     // 90s (vs 60s) — each failed send_goal attempt blocks ~13s waiting for zenoh lease task
     // to fire the dropper; with 5 retries × (13s + 5s spin) = 90s needed for 5 failures
