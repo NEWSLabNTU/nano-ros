@@ -11,6 +11,14 @@
 #   make
 #
 
+# --- OpenAMP ---
+# Upstream NuttX 2026-04 has a version skew between openamp/open-amp.defs
+# (references open-amp/lib/utils/utilities.c) and OPENAMP_VERSION=2025.10.0
+# (no utils/ subdirectory upstream), causing build failures. We don't need
+# OpenAMP for the QEMU ARM virt tests (it's for heterogeneous multi-core
+# rpmsg), so disable it explicitly to avoid the broken transitive default.
+# CONFIG_OPENAMP is not set
+
 # --- Architecture ---
 CONFIG_ARCH="arm"
 CONFIG_ARCH_BOARD="qemu-armv7a"

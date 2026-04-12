@@ -106,13 +106,34 @@ export APPDIR="$NUTTX_APPS_DIR"
 # Configure NuttX: symlink Make.defs from the board, copy our defconfig, resolve.
 # This replicates what tools/configure.sh does without requiring the full script
 # (which has additional dependencies like kconfig-tweak for host detection).
+#
+# Also detect a stale build tree: .depend files generated against a previous
+# NuttX checkout can reference files that have since been moved (e.g.
+# stdio/lib_libbsprintf.c → stream/lib_libbsprintf.c after an upstream
+# reorganization), causing "No rule to make target" failures. We track the
+# NuttX submodule HEAD in a marker file and distclean when it changes.
 BOARD_MAKEDEFS="$(pwd)/boards/arm/qemu/qemu-armv7a/scripts/Make.defs"
+MARKER=".nros-nuttx-build-head"
+CURRENT_HEAD=$(git -C "$NUTTX_DIR" rev-parse HEAD 2>/dev/null || echo "unknown")
+STORED_HEAD=$(cat "$MARKER" 2>/dev/null || echo "none")
+NEEDS_RECONFIG=0
+
 if [ ! -f .config ] || [ ! -f Make.defs ] || [ "$DEFCONFIG" -nt .config ]; then
+    NEEDS_RECONFIG=1
+fi
+if [ "$CURRENT_HEAD" != "$STORED_HEAD" ]; then
+    echo "NuttX submodule HEAD changed ($STORED_HEAD → $CURRENT_HEAD) — cleaning stale build artifacts."
+    NEEDS_RECONFIG=1
+fi
+
+if [ "$NEEDS_RECONFIG" -eq 1 ]; then
     echo "Configuring NuttX..."
+    make distclean 2>/dev/null || true
     rm -f .config Make.defs
     ln -sf "$BOARD_MAKEDEFS" Make.defs
     cp "$DEFCONFIG" .config
     make olddefconfig
+    echo "$CURRENT_HEAD" > "$MARKER"
 fi
 
 # --- Build NuttX ---

@@ -22,8 +22,9 @@ doctor:
         echo "  [MISSING] kani-verifier (run: just verification kani)"
         fail=1
     fi
-    if [ -x tools/verus/verus ] || command -v verus &>/dev/null; then
-        echo "  [OK] verus"
+    if [ -x tools/verus ] || command -v verus &>/dev/null; then
+        ver=$(tools/verus --version 2>/dev/null | grep -i Version | head -1 | tr -d ' ' || echo "")
+        echo "  [OK] verus${ver:+ ($ver)}"
     else
         echo "  [MISSING] verus (run: just verification verus)"
         fail=1

@@ -143,6 +143,9 @@ typedef struct {
 #ifndef ZPICO_GET_POLL_INTERVAL_MS
 #define ZPICO_GET_POLL_INTERVAL_MS 10
 #endif
+#ifndef ZPICO_MAX_PENDING_GETS
+#define ZPICO_MAX_PENDING_GETS 4
+#endif
 
 // Static storage for zenoh objects
 static z_owned_config_t g_config;
@@ -174,7 +177,8 @@ typedef struct {
 } get_reply_ctx_t;
 
 // Static slots for non-blocking z_get operations
-// ZPICO_MAX_PENDING_GETS is provided via -D compiler flag from build.rs
+// ZPICO_MAX_PENDING_GETS is provided via -D compiler flag from build.rs,
+// with a default fallback above for non-Cargo build paths.
 typedef struct {
     get_reply_ctx_t ctx;
     bool in_use;
