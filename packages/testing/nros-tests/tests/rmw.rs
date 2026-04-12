@@ -17,7 +17,7 @@ use std::time::Duration;
 #[rstest]
 fn test_zenohrmw_open_client_mode(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -36,7 +36,7 @@ fn test_zenohrmw_open_client_mode(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_zenohrmw_open_with_domain_id(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -59,7 +59,7 @@ fn test_zenohrmw_open_with_domain_id(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_zenohrmw_create_publisher(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -88,7 +88,7 @@ fn test_zenohrmw_create_publisher(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_zenohrmw_create_subscriber(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -131,7 +131,7 @@ fn test_zenohrmw_create_subscriber(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_zenohrmw_publish_raw(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();

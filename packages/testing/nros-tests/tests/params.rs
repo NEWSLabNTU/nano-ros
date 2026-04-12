@@ -30,7 +30,7 @@ fn test_talker_with_params_builds() {
 #[rstest]
 fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let binary = build_native_talker().expect("Failed to build");
@@ -80,7 +80,7 @@ fn test_talker_uses_default_param(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_talker_param_declaration(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let binary = build_native_talker().expect("Failed to build");
@@ -174,8 +174,12 @@ fn require_node_discoverable(locator: &str) -> bool {
 /// Test that ROS 2 can list parameters on nros node
 #[rstest]
 fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() || !require_ros2() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -213,8 +217,12 @@ fn test_ros2_param_list(zenohd_unique: ZenohRouter) {
 /// Test that ROS 2 can get parameter value from nros node
 #[rstest]
 fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() || !require_ros2() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -253,8 +261,12 @@ fn test_ros2_param_get(zenohd_unique: ZenohRouter) {
 /// Test that ROS 2 can set and read back a parameter on nros node
 #[rstest]
 fn test_ros2_param_set(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() || !require_ros2() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -296,8 +308,12 @@ fn test_ros2_param_set(zenohd_unique: ZenohRouter) {
 /// Test that ROS 2 can describe parameter on nros node
 #[rstest]
 fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
-    if !require_zenohd() || !require_ros2() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_ros2() {
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -347,7 +363,7 @@ fn test_ros2_param_describe(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_param_integer_type(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let binary = build_native_talker().expect("Failed to build");

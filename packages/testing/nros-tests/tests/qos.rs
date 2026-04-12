@@ -32,7 +32,7 @@ use std::time::Duration;
 #[rstest]
 fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -112,7 +112,7 @@ fn test_qos_reliable_delivery(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -208,7 +208,7 @@ fn test_qos_reliable_no_loss(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -288,7 +288,7 @@ fn test_qos_history_ordering(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -352,7 +352,7 @@ fn test_qos_compatible_settings(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -435,7 +435,7 @@ fn test_qos_multiple_subscribers(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_qos_keyexpr_encoding(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");

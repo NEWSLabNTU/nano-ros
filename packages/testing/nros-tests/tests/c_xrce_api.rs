@@ -31,8 +31,12 @@ fn stdbuf_command(binary: &Path) -> Command {
 
 #[test]
 fn test_c_xrce_talker_builds() {
-    if !require_cmake() || !require_xrce_agent() {
-        return;
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
     }
     match build_c_xrce_talker() {
         Ok(path) => {
@@ -48,8 +52,12 @@ fn test_c_xrce_talker_builds() {
 
 #[test]
 fn test_c_xrce_listener_builds() {
-    if !require_cmake() || !require_xrce_agent() {
-        return;
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
+    }
+
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
     }
     match build_c_xrce_listener() {
         Ok(path) => {
@@ -69,8 +77,12 @@ fn test_c_xrce_listener_builds() {
 
 #[rstest]
 fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
-    if !require_xrce_agent() || !require_cmake() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -99,8 +111,12 @@ fn test_c_xrce_talker_starts(c_xrce_talker_binary: PathBuf) {
 
 #[rstest]
 fn test_c_xrce_listener_starts(c_xrce_listener_binary: PathBuf) {
-    if !require_xrce_agent() || !require_cmake() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -136,8 +152,12 @@ fn test_c_xrce_talker_listener_communication(
     c_xrce_talker_binary: PathBuf,
     c_xrce_listener_binary: PathBuf,
 ) {
-    if !require_xrce_agent() || !require_cmake() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");

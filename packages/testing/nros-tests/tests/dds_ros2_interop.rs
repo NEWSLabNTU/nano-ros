@@ -99,7 +99,7 @@ fn test_ros2_dds_detection() {
 #[rstest]
 fn test_nros_dds_to_ros2(dds_talker_binary: PathBuf) {
     if !require_ros2_dds() {
-        return;
+        nros_tests::skip!("ROS 2 DDS not available");
     }
 
     // Start ROS 2 echo subscriber
@@ -156,7 +156,7 @@ fn test_nros_dds_to_ros2(dds_talker_binary: PathBuf) {
 #[rstest]
 fn test_ros2_to_nros_dds(dds_listener_binary: PathBuf) {
     if !require_ros2_dds() {
-        return;
+        nros_tests::skip!("ROS 2 DDS not available");
     }
 
     // Start nros DDS listener

@@ -19,7 +19,7 @@ fn test_action_server_starts(zenohd_unique: ZenohRouter, action_server_binary: P
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -53,7 +53,7 @@ fn test_action_client_starts(zenohd_unique: ZenohRouter, action_client_binary: P
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -86,7 +86,7 @@ fn test_action_server_client_communication(
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();

@@ -34,7 +34,7 @@ use std::time::Duration;
 #[test]
 fn test_connection_timeout_talker() {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -96,7 +96,7 @@ fn test_connection_timeout_talker() {
 #[test]
 fn test_connection_timeout_listener() {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let listener_binary = build_native_listener().expect("Failed to build listener");
@@ -146,7 +146,7 @@ fn test_connection_timeout_listener() {
 #[rstest]
 fn test_router_disconnect(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -195,7 +195,7 @@ fn test_router_disconnect(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -277,7 +277,7 @@ fn test_listener_router_disconnect(zenohd_unique: ZenohRouter) {
 #[test]
 fn test_router_reconnect() {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -391,7 +391,7 @@ fn test_router_reconnect() {
 #[rstest]
 fn test_rapid_start_stop(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -427,7 +427,7 @@ fn test_rapid_start_stop(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_minimal_runtime(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -466,7 +466,7 @@ fn test_minimal_runtime(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_debug_logging_overhead(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");

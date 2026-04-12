@@ -27,7 +27,7 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -49,14 +49,7 @@ fn test_zenoh_large_publish_sizes(zenohd_unique: ZenohRouter, zenoh_stress_test_
 
         proc.kill();
 
-        let published = count_pattern(&output, "Published:");
-        assert!(
-            published >= 2,
-            "Expected at least 2 publishes at size={}, got {}.\nOutput:\n{}",
-            size,
-            published,
-            output,
-        );
+        let _result = nros_tests::output::assert_talker(&output, 2);
     }
 }
 
@@ -66,7 +59,7 @@ fn test_zenoh_e2e_integrity(zenohd_unique: ZenohRouter, zenoh_stress_test_binary
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -132,7 +125,7 @@ fn test_zenoh_overflow_detection(zenohd_unique: ZenohRouter, zenoh_stress_test_b
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -206,7 +199,7 @@ fn test_zenoh_e2e_large_receive(
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -267,7 +260,7 @@ fn test_zenoh_throughput_100hz(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -321,7 +314,7 @@ fn test_zenoh_throughput_burst(zenohd_unique: ZenohRouter, zenoh_stress_test_bin
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -380,7 +373,7 @@ fn test_xrce_e2e_integrity(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -444,7 +437,7 @@ fn test_xrce_large_publish_sizes(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -486,7 +479,7 @@ fn test_xrce_throughput_100hz(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -541,7 +534,7 @@ fn test_xrce_throughput_burst(xrce_stress_test_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");

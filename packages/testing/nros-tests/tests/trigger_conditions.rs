@@ -21,7 +21,7 @@ fn test_guard_condition_with_zenoh(zenohd_unique: ZenohRouter) {
     use nros_node::executor::*;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();

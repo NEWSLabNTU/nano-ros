@@ -25,7 +25,7 @@ fn test_xrce_talker_starts(xrce_talker_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -54,7 +54,7 @@ fn test_xrce_listener_starts(xrce_listener_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -85,11 +85,10 @@ fn test_xrce_talker_listener_communication(
     xrce_talker_binary: PathBuf,
     xrce_listener_binary: PathBuf,
 ) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -125,24 +124,17 @@ fn test_xrce_talker_listener_communication(
     listener.kill();
 
     // Assert at least 1 message was received
-    let received_count = count_pattern(&listener_output, "Received:");
-    assert!(
-        received_count >= 1,
-        "Expected at least 1 message, got {}.\nListener output:\n{}",
-        received_count,
-        listener_output,
-    );
+    nros_tests::output::assert_listener(&listener_output, 1);
 
     drop(agent);
 }
 
 #[rstest]
 fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary: PathBuf) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -173,13 +165,7 @@ fn test_xrce_multiple_messages(xrce_talker_binary: PathBuf, xrce_listener_binary
     talker.kill();
     listener.kill();
 
-    let received_count = count_pattern(&listener_output, "Received:");
-    assert!(
-        received_count >= 3,
-        "Expected at least 3 messages, got {}.\nListener output:\n{}",
-        received_count,
-        listener_output,
-    );
+    nros_tests::output::assert_listener(&listener_output, 3);
 
     drop(agent);
 }
@@ -193,7 +179,7 @@ fn test_xrce_service_server_starts(xrce_service_server_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -225,7 +211,7 @@ fn test_xrce_service_client_starts(xrce_service_client_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -262,7 +248,7 @@ fn test_xrce_service_request_response(
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -329,7 +315,7 @@ fn test_xrce_action_server_starts(xrce_action_server_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -360,7 +346,7 @@ fn test_xrce_action_client_starts(xrce_action_client_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -395,7 +381,7 @@ fn test_xrce_action_fibonacci(
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -477,7 +463,7 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
     use std::process::Command;
 
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     let agent = XrceAgent::start_unique().expect("Failed to start XRCE Agent");
@@ -514,8 +500,12 @@ fn test_xrce_large_message_publish(xrce_large_msg_test_binary: PathBuf) {
 fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() || !require_socat() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_socat() {
+        nros_tests::skip!("socat not available");
     }
 
     let agent = XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent");
@@ -541,8 +531,12 @@ fn test_xrce_serial_talker_starts(xrce_serial_talker_binary: PathBuf) {
 fn test_xrce_serial_listener_starts(xrce_serial_listener_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() || !require_socat() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_socat() {
+        nros_tests::skip!("socat not available");
     }
 
     let agent = XrceSerialAgent::start(1).expect("Failed to start XRCE Serial Agent");
@@ -572,11 +566,14 @@ fn test_xrce_serial_communication(
     xrce_serial_talker_binary: PathBuf,
     xrce_serial_listener_binary: PathBuf,
 ) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
-    if !require_xrce_agent() || !require_socat() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_socat() {
+        nros_tests::skip!("socat not available");
     }
 
     // Serial is point-to-point: use a single agent in multiserial mode with
@@ -613,13 +610,7 @@ fn test_xrce_serial_communication(
     listener.kill();
 
     // Assert at least 1 message was received
-    let received_count = count_pattern(&listener_output, "Received:");
-    assert!(
-        received_count >= 1,
-        "Expected at least 1 message, got {}.\nListener output:\n{}",
-        received_count,
-        listener_output,
-    );
+    nros_tests::output::assert_listener(&listener_output, 1);
 
     drop(agent);
 }

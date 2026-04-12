@@ -31,7 +31,7 @@ fn stdbuf_command(binary: &Path) -> Command {
 #[test]
 fn test_cpp_talker_builds() {
     if !require_cmake() {
-        return;
+        nros_tests::skip!("cmake not found");
     }
     match build_cpp_talker() {
         Ok(path) => {
@@ -48,7 +48,7 @@ fn test_cpp_talker_builds() {
 #[test]
 fn test_cpp_listener_builds() {
     if !require_cmake() {
-        return;
+        nros_tests::skip!("cmake not found");
     }
     match build_cpp_listener() {
         Ok(path) => {
@@ -65,7 +65,7 @@ fn test_cpp_listener_builds() {
 #[test]
 fn test_cpp_service_server_builds() {
     if !require_cmake() {
-        return;
+        nros_tests::skip!("cmake not found");
     }
     match build_cpp_service_server() {
         Ok(path) => {
@@ -82,7 +82,7 @@ fn test_cpp_service_server_builds() {
 #[test]
 fn test_cpp_service_client_builds() {
     if !require_cmake() {
-        return;
+        nros_tests::skip!("cmake not found");
     }
     match build_cpp_service_client() {
         Ok(path) => {
@@ -102,8 +102,12 @@ fn test_cpp_service_client_builds() {
 
 #[rstest]
 fn test_cpp_talker_starts(zenohd_unique: ZenohRouter, cpp_talker_binary: PathBuf) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -131,8 +135,12 @@ fn test_cpp_talker_starts(zenohd_unique: ZenohRouter, cpp_talker_binary: PathBuf
 
 #[rstest]
 fn test_cpp_listener_starts(zenohd_unique: ZenohRouter, cpp_listener_binary: PathBuf) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -168,8 +176,12 @@ fn test_cpp_talker_listener_communication(
     cpp_talker_binary: PathBuf,
     cpp_listener_binary: PathBuf,
 ) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -231,8 +243,12 @@ fn test_cpp_talker_listener_communication(
 
 #[rstest]
 fn test_cpp_service_server_starts(zenohd_unique: ZenohRouter, cpp_service_server_binary: PathBuf) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -264,8 +280,12 @@ fn test_cpp_service_communication(
     cpp_service_server_binary: PathBuf,
     cpp_service_client_binary: PathBuf,
 ) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -314,8 +334,12 @@ fn test_cpp_service_communication(
 
 #[rstest]
 fn test_cpp_rust_pubsub_interop(zenohd_unique: ZenohRouter, cpp_talker_binary: PathBuf) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -375,8 +399,12 @@ fn test_cpp_rust_pubsub_interop(zenohd_unique: ZenohRouter, cpp_talker_binary: P
 
 #[rstest]
 fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter, cpp_service_server_binary: PathBuf) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -449,7 +477,7 @@ fn test_cpp_rust_service_interop(zenohd_unique: ZenohRouter, cpp_service_server_
 #[test]
 fn test_cpp_action_server_builds() {
     if !require_cmake() {
-        return;
+        nros_tests::skip!("cmake not found");
     }
     match build_cpp_action_server() {
         Ok(path) => {
@@ -466,7 +494,7 @@ fn test_cpp_action_server_builds() {
 #[test]
 fn test_cpp_action_client_builds() {
     if !require_cmake() {
-        return;
+        nros_tests::skip!("cmake not found");
     }
     match build_cpp_action_client() {
         Ok(path) => {
@@ -486,8 +514,12 @@ fn test_cpp_action_client_builds() {
 
 #[rstest]
 fn test_cpp_action_server_starts(zenohd_unique: ZenohRouter, cpp_action_server_binary: PathBuf) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -523,8 +555,12 @@ fn test_cpp_action_communication(
     cpp_action_server_binary: PathBuf,
     cpp_action_client_binary: PathBuf,
 ) {
-    if !require_zenohd() || !require_cmake() {
-        return;
+    if !require_zenohd() {
+        nros_tests::skip!("zenohd not found");
+    }
+
+    if !require_cmake() {
+        nros_tests::skip!("cmake not found");
     }
 
     let locator = zenohd_unique.locator();

@@ -250,7 +250,7 @@ fn test_arm_toolchain_detection() {
 fn test_qemu_bsp_talker_builds() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     let result = build_qemu_bsp_talker();
@@ -283,7 +283,7 @@ fn test_qemu_bsp_talker_builds() {
 fn test_qemu_bsp_listener_builds() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     let result = build_qemu_bsp_listener();
@@ -523,7 +523,7 @@ fn test_qemu_bsp_listener_starts() {
 fn test_qemu_bsp_both_build() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     let talker = build_qemu_bsp_talker();
@@ -571,7 +571,7 @@ fn test_qemu_bsp_both_build() {
 fn test_qemu_serial_talker_builds() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     let result = build_qemu_serial_talker();
@@ -604,7 +604,7 @@ fn test_qemu_serial_talker_builds() {
 fn test_qemu_serial_listener_builds() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     let result = build_qemu_serial_listener();
@@ -654,7 +654,7 @@ fn test_qemu_serial_pubsub_e2e() {
     require_arm_toolchain();
     require_qemu();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
     if !is_socat_available() {
         eprintln!("Skipping test: socat not found");
@@ -767,7 +767,7 @@ fn test_qemu_rtic_listener_builds() {
 fn test_qemu_rtic_pubsub_e2e() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     // Build both binaries
@@ -886,7 +886,7 @@ fn test_qemu_rtic_action_client_builds() {
 fn test_qemu_rtic_service_e2e() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     // Build both binaries
@@ -955,7 +955,7 @@ fn test_qemu_rtic_service_e2e() {
 fn test_qemu_rtic_action_e2e() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     // Build both binaries
@@ -1056,7 +1056,7 @@ fn test_qemu_rtic_mixed_listener_builds() {
 fn test_qemu_rtic_mixed_priority_pubsub_e2e() {
     require_arm_toolchain();
     if !require_zenoh_pico_arm() {
-        return;
+        nros_tests::skip!("zenoh-pico arm build not available");
     }
 
     // Build both binaries

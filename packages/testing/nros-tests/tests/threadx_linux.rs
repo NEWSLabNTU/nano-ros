@@ -257,7 +257,7 @@ fn test_threadx_detection() {
 #[test]
 fn test_threadx_talker_builds() {
     if !require_threadx() {
-        return;
+        nros_tests::skip!("require_threadx check failed");
     }
     let binary = build_threadx_talker().expect("Failed to build threadx-linux-talker");
     assert!(
@@ -274,7 +274,7 @@ fn test_threadx_talker_builds() {
 #[test]
 fn test_threadx_listener_builds() {
     if !require_threadx() {
-        return;
+        nros_tests::skip!("require_threadx check failed");
     }
     let binary = build_threadx_listener().expect("Failed to build threadx-linux-listener");
     assert!(
@@ -291,7 +291,7 @@ fn test_threadx_listener_builds() {
 #[test]
 fn test_threadx_service_server_builds() {
     if !require_threadx() {
-        return;
+        nros_tests::skip!("require_threadx check failed");
     }
     let binary =
         build_threadx_service_server().expect("Failed to build threadx-linux-service-server");
@@ -309,7 +309,7 @@ fn test_threadx_service_server_builds() {
 #[test]
 fn test_threadx_service_client_builds() {
     if !require_threadx() {
-        return;
+        nros_tests::skip!("require_threadx check failed");
     }
     let binary =
         build_threadx_service_client().expect("Failed to build threadx-linux-service-client");
@@ -327,7 +327,7 @@ fn test_threadx_service_client_builds() {
 #[test]
 fn test_threadx_action_server_builds() {
     if !require_threadx() {
-        return;
+        nros_tests::skip!("require_threadx check failed");
     }
     let binary =
         build_threadx_action_server().expect("Failed to build threadx-linux-action-server");
@@ -345,7 +345,7 @@ fn test_threadx_action_server_builds() {
 #[test]
 fn test_threadx_action_client_builds() {
     if !require_threadx() {
-        return;
+        nros_tests::skip!("require_threadx check failed");
     }
     let binary =
         build_threadx_action_client().expect("Failed to build threadx-linux-action-client");
@@ -363,7 +363,7 @@ fn test_threadx_action_client_builds() {
 #[test]
 fn test_threadx_all_examples_build() {
     if !require_threadx() {
-        return;
+        nros_tests::skip!("require_threadx check failed");
     }
 
     let results = [
@@ -414,7 +414,7 @@ fn test_threadx_all_examples_build() {
 #[test]
 fn test_threadx_pubsub_e2e() {
     if !require_threadx_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_e2e check failed");
     }
 
     // Build both binaries
@@ -485,7 +485,7 @@ fn test_threadx_pubsub_e2e() {
 #[test]
 fn test_threadx_service_e2e() {
     if !require_threadx_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_e2e check failed");
     }
 
     let server_bin = build_threadx_service_server().expect("Failed to build service server");
@@ -573,7 +573,7 @@ fn test_threadx_service_e2e() {
 #[test]
 fn test_threadx_action_e2e() {
     if !require_threadx_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_e2e check failed");
     }
 
     let server_bin = build_threadx_action_server().expect("Failed to build action server");
@@ -825,7 +825,7 @@ fn build_threadx_cpp_service_client() -> TestResult<&'static Path> {
 #[test]
 fn test_threadx_cpp_talker_builds() {
     if !require_threadx_cpp() {
-        return;
+        nros_tests::skip!("require_threadx_cpp check failed");
     }
     let binary = build_threadx_cpp_talker().expect("Failed to build threadx_cpp_talker");
     assert!(binary.exists());
@@ -835,7 +835,7 @@ fn test_threadx_cpp_talker_builds() {
 #[test]
 fn test_threadx_cpp_listener_builds() {
     if !require_threadx_cpp() {
-        return;
+        nros_tests::skip!("require_threadx_cpp check failed");
     }
     let binary = build_threadx_cpp_listener().expect("Failed to build threadx_cpp_listener");
     assert!(binary.exists());
@@ -845,7 +845,7 @@ fn test_threadx_cpp_listener_builds() {
 #[test]
 fn test_threadx_cpp_service_server_builds() {
     if !require_threadx_cpp() {
-        return;
+        nros_tests::skip!("require_threadx_cpp check failed");
     }
     let binary =
         build_threadx_cpp_service_server().expect("Failed to build threadx_cpp_service_server");
@@ -859,7 +859,7 @@ fn test_threadx_cpp_service_server_builds() {
 #[test]
 fn test_threadx_cpp_service_client_builds() {
     if !require_threadx_cpp() {
-        return;
+        nros_tests::skip!("require_threadx_cpp check failed");
     }
     let binary =
         build_threadx_cpp_service_client().expect("Failed to build threadx_cpp_service_client");
@@ -877,7 +877,7 @@ fn test_threadx_cpp_service_client_builds() {
 #[test]
 fn test_threadx_cpp_pubsub_e2e() {
     if !require_threadx_cpp_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_cpp_e2e check failed");
     }
 
     let talker_bin = build_threadx_cpp_talker().expect("Failed to build C++ talker");
@@ -920,7 +920,7 @@ fn test_threadx_cpp_pubsub_e2e() {
 #[test]
 fn test_threadx_cpp_service_e2e() {
     if !require_threadx_cpp_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_cpp_e2e check failed");
     }
 
     let server_bin =
@@ -1153,7 +1153,7 @@ fn build_threadx_c_action_client() -> TestResult<&'static Path> {
 #[test]
 fn test_threadx_c_talker_builds() {
     if !require_threadx_c() {
-        return;
+        nros_tests::skip!("require_threadx_c check failed");
     }
     let binary = build_threadx_c_talker().expect("Failed to build threadx_c_talker");
     assert!(binary.exists());
@@ -1163,7 +1163,7 @@ fn test_threadx_c_talker_builds() {
 #[test]
 fn test_threadx_c_listener_builds() {
     if !require_threadx_c() {
-        return;
+        nros_tests::skip!("require_threadx_c check failed");
     }
     let binary = build_threadx_c_listener().expect("Failed to build threadx_c_listener");
     assert!(binary.exists());
@@ -1173,7 +1173,7 @@ fn test_threadx_c_listener_builds() {
 #[test]
 fn test_threadx_c_service_server_builds() {
     if !require_threadx_c() {
-        return;
+        nros_tests::skip!("require_threadx_c check failed");
     }
     let binary =
         build_threadx_c_service_server().expect("Failed to build threadx_c_service_server");
@@ -1184,7 +1184,7 @@ fn test_threadx_c_service_server_builds() {
 #[test]
 fn test_threadx_c_service_client_builds() {
     if !require_threadx_c() {
-        return;
+        nros_tests::skip!("require_threadx_c check failed");
     }
     let binary =
         build_threadx_c_service_client().expect("Failed to build threadx_c_service_client");
@@ -1195,7 +1195,7 @@ fn test_threadx_c_service_client_builds() {
 #[test]
 fn test_threadx_c_action_server_builds() {
     if !require_threadx_c() {
-        return;
+        nros_tests::skip!("require_threadx_c check failed");
     }
     let binary = build_threadx_c_action_server().expect("Failed to build threadx_c_action_server");
     assert!(binary.exists());
@@ -1205,7 +1205,7 @@ fn test_threadx_c_action_server_builds() {
 #[test]
 fn test_threadx_c_action_client_builds() {
     if !require_threadx_c() {
-        return;
+        nros_tests::skip!("require_threadx_c check failed");
     }
     let binary = build_threadx_c_action_client().expect("Failed to build threadx_c_action_client");
     assert!(binary.exists());
@@ -1219,7 +1219,7 @@ fn test_threadx_c_action_client_builds() {
 #[test]
 fn test_threadx_c_pubsub_e2e() {
     if !require_threadx_c_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_c_e2e check failed");
     }
 
     let talker_bin = build_threadx_c_talker().expect("Failed to build C talker");
@@ -1263,7 +1263,7 @@ fn test_threadx_c_pubsub_e2e() {
 #[test]
 fn test_threadx_c_service_e2e() {
     if !require_threadx_c_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_c_e2e check failed");
     }
 
     let server_bin = build_threadx_c_service_server().expect("Failed to build C service server");
@@ -1307,7 +1307,7 @@ fn test_threadx_c_service_e2e() {
 #[test]
 fn test_threadx_c_action_e2e() {
     if !require_threadx_c_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_c_e2e check failed");
     }
 
     let server_bin = build_threadx_c_action_server().expect("Failed to build C action server");

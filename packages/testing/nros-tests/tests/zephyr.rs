@@ -78,10 +78,10 @@ fn test_zephyr_availability_checks() {
 #[test]
 fn test_zephyr_talker_to_listener_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     // Start zenohd on the bridge network (listens on all interfaces)
@@ -218,10 +218,10 @@ fn test_zephyr_talker_to_listener_e2e() {
 #[test]
 fn test_zephyr_to_native_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     // Start zenohd on the bridge network
@@ -319,10 +319,10 @@ fn test_zephyr_to_native_e2e() {
 #[test]
 fn test_native_to_zephyr_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     // Start zenohd on the bridge network
@@ -430,10 +430,10 @@ fn test_native_to_zephyr_e2e() {
 #[test]
 fn test_bidirectional_native_zephyr_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     // Start zenohd on the bridge network
@@ -607,7 +607,7 @@ fn test_bidirectional_native_zephyr_e2e() {
 #[test]
 fn test_zephyr_talker_smoke() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let zephyr_binary = get_zephyr_talker_native_sim();
@@ -643,7 +643,7 @@ fn test_zephyr_talker_smoke() {
 #[test]
 fn test_zephyr_listener_smoke() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let zephyr_binary = get_zephyr_listener_native_sim();
@@ -680,7 +680,7 @@ fn test_zephyr_listener_smoke() {
 #[test]
 fn test_zephyr_talker_build() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let result = get_or_build_zephyr_example("zephyr-rs-talker", ZephyrPlatform::NativeSim, false);
@@ -700,7 +700,7 @@ fn test_zephyr_talker_build() {
 #[test]
 fn test_zephyr_listener_build() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let result =
@@ -737,7 +737,7 @@ fn get_zephyr_action_client_native_sim() -> PathBuf {
 #[test]
 fn test_zephyr_action_server_build() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let result =
@@ -758,7 +758,7 @@ fn test_zephyr_action_server_build() {
 #[test]
 fn test_zephyr_action_client_build() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let result =
@@ -782,7 +782,7 @@ fn test_zephyr_action_client_build() {
 #[test]
 fn test_zephyr_action_server_smoke() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let zephyr_binary = get_zephyr_action_server_native_sim();
@@ -816,7 +816,7 @@ fn test_zephyr_action_server_smoke() {
 #[test]
 fn test_zephyr_action_client_smoke() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let zephyr_binary = get_zephyr_action_client_native_sim();
@@ -859,10 +859,10 @@ fn test_zephyr_action_client_smoke() {
 #[test]
 fn test_zephyr_action_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     // Start zenohd on the bridge network
@@ -980,7 +980,7 @@ fn get_zephyr_service_client_native_sim() -> PathBuf {
 #[test]
 fn test_zephyr_service_server_build() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let result =
@@ -1001,7 +1001,7 @@ fn test_zephyr_service_server_build() {
 #[test]
 fn test_zephyr_service_client_build() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let result =
@@ -1025,7 +1025,7 @@ fn test_zephyr_service_client_build() {
 #[test]
 fn test_zephyr_service_server_smoke() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let zephyr_binary = get_zephyr_service_server_native_sim();
@@ -1062,7 +1062,7 @@ fn test_zephyr_service_server_smoke() {
 #[test]
 fn test_zephyr_service_client_smoke() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
 
     let zephyr_binary = get_zephyr_service_client_native_sim();
@@ -1102,10 +1102,10 @@ fn test_zephyr_service_client_smoke() {
 #[test]
 fn test_native_server_zephyr_client() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     // Start zenohd on the bridge network
@@ -1262,13 +1262,13 @@ fn get_zephyr_xrce_c_listener_native_sim() -> PathBuf {
 #[test]
 fn test_zephyr_xrce_rust_talker_listener() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     // Start XRCE Agent on port 2018 (compiled into Zephyr binaries via Kconfig)
@@ -1362,13 +1362,13 @@ fn test_zephyr_xrce_rust_talker_listener() {
 #[test]
 fn test_zephyr_xrce_c_talker_listener() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
     if !require_xrce_agent() {
-        return;
+        nros_tests::skip!("XRCE agent not available");
     }
 
     // Start XRCE Agent on port 2018 (compiled into Zephyr binaries via Kconfig)
@@ -1461,10 +1461,10 @@ fn test_zephyr_xrce_c_talker_listener() {
 #[test]
 fn test_zephyr_server_native_client() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     // Start zenohd on the bridge network
@@ -1585,10 +1585,10 @@ fn get_zephyr_cpp_listener_native_sim() -> PathBuf {
 #[test]
 fn test_zephyr_cpp_talker_to_listener_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     eprintln!("Starting zenohd router on bridge network...");
@@ -1656,10 +1656,10 @@ fn test_zephyr_cpp_talker_to_listener_e2e() {
 #[test]
 fn test_zephyr_cpp_talker_to_native_listener() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     let _router = ZenohRouter::start_on("0.0.0.0", platform::ZEPHYR.zenohd_port)
@@ -1728,10 +1728,10 @@ fn test_zephyr_cpp_talker_to_native_listener() {
 #[test]
 fn test_native_talker_to_zephyr_cpp_listener() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     let _router = ZenohRouter::start_on("0.0.0.0", platform::ZEPHYR.zenohd_port)
@@ -1820,10 +1820,10 @@ fn get_zephyr_cpp_service_client_native_sim() -> PathBuf {
 #[test]
 fn test_zephyr_cpp_service_server_to_client_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     eprintln!("Starting zenohd router on bridge network...");
@@ -1908,10 +1908,10 @@ fn get_zephyr_cpp_action_client_native_sim() -> PathBuf {
 #[test]
 fn test_zephyr_cpp_action_server_to_client_e2e() {
     if !require_zephyr() {
-        return;
+        nros_tests::skip!("Zephyr not available");
     }
     if !require_bridge_network() {
-        return;
+        nros_tests::skip!("bridge network not available");
     }
 
     eprintln!("Starting zenohd router on bridge network...");

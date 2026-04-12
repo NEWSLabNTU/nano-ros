@@ -52,7 +52,7 @@ fn test_service_client_builds() {
 #[rstest]
 fn test_service_server_starts(zenohd_unique: ZenohRouter, service_server_binary: PathBuf) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -96,7 +96,7 @@ fn test_service_client_starts_without_server(
     service_client_binary: PathBuf,
 ) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -147,7 +147,7 @@ fn test_service_request_response(
     service_client_binary: PathBuf,
 ) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -247,7 +247,7 @@ fn test_service_multiple_sequential_calls(
     service_client_binary: PathBuf,
 ) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -314,7 +314,7 @@ fn test_service_multiple_sequential_calls(
 #[rstest]
 fn test_service_client_timeout(zenohd_unique: ZenohRouter, service_client_binary: PathBuf) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -360,7 +360,7 @@ fn test_service_server_multiple_clients(
     service_client_binary: PathBuf,
 ) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let locator = zenohd_unique.locator();

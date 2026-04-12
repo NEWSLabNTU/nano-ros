@@ -61,7 +61,7 @@ fn test_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -126,7 +126,7 @@ fn test_ros2_to_nano(zenohd_unique: ZenohRouter, listener_binary: PathBuf) {
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -227,7 +227,7 @@ fn test_communication_matrix(
         Direction::NanoToNano => {}
         Direction::NanoToRos2 | Direction::Ros2ToNano => {
             if !require_ros2() {
-                return;
+                nros_tests::skip!("ROS 2 not found");
             }
         }
     }
@@ -388,7 +388,7 @@ fn test_qos_compatibility(zenohd_unique: ZenohRouter, talker_binary: PathBuf) {
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -444,7 +444,7 @@ fn test_action_nano_server_ros2_client(zenohd_unique: ZenohRouter, action_server
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -526,7 +526,7 @@ fn test_action_ros2_server_nano_client(zenohd_unique: ZenohRouter, action_client
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -602,7 +602,7 @@ fn test_discovery_node_visible(zenohd_unique: ZenohRouter, talker_binary: PathBu
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -633,7 +633,7 @@ fn test_discovery_topic_visible(zenohd_unique: ZenohRouter, talker_binary: PathB
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -672,7 +672,7 @@ fn test_discovery_subscriber_visible(zenohd_unique: ZenohRouter, listener_binary
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -705,7 +705,7 @@ fn test_discovery_service_visible(zenohd_unique: ZenohRouter, service_server_bin
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -741,7 +741,7 @@ fn test_discovery_pub_sub_combined(
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -796,7 +796,7 @@ fn test_service_nano_server_ros2_client(
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -866,7 +866,7 @@ fn test_service_ros2_server_nano_client(
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -963,7 +963,7 @@ fn test_qos_matrix(
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -1047,7 +1047,7 @@ fn test_latency_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathBuf)
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();
@@ -1116,7 +1116,7 @@ fn test_throughput_nano_to_ros2(zenohd_unique: ZenohRouter, talker_binary: PathB
     use std::process::Command;
 
     if !require_ros2() {
-        return;
+        nros_tests::skip!("ROS 2 not found");
     }
 
     let locator = zenohd_unique.locator();

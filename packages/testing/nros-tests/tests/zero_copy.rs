@@ -24,7 +24,7 @@ fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let listener_path =
@@ -58,11 +58,10 @@ fn test_zero_copy_listener_starts(zenohd_unique: ZenohRouter) {
 /// zero-copy listener. Verifies that messages flow correctly.
 #[rstest]
 fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
-    use nros_tests::count_pattern;
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_path = build_native_talker().expect("Failed to build talker");
@@ -98,18 +97,12 @@ fn test_zero_copy_talker_listener(zenohd_unique: ZenohRouter) {
         .wait_for_all_output(Duration::from_secs(30))
         .expect("Failed to collect listener output");
 
-    let received_count = count_pattern(&output, "Received:");
+    let result = nros_tests::output::assert_listener(&output, 3);
+    let received_count = result.received_count;
 
     eprintln!(
         "zero-copy talker→listener: {} messages received",
         received_count
-    );
-
-    assert!(
-        received_count >= 3,
-        "Expected at least 3 messages through zero-copy path, got {}. Output:\n{}",
-        received_count,
-        output
     );
 }
 
@@ -128,7 +121,7 @@ fn test_zero_copy_message_info(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_path = build_native_talker().expect("Failed to build talker");

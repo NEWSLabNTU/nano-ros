@@ -33,7 +33,7 @@ use std::time::Duration;
 #[rstest]
 fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -107,7 +107,7 @@ fn test_multiple_publishers_single_topic(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -198,7 +198,7 @@ fn test_multiple_subscribers_single_topic(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_many_to_many(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -276,7 +276,7 @@ fn test_many_to_many(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_sustained_communication(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -348,7 +348,7 @@ fn test_sustained_communication(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -446,7 +446,7 @@ fn test_message_ordering_sustained(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -526,7 +526,7 @@ fn test_subscriber_scalability(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -603,7 +603,7 @@ fn test_publisher_scalability(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_concurrent_startup(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");

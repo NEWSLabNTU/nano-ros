@@ -35,8 +35,12 @@ use std::time::Duration;
 /// Verify esp32-qemu-talker builds with cargo +nightly
 #[test]
 fn test_esp32_qemu_talker_builds() {
-    if !require_riscv32_target() || !require_zenoh_pico_riscv() {
-        return;
+    if !require_riscv32_target() {
+        nros_tests::skip!("riscv32 target not available");
+    }
+
+    if !require_zenoh_pico_riscv() {
+        nros_tests::skip!("zenoh-pico riscv build not available");
     }
 
     let result = build_esp32_qemu_talker();
@@ -67,8 +71,12 @@ fn test_esp32_qemu_talker_builds() {
 /// Verify esp32-qemu-listener builds with cargo +nightly
 #[test]
 fn test_esp32_qemu_listener_builds() {
-    if !require_riscv32_target() || !require_zenoh_pico_riscv() {
-        return;
+    if !require_riscv32_target() {
+        nros_tests::skip!("riscv32 target not available");
+    }
+
+    if !require_zenoh_pico_riscv() {
+        nros_tests::skip!("zenoh-pico riscv build not available");
     }
 
     let result = build_esp32_qemu_listener();
@@ -106,11 +114,19 @@ fn test_esp32_qemu_listener_builds() {
 /// Verify ESP32-C3 boots and shows BSP banner on UART
 #[test]
 fn test_esp32_qemu_talker_boots() {
-    if !require_riscv32_target() || !require_zenoh_pico_riscv() {
-        return;
+    if !require_riscv32_target() {
+        nros_tests::skip!("riscv32 target not available");
     }
-    if !require_qemu_riscv32() || !require_espflash() {
-        return;
+
+    if !require_zenoh_pico_riscv() {
+        nros_tests::skip!("zenoh-pico riscv build not available");
+    }
+    if !require_qemu_riscv32() {
+        nros_tests::skip!("qemu-system-riscv32 not available");
+    }
+
+    if !require_espflash() {
+        nros_tests::skip!("espflash not available");
     }
 
     let elf = build_esp32_qemu_talker().expect("Failed to build esp32-qemu-talker");
@@ -202,7 +218,7 @@ fn require_esp32_networked() -> bool {
 #[test]
 fn test_esp32_talker_listener_e2e() {
     if !require_esp32_networked() {
-        return;
+        nros_tests::skip!("require_esp32_networked check failed");
     }
 
     let (talker_bin, listener_bin) = build_esp32_flash_images();
@@ -309,7 +325,7 @@ fn build_esp32_listener_flash() -> std::path::PathBuf {
 #[test]
 fn test_esp32_to_native() {
     if !require_esp32_networked() {
-        return;
+        nros_tests::skip!("require_esp32_networked check failed");
     }
 
     // Only need talker flash + native listener
@@ -381,7 +397,7 @@ fn test_esp32_to_native() {
 #[test]
 fn test_native_to_esp32() {
     if !require_esp32_networked() {
-        return;
+        nros_tests::skip!("require_esp32_networked check failed");
     }
 
     // Only need listener flash + native talker

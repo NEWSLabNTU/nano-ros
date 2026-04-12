@@ -226,7 +226,7 @@ fn test_threadx_riscv64_detection() {
 #[test]
 fn test_threadx_riscv64_talker_builds() {
     if !require_threadx_riscv64() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64 check failed");
     }
     let binary = build_threadx_rv64_talker().expect("Failed to build qemu-riscv64-threadx-talker");
     assert!(
@@ -243,7 +243,7 @@ fn test_threadx_riscv64_talker_builds() {
 #[test]
 fn test_threadx_riscv64_listener_builds() {
     if !require_threadx_riscv64() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64 check failed");
     }
     let binary =
         build_threadx_rv64_listener().expect("Failed to build qemu-riscv64-threadx-listener");
@@ -261,7 +261,7 @@ fn test_threadx_riscv64_listener_builds() {
 #[test]
 fn test_threadx_riscv64_service_server_builds() {
     if !require_threadx_riscv64() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64 check failed");
     }
     let binary = build_threadx_rv64_service_server()
         .expect("Failed to build qemu-riscv64-threadx-service-server");
@@ -279,7 +279,7 @@ fn test_threadx_riscv64_service_server_builds() {
 #[test]
 fn test_threadx_riscv64_service_client_builds() {
     if !require_threadx_riscv64() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64 check failed");
     }
     let binary = build_threadx_rv64_service_client()
         .expect("Failed to build qemu-riscv64-threadx-service-client");
@@ -297,7 +297,7 @@ fn test_threadx_riscv64_service_client_builds() {
 #[test]
 fn test_threadx_riscv64_action_server_builds() {
     if !require_threadx_riscv64() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64 check failed");
     }
     let binary = build_threadx_rv64_action_server()
         .expect("Failed to build qemu-riscv64-threadx-action-server");
@@ -315,7 +315,7 @@ fn test_threadx_riscv64_action_server_builds() {
 #[test]
 fn test_threadx_riscv64_action_client_builds() {
     if !require_threadx_riscv64() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64 check failed");
     }
     let binary = build_threadx_rv64_action_client()
         .expect("Failed to build qemu-riscv64-threadx-action-client");
@@ -333,7 +333,7 @@ fn test_threadx_riscv64_action_client_builds() {
 #[test]
 fn test_threadx_riscv64_all_examples_build() {
     if !require_threadx_riscv64() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64 check failed");
     }
 
     let results = [
@@ -392,7 +392,7 @@ fn test_threadx_riscv64_all_examples_build() {
 #[test]
 fn test_threadx_riscv64_pubsub_e2e() {
     if !require_threadx_riscv64_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64_e2e check failed");
     }
 
     // Build both binaries
@@ -463,7 +463,7 @@ fn test_threadx_riscv64_pubsub_e2e() {
 #[test]
 fn test_threadx_riscv64_service_e2e() {
     if !require_threadx_riscv64_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64_e2e check failed");
     }
 
     let server_bin = build_threadx_rv64_service_server().expect("Failed to build service server");
@@ -547,7 +547,7 @@ fn test_threadx_riscv64_service_e2e() {
 #[test]
 fn test_threadx_riscv64_action_e2e() {
     if !require_threadx_riscv64_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64_e2e check failed");
     }
 
     let server_bin = build_threadx_rv64_action_server().expect("Failed to build action server");
@@ -830,7 +830,7 @@ fn build_rv64_cpp_listener() -> TestResult<&'static Path> {
 #[test]
 fn test_rv64_c_talker_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_c_talker().expect("build failed");
     assert!(b.exists());
@@ -840,7 +840,7 @@ fn test_rv64_c_talker_builds() {
 #[test]
 fn test_rv64_c_listener_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_c_listener().expect("build failed");
     assert!(b.exists());
@@ -850,7 +850,7 @@ fn test_rv64_c_listener_builds() {
 #[test]
 fn test_rv64_c_service_server_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_c_service_server().expect("build failed");
     assert!(b.exists());
@@ -859,7 +859,7 @@ fn test_rv64_c_service_server_builds() {
 #[test]
 fn test_rv64_c_service_client_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_c_service_client().expect("build failed");
     assert!(b.exists());
@@ -868,7 +868,7 @@ fn test_rv64_c_service_client_builds() {
 #[test]
 fn test_rv64_c_action_server_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_c_action_server().expect("build failed");
     assert!(b.exists());
@@ -877,7 +877,7 @@ fn test_rv64_c_action_server_builds() {
 #[test]
 fn test_rv64_c_action_client_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_c_action_client().expect("build failed");
     assert!(b.exists());
@@ -890,7 +890,7 @@ fn test_rv64_c_action_client_builds() {
 #[test]
 fn test_rv64_cpp_talker_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_cpp_talker().expect("build failed");
     assert!(b.exists());
@@ -900,7 +900,7 @@ fn test_rv64_cpp_talker_builds() {
 #[test]
 fn test_rv64_cpp_listener_builds() {
     if !require_threadx_rv64_cmake() {
-        return;
+        nros_tests::skip!("require_threadx_rv64_cmake check failed");
     }
     let b = build_rv64_cpp_listener().expect("build failed");
     assert!(b.exists());
@@ -914,7 +914,7 @@ fn test_rv64_cpp_listener_builds() {
 #[test]
 fn test_rv64_c_pubsub_e2e() {
     if !require_threadx_riscv64_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64_e2e check failed");
     }
 
     let talker_bin = build_rv64_c_talker().expect("build talker failed");
@@ -955,7 +955,7 @@ fn test_rv64_c_pubsub_e2e() {
 #[test]
 fn test_rv64_c_service_e2e() {
     if !require_threadx_riscv64_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64_e2e check failed");
     }
 
     let server_bin = build_rv64_c_service_server().expect("build server failed");
@@ -996,7 +996,7 @@ fn test_rv64_c_service_e2e() {
 #[test]
 fn test_rv64_c_action_e2e() {
     if !require_threadx_riscv64_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64_e2e check failed");
     }
 
     let server_bin = build_rv64_c_action_server().expect("build server failed");
@@ -1044,7 +1044,7 @@ fn test_rv64_c_action_e2e() {
 #[test]
 fn test_rv64_cpp_pubsub_e2e() {
     if !require_threadx_riscv64_e2e() {
-        return;
+        nros_tests::skip!("require_threadx_riscv64_e2e check failed");
     }
 
     let talker_bin = build_rv64_cpp_talker().expect("build talker failed");

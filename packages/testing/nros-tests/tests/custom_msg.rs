@@ -91,7 +91,7 @@ fn test_custom_msg_serialization() {
 #[rstest]
 fn test_custom_msg_pub_sub(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let binary = build_native_custom_msg().expect("Failed to build with zenoh");

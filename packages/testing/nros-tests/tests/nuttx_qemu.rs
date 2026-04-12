@@ -287,7 +287,7 @@ fn test_nuttx_detection() {
 #[test]
 fn test_nuttx_talker_builds() {
     if !require_nuttx() {
-        return;
+        nros_tests::skip!("require_nuttx check failed");
     }
     let binary = build_nuttx_talker().expect("Failed to build nuttx-rs-talker");
     assert!(
@@ -301,7 +301,7 @@ fn test_nuttx_talker_builds() {
 #[test]
 fn test_nuttx_listener_builds() {
     if !require_nuttx() {
-        return;
+        nros_tests::skip!("require_nuttx check failed");
     }
     let binary = build_nuttx_listener().expect("Failed to build nuttx-rs-listener");
     assert!(
@@ -315,7 +315,7 @@ fn test_nuttx_listener_builds() {
 #[test]
 fn test_nuttx_service_server_builds() {
     if !require_nuttx() {
-        return;
+        nros_tests::skip!("require_nuttx check failed");
     }
     let binary = build_nuttx_service_server().expect("Failed to build nuttx-rs-service-server");
     assert!(
@@ -332,7 +332,7 @@ fn test_nuttx_service_server_builds() {
 #[test]
 fn test_nuttx_service_client_builds() {
     if !require_nuttx() {
-        return;
+        nros_tests::skip!("require_nuttx check failed");
     }
     let binary = build_nuttx_service_client().expect("Failed to build nuttx-rs-service-client");
     assert!(
@@ -349,7 +349,7 @@ fn test_nuttx_service_client_builds() {
 #[test]
 fn test_nuttx_action_server_builds() {
     if !require_nuttx() {
-        return;
+        nros_tests::skip!("require_nuttx check failed");
     }
     let binary = build_nuttx_action_server().expect("Failed to build nuttx-rs-action-server");
     assert!(
@@ -366,7 +366,7 @@ fn test_nuttx_action_server_builds() {
 #[test]
 fn test_nuttx_action_client_builds() {
     if !require_nuttx() {
-        return;
+        nros_tests::skip!("require_nuttx check failed");
     }
     let binary = build_nuttx_action_client().expect("Failed to build nuttx-rs-action-client");
     assert!(
@@ -383,7 +383,7 @@ fn test_nuttx_action_client_builds() {
 #[test]
 fn test_nuttx_all_examples_build() {
     if !require_nuttx() {
-        return;
+        nros_tests::skip!("require_nuttx check failed");
     }
 
     let results = [
@@ -494,7 +494,7 @@ fn test_nuttx_kernel_boots() {
 #[test]
 fn test_nuttx_pubsub_e2e() {
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     // Build both binaries
@@ -573,7 +573,7 @@ fn test_nuttx_pubsub_e2e() {
 #[test]
 fn test_nuttx_service_e2e() {
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     let server_bin = build_nuttx_service_server().expect("Failed to build service server");
@@ -655,7 +655,7 @@ fn test_nuttx_service_e2e() {
 #[test]
 fn test_nuttx_action_e2e() {
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     let server_bin = build_nuttx_action_server().expect("Failed to build action server");
@@ -871,7 +871,7 @@ fn require_nuttx_cpp() -> bool {
 #[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
 fn test_nuttx_cpp_talker_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let binary = build_nuttx_cpp_talker().expect("Failed to build nuttx_cpp_talker");
     assert!(binary.exists());
@@ -882,7 +882,7 @@ fn test_nuttx_cpp_talker_builds() {
 #[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
 fn test_nuttx_cpp_listener_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let binary = build_nuttx_cpp_listener().expect("Failed to build nuttx_cpp_listener");
     assert!(binary.exists());
@@ -893,7 +893,7 @@ fn test_nuttx_cpp_listener_builds() {
 #[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
 fn test_nuttx_cpp_service_server_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let binary =
         build_nuttx_cpp_service_server().expect("Failed to build nuttx_cpp_service_server");
@@ -905,7 +905,7 @@ fn test_nuttx_cpp_service_server_builds() {
 #[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
 fn test_nuttx_cpp_service_client_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let binary =
         build_nuttx_cpp_service_client().expect("Failed to build nuttx_cpp_service_client");
@@ -921,10 +921,10 @@ fn test_nuttx_cpp_service_client_builds() {
 #[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
 fn test_nuttx_cpp_pubsub_e2e() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     let talker_bin = build_nuttx_cpp_talker().expect("Failed to build C++ talker");
@@ -941,8 +941,7 @@ fn test_nuttx_cpp_pubsub_e2e() {
         .unwrap_or_default();
 
     if !listener_ready.contains("Waiting for messages") {
-        eprintln!("[SKIP] C++ listener did not reach readiness");
-        return;
+        nros_tests::skip!("C++ listener did not reach readiness");
     }
 
     eprintln!("Starting C++ talker QEMU (slirp, 10.0.2.30)...");
@@ -970,10 +969,10 @@ fn test_nuttx_cpp_pubsub_e2e() {
 #[ignore = "NuttX C/C++ CMake build blocked by upstream libc missing _SC_HOST_NAME_MAX"]
 fn test_nuttx_cpp_service_e2e() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     let server_bin = build_nuttx_cpp_service_server().expect("Failed to build C++ service server");
@@ -989,8 +988,7 @@ fn test_nuttx_cpp_service_e2e() {
         .wait_for_output(Duration::from_secs(30))
         .unwrap_or_default();
     if !server_ready.contains("Service server ready") {
-        eprintln!("[SKIP] C++ server did not reach readiness");
-        return;
+        nros_tests::skip!("C++ server did not reach readiness");
     }
 
     eprintln!("Starting C++ service client QEMU...");
@@ -1070,7 +1068,7 @@ fn build_nuttx_c_action_client() -> TestResult<&'static Path> {
 #[test]
 fn test_nuttx_c_talker_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let b = build_nuttx_c_talker().expect("build failed");
     assert!(b.exists());
@@ -1080,7 +1078,7 @@ fn test_nuttx_c_talker_builds() {
 #[test]
 fn test_nuttx_c_listener_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let b = build_nuttx_c_listener().expect("build failed");
     assert!(b.exists());
@@ -1089,7 +1087,7 @@ fn test_nuttx_c_listener_builds() {
 #[test]
 fn test_nuttx_c_service_server_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let b = build_nuttx_c_service_server().expect("build failed");
     assert!(b.exists());
@@ -1098,7 +1096,7 @@ fn test_nuttx_c_service_server_builds() {
 #[test]
 fn test_nuttx_c_service_client_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let b = build_nuttx_c_service_client().expect("build failed");
     assert!(b.exists());
@@ -1107,7 +1105,7 @@ fn test_nuttx_c_service_client_builds() {
 #[test]
 fn test_nuttx_c_action_server_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let b = build_nuttx_c_action_server().expect("build failed");
     assert!(b.exists());
@@ -1116,7 +1114,7 @@ fn test_nuttx_c_action_server_builds() {
 #[test]
 fn test_nuttx_c_action_client_builds() {
     if !require_nuttx_cpp() {
-        return;
+        nros_tests::skip!("require_nuttx_cpp check failed");
     }
     let b = build_nuttx_c_action_client().expect("build failed");
     assert!(b.exists());
@@ -1129,7 +1127,7 @@ fn test_nuttx_c_action_client_builds() {
 #[test]
 fn test_nuttx_c_pubsub_e2e() {
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     let talker = build_nuttx_c_talker().expect("build talker");
@@ -1159,7 +1157,7 @@ fn test_nuttx_c_pubsub_e2e() {
 #[test]
 fn test_nuttx_c_service_e2e() {
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     let server = build_nuttx_c_service_server().expect("build server");
@@ -1187,7 +1185,7 @@ fn test_nuttx_c_service_e2e() {
 #[test]
 fn test_nuttx_c_action_e2e() {
     if !require_nuttx_e2e() {
-        return;
+        nros_tests::skip!("require_nuttx_e2e check failed");
     }
 
     let server = build_nuttx_c_action_server().expect("build server");

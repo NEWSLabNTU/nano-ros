@@ -165,7 +165,8 @@ mod tests {
 
     #[test]
     fn test_parse_talker() {
-        let output = "[INFO talker] Published: 0\n[INFO talker] Published: 1\n[INFO talker] Published: 2\n";
+        let output =
+            "[INFO talker] Published: 0\n[INFO talker] Published: 1\n[INFO talker] Published: 2\n";
         let result = parse_talker(output);
         assert_eq!(result.published_count, 3);
         assert_eq!(result.values, vec![0, 1, 2]);
@@ -213,7 +214,10 @@ mod tests {
 
     #[test]
     fn test_extract_after() {
-        assert_eq!(extract_after("[INFO] Published: 42", "Published:"), Some("42"));
+        assert_eq!(
+            extract_after("[INFO] Published: 42", "Published:"),
+            Some("42")
+        );
         assert_eq!(extract_after("no match here", "Published:"), None);
         assert_eq!(extract_after("Received: hello", "Received:"), Some("hello"));
     }

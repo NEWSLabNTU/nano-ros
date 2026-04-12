@@ -56,8 +56,12 @@ fn test_ros2_dds_detection() {
 fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() || !require_ros2_dds() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 DDS not available");
     }
 
     // Start XRCE Agent on ephemeral port
@@ -124,8 +128,12 @@ fn test_xrce_to_ros2_pubsub(xrce_talker_binary: PathBuf) {
 fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() || !require_ros2_dds() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 DDS not available");
     }
 
     // Start XRCE Agent on ephemeral port
@@ -202,8 +210,12 @@ fn test_ros2_to_xrce_pubsub(xrce_listener_binary: PathBuf) {
 fn test_xrce_service_ros2_client(xrce_service_server_binary: PathBuf) {
     use std::process::Command;
 
-    if !require_xrce_agent() || !require_ros2_dds() {
-        return;
+    if !require_xrce_agent() {
+        nros_tests::skip!("XRCE agent not available");
+    }
+
+    if !require_ros2_dds() {
+        nros_tests::skip!("ROS 2 DDS not available");
     }
 
     // Start XRCE Agent on ephemeral port

@@ -26,7 +26,7 @@ use std::time::Duration;
 #[rstest]
 fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let binary = build_native_talker().expect("Failed to build talker");
@@ -67,7 +67,7 @@ fn test_timer_interval_basic(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let binary = build_native_talker().expect("Failed to build talker");
@@ -107,7 +107,7 @@ fn test_timer_regular_publishing(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -194,7 +194,7 @@ fn test_callback_execution_order(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -272,7 +272,7 @@ fn test_mixed_callbacks(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_binary = build_native_talker().expect("Failed to build talker");
@@ -312,7 +312,7 @@ fn test_spin_once_processes_work(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     // While we can't easily create multiple timers in one process from tests,
@@ -373,7 +373,7 @@ fn test_executor_multiple_timers_via_publishers(zenohd_unique: ZenohRouter) {
 #[rstest]
 fn test_spin_result_timers_fired(zenohd_unique: ZenohRouter) {
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let binary = build_native_talker().expect("Failed to build");

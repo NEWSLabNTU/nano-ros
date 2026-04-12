@@ -25,7 +25,7 @@ fn test_safety_e2e_talker_listener(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_path = build_native_talker_safety().expect("Failed to build safety talker");
@@ -111,7 +111,7 @@ fn test_safety_talker_standard_listener(zenohd_unique: ZenohRouter) {
     use std::process::Command;
 
     if !require_zenohd() {
-        return;
+        nros_tests::skip!("zenohd not found");
     }
 
     let talker_path = build_native_talker_safety().expect("Failed to build safety talker");

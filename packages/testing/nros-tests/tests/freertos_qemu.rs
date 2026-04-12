@@ -225,7 +225,7 @@ fn test_freertos_detection() {
 #[test]
 fn test_freertos_talker_builds() {
     if !require_freertos() {
-        return;
+        nros_tests::skip!("require_freertos check failed");
     }
     let binary = build_freertos_talker().expect("Failed to build qemu-freertos-talker");
     assert!(
@@ -242,7 +242,7 @@ fn test_freertos_talker_builds() {
 #[test]
 fn test_freertos_listener_builds() {
     if !require_freertos() {
-        return;
+        nros_tests::skip!("require_freertos check failed");
     }
     let binary = build_freertos_listener().expect("Failed to build qemu-freertos-listener");
     assert!(
@@ -259,7 +259,7 @@ fn test_freertos_listener_builds() {
 #[test]
 fn test_freertos_service_server_builds() {
     if !require_freertos() {
-        return;
+        nros_tests::skip!("require_freertos check failed");
     }
     let binary =
         build_freertos_service_server().expect("Failed to build qemu-freertos-service-server");
@@ -277,7 +277,7 @@ fn test_freertos_service_server_builds() {
 #[test]
 fn test_freertos_service_client_builds() {
     if !require_freertos() {
-        return;
+        nros_tests::skip!("require_freertos check failed");
     }
     let binary =
         build_freertos_service_client().expect("Failed to build qemu-freertos-service-client");
@@ -295,7 +295,7 @@ fn test_freertos_service_client_builds() {
 #[test]
 fn test_freertos_action_server_builds() {
     if !require_freertos() {
-        return;
+        nros_tests::skip!("require_freertos check failed");
     }
     let binary =
         build_freertos_action_server().expect("Failed to build qemu-freertos-action-server");
@@ -313,7 +313,7 @@ fn test_freertos_action_server_builds() {
 #[test]
 fn test_freertos_action_client_builds() {
     if !require_freertos() {
-        return;
+        nros_tests::skip!("require_freertos check failed");
     }
     let binary =
         build_freertos_action_client().expect("Failed to build qemu-freertos-action-client");
@@ -331,7 +331,7 @@ fn test_freertos_action_client_builds() {
 #[test]
 fn test_freertos_all_examples_build() {
     if !require_freertos() {
-        return;
+        nros_tests::skip!("require_freertos check failed");
     }
 
     let results = [
@@ -387,7 +387,7 @@ fn test_freertos_all_examples_build() {
 #[test]
 fn test_freertos_pubsub_e2e() {
     if !require_freertos_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_e2e check failed");
     }
 
     // Build both binaries
@@ -458,7 +458,7 @@ fn test_freertos_pubsub_e2e() {
 #[test]
 fn test_freertos_service_e2e() {
     if !require_freertos_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_e2e check failed");
     }
 
     let server_bin = build_freertos_service_server().expect("Failed to build service server");
@@ -543,7 +543,7 @@ fn test_freertos_service_e2e() {
 #[test]
 fn test_freertos_action_e2e() {
     if !require_freertos_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_e2e check failed");
     }
 
     let server_bin = build_freertos_action_server().expect("Failed to build action server");
@@ -792,7 +792,7 @@ fn require_freertos_cpp_e2e() -> bool {
 #[test]
 fn test_freertos_cpp_talker_builds() {
     if !require_freertos_cpp() {
-        return;
+        nros_tests::skip!("require_freertos_cpp check failed");
     }
     let binary = build_freertos_cpp_talker().expect("Failed to build freertos_cpp_talker");
     assert!(binary.exists());
@@ -802,7 +802,7 @@ fn test_freertos_cpp_talker_builds() {
 #[test]
 fn test_freertos_cpp_listener_builds() {
     if !require_freertos_cpp() {
-        return;
+        nros_tests::skip!("require_freertos_cpp check failed");
     }
     let binary = build_freertos_cpp_listener().expect("Failed to build freertos_cpp_listener");
     assert!(binary.exists());
@@ -812,7 +812,7 @@ fn test_freertos_cpp_listener_builds() {
 #[test]
 fn test_freertos_cpp_service_server_builds() {
     if !require_freertos_cpp() {
-        return;
+        nros_tests::skip!("require_freertos_cpp check failed");
     }
     let binary =
         build_freertos_cpp_service_server().expect("Failed to build freertos_cpp_service_server");
@@ -826,7 +826,7 @@ fn test_freertos_cpp_service_server_builds() {
 #[test]
 fn test_freertos_cpp_service_client_builds() {
     if !require_freertos_cpp() {
-        return;
+        nros_tests::skip!("require_freertos_cpp check failed");
     }
     let binary =
         build_freertos_cpp_service_client().expect("Failed to build freertos_cpp_service_client");
@@ -840,7 +840,7 @@ fn test_freertos_cpp_service_client_builds() {
 #[test]
 fn test_freertos_cpp_action_server_builds() {
     if !require_freertos_cpp() {
-        return;
+        nros_tests::skip!("require_freertos_cpp check failed");
     }
     let binary =
         build_freertos_cpp_action_server().expect("Failed to build freertos_cpp_action_server");
@@ -854,7 +854,7 @@ fn test_freertos_cpp_action_server_builds() {
 #[test]
 fn test_freertos_cpp_action_client_builds() {
     if !require_freertos_cpp() {
-        return;
+        nros_tests::skip!("require_freertos_cpp check failed");
     }
     let binary =
         build_freertos_cpp_action_client().expect("Failed to build freertos_cpp_action_client");
@@ -872,7 +872,7 @@ fn test_freertos_cpp_action_client_builds() {
 #[test]
 fn test_freertos_cpp_pubsub_e2e() {
     if !require_freertos_cpp_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_cpp_e2e check failed");
     }
 
     let talker_bin = build_freertos_cpp_talker().expect("Failed to build C++ talker");
@@ -919,7 +919,7 @@ fn test_freertos_cpp_pubsub_e2e() {
 #[test]
 fn test_freertos_cpp_service_e2e() {
     if !require_freertos_cpp_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_cpp_e2e check failed");
     }
 
     let server_bin =
@@ -971,7 +971,7 @@ fn test_freertos_cpp_service_e2e() {
 #[test]
 fn test_freertos_cpp_action_e2e() {
     if !require_freertos_cpp_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_cpp_e2e check failed");
     }
 
     let server_bin = build_freertos_cpp_action_server().expect("Failed to build C++ action server");
@@ -1176,7 +1176,7 @@ fn require_freertos_c_e2e() -> bool {
 #[test]
 fn test_freertos_c_talker_builds() {
     if !require_freertos_c() {
-        return;
+        nros_tests::skip!("require_freertos_c check failed");
     }
     let binary = build_freertos_c_talker().expect("Failed to build freertos_c_talker");
     assert!(binary.exists());
@@ -1186,7 +1186,7 @@ fn test_freertos_c_talker_builds() {
 #[test]
 fn test_freertos_c_listener_builds() {
     if !require_freertos_c() {
-        return;
+        nros_tests::skip!("require_freertos_c check failed");
     }
     let binary = build_freertos_c_listener().expect("Failed to build freertos_c_listener");
     assert!(binary.exists());
@@ -1196,7 +1196,7 @@ fn test_freertos_c_listener_builds() {
 #[test]
 fn test_freertos_c_service_server_builds() {
     if !require_freertos_c() {
-        return;
+        nros_tests::skip!("require_freertos_c check failed");
     }
     let binary =
         build_freertos_c_service_server().expect("Failed to build freertos_c_service_server");
@@ -1207,7 +1207,7 @@ fn test_freertos_c_service_server_builds() {
 #[test]
 fn test_freertos_c_service_client_builds() {
     if !require_freertos_c() {
-        return;
+        nros_tests::skip!("require_freertos_c check failed");
     }
     let binary =
         build_freertos_c_service_client().expect("Failed to build freertos_c_service_client");
@@ -1218,7 +1218,7 @@ fn test_freertos_c_service_client_builds() {
 #[test]
 fn test_freertos_c_action_server_builds() {
     if !require_freertos_c() {
-        return;
+        nros_tests::skip!("require_freertos_c check failed");
     }
     let binary =
         build_freertos_c_action_server().expect("Failed to build freertos_c_action_server");
@@ -1229,7 +1229,7 @@ fn test_freertos_c_action_server_builds() {
 #[test]
 fn test_freertos_c_action_client_builds() {
     if !require_freertos_c() {
-        return;
+        nros_tests::skip!("require_freertos_c check failed");
     }
     let binary =
         build_freertos_c_action_client().expect("Failed to build freertos_c_action_client");
@@ -1244,7 +1244,7 @@ fn test_freertos_c_action_client_builds() {
 #[test]
 fn test_freertos_c_pubsub_e2e() {
     if !require_freertos_c_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_c_e2e check failed");
     }
 
     let talker_bin = build_freertos_c_talker().expect("Failed to build C talker");
@@ -1288,7 +1288,7 @@ fn test_freertos_c_pubsub_e2e() {
 #[test]
 fn test_freertos_c_service_e2e() {
     if !require_freertos_c_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_c_e2e check failed");
     }
 
     let server_bin = build_freertos_c_service_server().expect("Failed to build C service server");
@@ -1335,7 +1335,7 @@ fn test_freertos_c_service_e2e() {
 #[test]
 fn test_freertos_c_action_e2e() {
     if !require_freertos_c_e2e() {
-        return;
+        nros_tests::skip!("require_freertos_c_e2e check failed");
     }
 
     let server_bin = build_freertos_c_action_server().expect("Failed to build C action server");
