@@ -50,7 +50,9 @@ build:
     echo "Building NuttX QEMU ARM virt examples..."
     for example in talker listener service-server service-client action-server action-client; do
         echo "  Building $example..."
-        (cd examples/qemu-arm-nuttx/rust/zenoh/$example && cargo +nightly build --release)
+        # No +nightly override — the nightly version is pinned by
+        # examples/qemu-arm-nuttx/rust-toolchain.toml (see comments there).
+        (cd examples/qemu-arm-nuttx/rust/zenoh/$example && cargo build --release)
     done
     echo "NuttX QEMU examples built!"
 
@@ -133,7 +135,8 @@ _run-qemu example binary:
     #!/usr/bin/env bash
     set -e
     cd "examples/qemu-arm-nuttx/rust/zenoh/{{example}}"
-    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo +nightly build --release
+    # Nightly version pinned by examples/qemu-arm-nuttx/rust-toolchain.toml.
+    CC_armv7a_nuttx_eabihf=arm-none-eabi-gcc cargo build --release
     trap 'kill $PID 2>/dev/null; wait $PID 2>/dev/null; exit 130' INT TERM
     # -icount shift=auto: sync virtual clock with wall-clock for proper sleep/timeout
     # -device virtio-net-device: MMIO transport (NuttX virtio-net driver)

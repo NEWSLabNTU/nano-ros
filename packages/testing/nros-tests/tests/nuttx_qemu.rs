@@ -186,9 +186,15 @@ fn build_nuttx_example(name: &str, binary_name: &str) -> TestResult<PathBuf> {
     // The cc-rs crate doesn't recognize armv7a-nuttx-eabihf (Tier 3 target) and falls
     // back to the host `cc` (x86 GCC), which fails on ARM flags like -march=armv7-a.
     // Set the target-specific CC env var so cc-rs uses the ARM cross-compiler.
-    let output = duct::cmd!("cargo", "+nightly", "build", "--release")
+    //
+    // Unset RUSTUP_TOOLCHAIN so rustup re-reads the example dir's
+    // rust-toolchain.toml. The outer nextest harness is compiled against
+    // the root `stable` toolchain and propagates RUSTUP_TOOLCHAIN=stable to
+    // children — which would override our pinned nightly and break -Z build-std.
+    let output = duct::cmd!("cargo", "build", "--release")
         .dir(&example_dir)
         .env("CC_armv7a_nuttx_eabi", "arm-none-eabi-gcc")
+        .env_remove("RUSTUP_TOOLCHAIN")
         .stderr_to_stdout()
         .stdout_capture()
         .unchecked()
@@ -766,6 +772,10 @@ fn build_nuttx_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestR
     let nuttx_dir = std::env::var("NUTTX_DIR")
         .unwrap_or_else(|_| root.join("third-party/nuttx/nuttx").display().to_string());
 
+    // CMake invokes cargo internally (via corrosion) for the Rust pieces.
+    // Unset RUSTUP_TOOLCHAIN so rustup picks up the example tree's pinned
+    // nightly from rust-toolchain.toml instead of inheriting `stable` from
+    // the nextest harness.
     let output = duct::cmd!(
         "cmake",
         "-S",
@@ -776,6 +786,7 @@ fn build_nuttx_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestR
         &format!("-DNUTTX_DIR={nuttx_dir}"),
         "-DCMAKE_BUILD_TYPE=Release"
     )
+    .env_remove("RUSTUP_TOOLCHAIN")
     .stderr_to_stdout()
     .stdout_capture()
     .unchecked()
@@ -790,6 +801,7 @@ fn build_nuttx_cmake_example(lang: &str, name: &str, binary_name: &str) -> TestR
     }
 
     let output = duct::cmd!("cmake", "--build", &build_dir)
+        .env_remove("RUSTUP_TOOLCHAIN")
         .stderr_to_stdout()
         .stdout_capture()
         .unchecked()

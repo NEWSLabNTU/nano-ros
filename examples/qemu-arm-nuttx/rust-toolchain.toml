@@ -1,0 +1,14 @@
+# NuttX examples pin a specific nightly because they use `-Z build-std` to
+# compile std from source against a patched libc at third-party/nuttx/libc.
+# Cargo's `[patch]` only applies when the version matches exactly, so the
+# patched libc version in third-party/nuttx/libc/Cargo.toml must track the
+# libc version that the pinned nightly's std depends on.
+#
+# To bump:
+#   1. Pick a new nightly:  rustup toolchain install nightly-YYYY-MM-DD
+#   2. Read its libc dep:   grep libc ~/.rustup/toolchains/nightly-YYYY-MM-DD-.../lib/rustlib/src/rust/library/std/Cargo.toml
+#   3. Update both this file and third-party/nuttx/libc/Cargo.toml `version =`.
+#   4. Build + run the nuttx tests to catch any new upstream libc API changes.
+[toolchain]
+channel = "nightly-2026-04-11"
+components = ["rust-src", "rustfmt"]
