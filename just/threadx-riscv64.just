@@ -3,15 +3,17 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
-# Install ThreadX RISC-V 64 prerequisites: initialize submodules + build examples.
+# Install ThreadX RISC-V 64 prerequisites: initialize submodules.
+# Does NOT build example binaries — use `just threadx_riscv64 build` for that.
 setup:
     #!/usr/bin/env bash
     set -e
-    if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
+    if [ -d "$THREADX_DIR/common/inc" ] && [ -d "$NETX_DIR/common/inc" ]; then
+        echo "ThreadX + NetX Duo already present at $THREADX_DIR and $NETX_DIR"
+    else
         echo "Initializing ThreadX + NetX Duo submodules..."
         git submodule update --init --recursive third-party/threadx
     fi
-    just threadx_riscv64 build
 
 # Diagnose ThreadX RISC-V 64 install status (read-only).
 doctor:

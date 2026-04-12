@@ -3,15 +3,17 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
-# Install ThreadX Linux prerequisites: initialize submodules + build examples.
+# Install ThreadX Linux prerequisites: initialize submodules.
+# Does NOT build example binaries — use `just threadx_linux build` for that.
 setup:
     #!/usr/bin/env bash
     set -e
-    if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
+    if [ -d "$THREADX_DIR/common/inc" ] && [ -d "$NETX_DIR/common/inc" ]; then
+        echo "ThreadX + NetX Duo already present at $THREADX_DIR and $NETX_DIR"
+    else
         echo "Initializing ThreadX + NetX Duo submodules..."
         git submodule update --init --recursive third-party/threadx
     fi
-    just threadx_linux build
 
 # Diagnose ThreadX Linux install status (read-only).
 doctor:
@@ -28,12 +30,6 @@ doctor:
         echo "  [OK] NetX Duo: $NETX_DIR"
     else
         echo "  [MISSING] NetX Duo at $NETX_DIR (run: just threadx_linux setup)"
-        fail=1
-    fi
-    if [ -f examples/threadx-linux/rust/zenoh/talker/target/release/threadx-linux-talker ]; then
-        echo "  [OK] example binaries built"
-    else
-        echo "  [MISSING] ThreadX Linux example binaries (run: just threadx_linux setup)"
         fail=1
     fi
     exit $fail
