@@ -446,6 +446,7 @@ dependencies = [
  "cc",
  "cortex-m-semihosting",
  "nros-platform",
+ "nros-platform-freertos",
  "panic-semihosting",
  "zpico-platform-shim",
  "zpico-sys",
