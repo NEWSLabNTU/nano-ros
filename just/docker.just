@@ -74,13 +74,6 @@ test RECIPE="test":
         docker compose -f docker/docker-compose.yml run --rm test \
         just {{RECIPE}}
 
-# Run `just doctor` inside the Docker container to diagnose install
-# status in the canonical dev environment. Useful for reproducing CI
-# state on the host: if `just doctor` here says everything is OK, the
-# Docker image is ready for `just docker test`.
-doctor:
-    @just docker test doctor
-
 # Show Docker help
 help:
     @echo "Docker Development Environment"
@@ -95,11 +88,8 @@ help:
     @echo ""
     @echo "Run tests in Docker (root network setup, tests as host user):"
     @echo "  just docker test                      # Run all tests"
-    @echo "  just docker test test-threadx-linux    # ThreadX Linux (needs TAP bridge)"
+    @echo "  just docker test test-threadx-linux    # ThreadX Linux (needs CAP_NET_RAW)"
     @echo "  just docker test test-freertos         # FreeRTOS QEMU"
-    @echo ""
-    @echo "Diagnose setup inside Docker:"
-    @echo "  just docker doctor           # Run 'just doctor' in the container"
     @echo ""
     @echo "Run commands in Docker:"
     @echo "  just docker test-qemu        # Run QEMU talker/listener test"
