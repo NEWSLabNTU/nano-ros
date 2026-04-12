@@ -1136,7 +1136,13 @@ fn test_nuttx_c_action_client_builds() {
 // C E2E tests (QEMU ARM virt + slirp networking)
 // =============================================================================
 
+// NuttX QEMU slirp networking is broken in upstream NuttX — the virtio-net
+// driver + NuttX TCP stack hang on connect() to the slirp gateway. The Rust
+// equivalents silently skip by returning from the test body after seeing
+// `Transport(ConnectionFailed)`; the C variants panic on the `0 messages`
+// assert. Track the fix in docs/roadmap/phase-55-nuttx-platform.md (55.12).
 #[test]
+#[ignore = "Phase 55.12: NuttX QEMU slirp networking hangs on TCP connect — same root cause as the Rust variants' silent skip"]
 fn test_nuttx_c_pubsub_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1167,6 +1173,7 @@ fn test_nuttx_c_pubsub_e2e() {
 }
 
 #[test]
+#[ignore = "Phase 55.12: NuttX QEMU slirp networking hangs on TCP connect"]
 fn test_nuttx_c_service_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1195,6 +1202,7 @@ fn test_nuttx_c_service_e2e() {
 }
 
 #[test]
+#[ignore = "Phase 55.12: NuttX QEMU slirp networking hangs on TCP connect"]
 fn test_nuttx_c_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");

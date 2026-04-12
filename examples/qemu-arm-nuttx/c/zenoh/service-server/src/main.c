@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <nros/init.h>
 #include <nros/node.h>
@@ -81,6 +82,15 @@ void app_main(void) {
         .type_hash = example_interfaces_srv_add_two_ints_get_type_hash(),
         .serialized_size_max = 256,
     };
+
+    // Wait for NuttX networking to become ready before attempting the
+    // zenoh TCP session. NuttX's poll()/select() don't cooperate with
+    // blocking connect() well enough to rely on connect_timeout, so we
+    // just sleep for a few seconds after boot and let the virtio-net
+    // driver + DHCP/static IP setup finish. Mirrors the 5-second wait
+    // in packages/boards/nros-nuttx-qemu-arm/src/node.rs::run().
+    fflush(stdout);
+    sleep(5);
 
     nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {

@@ -1,8 +1,10 @@
 /// @file main.c
 /// @brief NuttX C talker example - publishes std_msgs/Int32 on /chatter
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <unistd.h>
 
 #include <nros/init.h>
 #include <nros/node.h>
@@ -66,6 +68,35 @@ void app_main(void) {
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
 
     memset(&app, 0, sizeof(app));
+
+    // Re-seed /dev/urandom with a per-example unique value. NuttX's
+    // xorshift128 PRNG starts with a fixed seed, so two QEMU instances
+    // otherwise generate identical Zenoh session IDs and zenohd rejects
+    // the second connection with MAX_LINKS. Writing bytes to /dev/urandom
+    // reseeds the PRNG state. Mirrors the approach in the Rust board
+    // crate (packages/boards/nros-nuttx-qemu-arm/src/node.rs::init_hardware).
+    //
+    // The literal bytes don't matter — they just need to be distinct per
+    // example. We match the Rust config IPs (10.0.2.30 = talker,
+    // .31 = listener, .32 = service-server, .33 = service-client,
+    // .34 = action-server, .35 = action-client) for consistency.
+    {
+        FILE* urandom = fopen("/dev/urandom", "wb");
+        if (urandom != NULL) {
+            const uint8_t seed[4] = {10, 0, 2, 30};
+            fwrite(seed, 1, sizeof(seed), urandom);
+            fclose(urandom);
+        }
+    }
+
+    // Wait for NuttX networking to become ready before attempting the
+    // zenoh TCP session. NuttX's poll()/select() don't cooperate with
+    // blocking connect() well enough to rely on connect_timeout, so we
+    // just sleep for a few seconds after boot and let the virtio-net
+    // driver + DHCP/static IP setup finish. Mirrors the 5-second wait
+    // in packages/boards/nros-nuttx-qemu-arm/src/node.rs::run().
+    fflush(stdout);
+    sleep(5);
 
     nros_ret_t ret = nros_support_init(&app.support, APP_ZENOH_LOCATOR, APP_DOMAIN_ID);
     if (ret != NROS_RET_OK) {
