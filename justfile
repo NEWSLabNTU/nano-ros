@@ -117,6 +117,45 @@ test-unit verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Count real (non-[SKIPPED]) test failures from the latest junit.xml.
+# Tests that panic with `[SKIPPED] ...` (via the nros_tests::skip! macro)
+# are environment-conditional skips and excluded from the real failure count.
+# Counts only `<failure ` entries whose `message=` attribute contains [SKIPPED],
+# not raw `[SKIPPED]` strings (which also appear in `<system-err>`).
+_count-real-failures:
+    #!/usr/bin/env bash
+    junit=target/nextest/default/junit.xml
+    if [ ! -f "$junit" ]; then
+        echo 0
+        exit 0
+    fi
+    total=$(grep -c '<failure ' "$junit" || echo 0)
+    # A failure is environment-skipped if its <failure> tag's content contains [SKIPPED].
+    # We grep for `<failure ` lines plus the next line (the panic message body).
+    skipped=$(grep -A1 '<failure ' "$junit" | grep -c '\[SKIPPED\]' || echo 0)
+    real=$((total - skipped))
+    if [ $real -lt 0 ]; then real=0; fi
+    echo "$real"
+
+# Print a one-line summary of test outcomes from junit.xml.
+_test-summary:
+    #!/usr/bin/env bash
+    junit=target/nextest/default/junit.xml
+    if [ ! -f "$junit" ]; then
+        echo "No junit.xml found"
+        exit 0
+    fi
+    total=$(grep -c '<failure ' "$junit" || echo 0)
+    skipped=$(grep -A1 '<failure ' "$junit" | grep -c '\[SKIPPED\]' || echo 0)
+    real=$((total - skipped))
+    if [ $real -lt 0 ]; then real=0; fi
+    if [ $skipped -gt 0 ]; then
+        echo "Environment-skipped tests: $skipped (missing prerequisites)"
+        grep -A1 '<failure ' "$junit" | grep -o '\[SKIPPED\][^<&]*' \
+            | sort | uniq -c | sort -rn | sed 's/^/  /'
+    fi
+    echo "Real failures: $real / $total total failures"
+
 # Run standard tests (needs qemu-system-arm + zenohd)
 # Single nextest run (workspace + integration, excluding zephyr/ros2/large_msg) + Miri
 test verbose="": build-zenohd
@@ -128,7 +167,14 @@ test verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}" || failed=1
+    cargo nextest run "${args[@]}"
+    nextest_exit=$?
+    real_failures=$(just _count-real-failures)
+    if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
+        failed=1
+    fi
+    echo ""
+    just _test-summary
     echo ""
     echo "=== Miri ==="
     just test-miri || failed=1
@@ -152,7 +198,14 @@ test-all verbose="": build-zenohd
     if [ -z "{{verbose}}" ]; then
         args+=(--success-output never --failure-output never)
     fi
-    cargo nextest run "${args[@]}" || failed=1
+    cargo nextest run "${args[@]}"
+    nextest_exit=$?
+    real_failures=$(just _count-real-failures)
+    if [ "$nextest_exit" -ne 0 ] && [ "$real_failures" -gt 0 ]; then
+        failed=1
+    fi
+    echo ""
+    just _test-summary
     echo ""
     echo "=== Miri ==="
     just test-miri || failed=1
