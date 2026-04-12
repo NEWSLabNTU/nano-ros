@@ -68,9 +68,53 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-# Build NuttX kernel (run after git submodule update --init)
-setup: build-kernel
-    @echo "NuttX setup complete!"
+# Install NuttX prerequisites: initialize submodules + build kernel.
+setup:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$NUTTX_DIR/arch" ]; then
+        echo "Initializing NuttX submodules..."
+        git submodule update --init --recursive third-party/nuttx
+    fi
+    just nuttx build-kernel
+    echo "NuttX setup complete!"
+
+# Diagnose NuttX install status (read-only).
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    fail=0
+    if [ -d "$NUTTX_DIR/arch" ]; then
+        echo "  [OK] NuttX source: $NUTTX_DIR"
+    else
+        echo "  [MISSING] NuttX source at $NUTTX_DIR (run: just nuttx setup)"
+        fail=1
+    fi
+    if [ -d "$NUTTX_APPS_DIR" ]; then
+        echo "  [OK] NuttX apps: $NUTTX_APPS_DIR"
+    else
+        echo "  [MISSING] NuttX apps at $NUTTX_APPS_DIR (run: just nuttx setup)"
+        fail=1
+    fi
+    if [ -f "$NUTTX_DIR/include/nuttx/config.h" ]; then
+        echo "  [OK] NuttX kernel configured"
+    else
+        echo "  [MISSING] NuttX kernel config ($NUTTX_DIR/include/nuttx/config.h) (run: just nuttx setup)"
+        fail=1
+    fi
+    if command -v arm-none-eabi-gcc &>/dev/null; then
+        echo "  [OK] arm-none-eabi-gcc"
+    else
+        echo "  [MISSING] arm-none-eabi-gcc (run: just workspace apt-packages)"
+        fail=1
+    fi
+    if command -v kconfig-conf &>/dev/null || command -v olddefconfig &>/dev/null; then
+        echo "  [OK] kconfig tools"
+    else
+        echo "  [MISSING] kconfig-frontends-nox (run: just workspace apt-packages)"
+        fail=1
+    fi
+    exit $fail
 
 # =============================================================================
 # Run examples (build + launch QEMU ARM virt with slirp networking)

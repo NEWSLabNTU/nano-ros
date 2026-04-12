@@ -109,6 +109,34 @@ test-zenoh: build
 run-networked TAP="tap-qemu0" IP="192.0.2.10" BINARY="":
     ./scripts/qemu/launch-mps2-an385.sh --tap {{TAP}} --ip {{IP}} --binary {{BINARY}}
 
+# Install QEMU bare-metal prerequisites (ARM zenoh-pico).
+setup: build-zenoh-pico
+
+# Diagnose QEMU bare-metal install status (read-only).
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    fail=0
+    if [ -f build/qemu-zenoh-pico/libzenohpico.a ]; then
+        echo "  [OK] qemu-zenoh-pico: build/qemu-zenoh-pico/libzenohpico.a"
+    else
+        echo "  [MISSING] qemu-zenoh-pico (run: just qemu setup)"
+        fail=1
+    fi
+    if command -v arm-none-eabi-gcc &>/dev/null; then
+        echo "  [OK] arm-none-eabi-gcc"
+    else
+        echo "  [MISSING] arm-none-eabi-gcc (run: just workspace apt-packages)"
+        fail=1
+    fi
+    if command -v qemu-system-arm &>/dev/null; then
+        echo "  [OK] qemu-system-arm"
+    else
+        echo "  [MISSING] qemu-system-arm (run: just workspace apt-packages)"
+        fail=1
+    fi
+    exit $fail
+
 # Build zenoh-pico for ARM Cortex-M3 (required for QEMU examples)
 build-zenoh-pico:
     @./scripts/qemu/build-zenoh-pico.sh

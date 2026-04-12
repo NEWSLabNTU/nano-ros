@@ -2,7 +2,30 @@ set working-directory := '..'
 
 default:
     @just --list --justfile {{source_file()}}
-# Build Micro-XRCE-DDS Agent from source (for XRCE integration tests)
+
+# Install XRCE prerequisites: build Micro-XRCE-DDS Agent from source.
+setup:
+    #!/usr/bin/env bash
+    set -e
+    if [ -x build/xrce-agent/MicroXRCEAgent ]; then
+        echo "Micro-XRCE-DDS Agent already built: build/xrce-agent/MicroXRCEAgent"
+    else
+        ./scripts/xrce-agent/build.sh
+    fi
+
+# Diagnose XRCE install status (read-only).
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    if [ -x build/xrce-agent/MicroXRCEAgent ]; then
+        echo "  [OK] Micro-XRCE-DDS Agent: build/xrce-agent/MicroXRCEAgent"
+        exit 0
+    else
+        echo "  [MISSING] Micro-XRCE-DDS Agent (run: just xrce setup)"
+        exit 1
+    fi
+
+# Build Micro-XRCE-DDS Agent from source (alias for `just xrce setup`).
 build-agent:
     ./scripts/xrce-agent/build.sh
 

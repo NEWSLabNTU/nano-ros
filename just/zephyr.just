@@ -5,6 +5,48 @@ default:
 # Zephyr workspace path (symlink or sibling directory)
 ZEPHYR_WORKSPACE := if path_exists("zephyr-workspace") == "true" { "zephyr-workspace" } else { "../nano-ros-workspace" }
 
+# Install the Zephyr workspace as a sibling directory (large download).
+# Idempotent: skips if ../nano-ros-workspace/zephyr already exists.
+# Extra args are forwarded: e.g. `just zephyr setup --force --skip-sdk`.
+setup *ARGS:
+    #!/usr/bin/env bash
+    set -e
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    ARGS="{{ARGS}}"
+    if [ -d "$WORKSPACE/zephyr" ] && [[ "$ARGS" != *--force* ]]; then
+        echo "Zephyr workspace already present at $WORKSPACE"
+        echo "To reinstall, run: just zephyr setup --force"
+    else
+        ./scripts/zephyr/setup.sh $ARGS
+    fi
+
+# Diagnose Zephyr install status (read-only).
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    fail=0
+    WORKSPACE="{{ZEPHYR_WORKSPACE}}"
+    if command -v west &>/dev/null; then
+        echo "  [OK] west"
+    else
+        echo "  [MISSING] west (run: just zephyr setup)"
+        fail=1
+    fi
+    if [ -d "$WORKSPACE/zephyr" ]; then
+        echo "  [OK] Zephyr workspace: $WORKSPACE"
+    else
+        echo "  [MISSING] Zephyr workspace at $WORKSPACE (run: just zephyr setup)"
+        fail=1
+    fi
+    # Bridge network / TAP interface is required for E2E but needs sudo,
+    # so report it separately instead of failing on it.
+    if ip link show zeth-br &>/dev/null; then
+        echo "  [OK] Zephyr bridge network (zeth-br)"
+    else
+        echo "  [INFO] Zephyr bridge network not up (run: sudo just setup-network)"
+    fi
+    exit $fail
+
 # Build Zephyr Rust examples (all Rust examples for native_sim)
 build:
     #!/usr/bin/env bash

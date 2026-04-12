@@ -3,6 +3,41 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
+# Install ThreadX Linux prerequisites: initialize submodules + build examples.
+setup:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
+        echo "Initializing ThreadX + NetX Duo submodules..."
+        git submodule update --init --recursive third-party/threadx
+    fi
+    just threadx_linux build
+
+# Diagnose ThreadX Linux install status (read-only).
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    fail=0
+    if [ -d "$THREADX_DIR/common/inc" ]; then
+        echo "  [OK] ThreadX kernel: $THREADX_DIR"
+    else
+        echo "  [MISSING] ThreadX kernel at $THREADX_DIR (run: just threadx_linux setup)"
+        fail=1
+    fi
+    if [ -d "$NETX_DIR/common/inc" ]; then
+        echo "  [OK] NetX Duo: $NETX_DIR"
+    else
+        echo "  [MISSING] NetX Duo at $NETX_DIR (run: just threadx_linux setup)"
+        fail=1
+    fi
+    if [ -f examples/threadx-linux/rust/zenoh/talker/target/release/threadx-linux-talker ]; then
+        echo "  [OK] example binaries built"
+    else
+        echo "  [MISSING] ThreadX Linux example binaries (run: just threadx_linux setup)"
+        fail=1
+    fi
+    exit $fail
+
 # Install ThreadX Linux libraries into build/install/
 install:
     #!/usr/bin/env bash
@@ -54,48 +89,15 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
-# Apply CAP_NET_RAW to ThreadX Linux binaries (requires sudo)
-setup-caps: build
-    #!/usr/bin/env bash
-    set -e
-    echo "=== Applying CAP_NET_RAW to ThreadX Linux binaries ==="
-    echo ""
-    EXAMPLES_DIR="examples/threadx-linux/rust/zenoh"
-    found=0
-    for dir in "$EXAMPLES_DIR"/*/; do
-        name=$(basename "$dir")
-        binary="$dir/target/release/threadx-linux-$name"
-        if [ -f "$binary" ]; then
-            # Break Cargo's hardlink — Linux ignores setcap on hardlinked files
-            # when fs.protected_regular=2 (default on modern kernels).
-            if [ "$(stat -c %h "$binary")" -gt 1 ]; then
-                tmp=$(mktemp)
-                cp "$binary" "$tmp"
-                mv "$tmp" "$binary"
-                chmod 755 "$binary"
-            fi
-            echo "  setcap cap_net_raw+ep $binary"
-            sudo setcap cap_net_raw+ep "$binary"
-            found=$((found + 1))
-        fi
-    done
-    if [ $found -eq 0 ]; then
-        echo "No built ThreadX binaries found."
-        exit 1
-    fi
-    echo ""
-    echo "Applied capabilities to $found binaries."
-    echo "ThreadX E2E tests should now pass with: just threadx-linux test"
-
 # =============================================================================
-# Run examples (native Linux binaries, requires CAP_NET_RAW)
+# Run examples (native Linux binaries)
 #
-# Cargo hardlinks release binaries, which breaks setcap on kernels with
-# fs.protected_regular=2. Each run recipe copies the binary to break the
-# hardlink, applies CAP_NET_RAW, then executes it.
+# The ThreadX Linux network driver uses /dev/net/tun to attach to persistent
+# user-owned TAP interfaces created by `just setup-network`. No CAP_NET_RAW
+# or other file capabilities are needed.
 # =============================================================================
 
-# Helper: build and run. TAP driver doesn't need CAP_NET_RAW.
+# Helper: build and run.
 _run example:
     #!/usr/bin/env bash
     set -e

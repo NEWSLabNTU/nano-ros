@@ -3,6 +3,42 @@ set working-directory := '..'
 default:
     @just --list --justfile {{source_file()}}
 
+# Install FreeRTOS prerequisites: initialize the FreeRTOS + lwIP submodules.
+setup:
+    #!/usr/bin/env bash
+    set -e
+    if [ -d "$FREERTOS_DIR/include" ] && [ -d "$LWIP_DIR/src/include" ]; then
+        echo "FreeRTOS + lwIP already present at $FREERTOS_DIR and $LWIP_DIR"
+    else
+        echo "Initializing FreeRTOS + lwIP submodules..."
+        git submodule update --init --recursive third-party/freertos
+    fi
+
+# Diagnose FreeRTOS install status (read-only).
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    fail=0
+    if [ -d "$FREERTOS_DIR/include" ]; then
+        echo "  [OK] FreeRTOS kernel: $FREERTOS_DIR"
+    else
+        echo "  [MISSING] FreeRTOS kernel at $FREERTOS_DIR (run: just freertos setup)"
+        fail=1
+    fi
+    if [ -d "$LWIP_DIR/src/include" ]; then
+        echo "  [OK] lwIP: $LWIP_DIR"
+    else
+        echo "  [MISSING] lwIP at $LWIP_DIR (run: just freertos setup)"
+        fail=1
+    fi
+    if command -v arm-none-eabi-gcc &>/dev/null; then
+        echo "  [OK] arm-none-eabi-gcc"
+    else
+        echo "  [MISSING] arm-none-eabi-gcc (run: just workspace apt-packages)"
+        fail=1
+    fi
+    exit $fail
+
 # Install FreeRTOS ARM Cortex-M3 libraries into build/install/
 install:
     #!/usr/bin/env bash

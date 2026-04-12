@@ -2,6 +2,48 @@ set working-directory := '..'
 
 default:
     @just --list --justfile {{source_file()}}
+
+# Install ThreadX RISC-V 64 prerequisites: initialize submodules + build examples.
+setup:
+    #!/usr/bin/env bash
+    set -e
+    if [ ! -d "$THREADX_DIR/common/inc" ] || [ ! -d "$NETX_DIR/common/inc" ]; then
+        echo "Initializing ThreadX + NetX Duo submodules..."
+        git submodule update --init --recursive third-party/threadx
+    fi
+    just threadx_riscv64 build
+
+# Diagnose ThreadX RISC-V 64 install status (read-only).
+doctor:
+    #!/usr/bin/env bash
+    set +e
+    fail=0
+    if [ -d "$THREADX_DIR/common/inc" ]; then
+        echo "  [OK] ThreadX kernel: $THREADX_DIR"
+    else
+        echo "  [MISSING] ThreadX kernel at $THREADX_DIR (run: just threadx_riscv64 setup)"
+        fail=1
+    fi
+    if [ -d "$NETX_DIR/common/inc" ]; then
+        echo "  [OK] NetX Duo: $NETX_DIR"
+    else
+        echo "  [MISSING] NetX Duo at $NETX_DIR (run: just threadx_riscv64 setup)"
+        fail=1
+    fi
+    if command -v riscv64-unknown-elf-gcc &>/dev/null; then
+        echo "  [OK] riscv64-unknown-elf-gcc"
+    else
+        echo "  [MISSING] riscv64-unknown-elf-gcc (run: just workspace apt-packages)"
+        fail=1
+    fi
+    if command -v qemu-system-riscv64 &>/dev/null; then
+        echo "  [OK] qemu-system-riscv64"
+    else
+        echo "  [MISSING] qemu-system-riscv64 (run: just workspace apt-packages)"
+        fail=1
+    fi
+    exit $fail
+
 # Install ThreadX RISC-V 64 libraries into build/install/
 install:
     #!/usr/bin/env bash
