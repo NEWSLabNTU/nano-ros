@@ -61,7 +61,8 @@ rustup target add riscv64gc-unknown-none-elf
 
 ```bash
 # Download ThreadX + NetX Duo
-just setup-threadx
+just threadx_linux setup     # Linux simulation SDK
+just threadx_riscv64 setup   # QEMU RISC-V SDK
 
 # Build Linux simulation examples
 just build-examples-threadx-linux
@@ -104,11 +105,11 @@ Tests use TAP networking with virtio-net:
 
 ### Linux Simulation
 
-Linux simulation tests use AF_PACKET raw sockets. Binaries need
-`CAP_NET_RAW` capability:
+Linux simulation tests use a TAP network driver. Set up the bridge
+and TAP devices once:
 
 ```bash
-just setup-threadx-caps    # Build + apply capabilities (one-time)
+sudo just setup-network
 ```
 
 ## Architecture

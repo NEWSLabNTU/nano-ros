@@ -355,7 +355,7 @@ FreeRTOS + lwIP on QEMU MPS2-AN385. Task priorities, heap config, debugging.
 
 ### 65.20 — Platforms: NuttX
 
-NuttX RTOS on QEMU. POSIX-like API. `just setup-nuttx`.
+NuttX RTOS on QEMU. POSIX-like API. `just nuttx setup`.
 
 **Action**: Write new chapter.
 

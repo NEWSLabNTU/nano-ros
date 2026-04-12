@@ -175,7 +175,7 @@ Run `just qemu-help` for more options.
 ## Zephyr Setup
 
 ```bash
-./scripts/zephyr/setup.sh              # Initialize workspace + create symlink
+just zephyr setup                      # Initialize workspace + create symlink
 sudo ./scripts/zephyr/setup-network.sh # Configure bridge network (zeth-br)
 just test-zephyr                       # Run zenoh tests
 just test-zephyr-xrce                  # Run XRCE tests

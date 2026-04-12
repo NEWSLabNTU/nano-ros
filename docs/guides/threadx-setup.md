@@ -7,7 +7,9 @@ Duo, with two targets: Linux simulation and QEMU RISC-V 64-bit virt machine.
 
 ### Linux Simulation
 
-- Linux host with CAP_NET_RAW capability (for AF_PACKET raw sockets)
+- Linux host with `/dev/net/tun` and persistent user-owned TAP interfaces
+  (created by `just setup-network`). No CAP_NET_RAW or other capabilities
+  needed on the test binaries.
 - Rust nightly toolchain
 
 ### QEMU RISC-V 64-bit
@@ -32,7 +34,8 @@ Or use `just setup` which installs Rust targets automatically.
 Download ThreadX, NetX Duo, and the Linux simulation samples:
 
 ```bash
-just setup-threadx
+just threadx_linux setup     # Linux simulation SDK
+just threadx_riscv64 setup   # QEMU RISC-V SDK
 ```
 
 This shallow-clones:
@@ -94,12 +97,14 @@ just test-threadx-riscv64  # QEMU RISC-V only
 
 ### Linux Simulation Tests
 
-Linux simulation tests use TAP networking with AF_PACKET raw sockets. The
-ThreadX Linux port runs the full kernel as pthreads on the host. Binaries
-need `CAP_NET_RAW` capability:
+Linux simulation tests use TAP networking via `/dev/net/tun`. The ThreadX
+Linux port runs the full kernel as pthreads on the host and attaches to
+persistent user-owned TAP interfaces, so no CAP_NET_RAW or root privilege
+is needed on the test binaries themselves. The TAP interfaces and bridge
+must exist (one-time setup, requires sudo):
 
 ```bash
-just setup-threadx-caps    # Build + apply capabilities (one-time)
+just setup-network         # Create qemu-br + tap-tx0 + tap-tx1 (one-time)
 just test-threadx-linux    # Run tests
 ```
 

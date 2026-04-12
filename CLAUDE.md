@@ -36,12 +36,14 @@ nano-ros/
 ## Build Commands
 
 ```bash
-just setup              # Install toolchains, cargo tools, download FreeRTOS/NuttX/ThreadX SDKs
-just setup-freertos     # Download FreeRTOS kernel + lwIP (included in just setup)
-just setup-nuttx        # Download NuttX RTOS + apps (included in just setup)
-just setup-threadx      # Download ThreadX kernel + NetX Duo (included in just setup)
+just setup              # Install everything: workspace + verification + platforms + services (idempotent)
+just doctor             # Diagnose install status (read-only; exit 1 if anything missing)
+just freertos setup     # Download FreeRTOS kernel + lwIP (included in just setup)
+just nuttx setup        # Download NuttX RTOS + apps (included in just setup)
+just threadx_linux setup     # Download ThreadX kernel + NetX Duo (Linux sim)
+just threadx_riscv64 setup   # Download ThreadX kernel + NetX Duo (QEMU RISC-V)
 just build              # Generate bindings + build workspace + examples
-just build-zenohd       # Build zenohd from submodule
+just build-zenohd       # Build zenohd from submodule (alias: just zenohd setup)
 just check              # Format check + clippy
 just quality            # Format + check + test
 just doc                # Generate docs
@@ -63,11 +65,11 @@ just test-c             # C API tests (needs cmake)
 just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + arm-none-eabi-gcc)
 just test-nuttx         # NuttX QEMU E2E (needs nightly + qemu-system-arm)
 just test-threadx       # ThreadX E2E — Linux sim + QEMU RISC-V (needs ThreadX/NetX + qemu-system-riscv64)
-just test-threadx-linux # ThreadX Linux simulation E2E (needs ThreadX/NetX + CAP_NET_RAW)
+just test-threadx-linux # ThreadX Linux simulation E2E (needs ThreadX/NetX + TAP via just setup-network)
 just test-all           # Everything (includes NuttX + FreeRTOS + ThreadX in one nextest run)
 ```
 
-First-time: `just setup` installs everything (toolchains, cargo tools, system deps, FreeRTOS/NuttX/ThreadX SDKs).
+First-time: `just setup` installs everything (workspace + verification + all platforms + services). Use `just doctor` to verify the install. Per-module: `just <module> setup` / `just <module> doctor` where modules are `workspace`, `verification`, `qemu`, `freertos`, `nuttx`, `threadx_linux`, `threadx_riscv64`, `esp32`, `zephyr`, `xrce`, `zenohd`.
 
 ## Environment Variables
 
@@ -75,7 +77,7 @@ Configuration via `.env` file: copy `.env.example` to `.env` (gitignored) and un
 
 Runtime: `ROS_DOMAIN_ID` (default `0`), `ZENOH_LOCATOR` (default `tcp/127.0.0.1:7447`), `ZENOH_MODE` (`client`/`peer`).
 
-FreeRTOS/NuttX/ThreadX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx` / `just setup-threadx`). Override via env vars if sources are elsewhere:
+FreeRTOS/NuttX/ThreadX build-time variables are **auto-resolved** by justfile recipes (defaulting to `external/` paths from `just freertos setup` / `just nuttx setup` / `just threadx_linux setup`). Override via env vars if sources are elsewhere:
 - `FREERTOS_DIR` — FreeRTOS kernel source (default: `third-party/freertos/kernel`)
 - `FREERTOS_PORT` — portable layer (default: `GCC/ARM_CM3`)
 - `LWIP_DIR` — lwIP source (default: `third-party/freertos/lwip`)

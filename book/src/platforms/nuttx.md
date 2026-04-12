@@ -38,7 +38,7 @@ points and `println!` -- no semihosting or custom panic handlers needed.
 Download the NuttX source and apps:
 
 ```bash
-just setup-nuttx
+just nuttx setup
 ```
 
 This places the sources in `third-party/nuttx/nuttx/` and `third-party/nuttx/nuttx-apps/`.

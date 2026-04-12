@@ -27,7 +27,7 @@ low-latency ROS 2 messaging). lwIP has near-universal vendor adoption
 Download the FreeRTOS kernel and lwIP sources:
 
 ```bash
-just setup-freertos
+just freertos setup
 ```
 
 This places the sources in `third-party/freertos/kernel/` and `third-party/freertos/lwip/`.
@@ -100,7 +100,7 @@ cmake -S examples/qemu-arm-freertos/cpp/zenoh/talker \
 cmake --build examples/qemu-arm-freertos/cpp/zenoh/talker/build
 ```
 
-Requires `FREERTOS_DIR` and `LWIP_DIR` environment variables (set by `just setup-freertos`).
+Requires `FREERTOS_DIR` and `LWIP_DIR` environment variables (set by `just freertos setup`).
 
 ## Testing
 

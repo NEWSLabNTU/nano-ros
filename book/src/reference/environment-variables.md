@@ -42,7 +42,7 @@ Examples use `ExecutorConfig::from_env()` for configuration:
 
 ### FreeRTOS / NuttX / ThreadX SDK Paths
 
-These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just setup-freertos` / `just setup-nuttx` / `just setup-threadx`). Override via env vars if sources are elsewhere.
+These are auto-resolved by justfile recipes (defaulting to `external/` paths from `just freertos setup` / `just nuttx setup` / `just threadx_linux setup`). Override via env vars if sources are elsewhere.
 
 | Variable              | Default                      | Description                        |
 |-----------------------|------------------------------|------------------------------------|

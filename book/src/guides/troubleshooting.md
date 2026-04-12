@@ -50,9 +50,9 @@ let dst = cmake::Config::new(&zenoh_pico_build)
     .build();
 ```
 
-**Zephyr builds**: The `scripts/zephyr/setup.sh` script automatically patches zenoh-pico's `config.h` to disable these features. If you set up the workspace manually or the patch wasn't applied, run:
+**Zephyr builds**: The `just zephyr setup` recipe automatically patches zenoh-pico's `config.h` to disable these features. If you set up the workspace manually or the patch wasn't applied, run:
 ```bash
-./scripts/zephyr/setup.sh  # Updates and patches existing workspace
+just zephyr setup  # Updates and patches existing workspace
 ```
 
 Or manually edit `modules/lib/zenoh-pico/include/zenoh-pico/config.h`:

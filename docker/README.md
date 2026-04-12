@@ -41,8 +41,8 @@ network driver uses a userspace TCP/IP stack over raw Ethernet frames.
 connectivity issues inside Docker containers. The raw socket opens
 successfully but TCP handshakes to zenohd via the veth→bridge path
 fail with `Transport(ConnectionFailed)`. This is under investigation.
-ThreadX Linux E2E tests work on the host with `just setup-network`
-and `just setup-threadx-caps`.
+ThreadX Linux E2E tests work on the host with `sudo just setup-network`
+(the TAP driver no longer needs `CAP_NET_RAW`).
 
 ## Image Contents
 

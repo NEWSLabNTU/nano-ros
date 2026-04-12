@@ -298,7 +298,7 @@ Layer 3: features = ["rmw-zenoh", "platform-bare-metal", "ros-humble"]
 
 ```
 Layer 1: config.toml with your board's IP, MAC, zenohd address
-Layer 2: FREERTOS_DIR, LWIP_DIR (if not using `just setup-freertos`)
+Layer 2: FREERTOS_DIR, LWIP_DIR (if not using `just freertos setup`)
 Layer 3: features = ["rmw-zenoh", "platform-freertos", "ros-humble"]
 ```
 

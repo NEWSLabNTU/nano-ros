@@ -53,10 +53,10 @@ curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ## Step 1: Initialize Workspace (One-Time)
 
 ```bash
-./scripts/zephyr/setup.sh
+just zephyr setup
 ```
 
-This script automatically:
+This recipe automatically:
 - Installs `west` and Python tools
 - Downloads Zephyr SDK (~1.5 GB) to `scripts/zephyr/downloads/` using aria2c (parallel, resumable)
 - Verifies download with sha256sum
@@ -69,8 +69,8 @@ This script automatically:
 
 **Options:**
 ```bash
-./scripts/zephyr/setup.sh --skip-sdk    # Skip SDK download/install
-./scripts/zephyr/setup.sh --force       # Recreate existing workspace
+just zephyr setup --skip-sdk    # Skip SDK download/install
+just zephyr setup --force       # Recreate existing workspace
 ```
 
 ## Step 2: Configure Bridge Network (One-Time, Requires Sudo)
@@ -341,5 +341,5 @@ west update
 To completely recreate the workspace:
 
 ```bash
-./scripts/zephyr/setup.sh --force
+just zephyr setup --force
 ```

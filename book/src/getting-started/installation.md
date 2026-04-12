@@ -119,6 +119,17 @@ just setup
 > **Note:** `just setup` does not run `sudo`. If system packages are
 > missing, it will tell you what to install.
 
+Verify the install with the diagnostic recipe (read-only, exits 1 if anything is missing):
+
+```bash
+just doctor
+```
+
+To set up just one module, use `just <module> setup` / `just <module> doctor`
+(e.g. `just freertos setup`, `just nuttx doctor`). Available modules:
+`workspace`, `verification`, `qemu`, `freertos`, `nuttx`, `threadx_linux`,
+`threadx_riscv64`, `esp32`, `zephyr`, `xrce`, `zenohd`.
+
 Build everything:
 
 ```bash

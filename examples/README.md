@@ -116,7 +116,7 @@ Zephyr RTOS examples using `zpico-zephyr` (C) or the Rust API.
 **Running Zephyr examples:**
 ```bash
 # Set up Zephyr workspace
-./scripts/zephyr/setup.sh
+just zephyr setup
 source ~/nano-ros-workspace/env.sh
 
 # Build for native_sim

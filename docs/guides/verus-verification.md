@@ -6,7 +6,7 @@ For architecture and proof targets, see [phase-31-verus-verification.md](../road
 ## Quick Reference
 
 ```bash
-just setup-verus     # Download Verus binary to tools/
+just verification verus   # Download Verus binary to tools/ (or `just verification setup` for kani + verus)
 just verify-verus    # Run all Verus proofs (67 verified)
 just verify          # Run both Kani + Verus
 ```

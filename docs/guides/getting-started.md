@@ -448,13 +448,13 @@ See `examples/native/rust/zenoh/async-service-client/` (tokio) and
 
 nros supports several RTOS platforms. Each has a dedicated setup guide:
 
-- **FreeRTOS** (QEMU MPS2-AN385): `just setup-freertos` + `just test-freertos`.
+- **FreeRTOS** (QEMU MPS2-AN385): `just freertos setup` + `just test-freertos`.
   See [FreeRTOS Setup](freertos-setup.md).
-- **NuttX** (QEMU ARM virt): `just setup-nuttx` + `just test-nuttx`.
+- **NuttX** (QEMU ARM virt): `just nuttx setup` + `just test-nuttx`.
   Uses Rust `std` (POSIX-compatible).
-- **ThreadX** (Linux sim + QEMU RISC-V): `just setup-threadx` + `just test-threadx`.
+- **ThreadX** (Linux sim + QEMU RISC-V): `just threadx_linux setup` / `just threadx_riscv64 setup` + `just test-threadx`.
   See [ThreadX Setup](threadx-setup.md).
-- **Zephyr** (native_sim): `scripts/zephyr/setup.sh` + `just test-zephyr`.
+- **Zephyr** (native_sim): `just zephyr setup` + `just test-zephyr`.
   See [Zephyr Setup](zephyr-setup.md).
 - **Bare-metal** (QEMU MPS2-AN385): No external SDK needed.
   See [QEMU Bare-Metal](qemu-bare-metal.md).
