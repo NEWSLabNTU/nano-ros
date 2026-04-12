@@ -13,6 +13,7 @@ name = "nros_mps2_an385_freertos"
 zpico-platform-shim = { path = "../../zpico/zpico-platform-shim", default-features = false, features = ["active"] }
 zpico-sys = { path = "../../zpico/zpico-sys", default-features = false }
 nros-platform = { path = "../../core/nros-platform", default-features = false, features = ["platform-freertos"] }
+nros-platform-freertos = { path = "../../core/nros-platform-freertos" }
 
 # Semihosting for QEMU output
 cortex-m-semihosting = "0.5"

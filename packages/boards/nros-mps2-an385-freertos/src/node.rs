@@ -81,6 +81,25 @@ where
     hprintln!("Network ready.");
     hprintln!("");
 
+    // Seed the platform RNG with a unique value per QEMU instance.
+    // Without this, both listener and talker get identical random output
+    // (default xorshift seed 0x12345678), causing duplicate zenoh session IDs
+    // and connection rejection. Use IP-based hash matching the C srand() approach.
+    {
+        let ip = &ctx.config.ip;
+        let mac = &ctx.config.mac;
+        let mut seed = ((ip[0] as u32) << 24)
+            | ((ip[1] as u32) << 16)
+            | ((ip[2] as u32) << 8)
+            | (ip[3] as u32);
+        seed = seed.wrapping_mul(2654435761); // Knuth multiplicative hash
+        seed ^= ((mac[4] as u32) << 8) | (mac[5] as u32);
+        if seed == 0 {
+            seed = 1;
+        }
+        nros_platform_freertos::seed(seed);
+    }
+
     // Configure zenoh-pico read/lease task scheduling from config.
     // Must be called before Executor::open() which calls zpico_open().
     let read_pri = Config::to_freertos_priority(ctx.config.zenoh_read_priority);
