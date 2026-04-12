@@ -2,7 +2,8 @@
 //!
 //! Tests that verify ThreadX Linux examples build and run natively.
 //! ThreadX Linux examples use the ThreadX Linux simulation port with
-//! NetX Duo raw-socket network driver over TAP interfaces.
+//! a NetX Duo TAP network driver (`/dev/net/tun`) attached to persistent
+//! user-owned TAP interfaces created by `just setup-network`.
 //!
 //! Prerequisites:
 //! - `THREADX_DIR` env var pointing to ThreadX source (e.g., `third-party/threadx/kernel`)
@@ -68,46 +69,13 @@ fn require_threadx() -> bool {
     true
 }
 
-/// Check if CAP_NET_RAW is available for ThreadX Linux E2E tests.
-///
-/// The ThreadX Linux network driver uses `AF_PACKET`/`SOCK_RAW` to send/receive
-/// Ethernet frames on TAP interfaces. This requires `CAP_NET_RAW` capability.
-///
-/// Checks two sources:
-/// 1. Current process can create raw sockets (running as root, or test binary has cap)
-/// 2. Built ThreadX example binaries have `cap_net_raw` file capability (via `getcap`)
-fn is_raw_socket_available() -> bool {
-    // Method 1: Check if the current process can create raw sockets
-    let fd = unsafe { libc::socket(libc::AF_PACKET, libc::SOCK_RAW, 0) };
-    if fd >= 0 {
-        unsafe { libc::close(fd) };
-        return true;
-    }
-
-    // Method 2: Check if built ThreadX binaries have the file capability set.
-    // This detects `just setup-threadx-caps` having been run after a build.
-    let root = project_root();
-    let talker_bin =
-        root.join("examples/threadx-linux/rust/zenoh/talker/target/release/threadx-linux-talker");
-    if talker_bin.exists()
-        && let Ok(output) = std::process::Command::new("getcap")
-            .arg(&talker_bin)
-            .output()
-    {
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        if stdout.contains("cap_net_raw") {
-            return true;
-        }
-    }
-
-    false
-}
-
 /// Skip test if full ThreadX E2E prerequisites are not available
 ///
 /// E2E tests require:
 /// 1. ThreadX build prerequisites (THREADX_DIR + NETX_DIR + TAP driver)
-/// 2. TAP bridge network (qemu-br + tap-tx0 + tap-tx1)
+/// 2. TAP bridge network (qemu-br + tap-tx0 + tap-tx1) — TAP interfaces
+///    are user-owned (created by `just setup-network`), so no CAP_NET_RAW
+///    or special caps are needed on the test binaries.
 /// 3. zenohd router (built from submodule)
 fn require_threadx_e2e() -> bool {
     if !require_threadx() {
@@ -117,14 +85,6 @@ fn require_threadx_e2e() -> bool {
         return false;
     }
     if !require_zenohd() {
-        return false;
-    }
-    if !is_raw_socket_available() {
-        eprintln!("Skipping test: CAP_NET_RAW required for ThreadX Linux network driver");
-        eprintln!("The ThreadX Linux network driver uses AF_PACKET/SOCK_RAW to send/receive");
-        eprintln!("Ethernet frames on TAP interfaces. Apply capabilities with:");
-        eprintln!("  just setup-threadx-caps");
-        eprintln!("Or run the tests as root.");
         return false;
     }
     true
@@ -682,10 +642,6 @@ fn require_threadx_cpp_e2e() -> bool {
     if !require_zenohd() {
         return false;
     }
-    if !is_raw_socket_available() {
-        eprintln!("Skipping test: CAP_NET_RAW required for ThreadX Linux");
-        return false;
-    }
     true
 }
 
@@ -1000,10 +956,6 @@ fn require_threadx_c_e2e() -> bool {
         return false;
     }
     if !require_zenohd() {
-        return false;
-    }
-    if !is_raw_socket_available() {
-        eprintln!("Skipping test: CAP_NET_RAW required for ThreadX Linux");
         return false;
     }
     true
