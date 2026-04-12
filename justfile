@@ -543,7 +543,7 @@ verify-verus:
     VERUS_DIR="$(pwd)/tools"
     if [ ! -x "$VERUS_DIR/verus" ]; then
         echo "Verus not found at $VERUS_DIR/verus"
-        echo "Run 'just setup-verus' to install"
+        echo "Run 'just verification verus' to install"
         exit 1
     fi
     export PATH="$VERUS_DIR:$PATH"
@@ -620,11 +620,6 @@ build-zenohd: zenohd::build
 # Clean zenohd build (alias for `just zenohd clean`).
 clean-zenohd: zenohd::clean
 
-# XRCE backward-compat wrappers (prefer: just xrce build-agent, etc.)
-build-xrce-agent:
-    just xrce build-agent
-clean-xrce-agent:
-    just xrce clean-agent
 
 # Build zenoh-pico C library (standalone, for debugging)
 build-zenoh-pico:
