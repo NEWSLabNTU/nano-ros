@@ -31,6 +31,9 @@ mod qemu 'just/qemu-baremetal.just'
 mod native 'just/native.just'
 mod xrce 'just/xrce.just'
 mod docker 'just/docker.just'
+mod workspace 'just/workspace.just'
+mod verification 'just/verification.just'
+mod zenohd 'just/zenohd.just'
 
 default:
     @just --list
@@ -611,13 +614,11 @@ build-zenoh:
 check-zenoh:
     cargo clippy -p nros-rmw --features std -- {{CLIPPY_LINTS}}
 
-# Build zenohd 1.6.2 from submodule (version-matched to rmw_zenoh_cpp)
-build-zenohd:
-    ./scripts/zenohd/build.sh
+# Build zenohd from submodule (alias for `just zenohd build`).
+build-zenohd: zenohd::build
 
-# Clean zenohd build
-clean-zenohd:
-    ./scripts/zenohd/build.sh --clean
+# Clean zenohd build (alias for `just zenohd clean`).
+clean-zenohd: zenohd::clean
 
 # XRCE backward-compat wrappers (prefer: just xrce build-agent, etc.)
 build-xrce-agent:
@@ -696,16 +697,58 @@ generate-rcl-interfaces:
 regenerate-bindings: clean-bindings generate-bindings
 
 # =============================================================================
-# Setup & Cleanup
+# Setup & Doctor orchestrators
+#
+# `just setup`  — idempotently install everything (workspace + platforms + services).
+# `just doctor` — read-only diagnosis of install status.
+#
+# Each module has its own `setup`/`doctor` recipes. The orchestrator walks
+# them all, treats individual failures as non-fatal, and prints a summary.
+# Run any module independently: e.g. `just nuttx setup`, `just zephyr doctor`.
 # =============================================================================
 
-# Download Verus binary from GitHub releases to tools/verus
-setup-verus:
-    ./scripts/setup-verus.sh
-
-# Install toolchains and tools (interactive — lists actions and asks for confirmation)
+# Install everything: workspace + verification + all platforms + services.
 setup:
-    ./scripts/setup.sh
+    @just _orchestrate setup
+
+# Diagnose install status (read-only).
+doctor:
+    @just _orchestrate doctor
+
+# Internal: walk every module calling the requested recipe (setup or doctor).
+[private]
+_orchestrate verb:
+    #!/usr/bin/env bash
+    set +e
+    failed=()
+    run() {
+        local mod=$1
+        echo ""
+        echo "=== $mod ==="
+        if just "$mod" {{verb}}; then
+            :
+        else
+            failed+=("$mod")
+        fi
+    }
+    run workspace
+    run verification
+    run qemu
+    run freertos
+    run nuttx
+    run threadx_linux
+    run threadx_riscv64
+    run esp32
+    run zephyr
+    run xrce
+    run zenohd
+    echo ""
+    if [ ${#failed[@]} -gt 0 ]; then
+        echo "{{verb}} finished with ${#failed[@]} failure(s): ${failed[*]}"
+        echo "Re-run individually: just <module> {{verb}}"
+        exit 1
+    fi
+    echo "{{verb}} complete!"
 
 # Setup all network bridges (QEMU + Zephyr, requires sudo)
 setup-network: qemu::setup-network
