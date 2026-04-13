@@ -614,6 +614,7 @@ dependencies = [
  "nros-macros",
  "nros-node",
  "nros-params",
+ "nros-platform",
  "nros-rmw",
  "nros-rmw-dds",
  "nros-rmw-xrce",
@@ -658,6 +659,17 @@ version = "0.1.0"
 dependencies = [
  "heapless",
 ]
+
+[[package]]
+name = "nros-platform"
+version = "0.1.0"
+dependencies = [
+ "nros-platform-zephyr",
+]
+
+[[package]]
+name = "nros-platform-zephyr"
+version = "0.1.0"
 
 [[package]]
 name = "nros-rmw"
@@ -1401,12 +1413,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
+name = "zpico-platform-shim"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "nros-platform",
+]
+
+[[package]]
 name = "zpico-sys"
 version = "0.1.0"
 dependencies = [
  "cbindgen",
  "cc",
  "cmake",
+ "zpico-platform-shim",
 ]
 
 [[patch.unused]]
