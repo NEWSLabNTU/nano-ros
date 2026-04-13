@@ -43,6 +43,7 @@ platform-posix = [
     "nros-rmw-dds?/platform-posix",
 ]
 platform-zephyr = [
+    "nros-platform/platform-zephyr",
     "nros-node/platform-zephyr",
     "nros-rmw-zenoh?/platform-zephyr",
     "nros-rmw-xrce?/platform-zephyr",

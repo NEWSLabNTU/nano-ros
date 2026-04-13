@@ -20,6 +20,7 @@ platform-esp32-qemu = ["dep:nros-platform-esp32-qemu"]
 platform-nuttx = ["dep:nros-platform-nuttx"]
 platform-freertos = ["dep:nros-platform-freertos"]
 platform-threadx = ["dep:nros-platform-threadx"]
+platform-zephyr = ["dep:nros-platform-zephyr"]
 
 # Capability features — enabled by RMW shims to declare requirements
 alloc = []
@@ -35,3 +36,4 @@ nros-platform-esp32-qemu = { version = "0.1.0", path = "../../boards/nros-platfo
 nros-platform-nuttx = { version = "0.1.0", path = "../nros-platform-nuttx", optional = true }
 nros-platform-freertos = { version = "0.1.0", path = "../nros-platform-freertos", optional = true }
 nros-platform-threadx = { version = "0.1.0", path = "../nros-platform-threadx", optional = true }
+nros-platform-zephyr = { version = "0.1.0", path = "../nros-platform-zephyr", optional = true }

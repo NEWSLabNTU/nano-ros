@@ -31,3 +31,6 @@ pub type ConcretePlatform = nros_platform_freertos::FreeRtosPlatform;
 
 #[cfg(feature = "platform-threadx")]
 pub type ConcretePlatform = nros_platform_threadx::ThreadxPlatform;
+
+#[cfg(feature = "platform-zephyr")]
+pub type ConcretePlatform = nros_platform_zephyr::ZephyrPlatform;

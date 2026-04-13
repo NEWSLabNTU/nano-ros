@@ -38,6 +38,7 @@ mod traits;
     feature = "platform-nuttx",
     feature = "platform-freertos",
     feature = "platform-threadx",
+    feature = "platform-zephyr",
 ))]
 pub use resolve::ConcretePlatform;
 pub use traits::*;

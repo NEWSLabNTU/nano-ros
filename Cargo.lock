@@ -1252,6 +1252,7 @@ dependencies = [
  "nros-platform-posix",
  "nros-platform-stm32f4",
  "nros-platform-threadx",
+ "nros-platform-zephyr",
 ]
 
 [[package]]
@@ -1314,6 +1315,10 @@ dependencies = [
 
 [[package]]
 name = "nros-platform-threadx"
+version = "0.1.0"
+
+[[package]]
+name = "nros-platform-zephyr"
 version = "0.1.0"
 
 [[package]]

@@ -1,0 +1,10 @@
+[package]
+name = "nros-platform-zephyr"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "nros platform implementation for Zephyr RTOS (calls Zephyr + POSIX APIs via FFI)"
+
+# No Rust dependencies — all Zephyr APIs are extern "C" resolved at link time
+# by Zephyr's build system (kernel + POSIX subsystem).

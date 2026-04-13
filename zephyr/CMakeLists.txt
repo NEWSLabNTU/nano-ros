@@ -41,8 +41,15 @@ if(CONFIG_NROS_RMW_ZENOH)
         "${ZENOH_PICO_DIR}/src/utils/*.c"
         "${ZENOH_PICO_DIR}/src/system/common/*.c"
     )
-    file(GLOB _zenoh_pico_zephyr "${ZENOH_PICO_DIR}/src/system/zephyr/*.c")
-    list(APPEND _zenoh_pico_sources ${_zenoh_pico_zephyr})
+    # Zephyr platform: only network.c is built from zenoh-pico.
+    # system.c (clock/memory/sleep/random/threading/time) is replaced by
+    # nros-platform-zephyr → zpico-platform-shim, linked in via the Rust
+    # staticlib produced from nros-c / nros-cpp / rustapp.
+    list(APPEND _zenoh_pico_sources "${ZENOH_PICO_DIR}/src/system/zephyr/network.c")
+
+    # Real-symbol wrappers around Zephyr kernel inlines (k_msleep, k_uptime_get,
+    # sys_rand_get) that nros-platform-zephyr needs to call via FFI.
+    list(APPEND _zenoh_pico_sources "${CMAKE_CURRENT_LIST_DIR}/nros_platform_zephyr_shims.c")
 
     zephyr_library_sources(${_zenoh_pico_sources})
 

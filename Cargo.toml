@@ -43,6 +43,7 @@ members = [
     "packages/core/nros-platform-nuttx",
     "packages/core/nros-platform-freertos",
     "packages/core/nros-platform-threadx",
+    "packages/core/nros-platform-zephyr",
     # Platform shims for RMW backends
     "packages/zpico/zpico-platform-shim",
     "packages/xrce/xrce-platform-shim",
@@ -219,6 +220,7 @@ nros-platform-posix = { version = "0.1.0", path = "packages/core/nros-platform-p
 nros-platform-freertos = { version = "0.1.0", path = "packages/core/nros-platform-freertos" }
 nros-platform-nuttx = { version = "0.1.0", path = "packages/core/nros-platform-nuttx" }
 nros-platform-threadx = { version = "0.1.0", path = "packages/core/nros-platform-threadx" }
+nros-platform-zephyr = { version = "0.1.0", path = "packages/core/nros-platform-zephyr" }
 zpico-platform-shim = { version = "0.1.0", path = "packages/zpico/zpico-platform-shim", default-features = false }
 xrce-platform-shim = { version = "0.1.0", path = "packages/xrce/xrce-platform-shim", default-features = false }
 zpico-sys = { version = "0.1.0", path = "packages/zpico/zpico-sys", default-features = false }

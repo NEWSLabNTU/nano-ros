@@ -29,7 +29,8 @@ extern crate std;
     feature = "posix",
     feature = "nuttx",
     feature = "freertos",
-    feature = "threadx"
+    feature = "threadx",
+    feature = "zephyr"
 ))]
 extern crate zpico_platform_shim;
 

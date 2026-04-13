@@ -525,7 +525,13 @@ fn main() {
 
     // Probe network type sizes from C headers and emit DEP variables.
     // zpico-platform-shim reads these to generate correctly-sized #[repr(C)] types.
-    if backend_count > 0 {
+    //
+    // Skipped for Zephyr: the probe needs Zephyr's `<zephyr/kernel.h>` and
+    // picolibc headers, which live in the Zephyr build tree and aren't
+    // visible to Cargo. Zephyr doesn't use the shim's socket-stubs feature
+    // (C network.c provides the real types), so the sizes aren't consumed —
+    // the shim's own build.rs falls back to defaults, which is harmless.
+    if backend_count > 0 && !use_zephyr {
         probe_net_type_sizes(
             &c_dir,
             &zenoh_pico_src.join("include"),
