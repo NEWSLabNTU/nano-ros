@@ -227,7 +227,11 @@ impl FreeRtosPlatform {
                 let a = attr as *const types::ZTaskAttr;
                 ((*a).name, (*a).priority, (*a).stack_depth as u32)
             } else {
-                (DEFAULT_TASK_NAME.as_ptr() as *const u8, DEFAULT_PRIORITY, DEFAULT_STACK_DEPTH)
+                (
+                    DEFAULT_TASK_NAME.as_ptr() as *const u8,
+                    DEFAULT_PRIORITY,
+                    DEFAULT_STACK_DEPTH,
+                )
             };
 
             // Create the task — pass the ZTask struct as arg to task_wrapper
@@ -341,11 +345,21 @@ impl FreeRtosPlatform {
 
     // -- Recursive mutex (same implementation on FreeRTOS) --
 
-    pub fn mutex_rec_init(m: *mut c_void) -> i8 { Self::mutex_init(m) }
-    pub fn mutex_rec_drop(m: *mut c_void) -> i8 { Self::mutex_drop(m) }
-    pub fn mutex_rec_lock(m: *mut c_void) -> i8 { Self::mutex_lock(m) }
-    pub fn mutex_rec_try_lock(m: *mut c_void) -> i8 { Self::mutex_try_lock(m) }
-    pub fn mutex_rec_unlock(m: *mut c_void) -> i8 { Self::mutex_unlock(m) }
+    pub fn mutex_rec_init(m: *mut c_void) -> i8 {
+        Self::mutex_init(m)
+    }
+    pub fn mutex_rec_drop(m: *mut c_void) -> i8 {
+        Self::mutex_drop(m)
+    }
+    pub fn mutex_rec_lock(m: *mut c_void) -> i8 {
+        Self::mutex_lock(m)
+    }
+    pub fn mutex_rec_try_lock(m: *mut c_void) -> i8 {
+        Self::mutex_try_lock(m)
+    }
+    pub fn mutex_rec_unlock(m: *mut c_void) -> i8 {
+        Self::mutex_unlock(m)
+    }
 
     // -- Condition variables (matching C system.c semantics) --
     // _z_condvar_t = { SemaphoreHandle_t mutex, SemaphoreHandle_t sem, int waiters }
@@ -356,8 +370,12 @@ impl FreeRtosPlatform {
             let mutex = ffi::create_mutex();
             let sem = ffi::create_counting_semaphore(u32::MAX, 0);
             if mutex.is_null() || sem.is_null() {
-                if !mutex.is_null() { ffi::semaphore_delete(mutex); }
-                if !sem.is_null() { ffi::semaphore_delete(sem); }
+                if !mutex.is_null() {
+                    ffi::semaphore_delete(mutex);
+                }
+                if !sem.is_null() {
+                    ffi::semaphore_delete(sem);
+                }
                 return -1;
             }
             (*c).mutex = mutex;

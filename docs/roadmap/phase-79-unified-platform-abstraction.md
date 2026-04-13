@@ -2,7 +2,7 @@
 
 **Goal**: Define a single platform interface (`nros-platform`) that all RMW backends consume, eliminating per-RMW platform crates and making the RMW layer fully platform-agnostic.
 
-**Status**: In Progress (79.1–79.15 done, 79.12 abandoned; 79.10 docs remaining)
+**Status**: Complete (79.1–79.16 done, 79.12 abandoned)
 **Priority**: Medium
 **Depends on**: None (can proceed independently)
 
@@ -224,17 +224,17 @@ impl PlatformClock for CffiPlatform {
 - [x] 79.7 — Verify `xrce-platform-shim` + `nros-platform-mps2-an385` symbol equivalence
 - [x] 79.8 — Create remaining bare-metal platform crates (STM32F4, ESP32, ESP32-QEMU)
 - [x] 79.9 — Migrate board crates and remove old per-RMW platform crates
-- [ ] 79.10 — Update book documentation for unified platform architecture
-  - [ ] 79.10.1 — `concepts/architecture.md` — update Mermaid diagrams (lines 89, 134-143, 399) to show nros-platform layer between board crates and RMW shims; replace `zpico-platform-*` references with unified architecture
-  - [ ] 79.10.2 — `concepts/platform-model.md` — update feature propagation description (line 145); add section on two-layer platform awareness (C compilation vs Rust symbols); describe nros-platform trait interface
-  - [ ] 79.10.3 — `concepts/rmw-backends.md` — add note that the ~55 zpico symbols are now provided by zpico-platform-shim via nros-platform, not per-board platform crates
-  - [ ] 79.10.4 — `guides/porting-platform/README.md` — rewrite overview diagram to show: nros-platform-<board> → zpico-platform-shim/xrce-platform-shim → RMW; update comparison table
-  - [ ] 79.10.5 — `guides/porting-platform/zenoh-pico.md` — reframe as RMW shim reference; update file paths from `zpico-platform-<name>` to `nros-platform-<name>`; note that symbols are now in zpico-platform-shim
-  - [ ] 79.10.6 — `guides/porting-platform/xrce-dds.md` — same: update paths, note xrce-platform-shim; update example from `xrce-platform-mps2-an385` to `nros-platform-mps2-an385`
-  - [ ] 79.10.7 — Add `guides/porting-platform/implementing-a-platform.md` — main porting guide: how to create `nros-platform-<name>` crate, implement methods, wire features, register sleep poll callback
-  - [ ] 79.10.8 — `guides/board-crate.md` — update to reference `nros-platform-<name>` instead of `zpico-platform-*`; describe new dependency pattern (board → nros-platform-<board> + zpico-platform-shim)
-  - [ ] 79.10.9 — `guides/esp32.md` — update crate tree diagram (lines 110-111) to show nros-platform-esp32 instead of zpico-platform-esp32
-  - [ ] 79.10.10 — `platforms/README.md` — update two-crate pattern description (lines 12-15) to three-crate pattern (nros-platform-<board> + shim + board crate)
+- [x] 79.10 — Update book documentation for unified platform architecture
+  - [x] 79.10.1 — `concepts/architecture.md` — Mermaid diagrams updated with nros-platform layer
+  - [x] 79.10.2 — `concepts/platform-model.md` — feature propagation + ConcretePlatform description
+  - [x] 79.10.3 — `concepts/rmw-backends.md` — added shim annotations
+  - [x] 79.10.4 — `guides/porting-platform/README.md` — rewritten with unified architecture diagram
+  - [x] 79.10.5 — `guides/porting-platform/zenoh-pico.md` — reframed as symbol reference
+  - [x] 79.10.6 — `guides/porting-platform/xrce-dds.md` — updated paths + shim reference
+  - [x] 79.10.7 — Created `guides/porting-platform/implementing-a-platform.md` (main porting guide)
+  - [x] 79.10.8 — `guides/board-crate.md` — updated to nros-platform-* references
+  - [x] 79.10.9 — `guides/esp32.md` — crate tree updated to nros-platform-esp32
+  - [x] 79.10.10 — `platforms/README.md` — updated to three-crate pattern
 - [x] 79.11 — Add `platform-cffi` feature to `nros` facade crate
 - [-] 79.12 — ~~Make RMW crates fully platform-agnostic~~ (abandoned — see design notes)
 - [x] 79.13 — Move shim crates into -sys crates (board crates become RMW-agnostic)
@@ -250,13 +250,14 @@ impl PlatformClock for CffiPlatform {
   - [x] 79.14.5 — Create `nros-platform-freertos` crate (FreeRTOS task/mutex/alloc via extern "C" FFI)
   - [x] 79.14.6 — Create `nros-platform-nuttx` crate (type alias to PosixPlatform)
   - [x] 79.14.7 — Create `nros-platform-threadx` crate (ThreadX thread/mutex/byte_pool via extern "C" FFI)
-- [ ] 79.16 — Fix nros-platform-freertos struct layout mismatch
-  - [ ] 79.16.1 — Add `#[repr(C)]` types matching FreeRTOS `_z_task_t`, `_z_condvar_t` layouts
-  - [ ] 79.16.2 — Add event group FFI (`xEventGroupCreate`, `xEventGroupSetBits`, `xEventGroupWaitBits`)
-  - [ ] 79.16.3 — Implement task wrapper (store fun/arg in struct, signal join_event, self-suspend)
-  - [ ] 79.16.4 — Implement condvar with waiter counting (mutex-protected, matching C semantics)
-  - [ ] 79.16.5 — Activate shim for FreeRTOS in zpico-sys + skip system.c
-  - [ ] 79.16.6 — Verify Rust FreeRTOS E2E tests pass (pubsub, service, action)
+- [x] 79.16 — Fix nros-platform-freertos struct layout + activate shim (29/29 tests pass)
+  - [x] 79.16.1 — Add `#[repr(C)]` types matching FreeRTOS `_z_task_t`, `_z_condvar_t` layouts
+  - [x] 79.16.2 — Add event group FFI (`xEventGroupCreate`, `xEventGroupSetBits`, `xEventGroupWaitBits`)
+  - [x] 79.16.3 — Implement task wrapper (store fun/arg in struct, signal join_event, self-suspend)
+  - [x] 79.16.4 — Implement condvar with waiter counting (mutex-protected, matching C semantics)
+  - [x] 79.16.5 — Activate shim for FreeRTOS in zpico-sys + skip system.c
+  - [x] 79.16.6 — Verify FreeRTOS E2E tests pass (29/29 — Rust, C, C++)
+  - [x] 79.16.7 — Seed platform RNG with IP+MAC hash (fix duplicate zenoh session IDs)
 - [x] 79.15 — Migrate ThreadX zenoh-pico from C system.c to Rust shim
   - [x] 79.15.1 — Wire `zpico-platform-shim` for ThreadX (activate shim in zpico-sys when `threadx` feature enabled)
   - [x] 79.15.2 — Delete `c/platform/threadx/system.c`; task creation kept in C `task.c` (struct layout dependency)
