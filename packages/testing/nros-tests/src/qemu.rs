@@ -392,11 +392,34 @@ impl QemuProcess {
         }
 
         let mut cmd = Command::new("qemu-system-arm");
-        cmd.args(["-M", "virt", "-cpu", "cortex-a7", "-nographic", "-kernel"])
-            .arg(binary);
+        cmd.args([
+            "-M",
+            "virt",
+            "-cpu",
+            "cortex-a7",
+            "-nographic",
+            // Sync virtual clock with wall-clock so sleep()/timeouts run
+            // at real-time rates (matches the interactive `just nuttx
+            // talker` recipe in just/nuttx.just).
+            "-icount",
+            "shift=auto",
+            "-kernel",
+        ])
+        .arg(binary);
 
         if networking {
-            cmd.args(["-nic", "user"]);
+            // NuttX's defconfig enables CONFIG_DRIVERS_VIRTIO_MMIO, so the
+            // NIC must be attached to the virtio-mmio transport — not
+            // virtio-net-pci, which is what `-nic user` defaults to on the
+            // ARM virt machine. Use explicit `-netdev user` + `-device
+            // virtio-net-device` to force the MMIO path so NuttX's driver
+            // actually probes and configures the interface.
+            cmd.args([
+                "-netdev",
+                "user,id=net0",
+                "-device",
+                "virtio-net-device,netdev=net0",
+            ]);
         } else {
             cmd.args(["-nic", "none"]);
         }

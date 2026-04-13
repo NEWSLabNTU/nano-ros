@@ -57,6 +57,8 @@ static void timer_callback(struct nros_timer_t* timer, void* context) {
         } else {
             fprintf(stderr, "Publish failed: %d\n", pub_ret);
         }
+        fflush(stdout);
+        fflush(stderr);
     }
 
     (void)0; // runs forever via timer
