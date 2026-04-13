@@ -458,3 +458,195 @@ mod socket_stubs {
         0
     }
 }
+
+// ============================================================================
+// Networking — TCP forwarders (Phase 80)
+// ============================================================================
+//
+// These forward zenoh-pico's _z_*_tcp() C calls to PlatformTcp trait methods
+// via ConcretePlatform. Gated on the `network` feature — only active when a
+// platform provides PlatformTcp/PlatformUdp implementations.
+
+#[cfg(feature = "network")]
+mod net_tcp {
+    use super::{c_void, P, ZSysNetEndpoint, ZSysNetSocket};
+    use nros_platform::PlatformTcp;
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_create_endpoint_tcp(
+        ep: *mut ZSysNetEndpoint,
+        s_address: *const u8,
+        s_port: *const u8,
+    ) -> i8 {
+        P::create_endpoint(ep as *mut c_void, s_address, s_port)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_free_endpoint_tcp(ep: *mut ZSysNetEndpoint) {
+        P::free_endpoint(ep as *mut c_void);
+    }
+
+    /// `_z_open_tcp(sock, rep, tout)` — `rep` is by-value endpoint.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_open_tcp(
+        sock: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+        tout: u32,
+    ) -> i8 {
+        P::open(sock as *mut c_void, &rep as *const ZSysNetEndpoint as *const c_void, tout)
+    }
+
+    /// `_z_listen_tcp(sock, rep)` — `rep` is by-value endpoint.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_listen_tcp(
+        sock: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+    ) -> i8 {
+        P::listen(sock as *mut c_void, &rep as *const ZSysNetEndpoint as *const c_void)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_close_tcp(sock: *mut ZSysNetSocket) {
+        P::close(sock as *mut c_void);
+    }
+
+    /// `_z_read_tcp(sock, ptr, len)` — `sock` is by-value socket.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_read_tcp(
+        sock: ZSysNetSocket,
+        ptr: *mut u8,
+        len: usize,
+    ) -> usize {
+        P::read(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+    }
+
+    /// `_z_read_exact_tcp(sock, ptr, len)` — `sock` is by-value socket.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_read_exact_tcp(
+        sock: ZSysNetSocket,
+        ptr: *mut u8,
+        len: usize,
+    ) -> usize {
+        P::read_exact(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+    }
+
+    /// `_z_send_tcp(sock, ptr, len)` — `sock` is by-value socket.
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_send_tcp(
+        sock: ZSysNetSocket,
+        ptr: *const u8,
+        len: usize,
+    ) -> usize {
+        P::send(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+    }
+}
+
+// ============================================================================
+// Networking — UDP unicast forwarders (Phase 80)
+// ============================================================================
+
+#[cfg(feature = "network")]
+mod net_udp {
+    use super::{c_void, P, ZSysNetEndpoint, ZSysNetSocket};
+    use nros_platform::PlatformUdp;
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_create_endpoint_udp(
+        ep: *mut ZSysNetEndpoint,
+        s_address: *const u8,
+        s_port: *const u8,
+    ) -> i8 {
+        P::create_endpoint(ep as *mut c_void, s_address, s_port)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_free_endpoint_udp(ep: *mut ZSysNetEndpoint) {
+        P::free_endpoint(ep as *mut c_void);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_open_udp_unicast(
+        sock: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+        tout: u32,
+    ) -> i8 {
+        P::open(sock as *mut c_void, &rep as *const ZSysNetEndpoint as *const c_void, tout)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_listen_udp_unicast(
+        sock: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+        _tout: u32,
+    ) -> i8 {
+        // Not yet implemented on any platform
+        let _ = (sock, rep);
+        -1
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_close_udp_unicast(sock: *mut ZSysNetSocket) {
+        P::close(sock as *mut c_void);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_read_udp_unicast(
+        sock: ZSysNetSocket,
+        ptr: *mut u8,
+        len: usize,
+    ) -> usize {
+        P::read(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_read_exact_udp_unicast(
+        sock: ZSysNetSocket,
+        ptr: *mut u8,
+        len: usize,
+    ) -> usize {
+        P::read_exact(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_send_udp_unicast(
+        sock: ZSysNetSocket,
+        ptr: *const u8,
+        len: usize,
+        rep: ZSysNetEndpoint,
+    ) -> usize {
+        P::send(&sock as *const ZSysNetSocket as *const c_void, ptr, len, &rep as *const ZSysNetEndpoint as *const c_void)
+    }
+}
+
+// ============================================================================
+// Networking — socket helper forwarders (Phase 80)
+// ============================================================================
+
+#[cfg(feature = "network")]
+mod net_helpers {
+    use super::{c_void, P, ZMutex, ZSysNetSocket};
+    use nros_platform::PlatformSocketHelpers;
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_set_non_blocking(sock: *const ZSysNetSocket) -> i8 {
+        P::set_non_blocking(sock as *const c_void)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_accept(
+        sock_in: *const ZSysNetSocket,
+        sock_out: *mut ZSysNetSocket,
+    ) -> i8 {
+        P::accept(sock_in as *const c_void, sock_out as *mut c_void)
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_close(sock: *mut ZSysNetSocket) {
+        P::close(sock as *mut c_void);
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_socket_wait_event(peers: *mut c_void, mutex: *mut ZMutex) -> i8 {
+        P::wait_event(peers, mutex as *mut c_void)
+    }
+}

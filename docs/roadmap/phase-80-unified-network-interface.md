@@ -282,11 +282,11 @@ typedef struct {
   - [x] 80.1.3 — Generated `platform_net_sizes.rs` with auto-detected sizes per target
   - [x] 80.1.4 — `ZSysNetSocket` / `ZSysNetEndpoint` opaque wrappers with correct sizes
   - [x] 80.1.5 — Verified: POSIX x86_64=16/8, FreeRTOS ARM32=4/4, bare-metal ARM32=16/8
-- [ ] 80.2 — Add network functions to zpico-platform-shim
-  - [ ] 80.2.1 — TCP forwarders: `_z_create_endpoint_tcp` → `ConcretePlatform::tcp_create_endpoint()`
-  - [ ] 80.2.2 — UDP unicast forwarders
-  - [ ] 80.2.3 — Socket helper forwarders (`_z_socket_close`, `_z_socket_wait_event`)
-  - [ ] 80.2.4 — Remove existing `socket_stubs` module (replaced by trait impl)
+- [x] 80.2 — Add network functions to zpico-platform-shim
+  - [x] 80.2.1 — TCP forwarders (8 functions): endpoint create/free, open, listen, close, read, read_exact, send
+  - [x] 80.2.2 — UDP unicast forwarders (8 functions): endpoint create/free, open, listen, close, read, read_exact, send
+  - [x] 80.2.3 — Socket helper forwarders: set_non_blocking, accept, close, wait_event
+  - [ ] 80.2.4 — Remove existing `socket_stubs` module (deferred — replaced when `network` feature activated)
 - [ ] 80.3 — Implement `PlatformTcp`/`PlatformUdp` for POSIX
   - [ ] 80.3.1 — TCP: `socket()`, `connect()`, `send()`, `recv()` via libc
   - [ ] 80.3.2 — UDP: `socket()`, `sendto()`, `recvfrom()` via libc
