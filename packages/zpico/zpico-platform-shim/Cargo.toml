@@ -23,3 +23,6 @@ skip-task-symbols = []
 
 [dependencies]
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
+
+[build-dependencies]
+cc = "1"

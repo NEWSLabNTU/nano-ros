@@ -194,6 +194,68 @@ pub trait PlatformNetworkPoll {
 }
 
 // ============================================================================
+// Networking — TCP
+// ============================================================================
+
+/// TCP networking.
+///
+/// Socket and endpoint parameters are opaque `*mut c_void` pointers to
+/// platform-specific types (`_z_sys_net_socket_t`, `_z_sys_net_endpoint_t`).
+/// The shim provides correctly-sized `#[repr(C)]` wrappers whose sizes are
+/// auto-detected from C headers at build time (see Phase 80 design).
+///
+/// Read functions return `usize::MAX` on error. Send returns `usize::MAX` on error.
+pub trait PlatformTcp {
+    /// Resolve address + port strings into an endpoint handle.
+    fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8;
+    /// Free endpoint resources.
+    fn free_endpoint(ep: *mut c_void);
+    /// Open a TCP client connection. `endpoint` is by-value (opaque bytes on stack).
+    fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    /// Open a TCP listening socket.
+    fn listen(sock: *mut c_void, endpoint: *const c_void) -> i8;
+    /// Close a TCP socket.
+    fn close(sock: *mut c_void);
+    /// Read up to `len` bytes. Returns bytes read, or `usize::MAX` on error.
+    fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    /// Read exactly `len` bytes. Returns `len` on success, `usize::MAX` on error.
+    fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    /// Send `len` bytes. Returns bytes sent, or `usize::MAX` on error.
+    fn send(sock: *const c_void, buf: *const u8, len: usize) -> usize;
+}
+
+// ============================================================================
+// Networking — UDP unicast
+// ============================================================================
+
+/// UDP unicast networking.
+pub trait PlatformUdp {
+    fn create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8;
+    fn free_endpoint(ep: *mut c_void);
+    fn open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8;
+    fn close(sock: *mut c_void);
+    fn read(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    fn read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize;
+    fn send(sock: *const c_void, buf: *const u8, len: usize, endpoint: *const c_void) -> usize;
+}
+
+// ============================================================================
+// Networking — socket helpers
+// ============================================================================
+
+/// Socket helper operations called by zenoh-pico's transport layer.
+pub trait PlatformSocketHelpers {
+    /// Set socket to non-blocking mode.
+    fn set_non_blocking(sock: *const c_void) -> i8;
+    /// Accept a pending connection.
+    fn accept(sock_in: *const c_void, sock_out: *mut c_void) -> i8;
+    /// Close a socket (shutdown + close).
+    fn close(sock: *mut c_void);
+    /// Wait for socket events (multi-threaded platforms).
+    fn wait_event(peers: *mut c_void, mutex: *mut c_void) -> i8;
+}
+
+// ============================================================================
 // libc stubs (bare-metal only)
 // ============================================================================
 
