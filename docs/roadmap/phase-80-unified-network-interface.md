@@ -291,7 +291,9 @@ typedef struct {
   - [x] 80.3.1 — TCP: getaddrinfo, socket, connect, recv, send, shutdown+close via libc
   - [x] 80.3.2 — UDP: getaddrinfo, socket, recvfrom, sendto via libc
   - [x] 80.3.3 — Socket helpers: fcntl(O_NONBLOCK), accept, socket_close, wait_event
-  - [ ] 80.3.4 — Activate `network` feature + verify `just test-integration` passes
+  - [-] 80.3.4 — ~~Activate `network` feature~~ (blocked — UDP multicast not yet implemented; C network.c kept)
+- [ ] 80.3.5 — Implement UDP multicast for POSIX (6 functions: open, listen, close, read, read_exact, send)
+- [ ] 80.3.6 — Activate `network` feature for POSIX + verify `just test-integration` passes
 - [ ] 80.4 — Implement for bare-metal (smoltcp)
   - [ ] 80.4.1 — Move zpico-smoltcp TCP/UDP logic into nros-platform-<board> or a shared crate
   - [ ] 80.4.2 — Verify `just test-qemu` passes

@@ -931,9 +931,12 @@ fn build_zenoh_pico_native(
 
     // Remove system.c from the build copy — platform symbols are provided by
     // zpico-platform-shim via nros-platform instead of zenoh-pico's C code.
-    // network.c (BSD sockets) is kept since networking is outside nros-platform scope.
-    for system_c in &["src/system/unix/system.c", "src/system/freertos/system.c"] {
-        let path = zenoh_pico_build.join(system_c);
+    // network.c is kept — UDP multicast requires it (Phase 80 will port it).
+    for c_file in &[
+        "src/system/unix/system.c",
+        "src/system/freertos/system.c",
+    ] {
+        let path = zenoh_pico_build.join(c_file);
         if path.exists() {
             std::fs::remove_file(&path).ok();
         }
