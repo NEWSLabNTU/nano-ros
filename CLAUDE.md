@@ -264,6 +264,7 @@ Completed phases archived in `docs/roadmap/archived/`. See [docs/roadmap/](docs/
 | 78 | Colcon build type (`nros.<lang>.<platform>`) | Not Started |
 | 79 | Unified platform abstraction layer | Complete |
 | 80 | Unified network interface for nros-platform | Not Started |
+| 81 | Fix Zephyr native_sim multi-instance E2E tests (zeth0 TAP contention) | Not Started |
 
 ## Quick Reference
 
