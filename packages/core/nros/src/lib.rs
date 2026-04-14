@@ -175,6 +175,45 @@ pub use nros_rmw::{IntegrityStatus, SafetyValidator, crc32};
 ///
 /// The `Rmw*` type aliases resolve to whichever backend is active at compile time,
 /// providing a backend-agnostic way to reference concrete transport types.
+/// Platform-specific helpers.
+///
+/// Each submodule is gated on the matching `platform-*` feature and exposes
+/// thin wrappers for init hooks that users must call before opening an
+/// [`Executor`]. Other platforms either don't need these (POSIX) or provide
+/// them through their board crate (FreeRTOS, NuttX, ThreadX, bare-metal).
+pub mod platform {
+    /// Zephyr-specific init helpers.
+    ///
+    /// On Zephyr's `native_sim`, the default network interface is assigned
+    /// an IPv4 address at boot (via `NET_CONFIG_NEED_IPV4`), but the
+    /// underlying TAP link reports `net_if_is_up() == false` for ~100–200
+    /// ms until the host side is fully ready. Opening a zenoh session
+    /// before that returns `TransportError::ConnectionFailed`.
+    ///
+    /// Call [`wait_for_network`] as the first line of `rust_main()`. It
+    /// mirrors the `zpico_zephyr_wait_network()` call the C++ examples
+    /// make before `nros::init()`.
+    #[cfg(feature = "platform-zephyr")]
+    pub mod zephyr {
+        unsafe extern "C" {
+            fn zpico_zephyr_wait_network(timeout_ms: i32) -> i32;
+        }
+
+        /// Block until the default Zephyr network interface is operational,
+        /// or the timeout expires.
+        ///
+        /// Returns `Ok(())` if the interface came up, or `Err(())` on
+        /// timeout. Matches the C helper's semantics.
+        pub fn wait_for_network(timeout_ms: i32) -> Result<(), ()> {
+            // SAFETY: zpico_zephyr_wait_network has no preconditions beyond
+            // being called from a Zephyr thread context — which is always
+            // true in a Zephyr app where `platform-zephyr` is active.
+            let ret = unsafe { zpico_zephyr_wait_network(timeout_ms) };
+            if ret == 0 { Ok(()) } else { Err(()) }
+        }
+    }
+}
+
 pub mod internals {
     // Zenoh backend internal types
     #[cfg(feature = "rmw-zenoh")]

@@ -55,6 +55,11 @@ async fn app_main(spawner: embassy_executor::Spawner) {
 }
 
 async fn run_async(spawner: embassy_executor::Spawner) -> Result<(), nros::NodeError> {
+    // Wait for the Zephyr network interface to come up before opening the
+    // zenoh session. Required on native_sim where the TAP link reports up
+    // asynchronously after IPv4 assignment.
+    let _ = nros::platform::zephyr::wait_for_network(2000);
+
     let config = nros::ExecutorConfig::new("tcp/192.0.2.2:7456");
     let mut nros_exec = nros::Executor::open(&config)?;
 

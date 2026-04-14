@@ -25,6 +25,11 @@ extern "C" fn rust_main() {
 }
 
 fn run() -> Result<(), NodeError> {
+    // Wait for the Zephyr network interface to come up before opening the
+    // zenoh session. Required on native_sim where the TAP link reports up
+    // asynchronously after IPv4 assignment.
+    let _ = nros::platform::zephyr::wait_for_network(2000);
+
     let config = ExecutorConfig::new("tcp/192.0.2.2:7456");
     let mut executor = Executor::open(&config)?;
 
