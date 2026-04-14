@@ -241,11 +241,7 @@ impl PosixPlatform {
     pub fn tcp_read(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
         let sock = unsafe { &*(sock as *const Socket) };
         let ret = unsafe { libc::recv(sock._fd, buf as *mut c_void, len, 0) };
-        if ret < 0 {
-            usize::MAX
-        } else {
-            ret as usize
-        }
+        if ret < 0 { usize::MAX } else { ret as usize }
     }
 
     pub fn tcp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
@@ -270,11 +266,7 @@ impl PosixPlatform {
         #[cfg(not(target_os = "linux"))]
         let flags = 0;
         let ret = unsafe { libc::send(sock._fd, buf as *const c_void, len, flags) };
-        if ret < 0 {
-            usize::MAX
-        } else {
-            ret as usize
-        }
+        if ret < 0 { usize::MAX } else { ret as usize }
     }
 
     // -- UDP unicast --
@@ -361,11 +353,7 @@ impl PosixPlatform {
                 &mut addrlen,
             )
         };
-        if ret < 0 {
-            usize::MAX
-        } else {
-            ret as usize
-        }
+        if ret < 0 { usize::MAX } else { ret as usize }
     }
 
     pub fn udp_read_exact(sock: *const c_void, buf: *mut u8, len: usize) -> usize {
@@ -402,11 +390,7 @@ impl PosixPlatform {
                 ai.ai_addrlen,
             )
         };
-        if ret < 0 {
-            usize::MAX
-        } else {
-            ret as usize
-        }
+        if ret < 0 { usize::MAX } else { ret as usize }
     }
 
     // -- Socket helpers --
@@ -524,17 +508,19 @@ unsafe fn get_ip_from_iface(
     let mut tmp = ifaddrs;
     while !tmp.is_null() {
         let ifa = &*tmp;
-        if !ifa.ifa_addr.is_null()
-            && (*ifa.ifa_addr).sa_family as libc::c_int == sa_family
-        {
+        if !ifa.ifa_addr.is_null() && (*ifa.ifa_addr).sa_family as libc::c_int == sa_family {
             // Compare interface name
             let name_matches = if !iface.is_null() {
                 let mut i = 0;
                 loop {
                     let a = *ifa.ifa_name.add(i) as u8;
                     let b = *iface.add(i);
-                    if a != b { break false; }
-                    if a == 0 { break true; }
+                    if a != b {
+                        break false;
+                    }
+                    if a == 0 {
+                        break true;
+                    }
                     i += 1;
                 }
             } else {
@@ -599,14 +585,31 @@ impl PosixPlatform {
             tv_sec: (timeout_ms / 1000) as libc::time_t,
             tv_usec: ((timeout_ms % 1000) * 1000) as libc::suseconds_t,
         };
-        if unsafe { libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_RCVTIMEO, &tv as *const _ as *const c_void, core::mem::size_of::<libc::timeval>() as libc::socklen_t) } < 0 {
-            unsafe { libc::close(fd); libc::free(lsockaddr as *mut c_void); (*sock)._fd = -1; }
+        if unsafe {
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_RCVTIMEO,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<libc::timeval>() as libc::socklen_t,
+            )
+        } < 0
+        {
+            unsafe {
+                libc::close(fd);
+                libc::free(lsockaddr as *mut c_void);
+                (*sock)._fd = -1;
+            }
             return -1;
         }
 
         // Bind to local address
         if unsafe { libc::bind(fd, lsockaddr, addrlen) } < 0 {
-            unsafe { libc::close(fd); libc::free(lsockaddr as *mut c_void); (*sock)._fd = -1; }
+            unsafe {
+                libc::close(fd);
+                libc::free(lsockaddr as *mut c_void);
+                (*sock)._fd = -1;
+            }
             return -1;
         }
 
@@ -618,17 +621,34 @@ impl PosixPlatform {
         unsafe {
             if (*lsockaddr).sa_family as libc::c_int == libc::AF_INET {
                 let addr = &(*(lsockaddr as *const libc::sockaddr_in)).sin_addr;
-                libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_MULTICAST_IF, addr as *const _ as *const c_void, core::mem::size_of::<libc::in_addr>() as libc::socklen_t);
+                libc::setsockopt(
+                    fd,
+                    libc::IPPROTO_IP,
+                    libc::IP_MULTICAST_IF,
+                    addr as *const _ as *const c_void,
+                    core::mem::size_of::<libc::in_addr>() as libc::socklen_t,
+                );
             } else if (*lsockaddr).sa_family as libc::c_int == libc::AF_INET6 {
                 let ifindex = libc::if_nametoindex(iface as *const libc::c_char) as libc::c_int;
-                libc::setsockopt(fd, libc::IPPROTO_IPV6, libc::IPV6_MULTICAST_IF, &ifindex as *const _ as *const c_void, core::mem::size_of::<libc::c_int>() as libc::socklen_t);
+                libc::setsockopt(
+                    fd,
+                    libc::IPPROTO_IPV6,
+                    libc::IPV6_MULTICAST_IF,
+                    &ifindex as *const _ as *const c_void,
+                    core::mem::size_of::<libc::c_int>() as libc::socklen_t,
+                );
             }
         }
 
         // Create local endpoint addrinfo
-        let laddr = unsafe { libc::malloc(core::mem::size_of::<libc::addrinfo>()) as *mut libc::addrinfo };
+        let laddr =
+            unsafe { libc::malloc(core::mem::size_of::<libc::addrinfo>()) as *mut libc::addrinfo };
         if laddr.is_null() {
-            unsafe { libc::close(fd); libc::free(lsockaddr as *mut c_void); (*sock)._fd = -1; }
+            unsafe {
+                libc::close(fd);
+                libc::free(lsockaddr as *mut c_void);
+                (*sock)._fd = -1;
+            }
             return -1;
         }
         unsafe {
@@ -675,10 +695,28 @@ impl PosixPlatform {
         };
         let one: libc::c_int = 1;
         unsafe {
-            libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_RCVTIMEO, &tv as *const _ as *const c_void, core::mem::size_of::<libc::timeval>() as libc::socklen_t);
-            libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_REUSEADDR, &one as *const _ as *const c_void, core::mem::size_of::<libc::c_int>() as libc::socklen_t);
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_RCVTIMEO,
+                &tv as *const _ as *const c_void,
+                core::mem::size_of::<libc::timeval>() as libc::socklen_t,
+            );
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_REUSEADDR,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            );
             #[cfg(not(target_os = "windows"))]
-            libc::setsockopt(fd, libc::SOL_SOCKET, libc::SO_REUSEPORT, &one as *const _ as *const c_void, core::mem::size_of::<libc::c_int>() as libc::socklen_t);
+            libc::setsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_REUSEPORT,
+                &one as *const _ as *const c_void,
+                core::mem::size_of::<libc::c_int>() as libc::socklen_t,
+            );
         }
 
         // Bind to INADDR_ANY with the multicast port
@@ -688,16 +726,28 @@ impl PosixPlatform {
                 addr.sin_family = libc::AF_INET as libc::sa_family_t;
                 addr.sin_port = (*(ai.ai_addr as *const libc::sockaddr_in)).sin_port;
                 addr.sin_addr.s_addr = libc::INADDR_ANY.to_be();
-                libc::bind(fd, &addr as *const _ as *const libc::sockaddr, core::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t)
+                libc::bind(
+                    fd,
+                    &addr as *const _ as *const libc::sockaddr,
+                    core::mem::size_of::<libc::sockaddr_in>() as libc::socklen_t,
+                )
             } else {
                 let mut addr: libc::sockaddr_in6 = core::mem::zeroed();
                 addr.sin6_family = libc::AF_INET6 as libc::sa_family_t;
                 addr.sin6_port = (*(ai.ai_addr as *const libc::sockaddr_in6)).sin6_port;
-                libc::bind(fd, &addr as *const _ as *const libc::sockaddr, core::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t)
+                libc::bind(
+                    fd,
+                    &addr as *const _ as *const libc::sockaddr,
+                    core::mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t,
+                )
             }
         };
         if bind_ret < 0 {
-            unsafe { libc::close(fd); libc::free(lsockaddr as *mut c_void); (*sock)._fd = -1; }
+            unsafe {
+                libc::close(fd);
+                libc::free(lsockaddr as *mut c_void);
+                (*sock)._fd = -1;
+            }
             return -1;
         }
 
@@ -707,16 +757,32 @@ impl PosixPlatform {
                 let mut mreq: libc::ip_mreq = core::mem::zeroed();
                 mreq.imr_multiaddr = (*(ai.ai_addr as *const libc::sockaddr_in)).sin_addr;
                 mreq.imr_interface = (*(lsockaddr as *const libc::sockaddr_in)).sin_addr;
-                libc::setsockopt(fd, libc::IPPROTO_IP, libc::IP_ADD_MEMBERSHIP, &mreq as *const _ as *const c_void, core::mem::size_of::<libc::ip_mreq>() as libc::socklen_t)
+                libc::setsockopt(
+                    fd,
+                    libc::IPPROTO_IP,
+                    libc::IP_ADD_MEMBERSHIP,
+                    &mreq as *const _ as *const c_void,
+                    core::mem::size_of::<libc::ip_mreq>() as libc::socklen_t,
+                )
             } else {
                 let mut mreq: libc::ipv6_mreq = core::mem::zeroed();
                 mreq.ipv6mr_multiaddr = (*(ai.ai_addr as *const libc::sockaddr_in6)).sin6_addr;
                 mreq.ipv6mr_interface = libc::if_nametoindex(iface as *const libc::c_char);
-                libc::setsockopt(fd, libc::IPPROTO_IPV6, libc::IPV6_ADD_MEMBERSHIP, &mreq as *const _ as *const c_void, core::mem::size_of::<libc::ipv6_mreq>() as libc::socklen_t)
+                libc::setsockopt(
+                    fd,
+                    libc::IPPROTO_IPV6,
+                    libc::IPV6_ADD_MEMBERSHIP,
+                    &mreq as *const _ as *const c_void,
+                    core::mem::size_of::<libc::ipv6_mreq>() as libc::socklen_t,
+                )
             }
         };
         if join_ret < 0 {
-            unsafe { libc::close(fd); libc::free(lsockaddr as *mut c_void); (*sock)._fd = -1; }
+            unsafe {
+                libc::close(fd);
+                libc::free(lsockaddr as *mut c_void);
+                (*sock)._fd = -1;
+            }
             return -1;
         }
 
@@ -748,11 +814,23 @@ impl PosixPlatform {
                     let mut mreq: libc::ip_mreq = core::mem::zeroed();
                     mreq.imr_multiaddr = (*(ai.ai_addr as *const libc::sockaddr_in)).sin_addr;
                     mreq.imr_interface.s_addr = libc::INADDR_ANY.to_be();
-                    libc::setsockopt((*sockrecv)._fd, libc::IPPROTO_IP, libc::IP_DROP_MEMBERSHIP, &mreq as *const _ as *const c_void, core::mem::size_of::<libc::ip_mreq>() as libc::socklen_t);
+                    libc::setsockopt(
+                        (*sockrecv)._fd,
+                        libc::IPPROTO_IP,
+                        libc::IP_DROP_MEMBERSHIP,
+                        &mreq as *const _ as *const c_void,
+                        core::mem::size_of::<libc::ip_mreq>() as libc::socklen_t,
+                    );
                 } else if ai.ai_family == libc::AF_INET6 {
                     let mut mreq: libc::ipv6_mreq = core::mem::zeroed();
                     mreq.ipv6mr_multiaddr = (*(ai.ai_addr as *const libc::sockaddr_in6)).sin6_addr;
-                    libc::setsockopt((*sockrecv)._fd, libc::IPPROTO_IPV6, libc::IPV6_DROP_MEMBERSHIP, &mreq as *const _ as *const c_void, core::mem::size_of::<libc::ipv6_mreq>() as libc::socklen_t);
+                    libc::setsockopt(
+                        (*sockrecv)._fd,
+                        libc::IPPROTO_IPV6,
+                        libc::IPV6_DROP_MEMBERSHIP,
+                        &mreq as *const _ as *const c_void,
+                        core::mem::size_of::<libc::ipv6_mreq>() as libc::socklen_t,
+                    );
                 }
             }
 
@@ -790,8 +868,18 @@ impl PosixPlatform {
 
         loop {
             let mut raddr: libc::sockaddr_storage = unsafe { core::mem::zeroed() };
-            let mut replen: libc::socklen_t = core::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
-            let rb = unsafe { libc::recvfrom(sock._fd, buf as *mut c_void, len, 0, &mut raddr as *mut _ as *mut libc::sockaddr, &mut replen) };
+            let mut replen: libc::socklen_t =
+                core::mem::size_of::<libc::sockaddr_storage>() as libc::socklen_t;
+            let rb = unsafe {
+                libc::recvfrom(
+                    sock._fd,
+                    buf as *mut c_void,
+                    len,
+                    0,
+                    &mut raddr as *mut _ as *mut libc::sockaddr,
+                    &mut replen,
+                )
+            };
             if rb < 0 {
                 return usize::MAX;
             }
@@ -801,11 +889,13 @@ impl PosixPlatform {
                 if ai.ai_family == libc::AF_INET {
                     let local = &*(ai.ai_addr as *const libc::sockaddr_in);
                     let remote = &*(&raddr as *const _ as *const libc::sockaddr_in);
-                    local.sin_port == remote.sin_port && local.sin_addr.s_addr == remote.sin_addr.s_addr
+                    local.sin_port == remote.sin_port
+                        && local.sin_addr.s_addr == remote.sin_addr.s_addr
                 } else if ai.ai_family == libc::AF_INET6 {
                     let local = &*(ai.ai_addr as *const libc::sockaddr_in6);
                     let remote = &*(&raddr as *const _ as *const libc::sockaddr_in6);
-                    local.sin6_port == remote.sin6_port && local.sin6_addr.s6_addr == remote.sin6_addr.s6_addr
+                    local.sin6_port == remote.sin6_port
+                        && local.sin6_addr.s6_addr == remote.sin6_addr.s6_addr
                 } else {
                     true // skip unknown families
                 }
@@ -822,8 +912,16 @@ impl PosixPlatform {
                             let port_size = core::mem::size_of::<libc::in_port_t>();
                             if slice.len >= ip_size + port_size {
                                 slice.len = ip_size + port_size;
-                                core::ptr::copy_nonoverlapping(&remote.sin_addr.s_addr as *const _ as *const u8, slice.start as *mut u8, ip_size);
-                                core::ptr::copy_nonoverlapping(&remote.sin_port as *const _ as *const u8, (slice.start as *mut u8).add(ip_size), port_size);
+                                core::ptr::copy_nonoverlapping(
+                                    &remote.sin_addr.s_addr as *const _ as *const u8,
+                                    slice.start as *mut u8,
+                                    ip_size,
+                                );
+                                core::ptr::copy_nonoverlapping(
+                                    &remote.sin_port as *const _ as *const u8,
+                                    (slice.start as *mut u8).add(ip_size),
+                                    port_size,
+                                );
                             }
                         } else if ai.ai_family == libc::AF_INET6 {
                             let remote = &*(&raddr as *const _ as *const libc::sockaddr_in6);
@@ -831,8 +929,16 @@ impl PosixPlatform {
                             let port_size = core::mem::size_of::<libc::in_port_t>();
                             if slice.len >= ip_size + port_size {
                                 slice.len = ip_size + port_size;
-                                core::ptr::copy_nonoverlapping(remote.sin6_addr.s6_addr.as_ptr(), slice.start as *mut u8, ip_size);
-                                core::ptr::copy_nonoverlapping(&remote.sin6_port as *const _ as *const u8, (slice.start as *mut u8).add(ip_size), port_size);
+                                core::ptr::copy_nonoverlapping(
+                                    remote.sin6_addr.s6_addr.as_ptr(),
+                                    slice.start as *mut u8,
+                                    ip_size,
+                                );
+                                core::ptr::copy_nonoverlapping(
+                                    &remote.sin6_port as *const _ as *const u8,
+                                    (slice.start as *mut u8).add(ip_size),
+                                    port_size,
+                                );
                             }
                         }
                     }
@@ -853,14 +959,23 @@ impl PosixPlatform {
         let mut n: usize = 0;
         while n < len {
             let r = Self::mcast_read(sock, unsafe { buf.add(n) }, len - n, lep, addr);
-            if r == usize::MAX { return usize::MAX; }
-            if r == 0 { return 0; }
+            if r == usize::MAX {
+                return usize::MAX;
+            }
+            if r == 0 {
+                return 0;
+            }
             n += r;
         }
         n
     }
 
-    pub fn mcast_send(sock: *const c_void, buf: *const u8, len: usize, endpoint: *const c_void) -> usize {
+    pub fn mcast_send(
+        sock: *const c_void,
+        buf: *const u8,
+        len: usize,
+        endpoint: *const c_void,
+    ) -> usize {
         // Same as UDP unicast send
         Self::udp_send(sock, buf, len, endpoint)
     }

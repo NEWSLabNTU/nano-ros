@@ -469,7 +469,7 @@ mod socket_stubs {
 
 #[cfg(feature = "network")]
 mod net_tcp {
-    use super::{c_void, P, ZSysNetEndpoint, ZSysNetSocket};
+    use super::{P, ZSysNetEndpoint, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_create_endpoint_tcp(
@@ -487,12 +487,19 @@ mod net_tcp {
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_open_tcp(sock: *mut ZSysNetSocket, rep: ZSysNetEndpoint, tout: u32) -> i8 {
-        P::tcp_open(sock as *mut c_void, &rep as *const ZSysNetEndpoint as *const c_void, tout)
+        P::tcp_open(
+            sock as *mut c_void,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+            tout,
+        )
     }
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_listen_tcp(sock: *mut ZSysNetSocket, rep: ZSysNetEndpoint) -> i8 {
-        P::tcp_listen(sock as *mut c_void, &rep as *const ZSysNetEndpoint as *const c_void)
+        P::tcp_listen(
+            sock as *mut c_void,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -518,7 +525,7 @@ mod net_tcp {
 
 #[cfg(feature = "network")]
 mod net_udp {
-    use super::{c_void, P, ZSysNetEndpoint, ZSysNetSocket};
+    use super::{P, ZSysNetEndpoint, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_create_endpoint_udp(
@@ -535,8 +542,16 @@ mod net_udp {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn _z_open_udp_unicast(sock: *mut ZSysNetSocket, rep: ZSysNetEndpoint, tout: u32) -> i8 {
-        P::udp_open(sock as *mut c_void, &rep as *const ZSysNetEndpoint as *const c_void, tout)
+    pub extern "C" fn _z_open_udp_unicast(
+        sock: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+        tout: u32,
+    ) -> i8 {
+        P::udp_open(
+            sock as *mut c_void,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+            tout,
+        )
     }
 
     #[unsafe(no_mangle)]
@@ -559,7 +574,11 @@ mod net_udp {
     }
 
     #[unsafe(no_mangle)]
-    pub extern "C" fn _z_read_exact_udp_unicast(sock: ZSysNetSocket, ptr: *mut u8, len: usize) -> usize {
+    pub extern "C" fn _z_read_exact_udp_unicast(
+        sock: ZSysNetSocket,
+        ptr: *mut u8,
+        len: usize,
+    ) -> usize {
         P::udp_read_exact(&sock as *const ZSysNetSocket as *const c_void, ptr, len)
     }
 
@@ -570,13 +589,18 @@ mod net_udp {
         len: usize,
         rep: ZSysNetEndpoint,
     ) -> usize {
-        P::udp_send(&sock as *const ZSysNetSocket as *const c_void, ptr, len, &rep as *const ZSysNetEndpoint as *const c_void)
+        P::udp_send(
+            &sock as *const ZSysNetSocket as *const c_void,
+            ptr,
+            len,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+        )
     }
 }
 
 #[cfg(feature = "network")]
 mod net_helpers {
-    use super::{c_void, P, ZMutex, ZSysNetSocket};
+    use super::{P, ZMutex, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_socket_set_non_blocking(sock: *const ZSysNetSocket) -> i8 {
@@ -608,7 +632,7 @@ mod net_helpers {
 
 #[cfg(feature = "network")]
 mod net_mcast {
-    use super::{c_void, P, ZSysNetEndpoint, ZSysNetSocket};
+    use super::{P, ZSysNetEndpoint, ZSysNetSocket, c_void};
 
     #[unsafe(no_mangle)]
     pub extern "C" fn _z_open_udp_multicast(
