@@ -13,6 +13,9 @@
 #include <zenoh-pico/session/query.h>
 #include <zenoh-pico/api/olv_macros.h>
 #include <string.h>
+#ifdef ZENOH_NUTTX
+#include <unistd.h>
+#endif
 
 #ifdef ZENOH_ZEPHYR
 #include <zephyr/kernel.h>  // For printk
@@ -1050,11 +1053,15 @@ int32_t zpico_poll(uint32_t timeout_ms) {
     // Multi-threaded (Zephyr/POSIX): background read task handles data.
     // Wait on condvar — see zpico_spin_once() for the rationale.
     if (timeout_ms > 0) {
+#ifdef ZENOH_NUTTX
+        usleep((useconds_t)timeout_ms * 1000);
+#else
         z_clock_t deadline = z_clock_now();
         z_clock_advance_ms(&deadline, (unsigned long)timeout_ms);
         _z_mutex_lock(&g_spin_mutex);
         _z_condvar_wait_until(&g_spin_cv, &g_spin_mutex, &deadline);
         _z_mutex_unlock(&g_spin_mutex);
+#endif
     }
     return 0;
 
@@ -1155,12 +1162,21 @@ int32_t zpico_spin_once(uint32_t timeout_ms) {
     // data and keep-alives. Wait on a condvar that our callbacks signal when
     // application data arrives (subscriptions, query replies, service requests).
     // This gives near-zero latency wake-up without busy-looping on select().
+    //
+    // On NuttX the pthread-timed-wait path hangs indefinitely inside the
+    // kernel's watchdog-backed semaphore wait (see Phase 55.12 follow-up).
+    // Fall back to a plain usleep there — we lose the early-wake optimisation
+    // but preserve the timeout semantics the executor loop depends on.
     if (timeout_ms > 0) {
+#ifdef ZENOH_NUTTX
+        usleep((useconds_t)timeout_ms * 1000);
+#else
         z_clock_t deadline = z_clock_now();
         z_clock_advance_ms(&deadline, (unsigned long)timeout_ms);
         _z_mutex_lock(&g_spin_mutex);
         _z_condvar_wait_until(&g_spin_cv, &g_spin_mutex, &deadline);
         _z_mutex_unlock(&g_spin_mutex);
+#endif
     }
     return 0;
 

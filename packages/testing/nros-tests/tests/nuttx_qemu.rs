@@ -498,7 +498,7 @@ fn test_nuttx_kernel_boots() {
 /// Launches a listener and a talker on separate QEMU instances (slirp networking),
 /// verifies that the listener receives Int32 messages published by the talker.
 #[test]
-#[ignore = "Phase 55.12 follow-up: NuttX pub/sub flow stalls after session open — see comment on test_nuttx_c_pubsub_e2e"]
+#[ignore = "NuttX Rust pubsub E2E: subscription.try_recv never returns data on NuttX, though C pubsub (callback-driven) works — separate from Phase 55.12 timer hang"]
 fn test_nuttx_pubsub_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -578,7 +578,7 @@ fn test_nuttx_pubsub_e2e() {
 /// Launches a service server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives correct AddTwoInts responses.
 #[test]
-#[ignore = "Phase 55.12 follow-up: NuttX service flow stalls after session open"]
+#[ignore = "NuttX service E2E: query reply not delivered to client (separate from Phase 55.12 timer hang; client times out with ServiceRequestFailed)"]
 fn test_nuttx_service_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -661,7 +661,7 @@ fn test_nuttx_service_e2e() {
 /// Launches an action server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives Fibonacci feedback and final result.
 #[test]
-#[ignore = "Phase 55.12 follow-up: NuttX action flow stalls after session open"]
+#[ignore = "NuttX action E2E: query reply not delivered to client (separate from Phase 55.12 timer hang)"]
 fn test_nuttx_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1154,7 +1154,6 @@ fn test_nuttx_c_action_client_builds() {
 // condvar timeouts. Needs dedicated investigation and is tracked as a
 // follow-up to Phase 55.12.
 #[test]
-#[ignore = "Phase 55.12 follow-up: NuttX session opens but pub/sub flow stalls; see comment above the first ignored test"]
 fn test_nuttx_c_pubsub_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1185,7 +1184,7 @@ fn test_nuttx_c_pubsub_e2e() {
 }
 
 #[test]
-#[ignore = "Phase 55.12 follow-up: NuttX pub/sub flow stalls after session open"]
+#[ignore = "NuttX C service E2E: query reply not delivered to client (separate from Phase 55.12 timer hang)"]
 fn test_nuttx_c_service_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1214,7 +1213,7 @@ fn test_nuttx_c_service_e2e() {
 }
 
 #[test]
-#[ignore = "Phase 55.12 follow-up: NuttX pub/sub flow stalls after session open"]
+#[ignore = "NuttX C action E2E: query reply not delivered to client (separate from Phase 55.12 timer hang)"]
 fn test_nuttx_c_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
