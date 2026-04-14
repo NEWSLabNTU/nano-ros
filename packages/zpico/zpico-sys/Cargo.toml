@@ -21,7 +21,7 @@ default = []
 # The C library's system.c is excluded — only network.c is kept.
 # Zephyr's platform code is compiled by Zephyr's CMake build system, but the
 # shim (Rust staticlib) still gets linked into nros-c / nros-cpp / rust apps.
-posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
 zephyr = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
 bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/socket-stubs"]
 freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]

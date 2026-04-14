@@ -929,11 +929,11 @@ fn build_zenoh_pico_native(
     // Copy source to build directory to avoid modifying source tree
     copy_source_tree(zenoh_pico_src, &zenoh_pico_build);
 
-    // Remove system.c from the build copy — platform symbols are provided by
-    // zpico-platform-shim via nros-platform instead of zenoh-pico's C code.
-    // network.c is kept — UDP multicast requires it (Phase 80 will port it).
+    // Remove system.c and network.c from the build copy — platform symbols
+    // and networking are provided by zpico-platform-shim via nros-platform.
     for c_file in &[
         "src/system/unix/system.c",
+        "src/system/unix/network.c",
         "src/system/freertos/system.c",
     ] {
         let path = zenoh_pico_build.join(c_file);

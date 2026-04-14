@@ -601,3 +601,110 @@ mod net_helpers {
         P::socket_wait_event(peers, mutex as *mut c_void)
     }
 }
+
+// ============================================================================
+// Networking — UDP multicast forwarders (Phase 80)
+// ============================================================================
+
+#[cfg(feature = "network")]
+mod net_mcast {
+    use super::{c_void, P, ZSysNetEndpoint, ZSysNetSocket};
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_open_udp_multicast(
+        sock: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+        lep: *mut ZSysNetEndpoint,
+        tout: u32,
+        iface: *const u8,
+    ) -> i8 {
+        P::mcast_open(
+            sock as *mut c_void,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+            lep as *mut c_void,
+            tout,
+            iface,
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_listen_udp_multicast(
+        sock: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+        tout: u32,
+        iface: *const u8,
+        join: *const u8,
+    ) -> i8 {
+        P::mcast_listen(
+            sock as *mut c_void,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+            tout,
+            iface,
+            join,
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_close_udp_multicast(
+        sockrecv: *mut ZSysNetSocket,
+        socksend: *mut ZSysNetSocket,
+        rep: ZSysNetEndpoint,
+        lep: ZSysNetEndpoint,
+    ) {
+        P::mcast_close(
+            sockrecv as *mut c_void,
+            socksend as *mut c_void,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+            &lep as *const ZSysNetEndpoint as *const c_void,
+        );
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_read_udp_multicast(
+        sock: ZSysNetSocket,
+        ptr: *mut u8,
+        len: usize,
+        lep: ZSysNetEndpoint,
+        addr: *mut c_void, // *mut _z_slice_t
+    ) -> usize {
+        P::mcast_read(
+            &sock as *const ZSysNetSocket as *const c_void,
+            ptr,
+            len,
+            &lep as *const ZSysNetEndpoint as *const c_void,
+            addr,
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_read_exact_udp_multicast(
+        sock: ZSysNetSocket,
+        ptr: *mut u8,
+        len: usize,
+        lep: ZSysNetEndpoint,
+        addr: *mut c_void,
+    ) -> usize {
+        P::mcast_read_exact(
+            &sock as *const ZSysNetSocket as *const c_void,
+            ptr,
+            len,
+            &lep as *const ZSysNetEndpoint as *const c_void,
+            addr,
+        )
+    }
+
+    #[unsafe(no_mangle)]
+    pub extern "C" fn _z_send_udp_multicast(
+        sock: ZSysNetSocket,
+        ptr: *const u8,
+        len: usize,
+        rep: ZSysNetEndpoint,
+    ) -> usize {
+        P::mcast_send(
+            &sock as *const ZSysNetSocket as *const c_void,
+            ptr,
+            len,
+            &rep as *const ZSysNetEndpoint as *const c_void,
+        )
+    }
+}

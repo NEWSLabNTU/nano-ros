@@ -276,3 +276,17 @@ pub trait PlatformLibc {
     fn strtoul(nptr: *const u8, endptr: *mut *mut u8, base: c_int) -> core::ffi::c_ulong;
     fn errno_ptr() -> *mut c_int;
 }
+
+// ============================================================================
+// Networking — UDP multicast
+// ============================================================================
+
+/// UDP multicast networking (used for zenoh scouting on desktop platforms).
+pub trait PlatformUdpMulticast {
+    fn mcast_open(sock: *mut c_void, endpoint: *const c_void, lep: *mut c_void, timeout_ms: u32, iface: *const u8) -> i8;
+    fn mcast_listen(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32, iface: *const u8, join: *const u8) -> i8;
+    fn mcast_close(sockrecv: *mut c_void, socksend: *mut c_void, rep: *const c_void, lep: *const c_void);
+    fn mcast_read(sock: *const c_void, buf: *mut u8, len: usize, lep: *const c_void, addr: *mut c_void) -> usize;
+    fn mcast_read_exact(sock: *const c_void, buf: *mut u8, len: usize, lep: *const c_void, addr: *mut c_void) -> usize;
+    fn mcast_send(sock: *const c_void, buf: *const u8, len: usize, endpoint: *const c_void) -> usize;
+}
