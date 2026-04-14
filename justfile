@@ -132,10 +132,12 @@ _count-real-failures:
         echo 0
         exit 0
     fi
-    total=$(grep -c '<failure ' "$junit" || echo 0)
+    # `grep -c` prints 0 on no-match and exits 1, so no `|| echo 0` fallback
+    # is needed — the fallback would double-emit "0\n0" and break $(( )).
+    total=$(grep -c '<failure ' "$junit")
     # A failure is environment-skipped if its <failure> tag's content contains [SKIPPED].
     # We grep for `<failure ` lines plus the next line (the panic message body).
-    skipped=$(grep -A1 '<failure ' "$junit" | grep -c '\[SKIPPED\]' || echo 0)
+    skipped=$(grep -A1 '<failure ' "$junit" | grep -c '\[SKIPPED\]')
     real=$((total - skipped))
     if [ $real -lt 0 ]; then real=0; fi
     echo "$real"
@@ -148,8 +150,8 @@ _test-summary:
         echo "No junit.xml found"
         exit 0
     fi
-    total=$(grep -c '<failure ' "$junit" || echo 0)
-    skipped=$(grep -A1 '<failure ' "$junit" | grep -c '\[SKIPPED\]' || echo 0)
+    total=$(grep -c '<failure ' "$junit")
+    skipped=$(grep -A1 '<failure ' "$junit" | grep -c '\[SKIPPED\]')
     real=$((total - skipped))
     if [ $real -lt 0 ]; then real=0; fi
     if [ $skipped -gt 0 ]; then
