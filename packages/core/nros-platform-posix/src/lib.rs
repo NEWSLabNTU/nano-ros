@@ -1,9 +1,12 @@
 //! POSIX platform implementation for nros.
 //!
 //! Provides all platform capabilities using standard POSIX APIs:
-//! `clock_gettime`, `malloc`/`free`, `nanosleep`, `pthread_*`, `/dev/urandom`.
+//! `clock_gettime`, `malloc`/`free`, `nanosleep`, `pthread_*`, `/dev/urandom`,
+//! `socket`/`connect`/`send`/`recv` (TCP/UDP networking).
 
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
+
+pub mod net;
 
 use core::ffi::c_void;
 use core::ptr;
