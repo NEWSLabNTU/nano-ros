@@ -498,7 +498,7 @@ fn test_nuttx_kernel_boots() {
 /// Launches a listener and a talker on separate QEMU instances (slirp networking),
 /// verifies that the listener receives Int32 messages published by the talker.
 #[test]
-#[ignore = "NuttX Rust pubsub E2E: subscription.try_recv never returns data on NuttX, though C pubsub (callback-driven) works — separate from Phase 55.12 timer hang"]
+#[ignore = "NuttX pubsub E2E: router closes listener TCP session ~25s after connect (TCP early eof on router RX) — happens before Rust talker finishes booting. Listener's keep-alives are being sent (verified via zpico diag). Needs investigation of NuttX/slirp TCP behavior or zenoh-pico client-side close path. Separate from Phase 55.12 timer hang; C pubsub works because talker boots faster."]
 fn test_nuttx_pubsub_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
