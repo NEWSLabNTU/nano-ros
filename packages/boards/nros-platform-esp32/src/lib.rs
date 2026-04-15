@@ -6,6 +6,7 @@
 
 pub mod clock;
 pub mod memory;
+pub mod net;
 pub mod random;
 pub mod sleep;
 pub mod timing;

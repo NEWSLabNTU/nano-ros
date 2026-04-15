@@ -16,3 +16,4 @@ default = []
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
 defmt = "0.3"
+nros-smoltcp = { path = "../../drivers/nros-smoltcp" }

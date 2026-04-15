@@ -47,7 +47,7 @@ defmt = "0.3"
 [features]
 default = ["stm32f429", "ethernet"]
 # Ethernet transport via STM32 MAC + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:stm32-eth", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
+ethernet = ["dep:zpico-smoltcp", "zpico-smoltcp?/no-export", "dep:stm32-eth", "dep:smoltcp"]
 # Serial transport via USART
 serial = ["dep:zpico-serial", "dep:stm32f4-usart"]
 

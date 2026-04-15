@@ -8,6 +8,7 @@
 pub mod clock;
 pub mod libc_stubs;
 pub mod memory;
+pub mod net;
 pub mod phy;
 pub mod pins;
 pub mod random;

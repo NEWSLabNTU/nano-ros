@@ -39,6 +39,6 @@ portable-atomic = { version = "1", default-features = false, features = ["unsafe
 [features]
 default = ["ethernet"]
 # Ethernet transport via OpenETH + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:openeth-smoltcp", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
+ethernet = ["dep:zpico-smoltcp", "zpico-smoltcp?/no-export", "dep:openeth-smoltcp", "dep:smoltcp"]
 # Serial transport via zenoh-pico built-in serial (no additional deps)
 serial = []

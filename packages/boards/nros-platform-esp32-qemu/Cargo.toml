@@ -15,3 +15,4 @@ default = []
 [dependencies]
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 esp-hal = { version = "1", features = ["esp32c3", "unstable"] }
+nros-smoltcp = { path = "../../drivers/nros-smoltcp" }

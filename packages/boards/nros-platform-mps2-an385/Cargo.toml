@@ -19,3 +19,5 @@ link-tls = []
 zpico-alloc = { path = "../../zpico/zpico-alloc" }
 # Cortex-M register access
 cortex-m = "0.7"
+# smoltcp network provider (TCP/UDP via SmoltcpBridge)
+nros-smoltcp = { path = "../../drivers/nros-smoltcp" }

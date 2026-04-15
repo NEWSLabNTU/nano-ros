@@ -3,15 +3,14 @@ name = "zpico-smoltcp"
 version = "0.1.0"
 edition = "2024"
 license = "MIT OR Apache-2.0"
-description = "smoltcp TCP link layer for nros (bare-metal systems)"
+description = "zenoh-pico _z_* symbol shims over nros-smoltcp (bare-metal systems)"
 
 [features]
 default = []
 link-tls = ["zpico-sys/link-tls"]
+# When set, don't export #[no_mangle] symbols — the shim provides them instead.
+no-export = []
 
 [dependencies]
 zpico-sys = { version = "0.1.0", path = "../zpico-sys", features = ["bare-metal", "link-tcp", "link-udp-unicast"] }
-smoltcp = { version = "0.12", default-features = false, features = [
-    "medium-ethernet", "proto-ipv4", "socket-tcp", "socket-udp",
-] }
-
+nros-smoltcp = { version = "0.1.0", path = "../../drivers/nros-smoltcp" }

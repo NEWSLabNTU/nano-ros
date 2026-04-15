@@ -13,6 +13,7 @@
 pub mod clock;
 pub mod libc_stubs;
 pub mod memory;
+pub mod net;
 pub mod random;
 pub mod sleep;
 pub mod time;

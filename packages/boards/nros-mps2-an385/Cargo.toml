@@ -42,7 +42,7 @@ panic-semihosting = "0.6"
 [features]
 default = ["ethernet"]
 # Ethernet transport via LAN9118 + smoltcp
-ethernet = ["dep:zpico-smoltcp", "dep:lan9118-smoltcp", "dep:smoltcp", "zpico-platform-shim/smoltcp"]
+ethernet = ["dep:zpico-smoltcp", "zpico-smoltcp?/no-export", "dep:lan9118-smoltcp", "dep:smoltcp"]
 # Serial transport via CMSDK UART
 serial = ["dep:zpico-serial", "dep:cmsdk-uart"]
 # Docker networking mode (container with NAT, ethernet only)
