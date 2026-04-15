@@ -1467,7 +1467,6 @@ name = "zpico-smoltcp"
 version = "0.1.0"
 dependencies = [
  "nros-smoltcp",
- "zpico-sys",
 ]
 
 [[package]]
