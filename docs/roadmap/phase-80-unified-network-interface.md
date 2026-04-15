@@ -295,40 +295,44 @@ typedef struct {
   - [x] 80.3.5 — Activate `network` feature for POSIX + remove C unix/network.c from build
   - [x] 80.3.6 — Native integration tests pass: actions (3/3), error_handling (8/8)
 - [x] 80.4 — Bare-metal build fixes
-  - [x] 80.4.1 — Added `no-export` feature to zpico-smoltcp (conditionally removes `#[no_mangle]`)
-  - [x] 80.4.2 — Fixed size probe for ARM: set `ZENOH_GENERIC` + include `c/platform` dir in both zpico-sys and zpico-platform-shim build.rs
-  - [x] 80.4.3 — Made size probe failure-tolerant (try_compile fallback for RISC-V without picolibc)
-  - [x] 80.4.4 — Verified bare-metal ARM build succeeds, unit tests pass (337/337)
+  - [x] 80.4.1 — Fixed size probe for ARM: set `ZENOH_GENERIC` + include `c/platform` dir
+  - [x] 80.4.2 — Made size probe failure-tolerant (try_compile fallback for RISC-V without picolibc)
+  - [x] 80.4.3 — Fixed opaque type alignment (`repr(C)` without hardcoded align — was causing ABI mismatch)
 - [x] 80.5 — Create standalone `nros-smoltcp` crate (RMW-agnostic network provider)
-  - [x] 80.5.1 — Create `packages/drivers/nros-smoltcp/` with SmoltcpBridge, socket handle management, staging buffers
+  - [x] 80.5.1 — Create `packages/drivers/nros-smoltcp/` with SmoltcpBridge, socket management, staging buffers
   - [x] 80.5.2 — Export RMW-agnostic API: `tcp_open()`, `tcp_read()`, `tcp_send()`, `udp_open()`, etc.
   - [x] 80.5.3 — Export board-facing API: `init()`, `poll()`, `create_and_register_sockets()`, `set_poll_callback()`
-  - [x] 80.5.4 — Refactor zpico-smoltcp as thin wrapper: depends on nros-smoltcp, provides `_z_*` symbols only
-  - [x] 80.5.5 — Board crates build successfully via zpico-smoltcp → nros-smoltcp re-exports
-  - [x] 80.5.6 — Verified: `just check` passes, 337/337 unit tests pass
-  - [ ] 80.5.7 — Board platform crates implement `PlatformTcp`/`PlatformUdp` by delegating to nros-smoltcp (deferred to 80.8)
-- [ ] 80.6 — Implement for FreeRTOS (lwIP) via cffi vtable
-  - [ ] 80.6.1 — C vtable provides lwIP socket functions
-  - [ ] 80.6.2 — Board crate registers vtable during init
-  - [ ] 80.6.3 — Verify `just test-freertos` passes (29/29)
-- [ ] 80.7 — Implement for ThreadX (NetX Duo) via cffi vtable
-  - [ ] 80.7.1 — C vtable provides NetX BSD socket functions
-  - [ ] 80.7.2 — Verify `just test-threadx` passes
-- [ ] 80.8 — Skip C `network.c` compilation in zpico-sys
-  - [ ] 80.8.1 — Remove `unix/network.c` from CMake build copy (POSIX)
-  - [ ] 80.8.2 — Remove `freertos/lwip/network.c` from cc build (FreeRTOS)
-  - [ ] 80.8.3 — Remove `threadx/network.c` from cc build (ThreadX)
-  - [ ] 80.8.4 — Bare-metal: route through shim (enable `no-export` on zpico-smoltcp + `network` on shim)
-- [ ] 80.9 — Add network functions to xrce-platform-shim (if applicable)
-  - [ ] 80.9.1 — Check if XRCE-DDS uses the same network interface or custom transport
-  - [ ] 80.9.2 — If yes, XRCE transport callbacks delegate to ConcretePlatform::tcp_*/udp_*
-- [ ] 80.10 — Extend nros-platform-cffi vtable with network fields
-- [ ] 80.11 — Update documentation
-  - [ ] 80.11.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
-  - [ ] 80.11.2 — Update Phase 79 symbol tables to reflect network unification
-- [ ] 80.12 — Re-run bare-metal integration tests after smoltcp refactor
-  - [ ] 80.12.1 — Verify `just test-qemu` passes (zpico bare-metal QEMU)
-  - [ ] 80.12.2 — Verify XRCE bare-metal tests pass (if applicable)
+  - [x] 80.5.4 — Refactor zpico-smoltcp as thin wrapper over nros-smoltcp (no zpico-sys dependency)
+  - [x] 80.5.5 — Board platform crates implement `PlatformTcp`/`PlatformUdp` delegating to nros-smoltcp
+  - [x] 80.5.6 — Wire shim `network` feature for bare-metal (replaces `socket-stubs`)
+  - [x] 80.5.7 — Verified: `just check` passes, `just qemu test` passes, BSP E2E works
+- [ ] 80.6 — Migrate board crates from zpico-smoltcp to nros-smoltcp
+  - [ ] 80.6.1 — Board crates depend on `nros-smoltcp` directly (replace `zpico-smoltcp` imports)
+  - [ ] 80.6.2 — Move `smoltcp_init`/`smoltcp_cleanup`/`smoltcp_poll` FFI exports to board crate or shim
+  - [ ] 80.6.3 — Remove zpico-smoltcp dependency from all board crates
+  - [ ] 80.6.4 — Migrate reference examples (`stm32f4-porting/polling`, `stm32f4-porting/rtic`)
+  - [ ] 80.6.5 — Delete `packages/zpico/zpico-smoltcp/` crate entirely
+  - [ ] 80.6.6 — Remove zpico-smoltcp from workspace exclude list in root Cargo.toml
+  - [ ] 80.6.7 — Remove `socket_stubs` and `smoltcp` features from zpico-platform-shim
+- [ ] 80.7 — Implement for FreeRTOS (lwIP) via cffi vtable
+  - [ ] 80.7.1 — C vtable provides lwIP socket functions
+  - [ ] 80.7.2 — Board crate registers vtable during init
+  - [ ] 80.7.3 — Verify `just freertos test` passes (29/29)
+- [ ] 80.8 — Implement for ThreadX (NetX Duo) via cffi vtable
+  - [ ] 80.8.1 — C vtable provides NetX BSD socket functions
+  - [ ] 80.8.2 — Verify `just threadx_linux test` passes
+- [ ] 80.9 — Remove C `network.c` from zpico-sys compilation
+  - [ ] 80.9.1 — Remove `unix/network.c` from CMake build copy (POSIX — already done)
+  - [ ] 80.9.2 — Remove `freertos/lwip/network.c` from cc build (FreeRTOS)
+  - [ ] 80.9.3 — Remove `threadx/network.c` from cc build (ThreadX)
+- [ ] 80.10 — XRCE-DDS network unification (if applicable)
+  - [ ] 80.10.1 — Check if XRCE-DDS uses the same network interface or custom transport
+  - [ ] 80.10.2 — If yes, XRCE transport callbacks delegate to ConcretePlatform::tcp_*/udp_*
+- [ ] 80.11 — Extend nros-platform-cffi vtable with network fields
+- [ ] 80.12 — Update documentation
+  - [ ] 80.12.1 — Update `book/src/guides/porting-platform/implementing-a-platform.md`
+  - [ ] 80.12.2 — Update Phase 79 symbol tables to reflect network unification
+  - [ ] 80.12.3 — Update workspace structure in CLAUDE.md (nros-smoltcp in drivers/)
 
 ## Design Decisions
 
