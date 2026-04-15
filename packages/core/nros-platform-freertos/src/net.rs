@@ -17,22 +17,28 @@ use crate::FreeRtosPlatform;
 
 // lwIP provides standard BSD socket API. These are resolved at link time
 // from the lwIP library linked by the board crate.
+// lwIP exports symbols with lwip_ prefix (the standard BSD names are C macros).
 unsafe extern "C" {
-    fn getaddrinfo(
+    // Per-task lwIP socket initialization — must be called before any socket
+    // operations in a FreeRTOS task. Without this, lwIP's internal per-task
+    // socket state is uninitialized and socket calls silently fail.
+    fn lwip_socket_thread_init();
+
+    fn lwip_getaddrinfo(
         node: *const u8,
         service: *const u8,
         hints: *const AddrInfo,
         res: *mut *mut AddrInfo,
     ) -> c_int;
-    fn freeaddrinfo(res: *mut AddrInfo);
-    fn socket(domain: c_int, socktype: c_int, protocol: c_int) -> c_int;
-    fn connect(fd: c_int, addr: *const SockAddr, addrlen: u32) -> c_int;
-    fn bind(fd: c_int, addr: *const SockAddr, addrlen: u32) -> c_int;
-    fn listen(fd: c_int, backlog: c_int) -> c_int;
-    fn accept(fd: c_int, addr: *mut SockAddr, addrlen: *mut u32) -> c_int;
-    fn recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize;
-    fn send(fd: c_int, buf: *const c_void, len: usize, flags: c_int) -> isize;
-    fn recvfrom(
+    fn lwip_freeaddrinfo(res: *mut AddrInfo);
+    fn lwip_socket(domain: c_int, socktype: c_int, protocol: c_int) -> c_int;
+    fn lwip_connect(fd: c_int, addr: *const SockAddr, addrlen: u32) -> c_int;
+    fn lwip_bind(fd: c_int, addr: *const SockAddr, addrlen: u32) -> c_int;
+    fn lwip_listen(fd: c_int, backlog: c_int) -> c_int;
+    fn lwip_accept(fd: c_int, addr: *mut SockAddr, addrlen: *mut u32) -> c_int;
+    fn lwip_recv(fd: c_int, buf: *mut c_void, len: usize, flags: c_int) -> isize;
+    fn lwip_send(fd: c_int, buf: *const c_void, len: usize, flags: c_int) -> isize;
+    fn lwip_recvfrom(
         fd: c_int,
         buf: *mut c_void,
         len: usize,
@@ -40,7 +46,7 @@ unsafe extern "C" {
         addr: *mut SockAddr,
         addrlen: *mut u32,
     ) -> isize;
-    fn sendto(
+    fn lwip_sendto(
         fd: c_int,
         buf: *const c_void,
         len: usize,
@@ -48,15 +54,15 @@ unsafe extern "C" {
         addr: *const SockAddr,
         addrlen: u32,
     ) -> isize;
-    fn setsockopt(
+    fn lwip_setsockopt(
         fd: c_int,
         level: c_int,
         optname: c_int,
         optval: *const c_void,
         optlen: u32,
     ) -> c_int;
-    fn close(fd: c_int) -> c_int;
-    fn shutdown(fd: c_int, how: c_int) -> c_int;
+    fn lwip_close(fd: c_int) -> c_int;
+    fn lwip_shutdown(fd: c_int, how: c_int) -> c_int;
     fn lwip_fcntl(fd: c_int, cmd: c_int, val: c_int) -> c_int;
 }
 
@@ -133,6 +139,7 @@ const Z_TRANSPORT_LEASE: u32 = 10000; // ms
 
 impl FreeRtosPlatform {
     pub fn tcp_create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
+        unsafe { lwip_socket_thread_init() };
         let ep = ep as *mut Endpoint;
         let hints = AddrInfo {
             ai_flags: 0,
@@ -145,7 +152,7 @@ impl FreeRtosPlatform {
             ai_next: core::ptr::null_mut(),
         };
 
-        let ret = unsafe { getaddrinfo(address, port, &hints, &mut (*ep)._iptcp) };
+        let ret = unsafe { lwip_getaddrinfo(address, port, &hints, &mut (*ep)._iptcp) };
         if ret != 0 { -1 } else { 0 }
     }
 
@@ -153,17 +160,19 @@ impl FreeRtosPlatform {
         let ep = ep as *mut Endpoint;
         unsafe {
             if !(*ep)._iptcp.is_null() {
-                freeaddrinfo((*ep)._iptcp);
+                lwip_freeaddrinfo((*ep)._iptcp);
             }
         }
     }
 
     pub fn tcp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        unsafe { lwip_socket_thread_init() };
+
         let sock = sock as *mut Socket;
         let rep = unsafe { &*(endpoint as *const Endpoint) };
 
         let ai = unsafe { &*rep._iptcp };
-        let fd = unsafe { socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+        let fd = unsafe { lwip_socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
         if fd < 0 {
             return -1;
         }
@@ -175,7 +184,7 @@ impl FreeRtosPlatform {
             tv_usec: ((timeout_ms % 1000) * 1000) as i32,
         };
         if unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_RCVTIMEO,
@@ -184,14 +193,14 @@ impl FreeRtosPlatform {
             )
         } < 0
         {
-            unsafe { close(fd) };
+            unsafe { lwip_close(fd) };
             return -1;
         }
 
         // SO_KEEPALIVE
         let one: c_int = 1;
         unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_KEEPALIVE,
@@ -202,7 +211,7 @@ impl FreeRtosPlatform {
 
         // TCP_NODELAY
         unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 IPPROTO_TCP,
                 TCP_NODELAY,
@@ -217,7 +226,7 @@ impl FreeRtosPlatform {
             l_linger: (Z_TRANSPORT_LEASE / 1000) as c_int,
         };
         unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_LINGER,
@@ -230,7 +239,7 @@ impl FreeRtosPlatform {
         let mut it = rep._iptcp;
         while !it.is_null() {
             let ai = unsafe { &*it };
-            let ret = unsafe { connect(fd, ai.ai_addr, ai.ai_addrlen) };
+            let ret = unsafe { lwip_connect(fd, ai.ai_addr, ai.ai_addrlen) };
             if ret == 0 {
                 return 0;
             }
@@ -238,7 +247,7 @@ impl FreeRtosPlatform {
         }
 
         unsafe {
-            close(fd);
+            lwip_close(fd);
             (*sock)._socket = -1;
         }
         -1
@@ -249,14 +258,14 @@ impl FreeRtosPlatform {
         let rep = unsafe { &*(endpoint as *const Endpoint) };
 
         let ai = unsafe { &*rep._iptcp };
-        let fd = unsafe { socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+        let fd = unsafe { lwip_socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
         if fd < 0 {
             return -1;
         }
 
         let one: c_int = 1;
         unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 0x0004, /* SO_REUSEADDR */
@@ -265,13 +274,13 @@ impl FreeRtosPlatform {
             );
         }
 
-        if unsafe { bind(fd, ai.ai_addr, ai.ai_addrlen) } < 0 {
-            unsafe { close(fd) };
+        if unsafe { lwip_bind(fd, ai.ai_addr, ai.ai_addrlen) } < 0 {
+            unsafe { lwip_close(fd) };
             return -1;
         }
 
-        if unsafe { listen(fd, 1) } < 0 {
-            unsafe { close(fd) };
+        if unsafe { lwip_listen(fd, 1) } < 0 {
+            unsafe { lwip_close(fd) };
             return -1;
         }
 
@@ -281,7 +290,7 @@ impl FreeRtosPlatform {
             tv_usec: 0,
         };
         unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_RCVTIMEO,
@@ -299,8 +308,8 @@ impl FreeRtosPlatform {
         let fd = unsafe { (*sock)._socket };
         if fd >= 0 {
             unsafe {
-                shutdown(fd, SHUT_RDWR);
-                close(fd);
+                lwip_shutdown(fd, SHUT_RDWR);
+                lwip_close(fd);
                 (*sock)._socket = -1;
             }
         }
@@ -311,7 +320,7 @@ impl FreeRtosPlatform {
         if sock._socket < 0 {
             return usize::MAX;
         }
-        let n = unsafe { recv(sock._socket, buf as *mut c_void, len, 0) };
+        let n = unsafe { lwip_recv(sock._socket, buf as *mut c_void, len, 0) };
         if n <= 0 { usize::MAX } else { n as usize }
     }
 
@@ -323,7 +332,7 @@ impl FreeRtosPlatform {
 
         let mut total: usize = 0;
         while total < len {
-            let n = unsafe { recv(sock._socket, buf.add(total) as *mut c_void, len - total, 0) };
+            let n = unsafe { lwip_recv(sock._socket, buf.add(total) as *mut c_void, len - total, 0) };
             if n <= 0 {
                 return usize::MAX;
             }
@@ -341,7 +350,7 @@ impl FreeRtosPlatform {
         let mut total: usize = 0;
         while total < len {
             let n = unsafe {
-                send(
+                lwip_send(
                     sock._socket,
                     buf.add(total) as *const c_void,
                     len - total,
@@ -363,6 +372,7 @@ impl FreeRtosPlatform {
 
 impl FreeRtosPlatform {
     pub fn udp_create_endpoint(ep: *mut c_void, address: *const u8, port: *const u8) -> i8 {
+        unsafe { lwip_socket_thread_init() };
         let ep = ep as *mut Endpoint;
         let hints = AddrInfo {
             ai_flags: 0,
@@ -375,7 +385,7 @@ impl FreeRtosPlatform {
             ai_next: core::ptr::null_mut(),
         };
 
-        let ret = unsafe { getaddrinfo(address, port, &hints, &mut (*ep)._iptcp) };
+        let ret = unsafe { lwip_getaddrinfo(address, port, &hints, &mut (*ep)._iptcp) };
         if ret != 0 { -1 } else { 0 }
     }
 
@@ -384,11 +394,13 @@ impl FreeRtosPlatform {
     }
 
     pub fn udp_open(sock: *mut c_void, endpoint: *const c_void, timeout_ms: u32) -> i8 {
+        unsafe { lwip_socket_thread_init() };
+
         let sock = sock as *mut Socket;
         let rep = unsafe { &*(endpoint as *const Endpoint) };
 
         let ai = unsafe { &*rep._iptcp };
-        let fd = unsafe { socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
+        let fd = unsafe { lwip_socket(ai.ai_family, ai.ai_socktype, ai.ai_protocol) };
         if fd < 0 {
             return -1;
         }
@@ -399,7 +411,7 @@ impl FreeRtosPlatform {
             tv_usec: ((timeout_ms % 1000) * 1000) as i32,
         };
         unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_RCVTIMEO,
@@ -416,7 +428,7 @@ impl FreeRtosPlatform {
         let fd = unsafe { (*sock)._socket };
         if fd >= 0 {
             unsafe {
-                close(fd);
+                lwip_close(fd);
                 (*sock)._socket = -1;
             }
         }
@@ -428,7 +440,7 @@ impl FreeRtosPlatform {
             return usize::MAX;
         }
         let n = unsafe {
-            recvfrom(
+            lwip_recvfrom(
                 sock._socket,
                 buf as *mut c_void,
                 len,
@@ -458,7 +470,7 @@ impl FreeRtosPlatform {
         }
         let ai = unsafe { &*rep._iptcp };
         let n = unsafe {
-            sendto(
+            lwip_sendto(
                 sock._socket,
                 buf as *const c_void,
                 len,
@@ -494,7 +506,7 @@ impl FreeRtosPlatform {
         let mut addr: SockAddr = unsafe { core::mem::zeroed() };
         let mut addrlen: u32 = core::mem::size_of::<SockAddr>() as u32;
 
-        let fd = unsafe { accept(sin._socket, &mut addr, &mut addrlen) };
+        let fd = unsafe { lwip_accept(sin._socket, &mut addr, &mut addrlen) };
         if fd < 0 {
             return -1;
         }
@@ -505,7 +517,7 @@ impl FreeRtosPlatform {
             tv_usec: 0,
         };
         unsafe {
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_RCVTIMEO,
@@ -513,14 +525,14 @@ impl FreeRtosPlatform {
                 core::mem::size_of::<Timeval>() as u32,
             );
             let one: c_int = 1;
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_KEEPALIVE,
                 &one as *const _ as *const c_void,
                 4,
             );
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 IPPROTO_TCP,
                 TCP_NODELAY,
@@ -531,7 +543,7 @@ impl FreeRtosPlatform {
                 l_onoff: 1,
                 l_linger: (Z_TRANSPORT_LEASE / 1000) as c_int,
             };
-            setsockopt(
+            lwip_setsockopt(
                 fd,
                 SOL_SOCKET,
                 SO_LINGER,
