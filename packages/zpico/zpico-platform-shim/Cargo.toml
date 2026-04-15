@@ -20,6 +20,10 @@ smoltcp = ["socket-stubs"]
 socket-stubs = []
 # Skip _z_task_* symbols (ThreadX provides them in C due to struct layout dependency)
 skip-task-symbols = []
+# Skip z_clock_* symbols (NuttX: zenoh-pico uses struct timespec clock type,
+# which doesn't match the shim's usize-based signature; provide clock fns from
+# a C file that operates on struct timespec directly).
+skip-clock-symbols = []
 # Provide network forwarders (_z_open_tcp etc. → PlatformTcp/PlatformUdp traits)
 network = []
 

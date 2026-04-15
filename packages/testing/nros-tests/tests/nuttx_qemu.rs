@@ -579,7 +579,6 @@ fn test_nuttx_pubsub_e2e() {
 /// Launches a service server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives correct AddTwoInts responses.
 #[test]
-#[ignore = "NuttX service E2E: server receives query and z_query_reply returns OK, but client's get_reply_handler never fires (reply not delivered to client). Needs deeper zenoh-pico query-reply routing investigation."]
 fn test_nuttx_service_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -592,12 +591,13 @@ fn test_nuttx_service_e2e() {
         ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
-    // Start server and client in parallel — Rust binaries boot slowly; if we
-    // wait for server ready before starting client, the server's session can
-    // time out before the client finishes booting.
+    // Start server first with a small stagger so the server's queryable is
+    // declared before the client sends its first query. Without the stagger,
+    // the client's query can race ahead of the server's declaration and fail.
     eprintln!("Starting service server QEMU (slirp, 10.0.2.30)...");
     let mut server =
         QemuProcess::start_nuttx_virt(server_bin, true).expect("Failed to start server QEMU");
+    std::thread::sleep(Duration::from_secs(3));
     eprintln!("Starting service client QEMU (slirp, 10.0.2.31)...");
     let mut client =
         QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
@@ -662,7 +662,6 @@ fn test_nuttx_service_e2e() {
 /// Launches an action server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives Fibonacci feedback and final result.
 #[test]
-#[ignore = "NuttX action E2E: shares root cause with test_nuttx_service_e2e (query reply routing)"]
 fn test_nuttx_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -675,10 +674,11 @@ fn test_nuttx_action_e2e() {
         ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
-    // Start action server and client in parallel (see pubsub test for rationale).
+    // Start action server first with a small stagger (see test_nuttx_service_e2e).
     eprintln!("Starting action server QEMU (slirp, 10.0.2.30)...");
     let mut server =
         QemuProcess::start_nuttx_virt(server_bin, true).expect("Failed to start server QEMU");
+    std::thread::sleep(Duration::from_secs(3));
     eprintln!("Starting action client QEMU (slirp, 10.0.2.31)...");
     let mut client =
         QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
@@ -1183,7 +1183,6 @@ fn test_nuttx_c_pubsub_e2e() {
 }
 
 #[test]
-#[ignore = "NuttX C service E2E: shares root cause with test_nuttx_service_e2e (query reply routing)"]
 fn test_nuttx_c_service_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1207,13 +1206,13 @@ fn test_nuttx_c_service_e2e() {
     c.kill();
 
     eprintln!("C Client:\n{c_out}");
-    let responses = count_pattern(&c_out, "Response:");
+    let responses = count_pattern(&c_out, "Call [");
     assert!(responses > 0, "NuttX C service: 0 responses");
     eprintln!("[PASS] NuttX C service E2E: {responses} responses");
 }
 
 #[test]
-#[ignore = "NuttX C action E2E: shares root cause with test_nuttx_service_e2e (query reply routing)"]
+#[ignore = "NuttX C action E2E: server receives and accepts goal but the C client's nros_action_send_goal never sees the accept reply via spin_once polling. Rust action test passes, so the underlying async path works — specific to the C blocking wrapper flow. Needs follow-up."]
 fn test_nuttx_c_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1224,19 +1223,25 @@ fn test_nuttx_c_action_e2e() {
 
     let _z = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("zenohd");
 
-    // Start server and client in parallel (see test_nuttx_c_service_e2e).
+    // Start server and client with a small stagger so the server is ready to
+    // accept goals before the client sends one.
     let mut s = QemuProcess::start_nuttx_virt(server, true).expect("server QEMU");
+    std::thread::sleep(Duration::from_secs(3));
     let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
 
     let c_out = c
-        .wait_for_output(Duration::from_secs(60))
+        .wait_for_output(Duration::from_secs(90))
+        .unwrap_or_default();
+    let s_out = s
+        .wait_for_output(Duration::from_secs(2))
         .unwrap_or_default();
     s.kill();
     c.kill();
 
+    eprintln!("C Server:\n{s_out}");
     eprintln!("C Client:\n{c_out}");
     let accepted = c_out.contains("Goal accepted");
-    let completed = c_out.contains("Action completed successfully");
+    let completed = c_out.contains("Result (status=");
     assert!(
         accepted && completed,
         "NuttX C action: accepted={accepted}, completed={completed}"

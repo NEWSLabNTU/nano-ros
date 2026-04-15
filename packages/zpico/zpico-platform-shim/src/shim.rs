@@ -38,11 +38,13 @@ pub struct ZSysNetEndpoint {
 // Clock
 // ============================================================================
 
+#[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_now() -> usize {
     P::clock_ms() as usize
 }
 
+#[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_elapsed_us(time: *const usize) -> c_ulong {
     let prev = unsafe { *time } as u64;
@@ -50,6 +52,7 @@ pub extern "C" fn z_clock_elapsed_us(time: *const usize) -> c_ulong {
     (now.wrapping_sub(prev) * 1000) as c_ulong
 }
 
+#[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_elapsed_ms(time: *const usize) -> c_ulong {
     let prev = unsafe { *time } as u64;
@@ -57,6 +60,7 @@ pub extern "C" fn z_clock_elapsed_ms(time: *const usize) -> c_ulong {
     now.wrapping_sub(prev) as c_ulong
 }
 
+#[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_elapsed_s(time: *const usize) -> c_ulong {
     let prev = unsafe { *time } as u64;
@@ -64,6 +68,7 @@ pub extern "C" fn z_clock_elapsed_s(time: *const usize) -> c_ulong {
     (now.wrapping_sub(prev) / 1000) as c_ulong
 }
 
+#[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_advance_us(clock: *mut usize, duration: c_ulong) {
     unsafe {
@@ -71,6 +76,7 @@ pub extern "C" fn z_clock_advance_us(clock: *mut usize, duration: c_ulong) {
     }
 }
 
+#[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_advance_ms(clock: *mut usize, duration: c_ulong) {
     unsafe {
@@ -78,6 +84,7 @@ pub extern "C" fn z_clock_advance_ms(clock: *mut usize, duration: c_ulong) {
     }
 }
 
+#[cfg(not(feature = "skip-clock-symbols"))]
 #[unsafe(no_mangle)]
 pub extern "C" fn z_clock_advance_s(clock: *mut usize, duration: c_ulong) {
     unsafe {

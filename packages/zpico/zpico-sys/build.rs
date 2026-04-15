@@ -502,6 +502,7 @@ fn main() {
 
     // Rerun triggers
     println!("cargo:rerun-if-changed=c/zpico/zpico.c");
+    println!("cargo:rerun-if-changed=c/zpico/nuttx_clock.c");
     println!("cargo:rerun-if-changed=c/platform/bare-metal/platform.h");
     println!("cargo:rerun-if-changed=c/platform/errno_override.h");
     println!("cargo:rerun-if-changed=c/platform/zenoh_generic_config.h");
@@ -1686,8 +1687,14 @@ fn build_zenoh_pico_nuttx(
     add_c_sources_recursive(&mut build, &src_dir.join("system").join("common"));
 
     // Unix platform sources (NuttX is POSIX-compatible)
-    // system.c skipped — platform symbols provided by zpico-platform-shim.
+    // system.c skipped — most platform symbols come from zpico-platform-shim.
     build.file(src_dir.join("system/unix/network.c"));
+
+    // NuttX-specific clock functions (struct-timespec-aware, overriding the
+    // shim's usize-based clock because unix.h defines z_clock_t as struct
+    // timespec). zpico-platform-shim has `skip-clock-symbols` enabled for
+    // NuttX so there's no duplicate-symbol conflict.
+    build.file(c_dir.join("zpico").join("nuttx_clock.c"));
 
     // Shim (high-level API wrapper)
     build.file(c_dir.join("zpico").join("zpico.c"));
