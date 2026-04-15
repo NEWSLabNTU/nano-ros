@@ -396,3 +396,35 @@ covers TCP + UDP unicast which handles all zenoh client-mode communication.
 - XRCE-DDS uses custom transport callbacks (`uxrCustomTransport`), not the
   zenoh-pico socket interface. Phase 80.8 evaluates whether XRCE can benefit
   from unified networking or should stay with its existing callback model.
+
+## Known Issues / Future Work
+
+### Busy-loop polling in `PlatformTcp::tcp_open()`
+
+The smoltcp `tcp_open` implementation uses a tight busy-loop calling
+`SmoltcpBridge::poll_network()` + `clock_now_ms()` until the TCP connection
+is established or times out. This wastes CPU cycles and is not suitable for
+battery-powered devices. Future work should use interrupt-driven or
+waker-based connection establishment:
+
+- ARM WFI + timer interrupt to wake on smoltcp poll interval
+- smoltcp's `poll_delay()` to compute the next wakeup time
+- RTIC async tasks with proper waker integration
+
+### Transport preference: serial or ethernet over WiFi
+
+Board crates should default to serial or ethernet transport where available.
+WiFi introduces additional complexity (credential management, power
+management, scanning) that is orthogonal to the nros-platform abstraction.
+ESP32 boards should prefer ethernet (via QEMU OpenETH) for testing and
+serial for physical devices without Ethernet hardware.
+
+### RTIC networked E2E test reliability
+
+RTIC QEMU E2E tests (pubsub, service, action) intermittently fail with
+`Transport(ConnectionFailed)` in the nextest harness despite working when
+run manually. Likely a timing issue: the test harness 15-second timeout
+may be insufficient for QEMU slirp + smoltcp TCP handshake under load.
+Stale build artifacts can also cause failures — clean rebuilds resolve
+this. Consider increasing timeout or adding explicit connection-ready
+detection in the test harness.
