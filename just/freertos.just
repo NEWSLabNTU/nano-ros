@@ -96,6 +96,12 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run all FreeRTOS tests (same as test — no additional slow tests)
+test-all verbose="": (test verbose)
+
+# CI: check prerequisites + test
+ci: doctor test
+
 # Clean FreeRTOS build artifacts
 clean:
     #!/usr/bin/env bash

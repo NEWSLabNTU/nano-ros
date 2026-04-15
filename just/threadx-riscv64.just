@@ -111,6 +111,12 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run all ThreadX RISC-V tests (same as test)
+test-all verbose="": (test verbose)
+
+# CI: check prerequisites + test
+ci: doctor test
+
 # =============================================================================
 # Run examples (build + launch QEMU RISC-V 64 virt with slirp networking)
 #

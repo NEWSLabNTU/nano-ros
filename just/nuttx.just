@@ -70,6 +70,12 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run all NuttX tests (same as test — no additional slow tests)
+test-all verbose="": (test verbose)
+
+# CI: check prerequisites + test
+ci: doctor test
+
 # Install NuttX prerequisites: initialize submodules + build kernel.
 setup:
     #!/usr/bin/env bash

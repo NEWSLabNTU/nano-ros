@@ -58,10 +58,25 @@ test-lan9118 verbose="": build
             -semihosting-config enable=on,target=native \
             -kernel examples/qemu-arm-baremetal/rust/standalone/lan9118/target/thumbv7m-none-eabi/release/qemu-rs-lan9118
 
+# Run all QEMU tests including networked E2E and RTIC
+test-all verbose="":
+    #!/usr/bin/env bash
+    set -e
+    just build-zenohd
+    args=(-p nros-tests --no-fail-fast \
+          -E 'binary(emulator) or binary(large_msg)')
+    if [ -z "{{verbose}}" ]; then
+        args+=(--success-output never --failure-output never)
+    fi
+    cargo nextest run "${args[@]}"
+
 # Check if QEMU is installed
 check:
     @which qemu-system-arm > /dev/null || (echo "Error: qemu-system-arm not found. Install with: sudo apt install qemu-system-arm" && exit 1)
     @echo "QEMU ARM is installed"
+
+# CI: check + test
+ci: check test
 
 # Setup QEMU TAP network bridge (requires sudo)
 setup-network:

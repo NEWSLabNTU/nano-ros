@@ -227,13 +227,9 @@ test-all verbose="": build-zenohd
         echo "All tests passed!"
     fi
 
-# Run code quality checks: format check + clippy + tests (never modifies code)
-quality: check test
-    @echo "All quality checks passed!"
-
-# Run full CI suite (quality + all integration tests)
+# Run CI: format check + clippy + tests (never modifies code)
 ci: check test
-    @echo "Full CI suite passed!"
+    @echo "CI passed!"
 
 # =============================================================================
 # Test Infrastructure

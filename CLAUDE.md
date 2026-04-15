@@ -45,28 +45,34 @@ just threadx_riscv64 setup   # Download ThreadX kernel + NetX Duo (QEMU RISC-V)
 just build              # Generate bindings + build workspace + examples
 just build-zenohd       # Build zenohd from submodule (alias: just zenohd setup)
 just check              # Format check + clippy
-just quality            # Format + check + test
+just ci                 # Check + test
 just doc                # Generate docs
 just verify             # Kani + Verus verification
 just generate-bindings  # Regenerate all generated/ dirs
 ```
 
-Test groups:
+Test commands:
 ```bash
-just test-unit          # Unit tests (no external deps)
-just test-miri          # Miri UB detection
-just test-qemu          # QEMU bare-metal tests
-just test-integration   # Rust integration tests (builds zenohd automatically)
-just test               # unit + miri + qemu + integration
-just test-zephyr        # Zephyr E2E (needs west + TAP bridge: sudo ./scripts/zephyr/setup-network.sh)
-just test-zephyr-xrce   # Zephyr E2E — XRCE (needs west + TAP bridge + Agent)
-just test-ros2          # ROS 2 interop (needs ROS 2 + rmw_zenoh)
-just test-c             # C API tests (needs cmake)
-just test-freertos      # FreeRTOS QEMU E2E (needs qemu-system-arm + arm-none-eabi-gcc)
-just test-nuttx         # NuttX QEMU E2E (needs nightly + qemu-system-arm)
-just test-threadx       # ThreadX E2E — Linux sim + QEMU RISC-V (needs ThreadX/NetX + qemu-system-riscv64)
-just test-threadx-linux # ThreadX Linux simulation E2E (needs ThreadX/NetX + TAP via just setup-network)
-just test-all           # Everything (includes NuttX + FreeRTOS + ThreadX in one nextest run)
+# Project-level
+just test-unit              # Unit tests only (no external deps, ~5s)
+just test-miri              # Miri UB detection
+just test                   # Unit + integration + miri (excludes zephyr/ros2/large_msg)
+just test-all               # Everything (all platforms in one nextest run) + miri + C codegen
+just ci                     # check + test
+
+# Per-platform (just <platform> test|test-all|ci)
+just qemu test              # QEMU bare-metal tests (non-networked)
+just qemu test-all          # + networked E2E and RTIC tests
+just native test            # Native integration tests (needs zenohd)
+just native test-all        # + ROS 2 interop, large_msg, C/C++ API
+just freertos test          # FreeRTOS QEMU E2E (needs arm-none-eabi-gcc)
+just nuttx test             # NuttX QEMU E2E (needs nightly + qemu-system-arm)
+just threadx_linux test     # ThreadX Linux sim E2E (needs ThreadX/NetX)
+just threadx_riscv64 test   # ThreadX RISC-V QEMU E2E
+just zephyr test            # Zephyr E2E (needs west + TAP bridge)
+just zephyr test-all        # + XRCE + C examples
+just esp32 test             # ESP32 QEMU E2E
+just <platform> ci          # Platform-specific check + test
 ```
 
 First-time: `just setup` installs everything (workspace + verification + all platforms + services). Use `just doctor` to verify the install. Per-module: `just <module> setup` / `just <module> doctor` where modules are `workspace`, `verification`, `qemu`, `freertos`, `nuttx`, `threadx_linux`, `threadx_riscv64`, `esp32`, `zephyr`, `xrce`, `zenohd`.
@@ -94,7 +100,7 @@ Buffer tuning: see [docs/reference/environment-variables.md](docs/reference/envi
 ## Development Practices
 
 ### Quality Checks
-**Always run `just quality` after completing a task.**
+**Always run `just ci` after completing a task.**
 
 ### System Packages & Privileges
 **Never install system packages or run sudo directly.** Inform the user what's needed.

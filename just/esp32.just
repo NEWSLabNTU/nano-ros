@@ -124,6 +124,12 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run all ESP32 tests (same as test)
+test-all verbose="": (test verbose)
+
+# CI: doctor + test
+ci: doctor test
+
 # Build zenoh-pico for ESP32-C3 (RISC-V RV32IMC)
 build-zenoh-pico:
     @./scripts/esp32/build-zenoh-pico.sh

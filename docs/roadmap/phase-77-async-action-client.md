@@ -276,7 +276,7 @@ The Rust `AtomicWaker` per pending_get slot enables `Promise` to implement `Futu
 - [x] C header declarations match Rust FFI signatures
 - [x] `test_freertos_c_action_e2e` passes
 - [ ] `test_freertos_cpp_action_e2e` passes — blocked on C++ server entity declaration deadlock
-- [x] `just quality` passes
+- [x] `just ci` passes
 - [x] Existing Rust action API unchanged
 
 ## Known Issue: C++ Action Server Deadlock on FreeRTOS QEMU

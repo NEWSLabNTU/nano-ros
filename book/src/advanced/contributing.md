@@ -18,13 +18,15 @@ just build
 
 ## Quality Checks
 
-**Always run `just quality` after completing a task.** This runs formatting checks, Clippy lints, unit tests, Miri, and QEMU examples in one command:
+**Always run `just ci` after completing a task.** This runs formatting checks, Clippy lints, unit tests, Miri, and QEMU examples in one command:
 
 ```bash
-just quality
+just ci
 ```
 
-It is equivalent to running format + clippy + test sequentially.
+It is equivalent to running `just check` + `just test` sequentially.
+
+For platform-specific CI, use `just <platform> ci` (e.g., `just freertos ci`).
 
 ## Testing
 
@@ -109,7 +111,7 @@ Create temporary files in the project's `tmp/` directory (git-ignored), not in `
 
 1. Create a branch from `main`
 2. Make changes
-3. Run `just quality` -- all checks must pass
+3. Run `just ci` -- all checks must pass
 4. Submit for review
 
 ## Verification

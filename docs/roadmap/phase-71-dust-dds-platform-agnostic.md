@@ -315,7 +315,7 @@ shim) or a Zephyr-specific `DdsRuntime`.
 - [ ] smoltcp UDP transport sends/receives RTPS messages
 - [ ] Bare-metal QEMU example exchanges messages over DDS
 - [ ] Bare-metal DDS ↔ POSIX DDS cross-platform communication works
-- [ ] `just quality` passes with all changes
+- [ ] `just ci` passes with all changes
 
 ## Notes
 

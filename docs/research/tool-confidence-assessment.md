@@ -228,7 +228,7 @@ Tool Error Detection classifies the confidence that a tool malfunction will be d
 - Coverage of `#[cfg(kani)]` and `#[cfg(test)]` code may inflate numbers
 
 **Mitigation strategies:**
-1. **Integration**: Add `cargo-llvm-cov` to the `just quality` pipeline for safety-critical crates (`nros-serdes`, `nros-core`, `nros-params`).
+1. **Integration**: Add `cargo-llvm-cov` to the `just ci` pipeline for safety-critical crates (`nros-serdes`, `nros-core`, `nros-params`).
 2. **Exclude test-only code**: Configure coverage to exclude `#[cfg(test)]` modules and `#[cfg(kani)]` harnesses from coverage denominators.
 3. **Manual review**: For safety-critical modules, manually review coverage reports to confirm that all decision branches are exercised, not just lines.
 4. **MC/DC tracking**: Track Rust stabilization of LLVM MC/DC instrumentation (rust-lang/rust#124032) for ASIL D compliance.

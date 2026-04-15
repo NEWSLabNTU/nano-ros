@@ -234,4 +234,4 @@ For each moved example:
 6. Update `CLAUDE.md` workspace structure tree
 7. Update integration test fixtures referencing example binary paths
 8. Update `docs/` references to example paths
-9. Run `just quality` after each platform group
+9. Run `just ci` after each platform group

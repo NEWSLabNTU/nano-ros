@@ -293,6 +293,6 @@ These are better addressed by Phase 23 (Arduino precompiled library) or dedicate
 - [ ] Each work item includes integration tests (build + E2E) alongside its examples
 - [ ] Existing NuttX C examples have integration tests (69.4)
 - [ ] `just test-nuttx`, `just test-freertos`, `just test-threadx` include C/C++ tests
-- [ ] `just quality` passes
+- [ ] `just ci` passes
 - [x] No heap allocation required in C examples (Phase 68 alloc-free executor)
 - [ ] C++ action examples added once `nros-cpp` gains `ActionServer`/`ActionClient`

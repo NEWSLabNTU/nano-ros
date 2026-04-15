@@ -85,6 +85,12 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run all ThreadX Linux tests (same as test)
+test-all verbose="": (test verbose)
+
+# CI: check prerequisites + test
+ci: doctor test
+
 # =============================================================================
 # Run examples (native Linux binaries)
 #

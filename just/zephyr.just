@@ -144,6 +144,22 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run all Zephyr tests (zenoh + XRCE + C)
+test-all verbose="":
+    #!/usr/bin/env bash
+    set +e
+    failed=0
+    just zephyr test {{verbose}} || failed=1
+    just zephyr test-xrce {{verbose}} || failed=1
+    just zephyr test-c || failed=1
+    if [ $failed -ne 0 ]; then
+        echo "FAIL: Some Zephyr tests failed."
+        exit 1
+    fi
+
+# CI: doctor + test
+ci: doctor test
+
 # Run Zephyr tests with full rebuild
 test-full verbose="": build
     just zephyr test {{verbose}}

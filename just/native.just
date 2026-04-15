@@ -178,6 +178,24 @@ test verbose="":
     fi
     cargo nextest run "${args[@]}"
 
+# Run all native tests (integration + ROS 2 interop + large_msg + C/C++ API)
+test-all verbose="":
+    #!/usr/bin/env bash
+    set +e
+    failed=0
+    just native test {{verbose}} || failed=1
+    just native test-large-msg {{verbose}} || failed=1
+    just native test-ros2 {{verbose}} || failed=1
+    just native test-c {{verbose}} || failed=1
+    just native test-cpp {{verbose}} || failed=1
+    if [ $failed -ne 0 ]; then
+        echo "FAIL: Some native tests failed."
+        exit 1
+    fi
+
+# CI: check + test
+ci: check test
+
 # Run large message & throughput stress tests
 test-large-msg verbose="":
     #!/usr/bin/env bash

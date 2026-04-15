@@ -83,7 +83,7 @@ Profile zpico memory allocation to provide concrete numbers for the tuning guide
 
 - [x] Embedded tuning guide with zpico constants and recommended configurations
 - [ ] Memory benchmark numbers for at least 3 message types
-- [ ] `just quality` passes
+- [ ] `just ci` passes
 - [ ] Existing tests unaffected
 
 ## References
