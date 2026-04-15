@@ -11,8 +11,9 @@ use super::handles::{ActionServer, ActiveGoal};
 use super::spsc_ring::SpscRing;
 use super::triple_buffer::TripleBuffer;
 use super::types::{
-    InvocationMode, NodeError, RawCancelCallback, RawFeedbackCallback, RawGoalCallback,
-    RawGoalResponseCallback, RawResultCallback, RawServiceCallback, RawSubscriptionCallback,
+    InvocationMode, NodeError, RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback,
+    RawGoalCallback, RawGoalResponseCallback, RawResultCallback, RawServiceCallback,
+    RawSubscriptionCallback,
 };
 use crate::session;
 
@@ -150,6 +151,10 @@ pub(crate) struct ActionServerRawArenaEntry<
     pub(crate) core: ActionServerCore<GOAL_BUF, RESULT_BUF, FEEDBACK_BUF, MAX_GOALS>,
     pub(crate) goal_callback: RawGoalCallback,
     pub(crate) cancel_callback: RawCancelCallback,
+    /// Optional hook fired after the accept reply has been sent. Used by the
+    /// C API so user-supplied long-running `accepted_callback`s run *after*
+    /// the client has observed the accept instead of blocking the reply.
+    pub(crate) accepted_callback: Option<RawAcceptedCallback>,
     pub(crate) context: *mut core::ffi::c_void,
 }
 
@@ -746,6 +751,7 @@ pub(crate) unsafe fn action_server_raw_try_process<
         core,
         goal_callback,
         cancel_callback,
+        accepted_callback,
         context,
     } = entry;
 
@@ -771,7 +777,12 @@ pub(crate) unsafe fn action_server_raw_try_process<
         };
 
         if response.is_accepted() {
+            // Send the accept reply *before* running any long-running
+            // post-accept hook so the client observes acceptance promptly.
             let _ = core.accept_goal(raw_req.goal_id, raw_req.sequence_number);
+            if let Some(post) = *accepted_callback {
+                unsafe { post(&raw_req.goal_id, *context) };
+            }
         } else {
             let _ = core.reject_goal(raw_req.sequence_number);
         }

@@ -793,7 +793,10 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
         );
         let context = server_mut._internal.as_mut_ptr() as *mut core::ffi::c_void;
 
-        // Register with the nros-node executor using trampolines
+        // Register with the nros-node executor using trampolines. The
+        // accepted_callback_trampoline is invoked by the arena *after* the
+        // accept reply is sent, so the user's long-running execution does
+        // not delay the reply the client is blocking on.
         let result = rust_exec
             .add_action_server_raw_sized::<MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, MESSAGE_BUFFER_SIZE, NROS_MAX_CONCURRENT_GOALS>(
                 action_name,
@@ -801,6 +804,7 @@ pub unsafe extern "C" fn nros_executor_add_action_server(
                 type_hash_str,
                 goal_callback_trampoline,
                 cancel_callback_trampoline,
+                Some(crate::action::accepted_callback_trampoline),
                 context,
             );
 

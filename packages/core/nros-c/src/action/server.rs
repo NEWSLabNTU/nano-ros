@@ -169,7 +169,12 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
         nros_goal_response_t::NROS_GOAL_ACCEPT_AND_DEFER => nros_core::GoalResponse::AcceptAndDefer,
     };
 
-    // Goal was accepted — fill a C-side goal slot
+    // Goal was accepted — fill a C-side goal slot. The user's
+    // `c_accepted_callback` is NOT invoked here: it runs from
+    // `accepted_callback_trampoline` after the arena layer has sent the
+    // accept reply to the client. Running it inline would delay the reply
+    // until the long-running execution finished, causing the client to
+    // time out waiting for acceptance.
     if let Some(slot) = server.goals.iter_mut().find(|g| !g.active) {
         slot.uuid = *uuid_ptr;
         slot.status = match response {
@@ -184,14 +189,31 @@ pub(crate) unsafe extern "C" fn goal_callback_trampoline(
         slot.active = true;
         slot.server = internal.server_ptr;
         server.active_goal_count += 1;
-
-        // Call the accepted callback
-        if let Some(cb) = internal.c_accepted_callback {
-            cb(slot as *mut _, internal.c_context);
-        }
     }
 
     response
+}
+
+/// Post-accept trampoline for nros-node.
+///
+/// Invoked by the arena *after* `ActionServerCore::accept_goal` has sent
+/// the accept reply to the client. Finds the C-side goal slot matching
+/// `goal_id` and calls the user-supplied `c_accepted_callback`.
+pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
+    goal_id: *const nros_core::GoalId,
+    context: *mut c_void,
+) {
+    let internal = &*(context as *const ActionServerInternal);
+    let server = &mut *internal.server_ptr;
+    let uuid = (*goal_id).uuid;
+
+    let Some(slot) = server.goals.iter_mut().find(|g| g.active && g.uuid.uuid == uuid) else {
+        return;
+    };
+
+    if let Some(cb) = internal.c_accepted_callback {
+        cb(slot as *mut _, internal.c_context);
+    }
 }
 
 /// Cancel callback trampoline for nros-node.
@@ -608,18 +630,28 @@ pub unsafe extern "C" fn nros_action_canceled(
 }
 
 /// Execute a goal (transition from accepted to executing).
+///
+/// Idempotent: if the goal was accepted with `ACCEPT_AND_EXECUTE` the
+/// trampoline already set the status to `EXECUTING`, so calling this is a
+/// no-op and returns `NROS_RET_OK`. Only returns `NROS_RET_NOT_ALLOWED` if
+/// the goal is in a terminal state (succeeded/canceled/aborted/unknown).
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn nros_action_execute(goal: *mut nros_goal_handle_t) -> nros_ret_t {
     validate_not_null!(goal);
 
     let goal = &mut *goal;
 
-    // Check goal is in accepted state
-    if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED {
+    if !goal.active {
         return NROS_RET_NOT_ALLOWED;
     }
 
-    if !goal.active {
+    // Already executing — nothing to do.
+    if goal.status == nros_goal_status_t::NROS_GOAL_STATUS_EXECUTING {
+        return NROS_RET_OK;
+    }
+
+    // Must be in ACCEPTED (deferred) state to transition.
+    if goal.status != nros_goal_status_t::NROS_GOAL_STATUS_ACCEPTED {
         return NROS_RET_NOT_ALLOWED;
     }
 

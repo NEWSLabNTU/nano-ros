@@ -6,6 +6,12 @@
 
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
+// The net module uses several libc constants (PF_UNSPEC, SO_KEEPALIVE,
+// ifaddrs, multicast IF options, etc.) that aren't in the NuttX libc patch.
+// On NuttX, zenoh-pico's C `system/unix/network.c` (compiled by zpico-sys)
+// provides the `_z_*_tcp/udp/mcast` symbols directly, so the Rust
+// forwarders here are not needed. Gate them out to keep the cross-build clean.
+#[cfg(not(target_os = "nuttx"))]
 pub mod net;
 
 use core::ffi::c_void;

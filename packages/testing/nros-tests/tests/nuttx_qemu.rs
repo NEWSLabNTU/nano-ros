@@ -1212,7 +1212,6 @@ fn test_nuttx_c_service_e2e() {
 }
 
 #[test]
-#[ignore = "NuttX C action E2E: server receives and accepts goal but the C client's nros_action_send_goal never sees the accept reply via spin_once polling. Rust action test passes, so the underlying async path works — specific to the C blocking wrapper flow. Needs follow-up."]
 fn test_nuttx_c_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1230,10 +1229,10 @@ fn test_nuttx_c_action_e2e() {
     let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
 
     let c_out = c
-        .wait_for_output(Duration::from_secs(90))
+        .wait_for_output(Duration::from_secs(120))
         .unwrap_or_default();
     let s_out = s
-        .wait_for_output(Duration::from_secs(2))
+        .wait_for_output(Duration::from_secs(10))
         .unwrap_or_default();
     s.kill();
     c.kill();

@@ -210,6 +210,7 @@ pub unsafe extern "C" fn nros_cpp_action_server_register(
         hash_str,
         goal_callback_trampoline,
         cancel_callback_trampoline,
+        None, // C++ API runs user callbacks via try_accept_goal, not via the post-accept hook
         storage,
     ) {
         Ok(handle) => {

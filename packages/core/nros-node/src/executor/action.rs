@@ -20,8 +20,8 @@ use super::types::HandleId;
 use super::types::InvocationMode;
 use super::types::NodeError;
 use super::types::{
-    RawCancelCallback, RawFeedbackCallback, RawGoalCallback, RawGoalResponseCallback,
-    RawResultCallback,
+    RawAcceptedCallback, RawCancelCallback, RawFeedbackCallback, RawGoalCallback,
+    RawGoalResponseCallback, RawResultCallback,
 };
 
 // ============================================================================
@@ -405,6 +405,7 @@ impl Executor {
         type_hash: &str,
         goal_callback: RawGoalCallback,
         cancel_callback: RawCancelCallback,
+        accepted_callback: Option<RawAcceptedCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<ActionServerRawHandle, NodeError> {
         self.add_action_server_raw_sized::<{ crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, { crate::config::DEFAULT_RX_BUF_SIZE }, 4>(
@@ -413,6 +414,7 @@ impl Executor {
             type_hash,
             goal_callback,
             cancel_callback,
+            accepted_callback,
             context,
         )
     }
@@ -430,6 +432,7 @@ impl Executor {
         type_hash: &str,
         goal_callback: RawGoalCallback,
         cancel_callback: RawCancelCallback,
+        accepted_callback: Option<RawAcceptedCallback>,
         context: *mut core::ffi::c_void,
     ) -> Result<ActionServerRawHandle, NodeError> {
         type Entry<const GB: usize, const RB: usize, const FB: usize, const MG: usize> =
@@ -513,6 +516,7 @@ impl Executor {
                     core,
                     goal_callback,
                     cancel_callback,
+                    accepted_callback,
                     context,
                 },
             );

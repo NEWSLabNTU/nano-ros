@@ -524,6 +524,21 @@ pub type RawGoalCallback = unsafe extern "C" fn(
     context: *mut core::ffi::c_void,
 ) -> nros_core::GoalResponse;
 
+/// Raw accepted-goal hook.
+///
+/// Called immediately after the accept reply has been sent to the client
+/// (i.e. after `ActionServerCore::accept_goal`). Used by the C API so that
+/// the user's `accepted_callback` can run *after* the client has observed
+/// the accept, without blocking the accept reply on a long-running
+/// execution inside the goal-decision callback.
+///
+/// # Safety
+/// - `goal_id` is valid for the duration of the call.
+pub type RawAcceptedCallback = unsafe extern "C" fn(
+    goal_id: *const nros_core::GoalId,
+    context: *mut core::ffi::c_void,
+);
+
 /// Raw action cancel callback.
 ///
 /// # Safety
