@@ -7,10 +7,10 @@ description = "zenoh-pico _z_* symbol shims over nros-smoltcp (bare-metal system
 
 [features]
 default = []
-link-tls = ["zpico-sys/link-tls"]
 # When set, don't export #[no_mangle] symbols — the shim provides them instead.
 no-export = []
+# TLS support (forwarded from board crates, no-op here — zpico-sys handles TLS config)
+link-tls = []
 
 [dependencies]
-zpico-sys = { version = "0.1.0", path = "../zpico-sys", features = ["bare-metal", "link-tcp", "link-udp-unicast"] }
 nros-smoltcp = { version = "0.1.0", path = "../../drivers/nros-smoltcp" }

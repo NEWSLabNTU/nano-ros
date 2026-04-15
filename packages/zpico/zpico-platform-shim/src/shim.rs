@@ -17,14 +17,18 @@ mod net_sizes {
 
 /// Opaque wrapper matching `_z_sys_net_socket_t` size for the target platform.
 /// Used in pass-by-value `extern "C"` functions (_z_read_tcp, _z_send_tcp, etc.)
-#[repr(C, align(8))]
+///
+/// Size is auto-probed from C headers. `repr(C)` with `[u8; N]` ensures the
+/// Rust type has exactly the same size as the C struct for correct ABI when
+/// passed by value across the `extern "C"` boundary.
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ZSysNetSocket {
     _opaque: [u8; net_sizes::NET_SOCKET_SIZE],
 }
 
 /// Opaque wrapper matching `_z_sys_net_endpoint_t` size for the target platform.
-#[repr(C, align(4))]
+#[repr(C)]
 #[derive(Clone, Copy)]
 pub struct ZSysNetEndpoint {
     _opaque: [u8; net_sizes::NET_ENDPOINT_SIZE],
