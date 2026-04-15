@@ -652,6 +652,7 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "defmt 0.3.100",
+ "nros-smoltcp",
  "zpico-alloc",
 ]
 
@@ -690,6 +691,13 @@ name = "nros-serdes"
 version = "0.1.0"
 dependencies = [
  "heapless",
+]
+
+[[package]]
+name = "nros-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
 ]
 
 [[package]]
@@ -1348,6 +1356,7 @@ version = "0.1.0"
 name = "zpico-platform-shim"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "nros-platform",
 ]
 
@@ -1355,7 +1364,7 @@ dependencies = [
 name = "zpico-smoltcp"
 version = "0.1.0"
 dependencies = [
- "smoltcp",
+ "nros-smoltcp",
  "zpico-sys",
 ]
 

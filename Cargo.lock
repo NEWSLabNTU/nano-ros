@@ -1267,6 +1267,7 @@ name = "nros-platform-esp32"
 version = "0.1.0"
 dependencies = [
  "esp-hal",
+ "nros-smoltcp",
  "zpico-alloc",
 ]
 
@@ -1275,6 +1276,7 @@ name = "nros-platform-esp32-qemu"
 version = "0.1.0"
 dependencies = [
  "esp-hal",
+ "nros-smoltcp",
  "zpico-alloc",
 ]
 
@@ -1287,6 +1289,7 @@ name = "nros-platform-mps2-an385"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
+ "nros-smoltcp",
  "zpico-alloc",
 ]
 
@@ -1310,6 +1313,7 @@ version = "0.1.0"
 dependencies = [
  "cortex-m",
  "defmt 0.3.100",
+ "nros-smoltcp",
  "zpico-alloc",
 ]
 
@@ -1394,6 +1398,13 @@ version = "0.1.0"
 dependencies = [
  "heapless",
  "nros-ghost-types",
+]
+
+[[package]]
+name = "nros-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
 ]
 
 [[package]]

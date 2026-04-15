@@ -410,11 +410,36 @@ dependencies = [
  "cortex-m-rt",
  "cortex-m-semihosting",
  "lan9118-smoltcp",
+ "nros-platform",
+ "nros-platform-mps2-an385",
  "panic-semihosting",
  "smoltcp",
- "zpico-platform-mps2-an385",
+ "zpico-platform-shim",
  "zpico-serial",
  "zpico-smoltcp",
+]
+
+[[package]]
+name = "nros-platform"
+version = "0.1.0"
+dependencies = [
+ "nros-platform-mps2-an385",
+]
+
+[[package]]
+name = "nros-platform-mps2-an385"
+version = "0.1.0"
+dependencies = [
+ "cortex-m",
+ "nros-smoltcp",
+ "zpico-alloc",
+]
+
+[[package]]
+name = "nros-smoltcp"
+version = "0.1.0"
+dependencies = [
+ "smoltcp",
 ]
 
 [[package]]
@@ -869,14 +894,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b8848ee67ecc8aedbaf3e4122217aff892639231befc6a1b58d29fff4c2cabaa"
 
 [[package]]
-name = "zpico-platform-mps2-an385"
+name = "zpico-alloc"
+version = "0.1.0"
+
+[[package]]
+name = "zpico-platform-shim"
 version = "0.1.0"
 dependencies = [
- "cortex-m",
- "lan9118-smoltcp",
- "smoltcp",
- "zpico-smoltcp",
- "zpico-sys",
+ "cc",
+ "nros-platform",
 ]
 
 [[package]]
@@ -890,7 +916,7 @@ dependencies = [
 name = "zpico-smoltcp"
 version = "0.1.0"
 dependencies = [
- "smoltcp",
+ "nros-smoltcp",
  "zpico-sys",
 ]
 
@@ -901,4 +927,5 @@ dependencies = [
  "cbindgen",
  "cc",
  "cmake",
+ "zpico-platform-shim",
 ]
