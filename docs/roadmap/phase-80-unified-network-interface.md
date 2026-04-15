@@ -2,7 +2,7 @@
 
 **Goal**: Extend the nros-platform abstraction to cover networking (TCP/UDP socket operations), making the RMW transport layer fully platform-agnostic.
 
-**Status**: In Progress (80.1–80.5 done)
+**Status**: In Progress (80.1–80.6 done)
 **Priority**: Medium
 **Depends on**: Phase 79 (Unified Platform Abstraction Layer)
 
@@ -306,14 +306,14 @@ typedef struct {
   - [x] 80.5.5 — Board platform crates implement `PlatformTcp`/`PlatformUdp` delegating to nros-smoltcp
   - [x] 80.5.6 — Wire shim `network` feature for bare-metal (replaces `socket-stubs`)
   - [x] 80.5.7 — Verified: `just check` passes, `just qemu test` passes, BSP E2E works
-- [ ] 80.6 — Migrate board crates from zpico-smoltcp to nros-smoltcp
-  - [ ] 80.6.1 — Board crates depend on `nros-smoltcp` directly (replace `zpico-smoltcp` imports)
-  - [ ] 80.6.2 — Move `smoltcp_init`/`smoltcp_cleanup`/`smoltcp_poll` FFI exports to board crate or shim
-  - [ ] 80.6.3 — Remove zpico-smoltcp dependency from all board crates
-  - [ ] 80.6.4 — Migrate reference examples (`stm32f4-porting/polling`, `stm32f4-porting/rtic`)
-  - [ ] 80.6.5 — Delete `packages/zpico/zpico-smoltcp/` crate entirely
-  - [ ] 80.6.6 — Remove zpico-smoltcp from workspace exclude list in root Cargo.toml
-  - [ ] 80.6.7 — Remove `socket_stubs` and `smoltcp` features from zpico-platform-shim
+- [x] 80.6 — Migrate board crates from zpico-smoltcp to nros-smoltcp
+  - [x] 80.6.1 — Board crates depend on `nros-smoltcp` directly (replace `zpico_smoltcp::*` imports)
+  - [x] 80.6.2 — Move `smoltcp_init`/`smoltcp_cleanup`/`smoltcp_poll` FFI to zpico-platform-shim via nros-smoltcp FFI exports
+  - [x] 80.6.3 — Remove zpico-smoltcp dependency from all 4 board crates
+  - [x] 80.6.4 — Migrate reference examples (`stm32f4-porting/polling`, `stm32f4-porting/rtic`)
+  - [x] 80.6.5 — Delete `packages/zpico/zpico-smoltcp/` crate entirely (-2432 lines)
+  - [x] 80.6.6 — Remove zpico-smoltcp from workspace exclude list + justfile C format/check
+  - [x] 80.6.7 — Remove `socket_stubs` and `smoltcp` features from zpico-platform-shim
 - [ ] 80.7 — Implement for FreeRTOS (lwIP) via cffi vtable
   - [ ] 80.7.1 — C vtable provides lwIP socket functions
   - [ ] 80.7.2 — Board crate registers vtable during init
