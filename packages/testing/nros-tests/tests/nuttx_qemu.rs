@@ -498,7 +498,6 @@ fn test_nuttx_kernel_boots() {
 /// Launches a listener and a talker on separate QEMU instances (slirp networking),
 /// verifies that the listener receives Int32 messages published by the talker.
 #[test]
-#[ignore = "NuttX pubsub E2E: router closes listener TCP session ~25s after connect (TCP early eof on router RX) — happens before Rust talker finishes booting. Listener's keep-alives are being sent (verified via zpico diag). Needs investigation of NuttX/slirp TCP behavior or zenoh-pico client-side close path. Separate from Phase 55.12 timer hang; C pubsub works because talker boots faster."]
 fn test_nuttx_pubsub_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -513,12 +512,19 @@ fn test_nuttx_pubsub_e2e() {
         ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
-    // Start listener QEMU first (subscriber before publisher)
+    // Start listener and talker in PARALLEL so both reach zenohd within the same
+    // ~10s window. The Rust binaries boot slower than C, and if we wait for the
+    // listener to declare its subscription before starting the talker, the
+    // listener session times out before the talker finishes booting.
     eprintln!("Starting listener QEMU (slirp, 10.0.2.31)...");
     let mut listener =
         QemuProcess::start_nuttx_virt(listener_bin, true).expect("Failed to start listener QEMU");
 
-    // Wait for listener to be ready (NuttX boot + zenoh connect + subscription)
+    eprintln!("Starting talker QEMU (slirp, 10.0.2.30)...");
+    let mut talker =
+        QemuProcess::start_nuttx_virt(talker_bin, true).expect("Failed to start talker QEMU");
+
+    // Wait for listener to be ready (subscription declared) before checking output
     let listener_ready = listener
         .wait_for_output(Duration::from_secs(30))
         .unwrap_or_default();
@@ -537,11 +543,6 @@ fn test_nuttx_pubsub_e2e() {
         eprintln!("See: docs/roadmap/phase-55-nuttx-platform.md (55.12)");
         return;
     }
-
-    // Start talker QEMU
-    eprintln!("Starting talker QEMU (slirp, 10.0.2.30)...");
-    let mut talker =
-        QemuProcess::start_nuttx_virt(talker_bin, true).expect("Failed to start talker QEMU");
 
     // Wait for talker to start publishing
     let _talker_output = talker
@@ -578,7 +579,7 @@ fn test_nuttx_pubsub_e2e() {
 /// Launches a service server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives correct AddTwoInts responses.
 #[test]
-#[ignore = "NuttX service E2E: query reply not delivered to client (separate from Phase 55.12 timer hang; client times out with ServiceRequestFailed)"]
+#[ignore = "NuttX service E2E: server receives query and z_query_reply returns OK, but client's get_reply_handler never fires (reply not delivered to client). Needs deeper zenoh-pico query-reply routing investigation."]
 fn test_nuttx_service_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -591,10 +592,15 @@ fn test_nuttx_service_e2e() {
         ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
-    // Start server first
+    // Start server and client in parallel — Rust binaries boot slowly; if we
+    // wait for server ready before starting client, the server's session can
+    // time out before the client finishes booting.
     eprintln!("Starting service server QEMU (slirp, 10.0.2.30)...");
     let mut server =
         QemuProcess::start_nuttx_virt(server_bin, true).expect("Failed to start server QEMU");
+    eprintln!("Starting service client QEMU (slirp, 10.0.2.31)...");
+    let mut client =
+        QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
 
     let server_output = server
         .wait_for_output(Duration::from_secs(30))
@@ -612,11 +618,6 @@ fn test_nuttx_service_e2e() {
         );
         return;
     }
-
-    // Start client
-    eprintln!("Starting service client QEMU (slirp, 10.0.2.31)...");
-    let mut client =
-        QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
 
     // Wait for client to complete all service calls (4 calls: 5+3, 10+20, 100+200, -5+10)
     let client_output = client
@@ -661,7 +662,7 @@ fn test_nuttx_service_e2e() {
 /// Launches an action server and a client on separate QEMU instances (slirp networking),
 /// verifies that the client receives Fibonacci feedback and final result.
 #[test]
-#[ignore = "NuttX action E2E: query reply not delivered to client (separate from Phase 55.12 timer hang)"]
+#[ignore = "NuttX action E2E: shares root cause with test_nuttx_service_e2e (query reply routing)"]
 fn test_nuttx_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -674,10 +675,13 @@ fn test_nuttx_action_e2e() {
         ZenohRouter::start(platform::NUTTX.zenohd_port).expect("Failed to start zenohd");
     assert!(zenohd.is_running(), "zenohd should be running");
 
-    // Start action server first
+    // Start action server and client in parallel (see pubsub test for rationale).
     eprintln!("Starting action server QEMU (slirp, 10.0.2.30)...");
     let mut server =
         QemuProcess::start_nuttx_virt(server_bin, true).expect("Failed to start server QEMU");
+    eprintln!("Starting action client QEMU (slirp, 10.0.2.31)...");
+    let mut client =
+        QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
 
     let server_output = server
         .wait_for_output(Duration::from_secs(30))
@@ -695,11 +699,6 @@ fn test_nuttx_action_e2e() {
         );
         return;
     }
-
-    // Start action client
-    eprintln!("Starting action client QEMU (slirp, 10.0.2.31)...");
-    let mut client =
-        QemuProcess::start_nuttx_virt(client_bin, true).expect("Failed to start client QEMU");
 
     // Fibonacci(10) takes ~5.5s to compute + NuttX boot + zenoh connect
     let client_output = client
@@ -1184,7 +1183,7 @@ fn test_nuttx_c_pubsub_e2e() {
 }
 
 #[test]
-#[ignore = "NuttX C service E2E: query reply not delivered to client (separate from Phase 55.12 timer hang)"]
+#[ignore = "NuttX C service E2E: shares root cause with test_nuttx_service_e2e (query reply routing)"]
 fn test_nuttx_c_service_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1195,11 +1194,12 @@ fn test_nuttx_c_service_e2e() {
 
     let _z = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("zenohd");
 
+    // Start server and client with a small stagger so the server reaches
+    // "Waiting for requests" before the client sends its first query.
     let mut s = QemuProcess::start_nuttx_virt(server, true).expect("server QEMU");
-    std::thread::sleep(Duration::from_secs(10));
+    std::thread::sleep(Duration::from_secs(3));
     let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
 
-    std::thread::sleep(Duration::from_secs(15));
     let c_out = c
         .wait_for_output(Duration::from_secs(60))
         .unwrap_or_default();
@@ -1213,7 +1213,7 @@ fn test_nuttx_c_service_e2e() {
 }
 
 #[test]
-#[ignore = "NuttX C action E2E: query reply not delivered to client (separate from Phase 55.12 timer hang)"]
+#[ignore = "NuttX C action E2E: shares root cause with test_nuttx_service_e2e (query reply routing)"]
 fn test_nuttx_c_action_e2e() {
     if !require_nuttx_e2e() {
         nros_tests::skip!("require_nuttx_e2e check failed");
@@ -1224,11 +1224,10 @@ fn test_nuttx_c_action_e2e() {
 
     let _z = ZenohRouter::start(platform::NUTTX.zenohd_port).expect("zenohd");
 
+    // Start server and client in parallel (see test_nuttx_c_service_e2e).
     let mut s = QemuProcess::start_nuttx_virt(server, true).expect("server QEMU");
-    std::thread::sleep(Duration::from_secs(10));
     let mut c = QemuProcess::start_nuttx_virt(client, true).expect("client QEMU");
 
-    std::thread::sleep(Duration::from_secs(15));
     let c_out = c
         .wait_for_output(Duration::from_secs(60))
         .unwrap_or_default();

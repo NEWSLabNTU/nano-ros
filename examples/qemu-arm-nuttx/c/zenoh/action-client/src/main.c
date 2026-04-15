@@ -1,6 +1,7 @@
 /// @file main.c
 /// @brief NuttX C action client example - sends Fibonacci goal, gets result
 
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
@@ -33,6 +34,20 @@ void app_main(void) {
     printf("Locator: %s\n", APP_ZENOH_LOCATOR);
 
     memset(&app, 0, sizeof(app));
+
+    // Re-seed /dev/urandom with a per-example unique value. NuttX's
+    // xorshift128 PRNG starts with a fixed seed, so two QEMU instances
+    // otherwise generate identical Zenoh session IDs and zenohd rejects
+    // the second connection with MAX_LINKS. Writing bytes to /dev/urandom
+    // reseeds the PRNG state.
+    {
+        FILE* urandom = fopen("/dev/urandom", "wb");
+        if (urandom != NULL) {
+            const uint8_t seed[4] = {10, 0, 2, 35};
+            fwrite(seed, 1, sizeof(seed), urandom);
+            fclose(urandom);
+        }
+    }
 
     nros_action_type_t fibonacci_type = {
         .type_name = example_interfaces_action_fibonacci_get_type_name(),
