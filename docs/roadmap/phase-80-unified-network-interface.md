@@ -314,6 +314,19 @@ typedef struct {
   - [x] 80.6.5 — Delete `packages/zpico/zpico-smoltcp/` crate entirely (-2432 lines)
   - [x] 80.6.6 — Remove zpico-smoltcp from workspace exclude list + justfile C format/check
   - [x] 80.6.7 — Remove `socket_stubs` and `smoltcp` features from zpico-platform-shim
+- [x] 80.6.8 — Implement `PlatformTcp`/`PlatformUdp`/`PlatformSocketHelpers` for Zephyr
+  - [x] 80.6.8.1 — `nros-platform-zephyr/src/net.rs` with manual `extern "C"` bindings for Zephyr POSIX sockets (libc crate doesn't target Zephyr)
+  - [x] 80.6.8.2 — Zephyr-specific constants (`AF_INET=1`, `O_NONBLOCK=0x4000`, `SOL_SOCKET=1`, `SO_RCVTIMEO=20`, `SHUT_RDWR=2`) — values verified against `zephyr/net/socket.h` + `zephyr/net/net_ip.h`
+  - [x] 80.6.8.3 — TCP (create/free endpoint, open, listen, close, read, read_exact, send) — fully functional
+  - [x] 80.6.8.4 — UDP unicast (create/free endpoint, open, close, read, read_exact, send) — fully functional
+  - [x] 80.6.8.5 — Socket helpers (set_non_blocking, accept, close, wait_event) — fully functional
+  - [x] 80.6.8.6 — UDP multicast — stubbed (returns error). Zephyr examples use `tcp/` locator + `CONFIG_NROS_ZENOH_SCOUTING=n`, multicast is never exercised. Follow-up tracked as 80.6.9.
+  - [x] 80.6.8.7 — Activate `zpico-platform-shim?/network` for `zephyr = [...]` in `zpico-sys/Cargo.toml`
+  - [x] 80.6.8.8 — Remove `zenoh-pico/src/system/zephyr/network.c` from `zephyr/CMakeLists.txt` (replaced by Rust shim forwarders)
+  - [x] 80.6.8.9 — `just zephyr build` clean, `just zephyr test` 23/27 (same 4 pre-existing zeth0 TAP contention failures tracked in Phase 81, zero new regressions)
+- [ ] 80.6.9 — Zephyr UDP multicast implementation
+  - [ ] 80.6.9.1 — Port posix `mcast_open`/`mcast_listen`/`mcast_read`/`mcast_send` to Zephyr using `IP_ADD_MEMBERSHIP`, `IP_MULTICAST_IF`. Needs `struct ip_mreq` + `struct ifaddrs` bindings in `net.rs:c` module
+  - [ ] 80.6.9.2 — Exercise via a Zephyr example with `CONFIG_NROS_ZENOH_SCOUTING=y` to validate the multicast path
 - [ ] 80.7 — Implement for FreeRTOS (lwIP) via cffi vtable
   - [ ] 80.7.1 — C vtable provides lwIP socket functions
   - [ ] 80.7.2 — Board crate registers vtable during init

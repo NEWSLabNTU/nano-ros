@@ -32,6 +32,7 @@ use core::ffi::{c_char, c_int, c_void};
 use core::ptr;
 
 mod ffi;
+mod net;
 
 /// Zero-sized type implementing all platform methods for Zephyr.
 pub struct ZephyrPlatform;

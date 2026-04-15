@@ -22,7 +22,7 @@ default = []
 # Zephyr's platform code is compiled by Zephyr's CMake build system, but the
 # shim (Rust staticlib) still gets linked into nros-c / nros-cpp / rust apps.
 posix = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
-zephyr = ["dep:zpico-platform-shim", "zpico-platform-shim?/active"]
+zephyr = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
 bare-metal = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network", "zpico-platform-shim?/network-smoltcp-bridge"]
 freertos = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/network"]
 nuttx = ["dep:zpico-platform-shim", "zpico-platform-shim?/active", "zpico-platform-shim?/skip-clock-symbols"]
