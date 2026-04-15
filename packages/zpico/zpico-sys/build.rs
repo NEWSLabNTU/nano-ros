@@ -567,7 +567,10 @@ fn probe_net_type_sizes(
     // Set the same platform defines as the main build so platform.h selects
     // the correct platform header (unix.h, freertos/lwip.h, void.h, etc.)
     if use_bare_metal {
-        // bare-metal: falls through to void.h (no platform define needed)
+        // bare-metal: ZENOH_GENERIC → zenoh_generic_platform.h → bare-metal/platform.h
+        build.define("ZENOH_GENERIC", None);
+        let platform_dir = c_dir.join("platform");
+        build.include(&platform_dir);
     } else if use_freertos {
         build.define("ZENOH_FREERTOS_LWIP", None);
         // lwIP + FreeRTOS headers needed
@@ -611,9 +614,15 @@ fn probe_net_type_sizes(
         build.include(&generated_config_dir);
     }
 
-    // Compile to a separate static library
+    // Compile to a separate static library (may fail on targets without
+    // C standard library headers, e.g. RISC-V without picolibc)
     build.cargo_metadata(false); // Don't emit link flags
-    build.compile("size_probe");
+    if build.try_compile("size_probe").is_err() {
+        // Fallback: emit default sizes (16/8) when probe fails
+        println!("cargo:SOCKET_SIZE=16");
+        println!("cargo:ENDPOINT_SIZE=8");
+        return;
+    }
 
     // Read symbol sizes from the compiled archive using llvm-nm.
     // The probe C file defines arrays whose lengths equal sizeof(type).
@@ -668,21 +677,19 @@ fn read_symbol_size(archive: &Path, symbol: &str) -> usize {
             .args(["--print-size", "--defined-only"])
             .arg(archive)
             .output()
+            && output.status.success()
         {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    if line.contains(symbol) {
-                        // Format: "00000000 00000010 R __nros_sizeof_net_socket"
-                        // The second field is the hex size.
-                        let parts: Vec<&str> = line.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            if let Ok(size) = usize::from_str_radix(parts[1], 16) {
-                                if size > 0 {
-                                    return size;
-                                }
-                            }
-                        }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains(symbol) {
+                    // Format: "00000000 00000010 R __nros_sizeof_net_socket"
+                    // The second field is the hex size.
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2
+                        && let Ok(size) = usize::from_str_radix(parts[1], 16)
+                        && size > 0
+                    {
+                        return size;
                     }
                 }
             }

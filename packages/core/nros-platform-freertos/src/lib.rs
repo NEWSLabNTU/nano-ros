@@ -228,7 +228,7 @@ impl FreeRtosPlatform {
                 ((*a).name, (*a).priority, (*a).stack_depth as u32)
             } else {
                 (
-                    DEFAULT_TASK_NAME.as_ptr() as *const u8,
+                    DEFAULT_TASK_NAME.as_ptr().cast::<u8>(),
                     DEFAULT_PRIORITY,
                     DEFAULT_STACK_DEPTH,
                 )

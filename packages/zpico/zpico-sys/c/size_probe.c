@@ -7,7 +7,6 @@
  * calculates them from the actual headers.
  */
 #include "zenoh-pico/system/platform.h"
-#include "zenoh-pico/system/link/tcp.h"
 
 /* Array length == sizeof(type). llvm-nm reports the size. */
 const unsigned char __nros_sizeof_net_socket[sizeof(_z_sys_net_socket_t)] = {0};

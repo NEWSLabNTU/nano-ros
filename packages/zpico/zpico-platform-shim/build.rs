@@ -19,11 +19,11 @@ fn main() {
     let mut endpoint_size: usize = 8;
 
     // Only probe if zenoh-pico headers exist
-    if zenoh_pico_include.exists() {
-        if let Some((s, e)) = probe_sizes(&zpico_sys_dir, &zenoh_pico_include, &out_dir) {
-            socket_size = s;
-            endpoint_size = e;
-        }
+    if zenoh_pico_include.exists()
+        && let Some((s, e)) = probe_sizes(&zpico_sys_dir, &zenoh_pico_include, &out_dir)
+    {
+        socket_size = s;
+        endpoint_size = e;
     }
 
     let contents = format!(
@@ -83,7 +83,9 @@ fn probe_sizes(
         build.define("ZENOH_THREADX", None);
         build.include(zpico_sys_dir.join("c/platform"));
     } else if target.contains("none") {
-        // Bare-metal: void.h
+        // Bare-metal: ZENOH_GENERIC → zenoh_generic_platform.h → bare-metal/platform.h
+        build.define("ZENOH_GENERIC", None);
+        build.include(zpico_sys_dir.join("c/platform"));
     } else if target.contains("linux") {
         build.define("ZENOH_LINUX", None);
     } else if target.contains("darwin") || target.contains("macos") {
@@ -123,17 +125,16 @@ fn read_symbol_size(archive: &Path, symbol: &str) -> usize {
             .args(["--print-size", "--defined-only"])
             .arg(archive)
             .output()
+            && output.status.success()
         {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                for line in stdout.lines() {
-                    if line.contains(symbol) {
-                        let parts: Vec<&str> = line.split_whitespace().collect();
-                        if parts.len() >= 2 {
-                            if let Ok(size) = usize::from_str_radix(parts[1], 16) {
-                                return size;
-                            }
-                        }
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                if line.contains(symbol) {
+                    let parts: Vec<&str> = line.split_whitespace().collect();
+                    if parts.len() >= 2
+                        && let Ok(size) = usize::from_str_radix(parts[1], 16)
+                    {
+                        return size;
                     }
                 }
             }
