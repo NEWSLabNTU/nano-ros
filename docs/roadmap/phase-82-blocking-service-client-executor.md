@@ -396,20 +396,336 @@ a lifecycle change. Existing user code is unaffected.
 
 ### C++ (`nros-cpp`)
 
-> **Status: TBD.** The C++ design will follow the C registration-step
-> pattern but the exact surface is still under discussion. The natural
-> options are:
->
-> 1. Direct wrap of the C ABI: `node.create_client(client, "/srv")` →
->    `executor.add_client(client)` → `client.call(req, resp)` keeps its
->    current signature, just like the C path.
-> 2. Future-style: `auto fut = client.async_send_request(req); auto resp
->    = fut.wait(executor, 5s);` mirroring `nros::ActionClient`'s existing
->    `async_send_goal` pattern.
-> 3. Both, with `client.call(req, resp)` as a thin convenience over the
->    Future path.
->
-> Resolved separately after the C side is done; see Work Item 82.14.
+C++ uses the `Future<T>` pattern as the single way to express any
+operation that has a deferred response. Every send-shaped method on every
+client returns a `Future<T>`; there are no blocking convenience overloads,
+no stashed executors, no `_async` prefix. The user always writes the
+two-step "start the operation, then wait on the future" form. This is the
+same shape Rust uses with `Promise<T>`, just spelled in C++14.
+
+#### Design decisions
+
+1. **Single function per operation.** No overloading to expose
+   blocking/non-blocking/async variants. `Client<S>::send_request(req)`
+   returns a `Future<Response>` and that's the only way to send a request.
+   Users who want blocking call `fut.wait(executor, timeout, resp)`; users
+   who want non-blocking call `fut.is_ready()` / `fut.try_take(resp)`;
+   users who want to await (in a future C++20 build) call `co_await fut`.
+   The `Future` is the dispatch point, not the function name.
+
+2. **No stashed state on `Client`.** `Client<S>` does not store an
+   `Executor*`. Every blocking operation takes the executor as an explicit
+   argument. This matches Rust's `Promise::wait(&mut executor, timeout)`
+   exactly, and it makes the executor dependency visible in the type
+   signature so reentrancy is easier to reason about.
+
+3. **Consistent across every C++ entity.** The same single-function +
+   future-returning convention applies to `ActionClient<A>` and any future
+   request/response-shaped API. There is one C++ idiom for "operation
+   with a deferred response", end of story. Subscriptions stay as
+   streams (different shape) and service servers stay callback-driven
+   (no outgoing operations).
+
+#### `Future<T>`
+
+```cpp
+namespace nros {
+
+template <typename T>
+class Future {
+public:
+    enum class Status { Ready, NotReady, Failed };
+
+    // Non-blocking primitives
+    bool   is_ready() const noexcept;
+    Result try_take(T& out);    // Ready → fills out + consumes; NotReady → leaves intact
+
+    // Blocking — explicit executor + timeout, mirrors Rust's Promise::wait.
+    // Returns Result::ok() on Ready (out filled), Result(Timeout) on Timeout,
+    // Result(propagated error) on Failed.
+    Result wait(Executor& executor,
+                std::chrono::milliseconds timeout,
+                T& out);
+
+    // Move-only single-shot, like std::future
+    Future(Future&&) noexcept;
+    Future& operator=(Future&&) noexcept;
+    Future(const Future&) = delete;
+    Future& operator=(const Future&) = delete;
+    ~Future();   // calls cancel() if still pending
+
+    void cancel();   // idempotent; releases the slot
+
+    // C++20 coroutine adapter — forward-compatibility, gated behind
+    // __cpp_impl_coroutine. Lets users co_await a future without changing
+    // the C++14 surface.
+    #if defined(__cpp_impl_coroutine)
+    bool        await_ready() const noexcept { return is_ready(); }
+    void        await_suspend(std::coroutine_handle<> h) noexcept;
+    T           await_resume();
+    #endif
+
+private:
+    template <typename S> friend class Client;
+    template <typename A> friend class ActionClient;
+
+    void*  client_storage_ = nullptr;   // back-pointer to the parent
+    int    slot_index_     = -1;        // -1 == consumed/empty
+    using  Parser          = bool (*)(const uint8_t*, size_t, void*);
+    Parser parser_         = nullptr;   // type-erased CDR → T deserializer
+};
+
+} // namespace nros
+```
+
+The future owns no transport state — it carries a pointer back to the
+parent client, an index into that client's pending-slot pool, and a
+function pointer that knows how to parse the CDR bytes into `T`. Same
+shape as Rust's `Promise<'a, T>` — just three fields glued together.
+
+`wait` spins the passed-in executor:
+
+```cpp
+template <typename T>
+Result Future<T>::wait(Executor& executor,
+                       std::chrono::milliseconds timeout, T& out)
+{
+    if (slot_index_ < 0) return Result(ErrorCode::AlreadyConsumed);
+    auto deadline = std::chrono::steady_clock::now() + timeout;
+    while (std::chrono::steady_clock::now() < deadline) {
+        executor.spin_some(std::chrono::milliseconds(10));
+        if (is_ready()) return try_take(out);
+    }
+    return Result(ErrorCode::Timeout);
+}
+```
+
+This is the C++ analogue of:
+
+```rust
+pub fn wait(&mut self, executor: &mut Executor, timeout_ms: u64) -> Result<T, NodeError> {
+    for _ in 0..max_spins {
+        executor.spin_once(spin_interval_ms);
+        if let Some(result) = self.try_recv()? { return Ok(result); }
+    }
+    Err(NodeError::Timeout)
+}
+```
+
+#### `Client<S>`
+
+```cpp
+template <typename S>
+class Client {
+public:
+    using Request  = typename S::Request;
+    using Response = typename S::Response;
+
+    // The only way to send. Returns a Future<Response>.
+    // Returns a Future already in the Failed state (slot_index_ = -1) if
+    // the client has an outstanding request or serialization fails.
+    Future<Response> send_request(const Request& req);
+
+    // No call() overload. No async_send_request alias. send_request is it.
+
+private:
+    void* storage_ = nullptr;   // opaque C ABI handle from node.create_client
+    // No stashed Executor* — wait() takes one explicitly.
+};
+```
+
+User code:
+
+```cpp
+nros::Client<AddTwoInts> client;
+NROS_TRY(node.create_client(client, "/add_two_ints"));
+
+ReqType req{1, 2};
+auto   fut = client.send_request(req);
+
+// Blocking — mirror of Rust's promise.wait(&mut exec, 500)?
+RespType resp;
+NROS_TRY(fut.wait(executor, 500ms, resp));
+```
+
+Or non-blocking:
+
+```cpp
+auto fut = client.send_request(req);
+while (!fut.is_ready()) {
+    do_other_work();
+    executor.spin_some(10ms);
+}
+RespType resp;
+NROS_TRY(fut.try_take(resp));
+```
+
+Or co_await (C++20 only, when available):
+
+```cpp
+RespType resp = co_await client.send_request(req);
+```
+
+The same `client.send_request(req)` call serves all three patterns.
+
+#### `ActionClient<A>` — same pattern, end-to-end
+
+For consistency, every operation on the action client also returns a
+`Future<T>`:
+
+```cpp
+template <typename A>
+class ActionClient {
+public:
+    using Goal     = typename A::Goal;
+    using Feedback = typename A::Feedback;
+    using Result   = typename A::Result;
+
+    struct GoalAccept {
+        GoalUuid uuid;
+        bool     accepted;
+    };
+
+    struct ResultStatus {
+        GoalStatus status;
+        Result     result;
+    };
+
+    // Send a goal. Future resolves when the server accepts/rejects.
+    Future<GoalAccept> send_goal(const Goal& goal);
+
+    // Request the result for an accepted goal. Future resolves when the
+    // server publishes the final result.
+    Future<ResultStatus> get_result(const GoalUuid& uuid);
+
+    // Cancel an in-flight goal. Future resolves with the cancel ack.
+    Future<CancelResponse> cancel_goal(const GoalUuid& uuid);
+
+    // Feedback is a stream, not a future — see "Streams vs Futures" below.
+    FeedbackStream<Feedback> feedback_for(const GoalUuid& uuid);
+
+private:
+    void* storage_ = nullptr;
+    // No stashed Executor*.
+};
+```
+
+User code becomes a sequence of `wait` calls, each with an explicit
+executor:
+
+```cpp
+nros::ActionClient<Fibonacci> client;
+NROS_TRY(node.create_action_client(client, "/fibonacci"));
+
+GoalType goal{10};
+
+// 1. Send goal, wait for accept
+auto goal_fut = client.send_goal(goal);
+GoalAccept accept;
+NROS_TRY(goal_fut.wait(executor, 5s, accept));
+if (!accept.accepted) { return; }
+
+// 2. Stream feedback while polling for result
+auto feedback_stream = client.feedback_for(accept.uuid);
+auto result_fut      = client.get_result(accept.uuid);
+ResultStatus result;
+while (true) {
+    Feedback fb;
+    if (feedback_stream.try_take(fb) == Status::Ready) {
+        std::cout << "feedback: " << fb << "\n";
+    }
+    if (result_fut.try_take(result) == Result::ok()) break;
+    executor.spin_some(10ms);
+}
+
+// Or just block on the result and ignore intermediate feedback
+NROS_TRY(result_fut.wait(executor, 30s, result));
+```
+
+This mirrors how the Rust action client already works
+(`client.send_goal(&goal)? → Promise<GoalAccept>` + `feedback_stream_for`).
+
+#### Streams vs futures
+
+Feedback messages and subscription samples are *streams* — multiple
+values over time — not single-shot futures. They get a different shape:
+
+```cpp
+template <typename T>
+class Stream {
+public:
+    // Non-blocking
+    Status try_take(T& out);
+
+    // Blocking — explicit executor, mirrors Rust's wait_next
+    Result wait_next(Executor& executor,
+                     std::chrono::milliseconds timeout,
+                     T& out);
+
+    // C++20 async iteration adapter
+    #if defined(__cpp_impl_coroutine)
+    AsyncIterator<T> begin() noexcept;
+    AsyncIterator<T> end()   noexcept;
+    #endif
+};
+```
+
+`Subscription<T>` exposes a `Stream<T>` directly; the action client's
+`feedback_for(uuid)` returns one. Same explicit-executor convention as
+`Future<T>::wait`.
+
+#### Service server, action server: unchanged
+
+Service and action servers do not have outgoing blocking operations.
+Their request/cancel/result handling is event-driven via callbacks (or
+via `try_accept_goal` for the action server). They were never the
+problem and don't gain or lose any API in Phase 82. The
+`accepted_callback` post-accept hook from the recent C action E2E fix
+is preserved as-is.
+
+#### Migration
+
+This is a **hard break** for C++ users — the existing one-liner
+`client.call(req, resp)` no longer compiles. Migration is mechanical:
+
+```diff
+- ResponseType resp;
+- NROS_TRY(client.call(req, resp));
++ ResponseType resp;
++ auto fut = client.send_request(req);
++ NROS_TRY(fut.wait(executor, 5s, resp));
+```
+
+Every C++ service-client example in the repo gets the same two-line
+substitution in the same PR that lands the new API. C++ has no ABI
+contract here so the break is contained: users recompile, the compiler
+points at every call site, they update each one. No deprecation shim.
+
+The same migration applies to the action client — every
+`async_send_goal` / `async_get_result` style call becomes
+`send_goal(...).wait(executor, ...)` / `get_result(...).wait(executor, ...)`.
+
+#### Single-slot vs multi-slot
+
+Phase 82 ships with **one outstanding request per `Client<S>` instance**.
+A second `send_request` call before the first future has been consumed
+returns a `Future` already in the `Failed` state with
+`ErrorCode::Busy`. Users who need parallelism instantiate multiple
+`Client<S>` objects today, or wait for the future enhancement that adds
+a `MAX_PENDING` template parameter.
+
+This is the same constraint Rust enforces via the borrow checker
+(`Promise<'a, T>` borrows `&'a mut Client`). Different mechanism, same
+end state.
+
+#### Reentrancy guard
+
+Same as the C side: `nros_executor_t` carries an `in_dispatch` flag set
+by `spin_some` for the duration of a dispatch pass. `Future<T>::wait`
+checks the flag and returns `Result(ErrorCode::Reentrant)` immediately
+if set, without nesting `spin_some`. The test suite includes a
+regression test that calls `send_request().wait(...)` from inside a
+subscription callback and asserts `Reentrant`.
 
 ## Work Items
 
@@ -546,25 +862,84 @@ a lifecycle change. Existing user code is unaffected.
     through the new executor-driven path. If a "blocking get parameter"
     helper exists, it follows the same `executor_ptr` stash pattern.
 
-- [ ] 82.14 — C++ design (separate sub-section, see below)
-  - **Files**: TBD
-  - **Goal**: Decide whether to mirror the Rust `Client::call` +
-    `Promise::wait` shape or use a different idiom that suits C++14.
+- [ ] 82.14 — C++: introduce `Future<T>` + `Stream<T>`
+  - **Files**: new `packages/core/nros-cpp/include/nros/future.hpp`,
+    new `packages/core/nros-cpp/include/nros/stream.hpp`,
+    `packages/core/nros-cpp/src/future.rs` (FFI for slot management)
+  - **Goal**: Implement the move-only `Future<T>` template with
+    `is_ready()`, `try_take(out)`, `wait(executor, timeout, out)`, and
+    `cancel()`. Single-slot per parent client. Type-erased CDR parser
+    function pointer. C++20 coroutine adapter gated behind
+    `__cpp_impl_coroutine`. Same shape for `Stream<T>` with
+    `wait_next(executor, timeout, out)`.
+
+- [ ] 82.15 — C++: rewrite `Client<S>` on `Future<Response>`
+  - **Files**: `packages/core/nros-cpp/include/nros/client.hpp`,
+    `packages/core/nros-cpp/src/client.rs` (FFI),
+    `examples/*/cpp/zenoh/service-client/src/main.cpp`
+  - **Goal**: Delete `Client::call`. The only public method is
+    `send_request(req) -> Future<Response>`. No stashed executor on
+    `Client`. No overloads. Update every C++ service-client example to
+    the new two-step form. Hard break, single PR.
+
+- [ ] 82.16 — C++: rewrite `ActionClient<A>` on `Future<T>` + `Stream<T>`
+  - **Files**: `packages/core/nros-cpp/include/nros/action_client.hpp`,
+    `packages/core/nros-cpp/src/action.rs` (FFI),
+    `examples/*/cpp/zenoh/action-client/src/main.cpp`
+  - **Goal**: `send_goal(goal)` returns `Future<GoalAccept>`,
+    `get_result(uuid)` returns `Future<ResultStatus>`, `cancel_goal(uuid)`
+    returns `Future<CancelResponse>`, `feedback_for(uuid)` returns
+    `Stream<Feedback>`. Delete every existing async/blocking method
+    variant. Update every C++ action-client example. The same hard break
+    as 82.15, in the same PR.
+
+- [ ] 82.17 — C++: `Subscription<T>` exposes a `Stream<T>`
+  - **Files**: `packages/core/nros-cpp/include/nros/subscription.hpp`
+  - **Goal**: Subscriptions become a thin handle whose only access
+    method returns/borrows a `Stream<T>`. `subscription.stream()` →
+    `Stream<T>&`. Existing callback-style subscription registration
+    stays as a separate alternative for users who prefer it. Update C++
+    subscriber examples to use the stream form where it reads cleaner.
+
+- [ ] 82.18 — C++: reentrancy guard
+  - **Files**: `packages/core/nros-cpp/include/nros/future.hpp`,
+    `packages/core/nros-cpp/include/nros/stream.hpp`
+  - **Goal**: `Future::wait` and `Stream::wait_next` check the C ABI's
+    `in_dispatch` flag (set by `spin_some`) and return
+    `ErrorCode::Reentrant` immediately if a callback re-enters. Add a
+    regression test alongside the C reentrancy test (work item 82.11).
 
 ## Acceptance Criteria
 
-- [ ] No public Rust API blocks on a transport-level primitive without
-      taking `&mut Executor`.
-- [ ] No `nros-c` public function blocks without taking `nros_executor_t*`
-      and a `timeout_ms`.
-- [ ] No `nros-cpp` public method blocks without taking `Executor&` and a
-      timeout.
+- [ ] **Rust**: no public API blocks on a transport-level primitive
+      without taking `&mut Executor`. `ServiceClientTrait::call_raw` is
+      removed (or fully deprecated with a non-condvar default body).
+- [ ] **C**: every blocking helper (`nros_client_call`,
+      `nros_action_send_goal`, `nros_action_get_result`) reads its
+      executor from the registered client's stashed `executor_ptr` and
+      drives that executor via `nros_executor_spin_some`. None of them
+      call `zpico_get`. None of them take new arguments.
+- [ ] **C**: every entity (sub, service-{server,client},
+      action-{server,client}) follows the same lifecycle:
+      metadata-only `init` → `nros_executor_add_*` → use. The asymmetry
+      from `nros_client_init` creating its transport handle eagerly is
+      eliminated.
+- [ ] **C++**: every operation that has a deferred response is exposed
+      via exactly one method that returns `Future<T>`. No `call`
+      overload, no `async_*` aliases, no stashed executor on any client
+      type. Every C++ blocking call goes through `Future::wait(executor,
+      timeout, out)` or `Stream::wait_next(executor, timeout, out)`.
 - [ ] `grep -rn 'zpico_get\b' packages/core/ packages/zpico/nros-rmw-zenoh/`
       returns zero results outside of `zpico_get_start` / `zpico_get_check`.
-- [ ] A subscription callback can call `nros_client_call(executor, ...)` and
-      get a successful response — covered by a new integration test.
-- [ ] All existing service-client tests still pass on every platform
-      (POSIX, NuttX QEMU, FreeRTOS QEMU, ThreadX, ESP32-QEMU, MPS2-AN385).
+      `zpico_get` itself is deleted from `zpico.c`.
+- [ ] Reentrancy: a subscription callback that calls a blocking helper
+      (C `nros_client_call` / C++ `Future::wait`) returns the
+      `Reentrant` error code immediately rather than corrupting executor
+      state. Covered by integration tests on at least native POSIX and
+      NuttX QEMU.
+- [ ] All existing service-client and action-client tests still pass on
+      every platform (POSIX, NuttX QEMU, FreeRTOS QEMU, ThreadX,
+      ESP32-QEMU, MPS2-AN385).
 
 ## Notes & Caveats
 
