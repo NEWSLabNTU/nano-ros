@@ -18,6 +18,7 @@
 use core::ffi::c_void;
 
 mod ffi;
+pub mod net;
 mod types;
 
 /// Zero-sized type implementing all platform methods for FreeRTOS.

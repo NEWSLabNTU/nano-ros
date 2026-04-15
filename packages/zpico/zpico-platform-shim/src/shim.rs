@@ -683,7 +683,7 @@ mod net_mcast {
 // smoltcp bridge FFI (bare-metal only — called from zpico.c when ZPICO_SMOLTCP)
 // ============================================================================
 
-#[cfg(feature = "network")]
+#[cfg(feature = "network-smoltcp-bridge")]
 mod net_smoltcp_bridge {
     unsafe extern "C" {
         fn nros_smoltcp_is_initialized() -> bool;

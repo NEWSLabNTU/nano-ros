@@ -1544,7 +1544,8 @@ fn build_zenoh_pico_freertos(
     // FreeRTOS platform sources
     // system.c skipped — platform symbols provided by zpico-platform-shim
     // via nros-platform-freertos (uses #[repr(C)] types matching C struct layouts).
-    build.file(src_dir.join("system/freertos/lwip/network.c"));
+    // network.c skipped — networking symbols provided by zpico-platform-shim
+    // via nros-platform-freertos (lwIP BSD socket calls).
 
     // Shim (high-level API wrapper)
     build.file(c_dir.join("zpico").join("zpico.c"));

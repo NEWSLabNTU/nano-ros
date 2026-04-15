@@ -207,7 +207,11 @@ pub(crate) unsafe extern "C" fn accepted_callback_trampoline(
     let server = &mut *internal.server_ptr;
     let uuid = (*goal_id).uuid;
 
-    let Some(slot) = server.goals.iter_mut().find(|g| g.active && g.uuid.uuid == uuid) else {
+    let Some(slot) = server
+        .goals
+        .iter_mut()
+        .find(|g| g.active && g.uuid.uuid == uuid)
+    else {
         return;
     };
 

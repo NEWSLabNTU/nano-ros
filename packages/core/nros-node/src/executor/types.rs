@@ -546,10 +546,8 @@ pub type RawGoalCallback = unsafe extern "C" fn(
 ///
 /// # Safety
 /// - `goal_id` is valid for the duration of the call.
-pub type RawAcceptedCallback = unsafe extern "C" fn(
-    goal_id: *const nros_core::GoalId,
-    context: *mut core::ffi::c_void,
-);
+pub type RawAcceptedCallback =
+    unsafe extern "C" fn(goal_id: *const nros_core::GoalId, context: *mut core::ffi::c_void);
 
 /// Raw action cancel callback.
 ///

@@ -22,6 +22,8 @@ skip-task-symbols = []
 skip-clock-symbols = []
 # Provide network forwarders (_z_open_tcp etc. → PlatformTcp/PlatformUdp traits)
 network = []
+# Provide smoltcp_init/cleanup/poll FFI (bare-metal only — calls nros-smoltcp)
+network-smoltcp-bridge = ["network"]
 
 [dependencies]
 nros-platform = { version = "0.1.0", path = "../../core/nros-platform", default-features = false }
